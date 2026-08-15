@@ -27,6 +27,7 @@ fn absence(
         boot_session_uuid: boot_session_uuid.to_string(),
         collector_policy_sha256: digest('e'),
         collector_receipt_sha256: digest('f'),
+        current_expected_absence_inventory_sha256: None,
         iomedia_evidence_sha256: digest('1'),
         monotonic_after_nanoseconds: before + 1,
         monotonic_before_nanoseconds: before,
@@ -40,6 +41,21 @@ fn absence(
         reconciliation_snapshot_sha256: None,
         restart_epoch_nonce: None,
     }
+}
+
+#[test]
+fn forward_absence_canonical_json_omits_the_restart_only_expected_inventory_binding() {
+    let observation = absence(&digest('3'), "12345678-1234-1234-1234-123456789abc", 10);
+    let bytes = canonical_json(&observation).expect("canonical forward absence");
+    assert!(
+        !String::from_utf8(bytes.clone())
+            .unwrap()
+            .contains("current_expected_absence_inventory_sha256")
+    );
+    assert_eq!(
+        serde_json::from_slice::<FreshAbsenceObservationV2>(&bytes).unwrap(),
+        observation
+    );
 }
 
 fn full_flow(operation_nonce: &str) -> Vec<DisposableLifecycleEventV2> {
@@ -126,11 +142,17 @@ fn snapshot(
     receipt_byte: char,
     match_result: ReconciliationMatchV2,
 ) -> ReconciliationSnapshotV2 {
+    let current_expected_absence_inventory_sha256 = match match_result {
+        ReconciliationMatchV2::Zero => Some(digest('6')),
+        ReconciliationMatchV2::Unique { .. } => Some(digest('8')),
+        ReconciliationMatchV2::Ambiguous { .. } => None,
+    };
     ReconciliationSnapshotV2 {
         backing_identity_sha256: digest('b'),
         boot_session_uuid: boot_session_uuid.to_string(),
         collector_policy_sha256: digest('e'),
         collector_receipt_sha256: digest(receipt_byte),
+        current_expected_absence_inventory_sha256,
         iomedia_evidence_sha256: digest('6'),
         match_result,
         monotonic_after_nanoseconds: before + 1,
@@ -251,6 +273,8 @@ fn fresh_absence_binds_the_current_epoch_and_exact_snapshot() {
     )
     .expect("snapshot");
     let mut stale = absence(&operation_nonce, boot, 103);
+    stale.current_expected_absence_inventory_sha256 = Some(digest('6'));
+    stale.iomedia_evidence_sha256 = digest('6');
     stale.restart_epoch_nonce = Some(epoch.clone());
     stale.reconciliation_snapshot_sha256 = Some(digest('9'));
     assert!(
@@ -262,6 +286,8 @@ fn fresh_absence_binds_the_current_epoch_and_exact_snapshot() {
         .is_err()
     );
     let mut exact = absence(&operation_nonce, boot, 103);
+    exact.current_expected_absence_inventory_sha256 = Some(digest('6'));
+    exact.iomedia_evidence_sha256 = digest('6');
     exact.restart_epoch_nonce = Some(epoch);
     exact.reconciliation_snapshot_sha256 = Some(observed_sha);
     append(
@@ -270,6 +296,94 @@ fn fresh_absence_binds_the_current_epoch_and_exact_snapshot() {
         DisposableLifecycleEventV2::FreshAbsenceObserved { observation: exact },
     )
     .expect("exact epoch absence");
+}
+
+#[test]
+fn restart_unique_absence_uses_the_current_boot_expected_inventory_not_historical_baseline() {
+    let operation_nonce = digest('3');
+    let current_boot = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let epoch = digest('4');
+    let mut initial = DisposableLifecycleJournalV2::new(&operation_nonce).expect("journal");
+    let mut records = Vec::new();
+    append(&mut initial, &mut records, prepared()).expect("historical prepare");
+
+    let mut resumed =
+        DisposableLifecycleJournalV2::resume_for_reconciliation(&records).expect("restart");
+    append(
+        &mut resumed,
+        &mut records,
+        restart(current_boot, 100, &epoch),
+    )
+    .expect("epoch");
+    let observed = snapshot(
+        &operation_nonce,
+        current_boot,
+        &epoch,
+        101,
+        '5',
+        ReconciliationMatchV2::Unique { mounted: false },
+    );
+    let observed_sha = reconciliation_snapshot_sha256(&observed).expect("snapshot digest");
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::ReconciliationSnapshotObserved { snapshot: observed },
+    )
+    .expect("Unique snapshot");
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::EjectIssuedOrUncertain {
+            effect_id: 1,
+            purpose: EffectPurposeV2::Reconciliation,
+        },
+    )
+    .expect("eject issue");
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::EjectCallbackObserved {
+            effect_id: 1,
+            outcome: CallbackOutcomeV2::Succeeded,
+        },
+    )
+    .expect("eject callback");
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::EjectObserved {
+            effect_id: 1,
+            iomedia_absence_sha256: digest('7'),
+        },
+    )
+    .expect("eject absence");
+
+    let mut observation = absence(&operation_nonce, current_boot, 110);
+    observation.current_expected_absence_inventory_sha256 = Some(digest('9'));
+    observation.iomedia_evidence_sha256 = digest('9');
+    observation.post_inventory_sha256 = digest('0');
+    observation.reconciliation_snapshot_sha256 = Some(observed_sha.clone());
+    observation.restart_epoch_nonce = Some(epoch.clone());
+    assert!(
+        append(
+            &mut resumed,
+            &mut records,
+            DisposableLifecycleEventV2::FreshAbsenceObserved {
+                observation: observation.clone(),
+            },
+        )
+        .is_err(),
+        "a current inventory not sealed by the Unique snapshot must fail"
+    );
+
+    observation.current_expected_absence_inventory_sha256 = Some(digest('8'));
+    observation.iomedia_evidence_sha256 = digest('8');
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::FreshAbsenceObserved { observation },
+    )
+    .expect("current-boot expected absence");
 }
 
 #[test]
@@ -375,6 +489,7 @@ fn restart_unique_cleanup_requires_one_success_callback_and_ambiguous_blocks() {
         "ambiguous identity grants no cleanup target"
     );
     let mut impossible_absence = absence(&operation_nonce, boot, 203);
+    impossible_absence.current_expected_absence_inventory_sha256 = Some(digest('1'));
     impossible_absence.restart_epoch_nonce = Some(epoch_b);
     impossible_absence.reconciliation_snapshot_sha256 = Some(digest('9'));
     assert!(
@@ -482,6 +597,7 @@ fn every_issued_cutpoint_restarts_abort_only_and_requires_fresh_absence() {
             boot_session_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".to_string(),
             collector_policy_sha256: digest('e'),
             collector_receipt_sha256: digest('5'),
+            current_expected_absence_inventory_sha256: Some(digest('6')),
             iomedia_evidence_sha256: digest('6'),
             match_result: ReconciliationMatchV2::Zero,
             monotonic_after_nanoseconds: 102,
@@ -503,6 +619,8 @@ fn every_issued_cutpoint_restarts_abort_only_and_requires_fresh_absence() {
             "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
             103,
         );
+        observation.current_expected_absence_inventory_sha256 = Some(digest('6'));
+        observation.iomedia_evidence_sha256 = digest('6');
         observation.restart_epoch_nonce = Some(digest('4'));
         observation.reconciliation_snapshot_sha256 = Some(snapshot_digest);
         let absence_digest = fresh_absence_sha256(&observation).expect("absence digest");
@@ -758,6 +876,8 @@ fn persisted_absence_without_terminal_is_superseded_by_a_fresh_restart_epoch() {
     )
     .expect("fresh zero snapshot");
     let mut observation = absence(&operation_nonce, boot, 103);
+    observation.current_expected_absence_inventory_sha256 = Some(digest('6'));
+    observation.iomedia_evidence_sha256 = digest('6');
     observation.restart_epoch_nonce = Some(epoch);
     observation.reconciliation_snapshot_sha256 = Some(observed_sha);
     let absence_sha = fresh_absence_sha256(&observation).expect("absence digest");

@@ -3272,6 +3272,22 @@ mod platform {
             &self.report
         }
 
+        #[cfg(test)]
+        pub(crate) fn poison_boot_session_for_test(&mut self) {
+            self.report.boot_session_uuid = "00000000-0000-0000-0000-000000000000".to_string();
+        }
+
+        #[cfg(test)]
+        pub(crate) fn substitute_valid_property_for_test(&mut self) {
+            let object = self
+                .report
+                .objects
+                .first_mut()
+                .expect("captured restart inventory is nonempty");
+            object.provenance.disk_arbitration.internal =
+                Some(!object.provenance.disk_arbitration.internal.unwrap_or(false));
+        }
+
         pub fn revalidate_after_persistence(&self) -> Result<(), AcceptanceError> {
             if current_boot_session_uuid_impl()? != self.report.boot_session_uuid
                 || self.held_nodes.len() != self.report.objects.len()
@@ -4314,6 +4330,12 @@ impl HeldRestartIOMediaInventoryV3 {
     pub fn report(&self) -> &RestartIOMediaInventoryV3 {
         unreachable!("non-macOS capture never constructs a restart inventory")
     }
+
+    #[cfg(test)]
+    pub(crate) fn poison_boot_session_for_test(&mut self) {}
+
+    #[cfg(test)]
+    pub(crate) fn substitute_valid_property_for_test(&mut self) {}
 
     pub fn revalidate_after_persistence(&self) -> Result<(), AcceptanceError> {
         Err(invalid(

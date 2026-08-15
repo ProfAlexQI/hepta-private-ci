@@ -78,6 +78,7 @@ fn reconciliation_snapshot(boot: &str) -> ReconciliationSnapshotV2 {
         boot_session_uuid: boot.to_string(),
         collector_policy_sha256: digest('c'),
         collector_receipt_sha256: digest('e'),
+        current_expected_absence_inventory_sha256: Some(digest('9')),
         iomedia_evidence_sha256: digest('f'),
         match_result: ReconciliationMatchV2::Unique { mounted: true },
         monotonic_after_nanoseconds: 102,

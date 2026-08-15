@@ -16,6 +16,9 @@ use crate::mac_disposable_lifecycle::ReconciliationMatchV2;
 use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
 use crate::mac_disposable_lifecycle::fresh_absence_sha256;
 use crate::mac_disposable_lifecycle::reconciliation_snapshot_sha256;
+use crate::mac_disposable_lifecycle_store::ActiveRestartCollectorEpochV3;
+use crate::mac_disposable_lifecycle_store::ActiveRestartCollectorSeedV3;
+use crate::mac_disposable_lifecycle_store::ActiveRestartEpochV3;
 use crate::mac_disposable_lifecycle_store::PreparedCollectorLifecycleSealV3;
 use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleRecordAppendV3;
@@ -99,41 +102,41 @@ pub enum RestartCollectorErrorV3 {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct RestartCollectorBindingsV3 {
-    pub backing_identity_sha256: String,
-    pub baseline_inventory_sha256: String,
-    pub boot_session_uuid: String,
-    pub collector_policy_sha256: String,
-    pub mountpoint_underlying_sha256: String,
-    pub operation_nonce: String,
-    pub restart_epoch_nonce: String,
-    pub restart_started_monotonic_nanoseconds: u64,
+pub(crate) struct RestartCollectorBindingsV3 {
+    backing_identity_sha256: String,
+    baseline_inventory_sha256: String,
+    boot_session_uuid: String,
+    collector_policy_sha256: String,
+    mountpoint_underlying_sha256: String,
+    operation_nonce: String,
+    restart_epoch_nonce: String,
+    restart_started_monotonic_nanoseconds: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct RestartCollectorPolicyV3 {
-    pub artifacts: Vec<PreparedArtifactBindingV3>,
-    pub artifact_root: String,
-    pub artifact_root_identity: StableDirectoryIdentityV3,
-    pub authority: DisposableAuthorityV2,
-    pub backing_path: String,
-    pub max_iomedia_objects: usize,
-    pub max_mount_entries: usize,
-    pub mountpoint: String,
-    pub protected_roots: Vec<String>,
-    pub receipt_root: String,
-    pub receipt_root_identity: StableDirectoryIdentityV3,
-    pub schema: String,
+pub(crate) struct RestartCollectorPolicyV3 {
+    artifacts: Vec<PreparedArtifactBindingV3>,
+    artifact_root: String,
+    artifact_root_identity: StableDirectoryIdentityV3,
+    authority: DisposableAuthorityV2,
+    backing_path: String,
+    max_iomedia_objects: usize,
+    max_mount_entries: usize,
+    mountpoint: String,
+    protected_roots: Vec<String>,
+    receipt_root: String,
+    receipt_root_identity: StableDirectoryIdentityV3,
+    schema: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct RestartBaselineInventoryV3 {
-    pub authority: DisposableAuthorityV2,
-    pub boot_session_uuid: String,
-    pub registry_entry_ids: Vec<String>,
-    pub schema: String,
+pub(crate) struct RestartBaselineInventoryV3 {
+    authority: DisposableAuthorityV2,
+    boot_session_uuid: String,
+    registry_entry_ids: Vec<String>,
+    schema: String,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -245,6 +248,8 @@ pub struct RestartCollectorReceiptV3 {
     pub boot_session_uuid: String,
     collector_policy: RestartCollectorPolicyV3,
     pub collector_policy_sha256: String,
+    current_expected_absence_inventory: Option<RestartIOMediaInventoryV3>,
+    current_expected_absence_inventory_sha256: Option<String>,
     pub iomedia_evidence_sha256: String,
     pub iomedia_inventory: RestartIOMediaInventoryV3,
     pub match_result: ReconciliationMatchV2,
@@ -272,14 +277,14 @@ enum FinalizedRestartObservationV3 {
 }
 
 #[derive(Clone, Debug)]
-pub struct LiveRestartCollectorRequestV3<'a> {
-    pub artifact_root: &'a Path,
-    pub baseline: &'a RestartBaselineInventoryV3,
-    pub bindings: &'a RestartCollectorBindingsV3,
-    pub mountpoint_identity: &'a MountpointIdentityV3,
-    pub policy: &'a RestartCollectorPolicyV3,
-    pub prepared_backing: &'a DiskImageBackingIdentityV2,
-    pub receipt_root: &'a Path,
+struct LiveRestartCollectorRequestV3<'a> {
+    artifact_root: &'a Path,
+    baseline: &'a RestartBaselineInventoryV3,
+    bindings: &'a RestartCollectorBindingsV3,
+    mountpoint_identity: &'a MountpointIdentityV3,
+    policy: &'a RestartCollectorPolicyV3,
+    prepared_backing: &'a DiskImageBackingIdentityV2,
+    receipt_root: &'a Path,
 }
 
 /// Canonical durable description captured while the fresh operation still
@@ -358,7 +363,7 @@ enum UnderlyingMountpointGuardV3 {
     },
 }
 
-pub struct PendingRestartObservationV3 {
+pub(crate) struct PendingRestartObservationV3 {
     existing_receipts: ReceiptRootSnapshotV3,
     guard: LiveReplayGuardV3,
     receipt: RestartCollectorReceiptV3,
@@ -530,7 +535,8 @@ pub(crate) struct RetainedTerminalAbsenceV3<'a> {
 }
 
 impl RestartCollectorPolicyV3 {
-    pub fn new(
+    #[cfg(test)]
+    fn new(
         backing_path: &Path,
         mountpoint: &Path,
         artifact_root: &Path,
@@ -549,7 +555,7 @@ impl RestartCollectorPolicyV3 {
         .map(|(policy, _, _)| policy)
     }
 
-    pub fn sha256(&self) -> Result<String, RestartCollectorErrorV3> {
+    fn sha256(&self) -> Result<String, RestartCollectorErrorV3> {
         validate_policy(self)?;
         Ok(sha256(&canonical_json(self)?))
     }
@@ -900,6 +906,108 @@ impl RetainedPreparedCollectorCapabilityV3 {
         }
         Ok(())
     }
+
+    pub(crate) fn collect_reconciliation_from_active(
+        &self,
+        seed: ActiveRestartCollectorSeedV3<'_>,
+    ) -> Result<PendingRestartObservationV3, RestartCollectorErrorV3> {
+        self.collect_reconciliation_from_active_with_hook(seed, |_| Ok(()))
+    }
+
+    pub(crate) fn collect_reconciliation_from_active_with_hook<H>(
+        &self,
+        seed: ActiveRestartCollectorSeedV3<'_>,
+        after_iomedia_capture: H,
+    ) -> Result<PendingRestartObservationV3, RestartCollectorErrorV3>
+    where
+        H: FnOnce(&mut HeldRestartIOMediaInventoryV3) -> Result<(), RestartCollectorErrorV3>,
+    {
+        self.revalidate()?;
+        seed.revalidate_for_prepared(
+            &self.operation_nonce,
+            &self.manifest_sha256,
+            &self.manifest.profile_sha256,
+        )?;
+        let bindings = RestartCollectorBindingsV3 {
+            backing_identity_sha256: self.backing_identity_sha256()?,
+            baseline_inventory_sha256: self.baseline_inventory_sha256()?,
+            boot_session_uuid: seed.boot_session_uuid().to_string(),
+            collector_policy_sha256: self.collector_policy_sha256()?,
+            mountpoint_underlying_sha256: self.mountpoint_underlying_sha256()?,
+            operation_nonce: seed.operation_nonce().to_string(),
+            restart_epoch_nonce: seed.restart_epoch_nonce().to_string(),
+            restart_started_monotonic_nanoseconds: seed.restart_started_monotonic_nanoseconds(),
+        };
+        let request = LiveRestartCollectorRequestV3 {
+            artifact_root: &self.artifact_root.path,
+            baseline: &self.manifest.baseline,
+            bindings: &bindings,
+            mountpoint_identity: &self.manifest.mountpoint,
+            policy: &self.manifest.policy,
+            prepared_backing: &self.manifest.backing,
+            receipt_root: &self.receipt_root.path,
+        };
+        collect_live(
+            request,
+            CollectorPurposeV3::ReconciliationSnapshot,
+            None,
+            Some(&seed),
+            after_iomedia_capture,
+        )
+    }
+
+    pub(crate) fn collect_fresh_absence_from_active(
+        &self,
+        epoch: ActiveRestartCollectorEpochV3<'_>,
+        snapshot: &ReconciliationSnapshotV2,
+    ) -> Result<PendingRestartObservationV3, RestartCollectorErrorV3> {
+        self.revalidate()?;
+        epoch.revalidate_for_prepared(
+            &self.operation_nonce,
+            &self.manifest_sha256,
+            &self.manifest.profile_sha256,
+        )?;
+        let bindings = RestartCollectorBindingsV3 {
+            backing_identity_sha256: self.backing_identity_sha256()?,
+            baseline_inventory_sha256: self.baseline_inventory_sha256()?,
+            boot_session_uuid: epoch.boot_session_uuid().to_string(),
+            collector_policy_sha256: self.collector_policy_sha256()?,
+            mountpoint_underlying_sha256: self.mountpoint_underlying_sha256()?,
+            operation_nonce: epoch.operation_nonce().to_string(),
+            restart_epoch_nonce: epoch.restart_epoch_nonce().to_string(),
+            restart_started_monotonic_nanoseconds: epoch.restart_started_monotonic_nanoseconds(),
+        };
+        validate_reconciliation_snapshot_shape_v3(snapshot)?;
+        if snapshot.current_expected_absence_inventory_sha256.is_none()
+            || snapshot.operation_nonce != bindings.operation_nonce
+            || snapshot.restart_epoch_nonce != bindings.restart_epoch_nonce
+            || snapshot.boot_session_uuid != bindings.boot_session_uuid
+            || snapshot.collector_policy_sha256 != bindings.collector_policy_sha256
+            || snapshot.backing_identity_sha256 != bindings.backing_identity_sha256
+            || snapshot.mountpoint_underlying_sha256 != bindings.mountpoint_underlying_sha256
+        {
+            return Err(invalid(
+                "FreshAbsence retained predictable snapshot differs from the active admitted epoch",
+            ));
+        }
+        let snapshot_sha = reconciliation_snapshot_sha256(snapshot)
+            .map_err(|error| invalid(format!("reconciliation snapshot digest failed: {error}")))?;
+        collect_live(
+            LiveRestartCollectorRequestV3 {
+                artifact_root: &self.artifact_root.path,
+                baseline: &self.manifest.baseline,
+                bindings: &bindings,
+                mountpoint_identity: &self.manifest.mountpoint,
+                policy: &self.manifest.policy,
+                prepared_backing: &self.manifest.backing,
+                receipt_root: &self.receipt_root.path,
+            },
+            CollectorPurposeV3::FreshAbsence,
+            Some((snapshot, snapshot_sha)),
+            None,
+            |_| Ok(()),
+        )
+    }
 }
 
 fn prepared_backing_profile(
@@ -1179,7 +1287,7 @@ fn reopen_prepared_mountpoint(
 }
 
 impl RestartBaselineInventoryV3 {
-    pub fn from_inventory(
+    pub(crate) fn from_inventory(
         inventory: &RestartIOMediaInventoryV3,
     ) -> Result<Self, RestartCollectorErrorV3> {
         validate_restart_iomedia_inventory_v3(inventory)?;
@@ -1195,9 +1303,13 @@ impl RestartBaselineInventoryV3 {
         })
     }
 
-    pub fn sha256(&self) -> Result<String, RestartCollectorErrorV3> {
+    pub(crate) fn sha256(&self) -> Result<String, RestartCollectorErrorV3> {
         validate_baseline(self)?;
         Ok(sha256(&canonical_json(self)?))
+    }
+
+    pub(crate) fn boot_session_uuid(&self) -> &str {
+        &self.boot_session_uuid
     }
 }
 
@@ -1220,15 +1332,17 @@ impl MountpointIdentityV3 {
     }
 }
 
-pub fn capture_live_restart_baseline_v3()
--> Result<RestartBaselineInventoryV3, RestartCollectorErrorV3> {
+#[cfg(test)]
+fn capture_live_restart_baseline_v3() -> Result<RestartBaselineInventoryV3, RestartCollectorErrorV3>
+{
     let held = capture_restart_iomedia_inventory_v3()?;
     let baseline = RestartBaselineInventoryV3::from_inventory(held.report())?;
     held.revalidate_after_persistence()?;
     Ok(baseline)
 }
 
-pub fn capture_live_backing_identity_v2(
+#[cfg(test)]
+fn capture_live_backing_identity_v2(
     path: &Path,
 ) -> Result<DiskImageBackingIdentityV2, RestartCollectorErrorV3> {
     let held = hold_disk_image_backing(path)?;
@@ -1237,18 +1351,26 @@ pub fn capture_live_backing_identity_v2(
     Ok(identity)
 }
 
-pub fn collect_reconciliation_snapshot_v3(
+#[cfg(test)]
+fn collect_reconciliation_snapshot_v3(
     request: LiveRestartCollectorRequestV3<'_>,
 ) -> Result<PendingRestartObservationV3, RestartCollectorErrorV3> {
-    collect_live(request, CollectorPurposeV3::ReconciliationSnapshot, None)
+    collect_live(
+        request,
+        CollectorPurposeV3::ReconciliationSnapshot,
+        None,
+        None,
+        |_| Ok(()),
+    )
 }
 
-pub fn collect_fresh_absence_v3(
+#[cfg(test)]
+fn collect_fresh_absence_v3(
     request: LiveRestartCollectorRequestV3<'_>,
     snapshot: &ReconciliationSnapshotV2,
 ) -> Result<PendingRestartObservationV3, RestartCollectorErrorV3> {
     validate_reconciliation_snapshot_shape_v3(snapshot)?;
-    if snapshot.match_result != ReconciliationMatchV2::Zero
+    if snapshot.current_expected_absence_inventory_sha256.is_none()
         || snapshot.operation_nonce != request.bindings.operation_nonce
         || snapshot.restart_epoch_nonce != request.bindings.restart_epoch_nonce
         || snapshot.boot_session_uuid != request.bindings.boot_session_uuid
@@ -1257,7 +1379,7 @@ pub fn collect_fresh_absence_v3(
         || snapshot.mountpoint_underlying_sha256 != request.bindings.mountpoint_underlying_sha256
     {
         return Err(invalid(
-            "fresh absence requires the exact current-epoch Zero reconciliation snapshot",
+            "fresh absence requires one exact current-epoch predictable reconciliation snapshot",
         ));
     }
     let snapshot_sha = reconciliation_snapshot_sha256(snapshot)
@@ -1266,15 +1388,25 @@ pub fn collect_fresh_absence_v3(
         request,
         CollectorPurposeV3::FreshAbsence,
         Some((snapshot, snapshot_sha)),
+        None,
+        |_| Ok(()),
     )
 }
 
-fn collect_live(
+fn collect_live<H>(
     request: LiveRestartCollectorRequestV3<'_>,
     purpose: CollectorPurposeV3,
     prior_snapshot: Option<(&ReconciliationSnapshotV2, String)>,
-) -> Result<PendingRestartObservationV3, RestartCollectorErrorV3> {
+    active_seed: Option<&ActiveRestartCollectorSeedV3<'_>>,
+    after_iomedia_capture: H,
+) -> Result<PendingRestartObservationV3, RestartCollectorErrorV3>
+where
+    H: FnOnce(&mut HeldRestartIOMediaInventoryV3) -> Result<(), RestartCollectorErrorV3>,
+{
     validate_request(&request)?;
+    if let Some(seed) = active_seed {
+        seed.revalidate_live()?;
+    }
     // Hold both prepared roots from the first live-collection boundary through
     // durable persistence and final replay. Stable policy identities reject a
     // same-path replacement that occurred after preparation, while the full
@@ -1314,9 +1446,13 @@ fn collect_live(
     let mounts_before = mount_table_snapshot()?;
     reject_nested_mounts(&mounts_before, request.policy)?;
 
-    let iomedia = capture_restart_iomedia_inventory_v3()?;
+    let mut iomedia = capture_restart_iomedia_inventory_v3()?;
+    after_iomedia_capture(&mut iomedia)?;
     if iomedia.report().boot_session_uuid != request.bindings.boot_session_uuid {
         return Err(invalid("restart IOMedia inventory belongs to another boot"));
+    }
+    if let Some(seed) = active_seed {
+        seed.require_exact_live_inventory(iomedia.report())?;
     }
     let matching_groups = classify_matching_groups(iomedia.report(), request.prepared_backing)?;
     let (match_result, mountpoint_is_mounted) =
@@ -1342,13 +1478,15 @@ fn collect_live(
     };
 
     let existing_receipts = capture_receipt_root_closed_world(&receipt_directory)?;
-    if let Some((snapshot, _)) = prior_snapshot.as_ref() {
-        validate_prior_snapshot_receipt(
+    let prior_expected_absence = if let Some((snapshot, _)) = prior_snapshot.as_ref() {
+        Some(validate_prior_snapshot_receipt(
             snapshot,
             &request.bindings.baseline_inventory_sha256,
             &existing_receipts,
-        )?;
-    }
+        )?)
+    } else {
+        None
+    };
     let artifact_roster = list_directory(artifact_root.file.as_raw_fd(), MAX_ARTIFACT_ENTRIES)?;
     let operation_artifacts_absent = request
         .policy
@@ -1381,7 +1519,20 @@ fn collect_live(
 
     let current_baseline = RestartBaselineInventoryV3::from_inventory(iomedia.report())?;
     let post_inventory_sha256 = current_baseline.sha256()?;
-    let baseline_restored = current_baseline == *request.baseline;
+    let current_expected_absence_inventory =
+        derive_current_expected_absence_v3(iomedia.report(), &match_result, &matching_groups)?;
+    let current_expected_absence_inventory_sha256 = current_expected_absence_inventory
+        .as_ref()
+        .map(|inventory| canonical_json(inventory).map(|bytes| sha256(&bytes)))
+        .transpose()?;
+    let baseline_restored = match purpose {
+        CollectorPurposeV3::ReconciliationSnapshot => current_expected_absence_inventory
+            .as_ref()
+            .is_some_and(|expected| expected == iomedia.report()),
+        CollectorPurposeV3::FreshAbsence => prior_expected_absence
+            .as_ref()
+            .is_some_and(|expected| expected == iomedia.report()),
+    };
     let mount_evidence = MountEvidenceV3 {
         authority: DisposableAuthorityV2::none(),
         mountpoint_underlying_revalidated: matches!(
@@ -1408,6 +1559,8 @@ fn collect_live(
         boot_session_uuid: request.bindings.boot_session_uuid.clone(),
         collector_policy: request.policy.clone(),
         collector_policy_sha256: request.bindings.collector_policy_sha256.clone(),
+        current_expected_absence_inventory,
+        current_expected_absence_inventory_sha256,
         iomedia_evidence_sha256,
         iomedia_inventory: iomedia.report().clone(),
         match_result,
@@ -1438,6 +1591,10 @@ fn collect_live(
         return Err(invalid(
             "FreshAbsence collection did not observe exact Zero baseline restoration",
         ));
+    }
+    if let Some(seed) = active_seed {
+        seed.revalidate_live()?;
+        seed.require_exact_live_inventory(iomedia.report())?;
     }
     Ok(PendingRestartObservationV3 {
         existing_receipts,
@@ -1470,9 +1627,15 @@ impl PendingRestartObservationV3 {
 
     pub(crate) fn persist_and_append(
         self,
-        operation: &mut ReconciliationOperationStoreV3<'_, '_>,
+        operation: &mut ReconciliationOperationStoreV3<'_, '_, ActiveRestartEpochV3>,
     ) -> Result<(), RestartCollectorErrorV3> {
-        let retained = self.persist_and_retain_inner(|| Ok(()))?;
+        let retained = match self.persist_and_retain_inner(|| Ok(())) {
+            Ok(retained) => retained,
+            Err(error) => {
+                operation.poison_pending_collector();
+                return Err(error);
+            }
+        };
         operation
             .append_retained_collector(retained)
             .map_err(|error| {
@@ -1778,6 +1941,68 @@ impl RetainedCollectorObservationV3 {
         Ok(())
     }
 
+    pub(crate) fn snapshot_for_fresh_absence(
+        &self,
+    ) -> Result<&ReconciliationSnapshotV2, RestartCollectorErrorV3> {
+        self.revalidate_bound()?;
+        let evidence = match self {
+            Self::Reconciliation(RetainedCollectorMatchV3::Zero(value)) => &value.evidence,
+            Self::Reconciliation(RetainedCollectorMatchV3::UniqueAttached(value)) => {
+                &value.evidence
+            }
+            Self::Reconciliation(RetainedCollectorMatchV3::UniqueMounted(value)) => &value.evidence,
+            Self::Reconciliation(RetainedCollectorMatchV3::Ambiguous(_))
+            | Self::FreshAbsence(_) => {
+                return Err(invalid(
+                    "FreshAbsence requires an exact retained predictable reconciliation state",
+                ));
+            }
+        };
+        match &evidence.observation {
+            FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot)
+                if snapshot.current_expected_absence_inventory_sha256.is_some() =>
+            {
+                Ok(snapshot)
+            }
+            _ => Err(invalid(
+                "retained predictable typestate differs from its reconciliation snapshot",
+            )),
+        }
+    }
+
+    pub(crate) fn validate_fresh_absence_successor(
+        &self,
+        prior: &Self,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_unbound()?;
+        let prior_snapshot = prior.snapshot_for_fresh_absence()?;
+        let next = match self {
+            Self::FreshAbsence(value) => &value.evidence,
+            Self::Reconciliation(_) => {
+                return Err(invalid(
+                    "a retained collector successor is not FreshAbsence",
+                ));
+            }
+        };
+        let expected_snapshot_sha256 = reconciliation_snapshot_sha256(prior_snapshot)
+            .map_err(|error| invalid(format!("retained snapshot digest failed: {error}")))?;
+        if next.receipt.reconciliation_snapshot_sha256.as_deref()
+            != Some(expected_snapshot_sha256.as_str())
+            || next.receipt.operation_nonce != prior_snapshot.operation_nonce
+            || next.receipt.restart_epoch_nonce != prior_snapshot.restart_epoch_nonce
+            || next.receipt.boot_session_uuid != prior_snapshot.boot_session_uuid
+            || next.receipt.backing_identity_sha256 != prior_snapshot.backing_identity_sha256
+            || next.receipt.collector_policy_sha256 != prior_snapshot.collector_policy_sha256
+            || next.receipt.mountpoint_underlying_sha256
+                != prior_snapshot.mountpoint_underlying_sha256
+        {
+            return Err(invalid(
+                "FreshAbsence receipt is not the exact successor of the retained predictable snapshot",
+            ));
+        }
+        Ok(())
+    }
+
     fn revalidate_unbound(&self) -> Result<(), RestartCollectorErrorV3> {
         self.revalidate()?;
         if self.evidence().lifecycle_record.is_some() {
@@ -2034,6 +2259,23 @@ pub(crate) fn validate_reconciliation_snapshot_shape_v3(
     {
         return Err(invalid("reconciliation snapshot shape is malformed"));
     }
+    match (
+        snapshot.match_result,
+        snapshot
+            .current_expected_absence_inventory_sha256
+            .as_deref(),
+    ) {
+        (ReconciliationMatchV2::Zero, Some(expected))
+            if valid_digest(expected) && expected == snapshot.iomedia_evidence_sha256 => {}
+        (ReconciliationMatchV2::Unique { .. }, Some(expected))
+            if valid_digest(expected) && expected != snapshot.iomedia_evidence_sha256 => {}
+        (ReconciliationMatchV2::Ambiguous { .. }, None) => {}
+        _ => {
+            return Err(invalid(
+                "reconciliation snapshot current-boot expected absence is malformed",
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -2055,6 +2297,9 @@ fn reconciliation_snapshot_from_receipt(
         boot_session_uuid: receipt.boot_session_uuid.clone(),
         collector_policy_sha256: receipt.collector_policy_sha256.clone(),
         collector_receipt_sha256: receipt_sha256.to_string(),
+        current_expected_absence_inventory_sha256: receipt
+            .current_expected_absence_inventory_sha256
+            .clone(),
         iomedia_evidence_sha256: receipt.iomedia_evidence_sha256.clone(),
         match_result: receipt.match_result,
         monotonic_after_nanoseconds: receipt.monotonic_after_nanoseconds,
@@ -2080,6 +2325,8 @@ fn fresh_absence_from_receipt(
         || !receipt.mount_evidence.no_nested_mounts
         || !receipt.mount_evidence.mountpoint_underlying_revalidated
         || receipt.reconciliation_snapshot_sha256.is_none()
+        || receipt.current_expected_absence_inventory_sha256.as_deref()
+            != Some(receipt.iomedia_evidence_sha256.as_str())
         || !valid_digest(receipt_sha256)
         || sha256(&canonical_json(receipt)?) != receipt_sha256
     {
@@ -2094,6 +2341,9 @@ fn fresh_absence_from_receipt(
         boot_session_uuid: receipt.boot_session_uuid.clone(),
         collector_policy_sha256: receipt.collector_policy_sha256.clone(),
         collector_receipt_sha256: receipt_sha256.to_string(),
+        current_expected_absence_inventory_sha256: receipt
+            .current_expected_absence_inventory_sha256
+            .clone(),
         iomedia_evidence_sha256: receipt.iomedia_evidence_sha256.clone(),
         monotonic_after_nanoseconds: receipt.monotonic_after_nanoseconds,
         monotonic_before_nanoseconds: receipt.monotonic_before_nanoseconds,
@@ -2289,8 +2539,28 @@ fn validate_fresh_receipt_prior_relationship(
         let snapshot = reconciliation_snapshot_from_receipt(&candidate.receipt, receipt_sha256)?;
         let snapshot_sha256 = reconciliation_snapshot_sha256(&snapshot)
             .map_err(|error| invalid(format!("prior snapshot digest failed: {error}")))?;
+        let exact_expected_absence = match (
+            candidate
+                .receipt
+                .current_expected_absence_inventory
+                .as_ref(),
+            candidate
+                .receipt
+                .current_expected_absence_inventory_sha256
+                .as_deref(),
+        ) {
+            (Some(expected_inventory), Some(expected_sha256)) => {
+                validate_exact_expected_absence_inventory(
+                    expected_inventory,
+                    expected_sha256,
+                    &receipt.iomedia_inventory,
+                    &receipt.iomedia_evidence_sha256,
+                )
+                .is_ok()
+            }
+            _ => false,
+        };
         if &snapshot_sha256 == expected
-            && snapshot.match_result == ReconciliationMatchV2::Zero
             && snapshot.operation_nonce == receipt.operation_nonce
             && snapshot.restart_epoch_nonce == receipt.restart_epoch_nonce
             && snapshot.boot_session_uuid == receipt.boot_session_uuid
@@ -2298,6 +2568,7 @@ fn validate_fresh_receipt_prior_relationship(
             && snapshot.backing_identity_sha256 == receipt.backing_identity_sha256
             && snapshot.mountpoint_underlying_sha256 == receipt.mountpoint_underlying_sha256
             && candidate.receipt.baseline_inventory_sha256 == receipt.baseline_inventory_sha256
+            && exact_expected_absence
             && snapshot.monotonic_after_nanoseconds < receipt.monotonic_before_nanoseconds
         {
             matches += 1;
@@ -2311,11 +2582,33 @@ fn validate_fresh_receipt_prior_relationship(
     Ok(())
 }
 
+fn validate_exact_expected_absence_inventory(
+    expected_inventory: &RestartIOMediaInventoryV3,
+    expected_sha256: &str,
+    current_inventory: &RestartIOMediaInventoryV3,
+    current_sha256: &str,
+) -> Result<(), RestartCollectorErrorV3> {
+    validate_restart_iomedia_inventory_v3(expected_inventory)?;
+    validate_restart_iomedia_inventory_v3(current_inventory)?;
+    if !valid_digest(expected_sha256)
+        || !valid_digest(current_sha256)
+        || sha256(&canonical_json(expected_inventory)?) != expected_sha256
+        || sha256(&canonical_json(current_inventory)?) != current_sha256
+        || expected_inventory != current_inventory
+        || expected_sha256 != current_sha256
+    {
+        return Err(invalid(
+            "current inventory differs from the exact full expected-absence inventory",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_prior_snapshot_receipt(
     snapshot: &ReconciliationSnapshotV2,
     baseline_inventory_sha256: &str,
     receipts: &ReceiptRootSnapshotV3,
-) -> Result<(), RestartCollectorErrorV3> {
+) -> Result<RestartIOMediaInventoryV3, RestartCollectorErrorV3> {
     validate_reconciliation_snapshot_shape_v3(snapshot)?;
     if !valid_digest(baseline_inventory_sha256) {
         return Err(invalid(
@@ -2336,7 +2629,23 @@ fn validate_prior_snapshot_receipt(
             "prior durable reconciliation receipt does not match the baseline or supplied snapshot",
         ));
     }
-    Ok(())
+    let expected = entry
+        .receipt
+        .current_expected_absence_inventory
+        .as_ref()
+        .ok_or_else(|| invalid("prior receipt has no exact current-boot expected absence"))?;
+    let expected_sha256 = entry
+        .receipt
+        .current_expected_absence_inventory_sha256
+        .as_deref()
+        .ok_or_else(|| invalid("prior receipt has no expected-absence digest"))?;
+    validate_restart_iomedia_inventory_v3(expected)?;
+    if sha256(&canonical_json(expected)?) != expected_sha256 {
+        return Err(invalid(
+            "prior current-boot expected absence differs from its durable digest",
+        ));
+    }
+    Ok(expected.clone())
 }
 
 impl DurableCollectorReceiptV3 {
@@ -2894,6 +3203,69 @@ fn classify_matching_groups(
     Ok(result)
 }
 
+fn derive_current_expected_absence_v3(
+    current: &RestartIOMediaInventoryV3,
+    match_result: &ReconciliationMatchV2,
+    matching_groups: &[MatchingDiskImageGroupV3],
+) -> Result<Option<RestartIOMediaInventoryV3>, RestartCollectorErrorV3> {
+    validate_restart_iomedia_inventory_v3(current)?;
+    match match_result {
+        ReconciliationMatchV2::Zero => {
+            if !matching_groups.is_empty() {
+                return Err(invalid(
+                    "Zero reconciliation unexpectedly owns a matching IOMedia group",
+                ));
+            }
+            Ok(Some(current.clone()))
+        }
+        ReconciliationMatchV2::Unique { .. } => {
+            let [group] = matching_groups else {
+                return Err(invalid(
+                    "Unique reconciliation does not own exactly one matching IOMedia group",
+                ));
+            };
+            let members = group
+                .member_registry_entry_ids
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            if members.len() != group.member_registry_entry_ids.len()
+                || !members.iter().all(|member| {
+                    current
+                        .objects
+                        .binary_search_by(|object| {
+                            object.provenance.registry_entry_id.as_str().cmp(member)
+                        })
+                        .is_ok()
+                })
+            {
+                return Err(invalid(
+                    "Unique matching group is not an exact subset of the current inventory",
+                ));
+            }
+            let mut absence = current.clone();
+            absence
+                .objects
+                .retain(|object| !members.contains(&object.provenance.registry_entry_id));
+            if current.objects.len().checked_sub(absence.objects.len()) != Some(members.len()) {
+                return Err(invalid(
+                    "current expected absence did not remove the exact Unique group",
+                ));
+            }
+            validate_restart_iomedia_inventory_v3(&absence)?;
+            Ok(Some(absence))
+        }
+        ReconciliationMatchV2::Ambiguous { .. } => {
+            if matching_groups.len() < 2 {
+                return Err(invalid(
+                    "Ambiguous reconciliation has fewer than two matching groups",
+                ));
+            }
+            Ok(None)
+        }
+    }
+}
+
 fn classify_mount_state(
     groups: &[MatchingDiskImageGroupV3],
     mounts: &[MountBindingV3],
@@ -3326,7 +3698,6 @@ fn validate_request(
             != request.policy.receipt_root
         || request.prepared_backing.canonical_path != request.policy.backing_path
         || request.mountpoint_identity.path != request.policy.mountpoint
-        || request.baseline.boot_session_uuid != request.bindings.boot_session_uuid
         || request.policy.sha256()? != request.bindings.collector_policy_sha256
         || request.baseline.sha256()? != request.bindings.baseline_inventory_sha256
         || sha256(&canonical_json(request.prepared_backing)?)
@@ -3405,6 +3776,18 @@ fn validate_policy(policy: &RestartCollectorPolicyV3) -> Result<(), RestartColle
         ));
     }
     validate_artifact_bindings(&policy.artifacts, true)?;
+    let backing_artifact = policy
+        .artifacts
+        .iter()
+        .find(|artifact| artifact.role == ArtifactRoleV3::BackingImage)
+        .ok_or_else(|| invalid("collector policy omits its exact BackingImage role"))?;
+    if Path::new(&policy.artifact_root).join(&backing_artifact.basename)
+        != Path::new(&policy.backing_path)
+    {
+        return Err(invalid(
+            "collector policy backing path differs from its prepared BackingImage binding",
+        ));
+    }
     for (path, label, directory) in [
         (&policy.backing_path, "policy backing path", false),
         (&policy.mountpoint, "policy mountpoint", true),
@@ -3565,6 +3948,15 @@ fn validate_receipt(receipt: &RestartCollectorReceiptV3) -> Result<(), RestartCo
     validate_baseline(&receipt.baseline_inventory)?;
     validate_policy(&receipt.collector_policy)?;
     validate_mountpoint_identity(&receipt.mountpoint_underlying)?;
+    let derived_current_expected_absence = derive_current_expected_absence_v3(
+        &receipt.iomedia_inventory,
+        &receipt.match_result,
+        &receipt.matching_groups,
+    )?;
+    let derived_current_expected_absence_sha256 = derived_current_expected_absence
+        .as_ref()
+        .map(|inventory| canonical_json(inventory).map(|bytes| sha256(&bytes)))
+        .transpose()?;
     if receipt.schema != RECEIPT_SCHEMA
         || receipt.schema_version != 3
         || receipt.authority.any()
@@ -3577,12 +3969,14 @@ fn validate_receipt(receipt: &RestartCollectorReceiptV3) -> Result<(), RestartCo
         || !valid_digest(&receipt.mount_evidence_sha256)
         || !valid_digest(&receipt.mountpoint_underlying_sha256)
         || !valid_digest(&receipt.post_inventory_sha256)
+        || receipt.current_expected_absence_inventory != derived_current_expected_absence
+        || receipt.current_expected_absence_inventory_sha256
+            != derived_current_expected_absence_sha256
         || !valid_nonce(&receipt.operation_nonce)
         || !valid_nonce(&receipt.restart_epoch_nonce)
         || receipt.monotonic_before_nanoseconds == 0
         || receipt.monotonic_after_nanoseconds < receipt.monotonic_before_nanoseconds
         || receipt.boot_session_uuid != receipt.iomedia_inventory.boot_session_uuid
-        || receipt.baseline_inventory.boot_session_uuid != receipt.boot_session_uuid
         || receipt.backing_identity.canonical_path != receipt.collector_policy.backing_path
         || receipt.mountpoint_underlying.path != receipt.collector_policy.mountpoint
         || receipt.artifact_evidence.authority.any()
@@ -3638,8 +4032,12 @@ fn validate_receipt(receipt: &RestartCollectorReceiptV3) -> Result<(), RestartCo
     }
     validate_restart_iomedia_inventory_v3(&receipt.iomedia_inventory)?;
     let current_baseline = RestartBaselineInventoryV3::from_inventory(&receipt.iomedia_inventory)?;
+    let reconciliation_baseline_restored = derived_current_expected_absence
+        .as_ref()
+        .is_some_and(|expected| expected == &receipt.iomedia_inventory);
     if current_baseline.sha256()? != receipt.post_inventory_sha256
-        || receipt.baseline_restored != (current_baseline == receipt.baseline_inventory)
+        || (receipt.purpose == CollectorPurposeV3::ReconciliationSnapshot
+            && receipt.baseline_restored != reconciliation_baseline_restored)
     {
         return Err(invalid(
             "restart collector baseline restoration claim is inconsistent",

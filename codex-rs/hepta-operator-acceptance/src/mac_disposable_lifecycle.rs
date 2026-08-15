@@ -78,6 +78,12 @@ pub struct FreshAbsenceObservationV2 {
     pub boot_session_uuid: String,
     pub collector_policy_sha256: String,
     pub collector_receipt_sha256: String,
+    /// Full canonical current-boot IOMedia inventory expected after the one
+    /// admitted reconciliation match is absent.  Restart observations must
+    /// bind this to the first snapshot; historical forward observations omit
+    /// it and retain the V2 baseline-summary rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_expected_absence_inventory_sha256: Option<String>,
     pub iomedia_evidence_sha256: String,
     pub monotonic_after_nanoseconds: u64,
     pub monotonic_before_nanoseconds: u64,
@@ -111,6 +117,11 @@ pub struct ReconciliationSnapshotV2 {
     pub boot_session_uuid: String,
     pub collector_policy_sha256: String,
     pub collector_receipt_sha256: String,
+    /// Full canonical current-boot IOMedia inventory expected after the exact
+    /// match is absent.  Zero and Unique snapshots require this binding;
+    /// Ambiguous snapshots deliberately cannot predict one exact absence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_expected_absence_inventory_sha256: Option<String>,
     pub iomedia_evidence_sha256: String,
     pub match_result: ReconciliationMatchV2,
     pub monotonic_after_nanoseconds: u64,
@@ -341,6 +352,7 @@ struct Reducer {
     fresh_absence_sha256: Option<String>,
     epoch_snapshot_seen: bool,
     epoch_snapshot_sha256: Option<String>,
+    epoch_snapshot_expected_absence_sha256: Option<String>,
     epoch_snapshot_was_zero: bool,
     is_replay: bool,
     last_effect_id: u64,
@@ -376,6 +388,7 @@ impl Reducer {
             fresh_absence_sha256: None,
             epoch_snapshot_seen: false,
             epoch_snapshot_sha256: None,
+            epoch_snapshot_expected_absence_sha256: None,
             epoch_snapshot_was_zero: false,
             is_replay: mode == Mode::Replay,
             last_effect_id: 0,
@@ -600,6 +613,7 @@ impl Reducer {
                 self.restart_epoch_open = true;
                 self.epoch_snapshot_seen = false;
                 self.epoch_snapshot_sha256 = None;
+                self.epoch_snapshot_expected_absence_sha256 = None;
                 self.epoch_snapshot_was_zero = false;
                 self.restart_epoch_boot_session_uuid = Some(boot_session_uuid.clone());
                 self.restart_epoch_collector_policy_sha256 = Some(collector_policy_sha256.clone());
@@ -825,6 +839,29 @@ impl Reducer {
         ] {
             require_digest(value, label)?;
         }
+        match (
+            snapshot.match_result,
+            snapshot
+                .current_expected_absence_inventory_sha256
+                .as_deref(),
+        ) {
+            (ReconciliationMatchV2::Zero, Some(expected))
+                if expected == snapshot.iomedia_evidence_sha256 =>
+            {
+                require_digest(expected, "Zero expected-absence inventory")?;
+            }
+            (ReconciliationMatchV2::Unique { .. }, Some(expected))
+                if expected != snapshot.iomedia_evidence_sha256 =>
+            {
+                require_digest(expected, "Unique expected-absence inventory")?;
+            }
+            (ReconciliationMatchV2::Ambiguous { .. }, None) => {}
+            _ => {
+                return Err(invalid(
+                    "reconciliation match differs from its current-boot expected absence",
+                ));
+            }
+        }
         if self.backing_identity_sha256.as_ref() != Some(&snapshot.backing_identity_sha256)
             || self.mountpoint_underlying_sha256.as_ref()
                 != Some(&snapshot.mountpoint_underlying_sha256)
@@ -840,6 +877,8 @@ impl Reducer {
         self.reconciliation_boot_session_uuid = Some(snapshot.boot_session_uuid.clone());
         self.epoch_snapshot_seen = true;
         self.epoch_snapshot_sha256 = Some(reconciliation_snapshot_sha256(snapshot)?);
+        self.epoch_snapshot_expected_absence_sha256 =
+            snapshot.current_expected_absence_inventory_sha256.clone();
         self.epoch_snapshot_was_zero = matches!(snapshot.match_result, ReconciliationMatchV2::Zero);
         self.reconciliation_receipts
             .insert(snapshot.collector_receipt_sha256.clone());
@@ -883,6 +922,14 @@ impl Reducer {
                         != observation.restart_epoch_nonce.as_ref()
                     || self.epoch_snapshot_sha256.as_ref()
                         != observation.reconciliation_snapshot_sha256.as_ref()
+                    || self.epoch_snapshot_expected_absence_sha256.as_ref()
+                        != observation
+                            .current_expected_absence_inventory_sha256
+                            .as_ref()
+                    || observation
+                        .current_expected_absence_inventory_sha256
+                        .as_ref()
+                        != Some(&observation.iomedia_evidence_sha256)
                     || self.restart_epoch_boot_session_uuid.as_ref()
                         != Some(&observation.boot_session_uuid)
                     || self.restart_epoch_collector_policy_sha256.as_ref()
@@ -896,6 +943,9 @@ impl Reducer {
                 && (self.boot_session_uuid.as_ref() != Some(&observation.boot_session_uuid)
                     || self.collector_policy_sha256.as_ref()
                         != Some(&observation.collector_policy_sha256)
+                    || observation
+                        .current_expected_absence_inventory_sha256
+                        .is_some()
                     || observation.restart_epoch_nonce.is_some()
                     || observation.reconciliation_snapshot_sha256.is_some()))
         {
@@ -1040,6 +1090,45 @@ impl DisposableLifecycleJournalV2 {
 
     pub fn last_effect_id(&self) -> u64 {
         self.reducer.last_effect_id
+    }
+
+    /// Return the exact first-snapshot bindings only when this replayed
+    /// restart lifecycle is ready to collect FreshAbsence.  Zero may proceed
+    /// directly from Prepared; Unique must first complete its exact cleanup
+    /// sequence through Ejected.  Ambiguous snapshots never carry an exact
+    /// expected-absence inventory.
+    pub(crate) fn restart_fresh_absence_binding(&self) -> Result<(&str, &str), LifecycleErrorV2> {
+        let reducer = &self.reducer;
+        let eligible_phase = if reducer.epoch_snapshot_was_zero {
+            reducer.phase == Phase::Prepared
+        } else {
+            reducer.phase == Phase::Ejected
+        };
+        if self.persistence_uncertain
+            || reducer.mode != Mode::RestartReconcileOnly
+            || !reducer.restart_epoch_open
+            || !reducer.epoch_snapshot_seen
+            || !eligible_phase
+            || reducer.pending.is_some()
+            || reducer.callback_seen
+            || reducer.callback_succeeded
+            || reducer.manual
+            || reducer.quarantined
+            || reducer.terminal.is_some()
+        {
+            return Err(invalid(
+                "restart lifecycle is not ready for exact FreshAbsence collection",
+            ));
+        }
+        let snapshot = reducer
+            .epoch_snapshot_sha256
+            .as_deref()
+            .ok_or_else(|| invalid("restart lifecycle lost its first snapshot digest"))?;
+        let expected = reducer
+            .epoch_snapshot_expected_absence_sha256
+            .as_deref()
+            .ok_or_else(|| invalid("restart snapshot has no exact expected absence"))?;
+        Ok((snapshot, expected))
     }
 
     pub fn operation_nonce(&self) -> &str {
@@ -1209,11 +1298,18 @@ pub(crate) fn validate_fresh_absence_shape(
     if let Some(digest) = &observation.reconciliation_snapshot_sha256 {
         require_digest(digest, "absence reconciliation snapshot")?;
     }
+    if let Some(digest) = &observation.current_expected_absence_inventory_sha256 {
+        require_digest(digest, "absence current-boot expected inventory")?;
+    }
     if observation.restart_epoch_nonce.is_some()
         != observation.reconciliation_snapshot_sha256.is_some()
+        || observation.restart_epoch_nonce.is_some()
+            != observation
+                .current_expected_absence_inventory_sha256
+                .is_some()
     {
         return Err(invalid(
-            "fresh absence restart epoch and snapshot bindings must be present together",
+            "fresh absence restart epoch, snapshot, and current-boot expected bindings must be present together",
         ));
     }
     for (value, label) in [
@@ -1249,7 +1345,14 @@ pub(crate) fn validate_fresh_absence_shape(
     }
     if observation.monotonic_before_nanoseconds == 0
         || observation.monotonic_after_nanoseconds < observation.monotonic_before_nanoseconds
-        || observation.baseline_inventory_sha256 != observation.post_inventory_sha256
+        || (observation
+            .current_expected_absence_inventory_sha256
+            .as_ref()
+            .is_some_and(|expected| expected != &observation.iomedia_evidence_sha256))
+        || (observation
+            .current_expected_absence_inventory_sha256
+            .is_none()
+            && observation.baseline_inventory_sha256 != observation.post_inventory_sha256)
         || !observation.no_matching_iomedia
         || !observation.no_nested_mounts
         || !observation.operation_artifacts_absent

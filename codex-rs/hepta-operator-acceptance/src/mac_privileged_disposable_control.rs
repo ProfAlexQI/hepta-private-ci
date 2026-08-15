@@ -14,6 +14,8 @@ use crate::mac_apfs_barrier_fixture::ObligationDispositionV1;
 use crate::mac_apfs_barrier_fixture::replay_attachment_obligation_records;
 use crate::mac_apfs_barrier_fixture::verify_disposable_fixture_tree;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
+use crate::mac_disposable_lifecycle::DisposableLifecycleEventV2;
+use crate::mac_disposable_lifecycle::DisposableLifecycleRecordV2;
 use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
 use crate::mac_disposable_lifecycle::LifecycleDispatchV2;
 use crate::mac_disposable_lifecycle::LifecycleDispositionV2;
@@ -30,7 +32,9 @@ use crate::mac_disposable_lifecycle_store::PersistedIssueLeaseSealV3;
 use crate::mac_disposable_lifecycle_store::PreparedManifestS1TransferV3;
 use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
 use crate::mac_disposable_lifecycle_store::RecoveredIssueVerifierSealV3;
+use crate::mac_disposable_lifecycle_store::RestartAdmissionRootS1TransferV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleRecordAppendV3;
+use crate::mac_disposable_lifecycle_store::validate_restart_admission_bijection_for_s1;
 use crate::mac_disposable_reconciliation_collector::MountBindingV3;
 use crate::mac_disposable_reconciliation_collector::MountingV3;
 use crate::mac_disposable_reconciliation_collector::SealedMountDeltaAdvanceV3;
@@ -72,7 +76,9 @@ const PUBLICATION_NAME: &str = "publication";
 const OPERATION_PREFIX: &str = "operation-";
 const EFFECT_ISSUE_ROOT_V3: &str = "effect-issues-v3";
 const PREPARED_MANIFEST_NAME_V3: &str = "prepared-collector-manifest-v3.json";
+const RESTART_ADMISSION_ROOT_V3: &str = "restart-admissions-v3";
 const MAX_EFFECT_ISSUES_V3: usize = 256;
+const MAX_RESTART_ADMISSIONS_V3: usize = 256;
 const HISTORICAL_ROOT_PREFIX: &str = ".hepta-privileged-qualification-v1-";
 const HISTORICAL_OBLIGATION_PREFIX: &str = "attachment-obligation-";
 const LEGACY_CLOSURE_PREFIX: &str = "legacy-closure-";
@@ -209,6 +215,7 @@ struct OperationCapsule {
     prepared_manifest: Option<RecordCapsule>,
     record_names: Vec<String>,
     records: Vec<RecordCapsule>,
+    restart_admissions: Option<RestartAdmissionRootCapsuleV3>,
     roster: Vec<String>,
 }
 
@@ -217,6 +224,14 @@ struct EffectIssueRootCapsuleV3 {
     identity: Identity,
     issues: Vec<RecordCapsule>,
     name: String,
+    roster: Vec<String>,
+}
+
+struct RestartAdmissionRootCapsuleV3 {
+    directory: File,
+    identity: Identity,
+    name: String,
+    records: Vec<RecordCapsule>,
     roster: Vec<String>,
 }
 
@@ -518,6 +533,12 @@ pub(crate) struct S1PreparedManifestReadSealV3 {
     _private: (),
 }
 
+/// Only S1 can construct this seal, so the lifecycle module's opaque
+/// restart-admission transfer cannot be inspected by sibling callers.
+pub(crate) struct S1RestartAdmissionReadSealV3 {
+    _private: (),
+}
+
 enum LifecycleRecordAppendTargetV3<'c, 'a> {
     Fresh(&'c mut RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>),
     Blocking(&'c mut RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>),
@@ -536,6 +557,13 @@ pub(crate) struct LifecycleRecordAppendSinkV3<'c, 'a> {
 
 /// One-shot S1 sink for the exact final V3 issue descriptor retained by S2.
 pub(crate) struct EffectIssueAppendSinkV3<'c, 'a> {
+    census: &'c mut RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// One-shot S1 sink for the exact atomic pair produced by restart admission:
+/// one durable V2 RestartStarted record and one append-only V3 admission.
+pub(crate) struct RestartAdmissionAppendSinkV3<'c, 'a> {
     census: &'c mut RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
@@ -743,6 +771,10 @@ impl LivePrivilegedDisposablePolicyV2 {
                             .effect_issues
                             .as_ref()
                             .map_or(0, |root| 1 + root.issues.len())
+                        + capsule
+                            .restart_admissions
+                            .as_ref()
+                            .map_or(0, |root| 1 + root.records.len())
                 })
                 .sum::<usize>()
             + historical
@@ -960,7 +992,7 @@ impl LivePrivilegedDisposablePolicyV2 {
             &self.filesystem,
             "operation directory",
         )?;
-        let roster = list_directory(directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 2)?;
+        let roster = list_directory(directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 3)?;
         let issue_like = roster
             .iter()
             .filter(|entry| entry.contains(EFFECT_ISSUE_ROOT_V3))
@@ -987,9 +1019,29 @@ impl LivePrivilegedDisposablePolicyV2 {
                 "operation contains a duplicate, temporary, or aliased prepared manifest",
             ));
         }
-        if !prepared_manifest_like.is_empty() && issue_like.is_empty() {
+        let restart_admission_like = roster
+            .iter()
+            .filter(|entry| entry.contains(RESTART_ADMISSION_ROOT_V3))
+            .collect::<Vec<_>>();
+        if restart_admission_like.len() > 1
+            || restart_admission_like
+                .first()
+                .is_some_and(|entry| entry.as_str() != RESTART_ADMISSION_ROOT_V3)
+        {
             return Err(invalid(
-                "operation contains a prepared manifest without its mandatory V3 issue root",
+                "operation contains a duplicate, temporary, or aliased restart-admission root",
+            ));
+        }
+        if !prepared_manifest_like.is_empty()
+            && (issue_like.is_empty() || restart_admission_like.is_empty())
+        {
+            return Err(invalid(
+                "operation contains a prepared manifest without its mandatory V3 roots",
+            ));
+        }
+        if !restart_admission_like.is_empty() && prepared_manifest_like.is_empty() {
+            return Err(invalid(
+                "operation contains a restart-admission root outside the exact prepared schema",
             ));
         }
         let record_names = roster
@@ -997,6 +1049,7 @@ impl LivePrivilegedDisposablePolicyV2 {
             .filter(|entry| {
                 entry.as_str() != EFFECT_ISSUE_ROOT_V3
                     && entry.as_str() != PREPARED_MANIFEST_NAME_V3
+                    && entry.as_str() != RESTART_ADMISSION_ROOT_V3
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -1082,6 +1135,18 @@ impl LivePrivilegedDisposablePolicyV2 {
                 name: PREPARED_MANIFEST_NAME_V3.to_string(),
             })
         };
+        let restart_admissions = if restart_admission_like.is_empty() {
+            None
+        } else {
+            Some(open_restart_admission_root(
+                directory.as_raw_fd(),
+                total_bytes,
+                retained_fds,
+                self.expected_uid,
+                self.expected_gid,
+                &self.filesystem,
+            )?)
+        };
         let capsule = OperationCapsule {
             directory,
             effect_issues,
@@ -1090,6 +1155,7 @@ impl LivePrivilegedDisposablePolicyV2 {
             prepared_manifest,
             record_names,
             records,
+            restart_admissions,
             roster,
         };
         capsule.revalidate(
@@ -2046,6 +2112,7 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
         final_name: String,
         issue_directory: File,
         prepared_manifest: Option<PreparedManifestS1TransferV3>,
+        restart_admissions: Option<RestartAdmissionRootS1TransferV3>,
     ) -> Result<(), PrivilegedDisposableControlErrorV2> {
         let census = self.census;
         if census.admission.admitted_operation_name.is_some() {
@@ -2054,7 +2121,14 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
             ));
         }
         operation_nonce(&final_name)?;
-        let additional_fds = if prepared_manifest.is_some() { 3 } else { 2 };
+        if prepared_manifest.is_some() != restart_admissions.is_some() {
+            return Err(invalid(
+                "fresh prepared manifest and restart-admission root must be transferred together",
+            ));
+        }
+        let additional_fds = 2
+            + usize::from(prepared_manifest.is_some())
+            + usize::from(restart_admissions.is_some());
         let next_fd_count = census
             .assessment
             ._retained_fd_count
@@ -2095,6 +2169,7 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
             vec![
                 EFFECT_ISSUE_ROOT_V3.to_string(),
                 PREPARED_MANIFEST_NAME_V3.to_string(),
+                RESTART_ADMISSION_ROOT_V3.to_string(),
             ]
         } else {
             vec![EFFECT_ISSUE_ROOT_V3.to_string()]
@@ -2105,7 +2180,7 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
         )? != operation_identity
             || list_directory(
                 operation_directory.as_raw_fd(),
-                MAX_OPERATION_RECORDS_V2 + 2,
+                MAX_OPERATION_RECORDS_V2 + 3,
             )? != expected_initial_roster
         {
             return Err(invalid(
@@ -2144,6 +2219,41 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
                     file,
                     identity: manifest_identity,
                     name: PREPARED_MANIFEST_NAME_V3.to_string(),
+                })
+            })
+            .transpose()?;
+        let restart_admissions = restart_admissions
+            .map(|transfer| {
+                let (directory, expected_inode, records) =
+                    transfer.into_s1_parts(S1RestartAdmissionReadSealV3 { _private: () });
+                if !records.is_empty() {
+                    return Err(invalid(
+                        "fresh restart-admission directory is not exactly empty",
+                    ));
+                }
+                let admission_identity = validate_directory(
+                    &directory,
+                    expected_uid,
+                    expected_gid,
+                    0o700,
+                    filesystem,
+                    "fresh restart-admission directory",
+                )?;
+                if (admission_identity.dev, admission_identity.ino) != expected_inode
+                    || named_identity(operation_directory.as_raw_fd(), RESTART_ADMISSION_ROOT_V3)?
+                        != admission_identity
+                    || !list_directory(directory.as_raw_fd(), MAX_RESTART_ADMISSIONS_V3)?.is_empty()
+                {
+                    return Err(invalid(
+                        "fresh restart-admission root differs from its exact S2 descriptor",
+                    ));
+                }
+                Ok(RestartAdmissionRootCapsuleV3 {
+                    directory,
+                    identity: admission_identity,
+                    name: RESTART_ADMISSION_ROOT_V3.to_string(),
+                    records: Vec::new(),
+                    roster: Vec::new(),
                 })
             })
             .transpose()?;
@@ -2195,6 +2305,7 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
             prepared_manifest,
             record_names: Vec::new(),
             records: Vec::new(),
+            restart_admissions,
             roster: expected_initial_roster,
         });
         census.assessment._retained_fd_count = next_fd_count;
@@ -2238,6 +2349,7 @@ impl LifecycleRecordAppendSinkV3<'_, '_> {
                     &record_name,
                     &record_sha256,
                     sequence,
+                    true,
                 )?;
                 (inspection, operation_nonce(&operation_name)?.to_string())
             }
@@ -2257,6 +2369,7 @@ impl LifecycleRecordAppendSinkV3<'_, '_> {
                     &record_name,
                     &record_sha256,
                     sequence,
+                    true,
                 )?;
                 let target = census
                     .assessment
@@ -2283,6 +2396,7 @@ impl LifecycleRecordAppendSinkV3<'_, '_> {
                     &record_name,
                     &record_sha256,
                     sequence,
+                    true,
                 )?;
                 let target = census
                     .assessment
@@ -2309,6 +2423,7 @@ impl LifecycleRecordAppendSinkV3<'_, '_> {
                     &record_name,
                     &record_sha256,
                     sequence,
+                    true,
                 )?;
                 let target = census
                     .assessment
@@ -2343,6 +2458,109 @@ impl LifecycleRecordAppendSinkV3<'_, '_> {
             ));
         }
         Ok(())
+    }
+}
+
+impl RestartAdmissionAppendSinkV3<'_, '_> {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn retain(
+        self,
+        s2_operation_directory: File,
+        lifecycle_record: File,
+        lifecycle_bytes: Vec<u8>,
+        operation_name: String,
+        lifecycle_name: String,
+        lifecycle_sha256: String,
+        lifecycle_sequence: u32,
+        restart_admissions: RestartAdmissionRootS1TransferV3,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        let census = self.census;
+        if census.admission.operation_name != operation_name {
+            return Err(invalid(
+                "restart-admission pair differs from the selected blocking operation",
+            ));
+        }
+        let decoded: DisposableLifecycleRecordV2 = serde_json::from_slice(&lifecycle_bytes)
+            .map_err(|error| {
+                invalid(format!(
+                    "restart-admission lifecycle record JSON failed: {error}"
+                ))
+            })?;
+        if !matches!(
+            decoded.event,
+            DisposableLifecycleEventV2::RestartReconciliationStarted { .. }
+        ) {
+            return Err(invalid(
+                "restart-admission pair does not contain a V2 restart-start record",
+            ));
+        }
+        let inspection = absorb_transferred_lifecycle_record(
+            census,
+            &s2_operation_directory,
+            lifecycle_record,
+            lifecycle_bytes,
+            &operation_name,
+            &lifecycle_name,
+            &lifecycle_sha256,
+            lifecycle_sequence,
+            false,
+        )?;
+        if inspection.operation_nonce != census.admission.operation_nonce
+            || !inspection.blocks_new_operations
+        {
+            return Err(invalid(
+                "restart-start append changed the selected operation identity or terminal state",
+            ));
+        }
+        let target_index = census
+            .assessment
+            ._operations
+            .iter()
+            .position(|capsule| capsule.name == operation_name)
+            .ok_or_else(|| invalid("restart-admission operation capsule disappeared"))?;
+        let next_fd_count = census
+            .assessment
+            ._retained_fd_count
+            .checked_add(1)
+            .ok_or_else(|| invalid("restart-admission descriptor count overflowed"))?;
+        if next_fd_count > MAX_RETAINED_FDS {
+            return Err(invalid(
+                "restart-admission append exceeds retained descriptor bound",
+            ));
+        }
+        let remaining_bytes = MAX_TOTAL_RECORD_BYTES
+            .checked_sub(census.assessment._retained_record_bytes)
+            .ok_or_else(|| invalid("retained bytes exceed the global restart-admission bound"))?;
+        let expected_uid = census.assessment._policy.expected_uid;
+        let expected_gid = census.assessment._policy.expected_gid;
+        let filesystem = census.assessment._policy.filesystem.clone();
+        let (directory, expected_inode, records) =
+            restart_admissions.into_s1_parts(S1RestartAdmissionReadSealV3 { _private: () });
+        let operation_fd = census.assessment._operations[target_index]
+            .directory
+            .as_raw_fd();
+        let appended_bytes = census.assessment._operations[target_index]
+            .restart_admissions
+            .as_mut()
+            .ok_or_else(|| invalid("selected prepared operation lost its restart-admission root"))?
+            .absorb_exact_append(
+                operation_fd,
+                expected_uid,
+                expected_gid,
+                &filesystem,
+                directory,
+                expected_inode,
+                records,
+                remaining_bytes,
+            )?;
+        census.assessment._retained_fd_count = next_fd_count;
+        census.assessment._retained_record_bytes = census
+            .assessment
+            ._retained_record_bytes
+            .checked_add(appended_bytes)
+            .ok_or_else(|| invalid("restart-admission byte count overflowed"))?;
+        census.admission.operation_identity = census.assessment._operations[target_index].identity;
+        census.revalidate()
     }
 }
 
@@ -2434,6 +2652,7 @@ fn absorb_transferred_lifecycle_record<A, M: MountCensusStateV3>(
     record_name: &str,
     record_sha256: &str,
     sequence: u32,
+    final_revalidate: bool,
 ) -> Result<LifecycleInspectionV2, PrivilegedDisposableControlErrorV2> {
     let next_fd_count = census
         .assessment
@@ -2495,6 +2714,7 @@ fn absorb_transferred_lifecycle_record<A, M: MountCensusStateV3>(
             record_sha256,
             sequence,
             remaining_bytes,
+            final_revalidate,
         )?;
     let lifecycle = census.assessment._operations[target_index]
         .records
@@ -2518,7 +2738,9 @@ fn absorb_transferred_lifecycle_record<A, M: MountCensusStateV3>(
         ._retained_record_bytes
         .checked_add(appended_bytes)
         .ok_or_else(|| invalid("retained lifecycle byte count overflowed"))?;
-    census.revalidate()?;
+    if final_revalidate {
+        census.revalidate()?;
+    }
     Ok(inspection)
 }
 
@@ -2739,6 +2961,29 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
                 ))
             })
             .transpose()?;
+        let restart_admissions = target
+            .restart_admissions
+            .as_ref()
+            .map(|root| {
+                let records = root
+                    .records
+                    .iter()
+                    .map(|record| {
+                        Ok((
+                            record.name.clone(),
+                            record.bytes.clone(),
+                            record.file.try_clone()?,
+                            (record.identity.dev, record.identity.ino),
+                        ))
+                    })
+                    .collect::<Result<Vec<_>, io::Error>>()?;
+                Ok::<_, io::Error>((
+                    root.directory.try_clone()?,
+                    (root.identity.dev, root.identity.ino),
+                    records,
+                ))
+            })
+            .transpose()?;
         let expected_operations_inode =
             (self.operations_identity.dev, self.operations_identity.ino);
         let expected_operation_inode = (
@@ -2759,6 +3004,7 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
             records,
             effect_issues,
             prepared_manifest,
+            restart_admissions,
             operation_name,
             operation_nonce,
             expected_uid,
@@ -2772,6 +3018,15 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
         Ok(LifecycleRecordAppendSinkV3 {
             target: LifecycleRecordAppendTargetV3::Blocking(self),
             terminal: false,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn selected_restart_admission_sink(
+        &mut self,
+    ) -> Result<RestartAdmissionAppendSinkV3<'_, 'a>, PrivilegedDisposableControlErrorV2> {
+        Ok(RestartAdmissionAppendSinkV3 {
+            census: self,
             _not_send_or_sync: PhantomData,
         })
     }
@@ -3205,6 +3460,7 @@ impl OperationCapsule {
         expected_record_sha256: &str,
         exact_sequence: u32,
         maximum_appended_bytes: usize,
+        final_revalidate: bool,
     ) -> Result<(usize, Identity), PrivilegedDisposableControlErrorV2> {
         require_hex_nonce(expected_record_sha256, "appended lifecycle record SHA-256")?;
         let next_sequence = self
@@ -3229,6 +3485,9 @@ impl OperationCapsule {
         if self.prepared_manifest.is_some() {
             expected_roster.push(PREPARED_MANIFEST_NAME_V3.to_string());
         }
+        if self.restart_admissions.is_some() {
+            expected_roster.push(RESTART_ADMISSION_ROOT_V3.to_string());
+        }
         expected_roster.sort();
         let after_identity = validate_directory(
             &self.directory,
@@ -3240,7 +3499,7 @@ impl OperationCapsule {
         )?;
         let named_after = named_identity(parent_fd, &self.name)?;
         let roster_after =
-            list_directory(self.directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 2)?;
+            list_directory(self.directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 3)?;
         if !self
             .identity
             .same_directory_across_record_append(after_identity)
@@ -3304,7 +3563,9 @@ impl OperationCapsule {
             identity: record_identity,
             name: next_name,
         });
-        self.revalidate(parent_fd, expected_uid, expected_gid, filesystem)?;
+        if final_revalidate {
+            self.revalidate(parent_fd, expected_uid, expected_gid, filesystem)?;
+        }
         Ok((appended_bytes, record_identity))
     }
 
@@ -3324,7 +3585,7 @@ impl OperationCapsule {
                 filesystem,
                 "operation directory",
             )? != self.identity
-            || list_directory(self.directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 2)?
+            || list_directory(self.directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 3)?
                 != self.roster
         {
             return Err(invalid(
@@ -3373,6 +3634,48 @@ impl OperationCapsule {
                 filesystem,
             )?;
         }
+        if let Some(restart_admissions) = &self.restart_admissions {
+            restart_admissions.revalidate(
+                self.directory.as_raw_fd(),
+                expected_uid,
+                expected_gid,
+                filesystem,
+            )?;
+        }
+        match (&self.prepared_manifest, &self.restart_admissions) {
+            (Some(prepared), Some(admissions)) => {
+                let lifecycle = self
+                    .records
+                    .iter()
+                    .map(|record| record.bytes.clone())
+                    .collect::<Vec<_>>();
+                let admission_bytes = admissions
+                    .records
+                    .iter()
+                    .map(|record| record.bytes.clone())
+                    .collect::<Vec<_>>();
+                validate_restart_admission_bijection_for_s1(
+                    &lifecycle,
+                    &admission_bytes,
+                    &prepared.bytes,
+                    prepared.identity.ino,
+                    &sha256(&prepared.bytes),
+                    operation_nonce(&self.name)?,
+                    S1RestartAdmissionReadSealV3 { _private: () },
+                )
+                .map_err(|error| {
+                    invalid(format!(
+                        "retained S1 restart-admission bijection failed: {error}"
+                    ))
+                })?;
+            }
+            (None, None) => {}
+            _ => {
+                return Err(invalid(
+                    "prepared manifest and restart-admission root are not retained together",
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -3391,6 +3694,9 @@ impl OperationCapsule {
         }
         if let Some(prepared_manifest) = &self.prepared_manifest {
             prepared_manifest.register(registry, &path)?;
+        }
+        if let Some(restart_admissions) = &self.restart_admissions {
+            restart_admissions.register(registry, &path)?;
         }
         Ok(())
     }
@@ -3498,6 +3804,110 @@ fn valid_effect_issue_name(name: &str) -> bool {
             .as_bytes()
             .iter()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+}
+
+fn open_restart_admission_root(
+    operation_fd: RawFd,
+    total_bytes: &mut usize,
+    retained_fds: &mut RetainedFdBudget,
+    expected_uid: u32,
+    expected_gid: u32,
+    filesystem: &FilesystemBinding,
+) -> Result<RestartAdmissionRootCapsuleV3, PrivilegedDisposableControlErrorV2> {
+    retained_fds.reserve("V3 restart-admission directory")?;
+    let directory = openat_node(
+        operation_fd,
+        RESTART_ADMISSION_ROOT_V3,
+        libc::O_RDONLY | libc::O_DIRECTORY,
+    )?;
+    let identity = validate_directory(
+        &directory,
+        expected_uid,
+        expected_gid,
+        0o700,
+        filesystem,
+        "V3 restart-admission directory",
+    )?;
+    if named_identity(operation_fd, RESTART_ADMISSION_ROOT_V3)? != identity {
+        return Err(invalid(
+            "V3 restart-admission root differs from its retained descriptor",
+        ));
+    }
+    let roster = list_directory(directory.as_raw_fd(), MAX_RESTART_ADMISSIONS_V3)?;
+    let mut records = Vec::with_capacity(roster.len());
+    for (index, name) in roster.iter().enumerate() {
+        let Some((ordinal, filename_digest)) = parse_restart_admission_name(name) else {
+            return Err(invalid(
+                "V3 restart-admission root contains a noncanonical entry",
+            ));
+        };
+        if ordinal != index + 1 {
+            return Err(invalid(
+                "V3 restart-admission roster contains a duplicate or sequence gap",
+            ));
+        }
+        retained_fds.reserve("V3 restart-admission record")?;
+        let file = openat_node(directory.as_raw_fd(), name, libc::O_RDONLY)?;
+        let record_identity = validate_regular(
+            &file,
+            expected_uid,
+            expected_gid,
+            0o400,
+            Some(MAX_RECORD_BYTES as i64),
+            filesystem,
+            "V3 restart-admission record",
+        )?;
+        if named_identity(directory.as_raw_fd(), name)? != record_identity {
+            return Err(invalid(
+                "V3 restart-admission pathname differs from its descriptor",
+            ));
+        }
+        let bytes = read_stable(&file, record_identity)?;
+        if bytes.is_empty() || sha256(&bytes) != filename_digest {
+            return Err(invalid(
+                "V3 restart-admission bytes differ from their filename digest",
+            ));
+        }
+        *total_bytes = total_bytes
+            .checked_add(bytes.len())
+            .ok_or_else(|| invalid("V3 restart-admission byte budget overflowed"))?;
+        if *total_bytes > MAX_TOTAL_RECORD_BYTES {
+            return Err(invalid("V3 restart-admission byte budget exceeded"));
+        }
+        records.push(RecordCapsule {
+            bytes,
+            file,
+            identity: record_identity,
+            name: name.clone(),
+        });
+    }
+    Ok(RestartAdmissionRootCapsuleV3 {
+        directory,
+        identity,
+        name: RESTART_ADMISSION_ROOT_V3.to_string(),
+        records,
+        roster,
+    })
+}
+
+fn parse_restart_admission_name(name: &str) -> Option<(usize, String)> {
+    let value = name.strip_prefix("restart-")?.strip_suffix(".json")?;
+    let (ordinal, digest) = value.split_once('-')?;
+    if ordinal.len() != 20
+        || !ordinal.as_bytes().iter().all(u8::is_ascii_digit)
+        || digest.len() != 64
+        || !digest
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+    {
+        return None;
+    }
+    let ordinal = ordinal.parse::<usize>().ok()?;
+    if ordinal == 0 || ordinal > MAX_RESTART_ADMISSIONS_V3 {
+        return None;
+    }
+    Some((ordinal, digest.to_string()))
 }
 
 impl EffectIssueRootCapsuleV3 {
@@ -3645,6 +4055,193 @@ impl EffectIssueRootCapsuleV3 {
             issue.register(registry, &path)?;
         }
         Ok(())
+    }
+}
+
+impl RestartAdmissionRootCapsuleV3 {
+    fn revalidate(
+        &self,
+        operation_fd: RawFd,
+        expected_uid: u32,
+        expected_gid: u32,
+        filesystem: &FilesystemBinding,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        if named_identity(operation_fd, &self.name)? != self.identity
+            || validate_directory(
+                &self.directory,
+                expected_uid,
+                expected_gid,
+                0o700,
+                filesystem,
+                "retained V3 restart-admission directory",
+            )? != self.identity
+            || list_directory(self.directory.as_raw_fd(), MAX_RESTART_ADMISSIONS_V3)? != self.roster
+        {
+            return Err(invalid(
+                "retained V3 restart-admission directory changed during replay",
+            ));
+        }
+        for (index, record) in self.records.iter().enumerate() {
+            let Some((ordinal, digest)) = parse_restart_admission_name(&record.name) else {
+                return Err(invalid(
+                    "retained V3 restart-admission filename is not canonical",
+                ));
+            };
+            if ordinal != index + 1 || sha256(&record.bytes) != digest {
+                return Err(invalid(
+                    "retained V3 restart-admission sequence or digest changed",
+                ));
+            }
+            record.revalidate(
+                self.directory.as_raw_fd(),
+                expected_uid,
+                expected_gid,
+                filesystem,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn register(
+        &self,
+        registry: &mut CensusRegistry,
+        prefix: &str,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        let path = format!("{prefix}/{}", self.name);
+        registry.insert(&path, self.identity)?;
+        for record in &self.records {
+            record.register(registry, &path)?;
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn absorb_exact_append(
+        &mut self,
+        operation_fd: RawFd,
+        expected_uid: u32,
+        expected_gid: u32,
+        filesystem: &FilesystemBinding,
+        s2_directory: File,
+        expected_directory_inode: (u64, u64),
+        transferred_records: Vec<(String, Vec<u8>, File, (u64, u64))>,
+        maximum_appended_bytes: usize,
+    ) -> Result<usize, PrivilegedDisposableControlErrorV2> {
+        let next_ordinal = self
+            .records
+            .len()
+            .checked_add(1)
+            .ok_or_else(|| invalid("restart-admission ordinal overflowed"))?;
+        if next_ordinal > MAX_RESTART_ADMISSIONS_V3 || transferred_records.len() != next_ordinal {
+            return Err(invalid(
+                "restart-admission transfer is not exactly one append",
+            ));
+        }
+        let after_identity = validate_directory(
+            &self.directory,
+            expected_uid,
+            expected_gid,
+            0o700,
+            filesystem,
+            "restart-admission directory after exact append",
+        )?;
+        let s2_identity = validate_directory(
+            &s2_directory,
+            expected_uid,
+            expected_gid,
+            0o700,
+            filesystem,
+            "S2 retained restart-admission directory",
+        )?;
+        let transferred_names = transferred_records
+            .iter()
+            .map(|(name, _, _, _)| name.clone())
+            .collect::<Vec<_>>();
+        if !self
+            .identity
+            .same_directory_across_record_append(after_identity)
+            || s2_identity != after_identity
+            || (s2_identity.dev, s2_identity.ino) != expected_directory_inode
+            || named_identity(operation_fd, &self.name)? != after_identity
+            || list_directory(self.directory.as_raw_fd(), MAX_RESTART_ADMISSIONS_V3)?
+                != transferred_names
+        {
+            return Err(invalid(
+                "restart-admission root changed by more than one exact append",
+            ));
+        }
+        for (retained, (name, bytes, file, expected_inode)) in
+            self.records.iter().zip(transferred_records.iter())
+        {
+            let transferred_identity = validate_regular(
+                file,
+                expected_uid,
+                expected_gid,
+                0o400,
+                Some(MAX_RECORD_BYTES as i64),
+                filesystem,
+                "transferred prior restart-admission record",
+            )?;
+            if retained.name != *name
+                || retained.bytes != *bytes
+                || retained.identity != transferred_identity
+                || (transferred_identity.dev, transferred_identity.ino) != *expected_inode
+            {
+                return Err(invalid(
+                    "restart-admission transfer changed a retained prefix record",
+                ));
+            }
+            retained.revalidate(
+                self.directory.as_raw_fd(),
+                expected_uid,
+                expected_gid,
+                filesystem,
+            )?;
+        }
+        let (name, bytes, file, expected_inode) = transferred_records
+            .into_iter()
+            .last()
+            .ok_or_else(|| invalid("restart-admission transfer omitted its appended record"))?;
+        let Some((ordinal, digest)) = parse_restart_admission_name(&name) else {
+            return Err(invalid(
+                "appended restart-admission filename is noncanonical",
+            ));
+        };
+        let identity = validate_regular(
+            &file,
+            expected_uid,
+            expected_gid,
+            0o400,
+            Some(MAX_RECORD_BYTES as i64),
+            filesystem,
+            "appended restart-admission record",
+        )?;
+        if ordinal != next_ordinal
+            || bytes.is_empty()
+            || bytes.len() > maximum_appended_bytes
+            || sha256(&bytes) != digest
+            || (identity.dev, identity.ino) != expected_inode
+            || named_identity(self.directory.as_raw_fd(), &name)? != identity
+            || read_stable(&file, identity)? != bytes
+            || self
+                .records
+                .iter()
+                .any(|record| record.identity == identity)
+        {
+            return Err(invalid(
+                "appended restart-admission record failed exact retained replay",
+            ));
+        }
+        let appended_bytes = bytes.len();
+        self.identity = after_identity;
+        self.roster = transferred_names;
+        self.records.push(RecordCapsule {
+            bytes,
+            file,
+            identity,
+            name,
+        });
+        Ok(appended_bytes)
     }
 }
 

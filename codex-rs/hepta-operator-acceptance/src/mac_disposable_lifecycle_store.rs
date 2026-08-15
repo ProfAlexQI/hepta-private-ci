@@ -14,8 +14,10 @@ use crate::mac_disposable_effect_issue_store::IssuedEffectRecordV3;
 use crate::mac_disposable_effect_issue_store::RetainedEffectIssueReplaySinkV3;
 use crate::mac_disposable_effect_issue_store::VerifiedLifecycleIssueRosterV3;
 use crate::mac_disposable_lifecycle::CallbackOutcomeV2;
+use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleEventV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleJournalV2;
+use crate::mac_disposable_lifecycle::DisposableLifecycleRecordV2;
 use crate::mac_disposable_lifecycle::EffectPurposeV2;
 #[cfg(test)]
 use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
@@ -26,6 +28,9 @@ use crate::mac_disposable_lifecycle::PreparedCollectorManifestBindingV3;
 use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
 use crate::mac_disposable_lifecycle::TerminalDispositionV2;
 use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
+use crate::mac_disposable_lifecycle::reconciliation_snapshot_sha256;
+use crate::mac_disposable_reconciliation_collector::PendingRestartObservationV3;
+use crate::mac_disposable_reconciliation_collector::RestartBaselineInventoryV3;
 use crate::mac_disposable_reconciliation_collector::RestartCollectorErrorV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorAppendEventV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorMountDeltaV3;
@@ -40,17 +45,22 @@ use crate::mac_inert_one_shot_runner::InertDispatchReceiptV3;
 use crate::mac_inert_one_shot_runner::InertRunnerErrorV3;
 use crate::mac_inert_one_shot_runner::IssuedRunnerDispatchFailureV3;
 use crate::mac_inert_one_shot_runner::RecoveredRunnerDeathProofV3;
+use crate::mac_inert_one_shot_runner::RestartAdmissionEpochBindingV3;
 use crate::mac_inert_one_shot_runner::RunnerIssueReadSealV3;
 use crate::mac_inert_one_shot_runner::SameSupervisorRunnerDeathProofV3;
 use crate::mac_inert_one_shot_runner::SealedRunnerDispatchV3;
+use crate::mac_iomedia_identity::HeldRestartIOMediaInventoryV3;
+use crate::mac_iomedia_identity::capture_restart_iomedia_inventory_v3;
 use crate::mac_privileged_disposable_control::BlockingOperationV3;
 use crate::mac_privileged_disposable_control::CompletedOperationV3;
 use crate::mac_privileged_disposable_control::FreshAdmissionV3;
 use crate::mac_privileged_disposable_control::LifecycleRecordAppendSinkV3;
 use crate::mac_privileged_disposable_control::PendingUnmountDeltaV3;
 use crate::mac_privileged_disposable_control::PrivilegedDisposableControlErrorV2;
+use crate::mac_privileged_disposable_control::RestartAdmissionAppendSinkV3;
 use crate::mac_privileged_disposable_control::RetainedControlCensusV3;
 use crate::mac_privileged_disposable_control::S1PreparedManifestReadSealV3;
+use crate::mac_privileged_disposable_control::S1RestartAdmissionReadSealV3;
 use crate::mac_privileged_disposable_control::StableMountStateV3;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -70,6 +80,9 @@ const MAX_TOTAL_RECORD_BYTES: usize = 64 * 1024 * 1024;
 const RENAME_EXCL: libc::c_uint = 0x0000_0004;
 const PREPARED_MANIFEST_NAME_V3: &str = "prepared-collector-manifest-v3.json";
 const PREPARED_MANIFEST_TEMPORARY_NAME_V3: &str = ".incoming-prepared-collector-manifest-v3.json";
+const RESTART_ADMISSION_DIRECTORY_NAME_V3: &str = "restart-admissions-v3";
+const RESTART_ADMISSION_SCHEMA_V3: &str = "hepta_mac_restart_admission_v3";
+const MAX_RESTART_ADMISSIONS_V3: usize = MAX_RECORDS;
 
 #[derive(Debug, Error)]
 pub enum DurableLifecycleStoreErrorV3 {
@@ -99,6 +112,19 @@ enum PublishCutpointV3 {
     FinalReopened,
     FinalRevalidated,
     CapsuleRetained,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RestartAdmissionPublishCutpointV3 {
+    TemporaryCreated,
+    BytesWritten,
+    FileSynced,
+    Renamed,
+    DirectorySynced,
+    FinalReopened,
+    FinalRevalidated,
+    CapsuleRetained,
+    FinalReplayed,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -183,6 +209,470 @@ struct PreparedManifestCapsuleV3 {
     file: File,
 }
 
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RestartAdmissionRecordV3 {
+    authority: DisposableAuthorityV2,
+    boot_session_uuid: String,
+    current_live_before_inventory_sha256: String,
+    lifecycle_previous_record_sha256: Option<String>,
+    lifecycle_record_sha256: String,
+    lifecycle_sequence: u32,
+    operation_nonce: String,
+    prepared_manifest_inode: u64,
+    prepared_manifest_sha256: String,
+    prepared_profile_sha256: String,
+    process_epoch_nonce: String,
+    process_epoch_sha256: String,
+    restart_epoch_nonce: String,
+    restart_started_monotonic_nanoseconds: u64,
+    schema: String,
+    schema_version: u32,
+    supervisor_kernel_start_microseconds: u64,
+    supervisor_pid: u32,
+}
+
+struct RestartAdmissionCapsuleV3 {
+    binding: Binding,
+    bytes: Vec<u8>,
+    digest: String,
+    file: File,
+    name: String,
+    record: RestartAdmissionRecordV3,
+}
+
+struct RestartAdmissionStoreV3 {
+    binding: Binding,
+    directory: File,
+    records: Vec<RestartAdmissionCapsuleV3>,
+}
+
+struct RestartAdmissionDraftV3 {
+    current_live_before_inventory_sha256: String,
+    epoch: RestartAdmissionEpochBindingV3,
+    prepared_manifest_inode: u64,
+    prepared_manifest_sha256: String,
+    prepared_profile_sha256: String,
+}
+
+impl RestartAdmissionDraftV3 {
+    fn seal(
+        self,
+        lifecycle: &DisposableLifecycleRecordV2,
+        lifecycle_bytes: &[u8],
+    ) -> Result<RestartAdmissionRecordV3, DurableLifecycleStoreErrorV3> {
+        let DisposableLifecycleEventV2::RestartReconciliationStarted {
+            boot_session_uuid,
+            monotonic_nanoseconds,
+            restart_epoch_nonce,
+            ..
+        } = &lifecycle.event
+        else {
+            return Err(invalid(
+                "restart-admission draft can seal only a V2 restart-start record",
+            ));
+        };
+        if boot_session_uuid != self.epoch.boot_session_uuid()
+            || restart_epoch_nonce != self.epoch.restart_epoch_nonce()
+            || *monotonic_nanoseconds != self.epoch.restart_started_monotonic_nanoseconds()
+        {
+            return Err(invalid(
+                "V2 restart-start record differs from its authenticated process epoch",
+            ));
+        }
+        let record = RestartAdmissionRecordV3 {
+            authority: DisposableAuthorityV2::none(),
+            boot_session_uuid: boot_session_uuid.clone(),
+            current_live_before_inventory_sha256: self.current_live_before_inventory_sha256,
+            lifecycle_previous_record_sha256: lifecycle.previous_record_sha256.clone(),
+            lifecycle_record_sha256: sha256(lifecycle_bytes),
+            lifecycle_sequence: lifecycle.sequence,
+            operation_nonce: lifecycle.operation_nonce.clone(),
+            prepared_manifest_inode: self.prepared_manifest_inode,
+            prepared_manifest_sha256: self.prepared_manifest_sha256,
+            prepared_profile_sha256: self.prepared_profile_sha256,
+            process_epoch_nonce: self.epoch.process_epoch_nonce().to_string(),
+            process_epoch_sha256: self.epoch.process_epoch_sha256().to_string(),
+            restart_epoch_nonce: restart_epoch_nonce.clone(),
+            restart_started_monotonic_nanoseconds: *monotonic_nanoseconds,
+            schema: RESTART_ADMISSION_SCHEMA_V3.to_string(),
+            schema_version: 3,
+            supervisor_kernel_start_microseconds: self.epoch.supervisor_kernel_start_microseconds(),
+            supervisor_pid: self.epoch.supervisor_pid(),
+        };
+        validate_restart_admission_record(&record)?;
+        Ok(record)
+    }
+}
+
+impl RestartAdmissionStoreV3 {
+    fn create_prepublication(
+        operation: &File,
+        expected_uid: u32,
+        expected_gid: u32,
+        expected_dev: u64,
+    ) -> Result<Self, DurableLifecycleStoreErrorV3> {
+        require_absent(operation.as_raw_fd(), RESTART_ADMISSION_DIRECTORY_NAME_V3)?;
+        let name = component(RESTART_ADMISSION_DIRECTORY_NAME_V3)?;
+        if unsafe { libc::mkdirat(operation.as_raw_fd(), name.as_ptr(), 0o700) } != 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        let directory =
+            openat_directory(operation.as_raw_fd(), RESTART_ADMISSION_DIRECTORY_NAME_V3)?;
+        let binding = validate_directory(
+            &directory,
+            expected_uid,
+            expected_gid,
+            0o700,
+            Some(expected_dev),
+            "restart-admission directory",
+        )?;
+        if !read_directory_names(directory.as_raw_fd(), MAX_RESTART_ADMISSIONS_V3)?.is_empty() {
+            return Err(invalid(
+                "new restart-admission directory is not exactly empty",
+            ));
+        }
+        directory.sync_all()?;
+        operation.sync_all()?;
+        Ok(Self {
+            binding,
+            directory,
+            records: Vec::new(),
+        })
+    }
+
+    fn open_existing(
+        operation: &File,
+        expected_uid: u32,
+        expected_gid: u32,
+        expected_dev: u64,
+    ) -> Result<Self, DurableLifecycleStoreErrorV3> {
+        let directory =
+            openat_directory(operation.as_raw_fd(), RESTART_ADMISSION_DIRECTORY_NAME_V3)?;
+        let binding = validate_directory(
+            &directory,
+            expected_uid,
+            expected_gid,
+            0o700,
+            Some(expected_dev),
+            "restart-admission directory replay",
+        )?;
+        if named_binding(operation.as_raw_fd(), RESTART_ADMISSION_DIRECTORY_NAME_V3)? != binding {
+            return Err(invalid(
+                "restart-admission directory differs from its fixed pathname",
+            ));
+        }
+        let names = read_directory_names(directory.as_raw_fd(), MAX_RESTART_ADMISSIONS_V3)?;
+        let mut records = Vec::with_capacity(names.len());
+        for (index, name) in names.iter().enumerate() {
+            let (ordinal, expected_digest) =
+                parse_restart_admission_name(name).ok_or_else(|| {
+                    invalid(
+                        "restart-admission roster contains a temporary, aliased, or unknown entry",
+                    )
+                })?;
+            if ordinal != index + 1 {
+                return Err(invalid(
+                    "restart-admission roster contains a duplicate or sequence gap",
+                ));
+            }
+            let capsule = open_restart_admission_record(
+                &directory,
+                name,
+                expected_uid,
+                expected_gid,
+                expected_dev,
+            )?;
+            if capsule.digest != expected_digest {
+                return Err(invalid(
+                    "restart-admission filename differs from its canonical bytes",
+                ));
+            }
+            records.push(capsule);
+        }
+        let store = Self {
+            binding,
+            directory,
+            records,
+        };
+        store.revalidate(operation, expected_uid, expected_gid, expected_dev)?;
+        Ok(store)
+    }
+
+    fn open_from_retained_s1(
+        operation: &File,
+        directory: File,
+        expected_directory_inode: (u64, u64),
+        retained_records: Vec<(String, Vec<u8>, File, (u64, u64))>,
+        expected_uid: u32,
+        expected_gid: u32,
+        expected_dev: u64,
+    ) -> Result<Self, DurableLifecycleStoreErrorV3> {
+        let binding = validate_directory(
+            &directory,
+            expected_uid,
+            expected_gid,
+            0o700,
+            Some(expected_dev),
+            "retained S1 restart-admission directory",
+        )?;
+        if (binding.dev, binding.ino) != expected_directory_inode
+            || named_binding(operation.as_raw_fd(), RESTART_ADMISSION_DIRECTORY_NAME_V3)? != binding
+        {
+            return Err(invalid(
+                "S2 restart-admission directory differs from the exact retained S1 inode",
+            ));
+        }
+        let names = read_directory_names(directory.as_raw_fd(), MAX_RESTART_ADMISSIONS_V3)?;
+        if names
+            != retained_records
+                .iter()
+                .map(|(name, _, _, _)| name.clone())
+                .collect::<Vec<_>>()
+        {
+            return Err(invalid(
+                "restart-admission roster differs from the retained S1 capsules",
+            ));
+        }
+        let mut records = Vec::with_capacity(retained_records.len());
+        for (index, (name, bytes, file, expected_inode)) in retained_records.into_iter().enumerate()
+        {
+            let (ordinal, digest) = parse_restart_admission_name(&name)
+                .ok_or_else(|| invalid("retained S1 restart-admission name is malformed"))?;
+            if ordinal != index + 1 || digest != sha256(&bytes) {
+                return Err(invalid(
+                    "retained S1 restart-admission roster is gapped or digest-mismatched",
+                ));
+            }
+            let record_binding = validate_regular(
+                &file,
+                expected_uid,
+                expected_gid,
+                0o400,
+                Some(expected_dev),
+                Some(bytes.len()),
+                "retained S1 restart-admission record",
+            )?;
+            if (record_binding.dev, record_binding.ino) != expected_inode
+                || named_binding(directory.as_raw_fd(), &name)? != record_binding
+                || read_stable(&file, record_binding)? != bytes
+            {
+                return Err(invalid(
+                    "S2 restart-admission record differs from the exact retained S1 descriptor",
+                ));
+            }
+            let record: RestartAdmissionRecordV3 =
+                serde_json::from_slice(&bytes).map_err(|error| {
+                    invalid(format!(
+                        "retained S1 restart-admission JSON failed: {error}"
+                    ))
+                })?;
+            if canonical_json(&record)
+                .map_err(|error| invalid(format!("restart admission JSON failed: {error}")))?
+                != bytes
+            {
+                return Err(invalid(
+                    "retained S1 restart-admission record is noncanonical",
+                ));
+            }
+            validate_restart_admission_record(&record)?;
+            records.push(RestartAdmissionCapsuleV3 {
+                binding: record_binding,
+                bytes,
+                digest,
+                file,
+                name,
+                record,
+            });
+        }
+        let store = Self {
+            binding,
+            directory,
+            records,
+        };
+        store.revalidate(operation, expected_uid, expected_gid, expected_dev)?;
+        Ok(store)
+    }
+
+    fn persist(
+        &mut self,
+        operation: &File,
+        record: RestartAdmissionRecordV3,
+        expected_uid: u32,
+        expected_gid: u32,
+        expected_dev: u64,
+    ) -> Result<(), DurableLifecycleStoreErrorV3> {
+        self.persist_with_hook(
+            operation,
+            record,
+            expected_uid,
+            expected_gid,
+            expected_dev,
+            |_| Ok(()),
+        )
+    }
+
+    fn persist_with_hook<F>(
+        &mut self,
+        operation: &File,
+        record: RestartAdmissionRecordV3,
+        expected_uid: u32,
+        expected_gid: u32,
+        expected_dev: u64,
+        mut hook: F,
+    ) -> Result<(), DurableLifecycleStoreErrorV3>
+    where
+        F: FnMut(RestartAdmissionPublishCutpointV3) -> io::Result<()>,
+    {
+        self.revalidate(operation, expected_uid, expected_gid, expected_dev)?;
+        let ordinal = self
+            .records
+            .len()
+            .checked_add(1)
+            .ok_or_else(|| invalid("restart-admission count overflowed"))?;
+        if ordinal > MAX_RESTART_ADMISSIONS_V3 {
+            return Err(invalid("restart-admission count exceeds its fixed bound"));
+        }
+        validate_restart_admission_record(&record)?;
+        let bytes = canonical_json(&record)
+            .map_err(|error| invalid(format!("restart admission JSON failed: {error}")))?;
+        if bytes.is_empty() || bytes.len() > MAX_RECORD_BYTES {
+            return Err(invalid("restart-admission record exceeds its fixed bound"));
+        }
+        let digest = sha256(&bytes);
+        let final_name = restart_admission_name(ordinal, &digest)?;
+        let temporary_name = format!(".incoming-{final_name}");
+        require_absent(self.directory.as_raw_fd(), &temporary_name)?;
+        require_absent(self.directory.as_raw_fd(), &final_name)?;
+        let mut temporary = createat_file(self.directory.as_raw_fd(), &temporary_name, 0o400)?;
+        hook(RestartAdmissionPublishCutpointV3::TemporaryCreated)?;
+        temporary.write_all(&bytes)?;
+        hook(RestartAdmissionPublishCutpointV3::BytesWritten)?;
+        temporary.sync_all()?;
+        hook(RestartAdmissionPublishCutpointV3::FileSynced)?;
+        let temporary_binding = validate_regular(
+            &temporary,
+            expected_uid,
+            expected_gid,
+            0o400,
+            Some(expected_dev),
+            Some(bytes.len()),
+            "temporary restart-admission record",
+        )?;
+        if read_stable(&temporary, temporary_binding)? != bytes {
+            return Err(invalid(
+                "temporary restart-admission bytes differ after fsync",
+            ));
+        }
+        rename_noreplace(
+            self.directory.as_raw_fd(),
+            &temporary_name,
+            self.directory.as_raw_fd(),
+            &final_name,
+        )?;
+        hook(RestartAdmissionPublishCutpointV3::Renamed)?;
+        self.directory.sync_all()?;
+        hook(RestartAdmissionPublishCutpointV3::DirectorySynced)?;
+        let file = openat_regular(self.directory.as_raw_fd(), &final_name)?;
+        hook(RestartAdmissionPublishCutpointV3::FinalReopened)?;
+        let record_binding = validate_regular(
+            &file,
+            expected_uid,
+            expected_gid,
+            0o400,
+            Some(expected_dev),
+            Some(bytes.len()),
+            "final restart-admission record",
+        )?;
+        if !temporary_binding.stable_across_rename(record_binding)
+            || named_binding(self.directory.as_raw_fd(), &final_name)? != record_binding
+            || read_stable(&file, record_binding)? != bytes
+        {
+            return Err(invalid(
+                "final restart-admission record differs from its fsynced temporary inode",
+            ));
+        }
+        hook(RestartAdmissionPublishCutpointV3::FinalRevalidated)?;
+        self.directory.sync_all()?;
+        self.binding = binding(&self.directory)?;
+        self.records.push(RestartAdmissionCapsuleV3 {
+            binding: record_binding,
+            bytes,
+            digest,
+            file,
+            name: final_name,
+            record,
+        });
+        hook(RestartAdmissionPublishCutpointV3::CapsuleRetained)?;
+        self.revalidate(operation, expected_uid, expected_gid, expected_dev)?;
+        hook(RestartAdmissionPublishCutpointV3::FinalReplayed)?;
+        Ok(())
+    }
+
+    fn revalidate(
+        &self,
+        operation: &File,
+        expected_uid: u32,
+        expected_gid: u32,
+        expected_dev: u64,
+    ) -> Result<(), DurableLifecycleStoreErrorV3> {
+        let directory_binding = validate_directory(
+            &self.directory,
+            expected_uid,
+            expected_gid,
+            0o700,
+            Some(expected_dev),
+            "retained restart-admission directory",
+        )?;
+        if directory_binding != self.binding
+            || named_binding(operation.as_raw_fd(), RESTART_ADMISSION_DIRECTORY_NAME_V3)?
+                != directory_binding
+        {
+            return Err(invalid(
+                "retained restart-admission directory identity changed",
+            ));
+        }
+        let expected = self
+            .records
+            .iter()
+            .map(|record| record.name.clone())
+            .collect::<Vec<_>>();
+        if read_directory_names(self.directory.as_raw_fd(), MAX_RESTART_ADMISSIONS_V3)? != expected
+        {
+            return Err(invalid(
+                "restart-admission roster changed or contains an uncertain entry",
+            ));
+        }
+        for (index, record) in self.records.iter().enumerate() {
+            if parse_restart_admission_name(&record.name)
+                != Some((index + 1, record.digest.clone()))
+                || binding(&record.file)? != record.binding
+                || named_binding(self.directory.as_raw_fd(), &record.name)? != record.binding
+                || read_stable(&record.file, record.binding)? != record.bytes
+                || canonical_json(&record.record)
+                    .map_err(|error| invalid(format!("restart admission JSON failed: {error}")))?
+                    != record.bytes
+                || sha256(&record.bytes) != record.digest
+            {
+                return Err(invalid(
+                    "retained restart-admission record changed during replay",
+                ));
+            }
+            validate_restart_admission_record(&record.record)?;
+            validate_regular(
+                &record.file,
+                expected_uid,
+                expected_gid,
+                0o400,
+                Some(expected_dev),
+                Some(record.bytes.len()),
+                "retained restart-admission record",
+            )?;
+        }
+        Ok(())
+    }
+}
+
 /// Private sibling seal for the only lifecycle-store reads of the retained
 /// prepared collector capability.  Other crate modules can name this type but
 /// cannot construct it, so the collector exposes no free-standing manifest,
@@ -199,6 +689,51 @@ pub(crate) struct PreparedManifestS1TransferV3 {
     bytes: Vec<u8>,
     digest: String,
     file: File,
+}
+
+/// Opaque S2-to-S1 transfer of the exact fixed restart-admission directory
+/// and every retained append-only record.  Only S1 can open the transfer;
+/// intermediate sibling modules may forward it but cannot inspect its files.
+pub(crate) struct RestartAdmissionRootS1TransferV3 {
+    binding: Binding,
+    directory: File,
+    records: Vec<(String, Vec<u8>, File, Binding)>,
+}
+
+impl RestartAdmissionRootS1TransferV3 {
+    fn retain(store: &RestartAdmissionStoreV3) -> io::Result<Self> {
+        let records = store
+            .records
+            .iter()
+            .map(|record| {
+                Ok((
+                    record.name.clone(),
+                    record.bytes.clone(),
+                    record.file.try_clone()?,
+                    record.binding,
+                ))
+            })
+            .collect::<io::Result<Vec<_>>>()?;
+        Ok(Self {
+            binding: store.binding,
+            directory: store.directory.try_clone()?,
+            records,
+        })
+    }
+
+    pub(crate) fn into_s1_parts(
+        self,
+        _seal: S1RestartAdmissionReadSealV3,
+    ) -> (File, (u64, u64), Vec<(String, Vec<u8>, File, (u64, u64))>) {
+        (
+            self.directory,
+            (self.binding.dev, self.binding.ino),
+            self.records
+                .into_iter()
+                .map(|(name, bytes, file, binding)| (name, bytes, file, (binding.dev, binding.ino)))
+                .collect(),
+        )
+    }
 }
 
 impl PreparedManifestS1TransferV3 {
@@ -500,6 +1035,7 @@ pub struct DurableLifecycleStoreV3<M = FreshProcessStoreV3> {
     poisoned: bool,
     prepared_manifest: Option<PreparedManifestCapsuleV3>,
     records: Vec<RecordCapsule>,
+    restart_admissions: Option<RestartAdmissionStoreV3>,
     temporary_name: String,
     _mode: PhantomData<fn() -> M>,
 }
@@ -519,7 +1055,160 @@ pub(crate) struct CensusBoundDurableLifecycleStoreV3<'a> {
 /// retains that census, the current process epoch, and the replay-derived
 /// journal for its entire lifetime; callers cannot substitute a reconstructed
 /// journal with matching bytes.
-pub(crate) struct ReconciliationOperationStoreV3<'a, 'e> {
+pub(crate) struct NeedsRestartEpochV3 {
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Exact current-process restart admission.  The live-before inventory guard
+/// is retained from capture across V2+V3 durability, S1 adoption, replay, and
+/// the first collector boundary; copied digests cannot reconstruct it.
+pub(crate) struct ActiveRestartEpochV3 {
+    admission_sha256: String,
+    baseline: RestartBaselineInventoryV3,
+    boot_session_uuid: String,
+    collector_pending: bool,
+    current_live_before_inventory_sha256: String,
+    live_before: HeldRestartIOMediaInventoryV3,
+    prepared_manifest_sha256: String,
+    prepared_profile_sha256: String,
+    process_epoch_sha256: String,
+    restart_epoch_nonce: String,
+    restart_started_monotonic_nanoseconds: u64,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Unforgeable, borrowed bridge from an admitted Active restart epoch into
+/// the collector.  Its fields stay private to S2 so a crate caller cannot
+/// synthesize a request from DTOs or transplant a held inventory between
+/// restart epochs.
+pub(crate) struct ActiveRestartCollectorSeedV3<'a> {
+    operation_nonce: &'a str,
+    owner: &'a ActiveRestartEpochV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct ActiveRestartCollectorEpochV3<'a> {
+    operation_nonce: &'a str,
+    owner: &'a ActiveRestartEpochV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+impl ActiveRestartCollectorEpochV3<'_> {
+    pub(crate) fn operation_nonce(&self) -> &str {
+        self.operation_nonce
+    }
+
+    pub(crate) fn boot_session_uuid(&self) -> &str {
+        &self.owner.boot_session_uuid
+    }
+
+    pub(crate) fn restart_epoch_nonce(&self) -> &str {
+        &self.owner.restart_epoch_nonce
+    }
+
+    pub(crate) fn restart_started_monotonic_nanoseconds(&self) -> u64 {
+        self.owner.restart_started_monotonic_nanoseconds
+    }
+
+    pub(crate) fn revalidate_for_prepared(
+        &self,
+        operation_nonce: &str,
+        prepared_manifest_sha256: &str,
+        prepared_profile_sha256: &str,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        if self.operation_nonce != operation_nonce
+            || self.owner.prepared_manifest_sha256 != prepared_manifest_sha256
+            || self.owner.prepared_profile_sha256 != prepared_profile_sha256
+            || !valid_digest(&self.owner.admission_sha256)
+            || !valid_digest(&self.owner.process_epoch_sha256)
+            || !valid_digest(&self.owner.restart_epoch_nonce)
+            || self.owner.restart_started_monotonic_nanoseconds == 0
+        {
+            return Err(RestartCollectorErrorV3::Invalid(
+                "active restart collector epoch differs from its admitted operation".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl ActiveRestartCollectorSeedV3<'_> {
+    pub(crate) fn operation_nonce(&self) -> &str {
+        self.operation_nonce
+    }
+
+    pub(crate) fn boot_session_uuid(&self) -> &str {
+        &self.owner.boot_session_uuid
+    }
+
+    pub(crate) fn restart_epoch_nonce(&self) -> &str {
+        &self.owner.restart_epoch_nonce
+    }
+
+    pub(crate) fn restart_started_monotonic_nanoseconds(&self) -> u64 {
+        self.owner.restart_started_monotonic_nanoseconds
+    }
+
+    pub(crate) fn revalidate_for_prepared(
+        &self,
+        operation_nonce: &str,
+        prepared_manifest_sha256: &str,
+        prepared_profile_sha256: &str,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        if self.operation_nonce != operation_nonce
+            || self.owner.prepared_manifest_sha256 != prepared_manifest_sha256
+            || self.owner.prepared_profile_sha256 != prepared_profile_sha256
+            || !valid_digest(&self.owner.admission_sha256)
+            || !valid_digest(&self.owner.current_live_before_inventory_sha256)
+            || !valid_digest(&self.owner.process_epoch_sha256)
+            || !valid_digest(&self.owner.restart_epoch_nonce)
+            || self.owner.restart_started_monotonic_nanoseconds == 0
+        {
+            return Err(RestartCollectorErrorV3::Invalid(
+                "active restart collector seed differs from its admitted operation".to_string(),
+            ));
+        }
+        self.revalidate_live()
+    }
+
+    pub(crate) fn revalidate_live(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.owner.live_before.revalidate_after_persistence()?;
+        let replayed = RestartBaselineInventoryV3::from_inventory(self.owner.live_before.report())?;
+        if replayed != self.owner.baseline
+            || replayed.sha256()? != self.owner.current_live_before_inventory_sha256
+            || replayed.boot_session_uuid() != self.owner.boot_session_uuid
+        {
+            return Err(RestartCollectorErrorV3::Invalid(
+                "active restart live-before inventory changed after admission".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn require_exact_live_inventory(
+        &self,
+        inventory: &crate::mac_iomedia_identity::RestartIOMediaInventoryV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.owner.live_before.revalidate_after_persistence()?;
+        if self.owner.live_before.report() != inventory {
+            return Err(RestartCollectorErrorV3::Invalid(
+                "collector recapture differs from the admitted live-before inventory".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn require_owner(&self, owner: &ActiveRestartEpochV3) -> Result<(), RestartCollectorErrorV3> {
+        if !std::ptr::eq(self.owner, owner) {
+            return Err(RestartCollectorErrorV3::Invalid(
+                "restart collector seed belongs to another active epoch".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+pub(crate) struct ReconciliationOperationStoreV3<'a, 'e, R = NeedsRestartEpochV3> {
     census: RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
     epoch: &'e FreshProcessEpochV3,
     journal: DisposableLifecycleJournalV2,
@@ -527,7 +1216,18 @@ pub(crate) struct ReconciliationOperationStoreV3<'a, 'e> {
     prepared: Option<RetainedPreparedCollectorCapabilityV3>,
     collector: Option<RetainedCollectorObservationV3>,
     issues: DurableEffectIssueStoreV3,
+    restart: R,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
+}
+
+impl<R> ReconciliationOperationStoreV3<'_, '_, R> {
+    pub(crate) fn operation_nonce(&self) -> &str {
+        self.store.operation_nonce()
+    }
+
+    pub(crate) fn poisoned(&self) -> bool {
+        self.poisoned || self.store.poisoned()
+    }
 }
 
 /// No callback DTO is accepted at the mount-delta boundary.  The runner bridge
@@ -559,6 +1259,7 @@ pub(crate) struct PendingUnmountReconciliationOperationStoreV3<'a, 'e, S> {
     journal: DisposableLifecycleJournalV2,
     poisoned: bool,
     prepared: Option<RetainedPreparedCollectorCapabilityV3>,
+    restart: ActiveRestartEpochV3,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
     _state: PhantomData<fn() -> S>,
     _not_send_or_sync: PhantomData<Rc<()>>,
@@ -572,7 +1273,7 @@ pub(crate) struct RetainedOperationEffectIssueV3<'store, 'a, 'e> {
     record: IssuedEffectRecordV3,
     record_canonical_bytes: Vec<u8>,
     record_sha256: String,
-    store: &'store mut ReconciliationOperationStoreV3<'a, 'e>,
+    store: &'store mut ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
@@ -785,6 +1486,31 @@ impl RetainedLifecycleRecordAppendV3 {
         self.revalidate()
     }
 
+    fn adopt_restart_pair_into_s1(
+        &mut self,
+        sink: RestartAdmissionAppendSinkV3<'_, '_>,
+        admissions: RestartAdmissionRootS1TransferV3,
+    ) -> Result<(), DurableLifecycleStoreErrorV3> {
+        self.revalidate_exact()?;
+        if self.s1_adopted {
+            return Err(invalid(
+                "restart lifecycle append capsule was already adopted by S1",
+            ));
+        }
+        sink.retain(
+            self.directory.try_clone()?,
+            self.record.try_clone()?,
+            self.bytes.clone(),
+            self.operation_name.clone(),
+            self.name.clone(),
+            self.digest.clone(),
+            self.sequence,
+            admissions,
+        )?;
+        self.s1_adopted = true;
+        self.revalidate()
+    }
+
     pub(crate) fn require_s1_adopted(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
         self.revalidate_exact()?;
         if !self.s1_adopted {
@@ -842,6 +1568,7 @@ pub(crate) struct CompletedReconciliationOperationStoreV3<'a, 'e> {
     issues: DurableEffectIssueStoreV3,
     journal: DisposableLifecycleJournalV2,
     prepared: Option<RetainedPreparedCollectorCapabilityV3>,
+    restart: ActiveRestartEpochV3,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
 }
 
@@ -946,12 +1673,19 @@ impl PreparedFreshCensusStoreV3 {
             .as_ref()
             .map(PreparedManifestS1TransferV3::retain)
             .transpose()?;
+        let restart_admissions = self
+            .store
+            .restart_admissions
+            .as_ref()
+            .map(RestartAdmissionRootS1TransferV3::retain)
+            .transpose()?;
         let sink = census.fresh_operation_admission_sink()?;
         self.issues.transfer_prepared_operation_to_s1(
             sink,
             operation_directory,
             final_name,
             prepared_manifest,
+            restart_admissions,
         )?;
         Ok(CensusBoundDurableLifecycleStoreV3 {
             census,
@@ -1000,6 +1734,7 @@ impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
         records: Vec<(String, Vec<u8>, File, (u64, u64))>,
         effect_issues: Option<(File, (u64, u64), Vec<(String, Vec<u8>, File, (u64, u64))>)>,
         prepared_manifest: Option<(Vec<u8>, File, (u64, u64))>,
+        restart_admissions: Option<(File, (u64, u64), Vec<(String, Vec<u8>, File, (u64, u64))>)>,
         operation_name: String,
         operation_nonce: String,
         expected_uid: u32,
@@ -1023,6 +1758,7 @@ impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
                 records,
                 effect_issues.as_ref(),
                 prepared_manifest,
+                restart_admissions,
                 &operation_name,
                 &operation_nonce,
                 expected_uid,
@@ -1074,6 +1810,9 @@ impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
             journal,
             poisoned: false,
             prepared,
+            restart: NeedsRestartEpochV3 {
+                _not_send_or_sync: PhantomData,
+            },
             store,
         })
     }
@@ -1227,6 +1966,25 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         } else {
             None
         };
+        let restart_admissions = if prepared_manifest_bytes.is_some() {
+            let admissions = RestartAdmissionStoreV3::create_prepublication(
+                &temporary,
+                expected_uid,
+                expected_gid,
+                parent_binding.dev,
+            )?;
+            temporary_binding = validate_directory(
+                &temporary,
+                expected_uid,
+                expected_gid,
+                0o700,
+                Some(parent_binding.dev),
+                "temporary operation directory after restart-admission root creation",
+            )?;
+            Some(admissions)
+        } else {
+            None
+        };
         let prepared_manifest = match prepared_manifest_bytes {
             Some(bytes) => Some(publish_prepared_manifest(
                 &temporary,
@@ -1281,10 +2039,11 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             OperationFormatV3::RequiredPreparedManifestV3 => vec![
                 "effect-issues-v3".to_string(),
                 PREPARED_MANIFEST_NAME_V3.to_string(),
+                RESTART_ADMISSION_DIRECTORY_NAME_V3.to_string(),
             ],
         };
         if !temporary_binding.stable_across_rename(directory_binding)
-            || read_directory_names(directory.as_raw_fd(), MAX_RECORDS + 2)? != expected_roster
+            || read_directory_names(directory.as_raw_fd(), MAX_RECORDS + 3)? != expected_roster
         {
             return Err(invalid(
                 "final operation directory is not the exact empty temporary inode",
@@ -1304,6 +2063,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             poisoned: false,
             prepared_manifest,
             records: Vec::new(),
+            restart_admissions,
             temporary_name,
             _mode: PhantomData,
         };
@@ -1359,7 +2119,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             Some(parent_binding.dev),
             "operation directory",
         )?;
-        let names = read_directory_names(directory.as_raw_fd(), MAX_RECORDS + 2)?;
+        let names = read_directory_names(directory.as_raw_fd(), MAX_RECORDS + 3)?;
         let (format, record_names) = classify_operation_roster(&names)?;
         if record_names.is_empty() {
             return Err(invalid("operation directory has no lifecycle records"));
@@ -1414,6 +2174,16 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         } else {
             None
         };
+        let restart_admissions = if format == OperationFormatV3::RequiredPreparedManifestV3 {
+            Some(RestartAdmissionStoreV3::open_existing(
+                &directory,
+                expected_uid,
+                expected_gid,
+                directory_binding.dev,
+            )?)
+        } else {
+            None
+        };
         let store = DurableLifecycleStoreV3::<ReconciliationOnlyStoreV3> {
             directory,
             directory_binding,
@@ -1427,6 +2197,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             poisoned: false,
             prepared_manifest,
             records,
+            restart_admissions,
             temporary_name,
             _mode: PhantomData,
         };
@@ -1443,6 +2214,11 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         retained_records: Vec<(String, Vec<u8>, File, (u64, u64))>,
         retained_effect_issues: Option<&RetainedEffectIssueSourceV3>,
         retained_prepared_manifest: Option<(Vec<u8>, File, (u64, u64))>,
+        retained_restart_admissions: Option<(
+            File,
+            (u64, u64),
+            Vec<(String, Vec<u8>, File, (u64, u64))>,
+        )>,
         operation_name: &str,
         operation_nonce: &str,
         expected_uid: u32,
@@ -1490,7 +2266,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
                 "operation directory has no retained lifecycle records",
             ));
         }
-        let names = read_directory_names(directory.as_raw_fd(), MAX_RECORDS + 2)?;
+        let names = read_directory_names(directory.as_raw_fd(), MAX_RECORDS + 3)?;
         let mut expected_names = retained_records
             .iter()
             .map(|(name, _, _, _)| name.clone())
@@ -1498,20 +2274,32 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         let format = match (
             retained_effect_issues.is_some(),
             retained_prepared_manifest.is_some(),
+            retained_restart_admissions.is_some(),
         ) {
-            (true, true) => {
+            (true, true, true) => {
                 expected_names.push("effect-issues-v3".to_string());
                 expected_names.push(PREPARED_MANIFEST_NAME_V3.to_string());
+                expected_names.push(RESTART_ADMISSION_DIRECTORY_NAME_V3.to_string());
                 OperationFormatV3::RequiredPreparedManifestV3
             }
-            (true, false) => {
+            (true, false, false) => {
                 expected_names.push("effect-issues-v3".to_string());
                 OperationFormatV3::RequiredEffectIssuesV3
             }
-            (false, false) => OperationFormatV3::LegacyV2,
-            (false, true) => {
+            (false, false, false) => OperationFormatV3::LegacyV2,
+            (false, true, _) => {
                 return Err(invalid(
                     "prepared manifest exists without the mandatory V3 issue root",
+                ));
+            }
+            (true, true, false) => {
+                return Err(invalid(
+                    "prepared manifest exists without the mandatory restart-admission root",
+                ));
+            }
+            (_, _, _) => {
+                return Err(invalid(
+                    "restart-admission root exists outside the exact prepared V3 schema",
                 ));
             }
         };
@@ -1597,6 +2385,19 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
                 })
             })
             .transpose()?;
+        let restart_admissions = retained_restart_admissions
+            .map(|(admissions, admissions_inode, records)| {
+                RestartAdmissionStoreV3::open_from_retained_s1(
+                    &directory,
+                    admissions,
+                    admissions_inode,
+                    records,
+                    expected_uid,
+                    expected_gid,
+                    directory_binding.dev,
+                )
+            })
+            .transpose()?;
         let store = DurableLifecycleStoreV3::<ReconciliationOnlyStoreV3> {
             directory,
             directory_binding,
@@ -1610,6 +2411,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             poisoned: false,
             prepared_manifest,
             records,
+            restart_admissions,
             temporary_name,
             _mode: PhantomData,
         };
@@ -1756,7 +2558,7 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
     }
 }
 
-impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
+impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, NeedsRestartEpochV3> {
     /// Production restart entrypoint.  The raw `File + nonce` opener remains
     /// test-only; production must retain the full S1 census and a current
     /// process epoch while replaying or appending reconciliation records.
@@ -1779,6 +2581,441 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         census.wire_existing_store(ExistingCensusStoreWiringV3::with_hook(epoch, before_replay))
     }
 
+    /// Consume the replay-only wrapper and durably bind this process to one
+    /// fresh restart epoch before any collection, issue, mount delta, or
+    /// terminal method becomes available.
+    pub(crate) fn begin_restart(
+        self,
+        epoch: &'e FreshProcessEpochV3,
+    ) -> Result<
+        ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>,
+        DurableLifecycleStoreErrorV3,
+    > {
+        self.begin_restart_inner(epoch, |_| Ok(()))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn begin_restart_with_admission_hook<A>(
+        self,
+        epoch: &'e FreshProcessEpochV3,
+        admission_hook: A,
+    ) -> Result<
+        ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>,
+        DurableLifecycleStoreErrorV3,
+    >
+    where
+        A: FnMut(RestartAdmissionPublishCutpointV3) -> io::Result<()>,
+    {
+        self.begin_restart_inner(epoch, admission_hook)
+    }
+
+    fn begin_restart_inner<A>(
+        mut self,
+        epoch: &'e FreshProcessEpochV3,
+        admission_hook: A,
+    ) -> Result<
+        ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>,
+        DurableLifecycleStoreErrorV3,
+    >
+    where
+        A: FnMut(RestartAdmissionPublishCutpointV3) -> io::Result<()>,
+    {
+        if !std::ptr::eq(self.epoch, epoch) {
+            return Err(invalid(
+                "begin_restart received a process epoch other than the one retained during open",
+            ));
+        }
+        if self.poisoned || self.store.poisoned() || self.issues.poisoned() {
+            return Err(invalid(
+                "poisoned replay wrapper cannot begin a restart epoch",
+            ));
+        }
+        if self.collector.is_some() {
+            return Err(invalid(
+                "NeedsRestartEpoch unexpectedly owns collector evidence",
+            ));
+        }
+        self.census.revalidate()?;
+        epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed before restart admission: {error}"
+            ))
+        })?;
+        self.store.revalidate()?;
+        let prepared = self.store.prepared_manifest.as_ref().ok_or_else(|| {
+            invalid("restart admission requires the exact retained prepared manifest")
+        })?;
+        let prepared_profile_sha256 = prepared_profile_sha256(&prepared.bytes)?;
+        let collector_policy_sha256 = lifecycle_prepared_collector_policy_sha256(
+            self.store
+                .records
+                .first()
+                .ok_or_else(|| invalid("blocking lifecycle lost its prepared record"))?,
+        )?;
+        let epoch_binding = epoch.bind_restart_admission()?;
+        let boot_session_uuid = epoch_binding.boot_session_uuid().to_string();
+        let process_epoch_sha256 = epoch_binding.process_epoch_sha256().to_string();
+        let restart_epoch_nonce = epoch_binding.restart_epoch_nonce().to_string();
+        let restart_started_monotonic_nanoseconds =
+            epoch_binding.restart_started_monotonic_nanoseconds();
+        let live_before = capture_restart_iomedia_inventory_v3().map_err(|error| {
+            invalid(format!(
+                "restart live-before IOMedia capture failed: {error}"
+            ))
+        })?;
+        let baseline = RestartBaselineInventoryV3::from_inventory(live_before.report())?;
+        let current_live_before_inventory_sha256 = baseline.sha256()?;
+        if baseline.boot_session_uuid() != boot_session_uuid {
+            return Err(invalid(
+                "restart live-before inventory and process epoch belong to different boots",
+            ));
+        }
+        live_before
+            .revalidate_after_persistence()
+            .map_err(|error| {
+                invalid(format!(
+                    "restart live-before inventory changed before durable admission: {error}"
+                ))
+            })?;
+        let draft = RestartAdmissionDraftV3 {
+            current_live_before_inventory_sha256: current_live_before_inventory_sha256.clone(),
+            epoch: epoch_binding,
+            prepared_manifest_inode: prepared.binding.ino,
+            prepared_manifest_sha256: prepared.digest.clone(),
+            prepared_profile_sha256,
+        };
+        let event = ReconciliationLifecycleEventV3::restart_started(
+            boot_session_uuid.clone(),
+            collector_policy_sha256,
+            restart_started_monotonic_nanoseconds,
+            restart_epoch_nonce.clone(),
+        );
+        let digest = self.store.append_restart_with_admission_hook(
+            &mut self.journal,
+            event.0,
+            draft,
+            admission_hook,
+        )?;
+        let mut append = RetainedLifecycleRecordAppendV3::retain(&self.store, &digest)?;
+        let admissions = RestartAdmissionRootS1TransferV3::retain(
+            self.store.restart_admissions.as_ref().ok_or_else(|| {
+                invalid("restart admission append lost its retained V3 directory")
+            })?,
+        )?;
+        let sink = self.census.selected_restart_admission_sink()?;
+        if let Err(error) = append.adopt_restart_pair_into_s1(sink, admissions) {
+            self.poisoned = true;
+            return Err(error);
+        }
+        append.require_s1_adopted()?;
+        live_before
+            .revalidate_after_persistence()
+            .map_err(|error| {
+                self.poisoned = true;
+                invalid(format!(
+                    "restart live-before inventory changed across durable admission: {error}"
+                ))
+            })?;
+        self.census.revalidate()?;
+        self.store.revalidate()?;
+        epoch.validate_current().map_err(|error| {
+            self.poisoned = true;
+            invalid(format!(
+                "fresh process epoch changed after restart admission: {error}"
+            ))
+        })?;
+        let admission = self
+            .store
+            .restart_admissions
+            .as_ref()
+            .and_then(|admissions| admissions.records.last())
+            .ok_or_else(|| invalid("restart admission append retained no final V3 capsule"))?;
+        if admission.record.current_live_before_inventory_sha256
+            != current_live_before_inventory_sha256
+            || admission.record.process_epoch_sha256 != process_epoch_sha256
+            || admission.record.restart_epoch_nonce != restart_epoch_nonce
+            || admission.record.lifecycle_record_sha256 != digest
+        {
+            self.poisoned = true;
+            return Err(invalid(
+                "active restart epoch differs from its final replayed admission capsule",
+            ));
+        }
+        let active_restart = ActiveRestartEpochV3 {
+            admission_sha256: admission.digest.clone(),
+            baseline,
+            boot_session_uuid: admission.record.boot_session_uuid.clone(),
+            collector_pending: false,
+            current_live_before_inventory_sha256,
+            live_before,
+            prepared_manifest_sha256: admission.record.prepared_manifest_sha256.clone(),
+            prepared_profile_sha256: admission.record.prepared_profile_sha256.clone(),
+            process_epoch_sha256,
+            restart_epoch_nonce,
+            restart_started_monotonic_nanoseconds,
+            _not_send_or_sync: PhantomData,
+        };
+        Ok(ReconciliationOperationStoreV3 {
+            census: self.census,
+            epoch: self.epoch,
+            journal: self.journal,
+            poisoned: self.poisoned,
+            prepared: self.prepared,
+            collector: self.collector,
+            issues: self.issues,
+            restart: active_restart,
+            store: self.store,
+        })
+    }
+
+    /// Compatibility activation for pre-admission unit fixtures.  It is
+    /// deliberately unavailable to production and does not write a restart
+    /// record; Stage3 tests exercise `begin_restart` itself.
+    #[cfg(test)]
+    fn activate_without_admission_for_test(
+        self,
+    ) -> Result<
+        ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>,
+        DurableLifecycleStoreErrorV3,
+    > {
+        let binding = self.epoch.bind_restart_admission()?;
+        let process_epoch_sha256 = binding.process_epoch_sha256().to_string();
+        let restart_epoch_nonce = binding.restart_epoch_nonce().to_string();
+        let live_before = capture_restart_iomedia_inventory_v3()
+            .map_err(|error| invalid(format!("test restart inventory capture failed: {error}")))?;
+        let baseline = RestartBaselineInventoryV3::from_inventory(live_before.report())?;
+        let boot_session_uuid = baseline.boot_session_uuid().to_string();
+        let current_live_before_inventory_sha256 = baseline.sha256()?;
+        Ok(ReconciliationOperationStoreV3 {
+            census: self.census,
+            epoch: self.epoch,
+            journal: self.journal,
+            poisoned: self.poisoned,
+            prepared: self.prepared,
+            collector: self.collector,
+            issues: self.issues,
+            restart: ActiveRestartEpochV3 {
+                admission_sha256: "0".repeat(64),
+                baseline,
+                boot_session_uuid,
+                collector_pending: false,
+                current_live_before_inventory_sha256,
+                live_before,
+                prepared_manifest_sha256: "0".repeat(64),
+                prepared_profile_sha256: "0".repeat(64),
+                process_epoch_sha256,
+                restart_epoch_nonce,
+                restart_started_monotonic_nanoseconds: 1,
+                _not_send_or_sync: PhantomData,
+            },
+            store: self.store,
+        })
+    }
+}
+
+impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
+    fn require_no_collector_pending(
+        &self,
+        action: &str,
+    ) -> Result<(), DurableLifecycleStoreErrorV3> {
+        if self.restart.collector_pending {
+            return Err(invalid(format!(
+                "{action} is forbidden while a collector observation is in flight"
+            )));
+        }
+        Ok(())
+    }
+
+    fn collector_seed(
+        &self,
+    ) -> Result<ActiveRestartCollectorSeedV3<'_>, DurableLifecycleStoreErrorV3> {
+        if self.poisoned || self.store.poisoned() || self.issues.poisoned() {
+            return Err(invalid(
+                "poisoned active restart cannot mint a collector seed",
+            ));
+        }
+        if self.collector.is_some() {
+            return Err(invalid(
+                "admission live-before seed is unavailable after the first collector observation",
+            ));
+        }
+        if self.restart.collector_pending {
+            return Err(invalid(
+                "restart already owns an in-flight collector observation",
+            ));
+        }
+        let seed = ActiveRestartCollectorSeedV3 {
+            operation_nonce: self.store.operation_nonce(),
+            owner: &self.restart,
+            _not_send_or_sync: PhantomData,
+        };
+        seed.require_owner(&self.restart)?;
+        Ok(seed)
+    }
+
+    fn collector_epoch(
+        &self,
+    ) -> Result<ActiveRestartCollectorEpochV3<'_>, DurableLifecycleStoreErrorV3> {
+        if self.poisoned || self.store.poisoned() || self.issues.poisoned() {
+            return Err(invalid(
+                "poisoned active restart cannot mint a collector epoch",
+            ));
+        }
+        if self.restart.collector_pending {
+            return Err(invalid(
+                "restart already owns an in-flight collector observation",
+            ));
+        }
+        Ok(ActiveRestartCollectorEpochV3 {
+            operation_nonce: self.store.operation_nonce(),
+            owner: &self.restart,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    /// The only production collection entrypoint.  The request is assembled
+    /// internally from the exact prepared capability and the unforgeable
+    /// admission-owned live-before seed; callers cannot provide raw paths,
+    /// digests, policy DTOs, or restart epoch strings.
+    pub(crate) fn collect_reconciliation_snapshot(
+        &mut self,
+    ) -> Result<PendingRestartObservationV3, DurableLifecycleStoreErrorV3> {
+        self.collect_reconciliation_snapshot_inner(|_| Ok(()))
+    }
+
+    fn collect_reconciliation_snapshot_inner<H>(
+        &mut self,
+        after_iomedia_capture: H,
+    ) -> Result<PendingRestartObservationV3, DurableLifecycleStoreErrorV3>
+    where
+        H: FnOnce(&mut HeldRestartIOMediaInventoryV3) -> Result<(), RestartCollectorErrorV3>,
+    {
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "active restart epoch changed before collection: {error}"
+            ))
+        })?;
+        self.store.revalidate()?;
+        let seed = self.collector_seed()?;
+        let prepared = self.prepared.as_ref().ok_or_else(|| {
+            invalid("active restart collection lacks its retained prepared capability")
+        })?;
+        let pending =
+            prepared.collect_reconciliation_from_active_with_hook(seed, after_iomedia_capture)?;
+        self.census.revalidate()?;
+        self.store.revalidate()?;
+        prepared.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "active restart epoch changed across collection: {error}"
+            ))
+        })?;
+        self.restart.collector_pending = true;
+        Ok(pending)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn collect_reconciliation_with_post_capture_substitution_for_test(
+        &mut self,
+    ) -> Result<PendingRestartObservationV3, DurableLifecycleStoreErrorV3> {
+        self.collect_reconciliation_snapshot_inner(|inventory| {
+            inventory.substitute_valid_property_for_test();
+            Ok(())
+        })
+    }
+
+    /// FreshAbsence is a successor of the exact wrapper-owned durable
+    /// predictable observation: either an already-Zero snapshot or a Unique
+    /// snapshot whose full current-boot expected-absence inventory was sealed
+    /// before cleanup. It cannot be requested from a raw snapshot DTO or from
+    /// the original admission live-before seed.
+    pub(crate) fn collect_fresh_absence(
+        &mut self,
+    ) -> Result<PendingRestartObservationV3, DurableLifecycleStoreErrorV3> {
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "active restart epoch changed before absence collection: {error}"
+            ))
+        })?;
+        self.store.revalidate()?;
+        let (expected_snapshot_sha256, expected_absence_sha256) =
+            self.journal.restart_fresh_absence_binding()?;
+        let prior = self.collector.as_ref().ok_or_else(|| {
+            invalid("FreshAbsence requires a wrapper-owned retained predictable observation")
+        })?;
+        prior.revalidate_bound()?;
+        let snapshot = prior.snapshot_for_fresh_absence()?;
+        let actual_snapshot_sha256 = reconciliation_snapshot_sha256(snapshot)?;
+        if actual_snapshot_sha256 != expected_snapshot_sha256
+            || snapshot
+                .current_expected_absence_inventory_sha256
+                .as_deref()
+                != Some(expected_absence_sha256)
+        {
+            return Err(invalid(
+                "retained collector differs from the lifecycle-admitted FreshAbsence source",
+            ));
+        }
+        let epoch = self.collector_epoch()?;
+        let prepared = self.prepared.as_ref().ok_or_else(|| {
+            invalid("FreshAbsence collection lacks its retained prepared capability")
+        })?;
+        let pending = prepared.collect_fresh_absence_from_active(epoch, snapshot)?;
+        prior.revalidate_bound()?;
+        self.census.revalidate()?;
+        self.store.revalidate()?;
+        prepared.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "active restart epoch changed across absence collection: {error}"
+            ))
+        })?;
+        self.restart.collector_pending = true;
+        Ok(pending)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn poison_live_before_for_test(&mut self) {
+        self.restart.live_before.poison_boot_session_for_test();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reject_cross_epoch_collector_seed_for_test(
+        &self,
+    ) -> Result<(), DurableLifecycleStoreErrorV3> {
+        let live_before = capture_restart_iomedia_inventory_v3().map_err(|error| {
+            invalid(format!(
+                "test foreign restart inventory capture failed: {error}"
+            ))
+        })?;
+        let baseline = RestartBaselineInventoryV3::from_inventory(live_before.report())?;
+        let foreign = ActiveRestartEpochV3 {
+            admission_sha256: self.restart.admission_sha256.clone(),
+            boot_session_uuid: self.restart.boot_session_uuid.clone(),
+            collector_pending: false,
+            current_live_before_inventory_sha256: baseline.sha256()?,
+            baseline,
+            live_before,
+            prepared_manifest_sha256: self.restart.prepared_manifest_sha256.clone(),
+            prepared_profile_sha256: self.restart.prepared_profile_sha256.clone(),
+            process_epoch_sha256: self.restart.process_epoch_sha256.clone(),
+            restart_epoch_nonce: "f".repeat(64),
+            restart_started_monotonic_nanoseconds: self
+                .restart
+                .restart_started_monotonic_nanoseconds,
+            _not_send_or_sync: PhantomData,
+        };
+        let foreign_seed = ActiveRestartCollectorSeedV3 {
+            operation_nonce: self.store.operation_nonce(),
+            owner: &foreign,
+            _not_send_or_sync: PhantomData,
+        };
+        foreign_seed.require_owner(&self.restart)?;
+        Ok(())
+    }
+
     #[cfg(test)]
     pub(crate) fn append_reconciliation(
         &mut self,
@@ -1790,12 +3027,43 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
 
     pub(crate) fn append_retained_collector(
         &mut self,
+        retained: RetainedCollectorObservationV3,
+    ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        if !self.restart.collector_pending {
+            self.poisoned = true;
+            return Err(invalid(
+                "collector receipt has no exact in-flight Active reservation",
+            ));
+        }
+        match self.append_retained_collector_inner(retained) {
+            Ok(digest) => {
+                self.restart.collector_pending = false;
+                Ok(digest)
+            }
+            Err(error) => {
+                self.poisoned = true;
+                Err(error)
+            }
+        }
+    }
+
+    pub(crate) fn poison_pending_collector(&mut self) {
+        self.poisoned = true;
+    }
+
+    fn append_retained_collector_inner(
+        &mut self,
         mut retained: RetainedCollectorObservationV3,
     ) -> Result<String, DurableLifecycleStoreErrorV3> {
-        if self.collector.is_some() {
-            return Err(invalid(
-                "operation already owns a retained collector observation",
-            ));
+        match self.collector.as_ref() {
+            None => {
+                if !matches!(&retained, RetainedCollectorObservationV3::Reconciliation(_)) {
+                    return Err(invalid(
+                        "first retained collector observation must be reconciliation",
+                    ));
+                }
+            }
+            Some(prior) => retained.validate_fresh_absence_successor(prior)?,
         }
         let (operation_nonce, event) = {
             let capability = retained.append_capability().map_err(|error| {
@@ -1837,6 +3105,14 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
                 "retained collector evidence changed after lifecycle append: {error}"
             ))
         })?;
+        if let Some(prior) = self.collector.as_ref() {
+            prior.revalidate_bound().map_err(|error| {
+                self.poisoned = true;
+                invalid(format!(
+                    "prior retained predictable observation changed across FreshAbsence persistence: {error}"
+                ))
+            })?;
+        }
         self.collector = Some(retained);
         Ok(digest)
     }
@@ -1850,6 +3126,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         command: ExactDisposableCommandV3,
         epochs: EffectEpochEvidenceV3,
     ) -> Result<PersistedOperationIssueSealV3, DurableLifecycleStoreErrorV3> {
+        self.require_no_collector_pending("effect issue")?;
         if self.poisoned {
             return Err(invalid(
                 "reconciliation operation store is poisoned; exact restart replay is required",
@@ -2040,6 +3317,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
     where
         F: FnOnce() -> io::Result<()>,
     {
+        self.require_no_collector_pending("runner-death recovery")?;
         if self.poisoned {
             return Err(invalid(
                 "poisoned reconciliation store cannot mint a recovered runner proof",
@@ -2106,6 +3384,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmountCallbackV3>,
         DurableLifecycleStoreErrorV3,
     > {
+        self.require_no_collector_pending("unmount delta")?;
         if self.poisoned {
             return Err(invalid(
                 "poisoned reconciliation store cannot begin an unmount delta",
@@ -2157,6 +3436,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
             prepared,
             collector: _,
             issues,
+            restart,
             store,
         } = self;
         let census = census.begin_unmount_delta(delta.sealed_plan())?;
@@ -2171,6 +3451,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
             journal,
             poisoned,
             prepared,
+            restart,
             store,
             _state: PhantomData,
             _not_send_or_sync: PhantomData,
@@ -2325,6 +3606,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
     pub(crate) fn complete_reconciliation_from_retained_absence(
         self,
     ) -> Result<CompletedReconciliationOperationStoreV3<'a, 'e>, DurableLifecycleStoreErrorV3> {
+        self.require_no_collector_pending("terminal completion")?;
         let event = {
             let retained = self.collector.as_ref().ok_or_else(|| {
                 invalid("terminal closure requires a wrapper-owned retained FreshAbsence")
@@ -2386,16 +3668,9 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
             issues: self.issues,
             journal: self.journal,
             prepared: self.prepared,
+            restart: self.restart,
             store: self.store,
         })
-    }
-
-    pub(crate) fn operation_nonce(&self) -> &str {
-        self.store.operation_nonce()
-    }
-
-    pub(crate) fn poisoned(&self) -> bool {
-        self.poisoned || self.store.poisoned()
     }
 
     fn revalidate_existing_issues(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
@@ -2527,6 +3802,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             journal,
             poisoned,
             prepared,
+            restart,
             store,
             _state: _,
             _not_send_or_sync: _,
@@ -2542,6 +3818,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             journal,
             poisoned,
             prepared,
+            restart,
             store,
             _state: PhantomData,
             _not_send_or_sync: PhantomData,
@@ -2556,7 +3833,10 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
     pub(crate) fn append_retained_observation_and_advance(
         mut self,
         mut next: RetainedCollectorObservationV3,
-    ) -> Result<ReconciliationOperationStoreV3<'a, 'e>, DurableLifecycleStoreErrorV3> {
+    ) -> Result<
+        ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>,
+        DurableLifecycleStoreErrorV3,
+    > {
         let (operation_nonce, mount_absence_sha256) = {
             let observation = self.delta.seal_observation(&next).map_err(|error| {
                 invalid(format!(
@@ -2600,6 +3880,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             journal,
             poisoned,
             prepared,
+            restart,
             store,
             _state: _,
             _not_send_or_sync: _,
@@ -2618,6 +3899,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             prepared,
             collector: Some(next),
             issues,
+            restart,
             store,
         };
         stable.census.revalidate()?;
@@ -2935,10 +4217,66 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
         &mut self,
         journal: &mut DisposableLifecycleJournalV2,
         event: DisposableLifecycleEventV2,
-        mut hook: F,
+        hook: F,
     ) -> Result<String, DurableLifecycleStoreErrorV3>
     where
         F: FnMut(PublishCutpointV3) -> io::Result<()>,
+    {
+        self.append_mode_with_admission_hook(journal, event, None, hook)
+    }
+
+    fn append_restart_with_admission(
+        &mut self,
+        journal: &mut DisposableLifecycleJournalV2,
+        event: DisposableLifecycleEventV2,
+        admission: RestartAdmissionDraftV3,
+    ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        self.append_mode_with_admission_hook(journal, event, Some(admission), |_| Ok(()))
+    }
+
+    fn append_mode_with_admission_hook<F>(
+        &mut self,
+        journal: &mut DisposableLifecycleJournalV2,
+        event: DisposableLifecycleEventV2,
+        admission: Option<RestartAdmissionDraftV3>,
+        hook: F,
+    ) -> Result<String, DurableLifecycleStoreErrorV3>
+    where
+        F: FnMut(PublishCutpointV3) -> io::Result<()>,
+    {
+        self.append_mode_with_admission_hooks(journal, event, admission, hook, |_| Ok(()))
+    }
+
+    fn append_restart_with_admission_hook<A>(
+        &mut self,
+        journal: &mut DisposableLifecycleJournalV2,
+        event: DisposableLifecycleEventV2,
+        admission: RestartAdmissionDraftV3,
+        admission_hook: A,
+    ) -> Result<String, DurableLifecycleStoreErrorV3>
+    where
+        A: FnMut(RestartAdmissionPublishCutpointV3) -> io::Result<()>,
+    {
+        self.append_mode_with_admission_hooks(
+            journal,
+            event,
+            Some(admission),
+            |_| Ok(()),
+            admission_hook,
+        )
+    }
+
+    fn append_mode_with_admission_hooks<F, A>(
+        &mut self,
+        journal: &mut DisposableLifecycleJournalV2,
+        event: DisposableLifecycleEventV2,
+        mut admission: Option<RestartAdmissionDraftV3>,
+        mut hook: F,
+        mut admission_hook: A,
+    ) -> Result<String, DurableLifecycleStoreErrorV3>
+    where
+        F: FnMut(PublishCutpointV3) -> io::Result<()>,
+        A: FnMut(RestartAdmissionPublishCutpointV3) -> io::Result<()>,
     {
         if self.poisoned {
             return Err(invalid(
@@ -3015,6 +4353,25 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
             )
             .map_err(|error| io::Error::other(error.to_string()))?;
             self.records.push(capsule);
+            if let Some(draft) = admission.take() {
+                let admission_record = draft
+                    .seal(record, bytes)
+                    .map_err(|error| io::Error::other(error.to_string()))?;
+                self.restart_admissions
+                    .as_mut()
+                    .ok_or_else(|| {
+                        io::Error::other("restart-start append lacks its fixed admission directory")
+                    })?
+                    .persist_with_hook(
+                        &self.directory,
+                        admission_record,
+                        expected_uid,
+                        expected_gid,
+                        expected_dev,
+                        &mut admission_hook,
+                    )
+                    .map_err(|error| io::Error::other(error.to_string()))?;
+            }
             hook(PublishCutpointV3::CapsuleRetained)?;
             self.directory_binding =
                 binding(&self.directory).map_err(|error| io::Error::other(error.to_string()))?;
@@ -3087,7 +4444,7 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
     }
 
     fn revalidate_roster_and_records(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
-        let names = read_directory_names(self.directory.as_raw_fd(), MAX_RECORDS + 2)?;
+        let names = read_directory_names(self.directory.as_raw_fd(), MAX_RECORDS + 3)?;
         let mut expected = (1..=self.records.len())
             .map(record_name)
             .collect::<Result<Vec<_>, _>>()?;
@@ -3100,6 +4457,7 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
         }
         if self.format == OperationFormatV3::RequiredPreparedManifestV3 {
             expected.push(PREPARED_MANIFEST_NAME_V3.to_string());
+            expected.push(RESTART_ADMISSION_DIRECTORY_NAME_V3.to_string());
         }
         expected.sort();
         if names != expected {
@@ -3161,6 +4519,37 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
                 ));
             }
             (_, None) => {}
+        }
+        match (
+            self.format,
+            self.prepared_manifest.as_ref(),
+            self.restart_admissions.as_ref(),
+        ) {
+            (OperationFormatV3::RequiredPreparedManifestV3, Some(prepared), Some(admissions)) => {
+                admissions.revalidate(
+                    &self.directory,
+                    self.expected_uid,
+                    self.expected_gid,
+                    self.directory_binding.dev,
+                )?;
+                validate_restart_admission_bijection(
+                    &self.records,
+                    admissions,
+                    prepared,
+                    &self.operation_nonce,
+                )?;
+            }
+            (OperationFormatV3::RequiredPreparedManifestV3, _, _) => {
+                return Err(invalid(
+                    "prepared V3 operation lost its restart-admission store",
+                ));
+            }
+            (_, None, None) => {}
+            _ => {
+                return Err(invalid(
+                    "restart-admission store exists outside the prepared V3 format",
+                ));
+            }
         }
         self.validate_prepared_lifecycle_binding()?;
         Ok(())
@@ -3752,18 +5141,310 @@ fn record_name(sequence: usize) -> Result<String, DurableLifecycleStoreErrorV3> 
     Ok(format!("{sequence:08}.json"))
 }
 
+fn restart_admission_name(
+    ordinal: usize,
+    digest: &str,
+) -> Result<String, DurableLifecycleStoreErrorV3> {
+    if ordinal == 0 || ordinal > MAX_RESTART_ADMISSIONS_V3 || !valid_digest(digest) {
+        return Err(invalid(
+            "restart-admission ordinal or digest is outside its fixed bound",
+        ));
+    }
+    Ok(format!("restart-{ordinal:020}-{digest}.json"))
+}
+
+fn parse_restart_admission_name(name: &str) -> Option<(usize, String)> {
+    let body = name.strip_prefix("restart-")?.strip_suffix(".json")?;
+    let (ordinal, digest) = body.split_once('-')?;
+    if ordinal.len() != 20
+        || !ordinal.bytes().all(|byte| byte.is_ascii_digit())
+        || !valid_digest(digest)
+    {
+        return None;
+    }
+    let ordinal = ordinal.parse::<usize>().ok()?;
+    if ordinal == 0 || ordinal > MAX_RESTART_ADMISSIONS_V3 {
+        return None;
+    }
+    Some((ordinal, digest.to_string()))
+}
+
+fn open_restart_admission_record(
+    directory: &File,
+    name: &str,
+    expected_uid: u32,
+    expected_gid: u32,
+    expected_dev: u64,
+) -> Result<RestartAdmissionCapsuleV3, DurableLifecycleStoreErrorV3> {
+    let file = openat_regular(directory.as_raw_fd(), name)?;
+    let binding = validate_regular(
+        &file,
+        expected_uid,
+        expected_gid,
+        0o400,
+        Some(expected_dev),
+        None,
+        "existing restart-admission record",
+    )?;
+    if named_binding(directory.as_raw_fd(), name)? != binding {
+        return Err(invalid(
+            "restart-admission descriptor differs from its fixed pathname",
+        ));
+    }
+    let bytes = read_stable(&file, binding)?;
+    if bytes.is_empty() || bytes.len() > MAX_RECORD_BYTES {
+        return Err(invalid(
+            "existing restart-admission record exceeds its fixed bound",
+        ));
+    }
+    let record: RestartAdmissionRecordV3 = serde_json::from_slice(&bytes).map_err(|error| {
+        invalid(format!(
+            "existing restart-admission record JSON failed: {error}"
+        ))
+    })?;
+    if canonical_json(&record)
+        .map_err(|error| invalid(format!("restart admission JSON failed: {error}")))?
+        != bytes
+    {
+        return Err(invalid(
+            "existing restart-admission record is not canonical",
+        ));
+    }
+    validate_restart_admission_record(&record)?;
+    Ok(RestartAdmissionCapsuleV3 {
+        binding,
+        digest: sha256(&bytes),
+        bytes,
+        file,
+        name: name.to_string(),
+        record,
+    })
+}
+
+fn validate_restart_admission_record(
+    record: &RestartAdmissionRecordV3,
+) -> Result<(), DurableLifecycleStoreErrorV3> {
+    if record.schema != RESTART_ADMISSION_SCHEMA_V3
+        || record.schema_version != 3
+        || record.authority.any()
+        || !valid_uuid(&record.boot_session_uuid)
+        || !valid_digest(&record.current_live_before_inventory_sha256)
+        || !valid_digest(&record.lifecycle_record_sha256)
+        || record
+            .lifecycle_previous_record_sha256
+            .as_ref()
+            .is_some_and(|digest| !valid_digest(digest))
+        || record.lifecycle_sequence == 0
+        || !valid_nonce(&record.operation_nonce)
+        || record.prepared_manifest_inode == 0
+        || !valid_digest(&record.prepared_manifest_sha256)
+        || !valid_digest(&record.prepared_profile_sha256)
+        || !valid_nonce(&record.process_epoch_nonce)
+        || !valid_digest(&record.process_epoch_sha256)
+        || !valid_nonce(&record.restart_epoch_nonce)
+        || record.restart_started_monotonic_nanoseconds == 0
+        || record.supervisor_kernel_start_microseconds == 0
+        || record.supervisor_pid == 0
+    {
+        return Err(invalid(
+            "restart-admission record is malformed or grants authority",
+        ));
+    }
+    Ok(())
+}
+
+fn prepared_profile_sha256(manifest_bytes: &[u8]) -> Result<String, DurableLifecycleStoreErrorV3> {
+    let value: serde_json::Value = serde_json::from_slice(manifest_bytes).map_err(|error| {
+        invalid(format!(
+            "prepared collector manifest JSON failed during admission replay: {error}"
+        ))
+    })?;
+    let digest = value
+        .get("profile_sha256")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| invalid("prepared collector manifest omits its profile digest"))?;
+    if !valid_digest(digest) {
+        return Err(invalid(
+            "prepared collector manifest profile digest is malformed",
+        ));
+    }
+    Ok(digest.to_string())
+}
+
+fn lifecycle_prepared_collector_policy_sha256(
+    record: &RecordCapsule,
+) -> Result<String, DurableLifecycleStoreErrorV3> {
+    let decoded: DisposableLifecycleRecordV2 = serde_json::from_slice(&record.bytes)
+        .map_err(|error| invalid(format!("prepared lifecycle JSON failed: {error}")))?;
+    let digest = match decoded.event {
+        DisposableLifecycleEventV2::OperationPrepared {
+            collector_policy_sha256,
+            ..
+        }
+        | DisposableLifecycleEventV2::OperationPreparedWithManifestV3 {
+            collector_policy_sha256,
+            ..
+        } => collector_policy_sha256,
+        _ => {
+            return Err(invalid(
+                "first lifecycle record is not an exact prepared operation",
+            ));
+        }
+    };
+    if !valid_digest(&digest) {
+        return Err(invalid(
+            "prepared lifecycle collector policy digest is malformed",
+        ));
+    }
+    Ok(digest)
+}
+
+fn validate_restart_admission_bijection(
+    lifecycle: &[RecordCapsule],
+    admissions: &RestartAdmissionStoreV3,
+    prepared: &PreparedManifestCapsuleV3,
+    operation_nonce: &str,
+) -> Result<(), DurableLifecycleStoreErrorV3> {
+    let profile_sha256 = prepared_profile_sha256(&prepared.bytes)?;
+    let mut expected = Vec::new();
+    for record in lifecycle {
+        let decoded: DisposableLifecycleRecordV2 = serde_json::from_slice(&record.bytes)
+            .map_err(|error| invalid(format!("lifecycle JSON failed: {error}")))?;
+        if let DisposableLifecycleEventV2::RestartReconciliationStarted {
+            boot_session_uuid,
+            monotonic_nanoseconds,
+            restart_epoch_nonce,
+            ..
+        } = decoded.event
+        {
+            expected.push((
+                boot_session_uuid,
+                monotonic_nanoseconds,
+                restart_epoch_nonce,
+                decoded.previous_record_sha256,
+                decoded.sequence,
+                sha256(&record.bytes),
+            ));
+        }
+    }
+    if expected.len() != admissions.records.len() {
+        return Err(invalid(
+            "V2 restart-start records and V3 admissions are not a complete bijection",
+        ));
+    }
+    let mut process_epochs = std::collections::BTreeSet::new();
+    let mut restart_epochs = std::collections::BTreeSet::new();
+    for (admission, expected) in admissions.records.iter().zip(expected) {
+        let record = &admission.record;
+        if record.operation_nonce != operation_nonce
+            || record.boot_session_uuid != expected.0
+            || record.restart_started_monotonic_nanoseconds != expected.1
+            || record.restart_epoch_nonce != expected.2
+            || record.lifecycle_previous_record_sha256 != expected.3
+            || record.lifecycle_sequence != expected.4
+            || record.lifecycle_record_sha256 != expected.5
+            || record.prepared_manifest_inode != prepared.binding.ino
+            || record.prepared_manifest_sha256 != prepared.digest
+            || record.prepared_profile_sha256 != profile_sha256
+            || !process_epochs.insert(record.process_epoch_sha256.clone())
+            || !restart_epochs.insert(record.restart_epoch_nonce.clone())
+        {
+            return Err(invalid(
+                "V3 restart admission differs from its exact V2 record, process, or prepared manifest",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Semantic S1 replay of the same V2↔V3 bijection.  The byte slices alone
+/// mint no capability; the private S1 seal proves that their exact descriptor
+/// identities and path bindings were retained by the closed-world census.
+pub(crate) fn validate_restart_admission_bijection_for_s1(
+    lifecycle: &[Vec<u8>],
+    admission_bytes: &[Vec<u8>],
+    prepared_manifest_bytes: &[u8],
+    prepared_manifest_inode: u64,
+    prepared_manifest_sha256: &str,
+    operation_nonce: &str,
+    _seal: S1RestartAdmissionReadSealV3,
+) -> Result<(), DurableLifecycleStoreErrorV3> {
+    let profile_sha256 = prepared_profile_sha256(prepared_manifest_bytes)?;
+    let mut expected = Vec::new();
+    for bytes in lifecycle {
+        let decoded: DisposableLifecycleRecordV2 = serde_json::from_slice(bytes)
+            .map_err(|error| invalid(format!("lifecycle JSON failed: {error}")))?;
+        if let DisposableLifecycleEventV2::RestartReconciliationStarted {
+            boot_session_uuid,
+            monotonic_nanoseconds,
+            restart_epoch_nonce,
+            ..
+        } = decoded.event
+        {
+            expected.push((
+                boot_session_uuid,
+                monotonic_nanoseconds,
+                restart_epoch_nonce,
+                decoded.previous_record_sha256,
+                decoded.sequence,
+                sha256(bytes),
+            ));
+        }
+    }
+    if expected.len() != admission_bytes.len() {
+        return Err(invalid(
+            "S1 V2 restart-start records and V3 admissions are not a complete bijection",
+        ));
+    }
+    let mut process_epochs = std::collections::BTreeSet::new();
+    let mut restart_epochs = std::collections::BTreeSet::new();
+    for (bytes, expected) in admission_bytes.iter().zip(expected) {
+        let record: RestartAdmissionRecordV3 = serde_json::from_slice(bytes)
+            .map_err(|error| invalid(format!("S1 restart-admission JSON failed: {error}")))?;
+        if canonical_json(&record)
+            .map_err(|error| invalid(format!("S1 restart admission JSON failed: {error}")))?
+            != *bytes
+        {
+            return Err(invalid("S1 restart-admission record is not canonical"));
+        }
+        validate_restart_admission_record(&record)?;
+        if record.operation_nonce != operation_nonce
+            || record.boot_session_uuid != expected.0
+            || record.restart_started_monotonic_nanoseconds != expected.1
+            || record.restart_epoch_nonce != expected.2
+            || record.lifecycle_previous_record_sha256 != expected.3
+            || record.lifecycle_sequence != expected.4
+            || record.lifecycle_record_sha256 != expected.5
+            || record.prepared_manifest_inode != prepared_manifest_inode
+            || record.prepared_manifest_sha256 != prepared_manifest_sha256
+            || record.prepared_profile_sha256 != profile_sha256
+            || !process_epochs.insert(record.process_epoch_sha256.clone())
+            || !restart_epochs.insert(record.restart_epoch_nonce.clone())
+        {
+            return Err(invalid(
+                "S1 V3 restart admission differs from its exact V2, process, or prepared binding",
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn classify_operation_roster(
     names: &[String],
 ) -> Result<(OperationFormatV3, Vec<String>), DurableLifecycleStoreErrorV3> {
     let mut records = Vec::new();
+    let mut admission_roots = 0usize;
     let mut issue_roots = 0usize;
     let mut prepared_manifests = 0usize;
     for name in names {
         if name == "effect-issues-v3" {
             issue_roots += 1;
+        } else if name == RESTART_ADMISSION_DIRECTORY_NAME_V3 {
+            admission_roots += 1;
         } else if name == PREPARED_MANIFEST_NAME_V3 {
             prepared_manifests += 1;
         } else if name.contains("effect-issues-v3")
+            || name.contains("restart-admissions-v3")
             || name.contains("prepared-collector-manifest-v3")
             || !name.ends_with(".json")
         {
@@ -3774,37 +5455,61 @@ fn classify_operation_roster(
             records.push(name.clone());
         }
     }
-    if issue_roots > 1 || prepared_manifests > 1 {
+    if admission_roots > 1 || issue_roots > 1 || prepared_manifests > 1 {
         return Err(invalid(
             "operation roster contains duplicate mandatory V3 entries",
         ));
     }
     records.sort();
-    let format = match (issue_roots, prepared_manifests) {
-        (1, 1) => OperationFormatV3::RequiredPreparedManifestV3,
-        (1, 0) => OperationFormatV3::RequiredEffectIssuesV3,
-        (0, 0) => OperationFormatV3::LegacyV2,
-        (0, 1) => {
+    let format = match (issue_roots, prepared_manifests, admission_roots) {
+        (1, 1, 1) => OperationFormatV3::RequiredPreparedManifestV3,
+        (1, 0, 0) => OperationFormatV3::RequiredEffectIssuesV3,
+        (0, 0, 0) => OperationFormatV3::LegacyV2,
+        (0, 1, _) => {
             return Err(invalid(
                 "prepared collector manifest exists without the mandatory V3 issue root",
             ));
         }
-        _ => unreachable!("duplicate mandatory entries were rejected"),
+        (1, 1, 0) => {
+            return Err(invalid(
+                "prepared collector manifest exists without the mandatory restart-admission root",
+            ));
+        }
+        (_, _, _) => {
+            return Err(invalid(
+                "restart-admission root exists outside the exact prepared V3 schema",
+            ));
+        }
     };
     Ok((format, records))
 }
 
 fn require_nonce(value: &str) -> Result<(), DurableLifecycleStoreErrorV3> {
-    if value.len() != 64
-        || !value
-            .as_bytes()
-            .iter()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
-        || value.as_bytes().iter().all(|byte| *byte == b'0')
-    {
+    if !valid_nonce(value) {
         return Err(invalid("operation nonce is not non-nil lowercase 64-hex"));
     }
     Ok(())
+}
+
+fn valid_nonce(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+        && !value.as_bytes().iter().all(|byte| *byte == b'0')
+}
+
+fn valid_digest(value: &str) -> bool {
+    valid_nonce(value)
+}
+
+fn valid_uuid(value: &str) -> bool {
+    value.len() == 36
+        && value.bytes().enumerate().all(|(index, byte)| match index {
+            8 | 13 | 18 | 23 => byte == b'-',
+            _ => byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase(),
+        })
 }
 
 fn invalid(message: impl Into<String>) -> DurableLifecycleStoreErrorV3 {

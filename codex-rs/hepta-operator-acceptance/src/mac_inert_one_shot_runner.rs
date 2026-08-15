@@ -208,6 +208,18 @@ pub struct FreshProcessEpochV3 {
     binding_sha256: String,
 }
 
+/// One-shot, process-authenticated material for a durable restart-admission
+/// record.  Callers cannot supply any of these identity fields as strings.
+pub(crate) struct RestartAdmissionEpochBindingV3 {
+    boot_session_uuid: String,
+    process_epoch_nonce: String,
+    process_epoch_sha256: String,
+    restart_epoch_nonce: String,
+    restart_started_monotonic_nanoseconds: u64,
+    supervisor_kernel_start_microseconds: u64,
+    supervisor_pid: u32,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RunnerHelloRequestV3 {
@@ -1286,6 +1298,53 @@ impl FreshProcessEpochV3 {
             ));
         }
         Ok(())
+    }
+
+    pub(crate) fn bind_restart_admission(
+        &self,
+    ) -> Result<RestartAdmissionEpochBindingV3, InertRunnerErrorV3> {
+        self.validate_current()?;
+        let binding = RestartAdmissionEpochBindingV3 {
+            boot_session_uuid: self.binding.boot_session_uuid.clone(),
+            process_epoch_nonce: self.binding.nonce.clone(),
+            process_epoch_sha256: self.binding_sha256.clone(),
+            restart_epoch_nonce: random_hex(32)?,
+            restart_started_monotonic_nanoseconds: monotonic_nanoseconds()?,
+            supervisor_kernel_start_microseconds: self.binding.kernel_start_microseconds,
+            supervisor_pid: self.binding.pid,
+        };
+        self.validate_current()?;
+        Ok(binding)
+    }
+}
+
+impl RestartAdmissionEpochBindingV3 {
+    pub(crate) fn boot_session_uuid(&self) -> &str {
+        &self.boot_session_uuid
+    }
+
+    pub(crate) fn process_epoch_nonce(&self) -> &str {
+        &self.process_epoch_nonce
+    }
+
+    pub(crate) fn process_epoch_sha256(&self) -> &str {
+        &self.process_epoch_sha256
+    }
+
+    pub(crate) fn restart_epoch_nonce(&self) -> &str {
+        &self.restart_epoch_nonce
+    }
+
+    pub(crate) fn restart_started_monotonic_nanoseconds(&self) -> u64 {
+        self.restart_started_monotonic_nanoseconds
+    }
+
+    pub(crate) fn supervisor_kernel_start_microseconds(&self) -> u64 {
+        self.supervisor_kernel_start_microseconds
+    }
+
+    pub(crate) fn supervisor_pid(&self) -> u32 {
+        self.supervisor_pid
     }
 }
 

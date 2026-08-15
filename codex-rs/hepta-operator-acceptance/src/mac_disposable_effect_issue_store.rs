@@ -19,6 +19,7 @@ use crate::mac_disposable_lifecycle::LifecycleErrorV2;
 use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
 use crate::mac_disposable_lifecycle_store::OperationIssueReadSealV3;
 use crate::mac_disposable_lifecycle_store::PreparedManifestS1TransferV3;
+use crate::mac_disposable_lifecycle_store::RestartAdmissionRootS1TransferV3;
 use crate::mac_disposable_lifecycle_store::RetainedEffectIssueSourceV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleIssueSourceV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorIssueBindingV3;
@@ -45,6 +46,8 @@ use thiserror::Error;
 const ISSUE_SCHEMA_V3: &str = "hepta_mac_disposable_durable_effect_issue_v3";
 const ISSUE_DIRECTORY_NAME_V3: &str = "effect-issues-v3";
 const ISSUE_DIRECTORY_TEMPORARY_NAME_V3: &str = ".incoming-effect-issues-v3";
+const PREPARED_MANIFEST_NAME_V3: &str = "prepared-collector-manifest-v3.json";
+const RESTART_ADMISSION_DIRECTORY_NAME_V3: &str = "restart-admissions-v3";
 const MAX_ISSUES_V3: usize = 256;
 const MAX_ISSUE_BYTES_V3: usize = 1024 * 1024;
 const MAX_LIFECYCLE_RECORDS_V3: usize = 256;
@@ -1644,6 +1647,7 @@ impl DurableEffectIssueStoreV3 {
         operation_directory: File,
         final_name: String,
         prepared_manifest: Option<PreparedManifestS1TransferV3>,
+        restart_admissions: Option<RestartAdmissionRootS1TransferV3>,
     ) -> Result<(), DurableEffectIssueStoreErrorV3> {
         self.revalidate_prepared_empty()?;
         sink.retain(
@@ -1651,6 +1655,7 @@ impl DurableEffectIssueStoreV3 {
             final_name,
             self.directory.try_clone()?,
             prepared_manifest,
+            restart_admissions,
         )
         .map_err(|error| {
             invalid(format!(
@@ -2270,12 +2275,19 @@ fn lifecycle_record_roster(
     let names = list_directory(operation_directory_fd, MAX_OPERATION_ENTRIES_V3)?;
     let mut records = Vec::new();
     for name in names {
-        if name == ISSUE_DIRECTORY_NAME_V3 {
+        if name == ISSUE_DIRECTORY_NAME_V3
+            || name == PREPARED_MANIFEST_NAME_V3
+            || name == RESTART_ADMISSION_DIRECTORY_NAME_V3
+        {
             continue;
         }
-        if name.contains("effect-issues-v3") || parse_lifecycle_record_name(&name).is_none() {
+        if name.contains("effect-issues-v3")
+            || name.contains("prepared-collector-manifest-v3")
+            || name.contains("restart-admissions-v3")
+            || parse_lifecycle_record_name(&name).is_none()
+        {
             return Err(invalid(
-                "operation contains a noncanonical lifecycle or V3 issue-root entry",
+                "operation contains a noncanonical lifecycle or V3 sidecar entry",
             ));
         }
         records.push(name);

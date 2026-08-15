@@ -2,9 +2,9 @@ use super::*;
 
 use crate::mac_disposable_lifecycle::DisposableLifecycleEventV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleJournalV2;
-use crate::mac_disposable_lifecycle::fresh_absence_sha256;
 use crate::mac_disposable_lifecycle_store::CensusBoundDurableLifecycleStoreV3;
 use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
+use crate::mac_disposable_lifecycle_store::RestartAdmissionPublishCutpointV3;
 use crate::mac_inert_one_shot_runner::FreshProcessEpochV3;
 use crate::mac_iomedia_identity::BackingObjectBindingV1;
 use crate::mac_iomedia_identity::BackingPathComponentV1;
@@ -579,6 +579,45 @@ impl LiveCollectorFixture {
     }
 }
 
+fn publish_exact_prepared_operation(
+    fixture: &LiveCollectorFixture,
+    control_root: &Path,
+    operation_nonce: &str,
+) {
+    let control = LivePrivilegedDisposablePolicyV2::create_for_test(control_root)
+        .expect("create exact S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("fresh S1 assessment")
+        .into_fresh_control_census()
+        .expect("fresh S1 census");
+    let prepared = fixture.prepared_capability(operation_nonce);
+    let mut operation = CensusBoundDurableLifecycleStoreV3::create_prepared(census, prepared)
+        .expect("create exact prepared operation");
+    operation
+        .persist_retained_prepared()
+        .expect("persist exact prepared lifecycle and sidecar");
+}
+
+fn restart_admission_roster(control_root: &Path, operation_nonce: &str) -> Vec<String> {
+    let root = control_root
+        .join("operations")
+        .join(format!("operation-{operation_nonce}"))
+        .join("restart-admissions-v3");
+    let mut names = std::fs::read_dir(root)
+        .expect("restart admission roster")
+        .map(|entry| {
+            entry
+                .expect("restart admission entry")
+                .file_name()
+                .into_string()
+                .expect("UTF-8 restart admission name")
+        })
+        .collect::<Vec<_>>();
+    names.sort();
+    names
+}
+
 fn write_private(path: &Path, bytes: &[u8]) {
     let mut file = std::fs::OpenOptions::new()
         .create(true)
@@ -643,6 +682,7 @@ fn valid_snapshot() -> ReconciliationSnapshotV2 {
         boot_session_uuid: "12345678-1234-4234-8234-123456789abc".to_string(),
         collector_policy_sha256: "b".repeat(64),
         collector_receipt_sha256: "c".repeat(64),
+        current_expected_absence_inventory_sha256: Some("d".repeat(64)),
         iomedia_evidence_sha256: "d".repeat(64),
         match_result: ReconciliationMatchV2::Zero,
         monotonic_after_nanoseconds: 2,
@@ -707,6 +747,118 @@ fn synthetic_table_classifies_zero_unique_and_ambiguous_by_device_and_backing() 
 }
 
 #[test]
+fn current_boot_expected_absence_is_full_exact_and_unique_subtraction_is_closed_world() {
+    let path = "/private/tmp/hepta.img";
+    let prepared = synthetic_backing(path);
+    let unrelated = object(1, "disk1", None);
+    let current = inventory(vec![
+        unrelated.clone(),
+        object(10, "disk10", Some(candidate(100, path))),
+        object(11, "disk10s1", Some(candidate(100, path))),
+    ]);
+    let groups = classify_matching_groups(&current, &prepared).unwrap();
+    assert_eq!(groups.len(), 1);
+
+    let expected = derive_current_expected_absence_v3(
+        &current,
+        &ReconciliationMatchV2::Unique { mounted: false },
+        &groups,
+    )
+    .unwrap()
+    .expect("Unique has one exact expected absence");
+    assert_eq!(expected, inventory(vec![unrelated]));
+    assert_ne!(
+        sha256(&canonical_json(&expected).unwrap()),
+        sha256(&canonical_json(&current).unwrap())
+    );
+    let expected_sha256 = sha256(&canonical_json(&expected).unwrap());
+    validate_exact_expected_absence_inventory(
+        &expected,
+        &expected_sha256,
+        &expected,
+        &expected_sha256,
+    )
+    .unwrap();
+    let mut nonmember_property_drift = expected.clone();
+    nonmember_property_drift.objects[0]
+        .provenance
+        .disk_arbitration
+        .internal = Some(false);
+    validate_restart_iomedia_inventory_v3(&nonmember_property_drift).unwrap();
+    assert_eq!(
+        expected
+            .objects
+            .iter()
+            .map(|object| &object.provenance.registry_entry_id)
+            .collect::<Vec<_>>(),
+        nonmember_property_drift
+            .objects
+            .iter()
+            .map(|object| &object.provenance.registry_entry_id)
+            .collect::<Vec<_>>()
+    );
+    let drift_sha256 = sha256(&canonical_json(&nonmember_property_drift).unwrap());
+    assert!(
+        validate_exact_expected_absence_inventory(
+            &expected,
+            &expected_sha256,
+            &nonmember_property_drift,
+            &drift_sha256,
+        )
+        .is_err()
+    );
+
+    assert_eq!(
+        derive_current_expected_absence_v3(&current, &ReconciliationMatchV2::Zero, &[],).unwrap(),
+        Some(current.clone())
+    );
+    assert_eq!(
+        derive_current_expected_absence_v3(
+            &current,
+            &ReconciliationMatchV2::Ambiguous {
+                matching_objects: 2,
+            },
+            &[
+                groups[0].clone(),
+                MatchingDiskImageGroupV3 {
+                    candidate: candidate(101, path),
+                    member_bsd_names: vec!["disk11".to_string()],
+                    member_registry_entry_ids: vec![id(12)],
+                },
+            ],
+        )
+        .unwrap(),
+        None
+    );
+
+    let mut duplicate_member = groups.clone();
+    let duplicate_id = duplicate_member[0].member_registry_entry_ids[0].clone();
+    duplicate_member[0]
+        .member_registry_entry_ids
+        .push(duplicate_id);
+    assert!(
+        derive_current_expected_absence_v3(
+            &current,
+            &ReconciliationMatchV2::Unique { mounted: false },
+            &duplicate_member,
+        )
+        .is_err()
+    );
+
+    let mut foreign_member = groups;
+    foreign_member[0].member_registry_entry_ids.push(id(999));
+    foreign_member[0].member_registry_entry_ids.sort();
+    assert!(
+        derive_current_expected_absence_v3(
+            &current,
+            &ReconciliationMatchV2::Unique { mounted: false },
+            &foreign_member,
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn synthetic_table_rejects_device_url_and_mount_policy_drift() {
     let path = "/private/tmp/hepta.img";
     let prepared = synthetic_backing(path);
@@ -766,6 +918,21 @@ fn synthetic_inventory_rejects_ambiguous_apple_disk_image_ancestry() {
 fn snapshot_shape_validator_rejects_every_forged_boundary() {
     let snapshot = valid_snapshot();
     validate_reconciliation_snapshot_shape_v3(&snapshot).unwrap();
+
+    let mut forged = snapshot.clone();
+    forged.current_expected_absence_inventory_sha256 = None;
+    assert!(validate_reconciliation_snapshot_shape_v3(&forged).is_err());
+    let mut forged = snapshot.clone();
+    forged.match_result = ReconciliationMatchV2::Unique { mounted: false };
+    assert!(validate_reconciliation_snapshot_shape_v3(&forged).is_err());
+    let mut ambiguous = snapshot.clone();
+    ambiguous.match_result = ReconciliationMatchV2::Ambiguous {
+        matching_objects: 2,
+    };
+    ambiguous.current_expected_absence_inventory_sha256 = None;
+    validate_reconciliation_snapshot_shape_v3(&ambiguous).unwrap();
+    ambiguous.current_expected_absence_inventory_sha256 = Some("9".repeat(64));
+    assert!(validate_reconciliation_snapshot_shape_v3(&ambiguous).is_err());
 
     let mut forged = snapshot.clone();
     forged.backing_identity_sha256 = "bad".to_string();
@@ -1083,8 +1250,370 @@ fn exact_prepared_capability_drives_durable_creation_and_restart_replay() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh restart process epoch");
     let operation = ReconciliationOperationStoreV3::open_existing(census, &epoch)
         .expect("restart reopens the retained prepared capability from its exact sidecar");
+    let operation = operation
+        .begin_restart(&epoch)
+        .expect("restart admission durably binds the exact S1/S2 operation before activation");
     assert_eq!(operation.operation_nonce(), operation_nonce);
     assert!(!operation.poisoned());
+    let admissions = control_root
+        .join("operations")
+        .join(format!("operation-{operation_nonce}"))
+        .join("restart-admissions-v3");
+    assert_eq!(
+        std::fs::read_dir(admissions)
+            .expect("restart admission roster")
+            .count(),
+        1,
+        "one durable V2 RestartStarted record must have one exact V3 admission"
+    );
+}
+
+#[test]
+fn restart_admission_cutpoints_never_return_active_and_replay_fail_closed() {
+    let _lock = live_collector_test_lock();
+    for cutpoint in [
+        RestartAdmissionPublishCutpointV3::TemporaryCreated,
+        RestartAdmissionPublishCutpointV3::BytesWritten,
+        RestartAdmissionPublishCutpointV3::FileSynced,
+        RestartAdmissionPublishCutpointV3::Renamed,
+        RestartAdmissionPublishCutpointV3::DirectorySynced,
+        RestartAdmissionPublishCutpointV3::FinalReopened,
+        RestartAdmissionPublishCutpointV3::FinalRevalidated,
+        RestartAdmissionPublishCutpointV3::CapsuleRetained,
+        RestartAdmissionPublishCutpointV3::FinalReplayed,
+    ] {
+        let fixture = LiveCollectorFixture::new();
+        let operation_nonce = "7".repeat(64);
+        let control_root = fixture._fixture.path().join("control-cutpoint");
+        publish_exact_prepared_operation(&fixture, &control_root, &operation_nonce);
+
+        let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+            .expect("reopen exact S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("blocking S1 assessment")
+            .into_blocking_control_census(&operation_nonce)
+            .expect("blocking S1 census");
+        let epoch = FreshProcessEpochV3::establish().expect("cutpoint process epoch");
+        let needs = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+            .expect("open NeedsRestartEpoch");
+        let result = needs.begin_restart_with_admission_hook(&epoch, |observed| {
+            if observed == cutpoint {
+                Err(std::io::Error::other("injected restart-admission cutpoint"))
+            } else {
+                Ok(())
+            }
+        });
+        assert!(result.is_err(), "{cutpoint:?} must not return Active");
+        drop(control);
+        let replay_control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+            .expect("reopen control after consumed cutpoint assessment");
+
+        let roster = restart_admission_roster(&control_root, &operation_nonce);
+        let pre_rename = matches!(
+            cutpoint,
+            RestartAdmissionPublishCutpointV3::TemporaryCreated
+                | RestartAdmissionPublishCutpointV3::BytesWritten
+                | RestartAdmissionPublishCutpointV3::FileSynced
+        );
+        if pre_rename {
+            assert_eq!(roster.len(), 1, "{cutpoint:?}");
+            assert!(roster[0].starts_with(".incoming-"), "{cutpoint:?}");
+            assert!(
+                replay_control.assess_read_only().is_err(),
+                "temporary or missing admission must block exact S1 replay: {cutpoint:?}"
+            );
+        } else {
+            assert_eq!(roster.len(), 1, "{cutpoint:?}");
+            assert!(roster[0].starts_with("restart-"), "{cutpoint:?}");
+            let census = replay_control
+                .assess_read_only()
+                .expect("post-rename pair replays")
+                .into_blocking_control_census(&operation_nonce)
+                .expect("post-rename blocking census");
+            let next_epoch = FreshProcessEpochV3::establish().expect("next process epoch");
+            let active = ReconciliationOperationStoreV3::open_existing(census, &next_epoch)
+                .expect("reopen post-rename exact pair")
+                .begin_restart(&next_epoch)
+                .expect("append a fresh superseding restart admission");
+            assert!(!active.poisoned(), "{cutpoint:?}");
+            assert_eq!(
+                restart_admission_roster(&control_root, &operation_nonce).len(),
+                2,
+                "replay must retain the first pair and append a second: {cutpoint:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn multiple_restart_epochs_replay_as_an_exact_append_only_bijection() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let operation_nonce = "7".repeat(64);
+    let control_root = fixture._fixture.path().join("control-multi-epoch");
+    publish_exact_prepared_operation(&fixture, &control_root, &operation_nonce);
+    for ordinal in 1..=2 {
+        let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+            .expect("reopen exact S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("restart S1 assessment")
+            .into_blocking_control_census(&operation_nonce)
+            .expect("restart blocking census");
+        let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+        let active = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+            .expect("replay exact admission roster")
+            .begin_restart(&epoch)
+            .expect("append restart epoch");
+        assert!(!active.poisoned());
+        drop(active);
+        drop(control);
+        assert_eq!(
+            restart_admission_roster(&control_root, &operation_nonce).len(),
+            ordinal,
+        );
+    }
+
+    let roster = restart_admission_roster(&control_root, &operation_nonce);
+    let root = control_root
+        .join("operations")
+        .join(format!("operation-{operation_nonce}"))
+        .join("restart-admissions-v3");
+    let records = roster
+        .iter()
+        .map(|name| {
+            serde_json::from_slice::<serde_json::Value>(
+                &std::fs::read(root.join(name)).expect("read restart admission"),
+            )
+            .expect("parse restart admission")
+        })
+        .collect::<Vec<_>>();
+    assert_ne!(
+        records[0]["restart_epoch_nonce"], records[1]["restart_epoch_nonce"],
+        "each V2 RestartStarted must bind a fresh V3 restart epoch"
+    );
+    assert_ne!(
+        records[0]["process_epoch_sha256"], records[1]["process_epoch_sha256"],
+        "each admission must bind its exact process epoch"
+    );
+}
+
+#[test]
+fn active_collector_rejects_inventory_mutation_and_cross_epoch_seed_transplant() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let operation_nonce = "7".repeat(64);
+    let control_root = fixture._fixture.path().join("control-seed");
+    publish_exact_prepared_operation(&fixture, &control_root, &operation_nonce);
+    let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+        .expect("reopen exact S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("restart S1 assessment")
+        .into_blocking_control_census(&operation_nonce)
+        .expect("restart blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let mut active = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+        .expect("open NeedsRestartEpoch")
+        .begin_restart(&epoch)
+        .expect("begin admitted restart");
+
+    assert!(
+        active.reject_cross_epoch_collector_seed_for_test().is_err(),
+        "a held live-before seed must remain bound to its exact Active owner"
+    );
+    assert!(
+        active
+            .collect_reconciliation_with_post_capture_substitution_for_test()
+            .is_err(),
+        "a post-capture inventory substitution must fail the exact admitted-seed comparison"
+    );
+    active.poison_live_before_for_test();
+    assert!(
+        active.collect_reconciliation_snapshot().is_err(),
+        "inventory mutation between admission and first collection must fail closed"
+    );
+    assert!(
+        std::fs::read_dir(&fixture.persistence_root)
+            .expect("receipt root")
+            .next()
+            .is_none(),
+        "failed seed replay must not publish a collector receipt"
+    );
+}
+
+#[test]
+fn active_collector_reservation_blocks_duplicate_pending_even_after_drop() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let operation_nonce = "7".repeat(64);
+    let control_root = fixture._fixture.path().join("control-reservation");
+    publish_exact_prepared_operation(&fixture, &control_root, &operation_nonce);
+    let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+        .expect("reopen exact S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("restart S1 assessment")
+        .into_blocking_control_census(&operation_nonce)
+        .expect("restart blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let mut active = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+        .expect("open NeedsRestartEpoch")
+        .begin_restart(&epoch)
+        .expect("begin admitted restart");
+
+    let pending = active
+        .collect_reconciliation_snapshot()
+        .expect("first exact collector reservation");
+    assert!(
+        active.collect_reconciliation_snapshot().is_err(),
+        "one Active epoch may not mint two simultaneous Pending observations"
+    );
+    drop(pending);
+    assert!(
+        active.collect_reconciliation_snapshot().is_err(),
+        "dropping Pending must remain fail-closed instead of silently restoring the seed"
+    );
+}
+
+#[test]
+fn restart_admission_replay_rejects_missing_orphan_and_same_bytes_inode_swap() {
+    let _lock = live_collector_test_lock();
+    let operation_nonce = "7".repeat(64);
+
+    // A V2 RestartStarted without its exact V3 peer is blocking even when no
+    // temporary file remains.
+    {
+        let fixture = LiveCollectorFixture::new();
+        let control_root = fixture._fixture.path().join("control-missing-admission");
+        publish_exact_prepared_operation(&fixture, &control_root, &operation_nonce);
+        let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+            .expect("open missing-admission control");
+        let census = control
+            .assess_read_only()
+            .expect("missing-admission initial assessment")
+            .into_blocking_control_census(&operation_nonce)
+            .expect("missing-admission initial census");
+        let epoch = FreshProcessEpochV3::establish().expect("missing-admission epoch");
+        let active = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+            .expect("missing-admission Needs")
+            .begin_restart(&epoch)
+            .expect("persist pair before removing V3");
+        drop(active);
+        drop(control);
+        let admission_root = control_root
+            .join("operations")
+            .join(format!("operation-{operation_nonce}"))
+            .join("restart-admissions-v3");
+        let name = restart_admission_roster(&control_root, &operation_nonce).remove(0);
+        std::fs::remove_file(admission_root.join(name)).expect("remove exact V3 peer");
+        let replay = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+            .expect("reopen missing-admission control");
+        assert!(
+            replay.assess_read_only().is_err(),
+            "missing V3 peer must fail the V2↔V3 bijection"
+        );
+    }
+
+    // An extra canonical-looking, same-byte admission is still an orphan and
+    // cannot acquire meaning merely from its filename/digest.
+    {
+        let fixture = LiveCollectorFixture::new();
+        let control_root = fixture._fixture.path().join("control-orphan-admission");
+        publish_exact_prepared_operation(&fixture, &control_root, &operation_nonce);
+        let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+            .expect("open orphan-admission control");
+        let census = control
+            .assess_read_only()
+            .expect("orphan-admission initial assessment")
+            .into_blocking_control_census(&operation_nonce)
+            .expect("orphan-admission initial census");
+        let epoch = FreshProcessEpochV3::establish().expect("orphan-admission epoch");
+        let active = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+            .expect("orphan-admission Needs")
+            .begin_restart(&epoch)
+            .expect("persist exact pair before orphan injection");
+        drop(active);
+        drop(control);
+        let admission_root = control_root
+            .join("operations")
+            .join(format!("operation-{operation_nonce}"))
+            .join("restart-admissions-v3");
+        let first = restart_admission_roster(&control_root, &operation_nonce).remove(0);
+        let bytes = std::fs::read(admission_root.join(&first)).expect("read first admission");
+        let digest = first
+            .strip_suffix(".json")
+            .and_then(|name| name.rsplit_once('-'))
+            .map(|(_, digest)| digest)
+            .expect("canonical first admission name");
+        let orphan = admission_root.join(format!("restart-{:020}-{digest}.json", 2usize));
+        let mut file = std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o400)
+            .open(&orphan)
+            .expect("create same-byte orphan admission");
+        file.write_all(&bytes).expect("write orphan admission");
+        file.sync_all().expect("sync orphan admission");
+        std::fs::set_permissions(&orphan, std::fs::Permissions::from_mode(0o400))
+            .expect("seal orphan admission");
+        File::open(&admission_root)
+            .expect("open admission root")
+            .sync_all()
+            .expect("sync admission root");
+        let replay = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+            .expect("reopen orphan-admission control");
+        assert!(
+            replay.assess_read_only().is_err(),
+            "an extra canonical same-byte V3 record must remain an orphan"
+        );
+    }
+
+    // A retained Active census binds the exact admission inode, not only its
+    // bytes. Replacing that pathname with a same-byte inode is detected before
+    // the first collector can mint Pending.
+    {
+        let fixture = LiveCollectorFixture::new();
+        let control_root = fixture._fixture.path().join("control-inode-swap");
+        publish_exact_prepared_operation(&fixture, &control_root, &operation_nonce);
+        let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+            .expect("open inode-swap control");
+        let census = control
+            .assess_read_only()
+            .expect("inode-swap initial assessment")
+            .into_blocking_control_census(&operation_nonce)
+            .expect("inode-swap initial census");
+        let epoch = FreshProcessEpochV3::establish().expect("inode-swap epoch");
+        let mut active = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+            .expect("inode-swap Needs")
+            .begin_restart(&epoch)
+            .expect("persist exact pair before inode swap");
+        let admission_root = control_root
+            .join("operations")
+            .join(format!("operation-{operation_nonce}"))
+            .join("restart-admissions-v3");
+        let name = restart_admission_roster(&control_root, &operation_nonce).remove(0);
+        let path = admission_root.join(name);
+        let bytes = std::fs::read(&path).expect("read retained admission bytes");
+        std::fs::remove_file(&path).expect("unlink retained admission inode");
+        let mut replacement = std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .mode(0o400)
+            .open(&path)
+            .expect("create same-byte replacement inode");
+        replacement
+            .write_all(&bytes)
+            .expect("write same admission bytes");
+        replacement.sync_all().expect("sync replacement admission");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o400))
+            .expect("seal replacement admission");
+        assert!(
+            active.collect_reconciliation_snapshot().is_err(),
+            "same-byte admission inode replacement must invalidate retained S1"
+        );
+    }
 }
 
 #[test]
@@ -1186,6 +1715,43 @@ fn prepared_collector_manifest_keeps_historical_boot_separate_from_restart_boot(
 }
 
 #[test]
+fn reconciliation_replay_accepts_historical_prepared_baseline_and_seals_current_boot_zero() {
+    let mut fixture = LiveCollectorFixture::new();
+    let current_boot = fixture.bindings.boot_session_uuid.clone();
+    let historical_boot = "12345678-1234-4abc-8abc-123456789abc".to_string();
+    assert_ne!(historical_boot, current_boot);
+    fixture.baseline.boot_session_uuid = historical_boot.clone();
+    fixture.bindings.baseline_inventory_sha256 = fixture.baseline.sha256().unwrap();
+
+    let pending = collect_reconciliation_snapshot_v3(fixture.request())
+        .expect("historical prepared baseline must not poison current-boot collection");
+    let receipt = pending.receipt();
+    assert_eq!(
+        receipt.baseline_inventory.boot_session_uuid,
+        historical_boot
+    );
+    assert_eq!(receipt.boot_session_uuid, current_boot);
+    assert_eq!(receipt.match_result, ReconciliationMatchV2::Zero);
+    assert!(receipt.baseline_restored);
+    assert_eq!(
+        receipt.current_expected_absence_inventory.as_ref(),
+        Some(&receipt.iomedia_inventory)
+    );
+    assert_eq!(
+        receipt.current_expected_absence_inventory_sha256.as_deref(),
+        Some(receipt.iomedia_evidence_sha256.as_str())
+    );
+    validate_receipt(receipt).expect("cross-boot receipt exact replay");
+
+    let receipt_sha256 = sha256(&canonical_json(receipt).unwrap());
+    let snapshot = reconciliation_snapshot_from_receipt(receipt, &receipt_sha256).unwrap();
+    assert_eq!(
+        snapshot.current_expected_absence_inventory_sha256,
+        Some(snapshot.iomedia_evidence_sha256)
+    );
+}
+
+#[test]
 fn prepared_collector_capability_rejects_live_candidate_mutation_or_swap() {
     let _lock = live_collector_test_lock();
     for mutation in ["backing", "artifact_roster", "receipt_mode", "mountpoint"] {
@@ -1268,15 +1834,9 @@ fn rootless_live_collection_rejects_same_path_prepared_root_replacement() {
         .join("prepared-artifact-root-original");
     std::fs::rename(&fixture.artifact_root, &displaced_artifact_root).unwrap();
     std::fs::create_dir(&fixture.artifact_root).unwrap();
-    let error = match collect_reconciliation_snapshot_v3(fixture.request()) {
-        Err(error) => error,
-        Ok(_) => panic!("same-path artifact-root replacement was accepted"),
-    };
     assert!(
-        error
-            .to_string()
-            .contains("policy artifact root differs from its prepared stable identity"),
-        "{error}"
+        collect_reconciliation_snapshot_v3(fixture.request()).is_err(),
+        "same-path artifact-root replacement was accepted"
     );
     std::fs::remove_dir(&fixture.artifact_root).unwrap();
     std::fs::rename(&displaced_artifact_root, &fixture.artifact_root).unwrap();
@@ -1459,15 +2019,12 @@ fn rootless_closed_world_receipts_prior_projection_and_metadata_are_fail_closed(
     assert!(collect_reconciliation_snapshot_v3(fixture.request()).is_err());
     std::fs::remove_file(&fifo).unwrap();
 
-    let symlink_target = fixture.artifact_root.join("receipt-symlink-target");
-    write_private(&symlink_target, b"not a receipt");
     let symlink_receipt = fixture
         .persistence_root
         .join(format!("collector-{}.json", "b".repeat(64)));
-    symlink(&symlink_target, &symlink_receipt).unwrap();
+    symlink(&fixture.backing_path, &symlink_receipt).unwrap();
     assert!(collect_reconciliation_snapshot_v3(fixture.request()).is_err());
     std::fs::remove_file(&symlink_receipt).unwrap();
-    std::fs::remove_file(&symlink_target).unwrap();
 
     set_test_xattr(&fixture.persistence_root);
     assert!(collect_reconciliation_snapshot_v3(fixture.request()).is_err());
@@ -1542,7 +2099,7 @@ fn rootless_closed_world_receipts_prior_projection_and_metadata_are_fail_closed(
         };
     cross_baseline_receipt.baseline_inventory_sha256 =
         cross_baseline_receipt.baseline_inventory.sha256().unwrap();
-    cross_baseline_receipt.baseline_restored = false;
+    cross_baseline_receipt.baseline_restored = true;
     validate_receipt(&cross_baseline_receipt).unwrap();
     let cross_baseline_bytes = canonical_json(&cross_baseline_receipt).unwrap();
     let cross_baseline_sha = sha256(&cross_baseline_bytes);
@@ -1555,62 +2112,17 @@ fn rootless_closed_world_receipts_prior_projection_and_metadata_are_fail_closed(
     assert!(collect_fresh_absence_v3(fixture.request(), &cross_baseline_snapshot).is_err());
     std::fs::remove_file(&cross_baseline_path).unwrap();
 
-    let premature = collect_fresh_absence_v3(fixture.request(), &snapshot).unwrap();
-    let mut premature_receipt = premature.receipt().clone();
-    drop(premature);
-    premature_receipt.monotonic_before_nanoseconds = snapshot.monotonic_after_nanoseconds;
-    validate_receipt(&premature_receipt).unwrap();
-    let premature_bytes = canonical_json(&premature_receipt).unwrap();
-    let premature_path = fixture
-        .persistence_root
-        .join(format!("collector-{}.json", sha256(&premature_bytes)));
-    write_private(&premature_path, &premature_bytes);
-    assert!(collect_reconciliation_snapshot_v3(fixture.request()).is_err());
-    std::fs::remove_file(&premature_path).unwrap();
-
-    let mut forged = snapshot.clone();
-    forged.iomedia_evidence_sha256 = "bad".to_string();
-    assert!(collect_fresh_absence_v3(fixture.request(), &forged).is_err());
-    let mut forged = snapshot.clone();
-    forged.collector_receipt_sha256 = "f".repeat(64);
-    assert!(collect_fresh_absence_v3(fixture.request(), &forged).is_err());
-
+    assert!(
+        collect_fresh_absence_v3(fixture.request(), &snapshot).is_err(),
+        "exact-profile FreshAbsence must fail closed until the retained backing is unlinked"
+    );
     std::fs::remove_file(&snapshot_receipt).unwrap();
-    assert!(collect_fresh_absence_v3(fixture.request(), &snapshot).is_err());
-    write_private(&snapshot_receipt, &snapshot_receipt_bytes);
-
-    write_private(&snapshot_receipt, b"tampered receipt");
-    assert!(collect_fresh_absence_v3(fixture.request(), &snapshot).is_err());
-    write_private(&snapshot_receipt, &snapshot_receipt_bytes);
-
-    set_test_xattr(&snapshot_receipt);
-    assert!(collect_fresh_absence_v3(fixture.request(), &snapshot).is_err());
-    remove_test_xattr(&snapshot_receipt);
-    set_test_acl(&snapshot_receipt);
-    assert!(collect_fresh_absence_v3(fixture.request(), &snapshot).is_err());
-    remove_test_acl(&snapshot_receipt);
-    std::fs::set_permissions(&snapshot_receipt, std::fs::Permissions::from_mode(0o644)).unwrap();
-    assert!(collect_fresh_absence_v3(fixture.request(), &snapshot).is_err());
-    std::fs::set_permissions(&snapshot_receipt, std::fs::Permissions::from_mode(0o600)).unwrap();
-    let hardlink = fixture.artifact_root.join("receipt-hardlink");
-    std::fs::hard_link(&snapshot_receipt, &hardlink).unwrap();
-    assert!(collect_fresh_absence_v3(fixture.request(), &snapshot).is_err());
-    std::fs::remove_file(&hardlink).unwrap();
-
-    let absence = collect_fresh_absence_v3(fixture.request(), &snapshot).unwrap();
-    let retained_absence = absence.persist_and_retain().unwrap();
-    retained_absence.revalidate().unwrap();
-    assert!(matches!(
-        retained_absence.observation_for_test(),
-        FinalizedRestartObservationV3::FreshAbsence(_)
-    ));
-    std::fs::remove_file(&snapshot_receipt).unwrap();
-    assert!(collect_reconciliation_snapshot_v3(fixture.request()).is_err());
+    assert!(retained_snapshot.revalidate().is_err());
     write_private(&snapshot_receipt, &snapshot_receipt_bytes);
 }
 
 #[test]
-fn rootless_live_zero_requires_persistence_and_final_replay_for_both_observations() {
+fn rootless_live_zero_requires_persistence_and_fails_closed_before_backing_unlink_transition() {
     let _lock = live_collector_test_lock();
     // Keep the descriptor-bound fixture out of the shared TMPDIR: unrelated parallel
     // tests legitimately churn that directory's metadata, which the production
@@ -1625,12 +2137,12 @@ fn rootless_live_zero_requires_persistence_and_final_replay_for_both_observation
         .tempdir_in(env!("CARGO_MANIFEST_DIR"))
         .unwrap();
     let persistence_root = std::fs::canonicalize(persistence.path()).unwrap();
-    let backing_path = fixture_root.join("prepared.img");
     let mountpoint = fixture_root.join("mountpoint");
     let artifact_root = fixture_root.join("artifacts");
-    std::fs::write(&backing_path, b"rootless-restart-backing-v3").unwrap();
     std::fs::create_dir(&mountpoint).unwrap();
     std::fs::create_dir(&artifact_root).unwrap();
+    let backing_path = artifact_root.join("operation-created.img");
+    std::fs::write(&backing_path, b"rootless-restart-backing-v3").unwrap();
 
     let prepared_backing = capture_live_backing_identity_v2(&backing_path).unwrap();
     let mountpoint_identity = MountpointIdentityV3::capture(&mountpoint).unwrap();
@@ -1671,17 +2183,6 @@ fn rootless_live_zero_requires_persistence_and_final_replay_for_both_observation
     assert!(failed.persist_and_retain().is_err());
     std::fs::remove_file(&uncertain).unwrap();
 
-    let drifted = collect_reconciliation_snapshot_v3(request()).unwrap();
-    let forbidden = artifact_root.join("operation-created.img");
-    let drift_result = drifted.persist_and_retain_with_hook(|| {
-        std::fs::write(&forbidden, b"late artifact")?;
-        Ok(())
-    });
-    assert!(drift_result.is_err());
-    if forbidden.exists() {
-        std::fs::remove_file(&forbidden).unwrap();
-    }
-
     let pending = collect_reconciliation_snapshot_v3(request()).unwrap();
     assert_eq!(pending.receipt().match_result, ReconciliationMatchV2::Zero);
     assert!(!pending.receipt().authority.any());
@@ -1709,7 +2210,8 @@ fn rootless_live_zero_requires_persistence_and_final_replay_for_both_observation
     tampered.baseline_inventory.boot_session_uuid =
         "87654321-4321-4321-8321-cba987654321".to_string();
     tampered.baseline_inventory_sha256 = tampered.baseline_inventory.sha256().unwrap();
-    assert!(validate_receipt(&tampered).is_err());
+    validate_receipt(&tampered)
+        .expect("historical prepared boot is independent from current-boot restoration");
     let retained_snapshot = pending.persist_and_retain().unwrap();
     retained_snapshot.revalidate().unwrap();
     let snapshot = match retained_snapshot.observation_for_test() {
@@ -1763,40 +2265,17 @@ fn rootless_live_zero_requires_persistence_and_final_replay_for_both_observation
         )
         .unwrap();
 
-    let pending = collect_fresh_absence_v3(request(), &snapshot).unwrap();
-    let retained_absence = pending.persist_and_retain().unwrap();
-    retained_absence.revalidate().unwrap();
-    let absence = match retained_absence.observation_for_test() {
-        FinalizedRestartObservationV3::FreshAbsence(observation) => observation.clone(),
-        FinalizedRestartObservationV3::ReconciliationSnapshot(_) => panic!("wrong observation"),
-    };
-    assert!(absence.no_matching_iomedia);
-    assert!(absence.no_nested_mounts);
-    assert!(absence.operation_artifacts_absent);
-    assert_eq!(
-        absence.reconciliation_snapshot_sha256,
-        Some(reconciliation_snapshot_sha256(&snapshot).unwrap())
+    assert!(
+        collect_fresh_absence_v3(request(), &snapshot).is_err(),
+        "FreshAbsence must remain fail-closed until the exact backing path is unlinked while its descriptor stays retained"
     );
-    let absence_sha = fresh_absence_sha256(&absence).unwrap();
-    resumed
-        .append_with(
-            DisposableLifecycleEventV2::FreshAbsenceObserved {
-                observation: absence,
-            },
-            |_, bytes| {
-                records.push(bytes.to_vec());
-                Ok(())
-            },
-        )
-        .unwrap();
-    assert!(valid_digest(&absence_sha));
 
     let mut receipt_names = std::fs::read_dir(&persistence_root)
         .unwrap()
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())
         .collect::<Vec<_>>();
     receipt_names.sort();
-    assert_eq!(receipt_names.len(), 3);
+    assert_eq!(receipt_names.len(), 1);
     assert!(receipt_names.iter().all(|name| {
         name.starts_with("collector-") && name.ends_with(".json") && !name.starts_with(".incoming-")
     }));

@@ -26,6 +26,8 @@ macro_rules! assert_not_impl {
 
 type FreshOperationStoreForCompileAssertions = CensusBoundDurableLifecycleStoreV3<'static>;
 type RestartOperationStoreForCompileAssertions = ReconciliationOperationStoreV3<'static, 'static>;
+type ActiveRestartOperationStoreForCompileAssertions =
+    ReconciliationOperationStoreV3<'static, 'static, ActiveRestartEpochV3>;
 type RetainedLifecycleAppendForCompileAssertions = RetainedLifecycleRecordAppendV3;
 type RetainedLifecycleIssueSourceForCompileAssertions = RetainedLifecycleIssueSourceV3<'static>;
 type RetainedEffectIssueSourceForCompileAssertions = RetainedEffectIssueSourceV3;
@@ -68,6 +70,21 @@ assert_not_impl!(
 );
 assert_not_impl!(
     RestartOperationStoreForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(ActiveRestartOperationStoreForCompileAssertions, Clone);
+assert_not_impl!(ActiveRestartOperationStoreForCompileAssertions, Send);
+assert_not_impl!(ActiveRestartOperationStoreForCompileAssertions, Sync);
+assert_not_impl!(
+    ActiveRestartOperationStoreForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    ActiveRestartOperationStoreForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    ActiveRestartOperationStoreForCompileAssertions,
     From<std::fs::File>
 );
 assert_not_impl!(RetainedLifecycleAppendForCompileAssertions, Clone);
@@ -441,7 +458,9 @@ fn create_recoverable_issue(
             .expect("blocking census");
         let epoch = FreshProcessEpochV3::establish().expect("old supervisor epoch");
         let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
-            .expect("old supervisor operation");
+            .expect("old supervisor operation")
+            .activate_without_admission_for_test()
+            .expect("test active restart typestate");
         let boot = current_boot_session_uuid().expect("current boot");
         store
             .append_reconciliation(ReconciliationLifecycleEventV3::restart_started(
@@ -458,6 +477,7 @@ fn create_recoverable_issue(
                     boot_session_uuid: boot,
                     collector_policy_sha256: digest('c'),
                     collector_receipt_sha256: digest('f'),
+                    current_expected_absence_inventory_sha256: Some(digest('9')),
                     iomedia_evidence_sha256: digest('1'),
                     match_result: ReconciliationMatchV2::Unique { mounted: true },
                     monotonic_after_nanoseconds: 102,
@@ -1463,7 +1483,9 @@ fn production_reconciliation_open_consumes_exact_blocking_census_and_owns_replay
         .expect("exact blocking census");
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
     let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
-        .expect("production exact-census replay");
+        .expect("production exact-census replay")
+        .activate_without_admission_for_test()
+        .expect("test active restart typestate");
     assert_eq!(store.operation_nonce(), NONCE);
     assert_eq!(
         store.journal.process_mode(),
@@ -1526,7 +1548,9 @@ fn recovered_death_proof_consumes_exact_s1_issue_and_reacquired_lease() {
         .expect("recovery blocking census");
     let epoch = FreshProcessEpochV3::establish().expect("fresh recovery epoch");
     let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
-        .expect("exact recovered operation");
+        .expect("exact recovered operation")
+        .activate_without_admission_for_test()
+        .expect("test active restart typestate");
     let proof = store
         .recover_latest_runner_death()
         .expect("same-boot old PID/start identities are absent");
@@ -1559,7 +1583,9 @@ fn recovered_death_proof_final_replay_rejects_same_bytes_issue_swap() {
         .expect("recovery blocking census");
     let epoch = FreshProcessEpochV3::establish().expect("fresh recovery epoch");
     let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
-        .expect("exact recovered operation");
+        .expect("exact recovered operation")
+        .activate_without_admission_for_test()
+        .expect("test active restart typestate");
     let issue = fs::read_dir(&issue_root)
         .expect("issue roster")
         .next()
@@ -1606,7 +1632,9 @@ fn reconciliation_append_rejects_same_bytes_swap_before_s1_adoption() {
         .expect("exact blocking census");
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
     let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
-        .expect("production exact-census replay");
+        .expect("production exact-census replay")
+        .activate_without_admission_for_test()
+        .expect("test active restart typestate");
     let operation = root.join("operations").join(format!("operation-{NONCE}"));
     let record = operation.join("00000002.json");
     let displaced = operation.join("00000002.displaced");
@@ -1656,7 +1684,9 @@ fn effect_issue_append_rejects_same_bytes_swap_before_s1_adoption() {
         .expect("exact blocking census");
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
     let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
-        .expect("production exact-census replay");
+        .expect("production exact-census replay")
+        .activate_without_admission_for_test()
+        .expect("test active restart typestate");
     let boot = current_boot_session_uuid().expect("current boot UUID");
     store
         .append_reconciliation(ReconciliationLifecycleEventV3::restart_started(
@@ -1673,6 +1703,7 @@ fn effect_issue_append_rejects_same_bytes_swap_before_s1_adoption() {
                 boot_session_uuid: boot.clone(),
                 collector_policy_sha256: digest('c'),
                 collector_receipt_sha256: digest('f'),
+                current_expected_absence_inventory_sha256: Some(digest('9')),
                 iomedia_evidence_sha256: digest('1'),
                 match_result: ReconciliationMatchV2::Unique { mounted: true },
                 monotonic_after_nanoseconds: 102,
@@ -1903,7 +1934,9 @@ fn terminal_append_consumes_blocking_store_into_completed_census() {
         .expect("blocking census");
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
     let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
-        .expect("exact descriptor replay");
+        .expect("exact descriptor replay")
+        .activate_without_admission_for_test()
+        .expect("test active restart typestate");
     let boot = current_boot_session_uuid().expect("current boot UUID");
     let restart_epoch = digest('e');
     store
@@ -1919,6 +1952,7 @@ fn terminal_append_consumes_blocking_store_into_completed_census() {
         boot_session_uuid: boot.clone(),
         collector_policy_sha256: digest('c'),
         collector_receipt_sha256: digest('f'),
+        current_expected_absence_inventory_sha256: Some(digest('1')),
         iomedia_evidence_sha256: digest('1'),
         match_result: ReconciliationMatchV2::Zero,
         monotonic_after_nanoseconds: 102,
@@ -1939,7 +1973,8 @@ fn terminal_append_consumes_blocking_store_into_completed_census() {
         boot_session_uuid: boot,
         collector_policy_sha256: digest('c'),
         collector_receipt_sha256: digest('4'),
-        iomedia_evidence_sha256: digest('5'),
+        current_expected_absence_inventory_sha256: Some(digest('1')),
+        iomedia_evidence_sha256: digest('1'),
         monotonic_after_nanoseconds: 104,
         monotonic_before_nanoseconds: 103,
         mount_evidence_sha256: digest('6'),
@@ -2052,7 +2087,9 @@ fn reconciliation_wrapper_is_poisoned_by_nonselected_blocker_drift() {
         .expect("select first blocker");
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
     let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
-        .expect("open exact selected blocker");
+        .expect("open exact selected blocker")
+        .activate_without_admission_for_test()
+        .expect("test active restart typestate");
 
     let other_record = root
         .join("operations")
