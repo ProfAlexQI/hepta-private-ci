@@ -3,7 +3,7 @@
 //! Threat model and boundary:
 //! - V2 lifecycle records remain unchanged.  V3 records bind an exact command
 //!   to a fresh process epoch, one runner epoch, and the current journal tip.
-//! - Persistence is invoked before a command can cross the pipe.  Any error,
+//! - Persistence is invoked before a command can cross the datagram channel. Any error,
 //!   panic, timeout, or channel loss leaves the command issued-or-uncertain.
 //! - The child dispatch target is deliberately inert: it hashes and counts the
 //!   admitted bytes.  This module imports no Disk Arbitration, mount, image,
@@ -11,10 +11,15 @@
 //! - A process epoch is a non-cloneable in-process capability bound to the boot
 //!   UUID and the kernel's PID/start-time identity.  A fork-inherited value
 //!   fails validation.
-//! - Darwin has no atomic CLOEXEC pipe/kqueue creation.  A fresh executable
+//! - Darwin has neither atomic CLOEXEC pipe/kqueue creation nor AF_UNIX
+//!   SOCK_SEQPACKET. A fresh executable
 //!   must therefore prove it has exactly one kernel thread, preallocate a
-//!   bounded one-shot FD pool, reserve the fixed child targets, and only then
-//!   permit runner use.  No runtime runner spawn creates anonymous FDs.
+//!   bounded one-shot FD pool (using connected AF_UNIX/SOCK_DGRAM for atomic
+//!   records), reserve the fixed child targets, and only then permit runner
+//!   use. No runtime runner spawn creates anonymous FDs.
+//! - The authenticated pre-runner has no lease. Only a sealed, durably issued
+//!   grant can send one canonical command datagram together with exactly one
+//!   SCM_RIGHTS descriptor. Missing/extra/truncated control data fails closed.
 //! - A runner accepts one exact command.  Same-supervisor sequential
 //!   reconciliation requires a non-serializable death proof produced from the
 //!   original live handle after kqueue NOTE_EXIT, pipe EOF, waitpid, and kernel
@@ -31,6 +36,7 @@ use serde::Serialize;
 use std::ffi::CString;
 use std::fs::File;
 use std::io;
+use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
@@ -41,6 +47,7 @@ use std::process::Command;
 use std::process::ExitStatus;
 #[cfg(test)]
 use std::process::Stdio;
+use std::rc::Rc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::AtomicU32;
@@ -52,8 +59,12 @@ const ISSUE_SCHEMA_V3: &str = "hepta_mac_disposable_effect_issue_v3";
 const ENVELOPE_SCHEMA_V3: &str = "hepta_mac_inert_runner_envelope_v3";
 const PROCESS_EPOCH_SCHEMA_V3: &str = "hepta_mac_process_epoch_v3";
 const RUNNER_HELLO_SCHEMA_V3: &str = "hepta_mac_inert_runner_hello_v3";
+const RUNNER_DISPATCH_SCHEMA_V3: &str = "hepta_mac_inert_runner_dispatch_v3";
 const DISPATCH_RECEIPT_SCHEMA_V3: &str = "hepta_mac_inert_dispatch_receipt_v3";
 const DEATH_RECEIPT_SCHEMA_V3: &str = "hepta_mac_runner_death_receipt_v3";
+const RUNNER_TRANSPORT_KIND_V3: &str = "darwin_af_unix_sock_dgram_scm_rights_v3";
+const RUNNER_RECORD_BOUNDARY_V3: &str = "one_datagram_one_canonical_record_v3";
+const RUNNER_DESCRIPTOR_TRANSFER_V3: &str = "exactly_one_scm_rights_fd_with_command_v3";
 const MAX_COMMAND_BYTES_V3: usize = 256 * 1024;
 const MAX_FRAME_BYTES_V3: usize = 2 * 1024 * 1024;
 const PROC_PIDTBSDINFO: libc::c_int = 3;
@@ -61,13 +72,8 @@ const PROC_PIDTASKINFO_V3: libc::c_int = 4;
 const CHILD_COMMAND_FD_V3: RawFd = 900;
 const CHILD_RESPONSE_FD_V3: RawFd = 901;
 const CHILD_DEATH_FD_V3: RawFd = 902;
-const CHILD_LEASE_FD_V3: RawFd = 903;
-const CHILD_FIXED_FDS_V3: [RawFd; 4] = [
-    CHILD_COMMAND_FD_V3,
-    CHILD_RESPONSE_FD_V3,
-    CHILD_DEATH_FD_V3,
-    CHILD_LEASE_FD_V3,
-];
+const CHILD_FIXED_FDS_V3: [RawFd; 3] =
+    [CHILD_COMMAND_FD_V3, CHILD_RESPONSE_FD_V3, CHILD_DEATH_FD_V3];
 const PREALLOCATED_RUNNER_SLOTS_V3: usize = 64;
 const PREALLOCATED_SLOT_FDS_V3: usize = 7;
 const PREALLOCATED_FDS_V3: usize = PREALLOCATED_RUNNER_SLOTS_V3 * PREALLOCATED_SLOT_FDS_V3;
@@ -88,7 +94,7 @@ static PREALLOCATED_SLOT_TAKEN_V3: [AtomicU8; PREALLOCATED_RUNNER_SLOTS_V3] =
     [const { AtomicU8::new(0) }; PREALLOCATED_RUNNER_SLOTS_V3];
 static PREALLOCATED_FD_TABLE_V3: [AtomicI32; PREALLOCATED_FDS_V3] =
     [const { AtomicI32::new(-1) }; PREALLOCATED_FDS_V3];
-static FIXED_TARGET_RESERVATIONS_V3: [AtomicI32; 4] = [const { AtomicI32::new(-1) }; 4];
+static FIXED_TARGET_RESERVATIONS_V3: [AtomicI32; 3] = [const { AtomicI32::new(-1) }; 3];
 
 #[derive(Debug, Error)]
 pub enum InertRunnerErrorV3 {
@@ -166,6 +172,7 @@ struct ProcessEpochBindingV3 {
     pid: u32,
     schema: String,
     schema_version: u32,
+    transport: RunnerTransportSemanticsV3,
 }
 
 /// Non-cloneable and process-local by construction.  Serializing the public
@@ -181,6 +188,8 @@ struct RunnerHelloRequestV3 {
     challenge: String,
     process_epoch: ProcessEpochBindingV3,
     process_epoch_sha256: String,
+    startup_deadline_monotonic_nanoseconds: u64,
+    transport: RunnerTransportSemanticsV3,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -189,12 +198,25 @@ struct RunnerHelloV3 {
     challenge_sha256: String,
     parent_kernel_start_microseconds: u64,
     parent_pid: u32,
+    pre_hello_fd_census_sha256: String,
+    pre_hello_open_fd_identity_sha256s: Vec<String>,
     process_epoch_sha256: String,
     runner_kernel_start_microseconds: u64,
     runner_nonce: String,
     runner_pid: u32,
     schema: String,
     schema_version: u32,
+    transport: RunnerTransportSemanticsV3,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RunnerTransportSemanticsV3 {
+    descriptor_transfer: String,
+    fallback_allowed: bool,
+    kind: String,
+    record_boundary: String,
+    records_per_runner: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -205,10 +227,39 @@ struct RunnerWireCommandV3 {
     issued_record: IssuedEffectRecordV3,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RunnerDispatchRecordV3 {
+    dispatch_deadline_monotonic_nanoseconds: u64,
+    lease_identity_sha256: String,
+    schema: String,
+    schema_version: u32,
+    transport: RunnerTransportSemanticsV3,
+    wire: RunnerWireCommandV3,
+}
+
+/// Private, process-local result of the authenticated hello.  S2 may consume
+/// this capability to bind a durable effect issue, but copied nonce/digest
+/// strings cannot recreate it.
+pub(crate) struct AuthenticatedRunnerEpochV3 {
+    boot_session_uuid: String,
+    hello_sha256: String,
+    pre_hello_fd_census_sha256: String,
+    pre_hello_open_fd_identity_sha256s: Vec<String>,
+    process_epoch_sha256: String,
+    runner_epoch_sha256: String,
+    runner_kernel_start_microseconds: u64,
+    runner_nonce: String,
+    runner_pid: u32,
+    transport: RunnerTransportSemanticsV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
 /// Private typestate produced only after the persistence callback returns.
 /// Its name remains issued-or-uncertain because durability does not prove
 /// whether a later channel loss allowed the child to see the command.
 struct DurablyIssuedOrUncertainV3 {
+    durable_binding: DurableIssuedBindingV3,
     record: IssuedEffectRecordV3,
     record_bytes: Vec<u8>,
     record_sha256: String,
@@ -328,7 +379,7 @@ impl RetainedControlLeaseV3 {
         Self { descriptor }
     }
 
-    fn prepare_for_child(&self) -> Result<File, InertRunnerErrorV3> {
+    fn duplicate_for_grant(&self) -> Result<File, InertRunnerErrorV3> {
         let source_flags = unsafe { libc::fcntl(self.descriptor.as_raw_fd(), libc::F_GETFD) };
         if source_flags < 0 {
             return Err(io::Error::last_os_error().into());
@@ -350,6 +401,118 @@ impl RetainedControlLeaseV3 {
     }
 }
 
+impl PersistedIssuedRunnerGrantV3 {
+    #[cfg(test)]
+    fn for_test(
+        epoch: &FreshProcessEpochV3,
+        runner_epoch: &AuthenticatedRunnerEpochV3,
+        lease: &RetainedControlLeaseV3,
+        wire: RunnerWireCommandV3,
+        durable_binding: DurableIssuedBindingV3,
+    ) -> Result<Self, InertRunnerErrorV3> {
+        epoch.validate_current()?;
+        runner_epoch.validate(
+            epoch,
+            KernelProcessIdentityV3 {
+                parent_pid: epoch.binding.pid,
+                pid: runner_epoch.runner_pid,
+                start_microseconds: runner_epoch.runner_kernel_start_microseconds,
+            },
+        )?;
+        wire.envelope
+            .validate_against(&wire.issued_record, &wire.command)?;
+        if durable_binding.command_sha256 != wire.envelope.command_sha256
+            || durable_binding.effect_id != wire.envelope.effect_id
+            || durable_binding.issued_record_sha256 != wire.envelope.issued_record_sha256
+            || durable_binding.journal_tip_before_sha256 != wire.envelope.journal_tip_before_sha256
+            || durable_binding.operation_nonce != wire.envelope.operation_nonce
+            || durable_binding.purpose != wire.envelope.purpose
+        {
+            return Err(invalid(
+                "test grant differs from the replayed durable issue binding",
+            ));
+        }
+        let lease = lease.duplicate_for_grant()?;
+        let lease_identity_sha256 = descriptor_identity_sha256(lease.as_raw_fd())?;
+        if runner_epoch
+            .pre_hello_open_fd_identity_sha256s
+            .binary_search(&lease_identity_sha256)
+            .is_ok()
+        {
+            return Err(invalid(
+                "control lease was already present in the pre-runner FD census",
+            ));
+        }
+        let record = RunnerDispatchRecordV3 {
+            dispatch_deadline_monotonic_nanoseconds: 1,
+            lease_identity_sha256: lease_identity_sha256.clone(),
+            schema: RUNNER_DISPATCH_SCHEMA_V3.to_string(),
+            schema_version: 3,
+            transport: runner_transport_semantics(),
+            wire,
+        };
+        record.validate(runner_epoch)?;
+        Ok(Self {
+            durable_binding,
+            lease,
+            lease_identity_sha256,
+            process_epoch_sha256: epoch.binding_sha256.clone(),
+            record,
+            runner_epoch_sha256: runner_epoch.runner_epoch_sha256.clone(),
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    fn validate(
+        &self,
+        runner_epoch: &AuthenticatedRunnerEpochV3,
+    ) -> Result<(), InertRunnerErrorV3> {
+        self.record.validate(runner_epoch)?;
+        if self.process_epoch_sha256 != runner_epoch.process_epoch_sha256
+            || self.runner_epoch_sha256 != runner_epoch.runner_epoch_sha256
+            || self.lease_identity_sha256 != descriptor_identity_sha256(self.lease.as_raw_fd())?
+            || self.durable_binding.command_sha256 != self.record.wire.envelope.command_sha256
+            || self.durable_binding.effect_id != self.record.wire.envelope.effect_id
+            || self.durable_binding.issued_record_sha256
+                != self.record.wire.envelope.issued_record_sha256
+            || self.durable_binding.journal_tip_before_sha256
+                != self.record.wire.envelope.journal_tip_before_sha256
+            || self.durable_binding.operation_nonce != self.record.wire.envelope.operation_nonce
+            || self.durable_binding.purpose != self.record.wire.envelope.purpose
+        {
+            return Err(invalid(
+                "persisted runner grant changed after durable replay",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LeaseDescriptorIdentityV3 {
+    device: u64,
+    file_type: u32,
+    group: u32,
+    inode: u64,
+    owner: u32,
+    rdev: u64,
+}
+
+/// Sealed handoff produced only after S2 has durably published and replayed
+/// the exact issued record.  The production constructor intentionally lives
+/// outside this runner lane.  Until S2 wires that constructor, only the
+/// `cfg(test)` fixture below can dispatch, so this remains NO_AUTHORITY.
+pub(crate) struct PersistedIssuedRunnerGrantV3 {
+    durable_binding: DurableIssuedBindingV3,
+    lease: File,
+    lease_identity_sha256: String,
+    process_epoch_sha256: String,
+    record: RunnerDispatchRecordV3,
+    runner_epoch_sha256: String,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RunnerStateV3 {
     Ready,
@@ -358,20 +521,24 @@ enum RunnerStateV3 {
 }
 
 /// Supervisor-owned live handle.  It is intentionally not Clone.
-pub struct LiveInertRunnerV3 {
+pub(crate) struct AuthenticatedPreRunnerV3 {
     child: Child,
-    command_pipe: File,
+    command_socket: File,
     death_pipe: File,
     kqueue: File,
     durable_issued_binding: Option<DurableIssuedBindingV3>,
     process_epoch_sha256: String,
     retained_death_proof: Option<SameSupervisorRunnerDeathProofV3>,
     response_pipe: File,
-    runner_epoch_sha256: String,
+    runner_epoch: AuthenticatedRunnerEpochV3,
     runner_identity: KernelProcessIdentityV3,
     session_deadline: AbsoluteDeadlineV3,
     state: RunnerStateV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
 }
+
+#[cfg(test)]
+type LiveInertRunnerV3 = AuthenticatedPreRunnerV3;
 
 struct PreallocatedRunnerSlotV3 {
     child_command_read: File,
@@ -419,6 +586,13 @@ struct ProcBsdInfoV3 {
     nice: i32,
     start_seconds: u64,
     start_microseconds: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct ProcFdInfoV3 {
+    proc_fd: libc::c_int,
+    proc_fdtype: u32,
 }
 
 unsafe extern "C" {
@@ -488,12 +662,17 @@ fn ensure_preallocated_runner_pool() -> Result<(), InertRunnerErrorV3> {
 }
 
 fn build_preallocated_runner_pool() -> Result<(), InertRunnerErrorV3> {
-    // This is the only function allowed to call pipe(2) or kqueue(2).  The
+    // This is the only function allowed to call socketpair(2), pipe(2), or
+    // kqueue(2).  Darwin does not implement AF_UNIX/SOCK_SEQPACKET (it returns
+    // EPROTONOSUPPORT), so a connected AF_UNIX/SOCK_DGRAM pair supplies the
+    // required atomic record boundary for one sendmsg+SCM_RIGHTS dispatch.
+    // There is deliberately no stream fallback.
+    //
     // kernel thread-count checks plus a full signal mask prove no concurrent
     // exec actor exists while CLOEXEC is applied. Runtime runner launches only
     // consume these one-shot slots.
     let mut descriptors = [-1; PREALLOCATED_FDS_V3];
-    let mut reservations = [-1; 4];
+    let mut reservations = [-1; 3];
     let previous_signals = block_all_signals()?;
     let result = (|| -> Result<[u8; 32], InertRunnerErrorV3> {
         require_single_kernel_thread("during runner FD pool bootstrap")?;
@@ -534,8 +713,29 @@ fn build_preallocated_runner_pool() -> Result<(), InertRunnerErrorV3> {
 
         for slot in 0..PREALLOCATED_RUNNER_SLOTS_V3 {
             let base = slot * PREALLOCATED_SLOT_FDS_V3;
-            for pair in 0..3 {
-                let offset = base + pair * 2;
+            let mut command_socket = [-1; 2];
+            if unsafe {
+                libc::socketpair(
+                    libc::AF_UNIX,
+                    libc::SOCK_DGRAM,
+                    0,
+                    command_socket.as_mut_ptr(),
+                )
+            } != 0
+            {
+                return Err(io::Error::last_os_error().into());
+            }
+            descriptors[base] = command_socket[0];
+            descriptors[base + 1] = command_socket[1];
+            set_close_on_exec(command_socket[0])?;
+            set_close_on_exec(command_socket[1])?;
+            set_socket_buffer(command_socket[0], libc::SO_RCVBUF, MAX_FRAME_BYTES_V3)?;
+            set_socket_buffer(command_socket[1], libc::SO_SNDBUF, MAX_FRAME_BYTES_V3)?;
+            assert_datagram_socket(command_socket[0])?;
+            assert_datagram_socket(command_socket[1])?;
+
+            for pair in 0..2 {
+                let offset = base + 2 + pair * 2;
                 let mut pipe = [-1; 2];
                 if unsafe { libc::pipe(pipe.as_mut_ptr()) } != 0 {
                     return Err(io::Error::last_os_error().into());
@@ -730,6 +930,7 @@ impl FreshProcessEpochV3 {
             pid: identity.pid,
             schema: PROCESS_EPOCH_SCHEMA_V3.to_string(),
             schema_version: 3,
+            transport: runner_transport_semantics(),
         };
         let binding_sha256 = digest_canonical(&binding)?;
         let epoch = Self {
@@ -751,10 +952,134 @@ impl FreshProcessEpochV3 {
             || identity.start_microseconds != self.binding.kernel_start_microseconds
             || boot_session_uuid()? != self.binding.boot_session_uuid
             || bootstrap_pool_sha256()? != self.binding.bootstrap_pool_sha256
+            || self.binding.transport != runner_transport_semantics()
             || digest_canonical(&self.binding)? != self.binding_sha256
         {
             return Err(invalid(
                 "fresh process epoch was inherited, replaced, or changed",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn runner_transport_semantics() -> RunnerTransportSemanticsV3 {
+    RunnerTransportSemanticsV3 {
+        descriptor_transfer: RUNNER_DESCRIPTOR_TRANSFER_V3.to_string(),
+        fallback_allowed: false,
+        kind: RUNNER_TRANSPORT_KIND_V3.to_string(),
+        record_boundary: RUNNER_RECORD_BOUNDARY_V3.to_string(),
+        records_per_runner: 1,
+    }
+}
+
+impl AuthenticatedRunnerEpochV3 {
+    fn validate(
+        &self,
+        epoch: &FreshProcessEpochV3,
+        expected_identity: KernelProcessIdentityV3,
+    ) -> Result<(), InertRunnerErrorV3> {
+        epoch.validate_current()?;
+        require_nonce(&self.runner_nonce, "authenticated runner nonce")?;
+        require_sha256(&self.hello_sha256, "authenticated runner hello digest")?;
+        require_sha256(
+            &self.pre_hello_fd_census_sha256,
+            "pre-runner FD census digest",
+        )?;
+        require_sha256(&self.process_epoch_sha256, "authenticated process epoch")?;
+        require_sha256(&self.runner_epoch_sha256, "authenticated runner epoch")?;
+        if self.boot_session_uuid != epoch.binding.boot_session_uuid
+            || self.process_epoch_sha256 != epoch.binding_sha256
+            || self.runner_epoch_sha256 != self.hello_sha256
+            || self.runner_pid != expected_identity.pid
+            || self.runner_kernel_start_microseconds != expected_identity.start_microseconds
+            || expected_identity.parent_pid != epoch.binding.pid
+            || self.transport != runner_transport_semantics()
+            || self
+                .pre_hello_open_fd_identity_sha256s
+                .windows(2)
+                .any(|pair| pair[0] >= pair[1])
+            || digest_canonical(&self.pre_hello_open_fd_identity_sha256s)?
+                != self.pre_hello_fd_census_sha256
+        {
+            return Err(invalid(
+                "authenticated runner epoch changed after the hello seal",
+            ));
+        }
+        let current = kernel_process_identity(self.runner_pid)?;
+        if current != expected_identity {
+            return Err(invalid("authenticated runner kernel identity changed"));
+        }
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn process_epoch_sha256(&self) -> &str {
+        &self.process_epoch_sha256
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn runner_epoch_sha256(&self) -> &str {
+        &self.runner_epoch_sha256
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn runner_nonce(&self) -> &str {
+        &self.runner_nonce
+    }
+}
+
+impl RunnerDispatchRecordV3 {
+    fn validate(
+        &self,
+        runner_epoch: &AuthenticatedRunnerEpochV3,
+    ) -> Result<(), InertRunnerErrorV3> {
+        self.wire
+            .envelope
+            .validate_against(&self.wire.issued_record, &self.wire.command)?;
+        require_sha256(&self.lease_identity_sha256, "lease descriptor identity")?;
+        if self.schema != RUNNER_DISPATCH_SCHEMA_V3
+            || self.schema_version != 3
+            || self.transport != runner_transport_semantics()
+            || self.dispatch_deadline_monotonic_nanoseconds == 0
+            || self.wire.envelope.process_epoch_sha256 != runner_epoch.process_epoch_sha256
+            || self.wire.envelope.runner_epoch_sha256 != runner_epoch.runner_epoch_sha256
+            || runner_epoch
+                .pre_hello_open_fd_identity_sha256s
+                .binary_search(&self.lease_identity_sha256)
+                .is_ok()
+        {
+            return Err(invalid(
+                "runner dispatch record changed transport, epoch, deadline, or lease binding",
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_wire(
+        &self,
+        runner_epoch_sha256: &str,
+        process_epoch_sha256: &str,
+        pre_hello_open_fd_identity_sha256s: &[String],
+        received_lease_fd: RawFd,
+    ) -> Result<(), InertRunnerErrorV3> {
+        self.wire
+            .envelope
+            .validate_against(&self.wire.issued_record, &self.wire.command)?;
+        require_sha256(&self.lease_identity_sha256, "lease descriptor identity")?;
+        if self.schema != RUNNER_DISPATCH_SCHEMA_V3
+            || self.schema_version != 3
+            || self.transport != runner_transport_semantics()
+            || self.dispatch_deadline_monotonic_nanoseconds == 0
+            || self.wire.envelope.process_epoch_sha256 != process_epoch_sha256
+            || self.wire.envelope.runner_epoch_sha256 != runner_epoch_sha256
+            || descriptor_identity_sha256(received_lease_fd)? != self.lease_identity_sha256
+            || pre_hello_open_fd_identity_sha256s
+                .binary_search(&self.lease_identity_sha256)
+                .is_ok()
+        {
+            return Err(invalid(
+                "SCM_RIGHTS lease, durable issue, payload, or runner epoch changed",
             ));
         }
         Ok(())
@@ -917,14 +1242,15 @@ impl PriorRunnerDeathReceiptV3 {
     }
 }
 
-impl LiveInertRunnerV3 {
-    /// Test-only launcher for an independent inert process-group member.
-    /// Production integration must instead consume the future borrow-tied,
-    /// exact S2 persisted-issued grant described on `RetainedControlLeaseV3`.
+impl AuthenticatedPreRunnerV3 {
+    /// Test-only launcher for an independent inert process-group member.  The
+    /// child receives only the preallocated datagram/response/death endpoints;
+    /// no control lease exists in its descriptor table during exec or hello.
+    /// Production integration must provide a fixed inert runner path before
+    /// exposing a constructor, then dispatch only with the sealed S2 grant.
     #[cfg(test)]
     fn spawn_program(
         epoch: &FreshProcessEpochV3,
-        lease: &RetainedControlLeaseV3,
         program: &std::path::Path,
         arguments: &[&str],
         startup_timeout: Duration,
@@ -942,12 +1268,10 @@ impl LiveInertRunnerV3 {
             child_death_write,
             kqueue,
         } = take_preallocated_runner_slot()?;
-        let child_lease = lease.prepare_for_child()?;
         let source_fds = [
             child_command_read.as_raw_fd(),
             child_response_write.as_raw_fd(),
             child_death_write.as_raw_fd(),
-            child_lease.as_raw_fd(),
         ];
         let target_fds = CHILD_FIXED_FDS_V3;
         reject_child_fd_aliases(&source_fds, &target_fds)?;
@@ -970,10 +1294,6 @@ impl LiveInertRunnerV3 {
             .env(
                 "HEPTA_INERT_RUNNER_DEATH_FD_V3",
                 CHILD_DEATH_FD_V3.to_string(),
-            )
-            .env(
-                "HEPTA_INERT_RUNNER_LEASE_FD_V3",
-                CHILD_LEASE_FD_V3.to_string(),
             )
             .env(
                 CHILD_DEADLINE_ENV_V3,
@@ -1008,7 +1328,6 @@ impl LiveInertRunnerV3 {
         drop(child_command_read);
         drop(child_response_write);
         drop(child_death_write);
-        drop(child_lease);
 
         let startup = (|| {
             let challenge = random_hex(32)?;
@@ -1016,8 +1335,11 @@ impl LiveInertRunnerV3 {
                 challenge: challenge.clone(),
                 process_epoch: epoch.binding.clone(),
                 process_epoch_sha256: epoch.binding_sha256.clone(),
+                startup_deadline_monotonic_nanoseconds: startup_deadline.monotonic_nanoseconds,
+                transport: runner_transport_semantics(),
             };
-            write_canonical_frame_until(&parent_command_write, &request, startup_deadline)?;
+            let request_bytes = canonical_bytes(&request)?;
+            send_datagram_until(&parent_command_write, &request_bytes, &[], startup_deadline)?;
             let (hello_bytes, hello_deadline) =
                 read_frame_until(&parent_response_read, startup_deadline)
                     .map_err(|_| InertRunnerErrorV3::StartupFailed)?;
@@ -1032,6 +1354,13 @@ impl LiveInertRunnerV3 {
                 || hello.parent_pid != epoch.binding.pid
                 || hello.parent_kernel_start_microseconds != epoch.binding.kernel_start_microseconds
                 || hello.process_epoch_sha256 != epoch.binding_sha256
+                || hello.transport != runner_transport_semantics()
+                || hello
+                    .pre_hello_open_fd_identity_sha256s
+                    .windows(2)
+                    .any(|pair| pair[0] >= pair[1])
+                || digest_canonical(&hello.pre_hello_open_fd_identity_sha256s)?
+                    != hello.pre_hello_fd_census_sha256
                 || hello.runner_pid != child.id()
                 || hello.runner_pid != identity.pid
                 || hello.runner_kernel_start_microseconds != identity.start_microseconds
@@ -1041,10 +1370,24 @@ impl LiveInertRunnerV3 {
             }
             require_nonce(&hello.runner_nonce, "runner nonce")?;
             let runner_epoch_sha256 = digest_canonical(&hello)?;
+            let runner_epoch = AuthenticatedRunnerEpochV3 {
+                boot_session_uuid: epoch.binding.boot_session_uuid.clone(),
+                hello_sha256: runner_epoch_sha256.clone(),
+                pre_hello_fd_census_sha256: hello.pre_hello_fd_census_sha256,
+                pre_hello_open_fd_identity_sha256s: hello.pre_hello_open_fd_identity_sha256s,
+                process_epoch_sha256: epoch.binding_sha256.clone(),
+                runner_epoch_sha256,
+                runner_kernel_start_microseconds: identity.start_microseconds,
+                runner_nonce: hello.runner_nonce,
+                runner_pid: identity.pid,
+                transport: hello.transport,
+                _not_send_or_sync: PhantomData,
+            };
+            runner_epoch.validate(epoch, identity)?;
             register_process_exit(kqueue.as_raw_fd(), child.id())?;
-            Ok((identity, runner_epoch_sha256))
+            Ok((identity, runner_epoch))
         })();
-        let (identity, runner_epoch_sha256) = match startup {
+        let (identity, runner_epoch) = match startup {
             Ok(startup) => startup,
             Err(error) => {
                 terminate_group_and_reap(&mut child);
@@ -1053,28 +1396,94 @@ impl LiveInertRunnerV3 {
         };
         Ok(Self {
             child,
-            command_pipe: parent_command_write,
+            command_socket: parent_command_write,
             death_pipe: parent_death_read,
             durable_issued_binding: None,
             kqueue,
             process_epoch_sha256: epoch.binding_sha256.clone(),
             retained_death_proof: None,
             response_pipe: parent_response_read,
-            runner_epoch_sha256,
+            runner_epoch,
             runner_identity: identity,
             session_deadline,
             state: RunnerStateV3::Ready,
+            _not_send_or_sync: PhantomData,
         })
     }
 
     pub fn runner_epoch_sha256(&self) -> &str {
-        &self.runner_epoch_sha256
+        &self.runner_epoch.runner_epoch_sha256
+    }
+
+    /// The only production dispatch surface.  S2 must move in a sealed grant
+    /// after durable V2/V3 replay; raw commands, lease files, and nonce strings
+    /// are deliberately not accepted here.
+    pub(crate) fn dispatch(
+        &mut self,
+        mut grant: PersistedIssuedRunnerGrantV3,
+        timeout: Duration,
+    ) -> Result<InertDispatchReceiptV3, InertRunnerErrorV3> {
+        if self.state != RunnerStateV3::Ready {
+            return Err(invalid(
+                "runner epoch already accepted or may have accepted one command",
+            ));
+        }
+        let deadline = AbsoluteDeadlineV3::after(timeout)?.min(self.session_deadline);
+        deadline.remaining_nanoseconds()?;
+        grant.record.dispatch_deadline_monotonic_nanoseconds = deadline.monotonic_nanoseconds;
+        grant.validate(&self.runner_epoch)?;
+        if self.process_epoch_sha256 != grant.process_epoch_sha256
+            || self.runner_epoch.runner_epoch_sha256 != grant.runner_epoch_sha256
+        {
+            return Err(invalid("grant targets another process or runner epoch"));
+        }
+        self.state = RunnerStateV3::IssuedOrUncertain;
+        self.durable_issued_binding = Some(grant.durable_binding.clone());
+        let record_bytes = canonical_bytes(&grant.record)?;
+        let dispatch = (|| {
+            send_datagram_until(
+                &self.command_socket,
+                &record_bytes,
+                &[grant.lease.as_raw_fd()],
+                deadline,
+            )?;
+            let (bytes, response_deadline) = read_frame_until(&self.response_pipe, deadline)?;
+            if response_deadline.monotonic_nanoseconds != deadline.monotonic_nanoseconds {
+                return Err(invalid("runner response changed the dispatch deadline"));
+            }
+            let receipt: InertDispatchReceiptV3 = parse_canonical(&bytes, "dispatch receipt")?;
+            if receipt.schema != DISPATCH_RECEIPT_SCHEMA_V3
+                || receipt.schema_version != 3
+                || receipt.authority.any()
+                || receipt.dispatch_count != 1
+                || receipt.runner_epoch_sha256 != self.runner_epoch.runner_epoch_sha256
+                || receipt.issued_record_sha256 != grant.record.wire.envelope.issued_record_sha256
+                || receipt.command_sha256 != grant.record.wire.envelope.command_sha256
+            {
+                return Err(invalid("inert dispatch receipt changed bindings"));
+            }
+            Ok(receipt)
+        })();
+        match dispatch {
+            Ok(receipt) => Ok(receipt),
+            Err(error) => {
+                let result = post_issue_error(error);
+                if let Err(proof_error) = self.terminate_and_retain_proof(CLEANUP_TIMEOUT_V3) {
+                    return Err(InertRunnerErrorV3::ChannelLostIssuedOrUncertain(format!(
+                        "{result}; death evidence retention failed: {proof_error}",
+                    )));
+                }
+                Err(result)
+            }
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[cfg(test)]
     pub fn issue_fresh_with<F>(
         &mut self,
         epoch: &FreshProcessEpochV3,
+        lease: &RetainedControlLeaseV3,
         operation_nonce: &str,
         effect_id: u64,
         previous_record_sha256: Option<String>,
@@ -1087,6 +1496,7 @@ impl LiveInertRunnerV3 {
     {
         self.issue_with(
             epoch,
+            lease,
             operation_nonce,
             effect_id,
             previous_record_sha256,
@@ -1099,9 +1509,11 @@ impl LiveInertRunnerV3 {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[cfg(test)]
     pub fn issue_same_supervisor_reconciliation_with<F>(
         &mut self,
         epoch: &FreshProcessEpochV3,
+        lease: &RetainedControlLeaseV3,
         death_proof: SameSupervisorRunnerDeathProofV3,
         operation_nonce: &str,
         effect_id: u64,
@@ -1130,6 +1542,7 @@ impl LiveInertRunnerV3 {
         }
         self.issue_with(
             epoch,
+            lease,
             operation_nonce,
             effect_id,
             previous_record_sha256,
@@ -1144,9 +1557,11 @@ impl LiveInertRunnerV3 {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[cfg(test)]
     fn issue_with<F>(
         &mut self,
         epoch: &FreshProcessEpochV3,
+        lease: &RetainedControlLeaseV3,
         operation_nonce: &str,
         effect_id: u64,
         previous_record_sha256: Option<String>,
@@ -1169,8 +1584,6 @@ impl LiveInertRunnerV3 {
             return Err(invalid("runner belongs to another process epoch"));
         }
         require_command_size(command)?;
-        let deadline = AbsoluteDeadlineV3::after(timeout)?.min(self.session_deadline);
-        deadline.remaining_nanoseconds()?;
         let record = IssuedEffectRecordV3 {
             authority: DisposableAuthorityV2::none(),
             command_sha256: sha256(command),
@@ -1181,7 +1594,7 @@ impl LiveInertRunnerV3 {
             previous_record_sha256,
             process_epoch_sha256: epoch.binding_sha256.clone(),
             purpose,
-            runner_epoch_sha256: self.runner_epoch_sha256.clone(),
+            runner_epoch_sha256: self.runner_epoch.runner_epoch_sha256.clone(),
             schema: ISSUE_SCHEMA_V3.to_string(),
             schema_version: 3,
         };
@@ -1196,50 +1609,29 @@ impl LiveInertRunnerV3 {
             previous_record_sha256: issued.record.previous_record_sha256.clone(),
             process_epoch_sha256: epoch.binding_sha256.clone(),
             purpose,
-            runner_epoch_sha256: self.runner_epoch_sha256.clone(),
+            runner_epoch_sha256: self.runner_epoch.runner_epoch_sha256.clone(),
             schema: ENVELOPE_SCHEMA_V3.to_string(),
             schema_version: 3,
         };
         envelope.validate_against(&issued.record, command)?;
         debug_assert_eq!(sha256(&issued.record_bytes), issued.record_sha256);
+        let durable_binding = issued.durable_binding;
         let wire = RunnerWireCommandV3 {
             command: command.to_vec(),
             envelope,
             issued_record: issued.record,
         };
-        let dispatch = (|| {
-            write_canonical_frame_until(&self.command_pipe, &wire, deadline)?;
-            let (bytes, response_deadline) = read_frame_until(&self.response_pipe, deadline)?;
-            if response_deadline.monotonic_nanoseconds != deadline.monotonic_nanoseconds {
-                return Err(invalid("runner response changed the dispatch deadline"));
-            }
-            let receipt: InertDispatchReceiptV3 = parse_canonical(&bytes, "dispatch receipt")?;
-            if receipt.schema != DISPATCH_RECEIPT_SCHEMA_V3
-                || receipt.schema_version != 3
-                || receipt.authority.any()
-                || receipt.dispatch_count != 1
-                || receipt.runner_epoch_sha256 != self.runner_epoch_sha256
-                || receipt.issued_record_sha256 != wire.envelope.issued_record_sha256
-                || receipt.command_sha256 != wire.envelope.command_sha256
-            {
-                return Err(invalid("inert dispatch receipt changed bindings"));
-            }
-            Ok(receipt)
-        })();
-        match dispatch {
-            Ok(receipt) => Ok(receipt),
-            Err(error) => {
-                let result = post_issue_error(error);
-                if let Err(proof_error) = self.terminate_and_retain_proof(CLEANUP_TIMEOUT_V3) {
-                    return Err(InertRunnerErrorV3::ChannelLostIssuedOrUncertain(format!(
-                        "{result}; death evidence retention failed: {proof_error}",
-                    )));
-                }
-                Err(result)
-            }
-        }
+        let grant = PersistedIssuedRunnerGrantV3::for_test(
+            epoch,
+            &self.runner_epoch,
+            lease,
+            wire,
+            durable_binding,
+        )?;
+        self.dispatch(grant, timeout)
     }
 
+    #[cfg(test)]
     fn persist_issue<F>(
         &mut self,
         record: IssuedEffectRecordV3,
@@ -1266,8 +1658,9 @@ impl LiveInertRunnerV3 {
                 receipt
                     .validate(&record, &record_sha256)
                     .map_err(|error| InertRunnerErrorV3::PersistenceUncertain(error.to_string()))?;
-                self.durable_issued_binding = Some(durable_binding);
+                self.state = RunnerStateV3::Ready;
                 Ok(DurablyIssuedOrUncertainV3 {
+                    durable_binding,
                     record,
                     record_bytes,
                     record_sha256,
@@ -1368,7 +1761,7 @@ impl LiveInertRunnerV3 {
             operation_nonce: issued.operation_nonce,
             process_epoch_sha256: self.process_epoch_sha256.clone(),
             purpose: issued.purpose,
-            runner_epoch_sha256: self.runner_epoch_sha256.clone(),
+            runner_epoch_sha256: self.runner_epoch.runner_epoch_sha256.clone(),
             runner_kernel_start_microseconds: self.runner_identity.start_microseconds,
             runner_pid: self.runner_identity.pid,
             schema: DEATH_RECEIPT_SCHEMA_V3.to_string(),
@@ -1386,7 +1779,7 @@ impl LiveInertRunnerV3 {
     }
 }
 
-impl Drop for LiveInertRunnerV3 {
+impl Drop for AuthenticatedPreRunnerV3 {
     fn drop(&mut self) {
         if self.child.try_wait().ok().flatten().is_none() {
             terminate_group_and_reap(&mut self.child);
@@ -1395,7 +1788,8 @@ impl Drop for LiveInertRunnerV3 {
 }
 
 /// Child entry point for a dedicated inert runner executable (and tests).
-/// It consumes only inherited pipes and the retained lease descriptor.
+/// It consumes only the inherited datagram, response, and death endpoints.
+/// The control lease arrives later in the command datagram via SCM_RIGHTS.
 pub fn run_inert_child_from_environment() -> Result<(), InertRunnerErrorV3> {
     run_inert_child_with_behavior(Duration::ZERO, InertChildResponseV3::Complete)
 }
@@ -1420,21 +1814,37 @@ fn run_inert_child_with_behavior(
     let command_fd = inherited_fd("HEPTA_INERT_RUNNER_COMMAND_FD_V3")?;
     let response_fd = inherited_fd("HEPTA_INERT_RUNNER_RESPONSE_FD_V3")?;
     let death_fd = inherited_fd("HEPTA_INERT_RUNNER_DEATH_FD_V3")?;
-    let lease_fd = inherited_fd("HEPTA_INERT_RUNNER_LEASE_FD_V3")?;
-    let command_pipe = unsafe { File::from_raw_fd(command_fd) };
+    let command_socket = unsafe { File::from_raw_fd(command_fd) };
     let response_pipe = unsafe { File::from_raw_fd(response_fd) };
     let _death_pipe = unsafe { File::from_raw_fd(death_fd) };
-    let _retained_control_lease = unsafe { File::from_raw_fd(lease_fd) };
-    set_nonblocking(command_pipe.as_raw_fd())?;
+    assert_datagram_socket(command_socket.as_raw_fd())?;
+    set_nonblocking(command_socket.as_raw_fd())?;
     set_nonblocking(response_pipe.as_raw_fd())?;
     set_no_sigpipe(response_pipe.as_raw_fd())?;
 
-    let (request_bytes, startup_deadline) = read_frame_until(&command_pipe, session_deadline)?;
+    let pre_hello_open_fd_identity_sha256s = open_fd_identity_census()?;
+    let pre_hello_fd_census_sha256 = digest_canonical(&pre_hello_open_fd_identity_sha256s)?;
+    let (request_bytes, request_fds) =
+        receive_datagram_until(&command_socket, session_deadline, 0)?;
+    if !request_fds.is_empty() {
+        return Err(invalid("runner hello unexpectedly carried descriptors"));
+    }
     let request: RunnerHelloRequestV3 = parse_canonical(&request_bytes, "runner hello request")?;
+    let startup_deadline = AbsoluteDeadlineV3 {
+        monotonic_nanoseconds: request.startup_deadline_monotonic_nanoseconds,
+    };
+    if startup_deadline.monotonic_nanoseconds > session_deadline.monotonic_nanoseconds {
+        return Err(invalid(
+            "startup deadline exceeds the runner session deadline",
+        ));
+    }
+    startup_deadline.remaining_nanoseconds()?;
     if digest_canonical(&request.process_epoch)? != request.process_epoch_sha256
         || request.process_epoch.schema != PROCESS_EPOCH_SCHEMA_V3
         || request.process_epoch.schema_version != 3
         || request.process_epoch.boot_session_uuid != boot_session_uuid()?
+        || request.process_epoch.transport != runner_transport_semantics()
+        || request.transport != runner_transport_semantics()
     {
         return Err(invalid("parent process epoch binding changed"));
     }
@@ -1449,12 +1859,15 @@ fn run_inert_child_with_behavior(
         challenge_sha256: sha256(request.challenge.as_bytes()),
         parent_kernel_start_microseconds: parent_identity.start_microseconds,
         parent_pid: parent_identity.pid,
+        pre_hello_fd_census_sha256,
+        pre_hello_open_fd_identity_sha256s: pre_hello_open_fd_identity_sha256s.clone(),
         process_epoch_sha256: request.process_epoch_sha256,
         runner_kernel_start_microseconds: identity.start_microseconds,
         runner_nonce: random_hex(32)?,
         runner_pid: identity.pid,
         schema: RUNNER_HELLO_SCHEMA_V3.to_string(),
         schema_version: 3,
+        transport: runner_transport_semantics(),
     };
     let runner_epoch_sha256 = digest_canonical(&hello)?;
     write_canonical_frame_until(&response_pipe, &hello, startup_deadline)?;
@@ -1464,15 +1877,39 @@ fn run_inert_child_with_behavior(
         return Ok(());
     }
 
-    let (wire_bytes, dispatch_deadline) = read_frame_until(&command_pipe, session_deadline)?;
-    let wire: RunnerWireCommandV3 = parse_canonical(&wire_bytes, "runner wire command")?;
-    wire.envelope
-        .validate_against(&wire.issued_record, &wire.command)?;
+    let (dispatch_bytes, mut received_fds) =
+        receive_datagram_until(&command_socket, session_deadline, 1)?;
+    if received_fds.len() != 1 {
+        return Err(invalid(
+            "runner command must carry exactly one SCM_RIGHTS descriptor",
+        ));
+    }
+    let retained_control_lease = received_fds.pop().expect("length checked");
+    set_close_on_exec(retained_control_lease.as_raw_fd())?;
+    let dispatch: RunnerDispatchRecordV3 =
+        parse_canonical(&dispatch_bytes, "runner dispatch record")?;
+    let dispatch_deadline = AbsoluteDeadlineV3 {
+        monotonic_nanoseconds: dispatch.dispatch_deadline_monotonic_nanoseconds,
+    };
+    if dispatch_deadline.monotonic_nanoseconds > session_deadline.monotonic_nanoseconds {
+        return Err(invalid(
+            "dispatch deadline exceeds the runner session deadline",
+        ));
+    }
+    dispatch_deadline.remaining_nanoseconds()?;
+    dispatch.validate_wire(
+        &runner_epoch_sha256,
+        &hello.process_epoch_sha256,
+        &pre_hello_open_fd_identity_sha256s,
+        retained_control_lease.as_raw_fd(),
+    )?;
+    let wire = dispatch.wire;
     if wire.envelope.process_epoch_sha256 != hello.process_epoch_sha256
         || wire.envelope.runner_epoch_sha256 != runner_epoch_sha256
     {
         return Err(invalid("command targets another process or runner epoch"));
     }
+    reject_queued_second_datagram(&command_socket)?;
     if !delay.is_zero() {
         std::thread::sleep(delay);
     }
@@ -1508,6 +1945,82 @@ fn run_inert_child_with_behavior(
     }
     write_canonical_frame_until(&response_pipe, &receipt, dispatch_deadline)?;
     Ok(())
+}
+
+fn descriptor_identity(fd: RawFd) -> Result<LeaseDescriptorIdentityV3, InertRunnerErrorV3> {
+    let mut status = MaybeUninit::<libc::stat>::zeroed();
+    if unsafe { libc::fstat(fd, status.as_mut_ptr()) } != 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    let status = unsafe { status.assume_init() };
+    Ok(LeaseDescriptorIdentityV3 {
+        device: status.st_dev as u64,
+        file_type: (status.st_mode & libc::S_IFMT) as u32,
+        group: status.st_gid,
+        inode: status.st_ino,
+        owner: status.st_uid,
+        rdev: status.st_rdev as u64,
+    })
+}
+
+fn descriptor_identity_sha256(fd: RawFd) -> Result<String, InertRunnerErrorV3> {
+    digest_canonical(&descriptor_identity(fd)?)
+}
+
+fn open_fd_identity_census() -> Result<Vec<String>, InertRunnerErrorV3> {
+    const PROC_PIDLISTFDS_V3: libc::c_int = 1;
+    let mut capacity = 64usize;
+    let descriptors = loop {
+        if capacity > 16_384 {
+            return Err(invalid("pre-runner FD census exceeded the closed bound"));
+        }
+        let mut entries = vec![MaybeUninit::<ProcFdInfoV3>::zeroed(); capacity];
+        let bytes = entries
+            .len()
+            .checked_mul(std::mem::size_of::<ProcFdInfoV3>())
+            .and_then(|value| libc::c_int::try_from(value).ok())
+            .ok_or_else(|| invalid("pre-runner FD census buffer overflowed"))?;
+        let received = unsafe {
+            proc_pidinfo(
+                libc::getpid(),
+                PROC_PIDLISTFDS_V3,
+                0,
+                entries.as_mut_ptr().cast(),
+                bytes,
+            )
+        };
+        if received <= 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        if received as usize % std::mem::size_of::<ProcFdInfoV3>() != 0 {
+            return Err(invalid("pre-runner FD census record size changed"));
+        }
+        let count = received as usize / std::mem::size_of::<ProcFdInfoV3>();
+        if count < capacity {
+            let mut descriptors = Vec::with_capacity(count);
+            for entry in entries.into_iter().take(count) {
+                let entry = unsafe { entry.assume_init() };
+                if entry.proc_fd < 0 {
+                    return Err(invalid("pre-runner FD census returned a negative FD"));
+                }
+                descriptors.push(entry.proc_fd);
+            }
+            break descriptors;
+        }
+        capacity = capacity
+            .checked_mul(2)
+            .ok_or_else(|| invalid("pre-runner FD census capacity overflowed"))?;
+    };
+    let mut identities = descriptors
+        .into_iter()
+        .map(descriptor_identity_sha256)
+        .collect::<Result<Vec<_>, _>>()?;
+    identities.sort();
+    identities.dedup();
+    for identity in &identities {
+        require_sha256(identity, "pre-runner FD identity")?;
+    }
+    Ok(identities)
 }
 
 fn kernel_process_identity(pid: u32) -> Result<KernelProcessIdentityV3, InertRunnerErrorV3> {
@@ -1604,6 +2117,50 @@ fn set_close_on_exec(fd: RawFd) -> Result<(), InertRunnerErrorV3> {
     Ok(())
 }
 
+fn set_socket_buffer(
+    fd: RawFd,
+    option: libc::c_int,
+    bytes: usize,
+) -> Result<(), InertRunnerErrorV3> {
+    let bytes = libc::c_int::try_from(bytes)
+        .map_err(|_| invalid("runner socket buffer size overflowed"))?;
+    if unsafe {
+        libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            option,
+            (&bytes as *const libc::c_int).cast(),
+            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+        )
+    } != 0
+    {
+        return Err(io::Error::last_os_error().into());
+    }
+    Ok(())
+}
+
+fn assert_datagram_socket(fd: RawFd) -> Result<(), InertRunnerErrorV3> {
+    let mut socket_type = 0 as libc::c_int;
+    let mut length = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+    if unsafe {
+        libc::getsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_TYPE,
+            (&mut socket_type as *mut libc::c_int).cast(),
+            &mut length,
+        )
+    } != 0
+        || length as usize != std::mem::size_of::<libc::c_int>()
+        || socket_type != libc::SOCK_DGRAM
+    {
+        return Err(invalid(
+            "runner command transport is not the sealed AF_UNIX datagram kind",
+        ));
+    }
+    Ok(())
+}
+
 fn set_nonblocking(fd: RawFd) -> Result<(), InertRunnerErrorV3> {
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
     if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
@@ -1620,8 +2177,8 @@ fn set_no_sigpipe(fd: RawFd) -> Result<(), InertRunnerErrorV3> {
 }
 
 fn reject_child_fd_aliases(
-    sources: &[RawFd; 4],
-    targets: &[RawFd; 4],
+    sources: &[RawFd; 3],
+    targets: &[RawFd; 3],
 ) -> Result<(), InertRunnerErrorV3> {
     for (index, source) in sources.iter().enumerate() {
         if *source < 0
@@ -1804,6 +2361,223 @@ fn post_issue_error(error: InertRunnerErrorV3) -> InertRunnerErrorV3 {
         InertRunnerErrorV3::TimeoutIssuedOrUncertain
     } else {
         InertRunnerErrorV3::ChannelLostIssuedOrUncertain(error.to_string())
+    }
+}
+
+fn control_space_for_fds(count: usize) -> Result<usize, InertRunnerErrorV3> {
+    let bytes = count
+        .checked_mul(std::mem::size_of::<RawFd>())
+        .ok_or_else(|| invalid("SCM_RIGHTS control length overflowed"))?;
+    let bytes = libc::c_uint::try_from(bytes)
+        .map_err(|_| invalid("SCM_RIGHTS control length is too large"))?;
+    Ok(unsafe { libc::CMSG_SPACE(bytes) as usize })
+}
+
+fn send_datagram_until(
+    socket: &File,
+    bytes: &[u8],
+    descriptors: &[RawFd],
+    deadline: AbsoluteDeadlineV3,
+) -> Result<(), InertRunnerErrorV3> {
+    if bytes.is_empty() || bytes.len() > MAX_FRAME_BYTES_V3 || descriptors.len() > 1 {
+        return Err(invalid(
+            "runner datagram payload or descriptor cardinality is invalid",
+        ));
+    }
+    assert_datagram_socket(socket.as_raw_fd())?;
+    let mut iovec = libc::iovec {
+        iov_base: bytes.as_ptr().cast_mut().cast(),
+        iov_len: bytes.len(),
+    };
+    let mut control = if descriptors.is_empty() {
+        Vec::new()
+    } else {
+        vec![0u8; control_space_for_fds(descriptors.len())?]
+    };
+    let mut message = unsafe { MaybeUninit::<libc::msghdr>::zeroed().assume_init() };
+    message.msg_iov = &mut iovec;
+    message.msg_iovlen = 1;
+    if !control.is_empty() {
+        message.msg_control = control.as_mut_ptr().cast();
+        message.msg_controllen = control.len() as _;
+        let header = unsafe { libc::CMSG_FIRSTHDR(&message) };
+        if header.is_null() {
+            return Err(invalid("SCM_RIGHTS header allocation failed"));
+        }
+        unsafe {
+            (*header).cmsg_len = libc::CMSG_LEN(std::mem::size_of::<RawFd>() as libc::c_uint) as _;
+            (*header).cmsg_level = libc::SOL_SOCKET;
+            (*header).cmsg_type = libc::SCM_RIGHTS;
+            libc::CMSG_DATA(header)
+                .cast::<RawFd>()
+                .write(descriptors[0]);
+        }
+    }
+    loop {
+        deadline.remaining_nanoseconds()?;
+        let sent = unsafe { libc::sendmsg(socket.as_raw_fd(), &message, 0) };
+        if sent == bytes.len() as isize {
+            return Ok(());
+        }
+        if sent >= 0 {
+            return Err(invalid("atomic runner datagram was written partially"));
+        }
+        let error = io::Error::last_os_error();
+        match error.raw_os_error() {
+            Some(libc::EINTR) => continue,
+            Some(libc::EAGAIN) => {
+                wait_for_events_until(socket.as_raw_fd(), libc::POLLOUT, deadline)?;
+            }
+            _ => return Err(error.into()),
+        }
+    }
+}
+
+fn receive_datagram_until(
+    socket: &File,
+    deadline: AbsoluteDeadlineV3,
+    expected_fds: usize,
+) -> Result<(Vec<u8>, Vec<File>), InertRunnerErrorV3> {
+    receive_datagram_with_limits_until(
+        socket,
+        deadline,
+        expected_fds,
+        MAX_FRAME_BYTES_V3,
+        expected_fds + 1,
+    )
+}
+
+fn receive_datagram_with_limits_until(
+    socket: &File,
+    deadline: AbsoluteDeadlineV3,
+    expected_fds: usize,
+    max_payload_bytes: usize,
+    control_fd_capacity: usize,
+) -> Result<(Vec<u8>, Vec<File>), InertRunnerErrorV3> {
+    if expected_fds > 1 {
+        return Err(invalid("runner receiver FD cardinality is invalid"));
+    }
+    if max_payload_bytes == 0 || control_fd_capacity == 0 {
+        return Err(invalid("runner receiver limits are invalid"));
+    }
+    assert_datagram_socket(socket.as_raw_fd())?;
+    let mut payload = vec![0u8; max_payload_bytes];
+    let mut control = vec![0u8; control_space_for_fds(control_fd_capacity)?];
+    loop {
+        deadline.remaining_nanoseconds()?;
+        let mut iovec = libc::iovec {
+            iov_base: payload.as_mut_ptr().cast(),
+            iov_len: payload.len(),
+        };
+        let mut message = unsafe { MaybeUninit::<libc::msghdr>::zeroed().assume_init() };
+        message.msg_iov = &mut iovec;
+        message.msg_iovlen = 1;
+        message.msg_control = control.as_mut_ptr().cast();
+        message.msg_controllen = control.len() as _;
+        let received = unsafe { libc::recvmsg(socket.as_raw_fd(), &mut message, 0) };
+        if received < 0 {
+            let error = io::Error::last_os_error();
+            match error.raw_os_error() {
+                Some(libc::EINTR) => continue,
+                Some(libc::EAGAIN) => {
+                    wait_for_events_until(socket.as_raw_fd(), libc::POLLIN, deadline)?;
+                    continue;
+                }
+                _ => return Err(error.into()),
+            }
+        }
+        let truncated = message.msg_flags & (libc::MSG_TRUNC | libc::MSG_CTRUNC) != 0;
+        let mut files: Vec<File> = Vec::new();
+        let mut control_messages = 0usize;
+        let mut malformed_control = false;
+        let mut header = unsafe { libc::CMSG_FIRSTHDR(&message) };
+        while !header.is_null() {
+            control_messages += 1;
+            let base_length = unsafe { libc::CMSG_LEN(0) as usize };
+            let header_length = usize::try_from(unsafe { (*header).cmsg_len })
+                .map_err(|_| invalid("SCM_RIGHTS header length overflowed"))?;
+            if unsafe { (*header).cmsg_level } != libc::SOL_SOCKET
+                || unsafe { (*header).cmsg_type } != libc::SCM_RIGHTS
+                || header_length < base_length
+                || !(header_length - base_length).is_multiple_of(std::mem::size_of::<RawFd>())
+            {
+                return Err(invalid("runner received a non-exact SCM_RIGHTS header"));
+            }
+            let header_offset = (header as usize)
+                .checked_sub(control.as_ptr() as usize)
+                .ok_or_else(|| invalid("SCM_RIGHTS header escaped the control buffer"))?;
+            let available_data = usize::try_from(message.msg_controllen)
+                .ok()
+                .and_then(|length| length.checked_sub(header_offset + base_length))
+                .unwrap_or(0);
+            let declared_data = header_length - base_length;
+            if declared_data > available_data {
+                malformed_control = true;
+            }
+            let count = declared_data.min(available_data) / std::mem::size_of::<RawFd>();
+            let descriptor = unsafe { libc::CMSG_DATA(header).cast::<RawFd>() };
+            for index in 0..count {
+                let raw = unsafe { descriptor.add(index).read() };
+                if raw < 0 || files.iter().any(|file| file.as_raw_fd() == raw) {
+                    return Err(invalid("SCM_RIGHTS installed an invalid descriptor"));
+                }
+                files.push(unsafe { File::from_raw_fd(raw) });
+            }
+            if malformed_control {
+                // Do not ask CMSG_NXTHDR to advance through a header whose
+                // declared extent escaped the kernel-reported control bytes.
+                break;
+            }
+            header = unsafe { libc::CMSG_NXTHDR(&message, header) };
+        }
+        if malformed_control {
+            return Err(invalid("runner received a truncated SCM_RIGHTS header"));
+        }
+        validate_control_cardinality(files.len(), control_messages, expected_fds)?;
+        if received == 0 || received as usize > max_payload_bytes || truncated {
+            return Err(invalid(
+                "runner datagram was empty, oversized, or data/control truncated",
+            ));
+        }
+        payload.truncate(received as usize);
+        return Ok((payload, files));
+    }
+}
+
+fn validate_control_cardinality(
+    received_fds: usize,
+    control_messages: usize,
+    expected_fds: usize,
+) -> Result<(), InertRunnerErrorV3> {
+    if received_fds != expected_fds
+        || control_messages != usize::from(expected_fds != 0)
+        || control_messages > 1
+    {
+        return Err(invalid(
+            "runner datagram carried missing, extra, or multiple control messages",
+        ));
+    }
+    Ok(())
+}
+
+fn reject_queued_second_datagram(socket: &File) -> Result<(), InertRunnerErrorV3> {
+    let mut byte = 0u8;
+    let received = unsafe {
+        libc::recv(
+            socket.as_raw_fd(),
+            (&mut byte as *mut u8).cast(),
+            1,
+            libc::MSG_PEEK | libc::MSG_DONTWAIT,
+        )
+    };
+    if received >= 0 {
+        return Err(invalid("runner received a second command datagram"));
+    }
+    let error = io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::EAGAIN) {
+        Ok(())
+    } else {
+        Err(error.into())
     }
 }
 

@@ -16,6 +16,53 @@ use tempfile::TempDir;
 const NONCE: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 const TIP: &str = "2222222222222222222222222222222222222222222222222222222222222222";
 
+macro_rules! assert_not_impl_any {
+    ($ty:ty: $($trait:path),+ $(,)?) => {
+        const _: fn() = || {
+            trait AmbiguousIfImpl<A> {
+                fn marker() {}
+            }
+            impl<T: ?Sized> AmbiguousIfImpl<()> for T {}
+            $({
+                struct Invalid;
+                impl<T: ?Sized + $trait> AmbiguousIfImpl<Invalid> for T {}
+            })+
+            let _ = <$ty as AmbiguousIfImpl<_>>::marker;
+        };
+    };
+}
+
+assert_not_impl_any!(
+    AuthenticatedRunnerEpochV3:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
+assert_not_impl_any!(
+    AuthenticatedPreRunnerV3:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
+assert_not_impl_any!(
+    PersistedIssuedRunnerGrantV3:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
+
 #[test]
 fn inert_child_entry() {
     if std::env::var_os("HEPTA_INERT_RUNNER_COMMAND_FD_V3").is_some() {
@@ -65,11 +112,9 @@ fn partial_hello_child_entry() {
     let command = inherited_fd("HEPTA_INERT_RUNNER_COMMAND_FD_V3").expect("command FD");
     let response = inherited_fd("HEPTA_INERT_RUNNER_RESPONSE_FD_V3").expect("response FD");
     let death = inherited_fd("HEPTA_INERT_RUNNER_DEATH_FD_V3").expect("death FD");
-    let lease = inherited_fd("HEPTA_INERT_RUNNER_LEASE_FD_V3").expect("lease FD");
     let _command = unsafe { File::from_raw_fd(command) };
     let response = unsafe { File::from_raw_fd(response) };
     let _death = unsafe { File::from_raw_fd(death) };
-    let _lease = unsafe { File::from_raw_fd(lease) };
     let prefix = [0u8; 4];
     assert_eq!(
         unsafe { libc::write(response.as_raw_fd(), prefix.as_ptr().cast(), prefix.len()) },
@@ -135,6 +180,23 @@ fn multithreaded_bootstrap_rejection_entry() {
     assert!(matches!(error, InertRunnerErrorV3::Invalid(_)));
     release.send(()).expect("release bootstrap worker");
     worker.join().expect("bootstrap worker");
+}
+
+#[test]
+fn preallocated_pool_exhaustion_entry() {
+    if std::env::var_os("HEPTA_RUNNER_POOL_EXHAUSTION_V3").is_none() {
+        return;
+    }
+    let mut retained = Vec::new();
+    for _ in 0..PREALLOCATED_RUNNER_SLOTS_V3 {
+        retained.push(take_preallocated_runner_slot().expect("bounded runner slot"));
+    }
+    let error = match take_preallocated_runner_slot() {
+        Ok(_) => panic!("pool exhaustion unexpectedly minted another slot"),
+        Err(error) => error,
+    };
+    assert!(matches!(error, InertRunnerErrorV3::Invalid(_)));
+    drop(retained);
 }
 
 fn fd_scan_limit() -> RawFd {
@@ -243,7 +305,9 @@ fn test_lease() -> (TempDir, RetainedControlLeaseV3) {
     (directory, RetainedControlLeaseV3::for_test(descriptor))
 }
 
-fn spawn_runner(epoch: &FreshProcessEpochV3) -> (TempDir, LiveInertRunnerV3) {
+fn spawn_runner(
+    epoch: &FreshProcessEpochV3,
+) -> (TempDir, RetainedControlLeaseV3, LiveInertRunnerV3) {
     spawn_named_runner(
         epoch,
         "mac_inert_one_shot_runner::tests::inert_child_entry",
@@ -255,21 +319,18 @@ fn spawn_named_runner(
     epoch: &FreshProcessEpochV3,
     test_name: &'static str,
     startup_timeout: Duration,
-) -> (TempDir, LiveInertRunnerV3) {
+) -> (TempDir, RetainedControlLeaseV3, LiveInertRunnerV3) {
     let (directory, lease) = test_lease();
     let arguments = helper_arguments(test_name);
-    let runner = LiveInertRunnerV3::spawn_program(
-        epoch,
-        &lease,
-        &helper_program(),
-        &arguments,
-        startup_timeout,
-    )
-    .expect("spawn inert runner");
-    (directory, runner)
+    let runner =
+        LiveInertRunnerV3::spawn_program(epoch, &helper_program(), &arguments, startup_timeout)
+            .expect("spawn inert runner");
+    (directory, lease, runner)
 }
 
-fn spawn_slow_runner(epoch: &FreshProcessEpochV3) -> (TempDir, LiveInertRunnerV3) {
+fn spawn_slow_runner(
+    epoch: &FreshProcessEpochV3,
+) -> (TempDir, RetainedControlLeaseV3, LiveInertRunnerV3) {
     spawn_named_runner(
         epoch,
         "mac_inert_one_shot_runner::tests::slow_inert_child_entry",
@@ -280,10 +341,12 @@ fn spawn_slow_runner(epoch: &FreshProcessEpochV3) -> (TempDir, LiveInertRunnerV3
 fn issue_once(
     runner: &mut LiveInertRunnerV3,
     epoch: &FreshProcessEpochV3,
+    lease: &RetainedControlLeaseV3,
 ) -> InertDispatchReceiptV3 {
     runner
         .issue_fresh_with(
             epoch,
+            lease,
             NONCE,
             7,
             Some(TIP.to_string()),
@@ -306,6 +369,138 @@ fn persist_for_test(
     bytes: &[u8],
 ) -> io::Result<DurableIssuePersistenceReceiptV3> {
     Ok(DurableIssuePersistenceReceiptV3::for_test(record, bytes))
+}
+
+fn send_raw_rights_datagram(sender: &File, bytes: &[u8], descriptors: &[RawFd]) {
+    let mut iovec = libc::iovec {
+        iov_base: bytes.as_ptr().cast_mut().cast(),
+        iov_len: bytes.len(),
+    };
+    let mut control = if descriptors.is_empty() {
+        Vec::new()
+    } else {
+        vec![0u8; control_space_for_fds(descriptors.len()).expect("control space")]
+    };
+    let mut message = unsafe { MaybeUninit::<libc::msghdr>::zeroed().assume_init() };
+    message.msg_iov = &mut iovec;
+    message.msg_iovlen = 1;
+    if !control.is_empty() {
+        message.msg_control = control.as_mut_ptr().cast();
+        message.msg_controllen = control.len() as _;
+        let header = unsafe { libc::CMSG_FIRSTHDR(&message) };
+        assert!(!header.is_null());
+        unsafe {
+            (*header).cmsg_len = libc::CMSG_LEN(
+                u32::try_from(descriptors.len() * std::mem::size_of::<RawFd>())
+                    .expect("rights length"),
+            ) as _;
+            (*header).cmsg_level = libc::SOL_SOCKET;
+            (*header).cmsg_type = libc::SCM_RIGHTS;
+            let target = libc::CMSG_DATA(header).cast::<RawFd>();
+            for (index, descriptor) in descriptors.iter().enumerate() {
+                target.add(index).write(*descriptor);
+            }
+        }
+    }
+    assert_eq!(
+        unsafe { libc::sendmsg(sender.as_raw_fd(), &message, 0) },
+        bytes.len() as isize,
+        "raw rights datagram"
+    );
+}
+
+fn send_two_rights_headers(
+    sender: &File,
+    bytes: &[u8],
+    first: RawFd,
+    second: RawFd,
+) -> io::Result<usize> {
+    let space = control_space_for_fds(1).expect("single rights space");
+    let mut control = vec![0u8; space * 2];
+    let mut iovec = libc::iovec {
+        iov_base: bytes.as_ptr().cast_mut().cast(),
+        iov_len: bytes.len(),
+    };
+    let mut message = unsafe { MaybeUninit::<libc::msghdr>::zeroed().assume_init() };
+    message.msg_iov = &mut iovec;
+    message.msg_iovlen = 1;
+    message.msg_control = control.as_mut_ptr().cast();
+    message.msg_controllen = control.len() as _;
+    for (index, descriptor) in [first, second].into_iter().enumerate() {
+        let header = unsafe {
+            control
+                .as_mut_ptr()
+                .add(index * space)
+                .cast::<libc::cmsghdr>()
+        };
+        unsafe {
+            (*header).cmsg_len = libc::CMSG_LEN(std::mem::size_of::<RawFd>() as u32) as _;
+            (*header).cmsg_level = libc::SOL_SOCKET;
+            (*header).cmsg_type = libc::SCM_RIGHTS;
+            libc::CMSG_DATA(header).cast::<RawFd>().write(descriptor);
+        }
+    }
+    let sent = unsafe { libc::sendmsg(sender.as_raw_fd(), &message, 0) };
+    if sent < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(sent as usize)
+    }
+}
+
+fn build_test_grant(
+    epoch: &FreshProcessEpochV3,
+    runner: &LiveInertRunnerV3,
+    lease: &RetainedControlLeaseV3,
+    command: &[u8],
+) -> PersistedIssuedRunnerGrantV3 {
+    let record = IssuedEffectRecordV3 {
+        authority: DisposableAuthorityV2::none(),
+        command_sha256: sha256(command),
+        effect_id: 77,
+        issue_context: EffectIssueContextV3::FreshProcess,
+        journal_tip_before_sha256: Some(TIP.to_string()),
+        operation_nonce: NONCE.to_string(),
+        previous_record_sha256: Some(TIP.to_string()),
+        process_epoch_sha256: epoch.binding_sha256.clone(),
+        purpose: EffectPurposeV3::ForwardFlow,
+        runner_epoch_sha256: runner.runner_epoch_sha256().to_string(),
+        schema: ISSUE_SCHEMA_V3.to_string(),
+        schema_version: 3,
+    };
+    let issued_record_sha256 = digest_canonical(&record).expect("issued digest");
+    let envelope = RunnerCommandEnvelopeV3 {
+        command_sha256: record.command_sha256.clone(),
+        effect_id: record.effect_id,
+        issued_record_sha256: issued_record_sha256.clone(),
+        journal_tip_before_sha256: record.journal_tip_before_sha256.clone(),
+        operation_nonce: record.operation_nonce.clone(),
+        previous_record_sha256: record.previous_record_sha256.clone(),
+        process_epoch_sha256: record.process_epoch_sha256.clone(),
+        purpose: record.purpose,
+        runner_epoch_sha256: record.runner_epoch_sha256.clone(),
+        schema: ENVELOPE_SCHEMA_V3.to_string(),
+        schema_version: 3,
+    };
+    PersistedIssuedRunnerGrantV3::for_test(
+        epoch,
+        &runner.runner_epoch,
+        lease,
+        RunnerWireCommandV3 {
+            command: command.to_vec(),
+            envelope,
+            issued_record: record,
+        },
+        DurableIssuedBindingV3 {
+            command_sha256: sha256(command),
+            effect_id: 77,
+            issued_record_sha256,
+            journal_tip_before_sha256: Some(TIP.to_string()),
+            operation_nonce: NONCE.to_string(),
+            purpose: EffectPurposeV3::ForwardFlow,
+        },
+    )
+    .expect("sealed test grant")
 }
 
 #[test]
@@ -449,11 +644,132 @@ fn fresh_process_pool_bootstrap_rejects_a_multithreaded_process() {
 }
 
 #[test]
+fn darwin_seqpacket_is_explicitly_unsupported_and_never_a_silent_fallback() {
+    let mut pair = [-1; 2];
+    let rc = unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_SEQPACKET, 0, pair.as_mut_ptr()) };
+    if rc == 0 {
+        close_raw_descriptors(pair);
+        panic!("Darwin gained AF_UNIX/SOCK_SEQPACKET; transport upgrade needs an explicit review");
+    }
+    assert_eq!(
+        io::Error::last_os_error().raw_os_error(),
+        Some(libc::EPROTONOSUPPORT)
+    );
+    let semantics = runner_transport_semantics();
+    assert_eq!(semantics.kind, RUNNER_TRANSPORT_KIND_V3);
+    assert_eq!(semantics.record_boundary, RUNNER_RECORD_BOUNDARY_V3);
+    assert_eq!(semantics.descriptor_transfer, RUNNER_DESCRIPTOR_TRANSFER_V3);
+    assert!(!semantics.fallback_allowed);
+    assert_eq!(semantics.records_per_runner, 1);
+}
+
+#[test]
+fn bounded_preallocated_datagram_pool_exhausts_fail_closed() {
+    let status = Command::new(helper_program())
+        .args(helper_arguments(
+            "mac_inert_one_shot_runner::tests::preallocated_pool_exhaustion_entry",
+        ))
+        .env("HEPTA_RUNNER_POOL_EXHAUSTION_V3", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("spawn isolated pool exhaustion helper");
+    assert!(status.success(), "pool exhaustion helper failed: {status}");
+}
+
+#[test]
+fn datagram_receiver_rejects_missing_extra_truncated_and_duplicate_records() {
+    let missing = take_preallocated_runner_slot().expect("missing-FD slot");
+    send_raw_rights_datagram(&missing.parent_command_write, b"missing", &[]);
+    assert!(
+        receive_datagram_until(
+            &missing.child_command_read,
+            AbsoluteDeadlineV3::after(Duration::from_secs(1)).expect("deadline"),
+            1,
+        )
+        .is_err()
+    );
+
+    let extra = take_preallocated_runner_slot().expect("extra-FD slot");
+    let first = File::open("/dev/null").expect("first FD");
+    let second = File::open("/dev/null").expect("second FD");
+    send_raw_rights_datagram(
+        &extra.parent_command_write,
+        b"extra",
+        &[first.as_raw_fd(), second.as_raw_fd()],
+    );
+    assert!(
+        receive_datagram_until(
+            &extra.child_command_read,
+            AbsoluteDeadlineV3::after(Duration::from_secs(1)).expect("deadline"),
+            1,
+        )
+        .is_err()
+    );
+
+    let multiple = take_preallocated_runner_slot().expect("multiple-cmsg slot");
+    let multiple_error = send_two_rights_headers(
+        &multiple.parent_command_write,
+        b"multiple",
+        first.as_raw_fd(),
+        second.as_raw_fd(),
+    )
+    .expect_err("Darwin must reject multiple SCM_RIGHTS headers at sendmsg");
+    assert_eq!(multiple_error.raw_os_error(), Some(libc::EINVAL));
+    assert!(validate_control_cardinality(1, 2, 1).is_err());
+
+    let data_truncated = take_preallocated_runner_slot().expect("data truncation slot");
+    send_raw_rights_datagram(&data_truncated.parent_command_write, &[7u8; 256], &[]);
+    assert!(
+        receive_datagram_with_limits_until(
+            &data_truncated.child_command_read,
+            AbsoluteDeadlineV3::after(Duration::from_secs(1)).expect("deadline"),
+            0,
+            16,
+            1,
+        )
+        .is_err()
+    );
+
+    let control_truncated = take_preallocated_runner_slot().expect("control truncation slot");
+    let third = File::open("/dev/null").expect("third FD");
+    send_raw_rights_datagram(
+        &control_truncated.parent_command_write,
+        b"control-truncated",
+        &[first.as_raw_fd(), second.as_raw_fd(), third.as_raw_fd()],
+    );
+    assert!(
+        receive_datagram_with_limits_until(
+            &control_truncated.child_command_read,
+            AbsoluteDeadlineV3::after(Duration::from_secs(1)).expect("deadline"),
+            1,
+            1024,
+            1,
+        )
+        .is_err()
+    );
+
+    let duplicate = take_preallocated_runner_slot().expect("duplicate record slot");
+    send_raw_rights_datagram(&duplicate.parent_command_write, b"first", &[]);
+    send_raw_rights_datagram(&duplicate.parent_command_write, b"second", &[]);
+    let (first_record, descriptors) = receive_datagram_until(
+        &duplicate.child_command_read,
+        AbsoluteDeadlineV3::after(Duration::from_secs(1)).expect("deadline"),
+        0,
+    )
+    .expect("first record");
+    assert_eq!(first_record, b"first");
+    assert!(descriptors.is_empty());
+    assert!(reject_queued_second_datagram(&duplicate.child_command_read).is_err());
+}
+
+#[test]
 fn parent_persists_exact_issue_before_one_inert_dispatch() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-    let (_directory, mut runner) = spawn_runner(&epoch);
+    let (_directory, lease, mut runner) = spawn_runner(&epoch);
     let runner_epoch = runner.runner_epoch_sha256().to_string();
-    let receipt = issue_once(&mut runner, &epoch);
+    let receipt = issue_once(&mut runner, &epoch, &lease);
     assert_eq!(receipt.dispatch_count, 1);
     assert_eq!(receipt.runner_epoch_sha256, runner_epoch);
     assert!(!receipt.authority.any());
@@ -482,24 +798,73 @@ fn parent_persists_exact_issue_before_one_inert_dispatch() {
 }
 
 #[test]
-fn child_retains_the_inherited_control_flock_until_runner_exit() {
+fn sealed_grant_rejects_wrong_lease_payload_or_issue_digest_before_send() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-    let (directory, mut runner) = spawn_runner(&epoch);
+    let (_directory, lease, runner) = spawn_runner(&epoch);
+    let mut grant = build_test_grant(&epoch, &runner, &lease, b"sealed-command");
+    grant.validate(&runner.runner_epoch).expect("exact grant");
+
+    let (_other_directory, other_lease) = test_lease();
+    assert!(
+        grant
+            .record
+            .validate_wire(
+                runner.runner_epoch_sha256(),
+                epoch.sha256(),
+                &runner.runner_epoch.pre_hello_open_fd_identity_sha256s,
+                other_lease.descriptor.as_raw_fd(),
+            )
+            .is_err(),
+        "wrong lease inode reached the child command validator"
+    );
+
+    grant.record.wire.command[0] ^= 1;
+    assert!(grant.validate(&runner.runner_epoch).is_err());
+    grant.record.wire.command[0] ^= 1;
+    grant.record.wire.envelope.issued_record_sha256 = "aa".repeat(32);
+    assert!(grant.validate(&runner.runner_epoch).is_err());
+}
+
+#[test]
+fn dropping_authenticated_pre_runner_kills_and_reaps_without_a_grant() {
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let (_directory, _lease, runner) = spawn_runner(&epoch);
+    let pid = runner.runner_identity.pid;
+    drop(runner);
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while kernel_process_identity(pid).is_ok() {
+        assert!(
+            Instant::now() < deadline,
+            "dropped pre-runner remained live"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn pre_runner_has_no_lease_inode_and_scm_handoff_releases_after_exit() {
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let (directory, lease, mut runner) = spawn_runner(&epoch);
+    let lease_identity =
+        descriptor_identity_sha256(lease.descriptor.as_raw_fd()).expect("lease identity");
+    assert!(
+        runner
+            .runner_epoch
+            .pre_hello_open_fd_identity_sha256s
+            .binary_search(&lease_identity)
+            .is_err(),
+        "authenticated pre-runner inherited the future grant lease"
+    );
+    issue_once(&mut runner, &epoch, &lease);
+    runner
+        .prove_dead(Duration::from_secs(5))
+        .expect("death proof after SCM lease exits");
+    drop(lease);
     let contender = OpenOptions::new()
         .read(true)
         .write(true)
         .open(directory.path().join("control.lock"))
         .expect("open lock contender");
-    let rc = unsafe { libc::flock(contender.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-    assert_eq!(rc, -1, "child must retain the supervisor's flock");
-    assert_eq!(
-        io::Error::last_os_error().raw_os_error(),
-        Some(libc::EWOULDBLOCK)
-    );
-    issue_once(&mut runner, &epoch);
-    runner
-        .prove_dead(Duration::from_secs(5))
-        .expect("death proof after retained lease exits");
     assert_flock_available_within(
         &contender,
         Duration::from_secs(2),
@@ -532,7 +897,6 @@ fn concurrent_foreign_execs_never_inherit_the_runner_lease() {
                 .env_remove("HEPTA_INERT_RUNNER_COMMAND_FD_V3")
                 .env_remove("HEPTA_INERT_RUNNER_RESPONSE_FD_V3")
                 .env_remove("HEPTA_INERT_RUNNER_DEATH_FD_V3")
-                .env_remove("HEPTA_INERT_RUNNER_LEASE_FD_V3")
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::piped())
@@ -550,13 +914,12 @@ fn concurrent_foreign_execs_never_inherit_the_runner_lease() {
     let arguments = helper_arguments("mac_inert_one_shot_runner::tests::inert_child_entry");
     let mut runner = LiveInertRunnerV3::spawn_program(
         &epoch,
-        &lease,
         &helper_program(),
         &arguments,
         Duration::from_secs(5),
     )
     .expect("spawn runner during foreign exec churn");
-    issue_once(&mut runner, &epoch);
+    issue_once(&mut runner, &epoch, &lease);
     let proof_started = Instant::now();
     runner
         .prove_dead(Duration::from_millis(500))
@@ -625,16 +988,11 @@ fn high_fd_pressure_and_exec_failure_do_not_collide_with_fixed_targets() {
 
     let (directory, lease) = test_lease();
     let missing = directory.path().join("missing-inert-runner-binary");
-    let error = match LiveInertRunnerV3::spawn_program(
-        &epoch,
-        &lease,
-        &missing,
-        &[],
-        Duration::from_millis(200),
-    ) {
-        Ok(_) => panic!("forced exec failure unexpectedly spawned"),
-        Err(error) => error,
-    };
+    let error =
+        match LiveInertRunnerV3::spawn_program(&epoch, &missing, &[], Duration::from_millis(200)) {
+            Ok(_) => panic!("forced exec failure unexpectedly spawned"),
+            Err(error) => error,
+        };
     assert!(
         matches!(&error, InertRunnerErrorV3::Io(io_error) if io_error.raw_os_error() == Some(libc::ENOENT)),
         "parent did not receive the exact exec failure: {error}",
@@ -651,8 +1009,8 @@ fn high_fd_pressure_and_exec_failure_do_not_collide_with_fixed_targets() {
         "failed exec retained or polluted the control lease",
     );
 
-    let (_valid_directory, mut runner) = spawn_runner(&epoch);
-    issue_once(&mut runner, &epoch);
+    let (_valid_directory, valid_lease, mut runner) = spawn_runner(&epoch);
+    issue_once(&mut runner, &epoch, &valid_lease);
     runner
         .prove_dead(Duration::from_secs(1))
         .expect("next preallocated slot remains usable after exec failure");
@@ -671,7 +1029,6 @@ fn partial_hello_prefix_hits_one_absolute_startup_deadline() {
     let started = Instant::now();
     let error = match LiveInertRunnerV3::spawn_program(
         &epoch,
-        &lease,
         &helper_program(),
         &arguments,
         Duration::from_millis(100),
@@ -697,10 +1054,11 @@ fn partial_hello_prefix_hits_one_absolute_startup_deadline() {
 #[test]
 fn persistence_failure_sends_nothing_and_poisoned_epoch_cannot_retry() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-    let (_directory, mut runner) = spawn_runner(&epoch);
+    let (_directory, lease, mut runner) = spawn_runner(&epoch);
     let error = runner
         .issue_fresh_with(
             &epoch,
+            &lease,
             NONCE,
             1,
             Some(TIP.to_string()),
@@ -713,6 +1071,7 @@ fn persistence_failure_sends_nothing_and_poisoned_epoch_cannot_retry() {
     let second = runner
         .issue_fresh_with(
             &epoch,
+            &lease,
             NONCE,
             2,
             Some(TIP.to_string()),
@@ -731,10 +1090,11 @@ fn persistence_failure_sends_nothing_and_poisoned_epoch_cannot_retry() {
 #[test]
 fn persistence_panic_is_caught_and_permanently_poisoned() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-    let (_directory, mut runner) = spawn_runner(&epoch);
+    let (_directory, lease, mut runner) = spawn_runner(&epoch);
     let error = runner
         .issue_fresh_with(
             &epoch,
+            &lease,
             NONCE,
             1,
             Some(TIP.to_string()),
@@ -752,10 +1112,11 @@ fn persistence_panic_is_caught_and_permanently_poisoned() {
 #[test]
 fn mismatched_durable_receipt_cannot_upgrade_an_issue_or_death_proof() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-    let (_directory, mut runner) = spawn_runner(&epoch);
+    let (_directory, lease, mut runner) = spawn_runner(&epoch);
     let error = runner
         .issue_fresh_with(
             &epoch,
+            &lease,
             NONCE,
             2,
             Some(TIP.to_string()),
@@ -778,11 +1139,12 @@ fn mismatched_durable_receipt_cannot_upgrade_an_issue_or_death_proof() {
 #[test]
 fn runner_epoch_accepts_exactly_one_command() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-    let (_directory, mut runner) = spawn_runner(&epoch);
-    issue_once(&mut runner, &epoch);
+    let (_directory, lease, mut runner) = spawn_runner(&epoch);
+    issue_once(&mut runner, &epoch, &lease);
     let second = runner
         .issue_fresh_with(
             &epoch,
+            &lease,
             NONCE,
             8,
             Some(TIP.to_string()),
@@ -801,11 +1163,12 @@ fn runner_epoch_accepts_exactly_one_command() {
 fn process_epoch_mismatch_is_rejected_before_persistence() {
     let owner = FreshProcessEpochV3::establish().expect("owner epoch");
     let other = FreshProcessEpochV3::establish().expect("other epoch");
-    let (_directory, mut runner) = spawn_runner(&owner);
+    let (_directory, lease, mut runner) = spawn_runner(&owner);
     let mut persisted = false;
     let error = runner
         .issue_fresh_with(
             &other,
+            &lease,
             NONCE,
             3,
             Some(TIP.to_string()),
@@ -824,7 +1187,7 @@ fn process_epoch_mismatch_is_rejected_before_persistence() {
 #[test]
 fn live_runner_cannot_mint_a_death_proof() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-    let (_directory, runner) = spawn_runner(&epoch);
+    let (_directory, _lease, runner) = spawn_runner(&epoch);
     let error = runner
         .prove_dead(Duration::ZERO)
         .expect_err("live runner has no death proof");
@@ -834,7 +1197,7 @@ fn live_runner_cannot_mint_a_death_proof() {
 #[test]
 fn exited_dummy_runner_without_a_durable_issue_cannot_mint_a_proof() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-    let (_directory, runner) = spawn_runner(&epoch);
+    let (_directory, _lease, runner) = spawn_runner(&epoch);
     let pid = runner.child.id() as libc::pid_t;
     assert_eq!(unsafe { libc::kill(-pid, libc::SIGKILL) }, 0);
     let error = runner
@@ -846,18 +1209,19 @@ fn exited_dummy_runner_without_a_durable_issue_cannot_mint_a_proof() {
 #[test]
 fn same_supervisor_sequential_reconciliation_is_reachable_and_exact_bound() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-    let (_first_directory, mut first) = spawn_runner(&epoch);
-    issue_once(&mut first, &epoch);
+    let (_first_directory, first_lease, mut first) = spawn_runner(&epoch);
+    issue_once(&mut first, &epoch, &first_lease);
     let proof = first
         .prove_dead(Duration::from_secs(5))
         .expect("first runner proof");
     let prior_issue = proof.receipt().issued_record_sha256.clone();
     let prior_proof_sha256 = proof.sha256().to_string();
 
-    let (_second_directory, mut second) = spawn_runner(&epoch);
+    let (_second_directory, second_lease, mut second) = spawn_runner(&epoch);
     let receipt = second
         .issue_same_supervisor_reconciliation_with(
             &epoch,
+            &second_lease,
             proof,
             NONCE,
             8,
@@ -886,8 +1250,8 @@ fn same_supervisor_sequential_reconciliation_is_reachable_and_exact_bound() {
 }
 
 fn make_issued_proof(epoch: &FreshProcessEpochV3) -> SameSupervisorRunnerDeathProofV3 {
-    let (_directory, mut runner) = spawn_runner(epoch);
-    issue_once(&mut runner, epoch);
+    let (_directory, lease, mut runner) = spawn_runner(epoch);
+    issue_once(&mut runner, epoch, &lease);
     runner
         .prove_dead(Duration::from_secs(5))
         .expect("issued runner proof")
@@ -898,11 +1262,12 @@ fn death_proof_transplant_across_operation_or_tip_is_rejected_before_persistence
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
     let proof = make_issued_proof(&epoch);
     let proof_tip = proof.receipt().issued_record_sha256.clone();
-    let (_directory, mut runner) = spawn_runner(&epoch);
+    let (_directory, lease, mut runner) = spawn_runner(&epoch);
     let mut persisted = false;
     let error = runner
         .issue_same_supervisor_reconciliation_with(
             &epoch,
+            &lease,
             proof,
             &"aa".repeat(32),
             8,
@@ -919,10 +1284,11 @@ fn death_proof_transplant_across_operation_or_tip_is_rejected_before_persistence
     assert!(!persisted);
 
     let proof = make_issued_proof(&epoch);
-    let (_directory, mut runner) = spawn_runner(&epoch);
+    let (_directory, lease, mut runner) = spawn_runner(&epoch);
     let error = runner
         .issue_same_supervisor_reconciliation_with(
             &epoch,
+            &lease,
             proof,
             NONCE,
             8,
@@ -938,8 +1304,8 @@ fn death_proof_transplant_across_operation_or_tip_is_rejected_before_persistence
 #[test]
 fn restart_death_proof_is_scoped_to_the_original_supervisor_epoch() {
     let first_epoch = FreshProcessEpochV3::establish().expect("first epoch");
-    let (_first_directory, mut first_runner) = spawn_runner(&first_epoch);
-    issue_once(&mut first_runner, &first_epoch);
+    let (_first_directory, first_lease, mut first_runner) = spawn_runner(&first_epoch);
+    issue_once(&mut first_runner, &first_epoch, &first_lease);
     let proof = first_runner
         .prove_dead(Duration::from_secs(5))
         .expect("first death proof");
@@ -951,11 +1317,12 @@ fn restart_death_proof_is_scoped_to_the_original_supervisor_epoch() {
     assert_eq!(replayed, *proof.receipt());
 
     let second_epoch = FreshProcessEpochV3::establish().expect("second epoch");
-    let (_second_directory, mut second_runner) = spawn_runner(&second_epoch);
+    let (_second_directory, second_lease, mut second_runner) = spawn_runner(&second_epoch);
     let proof_tip = proof.receipt().issued_record_sha256.clone();
     let error = second_runner
         .issue_same_supervisor_reconciliation_with(
             &second_epoch,
+            &second_lease,
             proof,
             NONCE,
             10,
@@ -975,11 +1342,12 @@ fn restart_death_proof_is_scoped_to_the_original_supervisor_epoch() {
 #[test]
 fn timeout_kills_and_reaps_the_independent_group_without_retry_authority() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-    let (_directory, mut runner) = spawn_slow_runner(&epoch);
+    let (_directory, lease, mut runner) = spawn_slow_runner(&epoch);
     let pid = runner.runner_identity.pid;
     let error = runner
         .issue_fresh_with(
             &epoch,
+            &lease,
             NONCE,
             12,
             Some(TIP.to_string()),
@@ -1008,7 +1376,7 @@ fn timeout_kills_and_reaps_the_independent_group_without_retry_authority() {
 #[test]
 fn partial_receipt_prefix_cannot_bypass_dispatch_deadline_and_retains_proof() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-    let (_directory, mut runner) = spawn_named_runner(
+    let (_directory, lease, mut runner) = spawn_named_runner(
         &epoch,
         "mac_inert_one_shot_runner::tests::partial_receipt_child_entry",
         Duration::from_secs(5),
@@ -1017,6 +1385,7 @@ fn partial_receipt_prefix_cannot_bypass_dispatch_deadline_and_retains_proof() {
     let error = runner
         .issue_fresh_with(
             &epoch,
+            &lease,
             NONCE,
             20,
             Some(TIP.to_string()),
@@ -1038,9 +1407,9 @@ fn partial_receipt_prefix_cannot_bypass_dispatch_deadline_and_retains_proof() {
 }
 
 #[test]
-fn blocked_command_write_uses_the_same_absolute_deadline_and_retains_proof() {
+fn stalled_command_receive_uses_the_same_absolute_deadline_and_retains_proof() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-    let (_directory, mut runner) = spawn_named_runner(
+    let (_directory, lease, mut runner) = spawn_named_runner(
         &epoch,
         "mac_inert_one_shot_runner::tests::stalled_command_reader_child_entry",
         Duration::from_secs(5),
@@ -1050,6 +1419,7 @@ fn blocked_command_write_uses_the_same_absolute_deadline_and_retains_proof() {
     let error = runner
         .issue_fresh_with(
             &epoch,
+            &lease,
             NONCE,
             22,
             Some(TIP.to_string()),
@@ -1073,7 +1443,7 @@ fn blocked_command_write_uses_the_same_absolute_deadline_and_retains_proof() {
 #[test]
 fn channel_loss_kills_reaps_and_retains_exact_death_proof() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-    let (_directory, mut runner) = spawn_named_runner(
+    let (_directory, lease, mut runner) = spawn_named_runner(
         &epoch,
         "mac_inert_one_shot_runner::tests::drop_receipt_child_entry",
         Duration::from_secs(5),
@@ -1081,6 +1451,7 @@ fn channel_loss_kills_reaps_and_retains_exact_death_proof() {
     let error = runner
         .issue_fresh_with(
             &epoch,
+            &lease,
             NONCE,
             21,
             Some(TIP.to_string()),
