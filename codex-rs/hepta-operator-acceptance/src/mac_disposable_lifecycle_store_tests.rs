@@ -1,5 +1,8 @@
 use super::*;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
+use crate::mac_disposable_lifecycle::ReconciliationMatchV2;
+use crate::mac_disposable_lifecycle::fresh_absence_sha256;
+use crate::mac_disposable_lifecycle::reconciliation_snapshot_sha256;
 use crate::mac_iomedia_identity::current_boot_session_uuid;
 use crate::mac_privileged_disposable_control::LivePrivilegedDisposablePolicyV2;
 use std::fs;
@@ -24,6 +27,9 @@ macro_rules! assert_not_impl {
 type FreshOperationStoreForCompileAssertions = CensusBoundDurableLifecycleStoreV3<'static>;
 type RestartOperationStoreForCompileAssertions = ReconciliationOperationStoreV3<'static, 'static>;
 type RetainedLifecycleAppendForCompileAssertions = RetainedLifecycleRecordAppendV3;
+type CompletedOperationStoreForCompileAssertions =
+    CompletedReconciliationOperationStoreV3<'static, 'static>;
+type ExistingWiringForCompileAssertions = ExistingCensusStoreWiringV3<'static, 'static>;
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Clone);
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Send);
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Sync);
@@ -59,6 +65,51 @@ assert_not_impl!(
 assert_not_impl!(
     RetainedLifecycleAppendForCompileAssertions,
     From<std::fs::File>
+);
+assert_not_impl!(CompletedOperationStoreForCompileAssertions, Clone);
+assert_not_impl!(CompletedOperationStoreForCompileAssertions, Send);
+assert_not_impl!(CompletedOperationStoreForCompileAssertions, Sync);
+assert_not_impl!(
+    CompletedOperationStoreForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    CompletedOperationStoreForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    CompletedOperationStoreForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(FreshCensusStoreWiringV3, Clone);
+assert_not_impl!(FreshCensusStoreWiringV3, Send);
+assert_not_impl!(FreshCensusStoreWiringV3, Sync);
+assert_not_impl!(FreshCensusStoreWiringV3, serde::Serialize);
+assert_not_impl!(FreshCensusStoreWiringV3, std::os::fd::AsRawFd);
+assert_not_impl!(FreshCensusStoreWiringV3, From<std::fs::File>);
+assert_not_impl!(PreparedFreshCensusStoreV3, Clone);
+assert_not_impl!(PreparedFreshCensusStoreV3, Send);
+assert_not_impl!(PreparedFreshCensusStoreV3, Sync);
+assert_not_impl!(PreparedFreshCensusStoreV3, serde::Serialize);
+assert_not_impl!(PreparedFreshCensusStoreV3, std::os::fd::AsRawFd);
+assert_not_impl!(PreparedFreshCensusStoreV3, From<std::fs::File>);
+assert_not_impl!(ExistingWiringForCompileAssertions, Clone);
+assert_not_impl!(ExistingWiringForCompileAssertions, Send);
+assert_not_impl!(ExistingWiringForCompileAssertions, Sync);
+assert_not_impl!(ExistingWiringForCompileAssertions, serde::Serialize);
+assert_not_impl!(ExistingWiringForCompileAssertions, std::os::fd::AsRawFd);
+assert_not_impl!(ExistingWiringForCompileAssertions, From<std::fs::File>);
+assert_not_impl!(
+    FreshPreparedLifecycleEventV3,
+    From<DisposableLifecycleEventV2>
+);
+assert_not_impl!(
+    ReconciliationLifecycleEventV3,
+    From<DisposableLifecycleEventV2>
+);
+assert_not_impl!(
+    ReconciliationTerminalEventV3,
+    From<DisposableLifecycleEventV2>
 );
 
 const NONCE: &str = "1111111111111111111111111111111111111111111111111111111111111111";
@@ -114,6 +165,16 @@ fn prepared() -> DisposableLifecycleEventV2 {
         collector_policy_sha256: digest('c'),
         mountpoint_underlying_sha256: digest('d'),
     }
+}
+
+fn sealed_prepared() -> FreshPreparedLifecycleEventV3 {
+    FreshPreparedLifecycleEventV3::new(
+        digest('a'),
+        digest('b'),
+        "12345678-1234-4abc-8abc-123456789abc".to_string(),
+        digest('c'),
+        digest('d'),
+    )
 }
 
 fn incoming_record_path(fixture: &Fixture, nonce: &str) -> std::path::PathBuf {
@@ -728,10 +789,10 @@ fn fresh_store_requires_and_retains_the_exact_s1_census() {
         .expect("create census-bound S2 store");
     assert_eq!(store.operation_nonce(), NONCE);
     assert!(!store.poisoned());
-    assert!(store.census.prepare_store_creation().is_err());
+    store.census.revalidate().expect("retained admitted census");
 
     let record_digest = store
-        .append(prepared())
+        .persist_prepared(sealed_prepared())
         .expect("append while census and flock remain retained");
     assert_eq!(record_digest.len(), 64);
     assert!(!store.poisoned());
@@ -829,6 +890,229 @@ fn production_reconciliation_open_consumes_exact_blocking_census_and_owns_replay
     assert_eq!(inspection.authority, DisposableAuthorityV2::none());
     assert!(inspection.blocks_new_operations);
     assert!(!inspection.restart_forward_flow_authority);
+}
+
+#[test]
+fn reconciliation_open_rejects_same_bytes_path_replacement_after_s1_descriptor_capture() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("fresh assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+            .expect("fresh census-bound store");
+        store.append(prepared()).expect("durable prepared record");
+    }
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("restart S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("blocking assessment")
+        .into_blocking_control_census(NONCE)
+        .expect("blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let operation = root.join("operations").join(format!("operation-{NONCE}"));
+    let stale = temporary.path().join("stale-selected-operation");
+    let original_record = fs::read(operation.join("00000001.json")).expect("original bytes");
+    let result = ReconciliationOperationStoreV3::open_existing_with_hook(census, &epoch, || {
+        fs::rename(&operation, &stale)?;
+        fs::create_dir(&operation)?;
+        fs::set_permissions(&operation, fs::Permissions::from_mode(0o700))?;
+        fs::write(operation.join("00000001.json"), &original_record)?;
+        fs::set_permissions(
+            operation.join("00000001.json"),
+            fs::Permissions::from_mode(0o400),
+        )?;
+        File::open(operation.join("00000001.json"))?.sync_all()?;
+        File::open(&operation)?.sync_all()?;
+        Ok(())
+    });
+    let error = result.err().expect("same-byte path replacement must fail");
+    assert!(
+        error.to_string().contains("exact retained S1")
+            || error.to_string().contains("descriptor replay")
+            || error.to_string().contains("changed"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn reconciliation_open_rejects_same_bytes_record_replacement_after_s1_descriptor_capture() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("fresh assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+            .expect("fresh census-bound store");
+        store.append(prepared()).expect("durable prepared record");
+    }
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("restart S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("blocking assessment")
+        .into_blocking_control_census(NONCE)
+        .expect("blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let record = root
+        .join("operations")
+        .join(format!("operation-{NONCE}"))
+        .join("00000001.json");
+    let stale = temporary.path().join("stale-selected-record.json");
+    let original_bytes = fs::read(&record).expect("original record bytes");
+    let result = ReconciliationOperationStoreV3::open_existing_with_hook(census, &epoch, || {
+        fs::rename(&record, &stale)?;
+        fs::write(&record, &original_bytes)?;
+        fs::set_permissions(&record, fs::Permissions::from_mode(0o400))?;
+        File::open(&record)?.sync_all()?;
+        Ok(())
+    });
+    let error = result
+        .err()
+        .expect("same-byte record replacement must fail");
+    assert!(
+        error.to_string().contains("exact retained S1")
+            || error.to_string().contains("descriptor")
+            || error.to_string().contains("changed"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn terminal_append_consumes_blocking_store_into_completed_census() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("fresh assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+            .expect("fresh census-bound store");
+        store.append(prepared()).expect("durable prepared record");
+    }
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("restart S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("blocking assessment")
+        .into_blocking_control_census(NONCE)
+        .expect("blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+        .expect("exact descriptor replay");
+    let boot = current_boot_session_uuid().expect("current boot UUID");
+    let restart_epoch = digest('e');
+    store
+        .append_reconciliation(ReconciliationLifecycleEventV3::restart_started(
+            boot.clone(),
+            digest('c'),
+            100,
+            restart_epoch.clone(),
+        ))
+        .expect("restart epoch");
+    let snapshot = ReconciliationSnapshotV2 {
+        backing_identity_sha256: digest('b'),
+        boot_session_uuid: boot.clone(),
+        collector_policy_sha256: digest('c'),
+        collector_receipt_sha256: digest('f'),
+        iomedia_evidence_sha256: digest('1'),
+        match_result: ReconciliationMatchV2::Zero,
+        monotonic_after_nanoseconds: 102,
+        monotonic_before_nanoseconds: 101,
+        mount_evidence_sha256: digest('2'),
+        mountpoint_underlying_sha256: digest('d'),
+        operation_nonce: NONCE.to_string(),
+        restart_epoch_nonce: restart_epoch.clone(),
+    };
+    let snapshot_sha256 = reconciliation_snapshot_sha256(&snapshot).expect("snapshot digest");
+    store
+        .append_reconciliation(ReconciliationLifecycleEventV3::snapshot_observed(snapshot))
+        .expect("zero-match snapshot");
+    let absence = FreshAbsenceObservationV2 {
+        artifact_evidence_sha256: digest('3'),
+        baseline_inventory_sha256: digest('a'),
+        backing_identity_sha256: digest('b'),
+        boot_session_uuid: boot,
+        collector_policy_sha256: digest('c'),
+        collector_receipt_sha256: digest('4'),
+        iomedia_evidence_sha256: digest('5'),
+        monotonic_after_nanoseconds: 104,
+        monotonic_before_nanoseconds: 103,
+        mount_evidence_sha256: digest('6'),
+        mountpoint_underlying_sha256: digest('d'),
+        no_matching_iomedia: true,
+        no_nested_mounts: true,
+        operation_nonce: NONCE.to_string(),
+        operation_artifacts_absent: true,
+        post_inventory_sha256: digest('a'),
+        reconciliation_snapshot_sha256: Some(snapshot_sha256),
+        restart_epoch_nonce: Some(restart_epoch),
+    };
+    let absence_sha256 = fresh_absence_sha256(&absence).expect("absence digest");
+    store
+        .append_reconciliation(ReconciliationLifecycleEventV3::fresh_absence_observed(
+            absence,
+        ))
+        .expect("fresh absence");
+    let records_before = store.store.records.len();
+    assert!(
+        store
+            .append_reconciliation(ReconciliationLifecycleEventV3(
+                DisposableLifecycleEventV2::TerminalAbsenceProved {
+                    disposition: TerminalDispositionV2::Aborted,
+                    fresh_absence_sha256: absence_sha256.clone(),
+                },
+            ))
+            .is_err()
+    );
+    assert_eq!(store.store.records.len(), records_before);
+
+    let completed = store
+        .complete_reconciliation(ReconciliationTerminalEventV3::absence_proved(
+            TerminalDispositionV2::Aborted,
+            absence_sha256.clone(),
+        ))
+        .expect("consume blocking state into completed state");
+    completed.revalidate().expect("retained completed state");
+    let (nonce, terminal, _) = completed.census.completed_binding();
+    assert_eq!(nonce, NONCE);
+    assert_eq!(Some(terminal), completed.journal.terminal_record_sha256());
+    assert_eq!(
+        completed.census.completed_operation_name(),
+        format!("operation-{NONCE}")
+    );
+    assert!(
+        completed
+            .census
+            .completed_receipt()
+            .blocking_operation_nonces
+            .is_empty()
+    );
+    assert_eq!(
+        completed
+            .census
+            .completed_receipt()
+            .completed_operation_nonces,
+        [NONCE]
+    );
 }
 
 #[test]

@@ -15,12 +15,14 @@ use crate::mac_disposable_lifecycle::LifecycleErrorV2;
 use crate::mac_disposable_lifecycle::LifecycleProcessModeV2;
 #[cfg(test)]
 use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
+#[cfg(test)]
 use crate::mac_disposable_lifecycle::TerminalDispositionV2;
 use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorAppendEventV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorObservationV3;
 use crate::mac_inert_one_shot_runner::FreshProcessEpochV3;
 use crate::mac_privileged_disposable_control::BlockingOperationV3;
+use crate::mac_privileged_disposable_control::CompletedOperationV3;
 use crate::mac_privileged_disposable_control::FreshAdmissionV3;
 use crate::mac_privileged_disposable_control::PrivilegedDisposableControlErrorV2;
 use crate::mac_privileged_disposable_control::RetainedControlCensusV3;
@@ -135,7 +137,17 @@ impl StoreModeV3 for ReconciliationOnlyStoreV3 {
 
 /// Closed reconciliation event vocabulary.  There is deliberately no create,
 /// attach, or mount constructor and the wrapped V2 event is private.
-pub struct ReconciliationLifecycleEventV3(DisposableLifecycleEventV2);
+pub(crate) struct ReconciliationLifecycleEventV3(DisposableLifecycleEventV2);
+
+/// The only fresh-process production append currently admitted by S2.  Later
+/// effect records must come from a retained persisted-issue capability rather
+/// than from a caller-supplied lifecycle DTO.
+pub(crate) struct FreshPreparedLifecycleEventV3(DisposableLifecycleEventV2);
+
+/// Terminal closure is deliberately not part of the ordinary reconciliation
+/// append vocabulary.  Persisting it consumes the blocking store and its S1
+/// census into a completed typestate.
+pub(crate) struct ReconciliationTerminalEventV3(DisposableLifecycleEventV2);
 
 #[allow(dead_code)]
 impl ReconciliationLifecycleEventV3 {
@@ -158,7 +170,7 @@ impl ReconciliationLifecycleEventV3 {
         Self(DisposableLifecycleEventV2::ReconciliationSnapshotObserved { snapshot })
     }
 
-    pub fn unmount_issued(effect_id: u64) -> Self {
+    fn unmount_issued(effect_id: u64) -> Self {
         Self(DisposableLifecycleEventV2::UnmountIssuedOrUncertain {
             effect_id,
             purpose: EffectPurposeV2::Reconciliation,
@@ -176,7 +188,7 @@ impl ReconciliationLifecycleEventV3 {
         })
     }
 
-    pub fn eject_issued(effect_id: u64) -> Self {
+    fn eject_issued(effect_id: u64) -> Self {
         Self(DisposableLifecycleEventV2::EjectIssuedOrUncertain {
             effect_id,
             purpose: EffectPurposeV2::Reconciliation,
@@ -206,8 +218,29 @@ impl ReconciliationLifecycleEventV3 {
     pub fn quarantined(reason_sha256: String) -> Self {
         Self(DisposableLifecycleEventV2::Quarantined { reason_sha256 })
     }
+}
 
-    pub fn terminal_absence_proved(
+impl FreshPreparedLifecycleEventV3 {
+    pub(crate) fn new(
+        baseline_inventory_sha256: String,
+        backing_identity_sha256: String,
+        boot_session_uuid: String,
+        collector_policy_sha256: String,
+        mountpoint_underlying_sha256: String,
+    ) -> Self {
+        Self(DisposableLifecycleEventV2::OperationPrepared {
+            baseline_inventory_sha256,
+            backing_identity_sha256,
+            boot_session_uuid,
+            collector_policy_sha256,
+            mountpoint_underlying_sha256,
+        })
+    }
+}
+
+impl ReconciliationTerminalEventV3 {
+    #[cfg(test)]
+    pub(crate) fn absence_proved(
         disposition: TerminalDispositionV2,
         fresh_absence_sha256: String,
     ) -> Self {
@@ -276,7 +309,169 @@ impl RetainedLifecycleRecordAppendV3 {
     }
 }
 
+/// Terminally completed reconciliation retains the exact S1 descriptors,
+/// replay journal, current epoch, and durable S2 store.  There is no append or
+/// fresh-admission method on this state.
+pub(crate) struct CompletedReconciliationOperationStoreV3<'a, 'e> {
+    census: RetainedControlCensusV3<'a, CompletedOperationV3, StableMountStateV3>,
+    epoch: &'e FreshProcessEpochV3,
+    journal: DisposableLifecycleJournalV2,
+    store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
+}
+
+/// Unforgeable one-shot connector constructed only by the census-bound S2
+/// entrypoint.  It is consumed by S1 and never exposes its descriptor input.
+pub(crate) struct FreshCensusStoreWiringV3 {
+    operation_nonce: String,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Opaque result of creating a fresh durable store.  Only S1 can admit its
+/// final name and bind it to the consumed census.
+pub(crate) struct PreparedFreshCensusStoreV3 {
+    journal: DisposableLifecycleJournalV2,
+    store: DurableLifecycleStoreV3<FreshProcessStoreV3>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Unforgeable one-shot restart connector.  The test hook models a path swap
+/// after S1 cloned its exact retained descriptors but before S2 replay.
+pub(crate) struct ExistingCensusStoreWiringV3<'e, 'h> {
+    before_replay: Option<Box<dyn FnOnce() -> io::Result<()> + 'h>>,
+    epoch: &'e FreshProcessEpochV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
 pub type ReconciliationDurableLifecycleStoreV3 = DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>;
+
+impl FreshCensusStoreWiringV3 {
+    fn new(operation_nonce: &str) -> Self {
+        Self {
+            operation_nonce: operation_nonce.to_string(),
+            _not_send_or_sync: PhantomData,
+        }
+    }
+
+    pub(crate) fn wire(
+        self,
+        operations: File,
+        expected_operations_inode: (u64, u64),
+        expected_uid: u32,
+        expected_gid: u32,
+    ) -> Result<PreparedFreshCensusStoreV3, DurableLifecycleStoreErrorV3> {
+        let parent_binding = binding(&operations)?;
+        if (parent_binding.dev, parent_binding.ino) != expected_operations_inode {
+            return Err(invalid(
+                "fresh S2 parent descriptor differs from the exact S1 operations inode",
+            ));
+        }
+        let journal = DisposableLifecycleJournalV2::new(&self.operation_nonce)?;
+        let store = DurableLifecycleStoreV3::create_with_hook(
+            &operations,
+            &self.operation_nonce,
+            expected_uid,
+            expected_gid,
+            |_| Ok(()),
+        )?;
+        Ok(PreparedFreshCensusStoreV3 {
+            journal,
+            store,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl PreparedFreshCensusStoreV3 {
+    pub(crate) fn final_name(&self) -> &str {
+        &self.store.final_name
+    }
+
+    pub(crate) fn bind<'a>(
+        self,
+        census: RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>,
+    ) -> CensusBoundDurableLifecycleStoreV3<'a> {
+        CensusBoundDurableLifecycleStoreV3 {
+            census,
+            journal: self.journal,
+            poisoned: false,
+            store: self.store,
+        }
+    }
+}
+
+impl<'e> ExistingCensusStoreWiringV3<'e, 'static> {
+    fn new(epoch: &'e FreshProcessEpochV3) -> Self {
+        Self {
+            before_replay: None,
+            epoch,
+            _not_send_or_sync: PhantomData,
+        }
+    }
+}
+
+#[cfg(test)]
+impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
+    fn with_hook<F>(epoch: &'e FreshProcessEpochV3, before_replay: F) -> Self
+    where
+        F: FnOnce() -> io::Result<()> + 'h,
+    {
+        Self {
+            before_replay: Some(Box::new(before_replay)),
+            epoch,
+            _not_send_or_sync: PhantomData,
+        }
+    }
+}
+
+impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn wire<'a>(
+        mut self,
+        census: RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
+        operations: File,
+        expected_operations_inode: (u64, u64),
+        directory: File,
+        expected_operation_inode: (u64, u64),
+        records: Vec<(String, Vec<u8>, File, (u64, u64))>,
+        operation_name: String,
+        operation_nonce: String,
+        expected_uid: u32,
+        expected_gid: u32,
+    ) -> Result<ReconciliationOperationStoreV3<'a, 'e>, DurableLifecycleStoreErrorV3> {
+        self.epoch
+            .validate_current()
+            .map_err(|error| invalid(format!("fresh process epoch is not current: {error}")))?;
+        if let Some(before_replay) = self.before_replay.take() {
+            before_replay()?;
+        }
+        let store = DurableLifecycleStoreV3::<FreshProcessStoreV3>::
+            open_existing_from_retained_descriptors(
+                operations,
+                expected_operations_inode,
+                directory,
+                expected_operation_inode,
+                records,
+                &operation_name,
+                &operation_nonce,
+                expected_uid,
+                expected_gid,
+            )?;
+        let journal = store.resume_for_reconciliation()?;
+        census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed during exact descriptor replay: {error}"
+            ))
+        })?;
+        Ok(ReconciliationOperationStoreV3 {
+            census,
+            epoch: self.epoch,
+            journal,
+            poisoned: false,
+            store,
+        })
+    }
+}
 
 impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
     #[cfg(test)]
@@ -397,6 +592,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         Self::open_existing_inner(operations, operation_nonce, expected_uid, expected_gid)
     }
 
+    #[cfg(test)]
     fn open_existing_inner(
         operations: &File,
         operation_nonce: &str,
@@ -487,6 +683,138 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         Ok(store)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn open_existing_from_retained_descriptors(
+        operations: File,
+        expected_operations_inode: (u64, u64),
+        directory: File,
+        expected_operation_inode: (u64, u64),
+        retained_records: Vec<(String, Vec<u8>, File, (u64, u64))>,
+        operation_name: &str,
+        operation_nonce: &str,
+        expected_uid: u32,
+        expected_gid: u32,
+    ) -> Result<ReconciliationDurableLifecycleStoreV3, DurableLifecycleStoreErrorV3> {
+        require_nonce(operation_nonce)?;
+        let final_name = format!("operation-{operation_nonce}");
+        if operation_name != final_name {
+            return Err(invalid(
+                "retained S1 operation name differs from its exact lifecycle nonce",
+            ));
+        }
+        let temporary_name = format!(".incoming-operation-{operation_nonce}");
+        let parent_binding = validate_directory(
+            &operations,
+            expected_uid,
+            expected_gid,
+            0o700,
+            None,
+            "retained S1 operations directory",
+        )?;
+        if (parent_binding.dev, parent_binding.ino) != expected_operations_inode {
+            return Err(invalid(
+                "S2 operations descriptor differs from the exact retained S1 inode",
+            ));
+        }
+        require_absent(operations.as_raw_fd(), &temporary_name)?;
+        let directory_binding = validate_directory(
+            &directory,
+            expected_uid,
+            expected_gid,
+            0o700,
+            Some(parent_binding.dev),
+            "retained S1 operation directory",
+        )?;
+        if (directory_binding.dev, directory_binding.ino) != expected_operation_inode
+            || named_binding(operations.as_raw_fd(), &final_name)? != directory_binding
+        {
+            return Err(invalid(
+                "selected operation path no longer names the exact retained S1 directory",
+            ));
+        }
+        if retained_records.is_empty() {
+            return Err(invalid(
+                "operation directory has no retained lifecycle records",
+            ));
+        }
+        let names = read_directory_names(directory.as_raw_fd(), MAX_RECORDS)?;
+        let expected_names = retained_records
+            .iter()
+            .map(|(name, _, _, _)| name.clone())
+            .collect::<Vec<_>>();
+        if names != expected_names {
+            return Err(invalid(
+                "operation roster differs from the full retained S1 record capsules",
+            ));
+        }
+        let mut records = Vec::with_capacity(retained_records.len());
+        let mut total_bytes = 0usize;
+        for (index, (name, bytes, file, expected_inode)) in retained_records.into_iter().enumerate()
+        {
+            if name != record_name(index + 1)? {
+                return Err(invalid(
+                    "retained operation roster contains an unknown name or sequence gap",
+                ));
+            }
+            let record_binding = validate_regular(
+                &file,
+                expected_uid,
+                expected_gid,
+                0o400,
+                Some(directory_binding.dev),
+                Some(bytes.len()),
+                "retained S1 lifecycle record",
+            )?;
+            if (record_binding.dev, record_binding.ino) != expected_inode
+                || named_binding(directory.as_raw_fd(), &name)? != record_binding
+                || read_stable(&file, record_binding)? != bytes
+            {
+                return Err(invalid(
+                    "S2 lifecycle capsule differs from the exact retained S1 descriptor",
+                ));
+            }
+            total_bytes = total_bytes
+                .checked_add(bytes.len())
+                .ok_or_else(|| invalid("lifecycle byte count overflowed"))?;
+            if total_bytes > MAX_TOTAL_RECORD_BYTES {
+                return Err(invalid("lifecycle bytes exceed the fixed total bound"));
+            }
+            records.push(RecordCapsule {
+                binding: record_binding,
+                bytes,
+                file,
+                name,
+            });
+        }
+        let lifecycle = records
+            .iter()
+            .map(|record| record.bytes.clone())
+            .collect::<Vec<_>>();
+        let inspection = inspect_lifecycle_v2(&lifecycle)?;
+        if inspection.operation_nonce != operation_nonce || !inspection.blocks_new_operations {
+            return Err(invalid(
+                "retained S1 target is not the exact selected blocking lifecycle",
+            ));
+        }
+        let store = DurableLifecycleStoreV3::<ReconciliationOnlyStoreV3> {
+            directory,
+            directory_binding,
+            expected_gid,
+            expected_uid,
+            final_name,
+            operation_nonce: operation_nonce.to_string(),
+            parent: operations,
+            parent_binding,
+            poisoned: false,
+            records,
+            temporary_name,
+            _mode: PhantomData,
+        };
+        store.revalidate()?;
+        Ok(store)
+    }
+
+    #[cfg(test)]
     pub fn append(
         &mut self,
         journal: &mut DisposableLifecycleJournalV2,
@@ -498,28 +826,28 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
 
 impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
     pub(crate) fn create(
-        mut census: RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>,
+        census: RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>,
         operation_nonce: &str,
     ) -> Result<Self, DurableLifecycleStoreErrorV3> {
-        let journal = DisposableLifecycleJournalV2::new(operation_nonce)?;
-        let binding = census.prepare_store_creation()?;
-        let store = DurableLifecycleStoreV3::create_with_hook(
-            binding.operations(),
-            operation_nonce,
-            binding.expected_uid(),
-            binding.expected_gid(),
-            |_| Ok(()),
-        )?;
-        census.admit_fresh_operation(&store.final_name)?;
-        Ok(Self {
-            census,
-            journal,
-            poisoned: false,
-            store,
-        })
+        census.wire_fresh_store(FreshCensusStoreWiringV3::new(operation_nonce))
     }
 
+    pub(crate) fn persist_prepared(
+        &mut self,
+        event: FreshPreparedLifecycleEventV3,
+    ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        self.append_sealed(event.0)
+    }
+
+    #[cfg(test)]
     pub(crate) fn append(
+        &mut self,
+        event: DisposableLifecycleEventV2,
+    ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        self.append_sealed(event)
+    }
+
+    fn append_sealed(
         &mut self,
         event: DisposableLifecycleEventV2,
     ) -> Result<String, DurableLifecycleStoreErrorV3> {
@@ -532,7 +860,9 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
             self.poisoned = true;
             return Err(error.into());
         }
-        let digest = self.store.append(&mut self.journal, event)?;
+        let digest = self
+            .store
+            .append_mode_with_hook(&mut self.journal, event, |_| Ok(()))?;
         if let Err(error) = self.census.revalidate() {
             self.poisoned = true;
             return Err(error.into());
@@ -557,35 +887,19 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         census: RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
         epoch: &'e FreshProcessEpochV3,
     ) -> Result<Self, DurableLifecycleStoreErrorV3> {
-        epoch
-            .validate_current()
-            .map_err(|error| invalid(format!("fresh process epoch is not current: {error}")))?;
-        let binding = census.prepare_existing_store()?;
-        let store = DurableLifecycleStoreV3::<FreshProcessStoreV3>::open_existing_inner(
-            binding.operations(),
-            binding.operation_nonce(),
-            binding.expected_uid(),
-            binding.expected_gid(),
-        )?;
-        if store.operation_nonce() != binding.operation_nonce() {
-            return Err(invalid(
-                "replayed lifecycle store differs from the selected blocking operation",
-            ));
-        }
-        let journal = store.resume_for_reconciliation()?;
-        census.revalidate()?;
-        epoch.validate_current().map_err(|error| {
-            invalid(format!(
-                "fresh process epoch changed during replay: {error}"
-            ))
-        })?;
-        Ok(Self {
-            census,
-            epoch,
-            journal,
-            poisoned: false,
-            store,
-        })
+        census.wire_existing_store(ExistingCensusStoreWiringV3::new(epoch))
+    }
+
+    #[cfg(test)]
+    fn open_existing_with_hook<F>(
+        census: RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
+        epoch: &'e FreshProcessEpochV3,
+        before_replay: F,
+    ) -> Result<Self, DurableLifecycleStoreErrorV3>
+    where
+        F: FnOnce() -> io::Result<()>,
+    {
+        census.wire_existing_store(ExistingCensusStoreWiringV3::with_hook(epoch, before_replay))
     }
 
     #[cfg(test)]
@@ -661,7 +975,17 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
                 "fresh process epoch changed before reconciliation append: {error}"
             )));
         }
-        let digest = self.store.append_reconciliation(&mut self.journal, event)?;
+        if matches!(
+            &event.0,
+            DisposableLifecycleEventV2::TerminalAbsenceProved { .. }
+        ) {
+            return Err(invalid(
+                "terminal closure must consume Blocking into the completed typestate",
+            ));
+        }
+        let digest = self
+            .store
+            .append_reconciliation_sealed(&mut self.journal, event)?;
         if let Err(error) = self.census.admit_selected_lifecycle_append(&digest) {
             self.poisoned = true;
             return Err(error.into());
@@ -673,6 +997,38 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
             )));
         }
         Ok(digest)
+    }
+
+    pub(crate) fn complete_reconciliation(
+        mut self,
+        event: ReconciliationTerminalEventV3,
+    ) -> Result<CompletedReconciliationOperationStoreV3<'a, 'e>, DurableLifecycleStoreErrorV3> {
+        if self.poisoned {
+            return Err(invalid(
+                "poisoned reconciliation store cannot perform terminal completion",
+            ));
+        }
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed before terminal append: {error}"
+            ))
+        })?;
+        let digest = self
+            .store
+            .append_reconciliation_terminal(&mut self.journal, event)?;
+        let census = self.census.complete_selected_lifecycle_append(&digest)?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed after terminal append: {error}"
+            ))
+        })?;
+        Ok(CompletedReconciliationOperationStoreV3 {
+            census,
+            epoch: self.epoch,
+            journal: self.journal,
+            store: self.store,
+        })
     }
 
     pub(crate) fn operation_nonce(&self) -> &str {
@@ -699,12 +1055,50 @@ impl DurableLifecycleStoreV3<ReconciliationOnlyStoreV3> {
         )?)
     }
 
+    #[cfg(test)]
     pub fn append_reconciliation(
         &mut self,
         journal: &mut DisposableLifecycleJournalV2,
         event: ReconciliationLifecycleEventV3,
     ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        self.append_reconciliation_sealed(journal, event)
+    }
+
+    fn append_reconciliation_sealed(
+        &mut self,
+        journal: &mut DisposableLifecycleJournalV2,
+        event: ReconciliationLifecycleEventV3,
+    ) -> Result<String, DurableLifecycleStoreErrorV3> {
         self.append_mode_with_hook(journal, event.0, |_| Ok(()))
+    }
+
+    fn append_reconciliation_terminal(
+        &mut self,
+        journal: &mut DisposableLifecycleJournalV2,
+        event: ReconciliationTerminalEventV3,
+    ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        self.append_mode_with_hook(journal, event.0, |_| Ok(()))
+    }
+}
+
+impl CompletedReconciliationOperationStoreV3<'_, '_> {
+    #[cfg(test)]
+    fn revalidate(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
+        self.census.revalidate()?;
+        self.store.revalidate()?;
+        self.epoch
+            .validate_current()
+            .map_err(|error| invalid(format!("completed epoch changed: {error}")))?;
+        if !matches!(
+            self.journal.disposition(),
+            crate::mac_disposable_lifecycle::LifecycleDispositionV2::TerminalCompleted
+                | crate::mac_disposable_lifecycle::LifecycleDispositionV2::TerminalAborted
+        ) {
+            return Err(invalid(
+                "completed operation retained a nonterminal replay journal",
+            ));
+        }
+        Ok(())
     }
 }
 
