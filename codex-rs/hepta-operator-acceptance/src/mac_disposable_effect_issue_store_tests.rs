@@ -396,6 +396,11 @@ fn normal_publish_is_canonical_private_retained_and_replayable() {
     assert_eq!(record.prior_collector_receipt_sha256, digest('e'));
     assert_eq!(record.lifecycle_issue_sequence, 4);
     assert_eq!(record.prior_collector_lifecycle_sequence, 3);
+    assert_eq!(record.supervisor_pid, 2);
+    assert_eq!(record.supervisor_parent_pid, 3);
+    assert_eq!(record.supervisor_kernel_start_microseconds, 2);
+    assert_eq!(record.runner_pid, 1);
+    assert_eq!(record.runner_kernel_start_microseconds, 1);
 }
 
 #[test]
@@ -787,7 +792,15 @@ enum RecordMutation {
     UniqueBinding,
     ProcessEpoch,
     RunnerEpoch,
+    RunnerFdCensus,
+    RunnerHello,
+    RunnerPid,
+    RunnerStart,
+    RunnerTransport,
     Schema,
+    SupervisorParentPid,
+    SupervisorPid,
+    SupervisorStart,
 }
 
 fn mutate(record: &mut IssuedEffectRecordV3, mutation: RecordMutation) {
@@ -824,7 +837,17 @@ fn mutate(record: &mut IssuedEffectRecordV3, mutation: RecordMutation) {
         RecordMutation::RunnerEpoch => {
             record.runner_epoch_sha256 = record.process_epoch_sha256.clone()
         }
+        RecordMutation::RunnerFdCensus => {
+            record.runner_pre_hello_fd_census_sha256 = "BAD".to_string()
+        }
+        RecordMutation::RunnerHello => record.runner_hello_sha256 = digest('0'),
+        RecordMutation::RunnerPid => record.runner_pid = record.supervisor_pid,
+        RecordMutation::RunnerStart => record.runner_kernel_start_microseconds = 0,
+        RecordMutation::RunnerTransport => record.runner_transport_sha256 = "BAD".to_string(),
         RecordMutation::Schema => record.schema = "wrong".to_string(),
+        RecordMutation::SupervisorParentPid => record.supervisor_parent_pid = record.supervisor_pid,
+        RecordMutation::SupervisorPid => record.supervisor_pid = record.runner_pid,
+        RecordMutation::SupervisorStart => record.supervisor_kernel_start_microseconds = 0,
     }
 }
 
@@ -849,7 +872,15 @@ fn every_bound_record_dimension_rejects_a_canonical_rewrite() {
         RecordMutation::UniqueBinding,
         RecordMutation::ProcessEpoch,
         RecordMutation::RunnerEpoch,
+        RecordMutation::RunnerFdCensus,
+        RecordMutation::RunnerHello,
+        RecordMutation::RunnerPid,
+        RecordMutation::RunnerStart,
+        RecordMutation::RunnerTransport,
         RecordMutation::Schema,
+        RecordMutation::SupervisorParentPid,
+        RecordMutation::SupervisorPid,
+        RecordMutation::SupervisorStart,
     ] {
         let (_temporary, operation, operation_path, lifecycle) = persisted_disk();
         let root = operation_path.join(ISSUE_DIRECTORY_NAME_V3);

@@ -25,7 +25,9 @@ use crate::mac_disposable_lifecycle_store::CensusBoundDurableLifecycleStoreV3;
 use crate::mac_disposable_lifecycle_store::DurableLifecycleStoreErrorV3;
 use crate::mac_disposable_lifecycle_store::ExistingCensusStoreWiringV3;
 use crate::mac_disposable_lifecycle_store::FreshCensusStoreWiringV3;
+use crate::mac_disposable_lifecycle_store::PersistedIssueLeaseSealV3;
 use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
+use crate::mac_disposable_lifecycle_store::RecoveredIssueVerifierSealV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleRecordAppendV3;
 use crate::mac_disposable_reconciliation_collector::MountBindingV3;
 use crate::mac_disposable_reconciliation_collector::MountingV3;
@@ -527,6 +529,24 @@ pub(crate) struct EffectIssueAppendSinkV3<'c, 'a> {
 /// description.  Only this module can construct the marker.
 pub(crate) struct S1ControlLeaseSealV3 {
     _private: (),
+}
+
+/// Retains a duplicate of the exact process-global S1 lock after a recovered
+/// issue verifier has been consumed and the entire blocking census replayed.
+/// It has no descriptor outlet.
+pub(crate) struct RecoveredControlLeaseSealV3 {
+    _descriptor: File,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+#[cfg(test)]
+impl RecoveredControlLeaseSealV3 {
+    pub(crate) fn for_test() -> io::Result<Self> {
+        Ok(Self {
+            _descriptor: File::open("/dev/null")?,
+            _not_send_or_sync: PhantomData,
+        })
+    }
 }
 
 impl LivePrivilegedDisposablePolicyV2 {
@@ -2675,6 +2695,7 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
 
     pub(crate) fn duplicate_control_lease(
         &self,
+        _persisted_issue: PersistedIssueLeaseSealV3,
     ) -> Result<RetainedControlLeaseV3, PrivilegedDisposableControlErrorV2> {
         self.revalidate()?;
         RetainedControlLeaseV3::duplicate_from_s1(
@@ -2682,6 +2703,44 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
             S1ControlLeaseSealV3 { _private: () },
         )
         .map_err(|error| invalid(format!("could not retain exact S1 control lease: {error}")))
+    }
+
+    pub(crate) fn seal_recovered_control_lease(
+        &self,
+        _issue: RecoveredIssueVerifierSealV3,
+    ) -> Result<RecoveredControlLeaseSealV3, PrivilegedDisposableControlErrorV2> {
+        self.revalidate()?;
+        if unsafe {
+            libc::flock(
+                self.assessment._policy.lock.as_raw_fd(),
+                libc::LOCK_EX | libc::LOCK_NB,
+            )
+        } != 0
+        {
+            return Err(invalid(format!(
+                "recovered proof could not re-prove the exact global lease: {}",
+                io::Error::last_os_error()
+            )));
+        }
+        let descriptor = unsafe {
+            libc::fcntl(
+                self.assessment._policy.lock.as_raw_fd(),
+                libc::F_DUPFD_CLOEXEC,
+                0,
+            )
+        };
+        if descriptor < 0 {
+            return Err(invalid(format!(
+                "recovered proof could not retain the global lease: {}",
+                io::Error::last_os_error()
+            )));
+        }
+        let retained = RecoveredControlLeaseSealV3 {
+            _descriptor: unsafe { File::from_raw_fd(descriptor) },
+            _not_send_or_sync: PhantomData,
+        };
+        self.revalidate()?;
+        Ok(retained)
     }
 
     pub(crate) fn complete_selected_lifecycle_append(
