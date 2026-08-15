@@ -32,6 +32,14 @@
 use crate::durable::canonical_json;
 use crate::durable::sha256;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
+#[cfg(feature = "fixed-runner-supervisor")]
+use crate::mac_inert_fixed_launcher::FixedInertRunnerBindingV3;
+use crate::mac_inert_runner_executable::FixedExecutableEvidenceV3;
+use crate::mac_inert_runner_executable::FixedFileIdentityV3;
+use crate::mac_inert_runner_executable::SpawnedInertChildV3;
+use crate::mac_inert_runner_executable::file_identity as fixed_file_identity;
+use crate::mac_inert_runner_executable::inspect_current_executable;
+use crate::mac_inert_runner_executable::path_identity as fixed_path_identity;
 use rand::TryRngCore;
 use rand::rngs::OsRng;
 use serde::Deserialize;
@@ -46,12 +54,7 @@ use std::mem::MaybeUninit;
 use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::os::fd::RawFd;
-use std::process::Child;
-#[cfg(test)]
-use std::process::Command;
 use std::process::ExitStatus;
-#[cfg(test)]
-use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::AtomicU8;
@@ -88,8 +91,11 @@ const BOOTSTRAP_UNINITIALIZED_V3: i32 = 0;
 const BOOTSTRAP_INITIALIZING_V3: i32 = 1;
 const BOOTSTRAP_READY_V3: i32 = 2;
 const BOOTSTRAP_FAILED_V3: i32 = -1;
+const SUPERVISOR_UNCLAIMED_V3: i32 = 0;
+const SUPERVISOR_CLAIMING_V3: i32 = 1;
+const SUPERVISOR_READY_V3: i32 = 2;
+const SUPERVISOR_POISONED_V3: i32 = -1;
 const SKIP_PREMAIN_BOOTSTRAP_ENV_V3: &str = "HEPTA_SKIP_RUNNER_PREMAIN_BOOTSTRAP_V3";
-#[cfg(test)]
 const TEST_PREMAIN_CHILD_BEHAVIOR_ENV_V3: &str = "HEPTA_TEST_PREMAIN_CHILD_BEHAVIOR_V3";
 #[cfg(test)]
 const TEST_CHILD_COMPLETE_V3: &str = "complete";
@@ -104,6 +110,7 @@ const TEST_CHILD_STALL_BEFORE_COMMAND_V3: &str = "stall_before_command";
 const FRAME_HEADER_BYTES_V3: usize = 16;
 const CLEANUP_TIMEOUT_V3: Duration = Duration::from_secs(5);
 const CHILD_DEADLINE_ENV_V3: &str = "HEPTA_INERT_RUNNER_DEADLINE_NS_V3";
+const CHILD_FIXED_RUNNER_SHA256_ENV_V3: &str = "HEPTA_INERT_RUNNER_BINARY_SHA256_V3";
 const F_SETNOSIGPIPE_V3: libc::c_int = 73;
 
 static BOOTSTRAP_STATUS_V3: AtomicI32 = AtomicI32::new(BOOTSTRAP_UNINITIALIZED_V3);
@@ -114,6 +121,7 @@ static PREALLOCATED_SLOT_TAKEN_V3: [AtomicU8; PREALLOCATED_RUNNER_SLOTS_V3] =
 static PREALLOCATED_FD_TABLE_V3: [AtomicI32; PREALLOCATED_FDS_V3] =
     [const { AtomicI32::new(-1) }; PREALLOCATED_FDS_V3];
 static FIXED_TARGET_RESERVATIONS_V3: [AtomicI32; 3] = [const { AtomicI32::new(-1) }; 3];
+static FIXED_SUPERVISOR_BOOTSTRAP_V3: AtomicI32 = AtomicI32::new(SUPERVISOR_UNCLAIMED_V3);
 
 #[derive(Debug, Error)]
 pub enum InertRunnerErrorV3 {
@@ -201,10 +209,22 @@ pub struct FreshProcessEpochV3 {
     binding_sha256: String,
 }
 
+/// Production process-entry capability.  Construction must occur while the
+/// supervisor still has exactly one kernel thread; otherwise the preallocated
+/// Darwin FD pool is permanently unavailable in that process.  It also opens
+/// the packaging-defined fixed runner and retains the complete trusted path.
+#[cfg(feature = "fixed-runner-supervisor")]
+pub(crate) struct FixedInertRunnerSupervisorV3 {
+    epoch: FreshProcessEpochV3,
+    executable: FixedInertRunnerBindingV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RunnerHelloRequestV3 {
     challenge: String,
+    fixed_runner: FixedExecutableEvidenceV3,
     process_epoch: ProcessEpochBindingV3,
     process_epoch_sha256: String,
     startup_deadline_monotonic_nanoseconds: u64,
@@ -219,11 +239,13 @@ struct RunnerHelloV3 {
     parent_kernel_start_microseconds: u64,
     parent_pid: u32,
     pre_hello_fd_census_sha256: String,
+    pre_hello_open_fds: Vec<OpenFdEvidenceV3>,
     pre_hello_open_fd_identity_sha256s: Vec<String>,
     process_epoch_sha256: String,
     runner_kernel_start_microseconds: u64,
     runner_nonce: String,
     runner_pid: u32,
+    runner_executable: FixedExecutableEvidenceV3,
     schema: String,
     schema_version: u32,
     transport: RunnerTransportSemanticsV3,
@@ -238,6 +260,15 @@ struct RunnerTransportSemanticsV3 {
     receiver_cloexec_window: String,
     record_boundary: String,
     records_per_runner: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct OpenFdEvidenceV3 {
+    close_on_exec: bool,
+    descriptor_number: RawFd,
+    descriptor_type: u32,
+    identity: FixedFileIdentityV3,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -266,12 +297,14 @@ pub(crate) struct AuthenticatedRunnerEpochV3 {
     boot_session_uuid: String,
     hello_sha256: String,
     pre_hello_fd_census_sha256: String,
+    pre_hello_open_fds: Vec<OpenFdEvidenceV3>,
     pre_hello_open_fd_identity_sha256s: Vec<String>,
     process_epoch_sha256: String,
     runner_epoch_sha256: String,
     runner_kernel_start_microseconds: u64,
     runner_nonce: String,
     runner_pid: u32,
+    runner_executable: FixedExecutableEvidenceV3,
     transport: RunnerTransportSemanticsV3,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
@@ -546,7 +579,7 @@ enum RunnerStateV3 {
 
 /// Supervisor-owned live handle.  It is intentionally not Clone.
 pub(crate) struct AuthenticatedPreRunnerV3 {
-    child: Child,
+    child: SpawnedInertChildV3,
     command_socket: File,
     death_pipe: File,
     kqueue: File,
@@ -1023,7 +1056,12 @@ fn take_preallocated_runner_slot() -> Result<PreallocatedRunnerSlotV3, InertRunn
 }
 
 impl FreshProcessEpochV3 {
+    #[cfg(test)]
     pub fn establish() -> Result<Self, InertRunnerErrorV3> {
+        Self::establish_inner()
+    }
+
+    fn establish_inner() -> Result<Self, InertRunnerErrorV3> {
         ensure_preallocated_runner_pool()?;
         let identity = kernel_process_identity(unsafe { libc::getpid() } as u32)?;
         let binding = ProcessEpochBindingV3 {
@@ -1068,6 +1106,100 @@ impl FreshProcessEpochV3 {
     }
 }
 
+#[cfg(feature = "fixed-runner-supervisor")]
+impl FixedInertRunnerSupervisorV3 {
+    pub(crate) fn bootstrap_at_process_entry() -> Result<Self, InertRunnerErrorV3> {
+        claim_fixed_supervisor_bootstrap(&FIXED_SUPERVISOR_BOOTSTRAP_V3)?;
+        if let Err(error) = require_single_kernel_thread("before fixed runner supervisor bootstrap")
+        {
+            poison_fixed_supervisor_bootstrap(&FIXED_SUPERVISOR_BOOTSTRAP_V3);
+            return Err(error);
+        }
+        let result = (|| {
+            let epoch = FreshProcessEpochV3::establish_inner()?;
+            let executable = FixedInertRunnerBindingV3::open_installed()?;
+            require_single_kernel_thread("after fixed runner supervisor bootstrap")?;
+            executable.revalidate()?;
+            Ok((epoch, executable))
+        })();
+        let (epoch, executable) = match result {
+            Ok(value) => value,
+            Err(error) => {
+                poison_fixed_supervisor_bootstrap(&FIXED_SUPERVISOR_BOOTSTRAP_V3);
+                return Err(error);
+            }
+        };
+        finish_fixed_supervisor_bootstrap(&FIXED_SUPERVISOR_BOOTSTRAP_V3)?;
+        Ok(Self {
+            epoch,
+            executable,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn epoch(&self) -> &FreshProcessEpochV3 {
+        &self.epoch
+    }
+
+    pub(crate) fn spawn_authenticated(
+        &self,
+        startup_timeout: Duration,
+    ) -> Result<AuthenticatedPreRunnerV3, InertRunnerErrorV3> {
+        if FIXED_SUPERVISOR_BOOTSTRAP_V3.load(Ordering::Acquire) != SUPERVISOR_READY_V3 {
+            return Err(invalid("fixed runner supervisor bootstrap was poisoned"));
+        }
+        self.epoch.validate_current()?;
+        self.executable.revalidate()?;
+        AuthenticatedPreRunnerV3::spawn_with_binding(
+            &self.epoch,
+            &self.executable,
+            &[],
+            None,
+            startup_timeout,
+        )
+    }
+}
+
+fn claim_fixed_supervisor_bootstrap(status: &AtomicI32) -> Result<(), InertRunnerErrorV3> {
+    if status
+        .compare_exchange(
+            SUPERVISOR_UNCLAIMED_V3,
+            SUPERVISOR_CLAIMING_V3,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        )
+        .is_ok()
+    {
+        return Ok(());
+    }
+    status.store(SUPERVISOR_POISONED_V3, Ordering::Release);
+    Err(invalid(
+        "fixed runner supervisor process-entry permit was reused or raced",
+    ))
+}
+
+fn finish_fixed_supervisor_bootstrap(status: &AtomicI32) -> Result<(), InertRunnerErrorV3> {
+    if status
+        .compare_exchange(
+            SUPERVISOR_CLAIMING_V3,
+            SUPERVISOR_READY_V3,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        )
+        .is_ok()
+    {
+        return Ok(());
+    }
+    status.store(SUPERVISOR_POISONED_V3, Ordering::Release);
+    Err(invalid(
+        "fixed runner supervisor bootstrap raced and was poisoned",
+    ))
+}
+
+fn poison_fixed_supervisor_bootstrap(status: &AtomicI32) {
+    status.store(SUPERVISOR_POISONED_V3, Ordering::Release);
+}
+
 fn runner_transport_semantics() -> RunnerTransportSemanticsV3 {
     RunnerTransportSemanticsV3 {
         descriptor_transfer: RUNNER_DESCRIPTOR_TRANSFER_V3.to_string(),
@@ -1101,12 +1233,14 @@ impl AuthenticatedRunnerEpochV3 {
             || self.runner_kernel_start_microseconds != expected_identity.start_microseconds
             || expected_identity.parent_pid != epoch.binding.pid
             || self.transport != runner_transport_semantics()
+            || validate_child_open_fds(&self.pre_hello_open_fds).is_err()
+            || fd_identity_sha256s(&self.pre_hello_open_fds)?
+                != self.pre_hello_open_fd_identity_sha256s
             || self
                 .pre_hello_open_fd_identity_sha256s
                 .windows(2)
                 .any(|pair| pair[0] >= pair[1])
-            || digest_canonical(&self.pre_hello_open_fd_identity_sha256s)?
-                != self.pre_hello_fd_census_sha256
+            || digest_canonical(&self.pre_hello_open_fds)? != self.pre_hello_fd_census_sha256
         {
             return Err(invalid(
                 "authenticated runner epoch changed after the hello seal",
@@ -1349,19 +1483,37 @@ impl PriorRunnerDeathReceiptV3 {
 }
 
 impl AuthenticatedPreRunnerV3 {
-    /// Test-only launcher for an independent inert process-group member.  The
-    /// child receives only the preallocated datagram/response/death endpoints;
-    /// no control lease exists in its descriptor table during exec or hello.
-    /// Production integration must provide a fixed inert runner path before
-    /// exposing a constructor, then dispatch only with the sealed S2 grant.
-    #[cfg(test)]
+    /// Test projection of the production closed-world launcher.  Only this
+    /// cfg(test) adapter accepts a path; the production surface consumes the
+    /// fixed retained supervisor capability above.
+    #[cfg(all(test, feature = "fixed-runner-supervisor"))]
     fn spawn_program(
         epoch: &FreshProcessEpochV3,
         program: &std::path::Path,
         arguments: &[&str],
         startup_timeout: Duration,
     ) -> Result<Self, InertRunnerErrorV3> {
+        let executable = FixedInertRunnerBindingV3::open_for_test(program)?;
+        let behavior = test_premain_child_behavior(arguments);
+        let arguments = arguments
+            .iter()
+            .map(|argument| {
+                CString::new(*argument).map_err(|_| invalid("runner argument contains NUL"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Self::spawn_with_binding(epoch, &executable, &arguments, behavior, startup_timeout)
+    }
+
+    #[cfg(feature = "fixed-runner-supervisor")]
+    fn spawn_with_binding(
+        epoch: &FreshProcessEpochV3,
+        executable: &FixedInertRunnerBindingV3,
+        arguments: &[CString],
+        test_behavior: Option<&str>,
+        startup_timeout: Duration,
+    ) -> Result<Self, InertRunnerErrorV3> {
         epoch.validate_current()?;
+        executable.revalidate()?;
         let startup_deadline = AbsoluteDeadlineV3::after(startup_timeout)?;
         let session_deadline =
             AbsoluteDeadlineV3::after(startup_timeout.max(Duration::from_secs(30)))?;
@@ -1381,59 +1533,36 @@ impl AuthenticatedPreRunnerV3 {
         ];
         let target_fds = CHILD_FIXED_FDS_V3;
         reject_child_fd_aliases(&source_fds, &target_fds)?;
+        let expected_open_fds = expected_child_open_fds(source_fds)?;
         set_nonblocking(parent_command_write.as_raw_fd())?;
         set_no_sigpipe(parent_command_write.as_raw_fd())?;
         set_nonblocking(parent_response_read.as_raw_fd())?;
         set_nonblocking(parent_death_read.as_raw_fd())?;
 
-        let mut command = Command::new(program);
-        command
-            .args(arguments)
-            .env(
-                "HEPTA_INERT_RUNNER_COMMAND_FD_V3",
-                CHILD_COMMAND_FD_V3.to_string(),
-            )
-            .env(
-                "HEPTA_INERT_RUNNER_RESPONSE_FD_V3",
-                CHILD_RESPONSE_FD_V3.to_string(),
-            )
-            .env(
-                "HEPTA_INERT_RUNNER_DEATH_FD_V3",
-                CHILD_DEATH_FD_V3.to_string(),
-            )
-            .env(
+        let mut environment = vec![
+            environment_assignment("HEPTA_INERT_RUNNER_COMMAND_FD_V3", CHILD_COMMAND_FD_V3)?,
+            environment_assignment("HEPTA_INERT_RUNNER_RESPONSE_FD_V3", CHILD_RESPONSE_FD_V3)?,
+            environment_assignment("HEPTA_INERT_RUNNER_DEATH_FD_V3", CHILD_DEATH_FD_V3)?,
+            environment_assignment(
                 CHILD_DEADLINE_ENV_V3,
-                session_deadline.monotonic_nanoseconds.to_string(),
-            )
-            .env(SKIP_PREMAIN_BOOTSTRAP_ENV_V3, "1")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        if let Some(behavior) = test_premain_child_behavior(arguments) {
-            command.env(TEST_PREMAIN_CHILD_BEHAVIOR_ENV_V3, behavior);
+                session_deadline.monotonic_nanoseconds,
+            )?,
+            CString::new(format!(
+                "{CHILD_FIXED_RUNNER_SHA256_ENV_V3}={}",
+                executable.evidence().sha256()
+            ))
+            .map_err(|_| invalid("fixed runner digest environment contains NUL"))?,
+            CString::new(format!("{SKIP_PREMAIN_BOOTSTRAP_ENV_V3}=1"))
+                .map_err(|_| invalid("fixed runner bootstrap environment contains NUL"))?,
+        ];
+        if let Some(behavior) = test_behavior {
+            environment.push(
+                CString::new(format!("{TEST_PREMAIN_CHILD_BEHAVIOR_ENV_V3}={behavior}"))
+                    .map_err(|_| invalid("test runner behavior contains NUL"))?,
+            );
         }
-        use std::os::unix::process::CommandExt;
-        unsafe {
-            command.pre_exec(move || {
-                // This closure runs after fork and before exec.  Keep it to
-                // async-signal-safe syscalls only.  Parent FD flags remain
-                // CLOEXEC throughout; only these child-local dup2 targets are
-                // inheritable across exec.
-                for (source, target) in source_fds.into_iter().zip(target_fds) {
-                    if libc::dup2(source, target) < 0 {
-                        return Err(io::Error::last_os_error());
-                    }
-                }
-                for source in source_fds {
-                    libc::close(source);
-                }
-                if libc::setpgid(0, 0) != 0 {
-                    return Err(io::Error::last_os_error());
-                }
-                Ok(())
-            });
-        }
-        let mut child = command.spawn()?;
+        let mut child =
+            executable.spawn_closed_world(source_fds, target_fds, arguments, &environment)?;
         drop(child_command_read);
         drop(child_response_write);
         drop(child_death_write);
@@ -1442,6 +1571,7 @@ impl AuthenticatedPreRunnerV3 {
             let challenge = random_hex(32)?;
             let request = RunnerHelloRequestV3 {
                 challenge: challenge.clone(),
+                fixed_runner: executable.evidence().clone(),
                 process_epoch: epoch.binding.clone(),
                 process_epoch_sha256: epoch.binding_sha256.clone(),
                 startup_deadline_monotonic_nanoseconds: startup_deadline.monotonic_nanoseconds,
@@ -1457,39 +1587,29 @@ impl AuthenticatedPreRunnerV3 {
             }
             let hello: RunnerHelloV3 = parse_canonical(&hello_bytes, "runner hello")?;
             let identity = kernel_process_identity(child.id())?;
-            if hello.schema != RUNNER_HELLO_SCHEMA_V3
-                || hello.schema_version != 3
-                || !hello.bootstrap_single_kernel_thread_verified
-                || hello.challenge_sha256 != sha256(challenge.as_bytes())
-                || hello.parent_pid != epoch.binding.pid
-                || hello.parent_kernel_start_microseconds != epoch.binding.kernel_start_microseconds
-                || hello.process_epoch_sha256 != epoch.binding_sha256
-                || hello.transport != runner_transport_semantics()
-                || hello
-                    .pre_hello_open_fd_identity_sha256s
-                    .windows(2)
-                    .any(|pair| pair[0] >= pair[1])
-                || digest_canonical(&hello.pre_hello_open_fd_identity_sha256s)?
-                    != hello.pre_hello_fd_census_sha256
-                || hello.runner_pid != child.id()
-                || hello.runner_pid != identity.pid
-                || hello.runner_kernel_start_microseconds != identity.start_microseconds
-                || unsafe { libc::getpgid(child.id() as libc::pid_t) } != child.id() as libc::pid_t
-            {
-                return Err(invalid("runner hello or independent process group changed"));
-            }
+            validate_runner_hello(
+                &hello,
+                &challenge,
+                epoch,
+                executable.evidence(),
+                &expected_open_fds,
+                child.id(),
+                identity,
+            )?;
             require_nonce(&hello.runner_nonce, "runner nonce")?;
             let runner_epoch_sha256 = digest_canonical(&hello)?;
             let runner_epoch = AuthenticatedRunnerEpochV3 {
                 boot_session_uuid: epoch.binding.boot_session_uuid.clone(),
                 hello_sha256: runner_epoch_sha256.clone(),
                 pre_hello_fd_census_sha256: hello.pre_hello_fd_census_sha256,
+                pre_hello_open_fds: hello.pre_hello_open_fds,
                 pre_hello_open_fd_identity_sha256s: hello.pre_hello_open_fd_identity_sha256s,
                 process_epoch_sha256: epoch.binding_sha256.clone(),
                 runner_epoch_sha256,
                 runner_kernel_start_microseconds: identity.start_microseconds,
                 runner_nonce: hello.runner_nonce,
                 runner_pid: identity.pid,
+                runner_executable: hello.runner_executable,
                 transport: hello.transport,
                 _not_send_or_sync: PhantomData,
             };
@@ -1500,7 +1620,7 @@ impl AuthenticatedPreRunnerV3 {
         let (identity, runner_epoch) = match startup {
             Ok(startup) => startup,
             Err(error) => {
-                terminate_group_and_reap(&mut child);
+                child.terminate_group_and_reap()?;
                 return Err(error);
             }
         };
@@ -1895,7 +2015,9 @@ impl AuthenticatedPreRunnerV3 {
 impl Drop for AuthenticatedPreRunnerV3 {
     fn drop(&mut self) {
         if self.child.try_wait().ok().flatten().is_none() {
-            terminate_group_and_reap(&mut self.child);
+            if self.child.terminate_group_and_reap().is_err() {
+                std::process::abort();
+            }
         }
     }
 }
@@ -1924,6 +2046,21 @@ fn run_inert_child_with_behavior(
     response_behavior: InertChildResponseV3,
 ) -> Result<(), InertRunnerErrorV3> {
     let session_deadline = AbsoluteDeadlineV3::from_environment()?;
+    let expected_executable_sha256 = std::env::var(CHILD_FIXED_RUNNER_SHA256_ENV_V3)
+        .map_err(|_| invalid("missing fixed runner executable digest"))?;
+    require_sha256(
+        &expected_executable_sha256,
+        "fixed runner executable digest",
+    )?;
+    // Inspect and close the temporary executable descriptor before taking the
+    // exact FD census.  This is corroborating child evidence; the trust anchor
+    // remains the parent's retained root-owned path capability.
+    let runner_executable = inspect_current_executable()?;
+    if runner_executable.sha256() != expected_executable_sha256 {
+        return Err(invalid(
+            "running executable bytes differ from the fixed packaging digest",
+        ));
+    }
     let command_fd = inherited_fd("HEPTA_INERT_RUNNER_COMMAND_FD_V3")?;
     let response_fd = inherited_fd("HEPTA_INERT_RUNNER_RESPONSE_FD_V3")?;
     let death_fd = inherited_fd("HEPTA_INERT_RUNNER_DEATH_FD_V3")?;
@@ -1939,8 +2076,14 @@ fn run_inert_child_with_behavior(
     set_no_sigpipe(response_pipe.as_raw_fd())?;
 
     require_single_kernel_thread("before authenticated runner hello")?;
-    let pre_hello_open_fd_identity_sha256s = open_fd_identity_census()?;
-    let pre_hello_fd_census_sha256 = digest_canonical(&pre_hello_open_fd_identity_sha256s)?;
+    let pre_hello_open_fds = open_fd_census()?;
+    validate_child_open_fds(&pre_hello_open_fds)?;
+    let repeated_open_fds = open_fd_census()?;
+    if repeated_open_fds != pre_hello_open_fds {
+        return Err(invalid("pre-runner FD census changed across exact replay"));
+    }
+    let pre_hello_open_fd_identity_sha256s = fd_identity_sha256s(&pre_hello_open_fds)?;
+    let pre_hello_fd_census_sha256 = digest_canonical(&pre_hello_open_fds)?;
     let (request_bytes, request_fds) =
         receive_datagram_until(&command_socket, session_deadline, 0)?;
     if !request_fds.is_empty() {
@@ -1957,6 +2100,7 @@ fn run_inert_child_with_behavior(
     }
     startup_deadline.remaining_nanoseconds()?;
     if digest_canonical(&request.process_epoch)? != request.process_epoch_sha256
+        || request.fixed_runner != runner_executable
         || request.process_epoch.schema != PROCESS_EPOCH_SCHEMA_V3
         || request.process_epoch.schema_version != 3
         || request.process_epoch.boot_session_uuid != boot_session_uuid()?
@@ -1978,11 +2122,13 @@ fn run_inert_child_with_behavior(
         parent_kernel_start_microseconds: parent_identity.start_microseconds,
         parent_pid: parent_identity.pid,
         pre_hello_fd_census_sha256,
+        pre_hello_open_fds: pre_hello_open_fds.clone(),
         pre_hello_open_fd_identity_sha256s: pre_hello_open_fd_identity_sha256s.clone(),
         process_epoch_sha256: request.process_epoch_sha256,
         runner_kernel_start_microseconds: identity.start_microseconds,
         runner_nonce: random_hex(32)?,
         runner_pid: identity.pid,
+        runner_executable,
         schema: RUNNER_HELLO_SCHEMA_V3.to_string(),
         schema_version: 3,
         transport: runner_transport_semantics(),
@@ -2081,7 +2227,7 @@ fn descriptor_identity_sha256(fd: RawFd) -> Result<String, InertRunnerErrorV3> {
     digest_canonical(&descriptor_identity(fd)?)
 }
 
-fn open_fd_identity_census() -> Result<Vec<String>, InertRunnerErrorV3> {
+fn open_fd_census() -> Result<Vec<OpenFdEvidenceV3>, InertRunnerErrorV3> {
     const PROC_PIDLISTFDS_V3: libc::c_int = 1;
     let mut capacity = 64usize;
     let descriptors = loop {
@@ -2125,16 +2271,281 @@ fn open_fd_identity_census() -> Result<Vec<String>, InertRunnerErrorV3> {
             .checked_mul(2)
             .ok_or_else(|| invalid("pre-runner FD census capacity overflowed"))?;
     };
-    let mut identities = descriptors
+    let mut evidence = Vec::with_capacity(descriptors.len());
+    for descriptor in descriptors {
+        let flags = unsafe { libc::fcntl(descriptor, libc::F_GETFD) };
+        if flags < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        let descriptor_type = proc_fd_type(descriptor)?;
+        evidence.push(OpenFdEvidenceV3 {
+            close_on_exec: flags & libc::FD_CLOEXEC != 0,
+            descriptor_number: descriptor,
+            descriptor_type,
+            identity: fixed_file_identity(descriptor)?,
+        });
+    }
+    evidence.sort_by_key(|entry| entry.descriptor_number);
+    if evidence
+        .windows(2)
+        .any(|pair| pair[0].descriptor_number >= pair[1].descriptor_number)
+    {
+        return Err(invalid(
+            "pre-runner FD census contains duplicate descriptors",
+        ));
+    }
+    Ok(evidence)
+}
+
+fn proc_fd_type(descriptor: RawFd) -> Result<u32, InertRunnerErrorV3> {
+    const PROC_PIDLISTFDS_V3: libc::c_int = 1;
+    let mut entries = [MaybeUninit::<ProcFdInfoV3>::zeroed(); 64];
+    let bytes = libc::c_int::try_from(std::mem::size_of_val(&entries))
+        .map_err(|_| invalid("FD type census buffer overflowed"))?;
+    let received = unsafe {
+        proc_pidinfo(
+            libc::getpid(),
+            PROC_PIDLISTFDS_V3,
+            0,
+            entries.as_mut_ptr().cast(),
+            bytes,
+        )
+    };
+    if received <= 0 || received as usize % std::mem::size_of::<ProcFdInfoV3>() != 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    entries
         .into_iter()
-        .map(descriptor_identity_sha256)
+        .take(received as usize / std::mem::size_of::<ProcFdInfoV3>())
+        .map(|entry| unsafe { entry.assume_init() })
+        .find(|entry| entry.proc_fd == descriptor)
+        .map(|entry| entry.proc_fdtype)
+        .ok_or_else(|| invalid("descriptor disappeared from FD type census"))
+}
+
+fn expected_child_open_fds(
+    source_fds: [RawFd; 3],
+) -> Result<Vec<OpenFdEvidenceV3>, InertRunnerErrorV3> {
+    let null_identity = fixed_path_identity(c"/dev/null")?;
+    let mut result = vec![
+        OpenFdEvidenceV3 {
+            close_on_exec: false,
+            descriptor_number: 0,
+            descriptor_type: libc::PROX_FDTYPE_VNODE as u32,
+            identity: null_identity.clone(),
+        },
+        OpenFdEvidenceV3 {
+            close_on_exec: false,
+            descriptor_number: 1,
+            descriptor_type: libc::PROX_FDTYPE_VNODE as u32,
+            identity: null_identity.clone(),
+        },
+        OpenFdEvidenceV3 {
+            close_on_exec: false,
+            descriptor_number: 2,
+            descriptor_type: libc::PROX_FDTYPE_VNODE as u32,
+            identity: null_identity,
+        },
+    ];
+    for ((source, target), descriptor_type) in source_fds.into_iter().zip(CHILD_FIXED_FDS_V3).zip([
+        libc::PROX_FDTYPE_SOCKET as u32,
+        libc::PROX_FDTYPE_PIPE as u32,
+        libc::PROX_FDTYPE_PIPE as u32,
+    ]) {
+        result.push(OpenFdEvidenceV3 {
+            close_on_exec: true,
+            descriptor_number: target,
+            descriptor_type,
+            identity: fixed_file_identity(source)?,
+        });
+    }
+    validate_child_open_fds(&result)?;
+    Ok(result)
+}
+
+fn validate_child_open_fds(evidence: &[OpenFdEvidenceV3]) -> Result<(), InertRunnerErrorV3> {
+    let expected_numbers = [0, 1, 2, 900, 901, 902];
+    let expected_types = [
+        libc::PROX_FDTYPE_VNODE as u32,
+        libc::PROX_FDTYPE_VNODE as u32,
+        libc::PROX_FDTYPE_VNODE as u32,
+        libc::PROX_FDTYPE_SOCKET as u32,
+        libc::PROX_FDTYPE_PIPE as u32,
+        libc::PROX_FDTYPE_PIPE as u32,
+    ];
+    let expected_cloexec = [false, false, false, true, true, true];
+    if evidence.len() != expected_numbers.len() {
+        return Err(invalid("runner inherited an extra or missing descriptor"));
+    }
+    for (((entry, number), descriptor_type), close_on_exec) in evidence
+        .iter()
+        .zip(expected_numbers)
+        .zip(expected_types)
+        .zip(expected_cloexec)
+    {
+        if entry.descriptor_number != number
+            || entry.descriptor_type != descriptor_type
+            || entry.close_on_exec != close_on_exec
+        {
+            return Err(invalid(
+                "runner descriptor number, type, or CLOEXEC differs from the exact allowlist",
+            ));
+        }
+    }
+    let null_identity = fixed_path_identity(c"/dev/null")?;
+    if evidence[..3]
+        .iter()
+        .any(|entry| !same_node_ignoring_change_times(&entry.identity, &null_identity))
+    {
+        return Err(invalid("runner stdio is not exact /dev/null"));
+    }
+    let endpoint_identities = evidence[3..]
+        .iter()
+        .map(|entry| &entry.identity)
+        .collect::<Vec<_>>();
+    if endpoint_identities
+        .iter()
+        .any(|identity| same_node_ignoring_change_times(identity, &null_identity))
+        || endpoint_identities
+            .iter()
+            .enumerate()
+            .any(|(index, identity)| endpoint_identities[index + 1..].contains(identity))
+    {
+        return Err(invalid(
+            "runner protocol endpoints alias each other or stdio",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_exact_child_open_fds(
+    observed: &[OpenFdEvidenceV3],
+    expected: &[OpenFdEvidenceV3],
+) -> Result<(), InertRunnerErrorV3> {
+    validate_child_open_fds(observed)?;
+    validate_child_open_fds(expected)?;
+    if observed[3..] != expected[3..]
+        || observed[..3]
+            .iter()
+            .zip(&expected[..3])
+            .any(|(observed, expected)| {
+                !same_node_ignoring_change_times(&observed.identity, &expected.identity)
+            })
+    {
+        return Err(invalid("runner hello descriptor identities changed"));
+    }
+    Ok(())
+}
+
+fn same_node_ignoring_change_times(
+    left: &FixedFileIdentityV3,
+    right: &FixedFileIdentityV3,
+) -> bool {
+    // Darwin updates the character-device vnode timestamps for `/dev/null`
+    // when unrelated processes open or use it.  The hello still carries the
+    // full stat evidence; exact path identity is the remaining immutable
+    // device tuple, while ctime/mtime cannot be predicted by the parent.
+    left.birthtime_nanoseconds == right.birthtime_nanoseconds
+        && left.device == right.device
+        && left.file_type_and_mode == right.file_type_and_mode
+        && left.flags == right.flags
+        && left.generation == right.generation
+        && left.group == right.group
+        && left.inode == right.inode
+        && left.link_count == right.link_count
+        && left.owner == right.owner
+        && left.rdev == right.rdev
+        && left.size == right.size
+}
+
+fn fd_identity_sha256s(evidence: &[OpenFdEvidenceV3]) -> Result<Vec<String>, InertRunnerErrorV3> {
+    let mut identities = evidence
+        .iter()
+        .map(|entry| {
+            digest_canonical(&LeaseDescriptorIdentityV3 {
+                device: entry.identity.device,
+                file_type: (entry.identity.file_type_and_mode & libc::S_IFMT) as u32,
+                group: entry.identity.group,
+                inode: entry.identity.inode,
+                owner: entry.identity.owner,
+                rdev: entry.identity.rdev,
+            })
+        })
         .collect::<Result<Vec<_>, _>>()?;
     identities.sort();
     identities.dedup();
-    for identity in &identities {
-        require_sha256(identity, "pre-runner FD identity")?;
-    }
     Ok(identities)
+}
+
+fn environment_assignment(
+    name: &str,
+    value: impl std::fmt::Display,
+) -> Result<CString, InertRunnerErrorV3> {
+    CString::new(format!("{name}={value}"))
+        .map_err(|_| invalid("fixed runner environment contains NUL"))
+}
+
+fn validate_runner_hello(
+    hello: &RunnerHelloV3,
+    challenge: &str,
+    epoch: &FreshProcessEpochV3,
+    expected_executable: &FixedExecutableEvidenceV3,
+    expected_open_fds: &[OpenFdEvidenceV3],
+    child_pid: u32,
+    identity: KernelProcessIdentityV3,
+) -> Result<(), InertRunnerErrorV3> {
+    if hello.schema != RUNNER_HELLO_SCHEMA_V3 || hello.schema_version != 3 {
+        return Err(invalid("runner hello schema changed"));
+    }
+    if !hello.bootstrap_single_kernel_thread_verified {
+        return Err(invalid(
+            "runner hello lacks the single-thread bootstrap proof",
+        ));
+    }
+    if hello.challenge_sha256 != sha256(challenge.as_bytes()) {
+        return Err(invalid("runner hello challenge changed"));
+    }
+    if hello.parent_pid != epoch.binding.pid
+        || hello.parent_kernel_start_microseconds != epoch.binding.kernel_start_microseconds
+        || hello.process_epoch_sha256 != epoch.binding_sha256
+    {
+        return Err(invalid("runner hello parent process epoch changed"));
+    }
+    if hello.transport != runner_transport_semantics() {
+        return Err(invalid("runner hello transport semantics changed"));
+    }
+    if hello.runner_executable != *expected_executable {
+        return Err(invalid("runner hello executable evidence changed"));
+    }
+    validate_exact_child_open_fds(&hello.pre_hello_open_fds, expected_open_fds)?;
+    if hello
+        .pre_hello_open_fd_identity_sha256s
+        .windows(2)
+        .any(|pair| pair[0] >= pair[1])
+        || fd_identity_sha256s(&hello.pre_hello_open_fds)?
+            != hello.pre_hello_open_fd_identity_sha256s
+    {
+        return Err(invalid("runner hello descriptor identity roster changed"));
+    }
+    if digest_canonical(&hello.pre_hello_open_fds)? != hello.pre_hello_fd_census_sha256 {
+        return Err(invalid("runner hello descriptor census digest changed"));
+    }
+    if hello.runner_pid != child_pid
+        || hello.runner_pid != identity.pid
+        || hello.runner_kernel_start_microseconds != identity.start_microseconds
+    {
+        return Err(invalid("runner hello kernel process identity changed"));
+    }
+    let process_group = unsafe { libc::getpgid(child_pid as libc::pid_t) };
+    if process_group < 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    if process_group != child_pid as libc::pid_t {
+        return Err(invalid(
+            "runner is not the leader of its independent process group",
+        ));
+    }
+    Ok(())
 }
 
 fn kernel_process_identity(pid: u32) -> Result<KernelProcessIdentityV3, InertRunnerErrorV3> {
@@ -2439,14 +2850,6 @@ fn wait_for_events_until(
             return Err(error.into());
         }
     }
-}
-
-fn terminate_group_and_reap(child: &mut Child) {
-    let pid = child.id() as libc::pid_t;
-    unsafe {
-        libc::kill(-pid, libc::SIGKILL);
-    }
-    let _ = child.wait();
 }
 
 fn exit_status_code(status: ExitStatus) -> i32 {

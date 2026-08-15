@@ -62,6 +62,26 @@ assert_not_impl_any!(
         AsRawFd,
         From<File>
 );
+assert_not_impl_any!(
+    FixedInertRunnerBindingV3:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
+assert_not_impl_any!(
+    FixedInertRunnerSupervisorV3:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
 
 #[test]
 fn inert_child_entry() {
@@ -644,6 +664,81 @@ fn fresh_process_pool_bootstrap_rejects_a_multithreaded_process() {
 }
 
 #[test]
+fn fixed_supervisor_bootstrap_is_one_shot_and_a_race_cannot_resurrect_ready() {
+    let sequential = AtomicI32::new(SUPERVISOR_UNCLAIMED_V3);
+    claim_fixed_supervisor_bootstrap(&sequential).expect("first claim");
+    finish_fixed_supervisor_bootstrap(&sequential).expect("first completion");
+    assert_eq!(sequential.load(Ordering::Acquire), SUPERVISOR_READY_V3);
+    assert!(claim_fixed_supervisor_bootstrap(&sequential).is_err());
+    assert_eq!(sequential.load(Ordering::Acquire), SUPERVISOR_POISONED_V3);
+
+    let raced = Arc::new(AtomicI32::new(SUPERVISOR_UNCLAIMED_V3));
+    let barrier = Arc::new(Barrier::new(3));
+    let contenders = (0..2)
+        .map(|_| {
+            let raced = Arc::clone(&raced);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                claim_fixed_supervisor_bootstrap(&raced).is_ok()
+            })
+        })
+        .collect::<Vec<_>>();
+    barrier.wait();
+    let winners = contenders
+        .into_iter()
+        .map(|contender| contender.join().expect("bootstrap contender"))
+        .filter(|won| *won)
+        .count();
+    assert_eq!(winners, 1);
+    assert_eq!(raced.load(Ordering::Acquire), SUPERVISOR_POISONED_V3);
+    assert!(finish_fixed_supervisor_bootstrap(&raced).is_err());
+    assert_eq!(raced.load(Ordering::Acquire), SUPERVISOR_POISONED_V3);
+}
+
+#[test]
+fn exact_child_fd_allowlist_rejects_every_mutable_dimension() {
+    let slot = take_preallocated_runner_slot().expect("exact FD evidence slot");
+    let expected = expected_child_open_fds([
+        slot.child_command_read.as_raw_fd(),
+        slot.child_response_write.as_raw_fd(),
+        slot.child_death_write.as_raw_fd(),
+    ])
+    .expect("expected exact child census");
+    validate_exact_child_open_fds(&expected, &expected).expect("exact census");
+
+    let mut extra = expected.clone();
+    let mut extra_entry = extra.last().expect("last exact FD").clone();
+    extra_entry.descriptor_number = 903;
+    extra.push(extra_entry);
+    assert!(validate_exact_child_open_fds(&extra, &expected).is_err());
+
+    let mut missing = expected.clone();
+    missing.pop();
+    assert!(validate_exact_child_open_fds(&missing, &expected).is_err());
+
+    let mut wrong_number = expected.clone();
+    wrong_number[3].descriptor_number = 899;
+    assert!(validate_exact_child_open_fds(&wrong_number, &expected).is_err());
+
+    let mut wrong_type = expected.clone();
+    wrong_type[3].descriptor_type = libc::PROX_FDTYPE_PIPE as u32;
+    assert!(validate_exact_child_open_fds(&wrong_type, &expected).is_err());
+
+    let mut wrong_cloexec = expected.clone();
+    wrong_cloexec[3].close_on_exec = false;
+    assert!(validate_exact_child_open_fds(&wrong_cloexec, &expected).is_err());
+
+    let mut wrong_identity = expected.clone();
+    wrong_identity[3].identity.inode = wrong_identity[3].identity.inode.wrapping_add(1);
+    assert!(validate_exact_child_open_fds(&wrong_identity, &expected).is_err());
+
+    let mut alias = expected.clone();
+    alias[4].identity = alias[3].identity.clone();
+    assert!(validate_exact_child_open_fds(&alias, &expected).is_err());
+}
+
+#[test]
 fn darwin_seqpacket_is_explicitly_unsupported_and_never_a_silent_fallback() {
     let mut pair = [-1; 2];
     let rc = unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_SEQPACKET, 0, pair.as_mut_ptr()) };
@@ -890,6 +985,33 @@ fn dropping_authenticated_pre_runner_kills_and_reaps_without_a_grant() {
             "dropped pre-runner remained live"
         );
         thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn fixed_closed_world_launcher_replays_exact_hello_for_twenty_rounds() {
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let arguments = helper_arguments("mac_inert_one_shot_runner::tests::inert_child_entry");
+    for round in 0..20 {
+        let runner = LiveInertRunnerV3::spawn_program(
+            &epoch,
+            &helper_program(),
+            &arguments,
+            Duration::from_secs(5),
+        )
+        .unwrap_or_else(|error| panic!("closed-world runner round {round} failed: {error}"));
+        assert_eq!(
+            runner
+                .runner_epoch
+                .pre_hello_open_fds
+                .iter()
+                .map(|entry| entry.descriptor_number)
+                .collect::<Vec<_>>(),
+            vec![0, 1, 2, 900, 901, 902],
+        );
+        validate_child_open_fds(&runner.runner_epoch.pre_hello_open_fds)
+            .expect("retained exact child census");
+        drop(runner);
     }
 }
 
