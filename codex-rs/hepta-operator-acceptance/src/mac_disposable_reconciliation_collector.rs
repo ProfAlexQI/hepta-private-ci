@@ -50,7 +50,7 @@ const MOUNT_SCHEMA: &str = "hepta_mac_restart_mount_evidence_v3";
 const MAX_MOUNT_ENTRIES: usize = 4096;
 const MAX_MOUNT_STRING_BYTES: usize = 4096;
 const MAX_ARTIFACT_ENTRIES: usize = 4096;
-const MAX_ARTIFACT_NAMES: usize = 64;
+const MAX_ARTIFACT_BINDINGS: usize = 10;
 const MAX_PROTECTED_ROOTS: usize = 16;
 const MAX_RECEIPT_FILES: usize = 64;
 const MAX_RECEIPT_BYTES: usize = 16 * 1024 * 1024;
@@ -102,7 +102,7 @@ pub struct RestartCollectorBindingsV3 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RestartCollectorPolicyV3 {
-    pub artifact_names: Vec<String>,
+    pub artifacts: Vec<PreparedArtifactBindingV3>,
     pub artifact_root: String,
     pub artifact_root_identity: StableDirectoryIdentityV3,
     pub authority: DisposableAuthorityV2,
@@ -178,6 +178,28 @@ pub struct StableDirectoryIdentityV3 {
     pub uid: u32,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ArtifactRoleV3 {
+    BackingImage,
+    MountpointUnderlying,
+    DiskImageDevice,
+    PhysicalWhole,
+    PhysicalStore,
+    ApfsContainer,
+    ApfsVolume,
+    CollectorReceipt,
+    LifecycleRecord,
+    EffectIssueRecord,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PreparedArtifactBindingV3 {
+    basename: String,
+    role: ArtifactRoleV3,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MountpointIdentityV3 {
@@ -198,7 +220,7 @@ pub struct MatchingDiskImageGroupV3 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ArtifactEvidenceV3 {
-    artifact_names: Vec<String>,
+    artifacts: Vec<PreparedArtifactBindingV3>,
     artifact_root: String,
     authority: DisposableAuthorityV2,
     operation_artifacts_absent: bool,
@@ -260,7 +282,6 @@ pub(crate) enum FinalizedRestartObservationV3 {
 
 #[derive(Clone, Debug)]
 pub struct LiveRestartCollectorRequestV3<'a> {
-    pub artifact_names: &'a [&'a str],
     pub artifact_root: &'a Path,
     pub baseline: &'a RestartBaselineInventoryV3,
     pub bindings: &'a RestartCollectorBindingsV3,
@@ -320,6 +341,20 @@ struct DurableCollectorReceiptV3 {
     temporary_name: String,
 }
 
+impl PreparedArtifactBindingV3 {
+    pub(crate) fn new(
+        role: ArtifactRoleV3,
+        basename: &str,
+    ) -> Result<Self, RestartCollectorErrorV3> {
+        let binding = Self {
+            basename: validate_child_name(basename)?.to_string(),
+            role,
+        };
+        validate_artifact_bindings(std::slice::from_ref(&binding), false)?;
+        Ok(binding)
+    }
+}
+
 pub(crate) struct AttachedV3;
 pub(crate) struct MountedV3;
 
@@ -367,7 +402,7 @@ impl RestartCollectorPolicyV3 {
         mountpoint: &Path,
         artifact_root: &Path,
         receipt_root: &Path,
-        artifact_names: &[&str],
+        artifacts: &[PreparedArtifactBindingV3],
         protected_roots: &[&Path],
     ) -> Result<Self, RestartCollectorErrorV3> {
         let backing_path = canonical_input_path(backing_path, "backing path", false)?;
@@ -377,17 +412,12 @@ impl RestartCollectorPolicyV3 {
         if protected_roots.len() > MAX_PROTECTED_ROOTS.saturating_sub(2) {
             return Err(invalid("protected-root roster exceeds its bound"));
         }
-        if artifact_names.len() > MAX_ARTIFACT_NAMES {
-            return Err(invalid("artifact-name roster exceeds its bound"));
+        if artifacts.len() > MAX_ARTIFACT_BINDINGS {
+            return Err(invalid("prepared artifact roster exceeds its bound"));
         }
-        let mut names = artifact_names
-            .iter()
-            .map(|name| validate_child_name(name).map(str::to_string))
-            .collect::<Result<Vec<_>, _>>()?;
-        names.sort();
-        if names.windows(2).any(|pair| pair[0] == pair[1]) {
-            return Err(invalid("artifact-name roster contains duplicates"));
-        }
+        let mut artifacts = artifacts.to_vec();
+        artifacts.sort();
+        validate_artifact_bindings(&artifacts, true)?;
         let mut roots = protected_roots
             .iter()
             .map(|path| canonical_input_path(path, "protected root", true))
@@ -408,7 +438,7 @@ impl RestartCollectorPolicyV3 {
         artifact_root_held.revalidate("prepared artifact root")?;
         receipt_root_held.revalidate("prepared receipt root")?;
         let policy = Self {
-            artifact_names: names,
+            artifacts,
             artifact_root,
             artifact_root_identity: StableDirectoryIdentityV3::from_binding(
                 &artifact_root_held.binding,
@@ -611,11 +641,11 @@ fn collect_live(
     let artifact_roster = list_directory(artifact_root.file.as_raw_fd(), MAX_ARTIFACT_ENTRIES)?;
     let operation_artifacts_absent = request
         .policy
-        .artifact_names
+        .artifacts
         .iter()
-        .all(|name| artifact_roster.binary_search(name).is_err());
+        .all(|artifact| artifact_roster.binary_search(&artifact.basename).is_err());
     let artifact_evidence = ArtifactEvidenceV3 {
-        artifact_names: request.policy.artifact_names.clone(),
+        artifacts: request.policy.artifacts.clone(),
         artifact_root: request.policy.artifact_root.clone(),
         authority: DisposableAuthorityV2::none(),
         operation_artifacts_absent,
@@ -1859,9 +1889,9 @@ impl LiveReplayGuardV3 {
         let roster = list_directory(self.artifact_root.file.as_raw_fd(), MAX_ARTIFACT_ENTRIES)?;
         let absent = self
             .artifact_evidence
-            .artifact_names
+            .artifacts
             .iter()
-            .all(|name| roster.binary_search(name).is_err());
+            .all(|artifact| roster.binary_search(&artifact.basename).is_err());
         if roster != self.artifact_evidence.roster
             || absent != self.artifact_evidence.operation_artifacts_absent
             || self.artifact_root.binding != self.artifact_evidence.root_binding
@@ -1995,15 +2025,8 @@ fn validate_request(
     validate_baseline(request.baseline)?;
     validate_disk_image_backing_identity_v2(request.prepared_backing)?;
     validate_mountpoint_identity(request.mountpoint_identity)?;
-    let mut names = request
-        .artifact_names
-        .iter()
-        .map(|name| validate_child_name(name).map(str::to_string))
-        .collect::<Result<Vec<_>, _>>()?;
-    names.sort();
-    if names != request.policy.artifact_names
-        || canonical_input_path(request.artifact_root, "artifact root", true)?
-            != request.policy.artifact_root
+    if canonical_input_path(request.artifact_root, "artifact root", true)?
+        != request.policy.artifact_root
         || canonical_input_path(request.receipt_root, "receipt root", true)?
             != request.policy.receipt_root
         || request.prepared_backing.canonical_path != request.policy.backing_path
@@ -2038,20 +2061,47 @@ fn validate_bindings(bindings: &RestartCollectorBindingsV3) -> Result<(), Restar
     Ok(())
 }
 
+fn validate_artifact_bindings(
+    artifacts: &[PreparedArtifactBindingV3],
+    require_complete_collector_profile: bool,
+) -> Result<(), RestartCollectorErrorV3> {
+    if artifacts.len() > MAX_ARTIFACT_BINDINGS
+        || artifacts.windows(2).any(|pair| pair[0] >= pair[1])
+    {
+        return Err(invalid(
+            "prepared artifact roster is oversized, duplicated, or noncanonical",
+        ));
+    }
+    let mut roles = BTreeSet::new();
+    let mut basenames = BTreeSet::new();
+    for artifact in artifacts {
+        validate_child_name(&artifact.basename)?;
+        if !roles.insert(artifact.role) || !basenames.insert(artifact.basename.as_str()) {
+            return Err(invalid(
+                "prepared artifact roster duplicates or aliases a role or basename",
+            ));
+        }
+    }
+    if require_complete_collector_profile
+        && (artifacts.len() != 1 || artifacts[0].role != ArtifactRoleV3::BackingImage)
+    {
+        return Err(invalid(
+            "collector requires exactly one prepared BackingImage artifact binding",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_policy(policy: &RestartCollectorPolicyV3) -> Result<(), RestartCollectorErrorV3> {
     if policy.schema != POLICY_SCHEMA
         || policy.authority.any()
         || policy.max_iomedia_objects != 256
         || policy.max_mount_entries != MAX_MOUNT_ENTRIES
-        || policy.artifact_names.len() > MAX_ARTIFACT_NAMES
+        || policy.artifacts.len() > MAX_ARTIFACT_BINDINGS
         || policy.protected_roots.is_empty()
         || policy.protected_roots.len() > MAX_PROTECTED_ROOTS
         || policy
             .protected_roots
-            .windows(2)
-            .any(|pair| pair[0] >= pair[1])
-        || policy
-            .artifact_names
             .windows(2)
             .any(|pair| pair[0] >= pair[1])
     {
@@ -2059,9 +2109,7 @@ fn validate_policy(policy: &RestartCollectorPolicyV3) -> Result<(), RestartColle
             "restart collector policy is malformed or grants authority",
         ));
     }
-    for name in &policy.artifact_names {
-        validate_child_name(name)?;
-    }
+    validate_artifact_bindings(&policy.artifacts, true)?;
     for (path, label, directory) in [
         (&policy.backing_path, "policy backing path", false),
         (&policy.mountpoint, "policy mountpoint", true),
@@ -2251,7 +2299,7 @@ fn validate_receipt(receipt: &RestartCollectorReceiptV3) -> Result<(), RestartCo
         || receipt.mountpoint_underlying.sha256()? != receipt.mountpoint_underlying_sha256
         || receipt.operation_artifacts_absent
             != receipt.artifact_evidence.operation_artifacts_absent
-        || receipt.artifact_evidence.artifact_names != receipt.collector_policy.artifact_names
+        || receipt.artifact_evidence.artifacts != receipt.collector_policy.artifacts
         || receipt.artifact_evidence.artifact_root != receipt.collector_policy.artifact_root
         || !receipt
             .collector_policy
@@ -2272,11 +2320,11 @@ fn validate_receipt(receipt: &RestartCollectorReceiptV3) -> Result<(), RestartCo
             .windows(2)
             .any(|pair| pair[0] >= pair[1])
         || receipt.operation_artifacts_absent
-            != receipt.artifact_evidence.artifact_names.iter().all(|name| {
+            != receipt.artifact_evidence.artifacts.iter().all(|artifact| {
                 receipt
                     .artifact_evidence
                     .roster
-                    .binary_search(name)
+                    .binary_search(&artifact.basename)
                     .is_err()
             })
     {

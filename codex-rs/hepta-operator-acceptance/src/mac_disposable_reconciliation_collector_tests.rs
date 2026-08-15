@@ -177,9 +177,13 @@ fn inventory(objects: Vec<RestartIOMediaObjectV3>) -> RestartIOMediaInventoryV3 
     }
 }
 
+fn backing_artifact(basename: &str) -> PreparedArtifactBindingV3 {
+    PreparedArtifactBindingV3::new(ArtifactRoleV3::BackingImage, basename).unwrap()
+}
+
 fn synthetic_policy() -> RestartCollectorPolicyV3 {
     RestartCollectorPolicyV3 {
-        artifact_names: vec!["created.img".to_string()],
+        artifacts: vec![backing_artifact("created.img")],
         artifact_root: "/private/tmp/hepta-artifacts".to_string(),
         artifact_root_identity: StableDirectoryIdentityV3 {
             birthtime_nanoseconds: 1,
@@ -238,7 +242,6 @@ struct LiveCollectorFixture {
     baseline: RestartBaselineInventoryV3,
     bindings: RestartCollectorBindingsV3,
     mountpoint_identity: MountpointIdentityV3,
-    names: [&'static str; 2],
     persistence_root: PathBuf,
     policy: RestartCollectorPolicyV3,
     prepared_backing: DiskImageBackingIdentityV2,
@@ -265,13 +268,13 @@ impl LiveCollectorFixture {
         let prepared_backing = capture_live_backing_identity_v2(&backing_path).unwrap();
         let mountpoint_identity = MountpointIdentityV3::capture(&mountpoint).unwrap();
         let baseline = capture_live_restart_baseline_v3().unwrap();
-        let names = ["operation-created.img", "operation-mounted.marker"];
+        let artifacts = [backing_artifact("operation-created.img")];
         let policy = RestartCollectorPolicyV3::new(
             &backing_path,
             &mountpoint,
             &artifact_root,
             &persistence_root,
-            &names,
+            &artifacts,
             &[],
         )
         .unwrap();
@@ -292,7 +295,6 @@ impl LiveCollectorFixture {
             baseline,
             bindings,
             mountpoint_identity,
-            names,
             persistence_root,
             policy,
             prepared_backing,
@@ -301,7 +303,6 @@ impl LiveCollectorFixture {
 
     fn request(&self) -> LiveRestartCollectorRequestV3<'_> {
         LiveRestartCollectorRequestV3 {
-            artifact_names: &self.names,
             artifact_root: &self.artifact_root,
             baseline: &self.baseline,
             bindings: &self.bindings,
@@ -566,6 +567,58 @@ fn policy_rejects_roots_or_backing_that_can_disappear_under_the_target_mount() {
     }
     std::fs::write(&backing_under_mount, b"covered backing").unwrap();
     std::fs::write(&backing_under_artifact, b"artifact backing").unwrap();
+    let artifacts = [backing_artifact("operation-created.img")];
+
+    let missing =
+        RestartCollectorPolicyV3::new(&backing, &mountpoint, &artifact, &receipts, &[], &[])
+            .unwrap_err();
+    assert!(
+        missing
+            .to_string()
+            .contains("exactly one prepared BackingImage")
+    );
+    let extra = [
+        backing_artifact("operation-created.img"),
+        PreparedArtifactBindingV3::new(ArtifactRoleV3::EffectIssueRecord, "effect-issue.json")
+            .unwrap(),
+    ];
+    assert!(
+        RestartCollectorPolicyV3::new(&backing, &mountpoint, &artifact, &receipts, &extra, &[],)
+            .is_err()
+    );
+    let duplicate_role = [
+        backing_artifact("operation-created.img"),
+        backing_artifact("operation-created-copy.img"),
+    ];
+    assert!(
+        RestartCollectorPolicyV3::new(
+            &backing,
+            &mountpoint,
+            &artifact,
+            &receipts,
+            &duplicate_role,
+            &[],
+        )
+        .is_err()
+    );
+    let alias = [
+        backing_artifact("operation-created.img"),
+        PreparedArtifactBindingV3::new(
+            ArtifactRoleV3::MountpointUnderlying,
+            "operation-created.img",
+        )
+        .unwrap(),
+    ];
+    assert!(
+        RestartCollectorPolicyV3::new(&backing, &mountpoint, &artifact, &receipts, &alias, &[],)
+            .is_err()
+    );
+    assert!(
+        serde_json::from_slice::<PreparedArtifactBindingV3>(
+            br#"{"basename":"operation-created.img","role":"unknown_role"}"#,
+        )
+        .is_err()
+    );
 
     assert!(
         RestartCollectorPolicyV3::new(
@@ -573,7 +626,7 @@ fn policy_rejects_roots_or_backing_that_can_disappear_under_the_target_mount() {
             &mountpoint,
             &artifact_under_mount,
             &receipts,
-            &[],
+            &artifacts,
             &[],
         )
         .is_err()
@@ -584,7 +637,7 @@ fn policy_rejects_roots_or_backing_that_can_disappear_under_the_target_mount() {
             &mountpoint,
             &artifact,
             &receipts,
-            &[],
+            &artifacts,
             &[],
         )
         .is_err()
@@ -595,7 +648,7 @@ fn policy_rejects_roots_or_backing_that_can_disappear_under_the_target_mount() {
             &mountpoint,
             &artifact,
             &receipts_under_mount,
-            &[],
+            &artifacts,
             &[],
         )
         .is_err()
@@ -606,7 +659,7 @@ fn policy_rejects_roots_or_backing_that_can_disappear_under_the_target_mount() {
             &mountpoint,
             &artifact,
             &receipts,
-            &[],
+            &artifacts,
             &[&protected_under_mount],
         )
         .is_err()
@@ -617,7 +670,7 @@ fn policy_rejects_roots_or_backing_that_can_disappear_under_the_target_mount() {
             &mountpoint,
             &artifact,
             &receipts,
-            &[],
+            &artifacts,
             &[],
         )
         .is_err()
@@ -628,7 +681,7 @@ fn policy_rejects_roots_or_backing_that_can_disappear_under_the_target_mount() {
             &mountpoint,
             &artifact,
             &receipts_under_artifact,
-            &[],
+            &artifacts,
             &[],
         )
         .is_err()
@@ -640,7 +693,7 @@ fn policy_rejects_roots_or_backing_that_can_disappear_under_the_target_mount() {
             &mountpoint,
             &artifact,
             &receipts,
-            &[],
+            &artifacts,
             &too_many_protected,
         )
         .is_err()
@@ -739,7 +792,9 @@ fn retained_observation_keeps_live_evidence_after_persistence() {
         .unwrap();
     retained.revalidate().unwrap();
 
-    let late_artifact = fixture.artifact_root.join(fixture.names[0]);
+    let late_artifact = fixture
+        .artifact_root
+        .join(&fixture.policy.artifacts[0].basename);
     write_private(&late_artifact, b"late operation artifact");
     assert!(retained.revalidate().is_err());
 }
@@ -1021,12 +1076,13 @@ fn rootless_live_zero_requires_persistence_and_final_replay_for_both_observation
     let prepared_backing = capture_live_backing_identity_v2(&backing_path).unwrap();
     let mountpoint_identity = MountpointIdentityV3::capture(&mountpoint).unwrap();
     let baseline = capture_live_restart_baseline_v3().unwrap();
+    let artifacts = [backing_artifact("operation-created.img")];
     let policy = RestartCollectorPolicyV3::new(
         &backing_path,
         &mountpoint,
         &artifact_root,
         &persistence_root,
-        &["operation-created.img", "operation-mounted.marker"],
+        &artifacts,
         &[],
     )
     .unwrap();
@@ -1040,9 +1096,7 @@ fn rootless_live_zero_requires_persistence_and_final_replay_for_both_observation
         restart_epoch_nonce: "4".repeat(64),
         restart_started_monotonic_nanoseconds: monotonic_nanoseconds().unwrap() - 1,
     };
-    let names = ["operation-created.img", "operation-mounted.marker"];
     let request = || LiveRestartCollectorRequestV3 {
-        artifact_names: &names,
         artifact_root: &artifact_root,
         baseline: &baseline,
         bindings: &bindings,
