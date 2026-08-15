@@ -2427,7 +2427,7 @@ impl<'a> RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3> {
     /// No `File`, raw descriptor, or cloneable descriptor-bearing bundle is
     /// ever returned to the caller between S1 revalidation and S2 creation.
     pub(crate) fn wire_fresh_store(
-        mut self,
+        self,
         wiring: FreshCensusStoreWiringV3,
     ) -> Result<CensusBoundDurableLifecycleStoreV3<'a>, DurableLifecycleStoreErrorV3> {
         if self.admission.admitted_operation_name.is_some() {

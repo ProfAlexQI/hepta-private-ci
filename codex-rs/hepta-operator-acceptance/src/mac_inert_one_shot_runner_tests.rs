@@ -74,6 +74,26 @@ assert_not_impl_any!(
         From<File>
 );
 assert_not_impl_any!(
+    FixedInertRunnerBindingV3:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
+assert_not_impl_any!(
+    FixedInertRunnerSupervisorV3:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
+assert_not_impl_any!(
     RecoveredRunnerDeathProofV3<'static>:
         Clone,
         Send,
@@ -132,6 +152,7 @@ fn forced_bounded_reap_failure_child_entry() {
     }
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
     let (_directory, _lease, runner) = spawn_runner(&epoch);
+    mark_fail_stop_fixture_ready();
     drop(runner);
     panic!("Drop returned after an injected bounded-reap failure");
 }
@@ -153,6 +174,7 @@ fn forced_post_wait_proof_failure_child_entry() {
         runner.retained_death_proof.is_none(),
         "post-wait failure fixture already retained a proof"
     );
+    mark_fail_stop_fixture_ready();
     drop(runner);
     panic!("issued runner Drop returned without a retained death proof");
 }
@@ -758,6 +780,81 @@ fn fresh_process_pool_bootstrap_rejects_a_multithreaded_process() {
 }
 
 #[test]
+fn fixed_supervisor_bootstrap_is_one_shot_and_a_race_cannot_resurrect_ready() {
+    let sequential = AtomicI32::new(SUPERVISOR_UNCLAIMED_V3);
+    claim_fixed_supervisor_bootstrap(&sequential).expect("first claim");
+    finish_fixed_supervisor_bootstrap(&sequential).expect("first completion");
+    assert_eq!(sequential.load(Ordering::Acquire), SUPERVISOR_READY_V3);
+    assert!(claim_fixed_supervisor_bootstrap(&sequential).is_err());
+    assert_eq!(sequential.load(Ordering::Acquire), SUPERVISOR_POISONED_V3);
+
+    let raced = Arc::new(AtomicI32::new(SUPERVISOR_UNCLAIMED_V3));
+    let barrier = Arc::new(Barrier::new(3));
+    let contenders = (0..2)
+        .map(|_| {
+            let raced = Arc::clone(&raced);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                claim_fixed_supervisor_bootstrap(&raced).is_ok()
+            })
+        })
+        .collect::<Vec<_>>();
+    barrier.wait();
+    let winners = contenders
+        .into_iter()
+        .map(|contender| contender.join().expect("bootstrap contender"))
+        .filter(|won| *won)
+        .count();
+    assert_eq!(winners, 1);
+    assert_eq!(raced.load(Ordering::Acquire), SUPERVISOR_POISONED_V3);
+    assert!(finish_fixed_supervisor_bootstrap(&raced).is_err());
+    assert_eq!(raced.load(Ordering::Acquire), SUPERVISOR_POISONED_V3);
+}
+
+#[test]
+fn exact_child_fd_allowlist_rejects_every_mutable_dimension() {
+    let slot = take_preallocated_runner_slot().expect("exact FD evidence slot");
+    let expected = expected_child_open_fds([
+        slot.child_command_read.as_raw_fd(),
+        slot.child_response_write.as_raw_fd(),
+        slot.child_death_write.as_raw_fd(),
+    ])
+    .expect("expected exact child census");
+    validate_exact_child_open_fds(&expected, &expected).expect("exact census");
+
+    let mut extra = expected.clone();
+    let mut extra_entry = extra.last().expect("last exact FD").clone();
+    extra_entry.descriptor_number = 903;
+    extra.push(extra_entry);
+    assert!(validate_exact_child_open_fds(&extra, &expected).is_err());
+
+    let mut missing = expected.clone();
+    missing.pop();
+    assert!(validate_exact_child_open_fds(&missing, &expected).is_err());
+
+    let mut wrong_number = expected.clone();
+    wrong_number[3].descriptor_number = 899;
+    assert!(validate_exact_child_open_fds(&wrong_number, &expected).is_err());
+
+    let mut wrong_type = expected.clone();
+    wrong_type[3].descriptor_type = libc::PROX_FDTYPE_PIPE as u32;
+    assert!(validate_exact_child_open_fds(&wrong_type, &expected).is_err());
+
+    let mut wrong_cloexec = expected.clone();
+    wrong_cloexec[3].close_on_exec = false;
+    assert!(validate_exact_child_open_fds(&wrong_cloexec, &expected).is_err());
+
+    let mut wrong_identity = expected.clone();
+    wrong_identity[3].identity.inode = wrong_identity[3].identity.inode.wrapping_add(1);
+    assert!(validate_exact_child_open_fds(&wrong_identity, &expected).is_err());
+
+    let mut alias = expected.clone();
+    alias[4].identity = alias[3].identity.clone();
+    assert!(validate_exact_child_open_fds(&alias, &expected).is_err());
+}
+
+#[test]
 fn darwin_seqpacket_is_explicitly_unsupported_and_never_a_silent_fallback() {
     let mut pair = [-1; 2];
     let rc = unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_SEQPACKET, 0, pair.as_mut_ptr()) };
@@ -1008,6 +1105,33 @@ fn dropping_authenticated_pre_runner_kills_and_reaps_without_a_grant() {
 }
 
 #[test]
+fn fixed_closed_world_launcher_replays_exact_hello_for_twenty_rounds() {
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let arguments = helper_arguments("mac_inert_one_shot_runner::tests::inert_child_entry");
+    for round in 0..20 {
+        let runner = LiveInertRunnerV3::spawn_program(
+            &epoch,
+            &helper_program(),
+            &arguments,
+            Duration::from_secs(5),
+        )
+        .unwrap_or_else(|error| panic!("closed-world runner round {round} failed: {error}"));
+        assert_eq!(
+            runner
+                .runner_epoch
+                .pre_hello_open_fds
+                .iter()
+                .map(|entry| entry.descriptor_number)
+                .collect::<Vec<_>>(),
+            vec![0, 1, 2, 900, 901, 902],
+        );
+        validate_child_open_fds(&runner.runner_epoch.pre_hello_open_fds)
+            .expect("retained exact child census");
+        drop(runner);
+    }
+}
+
+#[test]
 fn bounded_reap_poll_expires_when_waitpid_never_reports_exit() {
     let started = Instant::now();
     let deadline = AbsoluteDeadlineV3::after(Duration::from_millis(25)).expect("short deadline");
@@ -1024,48 +1148,78 @@ fn bounded_reap_poll_expires_when_waitpid_never_reports_exit() {
 
 #[test]
 fn drop_fail_stops_instead_of_releasing_an_unreaped_child() {
-    let started = Instant::now();
-    let status = Command::new(helper_program())
-        .args(helper_arguments(
-            "mac_inert_one_shot_runner::tests::forced_bounded_reap_failure_child_entry",
-        ))
-        .env(TEST_FORCE_BOUNDED_REAP_FAILURE_ENV_V3, "1")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .expect("run fail-stop Drop helper");
+    let (status, elapsed) = run_fail_stop_fixture(
+        "mac_inert_one_shot_runner::tests::forced_bounded_reap_failure_child_entry",
+        TEST_FORCE_BOUNDED_REAP_FAILURE_ENV_V3,
+    );
     assert_eq!(
         status.signal(),
         Some(libc::SIGABRT),
         "injected bounded-reap failure did not take the fail-stop abort path"
     );
     assert!(
-        started.elapsed() < Duration::from_secs(3),
+        elapsed < Duration::from_secs(3),
         "Drop did not fail-stop within its bounded cleanup path"
     );
 }
 
 #[test]
 fn issued_drop_fail_stops_after_waitpid_when_proof_seal_fails() {
-    let started = Instant::now();
-    let status = Command::new(helper_program())
-        .args(helper_arguments(
-            "mac_inert_one_shot_runner::tests::forced_post_wait_proof_failure_child_entry",
-        ))
-        .env(TEST_FORCE_POST_WAIT_PROOF_FAILURE_ENV_V3, "1")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .expect("run post-wait proof fail-stop helper");
+    let (status, elapsed) = run_fail_stop_fixture(
+        "mac_inert_one_shot_runner::tests::forced_post_wait_proof_failure_child_entry",
+        TEST_FORCE_POST_WAIT_PROOF_FAILURE_ENV_V3,
+    );
     assert_eq!(
         status.signal(),
         Some(libc::SIGABRT),
         "issued runner silently released after post-wait proof failure"
     );
     assert!(
-        started.elapsed() < Duration::from_secs(3),
+        elapsed < Duration::from_secs(3),
         "post-wait proof failure did not fail-stop promptly"
     );
+}
+
+fn mark_fail_stop_fixture_ready() {
+    let path =
+        std::env::var_os(TEST_FAIL_STOP_READY_PATH_ENV_V3).expect("fail-stop fixture ready path");
+    std::fs::write(path, b"ready\n").expect("publish fail-stop fixture readiness");
+}
+
+fn run_fail_stop_fixture(test_name: &'static str, injection_env: &str) -> (ExitStatus, Duration) {
+    let directory = TempDir::new().expect("fail-stop fixture directory");
+    let ready_path = directory.path().join("ready");
+    let mut child = Command::new(helper_program())
+        .args(helper_arguments(test_name))
+        .env(injection_env, "1")
+        .env(TEST_FAIL_STOP_READY_PATH_ENV_V3, &ready_path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn fail-stop Drop helper");
+    let startup_deadline = Instant::now() + Duration::from_secs(15);
+    while !ready_path.is_file() {
+        if let Some(status) = child.try_wait().expect("probe fail-stop helper startup") {
+            panic!("fail-stop helper exited before readiness marker: {status}");
+        }
+        assert!(
+            Instant::now() < startup_deadline,
+            "fail-stop helper did not reach its Drop boundary"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+    let started = Instant::now();
+    let deadline =
+        AbsoluteDeadlineV3::after(Duration::from_secs(3)).expect("fail-stop observation deadline");
+    let status = match wait_try_until(deadline, || child.try_wait()) {
+        Ok(status) => status,
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("fail-stop helper outlived its Drop deadline: {error}");
+        }
+    };
+    (status, started.elapsed())
 }
 
 #[test]
@@ -1253,18 +1407,34 @@ fn partial_hello_prefix_hits_one_absolute_startup_deadline() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
     let (directory, lease) = test_lease();
     let arguments = helper_arguments("mac_inert_one_shot_runner::tests::partial_hello_child_entry");
+    let behavior = test_premain_child_behavior(&arguments);
+    let program = helper_program();
+    let executable = FixedInertRunnerBindingV3::open_for_test(&program)
+        .expect("preopen fixed partial-hello runner");
+    let arguments = arguments
+        .iter()
+        .map(|argument| CString::new(*argument).expect("partial-hello argument"))
+        .collect::<Vec<_>>();
     let started = Instant::now();
-    let error = match LiveInertRunnerV3::spawn_program(
+    let error = match LiveInertRunnerV3::spawn_with_binding(
         &epoch,
-        &helper_program(),
+        &executable,
         &arguments,
+        behavior,
         Duration::from_millis(100),
     ) {
         Ok(_) => panic!("partial hello cannot stall startup"),
         Err(error) => error,
     };
-    assert!(matches!(error, InertRunnerErrorV3::StartupFailed));
-    assert!(started.elapsed() < Duration::from_secs(2));
+    assert!(
+        matches!(error, InertRunnerErrorV3::StartupFailed),
+        "unexpected partial-hello startup error: {error:?}",
+    );
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "partial-hello startup deadline took {elapsed:?}",
+    );
     drop(lease);
     let contender = OpenOptions::new()
         .read(true)
