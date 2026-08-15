@@ -43,11 +43,18 @@ use crate::durable::MAX_ARTIFACT_BYTES;
 use crate::durable::canonical_json;
 use crate::durable::sha256;
 use crate::mac_iomedia_identity::AttachedIOMediaTopologyV1;
+use crate::mac_iomedia_identity::AttachedIOMediaTopologyV2;
 use crate::mac_iomedia_identity::ExpectedIOMediaTopology;
 #[cfg(test)]
 use crate::mac_iomedia_identity::IOMediaRegistryIdentityV1;
-use crate::mac_iomedia_identity::capture_attached_iomedia_topology;
+use crate::mac_iomedia_identity::IOMediaRegistryInventoryV2;
+use crate::mac_iomedia_identity::capture_attached_iomedia_topology_v2;
+use crate::mac_iomedia_identity::capture_pre_attach_iomedia_inventory;
+use crate::mac_iomedia_identity::hold_disk_image_backing;
+use crate::mac_iomedia_identity::project_iomedia_identity_v1;
+use crate::mac_iomedia_identity::validate_iomedia_registry_inventory_shape;
 use crate::mac_iomedia_identity::validate_iomedia_topology_identity_shape;
+use crate::mac_iomedia_identity::validate_iomedia_topology_provenance_shape;
 use crate::mac_privileged_broker::AuthenticatedPeerV1;
 use crate::mac_privileged_broker::NamespacePolicy;
 use crate::mac_privileged_broker::ObjectBindingV1;
@@ -348,6 +355,9 @@ pub struct AttachedTopologyV1 {
     /// receipts remain structurally readable; new capture must always emit v2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub iomedia_identity: Option<AttachedIOMediaTopologyV1>,
+    /// Added by attached-topology v3. Historical v1/v2 receipts omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub iomedia_provenance: Option<AttachedIOMediaTopologyV2>,
     pub physical_store: DiskNodeV1,
     pub pre_attach_inventory_sha256: String,
     pub schema: String,
@@ -1627,9 +1637,13 @@ fn validate_attached_topology_shape(topology: &AttachedTopologyV1) -> Result<(),
     validate_disk_node(&topology.physical_store, false)?;
     validate_disk_node(&topology.apfs_container, true)?;
     validate_disk_node(&topology.apfs_volume, false)?;
-    match (topology.schema.as_str(), topology.iomedia_identity.as_ref()) {
-        ("hepta_mac_attached_apfs_topology_v1", None) => {}
-        ("hepta_mac_attached_apfs_topology_v2", Some(identity)) => {
+    match (
+        topology.schema.as_str(),
+        topology.iomedia_identity.as_ref(),
+        topology.iomedia_provenance.as_ref(),
+    ) {
+        ("hepta_mac_attached_apfs_topology_v1", None, None) => {}
+        ("hepta_mac_attached_apfs_topology_v2", Some(identity), None) => {
             validate_iomedia_topology_identity_shape(
                 identity,
                 ExpectedIOMediaTopology {
@@ -1639,6 +1653,42 @@ fn validate_attached_topology_shape(topology: &AttachedTopologyV1) -> Result<(),
                     physical_whole: &topology.whole_disk.device_identifier,
                 },
             )?;
+        }
+        ("hepta_mac_attached_apfs_topology_v3", Some(identity), Some(provenance)) => {
+            let expected = ExpectedIOMediaTopology {
+                apfs_container: &topology.apfs_container.device_identifier,
+                apfs_volume: &topology.apfs_volume.device_identifier,
+                physical_store: &topology.physical_store.device_identifier,
+                physical_whole: &topology.whole_disk.device_identifier,
+            };
+            validate_iomedia_topology_identity_shape(identity, expected)?;
+            validate_iomedia_topology_provenance_shape(provenance, expected)?;
+            if project_iomedia_identity_v1(provenance)? != *identity
+                || provenance.backing.canonical_path != topology.image_path_from_hdiutil
+                || provenance.backing.canonical_path != topology.image_backing_before.path
+            {
+                return Err(invalid(
+                    "attached topology v3 IOMedia identity or backing projection disagrees",
+                ));
+            }
+            let fd = &provenance
+                .backing
+                .opened_components
+                .last()
+                .ok_or_else(|| invalid("attached topology v3 backing has no final component"))?
+                .fd_binding;
+            let sealed = &topology.image_backing_before.binding;
+            if fd.dev != sealed.dev
+                || fd.inode != sealed.inode
+                || fd.mode & 0o7777 != sealed.mode
+                || fd.uid != sealed.uid
+                || fd.gid != sealed.gid
+                || fd.nlink != sealed.nlink
+            {
+                return Err(invalid(
+                    "attached topology v3 backing descriptor differs from the fixture image binding",
+                ));
+            }
         }
         _ => {
             return Err(invalid(
@@ -1665,6 +1715,34 @@ fn validate_attached_topology_shape(topology: &AttachedTopologyV1) -> Result<(),
         return Err(invalid(
             "image inode/backing, whole, slice, container, and volume chain is inconsistent",
         ));
+    }
+    Ok(())
+}
+
+fn expected_t5_iomedia_topology(inventory: &DiskInventoryV1) -> ExpectedIOMediaTopology<'_> {
+    ExpectedIOMediaTopology {
+        apfs_container: &inventory.t5_apfs_container_reference,
+        apfs_volume: &inventory.t5_device_identifier,
+        physical_store: &inventory.t5_physical_store_identifier,
+        physical_whole: &inventory.t5_parent_whole_disk,
+    }
+}
+
+fn validate_iomedia_provenance_against_disk_inventory(
+    topology: &AttachedTopologyV1,
+    inventory: &DiskInventoryV1,
+) -> Result<(), AcceptanceError> {
+    if let Some(provenance) = topology.iomedia_provenance.as_ref() {
+        validate_iomedia_registry_inventory_shape(
+            &provenance.pre_attach_inventory,
+            expected_t5_iomedia_topology(inventory),
+        )?;
+        if provenance.pre_attach_inventory.t5_volume_uuid != inventory.t5_volume_uuid.to_lowercase()
+        {
+            return Err(invalid(
+                "IOMedia T5 volume UUID differs from the command-reconstructed disk inventory",
+            ));
+        }
     }
     Ok(())
 }
@@ -1900,9 +1978,15 @@ fn attach_image(
     read_only: bool,
     expected_volume_name: &str,
     pre_attach_inventory: &DiskInventoryV1,
+    pre_attach_iomedia_inventory: &IOMediaRegistryInventoryV2,
     commands: &mut Vec<CommandReceiptV1>,
 ) -> Result<AttachedImage, AcceptanceError> {
     validate_disk_inventory(pre_attach_inventory)?;
+    validate_iomedia_registry_inventory_shape(
+        pre_attach_iomedia_inventory,
+        expected_t5_iomedia_topology(pre_attach_inventory),
+    )?;
+    let held_backing = hold_disk_image_backing(image)?;
     let image_backing_before = file_identity(image)?;
     let mut arguments = vec![OsString::from("attach")];
     if read_only {
@@ -2069,12 +2153,18 @@ fn attach_image(
         commands,
     )?;
     let image_backing_after = file_identity(image)?;
-    let iomedia_identity = capture_attached_iomedia_topology(ExpectedIOMediaTopology {
+    let expected_iomedia = ExpectedIOMediaTopology {
         apfs_container: &apfs_container.device_identifier,
         apfs_volume: &apfs_volume.device_identifier,
         physical_store: &physical_store.device_identifier,
         physical_whole: &whole_disk.device_identifier,
-    })?;
+    };
+    let iomedia_provenance = capture_attached_iomedia_topology_v2(
+        expected_iomedia,
+        pre_attach_iomedia_inventory,
+        &held_backing,
+    )?;
+    let iomedia_identity = project_iomedia_identity_v1(&iomedia_provenance)?;
     let topology = AttachedTopologyV1 {
         apfs_container,
         apfs_container_uuid: attached.apfs_container_uuid.clone(),
@@ -2085,12 +2175,14 @@ fn attach_image(
         image_backing_before,
         image_path_from_hdiutil: matching_images[0].image_path.clone(),
         iomedia_identity: Some(iomedia_identity),
+        iomedia_provenance: Some(iomedia_provenance),
         physical_store,
         pre_attach_inventory_sha256: inventory_sha256(pre_attach_inventory)?,
-        schema: "hepta_mac_attached_apfs_topology_v2".to_string(),
+        schema: "hepta_mac_attached_apfs_topology_v3".to_string(),
         whole_disk,
     };
     validate_attached_topology_shape(&topology)?;
+    validate_iomedia_provenance_against_disk_inventory(&topology, pre_attach_inventory)?;
     let forbidden = [
         &pre_attach_inventory.t5_device_identifier,
         &pre_attach_inventory.t5_parent_whole_disk,
@@ -4200,6 +4292,8 @@ pub fn execute_and_seal_disposable_fixture(
     let pre_attach_inventory =
         collect_disk_inventory(&staging, &mut sequence, "pre-attach", &mut commands)?;
     append_new_commands(&commands, &mut appended_commands, &mut writer)?;
+    let pre_attach_iomedia_inventory_rw =
+        capture_pre_attach_iomedia_inventory(expected_t5_iomedia_topology(&pre_attach_inventory))?;
     let obligation = AttachmentObligationJournal::create(
         &authorization.namespace,
         &authorization.operation_nonce,
@@ -4228,6 +4322,7 @@ pub fn execute_and_seal_disposable_fixture(
         false,
         &volume_name,
         &pre_attach_inventory,
+        &pre_attach_iomedia_inventory_rw,
         &mut commands,
     )?;
     let rw_topology = attached_rw
@@ -4376,6 +4471,20 @@ pub fn execute_and_seal_disposable_fixture(
         },
     )?;
 
+    let pre_attach_iomedia_inventory_ro =
+        capture_pre_attach_iomedia_inventory(expected_t5_iomedia_topology(&pre_attach_inventory))?;
+    let mut expected_ro_iomedia_inventory = pre_attach_iomedia_inventory_rw.clone();
+    expected_ro_iomedia_inventory.capture_monotonic_nanoseconds =
+        pre_attach_iomedia_inventory_ro.capture_monotonic_nanoseconds;
+    if pre_attach_iomedia_inventory_ro.capture_monotonic_nanoseconds
+        <= pre_attach_iomedia_inventory_rw.capture_monotonic_nanoseconds
+        || pre_attach_iomedia_inventory_ro != expected_ro_iomedia_inventory
+    {
+        return Err(invalid(
+            "immediate read-only pre-attach IOMedia inventory differs from the proven post-RW-detach baseline",
+        ));
+    }
+
     attachment_guard.attach_started(MountPhaseV1::ReadOnly)?;
     let attached_ro = attach_image(
         &staging,
@@ -4384,6 +4493,7 @@ pub fn execute_and_seal_disposable_fixture(
         true,
         &volume_name,
         &pre_attach_inventory,
+        &pre_attach_iomedia_inventory_ro,
         &mut commands,
     )?;
     let ro_topology = attached_ro
@@ -4895,6 +5005,7 @@ pub(crate) fn replay_attachment_obligation_records(
                 let prepared_image = prepared_image
                     .as_ref()
                     .ok_or_else(|| invalid("Attached precedes Prepared image binding"))?;
+                validate_iomedia_provenance_against_disk_inventory(topology, baseline)?;
                 let image_phase_binding_valid = match phase {
                     MountPhaseV1::ReadWrite => topology.image_backing_before == *prepared_image,
                     MountPhaseV1::ReadOnly => read_write_topology.as_ref().is_some_and(
@@ -5981,6 +6092,7 @@ pub fn verify_disposable_fixture_tree(
                 "attached topology differs from the raw pre-attach inventory",
             ));
         }
+        validate_iomedia_provenance_against_disk_inventory(topology, &pre_attach_inventory)?;
         reconstruct_attached_topology(root, &commands, suffix, &result.operation_nonce, topology)?;
 
         let terminal = disk_arbitration_terminals
@@ -6015,6 +6127,45 @@ pub fn verify_disposable_fixture_tree(
             &pre_attach_inventory,
             &epoch.mountpoint_underlying_before,
         )?;
+    }
+
+    let rw_provenance = attached_topologies
+        .get(&MountPhaseV1::ReadWrite)
+        .and_then(|topology| topology.iomedia_provenance.as_ref());
+    let ro_provenance = attached_topologies
+        .get(&MountPhaseV1::ReadOnly)
+        .and_then(|topology| topology.iomedia_provenance.as_ref());
+    match (rw_provenance, ro_provenance) {
+        (None, None) => {}
+        (Some(rw), Some(ro)) => {
+            let mut expected_ro_inventory = rw.pre_attach_inventory.clone();
+            expected_ro_inventory.capture_monotonic_nanoseconds =
+                ro.pre_attach_inventory.capture_monotonic_nanoseconds;
+            let rw_ids = rw
+                .ordered()
+                .into_iter()
+                .map(|(_, node)| node.registry_entry_id.as_str())
+                .collect::<BTreeSet<_>>();
+            let ro_ids = ro
+                .ordered()
+                .into_iter()
+                .map(|(_, node)| node.registry_entry_id.as_str())
+                .collect::<BTreeSet<_>>();
+            if ro.pre_attach_inventory.capture_monotonic_nanoseconds
+                <= rw.pre_attach_inventory.capture_monotonic_nanoseconds
+                || ro.pre_attach_inventory != expected_ro_inventory
+                || !rw_ids.is_disjoint(&ro_ids)
+            {
+                return Err(invalid(
+                    "RW/RO IOMedia provenance lacks distinct immediate inventories or disjoint attachment IDs",
+                ));
+            }
+        }
+        _ => {
+            return Err(invalid(
+                "RW/RO attached topology versions disagree about IOMedia provenance",
+            ));
+        }
     }
 
     let expected_holders = [
@@ -6465,6 +6616,7 @@ mod tests {
                 physical_whole: iomedia_node("disk9", 101),
                 schema: "hepta_mac_attached_iomedia_topology_v1".to_string(),
             }),
+            iomedia_provenance: None,
             physical_store: test_disk_node("disk9s1", "disk9", false),
             pre_attach_inventory_sha256: inventory_sha256(&test_inventory())
                 .expect("test inventory digest"),
@@ -7072,7 +7224,7 @@ mod tests {
     }
 
     #[test]
-    fn attached_topology_v2_keeps_legacy_v1_structurally_readable_without_live_boot_gate() {
+    fn attached_topology_versions_keep_v1_v2_readable_and_require_complete_v3() {
         let topology = test_topology(MountPhaseV1::ReadWrite);
         let mut another_boot = topology.clone();
         another_boot
@@ -7087,6 +7239,7 @@ mod tests {
         legacy.iomedia_identity = None;
         let encoded = serde_json::to_vec(&legacy).expect("serialize legacy topology");
         assert!(!String::from_utf8_lossy(&encoded).contains("iomedia_identity"));
+        assert!(!String::from_utf8_lossy(&encoded).contains("iomedia_provenance"));
         let decoded: AttachedTopologyV1 =
             serde_json::from_slice(&encoded).expect("read historical v1 topology");
         assert!(validate_attached_topology_shape(&decoded).is_ok());
@@ -7094,6 +7247,16 @@ mod tests {
         let mut missing_v2 = topology.clone();
         missing_v2.iomedia_identity = None;
         assert!(validate_attached_topology_shape(&missing_v2).is_err());
+
+        let encoded_v2 = serde_json::to_vec(&topology).expect("serialize v2 topology");
+        assert!(!String::from_utf8_lossy(&encoded_v2).contains("iomedia_provenance"));
+        let decoded_v2: AttachedTopologyV1 =
+            serde_json::from_slice(&encoded_v2).expect("read historical v2 topology");
+        assert!(validate_attached_topology_shape(&decoded_v2).is_ok());
+
+        let mut incomplete_v3 = topology.clone();
+        incomplete_v3.schema = "hepta_mac_attached_apfs_topology_v3".to_string();
+        assert!(validate_attached_topology_shape(&incomplete_v3).is_err());
 
         let mut injected_v1 = legacy;
         injected_v1.iomedia_identity = topology.iomedia_identity;
