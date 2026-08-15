@@ -1,13 +1,13 @@
 #[cfg(target_os = "linux")]
 use sha2::Digest as _;
 
+use super::DirectoryAnchorV8;
 use super::FileIdentityV8;
 #[cfg(any(target_os = "linux", test))]
 use super::NativeSysErrorV8;
 use super::NativeSysResultV8;
+use super::VerifiedFileFdV8;
 
-#[cfg(target_os = "linux")]
-use super::DirectoryAnchorV8;
 #[cfg(not(target_os = "linux"))]
 use super::unsupported;
 #[cfg(target_os = "linux")]
@@ -27,7 +27,10 @@ const MACHINE_ID_MAX_SOURCE_BYTES_V8: u64 = 33;
 /// This observation is not target-host authorization or install authority.
 #[derive(Debug)]
 pub struct ObservedMachineIdV8 {
+    etc_anchor: DirectoryAnchorV8,
     machine_id_sha256: String,
+    source: VerifiedFileFdV8,
+    source_bytes: Vec<u8>,
     source_identity: FileIdentityV8,
 }
 
@@ -38,6 +41,13 @@ impl ObservedMachineIdV8 {
 
     pub fn source_identity(&self) -> FileIdentityV8 {
         self.source_identity
+    }
+
+    /// Replays the fixed pathname and exact bytes while retaining the
+    /// original `/etc` and `machine-id` descriptors. This remains identity
+    /// evidence only and cannot be converted into host or execution authority.
+    pub(crate) fn revalidate_descriptor_bound_v8(&self) -> NativeSysResultV8<()> {
+        revalidate_machine_id_descriptor_bound_impl_v8(self)
     }
 }
 
@@ -86,15 +96,83 @@ fn observe_machine_id_impl_v8() -> NativeSysResultV8<ObservedMachineIdV8> {
         ));
     }
 
-    Ok(ObservedMachineIdV8 {
+    let observed = ObservedMachineIdV8 {
+        etc_anchor: etc,
         machine_id_sha256: format!("{:x}", sha2::Sha256::digest(canonical)),
+        source,
+        source_bytes,
         source_identity,
-    })
+    };
+    observed.revalidate_descriptor_bound_v8()?;
+    Ok(observed)
 }
 
 #[cfg(not(target_os = "linux"))]
 fn observe_machine_id_impl_v8() -> NativeSysResultV8<ObservedMachineIdV8> {
     Err(unsupported("observe fixed /etc/machine-id"))
+}
+
+#[cfg(target_os = "linux")]
+fn revalidate_machine_id_descriptor_bound_impl_v8(
+    observed: &ObservedMachineIdV8,
+) -> NativeSysResultV8<()> {
+    observed.etc_anchor.revalidate_identity()?;
+    require_root_owned_etc_anchor_v8(observed.etc_anchor.identity())?;
+    observed.source.revalidate_identity()?;
+    validate_machine_id_source_identity_v8(observed.source.identity())?;
+    if observed.source.identity() != observed.source_identity {
+        return Err(NativeSysErrorV8::RaceDetected(
+            "retained /etc/machine-id descriptor identity drifted".to_string(),
+        ));
+    }
+    let retained_before = observed.source.read_all(MACHINE_ID_MAX_SOURCE_BYTES_V8)?;
+    let canonical = parse_machine_id_bytes_v8(&retained_before)?;
+    if retained_before != observed.source_bytes
+        || format!("{:x}", sha2::Sha256::digest(canonical)) != observed.machine_id_sha256
+    {
+        return Err(NativeSysErrorV8::RaceDetected(
+            "retained /etc/machine-id bytes differ from the pinned observation".to_string(),
+        ));
+    }
+
+    let named_etc = DirectoryAnchorV8::open(Path::new("/etc"))?;
+    require_root_owned_etc_anchor_v8(named_etc.identity())?;
+    if !named_etc
+        .identity()
+        .matches_stable_directory(observed.etc_anchor.identity())
+    {
+        return Err(NativeSysErrorV8::RaceDetected(
+            "fixed /etc pathname no longer names the retained anchor".to_string(),
+        ));
+    }
+    let named_source = named_etc.open_regular_readonly_beneath(Path::new("machine-id"))?;
+    validate_machine_id_source_identity_v8(named_source.identity())?;
+    if named_source.identity() != observed.source_identity
+        || named_source.read_all(MACHINE_ID_MAX_SOURCE_BYTES_V8)? != retained_before
+    {
+        return Err(NativeSysErrorV8::RaceDetected(
+            "fixed /etc/machine-id pathname differs from the retained descriptor".to_string(),
+        ));
+    }
+
+    let retained_after = observed.source.read_all(MACHINE_ID_MAX_SOURCE_BYTES_V8)?;
+    observed.source.revalidate_identity()?;
+    observed.etc_anchor.revalidate_identity()?;
+    if retained_after != retained_before {
+        return Err(NativeSysErrorV8::RaceDetected(
+            "retained /etc/machine-id bytes changed during descriptor replay".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn revalidate_machine_id_descriptor_bound_impl_v8(
+    _observed: &ObservedMachineIdV8,
+) -> NativeSysResultV8<()> {
+    Err(unsupported(
+        "revalidate retained /etc/machine-id descriptor",
+    ))
 }
 
 #[cfg(target_os = "linux")]

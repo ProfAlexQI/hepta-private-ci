@@ -12,8 +12,10 @@ use std::path::Path;
 use std::rc::Rc;
 
 use serde::Serialize;
+use serde::Serializer;
 
 use codex_hepta_linux_qualification_v8::JournalEffectV8;
+use codex_hepta_linux_qualification_v8::QualificationJournalPhaseV8;
 
 use crate::DescriptorReplayOriginV8;
 use crate::ExistingActiveAttemptV8;
@@ -236,6 +238,10 @@ impl VerifiedDescriptorBoundReplayV8 {
         self.revalidate_once_v8()
     }
 
+    pub(crate) fn retained_root_identity_v8(&self) -> FileIdentityV8 {
+        self.pinned_root_identity
+    }
+
     /// Returns a serializable assessment only after equal descriptor-bound
     /// replays before and after construction of the snapshot. Every authority
     /// field is verified false before the snapshot is returned.
@@ -370,6 +376,7 @@ impl VerifiedDescriptorBoundReplayV8 {
                     || replay.current_boot_mismatch_detected()
                     || active.boot_id() != self.pinned_boot_id,
                 pending_effect,
+                replay.qualification_phase(),
             )?;
             plan.attempt_identity_sha256 = Some(active.attempt_identity_sha256().to_string());
             plan.active_attempt_record_sha256 = Some(active.record_sha256().to_string());
@@ -380,6 +387,10 @@ impl VerifiedDescriptorBoundReplayV8 {
             plan.pending_effect = pending_effect
                 .map(journal_effect_name_v8)
                 .map(str::to_string);
+            plan.candidate_execution_request_sha256 = replay
+                .candidate_execution_request_sha256()
+                .map(str::to_string);
+            plan.qualification_phase = replay.qualification_phase();
             plan.qualification_abandoned = replay.qualification_abandoned();
         }
         require_no_authority_plan_v8(&plan)?;
@@ -419,9 +430,9 @@ pub struct RuntimeActivationRecoveryPlanV8 {
     pub journal_tip_sha256: Option<String>,
     pub pending_effect: Option<String>,
     pub qualification_abandoned: bool,
-    pub activation_allowed: bool,
-    pub recovery_effect_allowed: bool,
-    pub barrier_release_allowed: bool,
+    pub activation_allowed: ClosedAuthorityFlagV8,
+    pub recovery_effect_allowed: ClosedAuthorityFlagV8,
+    pub barrier_release_allowed: ClosedAuthorityFlagV8,
     pub authority: String,
 }
 
@@ -432,10 +443,48 @@ pub enum DescriptorBoundRuntimeDispositionV8 {
     ActiveCurrentBootHoldNoAuthority,
     PendingRunnerStopHoldForRecovery,
     PendingCandidateExecutionHoldNoAuthority,
+    CandidateExecutionObservedHoldNoAuthority,
+    CandidateCompletedHoldNoAuthority,
     PendingRunnerRestoreHoldForRecovery,
     PriorBootAbandonAndQuarantine,
     InterruptedPublicationHoldForExactRecovery,
     TerminalAbandonedQuarantine,
+}
+
+/// An authority field whose sole inhabitant serializes as JSON `false`.
+/// Its representation is private, so a public assessment cannot be widened
+/// by assigning a caller-created `true` value while its historical wire shape
+/// remains unchanged.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ClosedAuthorityFlagV8 {
+    _private: (),
+}
+
+impl ClosedAuthorityFlagV8 {
+    pub(crate) const fn closed_v8() -> Self {
+        Self { _private: () }
+    }
+
+    pub const fn is_closed(self) -> bool {
+        true
+    }
+}
+
+impl std::ops::Not for ClosedAuthorityFlagV8 {
+    type Output = bool;
+
+    fn not(self) -> Self::Output {
+        true
+    }
+}
+
+impl Serialize for ClosedAuthorityFlagV8 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_bool(false)
+    }
 }
 
 /// Versioned snapshot emitted only by [`VerifiedDescriptorBoundReplayV8`].
@@ -457,10 +506,12 @@ pub struct DescriptorBoundRuntimeAssessmentV8 {
     pub barrier_generation: Option<u64>,
     pub journal_tip_sha256: Option<String>,
     pub pending_effect: Option<String>,
+    pub candidate_execution_request_sha256: Option<String>,
+    pub qualification_phase: Option<QualificationJournalPhaseV8>,
     pub qualification_abandoned: bool,
-    pub activation_allowed: bool,
-    pub recovery_effect_allowed: bool,
-    pub barrier_release_allowed: bool,
+    pub activation_allowed: ClosedAuthorityFlagV8,
+    pub recovery_effect_allowed: ClosedAuthorityFlagV8,
+    pub barrier_release_allowed: ClosedAuthorityFlagV8,
     pub authority: String,
 }
 
@@ -489,9 +540,9 @@ impl RuntimeActivationRecoveryPlanV8 {
             journal_tip_sha256: None,
             pending_effect: None,
             qualification_abandoned: false,
-            activation_allowed: false,
-            recovery_effect_allowed: false,
-            barrier_release_allowed: false,
+            activation_allowed: ClosedAuthorityFlagV8::closed_v8(),
+            recovery_effect_allowed: ClosedAuthorityFlagV8::closed_v8(),
+            barrier_release_allowed: ClosedAuthorityFlagV8::closed_v8(),
             authority: "read-only-classification-no-authority".to_string(),
         }
     }
@@ -521,10 +572,12 @@ impl DescriptorBoundRuntimeAssessmentV8 {
             barrier_generation: None,
             journal_tip_sha256: None,
             pending_effect: None,
+            candidate_execution_request_sha256: None,
+            qualification_phase: None,
             qualification_abandoned: false,
-            activation_allowed: false,
-            recovery_effect_allowed: false,
-            barrier_release_allowed: false,
+            activation_allowed: ClosedAuthorityFlagV8::closed_v8(),
+            recovery_effect_allowed: ClosedAuthorityFlagV8::closed_v8(),
+            barrier_release_allowed: ClosedAuthorityFlagV8::closed_v8(),
             authority: "descriptor-bound-read-only-no-authority".to_string(),
         }
     }
@@ -579,11 +632,7 @@ fn same_active_attempt_snapshot_v8(
 fn require_no_authority_plan_v8(
     plan: &DescriptorBoundRuntimeAssessmentV8,
 ) -> Result<(), NativeErrorV8> {
-    if plan.activation_allowed
-        || plan.recovery_effect_allowed
-        || plan.barrier_release_allowed
-        || plan.authority != "descriptor-bound-read-only-no-authority"
-    {
+    if plan.authority != "descriptor-bound-read-only-no-authority" {
         return Err(invalid(
             "descriptor-bound assessment attempted to cross a no-authority boundary",
         ));
@@ -596,6 +645,7 @@ fn classify_descriptor_bound_activation_recovery_v8(
     qualification_abandoned: bool,
     prior_boot_detected: bool,
     pending_effect: Option<JournalEffectV8>,
+    qualification_phase: Option<QualificationJournalPhaseV8>,
 ) -> Result<DescriptorBoundRuntimeDispositionV8, NativeErrorV8> {
     if qualification_abandoned {
         return Ok(DescriptorBoundRuntimeDispositionV8::TerminalAbandonedQuarantine);
@@ -606,23 +656,36 @@ fn classify_descriptor_bound_activation_recovery_v8(
     if prior_boot_detected {
         return Ok(DescriptorBoundRuntimeDispositionV8::PriorBootAbandonAndQuarantine);
     }
-    match pending_effect {
-        None => Ok(DescriptorBoundRuntimeDispositionV8::ActiveCurrentBootHoldNoAuthority),
-        Some(JournalEffectV8::RunnerStop) => {
+    match (pending_effect, qualification_phase) {
+        (None, None) => Ok(DescriptorBoundRuntimeDispositionV8::ActiveCurrentBootHoldNoAuthority),
+        (None, Some(QualificationJournalPhaseV8::AwaitCandidateCompleted)) => {
+            Ok(DescriptorBoundRuntimeDispositionV8::CandidateExecutionObservedHoldNoAuthority)
+        }
+        (None, Some(QualificationJournalPhaseV8::AwaitCandidateRelayIntent)) => {
+            Ok(DescriptorBoundRuntimeDispositionV8::CandidateCompletedHoldNoAuthority)
+        }
+        (Some(JournalEffectV8::RunnerStop), None) => {
             Ok(DescriptorBoundRuntimeDispositionV8::PendingRunnerStopHoldForRecovery)
         }
-        Some(JournalEffectV8::CandidateExecution) => {
-            Ok(DescriptorBoundRuntimeDispositionV8::PendingCandidateExecutionHoldNoAuthority)
-        }
-        Some(JournalEffectV8::RunnerRestore) => {
+        (
+            Some(JournalEffectV8::CandidateExecution),
+            Some(QualificationJournalPhaseV8::AwaitCandidateExecutionObservation),
+        ) => Ok(DescriptorBoundRuntimeDispositionV8::PendingCandidateExecutionHoldNoAuthority),
+        (Some(JournalEffectV8::RunnerRestore), None) => {
             Ok(DescriptorBoundRuntimeDispositionV8::PendingRunnerRestoreHoldForRecovery)
         }
-        Some(
-            JournalEffectV8::CandidateRelay
-            | JournalEffectV8::PostRestoreSnapshot
-            | JournalEffectV8::BarrierRelease,
+        (
+            Some(
+                JournalEffectV8::CandidateRelay
+                | JournalEffectV8::PostRestoreSnapshot
+                | JournalEffectV8::BarrierRelease,
+            ),
+            _,
         ) => Err(invalid(
             "descriptor-bound assessment encountered an effect without a frozen semantic schema and backend",
+        )),
+        _ => Err(invalid(
+            "descriptor-bound assessment phase does not match its exact pending effect",
         )),
     }
 }
@@ -1060,6 +1123,7 @@ mod tests {
                 false,
                 false,
                 Some(JournalEffectV8::CandidateExecution),
+                Some(QualificationJournalPhaseV8::AwaitCandidateExecutionObservation),
             )
             .unwrap(),
             DescriptorBoundRuntimeDispositionV8::PendingCandidateExecutionHoldNoAuthority
@@ -1075,10 +1139,33 @@ mod tests {
                     false,
                     false,
                     Some(unsupported),
+                    None,
                 )
                 .is_err()
             );
         }
+        assert_eq!(
+            classify_descriptor_bound_activation_recovery_v8(
+                false,
+                false,
+                false,
+                None,
+                Some(QualificationJournalPhaseV8::AwaitCandidateCompleted),
+            )
+            .unwrap(),
+            DescriptorBoundRuntimeDispositionV8::CandidateExecutionObservedHoldNoAuthority
+        );
+        assert_eq!(
+            classify_descriptor_bound_activation_recovery_v8(
+                false,
+                false,
+                false,
+                None,
+                Some(QualificationJournalPhaseV8::AwaitCandidateRelayIntent),
+            )
+            .unwrap(),
+            DescriptorBoundRuntimeDispositionV8::CandidateCompletedHoldNoAuthority
+        );
     }
 
     #[test]
@@ -1312,6 +1399,20 @@ mod tests {
                 .unwrap();
             assert!(capsule.revalidate().is_err(), "parent target={target}");
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn descriptor_capsule_rejects_any_attempt_sibling_of_journal() {
+        let (_temporary, root, attempt, capsule) = opened_descriptor_capsule_v8("attempt-roster");
+        let attempt_directory = root.join(crate::ATTEMPTS_DIRECTORY_V8).join(&attempt);
+
+        std::fs::write(attempt_directory.join("same-uid-shadow"), b"transient").unwrap();
+
+        assert!(
+            capsule.revalidate().is_err(),
+            "the active attempt directory must remain the exact closed-world {{journal}} roster"
+        );
     }
 
     #[cfg(target_os = "linux")]

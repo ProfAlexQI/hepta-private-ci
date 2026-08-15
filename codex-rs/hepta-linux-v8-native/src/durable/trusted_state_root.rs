@@ -7,6 +7,7 @@ use sha2::Digest as _;
 use crate::DirectoryAnchorV8;
 use crate::FileIdentityV8;
 use crate::NativeErrorV8;
+use crate::ObservedMachineIdV8;
 use crate::StateRootLockV8;
 use crate::TRUSTED_FILESYSTEM_FLAG_POLICIES_V8;
 use crate::TrustedNodeMetadataV8;
@@ -98,8 +99,8 @@ pub struct TrustedStateRootV8 {
     install_epoch_anchor: DirectoryAnchorV8,
     layout_manifest_sha256: String,
     lock: StateRootLockV8,
+    machine_id: ObservedMachineIdV8,
     machine_id_sha256: String,
-    machine_id_source_identity: FileIdentityV8,
     path: PathBuf,
     profile_sha256: String,
     required_directory_identities: Vec<(&'static str, FileIdentityV8, TrustedNodeMetadataV8)>,
@@ -133,7 +134,7 @@ impl TrustedStateRootV8 {
     }
 
     pub(crate) fn machine_id_source_identity_v8(&self) -> FileIdentityV8 {
-        self.machine_id_source_identity
+        self.machine_id.source_identity()
     }
 
     pub(crate) fn current_root_identity_v8(&self) -> Result<FileIdentityV8, NativeErrorV8> {
@@ -172,12 +173,10 @@ impl TrustedStateRootV8 {
                 "compiled state-root pathname metadata differs from the retained descriptor",
             ));
         }
-        let machine = observe_machine_id_v8()?;
-        if machine.machine_id_sha256() != self.machine_id_sha256
-            || machine.source_identity() != self.machine_id_source_identity
-        {
+        self.machine_id.revalidate_descriptor_bound_v8()?;
+        if self.machine_id.machine_id_sha256() != self.machine_id_sha256 {
             return Err(invalid(
-                "fixed machine-id source changed after state-root trust establishment",
+                "retained fixed machine-id differs from the state-root binding",
             ));
         }
         let observed = verify_top_level_layout_v8(
@@ -308,8 +307,8 @@ fn open_trusted_state_root_with_profile_v8(
         install_epoch_anchor,
         layout_manifest_sha256: profile.layout_manifest_sha256,
         lock,
+        machine_id: machine_final,
         machine_id_sha256: profile.machine_id_sha256,
-        machine_id_source_identity: machine_final.source_identity(),
         path: profile.path,
         profile_sha256: profile.profile_sha256,
         required_directory_identities,

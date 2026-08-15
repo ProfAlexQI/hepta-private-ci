@@ -470,7 +470,8 @@ pub fn validate_journal_v8(
 /// Shared fail-closed phase fold for the exact 13-step qualification effect
 /// lifecycle. This type carries ordering facts only. It is not runner,
 /// candidate, relay, snapshot, barrier, recovery, or release authority.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum QualificationJournalPhaseV8 {
     AwaitRunnerStopIntent,
     AwaitRunnerStopObservation,

@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::path::Path;
 
 use codex_hepta_linux_qualification_v8::JournalEffectV8;
@@ -792,6 +793,7 @@ pub struct VerifiedDurableJournalEventScanV8 {
     journal: VerifiedDurableJournalScanV8,
     pending_effect: Option<PendingDurableEffectV8>,
     runner_stop_observation_record_sha256: Option<String>,
+    candidate_execution_request_sha256: Option<String>,
     qualification_phase: Option<QualificationJournalPhaseV8>,
     boot_recovery_detected: bool,
     current_boot_id: String,
@@ -803,6 +805,7 @@ pub struct VerifiedDurableJournalEventScanV8 {
 struct DurableJournalEventAssessmentV8 {
     pending_effect: Option<PendingDurableEffectV8>,
     runner_stop_observation_record_sha256: Option<String>,
+    candidate_execution_request_sha256: Option<String>,
     qualification_phase: Option<QualificationJournalPhaseV8>,
     boot_recovery_detected: bool,
     current_boot_id: String,
@@ -844,6 +847,10 @@ impl VerifiedDurableJournalEventScanV8 {
 
     pub fn qualification_phase(&self) -> Option<QualificationJournalPhaseV8> {
         self.qualification_phase
+    }
+
+    pub fn candidate_execution_request_sha256(&self) -> Option<&str> {
+        self.candidate_execution_request_sha256.as_deref()
     }
 
     pub fn boot_recovery_detected(&self) -> bool {
@@ -923,6 +930,7 @@ pub fn scan_durable_journal_events_v8(
         journal: replay.scan,
         pending_effect: assessment.pending_effect,
         runner_stop_observation_record_sha256: assessment.runner_stop_observation_record_sha256,
+        candidate_execution_request_sha256: assessment.candidate_execution_request_sha256,
         qualification_phase: assessment.qualification_phase,
         boot_recovery_detected: assessment.boot_recovery_detected,
         current_boot_id: assessment.current_boot_id,
@@ -959,6 +967,7 @@ pub(crate) fn scan_durable_journal_events_descriptor_bound_v8(
         state_root.identity(),
         state_root_metadata,
     )?;
+    require_closed_world_attempt_roster_v8(&attempt_directory)?;
     let journal_directory =
         attempt_directory.open_directory_beneath(Path::new(JOURNAL_DIRECTORY_V8))?;
     let journal_directory_identity = journal_directory.current_identity()?;
@@ -1021,6 +1030,12 @@ impl VerifiedDescriptorBoundDurableJournalEventScanV8 {
 
     pub(crate) fn qualification_phase(&self) -> Option<QualificationJournalPhaseV8> {
         self.assessment.qualification_phase
+    }
+
+    pub(crate) fn candidate_execution_request_sha256(&self) -> Option<&str> {
+        self.assessment
+            .candidate_execution_request_sha256
+            .as_deref()
     }
 
     pub(crate) fn boot_recovery_detected(&self) -> bool {
@@ -1124,6 +1139,18 @@ fn require_descriptor_bound_directory_v8(
     Ok(())
 }
 
+fn require_closed_world_attempt_roster_v8(
+    attempt_directory: &DirectoryAnchorV8,
+) -> Result<(), NativeErrorV8> {
+    let names = attempt_directory.list_leaf_names_bounded(2)?;
+    if names.len() != 1 || names[0] != OsStr::new(JOURNAL_DIRECTORY_V8) {
+        return Err(invalid(
+            "descriptor-bound active attempt must contain exactly the journal directory",
+        ));
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn revalidate_named_descriptor_bound_directories_v8(
     state_root: &DirectoryAnchorV8,
@@ -1146,6 +1173,7 @@ fn revalidate_named_descriptor_bound_directories_v8(
             "retained attempt or journal directory identity drifted",
         ));
     }
+    require_closed_world_attempt_roster_v8(attempt_directory)?;
     let attempt_relative = attempt_relative_path_v8(expected_attempt_identity_sha256)?;
     let named_attempt = state_root.open_directory_beneath(Path::new(&attempt_relative))?;
     if named_attempt.current_identity()? != attempt_identity
@@ -1155,6 +1183,7 @@ fn revalidate_named_descriptor_bound_directories_v8(
             "attempt pathname no longer names the retained directory identity",
         ));
     }
+    require_closed_world_attempt_roster_v8(&named_attempt)?;
     let retained_named_journal =
         attempt_directory.open_directory_beneath(Path::new(JOURNAL_DIRECTORY_V8))?;
     let fresh_named_journal =
@@ -1168,6 +1197,8 @@ fn revalidate_named_descriptor_bound_directories_v8(
             ));
         }
     }
+    require_closed_world_attempt_roster_v8(attempt_directory)?;
+    require_closed_world_attempt_roster_v8(&named_attempt)?;
     state_root_lock.revalidate_for_root(state_root)?;
     Ok(())
 }
@@ -1185,10 +1216,12 @@ where
 {
     let state_root_mount_id = state_root.trusted_node_metadata()?.mount_id();
     let state_root_lock_identity = state_root_lock.identity();
+    let current_boot_id = current_boot_before.to_string();
     let mut pending_effect: Option<PendingDurableEffectV8> = None;
     let mut runner_stop_observation_record_sha256: Option<String> = None;
     let mut candidate_execution_observation_record_sha256: Option<String> = None;
     let mut candidate_execution_result_sha256: Option<String> = None;
+    let mut candidate_execution_request_sha256: Option<String> = None;
     let mut candidate_completed_record_sha256: Option<String> = None;
     let mut qualification_phase: Option<QualificationJournalPhaseV8> = None;
     let mut boot_recovery_detected = false;
@@ -1263,16 +1296,18 @@ where
                 let typed = CandidateExecutionEffectEvidenceV8::decode_exact(&evidence)?;
                 typed.validate_record_context(
                     record,
+                    &current_boot_id,
                     state_root.identity(),
                     state_root_mount_id,
                     state_root_lock_identity,
                 )?;
                 if let Some(origin) = descriptor_origin {
-                    typed.validate_descriptor_origin(
+                    typed.validate_descriptor_origin_for_current_boot(
                         record,
                         previous.ok_or_else(|| {
                             invalid("candidate intent lacks a retained predecessor")
                         })?,
+                        &current_boot_id,
                         origin,
                     )?;
                 }
@@ -1292,16 +1327,18 @@ where
                 let typed = CandidateExecutionEffectEvidenceV8::decode_exact(&evidence)?;
                 typed.validate_record_context(
                     record,
+                    &current_boot_id,
                     state_root.identity(),
                     state_root_mount_id,
                     state_root_lock_identity,
                 )?;
                 if let Some(origin) = descriptor_origin {
-                    typed.validate_descriptor_origin(
+                    typed.validate_descriptor_origin_for_current_boot(
                         record,
                         previous.ok_or_else(|| {
                             invalid("candidate observation lacks a retained predecessor")
                         })?,
+                        &current_boot_id,
                         origin,
                     )?;
                 }
@@ -1429,6 +1466,7 @@ where
                             })?;
                         if candidate_execution_observation_record_sha256.is_some()
                             || candidate_completed_record_sha256.is_some()
+                            || candidate_execution_request_sha256.is_some()
                             || qualification_phase.is_some()
                             || typed.predecessor_record_sha256() != expected_predecessor
                             || prior_record_sha256 != expected_predecessor
@@ -1437,6 +1475,8 @@ where
                                 "candidate execution intent is duplicated or does not bind its exact runner STOP predecessor",
                             ));
                         }
+                        candidate_execution_request_sha256 =
+                            Some(typed.candidate_execution_request_sha256().to_string());
                         qualification_phase = Some(
                             QualificationJournalPhaseV8::AwaitCandidateExecutionIntent.advance(
                                 &JournalEventV8::EffectIntent {
@@ -1626,6 +1666,7 @@ where
     Ok(DurableJournalEventAssessmentV8 {
         pending_effect,
         runner_stop_observation_record_sha256,
+        candidate_execution_request_sha256,
         qualification_phase,
         boot_recovery_detected,
         current_boot_id,
@@ -2616,19 +2657,40 @@ mod linux_tests {
 
     #[test]
     fn candidate_execution_origin_pending_and_phase_are_exact_and_no_authority() {
+        exercise_candidate_execution_origin_and_phase(false);
+    }
+
+    #[test]
+    fn prior_boot_candidate_reaches_quarantine_before_boot_local_mount_comparison() {
+        exercise_candidate_execution_origin_and_phase(true);
+    }
+
+    fn exercise_candidate_execution_origin_and_phase(prior_boot: bool) {
         let attempt = digest('1');
         let root = temporary_state_root(&attempt);
         let anchor = DirectoryAnchorV8::open(&root).unwrap();
         let mut lock = acquire_state_root_lock_v8(&anchor, OsStr::new("state.lock")).unwrap();
         let machine = crate::observe_machine_id_v8().unwrap();
         let current_boot_id = crate::observe_boot_id_v8().unwrap().to_string();
+        let journal_boot_id = if prior_boot {
+            [
+                "11111111-1111-1111-1111-111111111111",
+                "22222222-2222-2222-2222-222222222222",
+            ]
+            .into_iter()
+            .find(|candidate| *candidate != current_boot_id)
+            .unwrap()
+            .to_string()
+        } else {
+            current_boot_id.clone()
+        };
         let active = match publish_active_attempt_durably_v8(
             &anchor,
             &mut lock,
             &ActiveAttemptRequestV8::new(
                 attempt.clone(),
                 7,
-                current_boot_id,
+                journal_boot_id,
                 machine.machine_id_sha256().to_string(),
                 digest('9'),
             )
@@ -2710,13 +2772,21 @@ mod linux_tests {
             .unwrap();
         let stopped_sha256 = stopped.record_sha256().unwrap();
 
+        let live_state_root_mount_id = anchor.trusted_node_metadata().unwrap().mount_id();
+        let evidence_state_root_mount_id = if prior_boot {
+            live_state_root_mount_id
+                .checked_add(1)
+                .unwrap_or(live_state_root_mount_id - 1)
+        } else {
+            live_state_root_mount_id
+        };
         let candidate_intent =
             CandidateExecutionEffectEvidenceV8::intent(FrozenTransitionIntentContextV8 {
                 machine_id_sha256: machine.machine_id_sha256().to_string(),
                 machine_id_source_identity: machine.source_identity(),
                 state_root_binding_sha256: digest('b'),
                 state_root_identity: anchor.identity(),
-                state_root_mount_id: anchor.trusted_node_metadata().unwrap().mount_id(),
+                state_root_mount_id: evidence_state_root_mount_id,
                 state_root_lock_identity: lock.identity(),
                 attempt_identity_sha256: attempt.clone(),
                 active_attempt_record_sha256: active.record_sha256().to_string(),
@@ -2767,6 +2837,7 @@ mod linux_tests {
             pending.qualification_phase(),
             Some(QualificationJournalPhaseV8::AwaitCandidateExecutionObservation)
         );
+        assert_eq!(pending.current_boot_mismatch_detected(), prior_boot);
         assert!(!pending.ordinary_continuation_allowed());
 
         let state_root_binding_sha256 = digest('b');
@@ -2794,6 +2865,10 @@ mod linux_tests {
         assert_eq!(
             descriptor_pending.pending_effect().unwrap().effect(),
             JournalEffectV8::CandidateExecution
+        );
+        assert_eq!(
+            descriptor_pending.current_boot_mismatch_detected(),
+            prior_boot
         );
         descriptor_pending
             .revalidate_descriptor_bound_v8(&anchor, &lock, &descriptor_origin)
@@ -2857,6 +2932,17 @@ mod linux_tests {
             Some(QualificationJournalPhaseV8::AwaitCandidateCompleted)
         );
         assert!(!observed.ordinary_continuation_allowed());
+        let descriptor_observed = scan_durable_journal_events_descriptor_bound_v8(
+            &anchor,
+            &lock,
+            &attempt,
+            &descriptor_origin,
+        )
+        .unwrap();
+        assert_eq!(
+            descriptor_observed.qualification_phase(),
+            Some(QualificationJournalPhaseV8::AwaitCandidateCompleted)
+        );
 
         let completed = DurableJournalRecordV8::new(
             attempt.clone(),
@@ -2879,6 +2965,17 @@ mod linux_tests {
             Some(QualificationJournalPhaseV8::AwaitCandidateRelayIntent)
         );
         assert!(!completed_scan.ordinary_continuation_allowed());
+        let descriptor_completed = scan_durable_journal_events_descriptor_bound_v8(
+            &anchor,
+            &lock,
+            &attempt,
+            &descriptor_origin,
+        )
+        .unwrap();
+        assert_eq!(
+            descriptor_completed.qualification_phase(),
+            Some(QualificationJournalPhaseV8::AwaitCandidateRelayIntent)
+        );
 
         let unsupported_relay = DurableJournalRecordV8::new(
             attempt.clone(),

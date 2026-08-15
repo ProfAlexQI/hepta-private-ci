@@ -593,6 +593,7 @@ impl FrozenTransitionEffectEvidenceFieldsV8 {
         schema: &'static str,
         effect: JournalEffectV8,
         record: &DurableJournalRecordV8,
+        current_boot_id: &str,
         state_root: FileIdentityV8,
         state_root_mount_id: u64,
         state_root_lock: FileIdentityV8,
@@ -608,7 +609,12 @@ impl FrozenTransitionEffectEvidenceFieldsV8 {
             || self.state_root_mode != state_root.mode()
             || self.state_root_owner_uid != state_root.owner_uid()
             || self.state_root_owner_gid != state_root.owner_gid()
-            || self.state_root_mount_id != state_root_mount_id
+            // statx mount IDs are boot-local. Historical evidence must bind
+            // its own nonzero value and exact intent/observation closure, but
+            // must reach prior-boot quarantine before it is compared with the
+            // current boot's mount ID.
+            || (record.boot_id() == current_boot_id
+                && self.state_root_mount_id != state_root_mount_id)
             || self.state_root_lock_device != state_root_lock.device()
             || self.state_root_lock_inode != state_root_lock.inode()
         {
@@ -639,6 +645,7 @@ impl FrozenTransitionEffectEvidenceFieldsV8 {
         effect: JournalEffectV8,
         record: &DurableJournalRecordV8,
         previous_record: &DurableJournalRecordV8,
+        current_boot_id: &str,
         origin: &DescriptorReplayOriginV8<'_>,
     ) -> Result<(), NativeErrorV8> {
         self.validate(schema, effect)?;
@@ -658,7 +665,8 @@ impl FrozenTransitionEffectEvidenceFieldsV8 {
             || self.state_root_mode != origin.state_root_identity.mode()
             || self.state_root_owner_uid != origin.state_root_identity.owner_uid()
             || self.state_root_owner_gid != origin.state_root_identity.owner_gid()
-            || self.state_root_mount_id != origin.state_root_mount_id
+            || (record.boot_id() == current_boot_id
+                && self.state_root_mount_id != origin.state_root_mount_id)
             || self.state_root_lock_device != origin.state_root_lock_identity.device()
             || self.state_root_lock_inode != origin.state_root_lock_identity.inode()
             || self.attempt_identity_sha256 != origin.attempt_identity_sha256
@@ -828,9 +836,14 @@ impl CandidateExecutionEffectEvidenceV8 {
         self.0.intent_record_sha256.as_deref()
     }
 
+    pub(crate) fn candidate_execution_request_sha256(&self) -> &str {
+        &self.0.candidate_execution_request_sha256
+    }
+
     pub(crate) fn validate_record_context(
         &self,
         record: &DurableJournalRecordV8,
+        current_boot_id: &str,
         state_root: FileIdentityV8,
         state_root_mount_id: u64,
         state_root_lock: FileIdentityV8,
@@ -839,6 +852,7 @@ impl CandidateExecutionEffectEvidenceV8 {
             "hepta-linux-v8-candidate-execution-evidence-v1",
             JournalEffectV8::CandidateExecution,
             record,
+            current_boot_id,
             state_root,
             state_root_mount_id,
             state_root_lock,
@@ -851,11 +865,27 @@ impl CandidateExecutionEffectEvidenceV8 {
         previous_record: &DurableJournalRecordV8,
         origin: &DescriptorReplayOriginV8<'_>,
     ) -> Result<(), NativeErrorV8> {
+        self.validate_descriptor_origin_for_current_boot(
+            record,
+            previous_record,
+            record.boot_id(),
+            origin,
+        )
+    }
+
+    pub(crate) fn validate_descriptor_origin_for_current_boot(
+        &self,
+        record: &DurableJournalRecordV8,
+        previous_record: &DurableJournalRecordV8,
+        current_boot_id: &str,
+        origin: &DescriptorReplayOriginV8<'_>,
+    ) -> Result<(), NativeErrorV8> {
         self.0.validate_descriptor_origin(
             "hepta-linux-v8-candidate-execution-evidence-v1",
             JournalEffectV8::CandidateExecution,
             record,
             previous_record,
+            current_boot_id,
             origin,
         )
     }
@@ -1044,6 +1074,18 @@ mod tests {
                 .validate_descriptor_origin(&intent_record, &previous, &bad)
                 .is_err()
         );
+        intent
+            .validate_descriptor_origin_for_current_boot(&intent_record, &previous, &bad_boot, &bad)
+            .expect("a prior-boot record must not compare its boot-local mount id to this boot");
+        intent
+            .validate_record_context(
+                &intent_record,
+                &bad_boot,
+                context.state_root_identity,
+                context.state_root_mount_id + 1,
+                context.state_root_lock_identity,
+            )
+            .expect("archived record context must reach prior-boot quarantine before mount-id comparison");
         let mut bad = origin;
         bad.state_root_lock_identity = leaf_identity(7, 99, 0o600);
         assert!(

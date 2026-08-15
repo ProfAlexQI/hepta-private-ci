@@ -84,6 +84,9 @@ fn observes_the_real_fixed_linux_machine_id() {
     assert_eq!(identity.link_count(), 1);
     assert!(machine_id_mode_is_frozen_read_only_v8(identity.mode()));
     assert!(matches!(identity.size(), 32 | 33));
+    observed
+        .revalidate_descriptor_bound_v8()
+        .expect("retained machine-id descriptor and fixed pathname replay exactly");
 }
 
 #[cfg(not(target_os = "linux"))]
