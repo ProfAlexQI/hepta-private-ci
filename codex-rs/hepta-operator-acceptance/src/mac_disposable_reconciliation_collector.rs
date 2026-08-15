@@ -12,6 +12,7 @@ use crate::mac_disposable_effect_issue_store::ExactMountBindingCommandV3;
 use crate::mac_disposable_effect_issue_store::ExactMountDeltaCommandViewV3;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
 use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
+use crate::mac_disposable_lifecycle::PostEffectCollectorBindingV3;
 use crate::mac_disposable_lifecycle::ReconciliationMatchV2;
 use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
 use crate::mac_disposable_lifecycle::fresh_absence_sha256;
@@ -453,18 +454,40 @@ pub(crate) enum RetainedCollectorObservationV3 {
     FreshAbsence(RetainedFreshAbsenceV3),
 }
 
+/// Linear owner for the complete collector lineage of one restart epoch.
+///
+/// `First` is a marker rather than a second observation, so the first receipt
+/// has exactly one retained descriptor owner.  Later observations advance only
+/// `current`; the original admission snapshot remains live and is replayed
+/// across every completed mount-table delta.
+pub(crate) struct RetainedCollectorLineageV3 {
+    current: RetainedCollectorCurrentV3,
+    first: RetainedCollectorObservationV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+enum RetainedCollectorCurrentV3 {
+    First,
+    MountDelta {
+        direction: MountDeltaDirectionV3,
+        expected_after: Vec<MountBindingV3>,
+        observation: RetainedCollectorObservationV3,
+    },
+    FreshAbsence(RetainedCollectorObservationV3),
+}
+
 pub(crate) struct MountingV3;
 pub(crate) struct UnmountingV3;
 
-/// Linear pending mount-table transition.  It owns the prior retained
-/// collector evidence, so a caller cannot use one observation both to issue a
-/// second effect and to authorize a mount-state transition.
+/// Linear pending mount-table transition.  It owns the complete prior
+/// collector lineage, so the first admission receipt cannot be dropped while
+/// a post-effect observation replaces only the current evidence.
 pub(crate) struct RetainedCollectorMountDeltaV3<K> {
     after: Vec<MountBindingV3>,
     before: Vec<MountBindingV3>,
     command_sha256: String,
     operation_nonce: String,
-    prior: RetainedCollectorObservationV3,
+    prior: RetainedCollectorLineageV3,
     target: MountBindingV3,
     _kind: PhantomData<K>,
     _not_send_or_sync: PhantomData<Rc<()>>,
@@ -492,6 +515,13 @@ pub(crate) struct SealedMountDeltaObservationV3<'a, K> {
     delta: &'a RetainedCollectorMountDeltaV3<K>,
     next: &'a RetainedCollectorObservationV3,
     _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Private mint seal for a post-effect lifecycle binding.  The lifecycle
+/// schema may deserialize historical bytes, but no other production module can
+/// construct a new binding from caller-supplied strings.
+pub(crate) struct PostEffectCollectorBindingSealV3 {
+    _private: (),
 }
 
 #[derive(Clone, Copy)]
@@ -1625,6 +1655,15 @@ impl PendingRestartObservationV3 {
         self.persist_and_retain_inner(|| Ok(()))
     }
 
+    pub(crate) fn persist_for_unmount_delta(
+        self,
+        delta: &RetainedCollectorMountDeltaV3<UnmountingV3>,
+    ) -> Result<RetainedCollectorObservationV3, RestartCollectorErrorV3> {
+        let retained = self.persist_and_retain_inner(|| Ok(()))?;
+        delta.seal_observation(&retained)?;
+        Ok(retained)
+    }
+
     pub(crate) fn persist_and_append(
         self,
         operation: &mut ReconciliationOperationStoreV3<'_, '_, ActiveRestartEpochV3>,
@@ -1776,6 +1815,10 @@ impl PendingRestartObservationV3 {
 impl RetainedCollectorEvidenceV3 {
     fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
         self.guard.revalidate(&self.receipt)?;
+        self.revalidate_retained_capsule()
+    }
+
+    fn revalidate_retained_capsule(&self) -> Result<(), RestartCollectorErrorV3> {
         self.durable.revalidate()?;
         if sha256(&canonical_json(&self.receipt)?) != self.receipt_sha256 {
             return Err(invalid(
@@ -2079,6 +2122,219 @@ impl RetainedCollectorObservationV3 {
         token.revalidate()?;
         Ok(token)
     }
+}
+
+impl RetainedCollectorLineageV3 {
+    pub(crate) fn from_first(
+        first: RetainedCollectorObservationV3,
+    ) -> Result<Self, RestartCollectorErrorV3> {
+        first.revalidate_bound()?;
+        if !matches!(&first, RetainedCollectorObservationV3::Reconciliation(_)) {
+            return Err(invalid(
+                "collector lineage must begin with one exact reconciliation snapshot",
+            ));
+        }
+        let lineage = Self {
+            current: RetainedCollectorCurrentV3::First,
+            first,
+            _not_send_or_sync: PhantomData,
+        };
+        lineage.revalidate_bound()?;
+        Ok(lineage)
+    }
+
+    fn current_observation(&self) -> &RetainedCollectorObservationV3 {
+        match &self.current {
+            RetainedCollectorCurrentV3::First => &self.first,
+            RetainedCollectorCurrentV3::MountDelta { observation, .. }
+            | RetainedCollectorCurrentV3::FreshAbsence(observation) => observation,
+        }
+    }
+
+    fn first_snapshot_raw(&self) -> Result<&ReconciliationSnapshotV2, RestartCollectorErrorV3> {
+        let evidence = match &self.first {
+            RetainedCollectorObservationV3::Reconciliation(RetainedCollectorMatchV3::Zero(
+                value,
+            )) => &value.evidence,
+            RetainedCollectorObservationV3::Reconciliation(
+                RetainedCollectorMatchV3::UniqueAttached(value),
+            ) => &value.evidence,
+            RetainedCollectorObservationV3::Reconciliation(
+                RetainedCollectorMatchV3::UniqueMounted(value),
+            ) => &value.evidence,
+            RetainedCollectorObservationV3::Reconciliation(
+                RetainedCollectorMatchV3::Ambiguous(value),
+            ) => &value.evidence,
+            RetainedCollectorObservationV3::FreshAbsence(_) => {
+                return Err(invalid(
+                    "collector lineage first owner is not a reconciliation snapshot",
+                ));
+            }
+        };
+        match &evidence.observation {
+            FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot) => Ok(snapshot),
+            FinalizedRestartObservationV3::FreshAbsence(_) => Err(invalid(
+                "collector lineage first owner changed observation kind",
+            )),
+        }
+    }
+
+    pub(crate) fn revalidate_bound(&self) -> Result<(), RestartCollectorErrorV3> {
+        match &self.current {
+            RetainedCollectorCurrentV3::First => self.first.revalidate_bound(),
+            RetainedCollectorCurrentV3::MountDelta {
+                direction,
+                expected_after,
+                observation,
+            } => {
+                self.first
+                    .evidence()
+                    .revalidate_across_mount_delta(expected_after, *direction)?;
+                observation.revalidate_bound()?;
+                validate_lineage_successor(&self.first, observation, expected_after, *direction)
+            }
+            RetainedCollectorCurrentV3::FreshAbsence(observation) => {
+                // FreshAbsence may legitimately follow eject, so the first
+                // live IOMedia guard no longer describes current reality.  Its
+                // immutable receipt and adopted V2 capsule remain retained;
+                // the current absence observation owns the live replay.
+                self.first.evidence().revalidate_retained_capsule()?;
+                observation.revalidate_bound()?;
+                observation.validate_fresh_absence_successor(&self.first)
+            }
+        }
+    }
+
+    fn revalidate_across_mount_delta(
+        &self,
+        expected_after: &[MountBindingV3],
+        direction: MountDeltaDirectionV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        if !matches!(self.current, RetainedCollectorCurrentV3::First) {
+            return Err(invalid(
+                "this inert lineage admits only one mount-table delta from its first snapshot",
+            ));
+        }
+        self.first
+            .evidence()
+            .revalidate_across_mount_delta(expected_after, direction)
+    }
+
+    pub(crate) fn issue_binding(
+        &self,
+    ) -> Result<RetainedCollectorIssueBindingV3<'_>, RestartCollectorErrorV3> {
+        self.revalidate_bound()?;
+        self.current_observation().issue_binding()
+    }
+
+    pub(crate) fn snapshot_for_fresh_absence(
+        &self,
+    ) -> Result<&ReconciliationSnapshotV2, RestartCollectorErrorV3> {
+        self.revalidate_bound()?;
+        let snapshot = self.first_snapshot_raw()?;
+        if snapshot.current_expected_absence_inventory_sha256.is_none()
+            || matches!(
+                snapshot.match_result,
+                ReconciliationMatchV2::Ambiguous { .. }
+            )
+        {
+            return Err(invalid(
+                "FreshAbsence requires the first exact predictable reconciliation snapshot",
+            ));
+        }
+        Ok(snapshot)
+    }
+
+    pub(crate) fn advance_fresh_absence(
+        self,
+        next: RetainedCollectorObservationV3,
+    ) -> Result<Self, RestartCollectorErrorV3> {
+        next.validate_fresh_absence_successor(&self.first)?;
+        let lineage = Self {
+            current: RetainedCollectorCurrentV3::FreshAbsence(next),
+            first: self.first,
+            _not_send_or_sync: PhantomData,
+        };
+        lineage.revalidate_bound()?;
+        Ok(lineage)
+    }
+
+    pub(crate) fn validate_fresh_absence_successor(
+        &self,
+        next: &RetainedCollectorObservationV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_bound()?;
+        next.validate_fresh_absence_successor(&self.first)
+    }
+
+    pub(crate) fn terminal_absence(
+        &self,
+    ) -> Result<RetainedTerminalAbsenceV3<'_>, RestartCollectorErrorV3> {
+        self.revalidate_bound()?;
+        self.current_observation().terminal_absence()
+    }
+
+    fn first_snapshot_sha256(&self) -> Result<String, RestartCollectorErrorV3> {
+        reconciliation_snapshot_sha256(self.first_snapshot_raw()?)
+            .map_err(|error| invalid(format!("first reconciliation digest failed: {error}")))
+    }
+
+    fn into_mount_delta_current(
+        self,
+        direction: MountDeltaDirectionV3,
+        expected_after: Vec<MountBindingV3>,
+        next: RetainedCollectorObservationV3,
+    ) -> Result<Self, RestartCollectorErrorV3> {
+        if !matches!(self.current, RetainedCollectorCurrentV3::First) {
+            return Err(invalid(
+                "mount-table lineage current marker was already advanced",
+            ));
+        }
+        validate_lineage_successor(&self.first, &next, &expected_after, direction)?;
+        let lineage = Self {
+            current: RetainedCollectorCurrentV3::MountDelta {
+                direction,
+                expected_after,
+                observation: next,
+            },
+            first: self.first,
+            _not_send_or_sync: PhantomData,
+        };
+        lineage.revalidate_bound()?;
+        Ok(lineage)
+    }
+}
+
+fn validate_lineage_successor(
+    prior: &RetainedCollectorObservationV3,
+    next: &RetainedCollectorObservationV3,
+    expected_after: &[MountBindingV3],
+    direction: MountDeltaDirectionV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    let prior = prior.evidence();
+    let next = next.evidence();
+    let expected_match = match direction {
+        MountDeltaDirectionV3::Mount => ReconciliationMatchV2::Unique { mounted: true },
+        MountDeltaDirectionV3::Unmount => ReconciliationMatchV2::Unique { mounted: false },
+    };
+    if next.receipt.purpose != CollectorPurposeV3::ReconciliationSnapshot
+        || next.receipt.match_result != expected_match
+        || next.receipt.mount_evidence.mounts_before != expected_after
+        || next.receipt.mount_evidence.mounts_after != expected_after
+        || next.guard.mounts != expected_after
+        || next.receipt.operation_nonce != prior.receipt.operation_nonce
+        || next.receipt.boot_session_uuid != prior.receipt.boot_session_uuid
+        || next.receipt.restart_epoch_nonce != prior.receipt.restart_epoch_nonce
+        || next.receipt.collector_policy_sha256 != prior.receipt.collector_policy_sha256
+        || next.receipt.backing_identity_sha256 != prior.receipt.backing_identity_sha256
+        || next.receipt.mountpoint_underlying_sha256 != prior.receipt.mountpoint_underlying_sha256
+        || next.receipt.matching_groups != prior.receipt.matching_groups
+    {
+        return Err(invalid(
+            "collector lineage current observation is not the exact successor of its first snapshot",
+        ));
+    }
+    Ok(())
 }
 
 impl RetainedTerminalAbsenceV3<'_> {
@@ -4387,7 +4643,7 @@ fn reject_nested_mounts(
 #[cfg(test)]
 #[path = "mac_disposable_reconciliation_collector_tests.rs"]
 mod tests;
-impl RetainedCollectorObservationV3 {
+impl RetainedCollectorLineageV3 {
     pub(crate) fn into_mount_delta(
         self,
         command: &ExactDisposableCommandV3,
@@ -4404,9 +4660,12 @@ impl RetainedCollectorObservationV3 {
         else {
             return Err(invalid("mount delta cannot consume an unmount command"));
         };
-        let evidence = self.evidence();
-        let unique = match &self {
-            Self::Reconciliation(RetainedCollectorMatchV3::UniqueAttached(unique)) => unique,
+        let current = self.current_observation();
+        let evidence = current.evidence();
+        let unique = match current {
+            RetainedCollectorObservationV3::Reconciliation(
+                RetainedCollectorMatchV3::UniqueAttached(unique),
+            ) => unique,
             _ => {
                 return Err(invalid(
                     "mount delta requires one retained unique-attached collector match",
@@ -4471,9 +4730,12 @@ impl RetainedCollectorObservationV3 {
         else {
             return Err(invalid("unmount delta cannot consume a mount command"));
         };
-        let evidence = self.evidence();
-        let unique = match &self {
-            Self::Reconciliation(RetainedCollectorMatchV3::UniqueMounted(unique)) => unique,
+        let current = self.current_observation();
+        let evidence = current.evidence();
+        let unique = match current {
+            RetainedCollectorObservationV3::Reconciliation(
+                RetainedCollectorMatchV3::UniqueMounted(unique),
+            ) => unique,
             _ => {
                 return Err(invalid(
                     "unmount delta requires one retained unique-mounted collector match",
@@ -4547,6 +4809,16 @@ impl<K> RetainedCollectorMountDeltaV3<K> {
         }
         if observed == self.before {
             self.prior.revalidate_bound()?;
+        } else {
+            let direction = if exact_added_mount(&self.before, &self.after).is_some() {
+                MountDeltaDirectionV3::Mount
+            } else if exact_removed_mount(&self.before, &self.after).is_some() {
+                MountDeltaDirectionV3::Unmount
+            } else {
+                return Err(invalid("pending mount delta shape changed"));
+            };
+            self.prior
+                .revalidate_across_mount_delta(&self.after, direction)?;
         }
         Ok(())
     }
@@ -4567,7 +4839,7 @@ impl<K> RetainedCollectorMountDeltaV3<K> {
         } else {
             next.revalidate_unbound()?;
         }
-        let prior = self.prior.evidence();
+        let prior = self.prior.current_observation().evidence();
         let next_evidence = next.evidence();
         let expected_match = match direction {
             MountDeltaDirectionV3::Mount => ReconciliationMatchV2::Unique { mounted: true },
@@ -4600,7 +4872,8 @@ impl<K> RetainedCollectorMountDeltaV3<K> {
                 "post-delta retained collector does not bind the exact operation, epoch, unique group, or expected mount snapshot",
             ));
         }
-        prior.revalidate_across_mount_delta(&self.after, direction)?;
+        self.prior
+            .revalidate_across_mount_delta(&self.after, direction)?;
         if mount_table_snapshot()? != self.after {
             return Err(invalid(
                 "mount table changed after post-delta collector final replay",
@@ -4659,6 +4932,15 @@ impl RetainedCollectorMountDeltaV3<UnmountingV3> {
             next,
             _not_send_or_sync: PhantomData,
         })
+    }
+
+    pub(crate) fn into_advanced_lineage(
+        self,
+        next: RetainedCollectorObservationV3,
+    ) -> Result<RetainedCollectorLineageV3, RestartCollectorErrorV3> {
+        self.validate_post_delta(&next, MountDeltaDirectionV3::Unmount, true)?;
+        let RetainedCollectorMountDeltaV3 { after, prior, .. } = self;
+        prior.into_mount_delta_current(MountDeltaDirectionV3::Unmount, after, next)
     }
 }
 
@@ -4721,6 +5003,29 @@ impl<K> SealedMountDeltaObservationV3<'_, K> {
 
     pub(crate) fn operation_nonce(&self) -> &str {
         &self.delta.operation_nonce
+    }
+
+    pub(crate) fn post_effect_collector_binding(
+        &self,
+    ) -> Result<PostEffectCollectorBindingV3, RestartCollectorErrorV3> {
+        let evidence = self.next.evidence();
+        let binding = PostEffectCollectorBindingV3::from_retained_collector(
+            PostEffectCollectorBindingSealV3 { _private: () },
+            evidence.receipt.boot_session_uuid.clone(),
+            evidence.receipt_sha256.clone(),
+            self.delta.prior.first_snapshot_sha256()?,
+            evidence.receipt.mount_evidence_sha256.clone(),
+            evidence.receipt.operation_nonce.clone(),
+            evidence.receipt.restart_epoch_nonce.clone(),
+        );
+        if binding.operation_nonce() != self.delta.operation_nonce
+            || binding.observation_sha256() != self.mount_evidence_sha256()
+        {
+            return Err(invalid(
+                "post-effect collector binding changed across sealed observation",
+            ));
+        }
+        Ok(binding)
     }
 }
 

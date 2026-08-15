@@ -700,12 +700,35 @@ impl VerifiedLifecycleIssueRosterV3 {
                         sequence: record.sequence,
                     });
                 }
+                DisposableLifecycleEventV2::UnmountObserved {
+                    collector: Some(collector),
+                    ..
+                }
+                | DisposableLifecycleEventV2::EjectObserved {
+                    collector: Some(collector),
+                    ..
+                } => {
+                    // The post-effect receipt is admitted only by lifecycle
+                    // replay against the active V3 restart lineage.  Bind the
+                    // next issue to both that receipt and this exact retained
+                    // V2 observation record, never to a digest-only DTO.
+                    latest_collector = Some(CollectorObservationBindingV3 {
+                        boot_session_uuid: collector.boot_session_uuid().to_string(),
+                        receipt_sha256: collector.collector_receipt_sha256().to_string(),
+                        record_sha256,
+                        sequence: record.sequence,
+                    });
+                }
                 DisposableLifecycleEventV2::RestartReconciliationStarted { .. }
                 | DisposableLifecycleEventV2::CreateObserved { .. }
                 | DisposableLifecycleEventV2::AttachObserved { .. }
                 | DisposableLifecycleEventV2::MountObserved { .. }
-                | DisposableLifecycleEventV2::UnmountObserved { .. }
-                | DisposableLifecycleEventV2::EjectObserved { .. } => {
+                | DisposableLifecycleEventV2::UnmountObserved {
+                    collector: None, ..
+                }
+                | DisposableLifecycleEventV2::EjectObserved {
+                    collector: None, ..
+                } => {
                     // A collector receipt binds one exact pre-effect state.
                     // Once durable state advances (or a new restart epoch
                     // starts), that receipt may never authorize another

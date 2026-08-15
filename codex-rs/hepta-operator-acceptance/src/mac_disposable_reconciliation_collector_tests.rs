@@ -96,6 +96,21 @@ assert_not_impl_any!(
         From<String>
 );
 assert_not_impl_any!(
+    RetainedCollectorLineageV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<RetainedCollectorObservationV3>,
+        From<String>
+);
+assert_not_impl_any!(
     RetainedPreparedCollectorCapabilityV3:
         Clone,
         Send,
@@ -1475,6 +1490,63 @@ fn active_collector_reservation_blocks_duplicate_pending_even_after_drop() {
         active.collect_reconciliation_snapshot().is_err(),
         "dropping Pending must remain fail-closed instead of silently restoring the seed"
     );
+}
+
+#[test]
+fn first_lineage_receipt_unlink_or_same_byte_replacement_is_permanently_rejected() {
+    let _lock = live_collector_test_lock();
+    for replace in [false, true] {
+        let fixture = LiveCollectorFixture::new();
+        let operation_nonce = "7".repeat(64);
+        let control_root = fixture._fixture.path().join(if replace {
+            "control-replace"
+        } else {
+            "control-unlink"
+        });
+        publish_exact_prepared_operation(&fixture, &control_root, &operation_nonce);
+        let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+            .expect("reopen exact S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("restart S1 assessment")
+            .into_blocking_control_census(&operation_nonce)
+            .expect("restart blocking census");
+        let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+        let mut active = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+            .expect("open NeedsRestartEpoch")
+            .begin_restart(&epoch)
+            .expect("begin admitted restart");
+        let pending = active
+            .collect_reconciliation_snapshot()
+            .expect("collect first lineage snapshot");
+        let receipt_sha256 = sha256(&canonical_json(pending.receipt()).unwrap());
+        let receipt_path = fixture
+            .persistence_root
+            .join(format!("collector-{receipt_sha256}.json"));
+        pending
+            .persist_and_append(&mut active)
+            .expect("persist and install first lineage owner");
+        let bytes = std::fs::read(&receipt_path).expect("read first receipt");
+        std::fs::remove_file(&receipt_path).expect("unlink first receipt");
+        if replace {
+            let mut replacement = std::fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .mode(0o400)
+                .open(&receipt_path)
+                .expect("create same-byte replacement receipt");
+            replacement
+                .write_all(&bytes)
+                .expect("write replacement receipt");
+            replacement.sync_all().expect("sync replacement receipt");
+            std::fs::set_permissions(&receipt_path, std::fs::Permissions::from_mode(0o400))
+                .expect("seal replacement receipt");
+        }
+        assert!(
+            active.collect_fresh_absence().is_err(),
+            "first retained receipt mutation was accepted (replace={replace})"
+        );
+    }
 }
 
 #[test]

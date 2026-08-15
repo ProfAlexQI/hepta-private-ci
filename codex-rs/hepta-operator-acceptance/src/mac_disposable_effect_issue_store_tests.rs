@@ -1,8 +1,10 @@
 use super::*;
 use crate::mac_disposable_lifecycle::CallbackOutcomeV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleJournalV2;
+use crate::mac_disposable_lifecycle::PostEffectCollectorBindingV3;
 use crate::mac_disposable_lifecycle::ReconciliationMatchV2;
 use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
+use crate::mac_disposable_lifecycle::reconciliation_snapshot_sha256;
 use std::fs::OpenOptions;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::fs::PermissionsExt;
@@ -159,6 +161,7 @@ impl LifecycleFixture {
             DisposableLifecycleEventV2::UnmountObserved {
                 effect_id: 1,
                 mount_absence_sha256: digest('6'),
+                collector: None,
             },
         );
         append(
@@ -170,6 +173,46 @@ impl LifecycleFixture {
             },
         );
         VerifiedLifecycleIssueRosterV3::replay(&self.records).expect("two issued effects")
+    }
+
+    fn append_eject_bound(&mut self) -> VerifiedLifecycleIssueRosterV3 {
+        append(
+            &mut self.journal,
+            &mut self.records,
+            DisposableLifecycleEventV2::UnmountCallbackObserved {
+                effect_id: 1,
+                outcome: CallbackOutcomeV2::Succeeded,
+            },
+        );
+        let first_snapshot_sha256 =
+            reconciliation_snapshot_sha256(&reconciliation_snapshot(&self.boot))
+                .expect("first reconciliation digest");
+        append(
+            &mut self.journal,
+            &mut self.records,
+            DisposableLifecycleEventV2::UnmountObserved {
+                effect_id: 1,
+                mount_absence_sha256: digest('6'),
+                collector: Some(PostEffectCollectorBindingV3::for_test(
+                    self.boot.clone(),
+                    digest('7'),
+                    first_snapshot_sha256,
+                    digest('6'),
+                    NONCE.to_string(),
+                    RESTART_NONCE.to_string(),
+                )),
+            },
+        );
+        append(
+            &mut self.journal,
+            &mut self.records,
+            DisposableLifecycleEventV2::EjectIssuedOrUncertain {
+                effect_id: 2,
+                purpose: EffectPurposeV2::Reconciliation,
+            },
+        );
+        VerifiedLifecycleIssueRosterV3::replay(&self.records)
+            .expect("post-unmount collector-bound eject")
     }
 
     fn epochs(&self, salt: char) -> EffectEpochEvidenceV3 {
@@ -578,6 +621,27 @@ fn old_mounted_collector_receipt_cannot_be_reused_after_unmount_observation() {
         .is_err(),
         "missing post-unmount V3 issue was accepted as an exact bijection"
     );
+}
+
+#[test]
+fn bound_unmount_observation_becomes_the_exact_prior_collector_for_eject() {
+    let mut lifecycle = LifecycleFixture::new();
+    lifecycle.append_unmount();
+    let eject = lifecycle.append_eject_bound();
+    let binding = eject
+        .issues
+        .iter()
+        .find(|issue| issue.effect_id == 2)
+        .expect("eject issue binding");
+    let prior = binding
+        .prior_collector
+        .as_ref()
+        .expect("post-unmount collector binding");
+    assert_eq!(prior.boot_session_uuid, lifecycle.boot);
+    assert_eq!(prior.receipt_sha256, digest('7'));
+    assert_eq!(prior.record_sha256, sha256(&lifecycle.records[5]));
+    assert_eq!(prior.sequence, 6);
+    assert_ne!(prior.receipt_sha256, digest('e'));
 }
 
 #[test]

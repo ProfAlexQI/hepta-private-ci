@@ -299,6 +299,7 @@ fn completed_operation_events(operation_nonce: &str) -> Vec<DisposableLifecycleE
         DisposableLifecycleEventV2::UnmountObserved {
             effect_id: 4,
             mount_absence_sha256: digest('c'),
+            collector: None,
         },
         DisposableLifecycleEventV2::EjectIssuedOrUncertain {
             effect_id: 5,
@@ -311,6 +312,7 @@ fn completed_operation_events(operation_nonce: &str) -> Vec<DisposableLifecycleE
         DisposableLifecycleEventV2::EjectObserved {
             effect_id: 5,
             iomedia_absence_sha256: digest('d'),
+            collector: None,
         },
         DisposableLifecycleEventV2::FreshAbsenceObserved { observation },
         DisposableLifecycleEventV2::TerminalAbsenceProved {

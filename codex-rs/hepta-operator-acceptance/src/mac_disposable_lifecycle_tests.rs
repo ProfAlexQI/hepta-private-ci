@@ -15,6 +15,42 @@ fn prepared() -> DisposableLifecycleEventV2 {
     }
 }
 
+fn prepared_v3() -> DisposableLifecycleEventV2 {
+    DisposableLifecycleEventV2::OperationPreparedWithManifestV3 {
+        baseline_inventory_sha256: digest('a'),
+        backing_identity_sha256: digest('b'),
+        boot_session_uuid: "12345678-1234-1234-1234-123456789abc".to_string(),
+        collector_policy_sha256: digest('e'),
+        mountpoint_underlying_sha256: digest('c'),
+        prepared_manifest: PreparedCollectorManifestBindingV3 {
+            birthtime_nanoseconds: 1,
+            birthtime_seconds: 1,
+            dev: 1,
+            generation: 1,
+            inode: 1,
+            sha256: digest('d'),
+        },
+    }
+}
+
+fn post_effect_binding(
+    operation_nonce: &str,
+    boot_session_uuid: &str,
+    restart_epoch_nonce: &str,
+    first_snapshot_sha256: &str,
+    receipt_byte: char,
+    observation_sha256: &str,
+) -> PostEffectCollectorBindingV3 {
+    PostEffectCollectorBindingV3 {
+        boot_session_uuid: boot_session_uuid.to_string(),
+        collector_receipt_sha256: digest(receipt_byte),
+        first_reconciliation_snapshot_sha256: first_snapshot_sha256.to_string(),
+        observation_sha256: observation_sha256.to_string(),
+        operation_nonce: operation_nonce.to_string(),
+        restart_epoch_nonce: restart_epoch_nonce.to_string(),
+    }
+}
+
 fn absence(
     operation_nonce: &str,
     boot_session_uuid: &str,
@@ -58,6 +94,164 @@ fn forward_absence_canonical_json_omits_the_restart_only_expected_inventory_bind
     );
 }
 
+#[test]
+fn legacy_post_effect_event_omits_collector_without_changing_canonical_bytes() {
+    for (event, historical) in [
+        (
+            DisposableLifecycleEventV2::UnmountObserved {
+                effect_id: 4,
+                mount_absence_sha256: digest('1'),
+                collector: None,
+            },
+            serde_json::json!({
+                "kind": "unmount_observed",
+                "value": {
+                    "effect_id": 4,
+                    "mount_absence_sha256": digest('1'),
+                },
+            }),
+        ),
+        (
+            DisposableLifecycleEventV2::EjectObserved {
+                effect_id: 5,
+                iomedia_absence_sha256: digest('2'),
+                collector: None,
+            },
+            serde_json::json!({
+                "kind": "eject_observed",
+                "value": {
+                    "effect_id": 5,
+                    "iomedia_absence_sha256": digest('2'),
+                },
+            }),
+        ),
+    ] {
+        let bytes = canonical_json(&event).expect("canonical legacy observation");
+        assert_eq!(
+            bytes,
+            canonical_json(&historical).expect("historical bytes")
+        );
+        assert!(
+            !String::from_utf8(bytes.clone())
+                .unwrap()
+                .contains("collector")
+        );
+        assert_eq!(
+            serde_json::from_slice::<DisposableLifecycleEventV2>(&bytes).unwrap(),
+            event
+        );
+    }
+}
+
+#[test]
+fn v3_restart_post_effect_binding_is_exact_and_cannot_be_omitted_or_transplanted() {
+    let operation_nonce = digest('3');
+    let foreign_operation = digest('9');
+    let boot = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let epoch = digest('4');
+    let mount_absence = digest('7');
+    let snapshot = snapshot(
+        &operation_nonce,
+        boot,
+        &epoch,
+        101,
+        '5',
+        ReconciliationMatchV2::Unique { mounted: true },
+    );
+    let first_snapshot_sha256 =
+        reconciliation_snapshot_sha256(&snapshot).expect("first snapshot digest");
+    let mut records = Vec::new();
+    let mut initial = DisposableLifecycleJournalV2::new(&operation_nonce).expect("journal");
+    append(&mut initial, &mut records, prepared_v3()).expect("V3 prepare");
+    let mut resumed =
+        DisposableLifecycleJournalV2::resume_for_reconciliation(&records).expect("restart");
+    append(&mut resumed, &mut records, restart(boot, 100, &epoch)).expect("epoch");
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::ReconciliationSnapshotObserved { snapshot },
+    )
+    .expect("snapshot");
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::UnmountIssuedOrUncertain {
+            effect_id: 1,
+            purpose: EffectPurposeV2::Reconciliation,
+        },
+    )
+    .expect("issue");
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::UnmountCallbackObserved {
+            effect_id: 1,
+            outcome: CallbackOutcomeV2::Succeeded,
+        },
+    )
+    .expect("callback");
+
+    let exact = post_effect_binding(
+        &operation_nonce,
+        boot,
+        &epoch,
+        &first_snapshot_sha256,
+        '6',
+        &mount_absence,
+    );
+    for invalid_binding in [
+        None,
+        Some(PostEffectCollectorBindingV3 {
+            operation_nonce: foreign_operation,
+            ..exact.clone()
+        }),
+        Some(PostEffectCollectorBindingV3 {
+            boot_session_uuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb".to_string(),
+            ..exact.clone()
+        }),
+        Some(PostEffectCollectorBindingV3 {
+            restart_epoch_nonce: digest('8'),
+            ..exact.clone()
+        }),
+        Some(PostEffectCollectorBindingV3 {
+            first_reconciliation_snapshot_sha256: digest('8'),
+            ..exact.clone()
+        }),
+        Some(PostEffectCollectorBindingV3 {
+            collector_receipt_sha256: digest('5'),
+            ..exact.clone()
+        }),
+        Some(PostEffectCollectorBindingV3 {
+            observation_sha256: digest('8'),
+            ..exact.clone()
+        }),
+    ] {
+        let mut candidate = resumed.clone();
+        assert!(
+            append(
+                &mut candidate,
+                &mut records.clone(),
+                DisposableLifecycleEventV2::UnmountObserved {
+                    effect_id: 1,
+                    mount_absence_sha256: mount_absence.clone(),
+                    collector: invalid_binding,
+                },
+            )
+            .is_err()
+        );
+    }
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::UnmountObserved {
+            effect_id: 1,
+            mount_absence_sha256: mount_absence,
+            collector: Some(exact),
+        },
+    )
+    .expect("exact post-unmount binding");
+}
+
 fn full_flow(operation_nonce: &str) -> Vec<DisposableLifecycleEventV2> {
     let observation = absence(operation_nonce, "12345678-1234-1234-1234-123456789abc", 10);
     let absence_digest = fresh_absence_sha256(&observation).expect("absence digest");
@@ -89,6 +283,7 @@ fn full_flow(operation_nonce: &str) -> Vec<DisposableLifecycleEventV2> {
         DisposableLifecycleEventV2::UnmountObserved {
             effect_id: 4,
             mount_absence_sha256: digest('1'),
+            collector: None,
         },
         DisposableLifecycleEventV2::EjectIssuedOrUncertain {
             effect_id: 5,
@@ -101,6 +296,7 @@ fn full_flow(operation_nonce: &str) -> Vec<DisposableLifecycleEventV2> {
         DisposableLifecycleEventV2::EjectObserved {
             effect_id: 5,
             iomedia_absence_sha256: digest('2'),
+            collector: None,
         },
         DisposableLifecycleEventV2::FreshAbsenceObserved { observation },
         DisposableLifecycleEventV2::TerminalAbsenceProved {
@@ -354,6 +550,7 @@ fn restart_unique_absence_uses_the_current_boot_expected_inventory_not_historica
         DisposableLifecycleEventV2::EjectObserved {
             effect_id: 1,
             iomedia_absence_sha256: digest('7'),
+            collector: None,
         },
     )
     .expect("eject absence");
@@ -450,6 +647,7 @@ fn restart_unique_cleanup_requires_one_success_callback_and_ambiguous_blocks() {
             DisposableLifecycleEventV2::UnmountObserved {
                 effect_id: 1,
                 mount_absence_sha256: digest('7'),
+                collector: None,
             },
         )
         .is_err(),

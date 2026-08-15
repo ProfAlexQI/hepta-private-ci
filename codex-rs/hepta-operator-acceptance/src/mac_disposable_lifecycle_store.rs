@@ -23,6 +23,7 @@ use crate::mac_disposable_lifecycle::EffectPurposeV2;
 use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
 use crate::mac_disposable_lifecycle::LifecycleErrorV2;
 use crate::mac_disposable_lifecycle::LifecycleProcessModeV2;
+use crate::mac_disposable_lifecycle::PostEffectCollectorBindingV3;
 use crate::mac_disposable_lifecycle::PreparedCollectorManifestBindingV3;
 #[cfg(test)]
 use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
@@ -33,6 +34,7 @@ use crate::mac_disposable_reconciliation_collector::PendingRestartObservationV3;
 use crate::mac_disposable_reconciliation_collector::RestartBaselineInventoryV3;
 use crate::mac_disposable_reconciliation_collector::RestartCollectorErrorV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorAppendEventV3;
+use crate::mac_disposable_reconciliation_collector::RetainedCollectorLineageV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorMountDeltaV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorObservationV3;
 use crate::mac_disposable_reconciliation_collector::RetainedPreparedCollectorCapabilityV3;
@@ -916,10 +918,15 @@ impl ReconciliationLifecycleEventV3 {
         Self(DisposableLifecycleEventV2::UnmountCallbackObserved { effect_id, outcome })
     }
 
-    fn unmount_observed(effect_id: u64, mount_absence_sha256: String) -> Self {
+    fn unmount_observed(
+        effect_id: u64,
+        mount_absence_sha256: String,
+        collector: PostEffectCollectorBindingV3,
+    ) -> Self {
         Self(DisposableLifecycleEventV2::UnmountObserved {
             effect_id,
             mount_absence_sha256,
+            collector: Some(collector),
         })
     }
 
@@ -938,6 +945,7 @@ impl ReconciliationLifecycleEventV3 {
         Self(DisposableLifecycleEventV2::EjectObserved {
             effect_id,
             iomedia_absence_sha256,
+            collector: None,
         })
     }
 
@@ -1214,7 +1222,7 @@ pub(crate) struct ReconciliationOperationStoreV3<'a, 'e, R = NeedsRestartEpochV3
     journal: DisposableLifecycleJournalV2,
     poisoned: bool,
     prepared: Option<RetainedPreparedCollectorCapabilityV3>,
-    collector: Option<RetainedCollectorObservationV3>,
+    collector: Option<RetainedCollectorLineageV3>,
     issues: DurableEffectIssueStoreV3,
     restart: R,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
@@ -3095,7 +3103,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
                     ));
                 }
             }
-            Some(prior) => retained.validate_fresh_absence_successor(prior)?,
+            Some(prior) => prior.validate_fresh_absence_successor(&retained)?,
         }
         let (operation_nonce, event) = {
             let capability = retained.append_capability().map_err(|error| {
@@ -3124,7 +3132,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
         }
         let append = self.append_reconciliation_inner_holding_poison(
             ReconciliationLifecycleEventV3(event),
-            false,
+            true,
         )?;
         let digest = append.digest().to_string();
         if let Err(error) = retained.bind_lifecycle_record(append) {
@@ -3147,7 +3155,18 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
                 ))
             })?;
         }
-        self.collector = Some(retained);
+        self.collector = Some(
+            match self.collector.take() {
+                None => RetainedCollectorLineageV3::from_first(retained),
+                Some(prior) => prior.advance_fresh_absence(retained),
+            }
+            .map_err(|error| {
+                self.poisoned = true;
+                invalid(format!(
+                    "retained collector lineage could not advance after lifecycle adoption: {error}"
+                ))
+            })?,
+        );
         // The exact collector is now both S1-adopted and wrapper-owned.  This
         // assignment is the outer transaction endpoint; every error or panic
         // after the V2 append above leaves `poisoned` armed.
@@ -3957,35 +3976,107 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
 }
 
 impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmountObservationV3> {
+    /// Collect, persist, append, and S1-adopt the exact post-unmount state as
+    /// one consuming production transition.  No caller can inject a retained
+    /// observation or a digest into this path.
+    pub(crate) fn collect_persist_append_and_advance(
+        self,
+    ) -> Result<
+        ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>,
+        DurableLifecycleStoreErrorV3,
+    > {
+        self.revalidate_pending_issue()?;
+        let seed = ActiveRestartCollectorSeedV3 {
+            operation_nonce: self.store.operation_nonce(),
+            owner: &self.restart,
+            _not_send_or_sync: PhantomData,
+        };
+        seed.require_owner(&self.restart).map_err(|error| {
+            invalid(format!(
+                "post-unmount collector seed lost its active restart owner: {error}"
+            ))
+        })?;
+        let prepared = self.prepared.as_ref().ok_or_else(|| {
+            invalid("post-unmount collection lacks its retained prepared capability")
+        })?;
+        let pending = prepared
+            .collect_reconciliation_from_active(seed)
+            .map_err(|error| {
+                invalid(format!(
+                    "post-unmount live collection failed before persistence: {error}"
+                ))
+            })?;
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed across post-unmount collection: {error}"
+            ))
+        })?;
+        self.store.revalidate()?;
+        prepared.revalidate().map_err(|error| {
+            invalid(format!(
+                "prepared collector capability changed across post-unmount collection: {error}"
+            ))
+        })?;
+        let next = pending
+            .persist_for_unmount_delta(&self.delta)
+            .map_err(|error| {
+                invalid(format!(
+                    "post-unmount collector persistence or exact delta seal failed: {error}"
+                ))
+            })?;
+        self.append_retained_observation_and_advance_inner(next)
+    }
+
     /// Durable post-unmount collection and S1 adoption are inseparable from the
     /// PendingUnmount -> Stable transition.  A plain observation DTO or digest
     /// cannot reach this method.
+    #[cfg(test)]
     pub(crate) fn append_retained_observation_and_advance(
+        self,
+        next: RetainedCollectorObservationV3,
+    ) -> Result<
+        ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>,
+        DurableLifecycleStoreErrorV3,
+    > {
+        self.append_retained_observation_and_advance_inner(next)
+    }
+
+    fn append_retained_observation_and_advance_inner(
         mut self,
         mut next: RetainedCollectorObservationV3,
     ) -> Result<
         ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>,
         DurableLifecycleStoreErrorV3,
     > {
-        let (operation_nonce, mount_absence_sha256) = {
-            let observation = self.delta.seal_observation(&next).map_err(|error| {
-                invalid(format!(
-                    "post-unmount collector cannot seal the exact observation: {error}"
-                ))
-            })?;
-            (
+        let (operation_nonce, mount_absence_sha256, collector_binding) =
+            {
+                let observation = self.delta.seal_observation(&next).map_err(|error| {
+                    invalid(format!(
+                        "post-unmount collector cannot seal the exact observation: {error}"
+                    ))
+                })?;
+                (
                 observation.operation_nonce().to_string(),
                 observation.mount_evidence_sha256().to_string(),
+                observation.post_effect_collector_binding().map_err(|error| {
+                    invalid(format!(
+                        "post-unmount collector could not seal its lifecycle binding: {error}"
+                    ))
+                })?,
             )
-        };
+            };
         if operation_nonce != self.store.operation_nonce() {
             return Err(invalid(
                 "post-unmount collector belongs to another operation",
             ));
         }
-        let append = self.append_pending_unmount(
-            ReconciliationLifecycleEventV3::unmount_observed(self.effect_id, mount_absence_sha256),
-        )?;
+        let append =
+            self.append_pending_unmount(ReconciliationLifecycleEventV3::unmount_observed(
+                self.effect_id,
+                mount_absence_sha256,
+                collector_binding,
+            ))?;
         if let Err(error) = next.bind_lifecycle_record(append) {
             self.poisoned = true;
             return Err(invalid(format!(
@@ -4021,13 +4112,18 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             ))
         })?;
         let census = census.advance_unmount_delta(advance)?;
+        let lineage = delta.into_advanced_lineage(next).map_err(|error| {
+            invalid(format!(
+                "post-unmount collector could not advance its retained lineage: {error}"
+            ))
+        })?;
         let mut stable = ReconciliationOperationStoreV3 {
             census,
             epoch,
             journal,
             poisoned: true,
             prepared,
-            collector: Some(next),
+            collector: Some(lineage),
             issues,
             restart,
             store,

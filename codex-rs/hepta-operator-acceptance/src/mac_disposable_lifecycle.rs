@@ -132,6 +132,87 @@ pub struct ReconciliationSnapshotV2 {
     pub restart_epoch_nonce: String,
 }
 
+/// Exact durable collector evidence produced after a reconciliation effect.
+///
+/// Historical V2 records omit this side binding.  A live V3 restart must bind
+/// every post-effect observation to the same operation/restart epoch, the
+/// first reconciliation snapshot that admitted the target, and the newly
+/// retained collector receipt that proves the post-effect state.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PostEffectCollectorBindingV3 {
+    boot_session_uuid: String,
+    collector_receipt_sha256: String,
+    first_reconciliation_snapshot_sha256: String,
+    observation_sha256: String,
+    operation_nonce: String,
+    restart_epoch_nonce: String,
+}
+
+impl PostEffectCollectorBindingV3 {
+    pub(crate) fn from_retained_collector(
+        _seal: crate::mac_disposable_reconciliation_collector::PostEffectCollectorBindingSealV3,
+        boot_session_uuid: String,
+        collector_receipt_sha256: String,
+        first_reconciliation_snapshot_sha256: String,
+        observation_sha256: String,
+        operation_nonce: String,
+        restart_epoch_nonce: String,
+    ) -> Self {
+        Self {
+            boot_session_uuid,
+            collector_receipt_sha256,
+            first_reconciliation_snapshot_sha256,
+            observation_sha256,
+            operation_nonce,
+            restart_epoch_nonce,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        boot_session_uuid: String,
+        collector_receipt_sha256: String,
+        first_reconciliation_snapshot_sha256: String,
+        observation_sha256: String,
+        operation_nonce: String,
+        restart_epoch_nonce: String,
+    ) -> Self {
+        Self {
+            boot_session_uuid,
+            collector_receipt_sha256,
+            first_reconciliation_snapshot_sha256,
+            observation_sha256,
+            operation_nonce,
+            restart_epoch_nonce,
+        }
+    }
+
+    pub(crate) fn boot_session_uuid(&self) -> &str {
+        &self.boot_session_uuid
+    }
+
+    pub(crate) fn collector_receipt_sha256(&self) -> &str {
+        &self.collector_receipt_sha256
+    }
+
+    pub(crate) fn first_reconciliation_snapshot_sha256(&self) -> &str {
+        &self.first_reconciliation_snapshot_sha256
+    }
+
+    pub(crate) fn observation_sha256(&self) -> &str {
+        &self.observation_sha256
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        &self.operation_nonce
+    }
+
+    pub(crate) fn restart_epoch_nonce(&self) -> &str {
+        &self.restart_epoch_nonce
+    }
+}
+
 /// Durable binding from the first lifecycle record to the fixed prepared
 /// collector sidecar.  The digest binds its canonical bytes while the full
 /// inode identity rejects same-byte replacement before restart admission.
@@ -196,6 +277,8 @@ pub enum DisposableLifecycleEventV2 {
     UnmountObserved {
         effect_id: u64,
         mount_absence_sha256: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        collector: Option<PostEffectCollectorBindingV3>,
     },
     EjectIssuedOrUncertain {
         effect_id: u64,
@@ -208,6 +291,8 @@ pub enum DisposableLifecycleEventV2 {
     EjectObserved {
         effect_id: u64,
         iomedia_absence_sha256: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        collector: Option<PostEffectCollectorBindingV3>,
     },
     RestartReconciliationStarted {
         boot_session_uuid: String,
@@ -565,8 +650,13 @@ impl Reducer {
             DisposableLifecycleEventV2::UnmountObserved {
                 effect_id,
                 mount_absence_sha256,
+                collector,
             } => {
                 require_digest(mount_absence_sha256, "mount absence")?;
+                self.validate_post_effect_collector_binding(
+                    collector.as_ref(),
+                    mount_absence_sha256,
+                )?;
                 self.observe_after_callback(*effect_id, EffectKind::Unmount, Phase::Attached)?;
             }
             DisposableLifecycleEventV2::EjectIssuedOrUncertain { effect_id, purpose } => {
@@ -579,8 +669,13 @@ impl Reducer {
             DisposableLifecycleEventV2::EjectObserved {
                 effect_id,
                 iomedia_absence_sha256,
+                collector,
             } => {
                 require_digest(iomedia_absence_sha256, "IOMedia absence")?;
+                self.validate_post_effect_collector_binding(
+                    collector.as_ref(),
+                    iomedia_absence_sha256,
+                )?;
                 self.observe_after_callback(*effect_id, EffectKind::Eject, Phase::Ejected)?;
             }
             DisposableLifecycleEventV2::RestartReconciliationStarted {
@@ -977,6 +1072,59 @@ impl Reducer {
             ));
         }
         Ok(())
+    }
+
+    fn validate_post_effect_collector_binding(
+        &mut self,
+        binding: Option<&PostEffectCollectorBindingV3>,
+        observation_sha256: &str,
+    ) -> Result<(), LifecycleErrorV2> {
+        match (self.mode, binding) {
+            (Mode::RestartReconcileOnly, Some(binding)) => {
+                require_uuid(&binding.boot_session_uuid)?;
+                require_nonce(&binding.restart_epoch_nonce)?;
+                require_nonce(&binding.operation_nonce)?;
+                for (value, label) in [
+                    (
+                        &binding.collector_receipt_sha256,
+                        "post-effect collector receipt",
+                    ),
+                    (
+                        &binding.first_reconciliation_snapshot_sha256,
+                        "post-effect first reconciliation snapshot",
+                    ),
+                    (&binding.observation_sha256, "post-effect observation"),
+                ] {
+                    require_digest(value, label)?;
+                }
+                if binding.operation_nonce != self.operation_nonce
+                    || self.restart_epoch_boot_session_uuid.as_ref()
+                        != Some(&binding.boot_session_uuid)
+                    || self.restart_epoch_nonce.as_ref() != Some(&binding.restart_epoch_nonce)
+                    || self.epoch_snapshot_sha256.as_ref()
+                        != Some(&binding.first_reconciliation_snapshot_sha256)
+                    || binding.observation_sha256 != observation_sha256
+                    || self
+                        .reconciliation_receipts
+                        .contains(&binding.collector_receipt_sha256)
+                {
+                    return Err(invalid(
+                        "post-effect collector binding differs from the active restart lineage",
+                    ));
+                }
+                self.reconciliation_receipts
+                    .insert(binding.collector_receipt_sha256.clone());
+                Ok(())
+            }
+            (Mode::RestartReconcileOnly, None) if self.prepared_manifest.is_some() => Err(invalid(
+                "V3 restart post-effect observation requires retained collector evidence",
+            )),
+            (Mode::RestartReconcileOnly, None) => Ok(()),
+            (Mode::FreshProcess | Mode::Replay, None) => Ok(()),
+            (Mode::FreshProcess | Mode::Replay, Some(_)) => Err(invalid(
+                "forward or historical replay cannot self-report restart collector evidence",
+            )),
+        }
     }
 
     fn disposition(&self) -> LifecycleDispositionV2 {
