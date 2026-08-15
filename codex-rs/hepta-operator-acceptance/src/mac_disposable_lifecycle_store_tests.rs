@@ -1,5 +1,6 @@
 use super::*;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
+use crate::mac_privileged_disposable_control::LivePrivilegedDisposablePolicyV2;
 use std::fs;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
@@ -654,4 +655,63 @@ fn rejects_nil_or_noncanonical_operation_nonces() {
             "{nonce}"
         );
     }
+}
+
+#[test]
+fn fresh_store_requires_and_retains_the_exact_s1_census() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+    let assessment = control.assess_read_only().expect("closed-world S1 census");
+    assert!(assessment.receipt().new_operation_precondition_satisfied);
+    assert!(!assessment.receipt().admission_authority);
+    assert!(!assessment.receipt().authority.any());
+    let census = assessment
+        .into_fresh_control_census()
+        .expect("consume live S1 census");
+    let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+        .expect("create census-bound S2 store");
+    assert_eq!(store.operation_nonce(), NONCE);
+    assert!(!store.poisoned());
+    assert!(store.census.prepare_store_creation().is_err());
+
+    let lease = store
+        .runner_lease_source()
+        .expect("clone exact S1 global lock");
+    let descriptor = lease.into_descriptor();
+    assert!(binding(&descriptor).is_ok());
+
+    let mut journal = DisposableLifecycleJournalV2::new(NONCE).expect("fresh journal");
+    let digest = store
+        .append(&mut journal, prepared())
+        .expect("append while census and flock remain retained");
+    assert_eq!(digest.len(), 64);
+    assert!(!store.poisoned());
+}
+
+#[test]
+fn census_bound_store_poisoned_by_foreign_operations_roster_mutation() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("closed-world S1 census")
+        .into_fresh_control_census()
+        .expect("fresh census");
+    let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+        .expect("create census-bound store");
+    let rogue = root
+        .join("operations")
+        .join(format!("operation-{}", digest('e')));
+    fs::create_dir(&rogue).expect("inject foreign operation");
+    fs::set_permissions(&rogue, fs::Permissions::from_mode(0o700)).expect("rogue mode");
+
+    let mut journal = DisposableLifecycleJournalV2::new(NONCE).expect("journal");
+    assert!(store.append(&mut journal, prepared()).is_err());
+    assert!(store.poisoned());
+    fs::remove_dir(&rogue).expect("remove rogue operation");
+    assert!(store.append(&mut journal, prepared()).is_err());
 }

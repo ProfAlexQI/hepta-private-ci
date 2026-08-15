@@ -14,7 +14,11 @@ use crate::mac_disposable_lifecycle::LifecycleErrorV2;
 use crate::mac_disposable_lifecycle::LifecycleProcessModeV2;
 use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
 use crate::mac_disposable_lifecycle::TerminalDispositionV2;
+#[cfg(test)]
 use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
+use crate::mac_privileged_disposable_control::PrivilegedDisposableControlErrorV2;
+use crate::mac_privileged_disposable_control::RetainedControlCensusV3;
+use crate::mac_privileged_disposable_control::RunnerControlLeaseSourceV3;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fs::File;
@@ -33,6 +37,8 @@ const RENAME_EXCL: libc::c_uint = 0x0000_0004;
 
 #[derive(Debug, Error)]
 pub enum DurableLifecycleStoreErrorV3 {
+    #[error(transparent)]
+    Control(#[from] PrivilegedDisposableControlErrorV2),
     #[error("invalid durable lifecycle store: {0}")]
     Invalid(String),
     #[error(transparent)]
@@ -220,9 +226,18 @@ pub struct DurableLifecycleStoreV3<M = FreshProcessStoreV3> {
     _mode: PhantomData<fn() -> M>,
 }
 
+/// Fresh S2 store whose parent directory was admitted by one consumed S1
+/// retained census.  The census and global lock outlive every append.
+pub(crate) struct CensusBoundDurableLifecycleStoreV3<'a> {
+    census: RetainedControlCensusV3<'a>,
+    poisoned: bool,
+    store: DurableLifecycleStoreV3<FreshProcessStoreV3>,
+}
+
 pub type ReconciliationDurableLifecycleStoreV3 = DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>;
 
 impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
+    #[cfg(test)]
     pub fn create(
         operations: &File,
         operation_nonce: &str,
@@ -330,6 +345,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         Ok(store)
     }
 
+    #[cfg(test)]
     pub fn open_existing(
         operations: &File,
         operation_nonce: &str,
@@ -426,6 +442,64 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         event: DisposableLifecycleEventV2,
     ) -> Result<String, DurableLifecycleStoreErrorV3> {
         self.append_mode_with_hook(journal, event, |_| Ok(()))
+    }
+}
+
+impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
+    pub(crate) fn create(
+        mut census: RetainedControlCensusV3<'a>,
+        operation_nonce: &str,
+    ) -> Result<Self, DurableLifecycleStoreErrorV3> {
+        let binding = census.prepare_store_creation()?;
+        let store = DurableLifecycleStoreV3::create_with_hook(
+            binding.operations(),
+            operation_nonce,
+            binding.expected_uid(),
+            binding.expected_gid(),
+            |_| Ok(()),
+        )?;
+        census.admit_fresh_operation(&store.final_name)?;
+        Ok(Self {
+            census,
+            poisoned: false,
+            store,
+        })
+    }
+
+    pub(crate) fn append(
+        &mut self,
+        journal: &mut DisposableLifecycleJournalV2,
+        event: DisposableLifecycleEventV2,
+    ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        if self.poisoned {
+            return Err(invalid(
+                "census-bound store is poisoned; restart reconciliation is required",
+            ));
+        }
+        if let Err(error) = self.census.revalidate() {
+            self.poisoned = true;
+            return Err(error.into());
+        }
+        let digest = self.store.append(journal, event)?;
+        if let Err(error) = self.census.revalidate() {
+            self.poisoned = true;
+            return Err(error.into());
+        }
+        Ok(digest)
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        self.store.operation_nonce()
+    }
+
+    pub(crate) fn poisoned(&self) -> bool {
+        self.poisoned || self.store.poisoned()
+    }
+
+    pub(crate) fn runner_lease_source(
+        &self,
+    ) -> Result<RunnerControlLeaseSourceV3, DurableLifecycleStoreErrorV3> {
+        Ok(self.census.runner_lease_source()?)
     }
 }
 

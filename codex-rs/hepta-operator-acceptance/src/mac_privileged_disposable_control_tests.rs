@@ -370,7 +370,7 @@ fn clean_storage_receipt_is_complete_but_never_grants_authority() {
     assert!(!receipt.authority.any());
     assert!(receipt.closed_world_roster_verified);
     assert!(receipt.storage_precondition_satisfied);
-    assert!(!receipt.new_operation_precondition_satisfied);
+    assert!(receipt.new_operation_precondition_satisfied);
     assert!(receipt.blocking_operation_nonces.is_empty());
     assert!(receipt.completed_operation_nonces.is_empty());
 }
@@ -403,6 +403,7 @@ fn blocking_operation_receipt_remains_storage_only() {
     assert!(!receipt.admission_authority);
     assert!(!receipt.authority.any());
     assert!(!receipt.new_operation_precondition_satisfied);
+    assert!(assessment.into_fresh_control_census().is_err());
 }
 
 #[derive(Clone, Copy, Debug)]

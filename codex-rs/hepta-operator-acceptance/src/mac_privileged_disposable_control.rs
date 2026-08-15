@@ -30,11 +30,13 @@ use std::ffi::CStr;
 use std::ffi::CString;
 use std::fs::File;
 use std::io;
+use std::marker::PhantomData;
 use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::os::fd::RawFd;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use thiserror::Error;
 
 pub const PRIVILEGED_DISPOSABLE_CONTROL_ROOT_V2: &str =
@@ -332,10 +334,42 @@ pub struct LivePrivilegedDisposablePolicyV2 {
 /// it is dropped.  It is evidence, not an execution token.
 pub struct LivePrivilegedDisposableExecutionV2<'a> {
     _historical_roots: Vec<HistoricalRootCapsule>,
+    _mounts: Vec<MountBinding>,
+    _operation_names: Vec<String>,
     _operations: Vec<OperationCapsule>,
     _policy: &'a LivePrivilegedDisposablePolicyV2,
+    _protected_roots: Vec<PathBuf>,
+    _publication_roster: Vec<String>,
     _publication_records: Vec<RecordCapsule>,
     receipt: PrivilegedDisposableExecutionV2,
+    _volume_roster: Vec<String>,
+}
+
+/// Non-serializable closed-world census that may be consumed exactly once to
+/// create one fresh durable operation.  It retains every descriptor from the
+/// S1 assessment and the process-global flock while S2 owns the admitted
+/// operation.
+pub(crate) struct RetainedControlCensusV3<'a> {
+    assessment: LivePrivilegedDisposableExecutionV2<'a>,
+    admitted_operation_name: Option<String>,
+    operations_identity: Identity,
+    operations_roster: Vec<String>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Private descriptor bundle accepted by S2.  Callers cannot construct it
+/// from an arbitrary `File` or serialized receipt.
+pub(crate) struct CensusStoreBindingV3 {
+    expected_gid: u32,
+    expected_uid: u32,
+    operations: File,
+}
+
+/// Exact S1 lock clone accepted by the isolated runner integration.  There is
+/// deliberately no `From<File>` implementation.
+pub(crate) struct RunnerControlLeaseSourceV3 {
+    descriptor: File,
+    _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
 impl LivePrivilegedDisposablePolicyV2 {
@@ -540,6 +574,7 @@ impl LivePrivilegedDisposablePolicyV2 {
                 "bounded mount table changed during storage assessment",
             ));
         }
+        let new_operation_precondition_satisfied = blocking.is_empty() && awaiting.is_empty();
         let receipt = PrivilegedDisposableExecutionV2 {
             admission_authority: false,
             authority: DisposableAuthorityV2::none(),
@@ -549,17 +584,22 @@ impl LivePrivilegedDisposablePolicyV2 {
             historical_closure_bindings: historical_closed,
             historical_roots_scanned: historical.roots.len(),
             legacy_v1_verified_but_awaiting_v2_closure: awaiting,
-            new_operation_precondition_satisfied: false,
+            new_operation_precondition_satisfied,
             operation_count: operation_names.len(),
             schema: "hepta_mac_privileged_disposable_execution_v2".to_string(),
             storage_precondition_satisfied: true,
         };
         Ok(LivePrivilegedDisposableExecutionV2 {
             _historical_roots: historical.roots,
+            _mounts: mounts_after,
+            _operation_names: operation_names,
             _operations: capsules,
             _policy: self,
+            _protected_roots: protected_roots,
+            _publication_roster: publication_roster,
             _publication_records: publication_records,
             receipt,
+            _volume_roster: historical.volume_roster,
         })
     }
 
@@ -1349,6 +1389,13 @@ impl LivePrivilegedDisposablePolicyV2 {
     }
 
     fn revalidate_control_root(&self) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        self.revalidate_control_root_with_operations(self.operations_identity)
+    }
+
+    fn revalidate_control_root_with_operations(
+        &self,
+        operations_identity: Identity,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
         if validate_directory(
             &self.root,
             self.expected_uid,
@@ -1364,7 +1411,7 @@ impl LivePrivilegedDisposablePolicyV2 {
                 0o700,
                 &self.filesystem,
                 "operations directory",
-            )? != self.operations_identity
+            )? != operations_identity
             || validate_regular(
                 &self.lock,
                 self.expected_uid,
@@ -1385,7 +1432,7 @@ impl LivePrivilegedDisposablePolicyV2 {
             || identity(&self.volume)? != self.volume_identity
             || named_identity(self.volume.as_raw_fd(), &self.root_name)? != self.root_identity
             || named_identity(self.root.as_raw_fd(), LOCK_NAME)? != self.lock_identity
-            || named_identity(self.root.as_raw_fd(), OPERATIONS_NAME)? != self.operations_identity
+            || named_identity(self.root.as_raw_fd(), OPERATIONS_NAME)? != operations_identity
             || named_identity(self.root.as_raw_fd(), PUBLICATION_NAME)? != self.publication_identity
         {
             return Err(invalid("retained control descriptor identity changed"));
@@ -1412,7 +1459,7 @@ impl LivePrivilegedDisposablePolicyV2 {
     }
 
     #[cfg(test)]
-    fn create_for_test(root: &Path) -> Result<Self, PrivilegedDisposableControlErrorV2> {
+    pub(crate) fn create_for_test(root: &Path) -> Result<Self, PrivilegedDisposableControlErrorV2> {
         use std::fs;
         use std::fs::OpenOptions;
         use std::os::unix::fs::OpenOptionsExt;
@@ -1461,9 +1508,197 @@ impl LivePrivilegedDisposablePolicyV2 {
     }
 }
 
-impl LivePrivilegedDisposableExecutionV2<'_> {
+impl<'a> LivePrivilegedDisposableExecutionV2<'a> {
     pub fn receipt(&self) -> &PrivilegedDisposableExecutionV2 {
         &self.receipt
+    }
+
+    fn revalidate_for_operations(
+        &self,
+        operations_identity: Identity,
+        operations_roster: &[String],
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        self._policy
+            .revalidate_control_root_with_operations(operations_identity)?;
+        if list_directory(
+            self._policy.operations.as_raw_fd(),
+            MAX_CONTROL_OPERATIONS_V2,
+        )? != operations_roster
+        {
+            return Err(invalid(
+                "operations roster changed outside the admitted census transition",
+            ));
+        }
+        for capsule in &self._operations {
+            capsule.revalidate(
+                self._policy.operations.as_raw_fd(),
+                self._policy.expected_uid,
+                self._policy.expected_gid,
+                &self._policy.filesystem,
+            )?;
+        }
+        for root in &self._historical_roots {
+            root.revalidate(
+                self._policy.volume.as_raw_fd(),
+                self._policy.expected_uid,
+                self._policy.expected_gid,
+                &self._policy.filesystem,
+            )?;
+        }
+        if list_directory(self._policy.volume.as_raw_fd(), MAX_VOLUME_ENTRIES)?
+            != self._volume_roster
+        {
+            return Err(invalid("T5 root roster changed after retained census"));
+        }
+        if list_directory(
+            self._policy.publication.as_raw_fd(),
+            MAX_CONTROL_OPERATIONS_V2,
+        )? != self._publication_roster
+        {
+            return Err(invalid(
+                "closure publication roster changed after retained census",
+            ));
+        }
+        for record in &self._publication_records {
+            record.revalidate(
+                self._policy.publication.as_raw_fd(),
+                self._policy.expected_uid,
+                self._policy.expected_gid,
+                &self._policy.filesystem,
+            )?;
+        }
+        let mounts = mount_table_snapshot()?;
+        reject_nested_mounts(&mounts, &self._protected_roots)?;
+        if mounts != self._mounts {
+            return Err(invalid("mount table changed after retained census"));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn into_fresh_control_census(
+        self,
+    ) -> Result<RetainedControlCensusV3<'a>, PrivilegedDisposableControlErrorV2> {
+        if !self.receipt.storage_precondition_satisfied
+            || !self.receipt.closed_world_roster_verified
+            || !self.receipt.new_operation_precondition_satisfied
+            || !self.receipt.blocking_operation_nonces.is_empty()
+            || !self
+                .receipt
+                .legacy_v1_verified_but_awaiting_v2_closure
+                .is_empty()
+            || self.receipt.admission_authority
+            || self.receipt.authority.any()
+        {
+            return Err(invalid(
+                "fresh store census is not a closed-world no-authority precondition",
+            ));
+        }
+        self.revalidate_for_operations(self._policy.operations_identity, &self._operation_names)?;
+        let operations_identity = self._policy.operations_identity;
+        let operations_roster = self._operation_names.clone();
+        Ok(RetainedControlCensusV3 {
+            assessment: self,
+            admitted_operation_name: None,
+            operations_identity,
+            operations_roster,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl RetainedControlCensusV3<'_> {
+    pub(crate) fn prepare_store_creation(
+        &self,
+    ) -> Result<CensusStoreBindingV3, PrivilegedDisposableControlErrorV2> {
+        if self.admitted_operation_name.is_some() {
+            return Err(invalid(
+                "retained census already admitted its one fresh operation",
+            ));
+        }
+        self.revalidate()?;
+        Ok(CensusStoreBindingV3 {
+            expected_gid: self.assessment._policy.expected_gid,
+            expected_uid: self.assessment._policy.expected_uid,
+            operations: self.assessment._policy.operations.try_clone()?,
+        })
+    }
+
+    pub(crate) fn admit_fresh_operation(
+        &mut self,
+        final_name: &str,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        if self.admitted_operation_name.is_some() {
+            return Err(invalid(
+                "retained census cannot admit a second fresh operation",
+            ));
+        }
+        operation_nonce(final_name)?;
+        let mut expected = self.operations_roster.clone();
+        expected.push(final_name.to_string());
+        expected.sort();
+        if expected.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(invalid("fresh operation aliases an existing roster entry"));
+        }
+        let operations_identity = validate_directory(
+            &self.assessment._policy.operations,
+            self.assessment._policy.expected_uid,
+            self.assessment._policy.expected_gid,
+            0o700,
+            &self.assessment._policy.filesystem,
+            "operations directory after fresh admission",
+        )?;
+        if named_identity(self.assessment._policy.root.as_raw_fd(), OPERATIONS_NAME)?
+            != operations_identity
+        {
+            return Err(invalid(
+                "operations directory changed during fresh admission",
+            ));
+        }
+        self.operations_identity = operations_identity;
+        self.operations_roster = expected;
+        self.admitted_operation_name = Some(final_name.to_string());
+        self.revalidate()
+    }
+
+    pub(crate) fn revalidate(&self) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        self.assessment
+            .revalidate_for_operations(self.operations_identity, &self.operations_roster)
+    }
+
+    pub(crate) fn runner_lease_source(
+        &self,
+    ) -> Result<RunnerControlLeaseSourceV3, PrivilegedDisposableControlErrorV2> {
+        self.revalidate()?;
+        let descriptor = self.assessment._policy.lock.try_clone()?;
+        if identity(&descriptor)? != self.assessment._policy.lock_identity {
+            return Err(invalid(
+                "runner lease clone differs from the retained global lock",
+            ));
+        }
+        Ok(RunnerControlLeaseSourceV3 {
+            descriptor,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl CensusStoreBindingV3 {
+    pub(crate) fn expected_gid(&self) -> u32 {
+        self.expected_gid
+    }
+
+    pub(crate) fn expected_uid(&self) -> u32 {
+        self.expected_uid
+    }
+
+    pub(crate) fn operations(&self) -> &File {
+        &self.operations
+    }
+}
+
+impl RunnerControlLeaseSourceV3 {
+    pub(crate) fn into_descriptor(self) -> File {
+        self.descriptor
     }
 }
 
