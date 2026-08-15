@@ -1322,7 +1322,9 @@ struct PersistedOperationIssueSealV3 {
 /// The only production-capable S2-to-runner handoff.  `issue` is the actual
 /// exclusive borrow of the whole reconciliation store; `dispatch` embeds the
 /// exact durable issue bytes and the S1-derived lease.  Neither component has
-/// a raw descriptor or digest projection.
+/// a raw descriptor or digest projection.  There is deliberately no benign
+/// Drop path: until a future sealed successor consumes this entire token, any
+/// release would otherwise make an issued-or-uncertain operation reusable.
 pub(crate) struct PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
     issue: RetainedOperationEffectIssueV3<'store, 'a, 'e>,
     dispatch: Option<SealedRunnerDispatchV3>,
@@ -1334,21 +1336,26 @@ pub(crate) struct PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
 pub(crate) struct IssuedEffectSessionV3<'store, 'a, 'e> {
     runner: Option<AuthenticatedDispatchedRunnerV3>,
     grant: Option<PersistedIssuedRunnerGrantV3<'store, 'a, 'e>>,
-    death_proven: bool,
+    proof_and_grant_transferred: bool,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
 /// A post-durability dispatch failure retains the same whole-store grant until
-/// a composite death proof exists.  Drop poisons the in-memory wrapper if
-/// fail-closed cleanup cannot prove the runner dead.
+/// a composite death proof exists.  Best-effort cleanup may retain that proof,
+/// but Drop still poisons unless an explicit transition moves the proof and
+/// whole-store grant together into `IssuedEffectDeathProvedV3`.
 pub(crate) struct IssuedEffectDispatchFailureV3<'store, 'a, 'e> {
     error: String,
     runner_failure: Option<IssuedRunnerDispatchFailureV3>,
     grant: Option<PersistedIssuedRunnerGrantV3<'store, 'a, 'e>>,
-    death_proven: bool,
+    proof_and_grant_transferred: bool,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
+/// Same-supervisor death evidence still bound to the exact issued operation.
+/// There is no owned-proof projection.  Until a future durable successor
+/// consumes this entire value, its retained grant keeps the wrapper armed and
+/// poisons again on Drop.
 pub(crate) struct IssuedEffectDeathProvedV3<'store, 'a, 'e> {
     proof: SameSupervisorRunnerDeathProofV3,
     receipt: Option<InertDispatchReceiptV3>,
@@ -2504,6 +2511,29 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
         &mut self,
         event: DisposableLifecycleEventV2,
     ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        self.append_sealed_with_pre_retain_hook(event, || Ok(()))
+    }
+
+    #[cfg(test)]
+    fn append_with_pre_retain_hook<F>(
+        &mut self,
+        event: DisposableLifecycleEventV2,
+        hook: F,
+    ) -> Result<String, DurableLifecycleStoreErrorV3>
+    where
+        F: FnOnce() -> io::Result<()>,
+    {
+        self.append_sealed_with_pre_retain_hook(event, hook)
+    }
+
+    fn append_sealed_with_pre_retain_hook<F>(
+        &mut self,
+        event: DisposableLifecycleEventV2,
+        hook: F,
+    ) -> Result<String, DurableLifecycleStoreErrorV3>
+    where
+        F: FnOnce() -> io::Result<()>,
+    {
         if self.poisoned {
             return Err(invalid(
                 "census-bound store is poisoned; restart reconciliation is required",
@@ -2517,25 +2547,27 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
             self.poisoned = true;
             return Err(error.into());
         }
-        let digest = self
-            .store
-            .append_mode_with_hook(&mut self.journal, event, |_| Ok(()))?;
-        let mut append = RetainedLifecycleRecordAppendV3::retain(&self.store, &digest)?;
-        let sink = self.census.fresh_lifecycle_record_sink()?;
-        if let Err(error) = append.adopt_into_s1(sink) {
-            self.poisoned = true;
-            return Err(error);
+        // Arm before entering the durable writer.  If persistence panics, or
+        // any post-publish retain/adoption/replay step fails, a caught unwind
+        // or ordinary error leaves this wrapper permanently fail-closed.
+        self.poisoned = true;
+        let result = (|| {
+            let digest = self
+                .store
+                .append_mode_with_hook(&mut self.journal, event, |_| Ok(()))?;
+            hook()?;
+            let mut append = RetainedLifecycleRecordAppendV3::retain(&self.store, &digest)?;
+            let sink = self.census.fresh_lifecycle_record_sink()?;
+            append.adopt_into_s1(sink)?;
+            append.require_s1_adopted()?;
+            self.revalidate_issues()?;
+            self.census.revalidate()?;
+            Ok(digest)
+        })();
+        if result.is_ok() {
+            self.poisoned = false;
         }
-        append.require_s1_adopted()?;
-        if let Err(error) = self.revalidate_issues() {
-            self.poisoned = true;
-            return Err(error);
-        }
-        if let Err(error) = self.census.revalidate() {
-            self.poisoned = true;
-            return Err(error.into());
-        }
-        Ok(digest)
+        result
     }
 
     pub(crate) fn operation_nonce(&self) -> &str {
@@ -3090,8 +3122,10 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
                 "retained collector operation differs from the reconciliation store",
             ));
         }
-        let append =
-            self.append_reconciliation_inner(ReconciliationLifecycleEventV3(event), false)?;
+        let append = self.append_reconciliation_inner_holding_poison(
+            ReconciliationLifecycleEventV3(event),
+            false,
+        )?;
         let digest = append.digest().to_string();
         if let Err(error) = retained.bind_lifecycle_record(append) {
             self.poisoned = true;
@@ -3114,6 +3148,10 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             })?;
         }
         self.collector = Some(retained);
+        // The exact collector is now both S1-adopted and wrapper-owned.  This
+        // assignment is the outer transaction endpoint; every error or panic
+        // after the V2 append above leaves `poisoned` armed.
+        self.poisoned = false;
         Ok(digest)
     }
 
@@ -3127,6 +3165,24 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
         epochs: EffectEpochEvidenceV3,
     ) -> Result<PersistedOperationIssueSealV3, DurableLifecycleStoreErrorV3> {
         self.require_no_collector_pending("effect issue")?;
+        self.persist_reconciliation_issue_transaction(command, epochs, true)
+    }
+
+    fn persist_reconciliation_issue_holding_poison(
+        &mut self,
+        command: ExactDisposableCommandV3,
+        epochs: EffectEpochEvidenceV3,
+    ) -> Result<PersistedOperationIssueSealV3, DurableLifecycleStoreErrorV3> {
+        self.require_no_collector_pending("effect issue")?;
+        self.persist_reconciliation_issue_transaction(command, epochs, false)
+    }
+
+    fn persist_reconciliation_issue_transaction(
+        &mut self,
+        command: ExactDisposableCommandV3,
+        epochs: EffectEpochEvidenceV3,
+        disarm_on_success: bool,
+    ) -> Result<PersistedOperationIssueSealV3, DurableLifecycleStoreErrorV3> {
         if self.poisoned {
             return Err(invalid(
                 "reconciliation operation store is poisoned; exact restart replay is required",
@@ -3164,8 +3220,10 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
                 ));
             }
         };
-        let issued_append =
-            self.append_reconciliation_inner(ReconciliationLifecycleEventV3(event), true)?;
+        let issued_append = self.append_reconciliation_inner_holding_poison(
+            ReconciliationLifecycleEventV3(event),
+            true,
+        )?;
         let post_durability = (|| {
             issued_append.require_s1_adopted()?;
             let lifecycle =
@@ -3210,8 +3268,8 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
                 },
             })
         })();
-        if post_durability.is_err() {
-            self.poisoned = true;
+        if post_durability.is_ok() && disarm_on_success {
+            self.poisoned = false;
         }
         post_durability
     }
@@ -3243,7 +3301,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
     ) -> Result<PersistedIssuedRunnerGrantV3<'store, 'a, 'e>, DurableLifecycleStoreErrorV3> {
         let epoch_binding = runner.bind_effect_epoch(self.epoch)?;
         let epochs = EffectEpochEvidenceV3::from_authenticated(epoch_binding)?;
-        let persisted = self.persist_reconciliation_issue_inner(command, epochs)?;
+        let persisted = self.persist_reconciliation_issue_holding_poison(command, epochs)?;
         if let Err(error) = self.revalidate_issue_state(persisted.effect_id) {
             self.poisoned = true;
             return Err(error);
@@ -3278,15 +3336,14 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
         ) {
             Ok(dispatch) => dispatch,
             Err(error) => {
-                issue.poison_after_unproved_runner_drop();
+                issue.poison_after_unconsumed_runner_proof_drop();
                 return Err(error.into());
             }
         };
-        Ok(PersistedIssuedRunnerGrantV3 {
+        Ok(PersistedIssuedRunnerGrantV3::new_armed(
             issue,
-            dispatch: Some(dispatch),
-            _not_send_or_sync: PhantomData,
-        })
+            Some(dispatch),
+        ))
     }
 
     /// Produce the distinct fresh-supervisor death proof for the latest exact
@@ -3432,7 +3489,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             census,
             epoch,
             journal,
-            poisoned,
+            poisoned: _,
             prepared,
             collector: _,
             issues,
@@ -3449,7 +3506,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             issued_record_sha256,
             issues,
             journal,
-            poisoned,
+            poisoned: false,
             prepared,
             restart,
             store,
@@ -3521,7 +3578,27 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
         event: ReconciliationLifecycleEventV3,
         preserve_collector: bool,
     ) -> Result<RetainedLifecycleRecordAppendV3, DurableLifecycleStoreErrorV3> {
-        self.append_reconciliation_inner_with_adoption_hook(event, preserve_collector, || Ok(()))
+        self.append_reconciliation_inner_with_adoption_hooks(
+            event,
+            preserve_collector,
+            true,
+            || Ok(()),
+            || Ok(()),
+        )
+    }
+
+    fn append_reconciliation_inner_holding_poison(
+        &mut self,
+        event: ReconciliationLifecycleEventV3,
+        preserve_collector: bool,
+    ) -> Result<RetainedLifecycleRecordAppendV3, DurableLifecycleStoreErrorV3> {
+        self.append_reconciliation_inner_with_adoption_hooks(
+            event,
+            preserve_collector,
+            false,
+            || Ok(()),
+            || Ok(()),
+        )
     }
 
     #[cfg(test)]
@@ -3533,18 +3610,51 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
     where
         F: FnOnce() -> io::Result<()>,
     {
-        self.append_reconciliation_inner_with_adoption_hook(event, false, hook)
+        self.append_reconciliation_inner_with_adoption_hooks(event, false, true, || Ok(()), hook)
             .map(|append| append.digest().to_string())
     }
 
-    fn append_reconciliation_inner_with_adoption_hook<F>(
+    #[cfg(test)]
+    fn append_reconciliation_with_pre_retain_hook<F>(
+        &mut self,
+        event: ReconciliationLifecycleEventV3,
+        hook: F,
+    ) -> Result<String, DurableLifecycleStoreErrorV3>
+    where
+        F: FnOnce() -> io::Result<()>,
+    {
+        self.append_reconciliation_inner_with_adoption_hooks(event, false, true, hook, || Ok(()))
+            .map(|append| append.digest().to_string())
+    }
+
+    #[cfg(test)]
+    fn append_reconciliation_outer_transaction_with_hook<F>(
+        &mut self,
+        event: ReconciliationLifecycleEventV3,
+        hook: F,
+    ) -> Result<String, DurableLifecycleStoreErrorV3>
+    where
+        F: FnOnce() -> io::Result<()>,
+    {
+        let append = self.append_reconciliation_inner_holding_poison(event, false)?;
+        hook()?;
+        append.require_s1_adopted()?;
+        let digest = append.digest().to_string();
+        self.poisoned = false;
+        Ok(digest)
+    }
+
+    fn append_reconciliation_inner_with_adoption_hooks<F, G>(
         &mut self,
         event: ReconciliationLifecycleEventV3,
         preserve_collector: bool,
-        hook: F,
+        disarm_on_success: bool,
+        pre_retain_hook: F,
+        pre_adoption_hook: G,
     ) -> Result<RetainedLifecycleRecordAppendV3, DurableLifecycleStoreErrorV3>
     where
         F: FnOnce() -> io::Result<()>,
+        G: FnOnce() -> io::Result<()>,
     {
         if self.poisoned {
             return Err(invalid(
@@ -3573,34 +3683,33 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
                 "terminal closure must consume Blocking into the completed typestate",
             ));
         }
-        let digest = self.store.append_reconciliation(&mut self.journal, event)?;
-        let mut append = RetainedLifecycleRecordAppendV3::retain(&self.store, &digest)?;
-        if let Err(error) = hook() {
-            self.poisoned = true;
-            return Err(error.into());
-        }
-        let sink = self.census.selected_lifecycle_record_sink()?;
-        if let Err(error) = append.adopt_into_s1(sink) {
-            self.poisoned = true;
-            return Err(error);
-        }
-        append.require_s1_adopted()?;
-        if let Err(error) = self.epoch.validate_current() {
-            self.poisoned = true;
-            return Err(invalid(format!(
-                "fresh process epoch changed after reconciliation append: {error}"
-            )));
-        }
-        if !preserve_collector {
-            if let Err(error) = self.revalidate_existing_issues() {
-                self.poisoned = true;
-                return Err(error);
+        // Default-poison spans the durable V2 append and every later exact
+        // retain/S1 adoption/final replay step.  Only the complete transaction
+        // disarms it; this also makes caught panics after publication fail shut.
+        self.poisoned = true;
+        let result = (|| {
+            let digest = self.store.append_reconciliation(&mut self.journal, event)?;
+            pre_retain_hook()?;
+            let mut append = RetainedLifecycleRecordAppendV3::retain(&self.store, &digest)?;
+            pre_adoption_hook()?;
+            let sink = self.census.selected_lifecycle_record_sink()?;
+            append.adopt_into_s1(sink)?;
+            append.require_s1_adopted()?;
+            self.epoch.validate_current().map_err(|error| {
+                invalid(format!(
+                    "fresh process epoch changed after reconciliation append: {error}"
+                ))
+            })?;
+            if !preserve_collector {
+                self.revalidate_existing_issues()?;
+                self.collector = None;
             }
+            Ok(append)
+        })();
+        if result.is_ok() && disarm_on_success {
+            self.poisoned = false;
         }
-        if !preserve_collector {
-            self.collector = None;
-        }
-        Ok(append)
+        result
     }
 
     pub(crate) fn complete_reconciliation_from_retained_absence(
@@ -3648,6 +3757,10 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
                 "fresh process epoch changed before terminal append: {error}"
             ))
         })?;
+        // This transition consumes `self`, so no capability is returned on
+        // any error.  Arm poison before the durable writer for panic safety as
+        // well; successful completion moves only the sealed completed state.
+        self.poisoned = true;
         let digest = self
             .store
             .append_reconciliation_terminal(&mut self.journal, event)?;
@@ -3683,7 +3796,17 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
 
 impl<S> PendingUnmountReconciliationOperationStoreV3<'_, '_, S> {
     fn revalidate_pending_issue(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
-        if self.poisoned || self.store.poisoned() || self.issues.poisoned() {
+        self.revalidate_pending_issue_inner(false)
+    }
+
+    fn revalidate_pending_issue_inner(
+        &self,
+        allow_armed_durability_poison: bool,
+    ) -> Result<(), DurableLifecycleStoreErrorV3> {
+        if (!allow_armed_durability_poison && self.poisoned)
+            || self.store.poisoned()
+            || self.issues.poisoned()
+        {
             return Err(invalid(
                 "pending-unmount operation is poisoned; exact restart replay is required",
             ));
@@ -3730,6 +3853,17 @@ impl<S> PendingUnmountReconciliationOperationStoreV3<'_, '_, S> {
         &mut self,
         event: ReconciliationLifecycleEventV3,
     ) -> Result<RetainedLifecycleRecordAppendV3, DurableLifecycleStoreErrorV3> {
+        self.append_pending_unmount_with_pre_retain_hook(event, || Ok(()))
+    }
+
+    fn append_pending_unmount_with_pre_retain_hook<F>(
+        &mut self,
+        event: ReconciliationLifecycleEventV3,
+        hook: F,
+    ) -> Result<RetainedLifecycleRecordAppendV3, DurableLifecycleStoreErrorV3>
+    where
+        F: FnOnce() -> io::Result<()>,
+    {
         self.revalidate_pending_issue()?;
         let valid_event = matches!(
             &event.0,
@@ -3747,25 +3881,21 @@ impl<S> PendingUnmountReconciliationOperationStoreV3<'_, '_, S> {
                 "pending-unmount typestate accepts only its exact successful callback or observation",
             ));
         }
-        let digest = match self.store.append_reconciliation(&mut self.journal, event) {
-            Ok(digest) => digest,
-            Err(error) => {
-                self.poisoned = true;
-                return Err(error);
-            }
-        };
-        let mut append = RetainedLifecycleRecordAppendV3::retain(&self.store, &digest)?;
-        let sink = self.census.selected_lifecycle_record_sink()?;
-        if let Err(error) = append.adopt_into_s1(sink) {
-            self.poisoned = true;
-            return Err(error);
-        }
-        append.require_s1_adopted()?;
-        if let Err(error) = self.revalidate_pending_issue() {
-            self.poisoned = true;
-            return Err(error);
-        }
-        Ok(append)
+        self.poisoned = true;
+        let result = (|| {
+            let digest = self.store.append_reconciliation(&mut self.journal, event)?;
+            hook()?;
+            let mut append = RetainedLifecycleRecordAppendV3::retain(&self.store, &digest)?;
+            let sink = self.census.selected_lifecycle_record_sink()?;
+            append.adopt_into_s1(sink)?;
+            append.require_s1_adopted()?;
+            self.revalidate_pending_issue_inner(true)?;
+            Ok(append)
+        })();
+        // Both callers consume the entire pending wrapper.  Keep poison armed
+        // across their later callback/collector typestate transitions; only a
+        // fully constructed successor capability may disarm it.
+        result
     }
 }
 
@@ -3800,7 +3930,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             issued_record_sha256,
             issues,
             journal,
-            poisoned,
+            poisoned: _,
             prepared,
             restart,
             store,
@@ -3816,7 +3946,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             issued_record_sha256,
             issues,
             journal,
-            poisoned,
+            poisoned: false,
             prepared,
             restart,
             store,
@@ -3878,7 +4008,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             issued_record_sha256: _,
             issues,
             journal,
-            poisoned,
+            poisoned: _,
             prepared,
             restart,
             store,
@@ -3891,11 +4021,11 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             ))
         })?;
         let census = census.advance_unmount_delta(advance)?;
-        let stable = ReconciliationOperationStoreV3 {
+        let mut stable = ReconciliationOperationStoreV3 {
             census,
             epoch,
             journal,
-            poisoned,
+            poisoned: true,
             prepared,
             collector: Some(next),
             issues,
@@ -3919,6 +4049,11 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
                     "post-unmount collector changed after stable transition: {error}"
                 ))
             })?;
+        // This consume-self path reaches its transaction endpoint only after
+        // the exact post-effect collector, S1 mount advance, issues, and epoch
+        // have all replayed successfully.  An error or panic above returns no
+        // reusable capability and leaves the consumed wrapper armed.
+        stable.poisoned = false;
         Ok(stable)
     }
 }
@@ -3941,7 +4076,7 @@ impl RetainedOperationEffectIssueV3<'_, '_, '_> {
         })
     }
 
-    pub(crate) fn poison_after_unproved_runner_drop(&mut self) {
+    pub(crate) fn poison_after_unconsumed_runner_proof_drop(&mut self) {
         self.store.poisoned = true;
     }
 
@@ -3960,6 +4095,22 @@ impl SealedRunnerIssueMaterialV3 {
 }
 
 impl<'store, 'a, 'e> PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
+    fn new_armed(
+        issue: RetainedOperationEffectIssueV3<'store, 'a, 'e>,
+        dispatch: Option<SealedRunnerDispatchV3>,
+    ) -> Self {
+        // Keep the wrapper armed while the linear grant exists.  `Drop` is a
+        // useful explicit guard, but safe Rust may also forget a value.  Only
+        // a future sealed durable successor which consumes this entire grant
+        // may introduce a private disarm transition.
+        issue.store.poisoned = true;
+        Self {
+            issue,
+            dispatch,
+            _not_send_or_sync: PhantomData,
+        }
+    }
+
     pub(crate) fn effect_id(&self) -> u64 {
         self.issue.effect_id()
     }
@@ -3975,13 +4126,13 @@ impl<'store, 'a, 'e> PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
     ) -> Result<IssuedEffectSessionV3<'store, 'a, 'e>, IssuedEffectDispatchFailureV3<'store, 'a, 'e>>
     {
         if let Err(error) = self.issue.revalidate() {
-            self.issue.poison_after_unproved_runner_drop();
+            self.issue.poison_after_unconsumed_runner_proof_drop();
             drop(runner);
             return Err(IssuedEffectDispatchFailureV3 {
                 error: format!("exact S2 issue changed before dispatch: {error}"),
                 runner_failure: None,
                 grant: Some(self),
-                death_proven: true,
+                proof_and_grant_transferred: false,
                 _not_send_or_sync: PhantomData,
             });
         }
@@ -3993,21 +4144,32 @@ impl<'store, 'a, 'e> PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
             Ok(runner) => Ok(IssuedEffectSessionV3 {
                 runner: Some(runner),
                 grant: Some(self),
-                death_proven: false,
+                proof_and_grant_transferred: false,
                 _not_send_or_sync: PhantomData,
             }),
             Err(failure) => {
                 let error = failure.error().to_string();
-                let death_proven = failure.has_death_proof();
                 Err(IssuedEffectDispatchFailureV3 {
                     error,
                     runner_failure: Some(failure),
                     grant: Some(self),
-                    death_proven,
+                    proof_and_grant_transferred: false,
                     _not_send_or_sync: PhantomData,
                 })
             }
         }
+    }
+}
+
+impl Drop for PersistedIssuedRunnerGrantV3<'_, '_, '_> {
+    fn drop(&mut self) {
+        // The grant is the linear whole-operation capability.  Dispatching it,
+        // proving the runner dead, or merely observing that proof does not by
+        // itself durably advance reconciliation.  SAFE-INERT has no sealed
+        // successor yet, so every Drop remains fail-closed.  A future
+        // successor must consume this whole token and perform its durable
+        // transition before it may add a private disarm path.
+        self.issue.poison_after_unconsumed_runner_proof_drop();
     }
 }
 
@@ -4048,7 +4210,7 @@ impl<'store, 'a, 'e> IssuedEffectSessionV3<'store, 'a, 'e> {
             .grant
             .take()
             .expect("issued session retains its whole-store grant");
-        self.death_proven = true;
+        self.proof_and_grant_transferred = true;
         Ok(IssuedEffectDeathProvedV3 {
             proof,
             receipt: Some(receipt),
@@ -4060,19 +4222,22 @@ impl<'store, 'a, 'e> IssuedEffectSessionV3<'store, 'a, 'e> {
 
 impl Drop for IssuedEffectSessionV3<'_, '_, '_> {
     fn drop(&mut self) {
-        if self.death_proven {
+        if self.proof_and_grant_transferred {
             return;
         }
-        let proved = self
+        let _cleanup_result = self
             .runner
             .as_mut()
             .map(|runner| runner.ensure_death_proof(std::time::Duration::from_secs(5)))
-            .transpose()
-            .is_ok();
-        if !proved {
-            if let Some(grant) = self.grant.as_mut() {
-                grant.issue.poison_after_unproved_runner_drop();
-            }
+            .transpose();
+        // Cleanup may retain a valid proof inside the runner, but Drop is not
+        // the sealed state transition which consumes and returns that proof.
+        // Releasing the whole-store borrow without an explicit successor
+        // would make the issued operation reusable while its only proof is
+        // destroyed.  Always poison unless `finish_after_death_proof` moved
+        // both the proof and grant into `IssuedEffectDeathProvedV3`.
+        if let Some(grant) = self.grant.as_mut() {
+            grant.issue.poison_after_unconsumed_runner_proof_drop();
         }
     }
 }
@@ -4097,7 +4262,7 @@ impl<'store, 'a, 'e> IssuedEffectDispatchFailureV3<'store, 'a, 'e> {
             .grant
             .take()
             .expect("failed dispatch retains its whole-store grant");
-        self.death_proven = true;
+        self.proof_and_grant_transferred = true;
         Ok(IssuedEffectDeathProvedV3 {
             proof,
             receipt: None,
@@ -4109,19 +4274,16 @@ impl<'store, 'a, 'e> IssuedEffectDispatchFailureV3<'store, 'a, 'e> {
 
 impl Drop for IssuedEffectDispatchFailureV3<'_, '_, '_> {
     fn drop(&mut self) {
-        if self.death_proven {
+        if self.proof_and_grant_transferred {
             return;
         }
-        let proved = self
+        let _cleanup_result = self
             .runner_failure
             .as_mut()
             .map(|failure| failure.ensure_death_proof(std::time::Duration::from_secs(5)))
-            .transpose()
-            .is_ok();
-        if !proved {
-            if let Some(grant) = self.grant.as_mut() {
-                grant.issue.poison_after_unproved_runner_drop();
-            }
+            .transpose();
+        if let Some(grant) = self.grant.as_mut() {
+            grant.issue.poison_after_unconsumed_runner_proof_drop();
         }
     }
 }
@@ -4133,10 +4295,6 @@ impl IssuedEffectDeathProvedV3<'_, '_, '_> {
 
     pub(crate) fn receipt(&self) -> Option<&InertDispatchReceiptV3> {
         self.receipt.as_ref()
-    }
-
-    pub(crate) fn into_same_supervisor_proof(self) -> SameSupervisorRunnerDeathProofV3 {
-        self.proof
     }
 }
 
