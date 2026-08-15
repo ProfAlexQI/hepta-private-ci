@@ -16,6 +16,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::AcceptanceError;
+use crate::durable::canonical_json;
+use crate::durable::sha256;
 
 const IDENTITY_SCHEMA: &str = "hepta_mac_iomedia_registry_identity_v1";
 const TOPOLOGY_SCHEMA: &str = "hepta_mac_attached_iomedia_topology_v1";
@@ -26,6 +28,10 @@ const PROVENANCE_TOPOLOGY_SCHEMA: &str = "hepta_mac_attached_iomedia_topology_v2
 const BACKING_SCHEMA: &str = "hepta_mac_disk_image_backing_provenance_v1";
 const BACKING_IDENTITY_SCHEMA: &str = "hepta_mac_disk_image_backing_identity_v2";
 const EXACT_BACKING_IDENTITY_SCHEMA: &str = "hepta_mac_exact_disk_image_backing_identity_v3";
+const UNLINKED_BACKING_SCHEMA: &str = "hepta_mac_unlinked_disk_image_backing_v3";
+const BACKING_PATH_ABSENCE_SCHEMA: &str = "hepta_mac_backing_path_absence_v3";
+const UNLINKED_BACKING_KIND: &str = "held_inode_namespace_unlinked";
+const BACKING_PATH_ABSENCE_KIND: &str = "namespace_absent";
 const RESTART_BACKING_IDENTITY_SCHEMA: &str = "hepta_mac_restart_disk_image_backing_identity_v3";
 const RESTART_INVENTORY_SCHEMA: &str = "hepta_mac_restart_iomedia_inventory_v3";
 const MAX_IOMEDIA_OBJECTS: usize = 256;
@@ -237,6 +243,67 @@ pub struct ExactDiskImageBackingIdentityV3 {
     pub canonical_path: String,
     pub content_sha256: String,
     pub opened_components: Vec<ExactBackingPathComponentV3>,
+    pub schema: String,
+}
+
+/// Canonical full-stat projection of the retained backing file on one side of
+/// the namespace-unlink observation.  `rdev` is recorded separately from the
+/// older prepared identity so the transition cannot silently change any
+/// terminal inode field that V3 is required to bind.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UnlinkedBackingFileStateV3 {
+    pub birthtime_nanoseconds: i64,
+    pub birthtime_seconds: i64,
+    pub ctime_nanoseconds: i64,
+    pub ctime_seconds: i64,
+    pub dev: u64,
+    pub flags: u32,
+    pub generation: u32,
+    pub gid: u32,
+    pub inode: u64,
+    pub mode: u32,
+    pub mtime_nanoseconds: i64,
+    pub mtime_seconds: i64,
+    pub nlink: u64,
+    pub rdev: u64,
+    pub size: u64,
+    pub uid: u32,
+}
+
+/// Serializable evidence for a namespace unlink that was performed by an
+/// external actor while this process continuously retained the original file
+/// descriptor.  This is evidence only and never grants path or effect
+/// authority.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UnlinkedBackingBindingV3 {
+    pub authority_granted: bool,
+    pub canonical_path: String,
+    pub content_sha256: String,
+    pub initial_file: UnlinkedBackingFileStateV3,
+    pub kind: String,
+    pub opened_ancestors_after: Vec<ExactBackingPathComponentV3>,
+    pub opened_ancestors_before: Vec<ExactBackingPathComponentV3>,
+    pub post_unlink_file: UnlinkedBackingFileStateV3,
+    pub prepared_backing_sha256: String,
+    pub schema: String,
+}
+
+/// Canonical evidence that the prepared basename is currently absent beneath
+/// the exact retained ancestor chain.  It intentionally contains no terminal
+/// inode or link-count assertion and therefore cannot be confused with proof
+/// that the formerly prepared inode was globally deleted.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct BackingPathAbsenceBindingV3 {
+    pub authority_granted: bool,
+    pub basename: String,
+    pub canonical_path: String,
+    pub kind: String,
+    pub observed_ancestors: Vec<ExactBackingPathComponentV3>,
+    pub prepared_ancestors: Vec<ExactBackingPathComponentV3>,
+    pub prepared_backing_sha256: String,
     pub schema: String,
 }
 
@@ -1191,6 +1258,314 @@ pub fn validate_disk_image_backing_identity_v2(
     Ok(())
 }
 
+fn bounded_canonical_absolute_path_shape(path: &str) -> bool {
+    let path = Path::new(path);
+    path.as_os_str().as_encoded_bytes().len() <= MAX_CF_STRING_BYTES
+        && !path.as_os_str().as_encoded_bytes().contains(&0)
+        && path.is_absolute()
+        && path.components().count() <= MAX_BACKING_COMPONENTS
+        && path.components().all(|component| {
+            matches!(
+                component,
+                std::path::Component::RootDir | std::path::Component::Normal(_)
+            )
+        })
+}
+
+fn validate_full_binding_v3(
+    binding: &FilesystemObjectBindingV3,
+    directory: bool,
+    allow_zero_links: bool,
+    label: &str,
+) -> Result<(), AcceptanceError> {
+    let expected_type = if directory {
+        libc::S_IFDIR
+    } else {
+        libc::S_IFREG
+    } as u32;
+    if binding.dev == 0
+        || binding.inode == 0
+        || (!allow_zero_links && binding.nlink == 0)
+        || !(0..1_000_000_000).contains(&binding.birthtime_nanoseconds)
+        || !(0..1_000_000_000).contains(&binding.ctime_nanoseconds)
+        || !(0..1_000_000_000).contains(&binding.mtime_nanoseconds)
+        || binding.mode & libc::S_IFMT as u32 != expected_type
+        || (!directory && (binding.size == 0 || binding.size > MAX_BACKING_FILE_BYTES))
+    {
+        return Err(invalid(format!("{label} full binding is malformed")));
+    }
+    Ok(())
+}
+
+fn same_parent_binding_except_namespace_delta(
+    before: &FilesystemObjectBindingV3,
+    after: &FilesystemObjectBindingV3,
+) -> bool {
+    before.birthtime_nanoseconds == after.birthtime_nanoseconds
+        && before.birthtime_seconds == after.birthtime_seconds
+        && before.dev == after.dev
+        && before.flags == after.flags
+        && before.generation == after.generation
+        && before.gid == after.gid
+        && before.inode == after.inode
+        && before.mode == after.mode
+        && before.uid == after.uid
+}
+
+fn validate_exact_ancestor_roster(
+    canonical_path: &str,
+    ancestors: &[ExactBackingPathComponentV3],
+    label: &str,
+) -> Result<(), AcceptanceError> {
+    if ancestors.is_empty()
+        || ancestors.len() >= MAX_BACKING_COMPONENTS
+        || ancestors.first().map(|component| component.path.as_str()) != Some("/")
+        || ancestors.last().map(|component| Path::new(&component.path))
+            != Path::new(canonical_path).parent()
+    {
+        return Err(invalid(format!(
+            "{label} ancestor chain has wrong endpoints"
+        )));
+    }
+    for (index, component) in ancestors.iter().enumerate() {
+        validate_full_binding_v3(&component.binding, true, false, label)?;
+        if !component.directory
+            || (index > 0
+                && Path::new(&component.path).parent()
+                    != Some(Path::new(&ancestors[index - 1].path)))
+        {
+            return Err(invalid(format!(
+                "{label} ancestor chain is unsafe or discontinuous"
+            )));
+        }
+    }
+    Ok(())
+}
+
+pub fn validate_exact_disk_image_backing_identity_v3(
+    backing: &ExactDiskImageBackingIdentityV3,
+) -> Result<(), AcceptanceError> {
+    if backing.schema != EXACT_BACKING_IDENTITY_SCHEMA
+        || backing.authority_granted
+        || !bounded_canonical_absolute_path_shape(&backing.canonical_path)
+        || !valid_sha256(&backing.content_sha256)
+        || backing.opened_components.len() < 2
+        || backing.opened_components.len() > MAX_BACKING_COMPONENTS
+        || backing
+            .opened_components
+            .first()
+            .map(|component| component.path.as_str())
+            != Some("/")
+        || backing
+            .opened_components
+            .last()
+            .map(|component| component.path.as_str())
+            != Some(backing.canonical_path.as_str())
+    {
+        return Err(invalid(
+            "exact disk-image backing identity is malformed or grants authority",
+        ));
+    }
+    for (index, component) in backing.opened_components.iter().enumerate() {
+        let directory = index + 1 != backing.opened_components.len();
+        validate_full_binding_v3(
+            &component.binding,
+            directory,
+            false,
+            "exact backing component",
+        )?;
+        if component.directory != directory
+            || (index > 0
+                && Path::new(&component.path).parent()
+                    != Some(Path::new(&backing.opened_components[index - 1].path)))
+        {
+            return Err(invalid(
+                "exact disk-image backing component chain is unsafe or discontinuous",
+            ));
+        }
+    }
+    if backing
+        .opened_components
+        .last()
+        .expect("validated exact backing roster")
+        .binding
+        .nlink
+        != 1
+    {
+        return Err(invalid(
+            "exact disk-image backing terminal does not have one namespace link",
+        ));
+    }
+    Ok(())
+}
+
+fn unlinked_state_as_full_binding(state: &UnlinkedBackingFileStateV3) -> FilesystemObjectBindingV3 {
+    FilesystemObjectBindingV3 {
+        birthtime_nanoseconds: state.birthtime_nanoseconds,
+        birthtime_seconds: state.birthtime_seconds,
+        ctime_nanoseconds: state.ctime_nanoseconds,
+        ctime_seconds: state.ctime_seconds,
+        dev: state.dev,
+        flags: state.flags,
+        generation: state.generation,
+        gid: state.gid,
+        inode: state.inode,
+        mode: state.mode,
+        mtime_nanoseconds: state.mtime_nanoseconds,
+        mtime_seconds: state.mtime_seconds,
+        nlink: state.nlink,
+        size: state.size,
+        uid: state.uid,
+    }
+}
+
+fn same_unlinked_terminal_except_ctime_and_nlink(
+    before: &UnlinkedBackingFileStateV3,
+    after: &UnlinkedBackingFileStateV3,
+) -> bool {
+    before.birthtime_nanoseconds == after.birthtime_nanoseconds
+        && before.birthtime_seconds == after.birthtime_seconds
+        && before.dev == after.dev
+        && before.flags == after.flags
+        && before.generation == after.generation
+        && before.gid == after.gid
+        && before.inode == after.inode
+        && before.mode == after.mode
+        && before.mtime_nanoseconds == after.mtime_nanoseconds
+        && before.mtime_seconds == after.mtime_seconds
+        && before.rdev == after.rdev
+        && before.size == after.size
+        && before.uid == after.uid
+}
+
+pub fn validate_unlinked_backing_binding_v3(
+    binding: &UnlinkedBackingBindingV3,
+) -> Result<(), AcceptanceError> {
+    if binding.schema != UNLINKED_BACKING_SCHEMA
+        || binding.kind != UNLINKED_BACKING_KIND
+        || binding.authority_granted
+        || !bounded_canonical_absolute_path_shape(&binding.canonical_path)
+        || !valid_sha256(&binding.content_sha256)
+        || !valid_sha256(&binding.prepared_backing_sha256)
+    {
+        return Err(invalid(
+            "unlinked backing binding is malformed or grants authority",
+        ));
+    }
+    validate_exact_ancestor_roster(
+        &binding.canonical_path,
+        &binding.opened_ancestors_before,
+        "unlinked backing initial",
+    )?;
+    validate_exact_ancestor_roster(
+        &binding.canonical_path,
+        &binding.opened_ancestors_after,
+        "unlinked backing post",
+    )?;
+    if binding.opened_ancestors_before.len() != binding.opened_ancestors_after.len() {
+        return Err(invalid("unlinked backing ancestor roster length changed"));
+    }
+    let final_ancestor = binding.opened_ancestors_before.len() - 1;
+    for (index, (before, after)) in binding
+        .opened_ancestors_before
+        .iter()
+        .zip(&binding.opened_ancestors_after)
+        .enumerate()
+    {
+        if before.path != after.path
+            || before.directory != after.directory
+            || (index != final_ancestor && before.binding != after.binding)
+            || (index == final_ancestor
+                && !same_parent_binding_except_namespace_delta(&before.binding, &after.binding))
+        {
+            return Err(invalid(format!(
+                "unlinked backing ancestor {index} changed outside the parent namespace delta: before={before:?} after={after:?}"
+            )));
+        }
+    }
+    validate_full_binding_v3(
+        &unlinked_state_as_full_binding(&binding.initial_file),
+        false,
+        false,
+        "unlinked backing initial file",
+    )?;
+    validate_full_binding_v3(
+        &unlinked_state_as_full_binding(&binding.post_unlink_file),
+        false,
+        true,
+        "unlinked backing post file",
+    )?;
+    if binding.initial_file.nlink != 1
+        || binding.post_unlink_file.nlink != 0
+        || !same_unlinked_terminal_except_ctime_and_nlink(
+            &binding.initial_file,
+            &binding.post_unlink_file,
+        )
+    {
+        return Err(invalid(
+            "unlinked backing terminal is not the exact retained one-link to zero-link transition",
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_backing_path_absence_binding_v3(
+    binding: &BackingPathAbsenceBindingV3,
+) -> Result<(), AcceptanceError> {
+    if binding.schema != BACKING_PATH_ABSENCE_SCHEMA
+        || binding.kind != BACKING_PATH_ABSENCE_KIND
+        || binding.authority_granted
+        || !bounded_canonical_absolute_path_shape(&binding.canonical_path)
+        || binding.basename.is_empty()
+        || binding.basename.as_bytes().contains(&0)
+        || binding.basename.as_bytes().contains(&b'/')
+        || !valid_sha256(&binding.prepared_backing_sha256)
+    {
+        return Err(invalid(
+            "backing path-absence binding is malformed or grants authority",
+        ));
+    }
+    validate_exact_ancestor_roster(
+        &binding.canonical_path,
+        &binding.prepared_ancestors,
+        "prepared backing absence",
+    )?;
+    validate_exact_ancestor_roster(
+        &binding.canonical_path,
+        &binding.observed_ancestors,
+        "observed backing absence",
+    )?;
+    if Path::new(&binding.canonical_path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        != Some(binding.basename.as_str())
+        || binding.prepared_ancestors.len() != binding.observed_ancestors.len()
+    {
+        return Err(invalid(
+            "backing path-absence binding does not match its prepared basename",
+        ));
+    }
+    let final_ancestor = binding.prepared_ancestors.len() - 1;
+    for (index, (before, after)) in binding
+        .prepared_ancestors
+        .iter()
+        .zip(&binding.observed_ancestors)
+        .enumerate()
+    {
+        if before.path != after.path
+            || before.directory != after.directory
+            || (index != final_ancestor && before.binding != after.binding)
+            || (index == final_ancestor
+                && !same_parent_binding_except_namespace_delta(&before.binding, &after.binding))
+        {
+            return Err(invalid(format!(
+                "backing path-absence ancestor {index} differs from the exact prepared chain: before={before:?} after={after:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 pub fn validate_restart_disk_image_backing_identity_v3(
     backing: &RestartDiskImageBackingIdentityV3,
 ) -> Result<(), AcceptanceError> {
@@ -2009,6 +2384,30 @@ mod platform {
         files: Vec<File>,
         path_bindings_before: Vec<BackingObjectBindingV1>,
         path_bindings_full: Vec<FilesystemObjectBindingV3>,
+        terminal_initial: UnlinkedBackingFileStateV3,
+        _not_send_or_sync: PhantomData<Rc<()>>,
+    }
+
+    /// Opaque proof capsule retaining the original, now-zero-link backing
+    /// inode plus the exact descriptor-anchored ancestor chain.  It exposes
+    /// only canonical evidence and replay, never a descriptor or an effect.
+    #[must_use = "held unlinked backing requires post-persistence revalidation"]
+    pub struct HeldUnlinkedDiskImageBackingV3 {
+        binding: UnlinkedBackingBindingV3,
+        component_names: Vec<CString>,
+        files: Vec<File>,
+        _not_send_or_sync: PhantomData<Rc<()>>,
+    }
+
+    /// Opaque restart-only proof that the prepared basename is absent beneath
+    /// the same exact ancestor chain.  No descriptor for the historical file
+    /// is retained or reconstructed.
+    #[must_use = "held backing path absence requires post-persistence revalidation"]
+    pub struct HeldBackingPathAbsenceV3 {
+        basename: CString,
+        binding: BackingPathAbsenceBindingV3,
+        component_names: Vec<CString>,
+        files: Vec<File>,
         _not_send_or_sync: PhantomData<Rc<()>>,
     }
 
@@ -2157,6 +2556,113 @@ mod platform {
             return Err(std::io::Error::last_os_error().into());
         }
         backing_full_binding_from_stat(&unsafe { stat.assume_init() }, label)
+    }
+
+    fn unlinked_file_state_from_stat(
+        stat: &libc::stat,
+        label: &str,
+    ) -> Result<UnlinkedBackingFileStateV3, AcceptanceError> {
+        if stat.st_size < 0
+            || !(0..1_000_000_000).contains(&stat.st_birthtime_nsec)
+            || !(0..1_000_000_000).contains(&stat.st_ctime_nsec)
+            || !(0..1_000_000_000).contains(&stat.st_mtime_nsec)
+        {
+            return Err(invalid(format!("{label} stat fields are invalid")));
+        }
+        let state = UnlinkedBackingFileStateV3 {
+            birthtime_nanoseconds: stat.st_birthtime_nsec,
+            birthtime_seconds: stat.st_birthtime,
+            ctime_nanoseconds: stat.st_ctime_nsec,
+            ctime_seconds: stat.st_ctime,
+            dev: stat.st_dev as u64,
+            flags: stat.st_flags,
+            generation: stat.st_gen,
+            gid: stat.st_gid,
+            inode: stat.st_ino,
+            mode: stat.st_mode as u32,
+            mtime_nanoseconds: stat.st_mtime_nsec,
+            mtime_seconds: stat.st_mtime,
+            nlink: stat.st_nlink as u64,
+            rdev: stat.st_rdev as u64,
+            size: stat.st_size as u64,
+            uid: stat.st_uid,
+        };
+        validate_full_binding_v3(&unlinked_state_as_full_binding(&state), false, true, label)?;
+        Ok(state)
+    }
+
+    fn unlinked_file_fstat(
+        fd: c_int,
+        label: &str,
+    ) -> Result<UnlinkedBackingFileStateV3, AcceptanceError> {
+        let mut stat = std::mem::MaybeUninit::<libc::stat>::zeroed();
+        if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } != 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        unlinked_file_state_from_stat(&unsafe { stat.assume_init() }, label)
+    }
+
+    fn require_backing_path_absent(
+        parent_fd: c_int,
+        basename: &CStr,
+        label: &str,
+    ) -> Result<(), AcceptanceError> {
+        let mut stat = std::mem::MaybeUninit::<libc::stat>::zeroed();
+        if unsafe {
+            libc::fstatat(
+                parent_fd,
+                basename.as_ptr(),
+                stat.as_mut_ptr(),
+                libc::AT_SYMLINK_NOFOLLOW,
+            )
+        } == 0
+        {
+            return Err(invalid(format!(
+                "{label} basename exists instead of being namespace-absent"
+            )));
+        }
+        let error = std::io::Error::last_os_error();
+        if error.raw_os_error() != Some(libc::ENOENT) {
+            return Err(error.into());
+        }
+        Ok(())
+    }
+
+    fn capture_held_ancestor_bindings(
+        files: &[File],
+        component_names: &[CString],
+        component_paths: &[String],
+        label: &str,
+    ) -> Result<Vec<ExactBackingPathComponentV3>, AcceptanceError> {
+        if files.is_empty()
+            || files.len() != component_names.len()
+            || files.len() != component_paths.len()
+        {
+            return Err(invalid(format!(
+                "{label} held ancestor descriptor roster changed"
+            )));
+        }
+        let mut observed = Vec::with_capacity(files.len());
+        for index in 0..files.len() {
+            let fd_binding = backing_full_fstat(files[index].as_raw_fd(), label)?;
+            let path_binding = if index == 0 {
+                backing_full_fstatat(libc::AT_FDCWD, &component_names[index], label)?
+            } else {
+                backing_full_fstatat(files[index - 1].as_raw_fd(), &component_names[index], label)?
+            };
+            validate_full_binding_v3(&fd_binding, true, false, label)?;
+            if fd_binding != path_binding {
+                return Err(invalid(format!(
+                    "{label} descriptor and retained-parent pathname disagree"
+                )));
+            }
+            observed.push(ExactBackingPathComponentV3 {
+                binding: fd_binding,
+                directory: true,
+                path: component_paths[index].clone(),
+            });
+        }
+        Ok(observed)
     }
 
     fn backing_fstat(fd: c_int, label: &str) -> Result<BackingObjectBindingV1, AcceptanceError> {
@@ -2389,6 +2895,18 @@ mod platform {
                     "disk-image backing descriptor chain does not end at a single-link regular file",
                 ));
             }
+            let terminal_initial = unlinked_file_fstat(
+                files.last().expect("captured backing terminal").as_raw_fd(),
+                "disk-image backing initial terminal",
+            )?;
+            if terminal_initial.nlink != 1
+                || path_bindings_full.last().copied()
+                    != Some(unlinked_state_as_full_binding(&terminal_initial))
+            {
+                return Err(invalid(
+                    "disk-image backing initial terminal changed before capture completed",
+                ));
+            }
             Ok(Self {
                 canonical_path: path_text.to_string(),
                 component_names,
@@ -2396,6 +2914,7 @@ mod platform {
                 files,
                 path_bindings_before,
                 path_bindings_full,
+                terminal_initial,
                 _not_send_or_sync: PhantomData,
             })
         }
@@ -2436,6 +2955,127 @@ mod platform {
                     })
                     .collect(),
                 schema: EXACT_BACKING_IDENTITY_SCHEMA.to_string(),
+            })
+        }
+
+        /// Observe a namespace transition performed by an external actor.
+        /// This method never removes a path: it consumes the present capsule
+        /// only after the retained parent proves `ENOENT`, synchronizes that
+        /// directory, and proves that the retained terminal inode made the
+        /// exact one-link to zero-link transition.
+        pub fn observe_namespace_unlinked(
+            self,
+        ) -> Result<HeldUnlinkedDiskImageBackingV3, AcceptanceError> {
+            if self.files.len() < 2
+                || self.files.len() != self.component_names.len()
+                || self.files.len() != self.component_paths.len()
+                || self.files.len() != self.path_bindings_full.len()
+                || self.files.len() != self.path_bindings_before.len()
+            {
+                return Err(invalid(
+                    "held disk-image backing roster changed before namespace observation",
+                ));
+            }
+            let terminal_index = self.files.len() - 1;
+            let parent = &self.files[terminal_index - 1];
+            let basename = &self.component_names[terminal_index];
+            require_backing_path_absent(
+                parent.as_raw_fd(),
+                basename,
+                "disk-image backing unlink observation",
+            )?;
+            parent.sync_all()?;
+
+            let opened_ancestors_before = self.path_bindings_full[..terminal_index]
+                .iter()
+                .zip(&self.component_paths[..terminal_index])
+                .map(|(binding, path)| ExactBackingPathComponentV3 {
+                    binding: *binding,
+                    directory: true,
+                    path: path.clone(),
+                })
+                .collect::<Vec<_>>();
+            let opened_ancestors_after = capture_held_ancestor_bindings(
+                &self.files[..terminal_index],
+                &self.component_names[..terminal_index],
+                &self.component_paths[..terminal_index],
+                "disk-image backing post-unlink ancestor",
+            )?;
+            require_backing_path_absent(
+                parent.as_raw_fd(),
+                basename,
+                "disk-image backing post-sync unlink observation",
+            )?;
+
+            let terminal = &self.files[terminal_index];
+            let post_unlink_file = unlinked_file_fstat(
+                terminal.as_raw_fd(),
+                "disk-image backing post-unlink terminal",
+            )?;
+            let content_sha256 = held_fd_content_sha256(
+                terminal.as_raw_fd(),
+                post_unlink_file.size,
+                "disk-image backing post-unlink content",
+            )?;
+            let terminal_after_digest = unlinked_file_fstat(
+                terminal.as_raw_fd(),
+                "disk-image backing post-unlink terminal after digest",
+            )?;
+            let initial_content_sha256 = self
+                .path_bindings_before
+                .last()
+                .and_then(|binding| binding.content_sha256.clone())
+                .ok_or_else(|| invalid("held backing lacks its initial content digest"))?;
+            if terminal_after_digest != post_unlink_file || content_sha256 != initial_content_sha256
+            {
+                return Err(invalid(
+                    "retained backing terminal metadata or content changed across unlink observation",
+                ));
+            }
+            require_backing_path_absent(
+                parent.as_raw_fd(),
+                basename,
+                "disk-image backing final unlink observation",
+            )?;
+
+            let prepared = ExactDiskImageBackingIdentityV3 {
+                authority_granted: false,
+                canonical_path: self.canonical_path.clone(),
+                content_sha256: initial_content_sha256,
+                opened_components: self
+                    .path_bindings_full
+                    .iter()
+                    .zip(&self.component_paths)
+                    .enumerate()
+                    .map(|(index, (binding, path))| ExactBackingPathComponentV3 {
+                        binding: *binding,
+                        directory: index + 1 != self.files.len(),
+                        path: path.clone(),
+                    })
+                    .collect(),
+                schema: EXACT_BACKING_IDENTITY_SCHEMA.to_string(),
+            };
+            validate_exact_disk_image_backing_identity_v3(&prepared)?;
+            let prepared_backing_sha256 = sha256(&canonical_json(&prepared)?);
+
+            let binding = UnlinkedBackingBindingV3 {
+                authority_granted: false,
+                canonical_path: self.canonical_path.clone(),
+                content_sha256,
+                initial_file: self.terminal_initial,
+                kind: UNLINKED_BACKING_KIND.to_string(),
+                opened_ancestors_after,
+                opened_ancestors_before,
+                post_unlink_file,
+                prepared_backing_sha256,
+                schema: UNLINKED_BACKING_SCHEMA.to_string(),
+            };
+            validate_unlinked_backing_binding_v3(&binding)?;
+            Ok(HeldUnlinkedDiskImageBackingV3 {
+                binding,
+                component_names: self.component_names,
+                files: self.files,
+                _not_send_or_sync: PhantomData,
             })
         }
 
@@ -2577,6 +3217,259 @@ mod platform {
             };
             validate_backing_shape(&report)?;
             Ok(report)
+        }
+    }
+
+    impl HeldUnlinkedDiskImageBackingV3 {
+        pub fn binding(&self) -> &UnlinkedBackingBindingV3 {
+            &self.binding
+        }
+
+        pub fn revalidate_after_persistence(&self) -> Result<(), AcceptanceError> {
+            validate_unlinked_backing_binding_v3(&self.binding)?;
+            let ancestor_count = self.binding.opened_ancestors_after.len();
+            if self.files.len() != ancestor_count + 1
+                || self.component_names.len() != self.files.len()
+            {
+                return Err(invalid(
+                    "held unlinked backing descriptor roster changed after persistence",
+                ));
+            }
+            let parent = &self.files[ancestor_count - 1];
+            let basename = &self.component_names[ancestor_count];
+            require_backing_path_absent(
+                parent.as_raw_fd(),
+                basename,
+                "held unlinked backing replay",
+            )?;
+            parent.sync_all()?;
+            let paths = self
+                .binding
+                .opened_ancestors_after
+                .iter()
+                .map(|component| component.path.clone())
+                .collect::<Vec<_>>();
+            let observed = capture_held_ancestor_bindings(
+                &self.files[..ancestor_count],
+                &self.component_names[..ancestor_count],
+                &paths,
+                "held unlinked backing ancestor replay",
+            )?;
+            if observed != self.binding.opened_ancestors_after {
+                return Err(invalid(
+                    "held unlinked backing ancestor changed after persistence",
+                ));
+            }
+            require_backing_path_absent(
+                parent.as_raw_fd(),
+                basename,
+                "held unlinked backing post-sync replay",
+            )?;
+            let terminal = self.files.last().expect("validated terminal descriptor");
+            let terminal_state = unlinked_file_fstat(
+                terminal.as_raw_fd(),
+                "held unlinked backing terminal replay",
+            )?;
+            if terminal_state != self.binding.post_unlink_file {
+                return Err(invalid(
+                    "held unlinked backing terminal changed after persistence",
+                ));
+            }
+            let content_sha256 = held_fd_content_sha256(
+                terminal.as_raw_fd(),
+                terminal_state.size,
+                "held unlinked backing content replay",
+            )?;
+            if content_sha256 != self.binding.content_sha256
+                || unlinked_file_fstat(
+                    terminal.as_raw_fd(),
+                    "held unlinked backing terminal after replay digest",
+                )? != self.binding.post_unlink_file
+            {
+                return Err(invalid(
+                    "held unlinked backing metadata or content changed during replay",
+                ));
+            }
+            require_backing_path_absent(
+                parent.as_raw_fd(),
+                basename,
+                "held unlinked backing final replay",
+            )
+        }
+    }
+
+    impl HeldBackingPathAbsenceV3 {
+        /// Recover only the absence of the prepared basename.  The returned
+        /// capsule retains `/` through the direct parent and binds the full
+        /// exact prepared identity digest, but never opens or reconstructs the
+        /// historical terminal inode.
+        pub fn recover_from_exact_prepared(
+            prepared: &ExactDiskImageBackingIdentityV3,
+        ) -> Result<Self, AcceptanceError> {
+            validate_exact_disk_image_backing_identity_v3(prepared)?;
+            let prepared_backing_sha256 = sha256(&canonical_json(prepared)?);
+            let terminal_index = prepared.opened_components.len() - 1;
+            let prepared_ancestors = prepared.opened_components[..terminal_index].to_vec();
+            let basename_text = Path::new(&prepared.canonical_path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| invalid("prepared backing basename is not UTF-8"))?;
+            let basename = CString::new(basename_text.as_bytes())
+                .map_err(|_| invalid("prepared backing basename contains NUL"))?;
+
+            let mut files = Vec::with_capacity(prepared_ancestors.len());
+            let mut component_names = Vec::with_capacity(prepared_ancestors.len());
+            let mut opened_ancestors = Vec::with_capacity(prepared_ancestors.len());
+            for (index, expected) in prepared_ancestors.iter().enumerate() {
+                let name = if index == 0 {
+                    CString::new("/").expect("fixed root path")
+                } else {
+                    let component = Path::new(&expected.path)
+                        .file_name()
+                        .ok_or_else(|| invalid("prepared ancestor lacks a basename"))?;
+                    CString::new(component.as_bytes())
+                        .map_err(|_| invalid("prepared ancestor basename contains NUL"))?
+                };
+                let parent_fd = files
+                    .last()
+                    .map_or(libc::AT_FDCWD, |parent: &File| parent.as_raw_fd());
+                let before = backing_full_fstatat(
+                    parent_fd,
+                    &name,
+                    "recovered backing ancestor before open",
+                )?;
+                let fd = unsafe {
+                    libc::openat(
+                        parent_fd,
+                        name.as_ptr(),
+                        libc::O_RDONLY
+                            | libc::O_CLOEXEC
+                            | libc::O_NOFOLLOW
+                            | libc::O_NONBLOCK
+                            | libc::O_DIRECTORY,
+                    )
+                };
+                if fd < 0 {
+                    return Err(std::io::Error::last_os_error().into());
+                }
+                let file = unsafe { File::from_raw_fd(fd) };
+                let fd_binding =
+                    backing_full_fstat(file.as_raw_fd(), "recovered backing ancestor descriptor")?;
+                let after = backing_full_fstatat(
+                    parent_fd,
+                    &name,
+                    "recovered backing ancestor after open",
+                )?;
+                let is_parent = index + 1 == prepared_ancestors.len();
+                if before != fd_binding
+                    || before != after
+                    || (!is_parent && before != expected.binding)
+                    || (is_parent
+                        && !same_parent_binding_except_namespace_delta(&expected.binding, &before))
+                {
+                    return Err(invalid(
+                        "recovered backing ancestor differs from the exact prepared chain",
+                    ));
+                }
+                opened_ancestors.push(ExactBackingPathComponentV3 {
+                    binding: before,
+                    directory: true,
+                    path: expected.path.clone(),
+                });
+                component_names.push(name);
+                files.push(file);
+            }
+
+            let parent = files.last().expect("validated prepared ancestor roster");
+            require_backing_path_absent(
+                parent.as_raw_fd(),
+                &basename,
+                "recovered prepared backing basename",
+            )?;
+            parent.sync_all()?;
+            let ancestor_paths = prepared_ancestors
+                .iter()
+                .map(|component| component.path.clone())
+                .collect::<Vec<_>>();
+            let observed_ancestors = capture_held_ancestor_bindings(
+                &files,
+                &component_names,
+                &ancestor_paths,
+                "recovered backing post-sync ancestor",
+            )?;
+            if observed_ancestors != opened_ancestors {
+                return Err(invalid(
+                    "recovered backing ancestor changed across parent synchronization",
+                ));
+            }
+            require_backing_path_absent(
+                parent.as_raw_fd(),
+                &basename,
+                "recovered prepared backing post-sync basename",
+            )?;
+
+            let binding = BackingPathAbsenceBindingV3 {
+                authority_granted: false,
+                basename: basename_text.to_string(),
+                canonical_path: prepared.canonical_path.clone(),
+                kind: BACKING_PATH_ABSENCE_KIND.to_string(),
+                observed_ancestors,
+                prepared_ancestors,
+                prepared_backing_sha256,
+                schema: BACKING_PATH_ABSENCE_SCHEMA.to_string(),
+            };
+            validate_backing_path_absence_binding_v3(&binding)?;
+            Ok(Self {
+                basename,
+                binding,
+                component_names,
+                files,
+                _not_send_or_sync: PhantomData,
+            })
+        }
+
+        pub fn binding(&self) -> &BackingPathAbsenceBindingV3 {
+            &self.binding
+        }
+
+        pub fn revalidate_after_persistence(&self) -> Result<(), AcceptanceError> {
+            validate_backing_path_absence_binding_v3(&self.binding)?;
+            if self.files.len() != self.binding.observed_ancestors.len()
+                || self.files.len() != self.component_names.len()
+            {
+                return Err(invalid(
+                    "held recovered backing-absence roster changed after persistence",
+                ));
+            }
+            let parent = self.files.last().expect("validated held parent");
+            require_backing_path_absent(
+                parent.as_raw_fd(),
+                &self.basename,
+                "held recovered backing-absence replay",
+            )?;
+            parent.sync_all()?;
+            let paths = self
+                .binding
+                .observed_ancestors
+                .iter()
+                .map(|component| component.path.clone())
+                .collect::<Vec<_>>();
+            let observed = capture_held_ancestor_bindings(
+                &self.files,
+                &self.component_names,
+                &paths,
+                "held recovered backing-absence ancestor replay",
+            )?;
+            if observed != self.binding.observed_ancestors {
+                return Err(invalid(
+                    "held recovered backing-absence ancestor changed after persistence",
+                ));
+            }
+            require_backing_path_absent(
+                parent.as_raw_fd(),
+                &self.basename,
+                "held recovered backing-absence final replay",
+            )
         }
     }
 
@@ -3892,9 +4785,53 @@ mod platform {
 
     #[cfg(test)]
     mod live_tests {
+        use std::fs::OpenOptions;
+        use std::io::Seek;
+        use std::io::SeekFrom;
+        use std::io::Write;
         use std::os::unix::fs::MetadataExt;
+        use std::os::unix::fs::PermissionsExt;
+        use std::os::unix::fs::symlink;
 
         use super::*;
+
+        const UNLINKED_FIXTURE_BYTES: &[u8] = b"held-backing-v3";
+
+        fn make_present_backing_fixture() -> (tempfile::TempDir, PathBuf, File, HeldDiskImageBacking)
+        {
+            let directory = tempfile::tempdir().expect("create unlinked backing directory");
+            let parent = directory.path().join("outer").join("prepared");
+            std::fs::create_dir_all(&parent).expect("create prepared backing ancestor chain");
+            let path = parent.join("image.dmg");
+            std::fs::write(&path, UNLINKED_FIXTURE_BYTES).expect("write prepared backing fixture");
+            let path = path
+                .canonicalize()
+                .expect("canonical prepared backing path");
+            let external = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&path)
+                .expect("open external mutation handle");
+            let held = HeldDiskImageBacking::capture(&path)
+                .expect("capture exact prepared backing descriptors");
+            (directory, path, external, held)
+        }
+
+        fn make_unlinked_backing_fixture() -> (
+            tempfile::TempDir,
+            PathBuf,
+            File,
+            ExactDiskImageBackingIdentityV3,
+            HeldUnlinkedDiskImageBackingV3,
+        ) {
+            let (directory, path, external, held) = make_present_backing_fixture();
+            let prepared = held.exact_identity_v3().expect("exact prepared identity");
+            std::fs::remove_file(&path).expect("external test-only backing unlink");
+            let unlinked = held
+                .observe_namespace_unlinked()
+                .expect("observe externally unlinked retained backing");
+            (directory, path, external, prepared, unlinked)
+        }
 
         #[test]
         fn rootless_held_backing_replay_detects_same_inode_content_drift() {
@@ -3939,6 +4876,176 @@ mod platform {
                 file.inode
             );
             assert!(backing.finish(&candidate, 1, 1).is_err());
+        }
+
+        #[test]
+        fn live_unlink_retains_exact_zero_link_inode_and_replays_after_persistence() {
+            let (_directory, path, _external, prepared, unlinked) = make_unlinked_backing_fixture();
+            let binding = unlinked.binding();
+            assert_eq!(binding.kind, UNLINKED_BACKING_KIND);
+            assert!(!binding.authority_granted);
+            assert_eq!(binding.canonical_path, path.to_str().expect("UTF-8 path"));
+            assert_eq!(binding.initial_file.nlink, 1);
+            assert_eq!(binding.post_unlink_file.nlink, 0);
+            assert_eq!(
+                binding.prepared_backing_sha256,
+                sha256(&canonical_json(&prepared).expect("canonical prepared bytes"))
+            );
+            assert_eq!(
+                binding.content_sha256,
+                format!("{:x}", Sha256::digest(UNLINKED_FIXTURE_BYTES))
+            );
+            validate_unlinked_backing_binding_v3(binding).expect("canonical unlink evidence");
+            unlinked
+                .revalidate_after_persistence()
+                .expect("post-persistence unlinked replay");
+        }
+
+        #[test]
+        fn live_unlinked_replay_rejects_same_name_file_symlink_and_hardlink_recreation() {
+            for replacement in ["same-bytes", "symlink", "hardlink"] {
+                let (_directory, path, _external, _prepared, unlinked) =
+                    make_unlinked_backing_fixture();
+                match replacement {
+                    "same-bytes" => std::fs::write(&path, UNLINKED_FIXTURE_BYTES)
+                        .expect("recreate same-byte pathname"),
+                    "symlink" => {
+                        symlink("missing-target", &path).expect("recreate pathname as a symlink")
+                    }
+                    "hardlink" => {
+                        let donor = path.with_file_name("donor.dmg");
+                        std::fs::write(&donor, UNLINKED_FIXTURE_BYTES)
+                            .expect("write hardlink donor");
+                        std::fs::hard_link(&donor, &path).expect("recreate pathname as a hardlink");
+                    }
+                    _ => unreachable!("closed replacement roster"),
+                }
+                assert!(
+                    unlinked.revalidate_after_persistence().is_err(),
+                    "{replacement} recreation was accepted as namespace absence"
+                );
+            }
+        }
+
+        #[test]
+        fn live_unlinked_replay_rejects_ancestor_content_and_metadata_mutation() {
+            {
+                let (_directory, path, _external, _prepared, unlinked) =
+                    make_unlinked_backing_fixture();
+                let outer = path
+                    .parent()
+                    .and_then(Path::parent)
+                    .expect("outer ancestor");
+                let renamed = outer.with_file_name("outer-replaced");
+                std::fs::rename(outer, &renamed).expect("rename retained non-parent ancestor");
+                assert!(unlinked.revalidate_after_persistence().is_err());
+            }
+
+            {
+                let (_directory, _path, mut external, _prepared, unlinked) =
+                    make_unlinked_backing_fixture();
+                external
+                    .seek(SeekFrom::Start(0))
+                    .expect("seek retained external file");
+                external
+                    .write_all(&vec![b'X'; UNLINKED_FIXTURE_BYTES.len()])
+                    .expect("mutate retained backing content");
+                external.sync_all().expect("sync mutated backing content");
+                assert!(unlinked.revalidate_after_persistence().is_err());
+            }
+
+            {
+                let (_directory, _path, external, _prepared, unlinked) =
+                    make_unlinked_backing_fixture();
+                external
+                    .set_permissions(std::fs::Permissions::from_mode(0o600))
+                    .expect("mutate retained backing metadata");
+                external.sync_all().expect("sync mutated backing metadata");
+                assert!(unlinked.revalidate_after_persistence().is_err());
+            }
+        }
+
+        #[test]
+        fn recovered_path_absence_requires_exact_prepared_ancestors_and_enoent() {
+            let (_directory, path, _external, held) = make_present_backing_fixture();
+            let prepared = held.exact_identity_v3().expect("exact prepared identity");
+            assert!(HeldBackingPathAbsenceV3::recover_from_exact_prepared(&prepared).is_err());
+            drop(held);
+            std::fs::remove_file(&path).expect("external test-only backing unlink");
+            let recovered = HeldBackingPathAbsenceV3::recover_from_exact_prepared(&prepared)
+                .expect("recover exact prepared basename absence");
+            assert_eq!(recovered.binding().kind, BACKING_PATH_ABSENCE_KIND);
+            assert_eq!(
+                recovered.binding().prepared_backing_sha256,
+                sha256(&canonical_json(&prepared).expect("canonical prepared bytes"))
+            );
+            recovered
+                .revalidate_after_persistence()
+                .expect("replay recovered basename absence");
+
+            let mut nul_path = recovered.binding().clone();
+            nul_path.canonical_path.push('\0');
+            assert!(validate_backing_path_absence_binding_v3(&nul_path).is_err());
+            let mut nul_basename = recovered.binding().clone();
+            nul_basename.basename.push('\0');
+            assert!(validate_backing_path_absence_binding_v3(&nul_basename).is_err());
+        }
+
+        #[test]
+        fn recovered_path_absence_rejects_recreation_and_non_parent_ancestor_mutation() {
+            {
+                let (_directory, path, _external, held) = make_present_backing_fixture();
+                let prepared = held.exact_identity_v3().expect("exact prepared identity");
+                drop(held);
+                std::fs::remove_file(&path).expect("external test-only backing unlink");
+                std::fs::write(&path, UNLINKED_FIXTURE_BYTES).expect("recreate prepared pathname");
+                assert!(HeldBackingPathAbsenceV3::recover_from_exact_prepared(&prepared).is_err());
+            }
+
+            {
+                let (_directory, path, _external, held) = make_present_backing_fixture();
+                let prepared = held.exact_identity_v3().expect("exact prepared identity");
+                drop(held);
+                std::fs::remove_file(&path).expect("external test-only backing unlink");
+                let outer = path
+                    .parent()
+                    .and_then(Path::parent)
+                    .expect("prepared non-parent ancestor");
+                std::fs::set_permissions(outer, std::fs::Permissions::from_mode(0o711))
+                    .expect("mutate prepared non-parent ancestor");
+                assert!(HeldBackingPathAbsenceV3::recover_from_exact_prepared(&prepared).is_err());
+            }
+        }
+
+        #[test]
+        fn production_backing_helpers_contain_no_namespace_removal_primitive() {
+            let source = include_str!("mac_iomedia_identity.rs");
+            let live_start = source
+                .find("    #[cfg(test)]\n    mod live_tests {")
+                .expect("live-test source boundary");
+            let live_end = source[live_start..]
+                .find("\n}\n\n#[cfg(target_os = \"macos\")]\npub use")
+                .map(|offset| live_start + offset)
+                .expect("platform source boundary");
+            let portable_tests = source
+                .find("\n#[cfg(test)]\nmod tests {")
+                .expect("portable-test source boundary");
+            let production = format!(
+                "{}{}",
+                &source[..live_start],
+                &source[live_end..portable_tests]
+            );
+            for forbidden in [
+                "libc::unlink(",
+                "libc::unlinkat(",
+                "std::fs::remove_file(",
+                "fs::remove_file(",
+            ] {
+                assert!(
+                    !production.contains(forbidden),
+                    "production source contains forbidden removal primitive {forbidden}"
+                );
+            }
         }
 
         fn capture_all_nodes(boot: &str) -> Result<Vec<CapturedNode>, AcceptanceError> {
@@ -4154,11 +5261,15 @@ mod platform {
 #[cfg(target_os = "macos")]
 pub use platform::HeldAttachedIOMediaTopologyV2;
 #[cfg(target_os = "macos")]
+pub use platform::HeldBackingPathAbsenceV3;
+#[cfg(target_os = "macos")]
 pub use platform::HeldDiskImageBacking;
 #[cfg(target_os = "macos")]
 pub use platform::HeldPreAttachIOMediaInventory;
 #[cfg(target_os = "macos")]
 pub use platform::HeldRestartIOMediaInventoryV3;
+#[cfg(target_os = "macos")]
+pub use platform::HeldUnlinkedDiskImageBackingV3;
 #[cfg(target_os = "macos")]
 pub use platform::ResolvedIOMediaObject;
 
@@ -4171,6 +5282,20 @@ pub struct HeldAttachedIOMediaTopologyV2<'a> {
 #[cfg(not(target_os = "macos"))]
 pub struct HeldDiskImageBacking {
     _unsupported: (),
+}
+
+#[cfg(not(target_os = "macos"))]
+#[must_use = "held unlinked backing requires post-persistence revalidation"]
+pub struct HeldUnlinkedDiskImageBackingV3 {
+    _unsupported: (),
+    _not_send_or_sync: std::marker::PhantomData<std::rc::Rc<()>>,
+}
+
+#[cfg(not(target_os = "macos"))]
+#[must_use = "held backing path absence requires post-persistence revalidation"]
+pub struct HeldBackingPathAbsenceV3 {
+    _unsupported: (),
+    _not_send_or_sync: std::marker::PhantomData<std::rc::Rc<()>>,
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -4323,6 +5448,48 @@ impl HeldDiskImageBacking {
             "held disk-image backing replay is unsupported outside macOS",
         ))
     }
+
+    pub fn observe_namespace_unlinked(
+        self,
+    ) -> Result<HeldUnlinkedDiskImageBackingV3, AcceptanceError> {
+        Err(invalid(
+            "held backing namespace-unlink observation is unsupported outside macOS",
+        ))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+impl HeldUnlinkedDiskImageBackingV3 {
+    pub fn binding(&self) -> &UnlinkedBackingBindingV3 {
+        unreachable!("non-macOS capture never constructs a held unlinked backing capsule")
+    }
+
+    pub fn revalidate_after_persistence(&self) -> Result<(), AcceptanceError> {
+        Err(invalid(
+            "held unlinked backing replay is unsupported outside macOS",
+        ))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+impl HeldBackingPathAbsenceV3 {
+    pub fn recover_from_exact_prepared(
+        _prepared: &ExactDiskImageBackingIdentityV3,
+    ) -> Result<Self, AcceptanceError> {
+        Err(invalid(
+            "backing path-absence recovery is unsupported outside macOS",
+        ))
+    }
+
+    pub fn binding(&self) -> &BackingPathAbsenceBindingV3 {
+        unreachable!("non-macOS capture never constructs a held backing-absence capsule")
+    }
+
+    pub fn revalidate_after_persistence(&self) -> Result<(), AcceptanceError> {
+        Err(invalid(
+            "held backing path-absence replay is unsupported outside macOS",
+        ))
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -4434,6 +5601,37 @@ pub fn capture_attached_iomedia_topology(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    macro_rules! assert_not_impl {
+        ($type:ty, $trait:path) => {
+            const _: fn() = || {
+                trait AmbiguousIfImpl<A> {
+                    fn marker() {}
+                }
+                impl<T: ?Sized> AmbiguousIfImpl<()> for T {}
+                impl<T: ?Sized + $trait> AmbiguousIfImpl<u8> for T {}
+                let _ = <$type as AmbiguousIfImpl<_>>::marker;
+            };
+        };
+    }
+
+    type HeldUnlinkedBackingForCompileAssertions = HeldUnlinkedDiskImageBackingV3;
+    type HeldPathAbsenceForCompileAssertions = HeldBackingPathAbsenceV3;
+    assert_not_impl!(HeldUnlinkedBackingForCompileAssertions, Clone);
+    assert_not_impl!(HeldUnlinkedBackingForCompileAssertions, Send);
+    assert_not_impl!(HeldUnlinkedBackingForCompileAssertions, Sync);
+    assert_not_impl!(HeldUnlinkedBackingForCompileAssertions, serde::Serialize);
+    assert_not_impl!(
+        HeldUnlinkedBackingForCompileAssertions,
+        std::os::fd::AsRawFd
+    );
+    assert_not_impl!(HeldUnlinkedBackingForCompileAssertions, From<std::fs::File>);
+    assert_not_impl!(HeldPathAbsenceForCompileAssertions, Clone);
+    assert_not_impl!(HeldPathAbsenceForCompileAssertions, Send);
+    assert_not_impl!(HeldPathAbsenceForCompileAssertions, Sync);
+    assert_not_impl!(HeldPathAbsenceForCompileAssertions, serde::Serialize);
+    assert_not_impl!(HeldPathAbsenceForCompileAssertions, std::os::fd::AsRawFd);
+    assert_not_impl!(HeldPathAbsenceForCompileAssertions, From<std::fs::File>);
 
     fn test_identity(name: &str, id: u64) -> IOMediaRegistryIdentityV1 {
         registry_identity(name.to_string(), id)
