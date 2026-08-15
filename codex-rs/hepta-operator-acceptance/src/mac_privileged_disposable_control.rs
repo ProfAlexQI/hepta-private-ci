@@ -2217,12 +2217,13 @@ impl EffectIssueAppendSinkV3<'_, '_> {
         s2_issue_directory: File,
         issue: File,
         bytes: Vec<u8>,
-        operation_name: String,
+        operation_nonce_text: String,
         issue_name: String,
         issue_sha256: String,
     ) -> Result<(), PrivilegedDisposableControlErrorV2> {
         let census = self.census;
-        if census.admission.operation_name != operation_name {
+        let operation_name = census.admission.operation_name.clone();
+        if operation_nonce(&operation_name)? != operation_nonce_text {
             return Err(invalid(
                 "S2 effect-issue capsule differs from the selected blocking operation",
             ));
