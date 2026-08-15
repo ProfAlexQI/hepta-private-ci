@@ -4,6 +4,7 @@
 //! directory and persists canonical lifecycle records before any caller may
 //! consider sending an effect request.
 
+use crate::durable::canonical_json;
 use crate::durable::sha256;
 use crate::mac_disposable_effect_issue_store::DurableEffectIssueStoreErrorV3;
 use crate::mac_disposable_effect_issue_store::DurableEffectIssueStoreV3;
@@ -1559,10 +1560,11 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
                 .issues
                 .replayed_issue(effect_id)
                 .ok_or_else(|| invalid("latest durable effect has no retained V3 issue"))?;
-            let (_, record_sha256) = self
-                .issues
-                .retained_issue_identity(effect_id)
-                .ok_or_else(|| invalid("latest durable V3 issue lost its exact file identity"))?;
+            let record_sha256 = sha256(&canonical_json(issue).map_err(|error| {
+                invalid(format!(
+                    "latest retained V3 issue is not canonical after exact replay: {error}"
+                ))
+            })?);
             (
                 issue.command().clone(),
                 issue.command_sha256().to_string(),
@@ -1831,10 +1833,11 @@ impl<S> PendingUnmountReconciliationOperationStoreV3<'_, '_, S> {
             .issues
             .replayed_issue(self.effect_id)
             .ok_or_else(|| invalid("pending-unmount V3 issue disappeared"))?;
-        let (_, issued_record_sha256) = self
-            .issues
-            .retained_issue_identity(self.effect_id)
-            .ok_or_else(|| invalid("pending-unmount issue lost its retained file identity"))?;
+        let issued_record_sha256 = sha256(&canonical_json(issue).map_err(|error| {
+            invalid(format!(
+                "pending-unmount retained V3 issue is not canonical after exact replay: {error}"
+            ))
+        })?);
         let plan = self.delta.sealed_plan();
         if issue.operation_nonce() != self.store.operation_nonce()
             || issue.command_sha256() != self.command_sha256
