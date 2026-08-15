@@ -19,6 +19,8 @@ use crate::mac_disposable_lifecycle::reconciliation_snapshot_sha256;
 use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleRecordAppendV3;
 use crate::mac_iomedia_identity::DiskImageBackingIdentityV2;
+use crate::mac_iomedia_identity::ExactDiskImageBackingIdentityV3;
+pub use crate::mac_iomedia_identity::FilesystemObjectBindingV3;
 use crate::mac_iomedia_identity::HeldDiskImageBacking;
 use crate::mac_iomedia_identity::HeldRestartIOMediaInventoryV3;
 use crate::mac_iomedia_identity::RestartDiskImageCandidateV3;
@@ -148,26 +150,6 @@ pub struct MountBindingV3 {
     pub mount_flags: u64,
     pub mount_from: String,
     pub mount_on: String,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct FilesystemObjectBindingV3 {
-    pub birthtime_nanoseconds: i64,
-    pub birthtime_seconds: i64,
-    pub ctime_nanoseconds: i64,
-    pub ctime_seconds: i64,
-    pub dev: u64,
-    pub flags: u32,
-    pub generation: u32,
-    pub gid: u32,
-    pub inode: u64,
-    pub mode: u32,
-    pub mtime_nanoseconds: i64,
-    pub mtime_seconds: i64,
-    pub nlink: u64,
-    pub size: u64,
-    pub uid: u32,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -309,6 +291,7 @@ pub(crate) struct PreparedCollectorManifestV3 {
     artifact_root_initial_roster: Vec<String>,
     authority: DisposableAuthorityV2,
     backing: DiskImageBackingIdentityV2,
+    backing_exact: ExactDiskImageBackingIdentityV3,
     baseline: RestartBaselineInventoryV3,
     mountpoint: MountpointIdentityV3,
     operation_nonce: String,
@@ -663,6 +646,8 @@ impl RetainedPreparedCollectorCapabilityV3 {
         let baseline = RestartBaselineInventoryV3::from_inventory(baseline_guard.report())?;
         let backing = hold_disk_image_backing(Path::new(&policy.backing_path))?;
         let backing_identity = backing.identity()?;
+        let backing_exact = backing.exact_identity_v3()?;
+        validate_prepared_backing_artifact(&artifact_root, &policy, &backing_exact)?;
         let mountpoint_held =
             HeldDirectoryV3::capture(Path::new(&policy.mountpoint), "mountpoint")?;
         let mountpoint = mountpoint_identity_from_held(&mountpoint_held)?;
@@ -670,12 +655,23 @@ impl RetainedPreparedCollectorCapabilityV3 {
         let prepared_boot_session_uuid = baseline.boot_session_uuid.clone();
         let artifact_root_initial_roster =
             list_directory(artifact_root.file.as_raw_fd(), MAX_ARTIFACT_ENTRIES)?;
+        let expected_artifact_roster = policy
+            .artifacts
+            .iter()
+            .map(|artifact| artifact.basename.clone())
+            .collect::<Vec<_>>();
+        if artifact_root_initial_roster != expected_artifact_roster {
+            return Err(invalid(
+                "fresh prepared artifact root differs from its exact required profile roster",
+            ));
+        }
         let receipt_root_initial_roster =
             list_directory(receipt_root.file.as_raw_fd(), MAX_RECEIPT_FILES)?;
         let manifest = PreparedCollectorManifestV3 {
             artifact_root_initial_roster,
             authority: DisposableAuthorityV2::none(),
             backing: backing_identity,
+            backing_exact,
             baseline,
             mountpoint,
             operation_nonce: operation_nonce.to_string(),
@@ -746,11 +742,19 @@ impl RetainedPreparedCollectorCapabilityV3 {
         validate_prepared_receipt_root(&receipt_root, &manifest.policy.receipt_root_identity)?;
         validate_receipt_directory(&receipt_root.binding)?;
         let backing = hold_disk_image_backing(Path::new(&manifest.policy.backing_path))?;
-        if !prepared_backing_candidate_matches(&backing.identity()?, &manifest.backing)? {
+        let live_backing = backing.identity()?;
+        if !prepared_backing_candidate_matches(&live_backing, &manifest.backing)?
+            || backing.exact_identity_v3()? != manifest.backing_exact
+        {
             return Err(invalid(
                 "live backing differs from the exact durable prepared identity",
             ));
         }
+        validate_prepared_backing_artifact(
+            &artifact_root,
+            &manifest.policy,
+            &manifest.backing_exact,
+        )?;
         let mountpoint = reopen_prepared_mountpoint(&manifest.mountpoint)?;
         let retained = Self {
             artifact_root,
@@ -830,6 +834,16 @@ impl RetainedPreparedCollectorCapabilityV3 {
         validate_receipt_directory(&self.receipt_root.binding)?;
         self.backing
             .revalidate_identity_after_persistence(&self.manifest.backing)?;
+        if self.backing.exact_identity_v3()? != self.manifest.backing_exact {
+            return Err(invalid(
+                "retained prepared backing full component binding changed",
+            ));
+        }
+        validate_prepared_backing_artifact(
+            &self.artifact_root,
+            &self.manifest.policy,
+            &self.manifest.backing_exact,
+        )?;
         self.mountpoint.revalidate()?;
         if let PreparedBaselineGuardV3::Captured(baseline) = &self.baseline_guard {
             baseline.revalidate_after_persistence()?;
@@ -866,6 +880,37 @@ fn prepared_profile_sha256(
     })?))
 }
 
+fn validate_prepared_backing_identity(
+    identity: &ExactDiskImageBackingIdentityV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    if identity.schema != "hepta_mac_exact_disk_image_backing_identity_v3"
+        || identity.authority_granted
+        || !Path::new(&identity.canonical_path).is_absolute()
+        || identity.opened_components.is_empty()
+        || !valid_digest(&identity.content_sha256)
+        || identity.opened_components.last().is_none_or(|component| {
+            component.directory || component.path != identity.canonical_path
+        })
+    {
+        return Err(invalid("exact prepared backing identity is malformed"));
+    }
+    for (index, component) in identity.opened_components.iter().enumerate() {
+        if !Path::new(&component.path).is_absolute()
+            || component.directory != (index + 1 != identity.opened_components.len())
+        {
+            return Err(invalid(
+                "exact prepared backing component path or kind is malformed",
+            ));
+        }
+        validate_filesystem_binding_shape(
+            &component.binding,
+            component.directory,
+            "exact prepared backing component",
+        )?;
+    }
+    Ok(())
+}
+
 fn canonical_prepared_manifest(
     manifest: &PreparedCollectorManifestV3,
 ) -> Result<(Vec<u8>, String), RestartCollectorErrorV3> {
@@ -883,6 +928,24 @@ fn canonical_prepared_manifest(
 fn validate_prepared_manifest(
     manifest: &PreparedCollectorManifestV3,
 ) -> Result<(), RestartCollectorErrorV3> {
+    let expected_artifact_roster = manifest
+        .policy
+        .artifacts
+        .iter()
+        .map(|artifact| artifact.basename.clone())
+        .collect::<Vec<_>>();
+    let expected_backing_path = Path::new(&manifest.policy.artifact_root)
+        .join(
+            manifest
+                .policy
+                .artifacts
+                .first()
+                .map(|artifact| artifact.basename.as_str())
+                .unwrap_or_default(),
+        )
+        .to_str()
+        .unwrap_or_default()
+        .to_string();
     if manifest.schema != PREPARED_COLLECTOR_MANIFEST_SCHEMA
         || manifest.schema_version != 3
         || manifest.authority.any()
@@ -891,17 +954,12 @@ fn validate_prepared_manifest(
         || manifest.prepared_boot_session_uuid != manifest.baseline.boot_session_uuid
         || manifest.profile_sha256 != prepared_profile_sha256(&manifest.policy.artifacts)?
         || manifest.backing.canonical_path != manifest.policy.backing_path
+        || manifest.backing_exact.canonical_path != manifest.policy.backing_path
+        || manifest.backing_exact.canonical_path != manifest.backing.canonical_path
         || manifest.mountpoint.path != manifest.policy.mountpoint
         || !manifest.receipt_root_initial_roster.is_empty()
-        || manifest.artifact_root_initial_roster.len() > MAX_ARTIFACT_ENTRIES
-        || manifest
-            .artifact_root_initial_roster
-            .windows(2)
-            .any(|pair| pair[0] >= pair[1])
-        || manifest
-            .artifact_root_initial_roster
-            .iter()
-            .any(|name| validate_child_name(name).is_err())
+        || manifest.artifact_root_initial_roster != expected_artifact_roster
+        || manifest.policy.backing_path != expected_backing_path
     {
         return Err(invalid(
             "prepared collector manifest is malformed or grants authority",
@@ -910,6 +968,47 @@ fn validate_prepared_manifest(
     validate_policy(&manifest.policy)?;
     validate_baseline(&manifest.baseline)?;
     validate_disk_image_backing_identity_v2(&manifest.backing)?;
+    validate_prepared_backing_identity(&manifest.backing_exact)?;
+    if manifest.backing_exact.content_sha256
+        != manifest
+            .backing
+            .opened_components
+            .last()
+            .and_then(|component| component.fd_binding.content_sha256.as_deref())
+            .unwrap_or_default()
+    {
+        return Err(invalid(
+            "exact prepared backing content digest differs from its IOMedia projection",
+        ));
+    }
+    if manifest.backing.opened_components.len() != manifest.backing_exact.opened_components.len()
+        || manifest
+            .backing
+            .opened_components
+            .iter()
+            .zip(&manifest.backing_exact.opened_components)
+            .any(|(legacy, exact)| {
+                let binding = &exact.binding;
+                legacy.directory != exact.directory
+                    || legacy.path != exact.path
+                    || legacy.fd_binding.ctime_nanoseconds != binding.ctime_nanoseconds
+                    || legacy.fd_binding.ctime_seconds != binding.ctime_seconds
+                    || legacy.fd_binding.dev != binding.dev
+                    || legacy.fd_binding.flags != binding.flags
+                    || legacy.fd_binding.gid != binding.gid
+                    || legacy.fd_binding.inode != binding.inode
+                    || legacy.fd_binding.mode != binding.mode
+                    || legacy.fd_binding.mtime_nanoseconds != binding.mtime_nanoseconds
+                    || legacy.fd_binding.mtime_seconds != binding.mtime_seconds
+                    || legacy.fd_binding.nlink != binding.nlink
+                    || legacy.fd_binding.size != binding.size
+                    || legacy.fd_binding.uid != binding.uid
+            })
+    {
+        return Err(invalid(
+            "exact prepared backing components differ from their V2 matching projection",
+        ));
+    }
     validate_mountpoint_identity(&manifest.mountpoint)?;
     Ok(())
 }
@@ -927,18 +1026,43 @@ fn validate_prepared_artifact_root(
             "retained prepared artifact root differs from its exact stable identity",
         ));
     }
-    let allowed = initial_roster
+    let required = artifacts
         .iter()
-        .map(String::as_str)
-        .chain(artifacts.iter().map(|artifact| artifact.basename.as_str()))
-        .collect::<BTreeSet<_>>();
-    if initial_roster
-        .iter()
-        .any(|name| roster.binary_search(name).is_err())
-        || roster.iter().any(|name| !allowed.contains(name.as_str()))
-    {
+        .map(|artifact| artifact.basename.clone())
+        .collect::<Vec<_>>();
+    if initial_roster != required || roster != required {
         return Err(invalid(
             "retained prepared artifact root contains an unprepared roster delta",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_prepared_backing_artifact(
+    root: &HeldDirectoryV3,
+    policy: &RestartCollectorPolicyV3,
+    backing: &ExactDiskImageBackingIdentityV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    let basename = policy
+        .artifacts
+        .iter()
+        .find(|artifact| artifact.role == ArtifactRoleV3::BackingImage)
+        .ok_or_else(|| invalid("prepared profile lacks its required BackingImage role"))?;
+    let final_binding = backing
+        .opened_components
+        .last()
+        .ok_or_else(|| invalid("exact prepared backing has no terminal component"))?
+        .binding;
+    if fstatat_binding(
+        root.file.as_raw_fd(),
+        &basename.basename,
+        "prepared BackingImage pathname",
+    )? != final_binding
+        || Path::new(&policy.artifact_root).join(&basename.basename)
+            != Path::new(&backing.canonical_path)
+    {
+        return Err(invalid(
+            "prepared BackingImage role does not name the exact held backing inode",
         ));
     }
     Ok(())
@@ -3298,7 +3422,8 @@ fn validate_policy(policy: &RestartCollectorPolicyV3) -> Result<(), RestartColle
         || paths_overlap(&policy.backing_path, &policy.mountpoint)
         || policy.protected_roots.iter().any(|root| {
             paths_overlap(root, &policy.mountpoint)
-                || path_is_at_or_below(&policy.backing_path, root)
+                || (root != &policy.artifact_root
+                    && path_is_at_or_below(&policy.backing_path, root))
         })
     {
         return Err(invalid(

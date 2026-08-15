@@ -505,12 +505,12 @@ impl LiveCollectorFixture {
             .unwrap();
         let fixture_root = std::fs::canonicalize(fixture.path()).unwrap();
         let persistence_root = std::fs::canonicalize(persistence.path()).unwrap();
-        let backing_path = fixture_root.join("prepared.img");
         let mountpoint = fixture_root.join("mountpoint");
         let artifact_root = fixture_root.join("artifacts");
-        std::fs::write(&backing_path, b"rootless-redteam-backing-v3").unwrap();
         std::fs::create_dir(&mountpoint).unwrap();
         std::fs::create_dir(&artifact_root).unwrap();
+        let backing_path = artifact_root.join("operation-created.img");
+        std::fs::write(&backing_path, b"rootless-redteam-backing-v3").unwrap();
         let prepared_backing = capture_live_backing_identity_v2(&backing_path).unwrap();
         let mountpoint_identity = MountpointIdentityV3::capture(&mountpoint).unwrap();
         let baseline = capture_live_restart_baseline_v3().unwrap();
@@ -1023,6 +1023,67 @@ fn prepared_collector_capability_reopens_only_its_exact_manifest() {
         .is_err(),
         "collector profile commitment must be exact"
     );
+}
+
+#[test]
+fn prepared_collector_rejects_unknown_initial_artifact_roster() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    std::fs::write(fixture.artifact_root.join("foreign"), b"not-a-profile-role")
+        .expect("inject unknown initial artifact");
+    assert!(
+        RetainedPreparedCollectorCapabilityV3::capture(
+            &"7".repeat(64),
+            &fixture.backing_path,
+            &fixture.mountpoint_path,
+            &fixture.artifact_root,
+            &fixture.persistence_root,
+            "operation-created.img",
+            &[],
+        )
+        .is_err(),
+        "fresh capture must not turn an arbitrary initial file into a prepared role"
+    );
+}
+
+#[test]
+fn prepared_collector_rejects_full_component_generation_or_birthtime_drift() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let operation_nonce = "7".repeat(64);
+    let retained = fixture.prepared_capability(&operation_nonce);
+    let profile_sha256 = retained.profile_sha256().to_string();
+    for (label, terminal, generation) in [
+        ("ancestor-generation", false, true),
+        ("ancestor-birthtime", false, false),
+        ("terminal-generation", true, true),
+        ("terminal-birthtime", true, false),
+    ] {
+        let mut changed = retained.manifest.clone();
+        let index = if terminal {
+            changed.backing_exact.opened_components.len() - 1
+        } else {
+            0
+        };
+        let binding = &mut changed.backing_exact.opened_components[index].binding;
+        if generation {
+            binding.generation = binding.generation.wrapping_add(1);
+        } else {
+            binding.birthtime_nanoseconds = (binding.birthtime_nanoseconds + 1) % 1_000_000_000;
+        }
+        let (bytes, digest) =
+            canonical_prepared_manifest(&changed).expect("modeled full binding remains canonical");
+        assert!(
+            RetainedPreparedCollectorCapabilityV3::reopen_from_exact_manifest(
+                &operation_nonce,
+                &bytes,
+                &digest,
+                &profile_sha256,
+            )
+            .is_err(),
+            "live replay accepted modeled {label} drift"
+        );
+    }
 }
 
 #[test]

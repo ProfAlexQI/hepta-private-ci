@@ -25,6 +25,7 @@ const FOUR_NODE_TOPOLOGY_SCHEMA: &str = "hepta_mac_iomedia_four_node_topology_v2
 const PROVENANCE_TOPOLOGY_SCHEMA: &str = "hepta_mac_attached_iomedia_topology_v2";
 const BACKING_SCHEMA: &str = "hepta_mac_disk_image_backing_provenance_v1";
 const BACKING_IDENTITY_SCHEMA: &str = "hepta_mac_disk_image_backing_identity_v2";
+const EXACT_BACKING_IDENTITY_SCHEMA: &str = "hepta_mac_exact_disk_image_backing_identity_v3";
 const RESTART_BACKING_IDENTITY_SCHEMA: &str = "hepta_mac_restart_disk_image_backing_identity_v3";
 const RESTART_INVENTORY_SCHEMA: &str = "hepta_mac_restart_iomedia_inventory_v3";
 const MAX_IOMEDIA_OBJECTS: usize = 256;
@@ -195,6 +196,47 @@ pub struct DiskImageBackingIdentityV2 {
     pub canonical_path: String,
     pub opened_components: Vec<BackingPathComponentV1>,
     pub path_authority_granted: bool,
+    pub schema: String,
+}
+
+/// Full-stat, descriptor-backed prepared identity.  V2 intentionally omitted
+/// APFS generation and birthtime; this V3 projection is minted only while the
+/// complete held descriptor chain and each retained-parent pathname agree.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct FilesystemObjectBindingV3 {
+    pub birthtime_nanoseconds: i64,
+    pub birthtime_seconds: i64,
+    pub ctime_nanoseconds: i64,
+    pub ctime_seconds: i64,
+    pub dev: u64,
+    pub flags: u32,
+    pub generation: u32,
+    pub gid: u32,
+    pub inode: u64,
+    pub mode: u32,
+    pub mtime_nanoseconds: i64,
+    pub mtime_seconds: i64,
+    pub nlink: u64,
+    pub size: u64,
+    pub uid: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExactBackingPathComponentV3 {
+    pub binding: FilesystemObjectBindingV3,
+    pub directory: bool,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExactDiskImageBackingIdentityV3 {
+    pub authority_granted: bool,
+    pub canonical_path: String,
+    pub content_sha256: String,
+    pub opened_components: Vec<ExactBackingPathComponentV3>,
     pub schema: String,
 }
 
@@ -1966,6 +2008,7 @@ mod platform {
         component_paths: Vec<String>,
         files: Vec<File>,
         path_bindings_before: Vec<BackingObjectBindingV1>,
+        path_bindings_full: Vec<FilesystemObjectBindingV3>,
         _not_send_or_sync: PhantomData<Rc<()>>,
     }
 
@@ -2024,18 +2067,31 @@ mod platform {
         stat: &libc::stat,
         label: &str,
     ) -> Result<BackingObjectBindingV1, AcceptanceError> {
+        Ok(legacy_backing_binding(
+            backing_full_binding_from_stat(stat, label)?,
+            None,
+        ))
+    }
+
+    fn backing_full_binding_from_stat(
+        stat: &libc::stat,
+        label: &str,
+    ) -> Result<FilesystemObjectBindingV3, AcceptanceError> {
         if stat.st_size < 0
+            || !(0..1_000_000_000).contains(&stat.st_birthtime_nsec)
             || !(0..1_000_000_000).contains(&stat.st_ctime_nsec)
             || !(0..1_000_000_000).contains(&stat.st_mtime_nsec)
         {
             return Err(invalid(format!("{label} stat fields are invalid")));
         }
-        Ok(BackingObjectBindingV1 {
-            content_sha256: None,
+        let binding = FilesystemObjectBindingV3 {
+            birthtime_nanoseconds: stat.st_birthtime_nsec,
+            birthtime_seconds: stat.st_birthtime,
             ctime_nanoseconds: stat.st_ctime_nsec,
             ctime_seconds: stat.st_ctime,
             dev: stat.st_dev as u64,
             flags: stat.st_flags,
+            generation: stat.st_gen,
             gid: stat.st_gid,
             inode: stat.st_ino,
             mode: stat.st_mode as u32,
@@ -2044,7 +2100,63 @@ mod platform {
             nlink: stat.st_nlink as u64,
             size: stat.st_size as u64,
             uid: stat.st_uid,
-        })
+        };
+        if binding.dev == 0 || binding.inode == 0 || binding.nlink == 0 {
+            return Err(invalid(format!("{label} full stat binding is invalid")));
+        }
+        Ok(binding)
+    }
+
+    fn legacy_backing_binding(
+        binding: FilesystemObjectBindingV3,
+        content_sha256: Option<&str>,
+    ) -> BackingObjectBindingV1 {
+        BackingObjectBindingV1 {
+            content_sha256: content_sha256.map(str::to_string),
+            ctime_nanoseconds: binding.ctime_nanoseconds,
+            ctime_seconds: binding.ctime_seconds,
+            dev: binding.dev,
+            flags: binding.flags,
+            gid: binding.gid,
+            inode: binding.inode,
+            mode: binding.mode,
+            mtime_nanoseconds: binding.mtime_nanoseconds,
+            mtime_seconds: binding.mtime_seconds,
+            nlink: binding.nlink,
+            size: binding.size,
+            uid: binding.uid,
+        }
+    }
+
+    fn backing_full_fstat(
+        fd: c_int,
+        label: &str,
+    ) -> Result<FilesystemObjectBindingV3, AcceptanceError> {
+        let mut stat = std::mem::MaybeUninit::<libc::stat>::zeroed();
+        if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } != 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        backing_full_binding_from_stat(&unsafe { stat.assume_init() }, label)
+    }
+
+    fn backing_full_fstatat(
+        directory_fd: c_int,
+        name: &CStr,
+        label: &str,
+    ) -> Result<FilesystemObjectBindingV3, AcceptanceError> {
+        let mut stat = std::mem::MaybeUninit::<libc::stat>::zeroed();
+        if unsafe {
+            libc::fstatat(
+                directory_fd,
+                name.as_ptr(),
+                stat.as_mut_ptr(),
+                libc::AT_SYMLINK_NOFOLLOW,
+            )
+        } != 0
+        {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        backing_full_binding_from_stat(&unsafe { stat.assume_init() }, label)
     }
 
     fn backing_fstat(fd: c_int, label: &str) -> Result<BackingObjectBindingV1, AcceptanceError> {
@@ -2173,8 +2285,9 @@ mod platform {
             }
 
             let root_name = CString::new("/").expect("fixed root path");
-            let root_before =
-                backing_fstatat(libc::AT_FDCWD, &root_name, "disk-image root before open")?;
+            let root_before_full =
+                backing_full_fstatat(libc::AT_FDCWD, &root_name, "disk-image root before open")?;
+            let root_before = legacy_backing_binding(root_before_full, None);
             let root_fd = unsafe {
                 libc::open(
                     root_name.as_ptr(),
@@ -2185,10 +2298,10 @@ mod platform {
                 return Err(std::io::Error::last_os_error().into());
             }
             let root = unsafe { File::from_raw_fd(root_fd) };
-            let root_fd_binding = backing_fstat(root.as_raw_fd(), "disk-image root fd")?;
-            let root_after =
-                backing_fstatat(libc::AT_FDCWD, &root_name, "disk-image root after open")?;
-            if root_before != root_fd_binding || root_before != root_after {
+            let root_fd_binding_full = backing_full_fstat(root.as_raw_fd(), "disk-image root fd")?;
+            let root_after_full =
+                backing_full_fstatat(libc::AT_FDCWD, &root_name, "disk-image root after open")?;
+            if root_before_full != root_fd_binding_full || root_before_full != root_after_full {
                 return Err(invalid("disk-image root changed across descriptor open"));
             }
             require_backing_kind(&root_before, true, "disk-image root")?;
@@ -2197,6 +2310,7 @@ mod platform {
             let mut component_names = vec![root_name];
             let mut component_paths = vec!["/".to_string()];
             let mut path_bindings_before = vec![root_before];
+            let mut path_bindings_full = vec![root_before_full];
             let normal_components = path
                 .components()
                 .filter_map(|component| match component {
@@ -2210,7 +2324,9 @@ mod platform {
                     .map_err(|_| invalid("disk-image backing component contains NUL"))?;
                 let directory = index + 1 != normal_components.len();
                 let parent_fd = files.last().expect("root retained").as_raw_fd();
-                let before = backing_fstatat(parent_fd, &name, "backing component before open")?;
+                let before_full =
+                    backing_full_fstatat(parent_fd, &name, "backing component before open")?;
+                let before = legacy_backing_binding(before_full, None);
                 require_backing_kind(&before, directory, "disk-image backing component")?;
                 let mut flags =
                     libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK;
@@ -2222,9 +2338,10 @@ mod platform {
                     return Err(std::io::Error::last_os_error().into());
                 }
                 let file = unsafe { File::from_raw_fd(fd) };
-                let fd_binding = backing_fstat(file.as_raw_fd(), "backing component fd")?;
-                let after = backing_fstatat(parent_fd, &name, "backing component after open")?;
-                if before != fd_binding || before != after {
+                let fd_binding_full = backing_full_fstat(file.as_raw_fd(), "backing component fd")?;
+                let after_full =
+                    backing_full_fstatat(parent_fd, &name, "backing component after open")?;
+                if before_full != fd_binding_full || before_full != after_full {
                     return Err(invalid(
                         "disk-image backing component changed across openat",
                     ));
@@ -2238,10 +2355,13 @@ mod platform {
                         "disk-image backing file",
                     )?;
                     let fd_after_digest =
-                        backing_fstat(file.as_raw_fd(), "backing file fd after digest")?;
-                    let path_after_digest =
-                        backing_fstatat(parent_fd, &name, "backing file pathname after digest")?;
-                    if before != fd_after_digest || before != path_after_digest {
+                        backing_full_fstat(file.as_raw_fd(), "backing file fd after digest")?;
+                    let path_after_digest = backing_full_fstatat(
+                        parent_fd,
+                        &name,
+                        "backing file pathname after digest",
+                    )?;
+                    if before_full != fd_after_digest || before_full != path_after_digest {
                         return Err(invalid(
                             "disk-image backing file changed while hashing the held descriptor",
                         ));
@@ -2257,6 +2377,7 @@ mod platform {
                 );
                 component_names.push(name);
                 path_bindings_before.push(stable_binding);
+                path_bindings_full.push(before_full);
                 files.push(file);
             }
             if component_paths.last().map(String::as_str) != Some(path_text)
@@ -2274,12 +2395,48 @@ mod platform {
                 component_paths,
                 files,
                 path_bindings_before,
+                path_bindings_full,
                 _not_send_or_sync: PhantomData,
             })
         }
 
         pub fn identity(&self) -> Result<DiskImageBackingIdentityV2, AcceptanceError> {
             self.replay_identity()
+        }
+
+        pub fn exact_identity_v3(
+            &self,
+        ) -> Result<ExactDiskImageBackingIdentityV3, AcceptanceError> {
+            let legacy = self.replay_identity()?;
+            if self.path_bindings_full.len() != self.files.len()
+                || self.component_paths.len() != self.files.len()
+            {
+                return Err(invalid(
+                    "held exact backing descriptor roster changed internally",
+                ));
+            }
+            let content_sha256 = legacy
+                .opened_components
+                .last()
+                .and_then(|component| component.fd_binding.content_sha256.clone())
+                .ok_or_else(|| invalid("held backing file lacks its exact content digest"))?;
+            Ok(ExactDiskImageBackingIdentityV3 {
+                authority_granted: false,
+                canonical_path: self.canonical_path.clone(),
+                content_sha256,
+                opened_components: self
+                    .path_bindings_full
+                    .iter()
+                    .zip(&self.component_paths)
+                    .enumerate()
+                    .map(|(index, (binding, path))| ExactBackingPathComponentV3 {
+                        binding: *binding,
+                        directory: index + 1 != self.files.len(),
+                        path: path.clone(),
+                    })
+                    .collect(),
+                schema: EXACT_BACKING_IDENTITY_SCHEMA.to_string(),
+            })
         }
 
         pub fn revalidate_identity_after_persistence(
@@ -2304,23 +2461,31 @@ mod platform {
             let mut opened_components = Vec::with_capacity(self.files.len());
             for index in 0..self.files.len() {
                 let directory = index + 1 != self.files.len();
-                let fd_metadata = backing_fstat(
+                let fd_metadata_full = backing_full_fstat(
                     self.files[index].as_raw_fd(),
                     "held backing component replay",
                 )?;
-                let path_metadata = if index == 0 {
-                    backing_fstatat(
+                let path_metadata_full = if index == 0 {
+                    backing_full_fstatat(
                         libc::AT_FDCWD,
                         &self.component_names[index],
                         "held root pathname replay",
                     )?
                 } else {
-                    backing_fstatat(
+                    backing_full_fstatat(
                         self.files[index - 1].as_raw_fd(),
                         &self.component_names[index],
                         "held backing pathname replay",
                     )?
                 };
+                let expected_full = self.path_bindings_full[index];
+                if expected_full != fd_metadata_full || expected_full != path_metadata_full {
+                    return Err(invalid(
+                        "held backing full-stat component changed before provenance publication",
+                    ));
+                }
+                let fd_metadata = legacy_backing_binding(fd_metadata_full, None);
+                let path_metadata = legacy_backing_binding(path_metadata_full, None);
                 let mut expected_metadata = self.path_bindings_before[index].clone();
                 expected_metadata.content_sha256 = None;
                 if expected_metadata != fd_metadata || expected_metadata != path_metadata {
@@ -2336,21 +2501,21 @@ mod platform {
                         fd_metadata.size,
                         "held backing file replay",
                     )?;
-                    let fd_after_digest = backing_fstat(
+                    let fd_after_digest_full = backing_full_fstat(
                         self.files[index].as_raw_fd(),
                         "held backing file after replay digest",
                     )?;
-                    let path_after_digest = if index == 0 {
+                    let path_after_digest_full = if index == 0 {
                         unreachable!("root component is always a directory")
                     } else {
-                        backing_fstatat(
+                        backing_full_fstatat(
                             self.files[index - 1].as_raw_fd(),
                             &self.component_names[index],
                             "held backing pathname after replay digest",
                         )?
                     };
-                    if expected_metadata != fd_after_digest
-                        || expected_metadata != path_after_digest
+                    if expected_full != fd_after_digest_full
+                        || expected_full != path_after_digest_full
                     {
                         return Err(invalid(
                             "held backing file changed while replaying its content digest",
@@ -4125,6 +4290,12 @@ impl HeldDiskImageBacking {
     pub fn identity(&self) -> Result<DiskImageBackingIdentityV2, AcceptanceError> {
         Err(invalid(
             "held disk-image backing replay is unsupported outside macOS",
+        ))
+    }
+
+    pub fn exact_identity_v3(&self) -> Result<ExactDiskImageBackingIdentityV3, AcceptanceError> {
+        Err(invalid(
+            "held exact disk-image backing replay is unsupported outside macOS",
         ))
     }
 
