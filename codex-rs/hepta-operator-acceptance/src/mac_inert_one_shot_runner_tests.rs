@@ -1,5 +1,7 @@
 use super::*;
+use std::collections::BTreeSet;
 use std::fs::OpenOptions;
+use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use std::process::Command;
@@ -79,7 +81,142 @@ fn partial_hello_child_entry() {
 #[test]
 fn foreign_exec_sleeper_entry() {
     if std::env::var_os("HEPTA_FOREIGN_EXEC_SLEEPER_V3").is_some() {
-        thread::sleep(Duration::from_secs(3));
+        for target in CHILD_FIXED_FDS_V3 {
+            assert_eq!(
+                unsafe { libc::fcntl(target, libc::F_GETFD) },
+                -1,
+                "foreign exec inherited a reserved child target FD",
+            );
+        }
+        let forbidden_anonymous = std::env::var("HEPTA_FORBIDDEN_ANON_FDS_V3")
+            .expect("forbidden anonymous identities")
+            .split(',')
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>();
+        let forbidden_lease =
+            std::env::var("HEPTA_FORBIDDEN_LEASE_FD_V3").expect("forbidden lease identity");
+        for fd in 3..fd_scan_limit() {
+            if unsafe { libc::fcntl(fd, libc::F_GETFD) } < 0 {
+                continue;
+            }
+            let identity = fd_identity(fd).expect("identity of open foreign FD");
+            assert_ne!(
+                identity, forbidden_lease,
+                "foreign exec inherited lease at FD {fd}",
+            );
+            if fd_is_anonymous(fd) {
+                assert!(
+                    !forbidden_anonymous.contains(&identity),
+                    "foreign exec inherited a preallocated anonymous runner FD {fd} with identity {identity}",
+                );
+            }
+        }
+        thread::sleep(Duration::from_secs(30));
+    }
+}
+
+#[test]
+fn multithreaded_bootstrap_rejection_entry() {
+    if std::env::var_os("HEPTA_MULTITHREADED_BOOTSTRAP_V3").is_none() {
+        return;
+    }
+    let barrier = Arc::new(Barrier::new(2));
+    let (release, wait) = mpsc::channel();
+    let worker_barrier = Arc::clone(&barrier);
+    let worker = thread::spawn(move || {
+        worker_barrier.wait();
+        wait.recv().expect("release bootstrap worker");
+    });
+    barrier.wait();
+    let error = FreshProcessEpochV3::establish()
+        .err()
+        .expect("multithreaded bootstrap must fail closed");
+    assert!(matches!(error, InertRunnerErrorV3::Invalid(_)));
+    release.send(()).expect("release bootstrap worker");
+    worker.join().expect("bootstrap worker");
+}
+
+fn fd_scan_limit() -> RawFd {
+    let mut limit = MaybeUninit::<libc::rlimit>::zeroed();
+    assert_eq!(
+        unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, limit.as_mut_ptr()) },
+        0,
+        "RLIMIT_NOFILE",
+    );
+    let limit = unsafe { limit.assume_init() };
+    limit.rlim_cur.min(4096) as RawFd
+}
+
+fn fd_identity(fd: RawFd) -> Option<String> {
+    let mut stat = MaybeUninit::<libc::stat>::zeroed();
+    if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } != 0 {
+        return None;
+    }
+    let stat = unsafe { stat.assume_init() };
+    Some(format!(
+        "{:x}:{:x}:{:x}:{:x}",
+        stat.st_dev, stat.st_ino, stat.st_mode, stat.st_rdev,
+    ))
+}
+
+fn fd_is_anonymous(fd: RawFd) -> bool {
+    let mut path = [0u8; libc::PATH_MAX as usize];
+    (unsafe { libc::fcntl(fd, libc::F_GETPATH, path.as_mut_ptr()) }) < 0
+}
+
+fn preallocated_anonymous_fd_identities() -> String {
+    let mut identities = BTreeSet::new();
+    for slot in 0..PREALLOCATED_RUNNER_SLOTS_V3 {
+        if PREALLOCATED_SLOT_TAKEN_V3[slot].load(Ordering::Acquire) != 0 {
+            continue;
+        }
+        let base = slot * PREALLOCATED_SLOT_FDS_V3;
+        let mut slot_identities = Vec::new();
+        let mut complete = true;
+        let mut all_close_on_exec = true;
+        for offset in 0..PREALLOCATED_SLOT_FDS_V3 {
+            let fd = PREALLOCATED_FD_TABLE_V3[base + offset].load(Ordering::Acquire);
+            let flags = if fd >= 0 {
+                unsafe { libc::fcntl(fd, libc::F_GETFD) }
+            } else {
+                -1
+            };
+            if flags < 0 {
+                complete = false;
+                break;
+            }
+            all_close_on_exec &= flags & libc::FD_CLOEXEC != 0;
+            if fd_is_anonymous(fd)
+                && let Some(identity) = fd_identity(fd)
+            {
+                slot_identities.push(identity);
+            }
+        }
+        // Slot ownership only transitions 0 -> 1.  If it stayed untaken for
+        // the whole scan, every identity above belongs to the immutable pool;
+        // otherwise discard the racing snapshot instead of classifying a
+        // subsequently reused descriptor as a pool object.
+        if complete && PREALLOCATED_SLOT_TAKEN_V3[slot].load(Ordering::Acquire) == 0 {
+            assert!(all_close_on_exec, "preallocated runner FD lost CLOEXEC");
+            identities.extend(slot_identities);
+        }
+    }
+    identities.into_iter().collect::<Vec<_>>().join(",")
+}
+
+fn assert_flock_available_within(descriptor: &File, timeout: Duration, message: &str) {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if unsafe { libc::flock(descriptor.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return;
+        }
+        assert_eq!(
+            io::Error::last_os_error().raw_os_error(),
+            Some(libc::EWOULDBLOCK),
+        );
+        assert!(Instant::now() < deadline, "{message}");
+        thread::sleep(Duration::from_millis(5));
     }
 }
 
@@ -293,6 +430,25 @@ fn fresh_process_epoch_is_kernel_bound_and_fork_inheritance_hits_pid_gate() {
 }
 
 #[test]
+fn fresh_process_pool_bootstrap_rejects_a_multithreaded_process() {
+    let status = Command::new(helper_program())
+        .args(helper_arguments(
+            "mac_inert_one_shot_runner::tests::multithreaded_bootstrap_rejection_entry",
+        ))
+        .env(SKIP_PREMAIN_BOOTSTRAP_ENV_V3, "1")
+        .env("HEPTA_MULTITHREADED_BOOTSTRAP_V3", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("spawn isolated multithreaded bootstrap helper");
+    assert!(
+        status.success(),
+        "bootstrap rejection helper failed: {status}"
+    );
+}
+
+#[test]
 fn parent_persists_exact_issue_before_one_inert_dispatch() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
     let (_directory, mut runner) = spawn_runner(&epoch);
@@ -344,21 +500,25 @@ fn child_retains_the_inherited_control_flock_until_runner_exit() {
     runner
         .prove_dead(Duration::from_secs(5))
         .expect("death proof after retained lease exits");
-    let rc = unsafe { libc::flock(contender.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-    assert_eq!(rc, 0, "flock becomes available only after child exit");
+    assert_flock_available_within(
+        &contender,
+        Duration::from_secs(2),
+        "flock did not become available after child exit",
+    );
 }
 
 #[test]
 fn concurrent_foreign_execs_never_inherit_the_runner_lease() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-    let barrier = Arc::new(Barrier::new(2));
+    let (directory, lease) = test_lease();
+    let forbidden_lease = fd_identity(lease.descriptor.as_raw_fd()).expect("lease identity");
+    let forbidden_anonymous = preallocated_anonymous_fd_identities();
+    let (ready_sender, ready_receiver) = mpsc::channel();
     let (sender, receiver) = mpsc::channel();
-    let foreign_barrier = Arc::clone(&barrier);
     let foreign_program = helper_program();
     let foreign = thread::spawn(move || {
-        foreign_barrier.wait();
         let mut children = Vec::new();
-        for _ in 0..24 {
+        for index in 0..24 {
             let child = Command::new(&foreign_program)
                 .args([
                     "--exact",
@@ -366,49 +526,141 @@ fn concurrent_foreign_execs_never_inherit_the_runner_lease() {
                     "--nocapture",
                 ])
                 .env("HEPTA_FOREIGN_EXEC_SLEEPER_V3", "1")
+                .env(SKIP_PREMAIN_BOOTSTRAP_ENV_V3, "1")
+                .env("HEPTA_FORBIDDEN_ANON_FDS_V3", &forbidden_anonymous)
+                .env("HEPTA_FORBIDDEN_LEASE_FD_V3", &forbidden_lease)
                 .env_remove("HEPTA_INERT_RUNNER_COMMAND_FD_V3")
                 .env_remove("HEPTA_INERT_RUNNER_RESPONSE_FD_V3")
                 .env_remove("HEPTA_INERT_RUNNER_DEATH_FD_V3")
                 .env_remove("HEPTA_INERT_RUNNER_LEASE_FD_V3")
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
-                .stderr(Stdio::null())
+                .stderr(Stdio::piped())
                 .spawn()
                 .expect("spawn foreign exec helper");
             children.push(child);
+            if index == 0 {
+                ready_sender.send(()).expect("signal first foreign exec");
+            }
         }
         sender.send(children).expect("send foreign children");
     });
 
-    barrier.wait();
-    let (directory, mut runner) = spawn_runner(&epoch);
+    ready_receiver.recv().expect("first foreign exec started");
+    let arguments = helper_arguments("mac_inert_one_shot_runner::tests::inert_child_entry");
+    let mut runner = LiveInertRunnerV3::spawn_program(
+        &epoch,
+        &lease,
+        &helper_program(),
+        &arguments,
+        Duration::from_secs(5),
+    )
+    .expect("spawn runner during foreign exec churn");
     issue_once(&mut runner, &epoch);
+    let proof_started = Instant::now();
     runner
-        .prove_dead(Duration::from_secs(5))
+        .prove_dead(Duration::from_millis(500))
         .expect("runner death proof");
+    assert!(
+        proof_started.elapsed() < Duration::from_secs(2),
+        "foreign helpers delayed runner death EOF",
+    );
     let mut foreign_children = receiver.recv().expect("receive foreign children");
     foreign.join().expect("foreign spawner");
+    let mut early_failures = Vec::new();
+    for child in &mut foreign_children {
+        if let Some(status) = child.try_wait().expect("foreign child status") {
+            let mut stderr = String::new();
+            if let Some(mut stream) = child.stderr.take() {
+                stream.read_to_string(&mut stderr).expect("foreign stderr");
+            }
+            early_failures.push(format!("{status}: {stderr}"));
+        }
+    }
     assert!(
-        foreign_children
-            .iter_mut()
-            .any(|child| child.try_wait().expect("foreign child status").is_none()),
-        "at least one foreign helper must still be alive during the flock check",
+        early_failures.is_empty(),
+        "foreign helper detected an inherited FD or exited before the proof timeout: {early_failures:?}",
     );
 
+    drop(lease);
     let contender = OpenOptions::new()
         .read(true)
         .write(true)
         .open(directory.path().join("control.lock"))
         .expect("open contender after runner exit");
-    assert_eq!(
-        unsafe { libc::flock(contender.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
-        0,
+    assert_flock_available_within(
+        &contender,
+        Duration::from_secs(2),
         "foreign exec inherited a lease FD from the parent spawn window",
     );
     for child in &mut foreign_children {
         let _ = child.kill();
         let _ = child.wait();
     }
+}
+
+#[test]
+fn high_fd_pressure_and_exec_failure_do_not_collide_with_fixed_targets() {
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let mut pressure = Vec::new();
+    let mut highest = 0;
+    while highest < CHILD_COMMAND_FD_V3 - 1 {
+        let descriptor = File::open("/dev/null").expect("open CLOEXEC pressure descriptor");
+        let flags = unsafe { libc::fcntl(descriptor.as_raw_fd(), libc::F_GETFD) };
+        assert!(flags >= 0 && flags & libc::FD_CLOEXEC != 0);
+        highest = highest.max(descriptor.as_raw_fd());
+        pressure.push(descriptor);
+        assert!(
+            pressure.len() < 2048,
+            "bounded pressure must reach fixed FDs"
+        );
+    }
+    for target in CHILD_FIXED_FDS_V3 {
+        let flags = unsafe { libc::fcntl(target, libc::F_GETFD) };
+        assert!(
+            flags >= 0 && flags & libc::FD_CLOEXEC != 0,
+            "fixed target reservation changed under FD pressure",
+        );
+    }
+
+    let (directory, lease) = test_lease();
+    let missing = directory.path().join("missing-inert-runner-binary");
+    let error = match LiveInertRunnerV3::spawn_program(
+        &epoch,
+        &lease,
+        &missing,
+        &[],
+        Duration::from_millis(200),
+    ) {
+        Ok(_) => panic!("forced exec failure unexpectedly spawned"),
+        Err(error) => error,
+    };
+    assert!(
+        matches!(&error, InertRunnerErrorV3::Io(io_error) if io_error.raw_os_error() == Some(libc::ENOENT)),
+        "parent did not receive the exact exec failure: {error}",
+    );
+    drop(lease);
+    let contender = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(directory.path().join("control.lock"))
+        .expect("open contender after exec failure");
+    assert_flock_available_within(
+        &contender,
+        Duration::from_secs(2),
+        "failed exec retained or polluted the control lease",
+    );
+
+    let (_valid_directory, mut runner) = spawn_runner(&epoch);
+    issue_once(&mut runner, &epoch);
+    runner
+        .prove_dead(Duration::from_secs(1))
+        .expect("next preallocated slot remains usable after exec failure");
+    for target in CHILD_FIXED_FDS_V3 {
+        let flags = unsafe { libc::fcntl(target, libc::F_GETFD) };
+        assert!(flags >= 0 && flags & libc::FD_CLOEXEC != 0);
+    }
+    drop(pressure);
 }
 
 #[test]
@@ -435,10 +687,10 @@ fn partial_hello_prefix_hits_one_absolute_startup_deadline() {
         .write(true)
         .open(directory.path().join("control.lock"))
         .expect("open post-timeout contender");
-    assert_eq!(
-        unsafe { libc::flock(contender.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
-        0,
-        "startup timeout must kill and reap the partial-frame child",
+    assert_flock_available_within(
+        &contender,
+        Duration::from_secs(2),
+        "startup timeout did not kill and reap the partial-frame child",
     );
 }
 
@@ -867,4 +1119,27 @@ fn issue_record_rejects_any_authority_bit() {
     };
     record.authority.privileged_effect_authority = true;
     assert!(record.validate().is_err());
+}
+
+#[test]
+fn kqueue_exit_event_requires_exact_pid_filter_note_and_no_error() {
+    let expected_pid = 4242;
+    let mut event = libc::kevent {
+        ident: expected_pid as libc::uintptr_t,
+        filter: libc::EVFILT_PROC,
+        flags: 0,
+        fflags: libc::NOTE_EXIT,
+        data: 0,
+        udata: std::ptr::null_mut(),
+    };
+    assert!(validate_kqueue_exit_event(&event, expected_pid).expect("exact NOTE_EXIT"));
+    assert!(!validate_kqueue_exit_event(&event, expected_pid + 1).expect("foreign PID"));
+    event.filter = libc::EVFILT_READ;
+    assert!(!validate_kqueue_exit_event(&event, expected_pid).expect("foreign filter"));
+    event.filter = libc::EVFILT_PROC;
+    event.fflags = 0;
+    assert!(!validate_kqueue_exit_event(&event, expected_pid).expect("missing NOTE_EXIT"));
+    event.fflags = libc::NOTE_EXIT;
+    event.flags = libc::EV_ERROR;
+    assert!(validate_kqueue_exit_event(&event, expected_pid).is_err());
 }

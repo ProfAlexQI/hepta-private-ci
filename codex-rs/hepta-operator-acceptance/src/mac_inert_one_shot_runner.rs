@@ -11,6 +11,10 @@
 //! - A process epoch is a non-cloneable in-process capability bound to the boot
 //!   UUID and the kernel's PID/start-time identity.  A fork-inherited value
 //!   fails validation.
+//! - Darwin has no atomic CLOEXEC pipe/kqueue creation.  A fresh executable
+//!   must therefore prove it has exactly one kernel thread, preallocate a
+//!   bounded one-shot FD pool, reserve the fixed child targets, and only then
+//!   permit runner use.  No runtime runner spawn creates anonymous FDs.
 //! - A runner accepts one exact command.  Same-supervisor sequential
 //!   reconciliation requires a non-serializable death proof produced from the
 //!   original live handle after kqueue NOTE_EXIT, pipe EOF, waitpid, and kernel
@@ -37,6 +41,10 @@ use std::process::Command;
 use std::process::ExitStatus;
 #[cfg(test)]
 use std::process::Stdio;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::AtomicU8;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -49,14 +57,38 @@ const DEATH_RECEIPT_SCHEMA_V3: &str = "hepta_mac_runner_death_receipt_v3";
 const MAX_COMMAND_BYTES_V3: usize = 256 * 1024;
 const MAX_FRAME_BYTES_V3: usize = 2 * 1024 * 1024;
 const PROC_PIDTBSDINFO: libc::c_int = 3;
+const PROC_PIDTASKINFO_V3: libc::c_int = 4;
 const CHILD_COMMAND_FD_V3: RawFd = 900;
 const CHILD_RESPONSE_FD_V3: RawFd = 901;
 const CHILD_DEATH_FD_V3: RawFd = 902;
 const CHILD_LEASE_FD_V3: RawFd = 903;
+const CHILD_FIXED_FDS_V3: [RawFd; 4] = [
+    CHILD_COMMAND_FD_V3,
+    CHILD_RESPONSE_FD_V3,
+    CHILD_DEATH_FD_V3,
+    CHILD_LEASE_FD_V3,
+];
+const PREALLOCATED_RUNNER_SLOTS_V3: usize = 64;
+const PREALLOCATED_SLOT_FDS_V3: usize = 7;
+const PREALLOCATED_FDS_V3: usize = PREALLOCATED_RUNNER_SLOTS_V3 * PREALLOCATED_SLOT_FDS_V3;
+const BOOTSTRAP_UNINITIALIZED_V3: i32 = 0;
+const BOOTSTRAP_INITIALIZING_V3: i32 = 1;
+const BOOTSTRAP_READY_V3: i32 = 2;
+const BOOTSTRAP_FAILED_V3: i32 = -1;
+const SKIP_PREMAIN_BOOTSTRAP_ENV_V3: &str = "HEPTA_SKIP_RUNNER_PREMAIN_BOOTSTRAP_V3";
 const FRAME_HEADER_BYTES_V3: usize = 16;
 const CLEANUP_TIMEOUT_V3: Duration = Duration::from_secs(5);
 const CHILD_DEADLINE_ENV_V3: &str = "HEPTA_INERT_RUNNER_DEADLINE_NS_V3";
 const F_SETNOSIGPIPE_V3: libc::c_int = 73;
+
+static BOOTSTRAP_STATUS_V3: AtomicI32 = AtomicI32::new(BOOTSTRAP_UNINITIALIZED_V3);
+static BOOTSTRAP_PID_V3: AtomicU32 = AtomicU32::new(0);
+static BOOTSTRAP_NONCE_V3: [AtomicU8; 32] = [const { AtomicU8::new(0) }; 32];
+static PREALLOCATED_SLOT_TAKEN_V3: [AtomicU8; PREALLOCATED_RUNNER_SLOTS_V3] =
+    [const { AtomicU8::new(0) }; PREALLOCATED_RUNNER_SLOTS_V3];
+static PREALLOCATED_FD_TABLE_V3: [AtomicI32; PREALLOCATED_FDS_V3] =
+    [const { AtomicI32::new(-1) }; PREALLOCATED_FDS_V3];
+static FIXED_TARGET_RESERVATIONS_V3: [AtomicI32; 4] = [const { AtomicI32::new(-1) }; 4];
 
 #[derive(Debug, Error)]
 pub enum InertRunnerErrorV3 {
@@ -127,7 +159,7 @@ pub struct RunnerCommandEnvelopeV3 {
 #[serde(deny_unknown_fields)]
 struct ProcessEpochBindingV3 {
     boot_session_uuid: String,
-    handshake_sha256: String,
+    bootstrap_pool_sha256: String,
     kernel_start_microseconds: u64,
     nonce: String,
     parent_pid: u32,
@@ -141,8 +173,6 @@ struct ProcessEpochBindingV3 {
 pub struct FreshProcessEpochV3 {
     binding: ProcessEpochBindingV3,
     binding_sha256: String,
-    _handshake_read: File,
-    _handshake_write: File,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -343,6 +373,16 @@ pub struct LiveInertRunnerV3 {
     state: RunnerStateV3,
 }
 
+struct PreallocatedRunnerSlotV3 {
+    child_command_read: File,
+    parent_command_write: File,
+    parent_response_read: File,
+    child_response_write: File,
+    parent_death_read: File,
+    child_death_write: File,
+    kqueue: File,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct AbsoluteDeadlineV3 {
     monotonic_nanoseconds: u64,
@@ -391,26 +431,299 @@ unsafe extern "C" {
     ) -> libc::c_int;
 }
 
+#[cfg(test)]
+#[used]
+#[unsafe(link_section = "__DATA,__mod_init_func")]
+static TEST_PREMAIN_RUNNER_POOL_BOOTSTRAP_V3: extern "C" fn() = {
+    extern "C" fn initialize() {
+        let skip_name = b"HEPTA_SKIP_RUNNER_PREMAIN_BOOTSTRAP_V3\0";
+        if unsafe { libc::getenv(skip_name.as_ptr().cast()) }.is_null() {
+            let _ = ensure_preallocated_runner_pool();
+        }
+    }
+    initialize
+};
+
+fn ensure_preallocated_runner_pool() -> Result<(), InertRunnerErrorV3> {
+    loop {
+        match BOOTSTRAP_STATUS_V3.load(Ordering::Acquire) {
+            BOOTSTRAP_READY_V3 => return validate_preallocated_runner_pool(),
+            BOOTSTRAP_FAILED_V3 => {
+                return Err(invalid(
+                    "single-thread runner FD pool bootstrap previously failed",
+                ));
+            }
+            BOOTSTRAP_INITIALIZING_V3 => {
+                return Err(invalid(
+                    "runner FD pool bootstrap is unexpectedly concurrent",
+                ));
+            }
+            BOOTSTRAP_UNINITIALIZED_V3 => {
+                require_single_kernel_thread("before runner FD pool bootstrap")?;
+                if BOOTSTRAP_STATUS_V3
+                    .compare_exchange(
+                        BOOTSTRAP_UNINITIALIZED_V3,
+                        BOOTSTRAP_INITIALIZING_V3,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                    )
+                    .is_err()
+                {
+                    continue;
+                }
+                match build_preallocated_runner_pool() {
+                    Ok(()) => {
+                        BOOTSTRAP_STATUS_V3.store(BOOTSTRAP_READY_V3, Ordering::Release);
+                        return validate_preallocated_runner_pool();
+                    }
+                    Err(error) => {
+                        BOOTSTRAP_STATUS_V3.store(BOOTSTRAP_FAILED_V3, Ordering::Release);
+                        return Err(error);
+                    }
+                }
+            }
+            _ => return Err(invalid("runner FD pool bootstrap state is invalid")),
+        }
+    }
+}
+
+fn build_preallocated_runner_pool() -> Result<(), InertRunnerErrorV3> {
+    // This is the only function allowed to call pipe(2) or kqueue(2).  The
+    // kernel thread-count checks plus a full signal mask prove no concurrent
+    // exec actor exists while CLOEXEC is applied. Runtime runner launches only
+    // consume these one-shot slots.
+    let mut descriptors = [-1; PREALLOCATED_FDS_V3];
+    let mut reservations = [-1; 4];
+    let previous_signals = block_all_signals()?;
+    let result = (|| -> Result<[u8; 32], InertRunnerErrorV3> {
+        require_single_kernel_thread("during runner FD pool bootstrap")?;
+        let null_path = b"/dev/null\0";
+        let null_fd =
+            unsafe { libc::open(null_path.as_ptr().cast(), libc::O_RDONLY | libc::O_CLOEXEC) };
+        if null_fd < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        if null_fd >= CHILD_COMMAND_FD_V3 {
+            unsafe {
+                libc::close(null_fd);
+            }
+            return Err(invalid(
+                "fixed child FD range was reached before bootstrap reservations",
+            ));
+        }
+        for (index, target) in CHILD_FIXED_FDS_V3.into_iter().enumerate() {
+            let duplicate = unsafe { libc::fcntl(null_fd, libc::F_DUPFD_CLOEXEC, target) };
+            if duplicate != target {
+                if duplicate >= 0 {
+                    unsafe {
+                        libc::close(duplicate);
+                    }
+                }
+                unsafe {
+                    libc::close(null_fd);
+                }
+                return Err(invalid(
+                    "fixed child FD reservation is occupied or outside the descriptor limit",
+                ));
+            }
+            reservations[index] = duplicate;
+        }
+        unsafe {
+            libc::close(null_fd);
+        }
+
+        for slot in 0..PREALLOCATED_RUNNER_SLOTS_V3 {
+            let base = slot * PREALLOCATED_SLOT_FDS_V3;
+            for pair in 0..3 {
+                let offset = base + pair * 2;
+                let mut pipe = [-1; 2];
+                if unsafe { libc::pipe(pipe.as_mut_ptr()) } != 0 {
+                    return Err(io::Error::last_os_error().into());
+                }
+                descriptors[offset] = pipe[0];
+                descriptors[offset + 1] = pipe[1];
+                set_close_on_exec(pipe[0])?;
+                set_close_on_exec(pipe[1])?;
+            }
+            let kqueue = unsafe { libc::kqueue() };
+            if kqueue < 0 {
+                return Err(io::Error::last_os_error().into());
+            }
+            descriptors[base + 6] = kqueue;
+            set_close_on_exec(kqueue)?;
+        }
+
+        require_single_kernel_thread("after runner FD pool bootstrap")?;
+        let mut nonce = [0u8; 32];
+        if unsafe { libc::getentropy(nonce.as_mut_ptr().cast(), nonce.len()) } != 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        Ok(nonce)
+    })();
+    let nonce = match result {
+        Ok(nonce) => {
+            if let Err(error) = restore_signal_mask(&previous_signals) {
+                close_raw_descriptors(descriptors.into_iter().chain(reservations));
+                return Err(error);
+            }
+            nonce
+        }
+        Err(error) => {
+            close_raw_descriptors(descriptors.into_iter().chain(reservations));
+            restore_signal_mask(&previous_signals)?;
+            return Err(error);
+        }
+    };
+    for (destination, byte) in BOOTSTRAP_NONCE_V3.iter().zip(nonce) {
+        destination.store(byte, Ordering::Relaxed);
+    }
+    BOOTSTRAP_PID_V3.store(unsafe { libc::getpid() } as u32, Ordering::Relaxed);
+    for (destination, descriptor) in PREALLOCATED_FD_TABLE_V3.iter().zip(descriptors) {
+        destination.store(descriptor, Ordering::Relaxed);
+    }
+    for (destination, descriptor) in FIXED_TARGET_RESERVATIONS_V3.iter().zip(reservations) {
+        destination.store(descriptor, Ordering::Relaxed);
+    }
+    Ok(())
+}
+
+fn block_all_signals() -> Result<libc::sigset_t, InertRunnerErrorV3> {
+    let mut all = MaybeUninit::<libc::sigset_t>::zeroed();
+    if unsafe { libc::sigfillset(all.as_mut_ptr()) } != 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    let all = unsafe { all.assume_init() };
+    let mut previous = MaybeUninit::<libc::sigset_t>::zeroed();
+    let rc = unsafe { libc::pthread_sigmask(libc::SIG_SETMASK, &all, previous.as_mut_ptr()) };
+    if rc != 0 {
+        return Err(io::Error::from_raw_os_error(rc).into());
+    }
+    Ok(unsafe { previous.assume_init() })
+}
+
+fn restore_signal_mask(previous: &libc::sigset_t) -> Result<(), InertRunnerErrorV3> {
+    let rc = unsafe { libc::pthread_sigmask(libc::SIG_SETMASK, previous, std::ptr::null_mut()) };
+    if rc != 0 {
+        return Err(io::Error::from_raw_os_error(rc).into());
+    }
+    Ok(())
+}
+
+fn close_raw_descriptors(descriptors: impl IntoIterator<Item = RawFd>) {
+    for descriptor in descriptors {
+        if descriptor >= 0 {
+            unsafe {
+                libc::close(descriptor);
+            }
+        }
+    }
+}
+
+fn validate_preallocated_runner_pool() -> Result<(), InertRunnerErrorV3> {
+    if BOOTSTRAP_PID_V3.load(Ordering::Acquire) != unsafe { libc::getpid() } as u32 {
+        return Err(invalid(
+            "runner FD pool belongs to another process or a fork descendant",
+        ));
+    }
+    for (reservation, expected) in FIXED_TARGET_RESERVATIONS_V3.iter().zip(CHILD_FIXED_FDS_V3) {
+        if reservation.load(Ordering::Acquire) != expected {
+            return Err(invalid("fixed child FD reservation identity changed"));
+        }
+        let flags = unsafe { libc::fcntl(expected, libc::F_GETFD) };
+        if flags < 0 || flags & libc::FD_CLOEXEC == 0 {
+            return Err(invalid("fixed child FD reservation was closed or changed"));
+        }
+    }
+    Ok(())
+}
+
+fn require_single_kernel_thread(label: &str) -> Result<(), InertRunnerErrorV3> {
+    let mut task = MaybeUninit::<libc::proc_taskinfo>::zeroed();
+    let expected = std::mem::size_of::<libc::proc_taskinfo>();
+    let received = unsafe {
+        proc_pidinfo(
+            libc::getpid(),
+            PROC_PIDTASKINFO_V3,
+            0,
+            task.as_mut_ptr().cast(),
+            expected as libc::c_int,
+        )
+    };
+    if received != expected as libc::c_int {
+        return Err(io::Error::last_os_error().into());
+    }
+    let task = unsafe { task.assume_init() };
+    if task.pti_threadnum != 1 {
+        return Err(invalid(format!(
+            "{label} requires exactly one kernel thread; observed {}",
+            task.pti_threadnum,
+        )));
+    }
+    Ok(())
+}
+
+fn bootstrap_pool_sha256() -> Result<String, InertRunnerErrorV3> {
+    validate_preallocated_runner_pool()?;
+    let mut nonce = [0u8; 32];
+    for (destination, source) in nonce.iter_mut().zip(&BOOTSTRAP_NONCE_V3) {
+        *destination = source.load(Ordering::Acquire);
+    }
+    Ok(sha256(&nonce))
+}
+
+fn take_preallocated_runner_slot() -> Result<PreallocatedRunnerSlotV3, InertRunnerErrorV3> {
+    validate_preallocated_runner_pool()?;
+    for slot in 0..PREALLOCATED_RUNNER_SLOTS_V3 {
+        if PREALLOCATED_SLOT_TAKEN_V3[slot]
+            .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            continue;
+        }
+        let base = slot * PREALLOCATED_SLOT_FDS_V3;
+        let mut descriptors = [-1; PREALLOCATED_SLOT_FDS_V3];
+        for (offset, destination) in descriptors.iter_mut().enumerate() {
+            *destination = PREALLOCATED_FD_TABLE_V3[base + offset].swap(-1, Ordering::AcqRel);
+        }
+        if descriptors.iter().any(|descriptor| *descriptor < 0) {
+            for descriptor in descriptors {
+                if descriptor >= 0 {
+                    unsafe {
+                        libc::close(descriptor);
+                    }
+                }
+            }
+            return Err(invalid("preallocated runner FD slot is incomplete"));
+        }
+        let [
+            command_read,
+            command_write,
+            response_read,
+            response_write,
+            death_read,
+            death_write,
+            kqueue,
+        ] = descriptors;
+        return Ok(PreallocatedRunnerSlotV3 {
+            child_command_read: unsafe { File::from_raw_fd(command_read) },
+            parent_command_write: unsafe { File::from_raw_fd(command_write) },
+            parent_response_read: unsafe { File::from_raw_fd(response_read) },
+            child_response_write: unsafe { File::from_raw_fd(response_write) },
+            parent_death_read: unsafe { File::from_raw_fd(death_read) },
+            child_death_write: unsafe { File::from_raw_fd(death_write) },
+            kqueue: unsafe { File::from_raw_fd(kqueue) },
+        });
+    }
+    Err(invalid("bounded preallocated runner FD pool is exhausted"))
+}
+
 impl FreshProcessEpochV3 {
     pub fn establish() -> Result<Self, InertRunnerErrorV3> {
+        ensure_preallocated_runner_pool()?;
         let identity = kernel_process_identity(unsafe { libc::getpid() } as u32)?;
-        let (handshake_read, handshake_write) = pipe_pair()?;
-        set_nonblocking(handshake_read.as_raw_fd())?;
-        set_nonblocking(handshake_write.as_raw_fd())?;
-        set_no_sigpipe(handshake_write.as_raw_fd())?;
-        let deadline = AbsoluteDeadlineV3::after(Duration::from_secs(5))?;
-        let challenge = random_hex(32)?;
-        write_frame_until(&handshake_write, challenge.as_bytes(), deadline)?;
-        let (observed, observed_deadline) = read_frame_until(&handshake_read, deadline)?;
-        if observed != challenge.as_bytes() {
-            return Err(invalid("fresh process pipe handshake changed bytes"));
-        }
-        if observed_deadline.monotonic_nanoseconds != deadline.monotonic_nanoseconds {
-            return Err(invalid("fresh process handshake deadline changed"));
-        }
         let binding = ProcessEpochBindingV3 {
             boot_session_uuid: boot_session_uuid()?,
-            handshake_sha256: sha256(challenge.as_bytes()),
+            bootstrap_pool_sha256: bootstrap_pool_sha256()?,
             kernel_start_microseconds: identity.start_microseconds,
             nonce: random_hex(32)?,
             parent_pid: identity.parent_pid,
@@ -422,8 +735,6 @@ impl FreshProcessEpochV3 {
         let epoch = Self {
             binding,
             binding_sha256,
-            _handshake_read: handshake_read,
-            _handshake_write: handshake_write,
         };
         epoch.validate_current()?;
         Ok(epoch)
@@ -439,6 +750,7 @@ impl FreshProcessEpochV3 {
             || identity.parent_pid != self.binding.parent_pid
             || identity.start_microseconds != self.binding.kernel_start_microseconds
             || boot_session_uuid()? != self.binding.boot_session_uuid
+            || bootstrap_pool_sha256()? != self.binding.bootstrap_pool_sha256
             || digest_canonical(&self.binding)? != self.binding_sha256
         {
             return Err(invalid(
@@ -621,9 +933,15 @@ impl LiveInertRunnerV3 {
         let startup_deadline = AbsoluteDeadlineV3::after(startup_timeout)?;
         let session_deadline =
             AbsoluteDeadlineV3::after(startup_timeout.max(Duration::from_secs(30)))?;
-        let (child_command_read, parent_command_write) = pipe_pair()?;
-        let (parent_response_read, child_response_write) = pipe_pair()?;
-        let (parent_death_read, child_death_write) = pipe_pair()?;
+        let PreallocatedRunnerSlotV3 {
+            child_command_read,
+            parent_command_write,
+            parent_response_read,
+            child_response_write,
+            parent_death_read,
+            child_death_write,
+            kqueue,
+        } = take_preallocated_runner_slot()?;
         let child_lease = lease.prepare_for_child()?;
         let source_fds = [
             child_command_read.as_raw_fd(),
@@ -631,12 +949,7 @@ impl LiveInertRunnerV3 {
             child_death_write.as_raw_fd(),
             child_lease.as_raw_fd(),
         ];
-        let target_fds = [
-            CHILD_COMMAND_FD_V3,
-            CHILD_RESPONSE_FD_V3,
-            CHILD_DEATH_FD_V3,
-            CHILD_LEASE_FD_V3,
-        ];
+        let target_fds = CHILD_FIXED_FDS_V3;
         reject_child_fd_aliases(&source_fds, &target_fds)?;
         set_nonblocking(parent_command_write.as_raw_fd())?;
         set_no_sigpipe(parent_command_write.as_raw_fd())?;
@@ -666,6 +979,7 @@ impl LiveInertRunnerV3 {
                 CHILD_DEADLINE_ENV_V3,
                 session_deadline.monotonic_nanoseconds.to_string(),
             )
+            .env(SKIP_PREMAIN_BOOTSTRAP_ENV_V3, "1")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
@@ -727,10 +1041,10 @@ impl LiveInertRunnerV3 {
             }
             require_nonce(&hello.runner_nonce, "runner nonce")?;
             let runner_epoch_sha256 = digest_canonical(&hello)?;
-            let kqueue = register_process_exit(child.id())?;
-            Ok((identity, kqueue, runner_epoch_sha256))
+            register_process_exit(kqueue.as_raw_fd(), child.id())?;
+            Ok((identity, runner_epoch_sha256))
         })();
-        let (identity, kqueue, runner_epoch_sha256) = match startup {
+        let (identity, runner_epoch_sha256) = match startup {
             Ok(startup) => startup,
             Err(error) => {
                 terminate_group_and_reap(&mut child);
@@ -1027,7 +1341,8 @@ impl LiveInertRunnerV3 {
             deadline,
         )?;
         wait_for_events_until(self.kqueue.as_raw_fd(), libc::POLLIN, deadline)?;
-        let kqueue_note_exit_observed = observe_kqueue_exit(self.kqueue.as_raw_fd())?;
+        let kqueue_note_exit_observed =
+            observe_kqueue_exit(self.kqueue.as_raw_fd(), self.runner_identity.pid)?;
         let death_pipe_eof_observed = read_eof_until(&self.death_pipe, deadline)?;
         let status = self.child.wait()?;
         let kernel_identity_absent = match kernel_process_identity(self.runner_identity.pid) {
@@ -1281,18 +1596,6 @@ fn boot_session_uuid() -> Result<String, InertRunnerErrorV3> {
     Ok(uuid)
 }
 
-fn pipe_pair() -> Result<(File, File), InertRunnerErrorV3> {
-    let mut descriptors = [-1; 2];
-    if unsafe { libc::pipe(descriptors.as_mut_ptr()) } != 0 {
-        return Err(io::Error::last_os_error().into());
-    }
-    let read = unsafe { File::from_raw_fd(descriptors[0]) };
-    let write = unsafe { File::from_raw_fd(descriptors[1]) };
-    set_close_on_exec(read.as_raw_fd())?;
-    set_close_on_exec(write.as_raw_fd())?;
-    Ok((read, write))
-}
-
 fn set_close_on_exec(fd: RawFd) -> Result<(), InertRunnerErrorV3> {
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
     if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) } < 0 {
@@ -1337,9 +1640,9 @@ fn reject_child_fd_aliases(
     }
     for target in targets {
         let flags = unsafe { libc::fcntl(*target, libc::F_GETFD) };
-        if flags >= 0 && flags & libc::FD_CLOEXEC == 0 {
+        if flags < 0 || flags & libc::FD_CLOEXEC == 0 {
             return Err(invalid(
-                "fixed child FD target is already open without CLOEXEC in the parent",
+                "fixed child FD reservation is closed or lost CLOEXEC in the parent",
             ));
         }
     }
@@ -1357,13 +1660,7 @@ fn inherited_fd(name: &str) -> Result<RawFd, InertRunnerErrorV3> {
     Ok(fd)
 }
 
-fn register_process_exit(pid: u32) -> Result<File, InertRunnerErrorV3> {
-    let descriptor = unsafe { libc::kqueue() };
-    if descriptor < 0 {
-        return Err(io::Error::last_os_error().into());
-    }
-    let file = unsafe { File::from_raw_fd(descriptor) };
-    set_close_on_exec(descriptor)?;
+fn register_process_exit(descriptor: RawFd, pid: u32) -> Result<(), InertRunnerErrorV3> {
     let change = libc::kevent {
         ident: pid as libc::uintptr_t,
         filter: libc::EVFILT_PROC,
@@ -1385,10 +1682,10 @@ fn register_process_exit(pid: u32) -> Result<File, InertRunnerErrorV3> {
     if rc != 0 {
         return Err(io::Error::last_os_error().into());
     }
-    Ok(file)
+    Ok(())
 }
 
-fn observe_kqueue_exit(descriptor: RawFd) -> Result<bool, InertRunnerErrorV3> {
+fn observe_kqueue_exit(descriptor: RawFd, expected_pid: u32) -> Result<bool, InertRunnerErrorV3> {
     let mut event = MaybeUninit::<libc::kevent>::zeroed();
     let timeout = libc::timespec {
         tv_sec: 0,
@@ -1411,7 +1708,19 @@ fn observe_kqueue_exit(descriptor: RawFd) -> Result<bool, InertRunnerErrorV3> {
         return Ok(false);
     }
     let event = unsafe { event.assume_init() };
-    Ok(event.filter == libc::EVFILT_PROC && event.fflags & libc::NOTE_EXIT != 0)
+    validate_kqueue_exit_event(&event, expected_pid)
+}
+
+fn validate_kqueue_exit_event(
+    event: &libc::kevent,
+    expected_pid: u32,
+) -> Result<bool, InertRunnerErrorV3> {
+    if event.flags & libc::EV_ERROR != 0 {
+        return Err(invalid("runner kqueue returned EV_ERROR"));
+    }
+    Ok(event.ident == expected_pid as libc::uintptr_t
+        && event.filter == libc::EVFILT_PROC
+        && event.fflags & libc::NOTE_EXIT != 0)
 }
 
 fn wait_for_events_until(
