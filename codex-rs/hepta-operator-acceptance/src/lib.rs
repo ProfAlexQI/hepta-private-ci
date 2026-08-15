@@ -10,6 +10,8 @@ pub mod mac_apfs_barrier_fixture;
 pub(crate) mod mac_disposable_lifecycle;
 #[cfg(target_os = "macos")]
 pub(crate) mod mac_disposable_lifecycle_store;
+#[cfg(target_os = "macos")]
+pub(crate) mod mac_inert_one_shot_runner;
 pub mod mac_iomedia_identity;
 #[cfg(target_os = "macos")]
 pub mod mac_privileged_broker;
