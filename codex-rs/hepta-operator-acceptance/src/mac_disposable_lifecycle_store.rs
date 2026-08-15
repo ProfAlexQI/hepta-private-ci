@@ -36,6 +36,8 @@ use crate::mac_inert_one_shot_runner::FreshProcessEpochV3;
 use crate::mac_inert_one_shot_runner::InertDispatchReceiptV3;
 use crate::mac_inert_one_shot_runner::InertRunnerErrorV3;
 use crate::mac_inert_one_shot_runner::IssuedRunnerDispatchFailureV3;
+use crate::mac_inert_one_shot_runner::RecoveredRunnerDeathProofV3;
+use crate::mac_inert_one_shot_runner::RunnerIssueReadSealV3;
 use crate::mac_inert_one_shot_runner::SameSupervisorRunnerDeathProofV3;
 use crate::mac_inert_one_shot_runner::SealedRunnerDispatchV3;
 use crate::mac_privileged_disposable_control::BlockingOperationV3;
@@ -302,11 +304,11 @@ impl ReconciliationLifecycleEventV3 {
         })
     }
 
-    pub fn unmount_callback(effect_id: u64, outcome: CallbackOutcomeV2) -> Self {
+    fn unmount_callback(effect_id: u64, outcome: CallbackOutcomeV2) -> Self {
         Self(DisposableLifecycleEventV2::UnmountCallbackObserved { effect_id, outcome })
     }
 
-    pub fn unmount_observed(effect_id: u64, mount_absence_sha256: String) -> Self {
+    fn unmount_observed(effect_id: u64, mount_absence_sha256: String) -> Self {
         Self(DisposableLifecycleEventV2::UnmountObserved {
             effect_id,
             mount_absence_sha256,
@@ -320,11 +322,11 @@ impl ReconciliationLifecycleEventV3 {
         })
     }
 
-    pub fn eject_callback(effect_id: u64, outcome: CallbackOutcomeV2) -> Self {
+    fn eject_callback(effect_id: u64, outcome: CallbackOutcomeV2) -> Self {
         Self(DisposableLifecycleEventV2::EjectCallbackObserved { effect_id, outcome })
     }
 
-    pub fn eject_observed(effect_id: u64, iomedia_absence_sha256: String) -> Self {
+    fn eject_observed(effect_id: u64, iomedia_absence_sha256: String) -> Self {
         Self(DisposableLifecycleEventV2::EjectObserved {
             effect_id,
             iomedia_absence_sha256,
@@ -470,8 +472,53 @@ pub(crate) struct PendingUnmountReconciliationOperationStoreV3<'a, 'e, S> {
 /// V3 issue store together; no sub-capability or descriptor can be extracted.
 pub(crate) struct RetainedOperationEffectIssueV3<'store, 'a, 'e> {
     effect_id: u64,
+    record: IssuedEffectRecordV3,
+    record_canonical_bytes: Vec<u8>,
+    record_sha256: String,
     store: &'store mut ReconciliationOperationStoreV3<'a, 'e>,
     _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Token whose private constructor confines typed durable-issue reads to this
+/// whole-operation owner. Issue-store APIs accept it by reference but cannot
+/// mint it, so they expose no crate-wide record/bytes/digest projection.
+pub(crate) struct OperationIssueReadSealV3 {
+    _private: (),
+}
+
+/// Opaque one-shot handoff from the whole-operation issue capability to the
+/// runner module. Its contents can be opened only with the runner-private
+/// `RunnerIssueReadSealV3`.
+pub(crate) struct SealedRunnerIssueMaterialV3 {
+    record: IssuedEffectRecordV3,
+    record_canonical_bytes: Vec<u8>,
+    record_sha256: String,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Private proof that the exact V2/V3 issue pair was durably replayed,
+/// adopted by S1, and revalidated while the whole operation store was held.
+/// The control layer may consume this type but cannot construct it.
+pub(crate) struct PersistedIssueLeaseSealV3 {
+    _private: (),
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// One-shot proof that the latest issued-or-uncertain V2 record and its exact
+/// retained V3 issue were replayed as a bijection and are still S1-adopted.
+/// Only this module constructs it; S1 consumes it while re-proving the global
+/// lease before a recovered death proof can exist.
+pub(crate) struct RecoveredIssueVerifierSealV3 {
+    _private: (),
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+struct PersistedOperationIssueSealV3 {
+    effect_id: u64,
+    record: IssuedEffectRecordV3,
+    record_canonical_bytes: Vec<u8>,
+    record_sha256: String,
+    lease_seal: PersistedIssueLeaseSealV3,
 }
 
 /// The only production-capable S2-to-runner handoff.  `issue` is the actual
@@ -1497,7 +1544,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         &mut self,
         command: ExactDisposableCommandV3,
         epochs: EffectEpochEvidenceV3,
-    ) -> Result<u64, DurableLifecycleStoreErrorV3> {
+    ) -> Result<PersistedOperationIssueSealV3, DurableLifecycleStoreErrorV3> {
         if self.poisoned {
             return Err(invalid(
                 "reconciliation operation store is poisoned; exact restart replay is required",
@@ -1537,42 +1584,54 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         };
         let issued_append =
             self.append_reconciliation_inner(ReconciliationLifecycleEventV3(event), true)?;
-        issued_append.require_s1_adopted()?;
-
-        let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
-        let collector_binding = self
-            .collector
-            .as_ref()
-            .expect("collector is preserved across the issued append")
-            .issue_binding()
-            .map_err(|error| {
-                self.poisoned = true;
-                invalid(format!(
-                    "retained collector could not seal the effect issue: {error}"
-                ))
-            })?;
-        let persisted = self
-            .issues
-            .persist_bound(&lifecycle, &collector_binding, command, epochs);
-        let effect_id = match persisted {
-            Ok(mut retained) => {
+        let post_durability = (|| {
+            issued_append.require_s1_adopted()?;
+            let lifecycle =
+                VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
+            let collector_binding = self
+                .collector
+                .as_ref()
+                .expect("collector is preserved across the issued append")
+                .issue_binding()
+                .map_err(|error| {
+                    invalid(format!(
+                        "retained collector could not seal the effect issue: {error}"
+                    ))
+                })?;
+            let mut retained =
+                self.issues
+                    .persist_bound(&lifecycle, &collector_binding, command, epochs)?;
+            let issue_read = OperationIssueReadSealV3 { _private: () };
+            let (effect_id, record, record_canonical_bytes, record_sha256) = {
                 let effect_id = retained.effect_id();
                 retained.revalidate()?;
                 let sink = self.census.selected_effect_issue_sink()?;
                 retained.adopt_into_s1(sink)?;
                 retained.require_s1_adopted()?;
-                effect_id
-            }
-            Err(error) => {
-                self.poisoned = true;
-                return Err(error.into());
-            }
-        };
-        if let Err(error) = self.revalidate_issue_state(effect_id) {
+                retained.revalidate()?;
+                (
+                    effect_id,
+                    retained.sealed_record(&issue_read).clone(),
+                    retained.sealed_record_canonical_bytes(&issue_read).to_vec(),
+                    retained.sealed_record_sha256(&issue_read).to_string(),
+                )
+            };
+            self.revalidate_issue_state(effect_id)?;
+            Ok(PersistedOperationIssueSealV3 {
+                effect_id,
+                record,
+                record_canonical_bytes,
+                record_sha256,
+                lease_seal: PersistedIssueLeaseSealV3 {
+                    _private: (),
+                    _not_send_or_sync: PhantomData,
+                },
+            })
+        })();
+        if post_durability.is_err() {
             self.poisoned = true;
-            return Err(error);
         }
-        Ok(effect_id)
+        post_durability
     }
 
     #[cfg(test)]
@@ -1581,9 +1640,12 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         command: ExactDisposableCommandV3,
         epochs: EffectEpochEvidenceV3,
     ) -> Result<RetainedOperationEffectIssueV3<'store, 'a, 'e>, DurableLifecycleStoreErrorV3> {
-        let effect_id = self.persist_reconciliation_issue_inner(command, epochs)?;
+        let persisted = self.persist_reconciliation_issue_inner(command, epochs)?;
         Ok(RetainedOperationEffectIssueV3 {
-            effect_id,
+            effect_id: persisted.effect_id,
+            record: persisted.record,
+            record_canonical_bytes: persisted.record_canonical_bytes,
+            record_sha256: persisted.record_sha256,
             store: self,
             _not_send_or_sync: PhantomData,
         })
@@ -1599,15 +1661,33 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
     ) -> Result<PersistedIssuedRunnerGrantV3<'store, 'a, 'e>, DurableLifecycleStoreErrorV3> {
         let epoch_binding = runner.bind_effect_epoch(self.epoch)?;
         let epochs = EffectEpochEvidenceV3::from_authenticated(epoch_binding)?;
-        let effect_id = self.persist_reconciliation_issue_inner(command, epochs)?;
-        self.revalidate_issue_state(effect_id)?;
-        let lease = self.census.duplicate_control_lease()?;
+        let persisted = self.persist_reconciliation_issue_inner(command, epochs)?;
+        if let Err(error) = self.revalidate_issue_state(persisted.effect_id) {
+            self.poisoned = true;
+            return Err(error);
+        }
+        let dispatch_epoch = match runner.bind_effect_epoch(self.epoch) {
+            Ok(epoch) => epoch,
+            Err(error) => {
+                self.poisoned = true;
+                return Err(error.into());
+            }
+        };
+        let lease = match self.census.duplicate_control_lease(persisted.lease_seal) {
+            Ok(lease) => lease,
+            Err(error) => {
+                self.poisoned = true;
+                return Err(error.into());
+            }
+        };
         let mut issue = RetainedOperationEffectIssueV3 {
-            effect_id,
+            effect_id: persisted.effect_id,
+            record: persisted.record,
+            record_canonical_bytes: persisted.record_canonical_bytes,
+            record_sha256: persisted.record_sha256,
             store: self,
             _not_send_or_sync: PhantomData,
         };
-        let dispatch_epoch = runner.bind_effect_epoch(issue.store.epoch)?;
         let dispatch = match SealedRunnerDispatchV3::from_retained_issue(
             runner,
             &dispatch_epoch,
@@ -1625,6 +1705,90 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
             dispatch: Some(dispatch),
             _not_send_or_sync: PhantomData,
         })
+    }
+
+    /// Produce the distinct fresh-supervisor death proof for the latest exact
+    /// issued-or-uncertain effect. The proof borrows this entire operation,
+    /// retains a re-proved S1 global lease, and cannot be confused with the
+    /// kqueue/pipe/waitpid proof emitted by a live same-supervisor handle.
+    pub(crate) fn recover_latest_runner_death<'store>(
+        &'store mut self,
+    ) -> Result<RecoveredRunnerDeathProofV3<'store>, DurableLifecycleStoreErrorV3> {
+        self.recover_latest_runner_death_inner(|| Ok(()))
+    }
+
+    #[cfg(test)]
+    fn recover_latest_runner_death_with_hook<'store, F>(
+        &'store mut self,
+        after_absence_before_final_revalidate: F,
+    ) -> Result<RecoveredRunnerDeathProofV3<'store>, DurableLifecycleStoreErrorV3>
+    where
+        F: FnOnce() -> io::Result<()>,
+    {
+        self.recover_latest_runner_death_inner(after_absence_before_final_revalidate)
+    }
+
+    fn recover_latest_runner_death_inner<'store, F>(
+        &'store mut self,
+        after_absence_before_final_revalidate: F,
+    ) -> Result<RecoveredRunnerDeathProofV3<'store>, DurableLifecycleStoreErrorV3>
+    where
+        F: FnOnce() -> io::Result<()>,
+    {
+        if self.poisoned {
+            return Err(invalid(
+                "poisoned reconciliation store cannot mint a recovered runner proof",
+            ));
+        }
+        let effect_id = self.journal.last_effect_id();
+        if effect_id == 0 {
+            return Err(invalid(
+                "recovered runner proof requires one exact issued-or-uncertain effect",
+            ));
+        }
+        self.revalidate_recovery_issue_state(effect_id)?;
+        let issue_read = OperationIssueReadSealV3 { _private: () };
+        let record = self
+            .issues
+            .replayed_issue_sealed(effect_id, &issue_read)
+            .ok_or_else(|| invalid("latest recovered effect lost its exact V3 issue"))?
+            .clone();
+        if record.effect_id() != effect_id || record.operation_nonce() != self.operation_nonce() {
+            return Err(invalid(
+                "recovered issue differs from the exact blocking operation or effect",
+            ));
+        }
+        let issued_record_sha256 = sha256(&canonical_json(&record).map_err(|error| {
+            invalid(format!(
+                "recovered issue is not canonical after retained replay: {error}"
+            ))
+        })?);
+        let issue_seal = RecoveredIssueVerifierSealV3 {
+            _private: (),
+            _not_send_or_sync: PhantomData,
+        };
+        let control_lease = self.census.seal_recovered_control_lease(issue_seal)?;
+        RecoveredRunnerDeathProofV3::from_exact_replay(
+            control_lease,
+            self.epoch,
+            record.boot_session_uuid().to_string(),
+            issued_record_sha256,
+            record.command_sha256().to_string(),
+            record.effect_id(),
+            record.operation_nonce().to_string(),
+            record.purpose(),
+            record.supervisor_pid(),
+            record.supervisor_parent_pid(),
+            record.supervisor_kernel_start_microseconds(),
+            record.runner_pid(),
+            record.runner_kernel_start_microseconds(),
+            || {
+                after_absence_before_final_revalidate().map_err(|error| error.to_string())?;
+                self.revalidate_recovery_issue_state(effect_id)
+                    .map_err(|error| error.to_string())
+            },
+        )
+        .map_err(Into::into)
     }
 
     /// Consume the stable reconciliation wrapper into a pending unmount using
@@ -1650,9 +1814,10 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         }
         self.revalidate_issue_state(effect_id)?;
         let (command, command_sha256, issued_record_sha256) = {
+            let issue_read = OperationIssueReadSealV3 { _private: () };
             let issue = self
                 .issues
-                .replayed_issue(effect_id)
+                .replayed_issue_sealed(effect_id, &issue_read)
                 .ok_or_else(|| invalid("latest durable effect has no retained V3 issue"))?;
             let record_sha256 = sha256(&canonical_json(issue).map_err(|error| {
                 invalid(format!(
@@ -1724,9 +1889,40 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
         self.issues.revalidate_required(&lifecycle)?;
         self.issues.revalidate_s1_adopted()?;
-        if self.issues.replayed_issue(effect_id).is_none() {
+        let issue_read = OperationIssueReadSealV3 { _private: () };
+        if self
+            .issues
+            .replayed_issue_sealed(effect_id, &issue_read)
+            .is_none()
+        {
             return Err(invalid(
                 "retained V3 issue disappeared from the exact bijection",
+            ));
+        }
+        Ok(())
+    }
+
+    fn revalidate_recovery_issue_state(
+        &self,
+        effect_id: u64,
+    ) -> Result<(), DurableLifecycleStoreErrorV3> {
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed during recovered issue replay: {error}"
+            ))
+        })?;
+        let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
+        self.issues.revalidate_required(&lifecycle)?;
+        self.issues.revalidate_s1_adopted()?;
+        let issue_read = OperationIssueReadSealV3 { _private: () };
+        if self
+            .issues
+            .replayed_issue_sealed(effect_id, &issue_read)
+            .is_none()
+        {
+            return Err(invalid(
+                "recovered V3 issue disappeared from the exact V2/V3 bijection",
             ));
         }
         Ok(())
@@ -1923,9 +2119,10 @@ impl<S> PendingUnmountReconciliationOperationStoreV3<'_, '_, S> {
         let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
         self.issues.revalidate_required(&lifecycle)?;
         self.issues.revalidate_s1_adopted()?;
+        let issue_read = OperationIssueReadSealV3 { _private: () };
         let issue = self
             .issues
-            .replayed_issue(self.effect_id)
+            .replayed_issue_sealed(self.effect_id, &issue_read)
             .ok_or_else(|| invalid("pending-unmount V3 issue disappeared"))?;
         let issued_record_sha256 = sha256(&canonical_json(issue).map_err(|error| {
             invalid(format!(
@@ -2137,25 +2334,17 @@ impl RetainedOperationEffectIssueV3<'_, '_, '_> {
         self.effect_id
     }
 
-    pub(crate) fn record(&self) -> &IssuedEffectRecordV3 {
-        self.store
-            .issues
-            .replayed_issue(self.effect_id)
-            .expect("retained issue constructor proved the issue exists")
-    }
-
-    pub(crate) fn record_canonical_bytes(&self) -> &[u8] {
-        self.store
-            .issues
-            .replayed_issue_canonical_bytes(self.effect_id)
-            .expect("retained issue constructor proved exact issue bytes exist")
-    }
-
-    pub(crate) fn record_sha256(&self) -> &str {
-        self.store
-            .issues
-            .replayed_issue_sha256(self.effect_id)
-            .expect("retained issue constructor proved exact issue digest exists")
+    pub(crate) fn seal_runner_issue(
+        &self,
+        _runner: &RunnerIssueReadSealV3,
+    ) -> Result<SealedRunnerIssueMaterialV3, DurableLifecycleStoreErrorV3> {
+        self.revalidate()?;
+        Ok(SealedRunnerIssueMaterialV3 {
+            record: self.record.clone(),
+            record_canonical_bytes: self.record_canonical_bytes.clone(),
+            record_sha256: self.record_sha256.clone(),
+            _not_send_or_sync: PhantomData,
+        })
     }
 
     pub(crate) fn poison_after_unproved_runner_drop(&mut self) {
@@ -2164,6 +2353,15 @@ impl RetainedOperationEffectIssueV3<'_, '_, '_> {
 
     pub(crate) fn revalidate(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
         self.store.revalidate_issue_state(self.effect_id)
+    }
+}
+
+impl SealedRunnerIssueMaterialV3 {
+    pub(crate) fn into_runner_parts(
+        self,
+        _runner: RunnerIssueReadSealV3,
+    ) -> (IssuedEffectRecordV3, Vec<u8>, String) {
+        (self.record, self.record_canonical_bytes, self.record_sha256)
     }
 }
 
@@ -2341,6 +2539,10 @@ impl IssuedEffectDeathProvedV3<'_, '_, '_> {
 
     pub(crate) fn receipt(&self) -> Option<&InertDispatchReceiptV3> {
         self.receipt.as_ref()
+    }
+
+    pub(crate) fn into_same_supervisor_proof(self) -> SameSupervisorRunnerDeathProofV3 {
+        self.proof
     }
 }
 

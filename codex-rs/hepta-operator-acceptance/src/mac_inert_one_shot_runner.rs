@@ -26,14 +26,17 @@
 //! - A runner accepts one exact command.  Same-supervisor sequential
 //!   reconciliation requires a non-serializable death proof produced from the
 //!   original live handle after kqueue NOTE_EXIT, pipe EOF, waitpid, and kernel
-//!   identity checks all agree.  Fresh-supervisor recovery remains sealed
-//!   until the S1 durable bridge can construct its distinct proof type.
+//!   identity checks all agree. Fresh-supervisor recovery uses a distinct
+//!   proof schema sealed by the exact S1 census, retained V2/V3 issue pair,
+//!   re-acquired global lease, and current process epoch.
 
 use crate::durable::canonical_json;
 use crate::durable::sha256;
 use crate::mac_disposable_effect_issue_store::EffectPurposeV3 as DurableEffectPurposeV3;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
 use crate::mac_disposable_lifecycle_store::RetainedOperationEffectIssueV3;
+use crate::mac_disposable_lifecycle_store::SealedRunnerIssueMaterialV3;
+use crate::mac_privileged_disposable_control::RecoveredControlLeaseSealV3;
 use crate::mac_privileged_disposable_control::S1ControlLeaseSealV3;
 use rand::TryRngCore;
 use rand::rngs::OsRng;
@@ -70,6 +73,7 @@ const RUNNER_HELLO_SCHEMA_V3: &str = "hepta_mac_inert_runner_hello_v3";
 const RUNNER_DISPATCH_SCHEMA_V3: &str = "hepta_mac_inert_runner_dispatch_v3";
 const DISPATCH_RECEIPT_SCHEMA_V3: &str = "hepta_mac_inert_dispatch_receipt_v3";
 const DEATH_RECEIPT_SCHEMA_V3: &str = "hepta_mac_runner_death_receipt_v3";
+const RECOVERED_DEATH_RECEIPT_SCHEMA_V3: &str = "hepta_mac_recovered_runner_death_receipt_v3";
 const RUNNER_TRANSPORT_KIND_V3: &str = "darwin_af_unix_sock_dgram_scm_rights_v3";
 const RUNNER_RECORD_BOUNDARY_V3: &str = "one_datagram_one_canonical_record_v3";
 const RUNNER_DESCRIPTOR_TRANSFER_V3: &str = "exactly_one_scm_rights_fd_with_command_v3";
@@ -408,15 +412,52 @@ pub struct SameSupervisorRunnerDeathProofV3 {
     receipt_sha256: String,
 }
 
-/// Fresh-supervisor recovery is intentionally sealed until S1 supplies a
-/// descriptor-retained durable bridge.  This type has no constructor here.
-pub struct RecoveredRunnerDeathProofV3 {
-    _receipt: PriorRunnerDeathReceiptV3,
-    _s1_durable_bridge_sha256: String,
-    _seal: RecoveredProofSealV3,
+#[derive(Debug, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RecoveredRunnerDeathReceiptV3 {
+    authority: DisposableAuthorityV2,
+    boot_changed: bool,
+    command_sha256: String,
+    current_boot_session_uuid: String,
+    current_process_epoch_sha256: String,
+    current_supervisor_kernel_start_microseconds: u64,
+    current_supervisor_parent_pid: u32,
+    current_supervisor_pid: u32,
+    effect_id: u64,
+    global_control_lease_reacquired: bool,
+    issued_boot_session_uuid: String,
+    issued_record_sha256: String,
+    issued_supervisor_kernel_start_microseconds: u64,
+    issued_supervisor_parent_pid: u32,
+    issued_supervisor_pid: u32,
+    operation_nonce: String,
+    purpose: EffectPurposeV3,
+    runner_kernel_start_microseconds: u64,
+    runner_pid: u32,
+    s1_exact_issue_adopted: bool,
+    same_boot_runner_identity_absent: bool,
+    same_boot_supervisor_identity_absent: bool,
+    schema: String,
+    schema_version: u32,
 }
 
-struct RecoveredProofSealV3;
+/// Cross-restart proof has its own schema and deliberately contains none of
+/// the kqueue/pipe/waitpid signals reserved for a same-supervisor proof. It
+/// retains the re-acquired global lease and an exclusive lifetime borrow of
+/// the exact blocking operation.
+pub(crate) struct RecoveredRunnerDeathProofV3<'store> {
+    receipt: RecoveredRunnerDeathReceiptV3,
+    receipt_sha256: String,
+    _control_lease: RecoveredControlLeaseSealV3,
+    _retained_operation: PhantomData<&'store mut ()>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Only this module can mint the token that opens the lifecycle-owned opaque
+/// issue handoff.
+pub(crate) struct RunnerIssueReadSealV3 {
+    _private: (),
+}
 
 /// Owned, non-serializable FD reserved for a future borrow-tied, one-shot S2
 /// persisted-issued grant.  That grant must perform the exact S1 revalidation
@@ -499,8 +540,17 @@ impl SealedRunnerDispatchV3 {
                 "retained issue targets a used, stale, or different pre-runner",
             ));
         }
-        let durable = issue.record();
+        let runner_read = RunnerIssueReadSealV3 { _private: () };
+        let material: SealedRunnerIssueMaterialV3 = issue
+            .seal_runner_issue(&runner_read)
+            .map_err(|error| invalid(format!("retained S2 issue handoff failed: {error}")))?;
+        let (durable, issued_record_canonical_bytes, issued_record_sha256) =
+            material.into_runner_parts(runner_read);
         if durable.process_epoch_sha256() != epoch.process_epoch_sha256()
+            || durable.supervisor_pid() != epoch.supervisor_pid()
+            || durable.supervisor_parent_pid() != epoch.supervisor_parent_pid()
+            || durable.supervisor_kernel_start_microseconds()
+                != epoch.supervisor_kernel_start_microseconds()
             || durable.runner_epoch_sha256() != epoch.runner_epoch_sha256()
             || durable.runner_pid() != epoch.runner_pid()
             || durable.runner_kernel_start_microseconds()
@@ -521,7 +571,7 @@ impl SealedRunnerDispatchV3 {
         let envelope = RunnerCommandEnvelopeV3 {
             command_sha256: durable.command_sha256().to_string(),
             effect_id: durable.effect_id(),
-            issued_record_sha256: issue.record_sha256().to_string(),
+            issued_record_sha256: issued_record_sha256.clone(),
             journal_tip_before_sha256: previous_record_sha256.clone(),
             operation_nonce: durable.operation_nonce().to_string(),
             previous_record_sha256,
@@ -534,13 +584,13 @@ impl SealedRunnerDispatchV3 {
         let wire = RunnerWireCommandV3 {
             command: durable.command_canonical_bytes().to_vec(),
             envelope,
-            issued_record_canonical_bytes: issue.record_canonical_bytes().to_vec(),
+            issued_record_canonical_bytes,
         };
         wire.validate_canonical()?;
         let durable_binding = DurableIssuedBindingV3 {
             command_sha256: durable.command_sha256().to_string(),
             effect_id: durable.effect_id(),
-            issued_record_sha256: issue.record_sha256().to_string(),
+            issued_record_sha256,
             journal_tip_before_sha256: Some(durable.lifecycle_tip_before_sha256().to_string()),
             operation_nonce: durable.operation_nonce().to_string(),
             purpose,
@@ -1377,6 +1427,18 @@ impl AuthenticatedEffectEpochBindingV3 {
         &self.process_epoch_sha256
     }
 
+    pub(crate) fn supervisor_pid(&self) -> u32 {
+        self.process_epoch.pid
+    }
+
+    pub(crate) fn supervisor_parent_pid(&self) -> u32 {
+        self.process_epoch.parent_pid
+    }
+
+    pub(crate) fn supervisor_kernel_start_microseconds(&self) -> u64 {
+        self.process_epoch.kernel_start_microseconds
+    }
+
     pub(crate) fn runner_epoch_nonce(&self) -> &str {
         &self.runner_epoch.runner_nonce
     }
@@ -1604,6 +1666,152 @@ impl SameSupervisorRunnerDeathProofV3 {
             return Err(invalid("same-supervisor death proof digest changed"));
         }
         Ok(())
+    }
+}
+
+impl RecoveredRunnerDeathReceiptV3 {
+    fn validate(&self) -> Result<(), InertRunnerErrorV3> {
+        require_boot_uuid(
+            &self.current_boot_session_uuid,
+            "recovered proof current boot",
+        )?;
+        require_boot_uuid(
+            &self.issued_boot_session_uuid,
+            "recovered proof issued boot",
+        )?;
+        require_sha256(
+            &self.current_process_epoch_sha256,
+            "recovered proof current process epoch",
+        )?;
+        require_sha256(&self.command_sha256, "recovered proof command")?;
+        require_sha256(&self.issued_record_sha256, "recovered proof issued record")?;
+        require_nonce(&self.operation_nonce, "recovered proof operation nonce")?;
+        let epoch_relation_valid = if self.boot_changed {
+            self.current_boot_session_uuid != self.issued_boot_session_uuid
+                && !self.same_boot_runner_identity_absent
+                && !self.same_boot_supervisor_identity_absent
+        } else {
+            self.current_boot_session_uuid == self.issued_boot_session_uuid
+                && self.same_boot_runner_identity_absent
+                && self.same_boot_supervisor_identity_absent
+        };
+        if self.schema != RECOVERED_DEATH_RECEIPT_SCHEMA_V3
+            || self.schema_version != 3
+            || self.authority.any()
+            || !self.global_control_lease_reacquired
+            || !self.s1_exact_issue_adopted
+            || !epoch_relation_valid
+            || self.effect_id == 0
+            || self.current_supervisor_pid == 0
+            || self.current_supervisor_kernel_start_microseconds == 0
+            || self.issued_supervisor_pid == 0
+            || self.issued_supervisor_kernel_start_microseconds == 0
+            || self.runner_pid == 0
+            || self.runner_kernel_start_microseconds == 0
+            || self.issued_supervisor_pid == self.runner_pid
+            || self.issued_supervisor_parent_pid == self.issued_supervisor_pid
+        {
+            return Err(invalid(
+                "recovered death proof schema, exact lease/issue seal, identities, or boot transition is invalid",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl<'store> RecoveredRunnerDeathProofV3<'store> {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_exact_replay<F>(
+        control_lease: RecoveredControlLeaseSealV3,
+        epoch: &FreshProcessEpochV3,
+        issued_boot_session_uuid: String,
+        issued_record_sha256: String,
+        command_sha256: String,
+        effect_id: u64,
+        operation_nonce: String,
+        purpose: DurableEffectPurposeV3,
+        issued_supervisor_pid: u32,
+        issued_supervisor_parent_pid: u32,
+        issued_supervisor_kernel_start_microseconds: u64,
+        runner_pid: u32,
+        runner_kernel_start_microseconds: u64,
+        final_exact_revalidate: F,
+    ) -> Result<Self, InertRunnerErrorV3>
+    where
+        F: FnOnce() -> Result<(), String>,
+    {
+        epoch.validate_current()?;
+        let boot_changed = issued_boot_session_uuid != epoch.binding.boot_session_uuid;
+        let (same_boot_supervisor_identity_absent, same_boot_runner_identity_absent) =
+            if boot_changed {
+                (false, false)
+            } else {
+                let supervisor_absent = exact_pid_start_absent(
+                    issued_supervisor_pid,
+                    issued_supervisor_kernel_start_microseconds,
+                )?;
+                let runner_absent =
+                    exact_pid_start_absent(runner_pid, runner_kernel_start_microseconds)?;
+                if !supervisor_absent || !runner_absent {
+                    return Err(invalid(
+                        "same-boot recovery still sees the exact issued supervisor or runner identity",
+                    ));
+                }
+                (supervisor_absent, runner_absent)
+            };
+        let purpose = match purpose {
+            DurableEffectPurposeV3::ForwardFlow => EffectPurposeV3::ForwardFlow,
+            DurableEffectPurposeV3::RestartReconciliation => EffectPurposeV3::RestartReconciliation,
+        };
+        let receipt = RecoveredRunnerDeathReceiptV3 {
+            authority: DisposableAuthorityV2::none(),
+            boot_changed,
+            command_sha256,
+            current_boot_session_uuid: epoch.binding.boot_session_uuid.clone(),
+            current_process_epoch_sha256: epoch.binding_sha256.clone(),
+            current_supervisor_kernel_start_microseconds: epoch.binding.kernel_start_microseconds,
+            current_supervisor_parent_pid: epoch.binding.parent_pid,
+            current_supervisor_pid: epoch.binding.pid,
+            effect_id,
+            global_control_lease_reacquired: true,
+            issued_boot_session_uuid,
+            issued_record_sha256,
+            issued_supervisor_kernel_start_microseconds,
+            issued_supervisor_parent_pid,
+            issued_supervisor_pid,
+            operation_nonce,
+            purpose,
+            runner_kernel_start_microseconds,
+            runner_pid,
+            s1_exact_issue_adopted: true,
+            same_boot_runner_identity_absent,
+            same_boot_supervisor_identity_absent,
+            schema: RECOVERED_DEATH_RECEIPT_SCHEMA_V3.to_string(),
+            schema_version: 3,
+        };
+        receipt.validate()?;
+        final_exact_revalidate().map_err(|error| {
+            invalid(format!(
+                "recovered proof final exact S1/V2/V3 replay failed: {error}"
+            ))
+        })?;
+        epoch.validate_current()?;
+        let receipt_sha256 = digest_canonical(&receipt)?;
+        Ok(Self {
+            receipt,
+            receipt_sha256,
+            _control_lease: control_lease,
+            _retained_operation: PhantomData,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn sha256(&self) -> Result<&str, InertRunnerErrorV3> {
+        self.receipt.validate()?;
+        if digest_canonical(&self.receipt)? != self.receipt_sha256 {
+            return Err(invalid("recovered death proof digest changed"));
+        }
+        Ok(&self.receipt_sha256)
     }
 }
 
@@ -2630,6 +2838,14 @@ fn kernel_process_identity(pid: u32) -> Result<KernelProcessIdentityV3, InertRun
     })
 }
 
+fn exact_pid_start_absent(pid: u32, start_microseconds: u64) -> Result<bool, InertRunnerErrorV3> {
+    match kernel_process_identity(pid) {
+        Ok(identity) => Ok(identity.start_microseconds != start_microseconds),
+        Err(InertRunnerErrorV3::Io(error)) if error.raw_os_error() == Some(libc::ESRCH) => Ok(true),
+        Err(error) => Err(error),
+    }
+}
+
 fn boot_session_uuid() -> Result<String, InertRunnerErrorV3> {
     let name = CString::new("kern.bootsessionuuid").expect("static sysctl name");
     let mut length = 0usize;
@@ -3374,6 +3590,24 @@ fn require_nonce(value: &str, label: &str) -> Result<(), InertRunnerErrorV3> {
     }
     if value.bytes().any(|byte| byte.is_ascii_uppercase()) {
         return Err(invalid(format!("{label} must be lowercase")));
+    }
+    Ok(())
+}
+
+fn require_boot_uuid(value: &str, label: &str) -> Result<(), InertRunnerErrorV3> {
+    let bytes = value.as_bytes();
+    if bytes.len() != 36
+        || !bytes
+            .iter()
+            .any(|byte| byte.is_ascii_hexdigit() && *byte != b'0')
+        || !bytes.iter().enumerate().all(|(index, byte)| match index {
+            8 | 13 | 18 | 23 => *byte == b'-',
+            _ => byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase(),
+        })
+    {
+        return Err(invalid(format!(
+            "{label} is not a canonical lowercase non-nil UUID"
+        )));
     }
     Ok(())
 }

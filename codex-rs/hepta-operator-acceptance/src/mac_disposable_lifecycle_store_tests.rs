@@ -31,6 +31,16 @@ type RetainedLifecycleIssueSourceForCompileAssertions = RetainedLifecycleIssueSo
 type RetainedEffectIssueSourceForCompileAssertions = RetainedEffectIssueSourceV3;
 type RetainedOperationIssueForCompileAssertions =
     RetainedOperationEffectIssueV3<'static, 'static, 'static>;
+type PersistedRunnerGrantForCompileAssertions =
+    PersistedIssuedRunnerGrantV3<'static, 'static, 'static>;
+type PersistedIssueLeaseSealForCompileAssertions = PersistedIssueLeaseSealV3;
+type RecoveredIssueVerifierSealForCompileAssertions = RecoveredIssueVerifierSealV3;
+type SealedRunnerIssueMaterialForCompileAssertions = SealedRunnerIssueMaterialV3;
+type IssuedEffectSessionForCompileAssertions = IssuedEffectSessionV3<'static, 'static, 'static>;
+type IssuedEffectFailureForCompileAssertions =
+    IssuedEffectDispatchFailureV3<'static, 'static, 'static>;
+type IssuedEffectDeathProvedForCompileAssertions =
+    IssuedEffectDeathProvedV3<'static, 'static, 'static>;
 type PendingUnmountCallbackStoreForCompileAssertions =
     PendingUnmountReconciliationOperationStoreV3<'static, 'static, AwaitingUnmountCallbackV3>;
 type PendingUnmountObservationStoreForCompileAssertions =
@@ -107,6 +117,96 @@ assert_not_impl!(
 );
 assert_not_impl!(
     RetainedOperationIssueForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(PersistedRunnerGrantForCompileAssertions, Clone);
+assert_not_impl!(PersistedRunnerGrantForCompileAssertions, Send);
+assert_not_impl!(PersistedRunnerGrantForCompileAssertions, Sync);
+assert_not_impl!(PersistedRunnerGrantForCompileAssertions, serde::Serialize);
+assert_not_impl!(
+    PersistedRunnerGrantForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    PersistedRunnerGrantForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(PersistedIssueLeaseSealForCompileAssertions, Clone);
+assert_not_impl!(PersistedIssueLeaseSealForCompileAssertions, Send);
+assert_not_impl!(PersistedIssueLeaseSealForCompileAssertions, Sync);
+assert_not_impl!(
+    PersistedIssueLeaseSealForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    PersistedIssueLeaseSealForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    PersistedIssueLeaseSealForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(RecoveredIssueVerifierSealForCompileAssertions, Clone);
+assert_not_impl!(RecoveredIssueVerifierSealForCompileAssertions, Send);
+assert_not_impl!(RecoveredIssueVerifierSealForCompileAssertions, Sync);
+assert_not_impl!(
+    RecoveredIssueVerifierSealForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    RecoveredIssueVerifierSealForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    RecoveredIssueVerifierSealForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(SealedRunnerIssueMaterialForCompileAssertions, Clone);
+assert_not_impl!(SealedRunnerIssueMaterialForCompileAssertions, Send);
+assert_not_impl!(SealedRunnerIssueMaterialForCompileAssertions, Sync);
+assert_not_impl!(
+    SealedRunnerIssueMaterialForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    SealedRunnerIssueMaterialForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    SealedRunnerIssueMaterialForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(IssuedEffectSessionForCompileAssertions, Clone);
+assert_not_impl!(IssuedEffectSessionForCompileAssertions, Send);
+assert_not_impl!(IssuedEffectSessionForCompileAssertions, Sync);
+assert_not_impl!(IssuedEffectSessionForCompileAssertions, serde::Serialize);
+assert_not_impl!(
+    IssuedEffectSessionForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(IssuedEffectSessionForCompileAssertions, From<std::fs::File>);
+assert_not_impl!(IssuedEffectFailureForCompileAssertions, Clone);
+assert_not_impl!(IssuedEffectFailureForCompileAssertions, Send);
+assert_not_impl!(IssuedEffectFailureForCompileAssertions, Sync);
+assert_not_impl!(IssuedEffectFailureForCompileAssertions, serde::Serialize);
+assert_not_impl!(
+    IssuedEffectFailureForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(IssuedEffectFailureForCompileAssertions, From<std::fs::File>);
+assert_not_impl!(IssuedEffectDeathProvedForCompileAssertions, Clone);
+assert_not_impl!(IssuedEffectDeathProvedForCompileAssertions, Send);
+assert_not_impl!(IssuedEffectDeathProvedForCompileAssertions, Sync);
+assert_not_impl!(
+    IssuedEffectDeathProvedForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    IssuedEffectDeathProvedForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    IssuedEffectDeathProvedForCompileAssertions,
     From<std::fs::File>
 );
 assert_not_impl!(PendingUnmountCallbackStoreForCompileAssertions, Clone);
@@ -289,6 +389,92 @@ fn sealed_prepared() -> FreshPreparedLifecycleEventV3 {
         digest('c'),
         digest('d'),
     )
+}
+
+fn create_recoverable_issue(
+    root: &std::path::Path,
+    epochs: EffectEpochEvidenceV3,
+) -> std::path::PathBuf {
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(root).expect("create S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("fresh assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut store =
+            CensusBoundDurableLifecycleStoreV3::create(census, NONCE).expect("fresh operation");
+        store.append(prepared()).expect("prepared record");
+    }
+
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(root).expect("old supervisor S1");
+        let census = control
+            .assess_read_only()
+            .expect("blocking assessment")
+            .into_blocking_control_census(NONCE)
+            .expect("blocking census");
+        let epoch = FreshProcessEpochV3::establish().expect("old supervisor epoch");
+        let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+            .expect("old supervisor operation");
+        let boot = current_boot_session_uuid().expect("current boot");
+        store
+            .append_reconciliation(ReconciliationLifecycleEventV3::restart_started(
+                boot.clone(),
+                digest('c'),
+                100,
+                digest('e'),
+            ))
+            .expect("restart record");
+        store
+            .append_reconciliation(ReconciliationLifecycleEventV3::snapshot_observed(
+                ReconciliationSnapshotV2 {
+                    backing_identity_sha256: digest('b'),
+                    boot_session_uuid: boot,
+                    collector_policy_sha256: digest('c'),
+                    collector_receipt_sha256: digest('f'),
+                    iomedia_evidence_sha256: digest('1'),
+                    match_result: ReconciliationMatchV2::Unique { mounted: true },
+                    monotonic_after_nanoseconds: 102,
+                    monotonic_before_nanoseconds: 101,
+                    mount_evidence_sha256: digest('2'),
+                    mountpoint_underlying_sha256: digest('d'),
+                    operation_nonce: NONCE.to_string(),
+                    restart_epoch_nonce: digest('e'),
+                },
+            ))
+            .expect("collector observation");
+        store
+            .append_reconciliation_inner(ReconciliationLifecycleEventV3::unmount_issued(1), true)
+            .expect("durable V2 issue");
+        let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(store.store.issue_source())
+            .expect("exact V2 issue roster");
+        let mut retained = store
+            .issues
+            .persist(
+                &lifecycle,
+                ExactDisposableCommandV3::UnmountVolume {
+                    mounted_binding_sha256: digest('7'),
+                },
+                epochs,
+                Some(digest('8')),
+            )
+            .expect("durable V3 issue");
+        let sink = store
+            .census
+            .selected_effect_issue_sink()
+            .expect("exact S1 issue sink");
+        retained.adopt_into_s1(sink).expect("S1 adopts exact issue");
+        retained
+            .require_s1_adopted()
+            .expect("issue remains S1-adopted");
+    }
+
+    root.join("operations")
+        .join(format!("operation-{NONCE}"))
+        .join("effect-issues-v3")
 }
 
 fn incoming_record_path(fixture: &Fixture, nonce: &str) -> std::path::PathBuf {
@@ -1127,6 +1313,84 @@ fn production_reconciliation_open_consumes_exact_blocking_census_and_owns_replay
     assert_eq!(inspection.authority, DisposableAuthorityV2::none());
     assert!(inspection.blocks_new_operations);
     assert!(!inspection.restart_forward_flow_authority);
+}
+
+#[test]
+fn recovered_death_proof_consumes_exact_s1_issue_and_reacquired_lease() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    let boot = current_boot_session_uuid().expect("current boot");
+    let epochs = EffectEpochEvidenceV3::bind_current_boot(
+        &boot,
+        &digest('3'),
+        &digest('4'),
+        &digest('5'),
+        &digest('6'),
+    )
+    .expect("old issued epoch");
+    create_recoverable_issue(&root, epochs);
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("recovery S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("recovery blocking assessment")
+        .into_blocking_control_census(NONCE)
+        .expect("recovery blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh recovery epoch");
+    let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+        .expect("exact recovered operation");
+    let proof = store
+        .recover_latest_runner_death()
+        .expect("same-boot old PID/start identities are absent");
+    assert_eq!(proof.sha256().expect("sealed recovered digest").len(), 64);
+    drop(proof);
+    assert!(!store.poisoned());
+}
+
+#[test]
+fn recovered_death_proof_final_replay_rejects_same_bytes_issue_swap() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    let boot = current_boot_session_uuid().expect("current boot");
+    let epochs = EffectEpochEvidenceV3::bind_current_boot(
+        &boot,
+        &digest('3'),
+        &digest('4'),
+        &digest('5'),
+        &digest('6'),
+    )
+    .expect("old issued epoch");
+    let issue_root = create_recoverable_issue(&root, epochs);
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("recovery S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("recovery blocking assessment")
+        .into_blocking_control_census(NONCE)
+        .expect("recovery blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh recovery epoch");
+    let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+        .expect("exact recovered operation");
+    let issue = fs::read_dir(&issue_root)
+        .expect("issue roster")
+        .next()
+        .expect("one issue")
+        .expect("issue entry")
+        .path();
+    let displaced = issue_root.join("displaced-after-absence");
+    let result = store.recover_latest_runner_death_with_hook(|| {
+        let bytes = fs::read(&issue)?;
+        fs::rename(&issue, &displaced)?;
+        fs::write(&issue, bytes)?;
+        fs::set_permissions(&issue, fs::Permissions::from_mode(0o400))?;
+        Ok(())
+    });
+    assert!(
+        result.is_err(),
+        "post-absence same-bytes swap minted a proof"
+    );
 }
 
 #[test]
