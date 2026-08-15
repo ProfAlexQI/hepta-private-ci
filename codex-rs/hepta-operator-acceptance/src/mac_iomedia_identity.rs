@@ -3302,8 +3302,11 @@ mod platform {
         /// Recover only the absence of the prepared basename.  The returned
         /// capsule retains `/` through the direct parent and binds the full
         /// exact prepared identity digest, but never opens or reconstructs the
-        /// historical terminal inode.
-        pub fn recover_from_exact_prepared(
+        /// historical terminal inode. Raw DTO recovery is deliberately
+        /// test-only: production integration must supply a sealed retained
+        /// prepared capability rather than caller-authored serializable data.
+        #[cfg(test)]
+        pub fn recover_from_exact_prepared_for_test(
             prepared: &ExactDiskImageBackingIdentityV3,
         ) -> Result<Self, AcceptanceError> {
             validate_exact_disk_image_backing_identity_v3(prepared)?;
@@ -4969,11 +4972,14 @@ mod platform {
         fn recovered_path_absence_requires_exact_prepared_ancestors_and_enoent() {
             let (_directory, path, _external, held) = make_present_backing_fixture();
             let prepared = held.exact_identity_v3().expect("exact prepared identity");
-            assert!(HeldBackingPathAbsenceV3::recover_from_exact_prepared(&prepared).is_err());
+            assert!(
+                HeldBackingPathAbsenceV3::recover_from_exact_prepared_for_test(&prepared).is_err()
+            );
             drop(held);
             std::fs::remove_file(&path).expect("external test-only backing unlink");
-            let recovered = HeldBackingPathAbsenceV3::recover_from_exact_prepared(&prepared)
-                .expect("recover exact prepared basename absence");
+            let recovered =
+                HeldBackingPathAbsenceV3::recover_from_exact_prepared_for_test(&prepared)
+                    .expect("recover exact prepared basename absence");
             assert_eq!(recovered.binding().kind, BACKING_PATH_ABSENCE_KIND);
             assert_eq!(
                 recovered.binding().prepared_backing_sha256,
@@ -4999,7 +5005,10 @@ mod platform {
                 drop(held);
                 std::fs::remove_file(&path).expect("external test-only backing unlink");
                 std::fs::write(&path, UNLINKED_FIXTURE_BYTES).expect("recreate prepared pathname");
-                assert!(HeldBackingPathAbsenceV3::recover_from_exact_prepared(&prepared).is_err());
+                assert!(
+                    HeldBackingPathAbsenceV3::recover_from_exact_prepared_for_test(&prepared)
+                        .is_err()
+                );
             }
 
             {
@@ -5013,7 +5022,10 @@ mod platform {
                     .expect("prepared non-parent ancestor");
                 std::fs::set_permissions(outer, std::fs::Permissions::from_mode(0o711))
                     .expect("mutate prepared non-parent ancestor");
-                assert!(HeldBackingPathAbsenceV3::recover_from_exact_prepared(&prepared).is_err());
+                assert!(
+                    HeldBackingPathAbsenceV3::recover_from_exact_prepared_for_test(&prepared)
+                        .is_err()
+                );
             }
         }
 
@@ -5473,7 +5485,8 @@ impl HeldUnlinkedDiskImageBackingV3 {
 
 #[cfg(not(target_os = "macos"))]
 impl HeldBackingPathAbsenceV3 {
-    pub fn recover_from_exact_prepared(
+    #[cfg(test)]
+    pub fn recover_from_exact_prepared_for_test(
         _prepared: &ExactDiskImageBackingIdentityV3,
     ) -> Result<Self, AcceptanceError> {
         Err(invalid(
@@ -5632,6 +5645,40 @@ mod tests {
     assert_not_impl!(HeldPathAbsenceForCompileAssertions, serde::Serialize);
     assert_not_impl!(HeldPathAbsenceForCompileAssertions, std::os::fd::AsRawFd);
     assert_not_impl!(HeldPathAbsenceForCompileAssertions, From<std::fs::File>);
+    assert_not_impl!(
+        HeldPathAbsenceForCompileAssertions,
+        From<ExactDiskImageBackingIdentityV3>
+    );
+    assert_not_impl!(
+        HeldPathAbsenceForCompileAssertions,
+        From<&'static ExactDiskImageBackingIdentityV3>
+    );
+
+    #[test]
+    fn raw_prepared_absence_recovery_is_test_only() {
+        let source = include_str!("mac_iomedia_identity.rs");
+        let production_name = ["pub fn recover_from_exact_", "prepared("].concat();
+        assert!(
+            !source.contains(&production_name),
+            "the caller-authored DTO recovery API must not exist"
+        );
+        let test_name = ["pub fn recover_from_exact_", "prepared_for_test("].concat();
+        let lines = source.lines().collect::<Vec<_>>();
+        let definitions = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| line.contains(&test_name))
+            .collect::<Vec<_>>();
+        assert_eq!(definitions.len(), 2, "macOS and fail-closed stubs only");
+        for (index, _) in definitions {
+            assert!(index > 0);
+            assert_eq!(
+                lines[index - 1].trim(),
+                "#[cfg(test)]",
+                "raw prepared DTO recovery escaped its test-only boundary"
+            );
+        }
+    }
 
     fn test_identity(name: &str, id: u64) -> IOMediaRegistryIdentityV1 {
         registry_identity(name.to_string(), id)
