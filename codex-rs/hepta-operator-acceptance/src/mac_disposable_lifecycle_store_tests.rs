@@ -1349,6 +1349,81 @@ fn recovered_death_proof_consumes_exact_s1_issue_and_reacquired_lease() {
 }
 
 #[test]
+fn dropping_or_forgetting_unconsumed_grant_path_keeps_whole_store_poisoned() {
+    for drop_kind in ["grant", "session", "failure", "forgotten-grant"] {
+        let temporary = tempfile::tempdir().expect("control parent");
+        let root = temporary.path().join("control");
+        let boot = current_boot_session_uuid().expect("current boot");
+        let epochs = EffectEpochEvidenceV3::bind_current_boot(
+            &boot,
+            &digest('3'),
+            &digest('4'),
+            &digest('5'),
+            &digest('6'),
+        )
+        .expect("old issued epoch");
+        create_recoverable_issue(&root, epochs);
+
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("reopen S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("blocking assessment")
+            .into_blocking_control_census(NONCE)
+            .expect("blocking census");
+        let epoch = FreshProcessEpochV3::establish().expect("current process epoch");
+        let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+            .expect("exact issued operation");
+        let record = store
+            .issues
+            .replayed_issue(1)
+            .expect("exact retained V3 issue")
+            .clone();
+        let record_canonical_bytes =
+            canonical_json(&record).expect("canonical retained V3 issue bytes");
+        let record_sha256 = sha256(&record_canonical_bytes);
+        let issue = RetainedOperationEffectIssueV3 {
+            effect_id: 1,
+            record,
+            record_canonical_bytes,
+            record_sha256,
+            store: &mut store,
+            _not_send_or_sync: PhantomData,
+        };
+        let mut grant = PersistedIssuedRunnerGrantV3::new_armed(issue, None);
+        if drop_kind != "forgotten-grant" {
+            // Ordinary Drop cases start disarmed to prove that each release
+            // path independently fails closed. The forgotten case exercises
+            // the production constructor's always-armed invariant.
+            grant.issue.store.poisoned = false;
+        }
+
+        match drop_kind {
+            "grant" => drop(grant),
+            "forgotten-grant" => std::mem::forget(grant),
+            "session" => drop(IssuedEffectSessionV3 {
+                runner: None,
+                grant: Some(grant),
+                proof_and_grant_transferred: false,
+                _not_send_or_sync: PhantomData,
+            }),
+            "failure" => drop(IssuedEffectDispatchFailureV3 {
+                error: "injected unconsumed failure".to_string(),
+                runner_failure: None,
+                grant: Some(grant),
+                proof_and_grant_transferred: false,
+                _not_send_or_sync: PhantomData,
+            }),
+            _ => unreachable!("closed drop-kind roster"),
+        }
+        assert!(
+            store.poisoned(),
+            "releasing or forgetting {drop_kind} exposed a reusable whole-store capability"
+        );
+    }
+}
+
+#[test]
 fn recovered_death_proof_final_replay_rejects_same_bytes_issue_swap() {
     let temporary = tempfile::tempdir().expect("control parent");
     let root = temporary.path().join("control");
