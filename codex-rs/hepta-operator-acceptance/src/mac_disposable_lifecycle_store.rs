@@ -14,10 +14,13 @@ use crate::mac_disposable_lifecycle::LifecycleErrorV2;
 use crate::mac_disposable_lifecycle::LifecycleProcessModeV2;
 use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
 use crate::mac_disposable_lifecycle::TerminalDispositionV2;
-#[cfg(test)]
 use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
+use crate::mac_inert_one_shot_runner::FreshProcessEpochV3;
+use crate::mac_privileged_disposable_control::BlockingOperationV3;
+use crate::mac_privileged_disposable_control::FreshAdmissionV3;
 use crate::mac_privileged_disposable_control::PrivilegedDisposableControlErrorV2;
 use crate::mac_privileged_disposable_control::RetainedControlCensusV3;
+use crate::mac_privileged_disposable_control::StableMountStateV3;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fs::File;
@@ -228,9 +231,22 @@ pub struct DurableLifecycleStoreV3<M = FreshProcessStoreV3> {
 /// Fresh S2 store whose parent directory was admitted by one consumed S1
 /// retained census.  The census and global lock outlive every append.
 pub(crate) struct CensusBoundDurableLifecycleStoreV3<'a> {
-    census: RetainedControlCensusV3<'a>,
+    census: RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>,
+    journal: DisposableLifecycleJournalV2,
     poisoned: bool,
     store: DurableLifecycleStoreV3<FreshProcessStoreV3>,
+}
+
+/// Reconciliation store opened only from the exact blocking S1 census.  It
+/// retains that census, the current process epoch, and the replay-derived
+/// journal for its entire lifetime; callers cannot substitute a reconstructed
+/// journal with matching bytes.
+pub(crate) struct ReconciliationOperationStoreV3<'a, 'e> {
+    census: RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
+    epoch: &'e FreshProcessEpochV3,
+    journal: DisposableLifecycleJournalV2,
+    poisoned: bool,
+    store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
 }
 
 pub type ReconciliationDurableLifecycleStoreV3 = DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>;
@@ -351,6 +367,15 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         expected_uid: u32,
         expected_gid: u32,
     ) -> Result<ReconciliationDurableLifecycleStoreV3, DurableLifecycleStoreErrorV3> {
+        Self::open_existing_inner(operations, operation_nonce, expected_uid, expected_gid)
+    }
+
+    fn open_existing_inner(
+        operations: &File,
+        operation_nonce: &str,
+        expected_uid: u32,
+        expected_gid: u32,
+    ) -> Result<ReconciliationDurableLifecycleStoreV3, DurableLifecycleStoreErrorV3> {
         require_nonce(operation_nonce)?;
         let parent_binding = validate_directory(
             operations,
@@ -446,9 +471,10 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
 
 impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
     pub(crate) fn create(
-        mut census: RetainedControlCensusV3<'a>,
+        mut census: RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>,
         operation_nonce: &str,
     ) -> Result<Self, DurableLifecycleStoreErrorV3> {
+        let journal = DisposableLifecycleJournalV2::new(operation_nonce)?;
         let binding = census.prepare_store_creation()?;
         let store = DurableLifecycleStoreV3::create_with_hook(
             binding.operations(),
@@ -460,6 +486,7 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
         census.admit_fresh_operation(&store.final_name)?;
         Ok(Self {
             census,
+            journal,
             poisoned: false,
             store,
         })
@@ -467,7 +494,6 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
 
     pub(crate) fn append(
         &mut self,
-        journal: &mut DisposableLifecycleJournalV2,
         event: DisposableLifecycleEventV2,
     ) -> Result<String, DurableLifecycleStoreErrorV3> {
         if self.poisoned {
@@ -479,10 +505,91 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
             self.poisoned = true;
             return Err(error.into());
         }
-        let digest = self.store.append(journal, event)?;
+        let digest = self.store.append(&mut self.journal, event)?;
         if let Err(error) = self.census.revalidate() {
             self.poisoned = true;
             return Err(error.into());
+        }
+        Ok(digest)
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        self.store.operation_nonce()
+    }
+
+    pub(crate) fn poisoned(&self) -> bool {
+        self.poisoned || self.store.poisoned()
+    }
+}
+
+impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
+    /// Production restart entrypoint.  The raw `File + nonce` opener remains
+    /// test-only; production must retain the full S1 census and a current
+    /// process epoch while replaying or appending reconciliation records.
+    pub(crate) fn open_existing(
+        census: RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
+        epoch: &'e FreshProcessEpochV3,
+    ) -> Result<Self, DurableLifecycleStoreErrorV3> {
+        epoch
+            .validate_current()
+            .map_err(|error| invalid(format!("fresh process epoch is not current: {error}")))?;
+        let binding = census.prepare_existing_store()?;
+        let store = DurableLifecycleStoreV3::<FreshProcessStoreV3>::open_existing_inner(
+            binding.operations(),
+            binding.operation_nonce(),
+            binding.expected_uid(),
+            binding.expected_gid(),
+        )?;
+        if store.operation_nonce() != binding.operation_nonce() {
+            return Err(invalid(
+                "replayed lifecycle store differs from the selected blocking operation",
+            ));
+        }
+        let journal = store.resume_for_reconciliation()?;
+        census.revalidate()?;
+        epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed during replay: {error}"
+            ))
+        })?;
+        Ok(Self {
+            census,
+            epoch,
+            journal,
+            poisoned: false,
+            store,
+        })
+    }
+
+    pub(crate) fn append_reconciliation(
+        &mut self,
+        event: ReconciliationLifecycleEventV3,
+    ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        if self.poisoned {
+            return Err(invalid(
+                "reconciliation operation store is poisoned; a fresh exact census is required",
+            ));
+        }
+        if let Err(error) = self.census.revalidate() {
+            self.poisoned = true;
+            return Err(error.into());
+        }
+        if let Err(error) = self.epoch.validate_current() {
+            self.poisoned = true;
+            return Err(invalid(format!(
+                "fresh process epoch changed before reconciliation append: {error}"
+            )));
+        }
+        let digest = self.store.append_reconciliation(&mut self.journal, event)?;
+        if let Err(error) = self.census.admit_selected_lifecycle_append(&digest) {
+            self.poisoned = true;
+            return Err(error.into());
+        }
+        if let Err(error) = self.epoch.validate_current() {
+            self.poisoned = true;
+            return Err(invalid(format!(
+                "fresh process epoch changed after reconciliation append: {error}"
+            )));
         }
         Ok(digest)
     }

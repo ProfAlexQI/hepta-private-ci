@@ -5,6 +5,7 @@
 //! never invokes an effect, and never turns a clean roster into authority.
 
 use crate::durable::canonical_json;
+use crate::durable::sha256;
 use crate::mac_apfs_barrier_fixture::ApfsFixtureResultV1;
 use crate::mac_apfs_barrier_fixture::AttachmentObligationEventV1;
 use crate::mac_apfs_barrier_fixture::AttachmentObligationRecordV1;
@@ -132,6 +133,18 @@ struct Identity {
     nlink: u64,
     size: i64,
     uid: u32,
+}
+
+impl Identity {
+    fn same_directory_across_record_append(self, after: Self) -> bool {
+        self.dev == after.dev
+            && self.flags == after.flags
+            && self.gid == after.gid
+            && self.ino == after.ino
+            && self.mode == after.mode
+            && self.nlink.checked_add(1) == Some(after.nlink)
+            && self.uid == after.uid
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -333,25 +346,56 @@ pub struct LivePrivilegedDisposablePolicyV2 {
 /// A read-only assessment retains every operation and record descriptor until
 /// it is dropped.  It is evidence, not an execution token.
 pub struct LivePrivilegedDisposableExecutionV2<'a> {
+    _boot_session_uuid: String,
+    _exact_blocking_receipt: Vec<String>,
+    _exact_completed_receipt: Vec<String>,
     _historical_roots: Vec<HistoricalRootCapsule>,
     _mounts: Vec<MountBinding>,
+    _operation_blockers: Vec<String>,
     _operation_names: Vec<String>,
     _operations: Vec<OperationCapsule>,
     _policy: &'a LivePrivilegedDisposablePolicyV2,
     _protected_roots: Vec<PathBuf>,
     _publication_roster: Vec<String>,
     _publication_records: Vec<RecordCapsule>,
+    _retained_fd_count: usize,
+    _retained_record_bytes: usize,
     receipt: PrivilegedDisposableExecutionV2,
     _volume_roster: Vec<String>,
 }
 
-/// Non-serializable closed-world census that may be consumed exactly once to
-/// create one fresh durable operation.  It retains every descriptor from the
-/// S1 assessment and the process-global flock while S2 owns the admitted
-/// operation.
-pub(crate) struct RetainedControlCensusV3<'a> {
-    assessment: LivePrivilegedDisposableExecutionV2<'a>,
+/// Fresh admission may publish exactly one operation directory into the
+/// otherwise exact retained roster.
+pub(crate) struct FreshAdmissionV3 {
     admitted_operation_name: Option<String>,
+}
+
+/// Restart reconciliation is bound to one exact blocking operation while the
+/// census continues to retain every other completed and blocking capsule.
+pub(crate) struct BlockingOperationV3 {
+    operation_identity: Identity,
+    operation_name: String,
+    operation_nonce: String,
+}
+
+/// The only mount state admitted by S1.  Later effect orchestration must move
+/// this into an explicit pending-delta typestate rather than silently changing
+/// the expected full mount table.
+pub(crate) struct StableMountStateV3;
+
+struct ExactMountCensusV3<M> {
+    expected_full_snapshot: Vec<MountBinding>,
+    _state: PhantomData<fn() -> M>,
+}
+
+/// Non-serializable closed-world census consumed by S2.  It retains every
+/// descriptor from the S1 assessment and the process-global flock.  The
+/// admission and mount state parameters cannot be reconstructed from a file or
+/// from a serialized receipt.
+pub(crate) struct RetainedControlCensusV3<'a, A, M> {
+    assessment: LivePrivilegedDisposableExecutionV2<'a>,
+    admission: A,
+    exact_mounts: ExactMountCensusV3<M>,
     operations_identity: Identity,
     operations_roster: Vec<String>,
     _not_send_or_sync: PhantomData<Rc<()>>,
@@ -362,6 +406,15 @@ pub(crate) struct RetainedControlCensusV3<'a> {
 pub(crate) struct CensusStoreBindingV3 {
     expected_gid: u32,
     expected_uid: u32,
+    operations: File,
+}
+
+/// Private S1-to-S2 binding for the already retained blocking operation.
+/// It has no public descriptor conversion or extraction implementation.
+pub(crate) struct CensusExistingStoreBindingV3 {
+    expected_gid: u32,
+    expected_uid: u32,
+    operation_nonce: String,
     operations: File,
 }
 
@@ -422,6 +475,8 @@ impl LivePrivilegedDisposablePolicyV2 {
         F: FnOnce() -> Result<(), PrivilegedDisposableControlErrorV2>,
     {
         self.revalidate_control_root()?;
+        let boot_session_uuid = current_boot_session_uuid()
+            .map_err(|error| invalid(format!("cannot bind S1 census to current boot: {error}")))?;
         let mounts_before = mount_table_snapshot()?;
         let operation_names =
             list_directory(self.operations.as_raw_fd(), MAX_CONTROL_OPERATIONS_V2)?;
@@ -463,6 +518,7 @@ impl LivePrivilegedDisposablePolicyV2 {
             }
             capsules.push(capsule);
         }
+        let operation_blockers = blocking.clone();
         let historical = self.scan_historical_roots(&mut total_bytes, &mut retained_fds)?;
         let (historical_closed, publication_records, publication_roster) = self
             .verify_legacy_closures(
@@ -567,13 +623,19 @@ impl LivePrivilegedDisposablePolicyV2 {
                 "bounded mount table changed during storage assessment",
             ));
         }
+        if current_boot_session_uuid()
+            .map_err(|error| invalid(format!("cannot revalidate S1 boot binding: {error}")))?
+            != boot_session_uuid
+        {
+            return Err(invalid("boot session changed during storage assessment"));
+        }
         let new_operation_precondition_satisfied = blocking.is_empty() && awaiting.is_empty();
         let receipt = PrivilegedDisposableExecutionV2 {
             admission_authority: false,
             authority: DisposableAuthorityV2::none(),
             blocking_operation_nonces: blocking.clone(),
             closed_world_roster_verified: true,
-            completed_operation_nonces: completed,
+            completed_operation_nonces: completed.clone(),
             historical_closure_bindings: historical_closed,
             historical_roots_scanned: historical.roots.len(),
             legacy_v1_verified_but_awaiting_v2_closure: awaiting,
@@ -583,14 +645,20 @@ impl LivePrivilegedDisposablePolicyV2 {
             storage_precondition_satisfied: true,
         };
         Ok(LivePrivilegedDisposableExecutionV2 {
+            _boot_session_uuid: boot_session_uuid,
+            _exact_blocking_receipt: blocking,
+            _exact_completed_receipt: completed,
             _historical_roots: historical.roots,
             _mounts: mounts_after,
+            _operation_blockers: operation_blockers,
             _operation_names: operation_names,
             _operations: capsules,
             _policy: self,
             _protected_roots: protected_roots,
             _publication_roster: publication_roster,
             _publication_records: publication_records,
+            _retained_fd_count: retained_fds.retained(),
+            _retained_record_bytes: total_bytes,
             receipt,
             _volume_roster: historical.volume_roster,
         })
@@ -1510,9 +1578,16 @@ impl<'a> LivePrivilegedDisposableExecutionV2<'a> {
         &self,
         operations_identity: Identity,
         operations_roster: &[String],
+        exact_mounts: &[MountBinding],
     ) -> Result<(), PrivilegedDisposableControlErrorV2> {
         self._policy
             .revalidate_control_root_with_operations(operations_identity)?;
+        if current_boot_session_uuid()
+            .map_err(|error| invalid(format!("cannot revalidate retained S1 boot: {error}")))?
+            != self._boot_session_uuid
+        {
+            return Err(invalid("boot session changed after retained census"));
+        }
         if list_directory(
             self._policy.operations.as_raw_fd(),
             MAX_CONTROL_OPERATIONS_V2,
@@ -1562,36 +1637,134 @@ impl<'a> LivePrivilegedDisposableExecutionV2<'a> {
         }
         let mounts = mount_table_snapshot()?;
         reject_nested_mounts(&mounts, &self._protected_roots)?;
-        if mounts != self._mounts {
+        if mounts != exact_mounts {
             return Err(invalid("mount table changed after retained census"));
+        }
+        Ok(())
+    }
+
+    fn validate_retained_receipt(&self) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        if !self.receipt.storage_precondition_satisfied
+            || !self.receipt.closed_world_roster_verified
+            || self.receipt.admission_authority
+            || self.receipt.authority.any()
+            || self.receipt.operation_count != self._operation_names.len()
+            || self.receipt.blocking_operation_nonces != self._exact_blocking_receipt
+            || self.receipt.completed_operation_nonces != self._exact_completed_receipt
+        {
+            return Err(invalid(
+                "serialized receipt differs from the exact descriptor-retained census",
+            ));
         }
         Ok(())
     }
 
     pub(crate) fn into_fresh_control_census(
         self,
-    ) -> Result<RetainedControlCensusV3<'a>, PrivilegedDisposableControlErrorV2> {
-        if !self.receipt.storage_precondition_satisfied
-            || !self.receipt.closed_world_roster_verified
-            || !self.receipt.new_operation_precondition_satisfied
+    ) -> Result<
+        RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>,
+        PrivilegedDisposableControlErrorV2,
+    > {
+        self.validate_retained_receipt()?;
+        if !self.receipt.new_operation_precondition_satisfied
             || !self.receipt.blocking_operation_nonces.is_empty()
             || !self
                 .receipt
                 .legacy_v1_verified_but_awaiting_v2_closure
                 .is_empty()
-            || self.receipt.admission_authority
-            || self.receipt.authority.any()
         {
             return Err(invalid(
                 "fresh store census is not a closed-world no-authority precondition",
             ));
         }
-        self.revalidate_for_operations(self._policy.operations_identity, &self._operation_names)?;
+        self.revalidate_for_operations(
+            self._policy.operations_identity,
+            &self._operation_names,
+            &self._mounts,
+        )?;
         let operations_identity = self._policy.operations_identity;
         let operations_roster = self._operation_names.clone();
+        let expected_full_snapshot = self._mounts.clone();
         Ok(RetainedControlCensusV3 {
             assessment: self,
-            admitted_operation_name: None,
+            admission: FreshAdmissionV3 {
+                admitted_operation_name: None,
+            },
+            exact_mounts: ExactMountCensusV3 {
+                expected_full_snapshot,
+                _state: PhantomData,
+            },
+            operations_identity,
+            operations_roster,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn into_blocking_control_census(
+        self,
+        target_operation_nonce: &str,
+    ) -> Result<
+        RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
+        PrivilegedDisposableControlErrorV2,
+    > {
+        let target_name = format!("{OPERATION_PREFIX}{target_operation_nonce}");
+        operation_nonce(&target_name)?;
+        self.validate_retained_receipt()?;
+        let completed_count = self
+            ._exact_completed_receipt
+            .iter()
+            .filter(|nonce| nonce.as_str() == target_operation_nonce)
+            .count();
+        if completed_count != 0 {
+            return Err(invalid(
+                "completed operation cannot be selected for restart reconciliation",
+            ));
+        }
+        if self.receipt.new_operation_precondition_satisfied {
+            return Err(invalid(
+                "blocking census cannot be selected from a fresh-operation receipt",
+            ));
+        }
+        let blocking_count = self
+            ._operation_blockers
+            .iter()
+            .filter(|nonce| nonce.as_str() == target_operation_nonce)
+            .count();
+        if blocking_count != 1 {
+            return Err(invalid(
+                "restart target is unknown, duplicated, or not an exact blocking operation",
+            ));
+        }
+        let mut matching_capsules = self
+            ._operations
+            .iter()
+            .filter(|capsule| capsule.name == target_name);
+        let target = matching_capsules
+            .next()
+            .ok_or_else(|| invalid("blocking target has no retained operation capsule"))?;
+        let target_identity = target.identity;
+        if matching_capsules.next().is_some() {
+            return Err(invalid("blocking target capsule is duplicated"));
+        }
+        self.revalidate_for_operations(
+            self._policy.operations_identity,
+            &self._operation_names,
+            &self._mounts,
+        )?;
+        let operations_identity = self._policy.operations_identity;
+        let operations_roster = self._operation_names.clone();
+        let expected_full_snapshot = self._mounts.clone();
+        Ok(RetainedControlCensusV3 {
+            assessment: self,
+            admission: BlockingOperationV3 {
+                operation_identity: target_identity,
+                operation_name: target_name,
+                operation_nonce: target_operation_nonce.to_string(),
+            },
+            exact_mounts: ExactMountCensusV3 {
+                expected_full_snapshot,
+                _state: PhantomData,
+            },
             operations_identity,
             operations_roster,
             _not_send_or_sync: PhantomData,
@@ -1599,11 +1772,22 @@ impl<'a> LivePrivilegedDisposableExecutionV2<'a> {
     }
 }
 
-impl RetainedControlCensusV3<'_> {
+impl<A, M> RetainedControlCensusV3<'_, A, M> {
+    pub(crate) fn revalidate(&self) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        self.assessment.validate_retained_receipt()?;
+        self.assessment.revalidate_for_operations(
+            self.operations_identity,
+            &self.operations_roster,
+            &self.exact_mounts.expected_full_snapshot,
+        )
+    }
+}
+
+impl RetainedControlCensusV3<'_, FreshAdmissionV3, StableMountStateV3> {
     pub(crate) fn prepare_store_creation(
         &self,
     ) -> Result<CensusStoreBindingV3, PrivilegedDisposableControlErrorV2> {
-        if self.admitted_operation_name.is_some() {
+        if self.admission.admitted_operation_name.is_some() {
             return Err(invalid(
                 "retained census already admitted its one fresh operation",
             ));
@@ -1620,7 +1804,7 @@ impl RetainedControlCensusV3<'_> {
         &mut self,
         final_name: &str,
     ) -> Result<(), PrivilegedDisposableControlErrorV2> {
-        if self.admitted_operation_name.is_some() {
+        if self.admission.admitted_operation_name.is_some() {
             return Err(invalid(
                 "retained census cannot admit a second fresh operation",
             ));
@@ -1649,13 +1833,118 @@ impl RetainedControlCensusV3<'_> {
         }
         self.operations_identity = operations_identity;
         self.operations_roster = expected;
-        self.admitted_operation_name = Some(final_name.to_string());
+        self.admission.admitted_operation_name = Some(final_name.to_string());
         self.revalidate()
     }
+}
 
-    pub(crate) fn revalidate(&self) -> Result<(), PrivilegedDisposableControlErrorV2> {
+impl RetainedControlCensusV3<'_, BlockingOperationV3, StableMountStateV3> {
+    #[cfg(test)]
+    pub(crate) fn selected_record_count(&self) -> usize {
         self.assessment
-            .revalidate_for_operations(self.operations_identity, &self.operations_roster)
+            ._operations
+            .iter()
+            .find(|capsule| capsule.name == self.admission.operation_name)
+            .map_or(0, |capsule| capsule.records.len())
+    }
+
+    pub(crate) fn prepare_existing_store(
+        &self,
+    ) -> Result<CensusExistingStoreBindingV3, PrivilegedDisposableControlErrorV2> {
+        self.revalidate()?;
+        if named_identity(
+            self.assessment._policy.operations.as_raw_fd(),
+            &self.admission.operation_name,
+        )? != self.admission.operation_identity
+        {
+            return Err(invalid(
+                "selected blocking operation inode changed after retained census",
+            ));
+        }
+        Ok(CensusExistingStoreBindingV3 {
+            expected_gid: self.assessment._policy.expected_gid,
+            expected_uid: self.assessment._policy.expected_uid,
+            operation_nonce: self.admission.operation_nonce.clone(),
+            operations: self.assessment._policy.operations.try_clone()?,
+        })
+    }
+
+    pub(crate) fn admit_selected_lifecycle_append(
+        &mut self,
+        expected_record_sha256: &str,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        let next_fd_count = self
+            .assessment
+            ._retained_fd_count
+            .checked_add(1)
+            .ok_or_else(|| invalid("retained descriptor count overflowed"))?;
+        if next_fd_count > MAX_RETAINED_FDS {
+            return Err(invalid(
+                "appended lifecycle record exceeds retained descriptor bound",
+            ));
+        }
+        let remaining_bytes = MAX_TOTAL_RECORD_BYTES
+            .checked_sub(self.assessment._retained_record_bytes)
+            .ok_or_else(|| invalid("retained lifecycle bytes already exceed the global bound"))?;
+        let target_index = self
+            .assessment
+            ._operations
+            .iter()
+            .position(|capsule| capsule.name == self.admission.operation_name)
+            .ok_or_else(|| invalid("selected blocking capsule disappeared"))?;
+        if self
+            .assessment
+            ._operations
+            .iter()
+            .skip(target_index + 1)
+            .any(|capsule| capsule.name == self.admission.operation_name)
+        {
+            return Err(invalid("selected blocking capsule is duplicated"));
+        }
+        let parent_fd = self.assessment._policy.operations.as_raw_fd();
+        let expected_uid = self.assessment._policy.expected_uid;
+        let expected_gid = self.assessment._policy.expected_gid;
+        let filesystem = self.assessment._policy.filesystem.clone();
+        let appended_bytes = self.assessment._operations[target_index].admit_exact_record_append(
+            parent_fd,
+            expected_uid,
+            expected_gid,
+            &filesystem,
+            expected_record_sha256,
+            remaining_bytes,
+        )?;
+        let target = &self.assessment._operations[target_index];
+        let target_identity = target.identity;
+        let lifecycle = target
+            .records
+            .iter()
+            .map(|record| record.bytes.clone())
+            .collect::<Vec<_>>();
+        match dispatch_lifecycle_records(&lifecycle)
+            .map_err(|error| invalid(format!("appended target lifecycle is invalid: {error}")))?
+        {
+            LifecycleDispatchV2::V2(inspection)
+                if inspection.operation_nonce == self.admission.operation_nonce
+                    && inspection.blocks_new_operations => {}
+            LifecycleDispatchV2::V2(_) => {
+                return Err(invalid(
+                    "blocking census cannot retain a target that became completed",
+                ));
+            }
+            LifecycleDispatchV2::HistoricalV1(_) => {
+                return Err(invalid(
+                    "selected v2 operation changed into a historical lifecycle",
+                ));
+            }
+        }
+        self.assessment._retained_fd_count = next_fd_count;
+        self.assessment._retained_record_bytes = self
+            .assessment
+            ._retained_record_bytes
+            .checked_add(appended_bytes)
+            .ok_or_else(|| invalid("retained lifecycle byte count overflowed"))?;
+        self.admission.operation_identity = target_identity;
+        self.revalidate()
     }
 }
 
@@ -1673,7 +1962,116 @@ impl CensusStoreBindingV3 {
     }
 }
 
+impl CensusExistingStoreBindingV3 {
+    pub(crate) fn expected_gid(&self) -> u32 {
+        self.expected_gid
+    }
+
+    pub(crate) fn expected_uid(&self) -> u32 {
+        self.expected_uid
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        &self.operation_nonce
+    }
+
+    pub(crate) fn operations(&self) -> &File {
+        &self.operations
+    }
+}
+
 impl OperationCapsule {
+    fn admit_exact_record_append(
+        &mut self,
+        parent_fd: RawFd,
+        expected_uid: u32,
+        expected_gid: u32,
+        filesystem: &FilesystemBinding,
+        expected_record_sha256: &str,
+        maximum_appended_bytes: usize,
+    ) -> Result<usize, PrivilegedDisposableControlErrorV2> {
+        require_hex_nonce(expected_record_sha256, "appended lifecycle record SHA-256")?;
+        let next_sequence = self
+            .record_names
+            .len()
+            .checked_add(1)
+            .ok_or_else(|| invalid("operation record sequence overflowed"))?;
+        if next_sequence > MAX_OPERATION_RECORDS_V2 {
+            return Err(invalid("operation record count exceeds retained bound"));
+        }
+        let next_name = format!("{next_sequence:08}.json");
+        let mut expected_roster = self.record_names.clone();
+        expected_roster.push(next_name.clone());
+        let after_identity = validate_directory(
+            &self.directory,
+            expected_uid,
+            expected_gid,
+            0o700,
+            filesystem,
+            "selected operation directory after lifecycle append",
+        )?;
+        let named_after = named_identity(parent_fd, &self.name)?;
+        let roster_after = list_directory(self.directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2)?;
+        if !self
+            .identity
+            .same_directory_across_record_append(after_identity)
+            || named_after != after_identity
+            || roster_after != expected_roster
+        {
+            return Err(invalid(format!(
+                "selected operation changed by more than one exact lifecycle append: before={:?} after={after_identity:?} named={named_after:?} expected_roster={expected_roster:?} actual_roster={roster_after:?}",
+                self.identity,
+            )));
+        }
+        for record in &self.records {
+            record.revalidate(
+                self.directory.as_raw_fd(),
+                expected_uid,
+                expected_gid,
+                filesystem,
+            )?;
+        }
+        let file = openat_node(self.directory.as_raw_fd(), &next_name, libc::O_RDONLY)?;
+        let record_identity = validate_regular(
+            &file,
+            expected_uid,
+            expected_gid,
+            0o400,
+            Some(MAX_RECORD_BYTES as i64),
+            filesystem,
+            "appended lifecycle record",
+        )?;
+        if self.records.iter().any(|record| {
+            record.identity.dev == record_identity.dev && record.identity.ino == record_identity.ino
+        }) {
+            return Err(invalid(
+                "appended lifecycle record aliases an already retained record",
+            ));
+        }
+        let bytes = read_stable(&file, record_identity)?;
+        if bytes.len() > maximum_appended_bytes {
+            return Err(invalid(
+                "appended lifecycle record exceeds retained global byte budget",
+            ));
+        }
+        if sha256(&bytes) != expected_record_sha256 {
+            return Err(invalid(
+                "appended lifecycle record differs from the S2 durable digest",
+            ));
+        }
+        let appended_bytes = bytes.len();
+        self.identity = after_identity;
+        self.record_names = expected_roster;
+        self.records.push(RecordCapsule {
+            bytes,
+            file,
+            identity: record_identity,
+            name: next_name,
+        });
+        self.revalidate(parent_fd, expected_uid, expected_gid, filesystem)?;
+        Ok(appended_bytes)
+    }
+
     fn revalidate(
         &self,
         parent_fd: RawFd,

@@ -1,11 +1,49 @@
 use super::*;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
+use crate::mac_iomedia_identity::current_boot_session_uuid;
 use crate::mac_privileged_disposable_control::LivePrivilegedDisposablePolicyV2;
 use std::fs;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::PermissionsExt;
 use tempfile::TempDir;
+
+macro_rules! assert_not_impl {
+    ($type:ty, $trait:path) => {
+        const _: fn() = || {
+            trait AmbiguousIfImpl<A> {
+                fn marker() {}
+            }
+            impl<T: ?Sized> AmbiguousIfImpl<()> for T {}
+            impl<T: ?Sized + $trait> AmbiguousIfImpl<u8> for T {}
+            let _ = <$type as AmbiguousIfImpl<_>>::marker;
+        };
+    };
+}
+
+type FreshOperationStoreForCompileAssertions = CensusBoundDurableLifecycleStoreV3<'static>;
+type RestartOperationStoreForCompileAssertions = ReconciliationOperationStoreV3<'static, 'static>;
+assert_not_impl!(FreshOperationStoreForCompileAssertions, Clone);
+assert_not_impl!(FreshOperationStoreForCompileAssertions, Send);
+assert_not_impl!(FreshOperationStoreForCompileAssertions, Sync);
+assert_not_impl!(FreshOperationStoreForCompileAssertions, serde::Serialize);
+assert_not_impl!(
+    FreshOperationStoreForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(FreshOperationStoreForCompileAssertions, From<std::fs::File>);
+assert_not_impl!(RestartOperationStoreForCompileAssertions, Clone);
+assert_not_impl!(RestartOperationStoreForCompileAssertions, Send);
+assert_not_impl!(RestartOperationStoreForCompileAssertions, Sync);
+assert_not_impl!(RestartOperationStoreForCompileAssertions, serde::Serialize);
+assert_not_impl!(
+    RestartOperationStoreForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    RestartOperationStoreForCompileAssertions,
+    From<std::fs::File>
+);
 
 const NONCE: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 
@@ -676,11 +714,10 @@ fn fresh_store_requires_and_retains_the_exact_s1_census() {
     assert!(!store.poisoned());
     assert!(store.census.prepare_store_creation().is_err());
 
-    let mut journal = DisposableLifecycleJournalV2::new(NONCE).expect("fresh journal");
-    let digest = store
-        .append(&mut journal, prepared())
+    let record_digest = store
+        .append(prepared())
         .expect("append while census and flock remain retained");
-    assert_eq!(digest.len(), 64);
+    assert_eq!(record_digest.len(), 64);
     assert!(!store.poisoned());
 }
 
@@ -703,9 +740,149 @@ fn census_bound_store_poisoned_by_foreign_operations_roster_mutation() {
     fs::create_dir(&rogue).expect("inject foreign operation");
     fs::set_permissions(&rogue, fs::Permissions::from_mode(0o700)).expect("rogue mode");
 
-    let mut journal = DisposableLifecycleJournalV2::new(NONCE).expect("journal");
-    assert!(store.append(&mut journal, prepared()).is_err());
+    assert!(store.append(prepared()).is_err());
     assert!(store.poisoned());
     fs::remove_dir(&rogue).expect("remove rogue operation");
-    assert!(store.append(&mut journal, prepared()).is_err());
+    assert!(store.append(prepared()).is_err());
+}
+
+#[test]
+fn production_reconciliation_open_consumes_exact_blocking_census_and_owns_replay_journal() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("fresh S1 assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+            .expect("fresh census-bound store");
+        store.append(prepared()).expect("durable prepared record");
+        assert_eq!(
+            store.journal.process_mode(),
+            LifecycleProcessModeV2::FreshProcess
+        );
+    }
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("restart S1 control");
+    let assessment = control.assess_read_only().expect("blocking S1 assessment");
+    assert_eq!(assessment.receipt().blocking_operation_nonces, [NONCE]);
+    let census = assessment
+        .into_blocking_control_census(NONCE)
+        .expect("exact blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+        .expect("production exact-census replay");
+    assert_eq!(store.operation_nonce(), NONCE);
+    assert_eq!(
+        store.journal.process_mode(),
+        LifecycleProcessModeV2::RestartReconcileOnly
+    );
+    assert!(!store.poisoned());
+
+    let restart_record_digest = store
+        .append_reconciliation(ReconciliationLifecycleEventV3::restart_started(
+            current_boot_session_uuid().expect("current boot UUID"),
+            digest('c'),
+            100,
+            digest('e'),
+        ))
+        .expect("append with wrapper-owned replay journal");
+    assert_eq!(restart_record_digest.len(), 64);
+    let second_digest = store
+        .append_reconciliation(ReconciliationLifecycleEventV3::manual_intervention(digest(
+            'f',
+        )))
+        .expect("retain a second exact lifecycle append");
+    assert_eq!(second_digest.len(), 64);
+    assert_eq!(store.store.records.len(), 3);
+    assert_eq!(store.census.selected_record_count(), 3);
+    let inspection = inspect_lifecycle_v2(
+        &store
+            .store
+            .records
+            .iter()
+            .map(|record| record.bytes.clone())
+            .collect::<Vec<_>>(),
+    )
+    .expect("inspect exact no-authority chain");
+    assert_eq!(inspection.authority, DisposableAuthorityV2::none());
+    assert!(inspection.blocks_new_operations);
+    assert!(!inspection.restart_forward_flow_authority);
+}
+
+#[test]
+fn reconciliation_wrapper_is_poisoned_by_nonselected_blocker_drift() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    let other_nonce = digest('2');
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+        let first = control
+            .assess_read_only()
+            .expect("fresh assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut first_store =
+            CensusBoundDurableLifecycleStoreV3::create(first, NONCE).expect("first operation");
+        first_store.append(prepared()).expect("first prepared");
+    }
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("second S1 control");
+        let assessment = control
+            .assess_read_only()
+            .expect("first blocker assessment");
+        assert!(assessment.into_fresh_control_census().is_err());
+    }
+    // Add a second valid blocking operation through the raw constructor used
+    // only by tests; production has no path around S1 admission.
+    let operations = File::open(root.join("operations")).expect("open operations");
+    let mut raw = DurableLifecycleStoreV3::create(
+        &operations,
+        &other_nonce,
+        unsafe { libc::geteuid() },
+        unsafe { libc::getegid() },
+    )
+    .expect("test-only second operation");
+    let mut raw_journal =
+        DisposableLifecycleJournalV2::new(&other_nonce).expect("test-only journal");
+    raw.append(&mut raw_journal, prepared())
+        .expect("second prepared");
+    drop(raw);
+    drop(operations);
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("restart S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("two-blocker assessment")
+        .into_blocking_control_census(NONCE)
+        .expect("select first blocker");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+        .expect("open exact selected blocker");
+
+    let other_record = root
+        .join("operations")
+        .join(format!("operation-{other_nonce}"))
+        .join("00000001.json");
+    fs::set_permissions(&other_record, fs::Permissions::from_mode(0o600))
+        .expect("mutate nonselected blocker");
+    assert!(
+        store
+            .append_reconciliation(ReconciliationLifecycleEventV3::restart_started(
+                current_boot_session_uuid().expect("current boot UUID"),
+                digest('c'),
+                100,
+                digest('f'),
+            ))
+            .is_err()
+    );
+    assert!(store.poisoned());
 }

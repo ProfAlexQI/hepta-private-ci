@@ -11,6 +11,10 @@ use crate::mac_apfs_barrier_fixture::RawUnmountReceiptV1;
 use crate::mac_apfs_barrier_fixture::StatFsFactsV1;
 use crate::mac_disposable_lifecycle::DisposableLifecycleEventV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleJournalV2;
+use crate::mac_disposable_lifecycle::EffectPurposeV2;
+use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
+use crate::mac_disposable_lifecycle::TerminalDispositionV2;
+use crate::mac_disposable_lifecycle::fresh_absence_sha256;
 use crate::mac_privileged_broker::ObjectBindingV1;
 use std::ffi::CString;
 use std::fs;
@@ -21,6 +25,28 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+
+macro_rules! assert_not_impl {
+    ($type:ty, $trait:path) => {
+        const _: fn() = || {
+            trait AmbiguousIfImpl<A> {
+                fn marker() {}
+            }
+            impl<T: ?Sized> AmbiguousIfImpl<()> for T {}
+            impl<T: ?Sized + $trait> AmbiguousIfImpl<u8> for T {}
+            let _ = <$type as AmbiguousIfImpl<_>>::marker;
+        };
+    };
+}
+
+type BlockingCensusForCompileAssertions =
+    RetainedControlCensusV3<'static, BlockingOperationV3, StableMountStateV3>;
+assert_not_impl!(BlockingCensusForCompileAssertions, Clone);
+assert_not_impl!(BlockingCensusForCompileAssertions, Send);
+assert_not_impl!(BlockingCensusForCompileAssertions, Sync);
+assert_not_impl!(BlockingCensusForCompileAssertions, serde::Serialize);
+assert_not_impl!(BlockingCensusForCompileAssertions, std::os::fd::AsRawFd);
+assert_not_impl!(BlockingCensusForCompileAssertions, From<std::fs::File>);
 
 fn digest(byte: char) -> String {
     byte.to_string().repeat(64)
@@ -65,6 +91,111 @@ fn write_operation(root: &Path, directory_nonce: &str, journal_nonce: &str) {
         .expect("create operation record");
     record.write_all(&bytes).expect("write operation record");
     record.sync_all().expect("sync operation record");
+}
+
+fn write_operation_events(
+    root: &Path,
+    operation_nonce: &str,
+    events: Vec<DisposableLifecycleEventV2>,
+) {
+    let mut journal = DisposableLifecycleJournalV2::new(operation_nonce).expect("journal");
+    let mut records = Vec::new();
+    for event in events {
+        journal
+            .append_with(event, |_, canonical| {
+                records.push(canonical.to_vec());
+                Ok(())
+            })
+            .expect("append lifecycle event");
+    }
+
+    let operation = root
+        .join(OPERATIONS_NAME)
+        .join(format!("{OPERATION_PREFIX}{operation_nonce}"));
+    fs::create_dir(&operation).expect("create operation");
+    fs::set_permissions(&operation, fs::Permissions::from_mode(0o700)).expect("set operation mode");
+    for (index, bytes) in records.iter().enumerate() {
+        let mut record = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o400)
+            .open(operation.join(format!("{:08}.json", index + 1)))
+            .expect("create operation record");
+        record.write_all(bytes).expect("write operation record");
+        record.sync_all().expect("sync operation record");
+    }
+}
+
+fn completed_operation_events(operation_nonce: &str) -> Vec<DisposableLifecycleEventV2> {
+    let boot = "12345678-1234-1234-1234-123456789abc";
+    let observation = FreshAbsenceObservationV2 {
+        artifact_evidence_sha256: digest('5'),
+        baseline_inventory_sha256: digest('1'),
+        backing_identity_sha256: digest('2'),
+        boot_session_uuid: boot.to_string(),
+        collector_policy_sha256: digest('3'),
+        collector_receipt_sha256: digest('6'),
+        iomedia_evidence_sha256: digest('7'),
+        monotonic_after_nanoseconds: 11,
+        monotonic_before_nanoseconds: 10,
+        mount_evidence_sha256: digest('8'),
+        mountpoint_underlying_sha256: digest('4'),
+        no_matching_iomedia: true,
+        no_nested_mounts: true,
+        operation_nonce: operation_nonce.to_string(),
+        operation_artifacts_absent: true,
+        post_inventory_sha256: digest('1'),
+        reconciliation_snapshot_sha256: None,
+        restart_epoch_nonce: None,
+    };
+    let absence_sha256 = fresh_absence_sha256(&observation).expect("absence digest");
+    vec![
+        prepared_event(),
+        DisposableLifecycleEventV2::CreateIssuedOrUncertain { effect_id: 1 },
+        DisposableLifecycleEventV2::CreateObserved {
+            effect_id: 1,
+            image_identity_sha256: digest('9'),
+        },
+        DisposableLifecycleEventV2::AttachIssuedOrUncertain { effect_id: 2 },
+        DisposableLifecycleEventV2::AttachObserved {
+            effect_id: 2,
+            topology_sha256: digest('a'),
+        },
+        DisposableLifecycleEventV2::MountIssuedOrUncertain { effect_id: 3 },
+        DisposableLifecycleEventV2::MountObserved {
+            effect_id: 3,
+            mount_observation_sha256: digest('b'),
+        },
+        DisposableLifecycleEventV2::UnmountIssuedOrUncertain {
+            effect_id: 4,
+            purpose: EffectPurposeV2::ForwardFlow,
+        },
+        DisposableLifecycleEventV2::UnmountCallbackObserved {
+            effect_id: 4,
+            outcome: crate::mac_disposable_lifecycle::CallbackOutcomeV2::Succeeded,
+        },
+        DisposableLifecycleEventV2::UnmountObserved {
+            effect_id: 4,
+            mount_absence_sha256: digest('c'),
+        },
+        DisposableLifecycleEventV2::EjectIssuedOrUncertain {
+            effect_id: 5,
+            purpose: EffectPurposeV2::ForwardFlow,
+        },
+        DisposableLifecycleEventV2::EjectCallbackObserved {
+            effect_id: 5,
+            outcome: crate::mac_disposable_lifecycle::CallbackOutcomeV2::Succeeded,
+        },
+        DisposableLifecycleEventV2::EjectObserved {
+            effect_id: 5,
+            iomedia_absence_sha256: digest('d'),
+        },
+        DisposableLifecycleEventV2::FreshAbsenceObserved { observation },
+        DisposableLifecycleEventV2::TerminalAbsenceProved {
+            disposition: TerminalDispositionV2::Completed,
+            fresh_absence_sha256: absence_sha256,
+        },
+    ]
 }
 
 fn v1_binding(uid: u32, gid: u32, mode: u32) -> ObjectBindingV1 {
@@ -376,6 +507,22 @@ fn clean_storage_receipt_is_complete_but_never_grants_authority() {
 }
 
 #[test]
+fn stable_mount_typestate_retains_the_exact_full_snapshot() {
+    let temporary = tempfile::tempdir().expect("temporary root parent");
+    let root = temporary.path().join("control");
+    let control = LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open control");
+    let mut census = control
+        .assess_read_only()
+        .expect("read-only assessment")
+        .into_fresh_control_census()
+        .expect("stable exact mount census");
+    let _: &RetainedControlCensusV3<'_, FreshAdmissionV3, StableMountStateV3> = &census;
+    assert!(!census.exact_mounts.expected_full_snapshot.is_empty());
+    census.exact_mounts.expected_full_snapshot.pop();
+    assert!(census.revalidate().is_err());
+}
+
+#[test]
 fn operation_directory_nonce_is_bound_to_v2_journal_nonce() {
     let temporary = tempfile::tempdir().expect("temporary root parent");
     let root = create_root(temporary.path());
@@ -404,6 +551,236 @@ fn blocking_operation_receipt_remains_storage_only() {
     assert!(!receipt.authority.any());
     assert!(!receipt.new_operation_precondition_satisfied);
     assert!(assessment.into_fresh_control_census().is_err());
+}
+
+#[test]
+fn exact_blocking_census_rejects_unknown_completed_and_noncanonical_targets() {
+    {
+        let temporary = tempfile::tempdir().expect("temporary root parent");
+        let root = create_root(temporary.path());
+        let nonce = digest('a');
+        write_operation(&root, &nonce, &nonce);
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open control");
+        let assessment = control.assess_read_only().expect("blocking assessment");
+        let error = assessment
+            .into_blocking_control_census(&digest('b'))
+            .err()
+            .expect("unknown target must fail");
+        assert!(error.to_string().contains("unknown"));
+    }
+
+    {
+        let temporary = tempfile::tempdir().expect("temporary root parent");
+        let root = create_root(temporary.path());
+        let nonce = digest('c');
+        write_operation_events(&root, &nonce, completed_operation_events(&nonce));
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open control");
+        let assessment = control.assess_read_only().expect("completed assessment");
+        assert_eq!(
+            assessment.receipt().completed_operation_nonces,
+            [nonce.clone()]
+        );
+        let error = assessment
+            .into_blocking_control_census(&nonce)
+            .err()
+            .expect("completed target must fail");
+        assert!(error.to_string().contains("completed"));
+    }
+
+    {
+        let temporary = tempfile::tempdir().expect("temporary root parent");
+        let root = create_root(temporary.path());
+        let nonce = digest('d');
+        write_operation(&root, &nonce, &nonce);
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open control");
+        let assessment = control.assess_read_only().expect("blocking assessment");
+        assert!(
+            assessment
+                .into_blocking_control_census(&nonce.to_ascii_uppercase())
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn blocking_census_rejects_duplicate_or_subset_receipt_claims() {
+    {
+        let temporary = tempfile::tempdir().expect("temporary root parent");
+        let root = create_root(temporary.path());
+        let nonce = digest('a');
+        write_operation(&root, &nonce, &nonce);
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open control");
+        let mut assessment = control.assess_read_only().expect("blocking assessment");
+        assessment
+            .receipt
+            .blocking_operation_nonces
+            .push(nonce.clone());
+        assert!(assessment.into_blocking_control_census(&nonce).is_err());
+    }
+
+    {
+        let temporary = tempfile::tempdir().expect("temporary root parent");
+        let root = create_root(temporary.path());
+        let first = digest('b');
+        let second = digest('c');
+        write_operation(&root, &first, &first);
+        write_operation(&root, &second, &second);
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open control");
+        let mut assessment = control.assess_read_only().expect("blocking assessment");
+        assessment
+            .receipt
+            .blocking_operation_nonces
+            .retain(|nonce| nonce == &first);
+        assert!(assessment.into_blocking_control_census(&first).is_err());
+    }
+}
+
+#[test]
+fn selected_blocker_retains_every_other_operation_capsule() {
+    let temporary = tempfile::tempdir().expect("temporary root parent");
+    let root = create_root(temporary.path());
+    let selected = digest('a');
+    let other = digest('b');
+    write_operation(&root, &selected, &selected);
+    write_operation(&root, &other, &other);
+    let control = LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open control");
+    let assessment = control
+        .assess_read_only()
+        .expect("multi-blocker assessment");
+    let census = assessment
+        .into_blocking_control_census(&selected)
+        .expect("select one exact blocker");
+    let _: &RetainedControlCensusV3<'_, BlockingOperationV3, StableMountStateV3> = &census;
+    assert_eq!(census.assessment._operations.len(), 2);
+    assert_eq!(
+        census.assessment._operation_blockers,
+        [selected, other.clone()]
+    );
+
+    let other_record = root
+        .join(OPERATIONS_NAME)
+        .join(format!("{OPERATION_PREFIX}{other}"))
+        .join("00000001.json");
+    fs::set_permissions(&other_record, fs::Permissions::from_mode(0o600))
+        .expect("mutate non-selected blocker");
+    assert!(census.revalidate().is_err());
+}
+
+#[test]
+fn blocking_census_rejects_foreign_roster_and_selected_inode_replacement() {
+    {
+        let temporary = tempfile::tempdir().expect("temporary root parent");
+        let root = create_root(temporary.path());
+        let nonce = digest('a');
+        write_operation(&root, &nonce, &nonce);
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open control");
+        let census = control
+            .assess_read_only()
+            .expect("blocking assessment")
+            .into_blocking_control_census(&nonce)
+            .expect("blocking census");
+        let foreign = root
+            .join(OPERATIONS_NAME)
+            .join(format!("{OPERATION_PREFIX}{}", digest('f')));
+        fs::create_dir(&foreign).expect("foreign operation");
+        fs::set_permissions(&foreign, fs::Permissions::from_mode(0o700))
+            .expect("foreign operation mode");
+        assert!(census.prepare_existing_store().is_err());
+    }
+
+    {
+        let temporary = tempfile::tempdir().expect("temporary root parent");
+        let root = create_root(temporary.path());
+        let nonce = digest('b');
+        write_operation(&root, &nonce, &nonce);
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open control");
+        let census = control
+            .assess_read_only()
+            .expect("blocking assessment")
+            .into_blocking_control_census(&nonce)
+            .expect("blocking census");
+        let original = root
+            .join(OPERATIONS_NAME)
+            .join(format!("{OPERATION_PREFIX}{nonce}"));
+        fs::rename(&original, temporary.path().join("stale-operation"))
+            .expect("move retained inode aside");
+        write_operation(&root, &nonce, &nonce);
+        assert!(census.prepare_existing_store().is_err());
+    }
+}
+
+#[test]
+fn blocking_census_admits_only_one_digest_bound_next_record() {
+    {
+        let temporary = tempfile::tempdir().expect("temporary root parent");
+        let root = create_root(temporary.path());
+        let nonce = digest('a');
+        write_operation(&root, &nonce, &nonce);
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open control");
+        let mut census = control
+            .assess_read_only()
+            .expect("blocking assessment")
+            .into_blocking_control_census(&nonce)
+            .expect("blocking census");
+        let operation = root
+            .join(OPERATIONS_NAME)
+            .join(format!("{OPERATION_PREFIX}{nonce}"));
+        for sequence in [2, 3] {
+            let mut record = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o400)
+                .open(operation.join(format!("{sequence:08}.json")))
+                .expect("inject extra record");
+            record.write_all(b"unexpected").expect("write extra record");
+            record.sync_all().expect("sync extra record");
+        }
+        assert!(
+            census
+                .admit_selected_lifecycle_append(&digest('f'))
+                .is_err()
+        );
+    }
+
+    {
+        let temporary = tempfile::tempdir().expect("temporary root parent");
+        let root = create_root(temporary.path());
+        let nonce = digest('b');
+        write_operation(&root, &nonce, &nonce);
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open control");
+        let mut census = control
+            .assess_read_only()
+            .expect("blocking assessment")
+            .into_blocking_control_census(&nonce)
+            .expect("blocking census");
+        let operation = root
+            .join(OPERATIONS_NAME)
+            .join(format!("{OPERATION_PREFIX}{nonce}"));
+        let mut record = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o400)
+            .open(operation.join("00000002.json"))
+            .expect("inject next record");
+        record
+            .write_all(b"digest mismatch")
+            .expect("write next record");
+        record.sync_all().expect("sync next record");
+        assert!(
+            census
+                .admit_selected_lifecycle_append(&digest('f'))
+                .is_err()
+        );
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
