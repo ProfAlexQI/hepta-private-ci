@@ -1394,6 +1394,160 @@ fn recovered_death_proof_final_replay_rejects_same_bytes_issue_swap() {
 }
 
 #[test]
+fn fresh_append_pre_retain_emfile_cutpoint_is_permanently_poisoned() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("fresh S1 assessment")
+        .into_fresh_control_census()
+        .expect("fresh census");
+    let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+        .expect("fresh census-bound store");
+
+    let result = store.append_with_pre_retain_hook(prepared(), || {
+        Err(io::Error::from_raw_os_error(libc::EMFILE))
+    });
+
+    assert!(result.is_err(), "post-durable EMFILE cutpoint was accepted");
+    assert!(store.poisoned(), "post-durable EMFILE did not poison S2");
+    assert_eq!(store.store.records.len(), 1, "V2 append was not durable");
+    assert_eq!(
+        store.census.selected_record_count(),
+        0,
+        "S1 adopted a record after the pre-retain failure"
+    );
+    assert!(
+        store.append(prepared()).is_err(),
+        "poisoned fresh wrapper accepted a retry"
+    );
+}
+
+#[test]
+fn reconciliation_append_same_bytes_swap_before_retain_is_permanently_poisoned() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("fresh S1 assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+            .expect("fresh census-bound store");
+        store.append(prepared()).expect("durable prepared record");
+    }
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("restart S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("blocking S1 assessment")
+        .into_blocking_control_census(NONCE)
+        .expect("exact blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+        .expect("production exact-census replay");
+    let operation = root.join("operations").join(format!("operation-{NONCE}"));
+    let record = operation.join("00000002.json");
+    let displaced = operation.join("00000002.pre-retain-displaced");
+    let result = store.append_reconciliation_with_pre_retain_hook(
+        ReconciliationLifecycleEventV3::restart_started(
+            current_boot_session_uuid().expect("current boot UUID"),
+            digest('c'),
+            100,
+            digest('e'),
+        ),
+        || {
+            let bytes = fs::read(&record)?;
+            fs::rename(&record, &displaced)?;
+            fs::write(&record, bytes)?;
+            fs::set_permissions(&record, fs::Permissions::from_mode(0o400))?;
+            Ok(())
+        },
+    );
+
+    assert!(result.is_err(), "pre-retain same-bytes swap was accepted");
+    assert!(store.poisoned(), "pre-retain swap did not poison S2");
+    assert_eq!(store.store.records.len(), 2, "V2 append was not durable");
+    assert_eq!(
+        store.census.selected_record_count(),
+        1,
+        "S1 adopted the swapped record"
+    );
+    assert!(
+        store
+            .append_reconciliation(ReconciliationLifecycleEventV3::manual_intervention(digest(
+                'f'
+            )))
+            .is_err(),
+        "poisoned reconciliation wrapper accepted a retry"
+    );
+}
+
+#[test]
+fn caught_outer_transaction_panic_after_v2_adoption_is_permanently_poisoned() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("fresh S1 assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+            .expect("fresh census-bound store");
+        store.append(prepared()).expect("durable prepared record");
+    }
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("restart S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("blocking S1 assessment")
+        .into_blocking_control_census(NONCE)
+        .expect("exact blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+        .expect("production exact-census replay");
+
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = store.append_reconciliation_outer_transaction_with_hook(
+            ReconciliationLifecycleEventV3::restart_started(
+                current_boot_session_uuid().expect("current boot UUID"),
+                digest('c'),
+                100,
+                digest('e'),
+            ),
+            || -> io::Result<()> { panic!("outer post-V2 cutpoint") },
+        );
+    }));
+
+    assert!(panic.is_err(), "outer cutpoint did not panic");
+    assert!(store.poisoned(), "caught outer panic disarmed the wrapper");
+    assert_eq!(store.store.records.len(), 2, "V2 append was not durable");
+    assert_eq!(
+        store.census.selected_record_count(),
+        2,
+        "outer cutpoint ran before exact S1 adoption"
+    );
+    assert!(
+        store
+            .append_reconciliation(ReconciliationLifecycleEventV3::manual_intervention(digest(
+                'f'
+            )))
+            .is_err(),
+        "caught outer panic left a reusable wrapper"
+    );
+}
+
+#[test]
 fn reconciliation_append_rejects_same_bytes_swap_before_s1_adoption() {
     let temporary = tempfile::tempdir().expect("control parent");
     let root = temporary.path().join("control");
