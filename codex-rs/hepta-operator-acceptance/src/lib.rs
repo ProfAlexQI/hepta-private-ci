@@ -11,9 +11,9 @@ pub(crate) mod mac_disposable_lifecycle;
 #[cfg(target_os = "macos")]
 pub(crate) mod mac_disposable_lifecycle_store;
 #[cfg(target_os = "macos")]
-pub(crate) mod mac_inert_one_shot_runner;
-#[cfg(target_os = "macos")]
 pub(crate) mod mac_disposable_reconciliation_collector;
+#[cfg(target_os = "macos")]
+pub(crate) mod mac_inert_one_shot_runner;
 pub mod mac_iomedia_identity;
 #[cfg(target_os = "macos")]
 pub mod mac_privileged_broker;

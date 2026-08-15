@@ -32,11 +32,13 @@ use std::ffi::CString;
 use std::fs::File;
 use std::io;
 use std::io::Write;
+use std::marker::PhantomData;
 use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::os::fd::RawFd;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use thiserror::Error;
 
 const RECEIPT_SCHEMA: &str = "hepta_mac_restart_collector_receipt_v3";
@@ -250,8 +252,8 @@ pub struct RestartCollectorReceiptV3 {
     pub schema_version: u32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum FinalizedRestartObservationV3 {
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum FinalizedRestartObservationV3 {
     ReconciliationSnapshot(ReconciliationSnapshotV2),
     FreshAbsence(FreshAbsenceObservationV2),
 }
@@ -316,6 +318,47 @@ struct DurableCollectorReceiptV3 {
     path: PathBuf,
     roster: Vec<String>,
     temporary_name: String,
+}
+
+pub(crate) struct AttachedV3;
+pub(crate) struct MountedV3;
+
+struct RetainedCollectorEvidenceV3 {
+    durable: DurableCollectorReceiptV3,
+    guard: LiveReplayGuardV3,
+    observation: FinalizedRestartObservationV3,
+    receipt: RestartCollectorReceiptV3,
+    receipt_sha256: String,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct RetainedZeroMatchV3 {
+    evidence: RetainedCollectorEvidenceV3,
+}
+
+pub(crate) struct RetainedUniqueMatchV3<S> {
+    evidence: RetainedCollectorEvidenceV3,
+    _state: PhantomData<S>,
+}
+
+pub(crate) struct RetainedAmbiguousMatchV3 {
+    evidence: RetainedCollectorEvidenceV3,
+}
+
+pub(crate) struct RetainedFreshAbsenceV3 {
+    evidence: RetainedCollectorEvidenceV3,
+}
+
+pub(crate) enum RetainedCollectorMatchV3 {
+    Zero(RetainedZeroMatchV3),
+    UniqueAttached(RetainedUniqueMatchV3<AttachedV3>),
+    UniqueMounted(RetainedUniqueMatchV3<MountedV3>),
+    Ambiguous(RetainedAmbiguousMatchV3),
+}
+
+pub(crate) enum RetainedCollectorObservationV3 {
+    Reconciliation(RetainedCollectorMatchV3),
+    FreshAbsence(RetainedFreshAbsenceV3),
 }
 
 impl RestartCollectorPolicyV3 {
@@ -673,27 +716,27 @@ impl PendingRestartObservationV3 {
         &self.receipt
     }
 
-    pub fn persist_and_finalize(
+    pub(crate) fn persist_and_retain(
         self,
-    ) -> Result<FinalizedRestartObservationV3, RestartCollectorErrorV3> {
-        self.persist_and_finalize_inner(|| Ok(()))
+    ) -> Result<RetainedCollectorObservationV3, RestartCollectorErrorV3> {
+        self.persist_and_retain_inner(|| Ok(()))
     }
 
     #[cfg(test)]
-    fn persist_and_finalize_with_hook<F>(
+    fn persist_and_retain_with_hook<F>(
         self,
         after_persistence: F,
-    ) -> Result<FinalizedRestartObservationV3, RestartCollectorErrorV3>
+    ) -> Result<RetainedCollectorObservationV3, RestartCollectorErrorV3>
     where
         F: FnOnce() -> Result<(), RestartCollectorErrorV3>,
     {
-        self.persist_and_finalize_inner(after_persistence)
+        self.persist_and_retain_inner(after_persistence)
     }
 
-    fn persist_and_finalize_inner<F>(
+    fn persist_and_retain_inner<F>(
         self,
         after_persistence: F,
-    ) -> Result<FinalizedRestartObservationV3, RestartCollectorErrorV3>
+    ) -> Result<RetainedCollectorObservationV3, RestartCollectorErrorV3>
     where
         F: FnOnce() -> Result<(), RestartCollectorErrorV3>,
     {
@@ -728,11 +771,13 @@ impl PendingRestartObservationV3 {
             ));
         }
 
-        match self.receipt.purpose {
+        let purpose = self.receipt.purpose;
+        let match_result = self.receipt.match_result;
+        let observation = match purpose {
             CollectorPurposeV3::ReconciliationSnapshot => {
-                Ok(FinalizedRestartObservationV3::ReconciliationSnapshot(
+                FinalizedRestartObservationV3::ReconciliationSnapshot(
                     reconciliation_snapshot_from_receipt(&self.receipt, &receipt_sha256)?,
-                ))
+                )
             }
             CollectorPurposeV3::FreshAbsence => {
                 if self.receipt.match_result != ReconciliationMatchV2::Zero
@@ -749,29 +794,113 @@ impl PendingRestartObservationV3 {
                         "FreshAbsence requires Zero, exact baseline, no mount, and absent artifacts",
                     ));
                 }
-                Ok(FinalizedRestartObservationV3::FreshAbsence(
-                    FreshAbsenceObservationV2 {
-                        artifact_evidence_sha256: self.receipt.artifact_evidence_sha256,
-                        baseline_inventory_sha256: self.receipt.baseline_inventory_sha256,
-                        backing_identity_sha256: self.receipt.backing_identity_sha256,
-                        boot_session_uuid: self.receipt.boot_session_uuid,
-                        collector_policy_sha256: self.receipt.collector_policy_sha256,
-                        collector_receipt_sha256: receipt_sha256,
-                        iomedia_evidence_sha256: self.receipt.iomedia_evidence_sha256,
-                        monotonic_after_nanoseconds: self.receipt.monotonic_after_nanoseconds,
-                        monotonic_before_nanoseconds: self.receipt.monotonic_before_nanoseconds,
-                        mount_evidence_sha256: self.receipt.mount_evidence_sha256,
-                        mountpoint_underlying_sha256: self.receipt.mountpoint_underlying_sha256,
-                        no_matching_iomedia: true,
-                        no_nested_mounts: true,
-                        operation_nonce: self.receipt.operation_nonce,
-                        operation_artifacts_absent: true,
-                        post_inventory_sha256: self.receipt.post_inventory_sha256,
-                        reconciliation_snapshot_sha256: self.receipt.reconciliation_snapshot_sha256,
-                        restart_epoch_nonce: Some(self.receipt.restart_epoch_nonce),
-                    },
+                FinalizedRestartObservationV3::FreshAbsence(fresh_absence_from_receipt(
+                    &self.receipt,
+                    &receipt_sha256,
+                )?)
+            }
+        };
+        let evidence = RetainedCollectorEvidenceV3 {
+            durable,
+            guard: self.guard,
+            observation,
+            receipt: self.receipt,
+            receipt_sha256,
+            _not_send_or_sync: PhantomData,
+        };
+        match (purpose, match_result) {
+            (CollectorPurposeV3::ReconciliationSnapshot, ReconciliationMatchV2::Zero) => {
+                Ok(RetainedCollectorObservationV3::Reconciliation(
+                    RetainedCollectorMatchV3::Zero(RetainedZeroMatchV3 { evidence }),
                 ))
             }
+            (
+                CollectorPurposeV3::ReconciliationSnapshot,
+                ReconciliationMatchV2::Unique { mounted: false },
+            ) => Ok(RetainedCollectorObservationV3::Reconciliation(
+                RetainedCollectorMatchV3::UniqueAttached(RetainedUniqueMatchV3 {
+                    evidence,
+                    _state: PhantomData,
+                }),
+            )),
+            (
+                CollectorPurposeV3::ReconciliationSnapshot,
+                ReconciliationMatchV2::Unique { mounted: true },
+            ) => Ok(RetainedCollectorObservationV3::Reconciliation(
+                RetainedCollectorMatchV3::UniqueMounted(RetainedUniqueMatchV3 {
+                    evidence,
+                    _state: PhantomData,
+                }),
+            )),
+            (
+                CollectorPurposeV3::ReconciliationSnapshot,
+                ReconciliationMatchV2::Ambiguous { .. },
+            ) => Ok(RetainedCollectorObservationV3::Reconciliation(
+                RetainedCollectorMatchV3::Ambiguous(RetainedAmbiguousMatchV3 { evidence }),
+            )),
+            (CollectorPurposeV3::FreshAbsence, ReconciliationMatchV2::Zero) => Ok(
+                RetainedCollectorObservationV3::FreshAbsence(RetainedFreshAbsenceV3 { evidence }),
+            ),
+            (CollectorPurposeV3::FreshAbsence, _) => Err(invalid(
+                "FreshAbsence retained evidence must have an exact Zero match",
+            )),
+        }
+    }
+}
+
+impl RetainedCollectorEvidenceV3 {
+    fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.guard.revalidate(&self.receipt)?;
+        self.durable.revalidate()?;
+        if sha256(&canonical_json(&self.receipt)?) != self.receipt_sha256 {
+            return Err(invalid(
+                "retained collector receipt digest changed after final replay",
+            ));
+        }
+        let expected = match self.receipt.purpose {
+            CollectorPurposeV3::ReconciliationSnapshot => {
+                FinalizedRestartObservationV3::ReconciliationSnapshot(
+                    reconciliation_snapshot_from_receipt(&self.receipt, &self.receipt_sha256)?,
+                )
+            }
+            CollectorPurposeV3::FreshAbsence => FinalizedRestartObservationV3::FreshAbsence(
+                fresh_absence_from_receipt(&self.receipt, &self.receipt_sha256)?,
+            ),
+        };
+        if self.observation != expected {
+            return Err(invalid(
+                "retained collector observation differs from its durable receipt",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl RetainedCollectorObservationV3 {
+    pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        match self {
+            Self::Reconciliation(match_result) => match match_result {
+                RetainedCollectorMatchV3::Zero(value) => value.evidence.revalidate(),
+                RetainedCollectorMatchV3::UniqueAttached(value) => value.evidence.revalidate(),
+                RetainedCollectorMatchV3::UniqueMounted(value) => value.evidence.revalidate(),
+                RetainedCollectorMatchV3::Ambiguous(value) => value.evidence.revalidate(),
+            },
+            Self::FreshAbsence(value) => value.evidence.revalidate(),
+        }
+    }
+}
+
+#[cfg(test)]
+impl RetainedCollectorObservationV3 {
+    fn observation_for_test(&self) -> &FinalizedRestartObservationV3 {
+        match self {
+            Self::Reconciliation(match_result) => match match_result {
+                RetainedCollectorMatchV3::Zero(value) => &value.evidence.observation,
+                RetainedCollectorMatchV3::UniqueAttached(value) => &value.evidence.observation,
+                RetainedCollectorMatchV3::UniqueMounted(value) => &value.evidence.observation,
+                RetainedCollectorMatchV3::Ambiguous(value) => &value.evidence.observation,
+            },
+            Self::FreshAbsence(value) => &value.evidence.observation,
         }
     }
 }
@@ -831,6 +960,47 @@ fn reconciliation_snapshot_from_receipt(
     };
     validate_reconciliation_snapshot_shape_v3(&snapshot)?;
     Ok(snapshot)
+}
+
+fn fresh_absence_from_receipt(
+    receipt: &RestartCollectorReceiptV3,
+    receipt_sha256: &str,
+) -> Result<FreshAbsenceObservationV2, RestartCollectorErrorV3> {
+    validate_receipt(receipt)?;
+    if receipt.purpose != CollectorPurposeV3::FreshAbsence
+        || receipt.match_result != ReconciliationMatchV2::Zero
+        || !receipt.baseline_restored
+        || !receipt.operation_artifacts_absent
+        || !receipt.mount_evidence.no_nested_mounts
+        || !receipt.mount_evidence.mountpoint_underlying_revalidated
+        || receipt.reconciliation_snapshot_sha256.is_none()
+        || !valid_digest(receipt_sha256)
+        || sha256(&canonical_json(receipt)?) != receipt_sha256
+    {
+        return Err(invalid(
+            "fresh absence does not project from the exact durable receipt",
+        ));
+    }
+    Ok(FreshAbsenceObservationV2 {
+        artifact_evidence_sha256: receipt.artifact_evidence_sha256.clone(),
+        baseline_inventory_sha256: receipt.baseline_inventory_sha256.clone(),
+        backing_identity_sha256: receipt.backing_identity_sha256.clone(),
+        boot_session_uuid: receipt.boot_session_uuid.clone(),
+        collector_policy_sha256: receipt.collector_policy_sha256.clone(),
+        collector_receipt_sha256: receipt_sha256.to_string(),
+        iomedia_evidence_sha256: receipt.iomedia_evidence_sha256.clone(),
+        monotonic_after_nanoseconds: receipt.monotonic_after_nanoseconds,
+        monotonic_before_nanoseconds: receipt.monotonic_before_nanoseconds,
+        mount_evidence_sha256: receipt.mount_evidence_sha256.clone(),
+        mountpoint_underlying_sha256: receipt.mountpoint_underlying_sha256.clone(),
+        no_matching_iomedia: true,
+        no_nested_mounts: true,
+        operation_nonce: receipt.operation_nonce.clone(),
+        operation_artifacts_absent: true,
+        post_inventory_sha256: receipt.post_inventory_sha256.clone(),
+        reconciliation_snapshot_sha256: receipt.reconciliation_snapshot_sha256.clone(),
+        restart_epoch_nonce: Some(receipt.restart_epoch_nonce.clone()),
+    })
 }
 
 impl ValidatedExistingReceiptV3 {

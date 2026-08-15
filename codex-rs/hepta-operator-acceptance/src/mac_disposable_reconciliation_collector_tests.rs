@@ -727,6 +727,24 @@ fn rootless_live_collection_rejects_same_path_prepared_root_replacement() {
 }
 
 #[test]
+fn retained_observation_keeps_live_evidence_after_persistence() {
+    let _lock = LIVE_COLLECTOR_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+    let fixture = LiveCollectorFixture::new();
+    let retained = collect_reconciliation_snapshot_v3(fixture.request())
+        .unwrap()
+        .persist_and_retain()
+        .unwrap();
+    retained.revalidate().unwrap();
+
+    let late_artifact = fixture.artifact_root.join(fixture.names[0]);
+    write_private(&late_artifact, b"late operation artifact");
+    assert!(retained.revalidate().is_err());
+}
+
+#[test]
 fn live_disk_image_url_symlink_alias_matches_the_prepared_held_file() {
     let fixture = tempfile::tempdir().unwrap();
     let root = std::fs::canonicalize(fixture.path()).unwrap();
@@ -855,14 +873,14 @@ fn rootless_closed_world_receipts_prior_projection_and_metadata_are_fail_closed(
         .persistence_root
         .join(format!("collector-{}.json", sha256(&collision_bytes)));
     write_private(&collision_path, &collision_bytes);
-    assert!(collision.persist_and_finalize().is_err());
+    assert!(collision.persist_and_retain().is_err());
     std::fs::remove_file(&collision_path).unwrap();
 
     let transient = collect_reconciliation_snapshot_v3(fixture.request()).unwrap();
     let transient_path = fixture.persistence_root.join("transient-create-delete");
     assert!(
         transient
-            .persist_and_finalize_with_hook(|| {
+            .persist_and_retain_with_hook(|| {
                 std::fs::write(&transient_path, b"transient")?;
                 std::fs::remove_file(&transient_path)?;
                 Ok(())
@@ -877,7 +895,7 @@ fn rootless_closed_world_receipts_prior_projection_and_metadata_are_fail_closed(
     ));
     assert!(
         metadata_drift
-            .persist_and_finalize_with_hook(|| {
+            .persist_and_retain_with_hook(|| {
                 set_test_xattr(&metadata_path);
                 remove_test_xattr(&metadata_path);
                 Ok(())
@@ -888,8 +906,10 @@ fn rootless_closed_world_receipts_prior_projection_and_metadata_are_fail_closed(
     let pending = collect_reconciliation_snapshot_v3(fixture.request()).unwrap();
     let snapshot_receipt_model = pending.receipt().clone();
     let snapshot_receipt_bytes = canonical_json(pending.receipt()).unwrap();
-    let snapshot = match pending.persist_and_finalize().unwrap() {
-        FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot) => snapshot,
+    let retained_snapshot = pending.persist_and_retain().unwrap();
+    retained_snapshot.revalidate().unwrap();
+    let snapshot = match retained_snapshot.observation_for_test() {
+        FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot) => snapshot.clone(),
         FinalizedRestartObservationV3::FreshAbsence(_) => panic!("wrong observation"),
     };
     let snapshot_receipt = fixture.persistence_root.join(format!(
@@ -962,8 +982,10 @@ fn rootless_closed_world_receipts_prior_projection_and_metadata_are_fail_closed(
     std::fs::remove_file(&hardlink).unwrap();
 
     let absence = collect_fresh_absence_v3(fixture.request(), &snapshot).unwrap();
+    let retained_absence = absence.persist_and_retain().unwrap();
+    retained_absence.revalidate().unwrap();
     assert!(matches!(
-        absence.persist_and_finalize().unwrap(),
+        retained_absence.observation_for_test(),
         FinalizedRestartObservationV3::FreshAbsence(_)
     ));
     std::fs::remove_file(&snapshot_receipt).unwrap();
@@ -1033,16 +1055,16 @@ fn rootless_live_zero_requires_persistence_and_final_replay_for_both_observation
     let failed = collect_reconciliation_snapshot_v3(request()).unwrap();
     let uncertain = persistence_root.join(".incoming-collector-crash");
     std::fs::write(&uncertain, b"uncertain").unwrap();
-    assert!(failed.persist_and_finalize().is_err());
+    assert!(failed.persist_and_retain().is_err());
     std::fs::remove_file(&uncertain).unwrap();
 
     let drifted = collect_reconciliation_snapshot_v3(request()).unwrap();
     let forbidden = artifact_root.join("operation-created.img");
-    let drift_result = drifted.persist_and_finalize_with_hook(|| {
+    let drift_result = drifted.persist_and_retain_with_hook(|| {
         std::fs::write(&forbidden, b"late artifact")?;
         Ok(())
     });
-    assert!(drift_result.is_err(), "{drift_result:?}");
+    assert!(drift_result.is_err());
     if forbidden.exists() {
         std::fs::remove_file(&forbidden).unwrap();
     }
@@ -1075,8 +1097,10 @@ fn rootless_live_zero_requires_persistence_and_final_replay_for_both_observation
         "87654321-4321-4321-8321-cba987654321".to_string();
     tampered.baseline_inventory_sha256 = tampered.baseline_inventory.sha256().unwrap();
     assert!(validate_receipt(&tampered).is_err());
-    let snapshot = match pending.persist_and_finalize().unwrap() {
-        FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot) => snapshot,
+    let retained_snapshot = pending.persist_and_retain().unwrap();
+    retained_snapshot.revalidate().unwrap();
+    let snapshot = match retained_snapshot.observation_for_test() {
+        FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot) => snapshot.clone(),
         FinalizedRestartObservationV3::FreshAbsence(_) => panic!("wrong observation"),
     };
     assert_eq!(snapshot.match_result, ReconciliationMatchV2::Zero);
@@ -1127,8 +1151,10 @@ fn rootless_live_zero_requires_persistence_and_final_replay_for_both_observation
         .unwrap();
 
     let pending = collect_fresh_absence_v3(request(), &snapshot).unwrap();
-    let absence = match pending.persist_and_finalize().unwrap() {
-        FinalizedRestartObservationV3::FreshAbsence(observation) => observation,
+    let retained_absence = pending.persist_and_retain().unwrap();
+    retained_absence.revalidate().unwrap();
+    let absence = match retained_absence.observation_for_test() {
+        FinalizedRestartObservationV3::FreshAbsence(observation) => observation.clone(),
         FinalizedRestartObservationV3::ReconciliationSnapshot(_) => panic!("wrong observation"),
     };
     assert!(absence.no_matching_iomedia);
