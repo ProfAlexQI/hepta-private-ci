@@ -2506,7 +2506,7 @@ impl AuthenticatedPreRunnerV3 {
         let kqueue_note_exit_observed =
             observe_kqueue_exit(self.kqueue.as_raw_fd(), self.runner_identity.pid)?;
         let death_pipe_eof_observed = read_eof_until(&self.death_pipe, deadline)?;
-        let status = self.child.wait()?;
+        let status = wait_child_until(&mut self.child, deadline)?;
         let kernel_identity_absent = match kernel_process_identity(self.runner_identity.pid) {
             Ok(identity) => identity != self.runner_identity,
             Err(InertRunnerErrorV3::Io(error)) if error.raw_os_error() == Some(libc::ESRCH) => true,
@@ -2550,6 +2550,9 @@ impl AuthenticatedPreRunnerV3 {
 
 impl Drop for AuthenticatedPreRunnerV3 {
     fn drop(&mut self) {
+        if matches!(self.state, RunnerStateV3::Reaped) {
+            return;
+        }
         if self.durable_issued_binding.is_some() && self.retained_death_proof.is_none() {
             if self.terminate_and_retain_proof(CLEANUP_TIMEOUT_V3).is_ok() {
                 return;
@@ -2846,6 +2849,20 @@ fn exact_pid_start_absent(pid: u32, start_microseconds: u64) -> Result<bool, Ine
     }
 }
 
+fn wait_child_until(
+    child: &mut Child,
+    deadline: AbsoluteDeadlineV3,
+) -> Result<std::process::ExitStatus, InertRunnerErrorV3> {
+    loop {
+        deadline.remaining_nanoseconds()?;
+        if let Some(status) = child.try_wait()? {
+            return Ok(status);
+        }
+        let remaining = deadline.remaining_nanoseconds()?;
+        std::thread::sleep(Duration::from_nanos(remaining.min(1_000_000)));
+    }
+}
+
 fn boot_session_uuid() -> Result<String, InertRunnerErrorV3> {
     let name = CString::new("kern.bootsessionuuid").expect("static sysctl name");
     let mut length = 0usize;
@@ -2881,14 +2898,10 @@ fn boot_session_uuid() -> Result<String, InertRunnerErrorV3> {
     if bytes.last() == Some(&0) {
         bytes.pop();
     }
-    let uuid = String::from_utf8(bytes).map_err(|_| invalid("boot session UUID is not UTF-8"))?;
-    if uuid.len() != 36
-        || !uuid
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
-    {
-        return Err(invalid("boot session UUID shape changed"));
-    }
+    let uuid = String::from_utf8(bytes)
+        .map_err(|_| invalid("boot session UUID is not UTF-8"))?
+        .to_ascii_lowercase();
+    require_boot_uuid(&uuid, "boot session UUID")?;
     Ok(uuid)
 }
 
