@@ -1698,9 +1698,16 @@ impl RunnerDispatchRecordV3 {
 
 impl AbsoluteDeadlineV3 {
     fn after(duration: Duration) -> Result<Self, InertRunnerErrorV3> {
+        Self::after_from(monotonic_nanoseconds()?, duration)
+    }
+
+    fn after_from(
+        now_monotonic_nanoseconds: u64,
+        duration: Duration,
+    ) -> Result<Self, InertRunnerErrorV3> {
         let delta = u64::try_from(duration.as_nanos())
             .map_err(|_| invalid("runner deadline duration overflows nanoseconds"))?;
-        let monotonic_nanoseconds = monotonic_nanoseconds()?
+        let monotonic_nanoseconds = now_monotonic_nanoseconds
             .checked_add(delta)
             .ok_or_else(|| invalid("runner absolute deadline overflowed"))?;
         Ok(Self {
@@ -1739,6 +1746,28 @@ impl AbsoluteDeadlineV3 {
         let rounded_up = remaining.saturating_add(999_999) / 1_000_000;
         Ok(rounded_up.min(libc::c_int::MAX as u64) as libc::c_int)
     }
+}
+
+fn startup_deadline_after_admission(
+    session_deadline: AbsoluteDeadlineV3,
+    startup_timeout: Duration,
+) -> Result<AbsoluteDeadlineV3, InertRunnerErrorV3> {
+    startup_deadline_after_admission_from(
+        session_deadline,
+        monotonic_nanoseconds()?,
+        startup_timeout,
+    )
+}
+
+fn startup_deadline_after_admission_from(
+    session_deadline: AbsoluteDeadlineV3,
+    now_monotonic_nanoseconds: u64,
+    startup_timeout: Duration,
+) -> Result<AbsoluteDeadlineV3, InertRunnerErrorV3> {
+    Ok(
+        AbsoluteDeadlineV3::after_from(now_monotonic_nanoseconds, startup_timeout)?
+            .min(session_deadline),
+    )
 }
 
 impl IssuedEffectRecordV3 {
@@ -2147,16 +2176,17 @@ impl AuthenticatedPreRunnerV3 {
         drop(child_response_write);
         drop(child_death_write);
         // Fixed-path and full-byte pre/post-spawn validation belongs to the
-        // launcher admission boundary.  The single protocol deadline starts
-        // only after that admission completes, then covers the hello request,
-        // every header/body byte, and blocked I/O without reset.
-        let startup_deadline = match AbsoluteDeadlineV3::after(startup_timeout) {
-            Ok(deadline) => deadline,
-            Err(error) => {
-                child.terminate_group_and_reap()?;
-                return Err(error);
-            }
-        };
+        // launcher admission boundary.  Startup receives its full budget
+        // after admission, capped by the pre-spawn child session deadline so
+        // the hello never advertises a deadline later than its environment.
+        let startup_deadline =
+            match startup_deadline_after_admission(session_deadline, startup_timeout) {
+                Ok(deadline) => deadline,
+                Err(error) => {
+                    child.terminate_group_and_reap()?;
+                    return Err(error);
+                }
+            };
 
         let startup = (|| {
             let challenge = random_hex(32)?;

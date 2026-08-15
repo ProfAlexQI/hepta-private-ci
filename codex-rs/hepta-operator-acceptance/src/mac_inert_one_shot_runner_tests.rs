@@ -1449,6 +1449,38 @@ fn partial_hello_prefix_hits_one_absolute_startup_deadline() {
 }
 
 #[test]
+fn large_post_admission_startup_deadline_is_capped_by_the_session() {
+    let pre_spawn_now = 7_000_000_000u64;
+    let post_admission_now = pre_spawn_now + 1;
+    let timeout = Duration::from_secs(31);
+    let session = AbsoluteDeadlineV3::after_from(pre_spawn_now, timeout)
+        .expect("derive pre-spawn session deadline");
+    let uncapped = AbsoluteDeadlineV3::after_from(post_admission_now, timeout)
+        .expect("derive uncapped post-admission startup deadline");
+    assert!(
+        uncapped.monotonic_nanoseconds > session.monotonic_nanoseconds,
+        "the regression requires a post-admission clock advance",
+    );
+    let startup = startup_deadline_after_admission_from(session, post_admission_now, timeout)
+        .expect("derive capped post-admission startup deadline");
+    assert_eq!(startup.monotonic_nanoseconds, session.monotonic_nanoseconds);
+
+    let short_session = AbsoluteDeadlineV3::after_from(pre_spawn_now, Duration::from_secs(30))
+        .expect("derive minimum session deadline");
+    let short_startup = startup_deadline_after_admission_from(
+        short_session,
+        post_admission_now,
+        Duration::from_millis(100),
+    )
+    .expect("derive uncapped short startup deadline");
+    assert_eq!(
+        short_startup.monotonic_nanoseconds,
+        post_admission_now + 100_000_000,
+    );
+    assert!(short_startup.monotonic_nanoseconds < short_session.monotonic_nanoseconds);
+}
+
+#[test]
 fn persistence_failure_sends_nothing_and_poisoned_epoch_cannot_retry() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
     let (_directory, lease, mut runner) = spawn_runner(&epoch);
