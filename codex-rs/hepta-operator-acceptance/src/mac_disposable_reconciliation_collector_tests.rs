@@ -22,6 +22,42 @@ use std::process::Command;
 
 static LIVE_COLLECTOR_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+struct LiveCollectorTestGuard {
+    _thread: std::sync::MutexGuard<'static, ()>,
+    process: File,
+}
+
+impl Drop for LiveCollectorTestGuard {
+    fn drop(&mut self) {
+        assert_eq!(
+            unsafe { libc::flock(self.process.as_raw_fd(), libc::LOCK_UN) },
+            0
+        );
+    }
+}
+
+fn live_collector_test_lock() -> LiveCollectorTestGuard {
+    let thread = LIVE_COLLECTOR_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let process = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .mode(0o600)
+        .open("/tmp/hepta-mac-restart-collector-test.lock")
+        .expect("open cross-process live collector test lock");
+    assert_eq!(
+        unsafe { libc::flock(process.as_raw_fd(), libc::LOCK_EX) },
+        0
+    );
+    LiveCollectorTestGuard {
+        _thread: thread,
+        process,
+    }
+}
+
 macro_rules! assert_not_impl_any {
     ($ty:ty: $($trait:path),+ $(,)?) => {
         const _: fn() = || {
@@ -53,6 +89,21 @@ assert_not_impl_any!(
         From<File>,
         TryFrom<File>,
         From<Vec<MountBindingV3>>,
+        From<String>
+);
+assert_not_impl_any!(
+    RetainedPreparedCollectorCapabilityV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<Vec<u8>>,
         From<String>
 );
 assert_not_impl_any!(
@@ -432,9 +483,11 @@ struct LiveCollectorFixture {
     _fixture: tempfile::TempDir,
     _persistence: tempfile::TempDir,
     artifact_root: PathBuf,
+    backing_path: PathBuf,
     baseline: RestartBaselineInventoryV3,
     bindings: RestartCollectorBindingsV3,
     mountpoint_identity: MountpointIdentityV3,
+    mountpoint_path: PathBuf,
     persistence_root: PathBuf,
     policy: RestartCollectorPolicyV3,
     prepared_backing: DiskImageBackingIdentityV2,
@@ -485,9 +538,11 @@ impl LiveCollectorFixture {
             _fixture: fixture,
             _persistence: persistence,
             artifact_root,
+            backing_path,
             baseline,
             bindings,
             mountpoint_identity,
+            mountpoint_path: mountpoint,
             persistence_root,
             policy,
             prepared_backing,
@@ -504,6 +559,19 @@ impl LiveCollectorFixture {
             prepared_backing: &self.prepared_backing,
             receipt_root: &self.persistence_root,
         }
+    }
+
+    fn prepared_capability(&self, operation_nonce: &str) -> RetainedPreparedCollectorCapabilityV3 {
+        RetainedPreparedCollectorCapabilityV3::capture(
+            operation_nonce,
+            &self.backing_path,
+            &self.mountpoint_path,
+            &self.artifact_root,
+            &self.persistence_root,
+            "operation-created.img",
+            &[],
+        )
+        .expect("capture exact prepared collector capability")
     }
 }
 
@@ -899,10 +967,146 @@ fn policy_rejects_roots_or_backing_that_can_disappear_under_the_target_mount() {
 }
 
 #[test]
+fn prepared_collector_capability_reopens_only_its_exact_manifest() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let operation_nonce = "7".repeat(64);
+    let retained = fixture.prepared_capability(&operation_nonce);
+    retained.revalidate().expect("live prepared replay");
+    let manifest_bytes = retained.manifest_bytes().to_vec();
+    let manifest_sha256 = retained.manifest_sha256().to_string();
+    let profile_sha256 = retained.profile_sha256().to_string();
+    assert_eq!(retained.operation_nonce(), operation_nonce);
+    assert_eq!(
+        retained.boot_session_uuid(),
+        fixture.baseline.boot_session_uuid
+    );
+    drop(retained);
+
+    let reopened = RetainedPreparedCollectorCapabilityV3::reopen_from_exact_manifest(
+        &operation_nonce,
+        &manifest_bytes,
+        &manifest_sha256,
+        &profile_sha256,
+    )
+    .expect("reopen exact durable manifest candidate");
+    reopened.revalidate().expect("reopened prepared replay");
+    drop(reopened);
+
+    assert!(
+        RetainedPreparedCollectorCapabilityV3::reopen_from_exact_manifest(
+            &"8".repeat(64),
+            &manifest_bytes,
+            &manifest_sha256,
+            &profile_sha256,
+        )
+        .is_err(),
+        "prepared manifest must not move across operations"
+    );
+    assert!(
+        RetainedPreparedCollectorCapabilityV3::reopen_from_exact_manifest(
+            &operation_nonce,
+            &manifest_bytes,
+            &"9".repeat(64),
+            &profile_sha256,
+        )
+        .is_err(),
+        "caller-computed manifest digest must not replace the durable commitment"
+    );
+    assert!(
+        RetainedPreparedCollectorCapabilityV3::reopen_from_exact_manifest(
+            &operation_nonce,
+            &manifest_bytes,
+            &manifest_sha256,
+            &"a".repeat(64),
+        )
+        .is_err(),
+        "collector profile commitment must be exact"
+    );
+}
+
+#[test]
+fn prepared_collector_manifest_keeps_historical_boot_separate_from_restart_boot() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let operation_nonce = "7".repeat(64);
+    let retained = fixture.prepared_capability(&operation_nonce);
+    let mut historical = retained.manifest.clone();
+    historical.prepared_boot_session_uuid = "12345678-1234-4abc-8abc-123456789abc".to_string();
+    historical.baseline.boot_session_uuid = historical.prepared_boot_session_uuid.clone();
+    assert_ne!(
+        historical.prepared_boot_session_uuid,
+        current_boot_session_uuid().expect("current restart boot")
+    );
+    let (bytes, digest) = canonical_prepared_manifest(&historical)
+        .expect("historical prepared boot remains a valid durable commitment");
+    drop(retained);
+    let reopened = RetainedPreparedCollectorCapabilityV3::reopen_from_exact_manifest(
+        &operation_nonce,
+        &bytes,
+        &digest,
+        &historical.profile_sha256,
+    )
+    .expect("reopen exact historical-boot prepared candidate");
+    assert_eq!(
+        reopened.boot_session_uuid(),
+        historical.prepared_boot_session_uuid
+    );
+}
+
+#[test]
+fn prepared_collector_capability_rejects_live_candidate_mutation_or_swap() {
+    let _lock = live_collector_test_lock();
+    for mutation in ["backing", "artifact_roster", "receipt_mode", "mountpoint"] {
+        let fixture = LiveCollectorFixture::new();
+        let operation_nonce = "7".repeat(64);
+        let retained = fixture.prepared_capability(&operation_nonce);
+        let manifest_bytes = retained.manifest_bytes().to_vec();
+        let manifest_sha256 = retained.manifest_sha256().to_string();
+        let profile_sha256 = retained.profile_sha256().to_string();
+        drop(retained);
+
+        match mutation {
+            "backing" => {
+                let displaced = fixture.backing_path.with_extension("displaced");
+                std::fs::rename(&fixture.backing_path, displaced).expect("displace backing");
+                std::fs::write(&fixture.backing_path, b"rootless-redteam-backing-v3")
+                    .expect("same-byte replacement backing");
+            }
+            "artifact_roster" => {
+                std::fs::write(fixture.artifact_root.join("foreign"), b"foreign")
+                    .expect("mutate artifact roster");
+            }
+            "receipt_mode" => {
+                std::fs::set_permissions(
+                    &fixture.persistence_root,
+                    std::fs::Permissions::from_mode(0o755),
+                )
+                .expect("mutate receipt root mode");
+            }
+            "mountpoint" => {
+                let displaced = fixture.mountpoint_path.with_extension("displaced");
+                std::fs::rename(&fixture.mountpoint_path, displaced).expect("displace mountpoint");
+                std::fs::create_dir(&fixture.mountpoint_path).expect("replace mountpoint");
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            RetainedPreparedCollectorCapabilityV3::reopen_from_exact_manifest(
+                &operation_nonce,
+                &manifest_bytes,
+                &manifest_sha256,
+                &profile_sha256,
+            )
+            .is_err(),
+            "prepared live mutation must fail: {mutation}"
+        );
+    }
+}
+
+#[test]
 fn rootless_live_collection_rejects_same_path_prepared_root_replacement() {
-    let _lock = LIVE_COLLECTOR_TEST_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _lock = live_collector_test_lock();
 
     let fixture = LiveCollectorFixture::new();
     let held_artifact_root = HeldDirectoryV3::capture(&fixture.artifact_root, "test artifact root")
@@ -974,9 +1178,7 @@ fn rootless_live_collection_rejects_same_path_prepared_root_replacement() {
 
 #[test]
 fn retained_observation_keeps_live_evidence_after_persistence() {
-    let _lock = LIVE_COLLECTOR_TEST_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _lock = live_collector_test_lock();
 
     let fixture = LiveCollectorFixture::new();
     let retained = collect_reconciliation_snapshot_v3(fixture.request())
@@ -999,9 +1201,7 @@ fn retained_observation_keeps_live_evidence_after_persistence() {
 
 #[test]
 fn deferred_underlying_mountpoint_guard_reopens_only_the_prepared_child() {
-    let _lock = LIVE_COLLECTOR_TEST_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _lock = live_collector_test_lock();
     let fixture = tempfile::Builder::new()
         .prefix(".deferred-mountpoint-guard-")
         .tempdir_in(env!("CARGO_MANIFEST_DIR"))
@@ -1026,9 +1226,7 @@ fn deferred_underlying_mountpoint_guard_reopens_only_the_prepared_child() {
 
 #[test]
 fn live_disk_image_url_symlink_alias_matches_the_prepared_held_file() {
-    let _lock = LIVE_COLLECTOR_TEST_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _lock = live_collector_test_lock();
     // The production backing guard intentionally retains and replays every
     // ancestor. Keep this fixture out of the shared TMPDIR, whose metadata is
     // legitimately churned by unrelated parallel tests.
@@ -1086,9 +1284,7 @@ fn live_disk_image_url_symlink_alias_matches_the_prepared_held_file() {
 
 #[test]
 fn rootless_closed_world_receipts_prior_projection_and_metadata_are_fail_closed() {
-    let _lock = LIVE_COLLECTOR_TEST_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _lock = live_collector_test_lock();
     let fixture = LiveCollectorFixture::new();
 
     let garbage = fixture.persistence_root.join("garbage");
@@ -1284,9 +1480,7 @@ fn rootless_closed_world_receipts_prior_projection_and_metadata_are_fail_closed(
 
 #[test]
 fn rootless_live_zero_requires_persistence_and_final_replay_for_both_observations() {
-    let _lock = LIVE_COLLECTOR_TEST_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _lock = live_collector_test_lock();
     // Keep the descriptor-bound fixture out of the shared TMPDIR: unrelated parallel
     // tests legitimately churn that directory's metadata, which the production
     // ancestor replay must continue to reject.

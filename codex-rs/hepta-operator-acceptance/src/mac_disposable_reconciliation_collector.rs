@@ -53,6 +53,8 @@ const BASELINE_SCHEMA: &str = "hepta_mac_restart_baseline_inventory_v3";
 const MOUNTPOINT_SCHEMA: &str = "hepta_mac_restart_mountpoint_identity_v3";
 const ARTIFACT_SCHEMA: &str = "hepta_mac_restart_artifact_evidence_v3";
 const MOUNT_SCHEMA: &str = "hepta_mac_restart_mount_evidence_v3";
+const PREPARED_COLLECTOR_MANIFEST_SCHEMA: &str = "hepta_mac_prepared_collector_manifest_v3";
+const PREPARED_COLLECTOR_PROFILE_SCHEMA: &str = "hepta_mac_prepared_collector_profile_v3";
 const MAX_MOUNT_ENTRIES: usize = 4096;
 const MAX_MOUNT_STRING_BYTES: usize = 4096;
 const MAX_ARTIFACT_ENTRIES: usize = 4096;
@@ -297,6 +299,56 @@ pub struct LiveRestartCollectorRequestV3<'a> {
     pub receipt_root: &'a Path,
 }
 
+/// Canonical durable description captured while the fresh operation still
+/// owns every prepared object.  It is data, not a capability: production
+/// collection must additionally retain and replay the descriptor-backed
+/// [`RetainedPreparedCollectorCapabilityV3`].
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PreparedCollectorManifestV3 {
+    artifact_root_initial_roster: Vec<String>,
+    authority: DisposableAuthorityV2,
+    backing: DiskImageBackingIdentityV2,
+    baseline: RestartBaselineInventoryV3,
+    mountpoint: MountpointIdentityV3,
+    operation_nonce: String,
+    policy: RestartCollectorPolicyV3,
+    prepared_boot_session_uuid: String,
+    profile_sha256: String,
+    receipt_root_initial_roster: Vec<String>,
+    schema: String,
+    schema_version: u32,
+}
+
+enum PreparedBaselineGuardV3 {
+    Captured(HeldRestartIOMediaInventoryV3),
+    DurableCommitment,
+}
+
+/// Non-serializable prepared collector authority.  The canonical manifest is
+/// useful only while these exact live descriptors continue to replay.  A
+/// restart may reconstruct this capability solely from an exact durable
+/// manifest; there is no digest-only or DTO-only production constructor.
+pub(crate) struct RetainedPreparedCollectorCapabilityV3 {
+    artifact_root: HeldDirectoryV3,
+    backing: HeldDiskImageBacking,
+    baseline_guard: PreparedBaselineGuardV3,
+    manifest: PreparedCollectorManifestV3,
+    manifest_bytes: Vec<u8>,
+    manifest_sha256: String,
+    mountpoint: UnderlyingMountpointGuardV3,
+    operation_nonce: String,
+    receipt_root: HeldDirectoryV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+#[derive(Serialize)]
+#[serde(deny_unknown_fields)]
+struct PreparedCollectorProfileV3<'a> {
+    artifacts: &'a [PreparedArtifactBindingV3],
+    schema: &'static str,
+}
+
 struct HeldDirectoryV3 {
     binding: FilesystemObjectBindingV3,
     file: File,
@@ -502,65 +554,460 @@ impl RestartCollectorPolicyV3 {
         artifacts: &[PreparedArtifactBindingV3],
         protected_roots: &[&Path],
     ) -> Result<Self, RestartCollectorErrorV3> {
-        let backing_path = canonical_input_path(backing_path, "backing path", false)?;
-        let mountpoint = canonical_input_path(mountpoint, "mountpoint", true)?;
-        let artifact_root = canonical_input_path(artifact_root, "artifact root", true)?;
-        let receipt_root = canonical_input_path(receipt_root, "receipt root", true)?;
-        if protected_roots.len() > MAX_PROTECTED_ROOTS.saturating_sub(2) {
-            return Err(invalid("protected-root roster exceeds its bound"));
-        }
-        if artifacts.len() > MAX_ARTIFACT_BINDINGS {
-            return Err(invalid("prepared artifact roster exceeds its bound"));
-        }
-        let mut artifacts = artifacts.to_vec();
-        artifacts.sort();
-        validate_artifact_bindings(&artifacts, true)?;
-        let mut roots = protected_roots
-            .iter()
-            .map(|path| canonical_input_path(path, "protected root", true))
-            .collect::<Result<Vec<_>, _>>()?;
-        roots.push(artifact_root.clone());
-        roots.push(receipt_root.clone());
-        roots.sort();
-        roots.dedup();
-        let artifact_root_held =
-            HeldDirectoryV3::capture(Path::new(&artifact_root), "prepared artifact root")?;
-        let receipt_root_held =
-            HeldDirectoryV3::capture(Path::new(&receipt_root), "prepared receipt root")?;
-        validate_receipt_directory(&receipt_root_held.binding)?;
-        let artifact_root_roster =
-            list_directory(artifact_root_held.file.as_raw_fd(), MAX_ARTIFACT_ENTRIES)?;
-        let receipt_root_roster =
-            list_directory(receipt_root_held.file.as_raw_fd(), MAX_RECEIPT_FILES)?;
-        artifact_root_held.revalidate("prepared artifact root")?;
-        receipt_root_held.revalidate("prepared receipt root")?;
-        let policy = Self {
-            artifacts,
-            artifact_root,
-            artifact_root_identity: StableDirectoryIdentityV3::from_binding(
-                &artifact_root_held.binding,
-                artifact_root_roster.len(),
-            ),
-            authority: DisposableAuthorityV2::none(),
+        capture_policy_and_roots(
             backing_path,
-            max_iomedia_objects: 256,
-            max_mount_entries: MAX_MOUNT_ENTRIES,
             mountpoint,
-            protected_roots: roots,
+            artifact_root,
             receipt_root,
-            receipt_root_identity: StableDirectoryIdentityV3::from_binding(
-                &receipt_root_held.binding,
-                receipt_root_roster.len(),
-            ),
-            schema: POLICY_SCHEMA.to_string(),
-        };
-        validate_policy(&policy)?;
-        Ok(policy)
+            artifacts,
+            protected_roots,
+        )
+        .map(|(policy, _, _)| policy)
     }
 
     pub fn sha256(&self) -> Result<String, RestartCollectorErrorV3> {
         validate_policy(self)?;
         Ok(sha256(&canonical_json(self)?))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn capture_policy_and_roots(
+    backing_path: &Path,
+    mountpoint: &Path,
+    artifact_root: &Path,
+    receipt_root: &Path,
+    artifacts: &[PreparedArtifactBindingV3],
+    protected_roots: &[&Path],
+) -> Result<(RestartCollectorPolicyV3, HeldDirectoryV3, HeldDirectoryV3), RestartCollectorErrorV3> {
+    let backing_path = canonical_input_path(backing_path, "backing path", false)?;
+    let mountpoint = canonical_input_path(mountpoint, "mountpoint", true)?;
+    let artifact_root = canonical_input_path(artifact_root, "artifact root", true)?;
+    let receipt_root = canonical_input_path(receipt_root, "receipt root", true)?;
+    if protected_roots.len() > MAX_PROTECTED_ROOTS.saturating_sub(2) {
+        return Err(invalid("protected-root roster exceeds its bound"));
+    }
+    if artifacts.len() > MAX_ARTIFACT_BINDINGS {
+        return Err(invalid("prepared artifact roster exceeds its bound"));
+    }
+    let mut artifacts = artifacts.to_vec();
+    artifacts.sort();
+    validate_artifact_bindings(&artifacts, true)?;
+    let mut roots = protected_roots
+        .iter()
+        .map(|path| canonical_input_path(path, "protected root", true))
+        .collect::<Result<Vec<_>, _>>()?;
+    roots.push(artifact_root.clone());
+    roots.push(receipt_root.clone());
+    roots.sort();
+    roots.dedup();
+    let artifact_root_held =
+        HeldDirectoryV3::capture(Path::new(&artifact_root), "prepared artifact root")?;
+    let receipt_root_held =
+        HeldDirectoryV3::capture(Path::new(&receipt_root), "prepared receipt root")?;
+    validate_receipt_directory(&receipt_root_held.binding)?;
+    let artifact_root_roster =
+        list_directory(artifact_root_held.file.as_raw_fd(), MAX_ARTIFACT_ENTRIES)?;
+    let receipt_root_roster =
+        list_directory(receipt_root_held.file.as_raw_fd(), MAX_RECEIPT_FILES)?;
+    artifact_root_held.revalidate("prepared artifact root")?;
+    receipt_root_held.revalidate("prepared receipt root")?;
+    let policy = RestartCollectorPolicyV3 {
+        artifacts,
+        artifact_root,
+        artifact_root_identity: StableDirectoryIdentityV3::from_binding(
+            &artifact_root_held.binding,
+            artifact_root_roster.len(),
+        ),
+        authority: DisposableAuthorityV2::none(),
+        backing_path,
+        max_iomedia_objects: 256,
+        max_mount_entries: MAX_MOUNT_ENTRIES,
+        mountpoint,
+        protected_roots: roots,
+        receipt_root,
+        receipt_root_identity: StableDirectoryIdentityV3::from_binding(
+            &receipt_root_held.binding,
+            receipt_root_roster.len(),
+        ),
+        schema: POLICY_SCHEMA.to_string(),
+    };
+    validate_policy(&policy)?;
+    Ok((policy, artifact_root_held, receipt_root_held))
+}
+
+impl RetainedPreparedCollectorCapabilityV3 {
+    #[allow(clippy::too_many_arguments)]
+    fn capture(
+        operation_nonce: &str,
+        backing_path: &Path,
+        mountpoint: &Path,
+        artifact_root: &Path,
+        receipt_root: &Path,
+        backing_artifact_basename: &str,
+        protected_roots: &[&Path],
+    ) -> Result<Self, RestartCollectorErrorV3> {
+        if !valid_nonce(operation_nonce) {
+            return Err(invalid("prepared collector operation nonce is malformed"));
+        }
+        let artifacts = prepared_backing_profile(backing_artifact_basename)?;
+        let (policy, artifact_root, receipt_root) = capture_policy_and_roots(
+            backing_path,
+            mountpoint,
+            artifact_root,
+            receipt_root,
+            &artifacts,
+            protected_roots,
+        )?;
+        let baseline_guard = capture_restart_iomedia_inventory_v3()?;
+        let baseline = RestartBaselineInventoryV3::from_inventory(baseline_guard.report())?;
+        let backing = hold_disk_image_backing(Path::new(&policy.backing_path))?;
+        let backing_identity = backing.identity()?;
+        let mountpoint_held =
+            HeldDirectoryV3::capture(Path::new(&policy.mountpoint), "mountpoint")?;
+        let mountpoint = mountpoint_identity_from_held(&mountpoint_held)?;
+        let profile_sha256 = prepared_profile_sha256(&policy.artifacts)?;
+        let prepared_boot_session_uuid = baseline.boot_session_uuid.clone();
+        let artifact_root_initial_roster =
+            list_directory(artifact_root.file.as_raw_fd(), MAX_ARTIFACT_ENTRIES)?;
+        let receipt_root_initial_roster =
+            list_directory(receipt_root.file.as_raw_fd(), MAX_RECEIPT_FILES)?;
+        let manifest = PreparedCollectorManifestV3 {
+            artifact_root_initial_roster,
+            authority: DisposableAuthorityV2::none(),
+            backing: backing_identity,
+            baseline,
+            mountpoint,
+            operation_nonce: operation_nonce.to_string(),
+            policy,
+            prepared_boot_session_uuid,
+            profile_sha256,
+            receipt_root_initial_roster,
+            schema: PREPARED_COLLECTOR_MANIFEST_SCHEMA.to_string(),
+            schema_version: 3,
+        };
+        let (manifest_bytes, manifest_sha256) = canonical_prepared_manifest(&manifest)?;
+        let retained = Self {
+            artifact_root,
+            backing,
+            baseline_guard: PreparedBaselineGuardV3::Captured(baseline_guard),
+            manifest,
+            manifest_bytes,
+            manifest_sha256,
+            mountpoint: UnderlyingMountpointGuardV3::Held(mountpoint_held),
+            operation_nonce: operation_nonce.to_string(),
+            receipt_root,
+            _not_send_or_sync: PhantomData,
+        };
+        retained.revalidate()?;
+        Ok(retained)
+    }
+
+    fn reopen_from_exact_manifest(
+        operation_nonce: &str,
+        manifest_bytes: &[u8],
+        expected_manifest_sha256: &str,
+        expected_profile_sha256: &str,
+    ) -> Result<Self, RestartCollectorErrorV3> {
+        if !valid_nonce(operation_nonce)
+            || !valid_digest(expected_manifest_sha256)
+            || !valid_digest(expected_profile_sha256)
+            || manifest_bytes.is_empty()
+            || manifest_bytes.len() > MAX_RECEIPT_BYTES
+        {
+            return Err(invalid(
+                "durable prepared collector commitment is malformed or oversized",
+            ));
+        }
+        let manifest: PreparedCollectorManifestV3 = serde_json::from_slice(manifest_bytes)
+            .map_err(|error| {
+                invalid(format!("prepared collector manifest JSON failed: {error}"))
+            })?;
+        let (canonical, manifest_sha256) = canonical_prepared_manifest(&manifest)?;
+        if canonical != manifest_bytes
+            || manifest_sha256 != expected_manifest_sha256
+            || manifest.profile_sha256 != expected_profile_sha256
+            || manifest.operation_nonce != operation_nonce
+        {
+            return Err(invalid(
+                "prepared collector manifest differs from its exact durable commitment",
+            ));
+        }
+        let artifact_root =
+            HeldDirectoryV3::capture(Path::new(&manifest.policy.artifact_root), "artifact root")?;
+        let receipt_root =
+            HeldDirectoryV3::capture(Path::new(&manifest.policy.receipt_root), "receipt root")?;
+        validate_prepared_artifact_root(
+            &artifact_root,
+            &manifest.policy.artifact_root_identity,
+            &manifest.artifact_root_initial_roster,
+            &manifest.policy.artifacts,
+        )?;
+        validate_prepared_receipt_root(&receipt_root, &manifest.policy.receipt_root_identity)?;
+        validate_receipt_directory(&receipt_root.binding)?;
+        let backing = hold_disk_image_backing(Path::new(&manifest.policy.backing_path))?;
+        if !prepared_backing_candidate_matches(&backing.identity()?, &manifest.backing)? {
+            return Err(invalid(
+                "live backing differs from the exact durable prepared identity",
+            ));
+        }
+        let mountpoint = reopen_prepared_mountpoint(&manifest.mountpoint)?;
+        let retained = Self {
+            artifact_root,
+            backing,
+            baseline_guard: PreparedBaselineGuardV3::DurableCommitment,
+            manifest,
+            manifest_bytes: canonical,
+            manifest_sha256,
+            mountpoint,
+            operation_nonce: operation_nonce.to_string(),
+            receipt_root,
+            _not_send_or_sync: PhantomData,
+        };
+        retained.revalidate()?;
+        Ok(retained)
+    }
+
+    pub(crate) fn manifest_bytes(&self) -> &[u8] {
+        &self.manifest_bytes
+    }
+
+    pub(crate) fn manifest_sha256(&self) -> &str {
+        &self.manifest_sha256
+    }
+
+    pub(crate) fn profile_sha256(&self) -> &str {
+        &self.manifest.profile_sha256
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        &self.operation_nonce
+    }
+
+    pub(crate) fn baseline_inventory_sha256(&self) -> Result<String, RestartCollectorErrorV3> {
+        self.manifest.baseline.sha256()
+    }
+
+    pub(crate) fn backing_identity_sha256(&self) -> Result<String, RestartCollectorErrorV3> {
+        Ok(sha256(&canonical_json(&self.manifest.backing)?))
+    }
+
+    pub(crate) fn collector_policy_sha256(&self) -> Result<String, RestartCollectorErrorV3> {
+        self.manifest.policy.sha256()
+    }
+
+    pub(crate) fn mountpoint_underlying_sha256(&self) -> Result<String, RestartCollectorErrorV3> {
+        self.manifest.mountpoint.sha256()
+    }
+
+    pub(crate) fn boot_session_uuid(&self) -> &str {
+        &self.manifest.baseline.boot_session_uuid
+    }
+
+    pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        if !valid_nonce(&self.operation_nonce)
+            || self.manifest.operation_nonce != self.operation_nonce
+        {
+            return Err(invalid("retained prepared collector operation changed"));
+        }
+        validate_prepared_manifest(&self.manifest)?;
+        let (bytes, digest) = canonical_prepared_manifest(&self.manifest)?;
+        if bytes != self.manifest_bytes || digest != self.manifest_sha256 {
+            return Err(invalid(
+                "retained prepared collector manifest changed after capture",
+            ));
+        }
+        validate_prepared_artifact_root(
+            &self.artifact_root,
+            &self.manifest.policy.artifact_root_identity,
+            &self.manifest.artifact_root_initial_roster,
+            &self.manifest.policy.artifacts,
+        )?;
+        validate_prepared_receipt_root(
+            &self.receipt_root,
+            &self.manifest.policy.receipt_root_identity,
+        )?;
+        validate_receipt_directory(&self.receipt_root.binding)?;
+        self.backing
+            .revalidate_identity_after_persistence(&self.manifest.backing)?;
+        self.mountpoint.revalidate()?;
+        if let PreparedBaselineGuardV3::Captured(baseline) = &self.baseline_guard {
+            baseline.revalidate_after_persistence()?;
+            if RestartBaselineInventoryV3::from_inventory(baseline.report())?
+                != self.manifest.baseline
+            {
+                return Err(invalid(
+                    "held baseline inventory changed after prepared capture",
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+fn prepared_backing_profile(
+    basename: &str,
+) -> Result<Vec<PreparedArtifactBindingV3>, RestartCollectorErrorV3> {
+    let artifacts = vec![PreparedArtifactBindingV3 {
+        basename: validate_child_name(basename)?.to_string(),
+        role: ArtifactRoleV3::BackingImage,
+    }];
+    validate_artifact_bindings(&artifacts, true)?;
+    Ok(artifacts)
+}
+
+fn prepared_profile_sha256(
+    artifacts: &[PreparedArtifactBindingV3],
+) -> Result<String, RestartCollectorErrorV3> {
+    validate_artifact_bindings(artifacts, true)?;
+    Ok(sha256(&canonical_json(&PreparedCollectorProfileV3 {
+        artifacts,
+        schema: PREPARED_COLLECTOR_PROFILE_SCHEMA,
+    })?))
+}
+
+fn canonical_prepared_manifest(
+    manifest: &PreparedCollectorManifestV3,
+) -> Result<(Vec<u8>, String), RestartCollectorErrorV3> {
+    validate_prepared_manifest(manifest)?;
+    let bytes = canonical_json(manifest)?;
+    if bytes.is_empty() || bytes.len() > MAX_RECEIPT_BYTES {
+        return Err(invalid(
+            "canonical prepared collector manifest exceeds its bound",
+        ));
+    }
+    let digest = sha256(&bytes);
+    Ok((bytes, digest))
+}
+
+fn validate_prepared_manifest(
+    manifest: &PreparedCollectorManifestV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    if manifest.schema != PREPARED_COLLECTOR_MANIFEST_SCHEMA
+        || manifest.schema_version != 3
+        || manifest.authority.any()
+        || !valid_nonce(&manifest.operation_nonce)
+        || !valid_uuid(&manifest.prepared_boot_session_uuid)
+        || manifest.prepared_boot_session_uuid != manifest.baseline.boot_session_uuid
+        || manifest.profile_sha256 != prepared_profile_sha256(&manifest.policy.artifacts)?
+        || manifest.backing.canonical_path != manifest.policy.backing_path
+        || manifest.mountpoint.path != manifest.policy.mountpoint
+        || !manifest.receipt_root_initial_roster.is_empty()
+        || manifest.artifact_root_initial_roster.len() > MAX_ARTIFACT_ENTRIES
+        || manifest
+            .artifact_root_initial_roster
+            .windows(2)
+            .any(|pair| pair[0] >= pair[1])
+        || manifest
+            .artifact_root_initial_roster
+            .iter()
+            .any(|name| validate_child_name(name).is_err())
+    {
+        return Err(invalid(
+            "prepared collector manifest is malformed or grants authority",
+        ));
+    }
+    validate_policy(&manifest.policy)?;
+    validate_baseline(&manifest.baseline)?;
+    validate_disk_image_backing_identity_v2(&manifest.backing)?;
+    validate_mountpoint_identity(&manifest.mountpoint)?;
+    Ok(())
+}
+
+fn validate_prepared_artifact_root(
+    root: &HeldDirectoryV3,
+    expected: &StableDirectoryIdentityV3,
+    initial_roster: &[String],
+    artifacts: &[PreparedArtifactBindingV3],
+) -> Result<(), RestartCollectorErrorV3> {
+    root.revalidate("artifact root")?;
+    let roster = list_directory(root.file.as_raw_fd(), MAX_ARTIFACT_ENTRIES)?;
+    if !expected.matches_binding(&root.binding, roster.len()) {
+        return Err(invalid(
+            "retained prepared artifact root differs from its exact stable identity",
+        ));
+    }
+    let allowed = initial_roster
+        .iter()
+        .map(String::as_str)
+        .chain(artifacts.iter().map(|artifact| artifact.basename.as_str()))
+        .collect::<BTreeSet<_>>();
+    if initial_roster
+        .iter()
+        .any(|name| roster.binary_search(name).is_err())
+        || roster.iter().any(|name| !allowed.contains(name.as_str()))
+    {
+        return Err(invalid(
+            "retained prepared artifact root contains an unprepared roster delta",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_prepared_receipt_root(
+    root: &HeldDirectoryV3,
+    expected: &StableDirectoryIdentityV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    root.revalidate("receipt root")?;
+    let roster = list_directory(root.file.as_raw_fd(), MAX_RECEIPT_FILES)?;
+    if !expected.matches_binding(&root.binding, roster.len()) {
+        return Err(invalid(
+            "retained prepared receipt root differs from its exact stable identity",
+        ));
+    }
+    capture_receipt_root_closed_world(root)?;
+    Ok(())
+}
+
+fn prepared_backing_candidate_matches(
+    candidate: &DiskImageBackingIdentityV2,
+    prepared: &DiskImageBackingIdentityV2,
+) -> Result<bool, RestartCollectorErrorV3> {
+    validate_disk_image_backing_identity_v2(candidate)?;
+    validate_disk_image_backing_identity_v2(prepared)?;
+    if candidate.canonical_path != prepared.canonical_path
+        || candidate.opened_components.len() != prepared.opened_components.len()
+    {
+        return Ok(false);
+    }
+    let last_index = candidate.opened_components.len().saturating_sub(1);
+    for (index, (candidate, prepared)) in candidate
+        .opened_components
+        .iter()
+        .zip(&prepared.opened_components)
+        .enumerate()
+    {
+        if candidate.directory != prepared.directory
+            || candidate.path != prepared.path
+            || candidate.fd_binding.dev != prepared.fd_binding.dev
+            || candidate.fd_binding.inode != prepared.fd_binding.inode
+            || candidate.fd_binding.mode != prepared.fd_binding.mode
+            || candidate.fd_binding.uid != prepared.fd_binding.uid
+            || candidate.fd_binding.gid != prepared.fd_binding.gid
+            || candidate.fd_binding.flags != prepared.fd_binding.flags
+            || candidate.fd_binding.nlink != prepared.fd_binding.nlink
+            || (index == last_index && candidate.fd_binding != prepared.fd_binding)
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn reopen_prepared_mountpoint(
+    expected: &MountpointIdentityV3,
+) -> Result<UnderlyingMountpointGuardV3, RestartCollectorErrorV3> {
+    let mounts = mount_table_snapshot()?;
+    if mounts.iter().any(|mount| mount.mount_on == expected.path) {
+        UnderlyingMountpointGuardV3::capture_deferred(expected)
+    } else {
+        let held = HeldDirectoryV3::capture(Path::new(&expected.path), "mountpoint")?;
+        if mountpoint_identity_from_held(&held)? != *expected {
+            return Err(invalid(
+                "live mountpoint differs from the exact durable prepared identity",
+            ));
+        }
+        Ok(UnderlyingMountpointGuardV3::Held(held))
     }
 }
 
