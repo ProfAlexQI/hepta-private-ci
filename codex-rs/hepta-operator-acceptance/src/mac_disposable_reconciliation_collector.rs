@@ -275,7 +275,7 @@ pub struct RestartCollectorReceiptV3 {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub(crate) enum FinalizedRestartObservationV3 {
+enum FinalizedRestartObservationV3 {
     ReconciliationSnapshot(ReconciliationSnapshotV2),
     FreshAbsence(FreshAbsenceObservationV2),
 }
@@ -302,9 +302,18 @@ struct LiveReplayGuardV3 {
     artifact_root: HeldDirectoryV3,
     backing: HeldDiskImageBacking,
     iomedia: HeldRestartIOMediaInventoryV3,
-    mountpoint: Option<HeldDirectoryV3>,
+    mountpoint: UnderlyingMountpointGuardV3,
     mounts: Vec<MountBindingV3>,
     prepared_backing: DiskImageBackingIdentityV2,
+}
+
+enum UnderlyingMountpointGuardV3 {
+    Held(HeldDirectoryV3),
+    DeferredWhileMounted {
+        basename: String,
+        expected: MountpointIdentityV3,
+        parent: HeldDirectoryV3,
+    },
 }
 
 pub struct PendingRestartObservationV3 {
@@ -619,7 +628,7 @@ fn collect_live(
     }
 
     let mountpoint = if mountpoint_is_mounted {
-        None
+        UnderlyingMountpointGuardV3::capture_deferred(request.mountpoint_identity)?
     } else {
         let held = HeldDirectoryV3::capture(Path::new(&request.policy.mountpoint), "mountpoint")?;
         if mountpoint_identity_from_held(&held)? != *request.mountpoint_identity {
@@ -627,7 +636,7 @@ fn collect_live(
                 "restart mountpoint differs from the prepared underlying identity",
             ));
         }
-        Some(held)
+        UnderlyingMountpointGuardV3::Held(held)
     };
 
     let existing_receipts = capture_receipt_root_closed_world(&receipt_directory)?;
@@ -673,7 +682,10 @@ fn collect_live(
     let baseline_restored = current_baseline == *request.baseline;
     let mount_evidence = MountEvidenceV3 {
         authority: DisposableAuthorityV2::none(),
-        mountpoint_underlying_revalidated: mountpoint.is_some(),
+        mountpoint_underlying_revalidated: matches!(
+            &mountpoint,
+            UnderlyingMountpointGuardV3::Held(_)
+        ),
         mounts_after: mounts_after.clone(),
         mounts_before: mounts_before.clone(),
         no_nested_mounts: true,
@@ -742,7 +754,8 @@ fn collect_live(
 }
 
 impl PendingRestartObservationV3 {
-    pub fn receipt(&self) -> &RestartCollectorReceiptV3 {
+    #[cfg(test)]
+    fn receipt(&self) -> &RestartCollectorReceiptV3 {
         &self.receipt
     }
 
@@ -1900,9 +1913,7 @@ impl LiveReplayGuardV3 {
                 "operation-artifact census changed after receipt persistence",
             ));
         }
-        if let Some(mountpoint) = &self.mountpoint {
-            mountpoint.revalidate("mountpoint")?;
-        }
+        self.mountpoint.revalidate()?;
         if mount_table_snapshot()? != self.mounts
             || current_boot_session_uuid()? != receipt.boot_session_uuid
         {
@@ -1911,6 +1922,81 @@ impl LiveReplayGuardV3 {
             ));
         }
         validate_receipt(receipt)
+    }
+}
+
+impl UnderlyingMountpointGuardV3 {
+    fn capture_deferred(expected: &MountpointIdentityV3) -> Result<Self, RestartCollectorErrorV3> {
+        validate_mountpoint_identity(expected)?;
+        let mountpoint = Path::new(&expected.path);
+        let parent_path = mountpoint
+            .parent()
+            .filter(|path| path.is_absolute())
+            .ok_or_else(|| invalid("prepared mountpoint has no absolute parent"))?;
+        let basename = mountpoint
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| invalid("prepared mountpoint has no bounded UTF-8 basename"))?;
+        validate_child_name(basename)?;
+        let parent = HeldDirectoryV3::capture(parent_path, "mountpoint parent")?;
+        if parent.path.join(basename) != mountpoint {
+            return Err(invalid(
+                "retained mountpoint parent and basename do not reconstruct the prepared path",
+            ));
+        }
+        Ok(Self::DeferredWhileMounted {
+            basename: basename.to_string(),
+            expected: expected.clone(),
+            parent,
+        })
+    }
+
+    fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        match self {
+            Self::Held(mountpoint) => mountpoint.revalidate("mountpoint"),
+            Self::DeferredWhileMounted {
+                basename,
+                expected,
+                parent,
+            } => {
+                parent.revalidate("mountpoint parent")?;
+                validate_child_name(basename)?;
+                validate_mountpoint_identity(expected)?;
+                if parent.path.join(basename) != Path::new(&expected.path) {
+                    return Err(invalid(
+                        "deferred underlying mountpoint guard changed its prepared path",
+                    ));
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn reopen_underlying_after_unmount(&self) -> Result<HeldDirectoryV3, RestartCollectorErrorV3> {
+        match self {
+            Self::Held(mountpoint) => {
+                mountpoint.revalidate("mountpoint")?;
+                HeldDirectoryV3::capture(&mountpoint.path, "mountpoint")
+            }
+            Self::DeferredWhileMounted {
+                basename,
+                expected,
+                parent,
+            } => {
+                parent.revalidate("mountpoint parent")?;
+                let held = HeldDirectoryV3::capture_child(
+                    parent,
+                    basename,
+                    "underlying mountpoint after unmount",
+                )?;
+                if mountpoint_identity_from_held(&held)? != *expected {
+                    return Err(invalid(
+                        "underlying mountpoint changed while hidden by the mounted filesystem",
+                    ));
+                }
+                Ok(held)
+            }
+        }
     }
 }
 
@@ -1946,6 +2032,52 @@ impl HeldDirectoryV3 {
             binding,
             file,
             path: PathBuf::from(canonical),
+        })
+    }
+
+    fn capture_child(
+        parent: &HeldDirectoryV3,
+        basename: &str,
+        label: &str,
+    ) -> Result<Self, RestartCollectorErrorV3> {
+        parent.revalidate("mountpoint parent")?;
+        validate_child_name(basename)?;
+        let before = fstatat_binding(parent.file.as_raw_fd(), basename, label)?;
+        if before.mode & libc::S_IFMT as u32 != libc::S_IFDIR as u32 {
+            return Err(invalid(format!("{label} is not a directory")));
+        }
+        let name = CString::new(basename)
+            .map_err(|_| invalid(format!("{label} basename contains NUL")))?;
+        let fd = unsafe {
+            libc::openat(
+                parent.file.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW_ANY | libc::O_DIRECTORY,
+            )
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        let file = unsafe { File::from_raw_fd(fd) };
+        let binding = fstat_binding(file.as_raw_fd(), label)?;
+        let after = fstatat_binding(parent.file.as_raw_fd(), basename, label)?;
+        let path = parent.path.join(basename);
+        if before != binding || before != after || before != lstat_binding(&path, label)? {
+            return Err(invalid(format!(
+                "{label} changed across retained-parent openat"
+            )));
+        }
+        verify_fd_binding_secure(file.as_raw_fd(), &binding, label)?;
+        parent.revalidate("mountpoint parent")?;
+        if fstatat_binding(parent.file.as_raw_fd(), basename, label)? != binding
+            || lstat_binding(&path, label)? != binding
+        {
+            return Err(invalid(format!("{label} changed during ACL/xattr replay")));
+        }
+        Ok(Self {
+            binding,
+            file,
+            path,
         })
     }
 

@@ -800,8 +800,44 @@ fn retained_observation_keeps_live_evidence_after_persistence() {
 }
 
 #[test]
+fn deferred_underlying_mountpoint_guard_reopens_only_the_prepared_child() {
+    let _lock = LIVE_COLLECTOR_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let fixture = tempfile::Builder::new()
+        .prefix(".deferred-mountpoint-guard-")
+        .tempdir_in(env!("CARGO_MANIFEST_DIR"))
+        .unwrap();
+    let root = std::fs::canonicalize(fixture.path()).unwrap();
+    let parent = root.join("mount-parent");
+    let mountpoint = parent.join("mountpoint");
+    std::fs::create_dir(&parent).unwrap();
+    std::fs::create_dir(&mountpoint).unwrap();
+    let expected = MountpointIdentityV3::capture(&mountpoint).unwrap();
+    let guard = UnderlyingMountpointGuardV3::capture_deferred(&expected).unwrap();
+    guard.revalidate().unwrap();
+    let reopened = guard.reopen_underlying_after_unmount().unwrap();
+    assert_eq!(mountpoint_identity_from_held(&reopened).unwrap(), expected);
+    drop(reopened);
+
+    let displaced = parent.join("original-mountpoint");
+    std::fs::rename(&mountpoint, &displaced).unwrap();
+    std::fs::create_dir(&mountpoint).unwrap();
+    assert!(guard.reopen_underlying_after_unmount().is_err());
+}
+
+#[test]
 fn live_disk_image_url_symlink_alias_matches_the_prepared_held_file() {
-    let fixture = tempfile::tempdir().unwrap();
+    let _lock = LIVE_COLLECTOR_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // The production backing guard intentionally retains and replays every
+    // ancestor. Keep this fixture out of the shared TMPDIR, whose metadata is
+    // legitimately churned by unrelated parallel tests.
+    let fixture = tempfile::Builder::new()
+        .prefix(".disk-image-url-alias-")
+        .tempdir_in(env!("CARGO_MANIFEST_DIR"))
+        .unwrap();
     let root = std::fs::canonicalize(fixture.path()).unwrap();
     let target = root.join("prepared.img");
     let other = root.join("other.img");
