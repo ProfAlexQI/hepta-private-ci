@@ -25,6 +25,37 @@ use std::ptr;
 use std::time::Duration;
 
 const MAX_FIXED_RUNNER_BYTES_V3: u64 = 512 * 1024 * 1024;
+const CHILD_REAP_TIMEOUT_V3: Duration = Duration::from_secs(5);
+
+#[derive(Clone, Copy)]
+struct ChildReapDeadlineV3 {
+    monotonic_nanoseconds: u64,
+}
+
+impl ChildReapDeadlineV3 {
+    fn after(timeout: Duration) -> io::Result<Self> {
+        Self::after_from(monotonic_nanoseconds(), timeout)
+    }
+
+    fn after_from(now: io::Result<u64>, timeout: Duration) -> io::Result<Self> {
+        let timeout = u64::try_from(timeout.as_nanos())
+            .map_err(|_| invalid("child reap timeout exceeds the monotonic clock range"))?;
+        let monotonic_nanoseconds = now?
+            .checked_add(timeout)
+            .ok_or_else(|| invalid("child reap deadline overflowed"))?;
+        Ok(Self {
+            monotonic_nanoseconds,
+        })
+    }
+
+    fn expired(&self) -> io::Result<bool> {
+        self.expired_at(monotonic_nanoseconds())
+    }
+
+    fn expired_at(&self, now: io::Result<u64>) -> io::Result<bool> {
+        Ok(now? >= self.monotonic_nanoseconds)
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -73,88 +104,52 @@ impl SpawnedInertChildV3 {
             return Ok(Some(status));
         }
         let mut raw_status = 0;
-        loop {
-            let rc = unsafe { libc::waitpid(self.pid, &mut raw_status, libc::WNOHANG) };
-            if rc == self.pid {
-                let status = ExitStatus::from_raw(raw_status);
-                self.reaped = Some(status);
-                return Ok(Some(status));
-            }
-            if rc == 0 {
+        let rc = unsafe { libc::waitpid(self.pid, &mut raw_status, libc::WNOHANG) };
+        if rc == self.pid {
+            let status = ExitStatus::from_raw(raw_status);
+            self.reaped = Some(status);
+            return Ok(Some(status));
+        }
+        if rc == 0 {
+            return Ok(None);
+        }
+        if rc < 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
                 return Ok(None);
             }
-            if rc < 0 {
-                let error = io::Error::last_os_error();
-                if error.kind() == io::ErrorKind::Interrupted {
-                    continue;
-                }
-                return Err(error);
-            }
-            return Err(invalid("waitpid returned another process identifier"));
+            return Err(error);
         }
-    }
-
-    pub(crate) fn wait(&mut self) -> io::Result<ExitStatus> {
-        if let Some(status) = self.reaped {
-            return Ok(status);
-        }
-        let mut raw_status = 0;
-        loop {
-            let rc = unsafe { libc::waitpid(self.pid, &mut raw_status, 0) };
-            if rc == self.pid {
-                let status = ExitStatus::from_raw(raw_status);
-                self.reaped = Some(status);
-                return Ok(status);
-            }
-            if rc < 0 {
-                let error = io::Error::last_os_error();
-                if error.kind() == io::ErrorKind::Interrupted {
-                    continue;
-                }
-                return Err(error);
-            }
-            return Err(invalid("waitpid returned another process identifier"));
-        }
+        Err(invalid("waitpid returned another process identifier"))
     }
 
     pub(crate) fn terminate_group_and_reap(&mut self) -> io::Result<()> {
         if self.try_wait()?.is_some() {
             return Ok(());
         }
-        let rc = unsafe { libc::kill(-self.pid, libc::SIGKILL) };
-        if rc != 0 {
-            let error = io::Error::last_os_error();
-            if error.raw_os_error() != Some(libc::ESRCH) {
-                return Err(error);
-            }
-        }
+        let deadline = ChildReapDeadlineV3::after(CHILD_REAP_TIMEOUT_V3)?;
+        self.terminate_group_and_reap_until(deadline)
+    }
+
+    fn terminate_group_and_reap_until(&mut self, deadline: ChildReapDeadlineV3) -> io::Result<()> {
+        let group_kill = send_sigkill_allow_absent(-self.pid);
         // The exact child PID remains reserved to this unreaped owner and
         // therefore cannot have been reused.  Kill it directly as well as
         // its intended process group: if process-group establishment ever
         // drifted or raced, group-only cleanup would otherwise wait for a
         // still-live runner and could outlast the protocol deadline.
-        let rc = unsafe { libc::kill(self.pid, libc::SIGKILL) };
-        if rc != 0 {
-            let error = io::Error::last_os_error();
-            if error.raw_os_error() != Some(libc::ESRCH) {
-                return Err(error);
-            }
-        }
-        let deadline = monotonic_nanoseconds()
-            .ok()
-            .and_then(|now| now.checked_add(Duration::from_secs(5).as_nanos() as u64));
+        let child_kill = send_sigkill_allow_absent(self.pid);
         loop {
-            if self.try_wait()?.is_some() {
-                return Ok(());
-            }
-            if deadline
-                .zip(monotonic_nanoseconds().ok())
-                .is_some_and(|(deadline, now)| now >= deadline)
-            {
+            if deadline.expired()? {
                 return Err(io::Error::new(
                     io::ErrorKind::TimedOut,
                     "killed inert runner was not reaped before cleanup deadline",
                 ));
+            }
+            if self.try_wait()?.is_some() {
+                group_kill?;
+                child_kill?;
+                return Ok(());
             }
             let delay = libc::timespec {
                 tv_sec: 0,
@@ -164,6 +159,18 @@ impl SpawnedInertChildV3 {
                 libc::nanosleep(&delay, ptr::null_mut());
             }
         }
+    }
+}
+
+fn send_sigkill_allow_absent(pid: libc::pid_t) -> io::Result<()> {
+    if unsafe { libc::kill(pid, libc::SIGKILL) } == 0 {
+        return Ok(());
+    }
+    let error = io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ESRCH) {
+        Ok(())
+    } else {
+        Err(error)
     }
 }
 
@@ -322,4 +329,40 @@ fn monotonic_nanoseconds() -> io::Result<u64> {
 
 unsafe extern "C" {
     fn _NSGetExecutablePath(buffer: *mut libc::c_char, size: *mut u32) -> libc::c_int;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn child_reap_deadline_rejects_clock_failure_and_overflow() {
+        assert!(
+            ChildReapDeadlineV3::after_from(
+                Err(io::Error::other("injected monotonic clock failure")),
+                CHILD_REAP_TIMEOUT_V3,
+            )
+            .is_err()
+        );
+        assert!(ChildReapDeadlineV3::after_from(Ok(u64::MAX), Duration::from_nanos(1)).is_err());
+        let deadline = ChildReapDeadlineV3 {
+            monotonic_nanoseconds: 10,
+        };
+        assert!(
+            deadline
+                .expired_at(Err(io::Error::other("injected deadline recheck failure")))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn child_owner_source_has_no_blocking_waitpid_or_optional_deadline() {
+        let source = include_str!("mac_inert_runner_executable.rs");
+        let blocking_method = ["pub(crate) fn ", "wait("].concat();
+        let blocking_waitpid = ["waitpid(self.pid, &mut raw_status, ", "0)"].concat();
+        let optional_clock = ["monotonic_nanoseconds()", ".ok()"].concat();
+        assert!(!source.contains(&blocking_method));
+        assert!(!source.contains(&blocking_waitpid));
+        assert!(!source.contains(&optional_clock));
+    }
 }
