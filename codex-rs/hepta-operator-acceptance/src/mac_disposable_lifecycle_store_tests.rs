@@ -1029,6 +1029,157 @@ fn production_reconciliation_open_consumes_exact_blocking_census_and_owns_replay
 }
 
 #[test]
+fn reconciliation_append_rejects_same_bytes_swap_before_s1_adoption() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("fresh S1 assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+            .expect("fresh census-bound store");
+        store.append(prepared()).expect("durable prepared record");
+    }
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("restart S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("blocking S1 assessment")
+        .into_blocking_control_census(NONCE)
+        .expect("exact blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+        .expect("production exact-census replay");
+    let operation = root.join("operations").join(format!("operation-{NONCE}"));
+    let record = operation.join("00000002.json");
+    let displaced = operation.join("00000002.displaced");
+    let result = store.append_reconciliation_with_s1_adoption_hook(
+        ReconciliationLifecycleEventV3::restart_started(
+            current_boot_session_uuid().expect("current boot UUID"),
+            digest('c'),
+            100,
+            digest('e'),
+        ),
+        || {
+            let bytes = fs::read(&record)?;
+            fs::rename(&record, &displaced)?;
+            fs::write(&record, bytes)?;
+            fs::set_permissions(&record, fs::Permissions::from_mode(0o400))?;
+            Ok(())
+        },
+    );
+    assert!(result.is_err());
+    assert!(store.poisoned());
+    assert_eq!(store.census.selected_record_count(), 1);
+}
+
+#[test]
+fn effect_issue_append_rejects_same_bytes_swap_before_s1_adoption() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("fresh S1 assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+            .expect("fresh census-bound store");
+        store.append(prepared()).expect("durable prepared record");
+    }
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("restart S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("blocking S1 assessment")
+        .into_blocking_control_census(NONCE)
+        .expect("exact blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+        .expect("production exact-census replay");
+    let boot = current_boot_session_uuid().expect("current boot UUID");
+    store
+        .append_reconciliation(ReconciliationLifecycleEventV3::restart_started(
+            boot.clone(),
+            digest('c'),
+            100,
+            digest('e'),
+        ))
+        .expect("restart epoch");
+    store
+        .append_reconciliation(ReconciliationLifecycleEventV3::snapshot_observed(
+            ReconciliationSnapshotV2 {
+                backing_identity_sha256: digest('b'),
+                boot_session_uuid: boot.clone(),
+                collector_policy_sha256: digest('c'),
+                collector_receipt_sha256: digest('f'),
+                iomedia_evidence_sha256: digest('1'),
+                match_result: ReconciliationMatchV2::Unique { mounted: true },
+                monotonic_after_nanoseconds: 102,
+                monotonic_before_nanoseconds: 101,
+                mount_evidence_sha256: digest('2'),
+                mountpoint_underlying_sha256: digest('d'),
+                operation_nonce: NONCE.to_string(),
+                restart_epoch_nonce: digest('e'),
+            },
+        ))
+        .expect("unique mounted snapshot");
+    store
+        .append_reconciliation_inner(ReconciliationLifecycleEventV3::unmount_issued(1), true)
+        .expect("durable V2 issue capsule");
+    let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(store.store.issue_source())
+        .expect("exact V2 issue roster");
+    let epochs = EffectEpochEvidenceV3::bind_current_boot(
+        &boot,
+        &digest('3'),
+        &digest('4'),
+        &digest('5'),
+        &digest('6'),
+    )
+    .expect("test epoch evidence");
+    let mut retained = store
+        .issues
+        .persist(
+            &lifecycle,
+            ExactDisposableCommandV3::UnmountVolume {
+                mounted_binding_sha256: digest('7'),
+            },
+            epochs,
+            Some(digest('8')),
+        )
+        .expect("persist exact V3 issue");
+    let issue_root = root
+        .join("operations")
+        .join(format!("operation-{NONCE}"))
+        .join("effect-issues-v3");
+    let issue = fs::read_dir(&issue_root)
+        .expect("issue roster")
+        .next()
+        .expect("one issue")
+        .expect("issue entry")
+        .path();
+    let displaced = issue_root.join("displaced-issue");
+    let bytes = fs::read(&issue).expect("issue bytes");
+    fs::rename(&issue, &displaced).expect("displace exact S2 issue inode");
+    fs::write(&issue, bytes).expect("publish same bytes replacement");
+    fs::set_permissions(&issue, fs::Permissions::from_mode(0o400)).expect("replacement mode");
+    let sink = store
+        .census
+        .selected_effect_issue_sink()
+        .expect("sealed S1 issue sink");
+    assert!(retained.adopt_into_s1(sink).is_err());
+    assert_eq!(store.census.selected_effect_issue_count(), 0);
+}
+
+#[test]
 fn reconciliation_open_rejects_same_bytes_path_replacement_after_s1_descriptor_capture() {
     let temporary = tempfile::tempdir().expect("control parent");
     let root = temporary.path().join("control");
@@ -1269,7 +1420,10 @@ fn terminal_append_consumes_blocking_store_into_completed_census() {
     assert_eq!(store.store.records.len(), records_before);
 
     let completed = store
-        .complete_reconciliation_from_retained_absence()
+        .complete_reconciliation(ReconciliationTerminalEventV3::absence_proved(
+            TerminalDispositionV2::Aborted,
+            absence_sha256.clone(),
+        ))
         .expect("consume blocking state into completed state");
     completed.revalidate().expect("retained completed state");
     let (nonce, terminal, _) = completed.census.completed_binding();

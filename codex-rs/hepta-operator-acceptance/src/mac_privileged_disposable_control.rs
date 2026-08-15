@@ -2305,6 +2305,16 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
             .map_or(0, |capsule| capsule.records.len())
     }
 
+    #[cfg(test)]
+    pub(crate) fn selected_effect_issue_count(&self) -> usize {
+        self.assessment
+            ._operations
+            .iter()
+            .find(|capsule| capsule.name == self.admission.operation_name)
+            .and_then(|capsule| capsule.effect_issues.as_ref())
+            .map_or(0, |root| root.issues.len())
+    }
+
     /// Consume this census into the one concrete reconciliation wiring object.
     /// S2 receives clones of the already-retained operation and record
     /// descriptors; it never reopens the selected path from nonce bytes.

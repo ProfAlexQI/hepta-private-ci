@@ -1489,6 +1489,31 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         event: ReconciliationLifecycleEventV3,
         preserve_collector: bool,
     ) -> Result<RetainedLifecycleRecordAppendV3, DurableLifecycleStoreErrorV3> {
+        self.append_reconciliation_inner_with_adoption_hook(event, preserve_collector, || Ok(()))
+    }
+
+    #[cfg(test)]
+    fn append_reconciliation_with_s1_adoption_hook<F>(
+        &mut self,
+        event: ReconciliationLifecycleEventV3,
+        hook: F,
+    ) -> Result<String, DurableLifecycleStoreErrorV3>
+    where
+        F: FnOnce() -> io::Result<()>,
+    {
+        self.append_reconciliation_inner_with_adoption_hook(event, false, hook)
+            .map(|append| append.digest().to_string())
+    }
+
+    fn append_reconciliation_inner_with_adoption_hook<F>(
+        &mut self,
+        event: ReconciliationLifecycleEventV3,
+        preserve_collector: bool,
+        hook: F,
+    ) -> Result<RetainedLifecycleRecordAppendV3, DurableLifecycleStoreErrorV3>
+    where
+        F: FnOnce() -> io::Result<()>,
+    {
         if self.poisoned {
             return Err(invalid(
                 "reconciliation operation store is poisoned; a fresh exact census is required",
@@ -1518,6 +1543,10 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         }
         let digest = self.store.append_reconciliation(&mut self.journal, event)?;
         let mut append = RetainedLifecycleRecordAppendV3::retain(&self.store, &digest)?;
+        if let Err(error) = hook() {
+            self.poisoned = true;
+            return Err(error.into());
+        }
         let sink = self.census.selected_lifecycle_record_sink()?;
         if let Err(error) = append.adopt_into_s1(sink) {
             self.poisoned = true;
