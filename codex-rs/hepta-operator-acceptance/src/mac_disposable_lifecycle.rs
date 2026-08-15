@@ -69,6 +69,137 @@ pub enum TerminalDispositionV2 {
     Aborted,
 }
 
+/// Exact final collector-receipt inode referenced by one lifecycle
+/// observation. Historical records omit this projection; prepared-manifest
+/// V3 restart records must carry it. The receipt JSON cannot contain this
+/// binding itself because the final inode identity exists only after the
+/// receipt has been renamed, reopened, and replayed.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CollectorReceiptFileBindingV3 {
+    birthtime_nanoseconds: i64,
+    birthtime_seconds: i64,
+    canonical_sha256: String,
+    ctime_nanoseconds: i64,
+    ctime_seconds: i64,
+    dev: u64,
+    final_basename: String,
+    flags: u32,
+    generation: u32,
+    gid: u32,
+    inode: u64,
+    mode: u32,
+    mtime_nanoseconds: i64,
+    mtime_seconds: i64,
+    nlink: u64,
+    root_after: crate::mac_iomedia_identity::FilesystemObjectBindingV3,
+    root_generation_ordinal: u32,
+    size: u64,
+    uid: u32,
+}
+
+impl CollectorReceiptFileBindingV3 {
+    pub(crate) fn from_retained_collector(
+        _seal: crate::mac_disposable_reconciliation_collector::CollectorReceiptFileBindingSealV3,
+        canonical_sha256: String,
+        final_basename: String,
+        binding: crate::mac_iomedia_identity::FilesystemObjectBindingV3,
+        root_after: crate::mac_iomedia_identity::FilesystemObjectBindingV3,
+        root_generation_ordinal: u32,
+    ) -> Self {
+        Self {
+            birthtime_nanoseconds: binding.birthtime_nanoseconds,
+            birthtime_seconds: binding.birthtime_seconds,
+            canonical_sha256,
+            ctime_nanoseconds: binding.ctime_nanoseconds,
+            ctime_seconds: binding.ctime_seconds,
+            dev: binding.dev,
+            final_basename,
+            flags: binding.flags,
+            generation: binding.generation,
+            gid: binding.gid,
+            inode: binding.inode,
+            mode: binding.mode,
+            mtime_nanoseconds: binding.mtime_nanoseconds,
+            mtime_seconds: binding.mtime_seconds,
+            nlink: binding.nlink,
+            root_after,
+            root_generation_ordinal,
+            size: binding.size,
+            uid: binding.uid,
+        }
+    }
+
+    pub(crate) fn canonical_sha256(&self) -> &str {
+        &self.canonical_sha256
+    }
+
+    pub(crate) fn final_basename(&self) -> &str {
+        &self.final_basename
+    }
+
+    pub(crate) fn exact_binding(&self) -> crate::mac_iomedia_identity::FilesystemObjectBindingV3 {
+        crate::mac_iomedia_identity::FilesystemObjectBindingV3 {
+            birthtime_nanoseconds: self.birthtime_nanoseconds,
+            birthtime_seconds: self.birthtime_seconds,
+            ctime_nanoseconds: self.ctime_nanoseconds,
+            ctime_seconds: self.ctime_seconds,
+            dev: self.dev,
+            flags: self.flags,
+            generation: self.generation,
+            gid: self.gid,
+            inode: self.inode,
+            mode: self.mode,
+            mtime_nanoseconds: self.mtime_nanoseconds,
+            mtime_seconds: self.mtime_seconds,
+            nlink: self.nlink,
+            size: self.size,
+            uid: self.uid,
+        }
+    }
+
+    pub(crate) const fn root_after(
+        &self,
+    ) -> crate::mac_iomedia_identity::FilesystemObjectBindingV3 {
+        self.root_after
+    }
+
+    pub(crate) const fn root_generation_ordinal(&self) -> u32 {
+        self.root_generation_ordinal
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        canonical_sha256: String,
+        final_basename: String,
+        binding: crate::mac_iomedia_identity::FilesystemObjectBindingV3,
+        root_after: crate::mac_iomedia_identity::FilesystemObjectBindingV3,
+        root_generation_ordinal: u32,
+    ) -> Self {
+        Self {
+            birthtime_nanoseconds: binding.birthtime_nanoseconds,
+            birthtime_seconds: binding.birthtime_seconds,
+            canonical_sha256,
+            ctime_nanoseconds: binding.ctime_nanoseconds,
+            ctime_seconds: binding.ctime_seconds,
+            dev: binding.dev,
+            final_basename,
+            flags: binding.flags,
+            generation: binding.generation,
+            gid: binding.gid,
+            inode: binding.inode,
+            mode: binding.mode,
+            mtime_nanoseconds: binding.mtime_nanoseconds,
+            mtime_seconds: binding.mtime_seconds,
+            nlink: binding.nlink,
+            root_after,
+            root_generation_ordinal,
+            size: binding.size,
+            uid: binding.uid,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FreshAbsenceObservationV2 {
@@ -78,6 +209,8 @@ pub struct FreshAbsenceObservationV2 {
     pub boot_session_uuid: String,
     pub collector_policy_sha256: String,
     pub collector_receipt_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) collector_receipt_file: Option<CollectorReceiptFileBindingV3>,
     /// Full canonical current-boot IOMedia inventory expected after the one
     /// admitted reconciliation match is absent.  Restart observations must
     /// bind this to the first snapshot; historical forward observations omit
@@ -117,6 +250,8 @@ pub struct ReconciliationSnapshotV2 {
     pub boot_session_uuid: String,
     pub collector_policy_sha256: String,
     pub collector_receipt_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) collector_receipt_file: Option<CollectorReceiptFileBindingV3>,
     /// Full canonical current-boot IOMedia inventory expected after the exact
     /// match is absent.  Zero and Unique snapshots require this binding;
     /// Ambiguous snapshots deliberately cannot predict one exact absence.
@@ -142,6 +277,8 @@ pub struct ReconciliationSnapshotV2 {
 #[serde(deny_unknown_fields)]
 pub struct PostEffectCollectorBindingV3 {
     boot_session_uuid: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    collector_receipt_file: Option<CollectorReceiptFileBindingV3>,
     collector_receipt_sha256: String,
     first_reconciliation_snapshot_sha256: String,
     observation_sha256: String,
@@ -153,6 +290,7 @@ impl PostEffectCollectorBindingV3 {
     pub(crate) fn from_retained_collector(
         _seal: crate::mac_disposable_reconciliation_collector::PostEffectCollectorBindingSealV3,
         boot_session_uuid: String,
+        collector_receipt_file: CollectorReceiptFileBindingV3,
         collector_receipt_sha256: String,
         first_reconciliation_snapshot_sha256: String,
         observation_sha256: String,
@@ -161,6 +299,7 @@ impl PostEffectCollectorBindingV3 {
     ) -> Self {
         Self {
             boot_session_uuid,
+            collector_receipt_file: Some(collector_receipt_file),
             collector_receipt_sha256,
             first_reconciliation_snapshot_sha256,
             observation_sha256,
@@ -172,6 +311,7 @@ impl PostEffectCollectorBindingV3 {
     #[cfg(test)]
     pub(crate) fn for_test(
         boot_session_uuid: String,
+        collector_receipt_file: Option<CollectorReceiptFileBindingV3>,
         collector_receipt_sha256: String,
         first_reconciliation_snapshot_sha256: String,
         observation_sha256: String,
@@ -180,6 +320,7 @@ impl PostEffectCollectorBindingV3 {
     ) -> Self {
         Self {
             boot_session_uuid,
+            collector_receipt_file,
             collector_receipt_sha256,
             first_reconciliation_snapshot_sha256,
             observation_sha256,
@@ -194,6 +335,10 @@ impl PostEffectCollectorBindingV3 {
 
     pub(crate) fn collector_receipt_sha256(&self) -> &str {
         &self.collector_receipt_sha256
+    }
+
+    pub(crate) fn collector_receipt_file(&self) -> Option<&CollectorReceiptFileBindingV3> {
+        self.collector_receipt_file.as_ref()
     }
 
     pub(crate) fn first_reconciliation_snapshot_sha256(&self) -> &str {
@@ -224,6 +369,8 @@ pub struct PreparedCollectorManifestBindingV3 {
     pub dev: u64,
     pub generation: u32,
     pub inode: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) receipt_root_initial: Option<crate::mac_iomedia_identity::FilesystemObjectBindingV3>,
     pub sha256: String,
 }
 
@@ -434,6 +581,8 @@ struct Reducer {
     callback_seen: bool,
     callback_succeeded: bool,
     collector_policy_sha256: Option<String>,
+    collector_receipt_root_generation:
+        Option<(u32, crate::mac_iomedia_identity::FilesystemObjectBindingV3)>,
     fresh_absence_sha256: Option<String>,
     epoch_snapshot_seen: bool,
     epoch_snapshot_sha256: Option<String>,
@@ -470,6 +619,7 @@ impl Reducer {
             callback_seen: false,
             callback_succeeded: false,
             collector_policy_sha256: None,
+            collector_receipt_root_generation: None,
             fresh_absence_sha256: None,
             epoch_snapshot_seen: false,
             epoch_snapshot_sha256: None,
@@ -596,6 +746,12 @@ impl Reducer {
                 if prepared_manifest.dev == 0
                     || prepared_manifest.inode == 0
                     || !(0..1_000_000_000).contains(&prepared_manifest.birthtime_nanoseconds)
+                    || prepared_manifest
+                        .receipt_root_initial
+                        .as_ref()
+                        .is_some_and(|binding| {
+                            validate_collector_receipt_root_binding_v3(binding).is_err()
+                        })
                     || self.phase != Phase::Empty
                 {
                     return Err(invalid(
@@ -607,6 +763,9 @@ impl Reducer {
                 self.boot_session_uuid = Some(boot_session_uuid.clone());
                 self.collector_policy_sha256 = Some(collector_policy_sha256.clone());
                 self.mountpoint_underlying_sha256 = Some(mountpoint_underlying_sha256.clone());
+                self.collector_receipt_root_generation = prepared_manifest
+                    .receipt_root_initial
+                    .map(|receipt_root_initial| (0, receipt_root_initial));
                 self.prepared_manifest = Some(prepared_manifest.clone());
                 self.phase = Phase::Prepared;
             }
@@ -722,7 +881,7 @@ impl Reducer {
                 self.apply_reconciliation_snapshot(snapshot)?;
             }
             DisposableLifecycleEventV2::FreshAbsenceObserved { observation } => {
-                self.validate_fresh_absence(observation)?;
+                let next_root = self.validate_fresh_absence(observation)?;
                 if self.phase == Phase::Empty
                     || self.fresh_absence_sha256.is_some()
                     || self.pending.is_some()
@@ -750,6 +909,7 @@ impl Reducer {
                     ));
                 }
                 self.fresh_absence_sha256 = Some(fresh_absence_sha256(observation)?);
+                self.collector_receipt_root_generation = next_root;
             }
             DisposableLifecycleEventV2::ManualIntervention { reason_sha256 } => {
                 require_digest(reason_sha256, "manual-intervention reason")?;
@@ -906,6 +1066,13 @@ impl Reducer {
         }
         require_uuid(&snapshot.boot_session_uuid)?;
         require_nonce(&snapshot.restart_epoch_nonce)?;
+        validate_collector_receipt_file_binding_v3(
+            snapshot.collector_receipt_file.as_ref(),
+            &snapshot.collector_receipt_sha256,
+            self.collector_receipt_root_generation.is_some(),
+        )?;
+        let next_root =
+            self.next_collector_receipt_root_generation(snapshot.collector_receipt_file.as_ref())?;
         for (value, label) in [
             (
                 &snapshot.backing_identity_sha256,
@@ -977,6 +1144,7 @@ impl Reducer {
         self.epoch_snapshot_was_zero = matches!(snapshot.match_result, ReconciliationMatchV2::Zero);
         self.reconciliation_receipts
             .insert(snapshot.collector_receipt_sha256.clone());
+        self.collector_receipt_root_generation = next_root;
         match snapshot.match_result {
             ReconciliationMatchV2::Zero => {
                 self.phase = Phase::Prepared;
@@ -1003,8 +1171,18 @@ impl Reducer {
     fn validate_fresh_absence(
         &self,
         observation: &FreshAbsenceObservationV2,
-    ) -> Result<(), LifecycleErrorV2> {
+    ) -> Result<
+        Option<(u32, crate::mac_iomedia_identity::FilesystemObjectBindingV3)>,
+        LifecycleErrorV2,
+    > {
         validate_fresh_absence_shape(observation)?;
+        validate_collector_receipt_file_binding_v3(
+            observation.collector_receipt_file.as_ref(),
+            &observation.collector_receipt_sha256,
+            self.collector_receipt_root_generation.is_some(),
+        )?;
+        let next_root = self
+            .next_collector_receipt_root_generation(observation.collector_receipt_file.as_ref())?;
         if observation.operation_nonce != self.operation_nonce
             || self.baseline_inventory_sha256.as_ref()
                 != Some(&observation.baseline_inventory_sha256)
@@ -1048,7 +1226,7 @@ impl Reducer {
                 "fresh absence differs from prepared operation bindings",
             ));
         }
-        Ok(())
+        Ok(next_root)
     }
 
     fn require_purpose(&self, purpose: EffectPurposeV2) -> Result<(), LifecycleErrorV2> {
@@ -1084,6 +1262,14 @@ impl Reducer {
                 require_uuid(&binding.boot_session_uuid)?;
                 require_nonce(&binding.restart_epoch_nonce)?;
                 require_nonce(&binding.operation_nonce)?;
+                validate_collector_receipt_file_binding_v3(
+                    binding.collector_receipt_file.as_ref(),
+                    &binding.collector_receipt_sha256,
+                    self.collector_receipt_root_generation.is_some(),
+                )?;
+                let next_root = self.next_collector_receipt_root_generation(
+                    binding.collector_receipt_file.as_ref(),
+                )?;
                 for (value, label) in [
                     (
                         &binding.collector_receipt_sha256,
@@ -1114,17 +1300,55 @@ impl Reducer {
                 }
                 self.reconciliation_receipts
                     .insert(binding.collector_receipt_sha256.clone());
+                self.collector_receipt_root_generation = next_root;
                 Ok(())
             }
-            (Mode::RestartReconcileOnly, None) if self.prepared_manifest.is_some() => Err(invalid(
-                "V3 restart post-effect observation requires retained collector evidence",
-            )),
+            (Mode::RestartReconcileOnly, None)
+                if self.collector_receipt_root_generation.is_some() =>
+            {
+                Err(invalid(
+                    "V3 restart post-effect observation requires retained collector evidence",
+                ))
+            }
             (Mode::RestartReconcileOnly, None) => Ok(()),
             (Mode::FreshProcess | Mode::Replay, None) => Ok(()),
             (Mode::FreshProcess | Mode::Replay, Some(_)) => Err(invalid(
                 "forward or historical replay cannot self-report restart collector evidence",
             )),
         }
+    }
+
+    fn next_collector_receipt_root_generation(
+        &self,
+        binding: Option<&CollectorReceiptFileBindingV3>,
+    ) -> Result<
+        Option<(u32, crate::mac_iomedia_identity::FilesystemObjectBindingV3)>,
+        LifecycleErrorV2,
+    > {
+        let Some(binding) = binding else {
+            return if self.collector_receipt_root_generation.is_some() {
+                Err(invalid(
+                    "prepared-manifest V3 lifecycle omitted its next receipt-root generation",
+                ))
+            } else {
+                Ok(None)
+            };
+        };
+        let (prior_ordinal, prior_root) = self
+            .collector_receipt_root_generation
+            .as_ref()
+            .ok_or_else(|| {
+                invalid("collector receipt-root generation has no durable initial binding")
+            })?;
+        if prior_ordinal.checked_add(1) != Some(binding.root_generation_ordinal)
+            || !same_collector_receipt_root_object_v3(prior_root, &binding.root_after)
+            || prior_root.nlink.checked_add(1) != Some(binding.root_after.nlink)
+        {
+            return Err(invalid(
+                "collector receipt-root full binding is not the exact next durable generation",
+            ));
+        }
+        Ok(Some((binding.root_generation_ordinal, binding.root_after)))
     }
 
     fn disposition(&self) -> LifecycleDispositionV2 {
@@ -1169,7 +1393,31 @@ impl DisposableLifecycleJournalV2 {
         Ok(journal)
     }
 
+    #[cfg(test)]
     pub fn append_with<F>(
+        &mut self,
+        event: DisposableLifecycleEventV2,
+        persist: F,
+    ) -> Result<String, LifecycleErrorV2>
+    where
+        F: FnOnce(&DisposableLifecycleRecordV2, &[u8]) -> std::io::Result<()>,
+    {
+        self.append_with_inner(event, persist)
+    }
+
+    pub(crate) fn append_with_sealed<F>(
+        &mut self,
+        _seal: crate::mac_disposable_lifecycle_store::LifecycleStoreAppendSealV3,
+        event: DisposableLifecycleEventV2,
+        persist: F,
+    ) -> Result<String, LifecycleErrorV2>
+    where
+        F: FnOnce(&DisposableLifecycleRecordV2, &[u8]) -> std::io::Result<()>,
+    {
+        self.append_with_inner(event, persist)
+    }
+
+    fn append_with_inner<F>(
         &mut self,
         event: DisposableLifecycleEventV2,
         persist: F,
@@ -1360,6 +1608,53 @@ pub fn reconciliation_snapshot_sha256(
         .map_err(|error| LifecycleErrorV2::Serialization(error.to_string()))
 }
 
+/// Replay the exact lifecycle chain and return its closed-world collector
+/// receipt inode roster. Legacy records legitimately contribute no entry;
+/// prepared-manifest V3 records are rejected by the reducer if any reference
+/// is absent.
+pub(crate) fn collector_receipt_file_roster_v3(
+    records: &[Vec<u8>],
+) -> Result<Vec<CollectorReceiptFileBindingV3>, LifecycleErrorV2> {
+    let _ = replay(records)?;
+    let mut result = Vec::new();
+    for bytes in records {
+        let record: DisposableLifecycleRecordV2 = serde_json::from_slice(bytes)
+            .map_err(|error| LifecycleErrorV2::Serialization(error.to_string()))?;
+        let binding = match &record.event {
+            DisposableLifecycleEventV2::ReconciliationSnapshotObserved { snapshot } => {
+                snapshot.collector_receipt_file.as_ref()
+            }
+            DisposableLifecycleEventV2::FreshAbsenceObserved { observation } => {
+                observation.collector_receipt_file.as_ref()
+            }
+            DisposableLifecycleEventV2::UnmountObserved { collector, .. }
+            | DisposableLifecycleEventV2::EjectObserved { collector, .. } => collector
+                .as_ref()
+                .and_then(PostEffectCollectorBindingV3::collector_receipt_file),
+            _ => None,
+        };
+        if let Some(binding) = binding {
+            result.push(binding.clone());
+        }
+    }
+    if result.iter().enumerate().any(|(index, binding)| {
+        usize::try_from(binding.root_generation_ordinal).ok() != Some(index + 1)
+    }) || result.iter().enumerate().any(|(index, binding)| {
+        result.iter().skip(index + 1).any(|other| {
+            binding.final_basename == other.final_basename
+                || (binding.dev, binding.inode) == (other.dev, other.inode)
+        })
+    }) || result.windows(2).any(|pair| {
+        !same_collector_receipt_root_object_v3(&pair[0].root_after, &pair[1].root_after)
+            || pair[0].root_after.nlink.checked_add(1) != Some(pair[1].root_after.nlink)
+    }) {
+        return Err(invalid(
+            "lifecycle collector receipt references are not one ordered exact root generation chain",
+        ));
+    }
+    Ok(result)
+}
+
 fn replay(records: &[Vec<u8>]) -> Result<DisposableLifecycleJournalV2, LifecycleErrorV2> {
     if records.is_empty() {
         return Err(invalid("lifecycle contains no records"));
@@ -1449,6 +1744,11 @@ pub(crate) fn validate_fresh_absence_shape(
     if let Some(digest) = &observation.current_expected_absence_inventory_sha256 {
         require_digest(digest, "absence current-boot expected inventory")?;
     }
+    validate_collector_receipt_file_binding_v3(
+        observation.collector_receipt_file.as_ref(),
+        &observation.collector_receipt_sha256,
+        false,
+    )?;
     if observation.restart_epoch_nonce.is_some()
         != observation.reconciliation_snapshot_sha256.is_some()
         || observation.restart_epoch_nonce.is_some()
@@ -1542,6 +1842,76 @@ fn require_digest(value: &str, label: &str) -> Result<(), LifecycleErrorV2> {
         )));
     }
     Ok(())
+}
+
+pub(crate) fn validate_collector_receipt_file_binding_v3(
+    binding: Option<&CollectorReceiptFileBindingV3>,
+    expected_sha256: &str,
+    required: bool,
+) -> Result<(), LifecycleErrorV2> {
+    require_digest(expected_sha256, "collector receipt")?;
+    let Some(binding) = binding else {
+        return if required {
+            Err(invalid(
+                "prepared-manifest V3 collector observation omits its exact receipt inode",
+            ))
+        } else {
+            Ok(())
+        };
+    };
+    require_digest(&binding.canonical_sha256, "collector receipt file")?;
+    if binding.canonical_sha256 != expected_sha256
+        || binding.final_basename != format!("collector-{expected_sha256}.json")
+        || binding.dev == 0
+        || binding.inode == 0
+        || binding.mode & libc::S_IFMT as u32 != libc::S_IFREG as u32
+        || binding.mode & 0o7777 != 0o600
+        || binding.flags != 0
+        || binding.nlink != 1
+        || binding.root_generation_ordinal == 0
+        || validate_collector_receipt_root_binding_v3(&binding.root_after).is_err()
+        || binding.root_after.dev != binding.dev
+        || binding.root_after.uid != binding.uid
+        || binding.root_after.gid != binding.gid
+        || binding.size == 0
+    {
+        return Err(invalid(
+            "collector receipt file digest, basename, inode, type, or immutable metadata is invalid",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_collector_receipt_root_binding_v3(
+    binding: &crate::mac_iomedia_identity::FilesystemObjectBindingV3,
+) -> Result<(), LifecycleErrorV2> {
+    if binding.dev == 0
+        || binding.inode == 0
+        || binding.mode & libc::S_IFMT as u32 != libc::S_IFDIR as u32
+        || binding.mode & 0o7777 != 0o700
+        || binding.flags != 0
+        || binding.nlink == 0
+    {
+        return Err(invalid(
+            "collector receipt root full binding is not a private stable directory",
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn same_collector_receipt_root_object_v3(
+    before: &crate::mac_iomedia_identity::FilesystemObjectBindingV3,
+    after: &crate::mac_iomedia_identity::FilesystemObjectBindingV3,
+) -> bool {
+    before.birthtime_nanoseconds == after.birthtime_nanoseconds
+        && before.birthtime_seconds == after.birthtime_seconds
+        && before.dev == after.dev
+        && before.flags == after.flags
+        && before.generation == after.generation
+        && before.gid == after.gid
+        && before.inode == after.inode
+        && before.mode == after.mode
+        && before.uid == after.uid
 }
 
 fn require_uuid(value: &str) -> Result<(), LifecycleErrorV2> {

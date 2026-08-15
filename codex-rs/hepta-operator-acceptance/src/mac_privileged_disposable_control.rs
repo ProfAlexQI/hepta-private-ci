@@ -21,6 +21,7 @@ use crate::mac_disposable_lifecycle::LifecycleDispatchV2;
 use crate::mac_disposable_lifecycle::LifecycleDispositionV2;
 use crate::mac_disposable_lifecycle::LifecycleInspectionV2;
 use crate::mac_disposable_lifecycle::PreparedCollectorManifestBindingV3;
+use crate::mac_disposable_lifecycle::collector_receipt_file_roster_v3;
 use crate::mac_disposable_lifecycle::dispatch_lifecycle_records;
 use crate::mac_disposable_lifecycle::fresh_absence_sha256;
 use crate::mac_disposable_lifecycle::validate_fresh_absence_shape;
@@ -37,6 +38,7 @@ use crate::mac_disposable_lifecycle_store::RetainedLifecycleRecordAppendV3;
 use crate::mac_disposable_lifecycle_store::validate_restart_admission_bijection_for_s1;
 use crate::mac_disposable_reconciliation_collector::MountBindingV3;
 use crate::mac_disposable_reconciliation_collector::MountingV3;
+use crate::mac_disposable_reconciliation_collector::S1RetainedCollectorReceiptRootV3;
 use crate::mac_disposable_reconciliation_collector::SealedMountDeltaAdvanceV3;
 use crate::mac_disposable_reconciliation_collector::SealedMountDeltaPlanV3;
 use crate::mac_disposable_reconciliation_collector::UnmountingV3;
@@ -208,6 +210,7 @@ struct RecordCapsule {
 }
 
 struct OperationCapsule {
+    collector_receipts: Option<S1RetainedCollectorReceiptRootV3>,
     directory: File,
     effect_issues: Option<EffectIssueRootCapsuleV3>,
     identity: Identity,
@@ -333,10 +336,16 @@ impl CensusRegistry {
         label: &str,
         identity: Identity,
     ) -> Result<(), PrivilegedDisposableControlErrorV2> {
-        if let Some(existing) = self
-            .identities
-            .insert((identity.dev, identity.ino), label.to_string())
-        {
+        self.insert_inode(label, identity.dev, identity.ino)
+    }
+
+    fn insert_inode(
+        &mut self,
+        label: &str,
+        dev: u64,
+        ino: u64,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        if let Some(existing) = self.identities.insert((dev, ino), label.to_string()) {
             return Err(invalid(format!(
                 "closed-world census aliases {existing} and {label} to one inode"
             )));
@@ -536,6 +545,12 @@ pub(crate) struct S1PreparedManifestReadSealV3 {
 /// Only S1 can construct this seal, so the lifecycle module's opaque
 /// restart-admission transfer cannot be inspected by sibling callers.
 pub(crate) struct S1RestartAdmissionReadSealV3 {
+    _private: (),
+}
+
+/// Private seal for receipt-root census projections. The collector keeps its
+/// paths and inode roster opaque to every crate sibling except S1.
+pub(crate) struct S1CollectorReceiptRegistrySealV3 {
     _private: (),
 }
 
@@ -775,6 +790,10 @@ impl LivePrivilegedDisposablePolicyV2 {
                             .restart_admissions
                             .as_ref()
                             .map_or(0, |root| 1 + root.records.len())
+                        + capsule
+                            .collector_receipts
+                            .as_ref()
+                            .map_or(0, |root| root.retained_descriptor_count())
                 })
                 .sum::<usize>()
             + historical
@@ -803,14 +822,23 @@ impl LivePrivilegedDisposablePolicyV2 {
             record.register(&mut aliases, "closure publication")?;
         }
 
-        let protected_roots = std::iter::once(PathBuf::from(&self.policy.control_root))
+        let mut protected_roots = std::iter::once(PathBuf::from(&self.policy.control_root))
             .chain(
                 historical
                     .roots
                     .iter()
                     .map(|root| self.volume_path.join(&root.name)),
             )
+            .chain(
+                capsules
+                    .iter()
+                    .filter_map(OperationCapsule::collector_receipt_root_path),
+            )
             .collect::<Vec<_>>();
+        protected_roots.sort();
+        if protected_roots.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(invalid("protected-root census contains a duplicate path"));
+        }
         reject_nested_mounts(&mounts_before, &protected_roots)?;
         let mounts_after = mount_table_snapshot()?;
         reject_nested_mounts(&mounts_after, &protected_roots)?;
@@ -1147,7 +1175,56 @@ impl LivePrivilegedDisposablePolicyV2 {
                 &self.filesystem,
             )?)
         };
+        let lifecycle_bytes = records
+            .iter()
+            .map(|record| record.bytes.clone())
+            .collect::<Vec<_>>();
+        let receipt_root_generation_enabled = match dispatch_lifecycle_records(&lifecycle_bytes)
+            .map_err(|error| {
+                invalid(format!(
+                    "lifecycle replay failed before receipt-root census: {error}"
+                ))
+            })? {
+            LifecycleDispatchV2::V2(inspection) => inspection
+                .prepared_manifest
+                .as_ref()
+                .is_some_and(|binding| binding.receipt_root_initial.is_some()),
+            LifecycleDispatchV2::HistoricalV1(_) => false,
+        };
+        let collector_receipts = if receipt_root_generation_enabled {
+            let manifest = prepared_manifest.as_ref().ok_or_else(|| {
+                invalid("receipt-root lifecycle lost its prepared collector manifest")
+            })?;
+            let references = collector_receipt_file_roster_v3(&lifecycle_bytes)
+                .map_err(|error| invalid(format!("collector receipt roster failed: {error}")))?;
+            for _ in 0..=references.len() {
+                retained_fds.reserve("S1 collector receipt root or exact receipt")?;
+            }
+            let retained = S1RetainedCollectorReceiptRootV3::capture_from_exact_lifecycle(
+                &S1CollectorReceiptRegistrySealV3 { _private: () },
+                &manifest.bytes,
+                &lifecycle_bytes,
+            )
+            .map_err(|error| {
+                invalid(format!(
+                    "S1 external collector receipt-root replay failed: {error}"
+                ))
+            })?;
+            if retained.retained_descriptor_count() != references.len() + 1 {
+                return Err(invalid(
+                    "S1 collector receipt descriptor count differs from lifecycle references",
+                ));
+            }
+            *total_bytes = total_bytes
+                .checked_add(retained.retained_bytes())
+                .filter(|total| *total <= MAX_TOTAL_RECORD_BYTES)
+                .ok_or_else(|| invalid("S1 collector receipt bytes exceed retained budget"))?;
+            Some(retained)
+        } else {
+            None
+        };
         let capsule = OperationCapsule {
+            collector_receipts,
             directory,
             effect_issues,
             identity,
@@ -1956,6 +2033,46 @@ impl<'a> LivePrivilegedDisposableExecutionV2<'a> {
                 &self._policy.filesystem,
             )?;
         }
+        let mut aliases = CensusRegistry::default();
+        aliases.insert("control root", self._policy.root_identity)?;
+        aliases.insert("control lock", self._policy.lock_identity)?;
+        aliases.insert("operations directory", operations_identity)?;
+        aliases.insert(
+            "closure publication directory",
+            self._policy.publication_identity,
+        )?;
+        for capsule in &self._operations {
+            capsule.register(&mut aliases, "operations")?;
+        }
+        for root in &self._historical_roots {
+            root.register(&mut aliases)?;
+        }
+        for record in &self._publication_records {
+            record.register(&mut aliases, "closure publication")?;
+        }
+        let mut expected_protected_roots =
+            std::iter::once(PathBuf::from(&self._policy.policy.control_root))
+                .chain(
+                    self._historical_roots
+                        .iter()
+                        .map(|root| self._policy.volume_path.join(&root.name)),
+                )
+                .chain(
+                    self._operations
+                        .iter()
+                        .filter_map(OperationCapsule::collector_receipt_root_path),
+                )
+                .collect::<Vec<_>>();
+        expected_protected_roots.sort();
+        if expected_protected_roots
+            .windows(2)
+            .any(|pair| pair[0] == pair[1])
+            || expected_protected_roots != self._protected_roots
+        {
+            return Err(invalid(
+                "protected-root census differs from retained control, history, or receipt roots",
+            ));
+        }
         let mounts = mount_table_snapshot()?;
         reject_nested_mounts(&mounts, &self._protected_roots)?;
         mount_state.validate_current(exact_mounts, &mounts)?;
@@ -2127,7 +2244,7 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
             ));
         }
         let additional_fds = 2
-            + usize::from(prepared_manifest.is_some())
+            + 2 * usize::from(prepared_manifest.is_some())
             + usize::from(restart_admissions.is_some());
         let next_fd_count = census
             .assessment
@@ -2285,6 +2402,38 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
                 "fresh mandatory V3 issue root differs from its retained empty descriptor",
             ));
         }
+        let collector_receipts = prepared_manifest
+            .as_ref()
+            .map(|manifest| {
+                S1RetainedCollectorReceiptRootV3::capture_from_exact_lifecycle(
+                    &S1CollectorReceiptRegistrySealV3 { _private: () },
+                    &manifest.bytes,
+                    &[],
+                )
+                .map_err(|error| {
+                    invalid(format!(
+                        "fresh S1 collector receipt-root replay failed: {error}"
+                    ))
+                })
+            })
+            .transpose()?;
+        let mut next_protected_roots = census.assessment._protected_roots.clone();
+        if let Some(receipts) = &collector_receipts {
+            next_protected_roots.push(
+                receipts
+                    .s1_census_projection(&S1CollectorReceiptRegistrySealV3 { _private: () })
+                    .0,
+            );
+        }
+        next_protected_roots.sort();
+        if next_protected_roots
+            .windows(2)
+            .any(|pair| pair[0] == pair[1])
+        {
+            return Err(invalid(
+                "fresh prepared operation aliases an existing protected root",
+            ));
+        }
         let mut expected = census.operations_roster.clone();
         expected.push(final_name.clone());
         expected.sort();
@@ -2292,6 +2441,7 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
             return Err(invalid("fresh operation aliases an existing roster entry"));
         }
         census.assessment._operations.push(OperationCapsule {
+            collector_receipts,
             directory: operation_directory,
             effect_issues: Some(EffectIssueRootCapsuleV3 {
                 directory: issue_directory,
@@ -2310,6 +2460,7 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
         });
         census.assessment._retained_fd_count = next_fd_count;
         census.assessment._retained_record_bytes = next_record_bytes;
+        census.assessment._protected_roots = next_protected_roots;
         census.operations_identity = operations_identity;
         census.operations_roster = expected;
         census.admission.admitted_operation_name = Some(final_name);
@@ -2732,6 +2883,13 @@ fn absorb_transferred_lifecycle_record<A, M: MountCensusStateV3>(
         }
     };
     census.assessment._operations[target_index].validate_prepared_lifecycle_binding(&inspection)?;
+    if let Some(retained) = &census.assessment._operations[target_index].collector_receipts {
+        retained.revalidate(&lifecycle).map_err(|error| {
+            invalid(format!(
+                "generic lifecycle adoption changed collector references without a paired root: {error}"
+            ))
+        })?;
+    }
     census.assessment._retained_fd_count = next_fd_count;
     census.assessment._retained_record_bytes = census
         .assessment
@@ -3437,6 +3595,14 @@ fn remove_exact_once(
 }
 
 impl OperationCapsule {
+    fn collector_receipt_root_path(&self) -> Option<PathBuf> {
+        self.collector_receipts.as_ref().map(|receipts| {
+            receipts
+                .s1_census_projection(&S1CollectorReceiptRegistrySealV3 { _private: () })
+                .0
+        })
+    }
+
     fn validate_prepared_lifecycle_binding(
         &self,
         inspection: &LifecycleInspectionV2,
@@ -3450,6 +3616,11 @@ impl OperationCapsule {
                         dev: manifest.identity.dev,
                         generation: manifest.identity.generation,
                         inode: manifest.identity.ino,
+                        receipt_root_initial: self.collector_receipts.as_ref().map(|receipts| {
+                            receipts.s1_initial_binding(&S1CollectorReceiptRegistrySealV3 {
+                                _private: (),
+                            })
+                        }),
                         sha256: sha256(&manifest.bytes),
                     } =>
             {
@@ -3632,6 +3803,24 @@ impl OperationCapsule {
             };
             self.validate_prepared_lifecycle_binding(&inspection)?;
         }
+        let lifecycle = self
+            .records
+            .iter()
+            .map(|record| record.bytes.clone())
+            .collect::<Vec<_>>();
+        match (&self.prepared_manifest, &self.collector_receipts) {
+            (Some(_), Some(receipts)) => receipts.revalidate(&lifecycle).map_err(|error| {
+                invalid(format!(
+                    "S1 external collector receipt-root mirror changed: {error}"
+                ))
+            })?,
+            (None, None) => {}
+            _ => {
+                return Err(invalid(
+                    "prepared manifest and S1 collector receipt-root mirror differ",
+                ));
+            }
+        }
         if let Some(effect_issues) = &self.effect_issues {
             effect_issues.revalidate(
                 self.directory.as_raw_fd(),
@@ -3711,6 +3900,15 @@ impl OperationCapsule {
         }
         if let Some(restart_admissions) = &self.restart_admissions {
             restart_admissions.register(registry, &path)?;
+        }
+        if let Some(receipts) = &self.collector_receipts {
+            let (root_path, root_dev, root_ino, entries) =
+                receipts.s1_census_projection(&S1CollectorReceiptRegistrySealV3 { _private: () });
+            let root_label = format!("collector receipt root {}", root_path.display());
+            registry.insert_inode(&root_label, root_dev, root_ino)?;
+            for (name, dev, ino) in entries {
+                registry.insert_inode(&format!("{root_label}/{name}"), dev, ino)?;
+            }
         }
         Ok(())
     }

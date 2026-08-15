@@ -40,6 +40,7 @@ use crate::mac_disposable_reconciliation_collector::RetainedCollectorObservation
 use crate::mac_disposable_reconciliation_collector::RetainedPreparedCollectorCapabilityV3;
 use crate::mac_disposable_reconciliation_collector::RetainedTerminalAbsenceV3;
 use crate::mac_disposable_reconciliation_collector::UnmountingV3;
+use crate::mac_disposable_reconciliation_collector::lifecycle_manifest_initial_receipt_root_binding;
 use crate::mac_inert_one_shot_runner::AuthenticatedDispatchedRunnerV3;
 use crate::mac_inert_one_shot_runner::AuthenticatedPreRunnerV3;
 use crate::mac_inert_one_shot_runner::FreshProcessEpochV3;
@@ -85,6 +86,11 @@ const PREPARED_MANIFEST_TEMPORARY_NAME_V3: &str = ".incoming-prepared-collector-
 const RESTART_ADMISSION_DIRECTORY_NAME_V3: &str = "restart-admissions-v3";
 const RESTART_ADMISSION_SCHEMA_V3: &str = "hepta_mac_restart_admission_v3";
 const MAX_RESTART_ADMISSIONS_V3: usize = MAX_RECORDS;
+
+pub(crate) struct LifecycleStoreAppendSealV3 {
+    _private: (),
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
 
 #[derive(Debug, Error)]
 pub enum DurableLifecycleStoreErrorV3 {
@@ -1789,7 +1795,7 @@ impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
                 "operation without the exact prepared manifest is blocking and cannot enter the production V3 effect path",
             ));
         }
-        let prepared = if let Some(manifest) = store.prepared_manifest.as_ref() {
+        let mut prepared = if let Some(manifest) = store.prepared_manifest.as_ref() {
             let seal = PreparedCollectorLifecycleSealV3 { _private: () };
             Some(
                 RetainedPreparedCollectorCapabilityV3::reopen_from_lifecycle_manifest(
@@ -1802,6 +1808,15 @@ impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
         } else {
             None
         };
+        if let Some(prepared) = &mut prepared {
+            let records = store
+                .records
+                .iter()
+                .map(|record| record.bytes.clone())
+                .collect::<Vec<_>>();
+            prepared.bind_receipt_root_to_lifecycle(&records)?;
+            census.revalidate()?;
+        }
         let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(store.issue_source())?;
         let issues = DurableEffectIssueStoreV3::open_existing_from_retained_s1(
             store.issue_source(),
@@ -2457,6 +2472,7 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
         census: RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>,
         prepared: RetainedPreparedCollectorCapabilityV3,
     ) -> Result<Self, DurableLifecycleStoreErrorV3> {
+        prepared.revalidate_receipt_root_against_lifecycle(&[])?;
         let wiring = FreshCensusStoreWiringV3::from_prepared(prepared)?;
         census.wire_fresh_store(wiring)
     }
@@ -2483,6 +2499,7 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
             collector_policy_sha256,
             mountpoint_underlying_sha256,
         ) = prepared.lifecycle_prepared_fields(&seal)?;
+        let receipt_root_initial = prepared.lifecycle_initial_receipt_root_binding(&seal)?;
         let manifest =
             self.store.prepared_manifest.as_ref().ok_or_else(|| {
                 invalid("production prepared append lost its exact sidecar capsule")
@@ -2500,6 +2517,7 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
                     dev: manifest.binding.dev,
                     generation: manifest.binding.generation,
                     inode: manifest.binding.ino,
+                    receipt_root_initial: Some(receipt_root_initial),
                     sha256: manifest.digest.clone(),
                 },
             )
@@ -2568,6 +2586,15 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
             let sink = self.census.fresh_lifecycle_record_sink()?;
             append.adopt_into_s1(sink)?;
             append.require_s1_adopted()?;
+            if let Some(prepared) = &self.prepared {
+                let records = self
+                    .store
+                    .records
+                    .iter()
+                    .map(|record| record.bytes.clone())
+                    .collect::<Vec<_>>();
+                prepared.revalidate_receipt_root_against_lifecycle(&records)?;
+            }
             self.revalidate_issues()?;
             self.census.revalidate()?;
             Ok(digest)
@@ -2937,15 +2964,24 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             ))
         })?;
         self.store.revalidate()?;
-        let seed = self.collector_seed()?;
-        let prepared = self.prepared.as_ref().ok_or_else(|| {
+        if self.collector.is_some() || self.restart.collector_pending {
+            return Err(invalid(
+                "first reconciliation collection seed is unavailable",
+            ));
+        }
+        let seed = ActiveRestartCollectorSeedV3 {
+            operation_nonce: self.store.operation_nonce(),
+            owner: &self.restart,
+            _not_send_or_sync: PhantomData,
+        };
+        seed.require_owner(&self.restart)?;
+        let prepared = self.prepared.as_mut().ok_or_else(|| {
             invalid("active restart collection lacks its retained prepared capability")
         })?;
         let pending =
             prepared.collect_reconciliation_from_active_with_hook(seed, after_iomedia_capture)?;
         self.census.revalidate()?;
         self.store.revalidate()?;
-        prepared.revalidate()?;
         self.epoch.validate_current().map_err(|error| {
             invalid(format!(
                 "active restart epoch changed across collection: {error}"
@@ -2998,15 +3034,23 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
                 "retained collector differs from the lifecycle-admitted FreshAbsence source",
             ));
         }
-        let epoch = self.collector_epoch()?;
-        let prepared = self.prepared.as_ref().ok_or_else(|| {
+        if self.restart.collector_pending {
+            return Err(invalid(
+                "restart already owns an in-flight collector observation",
+            ));
+        }
+        let epoch = ActiveRestartCollectorEpochV3 {
+            operation_nonce: self.store.operation_nonce(),
+            owner: &self.restart,
+            _not_send_or_sync: PhantomData,
+        };
+        let prepared = self.prepared.as_mut().ok_or_else(|| {
             invalid("FreshAbsence collection lacks its retained prepared capability")
         })?;
         let pending = prepared.collect_fresh_absence_from_active(epoch, snapshot)?;
         prior.revalidate_bound()?;
         self.census.revalidate()?;
         self.store.revalidate()?;
-        prepared.revalidate()?;
         self.epoch.validate_current().map_err(|error| {
             invalid(format!(
                 "active restart epoch changed across absence collection: {error}"
@@ -3806,6 +3850,15 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
     }
 
     fn revalidate_existing_issues(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
+        let lifecycle_records = self
+            .store
+            .records
+            .iter()
+            .map(|record| record.bytes.clone())
+            .collect::<Vec<_>>();
+        if let Some(prepared) = self.prepared.as_ref() {
+            prepared.revalidate_receipt_root_against_lifecycle(&lifecycle_records)?;
+        }
         let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
         self.issues.revalidate_required(&lifecycle)?;
         self.issues.revalidate_s1_adopted()?;
@@ -3980,7 +4033,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
     /// one consuming production transition.  No caller can inject a retained
     /// observation or a digest into this path.
     pub(crate) fn collect_persist_append_and_advance(
-        self,
+        mut self,
     ) -> Result<
         ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>,
         DurableLifecycleStoreErrorV3,
@@ -3996,7 +4049,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
                 "post-unmount collector seed lost its active restart owner: {error}"
             ))
         })?;
-        let prepared = self.prepared.as_ref().ok_or_else(|| {
+        let prepared = self.prepared.as_mut().ok_or_else(|| {
             invalid("post-unmount collection lacks its retained prepared capability")
         })?;
         let pending = prepared
@@ -4013,11 +4066,6 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             ))
         })?;
         self.store.revalidate()?;
-        prepared.revalidate().map_err(|error| {
-            invalid(format!(
-                "prepared collector capability changed across post-unmount collection: {error}"
-            ))
-        })?;
         let next = pending
             .persist_for_unmount_delta(&self.delta)
             .map_err(|error| {
@@ -4409,6 +4457,74 @@ impl DurableLifecycleStoreV3<ReconciliationOnlyStoreV3> {
         )?)
     }
 
+    #[cfg(test)]
+    pub(crate) fn append_restart_for_receipt_gate(
+        &mut self,
+        journal: &mut DisposableLifecycleJournalV2,
+        epoch: RestartAdmissionEpochBindingV3,
+    ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        self.revalidate()?;
+        let prepared = self
+            .prepared_manifest
+            .as_ref()
+            .ok_or_else(|| invalid("receipt-generation gate lacks its prepared manifest"))?;
+        let prepared_profile_sha256 = prepared_profile_sha256(&prepared.bytes)?;
+        let collector_policy_sha256 = lifecycle_prepared_collector_policy_sha256(
+            self.records
+                .first()
+                .ok_or_else(|| invalid("receipt-generation gate lost its prepared record"))?,
+        )?;
+        let live_before = capture_restart_iomedia_inventory_v3().map_err(|error| {
+            invalid(format!(
+                "receipt-generation gate live-before IOMedia capture failed: {error}"
+            ))
+        })?;
+        let baseline = RestartBaselineInventoryV3::from_inventory(live_before.report())?;
+        if baseline.boot_session_uuid() != epoch.boot_session_uuid() {
+            return Err(invalid(
+                "receipt-generation gate inventory and process epoch belong to different boots",
+            ));
+        }
+        live_before
+            .revalidate_after_persistence()
+            .map_err(|error| {
+                invalid(format!(
+                    "receipt-generation gate inventory changed before durable admission: {error}"
+                ))
+            })?;
+        let draft = RestartAdmissionDraftV3 {
+            current_live_before_inventory_sha256: baseline.sha256()?,
+            prepared_manifest_inode: prepared.binding.ino,
+            prepared_manifest_sha256: prepared.digest.clone(),
+            prepared_profile_sha256,
+            epoch,
+        };
+        let event = DisposableLifecycleEventV2::RestartReconciliationStarted {
+            boot_session_uuid: draft.epoch.boot_session_uuid().to_string(),
+            collector_policy_sha256,
+            monotonic_nanoseconds: draft.epoch.restart_started_monotonic_nanoseconds(),
+            restart_epoch_nonce: draft.epoch.restart_epoch_nonce().to_string(),
+        };
+        let digest = self.append_restart_with_admission(journal, event, draft)?;
+        live_before
+            .revalidate_after_persistence()
+            .map_err(|error| {
+                invalid(format!(
+                    "receipt-generation gate inventory changed across durable admission: {error}"
+                ))
+            })?;
+        Ok(digest)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn append_reconciliation_for_receipt_gate(
+        &mut self,
+        journal: &mut DisposableLifecycleJournalV2,
+        event: DisposableLifecycleEventV2,
+    ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        self.append_reconciliation(journal, ReconciliationLifecycleEventV3(event))
+    }
+
     fn append_reconciliation(
         &mut self,
         journal: &mut DisposableLifecycleJournalV2,
@@ -4579,60 +4695,69 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
         // mutation.  Fail closed until the complete publish, descriptor
         // retention, and exact replay sequence has succeeded.
         self.poisoned = true;
-        let result = journal.append_with(event, |record, bytes| {
-            if usize::try_from(record.sequence).ok() != Some(expected_sequence)
-                || record.operation_nonce != operation_nonce
-                || record.previous_record_sha256.as_deref() != expected_previous.as_deref()
-            {
-                return Err(io::Error::other(
-                    "journal identity, predecessor, or sequence differs from durable store",
-                ));
-            }
-            if prior_total_bytes
-                .checked_add(bytes.len())
-                .is_none_or(|total| total > MAX_TOTAL_RECORD_BYTES)
-            {
-                return Err(io::Error::other(
-                    "lifecycle bytes exceed the fixed total bound",
-                ));
-            }
-            let capsule = publish_record(
-                &self.directory,
-                record.sequence,
-                bytes,
-                expected_uid,
-                expected_gid,
-                expected_dev,
-                &mut hook,
-            )
-            .map_err(|error| io::Error::other(error.to_string()))?;
-            self.records.push(capsule);
-            if let Some(draft) = admission.take() {
-                let admission_record = draft
-                    .seal(record, bytes)
-                    .map_err(|error| io::Error::other(error.to_string()))?;
-                self.restart_admissions
-                    .as_mut()
-                    .ok_or_else(|| {
-                        io::Error::other("restart-start append lacks its fixed admission directory")
-                    })?
-                    .persist_with_hook(
-                        &self.directory,
-                        admission_record,
-                        expected_uid,
-                        expected_gid,
-                        expected_dev,
-                        &mut admission_hook,
-                    )
-                    .map_err(|error| io::Error::other(error.to_string()))?;
-            }
-            hook(PublishCutpointV3::CapsuleRetained)?;
-            self.directory_binding =
-                binding(&self.directory).map_err(|error| io::Error::other(error.to_string()))?;
-            self.revalidate()
+        let result = journal.append_with_sealed(
+            LifecycleStoreAppendSealV3 {
+                _private: (),
+                _not_send_or_sync: PhantomData,
+            },
+            event,
+            |record, bytes| {
+                if usize::try_from(record.sequence).ok() != Some(expected_sequence)
+                    || record.operation_nonce != operation_nonce
+                    || record.previous_record_sha256.as_deref() != expected_previous.as_deref()
+                {
+                    return Err(io::Error::other(
+                        "journal identity, predecessor, or sequence differs from durable store",
+                    ));
+                }
+                if prior_total_bytes
+                    .checked_add(bytes.len())
+                    .is_none_or(|total| total > MAX_TOTAL_RECORD_BYTES)
+                {
+                    return Err(io::Error::other(
+                        "lifecycle bytes exceed the fixed total bound",
+                    ));
+                }
+                let capsule = publish_record(
+                    &self.directory,
+                    record.sequence,
+                    bytes,
+                    expected_uid,
+                    expected_gid,
+                    expected_dev,
+                    &mut hook,
+                )
                 .map_err(|error| io::Error::other(error.to_string()))?;
-            Ok(())
-        });
+                self.records.push(capsule);
+                if let Some(draft) = admission.take() {
+                    let admission_record = draft
+                        .seal(record, bytes)
+                        .map_err(|error| io::Error::other(error.to_string()))?;
+                    self.restart_admissions
+                        .as_mut()
+                        .ok_or_else(|| {
+                            io::Error::other(
+                                "restart-start append lacks its fixed admission directory",
+                            )
+                        })?
+                        .persist_with_hook(
+                            &self.directory,
+                            admission_record,
+                            expected_uid,
+                            expected_gid,
+                            expected_dev,
+                            &mut admission_hook,
+                        )
+                        .map_err(|error| io::Error::other(error.to_string()))?;
+                }
+                hook(PublishCutpointV3::CapsuleRetained)?;
+                self.directory_binding = binding(&self.directory)
+                    .map_err(|error| io::Error::other(error.to_string()))?;
+                self.revalidate()
+                    .map_err(|error| io::Error::other(error.to_string()))?;
+                Ok(())
+            },
+        );
         match result {
             Ok(digest) => {
                 self.poisoned = false;
@@ -4831,6 +4956,14 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
                     dev: retained.binding.dev,
                     generation: retained.binding.generation,
                     inode: retained.binding.ino,
+                    receipt_root_initial: if prepared_manifest.receipt_root_initial.is_some() {
+                        lifecycle_manifest_initial_receipt_root_binding(
+                            &retained.bytes,
+                            &PreparedCollectorLifecycleSealV3 { _private: () },
+                        )?
+                    } else {
+                        None
+                    },
                     sha256: retained.digest.clone(),
                 } =>
             {
@@ -4860,12 +4993,25 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
         let inspection = inspect_lifecycle_v2(&lifecycle)?;
         match (self.format, self.prepared_manifest.as_ref()) {
             (OperationFormatV3::RequiredPreparedManifestV3, Some(retained)) => {
+                let receipt_root_initial = if inspection
+                    .prepared_manifest
+                    .as_ref()
+                    .is_some_and(|binding| binding.receipt_root_initial.is_some())
+                {
+                    lifecycle_manifest_initial_receipt_root_binding(
+                        &retained.bytes,
+                        &PreparedCollectorLifecycleSealV3 { _private: () },
+                    )?
+                } else {
+                    None
+                };
                 let expected = PreparedCollectorManifestBindingV3 {
                     birthtime_nanoseconds: retained.binding.birthtime_nsec,
                     birthtime_seconds: retained.binding.birthtime_sec,
                     dev: retained.binding.dev,
                     generation: retained.binding.generation,
                     inode: retained.binding.ino,
+                    receipt_root_initial,
                     sha256: retained.digest.clone(),
                 };
                 if inspection.prepared_manifest.as_ref() != Some(&expected) {
@@ -5559,7 +5705,6 @@ fn validate_restart_admission_bijection(
     prepared: &PreparedManifestCapsuleV3,
     operation_nonce: &str,
 ) -> Result<(), DurableLifecycleStoreErrorV3> {
-    let profile_sha256 = prepared_profile_sha256(&prepared.bytes)?;
     let mut expected = Vec::new();
     for record in lifecycle {
         let decoded: DisposableLifecycleRecordV2 = serde_json::from_slice(&record.bytes)
@@ -5586,6 +5731,10 @@ fn validate_restart_admission_bijection(
             "V2 restart-start records and V3 admissions are not a complete bijection",
         ));
     }
+    if expected.is_empty() {
+        return Ok(());
+    }
+    let profile_sha256 = prepared_profile_sha256(&prepared.bytes)?;
     let mut process_epochs = std::collections::BTreeSet::new();
     let mut restart_epochs = std::collections::BTreeSet::new();
     for (admission, expected) in admissions.records.iter().zip(expected) {
@@ -5623,7 +5772,6 @@ pub(crate) fn validate_restart_admission_bijection_for_s1(
     operation_nonce: &str,
     _seal: S1RestartAdmissionReadSealV3,
 ) -> Result<(), DurableLifecycleStoreErrorV3> {
-    let profile_sha256 = prepared_profile_sha256(prepared_manifest_bytes)?;
     let mut expected = Vec::new();
     for bytes in lifecycle {
         let decoded: DisposableLifecycleRecordV2 = serde_json::from_slice(bytes)
@@ -5650,6 +5798,10 @@ pub(crate) fn validate_restart_admission_bijection_for_s1(
             "S1 V2 restart-start records and V3 admissions are not a complete bijection",
         ));
     }
+    if expected.is_empty() {
+        return Ok(());
+    }
+    let profile_sha256 = prepared_profile_sha256(prepared_manifest_bytes)?;
     let mut process_epochs = std::collections::BTreeSet::new();
     let mut restart_epochs = std::collections::BTreeSet::new();
     for (bytes, expected) in admission_bytes.iter().zip(expected) {

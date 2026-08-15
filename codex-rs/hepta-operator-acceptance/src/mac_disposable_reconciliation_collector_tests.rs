@@ -3,6 +3,8 @@ use super::*;
 use crate::mac_disposable_lifecycle::DisposableLifecycleEventV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleJournalV2;
 use crate::mac_disposable_lifecycle_store::CensusBoundDurableLifecycleStoreV3;
+use crate::mac_disposable_lifecycle_store::DurableLifecycleStoreV3;
+use crate::mac_disposable_lifecycle_store::ReconciliationDurableLifecycleStoreV3;
 use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
 use crate::mac_disposable_lifecycle_store::RestartAdmissionPublishCutpointV3;
 use crate::mac_inert_one_shot_runner::FreshProcessEpochV3;
@@ -19,12 +21,57 @@ use crate::mac_iomedia_identity::capture_restart_disk_image_url_identity_for_tes
 use crate::mac_iomedia_identity::restart_disk_image_backing_matches_prepared_v3;
 use crate::mac_privileged_disposable_control::LivePrivilegedDisposablePolicyV2;
 use std::ffi::CString;
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::fs::symlink;
 use std::process::Command;
 
 static LIVE_COLLECTOR_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn synthetic_receipt_file_binding(receipt_sha256: &str) -> CollectorReceiptFileBindingV3 {
+    let root_after = FilesystemObjectBindingV3 {
+        birthtime_nanoseconds: 1,
+        birthtime_seconds: 1,
+        ctime_nanoseconds: 1,
+        ctime_seconds: 1,
+        dev: 1,
+        flags: 0,
+        generation: 1,
+        gid: 1,
+        inode: 1,
+        mode: u32::from(libc::S_IFDIR | 0o700),
+        mtime_nanoseconds: 1,
+        mtime_seconds: 1,
+        nlink: 3,
+        size: 1,
+        uid: 1,
+    };
+    CollectorReceiptFileBindingV3::from_retained_collector(
+        CollectorReceiptFileBindingSealV3 { _private: () },
+        receipt_sha256.to_string(),
+        format!("collector-{receipt_sha256}.json"),
+        FilesystemObjectBindingV3 {
+            birthtime_nanoseconds: 1,
+            birthtime_seconds: 1,
+            ctime_nanoseconds: 1,
+            ctime_seconds: 1,
+            dev: 1,
+            flags: 0,
+            generation: 1,
+            gid: 1,
+            inode: 2,
+            mode: u32::from(libc::S_IFREG | 0o600),
+            mtime_nanoseconds: 1,
+            mtime_seconds: 1,
+            nlink: 1,
+            size: 1,
+            uid: 1,
+        },
+        root_after,
+        1,
+    )
+}
 
 struct LiveCollectorTestGuard {
     _thread: std::sync::MutexGuard<'static, ()>,
@@ -614,6 +661,100 @@ fn publish_exact_prepared_operation(
         .expect("persist exact prepared lifecycle and sidecar");
 }
 
+struct ReceiptGenerationStoreHarness {
+    _operations: File,
+    journal: DisposableLifecycleJournalV2,
+    store: ReconciliationDurableLifecycleStoreV3,
+}
+
+fn open_receipt_generation_store(
+    fixture: &mut LiveCollectorFixture,
+    control_root: &Path,
+    operation_nonce: &str,
+) -> ReceiptGenerationStoreHarness {
+    assert_eq!(operation_nonce, fixture.bindings.operation_nonce);
+    let process_epoch = FreshProcessEpochV3::establish()
+        .expect("establish exact process epoch for receipt-generation gate");
+    let restart_epoch = process_epoch
+        .bind_restart_admission()
+        .expect("bind exact restart admission for receipt-generation gate");
+    fixture.bindings.boot_session_uuid = restart_epoch.boot_session_uuid().to_string();
+    fixture.bindings.restart_epoch_nonce = restart_epoch.restart_epoch_nonce().to_string();
+    fixture.bindings.restart_started_monotonic_nanoseconds =
+        restart_epoch.restart_started_monotonic_nanoseconds();
+    publish_exact_prepared_operation(fixture, control_root, operation_nonce);
+    assert_eq!(
+        capture_live_backing_identity_v2(&fixture.backing_path)
+            .expect("revalidate backing after exact prepared publication"),
+        fixture.prepared_backing,
+        "independent control publication must not change prepared path lineage"
+    );
+    let operations = File::open(control_root.join("operations"))
+        .expect("open exact operations directory for receipt-generation gate");
+    let mut store = DurableLifecycleStoreV3::open_existing(
+        &operations,
+        operation_nonce,
+        unsafe { libc::geteuid() },
+        unsafe { libc::getegid() },
+    )
+    .expect("open exact prepared store for receipt-generation gate");
+    let mut journal = store
+        .resume_for_reconciliation()
+        .expect("resume exact receipt-generation lifecycle");
+    store
+        .append_restart_for_receipt_gate(&mut journal, restart_epoch)
+        .expect("persist exact restart epoch for receipt-generation gate");
+    ReceiptGenerationStoreHarness {
+        _operations: operations,
+        journal,
+        store,
+    }
+}
+
+fn persist_snapshot_for_receipt_generation(
+    fixture: &LiveCollectorFixture,
+    harness: &mut ReceiptGenerationStoreHarness,
+) -> (ReconciliationSnapshotV2, RestartCollectorReceiptV3) {
+    let pending = collect_reconciliation_snapshot_v3(fixture.request())
+        .expect("collect exact G1 snapshot for receipt-generation gate");
+    let receipt = pending.receipt().clone();
+    let retained = pending
+        .persist_and_retain()
+        .expect("persist exact G1 receipt and retain its final-stat capsule");
+    let snapshot = match retained.observation_for_test() {
+        FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot) => snapshot.clone(),
+        FinalizedRestartObservationV3::FreshAbsence(_) => panic!("wrong G1 observation"),
+    };
+    assert!(snapshot.collector_receipt_file.is_some());
+    harness
+        .store
+        .append_reconciliation_for_receipt_gate(
+            &mut harness.journal,
+            DisposableLifecycleEventV2::ReconciliationSnapshotObserved {
+                snapshot: snapshot.clone(),
+            },
+        )
+        .expect("append capsule-derived exact G1 lifecycle binding");
+    drop(retained);
+    (snapshot, receipt)
+}
+
+fn persist_g1_and_drop_all_capsules(
+    fixture: &mut LiveCollectorFixture,
+    control_root: &Path,
+    operation_nonce: &str,
+) -> (PathBuf, Vec<u8>, RestartCollectorReceiptV3) {
+    let mut harness = open_receipt_generation_store(fixture, control_root, operation_nonce);
+    let (_snapshot, receipt) = persist_snapshot_for_receipt_generation(fixture, &mut harness);
+    let receipt_sha256 = sha256(&canonical_json(&receipt).unwrap());
+    let path = fixture
+        .persistence_root
+        .join(format!("collector-{receipt_sha256}.json"));
+    let bytes = std::fs::read(&path).expect("read exact G1 receipt");
+    drop(harness);
+    (path, bytes, receipt)
+}
+
 fn restart_admission_roster(control_root: &Path, operation_nonce: &str) -> Vec<String> {
     let root = control_root
         .join("operations")
@@ -696,6 +837,7 @@ fn valid_snapshot() -> ReconciliationSnapshotV2 {
         backing_identity_sha256: "a".repeat(64),
         boot_session_uuid: "12345678-1234-4234-8234-123456789abc".to_string(),
         collector_policy_sha256: "b".repeat(64),
+        collector_receipt_file: None,
         collector_receipt_sha256: "c".repeat(64),
         current_expected_absence_inventory_sha256: Some("d".repeat(64)),
         iomedia_evidence_sha256: "d".repeat(64),
@@ -1496,55 +1638,202 @@ fn active_collector_reservation_blocks_duplicate_pending_even_after_drop() {
 fn first_lineage_receipt_unlink_or_same_byte_replacement_is_permanently_rejected() {
     let _lock = live_collector_test_lock();
     for replace in [false, true] {
-        let fixture = LiveCollectorFixture::new();
-        let operation_nonce = "7".repeat(64);
-        let control_root = fixture._fixture.path().join(if replace {
+        let _control_fixture = tempfile::Builder::new()
+            .prefix(".restart-collector-redteam-control-")
+            .tempdir_in(env!("CARGO_MANIFEST_DIR"))
+            .expect("create independent control-root owner");
+        let mut fixture = LiveCollectorFixture::new();
+        let operation_nonce = fixture.bindings.operation_nonce.clone();
+        let control_root = _control_fixture.path().join(if replace {
             "control-replace"
         } else {
             "control-unlink"
         });
-        publish_exact_prepared_operation(&fixture, &control_root, &operation_nonce);
-        let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
-            .expect("reopen exact S1 control");
-        let census = control
-            .assess_read_only()
-            .expect("restart S1 assessment")
-            .into_blocking_control_census(&operation_nonce)
-            .expect("restart blocking census");
-        let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
-        let mut active = ReconciliationOperationStoreV3::open_existing(census, &epoch)
-            .expect("open NeedsRestartEpoch")
-            .begin_restart(&epoch)
-            .expect("begin admitted restart");
-        let pending = active
-            .collect_reconciliation_snapshot()
-            .expect("collect first lineage snapshot");
-        let receipt_sha256 = sha256(&canonical_json(pending.receipt()).unwrap());
-        let receipt_path = fixture
-            .persistence_root
-            .join(format!("collector-{receipt_sha256}.json"));
-        pending
-            .persist_and_append(&mut active)
-            .expect("persist and install first lineage owner");
-        let bytes = std::fs::read(&receipt_path).expect("read first receipt");
+        let (receipt_path, bytes, _receipt) =
+            persist_g1_and_drop_all_capsules(&mut fixture, &control_root, &operation_nonce);
         std::fs::remove_file(&receipt_path).expect("unlink first receipt");
         if replace {
             let mut replacement = std::fs::OpenOptions::new()
                 .create_new(true)
                 .write(true)
-                .mode(0o400)
+                .mode(0o600)
                 .open(&receipt_path)
                 .expect("create same-byte replacement receipt");
             replacement
                 .write_all(&bytes)
                 .expect("write replacement receipt");
             replacement.sync_all().expect("sync replacement receipt");
-            std::fs::set_permissions(&receipt_path, std::fs::Permissions::from_mode(0o400))
+            std::fs::set_permissions(&receipt_path, std::fs::Permissions::from_mode(0o600))
                 .expect("seal replacement receipt");
         }
+        File::open(&fixture.persistence_root)
+            .unwrap()
+            .sync_all()
+            .expect("sync mutated first-lineage root");
+        let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+            .expect("reopen exact S1 after first-lineage mutation");
         assert!(
-            active.collect_fresh_absence().is_err(),
+            control.assess_read_only().is_err(),
             "first retained receipt mutation was accepted (replace={replace})"
+        );
+    }
+}
+
+#[test]
+fn receipt_root_g0_g1_survives_drop_reopen_and_rejects_legal_same_byte_swap() {
+    let _lock = live_collector_test_lock();
+    let _control_fixture = tempfile::Builder::new()
+        .prefix(".restart-collector-redteam-control-")
+        .tempdir_in(env!("CARGO_MANIFEST_DIR"))
+        .expect("create independent control-root owner");
+    let mut fixture = LiveCollectorFixture::new();
+    let operation_nonce = fixture.bindings.operation_nonce.clone();
+    let control_root = _control_fixture.path().join("control-generation-reopen");
+    let root_initial = lstat_binding(&fixture.persistence_root, "prepared receipt root")
+        .expect("capture exact G0 root");
+    let mut harness = open_receipt_generation_store(&mut fixture, &control_root, &operation_nonce);
+    let (snapshot, first_receipt) = persist_snapshot_for_receipt_generation(&fixture, &mut harness);
+    assert_eq!(first_receipt.match_result, ReconciliationMatchV2::Zero);
+    let first_binding = snapshot
+        .collector_receipt_file
+        .as_ref()
+        .expect("real G1 snapshot retains its final-stat receipt capsule");
+    assert_eq!(first_binding.root_generation_ordinal(), 1);
+    assert!(same_directory_object(
+        root_initial,
+        first_binding.root_after()
+    ));
+    assert_eq!(
+        root_initial.nlink.checked_add(1),
+        Some(first_binding.root_after().nlink)
+    );
+    assert_eq!(
+        first_binding.root_after(),
+        lstat_binding(&fixture.persistence_root, "G1 receipt root")
+            .expect("capture exact G1 root endpoint")
+    );
+    let first_sha256 = sha256(&canonical_json(&first_receipt).unwrap());
+    let first_path = fixture
+        .persistence_root
+        .join(format!("collector-{first_sha256}.json"));
+    let first_bytes = std::fs::read(&first_path).expect("read retained G1 receipt");
+    let first_inode = std::fs::metadata(&first_path).unwrap().ino();
+    assert_eq!(
+        std::fs::read_dir(&fixture.persistence_root)
+            .unwrap()
+            .count(),
+        1,
+        "real G1 publication must create exactly one retained receipt"
+    );
+
+    drop(harness);
+    let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+        .expect("reopen S1 after dropping all G1 live capabilities");
+    let census = control
+        .assess_read_only()
+        .expect("replay exact G0->G1 root after full drop")
+        .into_blocking_control_census(&operation_nonce)
+        .expect("retain exact one-generation blocker");
+    census
+        .revalidate()
+        .expect("revalidate exact one-generation S1");
+    drop(census);
+    drop(control);
+
+    std::fs::remove_file(&first_path).expect("unlink retained G1 pathname");
+    let mut replacement = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .mode(0o600)
+        .open(&first_path)
+        .expect("create legal-mode same-byte G1 replacement");
+    replacement
+        .write_all(&first_bytes)
+        .expect("write same G1 bytes");
+    replacement.sync_all().expect("sync replacement G1 inode");
+    drop(replacement);
+    std::fs::set_permissions(&first_path, std::fs::Permissions::from_mode(0o600))
+        .expect("retain legal production receipt mode");
+    File::open(&fixture.persistence_root)
+        .unwrap()
+        .sync_all()
+        .expect("sync receipt root after replacement");
+    assert_ne!(first_inode, std::fs::metadata(&first_path).unwrap().ino());
+
+    let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+        .expect("open S1 control after path swap");
+    let error = control
+        .assess_read_only()
+        .err()
+        .expect("same-byte replacement must fail exact S1 replay");
+    assert!(
+        error.to_string().contains("collector receipt")
+            || error.to_string().contains("receipt-root"),
+        "drop-all-FD S1 replay accepted a legal-mode same-byte new receipt inode"
+    );
+}
+
+#[test]
+fn drop_all_fd_reopen_rejects_missing_orphan_temp_extra_and_net_zero_root_drift() {
+    let _lock = live_collector_test_lock();
+    for mutation in ["missing", "orphan", "temp", "extra", "endpoint-drift"] {
+        let _control_fixture = tempfile::Builder::new()
+            .prefix(".restart-collector-redteam-control-")
+            .tempdir_in(env!("CARGO_MANIFEST_DIR"))
+            .expect("create independent control-root owner");
+        let mut fixture = LiveCollectorFixture::new();
+        let operation_nonce = fixture.bindings.operation_nonce.clone();
+        let control_root = _control_fixture
+            .path()
+            .join(format!("control-reopen-{mutation}"));
+        let (receipt_path, _receipt_bytes, receipt) =
+            persist_g1_and_drop_all_capsules(&mut fixture, &control_root, &operation_nonce);
+        match mutation {
+            "missing" => {
+                std::fs::remove_file(&receipt_path).expect("remove referenced receipt");
+            }
+            "orphan" => {
+                let mut orphan = receipt;
+                orphan.monotonic_before_nanoseconds += 10;
+                orphan.monotonic_after_nanoseconds += 10;
+                validate_receipt(&orphan).expect("modeled orphan receipt remains valid");
+                let bytes = canonical_json(&orphan).unwrap();
+                let digest = sha256(&bytes);
+                let path = fixture
+                    .persistence_root
+                    .join(format!("collector-{digest}.json"));
+                write_private(&path, &bytes);
+            }
+            "temp" => {
+                write_private(
+                    &fixture.persistence_root.join(".incoming-collector-test"),
+                    b"temporary",
+                );
+            }
+            "extra" => {
+                write_private(&fixture.persistence_root.join("unexpected"), b"extra");
+            }
+            "endpoint-drift" => {
+                let drift = fixture.persistence_root.join(".root-generation-drift");
+                write_private(&drift, b"drift");
+                std::fs::remove_file(&drift).expect("remove net-zero roster mutation");
+            }
+            _ => unreachable!(),
+        }
+        File::open(&fixture.persistence_root)
+            .unwrap()
+            .sync_all()
+            .expect("sync mutated receipt root");
+        let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+            .expect("open S1 control for drop-all-FD replay");
+        let error = control
+            .assess_read_only()
+            .err()
+            .unwrap_or_else(|| panic!("{mutation} survived exact drop-all-FD S1 reopen"));
+        assert!(
+            error.to_string().contains("collector receipt")
+                || error.to_string().contains("receipt-root"),
+            "{mutation} failed for an unrelated reason: {error}"
         );
     }
 }
@@ -1787,6 +2076,36 @@ fn prepared_collector_manifest_keeps_historical_boot_separate_from_restart_boot(
 }
 
 #[test]
+fn legacy_prepared_manifest_without_initial_root_round_trips_but_cannot_reopen_live() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let operation_nonce = "7".repeat(64);
+    let retained = fixture.prepared_capability(&operation_nonce);
+    let mut legacy = retained.manifest.clone();
+    legacy.receipt_root_initial_binding = None;
+    let (bytes, digest) =
+        canonical_prepared_manifest(&legacy).expect("legacy manifest remains canonical");
+    assert!(
+        !String::from_utf8(bytes.clone())
+            .unwrap()
+            .contains("receipt_root_initial_binding")
+    );
+    let replayed: PreparedCollectorManifestV3 = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(canonical_json(&replayed).unwrap(), bytes);
+    drop(retained);
+    assert!(
+        RetainedPreparedCollectorCapabilityV3::reopen_from_exact_manifest(
+            &operation_nonce,
+            &bytes,
+            &digest,
+            &legacy.profile_sha256,
+        )
+        .is_err(),
+        "legacy manifest without G0 must remain blocking/read-only"
+    );
+}
+
+#[test]
 fn reconciliation_replay_accepts_historical_prepared_baseline_and_seals_current_boot_zero() {
     let mut fixture = LiveCollectorFixture::new();
     let current_boot = fixture.bindings.boot_session_uuid.clone();
@@ -1816,7 +2135,12 @@ fn reconciliation_replay_accepts_historical_prepared_baseline_and_seals_current_
     validate_receipt(receipt).expect("cross-boot receipt exact replay");
 
     let receipt_sha256 = sha256(&canonical_json(receipt).unwrap());
-    let snapshot = reconciliation_snapshot_from_receipt(receipt, &receipt_sha256).unwrap();
+    let snapshot = reconciliation_snapshot_from_receipt(
+        receipt,
+        &receipt_sha256,
+        synthetic_receipt_file_binding(&receipt_sha256),
+    )
+    .unwrap();
     assert_eq!(
         snapshot.current_expected_absence_inventory_sha256,
         Some(snapshot.iomedia_evidence_sha256)
@@ -2175,8 +2499,12 @@ fn rootless_closed_world_receipts_prior_projection_and_metadata_are_fail_closed(
     validate_receipt(&cross_baseline_receipt).unwrap();
     let cross_baseline_bytes = canonical_json(&cross_baseline_receipt).unwrap();
     let cross_baseline_sha = sha256(&cross_baseline_bytes);
-    let cross_baseline_snapshot =
-        reconciliation_snapshot_from_receipt(&cross_baseline_receipt, &cross_baseline_sha).unwrap();
+    let cross_baseline_snapshot = reconciliation_snapshot_from_receipt(
+        &cross_baseline_receipt,
+        &cross_baseline_sha,
+        synthetic_receipt_file_binding(&cross_baseline_sha),
+    )
+    .unwrap();
     let cross_baseline_path = fixture
         .persistence_root
         .join(format!("collector-{cross_baseline_sha}.json"));

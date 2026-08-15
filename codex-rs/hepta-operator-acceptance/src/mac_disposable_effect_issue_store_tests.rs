@@ -79,6 +79,7 @@ fn reconciliation_snapshot(boot: &str) -> ReconciliationSnapshotV2 {
         backing_identity_sha256: digest('b'),
         boot_session_uuid: boot.to_string(),
         collector_policy_sha256: digest('c'),
+        collector_receipt_file: None,
         collector_receipt_sha256: digest('e'),
         current_expected_absence_inventory_sha256: Some(digest('9')),
         iomedia_evidence_sha256: digest('f'),
@@ -195,6 +196,7 @@ impl LifecycleFixture {
                 mount_absence_sha256: digest('6'),
                 collector: Some(PostEffectCollectorBindingV3::for_test(
                     self.boot.clone(),
+                    None,
                     digest('7'),
                     first_snapshot_sha256,
                     digest('6'),

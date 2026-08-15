@@ -1,4 +1,5 @@
 use super::*;
+use crate::mac_iomedia_identity::FilesystemObjectBindingV3;
 use pretty_assertions::assert_eq;
 
 fn digest(byte: char) -> String {
@@ -28,9 +29,74 @@ fn prepared_v3() -> DisposableLifecycleEventV2 {
             dev: 1,
             generation: 1,
             inode: 1,
+            receipt_root_initial: None,
             sha256: digest('d'),
         },
     }
+}
+
+fn receipt_root_binding(inode: u64, nlink: u64) -> FilesystemObjectBindingV3 {
+    FilesystemObjectBindingV3 {
+        birthtime_nanoseconds: 1,
+        birthtime_seconds: 1,
+        ctime_nanoseconds: i64::try_from(nlink).unwrap(),
+        ctime_seconds: 1,
+        dev: 1,
+        flags: 0,
+        generation: 1,
+        gid: 1,
+        inode,
+        mode: libc::S_IFDIR as u32 | 0o700,
+        mtime_nanoseconds: i64::try_from(nlink).unwrap(),
+        mtime_seconds: 1,
+        nlink,
+        size: nlink,
+        uid: 1,
+    }
+}
+
+fn receipt_file_binding(
+    receipt_byte: char,
+    inode: u64,
+    root_after: FilesystemObjectBindingV3,
+    ordinal: u32,
+) -> CollectorReceiptFileBindingV3 {
+    let canonical_sha256 = digest(receipt_byte);
+    CollectorReceiptFileBindingV3::for_test(
+        canonical_sha256.clone(),
+        format!("collector-{canonical_sha256}.json"),
+        FilesystemObjectBindingV3 {
+            birthtime_nanoseconds: 1,
+            birthtime_seconds: 1,
+            ctime_nanoseconds: i64::from(ordinal),
+            ctime_seconds: 1,
+            dev: root_after.dev,
+            flags: 0,
+            generation: 1,
+            gid: root_after.gid,
+            inode,
+            mode: libc::S_IFREG as u32 | 0o600,
+            mtime_nanoseconds: i64::from(ordinal),
+            mtime_seconds: 1,
+            nlink: 1,
+            size: 1,
+            uid: root_after.uid,
+        },
+        root_after,
+        ordinal,
+    )
+}
+
+fn prepared_v3_with_receipt_root(initial: FilesystemObjectBindingV3) -> DisposableLifecycleEventV2 {
+    let mut event = prepared_v3();
+    let DisposableLifecycleEventV2::OperationPreparedWithManifestV3 {
+        prepared_manifest, ..
+    } = &mut event
+    else {
+        unreachable!();
+    };
+    prepared_manifest.receipt_root_initial = Some(initial);
+    event
 }
 
 fn post_effect_binding(
@@ -43,6 +109,7 @@ fn post_effect_binding(
 ) -> PostEffectCollectorBindingV3 {
     PostEffectCollectorBindingV3 {
         boot_session_uuid: boot_session_uuid.to_string(),
+        collector_receipt_file: None,
         collector_receipt_sha256: digest(receipt_byte),
         first_reconciliation_snapshot_sha256: first_snapshot_sha256.to_string(),
         observation_sha256: observation_sha256.to_string(),
@@ -62,6 +129,7 @@ fn absence(
         backing_identity_sha256: digest('b'),
         boot_session_uuid: boot_session_uuid.to_string(),
         collector_policy_sha256: digest('e'),
+        collector_receipt_file: None,
         collector_receipt_sha256: digest('f'),
         current_expected_absence_inventory_sha256: None,
         iomedia_evidence_sha256: digest('1'),
@@ -88,10 +156,199 @@ fn forward_absence_canonical_json_omits_the_restart_only_expected_inventory_bind
             .unwrap()
             .contains("current_expected_absence_inventory_sha256")
     );
+    assert!(
+        !String::from_utf8(bytes.clone())
+            .unwrap()
+            .contains("collector_receipt_file")
+    );
     assert_eq!(
         serde_json::from_slice::<FreshAbsenceObservationV2>(&bytes).unwrap(),
         observation
     );
+}
+
+#[test]
+fn legacy_prepared_and_snapshot_none_round_trip_exact_canonical_bytes() {
+    let operation_nonce = digest('3');
+    let prepared = prepared_v3();
+    let prepared_bytes = canonical_json(&prepared).expect("canonical legacy prepared V3 event");
+    assert!(
+        !String::from_utf8(prepared_bytes.clone())
+            .unwrap()
+            .contains("receipt_root_initial")
+    );
+    let prepared_replayed =
+        serde_json::from_slice::<DisposableLifecycleEventV2>(&prepared_bytes).unwrap();
+    assert_eq!(canonical_json(&prepared_replayed).unwrap(), prepared_bytes);
+
+    let snapshot = snapshot(
+        &operation_nonce,
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        &digest('4'),
+        101,
+        '5',
+        ReconciliationMatchV2::Zero,
+    );
+    let snapshot_bytes = canonical_json(&snapshot).expect("canonical legacy snapshot");
+    assert!(
+        !String::from_utf8(snapshot_bytes.clone())
+            .unwrap()
+            .contains("collector_receipt_file")
+    );
+    let snapshot_replayed =
+        serde_json::from_slice::<ReconciliationSnapshotV2>(&snapshot_bytes).unwrap();
+    assert_eq!(canonical_json(&snapshot_replayed).unwrap(), snapshot_bytes);
+}
+
+#[test]
+fn exact_receipt_file_and_root_binding_changes_snapshot_hash() {
+    let operation_nonce = digest('3');
+    let mut bound = snapshot(
+        &operation_nonce,
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        &digest('4'),
+        101,
+        '5',
+        ReconciliationMatchV2::Zero,
+    );
+    let legacy_hash = reconciliation_snapshot_sha256(&bound).unwrap();
+    bound.collector_receipt_file =
+        Some(receipt_file_binding('5', 2, receipt_root_binding(1, 3), 1));
+    let bound_hash = reconciliation_snapshot_sha256(&bound).unwrap();
+    assert_ne!(legacy_hash, bound_hash);
+
+    let mut different_root = bound;
+    different_root
+        .collector_receipt_file
+        .as_mut()
+        .unwrap()
+        .root_after
+        .ctime_nanoseconds += 1;
+    assert_ne!(
+        bound_hash,
+        reconciliation_snapshot_sha256(&different_root).unwrap()
+    );
+}
+
+#[test]
+fn receipt_root_generations_g0_g1_g2_replay_in_record_order() {
+    let operation_nonce = digest('3');
+    let boot = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let epoch = digest('4');
+    let initial = receipt_root_binding(1, 2);
+    let first = receipt_file_binding('5', 2, receipt_root_binding(1, 3), 1);
+    let second = receipt_file_binding('f', 3, receipt_root_binding(1, 4), 2);
+
+    let mut initial_journal = DisposableLifecycleJournalV2::new(&operation_nonce).unwrap();
+    let mut records = Vec::new();
+    append(
+        &mut initial_journal,
+        &mut records,
+        prepared_v3_with_receipt_root(initial),
+    )
+    .unwrap();
+    let mut resumed = DisposableLifecycleJournalV2::resume_for_reconciliation(&records).unwrap();
+    append(&mut resumed, &mut records, restart(boot, 100, &epoch)).unwrap();
+    let mut first_snapshot = snapshot(
+        &operation_nonce,
+        boot,
+        &epoch,
+        101,
+        '5',
+        ReconciliationMatchV2::Zero,
+    );
+    first_snapshot.collector_receipt_file = Some(first.clone());
+    let first_snapshot_sha256 = reconciliation_snapshot_sha256(&first_snapshot).unwrap();
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::ReconciliationSnapshotObserved {
+            snapshot: first_snapshot,
+        },
+    )
+    .unwrap();
+    let mut final_absence = absence(&operation_nonce, boot, 104);
+    final_absence.collector_receipt_file = Some(second.clone());
+    final_absence.current_expected_absence_inventory_sha256 = Some(digest('6'));
+    final_absence.iomedia_evidence_sha256 = digest('6');
+    final_absence.reconciliation_snapshot_sha256 = Some(first_snapshot_sha256);
+    final_absence.restart_epoch_nonce = Some(epoch);
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::FreshAbsenceObserved {
+            observation: final_absence,
+        },
+    )
+    .unwrap();
+
+    let roster = collector_receipt_file_roster_v3(&records).unwrap();
+    assert_eq!(roster, [first, second]);
+    DisposableLifecycleJournalV2::resume_for_reconciliation(&records)
+        .expect("G2 replay must retain the exact first G1 reference");
+}
+
+#[test]
+fn receipt_root_generation_rejects_duplicate_gap_and_branch() {
+    for mutation in ["duplicate", "gap", "branch"] {
+        let operation_nonce = digest('3');
+        let boot = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        let epoch = digest('4');
+        let mut initial_journal = DisposableLifecycleJournalV2::new(&operation_nonce).unwrap();
+        let mut records = Vec::new();
+        append(
+            &mut initial_journal,
+            &mut records,
+            prepared_v3_with_receipt_root(receipt_root_binding(1, 2)),
+        )
+        .unwrap();
+        let mut resumed =
+            DisposableLifecycleJournalV2::resume_for_reconciliation(&records).unwrap();
+        append(&mut resumed, &mut records, restart(boot, 100, &epoch)).unwrap();
+        let mut first_snapshot = snapshot(
+            &operation_nonce,
+            boot,
+            &epoch,
+            101,
+            '5',
+            ReconciliationMatchV2::Zero,
+        );
+        first_snapshot.collector_receipt_file =
+            Some(receipt_file_binding('5', 2, receipt_root_binding(1, 3), 1));
+        let first_snapshot_sha256 = reconciliation_snapshot_sha256(&first_snapshot).unwrap();
+        append(
+            &mut resumed,
+            &mut records,
+            DisposableLifecycleEventV2::ReconciliationSnapshotObserved {
+                snapshot: first_snapshot,
+            },
+        )
+        .unwrap();
+
+        let (ordinal, root) = match mutation {
+            "duplicate" => (1, receipt_root_binding(1, 4)),
+            "gap" => (3, receipt_root_binding(1, 4)),
+            "branch" => (2, receipt_root_binding(9, 4)),
+            _ => unreachable!(),
+        };
+        let mut final_absence = absence(&operation_nonce, boot, 104);
+        final_absence.collector_receipt_file = Some(receipt_file_binding('f', 3, root, ordinal));
+        final_absence.current_expected_absence_inventory_sha256 = Some(digest('6'));
+        final_absence.iomedia_evidence_sha256 = digest('6');
+        final_absence.reconciliation_snapshot_sha256 = Some(first_snapshot_sha256);
+        final_absence.restart_epoch_nonce = Some(epoch);
+        assert!(
+            append(
+                &mut resumed,
+                &mut records,
+                DisposableLifecycleEventV2::FreshAbsenceObserved {
+                    observation: final_absence,
+                },
+            )
+            .is_err(),
+            "{mutation} receipt-root generation was accepted"
+        );
+    }
 }
 
 #[test]
@@ -144,13 +401,45 @@ fn legacy_post_effect_event_omits_collector_without_changing_canonical_bytes() {
 }
 
 #[test]
+fn legacy_post_effect_collector_omits_nested_receipt_file_and_round_trips() {
+    let binding = post_effect_binding(
+        &digest('3'),
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        &digest('4'),
+        &digest('5'),
+        '6',
+        &digest('7'),
+    );
+    for event in [
+        DisposableLifecycleEventV2::UnmountObserved {
+            effect_id: 4,
+            mount_absence_sha256: digest('7'),
+            collector: Some(binding.clone()),
+        },
+        DisposableLifecycleEventV2::EjectObserved {
+            effect_id: 5,
+            iomedia_absence_sha256: digest('7'),
+            collector: Some(binding.clone()),
+        },
+    ] {
+        let bytes = canonical_json(&event).expect("canonical legacy bound post-effect event");
+        let text = String::from_utf8(bytes.clone()).unwrap();
+        assert!(text.contains("collector"));
+        assert!(!text.contains("collector_receipt_file"));
+        let replayed = serde_json::from_slice::<DisposableLifecycleEventV2>(&bytes).unwrap();
+        assert_eq!(canonical_json(&replayed).unwrap(), bytes);
+    }
+}
+
+#[test]
 fn v3_restart_post_effect_binding_is_exact_and_cannot_be_omitted_or_transplanted() {
     let operation_nonce = digest('3');
     let foreign_operation = digest('9');
     let boot = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     let epoch = digest('4');
     let mount_absence = digest('7');
-    let snapshot = snapshot(
+    let initial_root = receipt_root_binding(1, 2);
+    let mut snapshot = snapshot(
         &operation_nonce,
         boot,
         &epoch,
@@ -158,11 +447,18 @@ fn v3_restart_post_effect_binding_is_exact_and_cannot_be_omitted_or_transplanted
         '5',
         ReconciliationMatchV2::Unique { mounted: true },
     );
+    snapshot.collector_receipt_file =
+        Some(receipt_file_binding('5', 2, receipt_root_binding(1, 3), 1));
     let first_snapshot_sha256 =
         reconciliation_snapshot_sha256(&snapshot).expect("first snapshot digest");
     let mut records = Vec::new();
     let mut initial = DisposableLifecycleJournalV2::new(&operation_nonce).expect("journal");
-    append(&mut initial, &mut records, prepared_v3()).expect("V3 prepare");
+    append(
+        &mut initial,
+        &mut records,
+        prepared_v3_with_receipt_root(initial_root),
+    )
+    .expect("V3 prepare");
     let mut resumed =
         DisposableLifecycleJournalV2::resume_for_reconciliation(&records).expect("restart");
     append(&mut resumed, &mut records, restart(boot, 100, &epoch)).expect("epoch");
@@ -191,7 +487,7 @@ fn v3_restart_post_effect_binding_is_exact_and_cannot_be_omitted_or_transplanted
     )
     .expect("callback");
 
-    let exact = post_effect_binding(
+    let mut exact = post_effect_binding(
         &operation_nonce,
         boot,
         &epoch,
@@ -199,6 +495,8 @@ fn v3_restart_post_effect_binding_is_exact_and_cannot_be_omitted_or_transplanted
         '6',
         &mount_absence,
     );
+    exact.collector_receipt_file =
+        Some(receipt_file_binding('6', 3, receipt_root_binding(1, 4), 2));
     for invalid_binding in [
         None,
         Some(PostEffectCollectorBindingV3 {
@@ -347,6 +645,7 @@ fn snapshot(
         backing_identity_sha256: digest('b'),
         boot_session_uuid: boot_session_uuid.to_string(),
         collector_policy_sha256: digest('e'),
+        collector_receipt_file: None,
         collector_receipt_sha256: digest(receipt_byte),
         current_expected_absence_inventory_sha256,
         iomedia_evidence_sha256: digest('6'),
@@ -794,6 +1093,7 @@ fn every_issued_cutpoint_restarts_abort_only_and_requires_fresh_absence() {
             backing_identity_sha256: digest('b'),
             boot_session_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".to_string(),
             collector_policy_sha256: digest('e'),
+            collector_receipt_file: None,
             collector_receipt_sha256: digest('5'),
             current_expected_absence_inventory_sha256: Some(digest('6')),
             iomedia_evidence_sha256: digest('6'),
