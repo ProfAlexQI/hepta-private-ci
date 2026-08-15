@@ -11,6 +11,8 @@ pub(crate) mod mac_disposable_lifecycle;
 pub mod mac_iomedia_identity;
 #[cfg(target_os = "macos")]
 pub mod mac_privileged_broker;
+#[cfg(target_os = "macos")]
+pub(crate) mod mac_privileged_disposable_control;
 mod manifest_inventory;
 mod model;
 mod preflight;
