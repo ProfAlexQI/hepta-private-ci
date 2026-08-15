@@ -66,6 +66,19 @@ assert_not_impl_any!(
         From<File>,
         TryFrom<File>
 );
+assert_not_impl_any!(
+    RetainedCollectorIssueBindingV3<'static>:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>
+);
 
 fn id(value: u64) -> String {
     format!("{value:016x}")

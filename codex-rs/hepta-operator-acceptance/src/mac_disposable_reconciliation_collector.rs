@@ -373,6 +373,7 @@ struct RetainedCollectorEvidenceV3 {
     durable: DurableCollectorReceiptV3,
     guard: LiveReplayGuardV3,
     lifecycle_record_sha256: Option<String>,
+    lifecycle_record_sequence: Option<u32>,
     observation: FinalizedRestartObservationV3,
     receipt: RestartCollectorReceiptV3,
     receipt_sha256: String,
@@ -416,6 +417,20 @@ pub(crate) enum RetainedCollectorAppendEventV3<'a> {
 pub(crate) struct RetainedCollectorAppendV3<'a> {
     event: RetainedCollectorAppendEventV3<'a>,
     operation_nonce: &'a str,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Sealed, descriptor-backed input for one effect issue.  The fields cannot
+/// be caller supplied: construction requires a still-live, lifecycle-bound
+/// unique collector observation and every use replays that observation.
+pub(crate) struct RetainedCollectorIssueBindingV3<'a> {
+    retained: &'a RetainedCollectorObservationV3,
+    boot_session_uuid: String,
+    lifecycle_record_sha256: String,
+    lifecycle_record_sequence: u32,
+    operation_nonce: String,
+    receipt_sha256: String,
+    unique_binding_sha256: String,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
@@ -783,17 +798,16 @@ impl PendingRestartObservationV3 {
     pub(crate) fn persist_and_append(
         self,
         operation: &mut ReconciliationOperationStoreV3<'_, '_>,
-    ) -> Result<RetainedCollectorObservationV3, RestartCollectorErrorV3> {
-        let mut retained = self.persist_and_retain_inner(|| Ok(()))?;
+    ) -> Result<(), RestartCollectorErrorV3> {
+        let retained = self.persist_and_retain_inner(|| Ok(()))?;
         operation
-            .append_retained_collector(&mut retained)
+            .append_retained_collector(retained)
             .map_err(|error| {
                 invalid(format!(
                     "durable lifecycle append rejected retained collector evidence: {error}"
                 ))
             })?;
-        retained.revalidate_bound()?;
-        Ok(retained)
+        Ok(())
     }
 
     #[cfg(test)]
@@ -878,6 +892,7 @@ impl PendingRestartObservationV3 {
             durable,
             guard: self.guard,
             lifecycle_record_sha256: None,
+            lifecycle_record_sequence: None,
             observation,
             receipt: self.receipt,
             receipt_sha256,
@@ -956,6 +971,13 @@ impl RetainedCollectorEvidenceV3 {
                 "retained collector lifecycle-record binding is malformed",
             ));
         }
+        if self.lifecycle_record_sha256.is_some() != self.lifecycle_record_sequence.is_some()
+            || self.lifecycle_record_sequence == Some(0)
+        {
+            return Err(invalid(
+                "retained collector lifecycle-record binding is incomplete",
+            ));
+        }
         Ok(())
     }
 
@@ -987,12 +1009,17 @@ impl RetainedCollectorEvidenceV3 {
     ) -> Result<(), RestartCollectorErrorV3> {
         self.revalidate()?;
         let lifecycle_record_sha256 = append.digest();
-        if self.lifecycle_record_sha256.is_some() || !valid_digest(lifecycle_record_sha256) {
+        if self.lifecycle_record_sha256.is_some()
+            || self.lifecycle_record_sequence.is_some()
+            || !valid_digest(lifecycle_record_sha256)
+            || append.sequence() == 0
+        {
             return Err(invalid(
                 "retained collector lifecycle-record binding is duplicate or malformed",
             ));
         }
         self.lifecycle_record_sha256 = Some(lifecycle_record_sha256.to_string());
+        self.lifecycle_record_sequence = Some(append.sequence());
         self.revalidate()
     }
 }
@@ -1048,6 +1075,127 @@ impl RetainedCollectorObservationV3 {
         }
         Ok(())
     }
+
+    pub(crate) fn issue_binding(
+        &self,
+    ) -> Result<RetainedCollectorIssueBindingV3<'_>, RestartCollectorErrorV3> {
+        self.revalidate_bound()?;
+        match self {
+            Self::Reconciliation(RetainedCollectorMatchV3::UniqueAttached(_))
+            | Self::Reconciliation(RetainedCollectorMatchV3::UniqueMounted(_)) => {}
+            Self::Reconciliation(RetainedCollectorMatchV3::Zero(_))
+            | Self::Reconciliation(RetainedCollectorMatchV3::Ambiguous(_))
+            | Self::FreshAbsence(_) => {
+                return Err(invalid(
+                    "only one exact retained unique collector match may bind an effect issue",
+                ));
+            }
+        }
+        let evidence = self.evidence();
+        let lifecycle_record_sha256 = evidence
+            .lifecycle_record_sha256
+            .clone()
+            .ok_or_else(|| invalid("collector lifecycle-record digest is absent"))?;
+        let lifecycle_record_sequence = evidence
+            .lifecycle_record_sequence
+            .ok_or_else(|| invalid("collector lifecycle-record sequence is absent"))?;
+        let unique_binding_sha256 = unique_collector_binding_sha256(&evidence.receipt)?;
+        Ok(RetainedCollectorIssueBindingV3 {
+            retained: self,
+            boot_session_uuid: evidence.receipt.boot_session_uuid.clone(),
+            lifecycle_record_sha256,
+            lifecycle_record_sequence,
+            operation_nonce: evidence.receipt.operation_nonce.clone(),
+            receipt_sha256: evidence.receipt_sha256.clone(),
+            unique_binding_sha256,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl RetainedCollectorIssueBindingV3<'_> {
+    pub(crate) fn boot_session_uuid(&self) -> &str {
+        &self.boot_session_uuid
+    }
+
+    pub(crate) fn lifecycle_record_sha256(&self) -> &str {
+        &self.lifecycle_record_sha256
+    }
+
+    pub(crate) fn lifecycle_record_sequence(&self) -> u32 {
+        self.lifecycle_record_sequence
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        &self.operation_nonce
+    }
+
+    pub(crate) fn receipt_sha256(&self) -> &str {
+        &self.receipt_sha256
+    }
+
+    pub(crate) fn unique_binding_sha256(&self) -> &str {
+        &self.unique_binding_sha256
+    }
+
+    pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.retained.revalidate_bound()?;
+        let evidence = self.retained.evidence();
+        if evidence.receipt.boot_session_uuid != self.boot_session_uuid
+            || evidence.receipt.operation_nonce != self.operation_nonce
+            || evidence.receipt_sha256 != self.receipt_sha256
+            || evidence.lifecycle_record_sha256.as_deref()
+                != Some(self.lifecycle_record_sha256.as_str())
+            || evidence.lifecycle_record_sequence != Some(self.lifecycle_record_sequence)
+            || unique_collector_binding_sha256(&evidence.receipt)? != self.unique_binding_sha256
+        {
+            return Err(invalid(
+                "retained collector issue binding changed during descriptor replay",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Serialize)]
+struct UniqueCollectorBindingDigestV3<'a> {
+    backing_identity_sha256: &'a str,
+    boot_session_uuid: &'a str,
+    iomedia_evidence_sha256: &'a str,
+    match_result: &'a ReconciliationMatchV2,
+    matching_groups: &'a [MatchingDiskImageGroupV3],
+    mount_evidence_sha256: &'a str,
+    mountpoint_underlying_sha256: &'a str,
+    operation_nonce: &'a str,
+    receipt_sha256: String,
+    restart_epoch_nonce: &'a str,
+    schema: &'static str,
+}
+
+fn unique_collector_binding_sha256(
+    receipt: &RestartCollectorReceiptV3,
+) -> Result<String, RestartCollectorErrorV3> {
+    if !matches!(receipt.match_result, ReconciliationMatchV2::Unique { .. })
+        || receipt.matching_groups.len() != 1
+    {
+        return Err(invalid(
+            "collector receipt is not one exact unique disk-image binding",
+        ));
+    }
+    let receipt_sha256 = sha256(&canonical_json(receipt)?);
+    Ok(sha256(&canonical_json(&UniqueCollectorBindingDigestV3 {
+        backing_identity_sha256: &receipt.backing_identity_sha256,
+        boot_session_uuid: &receipt.boot_session_uuid,
+        iomedia_evidence_sha256: &receipt.iomedia_evidence_sha256,
+        match_result: &receipt.match_result,
+        matching_groups: &receipt.matching_groups,
+        mount_evidence_sha256: &receipt.mount_evidence_sha256,
+        mountpoint_underlying_sha256: &receipt.mountpoint_underlying_sha256,
+        operation_nonce: &receipt.operation_nonce,
+        receipt_sha256,
+        restart_epoch_nonce: &receipt.restart_epoch_nonce,
+        schema: "hepta_mac_unique_collector_binding_v3",
+    })?))
 }
 
 impl RetainedCollectorAppendV3<'_> {

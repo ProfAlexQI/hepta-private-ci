@@ -24,6 +24,9 @@ macro_rules! assert_not_impl {
 type FreshOperationStoreForCompileAssertions = CensusBoundDurableLifecycleStoreV3<'static>;
 type RestartOperationStoreForCompileAssertions = ReconciliationOperationStoreV3<'static, 'static>;
 type RetainedLifecycleAppendForCompileAssertions = RetainedLifecycleRecordAppendV3;
+type RetainedLifecycleIssueSourceForCompileAssertions = RetainedLifecycleIssueSourceV3<'static>;
+type RetainedOperationIssueForCompileAssertions =
+    RetainedOperationEffectIssueV3<'static, 'static, 'static>;
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Clone);
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Send);
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Sync);
@@ -51,6 +54,33 @@ assert_not_impl!(RetainedLifecycleAppendForCompileAssertions, Sync);
 assert_not_impl!(
     RetainedLifecycleAppendForCompileAssertions,
     serde::Serialize
+);
+assert_not_impl!(RetainedLifecycleIssueSourceForCompileAssertions, Clone);
+assert_not_impl!(RetainedLifecycleIssueSourceForCompileAssertions, Send);
+assert_not_impl!(RetainedLifecycleIssueSourceForCompileAssertions, Sync);
+assert_not_impl!(
+    RetainedLifecycleIssueSourceForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    RetainedLifecycleIssueSourceForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    RetainedLifecycleIssueSourceForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(RetainedOperationIssueForCompileAssertions, Clone);
+assert_not_impl!(RetainedOperationIssueForCompileAssertions, Send);
+assert_not_impl!(RetainedOperationIssueForCompileAssertions, Sync);
+assert_not_impl!(RetainedOperationIssueForCompileAssertions, serde::Serialize);
+assert_not_impl!(
+    RetainedOperationIssueForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    RetainedOperationIssueForCompileAssertions,
+    From<std::fs::File>
 );
 assert_not_impl!(
     RetainedLifecycleAppendForCompileAssertions,
@@ -729,12 +759,102 @@ fn fresh_store_requires_and_retains_the_exact_s1_census() {
     assert_eq!(store.operation_nonce(), NONCE);
     assert!(!store.poisoned());
     assert!(store.census.prepare_store_creation().is_err());
+    let operation_path = root.join("operations").join(format!("operation-{NONCE}"));
+    let issue_root = operation_path.join("effect-issues-v3");
+    let issue_metadata = fs::metadata(&issue_root).expect("mandatory V3 issue root");
+    assert!(issue_metadata.is_dir());
+    assert_eq!(issue_metadata.permissions().mode() & 0o7777, 0o700);
+    assert_eq!(fs::read_dir(&issue_root).expect("issue roster").count(), 0);
+    let mut operation_roster = fs::read_dir(&operation_path)
+        .expect("operation roster")
+        .map(|entry| entry.unwrap().file_name())
+        .collect::<Vec<_>>();
+    operation_roster.sort();
+    assert_eq!(
+        operation_roster,
+        [std::ffi::OsString::from("effect-issues-v3")]
+    );
 
     let record_digest = store
         .append(prepared())
         .expect("append while census and flock remain retained");
     assert_eq!(record_digest.len(), 64);
     assert!(!store.poisoned());
+}
+
+#[test]
+fn unmarked_legacy_operation_is_blocked_from_the_v3_restart_path() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+    drop(control);
+    let operations = File::open(root.join("operations")).expect("open operations");
+    let mut legacy =
+        DurableLifecycleStoreV3::create(&operations, NONCE, unsafe { libc::geteuid() }, unsafe {
+            libc::getegid()
+        })
+        .expect("test-only unmarked V2 operation");
+    let mut journal = DisposableLifecycleJournalV2::new(NONCE).expect("legacy journal");
+    legacy
+        .append(&mut journal, prepared())
+        .expect("legacy prepared record");
+    drop(legacy);
+    drop(operations);
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("reopen S1 control");
+    let assessment = control
+        .assess_read_only()
+        .expect("S1 retains unmarked operation as a blocker");
+    let census = assessment
+        .into_blocking_control_census(NONCE)
+        .expect("select exact unmarked blocker");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    assert!(
+        ReconciliationOperationStoreV3::open_existing(census, &epoch).is_err(),
+        "caller absence or a boolean silently upgraded an unmarked V2 operation"
+    );
+}
+
+#[test]
+fn fresh_wrapper_rejects_missing_aliased_or_replaced_issue_roots() {
+    for mutation in ["missing", "alias", "replace"] {
+        let temporary = tempfile::tempdir().expect("control parent");
+        let root = temporary.path().join("control");
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("fresh assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+            .expect("new-format operation");
+        let operation = root.join("operations").join(format!("operation-{NONCE}"));
+        let issue_root = operation.join("effect-issues-v3");
+        match mutation {
+            "missing" => fs::remove_dir(&issue_root).expect("remove retained issue root"),
+            "alias" => {
+                let alias = operation.join(".incoming-effect-issues-v3");
+                fs::create_dir(&alias).expect("create issue-root alias");
+                fs::set_permissions(&alias, fs::Permissions::from_mode(0o700)).expect("alias mode");
+            }
+            "replace" => {
+                let displaced = operation.join("effect-issues-v3-displaced");
+                fs::rename(&issue_root, &displaced).expect("displace issue root");
+                fs::create_dir(&issue_root).expect("replace issue root");
+                fs::set_permissions(&issue_root, fs::Permissions::from_mode(0o700))
+                    .expect("replacement mode");
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            store.append(prepared()).is_err(),
+            "{mutation} issue root was accepted by the retained fresh wrapper"
+        );
+        assert!(store.poisoned(), "{mutation} did not poison the wrapper");
+    }
 }
 
 #[test]

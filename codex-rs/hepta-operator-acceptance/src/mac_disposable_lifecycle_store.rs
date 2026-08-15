@@ -5,6 +5,12 @@
 //! consider sending an effect request.
 
 use crate::durable::sha256;
+use crate::mac_disposable_effect_issue_store::DurableEffectIssueStoreErrorV3;
+use crate::mac_disposable_effect_issue_store::DurableEffectIssueStoreV3;
+use crate::mac_disposable_effect_issue_store::EffectEpochEvidenceV3;
+use crate::mac_disposable_effect_issue_store::ExactDisposableCommandV3;
+use crate::mac_disposable_effect_issue_store::IssuedEffectRecordV3;
+use crate::mac_disposable_effect_issue_store::VerifiedLifecycleIssueRosterV3;
 use crate::mac_disposable_lifecycle::CallbackOutcomeV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleEventV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleJournalV2;
@@ -52,6 +58,8 @@ pub enum DurableLifecycleStoreErrorV3 {
     Io(#[from] io::Error),
     #[error(transparent)]
     Lifecycle(#[from] LifecycleErrorV2),
+    #[error(transparent)]
+    EffectIssue(#[from] DurableEffectIssueStoreErrorV3),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -115,6 +123,66 @@ struct RecordCapsule {
     name: String,
 }
 
+/// Ephemeral sealed view used only for the sibling V3 issue module.  There is
+/// no public constructor or wrapper outlet, so production issue replay cannot
+/// be invoked with an arbitrary `File`, nonce, UID/GID, or byte vector.
+pub(crate) struct RetainedLifecycleIssueSourceV3<'a> {
+    directory: &'a File,
+    expected_gid: u32,
+    expected_uid: u32,
+    operation_nonce: &'a str,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+impl RetainedLifecycleIssueSourceV3<'_> {
+    fn new<'a>(
+        directory: &'a File,
+        operation_nonce: &'a str,
+        expected_uid: u32,
+        expected_gid: u32,
+    ) -> RetainedLifecycleIssueSourceV3<'a> {
+        RetainedLifecycleIssueSourceV3 {
+            directory,
+            expected_gid,
+            expected_uid,
+            operation_nonce,
+            _not_send_or_sync: PhantomData,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test<'a>(
+        directory: &'a File,
+        operation_nonce: &'a str,
+        expected_uid: u32,
+        expected_gid: u32,
+    ) -> RetainedLifecycleIssueSourceV3<'a> {
+        Self::new(directory, operation_nonce, expected_uid, expected_gid)
+    }
+
+    pub(crate) fn directory(&self) -> &File {
+        self.directory
+    }
+
+    pub(crate) fn expected_gid(&self) -> u32 {
+        self.expected_gid
+    }
+
+    pub(crate) fn expected_uid(&self) -> u32 {
+        self.expected_uid
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        self.operation_nonce
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OperationFormatV3 {
+    LegacyV2,
+    RequiredEffectIssuesV3,
+}
+
 #[derive(Debug)]
 pub(crate) struct FreshProcessStoreV3;
 
@@ -158,6 +226,7 @@ impl ReconciliationLifecycleEventV3 {
         Self(DisposableLifecycleEventV2::ReconciliationSnapshotObserved { snapshot })
     }
 
+    #[cfg(test)]
     pub fn unmount_issued(effect_id: u64) -> Self {
         Self(DisposableLifecycleEventV2::UnmountIssuedOrUncertain {
             effect_id,
@@ -176,6 +245,7 @@ impl ReconciliationLifecycleEventV3 {
         })
     }
 
+    #[cfg(test)]
     pub fn eject_issued(effect_id: u64) -> Self {
         Self(DisposableLifecycleEventV2::EjectIssuedOrUncertain {
             effect_id,
@@ -226,6 +296,7 @@ pub struct DurableLifecycleStoreV3<M = FreshProcessStoreV3> {
     expected_gid: u32,
     expected_uid: u32,
     final_name: String,
+    format: OperationFormatV3,
     operation_nonce: String,
     parent: File,
     parent_binding: Binding,
@@ -241,6 +312,7 @@ pub(crate) struct CensusBoundDurableLifecycleStoreV3<'a> {
     census: RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>,
     journal: DisposableLifecycleJournalV2,
     poisoned: bool,
+    issues: DurableEffectIssueStoreV3,
     store: DurableLifecycleStoreV3<FreshProcessStoreV3>,
 }
 
@@ -253,26 +325,43 @@ pub(crate) struct ReconciliationOperationStoreV3<'a, 'e> {
     epoch: &'e FreshProcessEpochV3,
     journal: DisposableLifecycleJournalV2,
     poisoned: bool,
+    collector: Option<RetainedCollectorObservationV3>,
+    issues: DurableEffectIssueStoreV3,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
+}
+
+/// Whole-operation retained issue capability.  It borrows the S1 census,
+/// wrapper-owned V2 journal/record descriptors, bound collector evidence and
+/// V3 issue store together; no sub-capability or descriptor can be extracted.
+pub(crate) struct RetainedOperationEffectIssueV3<'store, 'a, 'e> {
+    effect_id: u64,
+    store: &'store mut ReconciliationOperationStoreV3<'a, 'e>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
 /// Unforgeable acknowledgement that the reconciliation store has retained
 /// and replayed the exact lifecycle record produced by one append.
 pub(crate) struct RetainedLifecycleRecordAppendV3 {
     digest: String,
+    sequence: u32,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
 impl RetainedLifecycleRecordAppendV3 {
-    fn new(digest: String) -> Self {
+    fn new(digest: String, sequence: u32) -> Self {
         Self {
             digest,
+            sequence,
             _not_send_or_sync: PhantomData,
         }
     }
 
     pub(crate) fn digest(&self) -> &str {
         &self.digest
+    }
+
+    pub(crate) fn sequence(&self) -> u32 {
+        self.sequence
     }
 }
 
@@ -305,6 +394,55 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
     where
         F: FnMut(CreateCutpointV3) -> io::Result<()>,
     {
+        Self::create_inner(
+            operations,
+            operation_nonce,
+            expected_uid,
+            expected_gid,
+            OperationFormatV3::LegacyV2,
+            &mut hook,
+        )
+        .map(|(store, issues)| {
+            debug_assert!(issues.is_none());
+            store
+        })
+    }
+
+    fn create_new_format_with_hook<F>(
+        operations: &File,
+        operation_nonce: &str,
+        expected_uid: u32,
+        expected_gid: u32,
+        mut hook: F,
+    ) -> Result<(Self, DurableEffectIssueStoreV3), DurableLifecycleStoreErrorV3>
+    where
+        F: FnMut(CreateCutpointV3) -> io::Result<()>,
+    {
+        let (store, issues) = Self::create_inner(
+            operations,
+            operation_nonce,
+            expected_uid,
+            expected_gid,
+            OperationFormatV3::RequiredEffectIssuesV3,
+            &mut hook,
+        )?;
+        Ok((
+            store,
+            issues.ok_or_else(|| invalid("new-format operation lacks its retained issue store"))?,
+        ))
+    }
+
+    fn create_inner<F>(
+        operations: &File,
+        operation_nonce: &str,
+        expected_uid: u32,
+        expected_gid: u32,
+        format: OperationFormatV3,
+        hook: &mut F,
+    ) -> Result<(Self, Option<DurableEffectIssueStoreV3>), DurableLifecycleStoreErrorV3>
+    where
+        F: FnMut(CreateCutpointV3) -> io::Result<()>,
+    {
         require_nonce(operation_nonce)?;
         let parent_binding = validate_directory(
             operations,
@@ -326,7 +464,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         }
         hook(CreateCutpointV3::TemporaryCreated)?;
         let temporary = openat_directory(operations.as_raw_fd(), &temporary_name)?;
-        let temporary_binding = validate_directory(
+        let mut temporary_binding = validate_directory(
             &temporary,
             expected_uid,
             expected_gid,
@@ -338,6 +476,33 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             return Err(invalid("temporary operation directory is not empty"));
         }
         hook(CreateCutpointV3::TemporaryOpened)?;
+        let issues = if format == OperationFormatV3::RequiredEffectIssuesV3 {
+            let issues = DurableEffectIssueStoreV3::create_prepublication(
+                RetainedLifecycleIssueSourceV3::new(
+                    &temporary,
+                    operation_nonce,
+                    expected_uid,
+                    expected_gid,
+                ),
+            )?;
+            let roster = read_directory_names(temporary.as_raw_fd(), MAX_RECORDS + 1)?;
+            if roster != ["effect-issues-v3"] {
+                return Err(invalid(
+                    "new-format incoming operation lacks its exact mandatory issue directory",
+                ));
+            }
+            temporary_binding = validate_directory(
+                &temporary,
+                expected_uid,
+                expected_gid,
+                0o700,
+                Some(parent_binding.dev),
+                "temporary operation directory after issue-root creation",
+            )?;
+            Some(issues)
+        } else {
+            None
+        };
         temporary.sync_all()?;
         hook(CreateCutpointV3::TemporarySynced)?;
         rename_noreplace(
@@ -359,8 +524,14 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             Some(parent_binding.dev),
             "final operation directory",
         )?;
+        let expected_roster = match format {
+            OperationFormatV3::LegacyV2 => Vec::new(),
+            OperationFormatV3::RequiredEffectIssuesV3 => {
+                vec!["effect-issues-v3".to_string()]
+            }
+        };
         if !temporary_binding.stable_across_rename(directory_binding)
-            || !read_directory_names(directory.as_raw_fd(), MAX_RECORDS)?.is_empty()
+            || read_directory_names(directory.as_raw_fd(), MAX_RECORDS + 1)? != expected_roster
         {
             return Err(invalid(
                 "final operation directory is not the exact empty temporary inode",
@@ -373,6 +544,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             expected_gid,
             expected_uid,
             final_name,
+            format,
             operation_nonce: operation_nonce.to_string(),
             parent: operations.try_clone()?,
             parent_binding: binding(operations)?,
@@ -384,7 +556,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         store.revalidate()?;
         hook(CreateCutpointV3::FinalRevalidated)?;
         store.revalidate()?;
-        Ok(store)
+        Ok((store, issues))
     }
 
     #[cfg(test)]
@@ -432,13 +604,14 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             Some(parent_binding.dev),
             "operation directory",
         )?;
-        let names = read_directory_names(directory.as_raw_fd(), MAX_RECORDS)?;
-        if names.is_empty() {
+        let names = read_directory_names(directory.as_raw_fd(), MAX_RECORDS + 1)?;
+        let (format, record_names) = classify_operation_roster(&names)?;
+        if record_names.is_empty() {
             return Err(invalid("operation directory has no lifecycle records"));
         }
-        let mut records = Vec::with_capacity(names.len());
+        let mut records = Vec::with_capacity(record_names.len());
         let mut total_bytes = 0usize;
-        for (index, name) in names.iter().enumerate() {
+        for (index, name) in record_names.iter().enumerate() {
             if name != &record_name(index + 1)? {
                 return Err(invalid(
                     "operation roster contains a temporary, unknown, or gap entry",
@@ -475,6 +648,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             expected_gid,
             expected_uid,
             final_name,
+            format,
             operation_nonce: operation_nonce.to_string(),
             parent: operations.try_clone()?,
             parent_binding: binding(operations)?,
@@ -503,7 +677,7 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
     ) -> Result<Self, DurableLifecycleStoreErrorV3> {
         let journal = DisposableLifecycleJournalV2::new(operation_nonce)?;
         let binding = census.prepare_store_creation()?;
-        let store = DurableLifecycleStoreV3::create_with_hook(
+        let (store, issues) = DurableLifecycleStoreV3::create_new_format_with_hook(
             binding.operations(),
             operation_nonce,
             binding.expected_uid(),
@@ -515,6 +689,7 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
             census,
             journal,
             poisoned: false,
+            issues,
             store,
         })
     }
@@ -528,11 +703,19 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
                 "census-bound store is poisoned; restart reconciliation is required",
             ));
         }
+        if let Err(error) = self.revalidate_issues() {
+            self.poisoned = true;
+            return Err(error);
+        }
         if let Err(error) = self.census.revalidate() {
             self.poisoned = true;
             return Err(error.into());
         }
         let digest = self.store.append(&mut self.journal, event)?;
+        if let Err(error) = self.revalidate_issues() {
+            self.poisoned = true;
+            return Err(error);
+        }
         if let Err(error) = self.census.revalidate() {
             self.poisoned = true;
             return Err(error.into());
@@ -546,6 +729,17 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
 
     pub(crate) fn poisoned(&self) -> bool {
         self.poisoned || self.store.poisoned()
+    }
+
+    fn revalidate_issues(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
+        if self.store.records.is_empty() {
+            self.issues.revalidate_prepared_empty()?;
+        } else {
+            let lifecycle =
+                VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
+            self.issues.revalidate_required(&lifecycle)?;
+        }
+        Ok(())
     }
 }
 
@@ -572,6 +766,14 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
                 "replayed lifecycle store differs from the selected blocking operation",
             ));
         }
+        if store.format != OperationFormatV3::RequiredEffectIssuesV3 {
+            return Err(invalid(
+                "unmarked historical V2 operation is blocking and cannot enter the V3 effect path",
+            ));
+        }
+        let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(store.issue_source())?;
+        let issues =
+            DurableEffectIssueStoreV3::open_existing_from_s2(store.issue_source(), &lifecycle)?;
         let journal = store.resume_for_reconciliation()?;
         census.revalidate()?;
         epoch.validate_current().map_err(|error| {
@@ -584,6 +786,8 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
             epoch,
             journal,
             poisoned: false,
+            collector: None,
+            issues,
             store,
         })
     }
@@ -593,13 +797,18 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         &mut self,
         event: ReconciliationLifecycleEventV3,
     ) -> Result<String, DurableLifecycleStoreErrorV3> {
-        self.append_reconciliation_inner(event)
+        self.append_reconciliation_inner(event, false)
     }
 
     pub(crate) fn append_retained_collector(
         &mut self,
-        retained: &mut RetainedCollectorObservationV3,
+        mut retained: RetainedCollectorObservationV3,
     ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        if self.collector.is_some() {
+            return Err(invalid(
+                "operation already owns a retained collector observation",
+            ));
+        }
         let (operation_nonce, event) = {
             let capability = retained.append_capability().map_err(|error| {
                 invalid(format!(
@@ -625,8 +834,11 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
                 "retained collector operation differs from the reconciliation store",
             ));
         }
-        let digest = self.append_reconciliation_inner(ReconciliationLifecycleEventV3(event))?;
-        let append = RetainedLifecycleRecordAppendV3::new(digest.clone());
+        let digest =
+            self.append_reconciliation_inner(ReconciliationLifecycleEventV3(event), false)?;
+        let sequence = u32::try_from(self.store.records.len())
+            .map_err(|_| invalid("lifecycle record sequence overflowed"))?;
+        let append = RetainedLifecycleRecordAppendV3::new(digest.clone(), sequence);
         if let Err(error) = retained.bind_lifecycle_record(append) {
             self.poisoned = true;
             return Err(invalid(format!(
@@ -639,17 +851,142 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
                 "retained collector evidence changed after lifecycle append: {error}"
             ))
         })?;
+        self.collector = Some(retained);
         Ok(digest)
+    }
+
+    /// Persist one reconciliation issue as a single S2-owned transaction:
+    /// exact bound collector -> durable V2 issued tip -> durable V3 issue ->
+    /// S1 admission of that exact issue descriptor.  Any cut after the V2
+    /// append is issued-or-uncertain and poisons this wrapper.
+    pub(crate) fn persist_reconciliation_issue<'store>(
+        &'store mut self,
+        command: ExactDisposableCommandV3,
+        epochs: EffectEpochEvidenceV3,
+    ) -> Result<RetainedOperationEffectIssueV3<'store, 'a, 'e>, DurableLifecycleStoreErrorV3> {
+        if self.poisoned {
+            return Err(invalid(
+                "reconciliation operation store is poisoned; exact restart replay is required",
+            ));
+        }
+        let collector = self.collector.as_ref().ok_or_else(|| {
+            invalid("effect issue requires one wrapper-owned retained collector observation")
+        })?;
+        collector.revalidate_bound().map_err(|error| {
+            invalid(format!(
+                "wrapper-owned collector failed replay before issue: {error}"
+            ))
+        })?;
+        let effect_id = self
+            .journal
+            .last_effect_id()
+            .checked_add(1)
+            .ok_or_else(|| invalid("effect ID overflowed"))?;
+        let event = match &command {
+            ExactDisposableCommandV3::UnmountVolume { .. } => {
+                DisposableLifecycleEventV2::UnmountIssuedOrUncertain {
+                    effect_id,
+                    purpose: EffectPurposeV2::Reconciliation,
+                }
+            }
+            ExactDisposableCommandV3::EjectImage { .. } => {
+                DisposableLifecycleEventV2::EjectIssuedOrUncertain {
+                    effect_id,
+                    purpose: EffectPurposeV2::Reconciliation,
+                }
+            }
+            _ => {
+                return Err(invalid(
+                    "restart reconciliation may issue only unmount or eject commands",
+                ));
+            }
+        };
+        self.append_reconciliation_inner(ReconciliationLifecycleEventV3(event), true)?;
+
+        let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
+        let collector_binding = self
+            .collector
+            .as_ref()
+            .expect("collector is preserved across the issued append")
+            .issue_binding()
+            .map_err(|error| {
+                self.poisoned = true;
+                invalid(format!(
+                    "retained collector could not seal the effect issue: {error}"
+                ))
+            })?;
+        let persisted = self
+            .issues
+            .persist_bound(&lifecycle, &collector_binding, command, epochs);
+        let (issue_name, issue_sha256) = match persisted {
+            Ok(retained) => {
+                let effect_id = retained.effect_id();
+                retained.revalidate()?;
+                drop(retained);
+                self.issues
+                    .retained_issue_identity(effect_id)
+                    .ok_or_else(|| invalid("persisted V3 issue capsule disappeared"))?
+            }
+            Err(error) => {
+                self.poisoned = true;
+                return Err(error.into());
+            }
+        };
+        if let Err(error) = self
+            .census
+            .admit_selected_effect_issue_append(&issue_name, &issue_sha256)
+        {
+            self.poisoned = true;
+            return Err(error.into());
+        }
+        if let Err(error) = self.revalidate_issue_state(effect_id) {
+            self.poisoned = true;
+            return Err(error);
+        }
+        Ok(RetainedOperationEffectIssueV3 {
+            effect_id,
+            store: self,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    fn revalidate_issue_state(&self, effect_id: u64) -> Result<(), DurableLifecycleStoreErrorV3> {
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed during issue replay: {error}"
+            ))
+        })?;
+        self.collector
+            .as_ref()
+            .ok_or_else(|| invalid("retained issue lost its collector capability"))?
+            .issue_binding()
+            .map_err(|error| invalid(format!("retained issue collector replay failed: {error}")))?
+            .revalidate()
+            .map_err(|error| invalid(format!("retained issue collector changed: {error}")))?;
+        let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
+        self.issues.revalidate_required(&lifecycle)?;
+        if self.issues.replayed_issue(effect_id).is_none() {
+            return Err(invalid(
+                "retained V3 issue disappeared from the exact bijection",
+            ));
+        }
+        Ok(())
     }
 
     fn append_reconciliation_inner(
         &mut self,
         event: ReconciliationLifecycleEventV3,
+        preserve_collector: bool,
     ) -> Result<String, DurableLifecycleStoreErrorV3> {
         if self.poisoned {
             return Err(invalid(
                 "reconciliation operation store is poisoned; a fresh exact census is required",
             ));
+        }
+        if let Err(error) = self.revalidate_existing_issues() {
+            self.poisoned = true;
+            return Err(error);
         }
         if let Err(error) = self.census.revalidate() {
             self.poisoned = true;
@@ -672,6 +1009,15 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
                 "fresh process epoch changed after reconciliation append: {error}"
             )));
         }
+        if !preserve_collector {
+            if let Err(error) = self.revalidate_existing_issues() {
+                self.poisoned = true;
+                return Err(error);
+            }
+        }
+        if !preserve_collector {
+            self.collector = None;
+        }
         Ok(digest)
     }
 
@@ -681,6 +1027,29 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
 
     pub(crate) fn poisoned(&self) -> bool {
         self.poisoned || self.store.poisoned()
+    }
+
+    fn revalidate_existing_issues(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
+        let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
+        self.issues.revalidate_required(&lifecycle)?;
+        Ok(())
+    }
+}
+
+impl RetainedOperationEffectIssueV3<'_, '_, '_> {
+    pub(crate) fn effect_id(&self) -> u64 {
+        self.effect_id
+    }
+
+    pub(crate) fn record(&self) -> &IssuedEffectRecordV3 {
+        self.store
+            .issues
+            .replayed_issue(self.effect_id)
+            .expect("retained issue constructor proved the issue exists")
+    }
+
+    pub(crate) fn revalidate(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
+        self.store.revalidate_issue_state(self.effect_id)
     }
 }
 
@@ -715,6 +1084,15 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
 
     pub fn poisoned(&self) -> bool {
         self.poisoned
+    }
+
+    fn issue_source(&self) -> RetainedLifecycleIssueSourceV3<'_> {
+        RetainedLifecycleIssueSourceV3::new(
+            &self.directory,
+            &self.operation_nonce,
+            self.expected_uid,
+            self.expected_gid,
+        )
     }
 
     fn append_mode_with_hook<F>(
@@ -870,10 +1248,14 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
     }
 
     fn revalidate_roster_and_records(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
-        let names = read_directory_names(self.directory.as_raw_fd(), MAX_RECORDS)?;
-        let expected = (1..=self.records.len())
+        let names = read_directory_names(self.directory.as_raw_fd(), MAX_RECORDS + 1)?;
+        let mut expected = (1..=self.records.len())
             .map(record_name)
             .collect::<Result<Vec<_>, _>>()?;
+        if self.format == OperationFormatV3::RequiredEffectIssuesV3 {
+            expected.push("effect-issues-v3".to_string());
+            expected.sort();
+        }
         if names != expected {
             return Err(invalid(
                 "operation roster changed or contains a crash-temporary entry",
@@ -1328,6 +1710,38 @@ fn record_name(sequence: usize) -> Result<String, DurableLifecycleStoreErrorV3> 
         return Err(invalid("record sequence is outside the fixed bound"));
     }
     Ok(format!("{sequence:08}.json"))
+}
+
+fn classify_operation_roster(
+    names: &[String],
+) -> Result<(OperationFormatV3, Vec<String>), DurableLifecycleStoreErrorV3> {
+    let mut records = Vec::new();
+    let mut issue_roots = 0usize;
+    for name in names {
+        if name == "effect-issues-v3" {
+            issue_roots += 1;
+        } else if name.contains("effect-issues-v3") || !name.ends_with(".json") {
+            return Err(invalid(
+                "operation roster contains a missing, temporary, aliased, or unknown V3 entry",
+            ));
+        } else {
+            records.push(name.clone());
+        }
+    }
+    if issue_roots > 1 {
+        return Err(invalid(
+            "operation roster contains duplicate V3 issue roots",
+        ));
+    }
+    records.sort();
+    Ok((
+        if issue_roots == 1 {
+            OperationFormatV3::RequiredEffectIssuesV3
+        } else {
+            OperationFormatV3::LegacyV2
+        },
+        records,
+    ))
 }
 
 fn require_nonce(value: &str) -> Result<(), DurableLifecycleStoreErrorV3> {

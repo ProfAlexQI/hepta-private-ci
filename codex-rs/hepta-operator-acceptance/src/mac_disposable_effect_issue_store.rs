@@ -3,11 +3,10 @@
 //! This module owns no effect primitive and grants no authority.  It binds one
 //! canonical, typed command to one already-durable V2 issued-or-uncertain
 //! lifecycle record and to the most recent durable collector observation.
-//! New-format operations must create `effect-issues-v3` before their operation
-//! directory is published.  S2 will supply that construction ordering when it
-//! integrates this module; a published new-format operation with no directory
-//! is therefore blocking, while untouched historical V2 operations remain
-//! outside this module and may have no such directory.
+//! New-format operations create `effect-issues-v3` through the S2 operation
+//! wrapper before their outer operation directory is published.  A published
+//! new-format operation with no exact issue directory is therefore blocking;
+//! untouched historical V2 operations remain outside the V3 effect path.
 
 use crate::AcceptanceError;
 use crate::durable::canonical_json;
@@ -18,6 +17,9 @@ use crate::mac_disposable_lifecycle::DisposableLifecycleRecordV2;
 use crate::mac_disposable_lifecycle::EffectPurposeV2;
 use crate::mac_disposable_lifecycle::LifecycleErrorV2;
 use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
+use crate::mac_disposable_lifecycle_store::RetainedLifecycleIssueSourceV3;
+use crate::mac_disposable_reconciliation_collector::RetainedCollectorIssueBindingV3;
+#[cfg(test)]
 use crate::mac_iomedia_identity::current_boot_session_uuid;
 use serde::Deserialize;
 use serde::Serialize;
@@ -197,8 +199,9 @@ pub(crate) struct IssuedEffectRecordV3 {
     unique_binding_sha256: Option<String>,
 }
 
-/// Data-only epoch binding.  It is not an authority capability: integration
-/// must derive it from the authenticated pre-runner before calling persist.
+/// Data-only epoch binding.  Production deliberately has no constructor yet:
+/// the runner integration must seal it from the fresh process epoch and the
+/// authenticated pre-runner before this inert persistence path becomes usable.
 pub(crate) struct EffectEpochEvidenceV3 {
     boot_session_uuid: String,
     process_epoch_nonce: String,
@@ -208,6 +211,7 @@ pub(crate) struct EffectEpochEvidenceV3 {
 }
 
 impl EffectEpochEvidenceV3 {
+    #[cfg(test)]
     pub(crate) fn bind_current_boot(
         boot_session_uuid: &str,
         process_epoch_nonce: &str,
@@ -287,10 +291,35 @@ pub(crate) struct VerifiedLifecycleIssueRosterV3 {
 }
 
 impl VerifiedLifecycleIssueRosterV3 {
+    pub(crate) fn capture_from_s2(
+        source: RetainedLifecycleIssueSourceV3<'_>,
+    ) -> Result<Self, DurableEffectIssueStoreErrorV3> {
+        let captured = Self::capture_directory(
+            source.directory(),
+            source.expected_uid(),
+            source.expected_gid(),
+        )?;
+        if captured.operation_nonce() != source.operation_nonce() {
+            return Err(invalid(
+                "sealed S2 operation nonce differs from its retained lifecycle replay",
+            ));
+        }
+        Ok(captured)
+    }
+
     /// Capture canonical V2 numbered records directly from their retained
     /// operation directory.  Production callers cannot substitute an
     /// in-memory journal or self-reported digest for this descriptor roster.
+    #[cfg(test)]
     pub(crate) fn capture(
+        operation_directory: &File,
+        expected_uid: u32,
+        expected_gid: u32,
+    ) -> Result<Self, DurableEffectIssueStoreErrorV3> {
+        Self::capture_directory(operation_directory, expected_uid, expected_gid)
+    }
+
+    fn capture_directory(
         operation_directory: &File,
         expected_uid: u32,
         expected_gid: u32,
@@ -433,6 +462,18 @@ impl VerifiedLifecycleIssueRosterV3 {
                         record_sha256,
                         sequence: record.sequence,
                     });
+                }
+                DisposableLifecycleEventV2::RestartReconciliationStarted { .. }
+                | DisposableLifecycleEventV2::CreateObserved { .. }
+                | DisposableLifecycleEventV2::AttachObserved { .. }
+                | DisposableLifecycleEventV2::MountObserved { .. }
+                | DisposableLifecycleEventV2::UnmountObserved { .. }
+                | DisposableLifecycleEventV2::EjectObserved { .. } => {
+                    // A collector receipt binds one exact pre-effect state.
+                    // Once durable state advances (or a new restart epoch
+                    // starts), that receipt may never authorize another
+                    // command by merely remaining the most recent snapshot.
+                    latest_collector = None;
                 }
                 event => {
                     if let Some((effect_id, kind, purpose)) = issued_binding(event) {
@@ -638,9 +679,63 @@ pub(crate) struct RetainedDurableEffectIssueV3<'store> {
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
+enum CollectorIssueInputV3<'a> {
+    Retained(&'a RetainedCollectorIssueBindingV3<'a>),
+    #[cfg(test)]
+    Synthetic(Option<String>),
+}
+
+impl CollectorIssueInputV3<'_> {
+    fn unique_binding_sha256(
+        &self,
+        target: &LifecycleIssueBindingV3,
+        epochs: &EffectEpochEvidenceV3,
+    ) -> Result<String, DurableEffectIssueStoreErrorV3> {
+        let prior = target
+            .prior_collector
+            .as_ref()
+            .ok_or_else(|| invalid("V3 issue has no preceding durable collector observation"))?;
+        match self {
+            Self::Retained(binding) => {
+                binding.revalidate().map_err(|error| {
+                    invalid(format!(
+                        "retained collector issue binding failed replay: {error}"
+                    ))
+                })?;
+                if binding.operation_nonce() != target.operation_nonce
+                    || binding.boot_session_uuid() != epochs.boot_session_uuid
+                    || binding.receipt_sha256() != prior.receipt_sha256
+                    || binding.lifecycle_record_sha256() != prior.record_sha256
+                    || binding.lifecycle_record_sequence() != prior.sequence
+                {
+                    return Err(invalid(
+                        "retained collector capability differs from the exact V2 predecessor",
+                    ));
+                }
+                Ok(binding.unique_binding_sha256().to_string())
+            }
+            #[cfg(test)]
+            Self::Synthetic(value) => value
+                .clone()
+                .ok_or_else(|| invalid("test collector binding digest is absent")),
+        }
+    }
+
+    fn revalidate(&self) -> Result<(), DurableEffectIssueStoreErrorV3> {
+        match self {
+            Self::Retained(binding) => binding.revalidate().map_err(|error| {
+                invalid(format!(
+                    "retained collector issue binding failed replay: {error}"
+                ))
+            }),
+            #[cfg(test)]
+            Self::Synthetic(_) => Ok(()),
+        }
+    }
+}
+
 impl DurableEffectIssueStoreV3 {
-    /// Create the mandatory empty issue directory for a new-format operation.
-    /// S2 integration must call this before publishing the operation directory.
+    #[cfg(test)]
     pub(crate) fn create_new(
         operation_directory: &File,
         lifecycle: &VerifiedLifecycleIssueRosterV3,
@@ -653,6 +748,28 @@ impl DurableEffectIssueStoreV3 {
                 "new V3 issue directory must exist before the first V2 issue",
             ));
         }
+        let store = Self::create_prepublication(RetainedLifecycleIssueSourceV3::for_test(
+            operation_directory,
+            lifecycle.operation_nonce(),
+            expected_uid,
+            expected_gid,
+        ))?;
+        lifecycle.revalidate()?;
+        Ok(store)
+    }
+
+    /// Create the mandatory empty issue directory for a new-format operation.
+    /// S2 calls this while the outer operation directory still has its
+    /// `.incoming-operation-*` name; no production raw lifecycle roster is
+    /// accepted here.
+    pub(crate) fn create_prepublication(
+        source: RetainedLifecycleIssueSourceV3<'_>,
+    ) -> Result<Self, DurableEffectIssueStoreErrorV3> {
+        let operation_directory = source.directory();
+        let operation_nonce = source.operation_nonce();
+        let expected_uid = source.expected_uid();
+        let expected_gid = source.expected_gid();
+        require_nonce(operation_nonce, "new V3 operation nonce")?;
         require_current_owner(expected_uid, expected_gid)?;
         let operation_directory = operation_directory.try_clone()?;
         let operation_before = validate_directory(
@@ -747,7 +864,6 @@ impl DurableEffectIssueStoreV3 {
             ));
         }
         reject_issue_directory_aliases(operation_directory.as_raw_fd(), true)?;
-        lifecycle.revalidate()?;
         Ok(Self {
             directory,
             directory_binding,
@@ -756,7 +872,7 @@ impl DurableEffectIssueStoreV3 {
             issues: Vec::new(),
             operation_directory,
             operation_directory_binding,
-            operation_nonce: lifecycle.operation_nonce.clone(),
+            operation_nonce: operation_nonce.to_string(),
             poisoned: false,
             _not_send_or_sync: PhantomData,
         })
@@ -766,7 +882,34 @@ impl DurableEffectIssueStoreV3 {
     /// rosters are replayed as a bijection.  Reopened issues remain evidence
     /// of issued-or-uncertain work; this API intentionally yields no fresh
     /// retained issue capability and therefore cannot authorize a resend.
+    #[cfg(test)]
     pub(crate) fn open_existing_required(
+        operation_directory: &File,
+        lifecycle: &VerifiedLifecycleIssueRosterV3,
+        expected_uid: u32,
+        expected_gid: u32,
+    ) -> Result<Self, DurableEffectIssueStoreErrorV3> {
+        Self::open_existing_directory(operation_directory, lifecycle, expected_uid, expected_gid)
+    }
+
+    pub(crate) fn open_existing_from_s2(
+        source: RetainedLifecycleIssueSourceV3<'_>,
+        lifecycle: &VerifiedLifecycleIssueRosterV3,
+    ) -> Result<Self, DurableEffectIssueStoreErrorV3> {
+        if source.operation_nonce() != lifecycle.operation_nonce() {
+            return Err(invalid(
+                "sealed S2 operation differs from the lifecycle issue roster",
+            ));
+        }
+        Self::open_existing_directory(
+            source.directory(),
+            lifecycle,
+            source.expected_uid(),
+            source.expected_gid(),
+        )
+    }
+
+    fn open_existing_directory(
         operation_directory: &File,
         lifecycle: &VerifiedLifecycleIssueRosterV3,
         expected_uid: u32,
@@ -824,6 +967,7 @@ impl DurableEffectIssueStoreV3 {
         Ok(store)
     }
 
+    #[cfg(test)]
     pub(crate) fn persist<'store>(
         &'store mut self,
         lifecycle: &VerifiedLifecycleIssueRosterV3,
@@ -835,7 +979,23 @@ impl DurableEffectIssueStoreV3 {
             lifecycle,
             command,
             epochs,
-            unique_binding_sha256,
+            CollectorIssueInputV3::Synthetic(unique_binding_sha256),
+            |_| Ok(()),
+        )
+    }
+
+    pub(crate) fn persist_bound<'store>(
+        &'store mut self,
+        lifecycle: &VerifiedLifecycleIssueRosterV3,
+        collector: &RetainedCollectorIssueBindingV3<'_>,
+        command: ExactDisposableCommandV3,
+        epochs: EffectEpochEvidenceV3,
+    ) -> Result<RetainedDurableEffectIssueV3<'store>, DurableEffectIssueStoreErrorV3> {
+        self.persist_with_hook(
+            lifecycle,
+            command,
+            epochs,
+            CollectorIssueInputV3::Retained(collector),
             |_| Ok(()),
         )
     }
@@ -845,7 +1005,7 @@ impl DurableEffectIssueStoreV3 {
         lifecycle: &VerifiedLifecycleIssueRosterV3,
         command: ExactDisposableCommandV3,
         epochs: EffectEpochEvidenceV3,
-        unique_binding_sha256: Option<String>,
+        collector: CollectorIssueInputV3<'_>,
         mut hook: F,
     ) -> Result<RetainedDurableEffectIssueV3<'store>, DurableEffectIssueStoreErrorV3>
     where
@@ -892,9 +1052,8 @@ impl DurableEffectIssueStoreV3 {
                 "typed command kind differs from the durable V2 issued event",
             ));
         }
-        if let Some(unique_binding_sha256) = &unique_binding_sha256 {
-            require_digest(unique_binding_sha256, "unique collector binding digest")?;
-        }
+        let unique_binding_sha256 = collector.unique_binding_sha256(target, &epochs)?;
+        require_digest(&unique_binding_sha256, "unique collector binding digest")?;
         let command_bytes = canonical_json(&command)?;
         if command_bytes.len() > MAX_COMMAND_BYTES_V3 {
             return Err(invalid("typed command exceeds its fixed byte bound"));
@@ -923,7 +1082,7 @@ impl DurableEffectIssueStoreV3 {
             runner_epoch_sha256: epochs.runner_epoch_sha256,
             schema: ISSUE_SCHEMA_V3.to_string(),
             schema_version: 3,
-            unique_binding_sha256,
+            unique_binding_sha256: Some(unique_binding_sha256),
         };
         record.validate_against(target)?;
         let bytes = canonical_json(&record)?;
@@ -1064,6 +1223,7 @@ impl DurableEffectIssueStoreV3 {
                 ));
             }
             lifecycle.revalidate()?;
+            collector.revalidate()?;
             hook(PublishCutpointV3::FinalReplayed)?;
             Ok((
                 IssueFileCapsuleV3 {
@@ -1101,6 +1261,30 @@ impl DurableEffectIssueStoreV3 {
             .iter()
             .find(|issue| issue.record.effect_id == effect_id)
             .map(|issue| &issue.record)
+    }
+
+    pub(crate) fn retained_issue_identity(&self, effect_id: u64) -> Option<(String, String)> {
+        self.issues
+            .iter()
+            .find(|issue| issue.record.effect_id == effect_id)
+            .map(|issue| (issue.name.clone(), issue.record_sha256.clone()))
+    }
+
+    pub(crate) fn revalidate_required(
+        &self,
+        lifecycle: &VerifiedLifecycleIssueRosterV3,
+    ) -> Result<(), DurableEffectIssueStoreErrorV3> {
+        self.revalidate_against(lifecycle)
+    }
+
+    pub(crate) fn revalidate_prepared_empty(&self) -> Result<(), DurableEffectIssueStoreErrorV3> {
+        self.revalidate_files()?;
+        if !self.issues.is_empty() {
+            return Err(invalid(
+                "pre-issue operation unexpectedly owns a V3 issue record",
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) fn poisoned(&self) -> bool {

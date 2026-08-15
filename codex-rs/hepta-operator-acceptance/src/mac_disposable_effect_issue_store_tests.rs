@@ -486,14 +486,14 @@ fn lifecycle_roster_growth_does_not_look_like_operation_inode_replacement() {
 }
 
 #[test]
-fn a_second_issue_extends_both_rosters_without_losing_the_first_capsule() {
+fn old_mounted_collector_receipt_cannot_be_reused_after_unmount_observation() {
     let mut lifecycle = LifecycleFixture::new();
     let mut fixture = StoreFixture::new(&lifecycle.before_issue);
     let unmount = lifecycle.append_unmount();
     persist_unmount(&mut fixture, &unmount, lifecycle.epochs('7'));
     let eject = lifecycle.append_eject();
-    {
-        let retained = fixture
+    assert!(
+        fixture
             .store
             .persist(
                 &eject,
@@ -501,25 +501,21 @@ fn a_second_issue_extends_both_rosters_without_losing_the_first_capsule() {
                 lifecycle.epochs('8'),
                 Some(digest('d')),
             )
-            .expect("persist eject issue");
-        assert_eq!(retained.effect_id(), 2);
-        retained.revalidate().expect("two-file replay");
-    }
-    drop(fixture.store);
-    let reopened = DurableEffectIssueStoreV3::open_existing_required(
-        &fixture.operation,
-        &eject,
-        unsafe { libc::geteuid() },
-        unsafe { libc::getegid() },
-    )
-    .expect("two-way exact replay");
-    assert_eq!(
-        reopened.replayed_issue(1).expect("unmount").effect_kind,
-        EffectKindV3::Unmount
+            .is_err(),
+        "the mounted collector snapshot was reused after durable unmount observation"
     );
-    assert_eq!(
-        reopened.replayed_issue(2).expect("eject").effect_kind,
-        EffectKindV3::Eject
+    assert!(fixture.store.replayed_issue(1).is_some());
+    assert!(fixture.store.replayed_issue(2).is_none());
+    drop(fixture.store);
+    assert!(
+        DurableEffectIssueStoreV3::open_existing_required(
+            &fixture.operation,
+            &eject,
+            unsafe { libc::geteuid() },
+            unsafe { libc::getegid() },
+        )
+        .is_err(),
+        "missing post-unmount V3 issue was accepted as an exact bijection"
     );
 }
 
@@ -623,7 +619,7 @@ fn every_publish_cutpoint_returns_no_capsule_and_poisoned_state() {
                 &issued,
                 unmount_command(),
                 lifecycle.epochs('7'),
-                Some(digest('c')),
+                CollectorIssueInputV3::Synthetic(Some(digest('c'))),
                 |seen| {
                     if seen == cutpoint {
                         Err(io::Error::other("injected cutpoint failure"))
