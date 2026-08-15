@@ -1359,13 +1359,6 @@ impl DurableEffectIssueStoreV3 {
             .map(|issue| &issue.record)
     }
 
-    pub(crate) fn retained_issue_identity(&self, effect_id: u64) -> Option<(String, String)> {
-        self.issues
-            .iter()
-            .find(|issue| issue.record.effect_id == effect_id)
-            .map(|issue| (issue.name.clone(), issue.record_sha256.clone()))
-    }
-
     pub(crate) fn revalidate_s1_adopted(&self) -> Result<(), DurableEffectIssueStoreErrorV3> {
         self.revalidate_files()?;
         if self.issues.iter().any(|issue| !issue.s1_adopted) {
