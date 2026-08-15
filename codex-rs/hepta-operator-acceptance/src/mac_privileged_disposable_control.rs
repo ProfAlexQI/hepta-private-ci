@@ -26,6 +26,7 @@ use crate::mac_disposable_lifecycle_store::DurableLifecycleStoreErrorV3;
 use crate::mac_disposable_lifecycle_store::ExistingCensusStoreWiringV3;
 use crate::mac_disposable_lifecycle_store::FreshCensusStoreWiringV3;
 use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
+use crate::mac_disposable_lifecycle_store::RetainedLifecycleRecordAppendV3;
 use crate::mac_iomedia_identity::current_boot_session_uuid;
 use crate::mac_privileged_broker::BarrierJournal;
 use crate::mac_privileged_broker::BarrierPhaseV1;
@@ -59,6 +60,8 @@ const LOCK_NAME: &str = "global.lock";
 const OPERATIONS_NAME: &str = "operations";
 const PUBLICATION_NAME: &str = "publication";
 const OPERATION_PREFIX: &str = "operation-";
+const EFFECT_ISSUE_ROOT_V3: &str = "effect-issues-v3";
+const MAX_EFFECT_ISSUES_V3: usize = 256;
 const HISTORICAL_ROOT_PREFIX: &str = ".hepta-privileged-qualification-v1-";
 const HISTORICAL_OBLIGATION_PREFIX: &str = "attachment-obligation-";
 const LEGACY_CLOSURE_PREFIX: &str = "legacy-closure-";
@@ -190,10 +193,20 @@ struct RecordCapsule {
 
 struct OperationCapsule {
     directory: File,
+    effect_issues: Option<EffectIssueRootCapsuleV3>,
     identity: Identity,
     name: String,
     record_names: Vec<String>,
     records: Vec<RecordCapsule>,
+    roster: Vec<String>,
+}
+
+struct EffectIssueRootCapsuleV3 {
+    directory: File,
+    identity: Identity,
+    issues: Vec<RecordCapsule>,
+    name: String,
+    roster: Vec<String>,
 }
 
 struct HistoricalRootCapsule {
@@ -422,6 +435,34 @@ pub(crate) struct RetainedControlCensusV3<'a, A, M> {
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
+/// One-shot sink through which S2 transfers the exact freshly published
+/// operation and mandatory issue-root descriptors back into the retained S1
+/// census.  The sink never yields either descriptor to its caller.
+pub(crate) struct FreshOperationAdmissionSinkV3<'c, 'a> {
+    census: &'c mut RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+enum LifecycleRecordAppendTargetV3<'c, 'a> {
+    Fresh(&'c mut RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>),
+    Blocking(&'c mut RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>),
+}
+
+/// One-shot S1 sink for one already-durable S2 lifecycle record descriptor.
+/// `terminal` is sealed by the constructor selected from the census typestate,
+/// never supplied by an external caller.
+pub(crate) struct LifecycleRecordAppendSinkV3<'c, 'a> {
+    target: LifecycleRecordAppendTargetV3<'c, 'a>,
+    terminal: bool,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// One-shot S1 sink for the exact final V3 issue descriptor retained by S2.
+pub(crate) struct EffectIssueAppendSinkV3<'c, 'a> {
+    census: &'c mut RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
 impl LivePrivilegedDisposablePolicyV2 {
     /// Open and retain the fixed control root and lock until process exit.
     pub fn open_fixed_for_process() -> Result<&'static Self, PrivilegedDisposableControlErrorV2> {
@@ -592,7 +633,13 @@ impl LivePrivilegedDisposablePolicyV2 {
         let retained_fds_from_capsules = fixed_descriptors
             + capsules
                 .iter()
-                .map(|capsule| 1 + capsule.records.len())
+                .map(|capsule| {
+                    1 + capsule.records.len()
+                        + capsule
+                            .effect_issues
+                            .as_ref()
+                            .map_or(0, |root| 1 + root.issues.len())
+                })
                 .sum::<usize>()
             + historical
                 .roots
@@ -809,7 +856,25 @@ impl LivePrivilegedDisposablePolicyV2 {
             &self.filesystem,
             "operation directory",
         )?;
-        let record_names = list_directory(directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2)?;
+        let roster = list_directory(directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 1)?;
+        let issue_like = roster
+            .iter()
+            .filter(|entry| entry.contains(EFFECT_ISSUE_ROOT_V3))
+            .collect::<Vec<_>>();
+        if issue_like.len() > 1
+            || issue_like
+                .first()
+                .is_some_and(|entry| entry.as_str() != EFFECT_ISSUE_ROOT_V3)
+        {
+            return Err(invalid(
+                "operation contains a duplicate, temporary, or aliased V3 issue root",
+            ));
+        }
+        let record_names = roster
+            .iter()
+            .filter(|entry| entry.as_str() != EFFECT_ISSUE_ROOT_V3)
+            .cloned()
+            .collect::<Vec<_>>();
         if record_names.is_empty() {
             return Err(invalid("operation has no lifecycle records"));
         }
@@ -845,12 +910,26 @@ impl LivePrivilegedDisposablePolicyV2 {
                 name: record_name.clone(),
             });
         }
+        let effect_issues = if issue_like.is_empty() {
+            None
+        } else {
+            Some(open_effect_issue_root(
+                directory.as_raw_fd(),
+                total_bytes,
+                retained_fds,
+                self.expected_uid,
+                self.expected_gid,
+                &self.filesystem,
+            )?)
+        };
         let capsule = OperationCapsule {
             directory,
+            effect_issues,
             identity,
             name: name.to_string(),
             record_names,
             records,
+            roster,
         };
         capsule.revalidate(
             parent_fd,
@@ -1797,7 +1876,398 @@ impl<A, M> RetainedControlCensusV3<'_, A, M> {
     }
 }
 
+impl FreshOperationAdmissionSinkV3<'_, '_> {
+    pub(crate) fn retain(
+        self,
+        operation_directory: File,
+        final_name: String,
+        issue_directory: File,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        let census = self.census;
+        if census.admission.admitted_operation_name.is_some() {
+            return Err(invalid(
+                "retained census already admitted its one fresh operation",
+            ));
+        }
+        operation_nonce(&final_name)?;
+        let next_fd_count = census
+            .assessment
+            ._retained_fd_count
+            .checked_add(2)
+            .ok_or_else(|| invalid("fresh retained descriptor count overflowed"))?;
+        if next_fd_count > MAX_RETAINED_FDS {
+            return Err(invalid(
+                "fresh operation capsule exceeds retained descriptor bound",
+            ));
+        }
+        let expected_uid = census.assessment._policy.expected_uid;
+        let expected_gid = census.assessment._policy.expected_gid;
+        let filesystem = &census.assessment._policy.filesystem;
+        let operations_identity = validate_directory(
+            &census.assessment._policy.operations,
+            expected_uid,
+            expected_gid,
+            0o700,
+            filesystem,
+            "operations directory after exact fresh publication",
+        )?;
+        if named_identity(census.assessment._policy.root.as_raw_fd(), OPERATIONS_NAME)?
+            != operations_identity
+        {
+            return Err(invalid(
+                "operations directory changed during exact fresh admission",
+            ));
+        }
+        let operation_identity = validate_directory(
+            &operation_directory,
+            expected_uid,
+            expected_gid,
+            0o700,
+            filesystem,
+            "freshly published operation directory",
+        )?;
+        if named_identity(
+            census.assessment._policy.operations.as_raw_fd(),
+            &final_name,
+        )? != operation_identity
+            || list_directory(
+                operation_directory.as_raw_fd(),
+                MAX_OPERATION_RECORDS_V2 + 1,
+            )? != [EFFECT_ISSUE_ROOT_V3]
+        {
+            return Err(invalid(
+                "fresh operation path or initial roster differs from its retained descriptor",
+            ));
+        }
+        let issue_identity = validate_directory(
+            &issue_directory,
+            expected_uid,
+            expected_gid,
+            0o700,
+            filesystem,
+            "fresh mandatory V3 issue root",
+        )?;
+        if named_identity(operation_directory.as_raw_fd(), EFFECT_ISSUE_ROOT_V3)? != issue_identity
+            || !list_directory(issue_directory.as_raw_fd(), MAX_EFFECT_ISSUES_V3)?.is_empty()
+        {
+            return Err(invalid(
+                "fresh mandatory V3 issue root differs from its retained empty descriptor",
+            ));
+        }
+        let mut expected = census.operations_roster.clone();
+        expected.push(final_name.clone());
+        expected.sort();
+        if expected.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(invalid("fresh operation aliases an existing roster entry"));
+        }
+        census.assessment._operations.push(OperationCapsule {
+            directory: operation_directory,
+            effect_issues: Some(EffectIssueRootCapsuleV3 {
+                directory: issue_directory,
+                identity: issue_identity,
+                issues: Vec::new(),
+                name: EFFECT_ISSUE_ROOT_V3.to_string(),
+                roster: Vec::new(),
+            }),
+            identity: operation_identity,
+            name: final_name.clone(),
+            record_names: Vec::new(),
+            records: Vec::new(),
+            roster: vec![EFFECT_ISSUE_ROOT_V3.to_string()],
+        });
+        census.assessment._retained_fd_count = next_fd_count;
+        census.operations_identity = operations_identity;
+        census.operations_roster = expected;
+        census.admission.admitted_operation_name = Some(final_name);
+        census.revalidate()
+    }
+}
+
+impl LifecycleRecordAppendSinkV3<'_, '_> {
+    pub(crate) fn retain(
+        self,
+        s2_directory: File,
+        record: File,
+        bytes: Vec<u8>,
+        operation_name: String,
+        record_name: String,
+        record_sha256: String,
+        sequence: u32,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        let (inspection, selected_nonce) = match self.target {
+            LifecycleRecordAppendTargetV3::Fresh(census) => {
+                let selected = census
+                    .admission
+                    .admitted_operation_name
+                    .clone()
+                    .ok_or_else(|| invalid("fresh S1 census has no exact admitted operation"))?;
+                if selected != operation_name {
+                    return Err(invalid(
+                        "S2 lifecycle capsule differs from the freshly admitted operation",
+                    ));
+                }
+                let inspection = absorb_transferred_lifecycle_record(
+                    census,
+                    &s2_directory,
+                    record,
+                    bytes,
+                    &operation_name,
+                    &record_name,
+                    &record_sha256,
+                    sequence,
+                )?;
+                (inspection, operation_nonce(&operation_name)?.to_string())
+            }
+            LifecycleRecordAppendTargetV3::Blocking(census) => {
+                if census.admission.operation_name != operation_name {
+                    return Err(invalid(
+                        "S2 lifecycle capsule differs from the selected blocking operation",
+                    ));
+                }
+                let selected_nonce = census.admission.operation_nonce.clone();
+                let inspection = absorb_transferred_lifecycle_record(
+                    census,
+                    &s2_directory,
+                    record,
+                    bytes,
+                    &operation_name,
+                    &record_name,
+                    &record_sha256,
+                    sequence,
+                )?;
+                let target = census
+                    .assessment
+                    ._operations
+                    .iter()
+                    .find(|capsule| capsule.name == operation_name)
+                    .ok_or_else(|| invalid("selected blocking capsule disappeared"))?;
+                census.admission.operation_identity = target.identity;
+                (inspection, selected_nonce)
+            }
+        };
+        if inspection.operation_nonce != selected_nonce {
+            return Err(invalid(
+                "exact transferred lifecycle record changed the operation nonce",
+            ));
+        }
+        if self.terminal {
+            if inspection.blocks_new_operations
+                || !matches!(
+                    inspection.disposition,
+                    LifecycleDispositionV2::TerminalCompleted
+                        | LifecycleDispositionV2::TerminalAborted
+                )
+            {
+                return Err(invalid(
+                    "terminal lifecycle sink requires the exact durable terminal transition",
+                ));
+            }
+        } else if !inspection.blocks_new_operations {
+            return Err(invalid(
+                "ordinary lifecycle sink cannot absorb a terminal transition",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl EffectIssueAppendSinkV3<'_, '_> {
+    pub(crate) fn retain(
+        self,
+        s2_issue_directory: File,
+        issue: File,
+        bytes: Vec<u8>,
+        operation_name: String,
+        issue_name: String,
+        issue_sha256: String,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        let census = self.census;
+        if census.admission.operation_name != operation_name {
+            return Err(invalid(
+                "S2 effect-issue capsule differs from the selected blocking operation",
+            ));
+        }
+        let next_fd_count = census
+            .assessment
+            ._retained_fd_count
+            .checked_add(1)
+            .ok_or_else(|| invalid("retained descriptor count overflowed"))?;
+        if next_fd_count > MAX_RETAINED_FDS {
+            return Err(invalid(
+                "appended V3 effect issue exceeds retained descriptor bound",
+            ));
+        }
+        let remaining_bytes = MAX_TOTAL_RECORD_BYTES
+            .checked_sub(census.assessment._retained_record_bytes)
+            .ok_or_else(|| invalid("retained record bytes already exceed the global bound"))?;
+        let target_index = census
+            .assessment
+            ._operations
+            .iter()
+            .position(|capsule| capsule.name == operation_name)
+            .ok_or_else(|| invalid("selected blocking capsule disappeared"))?;
+        if census
+            .assessment
+            ._operations
+            .iter()
+            .skip(target_index + 1)
+            .any(|capsule| capsule.name == operation_name)
+        {
+            return Err(invalid("selected blocking capsule is duplicated"));
+        }
+        let operation_fd = census.assessment._operations[target_index]
+            .directory
+            .as_raw_fd();
+        let expected_uid = census.assessment._policy.expected_uid;
+        let expected_gid = census.assessment._policy.expected_gid;
+        let filesystem = census.assessment._policy.filesystem.clone();
+        let appended_bytes = census.assessment._operations[target_index]
+            .effect_issues
+            .as_mut()
+            .ok_or_else(|| {
+                invalid("selected operation lacks the mandatory retained V3 issue root")
+            })?
+            .absorb_exact_append(
+                operation_fd,
+                expected_uid,
+                expected_gid,
+                &filesystem,
+                s2_issue_directory,
+                issue,
+                bytes,
+                &issue_name,
+                &issue_sha256,
+                remaining_bytes,
+            )?;
+        census.assessment._retained_fd_count = next_fd_count;
+        census.assessment._retained_record_bytes = census
+            .assessment
+            ._retained_record_bytes
+            .checked_add(appended_bytes)
+            .ok_or_else(|| invalid("retained record byte count overflowed"))?;
+        census.revalidate()
+    }
+}
+
+fn absorb_transferred_lifecycle_record<A>(
+    census: &mut RetainedControlCensusV3<'_, A, StableMountStateV3>,
+    s2_directory: &File,
+    record: File,
+    bytes: Vec<u8>,
+    operation_name: &str,
+    record_name: &str,
+    record_sha256: &str,
+    sequence: u32,
+) -> Result<LifecycleInspectionV2, PrivilegedDisposableControlErrorV2> {
+    let next_fd_count = census
+        .assessment
+        ._retained_fd_count
+        .checked_add(1)
+        .ok_or_else(|| invalid("retained descriptor count overflowed"))?;
+    if next_fd_count > MAX_RETAINED_FDS {
+        return Err(invalid(
+            "appended lifecycle record exceeds retained descriptor bound",
+        ));
+    }
+    let remaining_bytes = MAX_TOTAL_RECORD_BYTES
+        .checked_sub(census.assessment._retained_record_bytes)
+        .ok_or_else(|| invalid("retained lifecycle bytes already exceed the global bound"))?;
+    let target_index = census
+        .assessment
+        ._operations
+        .iter()
+        .position(|capsule| capsule.name == operation_name)
+        .ok_or_else(|| invalid("transferred lifecycle operation capsule disappeared"))?;
+    if census
+        .assessment
+        ._operations
+        .iter()
+        .skip(target_index + 1)
+        .any(|capsule| capsule.name == operation_name)
+    {
+        return Err(invalid(
+            "transferred lifecycle operation capsule is duplicated",
+        ));
+    }
+    let expected_uid = census.assessment._policy.expected_uid;
+    let expected_gid = census.assessment._policy.expected_gid;
+    let filesystem = census.assessment._policy.filesystem.clone();
+    let s2_identity = validate_directory(
+        s2_directory,
+        expected_uid,
+        expected_gid,
+        0o700,
+        &filesystem,
+        "S2 retained lifecycle operation directory",
+    )?;
+    let target_identity = census.assessment._operations[target_index].identity;
+    if s2_identity.dev != target_identity.dev || s2_identity.ino != target_identity.ino {
+        return Err(invalid(
+            "S2 lifecycle capsule directory is not the exact S1-retained operation inode",
+        ));
+    }
+    let parent_fd = census.assessment._policy.operations.as_raw_fd();
+    let (appended_bytes, _) = census.assessment._operations[target_index]
+        .absorb_exact_record_append(
+            parent_fd,
+            expected_uid,
+            expected_gid,
+            &filesystem,
+            record,
+            bytes,
+            record_name,
+            record_sha256,
+            sequence,
+            remaining_bytes,
+        )?;
+    let lifecycle = census.assessment._operations[target_index]
+        .records
+        .iter()
+        .map(|record| record.bytes.clone())
+        .collect::<Vec<_>>();
+    let inspection = match dispatch_lifecycle_records(&lifecycle)
+        .map_err(|error| invalid(format!("appended target lifecycle is invalid: {error}")))?
+    {
+        LifecycleDispatchV2::V2(inspection) => inspection,
+        LifecycleDispatchV2::HistoricalV1(_) => {
+            return Err(invalid(
+                "selected v2 operation changed into a historical lifecycle",
+            ));
+        }
+    };
+    census.assessment._retained_fd_count = next_fd_count;
+    census.assessment._retained_record_bytes = census
+        .assessment
+        ._retained_record_bytes
+        .checked_add(appended_bytes)
+        .ok_or_else(|| invalid("retained lifecycle byte count overflowed"))?;
+    census.revalidate()?;
+    Ok(inspection)
+}
+
 impl<'a> RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3> {
+    pub(crate) fn fresh_operation_admission_sink(
+        &mut self,
+    ) -> Result<FreshOperationAdmissionSinkV3<'_, 'a>, PrivilegedDisposableControlErrorV2> {
+        if self.admission.admitted_operation_name.is_some() {
+            return Err(invalid("fresh operation was already admitted"));
+        }
+        Ok(FreshOperationAdmissionSinkV3 {
+            census: self,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn fresh_lifecycle_record_sink(
+        &mut self,
+    ) -> Result<LifecycleRecordAppendSinkV3<'_, 'a>, PrivilegedDisposableControlErrorV2> {
+        Ok(LifecycleRecordAppendSinkV3 {
+            target: LifecycleRecordAppendTargetV3::Fresh(self),
+            terminal: false,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
     /// Consume the fresh S1 census into the one concrete S2 wiring object.
     /// No `File`, raw descriptor, or cloneable descriptor-bearing bundle is
     /// ever returned to the caller between S1 revalidation and S2 creation.
@@ -1821,45 +2291,7 @@ impl<'a> RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3> {
             expected_uid,
             expected_gid,
         )?;
-        self.admit_fresh_operation(prepared.final_name())?;
-        Ok(prepared.bind(self))
-    }
-
-    fn admit_fresh_operation(
-        &mut self,
-        final_name: &str,
-    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
-        if self.admission.admitted_operation_name.is_some() {
-            return Err(invalid(
-                "retained census cannot admit a second fresh operation",
-            ));
-        }
-        operation_nonce(final_name)?;
-        let mut expected = self.operations_roster.clone();
-        expected.push(final_name.to_string());
-        expected.sort();
-        if expected.windows(2).any(|pair| pair[0] == pair[1]) {
-            return Err(invalid("fresh operation aliases an existing roster entry"));
-        }
-        let operations_identity = validate_directory(
-            &self.assessment._policy.operations,
-            self.assessment._policy.expected_uid,
-            self.assessment._policy.expected_gid,
-            0o700,
-            &self.assessment._policy.filesystem,
-            "operations directory after fresh admission",
-        )?;
-        if named_identity(self.assessment._policy.root.as_raw_fd(), OPERATIONS_NAME)?
-            != operations_identity
-        {
-            return Err(invalid(
-                "operations directory changed during fresh admission",
-            ));
-        }
-        self.operations_identity = operations_identity;
-        self.operations_roster = expected;
-        self.admission.admitted_operation_name = Some(final_name.to_string());
-        self.revalidate()
+        prepared.bind(self)
     }
 }
 
@@ -1871,6 +2303,16 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
             .iter()
             .find(|capsule| capsule.name == self.admission.operation_name)
             .map_or(0, |capsule| capsule.records.len())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn selected_effect_issue_count(&self) -> usize {
+        self.assessment
+            ._operations
+            .iter()
+            .find(|capsule| capsule.name == self.admission.operation_name)
+            .and_then(|capsule| capsule.effect_issues.as_ref())
+            .map_or(0, |root| root.issues.len())
     }
 
     /// Consume this census into the one concrete reconciliation wiring object.
@@ -1920,6 +2362,29 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
                 ))
             })
             .collect::<Result<Vec<_>, io::Error>>()?;
+        let effect_issues = target
+            .effect_issues
+            .as_ref()
+            .map(|root| {
+                let records = root
+                    .issues
+                    .iter()
+                    .map(|record| {
+                        Ok((
+                            record.name.clone(),
+                            record.bytes.clone(),
+                            record.file.try_clone()?,
+                            (record.identity.dev, record.identity.ino),
+                        ))
+                    })
+                    .collect::<Result<Vec<_>, io::Error>>()?;
+                Ok::<_, io::Error>((
+                    root.directory.try_clone()?,
+                    (root.identity.dev, root.identity.ino),
+                    records,
+                ))
+            })
+            .transpose()?;
         let expected_operations_inode =
             (self.operations_identity.dev, self.operations_identity.ino);
         let expected_operation_inode = (
@@ -1938,6 +2403,7 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
             directory,
             expected_operation_inode,
             records,
+            effect_issues,
             operation_name,
             operation_nonce,
             expected_uid,
@@ -1945,29 +2411,95 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
         )
     }
 
+    pub(crate) fn selected_lifecycle_record_sink(
+        &mut self,
+    ) -> Result<LifecycleRecordAppendSinkV3<'_, 'a>, PrivilegedDisposableControlErrorV2> {
+        Ok(LifecycleRecordAppendSinkV3 {
+            target: LifecycleRecordAppendTargetV3::Blocking(self),
+            terminal: false,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    /// Test-only compatibility projection used to exercise malformed path
+    /// states. Production append admission always consumes an S2-retained
+    /// descriptor capsule through `selected_lifecycle_record_sink`.
+    #[cfg(test)]
     pub(crate) fn admit_selected_lifecycle_append(
         &mut self,
         expected_record_sha256: &str,
     ) -> Result<(), PrivilegedDisposableControlErrorV2> {
-        let inspection = self.retain_selected_lifecycle_append(expected_record_sha256)?;
-        if inspection.operation_nonce != self.admission.operation_nonce
-            || !inspection.blocks_new_operations
-        {
-            return Err(invalid(
-                "ordinary blocking append cannot perform the terminal completion transition",
-            ));
-        }
-        self.revalidate()
+        let operation_name = self.admission.operation_name.clone();
+        let target = self
+            .assessment
+            ._operations
+            .iter()
+            .find(|capsule| capsule.name == operation_name)
+            .ok_or_else(|| invalid("selected blocking capsule disappeared"))?;
+        let sequence = target
+            .records
+            .len()
+            .checked_add(1)
+            .ok_or_else(|| invalid("test lifecycle sequence overflowed"))?;
+        let record_name = format!("{sequence:08}.json");
+        let record = openat_node(target.directory.as_raw_fd(), &record_name, libc::O_RDONLY)?;
+        let identity = validate_regular(
+            &record,
+            self.assessment._policy.expected_uid,
+            self.assessment._policy.expected_gid,
+            0o400,
+            Some(MAX_RECORD_BYTES as i64),
+            &self.assessment._policy.filesystem,
+            "test lifecycle append record",
+        )?;
+        let bytes = read_stable(&record, identity)?;
+        let directory = target.directory.try_clone()?;
+        let sequence = u32::try_from(sequence)
+            .map_err(|_| invalid("test lifecycle sequence overflowed u32"))?;
+        let sink = self.selected_lifecycle_record_sink()?;
+        sink.retain(
+            directory,
+            record,
+            bytes,
+            operation_name,
+            record_name,
+            expected_record_sha256.to_string(),
+            sequence,
+        )
+    }
+
+    pub(crate) fn selected_terminal_record_sink(
+        &mut self,
+    ) -> Result<LifecycleRecordAppendSinkV3<'_, 'a>, PrivilegedDisposableControlErrorV2> {
+        Ok(LifecycleRecordAppendSinkV3 {
+            target: LifecycleRecordAppendTargetV3::Blocking(self),
+            terminal: true,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn selected_effect_issue_sink(
+        &mut self,
+    ) -> Result<EffectIssueAppendSinkV3<'_, 'a>, PrivilegedDisposableControlErrorV2> {
+        Ok(EffectIssueAppendSinkV3 {
+            census: self,
+            _not_send_or_sync: PhantomData,
+        })
     }
 
     pub(crate) fn complete_selected_lifecycle_append(
         mut self,
-        expected_record_sha256: &str,
+        append: &RetainedLifecycleRecordAppendV3,
     ) -> Result<
         RetainedControlCensusV3<'a, CompletedOperationV3, StableMountStateV3>,
         PrivilegedDisposableControlErrorV2,
     > {
-        let inspection = self.retain_selected_lifecycle_append(expected_record_sha256)?;
+        append.require_s1_adopted().map_err(|error| {
+            invalid(format!(
+                "terminal append capsule is not S1-retained: {error}"
+            ))
+        })?;
+        let inspection = self.selected_lifecycle_inspection()?;
         if inspection.operation_nonce != self.admission.operation_nonce
             || inspection.blocks_new_operations
             || !matches!(
@@ -2017,7 +2549,7 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
             operation_identity: self.admission.operation_identity,
             operation_name: self.admission.operation_name,
             operation_nonce: self.admission.operation_nonce,
-            terminal_record_sha256: expected_record_sha256.to_string(),
+            terminal_record_sha256: append.digest().to_string(),
         };
         Ok(RetainedControlCensusV3 {
             assessment: self.assessment,
@@ -2029,23 +2561,9 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
         })
     }
 
-    fn retain_selected_lifecycle_append(
-        &mut self,
-        expected_record_sha256: &str,
+    fn selected_lifecycle_inspection(
+        &self,
     ) -> Result<LifecycleInspectionV2, PrivilegedDisposableControlErrorV2> {
-        let next_fd_count = self
-            .assessment
-            ._retained_fd_count
-            .checked_add(1)
-            .ok_or_else(|| invalid("retained descriptor count overflowed"))?;
-        if next_fd_count > MAX_RETAINED_FDS {
-            return Err(invalid(
-                "appended lifecycle record exceeds retained descriptor bound",
-            ));
-        }
-        let remaining_bytes = MAX_TOTAL_RECORD_BYTES
-            .checked_sub(self.assessment._retained_record_bytes)
-            .ok_or_else(|| invalid("retained lifecycle bytes already exceed the global bound"))?;
         let target_index = self
             .assessment
             ._operations
@@ -2061,20 +2579,7 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
         {
             return Err(invalid("selected blocking capsule is duplicated"));
         }
-        let parent_fd = self.assessment._policy.operations.as_raw_fd();
-        let expected_uid = self.assessment._policy.expected_uid;
-        let expected_gid = self.assessment._policy.expected_gid;
-        let filesystem = self.assessment._policy.filesystem.clone();
-        let appended_bytes = self.assessment._operations[target_index].admit_exact_record_append(
-            parent_fd,
-            expected_uid,
-            expected_gid,
-            &filesystem,
-            expected_record_sha256,
-            remaining_bytes,
-        )?;
         let target = &self.assessment._operations[target_index];
-        let target_identity = target.identity;
         let lifecycle = target
             .records
             .iter()
@@ -2090,13 +2595,6 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
                 ));
             }
         };
-        self.assessment._retained_fd_count = next_fd_count;
-        self.assessment._retained_record_bytes = self
-            .assessment
-            ._retained_record_bytes
-            .checked_add(appended_bytes)
-            .ok_or_else(|| invalid("retained lifecycle byte count overflowed"))?;
-        self.admission.operation_identity = target_identity;
         Ok(inspection)
     }
 }
@@ -2141,15 +2639,19 @@ fn remove_exact_once(
 }
 
 impl OperationCapsule {
-    fn admit_exact_record_append(
+    fn absorb_exact_record_append(
         &mut self,
         parent_fd: RawFd,
         expected_uid: u32,
         expected_gid: u32,
         filesystem: &FilesystemBinding,
+        file: File,
+        bytes: Vec<u8>,
+        exact_name: &str,
         expected_record_sha256: &str,
+        exact_sequence: u32,
         maximum_appended_bytes: usize,
-    ) -> Result<usize, PrivilegedDisposableControlErrorV2> {
+    ) -> Result<(usize, Identity), PrivilegedDisposableControlErrorV2> {
         require_hex_nonce(expected_record_sha256, "appended lifecycle record SHA-256")?;
         let next_sequence = self
             .record_names
@@ -2160,8 +2662,17 @@ impl OperationCapsule {
             return Err(invalid("operation record count exceeds retained bound"));
         }
         let next_name = format!("{next_sequence:08}.json");
+        if exact_name != next_name || usize::try_from(exact_sequence).ok() != Some(next_sequence) {
+            return Err(invalid(
+                "S2 lifecycle capsule name or sequence differs from the exact next record",
+            ));
+        }
         let mut expected_roster = self.record_names.clone();
         expected_roster.push(next_name.clone());
+        if self.effect_issues.is_some() {
+            expected_roster.push(EFFECT_ISSUE_ROOT_V3.to_string());
+        }
+        expected_roster.sort();
         let after_identity = validate_directory(
             &self.directory,
             expected_uid,
@@ -2171,7 +2682,8 @@ impl OperationCapsule {
             "selected operation directory after lifecycle append",
         )?;
         let named_after = named_identity(parent_fd, &self.name)?;
-        let roster_after = list_directory(self.directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2)?;
+        let roster_after =
+            list_directory(self.directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 1)?;
         if !self
             .identity
             .same_directory_across_record_append(after_identity)
@@ -2191,7 +2703,6 @@ impl OperationCapsule {
                 filesystem,
             )?;
         }
-        let file = openat_node(self.directory.as_raw_fd(), &next_name, libc::O_RDONLY)?;
         let record_identity = validate_regular(
             &file,
             expected_uid,
@@ -2208,28 +2719,36 @@ impl OperationCapsule {
                 "appended lifecycle record aliases an already retained record",
             ));
         }
-        let bytes = read_stable(&file, record_identity)?;
-        if bytes.len() > maximum_appended_bytes {
+        let descriptor_bytes = read_stable(&file, record_identity)?;
+        if named_identity(self.directory.as_raw_fd(), &next_name)? != record_identity
+            || descriptor_bytes != bytes
+        {
+            return Err(invalid(
+                "S2 lifecycle capsule differs from the exact final pathname or descriptor bytes",
+            ));
+        }
+        if descriptor_bytes.len() > maximum_appended_bytes {
             return Err(invalid(
                 "appended lifecycle record exceeds retained global byte budget",
             ));
         }
-        if sha256(&bytes) != expected_record_sha256 {
+        if sha256(&descriptor_bytes) != expected_record_sha256 {
             return Err(invalid(
                 "appended lifecycle record differs from the S2 durable digest",
             ));
         }
-        let appended_bytes = bytes.len();
+        let appended_bytes = descriptor_bytes.len();
         self.identity = after_identity;
-        self.record_names = expected_roster;
+        self.record_names.push(next_name.clone());
+        self.roster = expected_roster;
         self.records.push(RecordCapsule {
-            bytes,
+            bytes: descriptor_bytes,
             file,
             identity: record_identity,
             name: next_name,
         });
         self.revalidate(parent_fd, expected_uid, expected_gid, filesystem)?;
-        Ok(appended_bytes)
+        Ok((appended_bytes, record_identity))
     }
 
     fn revalidate(
@@ -2248,8 +2767,8 @@ impl OperationCapsule {
                 filesystem,
                 "operation directory",
             )? != self.identity
-            || list_directory(self.directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2)?
-                != self.record_names
+            || list_directory(self.directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 1)?
+                != self.roster
         {
             return Err(invalid(
                 "operation directory changed during descriptor replay",
@@ -2257,6 +2776,14 @@ impl OperationCapsule {
         }
         for record in &self.records {
             record.revalidate(
+                self.directory.as_raw_fd(),
+                expected_uid,
+                expected_gid,
+                filesystem,
+            )?;
+        }
+        if let Some(effect_issues) = &self.effect_issues {
+            effect_issues.revalidate(
                 self.directory.as_raw_fd(),
                 expected_uid,
                 expected_gid,
@@ -2275,6 +2802,261 @@ impl OperationCapsule {
         registry.insert(&path, self.identity)?;
         for record in &self.records {
             record.register(registry, &path)?;
+        }
+        if let Some(effect_issues) = &self.effect_issues {
+            effect_issues.register(registry, &path)?;
+        }
+        Ok(())
+    }
+}
+
+fn open_effect_issue_root(
+    operation_fd: RawFd,
+    total_bytes: &mut usize,
+    retained_fds: &mut RetainedFdBudget,
+    expected_uid: u32,
+    expected_gid: u32,
+    filesystem: &FilesystemBinding,
+) -> Result<EffectIssueRootCapsuleV3, PrivilegedDisposableControlErrorV2> {
+    retained_fds.reserve("V3 effect-issue directory")?;
+    let directory = openat_node(
+        operation_fd,
+        EFFECT_ISSUE_ROOT_V3,
+        libc::O_RDONLY | libc::O_DIRECTORY,
+    )?;
+    let identity = validate_directory(
+        &directory,
+        expected_uid,
+        expected_gid,
+        0o700,
+        filesystem,
+        "V3 effect-issue directory",
+    )?;
+    if named_identity(operation_fd, EFFECT_ISSUE_ROOT_V3)? != identity {
+        return Err(invalid(
+            "V3 effect-issue root differs from its retained descriptor",
+        ));
+    }
+    let roster = list_directory(directory.as_raw_fd(), MAX_EFFECT_ISSUES_V3)?;
+    let mut issues = Vec::with_capacity(roster.len());
+    for name in &roster {
+        if !valid_effect_issue_name(name) {
+            return Err(invalid(
+                "V3 effect-issue root contains a noncanonical entry",
+            ));
+        }
+        retained_fds.reserve("V3 effect-issue record")?;
+        let file = openat_node(directory.as_raw_fd(), name, libc::O_RDONLY)?;
+        let issue_identity = validate_regular(
+            &file,
+            expected_uid,
+            expected_gid,
+            0o400,
+            Some(MAX_RECORD_BYTES as i64),
+            filesystem,
+            "V3 effect-issue record",
+        )?;
+        if named_identity(directory.as_raw_fd(), name)? != issue_identity {
+            return Err(invalid(
+                "V3 effect-issue pathname differs from its descriptor",
+            ));
+        }
+        let bytes = read_stable(&file, issue_identity)?;
+        *total_bytes = total_bytes
+            .checked_add(bytes.len())
+            .ok_or_else(|| invalid("V3 effect-issue byte budget overflowed"))?;
+        if *total_bytes > MAX_TOTAL_RECORD_BYTES {
+            return Err(invalid("V3 effect-issue byte budget exceeded"));
+        }
+        let name_digest = name
+            .strip_suffix(".json")
+            .and_then(|value| value.rsplit_once('-'))
+            .map(|(_, digest)| digest)
+            .ok_or_else(|| invalid("V3 effect-issue filename is malformed"))?;
+        if sha256(&bytes) != name_digest {
+            return Err(invalid(
+                "V3 effect-issue bytes differ from their filename digest",
+            ));
+        }
+        issues.push(RecordCapsule {
+            bytes,
+            file,
+            identity: issue_identity,
+            name: name.clone(),
+        });
+    }
+    Ok(EffectIssueRootCapsuleV3 {
+        directory,
+        identity,
+        issues,
+        name: EFFECT_ISSUE_ROOT_V3.to_string(),
+        roster,
+    })
+}
+
+fn valid_effect_issue_name(name: &str) -> bool {
+    let Some(value) = name
+        .strip_prefix("effect-")
+        .and_then(|v| v.strip_suffix(".json"))
+    else {
+        return false;
+    };
+    let Some((effect, digest)) = value.split_once('-') else {
+        return false;
+    };
+    effect.len() == 20
+        && effect.as_bytes().iter().all(u8::is_ascii_digit)
+        && effect != "00000000000000000000"
+        && digest.len() == 64
+        && digest
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(byte))
+}
+
+impl EffectIssueRootCapsuleV3 {
+    fn revalidate(
+        &self,
+        operation_fd: RawFd,
+        expected_uid: u32,
+        expected_gid: u32,
+        filesystem: &FilesystemBinding,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        if named_identity(operation_fd, &self.name)? != self.identity
+            || validate_directory(
+                &self.directory,
+                expected_uid,
+                expected_gid,
+                0o700,
+                filesystem,
+                "retained V3 effect-issue directory",
+            )? != self.identity
+            || list_directory(self.directory.as_raw_fd(), MAX_EFFECT_ISSUES_V3)? != self.roster
+        {
+            return Err(invalid(
+                "retained V3 effect-issue directory changed during replay",
+            ));
+        }
+        for issue in &self.issues {
+            issue.revalidate(
+                self.directory.as_raw_fd(),
+                expected_uid,
+                expected_gid,
+                filesystem,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn absorb_exact_append(
+        &mut self,
+        operation_fd: RawFd,
+        expected_uid: u32,
+        expected_gid: u32,
+        filesystem: &FilesystemBinding,
+        s2_directory: File,
+        file: File,
+        bytes: Vec<u8>,
+        expected_name: &str,
+        expected_sha256: &str,
+        maximum_appended_bytes: usize,
+    ) -> Result<usize, PrivilegedDisposableControlErrorV2> {
+        if !valid_effect_issue_name(expected_name) {
+            return Err(invalid("appended V3 issue filename is not canonical"));
+        }
+        require_hex_nonce(expected_sha256, "appended V3 issue SHA-256")?;
+        let name_sha256 = expected_name
+            .strip_suffix(".json")
+            .and_then(|value| value.rsplit_once('-'))
+            .map(|(_, digest)| digest)
+            .ok_or_else(|| invalid("appended V3 issue filename is malformed"))?;
+        if name_sha256 != expected_sha256 {
+            return Err(invalid(
+                "appended V3 issue filename digest differs from its retained digest",
+            ));
+        }
+        let mut expected_roster = self.roster.clone();
+        expected_roster.push(expected_name.to_string());
+        expected_roster.sort();
+        let after_identity = validate_directory(
+            &self.directory,
+            expected_uid,
+            expected_gid,
+            0o700,
+            filesystem,
+            "V3 effect-issue directory after append",
+        )?;
+        let s2_directory_identity = validate_directory(
+            &s2_directory,
+            expected_uid,
+            expected_gid,
+            0o700,
+            filesystem,
+            "S2 retained V3 effect-issue directory",
+        )?;
+        if !self
+            .identity
+            .same_directory_across_record_append(after_identity)
+            || s2_directory_identity != after_identity
+            || named_identity(operation_fd, &self.name)? != after_identity
+            || list_directory(self.directory.as_raw_fd(), MAX_EFFECT_ISSUES_V3)? != expected_roster
+        {
+            return Err(invalid(
+                "V3 effect-issue root changed by more than one exact append",
+            ));
+        }
+        for issue in &self.issues {
+            issue.revalidate(
+                self.directory.as_raw_fd(),
+                expected_uid,
+                expected_gid,
+                filesystem,
+            )?;
+        }
+        let identity = validate_regular(
+            &file,
+            expected_uid,
+            expected_gid,
+            0o400,
+            Some(MAX_RECORD_BYTES as i64),
+            filesystem,
+            "appended V3 effect-issue record",
+        )?;
+        let descriptor_bytes = read_stable(&file, identity)?;
+        if descriptor_bytes != bytes
+            || bytes.len() > maximum_appended_bytes
+            || sha256(&bytes) != expected_sha256
+            || named_identity(self.directory.as_raw_fd(), expected_name)? != identity
+            || self.issues.iter().any(|issue| {
+                issue.identity.dev == identity.dev && issue.identity.ino == identity.ino
+            })
+        {
+            return Err(invalid(
+                "appended V3 effect-issue record failed exact retained replay",
+            ));
+        }
+        let appended_bytes = bytes.len();
+        self.identity = after_identity;
+        self.roster = expected_roster;
+        self.issues.push(RecordCapsule {
+            bytes,
+            file,
+            identity,
+            name: expected_name.to_string(),
+        });
+        self.revalidate(operation_fd, expected_uid, expected_gid, filesystem)?;
+        Ok(appended_bytes)
+    }
+
+    fn register(
+        &self,
+        registry: &mut CensusRegistry,
+        prefix: &str,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        let path = format!("{prefix}/{}", self.name);
+        registry.insert(&path, self.identity)?;
+        for issue in &self.issues {
+            issue.register(registry, &path)?;
         }
         Ok(())
     }

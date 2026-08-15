@@ -27,6 +27,10 @@ macro_rules! assert_not_impl {
 type FreshOperationStoreForCompileAssertions = CensusBoundDurableLifecycleStoreV3<'static>;
 type RestartOperationStoreForCompileAssertions = ReconciliationOperationStoreV3<'static, 'static>;
 type RetainedLifecycleAppendForCompileAssertions = RetainedLifecycleRecordAppendV3;
+type RetainedLifecycleIssueSourceForCompileAssertions = RetainedLifecycleIssueSourceV3<'static>;
+type RetainedEffectIssueSourceForCompileAssertions = RetainedEffectIssueSourceV3;
+type RetainedOperationIssueForCompileAssertions =
+    RetainedOperationEffectIssueV3<'static, 'static, 'static>;
 type CompletedOperationStoreForCompileAssertions =
     CompletedReconciliationOperationStoreV3<'static, 'static>;
 type ExistingWiringForCompileAssertions = ExistingCensusStoreWiringV3<'static, 'static>;
@@ -57,6 +61,48 @@ assert_not_impl!(RetainedLifecycleAppendForCompileAssertions, Sync);
 assert_not_impl!(
     RetainedLifecycleAppendForCompileAssertions,
     serde::Serialize
+);
+assert_not_impl!(RetainedLifecycleIssueSourceForCompileAssertions, Clone);
+assert_not_impl!(RetainedLifecycleIssueSourceForCompileAssertions, Send);
+assert_not_impl!(RetainedLifecycleIssueSourceForCompileAssertions, Sync);
+assert_not_impl!(
+    RetainedLifecycleIssueSourceForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    RetainedLifecycleIssueSourceForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    RetainedLifecycleIssueSourceForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(RetainedEffectIssueSourceForCompileAssertions, Clone);
+assert_not_impl!(RetainedEffectIssueSourceForCompileAssertions, Send);
+assert_not_impl!(RetainedEffectIssueSourceForCompileAssertions, Sync);
+assert_not_impl!(
+    RetainedEffectIssueSourceForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    RetainedEffectIssueSourceForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    RetainedEffectIssueSourceForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(RetainedOperationIssueForCompileAssertions, Clone);
+assert_not_impl!(RetainedOperationIssueForCompileAssertions, Send);
+assert_not_impl!(RetainedOperationIssueForCompileAssertions, Sync);
+assert_not_impl!(RetainedOperationIssueForCompileAssertions, serde::Serialize);
+assert_not_impl!(
+    RetainedOperationIssueForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    RetainedOperationIssueForCompileAssertions,
+    From<std::fs::File>
 );
 assert_not_impl!(
     RetainedLifecycleAppendForCompileAssertions,
@@ -790,12 +836,102 @@ fn fresh_store_requires_and_retains_the_exact_s1_census() {
     assert_eq!(store.operation_nonce(), NONCE);
     assert!(!store.poisoned());
     store.census.revalidate().expect("retained admitted census");
+    let operation_path = root.join("operations").join(format!("operation-{NONCE}"));
+    let issue_root = operation_path.join("effect-issues-v3");
+    let issue_metadata = fs::metadata(&issue_root).expect("mandatory V3 issue root");
+    assert!(issue_metadata.is_dir());
+    assert_eq!(issue_metadata.permissions().mode() & 0o7777, 0o700);
+    assert_eq!(fs::read_dir(&issue_root).expect("issue roster").count(), 0);
+    let mut operation_roster = fs::read_dir(&operation_path)
+        .expect("operation roster")
+        .map(|entry| entry.unwrap().file_name())
+        .collect::<Vec<_>>();
+    operation_roster.sort();
+    assert_eq!(
+        operation_roster,
+        [std::ffi::OsString::from("effect-issues-v3")]
+    );
 
     let record_digest = store
         .persist_prepared(sealed_prepared())
         .expect("append while census and flock remain retained");
     assert_eq!(record_digest.len(), 64);
     assert!(!store.poisoned());
+}
+
+#[test]
+fn unmarked_legacy_operation_is_blocked_from_the_v3_restart_path() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+    drop(control);
+    let operations = File::open(root.join("operations")).expect("open operations");
+    let mut legacy =
+        DurableLifecycleStoreV3::create(&operations, NONCE, unsafe { libc::geteuid() }, unsafe {
+            libc::getegid()
+        })
+        .expect("test-only unmarked V2 operation");
+    let mut journal = DisposableLifecycleJournalV2::new(NONCE).expect("legacy journal");
+    legacy
+        .append(&mut journal, prepared())
+        .expect("legacy prepared record");
+    drop(legacy);
+    drop(operations);
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("reopen S1 control");
+    let assessment = control
+        .assess_read_only()
+        .expect("S1 retains unmarked operation as a blocker");
+    let census = assessment
+        .into_blocking_control_census(NONCE)
+        .expect("select exact unmarked blocker");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    assert!(
+        ReconciliationOperationStoreV3::open_existing(census, &epoch).is_err(),
+        "caller absence or a boolean silently upgraded an unmarked V2 operation"
+    );
+}
+
+#[test]
+fn fresh_wrapper_rejects_missing_aliased_or_replaced_issue_roots() {
+    for mutation in ["missing", "alias", "replace"] {
+        let temporary = tempfile::tempdir().expect("control parent");
+        let root = temporary.path().join("control");
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("fresh assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+            .expect("new-format operation");
+        let operation = root.join("operations").join(format!("operation-{NONCE}"));
+        let issue_root = operation.join("effect-issues-v3");
+        match mutation {
+            "missing" => fs::remove_dir(&issue_root).expect("remove retained issue root"),
+            "alias" => {
+                let alias = operation.join(".incoming-effect-issues-v3");
+                fs::create_dir(&alias).expect("create issue-root alias");
+                fs::set_permissions(&alias, fs::Permissions::from_mode(0o700)).expect("alias mode");
+            }
+            "replace" => {
+                let displaced = operation.join("effect-issues-v3-displaced");
+                fs::rename(&issue_root, &displaced).expect("displace issue root");
+                fs::create_dir(&issue_root).expect("replace issue root");
+                fs::set_permissions(&issue_root, fs::Permissions::from_mode(0o700))
+                    .expect("replacement mode");
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            store.append(prepared()).is_err(),
+            "{mutation} issue root was accepted by the retained fresh wrapper"
+        );
+        assert!(store.poisoned(), "{mutation} did not poison the wrapper");
+    }
 }
 
 #[test]
@@ -893,6 +1029,157 @@ fn production_reconciliation_open_consumes_exact_blocking_census_and_owns_replay
 }
 
 #[test]
+fn reconciliation_append_rejects_same_bytes_swap_before_s1_adoption() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("fresh S1 assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+            .expect("fresh census-bound store");
+        store.append(prepared()).expect("durable prepared record");
+    }
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("restart S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("blocking S1 assessment")
+        .into_blocking_control_census(NONCE)
+        .expect("exact blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+        .expect("production exact-census replay");
+    let operation = root.join("operations").join(format!("operation-{NONCE}"));
+    let record = operation.join("00000002.json");
+    let displaced = operation.join("00000002.displaced");
+    let result = store.append_reconciliation_with_s1_adoption_hook(
+        ReconciliationLifecycleEventV3::restart_started(
+            current_boot_session_uuid().expect("current boot UUID"),
+            digest('c'),
+            100,
+            digest('e'),
+        ),
+        || {
+            let bytes = fs::read(&record)?;
+            fs::rename(&record, &displaced)?;
+            fs::write(&record, bytes)?;
+            fs::set_permissions(&record, fs::Permissions::from_mode(0o400))?;
+            Ok(())
+        },
+    );
+    assert!(result.is_err());
+    assert!(store.poisoned());
+    assert_eq!(store.census.selected_record_count(), 1);
+}
+
+#[test]
+fn effect_issue_append_rejects_same_bytes_swap_before_s1_adoption() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("fresh S1 assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+            .expect("fresh census-bound store");
+        store.append(prepared()).expect("durable prepared record");
+    }
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("restart S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("blocking S1 assessment")
+        .into_blocking_control_census(NONCE)
+        .expect("exact blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+        .expect("production exact-census replay");
+    let boot = current_boot_session_uuid().expect("current boot UUID");
+    store
+        .append_reconciliation(ReconciliationLifecycleEventV3::restart_started(
+            boot.clone(),
+            digest('c'),
+            100,
+            digest('e'),
+        ))
+        .expect("restart epoch");
+    store
+        .append_reconciliation(ReconciliationLifecycleEventV3::snapshot_observed(
+            ReconciliationSnapshotV2 {
+                backing_identity_sha256: digest('b'),
+                boot_session_uuid: boot.clone(),
+                collector_policy_sha256: digest('c'),
+                collector_receipt_sha256: digest('f'),
+                iomedia_evidence_sha256: digest('1'),
+                match_result: ReconciliationMatchV2::Unique { mounted: true },
+                monotonic_after_nanoseconds: 102,
+                monotonic_before_nanoseconds: 101,
+                mount_evidence_sha256: digest('2'),
+                mountpoint_underlying_sha256: digest('d'),
+                operation_nonce: NONCE.to_string(),
+                restart_epoch_nonce: digest('e'),
+            },
+        ))
+        .expect("unique mounted snapshot");
+    store
+        .append_reconciliation_inner(ReconciliationLifecycleEventV3::unmount_issued(1), true)
+        .expect("durable V2 issue capsule");
+    let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(store.store.issue_source())
+        .expect("exact V2 issue roster");
+    let epochs = EffectEpochEvidenceV3::bind_current_boot(
+        &boot,
+        &digest('3'),
+        &digest('4'),
+        &digest('5'),
+        &digest('6'),
+    )
+    .expect("test epoch evidence");
+    let mut retained = store
+        .issues
+        .persist(
+            &lifecycle,
+            ExactDisposableCommandV3::UnmountVolume {
+                mounted_binding_sha256: digest('7'),
+            },
+            epochs,
+            Some(digest('8')),
+        )
+        .expect("persist exact V3 issue");
+    let issue_root = root
+        .join("operations")
+        .join(format!("operation-{NONCE}"))
+        .join("effect-issues-v3");
+    let issue = fs::read_dir(&issue_root)
+        .expect("issue roster")
+        .next()
+        .expect("one issue")
+        .expect("issue entry")
+        .path();
+    let displaced = issue_root.join("displaced-issue");
+    let bytes = fs::read(&issue).expect("issue bytes");
+    fs::rename(&issue, &displaced).expect("displace exact S2 issue inode");
+    fs::write(&issue, bytes).expect("publish same bytes replacement");
+    fs::set_permissions(&issue, fs::Permissions::from_mode(0o400)).expect("replacement mode");
+    let sink = store
+        .census
+        .selected_effect_issue_sink()
+        .expect("sealed S1 issue sink");
+    assert!(retained.adopt_into_s1(sink).is_err());
+    assert_eq!(store.census.selected_effect_issue_count(), 0);
+}
+
+#[test]
 fn reconciliation_open_rejects_same_bytes_path_replacement_after_s1_descriptor_capture() {
     let temporary = tempfile::tempdir().expect("control parent");
     let root = temporary.path().join("control");
@@ -983,6 +1270,53 @@ fn reconciliation_open_rejects_same_bytes_record_replacement_after_s1_descriptor
     let error = result
         .err()
         .expect("same-byte record replacement must fail");
+    assert!(
+        error.to_string().contains("exact retained S1")
+            || error.to_string().contains("descriptor")
+            || error.to_string().contains("changed"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn reconciliation_open_rejects_issue_root_replacement_after_s1_descriptor_capture() {
+    let temporary = tempfile::tempdir().expect("control parent");
+    let root = temporary.path().join("control");
+    {
+        let control =
+            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("create S1 control");
+        let census = control
+            .assess_read_only()
+            .expect("fresh assessment")
+            .into_fresh_control_census()
+            .expect("fresh census");
+        let mut store = CensusBoundDurableLifecycleStoreV3::create(census, NONCE)
+            .expect("fresh census-bound store");
+        store.append(prepared()).expect("durable prepared record");
+    }
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("restart S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("blocking assessment")
+        .into_blocking_control_census(NONCE)
+        .expect("blocking census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let operation = root.join("operations").join(format!("operation-{NONCE}"));
+    let issue_root = operation.join("effect-issues-v3");
+    let stale = temporary.path().join("stale-effect-issues-v3");
+    let result = ReconciliationOperationStoreV3::open_existing_with_hook(census, &epoch, || {
+        fs::rename(&issue_root, &stale)?;
+        fs::create_dir(&issue_root)?;
+        fs::set_permissions(&issue_root, fs::Permissions::from_mode(0o700))?;
+        File::open(&issue_root)?.sync_all()?;
+        File::open(&operation)?.sync_all()?;
+        Ok(())
+    });
+    let error = result
+        .err()
+        .expect("replacement issue root must not replace retained S1 evidence");
     assert!(
         error.to_string().contains("exact retained S1")
             || error.to_string().contains("descriptor")
