@@ -22,6 +22,8 @@ use crate::mac_disposable_lifecycle_store::RetainedLifecycleIssueSourceV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorIssueBindingV3;
 #[cfg(test)]
 use crate::mac_iomedia_identity::current_boot_session_uuid;
+use crate::mac_privileged_disposable_control::EffectIssueAppendSinkV3;
+use crate::mac_privileged_disposable_control::FreshOperationAdmissionSinkV3;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -654,6 +656,7 @@ struct IssueFileCapsuleV3 {
     name: String,
     record: IssuedEffectRecordV3,
     record_sha256: String,
+    s1_adopted: bool,
 }
 
 /// Owns the exact issue directory roster and every issue descriptor.  It is
@@ -678,6 +681,32 @@ pub(crate) struct RetainedDurableEffectIssueV3<'store> {
     index: usize,
     store: &'store mut DurableEffectIssueStoreV3,
     _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Sealed one-shot consumer for S1-retained restart issue descriptors. Its
+/// fields and constructor stay private to this module, so the lifecycle
+/// source cannot be opened into a raw `File` tuple by another crate caller.
+pub(crate) struct RetainedEffectIssueReplaySinkV3<'l, 's> {
+    lifecycle: &'l VerifiedLifecycleIssueRosterV3,
+    source: RetainedLifecycleIssueSourceV3<'s>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+impl RetainedEffectIssueReplaySinkV3<'_, '_> {
+    pub(crate) fn consume(
+        self,
+        directory: File,
+        expected_directory_inode: (u64, u64),
+        retained_issues: Vec<(String, Vec<u8>, File, (u64, u64))>,
+    ) -> Result<DurableEffectIssueStoreV3, DurableEffectIssueStoreErrorV3> {
+        DurableEffectIssueStoreV3::open_existing_from_retained_parts(
+            self.source,
+            directory,
+            expected_directory_inode,
+            retained_issues,
+            self.lifecycle,
+        )
+    }
 }
 
 enum CollectorIssueInputV3<'a> {
@@ -901,6 +930,20 @@ impl DurableEffectIssueStoreV3 {
         retained: RetainedEffectIssueSourceV3,
         lifecycle: &VerifiedLifecycleIssueRosterV3,
     ) -> Result<Self, DurableEffectIssueStoreErrorV3> {
+        retained.transfer(RetainedEffectIssueReplaySinkV3 {
+            lifecycle,
+            source,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    fn open_existing_from_retained_parts(
+        source: RetainedLifecycleIssueSourceV3<'_>,
+        directory: File,
+        expected_directory_inode: (u64, u64),
+        retained_issues: Vec<(String, Vec<u8>, File, (u64, u64))>,
+        lifecycle: &VerifiedLifecycleIssueRosterV3,
+    ) -> Result<Self, DurableEffectIssueStoreErrorV3> {
         if source.operation_nonce() != lifecycle.operation_nonce() {
             return Err(invalid(
                 "sealed S2 operation differs from the lifecycle issue roster",
@@ -922,7 +965,6 @@ impl DurableEffectIssueStoreV3 {
             ISSUE_DIRECTORY_TEMPORARY_NAME_V3,
         )?;
         reject_issue_directory_aliases(operation_directory.as_raw_fd(), true)?;
-        let (directory, expected_directory_inode, retained_issues) = retained.into_parts();
         let directory_binding = validate_directory(
             &directory,
             expected_uid,
@@ -1286,6 +1328,7 @@ impl DurableEffectIssueStoreV3 {
                     name: final_name,
                     record,
                     record_sha256,
+                    s1_adopted: false,
                 },
                 directory_binding,
             ))
@@ -1323,6 +1366,16 @@ impl DurableEffectIssueStoreV3 {
             .map(|issue| (issue.name.clone(), issue.record_sha256.clone()))
     }
 
+    pub(crate) fn revalidate_s1_adopted(&self) -> Result<(), DurableEffectIssueStoreErrorV3> {
+        self.revalidate_files()?;
+        if self.issues.iter().any(|issue| !issue.s1_adopted) {
+            return Err(invalid(
+                "V3 issue roster contains a record not adopted by the retained S1 census",
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) fn revalidate_required(
         &self,
         lifecycle: &VerifiedLifecycleIssueRosterV3,
@@ -1338,6 +1391,21 @@ impl DurableEffectIssueStoreV3 {
             ));
         }
         Ok(())
+    }
+
+    pub(crate) fn transfer_prepared_operation_to_s1(
+        &self,
+        sink: FreshOperationAdmissionSinkV3<'_, '_>,
+        operation_directory: File,
+        final_name: String,
+    ) -> Result<(), DurableEffectIssueStoreErrorV3> {
+        self.revalidate_prepared_empty()?;
+        sink.retain(operation_directory, final_name, self.directory.try_clone()?)
+            .map_err(|error| {
+                invalid(format!(
+                    "S1 rejected the exact freshly published operation capsule: {error}"
+                ))
+            })
     }
 
     pub(crate) fn poisoned(&self) -> bool {
@@ -1602,6 +1670,36 @@ impl RetainedDurableEffectIssueV3<'_> {
     pub(crate) fn revalidate(&self) -> Result<(), DurableEffectIssueStoreErrorV3> {
         self.store.revalidate_files()
     }
+
+    pub(crate) fn adopt_into_s1(
+        &mut self,
+        sink: EffectIssueAppendSinkV3<'_, '_>,
+    ) -> Result<(), DurableEffectIssueStoreErrorV3> {
+        self.revalidate()?;
+        if self.store.issues[self.index].s1_adopted {
+            return Err(invalid("V3 issue capsule was already adopted by S1"));
+        }
+        let issue = &self.store.issues[self.index];
+        sink.retain(
+            self.store.directory.try_clone()?,
+            issue.file.try_clone()?,
+            issue.bytes.clone(),
+            self.store.operation_nonce.clone(),
+            issue.name.clone(),
+            issue.record_sha256.clone(),
+        )
+        .map_err(|error| invalid(format!("S1 rejected the exact V3 issue capsule: {error}")))?;
+        self.store.issues[self.index].s1_adopted = true;
+        self.revalidate()
+    }
+
+    pub(crate) fn require_s1_adopted(&self) -> Result<(), DurableEffectIssueStoreErrorV3> {
+        self.revalidate()?;
+        if !self.store.issues[self.index].s1_adopted {
+            return Err(invalid("V3 issue capsule has not been adopted by S1"));
+        }
+        Ok(())
+    }
 }
 
 fn replay_issue_directory(
@@ -1668,6 +1766,7 @@ fn replay_issue_directory(
                 name,
                 record,
                 record_sha256,
+                s1_adopted: false,
             },
         );
     }
@@ -1758,6 +1857,7 @@ fn replay_retained_issue_directory(
                 name,
                 record,
                 record_sha256,
+                s1_adopted: true,
             },
         );
     }

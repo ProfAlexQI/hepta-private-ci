@@ -1269,10 +1269,7 @@ fn terminal_append_consumes_blocking_store_into_completed_census() {
     assert_eq!(store.store.records.len(), records_before);
 
     let completed = store
-        .complete_reconciliation(ReconciliationTerminalEventV3::absence_proved(
-            TerminalDispositionV2::Aborted,
-            absence_sha256.clone(),
-        ))
+        .complete_reconciliation_from_retained_absence()
         .expect("consume blocking state into completed state");
     completed.revalidate().expect("retained completed state");
     let (nonce, terminal, _) = completed.census.completed_binding();
