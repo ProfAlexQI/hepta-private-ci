@@ -28,6 +28,7 @@ const MAX_IOMEDIA_OBJECTS: usize = 256;
 const MAX_ANCESTOR_DEPTH: usize = 64;
 const MAX_CF_STRING_BYTES: usize = 16 * 1024;
 const MAX_BACKING_COMPONENTS: usize = 128;
+const MAX_BACKING_FILE_BYTES: u64 = 1024 * 1024 * 1024;
 const EXPECTED_T5_VOLUME_UUID: &str = "fb804d1b-24cb-4d6e-aea7-a9e180807758";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -141,11 +142,18 @@ pub struct IOMediaFourNodeTopologyV2 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct BackingObjectBindingV1 {
+    pub content_sha256: Option<String>,
+    pub ctime_nanoseconds: i64,
+    pub ctime_seconds: i64,
     pub dev: u64,
+    pub flags: u32,
     pub gid: u32,
     pub inode: u64,
     pub mode: u32,
+    pub mtime_nanoseconds: i64,
+    pub mtime_seconds: i64,
     pub nlink: u64,
+    pub size: u64,
     pub uid: u32,
 }
 
@@ -315,6 +323,13 @@ fn valid_bsd_name(value: &str) -> bool {
                 && !slice.starts_with('0')
                 && slice.bytes().all(|byte| byte.is_ascii_digit())
         })
+}
+
+fn valid_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 fn parse_registry_entry_id(value: &str) -> Result<u64, AcceptanceError> {
@@ -837,11 +852,19 @@ fn validate_backing_shape(backing: &DiskImageBackingProvenanceV1) -> Result<(), 
         } else {
             libc::S_IFREG
         } as u32;
+        let content_binding_is_valid = if expected_directory {
+            binding.content_sha256.is_none()
+        } else {
+            binding.content_sha256.as_deref().is_some_and(valid_sha256)
+        };
         if component.directory != expected_directory
             || binding.dev == 0
             || binding.inode == 0
             || binding.nlink == 0
+            || !(0..1_000_000_000).contains(&binding.ctime_nanoseconds)
+            || !(0..1_000_000_000).contains(&binding.mtime_nanoseconds)
             || binding.mode & libc::S_IFMT as u32 != expected_type
+            || !content_binding_is_valid
             || component.path_binding_before != component.fd_binding
             || component.path_binding_after != component.fd_binding
             || (index > 0
@@ -861,6 +884,11 @@ fn validate_backing_shape(backing: &DiskImageBackingProvenanceV1) -> Result<(), 
     if file.nlink != 1 {
         return Err(invalid(
             "disk-image backing file does not have exactly one link",
+        ));
+    }
+    if file.size == 0 || file.size > MAX_BACKING_FILE_BYTES {
+        return Err(invalid(
+            "disk-image backing file size is outside the bounded digest range",
         ));
     }
     Ok(())
@@ -995,6 +1023,9 @@ mod platform {
     use std::os::unix::ffi::OsStrExt;
     use std::path::PathBuf;
     use std::rc::Rc;
+
+    use sha2::Digest;
+    use sha2::Sha256;
 
     use super::*;
 
@@ -1477,6 +1508,37 @@ mod platform {
         _retained: Vec<IoObjectGuard>,
     }
 
+    impl HeldAncestry {
+        fn revalidate_retained(&self, label: &str) -> Result<(), AcceptanceError> {
+            if self.report.len() != self._retained.len() + 1 {
+                return Err(invalid(format!(
+                    "{label} held ancestry descriptor count changed"
+                )));
+            }
+            for (index, (object, expected)) in self
+                ._retained
+                .iter()
+                .zip(self.report.iter().skip(1))
+                .enumerate()
+            {
+                let actual = IORegistryAncestorV1 {
+                    class_name: registry_class(object.0)?,
+                    registry_entry_id: format!(
+                        "{:016x}",
+                        registry_id(object.0, &format!("{label} ancestor {index}"))?
+                    ),
+                    registry_path: registry_path(object.0)?,
+                };
+                if &actual != expected {
+                    return Err(invalid(format!(
+                        "{label} exact held ancestor {index} changed"
+                    )));
+                }
+            }
+            Ok(())
+        }
+    }
+
     fn ancestor_chain(entry: IoRegistryEntry) -> Result<HeldAncestry, AcceptanceError> {
         let plane = CString::new("IOService").expect("fixed IORegistry plane");
         let mut ancestry = Vec::new();
@@ -1579,15 +1641,58 @@ mod platform {
         _not_send_or_sync: PhantomData<Rc<()>>,
     }
 
-    fn backing_binding_from_stat(stat: &libc::stat) -> BackingObjectBindingV1 {
-        BackingObjectBindingV1 {
+    /// Opaque, non-serializable capsule retaining both exact pre-attach T5
+    /// captures. The report can be cloned into canonical receipts, but the
+    /// IOKit, Disk Arbitration, and ancestry handles remain owned here.
+    #[must_use = "held pre-attach descriptors must outlive attached receipt persistence"]
+    pub struct HeldPreAttachIOMediaInventory {
+        report: IOMediaRegistryInventoryV2,
+        t5_capture: CapturedFour,
+        t5_replay: CapturedFour,
+        _not_send_or_sync: PhantomData<Rc<()>>,
+    }
+
+    /// Opaque, non-serializable capsule retaining the exact attached and T5
+    /// descriptor sets, the pre-attach capsule, and the backing descriptor
+    /// chain until the caller has durably persisted canonical receipt bytes
+    /// and explicitly requested the final replay.
+    #[must_use = "held attached descriptors require post-persistence revalidation"]
+    pub struct HeldAttachedIOMediaTopologyV2<'a> {
+        report: AttachedIOMediaTopologyV2,
+        pre_attach: &'a HeldPreAttachIOMediaInventory,
+        held_backing: HeldDiskImageBacking,
+        fresh_t5_capture: CapturedFour,
+        attached: CapturedFour,
+        attached_replay: CapturedFour,
+        t5_replay: CapturedFour,
+        _not_send_or_sync: PhantomData<Rc<()>>,
+    }
+
+    fn backing_binding_from_stat(
+        stat: &libc::stat,
+        label: &str,
+    ) -> Result<BackingObjectBindingV1, AcceptanceError> {
+        if stat.st_size < 0
+            || !(0..1_000_000_000).contains(&stat.st_ctime_nsec)
+            || !(0..1_000_000_000).contains(&stat.st_mtime_nsec)
+        {
+            return Err(invalid(format!("{label} stat fields are invalid")));
+        }
+        Ok(BackingObjectBindingV1 {
+            content_sha256: None,
+            ctime_nanoseconds: stat.st_ctime_nsec,
+            ctime_seconds: stat.st_ctime,
             dev: stat.st_dev as u64,
+            flags: stat.st_flags,
             gid: stat.st_gid,
             inode: stat.st_ino,
             mode: stat.st_mode as u32,
+            mtime_nanoseconds: stat.st_mtime_nsec,
+            mtime_seconds: stat.st_mtime,
             nlink: stat.st_nlink as u64,
+            size: stat.st_size as u64,
             uid: stat.st_uid,
-        }
+        })
     }
 
     fn backing_fstat(fd: c_int, label: &str) -> Result<BackingObjectBindingV1, AcceptanceError> {
@@ -1595,11 +1700,58 @@ mod platform {
         if unsafe { libc::fstat(fd, stat.as_mut_ptr()) } != 0 {
             return Err(std::io::Error::last_os_error().into());
         }
-        let binding = backing_binding_from_stat(&unsafe { stat.assume_init() });
+        let binding = backing_binding_from_stat(&unsafe { stat.assume_init() }, label)?;
         if binding.dev == 0 || binding.inode == 0 || binding.nlink == 0 {
             return Err(invalid(format!("{label} fstat binding is invalid")));
         }
         Ok(binding)
+    }
+
+    fn held_fd_content_sha256(
+        fd: c_int,
+        size: u64,
+        label: &str,
+    ) -> Result<String, AcceptanceError> {
+        if size == 0 || size > MAX_BACKING_FILE_BYTES || size > i64::MAX as u64 {
+            return Err(invalid(format!(
+                "{label} size is outside the bounded digest range"
+            )));
+        }
+        let mut digest = Sha256::new();
+        let mut buffer = [0_u8; 128 * 1024];
+        let mut offset = 0_u64;
+        while offset < size {
+            let remaining = usize::try_from((size - offset).min(buffer.len() as u64))
+                .expect("bounded digest chunk fits usize");
+            let read = unsafe {
+                libc::pread(
+                    fd,
+                    buffer.as_mut_ptr().cast(),
+                    remaining,
+                    offset as libc::off_t,
+                )
+            };
+            if read < 0 {
+                return Err(std::io::Error::last_os_error().into());
+            }
+            if read == 0 {
+                return Err(invalid(format!(
+                    "{label} reached EOF before its bound size"
+                )));
+            }
+            let read = read as usize;
+            digest.update(&buffer[..read]);
+            offset += read as u64;
+        }
+        Ok(format!("{:x}", digest.finalize()))
+    }
+
+    fn with_content_sha256(
+        mut binding: BackingObjectBindingV1,
+        content_sha256: Option<&str>,
+    ) -> BackingObjectBindingV1 {
+        binding.content_sha256 = content_sha256.map(str::to_string);
+        binding
     }
 
     fn backing_fstatat(
@@ -1619,7 +1771,7 @@ mod platform {
         {
             return Err(std::io::Error::last_os_error().into());
         }
-        let binding = backing_binding_from_stat(&unsafe { stat.assume_init() });
+        let binding = backing_binding_from_stat(&unsafe { stat.assume_init() }, label)?;
         if binding.dev == 0 || binding.inode == 0 || binding.nlink == 0 {
             return Err(invalid(format!("{label} fstatat binding is invalid")));
         }
@@ -1724,6 +1876,25 @@ mod platform {
                     ));
                 }
                 require_backing_kind(&before, directory, "disk-image backing component")?;
+                let stable_binding = if directory {
+                    before
+                } else {
+                    let content_sha256 = held_fd_content_sha256(
+                        file.as_raw_fd(),
+                        before.size,
+                        "disk-image backing file",
+                    )?;
+                    let fd_after_digest =
+                        backing_fstat(file.as_raw_fd(), "backing file fd after digest")?;
+                    let path_after_digest =
+                        backing_fstatat(parent_fd, &name, "backing file pathname after digest")?;
+                    if before != fd_after_digest || before != path_after_digest {
+                        return Err(invalid(
+                            "disk-image backing file changed while hashing the held descriptor",
+                        ));
+                    }
+                    with_content_sha256(before, Some(&content_sha256))
+                };
                 current_path.push(OsStr::from_bytes(name.to_bytes()));
                 component_paths.push(
                     current_path
@@ -1732,7 +1903,7 @@ mod platform {
                         .to_string(),
                 );
                 component_names.push(name);
-                path_bindings_before.push(before);
+                path_bindings_before.push(stable_binding);
                 files.push(file);
             }
             if component_paths.last().map(String::as_str) != Some(path_text)
@@ -1769,11 +1940,12 @@ mod platform {
             }
             let mut opened_components = Vec::with_capacity(self.files.len());
             for index in 0..self.files.len() {
-                let fd_binding = backing_fstat(
+                let directory = index + 1 != self.files.len();
+                let fd_metadata = backing_fstat(
                     self.files[index].as_raw_fd(),
                     "held backing component replay",
                 )?;
-                let path_binding_after = if index == 0 {
+                let path_metadata = if index == 0 {
                     backing_fstatat(
                         libc::AT_FDCWD,
                         &self.component_names[index],
@@ -1786,15 +1958,55 @@ mod platform {
                         "held backing pathname replay",
                     )?
                 };
-                if self.path_bindings_before[index] != fd_binding
-                    || self.path_bindings_before[index] != path_binding_after
-                {
+                let mut expected_metadata = self.path_bindings_before[index].clone();
+                expected_metadata.content_sha256 = None;
+                if expected_metadata != fd_metadata || expected_metadata != path_metadata {
                     return Err(invalid(
                         "held backing component changed before provenance publication",
                     ));
                 }
+                let content_sha256 = if directory {
+                    None
+                } else {
+                    let digest = held_fd_content_sha256(
+                        self.files[index].as_raw_fd(),
+                        fd_metadata.size,
+                        "held backing file replay",
+                    )?;
+                    let fd_after_digest = backing_fstat(
+                        self.files[index].as_raw_fd(),
+                        "held backing file after replay digest",
+                    )?;
+                    let path_after_digest = if index == 0 {
+                        unreachable!("root component is always a directory")
+                    } else {
+                        backing_fstatat(
+                            self.files[index - 1].as_raw_fd(),
+                            &self.component_names[index],
+                            "held backing pathname after replay digest",
+                        )?
+                    };
+                    if expected_metadata != fd_after_digest
+                        || expected_metadata != path_after_digest
+                    {
+                        return Err(invalid(
+                            "held backing file changed while replaying its content digest",
+                        ));
+                    }
+                    Some(digest)
+                };
+                let fd_binding = with_content_sha256(fd_metadata, content_sha256.as_deref());
+                let path_binding_after =
+                    with_content_sha256(path_metadata, content_sha256.as_deref());
+                if self.path_bindings_before[index] != fd_binding
+                    || self.path_bindings_before[index] != path_binding_after
+                {
+                    return Err(invalid(
+                        "held backing component metadata or content changed before provenance publication",
+                    ));
+                }
                 opened_components.push(BackingPathComponentV1 {
-                    directory: index + 1 != self.files.len(),
+                    directory,
                     fd_binding,
                     path: self.component_paths[index].clone(),
                     path_binding_after,
@@ -1939,6 +2151,11 @@ mod platform {
         _resolved: ResolvedIOMediaObject,
     }
 
+    struct ReplayedCapturedNode {
+        ancestry: HeldAncestry,
+        report: IOMediaRegistryProvenanceV2,
+    }
+
     fn provenance_from_resolved(
         object: ResolvedIOMediaObject,
     ) -> Result<CapturedNode, AcceptanceError> {
@@ -1965,6 +2182,89 @@ mod platform {
             report,
             _resolved: object,
         })
+    }
+
+    fn replay_provenance_from_held(
+        captured: &CapturedNode,
+        label: &str,
+    ) -> Result<ReplayedCapturedNode, AcceptanceError> {
+        let object = &captured._resolved;
+        captured.ancestry.revalidate_retained(label)?;
+        require_iomedia(object._matched_media.0, label)?;
+        require_iomedia(object._disk_media.0, label)?;
+        require_iomedia(object._whole_disk_media.0, label)?;
+
+        let expected_registry_entry_id =
+            parse_registry_entry_id(&captured.report.registry_entry_id)?;
+        if registry_id(object._matched_media.0, label)? != expected_registry_entry_id
+            || registry_id(object._disk_media.0, label)? != expected_registry_entry_id
+            || disk_bsd_name(object._disk.0)? != captured.report.bsd_name
+        {
+            return Err(invalid(format!(
+                "{label} exact held IOMedia or DADisk identity changed"
+            )));
+        }
+
+        let replayed_disk_media = IoObjectGuard::new(
+            unsafe { DADiskCopyIOMedia(object._disk.0) },
+            "held DADiskCopyIOMedia replay",
+        )?;
+        require_iomedia(replayed_disk_media.0, label)?;
+        if registry_id(replayed_disk_media.0, label)? != expected_registry_entry_id {
+            return Err(invalid(format!(
+                "{label} held DADiskCopyIOMedia replay changed registry identity"
+            )));
+        }
+
+        let held_whole_registry_entry_id = registry_id(object._whole_disk_media.0, label)?;
+        let held_whole_bsd_name = disk_bsd_name(object._whole_disk.0)?;
+        let replayed_whole_disk = DADiskGuard::new(unsafe { DADiskCopyWholeDisk(object._disk.0) })?;
+        let replayed_whole_media = IoObjectGuard::new(
+            unsafe { DADiskCopyIOMedia(replayed_whole_disk.0) },
+            "held DADiskCopyWholeDisk/DADiskCopyIOMedia replay",
+        )?;
+        require_iomedia(replayed_whole_media.0, label)?;
+        let replayed_whole_registry_entry_id = registry_id(replayed_whole_media.0, label)?;
+        let replayed_whole_bsd_name = disk_bsd_name(replayed_whole_disk.0)?;
+        if held_whole_registry_entry_id != replayed_whole_registry_entry_id
+            || held_whole_bsd_name != replayed_whole_bsd_name
+            || captured.report.whole_disk
+                != registry_identity(
+                    replayed_whole_bsd_name.clone(),
+                    replayed_whole_registry_entry_id,
+                )
+        {
+            return Err(invalid(format!(
+                "{label} exact held whole-disk replay changed identity"
+            )));
+        }
+
+        let ancestry = ancestor_chain(object._matched_media.0)?;
+        let report = IOMediaRegistryProvenanceV2 {
+            ancestry: ancestry.report.clone(),
+            authority_granted: false,
+            bsd_name: captured.report.bsd_name.clone(),
+            conforms_to_iomedia: true,
+            disk_arbitration: disk_arbitration_properties(object._disk.0)?,
+            iomedia: iomedia_properties(object._matched_media.0)?,
+            registry_entry_id: format!("{expected_registry_entry_id:016x}"),
+            registry_path: registry_path(object._matched_media.0)?.ok_or_else(|| {
+                invalid(format!(
+                    "{label} exact held IOMedia has no IOService registry path"
+                ))
+            })?,
+            whole_disk: registry_identity(
+                replayed_whole_bsd_name,
+                replayed_whole_registry_entry_id,
+            ),
+            schema: PROVENANCE_SCHEMA.to_string(),
+        };
+        if report != captured.report {
+            return Err(invalid(format!(
+                "{label} exact held IOMedia descriptors changed"
+            )));
+        }
+        Ok(ReplayedCapturedNode { ancestry, report })
     }
 
     fn describe_media(
@@ -2177,6 +2477,54 @@ mod platform {
         topology: IOMediaFourNodeTopologyV2,
     }
 
+    struct ReplayedFour {
+        held_ancestries: Vec<HeldAncestry>,
+        topology: IOMediaFourNodeTopologyV2,
+    }
+
+    impl CapturedFour {
+        fn replay_exact(&self, label: &str) -> Result<ReplayedFour, AcceptanceError> {
+            if self.held_nodes.len() != 4 {
+                return Err(invalid(format!(
+                    "{label} held topology does not contain exactly four nodes"
+                )));
+            }
+            let replayed = self
+                .held_nodes
+                .iter()
+                .enumerate()
+                .map(|(index, node)| {
+                    replay_provenance_from_held(node, &format!("{label} node {index}"))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let topology = IOMediaFourNodeTopologyV2 {
+                apfs_container: replayed[2].report.clone(),
+                apfs_volume: replayed[3].report.clone(),
+                authority_granted: false,
+                boot_session_uuid: self.topology.boot_session_uuid.clone(),
+                physical_store: replayed[1].report.clone(),
+                physical_whole: replayed[0].report.clone(),
+                schema: FOUR_NODE_TOPOLOGY_SCHEMA.to_string(),
+            };
+            let expected = ExpectedIOMediaTopology {
+                apfs_container: &self.topology.apfs_container.bsd_name,
+                apfs_volume: &self.topology.apfs_volume.bsd_name,
+                physical_store: &self.topology.physical_store.bsd_name,
+                physical_whole: &self.topology.physical_whole.bsd_name,
+            };
+            validate_four_node_topology_shape(&topology, expected, label)?;
+            if topology != self.topology {
+                return Err(invalid(format!(
+                    "{label} exact held four-node topology changed"
+                )));
+            }
+            Ok(ReplayedFour {
+                held_ancestries: replayed.into_iter().map(|node| node.ancestry).collect(),
+                topology,
+            })
+        }
+    }
+
     fn capture_four(
         expected: ExpectedIOMediaTopology<'_>,
         boot_session_uuid: &str,
@@ -2219,20 +2567,33 @@ mod platform {
         })
     }
 
-    fn unique_disk_image_candidate(
-        captured: &CapturedFour,
+    fn unique_disk_image_candidate_from_ancestries<'a>(
+        ancestries: impl IntoIterator<Item = &'a HeldAncestry>,
     ) -> Result<DiskImageCandidateObservation, AcceptanceError> {
-        let observations = captured
-            .held_nodes
-            .iter()
-            .map(|node| {
+        let observations = ancestries
+            .into_iter()
+            .map(|ancestry| {
                 (
-                    node.ancestry.disk_image_device_count,
-                    node.ancestry.disk_image_candidates.clone(),
+                    ancestry.disk_image_device_count,
+                    ancestry.disk_image_candidates.clone(),
                 )
             })
             .collect::<Vec<_>>();
         select_unique_disk_image_candidate(&observations)
+    }
+
+    fn unique_disk_image_candidate(
+        captured: &CapturedFour,
+    ) -> Result<DiskImageCandidateObservation, AcceptanceError> {
+        unique_disk_image_candidate_from_ancestries(
+            captured.held_nodes.iter().map(|node| &node.ancestry),
+        )
+    }
+
+    fn unique_replayed_disk_image_candidate(
+        replayed: &ReplayedFour,
+    ) -> Result<DiskImageCandidateObservation, AcceptanceError> {
+        unique_disk_image_candidate_from_ancestries(replayed.held_ancestries.iter())
     }
 
     fn require_no_disk_image_ancestry(
@@ -2252,9 +2613,25 @@ mod platform {
         Ok(())
     }
 
+    fn require_no_replayed_disk_image_ancestry(
+        replayed: &ReplayedFour,
+        label: &str,
+    ) -> Result<(), AcceptanceError> {
+        if replayed.held_ancestries.len() != 4
+            || replayed.held_ancestries.iter().any(|ancestry| {
+                ancestry.disk_image_device_count != 0 || !ancestry.disk_image_candidates.is_empty()
+            })
+        {
+            return Err(invalid(format!(
+                "{label} unexpectedly descends from a disk-image device"
+            )));
+        }
+        Ok(())
+    }
+
     pub fn capture_inventory(
         expected_t5: ExpectedIOMediaTopology<'_>,
-    ) -> Result<IOMediaRegistryInventoryV2, AcceptanceError> {
+    ) -> Result<HeldPreAttachIOMediaInventory, AcceptanceError> {
         let boot = current_boot_session_uuid_impl()?;
         let all_before = enumerate_all_registry_ids()?;
         let t5_capture = capture_four(expected_t5, &boot, "T5")?;
@@ -2295,16 +2672,20 @@ mod platform {
             t5_volume_uuid,
         };
         validate_iomedia_registry_inventory_shape(&inventory, expected_t5)?;
-        drop(t5_replay);
-        drop(t5_capture);
-        Ok(inventory)
+        Ok(HeldPreAttachIOMediaInventory {
+            report: inventory,
+            t5_capture,
+            t5_replay,
+            _not_send_or_sync: PhantomData,
+        })
     }
 
-    pub fn capture_v2(
+    pub fn capture_v2<'a>(
         expected: ExpectedIOMediaTopology<'_>,
-        pre_attach_inventory: &IOMediaRegistryInventoryV2,
-        held_backing: &HeldDiskImageBacking,
-    ) -> Result<AttachedIOMediaTopologyV2, AcceptanceError> {
+        pre_attach: &'a HeldPreAttachIOMediaInventory,
+        held_backing: HeldDiskImageBacking,
+    ) -> Result<HeldAttachedIOMediaTopologyV2<'a>, AcceptanceError> {
+        let pre_attach_inventory = &pre_attach.report;
         let boot = current_boot_session_uuid_impl()?;
         if boot != pre_attach_inventory.boot_session_uuid {
             return Err(invalid(
@@ -2399,14 +2780,172 @@ mod platform {
         if current_boot_session_uuid_impl()? != boot {
             return Err(invalid("boot changed during attached IOMedia capture"));
         }
-        // All IOKit, Disk Arbitration, and backing descriptors remain held
-        // through the complete consistency replay above, then may drop: this
-        // report is explicitly NO_AUTHORITY and cannot drive an effect.
-        drop(t5_replay);
-        drop(attached_replay);
-        drop(attached);
-        drop(fresh_t5_capture);
-        Ok(topology)
+        Ok(HeldAttachedIOMediaTopologyV2 {
+            report: topology,
+            pre_attach,
+            held_backing,
+            fresh_t5_capture,
+            attached,
+            attached_replay,
+            t5_replay,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    impl HeldPreAttachIOMediaInventory {
+        pub fn report(&self) -> &IOMediaRegistryInventoryV2 {
+            &self.report
+        }
+
+        fn revalidate_exact(&self) -> Result<(), AcceptanceError> {
+            if current_boot_session_uuid_impl()? != self.report.boot_session_uuid {
+                return Err(invalid(
+                    "pre-attach held IOMedia capsule belongs to another boot session",
+                ));
+            }
+            let expected = ExpectedIOMediaTopology {
+                apfs_container: &self.report.t5_apfs_container.bsd_name,
+                apfs_volume: &self.report.t5_apfs_volume.bsd_name,
+                physical_store: &self.report.t5_physical_store.bsd_name,
+                physical_whole: &self.report.t5_physical_whole.bsd_name,
+            };
+            validate_iomedia_registry_inventory_shape(&self.report, expected)?;
+            let first = self
+                .t5_capture
+                .replay_exact("pre-attach held T5 final replay")?;
+            let second = self
+                .t5_replay
+                .replay_exact("pre-attach held T5 duplicate final replay")?;
+            require_no_replayed_disk_image_ancestry(&first, "pre-attach held T5 final replay")?;
+            require_no_replayed_disk_image_ancestry(
+                &second,
+                "pre-attach held T5 duplicate final replay",
+            )?;
+            if first.topology != second.topology
+                || first.topology.physical_whole != self.report.t5_physical_whole
+                || first.topology.physical_store != self.report.t5_physical_store
+                || first.topology.apfs_container != self.report.t5_apfs_container
+                || first.topology.apfs_volume != self.report.t5_apfs_volume
+            {
+                return Err(invalid(
+                    "pre-attach held T5 descriptors changed before receipt publication",
+                ));
+            }
+            Ok(())
+        }
+    }
+
+    impl<'a> HeldAttachedIOMediaTopologyV2<'a> {
+        pub fn report(&self) -> &AttachedIOMediaTopologyV2 {
+            &self.report
+        }
+
+        /// Replays every retained descriptor after the caller has generated
+        /// and durably appended canonical receipt bytes. This grants no
+        /// effect authority and exposes no effect primitive.
+        pub fn revalidate_after_persistence(&self) -> Result<(), AcceptanceError> {
+            let boot = current_boot_session_uuid_impl()?;
+            if boot != self.report.boot_session_uuid
+                || self.report.pre_attach_inventory != *self.pre_attach.report()
+            {
+                return Err(invalid(
+                    "held attached IOMedia capsule changed boot or pre-attach report",
+                ));
+            }
+            self.pre_attach.revalidate_exact()?;
+
+            let fresh_t5 = self
+                .fresh_t5_capture
+                .replay_exact("fresh T5 post-persistence replay")?;
+            let t5_replay = self
+                .t5_replay
+                .replay_exact("fresh T5 duplicate post-persistence replay")?;
+            require_no_replayed_disk_image_ancestry(&fresh_t5, "fresh T5 post-persistence replay")?;
+            require_no_replayed_disk_image_ancestry(
+                &t5_replay,
+                "fresh T5 duplicate post-persistence replay",
+            )?;
+            if fresh_t5.topology != self.report.fresh_t5
+                || t5_replay.topology != self.report.fresh_t5
+            {
+                return Err(invalid(
+                    "held fresh T5 descriptors changed after canonical receipt generation",
+                ));
+            }
+
+            let attached = self
+                .attached
+                .replay_exact("attached post-persistence replay")?;
+            let attached_replay = self
+                .attached_replay
+                .replay_exact("attached duplicate post-persistence replay")?;
+            let reported_attached = IOMediaFourNodeTopologyV2 {
+                apfs_container: self.report.apfs_container.clone(),
+                apfs_volume: self.report.apfs_volume.clone(),
+                authority_granted: false,
+                boot_session_uuid: self.report.boot_session_uuid.clone(),
+                physical_store: self.report.physical_store.clone(),
+                physical_whole: self.report.physical_whole.clone(),
+                schema: FOUR_NODE_TOPOLOGY_SCHEMA.to_string(),
+            };
+            if attached.topology != reported_attached
+                || attached_replay.topology != reported_attached
+            {
+                return Err(invalid(
+                    "held attached descriptors changed after canonical receipt generation",
+                ));
+            }
+            let candidate = unique_replayed_disk_image_candidate(&attached)?;
+            let replay_candidate = unique_replayed_disk_image_candidate(&attached_replay)?;
+            if candidate != replay_candidate
+                || candidate.device != self.report.backing.disk_image_device
+                || candidate.url != self.report.backing.disk_image_url
+            {
+                return Err(invalid(
+                    "held DiskImageURL ancestry changed after canonical receipt generation",
+                ));
+            }
+            let backing = self.held_backing.finish(&candidate, 1, 1)?;
+            if backing != self.report.backing {
+                return Err(invalid(
+                    "held disk-image backing metadata or content changed after canonical receipt generation",
+                ));
+            }
+
+            let mut expected_current_ids = self
+                .pre_attach
+                .report()
+                .all_registry_entry_ids
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<_>>();
+            for (_, node) in self.report.ordered() {
+                if !expected_current_ids.insert(node.registry_entry_id.clone()) {
+                    return Err(invalid(
+                        "attached registry identity aliases the held pre-attach inventory",
+                    ));
+                }
+            }
+            if enumerate_all_registry_ids()? != expected_current_ids.into_iter().collect::<Vec<_>>()
+            {
+                return Err(invalid(
+                    "full IOMedia registry inventory changed before receipt publication",
+                ));
+            }
+            let expected = ExpectedIOMediaTopology {
+                apfs_container: &self.report.apfs_container.bsd_name,
+                apfs_volume: &self.report.apfs_volume.bsd_name,
+                physical_store: &self.report.physical_store.bsd_name,
+                physical_whole: &self.report.physical_whole.bsd_name,
+            };
+            validate_iomedia_topology_provenance_shape(&self.report, expected)?;
+            if current_boot_session_uuid_impl()? != boot {
+                return Err(invalid(
+                    "boot changed during post-persistence held-descriptor replay",
+                ));
+            }
+            Ok(())
+        }
     }
 
     pub fn capture(
@@ -2459,7 +2998,54 @@ mod platform {
 
     #[cfg(test)]
     mod live_tests {
+        use std::os::unix::fs::MetadataExt;
+
         use super::*;
+
+        #[test]
+        fn rootless_held_backing_replay_detects_same_inode_content_drift() {
+            let directory = tempfile::tempdir().expect("create rootless backing directory");
+            let path = directory.path().join("image.dmg");
+            std::fs::write(&path, b"held-backing-before").expect("write rootless backing fixture");
+            let path = path
+                .canonicalize()
+                .expect("canonical rootless backing path");
+            let path_text = path.to_str().expect("UTF-8 rootless backing path");
+            let candidate = DiskImageCandidateObservation {
+                device: IORegistryAncestorV1 {
+                    class_name: "AppleDiskImageDevice".to_string(),
+                    registry_entry_id: "0000000000000001".to_string(),
+                    registry_path: Some("IOService:/AppleDiskImageDevice".to_string()),
+                },
+                url: format!("file://{path_text}"),
+            };
+            let backing = HeldDiskImageBacking::capture(&path)
+                .expect("capture rootless held backing descriptors");
+            let report = backing
+                .finish(&candidate, 1, 1)
+                .expect("replay unchanged rootless held backing");
+            let file = &report
+                .opened_components
+                .last()
+                .expect("final backing component")
+                .fd_binding;
+            assert_eq!(file.size, b"held-backing-before".len() as u64);
+            let expected_digest = format!("{:x}", Sha256::digest(b"held-backing-before"));
+            assert_eq!(
+                file.content_sha256.as_deref(),
+                Some(expected_digest.as_str())
+            );
+
+            std::fs::write(&path, b"held-backing-after!")
+                .expect("mutate same-inode rootless backing fixture");
+            assert_eq!(
+                std::fs::metadata(&path)
+                    .expect("mutated backing metadata")
+                    .ino(),
+                file.inode
+            );
+            assert!(backing.finish(&candidate, 1, 1).is_err());
+        }
 
         fn capture_all_nodes(boot: &str) -> Result<Vec<CapturedNode>, AcceptanceError> {
             enumerate()?
@@ -2551,8 +3137,15 @@ mod platform {
             };
             let mut baseline: Option<IOMediaRegistryInventoryV2> = None;
             for iteration in 0..5 {
-                let inventory = capture_inventory(t5_expected)
+                let held_inventory = capture_inventory(t5_expected)
                     .unwrap_or_else(|error| panic!("live T5 capture {iteration} failed: {error}"));
+                let inventory = held_inventory.report().clone();
+                let encoded = serde_json::to_vec(held_inventory.report())
+                    .expect("serialize held pre-attach report while descriptors remain live");
+                assert!(!encoded.is_empty());
+                held_inventory
+                    .revalidate_exact()
+                    .expect("revalidate held pre-attach descriptors after report bytes");
                 assert!(!inventory.authority_granted);
                 assert!(inventory.all_registry_entry_ids.len() >= nodes.len());
                 if let Some(previous) = baseline.as_ref() {
@@ -2626,6 +3219,17 @@ mod platform {
             let candidate =
                 unique_disk_image_candidate(&first).expect("unique live DiskImageURL candidate");
             let path = strict_file_url_path(&candidate.url).expect("strict live DiskImageURL");
+            let metadata = std::fs::metadata(&path).expect("live disk-image backing metadata");
+            if !metadata.is_file()
+                || metadata.nlink() != 1
+                || metadata.len() == 0
+                || metadata.len() > MAX_BACKING_FILE_BYTES
+            {
+                eprintln!(
+                    "SKIP corpus-only disk-image check: backing is not a single-link regular file within the {MAX_BACKING_FILE_BYTES}-byte digest bound"
+                );
+                return;
+            }
             let backing = HeldDiskImageBacking::capture(Path::new(&path))
                 .expect("hold live disk-image backing through openat");
             let first_backing = backing
@@ -2654,12 +3258,28 @@ mod platform {
 }
 
 #[cfg(target_os = "macos")]
+pub use platform::HeldAttachedIOMediaTopologyV2;
+#[cfg(target_os = "macos")]
 pub use platform::HeldDiskImageBacking;
+#[cfg(target_os = "macos")]
+pub use platform::HeldPreAttachIOMediaInventory;
 #[cfg(target_os = "macos")]
 pub use platform::ResolvedIOMediaObject;
 
 #[cfg(not(target_os = "macos"))]
+#[must_use = "held attached descriptors require post-persistence revalidation"]
+pub struct HeldAttachedIOMediaTopologyV2<'a> {
+    _unsupported: std::marker::PhantomData<&'a HeldPreAttachIOMediaInventory>,
+}
+
+#[cfg(not(target_os = "macos"))]
 pub struct HeldDiskImageBacking {
+    _unsupported: (),
+}
+
+#[cfg(not(target_os = "macos"))]
+#[must_use = "held pre-attach descriptors must outlive attached receipt persistence"]
+pub struct HeldPreAttachIOMediaInventory {
     _unsupported: (),
 }
 
@@ -2684,7 +3304,7 @@ pub fn hold_disk_image_backing(path: &Path) -> Result<HeldDiskImageBacking, Acce
 
 pub fn capture_pre_attach_iomedia_inventory(
     expected_t5: ExpectedIOMediaTopology<'_>,
-) -> Result<IOMediaRegistryInventoryV2, AcceptanceError> {
+) -> Result<HeldPreAttachIOMediaInventory, AcceptanceError> {
     #[cfg(target_os = "macos")]
     {
         platform::capture_inventory(expected_t5)
@@ -2698,11 +3318,11 @@ pub fn capture_pre_attach_iomedia_inventory(
     }
 }
 
-pub fn capture_attached_iomedia_topology_v2(
+pub fn capture_attached_iomedia_topology_v2<'a>(
     expected: ExpectedIOMediaTopology<'_>,
-    pre_attach_inventory: &IOMediaRegistryInventoryV2,
-    held_backing: &HeldDiskImageBacking,
-) -> Result<AttachedIOMediaTopologyV2, AcceptanceError> {
+    pre_attach_inventory: &'a HeldPreAttachIOMediaInventory,
+    held_backing: HeldDiskImageBacking,
+) -> Result<HeldAttachedIOMediaTopologyV2<'a>, AcceptanceError> {
     #[cfg(target_os = "macos")]
     {
         platform::capture_v2(expected, pre_attach_inventory, held_backing)
@@ -2749,6 +3369,26 @@ pub fn project_iomedia_identity_v1(
     };
     validate_iomedia_topology_identity_shape(&identity, expected)?;
     Ok(identity)
+}
+
+#[cfg(not(target_os = "macos"))]
+impl HeldPreAttachIOMediaInventory {
+    pub fn report(&self) -> &IOMediaRegistryInventoryV2 {
+        unreachable!("non-macOS capture never constructs a held pre-attach capsule")
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+impl<'a> HeldAttachedIOMediaTopologyV2<'a> {
+    pub fn report(&self) -> &AttachedIOMediaTopologyV2 {
+        unreachable!("non-macOS capture never constructs a held attached capsule")
+    }
+
+    pub fn revalidate_after_persistence(&self) -> Result<(), AcceptanceError> {
+        Err(invalid(
+            "held IOMedia descriptor replay is unsupported outside macOS",
+        ))
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -3011,24 +3651,38 @@ mod tests {
 
     fn test_binding(mode: u32, inode: u64) -> BackingObjectBindingV1 {
         BackingObjectBindingV1 {
+            content_sha256: None,
+            ctime_nanoseconds: 0,
+            ctime_seconds: 1,
             dev: 1,
+            flags: 0,
             gid: 0,
             inode,
             mode,
+            mtime_nanoseconds: 0,
+            mtime_seconds: 1,
             nlink: 1,
+            size: 4096,
             uid: 0,
         }
     }
 
     fn test_backing(device: IORegistryAncestorV1) -> DiskImageBackingProvenanceV1 {
-        let component =
-            |path: &str, directory: bool, binding: BackingObjectBindingV1| BackingPathComponentV1 {
+        let component = |path: &str,
+                         directory: bool,
+                         mut binding: BackingObjectBindingV1|
+         -> BackingPathComponentV1 {
+            if !directory {
+                binding.content_sha256 = Some("11".repeat(32));
+            }
+            BackingPathComponentV1 {
                 directory,
                 fd_binding: binding.clone(),
                 path: path.to_string(),
                 path_binding_after: binding.clone(),
                 path_binding_before: binding,
-            };
+            }
+        };
         DiskImageBackingProvenanceV1 {
             authority_granted: false,
             canonical_path: "/Library/image.dmg".to_string(),
@@ -3307,6 +3961,27 @@ mod tests {
             .path_binding_after
             .inode += 1;
         assert!(validate_iomedia_topology_provenance_shape(&path_drift, expected()).is_err());
+
+        let mut missing_content_digest = topology.clone();
+        missing_content_digest.backing.opened_components[2]
+            .fd_binding
+            .content_sha256 = None;
+        assert!(
+            validate_iomedia_topology_provenance_shape(&missing_content_digest, expected())
+                .is_err()
+        );
+
+        let mut metadata_drift = topology.clone();
+        metadata_drift.backing.opened_components[2]
+            .path_binding_after
+            .mtime_nanoseconds += 1;
+        assert!(validate_iomedia_topology_provenance_shape(&metadata_drift, expected()).is_err());
+
+        let mut digest_drift = topology.clone();
+        digest_drift.backing.opened_components[2]
+            .path_binding_after
+            .content_sha256 = Some("22".repeat(32));
+        assert!(validate_iomedia_topology_provenance_shape(&digest_drift, expected()).is_err());
 
         let mut reported_ambiguity = topology.clone();
         reported_ambiguity.backing.disk_image_url_ancestor_count = 2;

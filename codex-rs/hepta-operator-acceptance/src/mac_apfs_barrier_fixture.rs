@@ -37,6 +37,8 @@ use std::time::Instant;
 
 use serde::Deserialize;
 use serde::Serialize;
+use sha2::Digest;
+use sha2::Sha256;
 
 use crate::AcceptanceError;
 use crate::durable::MAX_ARTIFACT_BYTES;
@@ -45,9 +47,10 @@ use crate::durable::sha256;
 use crate::mac_iomedia_identity::AttachedIOMediaTopologyV1;
 use crate::mac_iomedia_identity::AttachedIOMediaTopologyV2;
 use crate::mac_iomedia_identity::ExpectedIOMediaTopology;
+use crate::mac_iomedia_identity::HeldAttachedIOMediaTopologyV2;
+use crate::mac_iomedia_identity::HeldPreAttachIOMediaInventory;
 #[cfg(test)]
 use crate::mac_iomedia_identity::IOMediaRegistryIdentityV1;
-use crate::mac_iomedia_identity::IOMediaRegistryInventoryV2;
 use crate::mac_iomedia_identity::capture_attached_iomedia_topology_v2;
 use crate::mac_iomedia_identity::capture_pre_attach_iomedia_inventory;
 use crate::mac_iomedia_identity::hold_disk_image_backing;
@@ -78,6 +81,7 @@ const LAUNCHCTL: &str = "/bin/launchctl";
 const PLUTIL: &str = "/usr/bin/plutil";
 const LIVE_ROOT_PREFIX: &str = ".hepta-privileged-qualification-v1-";
 const IMAGE_BYTES: &str = "512m";
+const MAX_DISK_IMAGE_IDENTITY_BYTES: u64 = 1024 * 1024 * 1024;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(45);
 const HOLDER_READY_TIMEOUT: Duration = Duration::from_secs(10);
 const EXPECTED_T5_UUID: &str = "fb804d1b-24cb-4d6e-aea7-a9e180807758";
@@ -707,6 +711,36 @@ struct AttachedImage {
     whole_disk_identifier: String,
 }
 
+struct HeldAttachedImage<'a> {
+    attached: AttachedImage,
+    iomedia: HeldAttachedIOMediaTopologyV2<'a>,
+}
+
+impl HeldAttachedImage<'_> {
+    fn topology(&self) -> Result<&AttachedTopologyV1, AcceptanceError> {
+        self.attached
+            .topology
+            .as_ref()
+            .ok_or_else(|| invalid("held attachment omitted its proven topology"))
+    }
+
+    fn finish_after_persistence(self) -> Result<AttachedImage, AcceptanceError> {
+        let recorded = self
+            .attached
+            .topology
+            .as_ref()
+            .and_then(|topology| topology.iomedia_provenance.as_ref())
+            .ok_or_else(|| invalid("held attachment omitted IOMedia provenance"))?;
+        if recorded != self.iomedia.report() {
+            return Err(invalid(
+                "persisted attachment topology differs from the held IOMedia report",
+            ));
+        }
+        self.iomedia.revalidate_after_persistence()?;
+        Ok(self.attached)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct HdiTopologyEntities {
     apfs_container: String,
@@ -855,6 +889,65 @@ fn file_identity(path: &Path) -> Result<FileIdentityV1, AcceptanceError> {
             .ok_or_else(|| invalid("executable path is not UTF-8"))?
             .to_string(),
         sha256: sha256(&bytes),
+    })
+}
+
+fn disk_image_identity(path: &Path) -> Result<FileIdentityV1, AcceptanceError> {
+    let binding_before = binding(path)?;
+    if binding_before.nlink != 1
+        || binding_before.size == 0
+        || binding_before.size > MAX_DISK_IMAGE_IDENTITY_BYTES
+    {
+        return Err(invalid(format!(
+            "disk image {} has invalid size or link count",
+            path.display()
+        )));
+    }
+    let path_before = fs::symlink_metadata(path)?;
+    let mut file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+        .open(path)?;
+    if binding_from_metadata(&path_before) != binding_from_metadata(&file.metadata()?) {
+        return Err(invalid(format!(
+            "disk image {} changed before held-fd hashing",
+            path.display()
+        )));
+    }
+    let mut digest = Sha256::new();
+    let mut buffer = [0_u8; 128 * 1024];
+    let mut observed_size = 0_u64;
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        observed_size = observed_size
+            .checked_add(read as u64)
+            .ok_or_else(|| invalid("disk-image digest byte count overflowed"))?;
+        if observed_size > MAX_DISK_IMAGE_IDENTITY_BYTES {
+            return Err(invalid("disk-image digest exceeded its byte bound"));
+        }
+        digest.update(&buffer[..read]);
+    }
+    let binding_after_fd = binding_from_metadata(&file.metadata()?);
+    let binding_after_path = binding(path)?;
+    if observed_size != binding_before.size
+        || binding_after_fd != binding_before
+        || binding_after_path != binding_before
+    {
+        return Err(invalid(format!(
+            "disk image {} changed while hashing its held descriptor",
+            path.display()
+        )));
+    }
+    Ok(FileIdentityV1 {
+        binding: binding_before,
+        path: path
+            .to_str()
+            .ok_or_else(|| invalid("disk-image path is not UTF-8"))?
+            .to_string(),
+        sha256: format!("{:x}", digest.finalize()),
     })
 }
 
@@ -1678,12 +1771,19 @@ fn validate_attached_topology_shape(topology: &AttachedTopologyV1) -> Result<(),
                 .ok_or_else(|| invalid("attached topology v3 backing has no final component"))?
                 .fd_binding;
             let sealed = &topology.image_backing_before.binding;
-            if fd.dev != sealed.dev
+            if fd.content_sha256.as_deref() != Some(topology.image_backing_before.sha256.as_str())
+                || fd.ctime_nanoseconds != sealed.ctime_nanoseconds
+                || fd.ctime_seconds != sealed.ctime_seconds
+                || fd.dev != sealed.dev
+                || fd.flags != sealed.flags
                 || fd.inode != sealed.inode
                 || fd.mode & 0o7777 != sealed.mode
+                || fd.mtime_nanoseconds != sealed.mtime_nanoseconds
+                || fd.mtime_seconds != sealed.mtime_seconds
                 || fd.uid != sealed.uid
                 || fd.gid != sealed.gid
                 || fd.nlink != sealed.nlink
+                || fd.size != sealed.size
             {
                 return Err(invalid(
                     "attached topology v3 backing descriptor differs from the fixture image binding",
@@ -1971,23 +2071,23 @@ fn mount_volume(
     Ok(())
 }
 
-fn attach_image(
+fn attach_image<'a>(
     staging: &Path,
     sequence: &mut usize,
     image: &Path,
     read_only: bool,
     expected_volume_name: &str,
     pre_attach_inventory: &DiskInventoryV1,
-    pre_attach_iomedia_inventory: &IOMediaRegistryInventoryV2,
+    pre_attach_iomedia_inventory: &'a HeldPreAttachIOMediaInventory,
     commands: &mut Vec<CommandReceiptV1>,
-) -> Result<AttachedImage, AcceptanceError> {
+) -> Result<HeldAttachedImage<'a>, AcceptanceError> {
     validate_disk_inventory(pre_attach_inventory)?;
     validate_iomedia_registry_inventory_shape(
-        pre_attach_iomedia_inventory,
+        pre_attach_iomedia_inventory.report(),
         expected_t5_iomedia_topology(pre_attach_inventory),
     )?;
     let held_backing = hold_disk_image_backing(image)?;
-    let image_backing_before = file_identity(image)?;
+    let image_backing_before = disk_image_identity(image)?;
     let mut arguments = vec![OsString::from("attach")];
     if read_only {
         arguments.push(OsString::from("-readonly"));
@@ -2152,19 +2252,19 @@ fn attach_image(
         false,
         commands,
     )?;
-    let image_backing_after = file_identity(image)?;
+    let image_backing_after = disk_image_identity(image)?;
     let expected_iomedia = ExpectedIOMediaTopology {
         apfs_container: &apfs_container.device_identifier,
         apfs_volume: &apfs_volume.device_identifier,
         physical_store: &physical_store.device_identifier,
         physical_whole: &whole_disk.device_identifier,
     };
-    let iomedia_provenance = capture_attached_iomedia_topology_v2(
+    let held_iomedia = capture_attached_iomedia_topology_v2(
         expected_iomedia,
         pre_attach_iomedia_inventory,
-        &held_backing,
+        held_backing,
     )?;
-    let iomedia_identity = project_iomedia_identity_v1(&iomedia_provenance)?;
+    let iomedia_identity = project_iomedia_identity_v1(held_iomedia.report())?;
     let topology = AttachedTopologyV1 {
         apfs_container,
         apfs_container_uuid: attached.apfs_container_uuid.clone(),
@@ -2175,7 +2275,7 @@ fn attach_image(
         image_backing_before,
         image_path_from_hdiutil: matching_images[0].image_path.clone(),
         iomedia_identity: Some(iomedia_identity),
-        iomedia_provenance: Some(iomedia_provenance),
+        iomedia_provenance: Some(held_iomedia.report().clone()),
         physical_store,
         pre_attach_inventory_sha256: inventory_sha256(pre_attach_inventory)?,
         schema: "hepta_mac_attached_apfs_topology_v3".to_string(),
@@ -2213,7 +2313,10 @@ fn attach_image(
         ));
     }
     attached.topology = Some(topology);
-    Ok(attached)
+    Ok(HeldAttachedImage {
+        attached,
+        iomedia: held_iomedia,
+    })
 }
 
 fn detach_image(
@@ -3442,7 +3545,7 @@ impl AttachmentGuard {
         {
             return "refused-preexisting-or-t5-detach".to_string();
         }
-        match file_identity(&self.image) {
+        match disk_image_identity(&self.image) {
             Ok(identity) if identity == topology.image_backing_after => {}
             Ok(_) => return "image-backing-binding-changed".to_string(),
             Err(error) => return format!("image-backing-replay-error-{error}"),
@@ -4294,13 +4397,14 @@ pub fn execute_and_seal_disposable_fixture(
     append_new_commands(&commands, &mut appended_commands, &mut writer)?;
     let pre_attach_iomedia_inventory_rw =
         capture_pre_attach_iomedia_inventory(expected_t5_iomedia_topology(&pre_attach_inventory))?;
+    let pre_attach_iomedia_inventory_rw_report = pre_attach_iomedia_inventory_rw.report().clone();
     let obligation = AttachmentObligationJournal::create(
         &authorization.namespace,
         &authorization.operation_nonce,
         &epoch,
         &epoch_receipt_sha256,
         AttachmentObligationEventV1::Prepared {
-            image_backing: file_identity(&image)?,
+            image_backing: disk_image_identity(&image)?,
             mountpoint_underlying: epoch.mountpoint_underlying_before.clone(),
             nested_mounts_before: nested_mounts_below(&authorization.namespace)?,
             namespace_statfs: statfs_facts(&authorization.namespace)?,
@@ -4315,7 +4419,7 @@ pub fn execute_and_seal_disposable_fixture(
         epoch.mountpoint_underlying_before.clone(),
     );
     attachment_guard.attach_started(MountPhaseV1::ReadWrite)?;
-    let attached_rw = attach_image(
+    let held_attached_rw = attach_image(
         &staging,
         &mut sequence,
         &image,
@@ -4325,11 +4429,7 @@ pub fn execute_and_seal_disposable_fixture(
         &pre_attach_iomedia_inventory_rw,
         &mut commands,
     )?;
-    let rw_topology = attached_rw
-        .topology
-        .as_ref()
-        .ok_or_else(|| invalid("read-write attach omitted its proven topology"))?
-        .clone();
+    let rw_topology = held_attached_rw.topology()?.clone();
     attachment_guard.attached(MountPhaseV1::ReadWrite, &rw_topology)?;
     append_new_commands(&commands, &mut appended_commands, &mut writer)?;
     writer.append(
@@ -4339,6 +4439,8 @@ pub fn execute_and_seal_disposable_fixture(
             topology: rw_topology,
         },
     )?;
+    let attached_rw = held_attached_rw.finish_after_persistence()?;
+    drop(pre_attach_iomedia_inventory_rw);
     attachment_guard.mount_started(MountPhaseV1::ReadWrite, &attached_rw.volume_identifier)?;
     mount_volume(
         &staging,
@@ -4473,12 +4575,17 @@ pub fn execute_and_seal_disposable_fixture(
 
     let pre_attach_iomedia_inventory_ro =
         capture_pre_attach_iomedia_inventory(expected_t5_iomedia_topology(&pre_attach_inventory))?;
-    let mut expected_ro_iomedia_inventory = pre_attach_iomedia_inventory_rw.clone();
-    expected_ro_iomedia_inventory.capture_monotonic_nanoseconds =
-        pre_attach_iomedia_inventory_ro.capture_monotonic_nanoseconds;
-    if pre_attach_iomedia_inventory_ro.capture_monotonic_nanoseconds
-        <= pre_attach_iomedia_inventory_rw.capture_monotonic_nanoseconds
-        || pre_attach_iomedia_inventory_ro != expected_ro_iomedia_inventory
+    let rw_iomedia_capture_monotonic_nanoseconds =
+        pre_attach_iomedia_inventory_rw_report.capture_monotonic_nanoseconds;
+    let mut expected_ro_iomedia_inventory = pre_attach_iomedia_inventory_rw_report;
+    expected_ro_iomedia_inventory.capture_monotonic_nanoseconds = pre_attach_iomedia_inventory_ro
+        .report()
+        .capture_monotonic_nanoseconds;
+    if pre_attach_iomedia_inventory_ro
+        .report()
+        .capture_monotonic_nanoseconds
+        <= rw_iomedia_capture_monotonic_nanoseconds
+        || pre_attach_iomedia_inventory_ro.report() != &expected_ro_iomedia_inventory
     {
         return Err(invalid(
             "immediate read-only pre-attach IOMedia inventory differs from the proven post-RW-detach baseline",
@@ -4486,7 +4593,7 @@ pub fn execute_and_seal_disposable_fixture(
     }
 
     attachment_guard.attach_started(MountPhaseV1::ReadOnly)?;
-    let attached_ro = attach_image(
+    let held_attached_ro = attach_image(
         &staging,
         &mut sequence,
         &image,
@@ -4496,11 +4603,7 @@ pub fn execute_and_seal_disposable_fixture(
         &pre_attach_iomedia_inventory_ro,
         &mut commands,
     )?;
-    let ro_topology = attached_ro
-        .topology
-        .as_ref()
-        .ok_or_else(|| invalid("read-only attach omitted its proven topology"))?
-        .clone();
+    let ro_topology = held_attached_ro.topology()?.clone();
     attachment_guard.attached(MountPhaseV1::ReadOnly, &ro_topology)?;
     append_new_commands(&commands, &mut appended_commands, &mut writer)?;
     writer.append(
@@ -4510,6 +4613,8 @@ pub fn execute_and_seal_disposable_fixture(
             topology: ro_topology,
         },
     )?;
+    let attached_ro = held_attached_ro.finish_after_persistence()?;
+    drop(pre_attach_iomedia_inventory_ro);
     if attached_ro.volume_uuid != attached_rw.volume_uuid
         || attached_ro.apfs_container_uuid != attached_rw.apfs_container_uuid
     {
@@ -5784,7 +5889,7 @@ fn reconstruct_attached_topology(
         &format!("disk-node-info-{suffix}-volume"),
         false,
     )?;
-    let current_image = file_identity(&root.join(IMAGE_NAME))?;
+    let current_image = disk_image_identity(&root.join(IMAGE_NAME))?;
     if matching.len() != 1
         || parsed.whole_disk_identifier != whole.device_identifier
         || parsed.physical_store_identifier != physical.device_identifier
