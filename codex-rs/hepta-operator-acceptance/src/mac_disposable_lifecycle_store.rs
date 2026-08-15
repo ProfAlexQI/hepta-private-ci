@@ -30,7 +30,14 @@ use crate::mac_disposable_reconciliation_collector::RetainedCollectorMountDeltaV
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorObservationV3;
 use crate::mac_disposable_reconciliation_collector::RetainedTerminalAbsenceV3;
 use crate::mac_disposable_reconciliation_collector::UnmountingV3;
+use crate::mac_inert_one_shot_runner::AuthenticatedDispatchedRunnerV3;
+use crate::mac_inert_one_shot_runner::AuthenticatedPreRunnerV3;
 use crate::mac_inert_one_shot_runner::FreshProcessEpochV3;
+use crate::mac_inert_one_shot_runner::InertDispatchReceiptV3;
+use crate::mac_inert_one_shot_runner::InertRunnerErrorV3;
+use crate::mac_inert_one_shot_runner::IssuedRunnerDispatchFailureV3;
+use crate::mac_inert_one_shot_runner::SameSupervisorRunnerDeathProofV3;
+use crate::mac_inert_one_shot_runner::SealedRunnerDispatchV3;
 use crate::mac_privileged_disposable_control::BlockingOperationV3;
 use crate::mac_privileged_disposable_control::CompletedOperationV3;
 use crate::mac_privileged_disposable_control::FreshAdmissionV3;
@@ -68,6 +75,8 @@ pub enum DurableLifecycleStoreErrorV3 {
     Lifecycle(#[from] LifecycleErrorV2),
     #[error(transparent)]
     EffectIssue(#[from] DurableEffectIssueStoreErrorV3),
+    #[error(transparent)]
+    Runner(#[from] InertRunnerErrorV3),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -462,6 +471,43 @@ pub(crate) struct PendingUnmountReconciliationOperationStoreV3<'a, 'e, S> {
 pub(crate) struct RetainedOperationEffectIssueV3<'store, 'a, 'e> {
     effect_id: u64,
     store: &'store mut ReconciliationOperationStoreV3<'a, 'e>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// The only production-capable S2-to-runner handoff.  `issue` is the actual
+/// exclusive borrow of the whole reconciliation store; `dispatch` embeds the
+/// exact durable issue bytes and the S1-derived lease.  Neither component has
+/// a raw descriptor or digest projection.
+pub(crate) struct PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
+    issue: RetainedOperationEffectIssueV3<'store, 'a, 'e>,
+    dispatch: Option<SealedRunnerDispatchV3>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Inert dispatch acknowledgement plus the still-live whole-store borrow.
+/// This is not a privileged callback-success token.
+pub(crate) struct IssuedEffectSessionV3<'store, 'a, 'e> {
+    runner: Option<AuthenticatedDispatchedRunnerV3>,
+    grant: Option<PersistedIssuedRunnerGrantV3<'store, 'a, 'e>>,
+    death_proven: bool,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// A post-durability dispatch failure retains the same whole-store grant until
+/// a composite death proof exists.  Drop poisons the in-memory wrapper if
+/// fail-closed cleanup cannot prove the runner dead.
+pub(crate) struct IssuedEffectDispatchFailureV3<'store, 'a, 'e> {
+    error: String,
+    runner_failure: Option<IssuedRunnerDispatchFailureV3>,
+    grant: Option<PersistedIssuedRunnerGrantV3<'store, 'a, 'e>>,
+    death_proven: bool,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct IssuedEffectDeathProvedV3<'store, 'a, 'e> {
+    proof: SameSupervisorRunnerDeathProofV3,
+    receipt: Option<InertDispatchReceiptV3>,
+    _grant: PersistedIssuedRunnerGrantV3<'store, 'a, 'e>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
@@ -1447,11 +1493,11 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
     /// exact bound collector -> durable V2 issued tip -> durable V3 issue ->
     /// S1 admission of that exact issue descriptor.  Any cut after the V2
     /// append is issued-or-uncertain and poisons this wrapper.
-    pub(crate) fn persist_reconciliation_issue<'store>(
-        &'store mut self,
+    fn persist_reconciliation_issue_inner(
+        &mut self,
         command: ExactDisposableCommandV3,
         epochs: EffectEpochEvidenceV3,
-    ) -> Result<RetainedOperationEffectIssueV3<'store, 'a, 'e>, DurableLifecycleStoreErrorV3> {
+    ) -> Result<u64, DurableLifecycleStoreErrorV3> {
         if self.poisoned {
             return Err(invalid(
                 "reconciliation operation store is poisoned; exact restart replay is required",
@@ -1526,9 +1572,57 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
             self.poisoned = true;
             return Err(error);
         }
+        Ok(effect_id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn persist_reconciliation_issue<'store>(
+        &'store mut self,
+        command: ExactDisposableCommandV3,
+        epochs: EffectEpochEvidenceV3,
+    ) -> Result<RetainedOperationEffectIssueV3<'store, 'a, 'e>, DurableLifecycleStoreErrorV3> {
+        let effect_id = self.persist_reconciliation_issue_inner(command, epochs)?;
         Ok(RetainedOperationEffectIssueV3 {
             effect_id,
             store: self,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    /// Persist, replay, and S1-adopt an exact issue before minting the only
+    /// runner grant. The epoch evidence is derived internally from the live
+    /// authenticated pre-runner; callers cannot supply nonce/digest strings.
+    pub(crate) fn persist_runner_grant<'store>(
+        &'store mut self,
+        runner: &AuthenticatedPreRunnerV3,
+        command: ExactDisposableCommandV3,
+    ) -> Result<PersistedIssuedRunnerGrantV3<'store, 'a, 'e>, DurableLifecycleStoreErrorV3> {
+        let epoch_binding = runner.bind_effect_epoch(self.epoch)?;
+        let epochs = EffectEpochEvidenceV3::from_authenticated(epoch_binding)?;
+        let effect_id = self.persist_reconciliation_issue_inner(command, epochs)?;
+        self.revalidate_issue_state(effect_id)?;
+        let lease = self.census.duplicate_control_lease()?;
+        let mut issue = RetainedOperationEffectIssueV3 {
+            effect_id,
+            store: self,
+            _not_send_or_sync: PhantomData,
+        };
+        let dispatch_epoch = runner.bind_effect_epoch(issue.store.epoch)?;
+        let dispatch = match SealedRunnerDispatchV3::from_retained_issue(
+            runner,
+            &dispatch_epoch,
+            &issue,
+            lease,
+        ) {
+            Ok(dispatch) => dispatch,
+            Err(error) => {
+                issue.poison_after_unproved_runner_drop();
+                return Err(error.into());
+            }
+        };
+        Ok(PersistedIssuedRunnerGrantV3 {
+            issue,
+            dispatch: Some(dispatch),
             _not_send_or_sync: PhantomData,
         })
     }
@@ -2050,8 +2144,203 @@ impl RetainedOperationEffectIssueV3<'_, '_, '_> {
             .expect("retained issue constructor proved the issue exists")
     }
 
+    pub(crate) fn record_canonical_bytes(&self) -> &[u8] {
+        self.store
+            .issues
+            .replayed_issue_canonical_bytes(self.effect_id)
+            .expect("retained issue constructor proved exact issue bytes exist")
+    }
+
+    pub(crate) fn record_sha256(&self) -> &str {
+        self.store
+            .issues
+            .replayed_issue_sha256(self.effect_id)
+            .expect("retained issue constructor proved exact issue digest exists")
+    }
+
+    pub(crate) fn poison_after_unproved_runner_drop(&mut self) {
+        self.store.poisoned = true;
+    }
+
     pub(crate) fn revalidate(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
         self.store.revalidate_issue_state(self.effect_id)
+    }
+}
+
+impl<'store, 'a, 'e> PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
+    pub(crate) fn effect_id(&self) -> u64 {
+        self.issue.effect_id()
+    }
+
+    pub(crate) fn revalidate(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
+        self.issue.revalidate()
+    }
+
+    pub(crate) fn dispatch(
+        mut self,
+        runner: AuthenticatedPreRunnerV3,
+        timeout: std::time::Duration,
+    ) -> Result<IssuedEffectSessionV3<'store, 'a, 'e>, IssuedEffectDispatchFailureV3<'store, 'a, 'e>>
+    {
+        if let Err(error) = self.issue.revalidate() {
+            self.issue.poison_after_unproved_runner_drop();
+            drop(runner);
+            return Err(IssuedEffectDispatchFailureV3 {
+                error: format!("exact S2 issue changed before dispatch: {error}"),
+                runner_failure: None,
+                grant: Some(self),
+                death_proven: true,
+                _not_send_or_sync: PhantomData,
+            });
+        }
+        let dispatch = self
+            .dispatch
+            .take()
+            .expect("persisted runner grant is one-shot and still sealed");
+        match runner.dispatch_sealed(dispatch, timeout) {
+            Ok(runner) => Ok(IssuedEffectSessionV3 {
+                runner: Some(runner),
+                grant: Some(self),
+                death_proven: false,
+                _not_send_or_sync: PhantomData,
+            }),
+            Err(failure) => {
+                let error = failure.error().to_string();
+                let death_proven = failure.has_death_proof();
+                Err(IssuedEffectDispatchFailureV3 {
+                    error,
+                    runner_failure: Some(failure),
+                    grant: Some(self),
+                    death_proven,
+                    _not_send_or_sync: PhantomData,
+                })
+            }
+        }
+    }
+}
+
+impl<'store, 'a, 'e> IssuedEffectSessionV3<'store, 'a, 'e> {
+    pub(crate) fn receipt(&self) -> &InertDispatchReceiptV3 {
+        self.runner
+            .as_ref()
+            .expect("live issued session retains its runner")
+            .receipt()
+    }
+
+    pub(crate) fn ensure_death_proof(
+        &mut self,
+        timeout: std::time::Duration,
+    ) -> Result<(), InertRunnerErrorV3> {
+        self.runner
+            .as_mut()
+            .ok_or_else(|| {
+                InertRunnerErrorV3::Invalid(
+                    "issued session runner was already consumed".to_string(),
+                )
+            })?
+            .ensure_death_proof(timeout)
+    }
+
+    pub(crate) fn finish_after_death_proof(
+        mut self,
+        timeout: std::time::Duration,
+    ) -> Result<IssuedEffectDeathProvedV3<'store, 'a, 'e>, InertRunnerErrorV3> {
+        self.ensure_death_proof(timeout)?;
+        let mut runner = self
+            .runner
+            .take()
+            .expect("issued session retains its runner until death proof");
+        let proof = runner.take_death_proof()?;
+        let receipt = runner.receipt().clone();
+        let grant = self
+            .grant
+            .take()
+            .expect("issued session retains its whole-store grant");
+        self.death_proven = true;
+        Ok(IssuedEffectDeathProvedV3 {
+            proof,
+            receipt: Some(receipt),
+            _grant: grant,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl Drop for IssuedEffectSessionV3<'_, '_, '_> {
+    fn drop(&mut self) {
+        if self.death_proven {
+            return;
+        }
+        let proved = self
+            .runner
+            .as_mut()
+            .map(|runner| runner.ensure_death_proof(std::time::Duration::from_secs(5)))
+            .transpose()
+            .is_ok();
+        if !proved {
+            if let Some(grant) = self.grant.as_mut() {
+                grant.issue.poison_after_unproved_runner_drop();
+            }
+        }
+    }
+}
+
+impl<'store, 'a, 'e> IssuedEffectDispatchFailureV3<'store, 'a, 'e> {
+    pub(crate) fn error(&self) -> &str {
+        &self.error
+    }
+
+    pub(crate) fn finish_after_death_proof(
+        mut self,
+        timeout: std::time::Duration,
+    ) -> Result<IssuedEffectDeathProvedV3<'store, 'a, 'e>, InertRunnerErrorV3> {
+        let failure = self.runner_failure.as_mut().ok_or_else(|| {
+            InertRunnerErrorV3::Invalid(
+                "pre-dispatch rejection has no issued runner death receipt".to_string(),
+            )
+        })?;
+        failure.ensure_death_proof(timeout)?;
+        let proof = failure.take_death_proof()?;
+        let grant = self
+            .grant
+            .take()
+            .expect("failed dispatch retains its whole-store grant");
+        self.death_proven = true;
+        Ok(IssuedEffectDeathProvedV3 {
+            proof,
+            receipt: None,
+            _grant: grant,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl Drop for IssuedEffectDispatchFailureV3<'_, '_, '_> {
+    fn drop(&mut self) {
+        if self.death_proven {
+            return;
+        }
+        let proved = self
+            .runner_failure
+            .as_mut()
+            .map(|failure| failure.ensure_death_proof(std::time::Duration::from_secs(5)))
+            .transpose()
+            .is_ok();
+        if !proved {
+            if let Some(grant) = self.grant.as_mut() {
+                grant.issue.poison_after_unproved_runner_drop();
+            }
+        }
+    }
+}
+
+impl IssuedEffectDeathProvedV3<'_, '_, '_> {
+    pub(crate) fn proof(&self) -> &SameSupervisorRunnerDeathProofV3 {
+        &self.proof
+    }
+
+    pub(crate) fn receipt(&self) -> Option<&InertDispatchReceiptV3> {
+        self.receipt.as_ref()
     }
 }
 

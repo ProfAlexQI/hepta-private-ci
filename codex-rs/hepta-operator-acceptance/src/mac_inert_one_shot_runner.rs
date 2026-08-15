@@ -31,7 +31,10 @@
 
 use crate::durable::canonical_json;
 use crate::durable::sha256;
+use crate::mac_disposable_effect_issue_store::EffectPurposeV3 as DurableEffectPurposeV3;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
+use crate::mac_disposable_lifecycle_store::RetainedOperationEffectIssueV3;
+use crate::mac_privileged_disposable_control::S1ControlLeaseSealV3;
 use rand::TryRngCore;
 use rand::rngs::OsRng;
 use serde::Deserialize;
@@ -245,7 +248,7 @@ struct RunnerTransportSemanticsV3 {
 struct RunnerWireCommandV3 {
     command: Vec<u8>,
     envelope: RunnerCommandEnvelopeV3,
-    issued_record: IssuedEffectRecordV3,
+    issued_record_canonical_bytes: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -274,6 +277,33 @@ pub(crate) struct AuthenticatedRunnerEpochV3 {
     runner_pid: u32,
     transport: RunnerTransportSemanticsV3,
     _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Non-serializable production bridge from one fresh supervisor epoch and
+/// one independently authenticated pre-runner.  It intentionally retains the
+/// complete process binding and runner hello evidence needed to revalidate
+/// PID/start identity, the pre-hello FD census, and transport semantics.  Raw
+/// nonce/digest strings cannot construct this type.
+pub(crate) struct AuthenticatedEffectEpochBindingV3 {
+    process_epoch: ProcessEpochBindingV3,
+    process_epoch_sha256: String,
+    runner_epoch: AuthenticatedRunnerEpochSnapshotV3,
+    runner_identity: KernelProcessIdentityV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+#[derive(Clone)]
+struct AuthenticatedRunnerEpochSnapshotV3 {
+    boot_session_uuid: String,
+    hello_sha256: String,
+    pre_hello_fd_census_sha256: String,
+    pre_hello_open_fd_identity_sha256s: Vec<String>,
+    process_epoch_sha256: String,
+    runner_epoch_sha256: String,
+    runner_kernel_start_microseconds: u64,
+    runner_nonce: String,
+    runner_pid: u32,
+    transport: RunnerTransportSemanticsV3,
 }
 
 /// Private typestate produced only after the persistence callback returns.
@@ -403,7 +433,29 @@ impl RetainedControlLeaseV3 {
         Self { descriptor }
     }
 
-    fn duplicate_for_grant(&self) -> Result<File, InertRunnerErrorV3> {
+    /// The seal is constructible only by the exact retained S1 census.  This
+    /// keeps a raw `File` from becoming a crate-wide lease-minting outlet.
+    pub(crate) fn duplicate_from_s1(
+        descriptor: &File,
+        _seal: S1ControlLeaseSealV3,
+    ) -> Result<Self, InertRunnerErrorV3> {
+        let source_flags = unsafe { libc::fcntl(descriptor.as_raw_fd(), libc::F_GETFD) };
+        if source_flags < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        if source_flags & libc::FD_CLOEXEC == 0 {
+            return Err(invalid("retained S1 control lock is not CLOEXEC"));
+        }
+        let duplicate = unsafe { libc::fcntl(descriptor.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
+        if duplicate < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        Ok(Self {
+            descriptor: unsafe { File::from_raw_fd(duplicate) },
+        })
+    }
+
+    fn duplicate_for_grant(&self) -> Result<Self, InertRunnerErrorV3> {
         let source_flags = unsafe { libc::fcntl(self.descriptor.as_raw_fd(), libc::F_GETFD) };
         if source_flags < 0 {
             return Err(io::Error::last_os_error().into());
@@ -421,11 +473,109 @@ impl RetainedControlLeaseV3 {
         if duplicate < 0 {
             return Err(io::Error::last_os_error().into());
         }
-        Ok(unsafe { File::from_raw_fd(duplicate) })
+        Ok(Self {
+            descriptor: unsafe { File::from_raw_fd(duplicate) },
+        })
     }
 }
 
-impl PersistedIssuedRunnerGrantV3 {
+impl SealedRunnerDispatchV3 {
+    pub(crate) fn from_retained_issue(
+        runner: &AuthenticatedPreRunnerV3,
+        epoch: &AuthenticatedEffectEpochBindingV3,
+        issue: &RetainedOperationEffectIssueV3<'_, '_, '_>,
+        lease: RetainedControlLeaseV3,
+    ) -> Result<Self, InertRunnerErrorV3> {
+        epoch.validate_current()?;
+        issue
+            .revalidate()
+            .map_err(|error| invalid(format!("retained S2 issue failed replay: {error}")))?;
+        if runner.state != RunnerStateV3::Ready
+            || runner.durable_issued_binding.is_some()
+            || runner.process_epoch_sha256 != epoch.process_epoch_sha256()
+            || runner.runner_epoch.runner_epoch_sha256 != epoch.runner_epoch_sha256()
+        {
+            return Err(invalid(
+                "retained issue targets a used, stale, or different pre-runner",
+            ));
+        }
+        let durable = issue.record();
+        if durable.process_epoch_sha256() != epoch.process_epoch_sha256()
+            || durable.runner_epoch_sha256() != epoch.runner_epoch_sha256()
+            || durable.runner_pid() != epoch.runner_pid()
+            || durable.runner_kernel_start_microseconds()
+                != epoch.runner_kernel_start_microseconds()
+            || durable.runner_hello_sha256() != epoch.runner_hello_sha256()
+            || durable.runner_pre_hello_fd_census_sha256() != epoch.pre_hello_fd_census_sha256()
+            || durable.runner_transport_sha256() != epoch.transport_sha256()?
+        {
+            return Err(invalid(
+                "durable issue differs from the authenticated runner PID/start/hello/FD/transport seal",
+            ));
+        }
+        let purpose = match durable.purpose() {
+            DurableEffectPurposeV3::ForwardFlow => EffectPurposeV3::ForwardFlow,
+            DurableEffectPurposeV3::RestartReconciliation => EffectPurposeV3::RestartReconciliation,
+        };
+        let previous_record_sha256 = Some(durable.lifecycle_tip_before_sha256().to_string());
+        let envelope = RunnerCommandEnvelopeV3 {
+            command_sha256: durable.command_sha256().to_string(),
+            effect_id: durable.effect_id(),
+            issued_record_sha256: issue.record_sha256().to_string(),
+            journal_tip_before_sha256: previous_record_sha256.clone(),
+            operation_nonce: durable.operation_nonce().to_string(),
+            previous_record_sha256,
+            process_epoch_sha256: durable.process_epoch_sha256().to_string(),
+            purpose,
+            runner_epoch_sha256: durable.runner_epoch_sha256().to_string(),
+            schema: ENVELOPE_SCHEMA_V3.to_string(),
+            schema_version: 3,
+        };
+        let wire = RunnerWireCommandV3 {
+            command: durable.command_canonical_bytes().to_vec(),
+            envelope,
+            issued_record_canonical_bytes: issue.record_canonical_bytes().to_vec(),
+        };
+        wire.validate_canonical()?;
+        let durable_binding = DurableIssuedBindingV3 {
+            command_sha256: durable.command_sha256().to_string(),
+            effect_id: durable.effect_id(),
+            issued_record_sha256: issue.record_sha256().to_string(),
+            journal_tip_before_sha256: Some(durable.lifecycle_tip_before_sha256().to_string()),
+            operation_nonce: durable.operation_nonce().to_string(),
+            purpose,
+        };
+        let lease_identity_sha256 = descriptor_identity_sha256(lease.descriptor.as_raw_fd())?;
+        if runner
+            .runner_epoch
+            .pre_hello_open_fd_identity_sha256s
+            .binary_search(&lease_identity_sha256)
+            .is_ok()
+        {
+            return Err(invalid(
+                "S1 control lease was present in the authenticated pre-hello FD census",
+            ));
+        }
+        let record = RunnerDispatchRecordV3 {
+            dispatch_deadline_monotonic_nanoseconds: 1,
+            lease_identity_sha256: lease_identity_sha256.clone(),
+            schema: RUNNER_DISPATCH_SCHEMA_V3.to_string(),
+            schema_version: 3,
+            transport: runner_transport_semantics(),
+            wire,
+        };
+        record.validate(&runner.runner_epoch)?;
+        Ok(Self {
+            durable_binding,
+            lease,
+            lease_identity_sha256,
+            process_epoch_sha256: epoch.process_epoch_sha256().to_string(),
+            record,
+            runner_epoch_sha256: epoch.runner_epoch_sha256().to_string(),
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
     #[cfg(test)]
     fn for_test(
         epoch: &FreshProcessEpochV3,
@@ -443,8 +593,7 @@ impl PersistedIssuedRunnerGrantV3 {
                 start_microseconds: runner_epoch.runner_kernel_start_microseconds,
             },
         )?;
-        wire.envelope
-            .validate_against(&wire.issued_record, &wire.command)?;
+        wire.validate_canonical()?;
         if durable_binding.command_sha256 != wire.envelope.command_sha256
             || durable_binding.effect_id != wire.envelope.effect_id
             || durable_binding.issued_record_sha256 != wire.envelope.issued_record_sha256
@@ -457,7 +606,7 @@ impl PersistedIssuedRunnerGrantV3 {
             ));
         }
         let lease = lease.duplicate_for_grant()?;
-        let lease_identity_sha256 = descriptor_identity_sha256(lease.as_raw_fd())?;
+        let lease_identity_sha256 = descriptor_identity_sha256(lease.descriptor.as_raw_fd())?;
         if runner_epoch
             .pre_hello_open_fd_identity_sha256s
             .binary_search(&lease_identity_sha256)
@@ -494,7 +643,8 @@ impl PersistedIssuedRunnerGrantV3 {
         self.record.validate(runner_epoch)?;
         if self.process_epoch_sha256 != runner_epoch.process_epoch_sha256
             || self.runner_epoch_sha256 != runner_epoch.runner_epoch_sha256
-            || self.lease_identity_sha256 != descriptor_identity_sha256(self.lease.as_raw_fd())?
+            || self.lease_identity_sha256
+                != descriptor_identity_sha256(self.lease.descriptor.as_raw_fd())?
             || self.durable_binding.command_sha256 != self.record.wire.envelope.command_sha256
             || self.durable_binding.effect_id != self.record.wire.envelope.effect_id
             || self.durable_binding.issued_record_sha256
@@ -527,15 +677,18 @@ struct LeaseDescriptorIdentityV3 {
 /// the exact issued record.  The production constructor intentionally lives
 /// outside this runner lane.  Until S2 wires that constructor, only the
 /// `cfg(test)` fixture below can dispatch, so this remains NO_AUTHORITY.
-pub(crate) struct PersistedIssuedRunnerGrantV3 {
+pub(crate) struct SealedRunnerDispatchV3 {
     durable_binding: DurableIssuedBindingV3,
-    lease: File,
+    lease: RetainedControlLeaseV3,
     lease_identity_sha256: String,
     process_epoch_sha256: String,
     record: RunnerDispatchRecordV3,
     runner_epoch_sha256: String,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
+
+#[cfg(test)]
+type PersistedIssuedRunnerGrantV3 = SealedRunnerDispatchV3;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RunnerStateV3 {
@@ -558,6 +711,24 @@ pub(crate) struct AuthenticatedPreRunnerV3 {
     runner_identity: KernelProcessIdentityV3,
     session_deadline: AbsoluteDeadlineV3,
     state: RunnerStateV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// A successful inert acknowledgement still owns the live runner until the
+/// caller obtains the composite same-supervisor death proof.  It is not an
+/// effect-success callback and carries no authority.
+pub(crate) struct AuthenticatedDispatchedRunnerV3 {
+    runner: Option<AuthenticatedPreRunnerV3>,
+    receipt: InertDispatchReceiptV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Post-persistence dispatch failure.  The runner remains owned whenever the
+/// first death-proof attempt failed, so Drop can retry fail-closed cleanup.
+pub(crate) struct IssuedRunnerDispatchFailureV3 {
+    error: InertRunnerErrorV3,
+    runner: Option<AuthenticatedPreRunnerV3>,
+    proof: Option<SameSupervisorRunnerDeathProofV3>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
@@ -1135,14 +1306,133 @@ impl AuthenticatedRunnerEpochV3 {
     }
 }
 
+impl AuthenticatedEffectEpochBindingV3 {
+    pub(crate) fn validate_current(&self) -> Result<(), InertRunnerErrorV3> {
+        let process_identity = kernel_process_identity(unsafe { libc::getpid() } as u32)?;
+        if process_identity.pid != self.process_epoch.pid
+            || process_identity.parent_pid != self.process_epoch.parent_pid
+            || process_identity.start_microseconds != self.process_epoch.kernel_start_microseconds
+            || boot_session_uuid()? != self.process_epoch.boot_session_uuid
+            || bootstrap_pool_sha256()? != self.process_epoch.bootstrap_pool_sha256
+            || self.process_epoch.transport != runner_transport_semantics()
+            || digest_canonical(&self.process_epoch)? != self.process_epoch_sha256
+        {
+            return Err(invalid(
+                "authenticated effect epoch no longer belongs to this fresh supervisor",
+            ));
+        }
+        let runner_identity = kernel_process_identity(self.runner_identity.pid)?;
+        if runner_identity != self.runner_identity
+            || unsafe { libc::getpgid(self.runner_identity.pid as libc::pid_t) }
+                != self.runner_identity.pid as libc::pid_t
+            || self.runner_epoch.boot_session_uuid != self.process_epoch.boot_session_uuid
+            || self.runner_epoch.process_epoch_sha256 != self.process_epoch_sha256
+            || self.runner_epoch.runner_pid != self.runner_identity.pid
+            || self.runner_epoch.runner_kernel_start_microseconds
+                != self.runner_identity.start_microseconds
+            || self.runner_epoch.transport != runner_transport_semantics()
+            || self.runner_epoch.runner_epoch_sha256 != self.runner_epoch.hello_sha256
+            || digest_canonical(&self.runner_epoch.pre_hello_open_fd_identity_sha256s)?
+                != self.runner_epoch.pre_hello_fd_census_sha256
+            || self
+                .runner_epoch
+                .pre_hello_open_fd_identity_sha256s
+                .windows(2)
+                .any(|pair| pair[0] >= pair[1])
+        {
+            return Err(invalid(
+                "authenticated runner epoch, hello, FD census, or transport changed",
+            ));
+        }
+        require_nonce(&self.process_epoch.nonce, "authenticated process nonce")?;
+        require_nonce(
+            &self.runner_epoch.runner_nonce,
+            "authenticated runner nonce",
+        )?;
+        require_sha256(&self.process_epoch_sha256, "authenticated process epoch")?;
+        require_sha256(
+            &self.runner_epoch.hello_sha256,
+            "authenticated runner hello",
+        )?;
+        require_sha256(
+            &self.runner_epoch.pre_hello_fd_census_sha256,
+            "authenticated pre-hello FD census",
+        )?;
+        require_sha256(
+            &self.runner_epoch.runner_epoch_sha256,
+            "authenticated runner epoch",
+        )?;
+        Ok(())
+    }
+
+    pub(crate) fn boot_session_uuid(&self) -> &str {
+        &self.process_epoch.boot_session_uuid
+    }
+
+    pub(crate) fn process_epoch_nonce(&self) -> &str {
+        &self.process_epoch.nonce
+    }
+
+    pub(crate) fn process_epoch_sha256(&self) -> &str {
+        &self.process_epoch_sha256
+    }
+
+    pub(crate) fn runner_epoch_nonce(&self) -> &str {
+        &self.runner_epoch.runner_nonce
+    }
+
+    pub(crate) fn runner_epoch_sha256(&self) -> &str {
+        &self.runner_epoch.runner_epoch_sha256
+    }
+
+    pub(crate) fn runner_pid(&self) -> u32 {
+        self.runner_identity.pid
+    }
+
+    pub(crate) fn runner_kernel_start_microseconds(&self) -> u64 {
+        self.runner_identity.start_microseconds
+    }
+
+    pub(crate) fn runner_hello_sha256(&self) -> &str {
+        &self.runner_epoch.hello_sha256
+    }
+
+    pub(crate) fn pre_hello_fd_census_sha256(&self) -> &str {
+        &self.runner_epoch.pre_hello_fd_census_sha256
+    }
+
+    pub(crate) fn transport_sha256(&self) -> Result<String, InertRunnerErrorV3> {
+        digest_canonical(&self.runner_epoch.transport)
+    }
+}
+
+impl RunnerWireCommandV3 {
+    fn validate_canonical(&self) -> Result<(), InertRunnerErrorV3> {
+        require_command_size(&self.command)?;
+        require_sha256(&self.envelope.command_sha256, "wire command digest")?;
+        require_sha256(
+            &self.envelope.issued_record_sha256,
+            "wire durable issue digest",
+        )?;
+        if self.issued_record_canonical_bytes.is_empty()
+            || self.issued_record_canonical_bytes.len() > MAX_FRAME_BYTES_V3
+            || sha256(&self.command) != self.envelope.command_sha256
+            || sha256(&self.issued_record_canonical_bytes) != self.envelope.issued_record_sha256
+        {
+            return Err(invalid(
+                "runner wire command or exact durable issue bytes changed",
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl RunnerDispatchRecordV3 {
     fn validate(
         &self,
         runner_epoch: &AuthenticatedRunnerEpochV3,
     ) -> Result<(), InertRunnerErrorV3> {
-        self.wire
-            .envelope
-            .validate_against(&self.wire.issued_record, &self.wire.command)?;
+        self.wire.validate_canonical()?;
         require_sha256(&self.lease_identity_sha256, "lease descriptor identity")?;
         if self.schema != RUNNER_DISPATCH_SCHEMA_V3
             || self.schema_version != 3
@@ -1169,9 +1459,7 @@ impl RunnerDispatchRecordV3 {
         pre_hello_open_fd_identity_sha256s: &[String],
         received_lease_fd: RawFd,
     ) -> Result<(), InertRunnerErrorV3> {
-        self.wire
-            .envelope
-            .validate_against(&self.wire.issued_record, &self.wire.command)?;
+        self.wire.validate_canonical()?;
         require_sha256(&self.lease_identity_sha256, "lease descriptor identity")?;
         if self.schema != RUNNER_DISPATCH_SCHEMA_V3
             || self.schema_version != 3
@@ -1316,6 +1604,81 @@ impl SameSupervisorRunnerDeathProofV3 {
             return Err(invalid("same-supervisor death proof digest changed"));
         }
         Ok(())
+    }
+}
+
+impl AuthenticatedDispatchedRunnerV3 {
+    pub(crate) fn receipt(&self) -> &InertDispatchReceiptV3 {
+        &self.receipt
+    }
+
+    pub(crate) fn ensure_death_proof(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<(), InertRunnerErrorV3> {
+        let runner = self
+            .runner
+            .as_mut()
+            .ok_or_else(|| invalid("dispatched runner handle was already consumed"))?;
+        if runner.retained_death_proof.is_none() {
+            runner.terminate_and_retain_proof(timeout)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn take_death_proof(
+        &mut self,
+    ) -> Result<SameSupervisorRunnerDeathProofV3, InertRunnerErrorV3> {
+        self.runner
+            .as_mut()
+            .and_then(|runner| runner.retained_death_proof.take())
+            .ok_or_else(|| invalid("dispatched runner death proof is not retained"))
+    }
+}
+
+impl IssuedRunnerDispatchFailureV3 {
+    pub(crate) fn error(&self) -> &InertRunnerErrorV3 {
+        &self.error
+    }
+
+    pub(crate) fn has_death_proof(&self) -> bool {
+        self.proof.is_some()
+            || self
+                .runner
+                .as_ref()
+                .and_then(|runner| runner.retained_death_proof.as_ref())
+                .is_some()
+    }
+
+    pub(crate) fn ensure_death_proof(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<(), InertRunnerErrorV3> {
+        if self.proof.is_some() {
+            return Ok(());
+        }
+        let runner = self
+            .runner
+            .as_mut()
+            .ok_or_else(|| invalid("failed dispatch lost its runner before death proof"))?;
+        runner.terminate_and_retain_proof(timeout)?;
+        self.proof = runner.retained_death_proof.take();
+        if self.proof.is_none() {
+            return Err(invalid("failed dispatch did not retain a death proof"));
+        }
+        self.runner = None;
+        Ok(())
+    }
+
+    pub(crate) fn take_death_proof(
+        &mut self,
+    ) -> Result<SameSupervisorRunnerDeathProofV3, InertRunnerErrorV3> {
+        if self.proof.is_none() {
+            self.ensure_death_proof(CLEANUP_TIMEOUT_V3)?;
+        }
+        self.proof
+            .take()
+            .ok_or_else(|| invalid("failed dispatch death proof is not retained"))
     }
 }
 
@@ -1525,12 +1888,46 @@ impl AuthenticatedPreRunnerV3 {
         &self.runner_epoch.runner_epoch_sha256
     }
 
-    /// The only production dispatch surface.  S2 must move in a sealed grant
-    /// after durable V2/V3 replay; raw commands, lease files, and nonce strings
-    /// are deliberately not accepted here.
-    pub(crate) fn dispatch(
+    pub(crate) fn bind_effect_epoch(
+        &self,
+        epoch: &FreshProcessEpochV3,
+    ) -> Result<AuthenticatedEffectEpochBindingV3, InertRunnerErrorV3> {
+        if self.state != RunnerStateV3::Ready || self.durable_issued_binding.is_some() {
+            return Err(invalid(
+                "only an unused authenticated pre-runner can bind an effect epoch",
+            ));
+        }
+        self.runner_epoch.validate(epoch, self.runner_identity)?;
+        let binding = AuthenticatedEffectEpochBindingV3 {
+            process_epoch: epoch.binding.clone(),
+            process_epoch_sha256: epoch.binding_sha256.clone(),
+            runner_epoch: AuthenticatedRunnerEpochSnapshotV3 {
+                boot_session_uuid: self.runner_epoch.boot_session_uuid.clone(),
+                hello_sha256: self.runner_epoch.hello_sha256.clone(),
+                pre_hello_fd_census_sha256: self.runner_epoch.pre_hello_fd_census_sha256.clone(),
+                pre_hello_open_fd_identity_sha256s: self
+                    .runner_epoch
+                    .pre_hello_open_fd_identity_sha256s
+                    .clone(),
+                process_epoch_sha256: self.runner_epoch.process_epoch_sha256.clone(),
+                runner_epoch_sha256: self.runner_epoch.runner_epoch_sha256.clone(),
+                runner_kernel_start_microseconds: self
+                    .runner_epoch
+                    .runner_kernel_start_microseconds,
+                runner_nonce: self.runner_epoch.runner_nonce.clone(),
+                runner_pid: self.runner_epoch.runner_pid,
+                transport: self.runner_epoch.transport.clone(),
+            },
+            runner_identity: self.runner_identity,
+            _not_send_or_sync: PhantomData,
+        };
+        binding.validate_current()?;
+        Ok(binding)
+    }
+
+    fn dispatch_inner(
         &mut self,
-        mut grant: PersistedIssuedRunnerGrantV3,
+        mut grant: SealedRunnerDispatchV3,
         timeout: Duration,
     ) -> Result<InertDispatchReceiptV3, InertRunnerErrorV3> {
         if self.state != RunnerStateV3::Ready {
@@ -1538,9 +1935,6 @@ impl AuthenticatedPreRunnerV3 {
                 "runner epoch already accepted or may have accepted one command",
             ));
         }
-        let deadline = AbsoluteDeadlineV3::after(timeout)?.min(self.session_deadline);
-        deadline.remaining_nanoseconds()?;
-        grant.record.dispatch_deadline_monotonic_nanoseconds = deadline.monotonic_nanoseconds;
         grant.validate(&self.runner_epoch)?;
         if self.process_epoch_sha256 != grant.process_epoch_sha256
             || self.runner_epoch.runner_epoch_sha256 != grant.runner_epoch_sha256
@@ -1549,12 +1943,31 @@ impl AuthenticatedPreRunnerV3 {
         }
         self.state = RunnerStateV3::IssuedOrUncertain;
         self.durable_issued_binding = Some(grant.durable_binding.clone());
+        let deadline = match AbsoluteDeadlineV3::after(timeout) {
+            Ok(deadline) => deadline.min(self.session_deadline),
+            Err(error) => {
+                let result = post_issue_error(error);
+                self.terminate_and_retain_proof(CLEANUP_TIMEOUT_V3)?;
+                return Err(result);
+            }
+        };
+        if let Err(error) = deadline.remaining_nanoseconds() {
+            let result = post_issue_error(error);
+            self.terminate_and_retain_proof(CLEANUP_TIMEOUT_V3)?;
+            return Err(result);
+        }
+        grant.record.dispatch_deadline_monotonic_nanoseconds = deadline.monotonic_nanoseconds;
+        if let Err(error) = grant.validate(&self.runner_epoch) {
+            let result = post_issue_error(error);
+            self.terminate_and_retain_proof(CLEANUP_TIMEOUT_V3)?;
+            return Err(result);
+        }
         let record_bytes = canonical_bytes(&grant.record)?;
         let dispatch = (|| {
             send_datagram_until(
                 &self.command_socket,
                 &record_bytes,
-                &[grant.lease.as_raw_fd()],
+                &[grant.lease.descriptor.as_raw_fd()],
                 deadline,
             )?;
             let (bytes, response_deadline) = read_frame_until(&self.response_pipe, deadline)?;
@@ -1587,6 +2000,41 @@ impl AuthenticatedPreRunnerV3 {
                     )));
                 }
                 Err(result)
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn dispatch(
+        &mut self,
+        grant: PersistedIssuedRunnerGrantV3,
+        timeout: Duration,
+    ) -> Result<InertDispatchReceiptV3, InertRunnerErrorV3> {
+        self.dispatch_inner(grant, timeout)
+    }
+
+    /// Production one-shot transition. Both the authenticated pre-runner and
+    /// the exact S2 dispatch seal are consumed; no caller can retry the same
+    /// runner epoch after an issued-or-uncertain result.
+    pub(crate) fn dispatch_sealed(
+        mut self,
+        grant: SealedRunnerDispatchV3,
+        timeout: Duration,
+    ) -> Result<AuthenticatedDispatchedRunnerV3, IssuedRunnerDispatchFailureV3> {
+        match self.dispatch_inner(grant, timeout) {
+            Ok(receipt) => Ok(AuthenticatedDispatchedRunnerV3 {
+                runner: Some(self),
+                receipt,
+                _not_send_or_sync: PhantomData,
+            }),
+            Err(error) => {
+                let proof = self.retained_death_proof.take();
+                Err(IssuedRunnerDispatchFailureV3 {
+                    error,
+                    runner: if proof.is_some() { None } else { Some(self) },
+                    proof,
+                    _not_send_or_sync: PhantomData,
+                })
             }
         }
     }
@@ -1732,7 +2180,7 @@ impl AuthenticatedPreRunnerV3 {
         let wire = RunnerWireCommandV3 {
             command: command.to_vec(),
             envelope,
-            issued_record: issued.record,
+            issued_record_canonical_bytes: issued.record_bytes,
         };
         let grant = PersistedIssuedRunnerGrantV3::for_test(
             epoch,
@@ -1894,6 +2342,11 @@ impl AuthenticatedPreRunnerV3 {
 
 impl Drop for AuthenticatedPreRunnerV3 {
     fn drop(&mut self) {
+        if self.durable_issued_binding.is_some() && self.retained_death_proof.is_none() {
+            if self.terminate_and_retain_proof(CLEANUP_TIMEOUT_V3).is_ok() {
+                return;
+            }
+        }
         if self.child.try_wait().ok().flatten().is_none() {
             terminate_group_and_reap(&mut self.child);
         }

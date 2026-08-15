@@ -32,6 +32,7 @@ use crate::mac_disposable_reconciliation_collector::MountingV3;
 use crate::mac_disposable_reconciliation_collector::SealedMountDeltaAdvanceV3;
 use crate::mac_disposable_reconciliation_collector::SealedMountDeltaPlanV3;
 use crate::mac_disposable_reconciliation_collector::UnmountingV3;
+use crate::mac_inert_one_shot_runner::RetainedControlLeaseV3;
 use crate::mac_iomedia_identity::current_boot_session_uuid;
 use crate::mac_privileged_broker::BarrierJournal;
 use crate::mac_privileged_broker::BarrierPhaseV1;
@@ -519,6 +520,13 @@ pub(crate) struct LifecycleRecordAppendSinkV3<'c, 'a> {
 pub(crate) struct EffectIssueAppendSinkV3<'c, 'a> {
     census: &'c mut RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
     _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Unforgeable cross-module marker proving that a lease descriptor was
+/// duplicated directly from the exact retained S1 global-lock file
+/// description.  Only this module can construct the marker.
+pub(crate) struct S1ControlLeaseSealV3 {
+    _private: (),
 }
 
 impl LivePrivilegedDisposablePolicyV2 {
@@ -2663,6 +2671,17 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
             census: self,
             _not_send_or_sync: PhantomData,
         })
+    }
+
+    pub(crate) fn duplicate_control_lease(
+        &self,
+    ) -> Result<RetainedControlLeaseV3, PrivilegedDisposableControlErrorV2> {
+        self.revalidate()?;
+        RetainedControlLeaseV3::duplicate_from_s1(
+            &self.assessment._policy.lock,
+            S1ControlLeaseSealV3 { _private: () },
+        )
+        .map_err(|error| invalid(format!("could not retain exact S1 control lease: {error}")))
     }
 
     pub(crate) fn complete_selected_lifecycle_append(

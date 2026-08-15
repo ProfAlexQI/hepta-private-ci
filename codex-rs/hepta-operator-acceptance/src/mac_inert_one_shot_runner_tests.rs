@@ -468,7 +468,8 @@ fn build_test_grant(
         schema: ISSUE_SCHEMA_V3.to_string(),
         schema_version: 3,
     };
-    let issued_record_sha256 = digest_canonical(&record).expect("issued digest");
+    let bytes = canonical_bytes(&record).expect("canonical issued record");
+    let issued_record_sha256 = sha256(&bytes);
     let envelope = RunnerCommandEnvelopeV3 {
         command_sha256: record.command_sha256.clone(),
         effect_id: record.effect_id,
@@ -489,7 +490,7 @@ fn build_test_grant(
         RunnerWireCommandV3 {
             command: command.to_vec(),
             envelope,
-            issued_record: record,
+            issued_record_canonical_bytes: bytes,
         },
         DurableIssuedBindingV3 {
             command_sha256: sha256(command),
