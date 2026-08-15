@@ -20,6 +20,9 @@
 //! - The authenticated pre-runner has no lease. Only a sealed, durably issued
 //!   grant can send one canonical command datagram together with exactly one
 //!   SCM_RIGHTS descriptor. Missing/extra/truncated control data fails closed.
+//!   Because Darwin has no MSG_CMSG_CLOEXEC, the child blocks every blockable
+//!   signal and proves it is the process's only kernel thread across recvmsg,
+//!   exact control-message validation, and the final CLOEXEC set/recheck.
 //! - A runner accepts one exact command.  Same-supervisor sequential
 //!   reconciliation requires a non-serializable death proof produced from the
 //!   original live handle after kqueue NOTE_EXIT, pipe EOF, waitpid, and kernel
@@ -33,6 +36,8 @@ use rand::TryRngCore;
 use rand::rngs::OsRng;
 use serde::Deserialize;
 use serde::Serialize;
+#[cfg(test)]
+use std::ffi::CStr;
 use std::ffi::CString;
 use std::fs::File;
 use std::io;
@@ -65,6 +70,8 @@ const DEATH_RECEIPT_SCHEMA_V3: &str = "hepta_mac_runner_death_receipt_v3";
 const RUNNER_TRANSPORT_KIND_V3: &str = "darwin_af_unix_sock_dgram_scm_rights_v3";
 const RUNNER_RECORD_BOUNDARY_V3: &str = "one_datagram_one_canonical_record_v3";
 const RUNNER_DESCRIPTOR_TRANSFER_V3: &str = "exactly_one_scm_rights_fd_with_command_v3";
+const RUNNER_RECEIVER_CLOEXEC_WINDOW_V3: &str =
+    "single_kernel_thread_all_blockable_signals_masked_through_scm_cloexec_v3";
 const MAX_COMMAND_BYTES_V3: usize = 256 * 1024;
 const MAX_FRAME_BYTES_V3: usize = 2 * 1024 * 1024;
 const PROC_PIDTBSDINFO: libc::c_int = 3;
@@ -82,6 +89,18 @@ const BOOTSTRAP_INITIALIZING_V3: i32 = 1;
 const BOOTSTRAP_READY_V3: i32 = 2;
 const BOOTSTRAP_FAILED_V3: i32 = -1;
 const SKIP_PREMAIN_BOOTSTRAP_ENV_V3: &str = "HEPTA_SKIP_RUNNER_PREMAIN_BOOTSTRAP_V3";
+#[cfg(test)]
+const TEST_PREMAIN_CHILD_BEHAVIOR_ENV_V3: &str = "HEPTA_TEST_PREMAIN_CHILD_BEHAVIOR_V3";
+#[cfg(test)]
+const TEST_CHILD_COMPLETE_V3: &str = "complete";
+#[cfg(test)]
+const TEST_CHILD_SLOW_COMPLETE_V3: &str = "slow_complete";
+#[cfg(test)]
+const TEST_CHILD_PARTIAL_RECEIPT_V3: &str = "partial_receipt";
+#[cfg(test)]
+const TEST_CHILD_DROP_RECEIPT_V3: &str = "drop_receipt";
+#[cfg(test)]
+const TEST_CHILD_STALL_BEFORE_COMMAND_V3: &str = "stall_before_command";
 const FRAME_HEADER_BYTES_V3: usize = 16;
 const CLEANUP_TIMEOUT_V3: Duration = Duration::from_secs(5);
 const CHILD_DEADLINE_ENV_V3: &str = "HEPTA_INERT_RUNNER_DEADLINE_NS_V3";
@@ -195,6 +214,7 @@ struct RunnerHelloRequestV3 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RunnerHelloV3 {
+    bootstrap_single_kernel_thread_verified: bool,
     challenge_sha256: String,
     parent_kernel_start_microseconds: u64,
     parent_pid: u32,
@@ -215,6 +235,7 @@ struct RunnerTransportSemanticsV3 {
     descriptor_transfer: String,
     fallback_allowed: bool,
     kind: String,
+    receiver_cloexec_window: String,
     record_boundary: String,
     records_per_runner: u32,
 }
@@ -318,7 +339,10 @@ pub struct InertDispatchReceiptV3 {
     pub command_sha256: String,
     pub dispatch_count: u32,
     pub issued_record_sha256: String,
+    pub lease_fd_cloexec_verified: bool,
     pub runner_epoch_sha256: String,
+    pub scm_receive_all_blockable_signals_masked: bool,
+    pub scm_receive_single_kernel_thread_verified: bool,
     pub schema: String,
     pub schema_version: u32,
 }
@@ -610,6 +634,40 @@ unsafe extern "C" {
 #[unsafe(link_section = "__DATA,__mod_init_func")]
 static TEST_PREMAIN_RUNNER_POOL_BOOTSTRAP_V3: extern "C" fn() = {
     extern "C" fn initialize() {
+        let behavior_name = b"HEPTA_TEST_PREMAIN_CHILD_BEHAVIOR_V3\0";
+        let behavior = unsafe { libc::getenv(behavior_name.as_ptr().cast()) };
+        if !behavior.is_null() {
+            // libtest creates worker threads before invoking an exact test.
+            // Run the dedicated child protocol from the executable's initial
+            // thread instead, so the kernel-thread invariant is observable
+            // before any test-harness thread or exec actor can exist.
+            let behavior = unsafe { CStr::from_ptr(behavior) }.to_bytes();
+            let result = match behavior {
+                b"complete" => {
+                    run_inert_child_with_behavior(Duration::ZERO, InertChildResponseV3::Complete)
+                }
+                b"slow_complete" => run_inert_child_with_behavior(
+                    Duration::from_secs(5),
+                    InertChildResponseV3::Complete,
+                ),
+                b"partial_receipt" => run_inert_child_with_behavior(
+                    Duration::ZERO,
+                    InertChildResponseV3::PartialReceiptThenStall,
+                ),
+                b"drop_receipt" => run_inert_child_with_behavior(
+                    Duration::ZERO,
+                    InertChildResponseV3::DropWithoutReceipt,
+                ),
+                b"stall_before_command" => run_inert_child_with_behavior(
+                    Duration::ZERO,
+                    InertChildResponseV3::StallBeforeCommand,
+                ),
+                _ => Err(invalid("unknown pre-main inert child behavior")),
+            };
+            unsafe {
+                libc::_exit(if result.is_ok() { 0 } else { 101 });
+            }
+        }
         let skip_name = b"HEPTA_SKIP_RUNNER_PREMAIN_BOOTSTRAP_V3\0";
         if unsafe { libc::getenv(skip_name.as_ptr().cast()) }.is_null() {
             let _ = ensure_preallocated_runner_pool();
@@ -617,6 +675,26 @@ static TEST_PREMAIN_RUNNER_POOL_BOOTSTRAP_V3: extern "C" fn() = {
     }
     initialize
 };
+
+#[cfg(test)]
+fn test_premain_child_behavior(arguments: &[&str]) -> Option<&'static str> {
+    arguments.iter().find_map(|argument| match *argument {
+        "mac_inert_one_shot_runner::tests::inert_child_entry" => Some(TEST_CHILD_COMPLETE_V3),
+        "mac_inert_one_shot_runner::tests::slow_inert_child_entry" => {
+            Some(TEST_CHILD_SLOW_COMPLETE_V3)
+        }
+        "mac_inert_one_shot_runner::tests::partial_receipt_child_entry" => {
+            Some(TEST_CHILD_PARTIAL_RECEIPT_V3)
+        }
+        "mac_inert_one_shot_runner::tests::drop_receipt_child_entry" => {
+            Some(TEST_CHILD_DROP_RECEIPT_V3)
+        }
+        "mac_inert_one_shot_runner::tests::stalled_command_reader_child_entry" => {
+            Some(TEST_CHILD_STALL_BEFORE_COMMAND_V3)
+        }
+        _ => None,
+    })
+}
 
 fn ensure_preallocated_runner_pool() -> Result<(), InertRunnerErrorV3> {
     loop {
@@ -809,6 +887,33 @@ fn restore_signal_mask(previous: &libc::sigset_t) -> Result<(), InertRunnerError
     Ok(())
 }
 
+fn require_all_blockable_signals_masked(label: &str) -> Result<(), InertRunnerErrorV3> {
+    let mut current = MaybeUninit::<libc::sigset_t>::zeroed();
+    let rc =
+        unsafe { libc::pthread_sigmask(libc::SIG_SETMASK, std::ptr::null(), current.as_mut_ptr()) };
+    if rc != 0 {
+        return Err(io::Error::from_raw_os_error(rc).into());
+    }
+    let current = unsafe { current.assume_init() };
+    // Darwin's signal namespace is the closed 1..=31 range, with SIGUSR2
+    // occupying the final slot. libc intentionally does not export _NSIG.
+    for signal in 1..=libc::SIGUSR2 {
+        if signal == libc::SIGKILL || signal == libc::SIGSTOP {
+            continue;
+        }
+        match unsafe { libc::sigismember(&current, signal) } {
+            1 => {}
+            0 => {
+                return Err(invalid(format!(
+                    "{label} requires signal {signal} to remain blocked",
+                )));
+            }
+            _ => return Err(io::Error::last_os_error().into()),
+        }
+    }
+    Ok(())
+}
+
 fn close_raw_descriptors(descriptors: impl IntoIterator<Item = RawFd>) {
     for descriptor in descriptors {
         if descriptor >= 0 {
@@ -968,6 +1073,7 @@ fn runner_transport_semantics() -> RunnerTransportSemanticsV3 {
         descriptor_transfer: RUNNER_DESCRIPTOR_TRANSFER_V3.to_string(),
         fallback_allowed: false,
         kind: RUNNER_TRANSPORT_KIND_V3.to_string(),
+        receiver_cloexec_window: RUNNER_RECEIVER_CLOEXEC_WINDOW_V3.to_string(),
         record_boundary: RUNNER_RECORD_BOUNDARY_V3.to_string(),
         records_per_runner: 1,
     }
@@ -1303,6 +1409,9 @@ impl AuthenticatedPreRunnerV3 {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        if let Some(behavior) = test_premain_child_behavior(arguments) {
+            command.env(TEST_PREMAIN_CHILD_BEHAVIOR_ENV_V3, behavior);
+        }
         use std::os::unix::process::CommandExt;
         unsafe {
             command.pre_exec(move || {
@@ -1350,6 +1459,7 @@ impl AuthenticatedPreRunnerV3 {
             let identity = kernel_process_identity(child.id())?;
             if hello.schema != RUNNER_HELLO_SCHEMA_V3
                 || hello.schema_version != 3
+                || !hello.bootstrap_single_kernel_thread_verified
                 || hello.challenge_sha256 != sha256(challenge.as_bytes())
                 || hello.parent_pid != epoch.binding.pid
                 || hello.parent_kernel_start_microseconds != epoch.binding.kernel_start_microseconds
@@ -1456,6 +1566,9 @@ impl AuthenticatedPreRunnerV3 {
                 || receipt.schema_version != 3
                 || receipt.authority.any()
                 || receipt.dispatch_count != 1
+                || !receipt.lease_fd_cloexec_verified
+                || !receipt.scm_receive_all_blockable_signals_masked
+                || !receipt.scm_receive_single_kernel_thread_verified
                 || receipt.runner_epoch_sha256 != self.runner_epoch.runner_epoch_sha256
                 || receipt.issued_record_sha256 != grant.record.wire.envelope.issued_record_sha256
                 || receipt.command_sha256 != grant.record.wire.envelope.command_sha256
@@ -1817,11 +1930,15 @@ fn run_inert_child_with_behavior(
     let command_socket = unsafe { File::from_raw_fd(command_fd) };
     let response_pipe = unsafe { File::from_raw_fd(response_fd) };
     let _death_pipe = unsafe { File::from_raw_fd(death_fd) };
+    set_close_on_exec(command_socket.as_raw_fd())?;
+    set_close_on_exec(response_pipe.as_raw_fd())?;
+    set_close_on_exec(_death_pipe.as_raw_fd())?;
     assert_datagram_socket(command_socket.as_raw_fd())?;
     set_nonblocking(command_socket.as_raw_fd())?;
     set_nonblocking(response_pipe.as_raw_fd())?;
     set_no_sigpipe(response_pipe.as_raw_fd())?;
 
+    require_single_kernel_thread("before authenticated runner hello")?;
     let pre_hello_open_fd_identity_sha256s = open_fd_identity_census()?;
     let pre_hello_fd_census_sha256 = digest_canonical(&pre_hello_open_fd_identity_sha256s)?;
     let (request_bytes, request_fds) =
@@ -1856,6 +1973,7 @@ fn run_inert_child_with_behavior(
     }
     let identity = kernel_process_identity(unsafe { libc::getpid() } as u32)?;
     let hello = RunnerHelloV3 {
+        bootstrap_single_kernel_thread_verified: true,
         challenge_sha256: sha256(request.challenge.as_bytes()),
         parent_kernel_start_microseconds: parent_identity.start_microseconds,
         parent_pid: parent_identity.pid,
@@ -1877,15 +1995,8 @@ fn run_inert_child_with_behavior(
         return Ok(());
     }
 
-    let (dispatch_bytes, mut received_fds) =
-        receive_datagram_until(&command_socket, session_deadline, 1)?;
-    if received_fds.len() != 1 {
-        return Err(invalid(
-            "runner command must carry exactly one SCM_RIGHTS descriptor",
-        ));
-    }
-    let retained_control_lease = received_fds.pop().expect("length checked");
-    set_close_on_exec(retained_control_lease.as_raw_fd())?;
+    let (dispatch_bytes, retained_control_lease) =
+        receive_single_cloexec_descriptor_until(&command_socket, session_deadline)?;
     let dispatch: RunnerDispatchRecordV3 =
         parse_canonical(&dispatch_bytes, "runner dispatch record")?;
     let dispatch_deadline = AbsoluteDeadlineV3 {
@@ -1921,7 +2032,10 @@ fn run_inert_child_with_behavior(
         command_sha256: sha256(&wire.command),
         dispatch_count: 1,
         issued_record_sha256: wire.envelope.issued_record_sha256,
+        lease_fd_cloexec_verified: true,
         runner_epoch_sha256,
+        scm_receive_all_blockable_signals_masked: true,
+        scm_receive_single_kernel_thread_verified: true,
         schema: DISPATCH_RECEIPT_SCHEMA_V3.to_string(),
         schema_version: 3,
     };
@@ -2111,8 +2225,18 @@ fn boot_session_uuid() -> Result<String, InertRunnerErrorV3> {
 
 fn set_close_on_exec(fd: RawFd) -> Result<(), InertRunnerErrorV3> {
     let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
-    if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) } < 0 {
+    if flags < 0 {
         return Err(io::Error::last_os_error().into());
+    }
+    if unsafe { libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC) } < 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    let verified = unsafe { libc::fcntl(fd, libc::F_GETFD) };
+    if verified < 0 {
+        return Err(io::Error::last_os_error().into());
+    }
+    if verified & libc::FD_CLOEXEC == 0 {
+        return Err(invalid("descriptor did not retain FD_CLOEXEC"));
     }
     Ok(())
 }
@@ -2445,6 +2569,49 @@ fn receive_datagram_until(
         MAX_FRAME_BYTES_V3,
         expected_fds + 1,
     )
+}
+
+/// Darwin does not support MSG_CMSG_CLOEXEC.  This wrapper makes the only
+/// receive of an SCM_RIGHTS lease a single-threaded, signal-blocked critical
+/// section and does not restore the prior signal mask until exact ancillary
+/// validation, FD_CLOEXEC application, and a kernel recheck have all passed.
+fn receive_single_cloexec_descriptor_until(
+    socket: &File,
+    deadline: AbsoluteDeadlineV3,
+) -> Result<(Vec<u8>, File), InertRunnerErrorV3> {
+    let previous_signals = block_all_signals()?;
+    let guarded = (|| -> Result<(Vec<u8>, File), InertRunnerErrorV3> {
+        require_all_blockable_signals_masked("before child SCM_RIGHTS receive")?;
+        require_single_kernel_thread("before child SCM_RIGHTS receive")?;
+
+        // receive_datagram_until performs the recvmsg and rejects truncated
+        // data/control, malformed or multiple cmsgs, and missing/extra FDs.
+        // Any installed FD is owned by File and is closed on every error path
+        // while signals are still blocked.
+        let (payload, mut descriptors) = receive_datagram_until(socket, deadline, 1)?;
+        if descriptors.len() != 1 {
+            return Err(invalid(
+                "runner command must carry exactly one SCM_RIGHTS descriptor",
+            ));
+        }
+        let descriptor = descriptors
+            .pop()
+            .ok_or_else(|| invalid("runner SCM_RIGHTS descriptor disappeared"))?;
+        set_close_on_exec(descriptor.as_raw_fd())?;
+
+        require_all_blockable_signals_masked("after child SCM_RIGHTS CLOEXEC")?;
+        require_single_kernel_thread("after child SCM_RIGHTS CLOEXEC")?;
+        Ok((payload, descriptor))
+    })();
+    let restored = restore_signal_mask(&previous_signals);
+    match (guarded, restored) {
+        (Ok(received), Ok(())) => Ok(received),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(_), Err(error)) => Err(error),
+        (Err(error), Err(restore_error)) => Err(invalid(format!(
+            "SCM_RIGHTS CLOEXEC window failed: {error}; signal-mask restoration failed: {restore_error}",
+        ))),
+    }
 }
 
 fn receive_datagram_with_limits_until(

@@ -659,6 +659,10 @@ fn darwin_seqpacket_is_explicitly_unsupported_and_never_a_silent_fallback() {
     assert_eq!(semantics.kind, RUNNER_TRANSPORT_KIND_V3);
     assert_eq!(semantics.record_boundary, RUNNER_RECORD_BOUNDARY_V3);
     assert_eq!(semantics.descriptor_transfer, RUNNER_DESCRIPTOR_TRANSFER_V3);
+    assert_eq!(
+        semantics.receiver_cloexec_window,
+        RUNNER_RECEIVER_CLOEXEC_WINDOW_V3
+    );
     assert!(!semantics.fallback_allowed);
     assert_eq!(semantics.records_per_runner, 1);
 }
@@ -765,6 +769,51 @@ fn datagram_receiver_rejects_missing_extra_truncated_and_duplicate_records() {
 }
 
 #[test]
+fn scm_rights_cloexec_window_rejects_multithreaded_child_before_recvmsg() {
+    let slot = take_preallocated_runner_slot().expect("SCM CLOEXEC invariant slot");
+    let descriptor = File::open("/dev/null").expect("SCM source descriptor");
+    send_raw_rights_datagram(
+        &slot.parent_command_write,
+        b"retained-until-single-threaded",
+        &[descriptor.as_raw_fd()],
+    );
+
+    let barrier = Arc::new(Barrier::new(2));
+    let (release, wait) = mpsc::channel();
+    let worker_barrier = Arc::clone(&barrier);
+    let worker = thread::spawn(move || {
+        worker_barrier.wait();
+        wait.recv().expect("release SCM CLOEXEC worker");
+    });
+    barrier.wait();
+    let error = receive_single_cloexec_descriptor_until(
+        &slot.child_command_read,
+        AbsoluteDeadlineV3::after(Duration::from_secs(1)).expect("deadline"),
+    )
+    .expect_err("multithreaded SCM receive must fail before recvmsg");
+    release.send(()).expect("release SCM CLOEXEC worker");
+    worker.join().expect("SCM CLOEXEC worker");
+    match error {
+        InertRunnerErrorV3::Invalid(message) => assert!(
+            message.contains("requires exactly one kernel thread"),
+            "unexpected invariant failure: {message}",
+        ),
+        error => panic!("unexpected invariant error: {error}"),
+    }
+
+    // The strict wrapper rejected before recvmsg, so the datagram and its FD
+    // must still be queued and available for this explicit test drain.
+    let (payload, descriptors) = receive_datagram_until(
+        &slot.child_command_read,
+        AbsoluteDeadlineV3::after(Duration::from_secs(1)).expect("drain deadline"),
+        1,
+    )
+    .expect("drain untouched SCM datagram");
+    assert_eq!(payload, b"retained-until-single-threaded");
+    assert_eq!(descriptors.len(), 1);
+}
+
+#[test]
 fn parent_persists_exact_issue_before_one_inert_dispatch() {
     let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
     let (_directory, lease, mut runner) = spawn_runner(&epoch);
@@ -772,6 +821,9 @@ fn parent_persists_exact_issue_before_one_inert_dispatch() {
     let receipt = issue_once(&mut runner, &epoch, &lease);
     assert_eq!(receipt.dispatch_count, 1);
     assert_eq!(receipt.runner_epoch_sha256, runner_epoch);
+    assert!(receipt.lease_fd_cloexec_verified);
+    assert!(receipt.scm_receive_all_blockable_signals_masked);
+    assert!(receipt.scm_receive_single_kernel_thread_verified);
     assert!(!receipt.authority.any());
     let proof = runner
         .prove_dead(Duration::from_secs(5))
