@@ -47,6 +47,22 @@ type PendingMountCensusForCompileAssertions =
     RetainedControlCensusV3<'static, BlockingOperationV3, PendingMountDeltaV3>;
 type PendingUnmountCensusForCompileAssertions =
     RetainedControlCensusV3<'static, BlockingOperationV3, PendingUnmountDeltaV3>;
+type RecoveredControlLeaseSealForCompileAssertions = RecoveredControlLeaseSealV3;
+assert_not_impl!(RecoveredControlLeaseSealForCompileAssertions, Clone);
+assert_not_impl!(RecoveredControlLeaseSealForCompileAssertions, Send);
+assert_not_impl!(RecoveredControlLeaseSealForCompileAssertions, Sync);
+assert_not_impl!(
+    RecoveredControlLeaseSealForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    RecoveredControlLeaseSealForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    RecoveredControlLeaseSealForCompileAssertions,
+    From<std::fs::File>
+);
 assert_not_impl!(BlockingCensusForCompileAssertions, Clone);
 assert_not_impl!(BlockingCensusForCompileAssertions, Send);
 assert_not_impl!(BlockingCensusForCompileAssertions, Sync);

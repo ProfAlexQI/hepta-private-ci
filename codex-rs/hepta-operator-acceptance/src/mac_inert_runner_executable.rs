@@ -128,6 +128,18 @@ impl SpawnedInertChildV3 {
                 return Err(error);
             }
         }
+        // The exact child PID remains reserved to this unreaped owner and
+        // therefore cannot have been reused.  Kill it directly as well as
+        // its intended process group: if process-group establishment ever
+        // drifted or raced, group-only cleanup would otherwise wait for a
+        // still-live runner and could outlast the protocol deadline.
+        let rc = unsafe { libc::kill(self.pid, libc::SIGKILL) };
+        if rc != 0 {
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() != Some(libc::ESRCH) {
+                return Err(error);
+            }
+        }
         let deadline = monotonic_nanoseconds()
             .ok()
             .and_then(|now| now.checked_add(Duration::from_secs(5).as_nanos() as u64));
