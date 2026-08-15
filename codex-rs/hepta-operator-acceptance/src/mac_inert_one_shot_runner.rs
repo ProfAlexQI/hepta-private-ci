@@ -112,6 +112,11 @@ const FRAME_HEADER_BYTES_V3: usize = 16;
 const CLEANUP_TIMEOUT_V3: Duration = Duration::from_secs(5);
 const CHILD_DEADLINE_ENV_V3: &str = "HEPTA_INERT_RUNNER_DEADLINE_NS_V3";
 const F_SETNOSIGPIPE_V3: libc::c_int = 73;
+#[cfg(test)]
+const TEST_FORCE_BOUNDED_REAP_FAILURE_ENV_V3: &str = "HEPTA_TEST_FORCE_BOUNDED_REAP_FAILURE_V3";
+#[cfg(test)]
+const TEST_FORCE_POST_WAIT_PROOF_FAILURE_ENV_V3: &str =
+    "HEPTA_TEST_FORCE_POST_WAIT_PROOF_FAILURE_V3";
 
 static BOOTSTRAP_STATUS_V3: AtomicI32 = AtomicI32::new(BOOTSTRAP_UNINITIALIZED_V3);
 static BOOTSTRAP_PID_V3: AtomicU32 = AtomicU32::new(0);
@@ -444,7 +449,10 @@ struct RecoveredRunnerDeathReceiptV3 {
 /// Cross-restart proof has its own schema and deliberately contains none of
 /// the kqueue/pipe/waitpid signals reserved for a same-supervisor proof. It
 /// retains the re-acquired global lease and an exclusive lifetime borrow of
-/// the exact blocking operation.
+/// the exact blocking operation.  `sha256()` is evidence inspection only: a
+/// future effect consumer must consume a whole-store sealed transition that
+/// performs a fresh exact S1/V2/V3 replay.  No production digest-only consumer
+/// exists in this inert lane.
 pub(crate) struct RecoveredRunnerDeathProofV3<'store> {
     receipt: RecoveredRunnerDeathReceiptV3,
     receipt_sha256: String,
@@ -2071,7 +2079,11 @@ impl AuthenticatedPreRunnerV3 {
         let (identity, runner_epoch) = match startup {
             Ok(startup) => startup,
             Err(error) => {
-                terminate_group_and_reap(&mut child);
+                let cleanup = AbsoluteDeadlineV3::after(CLEANUP_TIMEOUT_V3)
+                    .and_then(|deadline| terminate_group_and_reap_until(&mut child, deadline));
+                if let Err(cleanup_error) = cleanup {
+                    fail_stop_cleanup("runner startup cleanup", &cleanup_error);
+                }
                 return Err(error);
             }
         };
@@ -2465,6 +2477,13 @@ impl AuthenticatedPreRunnerV3 {
     }
 
     fn terminate_and_retain_proof(&mut self, timeout: Duration) -> Result<(), InertRunnerErrorV3> {
+        self.terminate_and_retain_proof_until(AbsoluteDeadlineV3::after(timeout)?)
+    }
+
+    fn terminate_and_retain_proof_until(
+        &mut self,
+        deadline: AbsoluteDeadlineV3,
+    ) -> Result<(), InertRunnerErrorV3> {
         if self.retained_death_proof.is_some() {
             return Ok(());
         }
@@ -2474,14 +2493,8 @@ impl AuthenticatedPreRunnerV3 {
             ));
         }
         let pid = self.child.id() as libc::pid_t;
-        let rc = unsafe { libc::kill(-pid, libc::SIGKILL) };
-        if rc != 0 {
-            let error = io::Error::last_os_error();
-            if error.raw_os_error() != Some(libc::ESRCH) {
-                return Err(error.into());
-            }
-        }
-        self.collect_death_proof(AbsoluteDeadlineV3::after(timeout)?)
+        kill_runner_group_and_exact_child(pid)?;
+        self.collect_death_proof(deadline)
     }
 
     fn collect_death_proof(
@@ -2507,6 +2520,10 @@ impl AuthenticatedPreRunnerV3 {
             observe_kqueue_exit(self.kqueue.as_raw_fd(), self.runner_identity.pid)?;
         let death_pipe_eof_observed = read_eof_until(&self.death_pipe, deadline)?;
         let status = wait_child_until(&mut self.child, deadline)?;
+        #[cfg(test)]
+        if std::env::var_os(TEST_FORCE_POST_WAIT_PROOF_FAILURE_ENV_V3).is_some() {
+            return Err(invalid("injected post-wait death-proof seal failure"));
+        }
         let kernel_identity_absent = match kernel_process_identity(self.runner_identity.pid) {
             Ok(identity) => identity != self.runner_identity,
             Err(InertRunnerErrorV3::Io(error)) if error.raw_os_error() == Some(libc::ESRCH) => true,
@@ -2553,13 +2570,23 @@ impl Drop for AuthenticatedPreRunnerV3 {
         if matches!(self.state, RunnerStateV3::Reaped) {
             return;
         }
+        let deadline = match AbsoluteDeadlineV3::after(CLEANUP_TIMEOUT_V3) {
+            Ok(deadline) => deadline,
+            Err(error) => fail_stop_cleanup("runner Drop deadline", &error),
+        };
         if self.durable_issued_binding.is_some() && self.retained_death_proof.is_none() {
-            if self.terminate_and_retain_proof(CLEANUP_TIMEOUT_V3).is_ok() {
-                return;
+            match self.terminate_and_retain_proof_until(deadline) {
+                Ok(()) => return,
+                Err(error) => fail_stop_cleanup("issued runner death-proof retention", &error),
             }
         }
-        if self.child.try_wait().ok().flatten().is_none() {
-            terminate_group_and_reap(&mut self.child);
+        if self.child.try_wait().ok().flatten().is_some() {
+            self.state = RunnerStateV3::Reaped;
+            return;
+        }
+        match terminate_group_and_reap_until(&mut self.child, deadline) {
+            Ok(_) => self.state = RunnerStateV3::Reaped,
+            Err(error) => fail_stop_cleanup("runner Drop bounded reap", &error),
         }
     }
 }
@@ -2853,10 +2880,20 @@ fn wait_child_until(
     child: &mut Child,
     deadline: AbsoluteDeadlineV3,
 ) -> Result<std::process::ExitStatus, InertRunnerErrorV3> {
+    wait_try_until(deadline, || child.try_wait())
+}
+
+fn wait_try_until<T, F>(
+    deadline: AbsoluteDeadlineV3,
+    mut try_wait: F,
+) -> Result<T, InertRunnerErrorV3>
+where
+    F: FnMut() -> io::Result<Option<T>>,
+{
     loop {
         deadline.remaining_nanoseconds()?;
-        if let Some(status) = child.try_wait()? {
-            return Ok(status);
+        if let Some(value) = try_wait()? {
+            return Ok(value);
         }
         let remaining = deadline.remaining_nanoseconds()?;
         std::thread::sleep(Duration::from_nanos(remaining.min(1_000_000)));
@@ -3123,12 +3160,41 @@ fn wait_for_events_until(
     }
 }
 
-fn terminate_group_and_reap(child: &mut Child) {
+fn terminate_group_and_reap_until(
+    child: &mut Child,
+    deadline: AbsoluteDeadlineV3,
+) -> Result<ExitStatus, InertRunnerErrorV3> {
     let pid = child.id() as libc::pid_t;
-    unsafe {
-        libc::kill(-pid, libc::SIGKILL);
+    kill_runner_group_and_exact_child(pid)?;
+    #[cfg(test)]
+    if std::env::var_os(TEST_FORCE_BOUNDED_REAP_FAILURE_ENV_V3).is_some() {
+        return Err(frame_deadline_expired());
     }
-    let _ = child.wait();
+    wait_child_until(child, deadline)
+}
+
+fn kill_runner_group_and_exact_child(pid: libc::pid_t) -> Result<(), InertRunnerErrorV3> {
+    let mut first_error = None;
+    // The child may fail before `setpgid` becomes observable.  Always attempt
+    // both targets: the group kill covers descendants, while the exact-PID
+    // kill guarantees that a pre-group child cannot survive into bounded reap.
+    for target in [-pid, pid] {
+        if unsafe { libc::kill(target, libc::SIGKILL) } != 0 {
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() != Some(libc::ESRCH) && first_error.is_none() {
+                first_error = Some(error);
+            }
+        }
+    }
+    match first_error {
+        Some(error) => Err(error.into()),
+        None => Ok(()),
+    }
+}
+
+fn fail_stop_cleanup(context: &str, error: &InertRunnerErrorV3) -> ! {
+    eprintln!("fatal fail-closed {context} failure: {error}");
+    std::process::abort()
 }
 
 fn exit_status_code(status: ExitStatus) -> i32 {

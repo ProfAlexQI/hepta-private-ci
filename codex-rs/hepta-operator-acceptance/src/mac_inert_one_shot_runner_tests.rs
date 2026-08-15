@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use std::fs::OpenOptions;
 use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::process::ExitStatusExt;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
@@ -122,6 +123,38 @@ fn stalled_command_reader_child_entry() {
         run_inert_child_with_behavior(Duration::ZERO, InertChildResponseV3::StallBeforeCommand)
             .expect("stalled command reader helper");
     }
+}
+
+#[test]
+fn forced_bounded_reap_failure_child_entry() {
+    if std::env::var_os(TEST_FORCE_BOUNDED_REAP_FAILURE_ENV_V3).is_none() {
+        return;
+    }
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let (_directory, _lease, runner) = spawn_runner(&epoch);
+    drop(runner);
+    panic!("Drop returned after an injected bounded-reap failure");
+}
+
+#[test]
+fn forced_post_wait_proof_failure_child_entry() {
+    if std::env::var_os(TEST_FORCE_POST_WAIT_PROOF_FAILURE_ENV_V3).is_none() {
+        return;
+    }
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let (_directory, lease, mut runner) = spawn_runner(&epoch);
+    let _receipt = issue_once(&mut runner, &epoch, &lease);
+    assert_eq!(runner.state, RunnerStateV3::IssuedOrUncertain);
+    assert!(
+        runner.durable_issued_binding.is_some(),
+        "post-wait failure fixture has no durable issue"
+    );
+    assert!(
+        runner.retained_death_proof.is_none(),
+        "post-wait failure fixture already retained a proof"
+    );
+    drop(runner);
+    panic!("issued runner Drop returned without a retained death proof");
 }
 
 #[test]
@@ -972,6 +1005,67 @@ fn dropping_authenticated_pre_runner_kills_and_reaps_without_a_grant() {
         );
         thread::sleep(Duration::from_millis(5));
     }
+}
+
+#[test]
+fn bounded_reap_poll_expires_when_waitpid_never_reports_exit() {
+    let started = Instant::now();
+    let deadline = AbsoluteDeadlineV3::after(Duration::from_millis(25)).expect("short deadline");
+    let result: Result<(), InertRunnerErrorV3> = wait_try_until(deadline, || Ok(None));
+    assert!(
+        matches!(&result, Err(InertRunnerErrorV3::Io(error)) if error.kind() == io::ErrorKind::TimedOut),
+        "non-exiting child poll did not return the exact timeout: {result:?}",
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "bounded reap polling exceeded its absolute deadline"
+    );
+}
+
+#[test]
+fn drop_fail_stops_instead_of_releasing_an_unreaped_child() {
+    let started = Instant::now();
+    let status = Command::new(helper_program())
+        .args(helper_arguments(
+            "mac_inert_one_shot_runner::tests::forced_bounded_reap_failure_child_entry",
+        ))
+        .env(TEST_FORCE_BOUNDED_REAP_FAILURE_ENV_V3, "1")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("run fail-stop Drop helper");
+    assert_eq!(
+        status.signal(),
+        Some(libc::SIGABRT),
+        "injected bounded-reap failure did not take the fail-stop abort path"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "Drop did not fail-stop within its bounded cleanup path"
+    );
+}
+
+#[test]
+fn issued_drop_fail_stops_after_waitpid_when_proof_seal_fails() {
+    let started = Instant::now();
+    let status = Command::new(helper_program())
+        .args(helper_arguments(
+            "mac_inert_one_shot_runner::tests::forced_post_wait_proof_failure_child_entry",
+        ))
+        .env(TEST_FORCE_POST_WAIT_PROOF_FAILURE_ENV_V3, "1")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("run post-wait proof fail-stop helper");
+    assert_eq!(
+        status.signal(),
+        Some(libc::SIGABRT),
+        "issued runner silently released after post-wait proof failure"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "post-wait proof failure did not fail-stop promptly"
+    );
 }
 
 #[test]
