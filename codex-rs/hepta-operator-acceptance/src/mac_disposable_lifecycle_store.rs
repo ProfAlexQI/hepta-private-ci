@@ -18,7 +18,6 @@ use crate::mac_disposable_lifecycle::TerminalDispositionV2;
 use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
 use crate::mac_privileged_disposable_control::PrivilegedDisposableControlErrorV2;
 use crate::mac_privileged_disposable_control::RetainedControlCensusV3;
-use crate::mac_privileged_disposable_control::RunnerControlLeaseSourceV3;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fs::File;
@@ -494,12 +493,6 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
 
     pub(crate) fn poisoned(&self) -> bool {
         self.poisoned || self.store.poisoned()
-    }
-
-    pub(crate) fn runner_lease_source(
-        &self,
-    ) -> Result<RunnerControlLeaseSourceV3, DurableLifecycleStoreErrorV3> {
-        Ok(self.census.runner_lease_source()?)
     }
 }
 

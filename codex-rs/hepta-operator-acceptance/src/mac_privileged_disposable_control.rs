@@ -365,13 +365,6 @@ pub(crate) struct CensusStoreBindingV3 {
     operations: File,
 }
 
-/// Exact S1 lock clone accepted by the isolated runner integration.  There is
-/// deliberately no `From<File>` implementation.
-pub(crate) struct RunnerControlLeaseSourceV3 {
-    descriptor: File,
-    _not_send_or_sync: PhantomData<Rc<()>>,
-}
-
 impl LivePrivilegedDisposablePolicyV2 {
     /// Open and retain the fixed control root and lock until process exit.
     pub fn open_fixed_for_process() -> Result<&'static Self, PrivilegedDisposableControlErrorV2> {
@@ -1664,22 +1657,6 @@ impl RetainedControlCensusV3<'_> {
         self.assessment
             .revalidate_for_operations(self.operations_identity, &self.operations_roster)
     }
-
-    pub(crate) fn runner_lease_source(
-        &self,
-    ) -> Result<RunnerControlLeaseSourceV3, PrivilegedDisposableControlErrorV2> {
-        self.revalidate()?;
-        let descriptor = self.assessment._policy.lock.try_clone()?;
-        if identity(&descriptor)? != self.assessment._policy.lock_identity {
-            return Err(invalid(
-                "runner lease clone differs from the retained global lock",
-            ));
-        }
-        Ok(RunnerControlLeaseSourceV3 {
-            descriptor,
-            _not_send_or_sync: PhantomData,
-        })
-    }
 }
 
 impl CensusStoreBindingV3 {
@@ -1693,12 +1670,6 @@ impl CensusStoreBindingV3 {
 
     pub(crate) fn operations(&self) -> &File {
         &self.operations
-    }
-}
-
-impl RunnerControlLeaseSourceV3 {
-    pub(crate) fn into_descriptor(self) -> File {
-        self.descriptor
     }
 }
 

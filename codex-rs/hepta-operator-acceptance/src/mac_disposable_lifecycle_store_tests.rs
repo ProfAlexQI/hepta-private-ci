@@ -676,12 +676,6 @@ fn fresh_store_requires_and_retains_the_exact_s1_census() {
     assert!(!store.poisoned());
     assert!(store.census.prepare_store_creation().is_err());
 
-    let lease = store
-        .runner_lease_source()
-        .expect("clone exact S1 global lock");
-    let descriptor = lease.into_descriptor();
-    assert!(binding(&descriptor).is_ok());
-
     let mut journal = DisposableLifecycleJournalV2::new(NONCE).expect("fresh journal");
     let digest = store
         .append(&mut journal, prepared())
