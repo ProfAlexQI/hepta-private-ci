@@ -4,6 +4,7 @@
 //! directory and persists canonical lifecycle records before any caller may
 //! consider sending an effect request.
 
+use crate::durable::canonical_json;
 use crate::durable::sha256;
 use crate::mac_disposable_effect_issue_store::DurableEffectIssueStoreErrorV3;
 use crate::mac_disposable_effect_issue_store::DurableEffectIssueStoreV3;
@@ -25,8 +26,10 @@ use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
 use crate::mac_disposable_lifecycle::TerminalDispositionV2;
 use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorAppendEventV3;
+use crate::mac_disposable_reconciliation_collector::RetainedCollectorMountDeltaV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorObservationV3;
 use crate::mac_disposable_reconciliation_collector::RetainedTerminalAbsenceV3;
+use crate::mac_disposable_reconciliation_collector::UnmountingV3;
 use crate::mac_inert_one_shot_runner::AuthenticatedDispatchedRunnerV3;
 use crate::mac_inert_one_shot_runner::AuthenticatedPreRunnerV3;
 use crate::mac_inert_one_shot_runner::FreshProcessEpochV3;
@@ -39,6 +42,7 @@ use crate::mac_privileged_disposable_control::BlockingOperationV3;
 use crate::mac_privileged_disposable_control::CompletedOperationV3;
 use crate::mac_privileged_disposable_control::FreshAdmissionV3;
 use crate::mac_privileged_disposable_control::LifecycleRecordAppendSinkV3;
+use crate::mac_privileged_disposable_control::PendingUnmountDeltaV3;
 use crate::mac_privileged_disposable_control::PrivilegedDisposableControlErrorV2;
 use crate::mac_privileged_disposable_control::RetainedControlCensusV3;
 use crate::mac_privileged_disposable_control::StableMountStateV3;
@@ -428,6 +432,39 @@ pub(crate) struct ReconciliationOperationStoreV3<'a, 'e> {
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
 }
 
+/// No callback DTO is accepted at the mount-delta boundary.  The runner bridge
+/// will eventually construct this token only after validating the exact issued
+/// record and a successful authenticated callback.  This inert lane
+/// deliberately provides no production constructor.
+pub(crate) struct RetainedSuccessfulUnmountCallbackV3 {
+    command_sha256: String,
+    effect_id: u64,
+    issued_record_sha256: String,
+    operation_nonce: String,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct AwaitingUnmountCallbackV3;
+pub(crate) struct AwaitingUnmountObservationV3;
+
+/// Whole-operation pending-unmount typestate.  It continues to own the exact
+/// S1 census, S2 journal and issue store, and the retained pre-effect collector
+/// delta.  It has no authority or descriptor outlet.
+pub(crate) struct PendingUnmountReconciliationOperationStoreV3<'a, 'e, S> {
+    census: RetainedControlCensusV3<'a, BlockingOperationV3, PendingUnmountDeltaV3>,
+    command_sha256: String,
+    delta: RetainedCollectorMountDeltaV3<UnmountingV3>,
+    effect_id: u64,
+    epoch: &'e FreshProcessEpochV3,
+    issued_record_sha256: String,
+    issues: DurableEffectIssueStoreV3,
+    journal: DisposableLifecycleJournalV2,
+    poisoned: bool,
+    store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
+    _state: PhantomData<fn() -> S>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
 /// Whole-operation retained issue capability.  It borrows the S1 census,
 /// wrapper-owned V2 journal/record descriptors, bound collector evidence and
 /// V3 issue store together; no sub-capability or descriptor can be extracted.
@@ -612,6 +649,43 @@ impl RetainedLifecycleRecordAppendV3 {
             ));
         }
         Ok(())
+    }
+}
+
+impl RetainedSuccessfulUnmountCallbackV3 {
+    fn revalidate_against(
+        &self,
+        effect_id: u64,
+        operation_nonce: &str,
+        command_sha256: &str,
+        issued_record_sha256: &str,
+    ) -> Result<(), DurableLifecycleStoreErrorV3> {
+        if self.effect_id != effect_id
+            || self.operation_nonce != operation_nonce
+            || self.command_sha256 != command_sha256
+            || self.issued_record_sha256 != issued_record_sha256
+        {
+            return Err(invalid(
+                "successful unmount callback belongs to another operation, issue, or command",
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn for_test(
+        effect_id: u64,
+        operation_nonce: &str,
+        command_sha256: &str,
+        issued_record_sha256: &str,
+    ) -> Self {
+        Self {
+            command_sha256: command_sha256.to_string(),
+            effect_id,
+            issued_record_sha256: issued_record_sha256.to_string(),
+            operation_nonce: operation_nonce.to_string(),
+            _not_send_or_sync: PhantomData,
+        }
     }
 }
 
@@ -1553,6 +1627,86 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         })
     }
 
+    /// Consume the stable reconciliation wrapper into a pending unmount using
+    /// only its latest exact S2-owned issue and its wrapper-owned bound
+    /// UniqueMounted collector.  No caller-supplied effect ID, command bytes,
+    /// digest, or mount-table DTO is accepted.
+    pub(crate) fn begin_latest_unmount_delta(
+        mut self,
+    ) -> Result<
+        PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmountCallbackV3>,
+        DurableLifecycleStoreErrorV3,
+    > {
+        if self.poisoned {
+            return Err(invalid(
+                "poisoned reconciliation store cannot begin an unmount delta",
+            ));
+        }
+        let effect_id = self.journal.last_effect_id();
+        if effect_id == 0 {
+            return Err(invalid(
+                "unmount delta requires the latest durable reconciliation issue",
+            ));
+        }
+        self.revalidate_issue_state(effect_id)?;
+        let (command, command_sha256, issued_record_sha256) = {
+            let issue = self
+                .issues
+                .replayed_issue(effect_id)
+                .ok_or_else(|| invalid("latest durable effect has no retained V3 issue"))?;
+            let record_sha256 = sha256(&canonical_json(issue).map_err(|error| {
+                invalid(format!(
+                    "latest retained V3 issue is not canonical after exact replay: {error}"
+                ))
+            })?);
+            (
+                issue.command().clone(),
+                issue.command_sha256().to_string(),
+                record_sha256,
+            )
+        };
+        let collector = self
+            .collector
+            .take()
+            .ok_or_else(|| invalid("latest unmount issue lost its retained collector"))?;
+        let delta = collector.into_unmount_delta(&command).map_err(|error| {
+            invalid(format!(
+                "latest durable unmount issue cannot seal an exact mount delta: {error}"
+            ))
+        })?;
+        delta.revalidate_live_pending().map_err(|error| {
+            invalid(format!(
+                "exact unmount delta changed before S1 entered PendingUnmount: {error}"
+            ))
+        })?;
+        let ReconciliationOperationStoreV3 {
+            census,
+            epoch,
+            journal,
+            poisoned,
+            collector: _,
+            issues,
+            store,
+        } = self;
+        let census = census.begin_unmount_delta(delta.sealed_plan())?;
+        let pending = PendingUnmountReconciliationOperationStoreV3 {
+            census,
+            command_sha256,
+            delta,
+            effect_id,
+            epoch,
+            issued_record_sha256,
+            issues,
+            journal,
+            poisoned,
+            store,
+            _state: PhantomData,
+            _not_send_or_sync: PhantomData,
+        };
+        pending.revalidate_pending_issue()?;
+        Ok(pending)
+    }
+
     fn revalidate_issue_state(&self, effect_id: u64) -> Result<(), DurableLifecycleStoreErrorV3> {
         self.census.revalidate()?;
         self.epoch.validate_current().map_err(|error| {
@@ -1745,6 +1899,236 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
         self.issues.revalidate_required(&lifecycle)?;
         self.issues.revalidate_s1_adopted()?;
         Ok(())
+    }
+}
+
+impl<S> PendingUnmountReconciliationOperationStoreV3<'_, '_, S> {
+    fn revalidate_pending_issue(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
+        if self.poisoned || self.store.poisoned() || self.issues.poisoned() {
+            return Err(invalid(
+                "pending-unmount operation is poisoned; exact restart replay is required",
+            ));
+        }
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed during pending-unmount replay: {error}"
+            ))
+        })?;
+        self.delta.revalidate_live_pending().map_err(|error| {
+            invalid(format!(
+                "pending-unmount collector delta failed exact live replay: {error}"
+            ))
+        })?;
+        let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
+        self.issues.revalidate_required(&lifecycle)?;
+        self.issues.revalidate_s1_adopted()?;
+        let issue = self
+            .issues
+            .replayed_issue(self.effect_id)
+            .ok_or_else(|| invalid("pending-unmount V3 issue disappeared"))?;
+        let issued_record_sha256 = sha256(&canonical_json(issue).map_err(|error| {
+            invalid(format!(
+                "pending-unmount retained V3 issue is not canonical after exact replay: {error}"
+            ))
+        })?);
+        let plan = self.delta.sealed_plan();
+        if issue.operation_nonce() != self.store.operation_nonce()
+            || issue.command_sha256() != self.command_sha256
+            || plan.operation_nonce() != self.store.operation_nonce()
+            || plan.command_sha256() != self.command_sha256
+            || issued_record_sha256 != self.issued_record_sha256
+        {
+            return Err(invalid(
+                "pending-unmount operation, command, collector delta, or retained issue diverged",
+            ));
+        }
+        Ok(())
+    }
+
+    fn append_pending_unmount(
+        &mut self,
+        event: ReconciliationLifecycleEventV3,
+    ) -> Result<RetainedLifecycleRecordAppendV3, DurableLifecycleStoreErrorV3> {
+        self.revalidate_pending_issue()?;
+        let valid_event = matches!(
+            &event.0,
+            DisposableLifecycleEventV2::UnmountCallbackObserved {
+                effect_id,
+                outcome: CallbackOutcomeV2::Succeeded,
+            } if *effect_id == self.effect_id
+        ) || matches!(
+            &event.0,
+            DisposableLifecycleEventV2::UnmountObserved { effect_id, .. }
+                if *effect_id == self.effect_id
+        );
+        if !valid_event {
+            return Err(invalid(
+                "pending-unmount typestate accepts only its exact successful callback or observation",
+            ));
+        }
+        let digest = match self.store.append_reconciliation(&mut self.journal, event) {
+            Ok(digest) => digest,
+            Err(error) => {
+                self.poisoned = true;
+                return Err(error);
+            }
+        };
+        let mut append = RetainedLifecycleRecordAppendV3::retain(&self.store, &digest)?;
+        let sink = self.census.selected_lifecycle_record_sink()?;
+        if let Err(error) = append.adopt_into_s1(sink) {
+            self.poisoned = true;
+            return Err(error);
+        }
+        append.require_s1_adopted()?;
+        if let Err(error) = self.revalidate_pending_issue() {
+            self.poisoned = true;
+            return Err(error);
+        }
+        Ok(append)
+    }
+}
+
+impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmountCallbackV3> {
+    /// Append callback success only from the sealed runner token.  There is no
+    /// production constructor for that token in this inert lane.
+    pub(crate) fn append_successful_callback(
+        mut self,
+        callback: RetainedSuccessfulUnmountCallbackV3,
+    ) -> Result<
+        PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmountObservationV3>,
+        DurableLifecycleStoreErrorV3,
+    > {
+        callback.revalidate_against(
+            self.effect_id,
+            self.store.operation_nonce(),
+            &self.command_sha256,
+            &self.issued_record_sha256,
+        )?;
+        let append =
+            self.append_pending_unmount(ReconciliationLifecycleEventV3::unmount_callback(
+                self.effect_id,
+                CallbackOutcomeV2::Succeeded,
+            ))?;
+        append.require_s1_adopted()?;
+        let PendingUnmountReconciliationOperationStoreV3 {
+            census,
+            command_sha256,
+            delta,
+            effect_id,
+            epoch,
+            issued_record_sha256,
+            issues,
+            journal,
+            poisoned,
+            store,
+            _state: _,
+            _not_send_or_sync: _,
+        } = self;
+        Ok(PendingUnmountReconciliationOperationStoreV3 {
+            census,
+            command_sha256,
+            delta,
+            effect_id,
+            epoch,
+            issued_record_sha256,
+            issues,
+            journal,
+            poisoned,
+            store,
+            _state: PhantomData,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmountObservationV3> {
+    /// Durable post-unmount collection and S1 adoption are inseparable from the
+    /// PendingUnmount -> Stable transition.  A plain observation DTO or digest
+    /// cannot reach this method.
+    pub(crate) fn append_retained_observation_and_advance(
+        mut self,
+        mut next: RetainedCollectorObservationV3,
+    ) -> Result<ReconciliationOperationStoreV3<'a, 'e>, DurableLifecycleStoreErrorV3> {
+        let (operation_nonce, mount_absence_sha256) = {
+            let observation = self.delta.seal_observation(&next).map_err(|error| {
+                invalid(format!(
+                    "post-unmount collector cannot seal the exact observation: {error}"
+                ))
+            })?;
+            (
+                observation.operation_nonce().to_string(),
+                observation.mount_evidence_sha256().to_string(),
+            )
+        };
+        if operation_nonce != self.store.operation_nonce() {
+            return Err(invalid(
+                "post-unmount collector belongs to another operation",
+            ));
+        }
+        let append = self.append_pending_unmount(
+            ReconciliationLifecycleEventV3::unmount_observed(self.effect_id, mount_absence_sha256),
+        )?;
+        if let Err(error) = next.bind_lifecycle_record(append) {
+            self.poisoned = true;
+            return Err(invalid(format!(
+                "post-unmount collector could not bind its exact S1-adopted lifecycle capsule: {error}"
+            )));
+        }
+        next.revalidate_bound().map_err(|error| {
+            self.poisoned = true;
+            invalid(format!(
+                "post-unmount collector changed after durable lifecycle adoption: {error}"
+            ))
+        })?;
+
+        let PendingUnmountReconciliationOperationStoreV3 {
+            census,
+            command_sha256: _,
+            delta,
+            effect_id: _,
+            epoch,
+            issued_record_sha256: _,
+            issues,
+            journal,
+            poisoned,
+            store,
+            _state: _,
+            _not_send_or_sync: _,
+        } = self;
+        let advance = delta.seal_advance(&next).map_err(|error| {
+            invalid(format!(
+                "post-unmount retained evidence cannot seal the S1 stable advance: {error}"
+            ))
+        })?;
+        let census = census.advance_unmount_delta(advance)?;
+        let stable = ReconciliationOperationStoreV3 {
+            census,
+            epoch,
+            journal,
+            poisoned,
+            collector: Some(next),
+            issues,
+            store,
+        };
+        stable.census.revalidate()?;
+        stable.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed after unmount-delta advance: {error}"
+            ))
+        })?;
+        stable.revalidate_existing_issues()?;
+        stable
+            .collector
+            .as_ref()
+            .expect("stable unmount transition retains its post-effect collector")
+            .revalidate_bound()
+            .map_err(|error| {
+                invalid(format!(
+                    "post-unmount collector changed after stable transition: {error}"
+                ))
+            })?;
+        Ok(stable)
     }
 }
 

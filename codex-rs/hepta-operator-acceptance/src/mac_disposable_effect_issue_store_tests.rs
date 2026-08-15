@@ -266,6 +266,61 @@ fn eject_command() -> ExactDisposableCommandV3 {
     }
 }
 
+#[test]
+fn mount_command_carries_and_validates_the_full_expected_statfs_binding() {
+    let binding = ExactMountBindingCommandV3::for_test(
+        [91, 17],
+        "apfs",
+        libc::MNT_RDONLY as u64,
+        "/dev/disk9s1",
+        "/private/tmp/hepta-mount",
+    );
+    let command = ExactDisposableCommandV3::MountVolume {
+        expected_binding: binding.clone(),
+        mountpoint_underlying_sha256: digest('d'),
+        read_only: true,
+        volume_identity_sha256: digest('e'),
+    };
+    command.validate().expect("exact mount command");
+    let ExactMountDeltaCommandViewV3::Mount {
+        binding: replayed,
+        read_only,
+        ..
+    } = command.mount_delta_view().expect("mount delta view")
+    else {
+        panic!("wrong mount delta view");
+    };
+    assert_eq!(replayed, &binding);
+    assert!(read_only);
+    let bytes = canonical_json(&command).expect("canonical mount command");
+    let decoded: ExactDisposableCommandV3 =
+        serde_json::from_slice(&bytes).expect("decode exact mount command");
+    assert_eq!(decoded, command);
+
+    for malformed in [
+        ExactMountBindingCommandV3::for_test(
+            [91, 17],
+            "",
+            0,
+            "/dev/disk9s1",
+            "/private/tmp/hepta-mount",
+        ),
+        ExactMountBindingCommandV3::for_test([91, 17], "apfs", 0, "", "/private/tmp/hepta-mount"),
+        ExactMountBindingCommandV3::for_test([91, 17], "apfs", 0, "/dev/disk9s1", "relative/mount"),
+    ] {
+        assert!(
+            ExactDisposableCommandV3::MountVolume {
+                expected_binding: malformed,
+                mountpoint_underlying_sha256: digest('d'),
+                read_only: false,
+                volume_identity_sha256: digest('e'),
+            }
+            .validate()
+            .is_err()
+        );
+    }
+}
+
 fn persist_unmount(
     fixture: &mut StoreFixture,
     lifecycle: &VerifiedLifecycleIssueRosterV3,

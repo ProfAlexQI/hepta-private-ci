@@ -102,8 +102,35 @@ pub(crate) enum EffectPurposeV3 {
     RestartReconciliation,
 }
 
-/// Closed, inert command vocabulary.  Every string is a digest rather than a
-/// caller-selected path or executable name; this module cannot execute it.
+/// Exact statfs binding expected after one inert mount command.  Keeping the
+/// full entry in the durable command lets S1 admit exactly one before/after
+/// mount-table pair; it never guesses a filesystem ID or accepts an observed
+/// third state after dispatch.
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ExactMountBindingCommandV3 {
+    filesystem_id: [i32; 2],
+    filesystem_type: String,
+    mount_flags: u64,
+    mount_from: String,
+    mount_on: String,
+}
+
+pub(crate) enum ExactMountDeltaCommandViewV3<'a> {
+    Mount {
+        binding: &'a ExactMountBindingCommandV3,
+        mountpoint_underlying_sha256: &'a str,
+        read_only: bool,
+        volume_identity_sha256: &'a str,
+    },
+    Unmount {
+        mounted_binding_sha256: &'a str,
+    },
+}
+
+/// Closed, inert command vocabulary.  Path-shaped strings exist only inside
+/// an exact prepared statfs binding; there is no executable name, argument
+/// vector, or effect primitive in this module.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum ExactDisposableCommandV3 {
@@ -116,6 +143,7 @@ pub(crate) enum ExactDisposableCommandV3 {
         read_only: bool,
     },
     MountVolume {
+        expected_binding: ExactMountBindingCommandV3,
         mountpoint_underlying_sha256: String,
         read_only: bool,
         volume_identity_sha256: String,
@@ -155,12 +183,19 @@ impl ExactDisposableCommandV3 {
                 ..
             } => require_digest(backing_identity_sha256, "backing identity digest")?,
             Self::MountVolume {
+                expected_binding,
                 mountpoint_underlying_sha256,
+                read_only,
                 volume_identity_sha256,
-                ..
             } => {
+                expected_binding.validate()?;
                 require_digest(mountpoint_underlying_sha256, "mountpoint underlying digest")?;
                 require_digest(volume_identity_sha256, "volume identity digest")?;
+                if ((expected_binding.mount_flags & libc::MNT_RDONLY as u64) != 0) != *read_only {
+                    return Err(invalid(
+                        "mount access mode differs from the exact expected statfs flags",
+                    ));
+                }
             }
             Self::UnmountVolume {
                 mounted_binding_sha256,
@@ -173,6 +208,84 @@ impl ExactDisposableCommandV3 {
             return Err(invalid("typed command exceeds its fixed byte bound"));
         }
         Ok(())
+    }
+
+    pub(crate) fn mount_delta_view(&self) -> Option<ExactMountDeltaCommandViewV3<'_>> {
+        match self {
+            Self::MountVolume {
+                expected_binding,
+                mountpoint_underlying_sha256,
+                read_only,
+                volume_identity_sha256,
+            } => Some(ExactMountDeltaCommandViewV3::Mount {
+                binding: expected_binding,
+                mountpoint_underlying_sha256,
+                read_only: *read_only,
+                volume_identity_sha256,
+            }),
+            Self::UnmountVolume {
+                mounted_binding_sha256,
+            } => Some(ExactMountDeltaCommandViewV3::Unmount {
+                mounted_binding_sha256,
+            }),
+            _ => None,
+        }
+    }
+}
+
+impl ExactMountBindingCommandV3 {
+    fn validate(&self) -> Result<(), DurableEffectIssueStoreErrorV3> {
+        for (value, label) in [
+            (&self.filesystem_type, "mount filesystem type"),
+            (&self.mount_from, "mount source"),
+            (&self.mount_on, "mount target"),
+        ] {
+            if value.is_empty()
+                || value.len() > 4096
+                || value.as_bytes().contains(&0)
+                || (label == "mount target" && !value.starts_with('/'))
+            {
+                return Err(invalid(format!("{label} is malformed")));
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn filesystem_id(&self) -> [i32; 2] {
+        self.filesystem_id
+    }
+
+    pub(crate) fn filesystem_type(&self) -> &str {
+        &self.filesystem_type
+    }
+
+    pub(crate) fn mount_flags(&self) -> u64 {
+        self.mount_flags
+    }
+
+    pub(crate) fn mount_from(&self) -> &str {
+        &self.mount_from
+    }
+
+    pub(crate) fn mount_on(&self) -> &str {
+        &self.mount_on
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        filesystem_id: [i32; 2],
+        filesystem_type: &str,
+        mount_flags: u64,
+        mount_from: &str,
+        mount_on: &str,
+    ) -> Self {
+        Self {
+            filesystem_id,
+            filesystem_type: filesystem_type.to_string(),
+            mount_flags,
+            mount_from: mount_from.to_string(),
+            mount_on: mount_on.to_string(),
+        }
     }
 }
 

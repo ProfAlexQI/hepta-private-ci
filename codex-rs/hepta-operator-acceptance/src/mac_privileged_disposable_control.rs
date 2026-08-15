@@ -27,6 +27,11 @@ use crate::mac_disposable_lifecycle_store::ExistingCensusStoreWiringV3;
 use crate::mac_disposable_lifecycle_store::FreshCensusStoreWiringV3;
 use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleRecordAppendV3;
+use crate::mac_disposable_reconciliation_collector::MountBindingV3;
+use crate::mac_disposable_reconciliation_collector::MountingV3;
+use crate::mac_disposable_reconciliation_collector::SealedMountDeltaAdvanceV3;
+use crate::mac_disposable_reconciliation_collector::SealedMountDeltaPlanV3;
+use crate::mac_disposable_reconciliation_collector::UnmountingV3;
 use crate::mac_inert_one_shot_runner::RetainedControlLeaseV3;
 use crate::mac_iomedia_identity::current_boot_session_uuid;
 use crate::mac_privileged_broker::BarrierJournal;
@@ -170,14 +175,7 @@ struct FilesystemBinding {
     mount_on: String,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct MountBinding {
-    filesystem_id: [i32; 2],
-    filesystem_type: String,
-    mount_flags: u64,
-    mount_from: String,
-    mount_on: String,
-}
+type MountBinding = MountBindingV3;
 
 #[repr(C)]
 struct VolumeUuidBuffer {
@@ -418,9 +416,67 @@ pub(crate) struct CompletedOperationV3 {
 /// the expected full mount table.
 pub(crate) struct StableMountStateV3;
 
+pub(crate) struct PendingMountDeltaV3 {
+    command_sha256: String,
+    expected_after: Vec<MountBinding>,
+    target: MountBinding,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct PendingUnmountDeltaV3 {
+    command_sha256: String,
+    expected_after: Vec<MountBinding>,
+    target: MountBinding,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) trait MountCensusStateV3 {
+    fn validate_current(
+        &self,
+        before: &[MountBinding],
+        current: &[MountBinding],
+    ) -> Result<(), PrivilegedDisposableControlErrorV2>;
+}
+
+impl MountCensusStateV3 for StableMountStateV3 {
+    fn validate_current(
+        &self,
+        before: &[MountBinding],
+        current: &[MountBinding],
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        if current != before {
+            return Err(invalid("stable exact mount census changed"));
+        }
+        Ok(())
+    }
+}
+
+macro_rules! impl_pending_mount_state {
+    ($state:ty, $label:literal) => {
+        impl MountCensusStateV3 for $state {
+            fn validate_current(
+                &self,
+                before: &[MountBinding],
+                current: &[MountBinding],
+            ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+                if current != before && current != self.expected_after {
+                    return Err(invalid(concat!(
+                        $label,
+                        " observed neither exact before nor exact expected-after"
+                    )));
+                }
+                Ok(())
+            }
+        }
+    };
+}
+
+impl_pending_mount_state!(PendingMountDeltaV3, "pending mount delta");
+impl_pending_mount_state!(PendingUnmountDeltaV3, "pending unmount delta");
+
 struct ExactMountCensusV3<M> {
     expected_full_snapshot: Vec<MountBinding>,
-    _state: PhantomData<fn() -> M>,
+    state: M,
 }
 
 /// Non-serializable closed-world census consumed by S2.  It retains every
@@ -447,6 +503,8 @@ pub(crate) struct FreshOperationAdmissionSinkV3<'c, 'a> {
 enum LifecycleRecordAppendTargetV3<'c, 'a> {
     Fresh(&'c mut RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>),
     Blocking(&'c mut RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>),
+    PendingMount(&'c mut RetainedControlCensusV3<'a, BlockingOperationV3, PendingMountDeltaV3>),
+    PendingUnmount(&'c mut RetainedControlCensusV3<'a, BlockingOperationV3, PendingUnmountDeltaV3>),
 }
 
 /// One-shot S1 sink for one already-durable S2 lifecycle record descriptor.
@@ -1675,11 +1733,12 @@ impl<'a> LivePrivilegedDisposableExecutionV2<'a> {
         &self.receipt
     }
 
-    fn revalidate_for_operations(
+    fn revalidate_for_operations<M: MountCensusStateV3>(
         &self,
         operations_identity: Identity,
         operations_roster: &[String],
         exact_mounts: &[MountBinding],
+        mount_state: &M,
     ) -> Result<(), PrivilegedDisposableControlErrorV2> {
         self._policy
             .revalidate_control_root_with_operations(operations_identity)?;
@@ -1738,9 +1797,7 @@ impl<'a> LivePrivilegedDisposableExecutionV2<'a> {
         }
         let mounts = mount_table_snapshot()?;
         reject_nested_mounts(&mounts, &self._protected_roots)?;
-        if mounts != exact_mounts {
-            return Err(invalid("mount table changed after retained census"));
-        }
+        mount_state.validate_current(exact_mounts, &mounts)?;
         Ok(())
     }
 
@@ -1782,6 +1839,7 @@ impl<'a> LivePrivilegedDisposableExecutionV2<'a> {
             self._policy.operations_identity,
             &self._operation_names,
             &self._mounts,
+            &StableMountStateV3,
         )?;
         let operations_identity = self._policy.operations_identity;
         let operations_roster = self._operation_names.clone();
@@ -1793,7 +1851,7 @@ impl<'a> LivePrivilegedDisposableExecutionV2<'a> {
             },
             exact_mounts: ExactMountCensusV3 {
                 expected_full_snapshot,
-                _state: PhantomData,
+                state: StableMountStateV3,
             },
             operations_identity,
             operations_roster,
@@ -1851,6 +1909,7 @@ impl<'a> LivePrivilegedDisposableExecutionV2<'a> {
             self._policy.operations_identity,
             &self._operation_names,
             &self._mounts,
+            &StableMountStateV3,
         )?;
         let operations_identity = self._policy.operations_identity;
         let operations_roster = self._operation_names.clone();
@@ -1864,7 +1923,7 @@ impl<'a> LivePrivilegedDisposableExecutionV2<'a> {
             },
             exact_mounts: ExactMountCensusV3 {
                 expected_full_snapshot,
-                _state: PhantomData,
+                state: StableMountStateV3,
             },
             operations_identity,
             operations_roster,
@@ -1873,13 +1932,14 @@ impl<'a> LivePrivilegedDisposableExecutionV2<'a> {
     }
 }
 
-impl<A, M> RetainedControlCensusV3<'_, A, M> {
+impl<A, M: MountCensusStateV3> RetainedControlCensusV3<'_, A, M> {
     pub(crate) fn revalidate(&self) -> Result<(), PrivilegedDisposableControlErrorV2> {
         self.assessment.validate_retained_receipt()?;
         self.assessment.revalidate_for_operations(
             self.operations_identity,
             &self.operations_roster,
             &self.exact_mounts.expected_full_snapshot,
+            &self.exact_mounts.state,
         )
     }
 }
@@ -2052,6 +2112,58 @@ impl LifecycleRecordAppendSinkV3<'_, '_> {
                 census.admission.operation_identity = target.identity;
                 (inspection, selected_nonce)
             }
+            LifecycleRecordAppendTargetV3::PendingMount(census) => {
+                if census.admission.operation_name != operation_name {
+                    return Err(invalid(
+                        "S2 lifecycle capsule differs from the pending-mount operation",
+                    ));
+                }
+                let selected_nonce = census.admission.operation_nonce.clone();
+                let inspection = absorb_transferred_lifecycle_record(
+                    census,
+                    &s2_directory,
+                    record,
+                    bytes,
+                    &operation_name,
+                    &record_name,
+                    &record_sha256,
+                    sequence,
+                )?;
+                let target = census
+                    .assessment
+                    ._operations
+                    .iter()
+                    .find(|capsule| capsule.name == operation_name)
+                    .ok_or_else(|| invalid("pending-mount operation capsule disappeared"))?;
+                census.admission.operation_identity = target.identity;
+                (inspection, selected_nonce)
+            }
+            LifecycleRecordAppendTargetV3::PendingUnmount(census) => {
+                if census.admission.operation_name != operation_name {
+                    return Err(invalid(
+                        "S2 lifecycle capsule differs from the pending-unmount operation",
+                    ));
+                }
+                let selected_nonce = census.admission.operation_nonce.clone();
+                let inspection = absorb_transferred_lifecycle_record(
+                    census,
+                    &s2_directory,
+                    record,
+                    bytes,
+                    &operation_name,
+                    &record_name,
+                    &record_sha256,
+                    sequence,
+                )?;
+                let target = census
+                    .assessment
+                    ._operations
+                    .iter()
+                    .find(|capsule| capsule.name == operation_name)
+                    .ok_or_else(|| invalid("pending-unmount operation capsule disappeared"))?;
+                census.admission.operation_identity = target.identity;
+                (inspection, selected_nonce)
+            }
         };
         if inspection.operation_nonce != selected_nonce {
             return Err(invalid(
@@ -2157,8 +2269,8 @@ impl EffectIssueAppendSinkV3<'_, '_> {
     }
 }
 
-fn absorb_transferred_lifecycle_record<A>(
-    census: &mut RetainedControlCensusV3<'_, A, StableMountStateV3>,
+fn absorb_transferred_lifecycle_record<A, M: MountCensusStateV3>(
+    census: &mut RetainedControlCensusV3<'_, A, M>,
     s2_directory: &File,
     record: File,
     bytes: Vec<u8>,
@@ -2304,6 +2416,72 @@ impl<'a> RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3> {
 }
 
 impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
+    pub(crate) fn begin_mount_delta(
+        self,
+        plan: SealedMountDeltaPlanV3<'_, MountingV3>,
+    ) -> Result<
+        RetainedControlCensusV3<'a, BlockingOperationV3, PendingMountDeltaV3>,
+        PrivilegedDisposableControlErrorV2,
+    > {
+        self.revalidate()?;
+        if plan.operation_nonce() != self.admission.operation_nonce
+            || plan.before() != self.exact_mounts.expected_full_snapshot
+        {
+            return Err(invalid(
+                "mount plan differs from the exact blocking operation or stable S1 census",
+            ));
+        }
+        Ok(RetainedControlCensusV3 {
+            assessment: self.assessment,
+            admission: self.admission,
+            exact_mounts: ExactMountCensusV3 {
+                expected_full_snapshot: self.exact_mounts.expected_full_snapshot,
+                state: PendingMountDeltaV3 {
+                    command_sha256: plan.command_sha256().to_string(),
+                    expected_after: plan.expected_after().to_vec(),
+                    target: plan.target().clone(),
+                    _not_send_or_sync: PhantomData,
+                },
+            },
+            operations_identity: self.operations_identity,
+            operations_roster: self.operations_roster,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn begin_unmount_delta(
+        self,
+        plan: SealedMountDeltaPlanV3<'_, UnmountingV3>,
+    ) -> Result<
+        RetainedControlCensusV3<'a, BlockingOperationV3, PendingUnmountDeltaV3>,
+        PrivilegedDisposableControlErrorV2,
+    > {
+        self.revalidate()?;
+        if plan.operation_nonce() != self.admission.operation_nonce
+            || plan.before() != self.exact_mounts.expected_full_snapshot
+        {
+            return Err(invalid(
+                "unmount plan differs from the exact blocking operation or stable S1 census",
+            ));
+        }
+        Ok(RetainedControlCensusV3 {
+            assessment: self.assessment,
+            admission: self.admission,
+            exact_mounts: ExactMountCensusV3 {
+                expected_full_snapshot: self.exact_mounts.expected_full_snapshot,
+                state: PendingUnmountDeltaV3 {
+                    command_sha256: plan.command_sha256().to_string(),
+                    expected_after: plan.expected_after().to_vec(),
+                    target: plan.target().clone(),
+                    _not_send_or_sync: PhantomData,
+                },
+            },
+            operations_identity: self.operations_identity,
+            operations_roster: self.operations_roster,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
     #[cfg(test)]
     pub(crate) fn selected_record_count(&self) -> usize {
         self.assessment
@@ -2615,6 +2793,130 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
             }
         };
         Ok(inspection)
+    }
+}
+
+impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, PendingMountDeltaV3> {
+    pub(crate) fn selected_lifecycle_record_sink(
+        &mut self,
+    ) -> Result<LifecycleRecordAppendSinkV3<'_, 'a>, PrivilegedDisposableControlErrorV2> {
+        self.revalidate()?;
+        Ok(LifecycleRecordAppendSinkV3 {
+            target: LifecycleRecordAppendTargetV3::PendingMount(self),
+            terminal: false,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn advance_mount_delta(
+        self,
+        advance: SealedMountDeltaAdvanceV3<'_, MountingV3>,
+    ) -> Result<
+        RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
+        PrivilegedDisposableControlErrorV2,
+    > {
+        self.revalidate()?;
+        advance.revalidate().map_err(|error| {
+            invalid(format!(
+                "post-mount collector could not seal the S1 advance: {error}"
+            ))
+        })?;
+        if advance.operation_nonce() != self.admission.operation_nonce
+            || advance.before() != self.exact_mounts.expected_full_snapshot
+            || advance.expected_after() != self.exact_mounts.state.expected_after
+            || advance.command_sha256() != self.exact_mounts.state.command_sha256
+            || advance.target() != &self.exact_mounts.state.target
+        {
+            return Err(invalid(
+                "post-mount advance differs from the exact pending S1 transition",
+            ));
+        }
+        let current = mount_table_snapshot()?;
+        reject_nested_mounts(&current, &self.assessment._protected_roots)?;
+        if current != self.exact_mounts.state.expected_after {
+            return Err(invalid(
+                "post-mount S1 census is not the exact durable expected-after snapshot",
+            ));
+        }
+        self.revalidate()?;
+        advance.revalidate().map_err(|error| {
+            invalid(format!(
+                "post-mount collector changed during final S1 replay: {error}"
+            ))
+        })?;
+        Ok(RetainedControlCensusV3 {
+            assessment: self.assessment,
+            admission: self.admission,
+            exact_mounts: ExactMountCensusV3 {
+                expected_full_snapshot: self.exact_mounts.state.expected_after,
+                state: StableMountStateV3,
+            },
+            operations_identity: self.operations_identity,
+            operations_roster: self.operations_roster,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, PendingUnmountDeltaV3> {
+    pub(crate) fn selected_lifecycle_record_sink(
+        &mut self,
+    ) -> Result<LifecycleRecordAppendSinkV3<'_, 'a>, PrivilegedDisposableControlErrorV2> {
+        self.revalidate()?;
+        Ok(LifecycleRecordAppendSinkV3 {
+            target: LifecycleRecordAppendTargetV3::PendingUnmount(self),
+            terminal: false,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn advance_unmount_delta(
+        self,
+        advance: SealedMountDeltaAdvanceV3<'_, UnmountingV3>,
+    ) -> Result<
+        RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
+        PrivilegedDisposableControlErrorV2,
+    > {
+        self.revalidate()?;
+        advance.revalidate().map_err(|error| {
+            invalid(format!(
+                "post-unmount collector could not seal the S1 advance: {error}"
+            ))
+        })?;
+        if advance.operation_nonce() != self.admission.operation_nonce
+            || advance.before() != self.exact_mounts.expected_full_snapshot
+            || advance.expected_after() != self.exact_mounts.state.expected_after
+            || advance.command_sha256() != self.exact_mounts.state.command_sha256
+            || advance.target() != &self.exact_mounts.state.target
+        {
+            return Err(invalid(
+                "post-unmount advance differs from the exact pending S1 transition",
+            ));
+        }
+        let current = mount_table_snapshot()?;
+        reject_nested_mounts(&current, &self.assessment._protected_roots)?;
+        if current != self.exact_mounts.state.expected_after {
+            return Err(invalid(
+                "post-unmount S1 census is not the exact durable expected-after snapshot",
+            ));
+        }
+        self.revalidate()?;
+        advance.revalidate().map_err(|error| {
+            invalid(format!(
+                "post-unmount collector changed during final S1 replay: {error}"
+            ))
+        })?;
+        Ok(RetainedControlCensusV3 {
+            assessment: self.assessment,
+            admission: self.admission,
+            exact_mounts: ExactMountCensusV3 {
+                expected_full_snapshot: self.exact_mounts.state.expected_after,
+                state: StableMountStateV3,
+            },
+            operations_identity: self.operations_identity,
+            operations_roster: self.operations_roster,
+            _not_send_or_sync: PhantomData,
+        })
     }
 }
 

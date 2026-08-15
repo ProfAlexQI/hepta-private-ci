@@ -31,6 +31,11 @@ type RetainedLifecycleIssueSourceForCompileAssertions = RetainedLifecycleIssueSo
 type RetainedEffectIssueSourceForCompileAssertions = RetainedEffectIssueSourceV3;
 type RetainedOperationIssueForCompileAssertions =
     RetainedOperationEffectIssueV3<'static, 'static, 'static>;
+type PendingUnmountCallbackStoreForCompileAssertions =
+    PendingUnmountReconciliationOperationStoreV3<'static, 'static, AwaitingUnmountCallbackV3>;
+type PendingUnmountObservationStoreForCompileAssertions =
+    PendingUnmountReconciliationOperationStoreV3<'static, 'static, AwaitingUnmountObservationV3>;
+type RetainedUnmountCallbackForCompileAssertions = RetainedSuccessfulUnmountCallbackV3;
 type CompletedOperationStoreForCompileAssertions =
     CompletedReconciliationOperationStoreV3<'static, 'static>;
 type ExistingWiringForCompileAssertions = ExistingCensusStoreWiringV3<'static, 'static>;
@@ -104,6 +109,69 @@ assert_not_impl!(
     RetainedOperationIssueForCompileAssertions,
     From<std::fs::File>
 );
+assert_not_impl!(PendingUnmountCallbackStoreForCompileAssertions, Clone);
+assert_not_impl!(PendingUnmountCallbackStoreForCompileAssertions, Send);
+assert_not_impl!(PendingUnmountCallbackStoreForCompileAssertions, Sync);
+assert_not_impl!(
+    PendingUnmountCallbackStoreForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    PendingUnmountCallbackStoreForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    PendingUnmountCallbackStoreForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(
+    PendingUnmountCallbackStoreForCompileAssertions,
+    From<Vec<u8>>
+);
+assert_not_impl!(
+    PendingUnmountCallbackStoreForCompileAssertions,
+    From<String>
+);
+assert_not_impl!(PendingUnmountObservationStoreForCompileAssertions, Clone);
+assert_not_impl!(PendingUnmountObservationStoreForCompileAssertions, Send);
+assert_not_impl!(PendingUnmountObservationStoreForCompileAssertions, Sync);
+assert_not_impl!(
+    PendingUnmountObservationStoreForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    PendingUnmountObservationStoreForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    PendingUnmountObservationStoreForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(
+    PendingUnmountObservationStoreForCompileAssertions,
+    From<Vec<u8>>
+);
+assert_not_impl!(
+    PendingUnmountObservationStoreForCompileAssertions,
+    From<String>
+);
+assert_not_impl!(RetainedUnmountCallbackForCompileAssertions, Clone);
+assert_not_impl!(RetainedUnmountCallbackForCompileAssertions, Send);
+assert_not_impl!(RetainedUnmountCallbackForCompileAssertions, Sync);
+assert_not_impl!(
+    RetainedUnmountCallbackForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    RetainedUnmountCallbackForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    RetainedUnmountCallbackForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(RetainedUnmountCallbackForCompileAssertions, From<Vec<u8>>);
+assert_not_impl!(RetainedUnmountCallbackForCompileAssertions, From<String>);
 assert_not_impl!(
     RetainedLifecycleAppendForCompileAssertions,
     std::os::fd::AsRawFd
@@ -231,6 +299,39 @@ fn incoming_record_path(fixture: &Fixture, nonce: &str) -> std::path::PathBuf {
 
 fn final_record_path(fixture: &Fixture, nonce: &str) -> std::path::PathBuf {
     fixture.operation_path(nonce).join("00000001.json")
+}
+
+#[test]
+fn retained_unmount_callback_is_bound_to_the_exact_issue() {
+    let callback =
+        RetainedSuccessfulUnmountCallbackV3::for_test(7, NONCE, &digest('c'), &digest('e'));
+    callback
+        .revalidate_against(7, NONCE, &digest('c'), &digest('e'))
+        .expect("exact callback binding");
+    assert!(
+        callback
+            .revalidate_against(8, NONCE, &digest('c'), &digest('e'))
+            .is_err(),
+        "effect transplant must fail"
+    );
+    assert!(
+        callback
+            .revalidate_against(7, &"2".repeat(64), &digest('c'), &digest('e'))
+            .is_err(),
+        "operation transplant must fail"
+    );
+    assert!(
+        callback
+            .revalidate_against(7, NONCE, &digest('d'), &digest('e'))
+            .is_err(),
+        "command transplant must fail"
+    );
+    assert!(
+        callback
+            .revalidate_against(7, NONCE, &digest('c'), &digest('f'))
+            .is_err(),
+        "issue-file transplant must fail"
+    );
 }
 
 #[test]
