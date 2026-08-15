@@ -8,6 +8,8 @@ pub mod frozen_tool;
 pub mod mac_apfs_barrier_fixture;
 #[cfg(target_os = "macos")]
 pub(crate) mod mac_disposable_lifecycle;
+#[cfg(target_os = "macos")]
+pub(crate) mod mac_disposable_lifecycle_store;
 pub mod mac_iomedia_identity;
 #[cfg(target_os = "macos")]
 pub mod mac_privileged_broker;

@@ -300,6 +300,13 @@ enum Mode {
     RestartReconcileOnly,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LifecycleProcessModeV2 {
+    FreshProcess,
+    Replay,
+    RestartReconcileOnly,
+}
+
 #[derive(Clone, Debug)]
 struct Reducer {
     backing_identity_sha256: Option<String>,
@@ -977,6 +984,26 @@ impl DisposableLifecycleJournalV2 {
 
     pub fn last_effect_id(&self) -> u64 {
         self.reducer.last_effect_id
+    }
+
+    pub fn operation_nonce(&self) -> &str {
+        &self.operation_nonce
+    }
+
+    pub fn record_count(&self) -> usize {
+        self.records
+    }
+
+    pub fn terminal_record_sha256(&self) -> Option<&str> {
+        self.previous_record_sha256.as_deref()
+    }
+
+    pub fn process_mode(&self) -> LifecycleProcessModeV2 {
+        match self.reducer.mode {
+            Mode::FreshProcess => LifecycleProcessModeV2::FreshProcess,
+            Mode::Replay => LifecycleProcessModeV2::Replay,
+            Mode::RestartReconcileOnly => LifecycleProcessModeV2::RestartReconcileOnly,
+        }
     }
 }
 
