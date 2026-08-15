@@ -21,13 +21,16 @@ use crate::mac_disposable_lifecycle::EffectPurposeV2;
 use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
 use crate::mac_disposable_lifecycle::LifecycleErrorV2;
 use crate::mac_disposable_lifecycle::LifecycleProcessModeV2;
+use crate::mac_disposable_lifecycle::PreparedCollectorManifestBindingV3;
 #[cfg(test)]
 use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
 use crate::mac_disposable_lifecycle::TerminalDispositionV2;
 use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
+use crate::mac_disposable_reconciliation_collector::RestartCollectorErrorV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorAppendEventV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorMountDeltaV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorObservationV3;
+use crate::mac_disposable_reconciliation_collector::RetainedPreparedCollectorCapabilityV3;
 use crate::mac_disposable_reconciliation_collector::RetainedTerminalAbsenceV3;
 use crate::mac_disposable_reconciliation_collector::UnmountingV3;
 use crate::mac_inert_one_shot_runner::AuthenticatedDispatchedRunnerV3;
@@ -47,6 +50,7 @@ use crate::mac_privileged_disposable_control::LifecycleRecordAppendSinkV3;
 use crate::mac_privileged_disposable_control::PendingUnmountDeltaV3;
 use crate::mac_privileged_disposable_control::PrivilegedDisposableControlErrorV2;
 use crate::mac_privileged_disposable_control::RetainedControlCensusV3;
+use crate::mac_privileged_disposable_control::S1PreparedManifestReadSealV3;
 use crate::mac_privileged_disposable_control::StableMountStateV3;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -64,6 +68,8 @@ const MAX_RECORD_BYTES: usize = 1024 * 1024;
 const MAX_RECORDS: usize = 256;
 const MAX_TOTAL_RECORD_BYTES: usize = 64 * 1024 * 1024;
 const RENAME_EXCL: libc::c_uint = 0x0000_0004;
+const PREPARED_MANIFEST_NAME_V3: &str = "prepared-collector-manifest-v3.json";
+const PREPARED_MANIFEST_TEMPORARY_NAME_V3: &str = ".incoming-prepared-collector-manifest-v3.json";
 
 #[derive(Debug, Error)]
 pub enum DurableLifecycleStoreErrorV3 {
@@ -79,6 +85,8 @@ pub enum DurableLifecycleStoreErrorV3 {
     EffectIssue(#[from] DurableEffectIssueStoreErrorV3),
     #[error(transparent)]
     Runner(#[from] InertRunnerErrorV3),
+    #[error(transparent)]
+    Collector(#[from] RestartCollectorErrorV3),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -97,6 +105,13 @@ enum PublishCutpointV3 {
 enum CreateCutpointV3 {
     TemporaryCreated,
     TemporaryOpened,
+    PreparedManifestTemporaryCreated,
+    PreparedManifestBytesWritten,
+    PreparedManifestFileSynced,
+    PreparedManifestRenamed,
+    PreparedManifestDirectorySynced,
+    PreparedManifestFinalReopened,
+    PreparedManifestFinalRevalidated,
     TemporarySynced,
     Renamed,
     ParentSynced,
@@ -106,10 +121,13 @@ enum CreateCutpointV3 {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Binding {
+    birthtime_nsec: i64,
+    birthtime_sec: i64,
     ctime_nsec: i64,
     ctime_sec: i64,
     dev: u64,
     flags: u32,
+    generation: u32,
     gid: u32,
     ino: u64,
     mode: u32,
@@ -122,8 +140,11 @@ struct Binding {
 
 impl Binding {
     fn stable_across_rename(self, other: Self) -> bool {
-        self.dev == other.dev
+        self.birthtime_nsec == other.birthtime_nsec
+            && self.birthtime_sec == other.birthtime_sec
+            && self.dev == other.dev
             && self.flags == other.flags
+            && self.generation == other.generation
             && self.gid == other.gid
             && self.ino == other.ino
             && self.mode == other.mode
@@ -135,8 +156,11 @@ impl Binding {
     }
 
     fn same_directory_across_record_append(self, other: Self) -> bool {
-        self.dev == other.dev
+        self.birthtime_nsec == other.birthtime_nsec
+            && self.birthtime_sec == other.birthtime_sec
+            && self.dev == other.dev
             && self.flags == other.flags
+            && self.generation == other.generation
             && self.gid == other.gid
             && self.ino == other.ino
             && self.mode == other.mode
@@ -150,6 +174,54 @@ struct RecordCapsule {
     bytes: Vec<u8>,
     file: File,
     name: String,
+}
+
+struct PreparedManifestCapsuleV3 {
+    binding: Binding,
+    bytes: Vec<u8>,
+    digest: String,
+    file: File,
+}
+
+/// Private sibling seal for the only lifecycle-store reads of the retained
+/// prepared collector capability.  Other crate modules can name this type but
+/// cannot construct it, so the collector exposes no free-standing manifest,
+/// nonce, or digest projection.
+pub(crate) struct PreparedCollectorLifecycleSealV3 {
+    _private: (),
+}
+
+/// Opaque one-shot S2-to-S1 transfer of the exact fixed manifest descriptor.
+/// S1 can open it only with its own private seal; the intermediate issue-store
+/// handoff cannot inspect or replace any field.
+pub(crate) struct PreparedManifestS1TransferV3 {
+    binding: Binding,
+    bytes: Vec<u8>,
+    digest: String,
+    file: File,
+}
+
+impl PreparedManifestS1TransferV3 {
+    fn retain(capsule: &PreparedManifestCapsuleV3) -> io::Result<Self> {
+        Ok(Self {
+            binding: capsule.binding,
+            bytes: capsule.bytes.clone(),
+            digest: capsule.digest.clone(),
+            file: capsule.file.try_clone()?,
+        })
+    }
+
+    pub(crate) fn into_s1_parts(
+        self,
+        _seal: S1PreparedManifestReadSealV3,
+    ) -> (File, Vec<u8>, String, (u64, u64)) {
+        (
+            self.file,
+            self.bytes,
+            self.digest,
+            (self.binding.dev, self.binding.ino),
+        )
+    }
 }
 
 /// Ephemeral sealed view used only for the sibling V3 issue module.  There is
@@ -242,6 +314,7 @@ impl RetainedEffectIssueSourceV3 {
 enum OperationFormatV3 {
     LegacyV2,
     RequiredEffectIssuesV3,
+    RequiredPreparedManifestV3,
 }
 
 #[derive(Debug)]
@@ -348,7 +421,7 @@ impl ReconciliationLifecycleEventV3 {
 }
 
 impl FreshPreparedLifecycleEventV3 {
-    pub(crate) fn new(
+    fn new(
         baseline_inventory_sha256: String,
         backing_identity_sha256: String,
         boot_session_uuid: String,
@@ -362,6 +435,26 @@ impl FreshPreparedLifecycleEventV3 {
             collector_policy_sha256,
             mountpoint_underlying_sha256,
         })
+    }
+
+    fn new_bound(
+        baseline_inventory_sha256: String,
+        backing_identity_sha256: String,
+        boot_session_uuid: String,
+        collector_policy_sha256: String,
+        mountpoint_underlying_sha256: String,
+        prepared_manifest: PreparedCollectorManifestBindingV3,
+    ) -> Self {
+        Self(
+            DisposableLifecycleEventV2::OperationPreparedWithManifestV3 {
+                baseline_inventory_sha256,
+                backing_identity_sha256,
+                boot_session_uuid,
+                collector_policy_sha256,
+                mountpoint_underlying_sha256,
+                prepared_manifest,
+            },
+        )
     }
 }
 
@@ -405,6 +498,7 @@ pub struct DurableLifecycleStoreV3<M = FreshProcessStoreV3> {
     parent: File,
     parent_binding: Binding,
     poisoned: bool,
+    prepared_manifest: Option<PreparedManifestCapsuleV3>,
     records: Vec<RecordCapsule>,
     temporary_name: String,
     _mode: PhantomData<fn() -> M>,
@@ -416,6 +510,7 @@ pub(crate) struct CensusBoundDurableLifecycleStoreV3<'a> {
     census: RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>,
     journal: DisposableLifecycleJournalV2,
     poisoned: bool,
+    prepared: Option<RetainedPreparedCollectorCapabilityV3>,
     issues: DurableEffectIssueStoreV3,
     store: DurableLifecycleStoreV3<FreshProcessStoreV3>,
 }
@@ -429,6 +524,7 @@ pub(crate) struct ReconciliationOperationStoreV3<'a, 'e> {
     epoch: &'e FreshProcessEpochV3,
     journal: DisposableLifecycleJournalV2,
     poisoned: bool,
+    prepared: Option<RetainedPreparedCollectorCapabilityV3>,
     collector: Option<RetainedCollectorObservationV3>,
     issues: DurableEffectIssueStoreV3,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
@@ -462,6 +558,7 @@ pub(crate) struct PendingUnmountReconciliationOperationStoreV3<'a, 'e, S> {
     issues: DurableEffectIssueStoreV3,
     journal: DisposableLifecycleJournalV2,
     poisoned: bool,
+    prepared: Option<RetainedPreparedCollectorCapabilityV3>,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
     _state: PhantomData<fn() -> S>,
     _not_send_or_sync: PhantomData<Rc<()>>,
@@ -744,6 +841,7 @@ pub(crate) struct CompletedReconciliationOperationStoreV3<'a, 'e> {
     epoch: &'e FreshProcessEpochV3,
     issues: DurableEffectIssueStoreV3,
     journal: DisposableLifecycleJournalV2,
+    prepared: Option<RetainedPreparedCollectorCapabilityV3>,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
 }
 
@@ -751,6 +849,7 @@ pub(crate) struct CompletedReconciliationOperationStoreV3<'a, 'e> {
 /// entrypoint.  It is consumed by S1 and never exposes its descriptor input.
 pub(crate) struct FreshCensusStoreWiringV3 {
     operation_nonce: String,
+    prepared: Option<RetainedPreparedCollectorCapabilityV3>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
@@ -759,6 +858,7 @@ pub(crate) struct FreshCensusStoreWiringV3 {
 pub(crate) struct PreparedFreshCensusStoreV3 {
     issues: DurableEffectIssueStoreV3,
     journal: DisposableLifecycleJournalV2,
+    prepared: Option<RetainedPreparedCollectorCapabilityV3>,
     store: DurableLifecycleStoreV3<FreshProcessStoreV3>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
@@ -774,11 +874,25 @@ pub(crate) struct ExistingCensusStoreWiringV3<'e, 'h> {
 pub type ReconciliationDurableLifecycleStoreV3 = DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>;
 
 impl FreshCensusStoreWiringV3 {
+    #[cfg(test)]
     fn new(operation_nonce: &str) -> Self {
         Self {
             operation_nonce: operation_nonce.to_string(),
+            prepared: None,
             _not_send_or_sync: PhantomData,
         }
+    }
+
+    fn from_prepared(
+        prepared: RetainedPreparedCollectorCapabilityV3,
+    ) -> Result<Self, DurableLifecycleStoreErrorV3> {
+        let seal = PreparedCollectorLifecycleSealV3 { _private: () };
+        let operation_nonce = prepared.lifecycle_manifest(&seal)?.0.to_string();
+        Ok(Self {
+            operation_nonce,
+            prepared: Some(prepared),
+            _not_send_or_sync: PhantomData,
+        })
     }
 
     pub(crate) fn wire(
@@ -795,16 +909,24 @@ impl FreshCensusStoreWiringV3 {
             ));
         }
         let journal = DisposableLifecycleJournalV2::new(&self.operation_nonce)?;
+        let seal = PreparedCollectorLifecycleSealV3 { _private: () };
+        let manifest_bytes = self
+            .prepared
+            .as_ref()
+            .map(|prepared| prepared.lifecycle_manifest(&seal).map(|(_, bytes)| bytes))
+            .transpose()?;
         let (store, issues) = DurableLifecycleStoreV3::create_new_format_with_hook(
             &operations,
             &self.operation_nonce,
             expected_uid,
             expected_gid,
+            manifest_bytes,
             |_| Ok(()),
         )?;
         Ok(PreparedFreshCensusStoreV3 {
             issues,
             journal,
+            prepared: self.prepared,
             store,
             _not_send_or_sync: PhantomData,
         })
@@ -818,14 +940,25 @@ impl PreparedFreshCensusStoreV3 {
     ) -> Result<CensusBoundDurableLifecycleStoreV3<'a>, DurableLifecycleStoreErrorV3> {
         let operation_directory = self.store.directory.try_clone()?;
         let final_name = self.store.final_name.clone();
+        let prepared_manifest = self
+            .store
+            .prepared_manifest
+            .as_ref()
+            .map(PreparedManifestS1TransferV3::retain)
+            .transpose()?;
         let sink = census.fresh_operation_admission_sink()?;
-        self.issues
-            .transfer_prepared_operation_to_s1(sink, operation_directory, final_name)?;
+        self.issues.transfer_prepared_operation_to_s1(
+            sink,
+            operation_directory,
+            final_name,
+            prepared_manifest,
+        )?;
         Ok(CensusBoundDurableLifecycleStoreV3 {
             census,
             issues: self.issues,
             journal: self.journal,
             poisoned: false,
+            prepared: self.prepared,
             store: self.store,
         })
     }
@@ -866,6 +999,7 @@ impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
         expected_operation_inode: (u64, u64),
         records: Vec<(String, Vec<u8>, File, (u64, u64))>,
         effect_issues: Option<(File, (u64, u64), Vec<(String, Vec<u8>, File, (u64, u64))>)>,
+        prepared_manifest: Option<(Vec<u8>, File, (u64, u64))>,
         operation_name: String,
         operation_nonce: String,
         expected_uid: u32,
@@ -888,16 +1022,35 @@ impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
                 expected_operation_inode,
                 records,
                 effect_issues.as_ref(),
+                prepared_manifest,
                 &operation_name,
                 &operation_nonce,
                 expected_uid,
                 expected_gid,
             )?;
-        if store.format != OperationFormatV3::RequiredEffectIssuesV3 {
+        let exact_prepared_format = store.format == OperationFormatV3::RequiredPreparedManifestV3;
+        #[cfg(test)]
+        let compatible_test_format = store.format == OperationFormatV3::RequiredEffectIssuesV3;
+        #[cfg(not(test))]
+        let compatible_test_format = false;
+        if !exact_prepared_format && !compatible_test_format {
             return Err(invalid(
-                "unmarked historical V2 operation is blocking and cannot enter the V3 effect path",
+                "operation without the exact prepared manifest is blocking and cannot enter the production V3 effect path",
             ));
         }
+        let prepared = if let Some(manifest) = store.prepared_manifest.as_ref() {
+            let seal = PreparedCollectorLifecycleSealV3 { _private: () };
+            Some(
+                RetainedPreparedCollectorCapabilityV3::reopen_from_lifecycle_manifest(
+                    &operation_nonce,
+                    &manifest.bytes,
+                    &manifest.digest,
+                    &seal,
+                )?,
+            )
+        } else {
+            None
+        };
         let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(store.issue_source())?;
         let issues = DurableEffectIssueStoreV3::open_existing_from_retained_s1(
             store.issue_source(),
@@ -920,6 +1073,7 @@ impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
             issues,
             journal,
             poisoned: false,
+            prepared,
             store,
         })
     }
@@ -958,6 +1112,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             expected_uid,
             expected_gid,
             OperationFormatV3::LegacyV2,
+            None,
             &mut hook,
         )
         .map(|(store, issues)| {
@@ -971,6 +1126,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         operation_nonce: &str,
         expected_uid: u32,
         expected_gid: u32,
+        prepared_manifest_bytes: Option<&[u8]>,
         mut hook: F,
     ) -> Result<(Self, DurableEffectIssueStoreV3), DurableLifecycleStoreErrorV3>
     where
@@ -981,7 +1137,12 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             operation_nonce,
             expected_uid,
             expected_gid,
-            OperationFormatV3::RequiredEffectIssuesV3,
+            if prepared_manifest_bytes.is_some() {
+                OperationFormatV3::RequiredPreparedManifestV3
+            } else {
+                OperationFormatV3::RequiredEffectIssuesV3
+            },
+            prepared_manifest_bytes,
             &mut hook,
         )?;
         Ok((
@@ -996,6 +1157,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         expected_uid: u32,
         expected_gid: u32,
         format: OperationFormatV3,
+        prepared_manifest_bytes: Option<&[u8]>,
         hook: &mut F,
     ) -> Result<(Self, Option<DurableEffectIssueStoreV3>), DurableLifecycleStoreErrorV3>
     where
@@ -1034,7 +1196,11 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             return Err(invalid("temporary operation directory is not empty"));
         }
         hook(CreateCutpointV3::TemporaryOpened)?;
-        let issues = if format == OperationFormatV3::RequiredEffectIssuesV3 {
+        let issues = if matches!(
+            format,
+            OperationFormatV3::RequiredEffectIssuesV3
+                | OperationFormatV3::RequiredPreparedManifestV3
+        ) {
             let issues = DurableEffectIssueStoreV3::create_prepublication(
                 RetainedLifecycleIssueSourceV3::new(
                     &temporary,
@@ -1061,6 +1227,33 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         } else {
             None
         };
+        let prepared_manifest = match prepared_manifest_bytes {
+            Some(bytes) => Some(publish_prepared_manifest(
+                &temporary,
+                bytes,
+                expected_uid,
+                expected_gid,
+                parent_binding.dev,
+                hook,
+            )?),
+            None => None,
+        };
+        if (format == OperationFormatV3::RequiredPreparedManifestV3) != prepared_manifest.is_some()
+        {
+            return Err(invalid(
+                "prepared-manifest operation format differs from its fixed sidecar",
+            ));
+        }
+        if prepared_manifest.is_some() {
+            temporary_binding = validate_directory(
+                &temporary,
+                expected_uid,
+                expected_gid,
+                0o700,
+                Some(parent_binding.dev),
+                "temporary operation directory after prepared-manifest publication",
+            )?;
+        }
         temporary.sync_all()?;
         hook(CreateCutpointV3::TemporarySynced)?;
         rename_noreplace(
@@ -1084,12 +1277,14 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         )?;
         let expected_roster = match format {
             OperationFormatV3::LegacyV2 => Vec::new(),
-            OperationFormatV3::RequiredEffectIssuesV3 => {
-                vec!["effect-issues-v3".to_string()]
-            }
+            OperationFormatV3::RequiredEffectIssuesV3 => vec!["effect-issues-v3".to_string()],
+            OperationFormatV3::RequiredPreparedManifestV3 => vec![
+                "effect-issues-v3".to_string(),
+                PREPARED_MANIFEST_NAME_V3.to_string(),
+            ],
         };
         if !temporary_binding.stable_across_rename(directory_binding)
-            || read_directory_names(directory.as_raw_fd(), MAX_RECORDS + 1)? != expected_roster
+            || read_directory_names(directory.as_raw_fd(), MAX_RECORDS + 2)? != expected_roster
         {
             return Err(invalid(
                 "final operation directory is not the exact empty temporary inode",
@@ -1107,6 +1302,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             parent: operations.try_clone()?,
             parent_binding: binding(operations)?,
             poisoned: false,
+            prepared_manifest,
             records: Vec::new(),
             temporary_name,
             _mode: PhantomData,
@@ -1163,7 +1359,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             Some(parent_binding.dev),
             "operation directory",
         )?;
-        let names = read_directory_names(directory.as_raw_fd(), MAX_RECORDS + 1)?;
+        let names = read_directory_names(directory.as_raw_fd(), MAX_RECORDS + 2)?;
         let (format, record_names) = classify_operation_roster(&names)?;
         if record_names.is_empty() {
             return Err(invalid("operation directory has no lifecycle records"));
@@ -1201,6 +1397,23 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
                 "operation directory nonce differs from lifecycle nonce",
             ));
         }
+        let prepared_manifest = if format == OperationFormatV3::RequiredPreparedManifestV3 {
+            let capsule = open_record(
+                directory.as_raw_fd(),
+                PREPARED_MANIFEST_NAME_V3,
+                expected_uid,
+                expected_gid,
+                directory_binding.dev,
+            )?;
+            Some(PreparedManifestCapsuleV3 {
+                digest: sha256(&capsule.bytes),
+                binding: capsule.binding,
+                bytes: capsule.bytes,
+                file: capsule.file,
+            })
+        } else {
+            None
+        };
         let store = DurableLifecycleStoreV3::<ReconciliationOnlyStoreV3> {
             directory,
             directory_binding,
@@ -1212,6 +1425,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             parent: operations.try_clone()?,
             parent_binding: binding(operations)?,
             poisoned: false,
+            prepared_manifest,
             records,
             temporary_name,
             _mode: PhantomData,
@@ -1228,6 +1442,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
         expected_operation_inode: (u64, u64),
         retained_records: Vec<(String, Vec<u8>, File, (u64, u64))>,
         retained_effect_issues: Option<&RetainedEffectIssueSourceV3>,
+        retained_prepared_manifest: Option<(Vec<u8>, File, (u64, u64))>,
         operation_name: &str,
         operation_nonce: &str,
         expected_uid: u32,
@@ -1275,16 +1490,30 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
                 "operation directory has no retained lifecycle records",
             ));
         }
-        let names = read_directory_names(directory.as_raw_fd(), MAX_RECORDS + 1)?;
+        let names = read_directory_names(directory.as_raw_fd(), MAX_RECORDS + 2)?;
         let mut expected_names = retained_records
             .iter()
             .map(|(name, _, _, _)| name.clone())
             .collect::<Vec<_>>();
-        let format = if retained_effect_issues.is_some() {
-            expected_names.push("effect-issues-v3".to_string());
-            OperationFormatV3::RequiredEffectIssuesV3
-        } else {
-            OperationFormatV3::LegacyV2
+        let format = match (
+            retained_effect_issues.is_some(),
+            retained_prepared_manifest.is_some(),
+        ) {
+            (true, true) => {
+                expected_names.push("effect-issues-v3".to_string());
+                expected_names.push(PREPARED_MANIFEST_NAME_V3.to_string());
+                OperationFormatV3::RequiredPreparedManifestV3
+            }
+            (true, false) => {
+                expected_names.push("effect-issues-v3".to_string());
+                OperationFormatV3::RequiredEffectIssuesV3
+            }
+            (false, false) => OperationFormatV3::LegacyV2,
+            (false, true) => {
+                return Err(invalid(
+                    "prepared manifest exists without the mandatory V3 issue root",
+                ));
+            }
         };
         expected_names.sort();
         if names != expected_names {
@@ -1341,6 +1570,33 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
                 "retained S1 target is not the exact selected blocking lifecycle",
             ));
         }
+        let prepared_manifest = retained_prepared_manifest
+            .map(|(bytes, file, expected_inode)| {
+                let binding = validate_regular(
+                    &file,
+                    expected_uid,
+                    expected_gid,
+                    0o400,
+                    Some(directory_binding.dev),
+                    Some(bytes.len()),
+                    "retained S1 prepared collector manifest",
+                )?;
+                if (binding.dev, binding.ino) != expected_inode
+                    || named_binding(directory.as_raw_fd(), PREPARED_MANIFEST_NAME_V3)? != binding
+                    || read_stable(&file, binding)? != bytes
+                {
+                    return Err(invalid(
+                        "S2 prepared manifest differs from the exact retained S1 descriptor",
+                    ));
+                }
+                Ok(PreparedManifestCapsuleV3 {
+                    binding,
+                    digest: sha256(&bytes),
+                    bytes,
+                    file,
+                })
+            })
+            .transpose()?;
         let store = DurableLifecycleStoreV3::<ReconciliationOnlyStoreV3> {
             directory,
             directory_binding,
@@ -1352,6 +1608,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
             parent: operations,
             parent_binding,
             poisoned: false,
+            prepared_manifest,
             records,
             temporary_name,
             _mode: PhantomData,
@@ -1371,6 +1628,7 @@ impl DurableLifecycleStoreV3<FreshProcessStoreV3> {
 }
 
 impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
+    #[cfg(test)]
     pub(crate) fn create(
         census: RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>,
         operation_nonce: &str,
@@ -1378,11 +1636,58 @@ impl<'a> CensusBoundDurableLifecycleStoreV3<'a> {
         census.wire_fresh_store(FreshCensusStoreWiringV3::new(operation_nonce))
     }
 
+    pub(crate) fn create_prepared(
+        census: RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>,
+        prepared: RetainedPreparedCollectorCapabilityV3,
+    ) -> Result<Self, DurableLifecycleStoreErrorV3> {
+        let wiring = FreshCensusStoreWiringV3::from_prepared(prepared)?;
+        census.wire_fresh_store(wiring)
+    }
+
+    #[cfg(test)]
     pub(crate) fn persist_prepared(
         &mut self,
         event: FreshPreparedLifecycleEventV3,
     ) -> Result<String, DurableLifecycleStoreErrorV3> {
         self.append_sealed(event.0)
+    }
+
+    pub(crate) fn persist_retained_prepared(
+        &mut self,
+    ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        let prepared = self.prepared.as_ref().ok_or_else(|| {
+            invalid("production prepared append lacks its retained collector capability")
+        })?;
+        let seal = PreparedCollectorLifecycleSealV3 { _private: () };
+        let (
+            baseline_inventory_sha256,
+            backing_identity_sha256,
+            boot_session_uuid,
+            collector_policy_sha256,
+            mountpoint_underlying_sha256,
+        ) = prepared.lifecycle_prepared_fields(&seal)?;
+        let manifest =
+            self.store.prepared_manifest.as_ref().ok_or_else(|| {
+                invalid("production prepared append lost its exact sidecar capsule")
+            })?;
+        self.append_sealed(
+            FreshPreparedLifecycleEventV3::new_bound(
+                baseline_inventory_sha256,
+                backing_identity_sha256,
+                boot_session_uuid,
+                collector_policy_sha256,
+                mountpoint_underlying_sha256,
+                PreparedCollectorManifestBindingV3 {
+                    birthtime_nanoseconds: manifest.binding.birthtime_nsec,
+                    birthtime_seconds: manifest.binding.birthtime_sec,
+                    dev: manifest.binding.dev,
+                    generation: manifest.binding.generation,
+                    inode: manifest.binding.ino,
+                    sha256: manifest.digest.clone(),
+                },
+            )
+            .0,
+        )
     }
 
     #[cfg(test)]
@@ -1849,6 +2154,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
             epoch,
             journal,
             poisoned,
+            prepared,
             collector: _,
             issues,
             store,
@@ -1864,6 +2170,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
             issues,
             journal,
             poisoned,
+            prepared,
             store,
             _state: PhantomData,
             _not_send_or_sync: PhantomData,
@@ -2078,6 +2385,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e> {
             epoch: self.epoch,
             issues: self.issues,
             journal: self.journal,
+            prepared: self.prepared,
             store: self.store,
         })
     }
@@ -2218,6 +2526,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             issues,
             journal,
             poisoned,
+            prepared,
             store,
             _state: _,
             _not_send_or_sync: _,
@@ -2232,6 +2541,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             issues,
             journal,
             poisoned,
+            prepared,
             store,
             _state: PhantomData,
             _not_send_or_sync: PhantomData,
@@ -2289,6 +2599,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             issues,
             journal,
             poisoned,
+            prepared,
             store,
             _state: _,
             _not_send_or_sync: _,
@@ -2304,6 +2615,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             epoch,
             journal,
             poisoned,
+            prepared,
             collector: Some(next),
             issues,
             store,
@@ -2638,6 +2950,7 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
                 "lifecycle journal process mode differs from the durable store typestate",
             ));
         }
+        self.validate_prepared_append_event(&event)?;
         let expected_previous = self.records.last().map(|record| sha256(&record.bytes));
         if journal.operation_nonce() != self.operation_nonce
             || journal.record_count() != self.records.len()
@@ -2670,6 +2983,10 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
             })
             .ok_or_else(|| invalid("lifecycle byte count overflowed"))?;
         let operation_nonce = self.operation_nonce.clone();
+        // From this point onward an error may follow a durable filesystem
+        // mutation.  Fail closed until the complete publish, descriptor
+        // retention, and exact replay sequence has succeeded.
+        self.poisoned = true;
         let result = journal.append_with(event, |record, bytes| {
             if usize::try_from(record.sequence).ok() != Some(expected_sequence)
                 || record.operation_nonce != operation_nonce
@@ -2706,13 +3023,11 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
             Ok(())
         });
         match result {
-            Ok(digest) => Ok(digest),
-            Err(error) => {
-                if matches!(error, LifecycleErrorV2::Persistence(_)) {
-                    self.poisoned = true;
-                }
-                Err(error.into())
+            Ok(digest) => {
+                self.poisoned = false;
+                Ok(digest)
             }
+            Err(error) => Err(error.into()),
         }
     }
 
@@ -2772,14 +3087,21 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
     }
 
     fn revalidate_roster_and_records(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
-        let names = read_directory_names(self.directory.as_raw_fd(), MAX_RECORDS + 1)?;
+        let names = read_directory_names(self.directory.as_raw_fd(), MAX_RECORDS + 2)?;
         let mut expected = (1..=self.records.len())
             .map(record_name)
             .collect::<Result<Vec<_>, _>>()?;
-        if self.format == OperationFormatV3::RequiredEffectIssuesV3 {
+        if matches!(
+            self.format,
+            OperationFormatV3::RequiredEffectIssuesV3
+                | OperationFormatV3::RequiredPreparedManifestV3
+        ) {
             expected.push("effect-issues-v3".to_string());
-            expected.sort();
         }
+        if self.format == OperationFormatV3::RequiredPreparedManifestV3 {
+            expected.push(PREPARED_MANIFEST_NAME_V3.to_string());
+        }
+        expected.sort();
         if names != expected {
             return Err(invalid(
                 "operation roster changed or contains a crash-temporary entry",
@@ -2801,6 +3123,120 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
                 Some(record.bytes.len()),
                 "lifecycle record replay",
             )?;
+        }
+        match (&self.format, &self.prepared_manifest) {
+            (OperationFormatV3::RequiredPreparedManifestV3, Some(manifest)) => {
+                require_absent(
+                    self.directory.as_raw_fd(),
+                    PREPARED_MANIFEST_TEMPORARY_NAME_V3,
+                )?;
+                if named_binding(self.directory.as_raw_fd(), PREPARED_MANIFEST_NAME_V3)?
+                    != manifest.binding
+                    || binding(&manifest.file)? != manifest.binding
+                    || read_stable(&manifest.file, manifest.binding)? != manifest.bytes
+                    || sha256(&manifest.bytes) != manifest.digest
+                {
+                    return Err(invalid(
+                        "durable prepared collector manifest changed during replay",
+                    ));
+                }
+                validate_regular(
+                    &manifest.file,
+                    self.expected_uid,
+                    self.expected_gid,
+                    0o400,
+                    Some(self.directory_binding.dev),
+                    Some(manifest.bytes.len()),
+                    "prepared collector manifest replay",
+                )?;
+            }
+            (OperationFormatV3::RequiredPreparedManifestV3, None) => {
+                return Err(invalid(
+                    "prepared-manifest operation lost its retained manifest capsule",
+                ));
+            }
+            (_, Some(_)) => {
+                return Err(invalid(
+                    "operation format does not admit a prepared manifest capsule",
+                ));
+            }
+            (_, None) => {}
+        }
+        self.validate_prepared_lifecycle_binding()?;
+        Ok(())
+    }
+
+    fn validate_prepared_append_event(
+        &self,
+        event: &DisposableLifecycleEventV2,
+    ) -> Result<(), DurableLifecycleStoreErrorV3> {
+        if !self.records.is_empty() {
+            return Ok(());
+        }
+        match (self.format, event, self.prepared_manifest.as_ref()) {
+            (
+                OperationFormatV3::RequiredPreparedManifestV3,
+                DisposableLifecycleEventV2::OperationPreparedWithManifestV3 {
+                    prepared_manifest,
+                    ..
+                },
+                Some(retained),
+            ) if prepared_manifest
+                == &PreparedCollectorManifestBindingV3 {
+                    birthtime_nanoseconds: retained.binding.birthtime_nsec,
+                    birthtime_seconds: retained.binding.birthtime_sec,
+                    dev: retained.binding.dev,
+                    generation: retained.binding.generation,
+                    inode: retained.binding.ino,
+                    sha256: retained.digest.clone(),
+                } =>
+            {
+                Ok(())
+            }
+            (OperationFormatV3::RequiredPreparedManifestV3, _, _) => Err(invalid(
+                "prepared-manifest operation requires an exact sidecar-bound first lifecycle record",
+            )),
+            (_, DisposableLifecycleEventV2::OperationPreparedWithManifestV3 { .. }, _) => {
+                Err(invalid(
+                    "sidecar-bound prepared record requires the exact prepared-manifest operation format",
+                ))
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn validate_prepared_lifecycle_binding(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
+        if self.records.is_empty() {
+            return Ok(());
+        }
+        let lifecycle = self
+            .records
+            .iter()
+            .map(|record| record.bytes.clone())
+            .collect::<Vec<_>>();
+        let inspection = inspect_lifecycle_v2(&lifecycle)?;
+        match (self.format, self.prepared_manifest.as_ref()) {
+            (OperationFormatV3::RequiredPreparedManifestV3, Some(retained)) => {
+                let expected = PreparedCollectorManifestBindingV3 {
+                    birthtime_nanoseconds: retained.binding.birthtime_nsec,
+                    birthtime_seconds: retained.binding.birthtime_sec,
+                    dev: retained.binding.dev,
+                    generation: retained.binding.generation,
+                    inode: retained.binding.ino,
+                    sha256: retained.digest.clone(),
+                };
+                if inspection.prepared_manifest.as_ref() != Some(&expected) {
+                    return Err(invalid(
+                        "lifecycle first record does not bind the exact retained prepared manifest",
+                    ));
+                }
+            }
+            (_, None) if inspection.prepared_manifest.is_none() => {}
+            _ => {
+                return Err(invalid(
+                    "lifecycle prepared-manifest binding differs from the operation format",
+                ));
+            }
         }
         Ok(())
     }
@@ -2877,6 +3313,83 @@ where
         bytes: bytes.to_vec(),
         file: final_file,
         name: final_name,
+    })
+}
+
+fn publish_prepared_manifest(
+    directory: &File,
+    bytes: &[u8],
+    expected_uid: u32,
+    expected_gid: u32,
+    expected_dev: u64,
+    hook: &mut impl FnMut(CreateCutpointV3) -> io::Result<()>,
+) -> Result<PreparedManifestCapsuleV3, DurableLifecycleStoreErrorV3> {
+    if bytes.is_empty() || bytes.len() > MAX_RECORD_BYTES {
+        return Err(invalid(
+            "prepared collector manifest byte length is outside the fixed bound",
+        ));
+    }
+    require_absent(directory.as_raw_fd(), PREPARED_MANIFEST_TEMPORARY_NAME_V3)?;
+    require_absent(directory.as_raw_fd(), PREPARED_MANIFEST_NAME_V3)?;
+    let mut temporary = createat_file(
+        directory.as_raw_fd(),
+        PREPARED_MANIFEST_TEMPORARY_NAME_V3,
+        0o400,
+    )?;
+    hook(CreateCutpointV3::PreparedManifestTemporaryCreated)?;
+    temporary.write_all(bytes)?;
+    hook(CreateCutpointV3::PreparedManifestBytesWritten)?;
+    temporary.sync_all()?;
+    hook(CreateCutpointV3::PreparedManifestFileSynced)?;
+    let temporary_binding = validate_regular(
+        &temporary,
+        expected_uid,
+        expected_gid,
+        0o400,
+        Some(expected_dev),
+        Some(bytes.len()),
+        "temporary prepared collector manifest",
+    )?;
+    if read_stable(&temporary, temporary_binding)? != bytes {
+        return Err(invalid(
+            "temporary prepared collector manifest differs after fsync",
+        ));
+    }
+    rename_noreplace(
+        directory.as_raw_fd(),
+        PREPARED_MANIFEST_TEMPORARY_NAME_V3,
+        directory.as_raw_fd(),
+        PREPARED_MANIFEST_NAME_V3,
+    )?;
+    hook(CreateCutpointV3::PreparedManifestRenamed)?;
+    directory.sync_all()?;
+    hook(CreateCutpointV3::PreparedManifestDirectorySynced)?;
+    let file = openat_regular(directory.as_raw_fd(), PREPARED_MANIFEST_NAME_V3)?;
+    hook(CreateCutpointV3::PreparedManifestFinalReopened)?;
+    let binding = validate_regular(
+        &file,
+        expected_uid,
+        expected_gid,
+        0o400,
+        Some(expected_dev),
+        Some(bytes.len()),
+        "final prepared collector manifest",
+    )?;
+    if !temporary_binding.stable_across_rename(binding)
+        || named_binding(directory.as_raw_fd(), PREPARED_MANIFEST_NAME_V3)? != binding
+        || read_stable(&file, binding)? != bytes
+    {
+        return Err(invalid(
+            "final prepared collector manifest differs from its fsynced temporary inode",
+        ));
+    }
+    directory.sync_all()?;
+    hook(CreateCutpointV3::PreparedManifestFinalRevalidated)?;
+    Ok(PreparedManifestCapsuleV3 {
+        binding,
+        bytes: bytes.to_vec(),
+        digest: sha256(bytes),
+        file,
     })
 }
 
@@ -2993,10 +3506,13 @@ fn named_binding(parent_fd: RawFd, name: &str) -> Result<Binding, DurableLifecyc
 
 fn binding_from_stat(stat: libc::stat) -> Binding {
     Binding {
+        birthtime_nsec: stat.st_birthtime_nsec,
+        birthtime_sec: stat.st_birthtime,
         ctime_nsec: stat.st_ctime_nsec,
         ctime_sec: stat.st_ctime,
         dev: stat.st_dev as u64,
         flags: stat.st_flags,
+        generation: stat.st_gen,
         gid: stat.st_gid,
         ino: stat.st_ino,
         mode: u32::from(stat.st_mode),
@@ -3241,10 +3757,16 @@ fn classify_operation_roster(
 ) -> Result<(OperationFormatV3, Vec<String>), DurableLifecycleStoreErrorV3> {
     let mut records = Vec::new();
     let mut issue_roots = 0usize;
+    let mut prepared_manifests = 0usize;
     for name in names {
         if name == "effect-issues-v3" {
             issue_roots += 1;
-        } else if name.contains("effect-issues-v3") || !name.ends_with(".json") {
+        } else if name == PREPARED_MANIFEST_NAME_V3 {
+            prepared_manifests += 1;
+        } else if name.contains("effect-issues-v3")
+            || name.contains("prepared-collector-manifest-v3")
+            || !name.ends_with(".json")
+        {
             return Err(invalid(
                 "operation roster contains a missing, temporary, aliased, or unknown V3 entry",
             ));
@@ -3252,20 +3774,24 @@ fn classify_operation_roster(
             records.push(name.clone());
         }
     }
-    if issue_roots > 1 {
+    if issue_roots > 1 || prepared_manifests > 1 {
         return Err(invalid(
-            "operation roster contains duplicate V3 issue roots",
+            "operation roster contains duplicate mandatory V3 entries",
         ));
     }
     records.sort();
-    Ok((
-        if issue_roots == 1 {
-            OperationFormatV3::RequiredEffectIssuesV3
-        } else {
-            OperationFormatV3::LegacyV2
-        },
-        records,
-    ))
+    let format = match (issue_roots, prepared_manifests) {
+        (1, 1) => OperationFormatV3::RequiredPreparedManifestV3,
+        (1, 0) => OperationFormatV3::RequiredEffectIssuesV3,
+        (0, 0) => OperationFormatV3::LegacyV2,
+        (0, 1) => {
+            return Err(invalid(
+                "prepared collector manifest exists without the mandatory V3 issue root",
+            ));
+        }
+        _ => unreachable!("duplicate mandatory entries were rejected"),
+    };
+    Ok((format, records))
 }
 
 fn require_nonce(value: &str) -> Result<(), DurableLifecycleStoreErrorV3> {

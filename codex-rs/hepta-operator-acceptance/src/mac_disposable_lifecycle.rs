@@ -121,6 +121,20 @@ pub struct ReconciliationSnapshotV2 {
     pub restart_epoch_nonce: String,
 }
 
+/// Durable binding from the first lifecycle record to the fixed prepared
+/// collector sidecar.  The digest binds its canonical bytes while the full
+/// inode identity rejects same-byte replacement before restart admission.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PreparedCollectorManifestBindingV3 {
+    pub birthtime_nanoseconds: i64,
+    pub birthtime_seconds: i64,
+    pub dev: u64,
+    pub generation: u32,
+    pub inode: u64,
+    pub sha256: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum DisposableLifecycleEventV2 {
@@ -130,6 +144,14 @@ pub enum DisposableLifecycleEventV2 {
         boot_session_uuid: String,
         collector_policy_sha256: String,
         mountpoint_underlying_sha256: String,
+    },
+    OperationPreparedWithManifestV3 {
+        baseline_inventory_sha256: String,
+        backing_identity_sha256: String,
+        boot_session_uuid: String,
+        collector_policy_sha256: String,
+        mountpoint_underlying_sha256: String,
+        prepared_manifest: PreparedCollectorManifestBindingV3,
     },
     CreateIssuedOrUncertain {
         effect_id: u64,
@@ -228,6 +250,7 @@ pub struct LifecycleInspectionV2 {
     pub disposition: LifecycleDispositionV2,
     pub last_effect_id: u64,
     pub operation_nonce: String,
+    pub prepared_manifest: Option<PreparedCollectorManifestBindingV3>,
     pub records: usize,
     pub restart_forward_flow_authority: bool,
     pub terminal_record_sha256: String,
@@ -325,6 +348,7 @@ struct Reducer {
     mode: Mode,
     mountpoint_underlying_sha256: Option<String>,
     operation_nonce: String,
+    prepared_manifest: Option<PreparedCollectorManifestBindingV3>,
     pending: Option<(u64, EffectKind)>,
     phase: Phase,
     quarantined: bool,
@@ -359,6 +383,7 @@ impl Reducer {
             mode,
             mountpoint_underlying_sha256: None,
             operation_nonce: operation_nonce.to_string(),
+            prepared_manifest: None,
             pending: None,
             phase: Phase::Empty,
             quarantined: false,
@@ -454,6 +479,37 @@ impl Reducer {
                 self.boot_session_uuid = Some(boot_session_uuid.clone());
                 self.collector_policy_sha256 = Some(collector_policy_sha256.clone());
                 self.mountpoint_underlying_sha256 = Some(mountpoint_underlying_sha256.clone());
+                self.phase = Phase::Prepared;
+            }
+            DisposableLifecycleEventV2::OperationPreparedWithManifestV3 {
+                baseline_inventory_sha256,
+                backing_identity_sha256,
+                boot_session_uuid,
+                collector_policy_sha256,
+                mountpoint_underlying_sha256,
+                prepared_manifest,
+            } => {
+                require_digest(baseline_inventory_sha256, "baseline inventory")?;
+                require_digest(backing_identity_sha256, "backing identity")?;
+                require_digest(collector_policy_sha256, "collector policy")?;
+                require_digest(mountpoint_underlying_sha256, "mountpoint identity")?;
+                require_digest(&prepared_manifest.sha256, "prepared collector manifest")?;
+                require_uuid(boot_session_uuid)?;
+                if prepared_manifest.dev == 0
+                    || prepared_manifest.inode == 0
+                    || !(0..1_000_000_000).contains(&prepared_manifest.birthtime_nanoseconds)
+                    || self.phase != Phase::Empty
+                {
+                    return Err(invalid(
+                        "OperationPreparedWithManifestV3 has malformed identity or is not first",
+                    ));
+                }
+                self.baseline_inventory_sha256 = Some(baseline_inventory_sha256.clone());
+                self.backing_identity_sha256 = Some(backing_identity_sha256.clone());
+                self.boot_session_uuid = Some(boot_session_uuid.clone());
+                self.collector_policy_sha256 = Some(collector_policy_sha256.clone());
+                self.mountpoint_underlying_sha256 = Some(mountpoint_underlying_sha256.clone());
+                self.prepared_manifest = Some(prepared_manifest.clone());
                 self.phase = Phase::Prepared;
             }
             DisposableLifecycleEventV2::CreateIssuedOrUncertain { effect_id } => {
@@ -1025,6 +1081,7 @@ pub fn inspect_lifecycle_v2(
         disposition,
         last_effect_id: journal.reducer.last_effect_id,
         operation_nonce: journal.operation_nonce,
+        prepared_manifest: journal.reducer.prepared_manifest,
         records: journal.records,
         restart_forward_flow_authority: false,
         terminal_record_sha256,

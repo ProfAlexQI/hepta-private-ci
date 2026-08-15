@@ -18,6 +18,7 @@ use crate::mac_disposable_lifecycle::EffectPurposeV2;
 use crate::mac_disposable_lifecycle::LifecycleErrorV2;
 use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
 use crate::mac_disposable_lifecycle_store::OperationIssueReadSealV3;
+use crate::mac_disposable_lifecycle_store::PreparedManifestS1TransferV3;
 use crate::mac_disposable_lifecycle_store::RetainedEffectIssueSourceV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleIssueSourceV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorIssueBindingV3;
@@ -1642,14 +1643,20 @@ impl DurableEffectIssueStoreV3 {
         sink: FreshOperationAdmissionSinkV3<'_, '_>,
         operation_directory: File,
         final_name: String,
+        prepared_manifest: Option<PreparedManifestS1TransferV3>,
     ) -> Result<(), DurableEffectIssueStoreErrorV3> {
         self.revalidate_prepared_empty()?;
-        sink.retain(operation_directory, final_name, self.directory.try_clone()?)
-            .map_err(|error| {
-                invalid(format!(
-                    "S1 rejected the exact freshly published operation capsule: {error}"
-                ))
-            })
+        sink.retain(
+            operation_directory,
+            final_name,
+            self.directory.try_clone()?,
+            prepared_manifest,
+        )
+        .map_err(|error| {
+            invalid(format!(
+                "S1 rejected the exact freshly published operation capsule: {error}"
+            ))
+        })
     }
 
     pub(crate) fn poisoned(&self) -> bool {

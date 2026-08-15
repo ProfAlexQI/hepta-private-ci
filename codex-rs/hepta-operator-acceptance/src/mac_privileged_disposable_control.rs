@@ -18,6 +18,7 @@ use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
 use crate::mac_disposable_lifecycle::LifecycleDispatchV2;
 use crate::mac_disposable_lifecycle::LifecycleDispositionV2;
 use crate::mac_disposable_lifecycle::LifecycleInspectionV2;
+use crate::mac_disposable_lifecycle::PreparedCollectorManifestBindingV3;
 use crate::mac_disposable_lifecycle::dispatch_lifecycle_records;
 use crate::mac_disposable_lifecycle::fresh_absence_sha256;
 use crate::mac_disposable_lifecycle::validate_fresh_absence_shape;
@@ -26,6 +27,7 @@ use crate::mac_disposable_lifecycle_store::DurableLifecycleStoreErrorV3;
 use crate::mac_disposable_lifecycle_store::ExistingCensusStoreWiringV3;
 use crate::mac_disposable_lifecycle_store::FreshCensusStoreWiringV3;
 use crate::mac_disposable_lifecycle_store::PersistedIssueLeaseSealV3;
+use crate::mac_disposable_lifecycle_store::PreparedManifestS1TransferV3;
 use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
 use crate::mac_disposable_lifecycle_store::RecoveredIssueVerifierSealV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleRecordAppendV3;
@@ -69,6 +71,7 @@ const OPERATIONS_NAME: &str = "operations";
 const PUBLICATION_NAME: &str = "publication";
 const OPERATION_PREFIX: &str = "operation-";
 const EFFECT_ISSUE_ROOT_V3: &str = "effect-issues-v3";
+const PREPARED_MANIFEST_NAME_V3: &str = "prepared-collector-manifest-v3.json";
 const MAX_EFFECT_ISSUES_V3: usize = 256;
 const HISTORICAL_ROOT_PREFIX: &str = ".hepta-privileged-qualification-v1-";
 const HISTORICAL_OBLIGATION_PREFIX: &str = "attachment-obligation-";
@@ -141,10 +144,13 @@ pub enum PrivilegedDisposableControlErrorV2 {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Identity {
+    birthtime_nsec: i64,
+    birthtime_sec: i64,
     ctime_nsec: i64,
     ctime_sec: i64,
     dev: u64,
     flags: u32,
+    generation: u32,
     gid: u32,
     ino: u64,
     mode: u16,
@@ -157,8 +163,11 @@ struct Identity {
 
 impl Identity {
     fn same_directory_across_record_append(self, after: Self) -> bool {
-        self.dev == after.dev
+        self.birthtime_nsec == after.birthtime_nsec
+            && self.birthtime_sec == after.birthtime_sec
+            && self.dev == after.dev
             && self.flags == after.flags
+            && self.generation == after.generation
             && self.gid == after.gid
             && self.ino == after.ino
             && self.mode == after.mode
@@ -197,6 +206,7 @@ struct OperationCapsule {
     effect_issues: Option<EffectIssueRootCapsuleV3>,
     identity: Identity,
     name: String,
+    prepared_manifest: Option<RecordCapsule>,
     record_names: Vec<String>,
     records: Vec<RecordCapsule>,
     roster: Vec<String>,
@@ -502,6 +512,12 @@ pub(crate) struct FreshOperationAdmissionSinkV3<'c, 'a> {
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
+/// Only S1 can construct this seal, so the lifecycle module's opaque
+/// prepared-manifest transfer cannot be opened by unrelated crate callers.
+pub(crate) struct S1PreparedManifestReadSealV3 {
+    _private: (),
+}
+
 enum LifecycleRecordAppendTargetV3<'c, 'a> {
     Fresh(&'c mut RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>),
     Blocking(&'c mut RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>),
@@ -644,6 +660,7 @@ impl LivePrivilegedDisposablePolicyV2 {
                             "operation directory nonce differs from lifecycle nonce",
                         ));
                     }
+                    capsule.validate_prepared_lifecycle_binding(&inspection)?;
                     if inspection.blocks_new_operations {
                         blocking.push(nonce.to_string());
                     } else {
@@ -721,6 +738,7 @@ impl LivePrivilegedDisposablePolicyV2 {
                 .iter()
                 .map(|capsule| {
                     1 + capsule.records.len()
+                        + usize::from(capsule.prepared_manifest.is_some())
                         + capsule
                             .effect_issues
                             .as_ref()
@@ -942,7 +960,7 @@ impl LivePrivilegedDisposablePolicyV2 {
             &self.filesystem,
             "operation directory",
         )?;
-        let roster = list_directory(directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 1)?;
+        let roster = list_directory(directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 2)?;
         let issue_like = roster
             .iter()
             .filter(|entry| entry.contains(EFFECT_ISSUE_ROOT_V3))
@@ -956,9 +974,30 @@ impl LivePrivilegedDisposablePolicyV2 {
                 "operation contains a duplicate, temporary, or aliased V3 issue root",
             ));
         }
+        let prepared_manifest_like = roster
+            .iter()
+            .filter(|entry| entry.contains("prepared-collector-manifest-v3"))
+            .collect::<Vec<_>>();
+        if prepared_manifest_like.len() > 1
+            || prepared_manifest_like
+                .first()
+                .is_some_and(|entry| entry.as_str() != PREPARED_MANIFEST_NAME_V3)
+        {
+            return Err(invalid(
+                "operation contains a duplicate, temporary, or aliased prepared manifest",
+            ));
+        }
+        if !prepared_manifest_like.is_empty() && issue_like.is_empty() {
+            return Err(invalid(
+                "operation contains a prepared manifest without its mandatory V3 issue root",
+            ));
+        }
         let record_names = roster
             .iter()
-            .filter(|entry| entry.as_str() != EFFECT_ISSUE_ROOT_V3)
+            .filter(|entry| {
+                entry.as_str() != EFFECT_ISSUE_ROOT_V3
+                    && entry.as_str() != PREPARED_MANIFEST_NAME_V3
+            })
             .cloned()
             .collect::<Vec<_>>();
         if record_names.is_empty() {
@@ -1008,11 +1047,47 @@ impl LivePrivilegedDisposablePolicyV2 {
                 &self.filesystem,
             )?)
         };
+        let prepared_manifest = if prepared_manifest_like.is_empty() {
+            None
+        } else {
+            retained_fds.reserve("prepared collector manifest")?;
+            let file = openat_node(
+                directory.as_raw_fd(),
+                PREPARED_MANIFEST_NAME_V3,
+                libc::O_RDONLY,
+            )?;
+            let manifest_identity = validate_regular(
+                &file,
+                self.expected_uid,
+                self.expected_gid,
+                0o400,
+                Some(MAX_RECORD_BYTES as i64),
+                &self.filesystem,
+                "prepared collector manifest",
+            )?;
+            let bytes = read_stable(&file, manifest_identity)?;
+            if bytes.is_empty() {
+                return Err(invalid("prepared collector manifest is empty"));
+            }
+            *total_bytes = total_bytes
+                .checked_add(bytes.len())
+                .ok_or_else(|| invalid("prepared collector manifest byte budget overflowed"))?;
+            if *total_bytes > MAX_TOTAL_RECORD_BYTES {
+                return Err(invalid("prepared collector manifest exceeds byte budget"));
+            }
+            Some(RecordCapsule {
+                bytes,
+                file,
+                identity: manifest_identity,
+                name: PREPARED_MANIFEST_NAME_V3.to_string(),
+            })
+        };
         let capsule = OperationCapsule {
             directory,
             effect_issues,
             identity,
             name: name.to_string(),
+            prepared_manifest,
             record_names,
             records,
             roster,
@@ -1970,6 +2045,7 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
         operation_directory: File,
         final_name: String,
         issue_directory: File,
+        prepared_manifest: Option<PreparedManifestS1TransferV3>,
     ) -> Result<(), PrivilegedDisposableControlErrorV2> {
         let census = self.census;
         if census.admission.admitted_operation_name.is_some() {
@@ -1978,10 +2054,11 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
             ));
         }
         operation_nonce(&final_name)?;
+        let additional_fds = if prepared_manifest.is_some() { 3 } else { 2 };
         let next_fd_count = census
             .assessment
             ._retained_fd_count
-            .checked_add(2)
+            .checked_add(additional_fds)
             .ok_or_else(|| invalid("fresh retained descriptor count overflowed"))?;
         if next_fd_count > MAX_RETAINED_FDS {
             return Err(invalid(
@@ -2014,17 +2091,73 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
             filesystem,
             "freshly published operation directory",
         )?;
+        let expected_initial_roster = if prepared_manifest.is_some() {
+            vec![
+                EFFECT_ISSUE_ROOT_V3.to_string(),
+                PREPARED_MANIFEST_NAME_V3.to_string(),
+            ]
+        } else {
+            vec![EFFECT_ISSUE_ROOT_V3.to_string()]
+        };
         if named_identity(
             census.assessment._policy.operations.as_raw_fd(),
             &final_name,
         )? != operation_identity
             || list_directory(
                 operation_directory.as_raw_fd(),
-                MAX_OPERATION_RECORDS_V2 + 1,
-            )? != [EFFECT_ISSUE_ROOT_V3]
+                MAX_OPERATION_RECORDS_V2 + 2,
+            )? != expected_initial_roster
         {
             return Err(invalid(
                 "fresh operation path or initial roster differs from its retained descriptor",
+            ));
+        }
+        let prepared_manifest = prepared_manifest
+            .map(|transfer| {
+                let (file, bytes, digest, expected_inode) =
+                    transfer.into_s1_parts(S1PreparedManifestReadSealV3 { _private: () });
+                if bytes.is_empty() || bytes.len() > MAX_RECORD_BYTES || sha256(&bytes) != digest {
+                    return Err(invalid(
+                        "fresh prepared manifest bytes or digest are malformed",
+                    ));
+                }
+                let manifest_identity = validate_regular(
+                    &file,
+                    expected_uid,
+                    expected_gid,
+                    0o400,
+                    Some(MAX_RECORD_BYTES as i64),
+                    filesystem,
+                    "fresh prepared collector manifest",
+                )?;
+                if (manifest_identity.dev, manifest_identity.ino) != expected_inode
+                    || named_identity(operation_directory.as_raw_fd(), PREPARED_MANIFEST_NAME_V3)?
+                        != manifest_identity
+                    || read_stable(&file, manifest_identity)? != bytes
+                {
+                    return Err(invalid(
+                        "fresh prepared manifest differs from its exact S2 descriptor",
+                    ));
+                }
+                Ok(RecordCapsule {
+                    bytes,
+                    file,
+                    identity: manifest_identity,
+                    name: PREPARED_MANIFEST_NAME_V3.to_string(),
+                })
+            })
+            .transpose()?;
+        let prepared_bytes = prepared_manifest
+            .as_ref()
+            .map_or(0, |manifest| manifest.bytes.len());
+        let next_record_bytes = census
+            .assessment
+            ._retained_record_bytes
+            .checked_add(prepared_bytes)
+            .ok_or_else(|| invalid("fresh prepared manifest byte count overflowed"))?;
+        if next_record_bytes > MAX_TOTAL_RECORD_BYTES {
+            return Err(invalid(
+                "fresh prepared manifest exceeds retained global byte bound",
             ));
         }
         let issue_identity = validate_directory(
@@ -2059,11 +2192,13 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
             }),
             identity: operation_identity,
             name: final_name.clone(),
+            prepared_manifest,
             record_names: Vec::new(),
             records: Vec::new(),
-            roster: vec![EFFECT_ISSUE_ROOT_V3.to_string()],
+            roster: expected_initial_roster,
         });
         census.assessment._retained_fd_count = next_fd_count;
+        census.assessment._retained_record_bytes = next_record_bytes;
         census.operations_identity = operations_identity;
         census.operations_roster = expected;
         census.admission.admitted_operation_name = Some(final_name);
@@ -2375,6 +2510,7 @@ fn absorb_transferred_lifecycle_record<A, M: MountCensusStateV3>(
             ));
         }
     };
+    census.assessment._operations[target_index].validate_prepared_lifecycle_binding(&inspection)?;
     census.assessment._retained_fd_count = next_fd_count;
     census.assessment._retained_record_bytes = census
         .assessment
@@ -2412,7 +2548,7 @@ impl<'a> RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3> {
     /// No `File`, raw descriptor, or cloneable descriptor-bearing bundle is
     /// ever returned to the caller between S1 revalidation and S2 creation.
     pub(crate) fn wire_fresh_store(
-        mut self,
+        self,
         wiring: FreshCensusStoreWiringV3,
     ) -> Result<CensusBoundDurableLifecycleStoreV3<'a>, DurableLifecycleStoreErrorV3> {
         if self.admission.admitted_operation_name.is_some() {
@@ -2591,6 +2727,17 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
                 ))
             })
             .transpose()?;
+        let prepared_manifest = target
+            .prepared_manifest
+            .as_ref()
+            .map(|manifest| {
+                Ok::<_, io::Error>((
+                    manifest.bytes.clone(),
+                    manifest.file.try_clone()?,
+                    (manifest.identity.dev, manifest.identity.ino),
+                ))
+            })
+            .transpose()?;
         let expected_operations_inode =
             (self.operations_identity.dev, self.operations_identity.ino);
         let expected_operation_inode = (
@@ -2610,6 +2757,7 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
             expected_operation_inode,
             records,
             effect_issues,
+            prepared_manifest,
             operation_name,
             operation_nonce,
             expected_uid,
@@ -3019,6 +3167,31 @@ fn remove_exact_once(
 }
 
 impl OperationCapsule {
+    fn validate_prepared_lifecycle_binding(
+        &self,
+        inspection: &LifecycleInspectionV2,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        match (&self.prepared_manifest, &inspection.prepared_manifest) {
+            (Some(manifest), Some(binding))
+                if binding
+                    == &PreparedCollectorManifestBindingV3 {
+                        birthtime_nanoseconds: manifest.identity.birthtime_nsec,
+                        birthtime_seconds: manifest.identity.birthtime_sec,
+                        dev: manifest.identity.dev,
+                        generation: manifest.identity.generation,
+                        inode: manifest.identity.ino,
+                        sha256: sha256(&manifest.bytes),
+                    } =>
+            {
+                Ok(())
+            }
+            (None, None) => Ok(()),
+            _ => Err(invalid(
+                "lifecycle prepared-manifest binding differs from the exact retained S1 capsule",
+            )),
+        }
+    }
+
     fn absorb_exact_record_append(
         &mut self,
         parent_fd: RawFd,
@@ -3052,6 +3225,9 @@ impl OperationCapsule {
         if self.effect_issues.is_some() {
             expected_roster.push(EFFECT_ISSUE_ROOT_V3.to_string());
         }
+        if self.prepared_manifest.is_some() {
+            expected_roster.push(PREPARED_MANIFEST_NAME_V3.to_string());
+        }
         expected_roster.sort();
         let after_identity = validate_directory(
             &self.directory,
@@ -3063,7 +3239,7 @@ impl OperationCapsule {
         )?;
         let named_after = named_identity(parent_fd, &self.name)?;
         let roster_after =
-            list_directory(self.directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 1)?;
+            list_directory(self.directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 2)?;
         if !self
             .identity
             .same_directory_across_record_append(after_identity)
@@ -3147,7 +3323,7 @@ impl OperationCapsule {
                 filesystem,
                 "operation directory",
             )? != self.identity
-            || list_directory(self.directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 1)?
+            || list_directory(self.directory.as_raw_fd(), MAX_OPERATION_RECORDS_V2 + 2)?
                 != self.roster
         {
             return Err(invalid(
@@ -3162,8 +3338,34 @@ impl OperationCapsule {
                 filesystem,
             )?;
         }
+        if !self.records.is_empty() {
+            let lifecycle = self
+                .records
+                .iter()
+                .map(|record| record.bytes.clone())
+                .collect::<Vec<_>>();
+            let inspection = match dispatch_lifecycle_records(&lifecycle)
+                .map_err(|error| invalid(format!("retained lifecycle is invalid: {error}")))?
+            {
+                LifecycleDispatchV2::V2(inspection) => inspection,
+                LifecycleDispatchV2::HistoricalV1(_) => {
+                    return Err(invalid(
+                        "V2 operation capsule changed into a historical lifecycle",
+                    ));
+                }
+            };
+            self.validate_prepared_lifecycle_binding(&inspection)?;
+        }
         if let Some(effect_issues) = &self.effect_issues {
             effect_issues.revalidate(
+                self.directory.as_raw_fd(),
+                expected_uid,
+                expected_gid,
+                filesystem,
+            )?;
+        }
+        if let Some(prepared_manifest) = &self.prepared_manifest {
+            prepared_manifest.revalidate(
                 self.directory.as_raw_fd(),
                 expected_uid,
                 expected_gid,
@@ -3185,6 +3387,9 @@ impl OperationCapsule {
         }
         if let Some(effect_issues) = &self.effect_issues {
             effect_issues.register(registry, &path)?;
+        }
+        if let Some(prepared_manifest) = &self.prepared_manifest {
+            prepared_manifest.register(registry, &path)?;
         }
         Ok(())
     }
@@ -3992,10 +4197,13 @@ fn named_identity(
 
 fn identity_from_stat(stat: libc::stat) -> Identity {
     Identity {
+        birthtime_nsec: stat.st_birthtime_nsec,
+        birthtime_sec: stat.st_birthtime,
         ctime_nsec: stat.st_ctime_nsec,
         ctime_sec: stat.st_ctime,
         dev: stat.st_dev as u64,
         flags: stat.st_flags,
+        generation: stat.st_gen,
         gid: stat.st_gid,
         ino: stat.st_ino,
         mode: stat.st_mode as u16,

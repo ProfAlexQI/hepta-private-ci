@@ -391,6 +391,29 @@ fn sealed_prepared() -> FreshPreparedLifecycleEventV3 {
     )
 }
 
+fn sidecar_bound_prepared(store: &DurableLifecycleStoreV3) -> DisposableLifecycleEventV2 {
+    let manifest = store
+        .prepared_manifest
+        .as_ref()
+        .expect("prepared-manifest format retains its sidecar");
+    FreshPreparedLifecycleEventV3::new_bound(
+        digest('a'),
+        digest('b'),
+        "12345678-1234-4abc-8abc-123456789abc".to_string(),
+        digest('c'),
+        digest('d'),
+        PreparedCollectorManifestBindingV3 {
+            birthtime_nanoseconds: manifest.binding.birthtime_nsec,
+            birthtime_seconds: manifest.binding.birthtime_sec,
+            dev: manifest.binding.dev,
+            generation: manifest.binding.generation,
+            inode: manifest.binding.ino,
+            sha256: manifest.digest.clone(),
+        },
+    )
+    .0
+}
+
 fn create_recoverable_issue(
     root: &std::path::Path,
     epochs: EffectEpochEvidenceV3,
@@ -676,6 +699,170 @@ fn operation_creation_crash_cutpoints_never_create_an_implicit_authority_path() 
             )
             .is_err(),
             "final name must remain no-replace: {cutpoint:?}"
+        );
+    }
+}
+
+#[test]
+fn prepared_manifest_publish_cutpoints_never_publish_the_operation() {
+    let manifest = br#"{"schema":"modeled-prepared-collector-manifest-v3"}"#;
+    for cutpoint in [
+        CreateCutpointV3::PreparedManifestTemporaryCreated,
+        CreateCutpointV3::PreparedManifestBytesWritten,
+        CreateCutpointV3::PreparedManifestFileSynced,
+        CreateCutpointV3::PreparedManifestRenamed,
+        CreateCutpointV3::PreparedManifestDirectorySynced,
+        CreateCutpointV3::PreparedManifestFinalReopened,
+        CreateCutpointV3::PreparedManifestFinalRevalidated,
+    ] {
+        let fixture = Fixture::new();
+        let result = DurableLifecycleStoreV3::create_new_format_with_hook(
+            &fixture.operations,
+            NONCE,
+            fixture.uid(),
+            fixture.gid(),
+            Some(manifest),
+            |observed| {
+                if observed == cutpoint {
+                    Err(io::Error::other("injected prepared-manifest crash"))
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        assert!(result.is_err(), "{cutpoint:?}");
+        assert!(!fixture.operation_path(NONCE).exists(), "{cutpoint:?}");
+        assert!(
+            fixture
+                .operations_path
+                .join(format!(".incoming-operation-{NONCE}"))
+                .is_dir(),
+            "{cutpoint:?}"
+        );
+    }
+}
+
+#[test]
+fn prepared_manifest_is_fixed_replayed_and_bound_by_the_first_record() {
+    let fixture = Fixture::new();
+    let manifest = br#"{"schema":"modeled-prepared-collector-manifest-v3"}"#;
+    let (mut store, _issues) = DurableLifecycleStoreV3::create_new_format_with_hook(
+        &fixture.operations,
+        NONCE,
+        fixture.uid(),
+        fixture.gid(),
+        Some(manifest),
+        |_| Ok(()),
+    )
+    .expect("publish prepared-manifest operation");
+    let sidecar = fixture
+        .operation_path(NONCE)
+        .join(PREPARED_MANIFEST_NAME_V3);
+    let metadata = fs::symlink_metadata(&sidecar).expect("prepared sidecar metadata");
+    assert_eq!(metadata.mode() & 0o7777, 0o400);
+    assert_eq!(metadata.nlink(), 1);
+    assert_eq!(
+        fs::read(&sidecar).expect("prepared sidecar bytes"),
+        manifest
+    );
+
+    let event = sidecar_bound_prepared(&store);
+    let mut journal = DisposableLifecycleJournalV2::new(NONCE).expect("journal");
+    store
+        .append(&mut journal, event)
+        .expect("bound first record");
+    store.revalidate().expect("exact prepared replay");
+
+    let reopened = DurableLifecycleStoreV3::open_existing(
+        &fixture.operations,
+        NONCE,
+        fixture.uid(),
+        fixture.gid(),
+    )
+    .expect("reopen exact bound prepared sidecar");
+    assert_eq!(
+        reopened
+            .prepared_manifest
+            .as_ref()
+            .expect("retained sidecar")
+            .digest,
+        sha256(manifest)
+    );
+}
+
+#[test]
+fn restart_admission_rejects_same_byte_prepared_manifest_inode_replacement() {
+    let root = tempfile::tempdir().expect("control root parent");
+    let control_root = root.path().join("control");
+    let initial_control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&control_root).expect("control root");
+    drop(initial_control);
+    let operations_path = control_root.join("operations");
+    let operations = File::open(&operations_path).expect("operations descriptor");
+    let uid = unsafe { libc::geteuid() };
+    let gid = unsafe { libc::getegid() };
+    let manifest = br#"{"schema":"modeled-prepared-collector-manifest-v3"}"#;
+    let (mut store, issues) = DurableLifecycleStoreV3::create_new_format_with_hook(
+        &operations,
+        NONCE,
+        uid,
+        gid,
+        Some(manifest),
+        |_| Ok(()),
+    )
+    .expect("publish prepared operation");
+    let event = sidecar_bound_prepared(&store);
+    let mut journal = DisposableLifecycleJournalV2::new(NONCE).expect("journal");
+    store
+        .append(&mut journal, event)
+        .expect("bound first record");
+    drop(issues);
+    drop(store);
+
+    let sidecar = operations_path
+        .join(format!("operation-{NONCE}"))
+        .join(PREPARED_MANIFEST_NAME_V3);
+    let displaced = root.path().join("displaced-prepared-manifest");
+    fs::rename(&sidecar, &displaced).expect("displace exact manifest inode");
+    fs::write(&sidecar, manifest).expect("same-byte replacement");
+    fs::set_permissions(&sidecar, fs::Permissions::from_mode(0o400))
+        .expect("replacement permissions");
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&control_root).expect("restart control");
+    let error = match control.assess_read_only() {
+        Ok(_) => panic!("S1 accepted same-byte manifest inode replacement"),
+        Err(error) => error,
+    };
+    assert!(
+        error.to_string().contains("prepared-manifest binding"),
+        "unexpected rejection: {error}"
+    );
+}
+
+#[test]
+fn prepared_manifest_aliases_and_missing_issue_root_are_blocking() {
+    for name in [
+        PREPARED_MANIFEST_TEMPORARY_NAME_V3,
+        "prepared-collector-manifest-v3.json.alias",
+    ] {
+        let fixture = Fixture::new();
+        let operation = fixture.operation_path(NONCE);
+        fs::create_dir(&operation).expect("operation directory");
+        fs::set_permissions(&operation, fs::Permissions::from_mode(0o700))
+            .expect("operation permissions");
+        fs::write(operation.join(name), b"manifest").expect("modeled alias");
+        fs::set_permissions(operation.join(name), fs::Permissions::from_mode(0o400))
+            .expect("alias permissions");
+        assert!(
+            DurableLifecycleStoreV3::open_existing(
+                &fixture.operations,
+                NONCE,
+                fixture.uid(),
+                fixture.gid(),
+            )
+            .is_err(),
+            "{name}"
         );
     }
 }

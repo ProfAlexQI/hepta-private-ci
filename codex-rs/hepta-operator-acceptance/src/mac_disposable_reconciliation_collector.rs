@@ -16,6 +16,7 @@ use crate::mac_disposable_lifecycle::ReconciliationMatchV2;
 use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
 use crate::mac_disposable_lifecycle::fresh_absence_sha256;
 use crate::mac_disposable_lifecycle::reconciliation_snapshot_sha256;
+use crate::mac_disposable_lifecycle_store::PreparedCollectorLifecycleSealV3;
 use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleRecordAppendV3;
 use crate::mac_iomedia_identity::DiskImageBackingIdentityV2;
@@ -772,40 +773,82 @@ impl RetainedPreparedCollectorCapabilityV3 {
         Ok(retained)
     }
 
-    pub(crate) fn manifest_bytes(&self) -> &[u8] {
+    fn manifest_bytes(&self) -> &[u8] {
         &self.manifest_bytes
     }
 
-    pub(crate) fn manifest_sha256(&self) -> &str {
+    fn manifest_sha256(&self) -> &str {
         &self.manifest_sha256
     }
 
-    pub(crate) fn profile_sha256(&self) -> &str {
+    fn profile_sha256(&self) -> &str {
         &self.manifest.profile_sha256
     }
 
-    pub(crate) fn operation_nonce(&self) -> &str {
+    fn operation_nonce(&self) -> &str {
         &self.operation_nonce
     }
 
-    pub(crate) fn baseline_inventory_sha256(&self) -> Result<String, RestartCollectorErrorV3> {
+    fn baseline_inventory_sha256(&self) -> Result<String, RestartCollectorErrorV3> {
         self.manifest.baseline.sha256()
     }
 
-    pub(crate) fn backing_identity_sha256(&self) -> Result<String, RestartCollectorErrorV3> {
+    fn backing_identity_sha256(&self) -> Result<String, RestartCollectorErrorV3> {
         Ok(sha256(&canonical_json(&self.manifest.backing)?))
     }
 
-    pub(crate) fn collector_policy_sha256(&self) -> Result<String, RestartCollectorErrorV3> {
+    fn collector_policy_sha256(&self) -> Result<String, RestartCollectorErrorV3> {
         self.manifest.policy.sha256()
     }
 
-    pub(crate) fn mountpoint_underlying_sha256(&self) -> Result<String, RestartCollectorErrorV3> {
+    fn mountpoint_underlying_sha256(&self) -> Result<String, RestartCollectorErrorV3> {
         self.manifest.mountpoint.sha256()
     }
 
-    pub(crate) fn boot_session_uuid(&self) -> &str {
+    fn boot_session_uuid(&self) -> &str {
         &self.manifest.baseline.boot_session_uuid
+    }
+
+    pub(crate) fn lifecycle_manifest<'a>(
+        &'a self,
+        _seal: &PreparedCollectorLifecycleSealV3,
+    ) -> Result<(&'a str, &'a [u8]), RestartCollectorErrorV3> {
+        self.revalidate()?;
+        Ok((&self.operation_nonce, &self.manifest_bytes))
+    }
+
+    pub(crate) fn lifecycle_prepared_fields(
+        &self,
+        _seal: &PreparedCollectorLifecycleSealV3,
+    ) -> Result<(String, String, String, String, String), RestartCollectorErrorV3> {
+        self.revalidate()?;
+        Ok((
+            self.baseline_inventory_sha256()?,
+            self.backing_identity_sha256()?,
+            self.boot_session_uuid().to_string(),
+            self.collector_policy_sha256()?,
+            self.mountpoint_underlying_sha256()?,
+        ))
+    }
+
+    pub(crate) fn reopen_from_lifecycle_manifest(
+        operation_nonce: &str,
+        manifest_bytes: &[u8],
+        expected_manifest_sha256: &str,
+        _seal: &PreparedCollectorLifecycleSealV3,
+    ) -> Result<Self, RestartCollectorErrorV3> {
+        let parsed: PreparedCollectorManifestV3 =
+            serde_json::from_slice(manifest_bytes).map_err(|error| {
+                invalid(format!(
+                    "prepared collector manifest JSON failed before sealed replay: {error}"
+                ))
+            })?;
+        Self::reopen_from_exact_manifest(
+            operation_nonce,
+            manifest_bytes,
+            expected_manifest_sha256,
+            &parsed.profile_sha256,
+        )
     }
 
     pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {

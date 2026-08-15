@@ -3,6 +3,9 @@ use super::*;
 use crate::mac_disposable_lifecycle::DisposableLifecycleEventV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleJournalV2;
 use crate::mac_disposable_lifecycle::fresh_absence_sha256;
+use crate::mac_disposable_lifecycle_store::CensusBoundDurableLifecycleStoreV3;
+use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
+use crate::mac_inert_one_shot_runner::FreshProcessEpochV3;
 use crate::mac_iomedia_identity::BackingObjectBindingV1;
 use crate::mac_iomedia_identity::BackingPathComponentV1;
 use crate::mac_iomedia_identity::DiskArbitrationPropertiesV2;
@@ -14,6 +17,7 @@ use crate::mac_iomedia_identity::RestartDiskImageBackingIdentityV3;
 use crate::mac_iomedia_identity::RestartIOMediaObjectV3;
 use crate::mac_iomedia_identity::capture_restart_disk_image_url_identity_for_test;
 use crate::mac_iomedia_identity::restart_disk_image_backing_matches_prepared_v3;
+use crate::mac_privileged_disposable_control::LivePrivilegedDisposablePolicyV2;
 use std::ffi::CString;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::fs::PermissionsExt;
@@ -1043,6 +1047,72 @@ fn prepared_collector_rejects_unknown_initial_artifact_roster() {
         )
         .is_err(),
         "fresh capture must not turn an arbitrary initial file into a prepared role"
+    );
+}
+
+#[test]
+fn exact_prepared_capability_drives_durable_creation_and_restart_replay() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let operation_nonce = "7".repeat(64);
+    let control_root = fixture._fixture.path().join("control");
+    {
+        let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+            .expect("create exact S1 control");
+        let prepared = fixture.prepared_capability(&operation_nonce);
+        let census = control
+            .assess_read_only()
+            .expect("fresh S1 assessment")
+            .into_fresh_control_census()
+            .expect("fresh S1 census");
+        let mut operation = CensusBoundDurableLifecycleStoreV3::create_prepared(census, prepared)
+            .expect("create from exact retained prepared capability");
+        operation
+            .persist_retained_prepared()
+            .expect("persist exact prepared record and sidecar binding");
+        assert!(!operation.poisoned());
+    }
+
+    let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+        .expect("reopen exact S1 control");
+    let census = control
+        .assess_read_only()
+        .expect("blocking S1 assessment")
+        .into_blocking_control_census(&operation_nonce)
+        .expect("exact blocking S1 census");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh restart process epoch");
+    let operation = ReconciliationOperationStoreV3::open_existing(census, &epoch)
+        .expect("restart reopens the retained prepared capability from its exact sidecar");
+    assert_eq!(operation.operation_nonce(), operation_nonce);
+    assert!(!operation.poisoned());
+}
+
+#[test]
+fn prepared_lifecycle_wiring_fails_closed_if_live_capability_drifts() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let operation_nonce = "7".repeat(64);
+    let control_root = fixture._fixture.path().join("control");
+    let control = LivePrivilegedDisposablePolicyV2::create_for_test(&control_root)
+        .expect("create exact S1 control");
+    let prepared = fixture.prepared_capability(&operation_nonce);
+    std::fs::write(&fixture.backing_path, b"changed-after-prepared-capture")
+        .expect("mutate backing after prepared capture");
+
+    let census = control
+        .assess_read_only()
+        .expect("fresh S1 assessment")
+        .into_fresh_control_census()
+        .expect("fresh S1 census");
+    assert!(
+        CensusBoundDurableLifecycleStoreV3::create_prepared(census, prepared).is_err(),
+        "live drift must return a closed error instead of panicking or publishing an operation"
+    );
+    assert_eq!(
+        std::fs::read_dir(control_root.join("operations"))
+            .expect("operations roster")
+            .count(),
+        0
     );
 }
 
