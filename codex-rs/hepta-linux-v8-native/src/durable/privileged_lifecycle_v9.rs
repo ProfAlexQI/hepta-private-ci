@@ -437,9 +437,15 @@ fn effective_ids_v9() -> Result<(u32, u32), NativeErrorV8> {
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use std::fs;
+    use std::io::BufRead as _;
+    use std::io::BufReader;
+    use std::io::Read as _;
     use std::io::Write as _;
     use std::os::unix::fs::OpenOptionsExt as _;
     use std::os::unix::fs::PermissionsExt as _;
+    use std::os::unix::process::CommandExt as _;
+    use std::process::Command;
+    use std::process::Stdio;
 
     use super::*;
 
@@ -494,6 +500,100 @@ mod tests {
 
         fs::set_permissions(&namespace, fs::Permissions::from_mode(0o755)).unwrap();
         assert!(open_retained_candidate_request_file_v9(&namespace, &leaf, &bytes).is_err());
+    }
+
+    #[test]
+    fn privileged_cross_uid_peer_is_kernel_bound_and_retained() {
+        const CHILD_SOCKET_ENV: &str = "HEPTA_V9_CROSS_UID_CHILD_SOCKET";
+        const CHILD_PAYLOAD_ENV: &str = "HEPTA_V9_CROSS_UID_CHILD_PAYLOAD";
+        const PRODUCER_UID: u32 = 65_534;
+        const PRODUCER_GID: u32 = 65_534;
+
+        if let (Ok(socket), Ok(payload)) = (
+            std::env::var(CHILD_SOCKET_ENV),
+            std::env::var(CHILD_PAYLOAD_ENV),
+        ) {
+            crate::connect_seqpacket_v8(Path::new(&socket))
+                .unwrap()
+                .send_one_request(payload.as_bytes(), &[])
+                .unwrap();
+            println!("HEPTA_V9_CROSS_UID_READY");
+            std::io::stdout().flush().unwrap();
+            let mut keepalive = Vec::new();
+            std::io::stdin().read_to_end(&mut keepalive).unwrap();
+            return;
+        }
+
+        if unsafe { libc::geteuid() } != 0 {
+            eprintln!("SKIP: privileged cross-UID positive fixture requires euid 0");
+            return;
+        }
+
+        let (temporary, namespace, leaf, bytes) = request_fixture("cross-uid");
+        fs::set_permissions(temporary.path(), fs::Permissions::from_mode(0o755)).unwrap();
+        let socket_path = temporary.path().join("producer.sock");
+        let listener = crate::SeqpacketListenerV8::bind(&socket_path).unwrap();
+        fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o777)).unwrap();
+        let payload = String::from_utf8(bytes.clone()).unwrap();
+        let current_exe = std::env::current_exe().unwrap();
+        let mut child = Command::new(current_exe)
+            .arg("privileged_cross_uid_peer_is_kernel_bound_and_retained")
+            .arg("--nocapture")
+            .env(CHILD_SOCKET_ENV, &socket_path)
+            .env(CHILD_PAYLOAD_ENV, &payload)
+            .uid(PRODUCER_UID)
+            .gid(PRODUCER_GID)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut child_stdout = BufReader::new(child.stdout.take().unwrap());
+        let mut readiness_log = String::new();
+        let mut ready = false;
+        for _ in 0..32 {
+            let mut line = String::new();
+            if child_stdout.read_line(&mut line).unwrap() == 0 {
+                break;
+            }
+            readiness_log.push_str(&line);
+            if line.contains("HEPTA_V9_CROSS_UID_READY") {
+                ready = true;
+                break;
+            }
+        }
+        if !ready {
+            drop(child.stdin.take());
+            child_stdout.read_to_string(&mut readiness_log).unwrap();
+            let output = child.wait_with_output().unwrap();
+            panic!(
+                "cross-UID child did not become ready: stdout={readiness_log:?} stderr={}",
+                String::from_utf8_lossy(&output.stderr),
+            );
+        }
+        let packet = listener
+            .accept()
+            .unwrap()
+            .receive_one_request(crate::ExactFileDescriptorCountV8::new(0).unwrap())
+            .unwrap();
+        let retained =
+            open_credential_separated_candidate_request_v9(&namespace, &leaf, packet).unwrap();
+        assert_eq!(retained.writer_uid(), 0);
+        assert_eq!(retained.producer_uid(), PRODUCER_UID);
+        assert_eq!(retained.producer.gid(), PRODUCER_GID);
+        assert!(retained.producer.start_ticks() > 0);
+        assert!(!retained.producer.process_exited().unwrap());
+        retained.revalidate().unwrap();
+
+        drop(child.stdin.take());
+        child_stdout.read_to_string(&mut readiness_log).unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(
+            output.status.success(),
+            "cross-UID child failed: stdout={} stderr={}",
+            readiness_log,
+            String::from_utf8_lossy(&output.stderr),
+        );
     }
 
     #[test]
