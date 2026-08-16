@@ -13,6 +13,7 @@ use crate::mac_apfs_barrier_fixture::AttachmentObligationVerificationV1;
 use crate::mac_apfs_barrier_fixture::ObligationDispositionV1;
 use crate::mac_apfs_barrier_fixture::replay_attachment_obligation_records;
 use crate::mac_apfs_barrier_fixture::verify_disposable_fixture_tree;
+use crate::mac_disposable_lifecycle::CollectorReceiptFileBindingV3;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleEventV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleRecordV2;
@@ -23,6 +24,7 @@ use crate::mac_disposable_lifecycle::LifecycleInspectionV2;
 use crate::mac_disposable_lifecycle::PreparedCollectorManifestBindingV3;
 use crate::mac_disposable_lifecycle::collector_receipt_file_roster_v3;
 use crate::mac_disposable_lifecycle::dispatch_lifecycle_records;
+use crate::mac_disposable_lifecycle::exact_collector_receipt_append_v3;
 use crate::mac_disposable_lifecycle::fresh_absence_sha256;
 use crate::mac_disposable_lifecycle::validate_fresh_absence_shape;
 use crate::mac_disposable_lifecycle_store::CensusBoundDurableLifecycleStoreV3;
@@ -38,10 +40,15 @@ use crate::mac_disposable_lifecycle_store::RetainedLifecycleRecordAppendV3;
 use crate::mac_disposable_lifecycle_store::validate_restart_admission_bijection_for_s1;
 use crate::mac_disposable_reconciliation_collector::MountBindingV3;
 use crate::mac_disposable_reconciliation_collector::MountingV3;
+use crate::mac_disposable_reconciliation_collector::RestartCollectorReceiptV3;
+use crate::mac_disposable_reconciliation_collector::S1CollectorPairAdoptionReadSealV3;
+use crate::mac_disposable_reconciliation_collector::S1CollectorReceiptAppendTransferV3;
 use crate::mac_disposable_reconciliation_collector::S1RetainedCollectorReceiptRootV3;
 use crate::mac_disposable_reconciliation_collector::SealedMountDeltaAdvanceV3;
 use crate::mac_disposable_reconciliation_collector::SealedMountDeltaPlanV3;
+use crate::mac_disposable_reconciliation_collector::UnadoptedCollectorGenerationAfterTransferV3;
 use crate::mac_disposable_reconciliation_collector::UnmountingV3;
+use crate::mac_disposable_reconciliation_collector::s1_manifest_initial_receipt_root_binding;
 use crate::mac_inert_one_shot_runner::RetainedControlLeaseV3;
 use crate::mac_iomedia_identity::current_boot_session_uuid;
 use crate::mac_privileged_broker::BarrierJournal;
@@ -207,6 +214,19 @@ struct RecordCapsule {
     file: File,
     identity: Identity,
     name: String,
+}
+
+/// Descriptor-checked, allocation-reserved mutation for one exact lifecycle
+/// record. The pair sink additionally replays the candidate reducer and the
+/// complete census before it invokes `commit_exact_record_append`. The commit
+/// itself is deliberately infallible so the operation record and receipt-root
+/// mirror can advance as one S1 state transition.
+struct LifecycleRecordAppendCommitV3 {
+    after_identity: Identity,
+    appended_bytes: usize,
+    next_name: String,
+    next_roster: Vec<String>,
+    record: RecordCapsule,
 }
 
 struct OperationCapsule {
@@ -561,6 +581,13 @@ pub(crate) struct S1CollectorReceiptRegistrySealV3 {
     _private: (),
 }
 
+/// Only the paired S1 sink may consume the one-shot S2 successor transfer.
+/// Keeping this distinct from the read-only registry seal prevents a census
+/// projection caller from opening append material.
+pub(crate) struct S1CollectorReceiptAppendReadSealV3 {
+    _private: (),
+}
+
 enum LifecycleRecordAppendTargetV3<'c, 'a> {
     Fresh(&'c mut RetainedControlCensusV3<'a, FreshAdmissionV3, StableMountStateV3>),
     Blocking(&'c mut RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>),
@@ -575,6 +602,46 @@ pub(crate) struct LifecycleRecordAppendSinkV3<'c, 'a> {
     target: LifecycleRecordAppendTargetV3<'c, 'a>,
     terminal: bool,
     _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// One-shot sink for a lifecycle append that introduces exactly one external
+/// collector receipt generation.  Unlike the ordinary lifecycle sink, this
+/// transition owns both successor capsules and can therefore commit them to
+/// S1 together after a complete, read-only preflight.
+enum CollectorReceiptLifecyclePairTargetV3<'c, 'a> {
+    Blocking(&'c mut RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>),
+    PendingUnmount(&'c mut RetainedControlCensusV3<'a, BlockingOperationV3, PendingUnmountDeltaV3>),
+}
+
+pub(crate) struct CollectorReceiptLifecyclePairSinkV3<'c, 'a> {
+    target: CollectorReceiptLifecyclePairTargetV3<'c, 'a>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Unforgeable receipt that S1 committed the exact lifecycle record and exact
+/// receipt-root G->G+1 successor in the same no-fail state transition.  The
+/// collector can consume it through its private read seal; there are no raw
+/// digest or descriptor getters.
+pub(crate) struct S1AdoptedCollectorPairV3 {
+    collector_receipt: CollectorReceiptFileBindingV3,
+    lifecycle_record_sha256: String,
+    lifecycle_record_sequence: u32,
+    operation_name: String,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+impl S1AdoptedCollectorPairV3 {
+    pub(crate) fn into_collector_parts(
+        self,
+        _seal: S1CollectorPairAdoptionReadSealV3,
+    ) -> (String, String, u32, CollectorReceiptFileBindingV3) {
+        (
+            self.operation_name,
+            self.lifecycle_record_sha256,
+            self.lifecycle_record_sequence,
+            self.collector_receipt,
+        )
+    }
 }
 
 /// One-shot S1 sink for the exact final V3 issue descriptor retained by S2.
@@ -1216,6 +1283,25 @@ impl LivePrivilegedDisposablePolicyV2 {
                 name: PREPARED_MANIFEST_NAME_V3.to_string(),
             })
         };
+        let actual_receipt_root_initial = prepared_manifest
+            .as_ref()
+            .map(|manifest| {
+                s1_manifest_initial_receipt_root_binding(
+                    &manifest.bytes,
+                    &S1PreparedManifestReadSealV3 { _private: () },
+                )
+                .map_err(|error| {
+                    invalid(format!(
+                        "S1 prepared manifest receipt-root binding failed: {error}"
+                    ))
+                })
+            })
+            .transpose()?
+            .flatten();
+        require_receipt_root_claim_matches_sidecar(
+            receipt_root_generation_enabled,
+            actual_receipt_root_initial.is_some(),
+        )?;
         let restart_admissions = if restart_admission_like.is_empty() {
             None
         } else {
@@ -2259,6 +2345,153 @@ impl<A, M: MountCensusStateV3> RetainedControlCensusV3<'_, A, M> {
             &self.exact_mounts.state,
         )
     }
+
+    /// Closed-world replay for the short interval in which both the receipt
+    /// and lifecycle record are durable but neither has yet been committed to
+    /// the in-memory S1 mirror.  The selected operation and receipt root are
+    /// checked against their prepared successor plans; every other part of the
+    /// census is replayed exactly as in `revalidate`.
+    fn preflight_collector_pair_candidate(
+        &self,
+        target_index: usize,
+        record_plan: &LifecycleRecordAppendCommitV3,
+        lifecycle: &[Vec<u8>],
+        inspection: &LifecycleInspectionV2,
+        appended_receipt: &crate::mac_disposable_lifecycle::CollectorReceiptFileBindingV3,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        self.assessment.validate_retained_receipt()?;
+        self.assessment
+            ._policy
+            .revalidate_control_root_with_operations(self.operations_identity)?;
+        if current_boot_session_uuid()
+            .map_err(|error| invalid(format!("cannot revalidate retained S1 boot: {error}")))?
+            != self.assessment._boot_session_uuid
+        {
+            return Err(invalid(
+                "boot session changed during collector pair preflight",
+            ));
+        }
+        if list_directory(
+            self.assessment._policy.operations.as_raw_fd(),
+            MAX_CONTROL_OPERATIONS_V2,
+        )? != self.operations_roster
+        {
+            return Err(invalid(
+                "operations roster changed during collector pair preflight",
+            ));
+        }
+        for (index, capsule) in self.assessment._operations.iter().enumerate() {
+            if index == target_index {
+                capsule.preflight_after_record_append_state(
+                    record_plan,
+                    lifecycle,
+                    inspection,
+                    self.assessment._policy.expected_uid,
+                    self.assessment._policy.expected_gid,
+                    &self.assessment._policy.filesystem,
+                )?;
+            } else {
+                capsule.revalidate(
+                    self.assessment._policy.operations.as_raw_fd(),
+                    self.assessment._policy.expected_uid,
+                    self.assessment._policy.expected_gid,
+                    &self.assessment._policy.filesystem,
+                )?;
+            }
+        }
+        for root in &self.assessment._historical_roots {
+            root.revalidate(
+                self.assessment._policy.volume.as_raw_fd(),
+                self.assessment._policy.expected_uid,
+                self.assessment._policy.expected_gid,
+                &self.assessment._policy.filesystem,
+            )?;
+        }
+        if list_directory(
+            self.assessment._policy.volume.as_raw_fd(),
+            MAX_VOLUME_ENTRIES,
+        )? != self.assessment._volume_roster
+        {
+            return Err(invalid(
+                "T5 root roster changed during collector pair preflight",
+            ));
+        }
+        if list_directory(
+            self.assessment._policy.publication.as_raw_fd(),
+            MAX_CONTROL_OPERATIONS_V2,
+        )? != self.assessment._publication_roster
+        {
+            return Err(invalid(
+                "closure publication roster changed during collector pair preflight",
+            ));
+        }
+        for record in &self.assessment._publication_records {
+            record.revalidate(
+                self.assessment._policy.publication.as_raw_fd(),
+                self.assessment._policy.expected_uid,
+                self.assessment._policy.expected_gid,
+                &self.assessment._policy.filesystem,
+            )?;
+        }
+
+        let mut aliases = CensusRegistry::default();
+        aliases.insert("control root", self.assessment._policy.root_identity)?;
+        aliases.insert("control lock", self.assessment._policy.lock_identity)?;
+        aliases.insert("operations directory", self.operations_identity)?;
+        aliases.insert(
+            "closure publication directory",
+            self.assessment._policy.publication_identity,
+        )?;
+        for (index, capsule) in self.assessment._operations.iter().enumerate() {
+            if index == target_index {
+                capsule.register_after_record_append(
+                    record_plan,
+                    appended_receipt,
+                    &mut aliases,
+                    "operations",
+                )?;
+            } else {
+                capsule.register(&mut aliases, "operations")?;
+            }
+        }
+        for root in &self.assessment._historical_roots {
+            root.register(&mut aliases)?;
+        }
+        for record in &self.assessment._publication_records {
+            record.register(&mut aliases, "closure publication")?;
+        }
+        let mut expected_protected_roots =
+            std::iter::once(PathBuf::from(&self.assessment._policy.policy.control_root))
+                .chain(
+                    self.assessment
+                        ._historical_roots
+                        .iter()
+                        .map(|root| self.assessment._policy.volume_path.join(&root.name)),
+                )
+                .chain(
+                    self.assessment
+                        ._operations
+                        .iter()
+                        .filter_map(OperationCapsule::collector_receipt_root_path),
+                )
+                .collect::<Vec<_>>();
+        expected_protected_roots.sort();
+        if expected_protected_roots
+            .windows(2)
+            .any(|pair| pair[0] == pair[1])
+            || expected_protected_roots != self.assessment._protected_roots
+        {
+            return Err(invalid(
+                "protected-root census changed during collector pair preflight",
+            ));
+        }
+        let mounts = mount_table_snapshot()?;
+        reject_nested_mounts(&mounts, &self.assessment._protected_roots)?;
+        self.exact_mounts
+            .state
+            .validate_current(&self.exact_mounts.expected_full_snapshot, &mounts)?;
+        Ok(())
+    }
 }
 
 impl FreshOperationAdmissionSinkV3<'_, '_> {
@@ -2652,6 +2885,262 @@ impl LifecycleRecordAppendSinkV3<'_, '_> {
     }
 }
 
+impl CollectorReceiptLifecyclePairSinkV3<'_, '_> {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn retain(
+        self,
+        s2_directory: File,
+        record: File,
+        bytes: Vec<u8>,
+        operation_name: String,
+        record_name: String,
+        record_sha256: String,
+        sequence: u32,
+        receipt_transfer: S1CollectorReceiptAppendTransferV3,
+    ) -> Result<
+        (
+            UnadoptedCollectorGenerationAfterTransferV3,
+            S1AdoptedCollectorPairV3,
+        ),
+        PrivilegedDisposableControlErrorV2,
+    > {
+        match self.target {
+            CollectorReceiptLifecyclePairTargetV3::Blocking(census) => {
+                retain_collector_receipt_lifecycle_pair(
+                    census,
+                    s2_directory,
+                    record,
+                    bytes,
+                    operation_name,
+                    record_name,
+                    record_sha256,
+                    sequence,
+                    receipt_transfer,
+                )
+            }
+            CollectorReceiptLifecyclePairTargetV3::PendingUnmount(census) => {
+                retain_collector_receipt_lifecycle_pair(
+                    census,
+                    s2_directory,
+                    record,
+                    bytes,
+                    operation_name,
+                    record_name,
+                    record_sha256,
+                    sequence,
+                    receipt_transfer,
+                )
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn retain_collector_receipt_lifecycle_pair<M: MountCensusStateV3>(
+    census: &mut RetainedControlCensusV3<'_, BlockingOperationV3, M>,
+    s2_directory: File,
+    record: File,
+    bytes: Vec<u8>,
+    operation_name: String,
+    record_name: String,
+    record_sha256: String,
+    sequence: u32,
+    receipt_transfer: S1CollectorReceiptAppendTransferV3,
+) -> Result<
+    (
+        UnadoptedCollectorGenerationAfterTransferV3,
+        S1AdoptedCollectorPairV3,
+    ),
+    PrivilegedDisposableControlErrorV2,
+> {
+    if census.admission.operation_name != operation_name {
+        return Err(invalid(
+            "collector pair differs from the selected blocking operation",
+        ));
+    }
+    let target_index = census
+        .assessment
+        ._operations
+        .iter()
+        .position(|capsule| capsule.name == operation_name)
+        .ok_or_else(|| invalid("collector pair operation capsule disappeared"))?;
+    if census
+        .assessment
+        ._operations
+        .iter()
+        .skip(target_index + 1)
+        .any(|capsule| capsule.name == operation_name)
+    {
+        return Err(invalid("collector pair operation capsule is duplicated"));
+    }
+
+    let (
+        after_transfer,
+        before_root,
+        after_root,
+        collector_receipt,
+        new_receipt,
+        new_receipt_bytes,
+    ) = receipt_transfer.into_s1_parts(S1CollectorReceiptAppendReadSealV3 { _private: () });
+
+    let next_fd_count = census
+        .assessment
+        ._retained_fd_count
+        .checked_add(2)
+        .ok_or_else(|| invalid("collector pair descriptor count overflowed"))?;
+    if next_fd_count > MAX_RETAINED_FDS {
+        return Err(invalid("collector pair exceeds retained descriptor bound"));
+    }
+    let bytes_after_receipt = census
+        .assessment
+        ._retained_record_bytes
+        .checked_add(new_receipt_bytes.len())
+        .filter(|total| *total <= MAX_TOTAL_RECORD_BYTES)
+        .ok_or_else(|| invalid("collector pair receipt exceeds retained byte bound"))?;
+    let remaining_record_bytes = MAX_TOTAL_RECORD_BYTES
+        .checked_sub(bytes_after_receipt)
+        .ok_or_else(|| invalid("collector pair retained bytes exceed their bound"))?;
+
+    let transferred_receipt: RestartCollectorReceiptV3 = serde_json::from_slice(&new_receipt_bytes)
+        .map_err(|error| {
+            invalid(format!(
+                "collector-pair transferred receipt JSON failed before S1 commit: {error}"
+            ))
+        })?;
+    if transferred_receipt.operation_nonce != census.admission.operation_nonce {
+        return Err(invalid(
+            "collector-pair transferred receipt belongs to another operation",
+        ));
+    }
+
+    let expected_uid = census.assessment._policy.expected_uid;
+    let expected_gid = census.assessment._policy.expected_gid;
+    let filesystem = census.assessment._policy.filesystem.clone();
+    let s2_identity = validate_directory(
+        &s2_directory,
+        expected_uid,
+        expected_gid,
+        0o700,
+        &filesystem,
+        "collector-pair S2 operation directory",
+    )?;
+    let target_identity = census.assessment._operations[target_index].identity;
+    if (s2_identity.dev, s2_identity.ino) != (target_identity.dev, target_identity.ino) {
+        return Err(invalid(
+            "collector-pair S2 directory is not the exact S1 operation inode",
+        ));
+    }
+
+    let before_lifecycle = census.assessment._operations[target_index]
+        .records
+        .iter()
+        .map(|record| record.bytes.clone())
+        .collect::<Vec<_>>();
+    let mut after_lifecycle = before_lifecycle.clone();
+    after_lifecycle
+        .try_reserve(1)
+        .map_err(|_| invalid("could not reserve collector-pair lifecycle replay"))?;
+    after_lifecycle.push(bytes.clone());
+    let appended_receipt = exact_collector_receipt_append_v3(&before_lifecycle, &after_lifecycle)
+        .map_err(|error| {
+            invalid(format!(
+                "collector-pair lifecycle generation replay failed: {error}"
+            ))
+        })?
+        .ok_or_else(|| {
+            invalid("collector-pair lifecycle append has no receipt-root generation delta")
+        })?;
+    if appended_receipt != collector_receipt {
+        return Err(invalid(
+            "collector-pair lifecycle reference differs from the one-shot receipt transfer",
+        ));
+    }
+    let inspection = match dispatch_lifecycle_records(&after_lifecycle)
+        .map_err(|error| invalid(format!("collector-pair lifecycle is invalid: {error}")))?
+    {
+        LifecycleDispatchV2::V2(inspection) => inspection,
+        LifecycleDispatchV2::HistoricalV1(_) => {
+            return Err(invalid(
+                "collector pair changed a V2 operation into a historical lifecycle",
+            ));
+        }
+    };
+    if inspection.operation_nonce != census.admission.operation_nonce
+        || !inspection.blocks_new_operations
+    {
+        return Err(invalid(
+            "collector pair changed the selected operation or terminal disposition",
+        ));
+    }
+
+    let parent_fd = census.assessment._policy.operations.as_raw_fd();
+    let record_plan = census.assessment._operations[target_index].preflight_exact_record_append(
+        parent_fd,
+        expected_uid,
+        expected_gid,
+        &filesystem,
+        record,
+        bytes,
+        &record_name,
+        &record_sha256,
+        sequence,
+        remaining_record_bytes,
+    )?;
+    let next_record_bytes = bytes_after_receipt
+        .checked_add(record_plan.appended_bytes)
+        .filter(|total| *total <= MAX_TOTAL_RECORD_BYTES)
+        .ok_or_else(|| invalid("collector pair lifecycle exceeds retained byte bound"))?;
+
+    let receipt_plan = census.assessment._operations[target_index]
+        .collector_receipts
+        .as_mut()
+        .ok_or_else(|| invalid("collector pair target lost its S1 receipt-root mirror"))?
+        .preflight_exact_append(
+            &before_lifecycle,
+            before_root,
+            after_root,
+            collector_receipt.clone(),
+            new_receipt,
+            new_receipt_bytes,
+        )
+        .map_err(|error| {
+            invalid(format!(
+                "collector pair receipt-root successor failed S1 preflight: {error}"
+            ))
+        })?;
+
+    census.preflight_collector_pair_candidate(
+        target_index,
+        &record_plan,
+        &after_lifecycle,
+        &inspection,
+        &collector_receipt,
+    )?;
+
+    let target = &mut census.assessment._operations[target_index];
+    let receipt_root = target
+        .collector_receipts
+        .as_mut()
+        .ok_or_else(|| invalid("collector pair target lost its mirror after complete preflight"))?;
+
+    // Everything below is moves, assignments, and pushes into capacity
+    // reserved by the two preflight plans. No syscall, hash, reducer,
+    // allocation, or fallible branch is permitted after this boundary.
+    let adoption = S1AdoptedCollectorPairV3 {
+        collector_receipt,
+        lifecycle_record_sha256: record_sha256,
+        lifecycle_record_sequence: sequence,
+        operation_name,
+        _not_send_or_sync: PhantomData,
+    };
+    receipt_root.commit_exact_append(receipt_plan);
+    target.commit_exact_record_append(record_plan);
+    census.assessment._retained_fd_count = next_fd_count;
+    census.assessment._retained_record_bytes = next_record_bytes;
+    census.admission.operation_identity = target.identity;
+    Ok((after_transfer, adoption))
+}
+
 impl RestartAdmissionAppendSinkV3<'_, '_> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn retain(
@@ -2890,6 +3379,31 @@ fn absorb_transferred_lifecycle_record<A, M: MountCensusStateV3>(
     if s2_identity.dev != target_identity.dev || s2_identity.ino != target_identity.ino {
         return Err(invalid(
             "S2 lifecycle capsule directory is not the exact S1-retained operation inode",
+        ));
+    }
+    // A collector receipt changes two namespaces at once: the operation
+    // lifecycle and the external receipt root.  The ordinary record sink has
+    // no receipt-root successor capability, so reject that delta while the S1
+    // capsule is still completely unchanged.  In particular, do not rely on
+    // the post-append receipt-root replay below: by then the record descriptor
+    // would already have been installed into the retained census.
+    let before_lifecycle = census.assessment._operations[target_index]
+        .records
+        .iter()
+        .map(|record| record.bytes.clone())
+        .collect::<Vec<_>>();
+    let mut after_lifecycle = before_lifecycle.clone();
+    after_lifecycle.push(bytes.clone());
+    if exact_collector_receipt_append_v3(&before_lifecycle, &after_lifecycle)
+        .map_err(|error| {
+            invalid(format!(
+                "candidate lifecycle collector roster failed before ordinary append: {error}"
+            ))
+        })?
+        .is_some()
+    {
+        return Err(invalid(
+            "ordinary lifecycle sink cannot absorb a collector receipt generation delta",
         ));
     }
     let parent_fd = census.assessment._policy.operations.as_raw_fd();
@@ -3234,6 +3748,16 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
         })
     }
 
+    pub(crate) fn selected_collector_receipt_lifecycle_pair_sink(
+        &mut self,
+    ) -> Result<CollectorReceiptLifecyclePairSinkV3<'_, 'a>, PrivilegedDisposableControlErrorV2>
+    {
+        Ok(CollectorReceiptLifecyclePairSinkV3 {
+            target: CollectorReceiptLifecyclePairTargetV3::Blocking(self),
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
     pub(crate) fn selected_restart_admission_sink(
         &mut self,
     ) -> Result<RestartAdmissionAppendSinkV3<'_, 'a>, PrivilegedDisposableControlErrorV2> {
@@ -3545,6 +4069,16 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, PendingUnmountDeltaV3>
         })
     }
 
+    pub(crate) fn selected_collector_receipt_lifecycle_pair_sink(
+        &mut self,
+    ) -> Result<CollectorReceiptLifecyclePairSinkV3<'_, 'a>, PrivilegedDisposableControlErrorV2>
+    {
+        Ok(CollectorReceiptLifecyclePairSinkV3 {
+            target: CollectorReceiptLifecyclePairTargetV3::PendingUnmount(self),
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
     pub(crate) fn advance_unmount_delta(
         self,
         advance: SealedMountDeltaAdvanceV3<'_, UnmountingV3>,
@@ -3673,7 +4207,125 @@ impl OperationCapsule {
         }
     }
 
-    fn absorb_exact_record_append(
+    fn preflight_after_record_append_state(
+        &self,
+        plan: &LifecycleRecordAppendCommitV3,
+        lifecycle: &[Vec<u8>],
+        inspection: &LifecycleInspectionV2,
+        expected_uid: u32,
+        expected_gid: u32,
+        filesystem: &FilesystemBinding,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        self.validate_prepared_lifecycle_binding(inspection)?;
+        if let Some(effect_issues) = &self.effect_issues {
+            effect_issues.revalidate(
+                self.directory.as_raw_fd(),
+                expected_uid,
+                expected_gid,
+                filesystem,
+            )?;
+        }
+        if let Some(prepared_manifest) = &self.prepared_manifest {
+            prepared_manifest.revalidate(
+                self.directory.as_raw_fd(),
+                expected_uid,
+                expected_gid,
+                filesystem,
+            )?;
+        }
+        if let Some(restart_admissions) = &self.restart_admissions {
+            restart_admissions.revalidate(
+                self.directory.as_raw_fd(),
+                expected_uid,
+                expected_gid,
+                filesystem,
+            )?;
+        }
+        match (&self.prepared_manifest, &self.restart_admissions) {
+            (Some(prepared), Some(admissions)) => {
+                let admission_bytes = admissions
+                    .records
+                    .iter()
+                    .map(|record| record.bytes.clone())
+                    .collect::<Vec<_>>();
+                validate_restart_admission_bijection_for_s1(
+                    lifecycle,
+                    &admission_bytes,
+                    &prepared.bytes,
+                    prepared.identity.ino,
+                    &sha256(&prepared.bytes),
+                    operation_nonce(&self.name)?,
+                    S1RestartAdmissionReadSealV3 { _private: () },
+                )
+                .map_err(|error| {
+                    invalid(format!(
+                        "candidate S1 restart-admission bijection failed: {error}"
+                    ))
+                })?;
+            }
+            (None, None) => {}
+            _ => {
+                return Err(invalid(
+                    "candidate prepared manifest and restart-admission root are not retained together",
+                ));
+            }
+        }
+        if plan.next_roster.len()
+            != self.record_names.len()
+                + 1
+                + usize::from(self.effect_issues.is_some())
+                + usize::from(self.prepared_manifest.is_some())
+                + usize::from(self.restart_admissions.is_some())
+        {
+            return Err(invalid(
+                "candidate operation roster differs from one exact lifecycle append",
+            ));
+        }
+        Ok(())
+    }
+
+    fn register_after_record_append(
+        &self,
+        plan: &LifecycleRecordAppendCommitV3,
+        appended_receipt: &crate::mac_disposable_lifecycle::CollectorReceiptFileBindingV3,
+        registry: &mut CensusRegistry,
+        prefix: &str,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        let path = format!("{prefix}/{}", self.name);
+        registry.insert(&path, plan.after_identity)?;
+        for record in &self.records {
+            record.register(registry, &path)?;
+        }
+        plan.record.register(registry, &path)?;
+        if let Some(effect_issues) = &self.effect_issues {
+            effect_issues.register(registry, &path)?;
+        }
+        if let Some(prepared_manifest) = &self.prepared_manifest {
+            prepared_manifest.register(registry, &path)?;
+        }
+        if let Some(restart_admissions) = &self.restart_admissions {
+            restart_admissions.register(registry, &path)?;
+        }
+        let receipts = self.collector_receipts.as_ref().ok_or_else(|| {
+            invalid("collector pair target has no retained S1 receipt-root mirror")
+        })?;
+        let (root_path, root_dev, root_ino, entries) =
+            receipts.s1_census_projection(&S1CollectorReceiptRegistrySealV3 { _private: () });
+        let root_label = format!("collector receipt root {}", root_path.display());
+        registry.insert_inode(&root_label, root_dev, root_ino)?;
+        for (name, dev, ino) in entries {
+            registry.insert_inode(&format!("{root_label}/{name}"), dev, ino)?;
+        }
+        let binding = appended_receipt.exact_binding();
+        registry.insert_inode(
+            &format!("{root_label}/{}", appended_receipt.final_basename()),
+            binding.dev,
+            binding.inode,
+        )?;
+        Ok(())
+    }
+
+    fn preflight_exact_record_append(
         &mut self,
         parent_fd: RawFd,
         expected_uid: u32,
@@ -3685,8 +4337,7 @@ impl OperationCapsule {
         expected_record_sha256: &str,
         exact_sequence: u32,
         maximum_appended_bytes: usize,
-        final_revalidate: bool,
-    ) -> Result<(usize, Identity), PrivilegedDisposableControlErrorV2> {
+    ) -> Result<LifecycleRecordAppendCommitV3, PrivilegedDisposableControlErrorV2> {
         require_hex_nonce(expected_record_sha256, "appended lifecycle record SHA-256")?;
         let next_sequence = self
             .record_names
@@ -3779,19 +4430,78 @@ impl OperationCapsule {
             ));
         }
         let appended_bytes = descriptor_bytes.len();
+        // Reserve all storage while failure is still allowed.  Once this plan
+        // is returned, committing it must not allocate or call into the OS.
+        self.record_names
+            .try_reserve(1)
+            .map_err(|_| invalid("could not reserve retained lifecycle name capacity"))?;
+        self.records
+            .try_reserve(1)
+            .map_err(|_| invalid("could not reserve retained lifecycle record capacity"))?;
+        Ok(LifecycleRecordAppendCommitV3 {
+            after_identity,
+            appended_bytes,
+            next_name: next_name.clone(),
+            next_roster: expected_roster,
+            record: RecordCapsule {
+                bytes: descriptor_bytes,
+                file,
+                identity: record_identity,
+                name: next_name,
+            },
+        })
+    }
+
+    fn commit_exact_record_append(
+        &mut self,
+        plan: LifecycleRecordAppendCommitV3,
+    ) -> (usize, Identity) {
+        let LifecycleRecordAppendCommitV3 {
+            after_identity,
+            appended_bytes,
+            next_name,
+            next_roster,
+            record,
+        } = plan;
+        let record_identity = record.identity;
         self.identity = after_identity;
-        self.record_names.push(next_name.clone());
-        self.roster = expected_roster;
-        self.records.push(RecordCapsule {
-            bytes: descriptor_bytes,
+        self.record_names.push(next_name);
+        self.roster = next_roster;
+        self.records.push(record);
+        (appended_bytes, record_identity)
+    }
+
+    fn absorb_exact_record_append(
+        &mut self,
+        parent_fd: RawFd,
+        expected_uid: u32,
+        expected_gid: u32,
+        filesystem: &FilesystemBinding,
+        file: File,
+        bytes: Vec<u8>,
+        exact_name: &str,
+        expected_record_sha256: &str,
+        exact_sequence: u32,
+        maximum_appended_bytes: usize,
+        final_revalidate: bool,
+    ) -> Result<(usize, Identity), PrivilegedDisposableControlErrorV2> {
+        let plan = self.preflight_exact_record_append(
+            parent_fd,
+            expected_uid,
+            expected_gid,
+            filesystem,
             file,
-            identity: record_identity,
-            name: next_name,
-        });
+            bytes,
+            exact_name,
+            expected_record_sha256,
+            exact_sequence,
+            maximum_appended_bytes,
+        )?;
+        let result = self.commit_exact_record_append(plan);
         if final_revalidate {
             self.revalidate(parent_fd, expected_uid, expected_gid, filesystem)?;
         }
-        Ok((appended_bytes, record_identity))
+        Ok(result)
     }
 
     fn revalidate(
@@ -5430,6 +6140,18 @@ fn verify_t5(t5: &File) -> Result<(), PrivilegedDisposableControlErrorV2> {
 
 fn invalid(message: impl Into<String>) -> PrivilegedDisposableControlErrorV2 {
     PrivilegedDisposableControlErrorV2::Invalid(message.into())
+}
+
+fn require_receipt_root_claim_matches_sidecar(
+    lifecycle_claims_generation: bool,
+    sidecar_has_initial_binding: bool,
+) -> Result<(), PrivilegedDisposableControlErrorV2> {
+    if lifecycle_claims_generation != sidecar_has_initial_binding {
+        return Err(invalid(
+            "lifecycle claim and exact prepared sidecar disagree on receipt-root generation",
+        ));
+    }
+    Ok(())
 }
 
 unsafe extern "C" {

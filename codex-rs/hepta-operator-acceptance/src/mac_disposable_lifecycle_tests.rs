@@ -355,6 +355,11 @@ fn exact_receipt_append_accepts_only_zero_or_one_exact_generation() {
     let g1 = receipt_generation_records(std::slice::from_ref(&first));
     let g2 = receipt_generation_records(&[first.clone(), second.clone()]);
 
+    assert_eq!(
+        exact_collector_receipt_append_v3(&[], &g0).unwrap(),
+        None,
+        "fresh OperationPrepared admission begins from the exact empty lifecycle"
+    );
     assert_eq!(exact_collector_receipt_append_v3(&g0, &g0).unwrap(), None);
     assert_eq!(
         exact_collector_receipt_append_v3(&g0, &g1).unwrap(),

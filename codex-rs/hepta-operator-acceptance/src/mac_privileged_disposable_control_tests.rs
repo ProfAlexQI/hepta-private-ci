@@ -48,6 +48,34 @@ type PendingMountCensusForCompileAssertions =
 type PendingUnmountCensusForCompileAssertions =
     RetainedControlCensusV3<'static, BlockingOperationV3, PendingUnmountDeltaV3>;
 type RecoveredControlLeaseSealForCompileAssertions = RecoveredControlLeaseSealV3;
+type AdoptedCollectorPairForCompileAssertions = S1AdoptedCollectorPairV3;
+type CollectorPairSinkForCompileAssertions = CollectorReceiptLifecyclePairSinkV3<'static, 'static>;
+assert_not_impl!(CollectorPairSinkForCompileAssertions, Clone);
+assert_not_impl!(CollectorPairSinkForCompileAssertions, Send);
+assert_not_impl!(CollectorPairSinkForCompileAssertions, Sync);
+assert_not_impl!(CollectorPairSinkForCompileAssertions, serde::Serialize);
+assert_not_impl!(
+    CollectorPairSinkForCompileAssertions,
+    serde::de::DeserializeOwned
+);
+assert_not_impl!(CollectorPairSinkForCompileAssertions, std::os::fd::AsRawFd);
+assert_not_impl!(CollectorPairSinkForCompileAssertions, From<std::fs::File>);
+assert_not_impl!(AdoptedCollectorPairForCompileAssertions, Clone);
+assert_not_impl!(AdoptedCollectorPairForCompileAssertions, Send);
+assert_not_impl!(AdoptedCollectorPairForCompileAssertions, Sync);
+assert_not_impl!(AdoptedCollectorPairForCompileAssertions, serde::Serialize);
+assert_not_impl!(
+    AdoptedCollectorPairForCompileAssertions,
+    serde::de::DeserializeOwned
+);
+assert_not_impl!(
+    AdoptedCollectorPairForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    AdoptedCollectorPairForCompileAssertions,
+    From<std::fs::File>
+);
 assert_not_impl!(RecoveredControlLeaseSealForCompileAssertions, Clone);
 assert_not_impl!(RecoveredControlLeaseSealForCompileAssertions, Send);
 assert_not_impl!(RecoveredControlLeaseSealForCompileAssertions, Sync);
@@ -171,6 +199,17 @@ fn exact_mount_typestate_accepts_only_stable_or_one_pending_pair() {
     assert!(unmounting.validate_current(&after, &after).is_ok());
     assert!(unmounting.validate_current(&after, &before).is_ok());
     assert!(unmounting.validate_current(&after, &third).is_err());
+}
+
+#[test]
+fn receipt_root_claim_must_match_exact_sidecar_before_external_replay() {
+    assert!(require_receipt_root_claim_matches_sidecar(false, false).is_ok());
+    assert!(require_receipt_root_claim_matches_sidecar(true, true).is_ok());
+    for (claim, sidecar) in [(false, true), (true, false)] {
+        let error = require_receipt_root_claim_matches_sidecar(claim, sidecar)
+            .expect_err("Some/None mismatch must fail closed");
+        assert!(error.to_string().contains("exact prepared sidecar"));
+    }
 }
 
 fn prepared_event() -> DisposableLifecycleEventV2 {

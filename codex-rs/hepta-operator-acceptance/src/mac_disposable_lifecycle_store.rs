@@ -36,9 +36,10 @@ use crate::mac_disposable_reconciliation_collector::RestartCollectorErrorV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorAppendEventV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorLineageV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorMountDeltaV3;
-use crate::mac_disposable_reconciliation_collector::RetainedCollectorObservationV3;
+use crate::mac_disposable_reconciliation_collector::RetainedCollectorReceiptRootOwnerV3;
 use crate::mac_disposable_reconciliation_collector::RetainedPreparedCollectorCapabilityV3;
 use crate::mac_disposable_reconciliation_collector::RetainedTerminalAbsenceV3;
+use crate::mac_disposable_reconciliation_collector::UnadoptedCollectorGenerationV3;
 use crate::mac_disposable_reconciliation_collector::UnmountingV3;
 use crate::mac_disposable_reconciliation_collector::lifecycle_manifest_initial_receipt_root_binding;
 use crate::mac_inert_one_shot_runner::AuthenticatedDispatchedRunnerV3;
@@ -55,6 +56,7 @@ use crate::mac_inert_one_shot_runner::SealedRunnerDispatchV3;
 use crate::mac_iomedia_identity::HeldRestartIOMediaInventoryV3;
 use crate::mac_iomedia_identity::capture_restart_iomedia_inventory_v3;
 use crate::mac_privileged_disposable_control::BlockingOperationV3;
+use crate::mac_privileged_disposable_control::CollectorReceiptLifecyclePairSinkV3;
 use crate::mac_privileged_disposable_control::CompletedOperationV3;
 use crate::mac_privileged_disposable_control::FreshAdmissionV3;
 use crate::mac_privileged_disposable_control::LifecycleRecordAppendSinkV3;
@@ -1229,6 +1231,7 @@ pub(crate) struct ReconciliationOperationStoreV3<'a, 'e, R = NeedsRestartEpochV3
     poisoned: bool,
     prepared: Option<RetainedPreparedCollectorCapabilityV3>,
     collector: Option<RetainedCollectorLineageV3>,
+    receipt_root_owner: Option<RetainedCollectorReceiptRootOwnerV3>,
     issues: DurableEffectIssueStoreV3,
     restart: R,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
@@ -1273,6 +1276,7 @@ pub(crate) struct PendingUnmountReconciliationOperationStoreV3<'a, 'e, S> {
     journal: DisposableLifecycleJournalV2,
     poisoned: bool,
     prepared: Option<RetainedPreparedCollectorCapabilityV3>,
+    receipt_root_owner: Option<RetainedCollectorReceiptRootOwnerV3>,
     restart: ActiveRestartEpochV3,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
     _state: PhantomData<fn() -> S>,
@@ -1507,6 +1511,38 @@ impl RetainedLifecycleRecordAppendV3 {
         self.revalidate()
     }
 
+    fn adopt_collector_pair_into_s1(
+        &mut self,
+        sink: CollectorReceiptLifecyclePairSinkV3<'_, '_>,
+        transfer: crate::mac_disposable_reconciliation_collector::S1CollectorReceiptAppendTransferV3,
+    ) -> Result<
+        (
+            crate::mac_disposable_reconciliation_collector::UnadoptedCollectorGenerationAfterTransferV3,
+            crate::mac_privileged_disposable_control::S1AdoptedCollectorPairV3,
+        ),
+        DurableLifecycleStoreErrorV3,
+    >{
+        self.revalidate_exact()?;
+        if self.s1_adopted {
+            return Err(invalid(
+                "retained lifecycle/collector pair was already adopted by S1",
+            ));
+        }
+        let adopted = sink.retain(
+            self.directory.try_clone()?,
+            self.record.try_clone()?,
+            self.bytes.clone(),
+            self.operation_name.clone(),
+            self.name.clone(),
+            self.digest.clone(),
+            self.sequence,
+            transfer,
+        )?;
+        self.s1_adopted = true;
+        self.revalidate()?;
+        Ok(adopted)
+    }
+
     fn adopt_restart_pair_into_s1(
         &mut self,
         sink: RestartAdmissionAppendSinkV3<'_, '_>,
@@ -1589,6 +1625,7 @@ pub(crate) struct CompletedReconciliationOperationStoreV3<'a, 'e> {
     issues: DurableEffectIssueStoreV3,
     journal: DisposableLifecycleJournalV2,
     prepared: Option<RetainedPreparedCollectorCapabilityV3>,
+    receipt_root_owner: Option<RetainedCollectorReceiptRootOwnerV3>,
     restart: ActiveRestartEpochV3,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
 }
@@ -1808,13 +1845,16 @@ impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
         } else {
             None
         };
+        let mut receipt_root_owner = None;
         if let Some(prepared) = &mut prepared {
             let records = store
                 .records
                 .iter()
                 .map(|record| record.bytes.clone())
                 .collect::<Vec<_>>();
-            prepared.bind_receipt_root_to_lifecycle(&records)?;
+            let mut owner = prepared.take_initial_receipt_root_owner()?;
+            owner.bind_lifecycle_records(&records)?;
+            receipt_root_owner = Some(owner);
             census.revalidate()?;
         }
         let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(store.issue_source())?;
@@ -1840,6 +1880,7 @@ impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
             journal,
             poisoned: false,
             prepared,
+            receipt_root_owner,
             restart: NeedsRestartEpochV3 {
                 _not_send_or_sync: PhantomData,
             },
@@ -2829,6 +2870,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, NeedsRestartEpochV3> {
             poisoned: self.poisoned,
             prepared: self.prepared,
             collector: self.collector,
+            receipt_root_owner: self.receipt_root_owner,
             issues: self.issues,
             restart: active_restart,
             store: self.store,
@@ -2860,6 +2902,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, NeedsRestartEpochV3> {
             poisoned: self.poisoned,
             prepared: self.prepared,
             collector: self.collector,
+            receipt_root_owner: self.receipt_root_owner,
             issues: self.issues,
             restart: ActiveRestartEpochV3 {
                 admission_sha256: "0".repeat(64),
@@ -2978,15 +3021,35 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
         let prepared = self.prepared.as_mut().ok_or_else(|| {
             invalid("active restart collection lacks its retained prepared capability")
         })?;
-        let pending =
-            prepared.collect_reconciliation_from_active_with_hook(seed, after_iomedia_capture)?;
-        self.census.revalidate()?;
-        self.store.revalidate()?;
-        self.epoch.validate_current().map_err(|error| {
-            invalid(format!(
-                "active restart epoch changed across collection: {error}"
-            ))
+        let owner = self.receipt_root_owner.take().ok_or_else(|| {
+            self.poisoned = true;
+            invalid("active restart collection lost its unique receipt-root owner")
         })?;
+        let pending = match prepared.collect_reconciliation_from_active_with_hook(
+            seed,
+            owner,
+            after_iomedia_capture,
+        ) {
+            Ok(pending) => pending,
+            Err(error) => {
+                self.poisoned = true;
+                return Err(error.into());
+            }
+        };
+        let post_collection: Result<(), DurableLifecycleStoreErrorV3> = (|| {
+            self.census.revalidate()?;
+            self.store.revalidate()?;
+            self.epoch.validate_current().map_err(|error| {
+                invalid(format!(
+                    "active restart epoch changed across collection: {error}"
+                ))
+            })?;
+            Ok(())
+        })();
+        if let Err(error) = post_collection {
+            self.poisoned = true;
+            return Err(error);
+        }
         self.restart.collector_pending = true;
         Ok(pending)
     }
@@ -3021,6 +3084,11 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
         let prior = self.collector.as_ref().ok_or_else(|| {
             invalid("FreshAbsence requires a wrapper-owned retained predictable observation")
         })?;
+        let owner = self
+            .receipt_root_owner
+            .as_ref()
+            .ok_or_else(|| invalid("FreshAbsence lost its unique retained receipt-root owner"))?;
+        owner.revalidate_lineage(prior)?;
         prior.revalidate_bound()?;
         let snapshot = prior.snapshot_for_fresh_absence()?;
         let actual_snapshot_sha256 = reconciliation_snapshot_sha256(snapshot)?;
@@ -3047,15 +3115,32 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
         let prepared = self.prepared.as_mut().ok_or_else(|| {
             invalid("FreshAbsence collection lacks its retained prepared capability")
         })?;
-        let pending = prepared.collect_fresh_absence_from_active(epoch, snapshot)?;
-        prior.revalidate_bound()?;
-        self.census.revalidate()?;
-        self.store.revalidate()?;
-        self.epoch.validate_current().map_err(|error| {
-            invalid(format!(
-                "active restart epoch changed across absence collection: {error}"
-            ))
+        let owner = self.receipt_root_owner.take().ok_or_else(|| {
+            self.poisoned = true;
+            invalid("FreshAbsence lost its unique receipt-root owner before collection")
         })?;
+        let pending = match prepared.collect_fresh_absence_from_active(epoch, snapshot, owner) {
+            Ok(pending) => pending,
+            Err(error) => {
+                self.poisoned = true;
+                return Err(error.into());
+            }
+        };
+        let post_collection: Result<(), DurableLifecycleStoreErrorV3> = (|| {
+            prior.revalidate_bound()?;
+            self.census.revalidate()?;
+            self.store.revalidate()?;
+            self.epoch.validate_current().map_err(|error| {
+                invalid(format!(
+                    "active restart epoch changed across absence collection: {error}"
+                ))
+            })?;
+            Ok(())
+        })();
+        if let Err(error) = post_collection {
+            self.poisoned = true;
+            return Err(error);
+        }
         self.restart.collector_pending = true;
         Ok(pending)
     }
@@ -3109,19 +3194,51 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             .map(|append| append.digest().to_string())
     }
 
-    pub(crate) fn append_retained_collector(
-        &mut self,
-        retained: RetainedCollectorObservationV3,
-    ) -> Result<String, DurableLifecycleStoreErrorV3> {
+    /// Arm the outer transaction before the collector is allowed to publish
+    /// its no-replace receipt.  A caught panic, I/O failure, or forgotten
+    /// pending value after this point leaves the whole wrapper restart-only.
+    pub(crate) fn arm_collector_persistence(&mut self) -> Result<(), DurableLifecycleStoreErrorV3> {
         if !self.restart.collector_pending {
             self.poisoned = true;
             return Err(invalid(
-                "collector receipt has no exact in-flight Active reservation",
+                "collector persistence has no exact in-flight Active reservation",
             ));
         }
-        match self.append_retained_collector_inner(retained) {
+        if self.poisoned || self.store.poisoned() || self.issues.poisoned() {
+            self.poisoned = true;
+            return Err(invalid(
+                "collector persistence cannot begin from a poisoned operation",
+            ));
+        }
+        // From this point onward even a caught validation panic or a replay
+        // error must not return a reusable Active wrapper.  Successful paired
+        // adoption is the only path that clears this poison.
+        self.poisoned = true;
+        self.revalidate_existing_issues()?;
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed before collector persistence: {error}"
+            ))
+        })?;
+        self.store.revalidate()?;
+        Ok(())
+    }
+
+    pub(crate) fn append_unadopted_collector_armed(
+        &mut self,
+        unadopted: UnadoptedCollectorGenerationV3,
+    ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        if !self.poisoned || !self.restart.collector_pending {
+            self.poisoned = true;
+            return Err(invalid(
+                "unadopted collector generation was not published inside the armed transaction",
+            ));
+        }
+        match self.append_unadopted_collector_inner(unadopted) {
             Ok(digest) => {
                 self.restart.collector_pending = false;
+                self.poisoned = false;
                 Ok(digest)
             }
             Err(error) => {
@@ -3135,24 +3252,27 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
         self.poisoned = true;
     }
 
-    fn append_retained_collector_inner(
+    fn append_unadopted_collector_inner(
         &mut self,
-        mut retained: RetainedCollectorObservationV3,
+        unadopted: UnadoptedCollectorGenerationV3,
     ) -> Result<String, DurableLifecycleStoreErrorV3> {
+        unadopted.revalidate()?;
         match self.collector.as_ref() {
             None => {
-                if !matches!(&retained, RetainedCollectorObservationV3::Reconciliation(_)) {
+                if unadopted.purpose()
+                    != crate::mac_disposable_reconciliation_collector::CollectorPurposeV3::ReconciliationSnapshot
+                {
                     return Err(invalid(
-                        "first retained collector observation must be reconciliation",
+                        "first unadopted collector generation must be reconciliation",
                     ));
                 }
             }
-            Some(prior) => prior.validate_fresh_absence_successor(&retained)?,
+            Some(_) => {}
         }
         let (operation_nonce, event) = {
-            let capability = retained.append_capability().map_err(|error| {
+            let capability = unadopted.append_material().map_err(|error| {
                 invalid(format!(
-                    "retained collector evidence failed replay: {error}"
+                    "unadopted collector evidence failed replay: {error}"
                 ))
             })?;
             let event = match capability.event() {
@@ -3171,20 +3291,32 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
         };
         if operation_nonce != self.store.operation_nonce() {
             return Err(invalid(
-                "retained collector operation differs from the reconciliation store",
+                "unadopted collector operation differs from the reconciliation store",
             ));
         }
-        let append = self.append_reconciliation_inner_holding_poison(
-            ReconciliationLifecycleEventV3(event),
-            true,
-        )?;
+        // The receipt root is already G+1 while the retained S1 mirror is G.
+        // Generic census revalidation and generic lifecycle adoption are both
+        // intentionally unavailable in this interval.
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed before paired collector append: {error}"
+            ))
+        })?;
+        self.store.revalidate()?;
+        let digest = self
+            .store
+            .append_reconciliation(&mut self.journal, ReconciliationLifecycleEventV3(event))?;
+        let mut append = RetainedLifecycleRecordAppendV3::retain(&self.store, &digest)?;
+        let transfer = unadopted.into_s1_transfer()?;
+        let sink = self
+            .census
+            .selected_collector_receipt_lifecycle_pair_sink()?;
+        let (after_transfer, adoption) = append.adopt_collector_pair_into_s1(sink, transfer)?;
+        append.require_s1_adopted()?;
         let digest = append.digest().to_string();
-        if let Err(error) = retained.bind_lifecycle_record(append) {
-            self.poisoned = true;
-            return Err(invalid(format!(
-                "durable collector append could not bind its retained record: {error}"
-            )));
-        }
+        let (receipt_root_owner, retained) = after_transfer.bind_adopted_pair(append, adoption)?;
+        receipt_root_owner.revalidate_observation(&retained)?;
+        self.receipt_root_owner = Some(receipt_root_owner);
         retained.revalidate_bound().map_err(|error| {
             self.poisoned = true;
             invalid(format!(
@@ -3192,6 +3324,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             ))
         })?;
         if let Some(prior) = self.collector.as_ref() {
+            prior.validate_fresh_absence_successor(&retained)?;
             prior.revalidate_bound().map_err(|error| {
                 self.poisoned = true;
                 invalid(format!(
@@ -3211,10 +3344,17 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
                 ))
             })?,
         );
+        self.receipt_root_owner
+            .as_ref()
+            .ok_or_else(|| invalid("collector pair lost its unique receipt-root owner"))?
+            .revalidate_lineage(
+                self.collector
+                    .as_ref()
+                    .ok_or_else(|| invalid("collector pair lost its retained lineage"))?,
+            )?;
         // The exact collector is now both S1-adopted and wrapper-owned.  This
         // assignment is the outer transaction endpoint; every error or panic
         // after the V2 append above leaves `poisoned` armed.
-        self.poisoned = false;
         Ok(digest)
     }
 
@@ -3291,11 +3431,15 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             issued_append.require_s1_adopted()?;
             let lifecycle =
                 VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
-            let collector_binding = self
+            let collector = self
                 .collector
                 .as_ref()
-                .expect("collector is preserved across the issued append")
-                .issue_binding()
+                .expect("collector is preserved across the issued append");
+            let collector_binding = self
+                .receipt_root_owner
+                .as_ref()
+                .ok_or_else(|| invalid("effect issue lost its unique receipt-root owner"))?
+                .issue_binding(collector)
                 .map_err(|error| {
                     invalid(format!(
                         "retained collector could not seal the effect issue: {error}"
@@ -3555,6 +3699,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             poisoned: _,
             prepared,
             collector: _,
+            receipt_root_owner,
             issues,
             restart,
             store,
@@ -3571,6 +3716,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             journal,
             poisoned: false,
             prepared,
+            receipt_root_owner,
             restart,
             store,
             _state: PhantomData,
@@ -3587,10 +3733,14 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
                 "fresh process epoch changed during issue replay: {error}"
             ))
         })?;
-        self.collector
+        let collector = self
+            .collector
             .as_ref()
-            .ok_or_else(|| invalid("retained issue lost its collector capability"))?
-            .issue_binding()
+            .ok_or_else(|| invalid("retained issue lost its collector capability"))?;
+        self.receipt_root_owner
+            .as_ref()
+            .ok_or_else(|| invalid("retained issue lost its unique receipt-root owner"))?
+            .issue_binding(collector)
             .map_err(|error| invalid(format!("retained issue collector replay failed: {error}")))?
             .revalidate()
             .map_err(|error| invalid(format!("retained issue collector changed: {error}")))?;
@@ -3783,9 +3933,14 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             let retained = self.collector.as_ref().ok_or_else(|| {
                 invalid("terminal closure requires a wrapper-owned retained FreshAbsence")
             })?;
-            let absence = retained.terminal_absence().map_err(|error| {
-                invalid(format!("retained terminal absence is invalid: {error}"))
-            })?;
+            let absence = self
+                .receipt_root_owner
+                .as_ref()
+                .ok_or_else(|| invalid("terminal closure lost its unique receipt-root owner"))?
+                .terminal_absence(retained)
+                .map_err(|error| {
+                    invalid(format!("retained terminal absence is invalid: {error}"))
+                })?;
             if absence.operation_nonce() != self.store.operation_nonce() {
                 return Err(invalid(
                     "terminal FreshAbsence operation differs from the reconciliation store",
@@ -3844,6 +3999,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             issues: self.issues,
             journal: self.journal,
             prepared: self.prepared,
+            receipt_root_owner: self.receipt_root_owner,
             restart: self.restart,
             store: self.store,
         })
@@ -3856,8 +4012,24 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             .iter()
             .map(|record| record.bytes.clone())
             .collect::<Vec<_>>();
-        if let Some(prepared) = self.prepared.as_ref() {
-            prepared.revalidate_receipt_root_against_lifecycle(&lifecycle_records)?;
+        if self.prepared.is_some() {
+            match self.receipt_root_owner.as_ref() {
+                Some(owner) => {
+                    owner.revalidate_lifecycle_records(&lifecycle_records)?;
+                    if let Some(lineage) = self.collector.as_ref() {
+                        owner.revalidate_lineage(lineage)?;
+                    }
+                }
+                None if self.restart.collector_pending => {
+                    // The unique owner is temporarily inside the linear
+                    // Pending -> Unadopted -> paired-adoption chain.
+                }
+                None => {
+                    return Err(invalid(
+                        "reconciliation store lost its unique receipt-root owner",
+                    ));
+                }
+            }
         }
         let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
         self.issues.revalidate_required(&lifecycle)?;
@@ -3894,6 +4066,15 @@ impl<S> PendingUnmountReconciliationOperationStoreV3<'_, '_, S> {
                 "pending-unmount collector delta failed exact live replay: {error}"
             ))
         })?;
+        self.receipt_root_owner
+            .as_ref()
+            .ok_or_else(|| invalid("pending-unmount operation lost its receipt-root owner"))?
+            .revalidate_mount_delta(&self.delta)
+            .map_err(|error| {
+                invalid(format!(
+                    "pending-unmount receipt-root lineage failed exact replay: {error}"
+                ))
+            })?;
         let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
         self.issues.revalidate_required(&lifecycle)?;
         self.issues.revalidate_s1_adopted()?;
@@ -3943,14 +4124,10 @@ impl<S> PendingUnmountReconciliationOperationStoreV3<'_, '_, S> {
                 effect_id,
                 outcome: CallbackOutcomeV2::Succeeded,
             } if *effect_id == self.effect_id
-        ) || matches!(
-            &event.0,
-            DisposableLifecycleEventV2::UnmountObserved { effect_id, .. }
-                if *effect_id == self.effect_id
         );
         if !valid_event {
             return Err(invalid(
-                "pending-unmount typestate accepts only its exact successful callback or observation",
+                "ordinary pending-unmount append accepts only its exact successful callback; collector observations require paired S1 adoption",
             ));
         }
         self.poisoned = true;
@@ -4004,6 +4181,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             journal,
             poisoned: _,
             prepared,
+            receipt_root_owner,
             restart,
             store,
             _state: _,
@@ -4020,6 +4198,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             journal,
             poisoned: false,
             prepared,
+            receipt_root_owner,
             restart,
             store,
             _state: PhantomData,
@@ -4052,9 +4231,14 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
         let prepared = self.prepared.as_mut().ok_or_else(|| {
             invalid("post-unmount collection lacks its retained prepared capability")
         })?;
+        let owner = self.receipt_root_owner.take().ok_or_else(|| {
+            self.poisoned = true;
+            invalid("post-unmount collection lost its unique receipt-root owner")
+        })?;
         let pending = prepared
-            .collect_reconciliation_from_active(seed)
+            .collect_reconciliation_from_active(seed, owner)
             .map_err(|error| {
+                self.poisoned = true;
                 invalid(format!(
                     "post-unmount live collection failed before persistence: {error}"
                 ))
@@ -4066,77 +4250,89 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             ))
         })?;
         self.store.revalidate()?;
-        let next = pending
+        // From the first no-replace receipt publication onward the S1 mirror
+        // is deliberately one generation behind.  Arm the consumed wrapper
+        // before crossing that boundary; only the exact paired receipt + V2
+        // adoption below may construct a reusable Stable successor.
+        self.poisoned = true;
+        let unadopted = pending
             .persist_for_unmount_delta(&self.delta)
             .map_err(|error| {
                 invalid(format!(
                     "post-unmount collector persistence or exact delta seal failed: {error}"
                 ))
             })?;
-        self.append_retained_observation_and_advance_inner(next)
+        self.append_unadopted_observation_and_advance_inner(unadopted)
     }
 
-    /// Durable post-unmount collection and S1 adoption are inseparable from the
-    /// PendingUnmount -> Stable transition.  A plain observation DTO or digest
-    /// cannot reach this method.
-    #[cfg(test)]
-    pub(crate) fn append_retained_observation_and_advance(
-        self,
-        next: RetainedCollectorObservationV3,
-    ) -> Result<
-        ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>,
-        DurableLifecycleStoreErrorV3,
-    > {
-        self.append_retained_observation_and_advance_inner(next)
-    }
-
-    fn append_retained_observation_and_advance_inner(
+    fn append_unadopted_observation_and_advance_inner(
         mut self,
-        mut next: RetainedCollectorObservationV3,
+        unadopted: UnadoptedCollectorGenerationV3,
     ) -> Result<
         ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>,
         DurableLifecycleStoreErrorV3,
     > {
-        let (operation_nonce, mount_absence_sha256, collector_binding) =
-            {
-                let observation = self.delta.seal_observation(&next).map_err(|error| {
-                    invalid(format!(
-                        "post-unmount collector cannot seal the exact observation: {error}"
-                    ))
-                })?;
-                (
+        if !self.poisoned {
+            self.poisoned = true;
+            return Err(invalid(
+                "post-unmount collector publication was not covered by the outer poison",
+            ));
+        }
+        let (operation_nonce, mount_absence_sha256, collector_binding) = {
+            let observation = self
+                    .delta
+                    .seal_unadopted_observation(&unadopted)
+                    .map_err(|error| {
+                        invalid(format!(
+                            "post-unmount collector cannot seal the exact unadopted observation: {error}"
+                        ))
+                    })?;
+            (
                 observation.operation_nonce().to_string(),
                 observation.mount_evidence_sha256().to_string(),
-                observation.post_effect_collector_binding().map_err(|error| {
-                    invalid(format!(
-                        "post-unmount collector could not seal its lifecycle binding: {error}"
-                    ))
-                })?,
+                observation
+                    .post_effect_collector_binding()
+                    .map_err(|error| {
+                        invalid(format!(
+                            "post-unmount collector could not seal its lifecycle binding: {error}"
+                        ))
+                    })?,
             )
-            };
+        };
         if operation_nonce != self.store.operation_nonce() {
             return Err(invalid(
                 "post-unmount collector belongs to another operation",
             ));
         }
-        let append =
-            self.append_pending_unmount(ReconciliationLifecycleEventV3::unmount_observed(
+        // The receipt root is G+1 while S1 still retains G.  Do not call the
+        // ordinary pending-unmount append path here: its generic S1 sink must
+        // reject collector deltas.  Persist the exact V2 successor, retain it,
+        // and let the dedicated pair sink preflight and commit both mirrors.
+        let digest = self.store.append_reconciliation(
+            &mut self.journal,
+            ReconciliationLifecycleEventV3::unmount_observed(
                 self.effect_id,
                 mount_absence_sha256,
                 collector_binding,
-            ))?;
-        if let Err(error) = next.bind_lifecycle_record(append) {
-            self.poisoned = true;
-            return Err(invalid(format!(
-                "post-unmount collector could not bind its exact S1-adopted lifecycle capsule: {error}"
-            )));
-        }
+            ),
+        )?;
+        let mut append = RetainedLifecycleRecordAppendV3::retain(&self.store, &digest)?;
+        let transfer = unadopted.into_s1_transfer()?;
+        let sink = self
+            .census
+            .selected_collector_receipt_lifecycle_pair_sink()?;
+        let (after_transfer, adoption) = append.adopt_collector_pair_into_s1(sink, transfer)?;
+        append.require_s1_adopted()?;
+        let (receipt_root_owner, next) = after_transfer.bind_adopted_pair(append, adoption)?;
+        receipt_root_owner.revalidate_observation(&next)?;
+        self.receipt_root_owner = Some(receipt_root_owner);
         next.revalidate_bound().map_err(|error| {
             self.poisoned = true;
             invalid(format!(
                 "post-unmount collector changed after durable lifecycle adoption: {error}"
             ))
         })?;
+        self.revalidate_pending_issue_inner(true)?;
 
         let PendingUnmountReconciliationOperationStoreV3 {
             census,
@@ -4149,6 +4345,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             journal,
             poisoned: _,
             prepared,
+            receipt_root_owner,
             restart,
             store,
             _state: _,
@@ -4172,6 +4369,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             poisoned: true,
             prepared,
             collector: Some(lineage),
+            receipt_root_owner,
             issues,
             restart,
             store,
@@ -4193,6 +4391,16 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
                     "post-unmount collector changed after stable transition: {error}"
                 ))
             })?;
+        stable
+            .receipt_root_owner
+            .as_ref()
+            .ok_or_else(|| invalid("stable unmount transition lost its receipt-root owner"))?
+            .revalidate_lineage(
+                stable
+                    .collector
+                    .as_ref()
+                    .ok_or_else(|| invalid("stable unmount transition lost its lineage"))?,
+            )?;
         // This consume-self path reaches its transaction endpoint only after
         // the exact post-effect collector, S1 mount advance, issues, and epoch
         // have all replayed successfully.  An error or panic above returns no

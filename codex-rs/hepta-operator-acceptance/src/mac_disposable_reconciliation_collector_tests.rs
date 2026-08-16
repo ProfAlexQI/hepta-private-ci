@@ -174,7 +174,7 @@ assert_not_impl_any!(
         From<String>
 );
 assert_not_impl_any!(
-    RetainedCollectorAppendV3<'static>:
+    UnadoptedCollectorAppendV3<'static>:
         Clone,
         Send,
         Sync,
@@ -186,6 +186,66 @@ assert_not_impl_any!(
         From<File>,
         TryFrom<File>,
         From<Vec<MountBindingV3>>,
+        From<String>
+);
+assert_not_impl_any!(
+    UnadoptedCollectorGenerationV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<Vec<u8>>,
+        From<String>
+);
+assert_not_impl_any!(
+    UnadoptedCollectorGenerationAfterTransferV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<Vec<u8>>,
+        From<String>
+);
+assert_not_impl_any!(
+    S1CollectorReceiptAppendTransferV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<Vec<u8>>,
+        From<String>
+);
+assert_not_impl_any!(
+    S1CollectorReceiptAppendCommitV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<Vec<u8>>,
         From<String>
 );
 assert_not_impl_any!(
@@ -262,7 +322,7 @@ assert_not_impl_any!(
         From<String>
 );
 assert_not_impl_any!(
-    SealedMountDeltaObservationV3<'static, UnmountingV3>:
+    SealedUnadoptedMountDeltaObservationV3<'static, UnmountingV3>:
         Clone,
         Send,
         Sync,
@@ -739,7 +799,7 @@ fn persist_snapshot_for_receipt_generation(
     let retained = pending
         .persist_and_retain()
         .expect("persist exact G1 receipt and retain its final-stat capsule");
-    let snapshot = match retained.observation_for_test() {
+    let snapshot = match &retained.core.observation {
         FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot) => snapshot.clone(),
         FinalizedRestartObservationV3::FreshAbsence(_) => panic!("wrong G1 observation"),
     };
@@ -1792,48 +1852,64 @@ fn receipt_root_g0_g1_survives_drop_reopen_and_rejects_legal_same_byte_swap() {
 }
 
 #[test]
-fn test_only_owner_g2_keeps_the_historical_g1_capsule_valid() {
+fn unadopted_g1_cannot_publish_g2_or_become_positive() {
     let _lock = live_collector_test_lock();
     let fixture = LiveCollectorFixture::new();
     let pending = collect_reconciliation_snapshot_v3(fixture.request())
         .expect("collect test-only G1 receipt");
-    let mut retained = pending
+    let retained = pending
         .persist_and_retain()
         .expect("persist test-only G1 receipt");
-    let (root, second_receipt) = {
-        let evidence = retained.evidence_mut();
-        assert_eq!(
-            evidence
-                .durable
-                .lifecycle_binding()
-                .root_generation_ordinal(),
-            1
-        );
-        let second = receipt_for_test_generation(&evidence.receipt, 2);
-        let root = evidence
-            .receipt_root
-            .take()
-            .expect("G1 evidence owns the unique receipt-root generation");
-        (root, second)
-    };
-    let second_bytes = canonical_json(&second_receipt).expect("canonical G2 test receipt");
-    let second_sha256 = sha256(&second_bytes);
-    // This direct private call is a test-only owner harness. It proves the A
-    // capsule invariant without adding production successor orchestration.
-    let (second_durable, root) =
-        DurableCollectorReceiptV3::persist(root, &second_receipt, second_bytes, &second_sha256)
-            .expect("advance the test-only owner to G2");
-    assert_eq!(
-        second_durable.lifecycle_binding().root_generation_ordinal(),
-        2
-    );
-    second_durable
-        .revalidate(&root)
-        .expect("G2 capsule is owned by the current root owner");
-    retained.evidence_mut().receipt_root = Some(root);
     retained
         .revalidate()
-        .expect("current G2 owner keeps its historical G1 capsule valid");
+        .expect("unadopted G1 retains exact final receipt evidence");
+    assert_eq!(
+        retained
+            .core
+            .expected_lifecycle_binding
+            .root_generation_ordinal(),
+        1
+    );
+    let tail = retained
+        .core
+        .receipt_root_owner
+        .root
+        .snapshot
+        .entries
+        .last()
+        .expect("unadopted G1 owns its unique tail");
+    assert!(tail.lifecycle_binding.is_none());
+    assert_eq!(
+        tail.expected_lifecycle_binding.as_ref(),
+        Some(&retained.core.expected_lifecycle_binding)
+    );
+
+    let second_receipt = receipt_for_test_generation(&retained.core.receipt, 2);
+    let second_bytes = canonical_json(&second_receipt).expect("canonical G2 test receipt");
+    let second_sha256 = sha256(&second_bytes);
+    let before_count = std::fs::read_dir(&fixture.persistence_root)
+        .unwrap()
+        .count();
+    let UnadoptedCollectorGenerationV3 { core } = retained;
+    let error = DurableCollectorReceiptV3::persist(
+        core.receipt_root_owner.root,
+        &second_receipt,
+        second_bytes,
+        &second_sha256,
+    )
+    .err()
+    .expect("an unadopted G1 tail must block any G2 publication");
+    assert!(
+        error.to_string().contains("unadopted") || error.to_string().contains("generation binding"),
+        "G2 was rejected for the wrong reason: {error}"
+    );
+    assert_eq!(
+        std::fs::read_dir(&fixture.persistence_root)
+            .unwrap()
+            .count(),
+        before_count,
+        "rejected G2 publication changed the receipt-root roster"
+    );
 }
 
 #[test]
@@ -1843,9 +1919,10 @@ fn receipt_root_capacity_allows_exact_64_reopen_but_rejects_any_65th_entry() {
     let PendingRestartObservationV3 {
         guard: _,
         receipt: template,
-        receipt_root,
+        receipt_root_owner,
     } = collect_reconciliation_snapshot_v3(fixture.request())
         .expect("collect capacity-test receipt template");
+    let receipt_root = receipt_root_owner.root;
     let initial_binding = receipt_root.initial_binding;
     let stable_identity = receipt_root.stable_identity;
     drop(receipt_root);
@@ -2416,16 +2493,70 @@ fn retained_observation_keeps_live_evidence_after_persistence() {
         .unwrap();
     retained.revalidate().unwrap();
     {
-        let append = retained.append_capability().unwrap();
+        let append = retained.append_material().unwrap();
         assert_eq!(append.operation_nonce(), fixture.bindings.operation_nonce);
     }
-    assert!(retained.revalidate_bound().is_err());
+    let tail = retained
+        .core
+        .receipt_root_owner
+        .root
+        .snapshot
+        .entries
+        .last()
+        .expect("unadopted receipt tail");
+    assert!(tail.lifecycle_binding.is_none());
+    assert_eq!(
+        tail.expected_lifecycle_binding.as_ref(),
+        Some(&retained.core.expected_lifecycle_binding)
+    );
 
     let late_artifact = fixture
         .artifact_root
         .join(&fixture.policy.artifacts[0].basename);
     write_private(&late_artifact, b"late operation artifact");
     assert!(retained.revalidate().is_err());
+}
+
+#[test]
+fn unadopted_generation_produces_one_exact_noncloneable_s1_transfer() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let unadopted = collect_reconciliation_snapshot_v3(fixture.request())
+        .unwrap()
+        .persist_and_retain()
+        .unwrap();
+    let expected_binding = unadopted.core.expected_lifecycle_binding.clone();
+    let transfer = unadopted.into_s1_transfer().unwrap();
+    let S1CollectorReceiptAppendTransferV3 {
+        core,
+        new_bytes,
+        new_receipt,
+        _not_send_or_sync: _,
+    } = transfer;
+
+    core.revalidate().unwrap();
+    let exact_binding = expected_binding.exact_binding();
+    assert_eq!(
+        fstat_binding(new_receipt.as_raw_fd(), "test S1 receipt transfer").unwrap(),
+        exact_binding
+    );
+    assert_eq!(
+        read_fd_exact(&new_receipt, &exact_binding).unwrap(),
+        new_bytes
+    );
+    assert_eq!(sha256(&new_bytes), expected_binding.canonical_sha256());
+    let tail = core
+        .receipt_root_owner
+        .root
+        .snapshot
+        .entries
+        .last()
+        .expect("one-shot transfer retains the unadopted S2 tail");
+    assert!(tail.lifecycle_binding.is_none());
+    assert_eq!(
+        tail.expected_lifecycle_binding.as_ref(),
+        Some(&expected_binding)
+    );
 }
 
 #[test]
@@ -2606,15 +2737,14 @@ fn rootless_closed_world_receipts_prior_projection_and_metadata_are_fail_closed(
         transient_receipt_path.is_file(),
         "the post-publish cutpoint must leave an exact orphan receipt"
     );
-    let orphan_blocker = collect_reconciliation_snapshot_v3(fixture.request()).unwrap();
-    let error = match orphan_blocker.persist_and_retain() {
-        Ok(_) => panic!("a receipt without an exact lifecycle binding admitted a successor"),
+    let error = match collect_reconciliation_snapshot_v3(fixture.request()) {
+        Ok(_) => panic!("a receipt without an exact lifecycle binding admitted a new collection"),
         Err(error) => error,
     };
     assert!(
         error
             .to_string()
-            .contains("receipt-root owner lost a retained generation binding"),
+            .contains("receipt-root owner lost or ambiguously adopted a generation binding"),
         "an orphan receipt failed for the wrong reason: {error}"
     );
     assert_eq!(
@@ -2651,7 +2781,7 @@ fn rootless_closed_world_receipts_prior_projection_and_metadata_are_fail_closed(
     let snapshot_receipt_bytes = canonical_json(pending.receipt()).unwrap();
     let retained_snapshot = pending.persist_and_retain().unwrap();
     retained_snapshot.revalidate().unwrap();
-    let snapshot = match retained_snapshot.observation_for_test() {
+    let snapshot = match &retained_snapshot.core.observation {
         FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot) => snapshot.clone(),
         FinalizedRestartObservationV3::FreshAbsence(_) => panic!("wrong observation"),
     };
@@ -2790,7 +2920,7 @@ fn rootless_live_zero_requires_persistence_and_fails_closed_before_backing_unlin
         .expect("historical prepared boot is independent from current-boot restoration");
     let retained_snapshot = pending.persist_and_retain().unwrap();
     retained_snapshot.revalidate().unwrap();
-    let snapshot = match retained_snapshot.observation_for_test() {
+    let snapshot = match &retained_snapshot.core.observation {
         FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot) => snapshot.clone(),
         FinalizedRestartObservationV3::FreshAbsence(_) => panic!("wrong observation"),
     };

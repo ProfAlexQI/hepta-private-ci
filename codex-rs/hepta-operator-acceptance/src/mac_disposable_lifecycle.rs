@@ -1665,7 +1665,16 @@ pub(crate) fn exact_collector_receipt_append_v3(
     before: &[Vec<u8>],
     after: &[Vec<u8>],
 ) -> Result<Option<CollectorReceiptFileBindingV3>, LifecycleErrorV2> {
-    let before_roster = collector_receipt_file_roster_v3(before)?;
+    // Fresh S1 admission has no predecessor record yet.  Model that exact
+    // pre-operation state as an empty receipt lineage while still requiring
+    // `after` to be a fully replayable lifecycle.  This does not admit a
+    // collector as record one: replaying `after` enforces the reducer's
+    // OperationPrepared-first transition.
+    let before_roster = if before.is_empty() {
+        Vec::new()
+    } else {
+        collector_receipt_file_roster_v3(before)?
+    };
     let after_roster = collector_receipt_file_roster_v3(after)?;
     let maximum_after_len = before_roster
         .len()

@@ -38,7 +38,10 @@ use crate::mac_iomedia_identity::hold_disk_image_backing;
 use crate::mac_iomedia_identity::restart_disk_image_backing_matches_prepared_v3;
 use crate::mac_iomedia_identity::validate_disk_image_backing_identity_v2;
 use crate::mac_iomedia_identity::validate_restart_iomedia_inventory_v3;
+use crate::mac_privileged_disposable_control::S1AdoptedCollectorPairV3;
+use crate::mac_privileged_disposable_control::S1CollectorReceiptAppendReadSealV3;
 use crate::mac_privileged_disposable_control::S1CollectorReceiptRegistrySealV3;
+use crate::mac_privileged_disposable_control::S1PreparedManifestReadSealV3;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -145,7 +148,7 @@ pub(crate) struct RestartBaselineInventoryV3 {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-enum CollectorPurposeV3 {
+pub(crate) enum CollectorPurposeV3 {
     ReconciliationSnapshot,
     FreshAbsence,
 }
@@ -333,7 +336,7 @@ pub(crate) struct RetainedPreparedCollectorCapabilityV3 {
     manifest_sha256: String,
     mountpoint: UnderlyingMountpointGuardV3,
     operation_nonce: String,
-    receipt_root: Option<RetainedReceiptRootV3>,
+    initial_receipt_root_owner: Option<RetainedCollectorReceiptRootOwnerV3>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
@@ -372,12 +375,13 @@ enum UnderlyingMountpointGuardV3 {
 pub(crate) struct PendingRestartObservationV3 {
     guard: LiveReplayGuardV3,
     receipt: RestartCollectorReceiptV3,
-    receipt_root: RetainedReceiptRootV3,
+    receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
 }
 
 struct ValidatedExistingReceiptV3 {
     binding: FilesystemObjectBindingV3,
     bytes: Vec<u8>,
+    expected_lifecycle_binding: Option<CollectorReceiptFileBindingV3>,
     file: File,
     lifecycle_binding: Option<CollectorReceiptFileBindingV3>,
     name: String,
@@ -403,6 +407,18 @@ struct RetainedReceiptRootV3 {
     stable_identity: StableDirectoryIdentityV3,
 }
 
+/// The sole S2 owner of the external collector-receipt namespace.
+///
+/// The whole operation store keeps this value between publications. A
+/// collection moves it into the pending/unadopted transaction and successful
+/// paired S1 adoption returns the unique successor alongside the positive
+/// observation. Observations retain their own exact receipt and lifecycle
+/// capsules, but never own or freeze a historical copy of the full root.
+pub(crate) struct RetainedCollectorReceiptRootOwnerV3 {
+    root: RetainedReceiptRootV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
 /// Opaque S1 mirror of one exact external receipt-root generation. It exposes
 /// no path or descriptor; S1 captures it from the exact lifecycle census and
 /// can only revalidate that retained generation.
@@ -421,6 +437,62 @@ struct DurableCollectorReceiptV3 {
     path: PathBuf,
     root_after_binding: FilesystemObjectBindingV3,
     root_generation_ordinal: u32,
+}
+
+/// Receipt publication has completed, but neither the lifecycle record nor
+/// the S1 receipt-root mirror has adopted the new generation.  This is not a
+/// positive collector observation and exposes no issue, mount, or terminal
+/// capability.
+struct UnadoptedCollectorGenerationCoreV3 {
+    before_root_binding: FilesystemObjectBindingV3,
+    durable: DurableCollectorReceiptV3,
+    expected_lifecycle_binding: CollectorReceiptFileBindingV3,
+    guard: LiveReplayGuardV3,
+    observation: FinalizedRestartObservationV3,
+    receipt: RestartCollectorReceiptV3,
+    receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
+    receipt_sha256: String,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// The sole S2 owner of one durable-but-unadopted G -> G+1 collector
+/// generation.  Consuming this value can mint exactly one S1 transfer; there
+/// is no borrowed or repeatable descriptor-transfer API.
+pub(crate) struct UnadoptedCollectorGenerationV3 {
+    core: UnadoptedCollectorGenerationCoreV3,
+}
+
+/// The S2 generation after its one S1 descriptor transfer has been consumed.
+/// It still owns the original complete S2 root generation and can become a
+/// positive observation only by consuming an exact paired-adoption token.
+pub(crate) struct UnadoptedCollectorGenerationAfterTransferV3 {
+    core: UnadoptedCollectorGenerationCoreV3,
+}
+
+/// One-shot transfer of only the newly published receipt entry.  S1 already
+/// retains the root directory and every prior entry, so cloning the complete
+/// root would create a repeatable capability outlet without adding evidence.
+pub(crate) struct S1CollectorReceiptAppendTransferV3 {
+    core: UnadoptedCollectorGenerationCoreV3,
+    new_bytes: Vec<u8>,
+    new_receipt: File,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Prevalidated, allocation-free commit material for advancing the S1 mirror
+/// from one exact generation to its sole successor.
+pub(crate) struct S1CollectorReceiptAppendCommitV3 {
+    after_binding: FilesystemObjectBindingV3,
+    entry: ValidatedExistingReceiptV3,
+    entry_insert_index: usize,
+    next_aggregate_bytes: usize,
+    next_roster: Vec<String>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Only this module may open the opaque S1 paired-adoption acknowledgement.
+pub(crate) struct S1CollectorPairAdoptionReadSealV3 {
+    _private: (),
 }
 
 impl PreparedArtifactBindingV3 {
@@ -446,7 +518,6 @@ struct RetainedCollectorEvidenceV3 {
     lifecycle_record: Option<RetainedLifecycleRecordAppendV3>,
     observation: FinalizedRestartObservationV3,
     receipt: RestartCollectorReceiptV3,
-    receipt_root: Option<RetainedReceiptRootV3>,
     receipt_sha256: String,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
@@ -537,9 +608,13 @@ pub(crate) struct SealedMountDeltaAdvanceV3<'a, K> {
 /// exact expected-after observation for a linear delta and has not yet been
 /// appended to lifecycle storage.  S2 may inspect only its derived digest;
 /// callers cannot construct it from a digest or mount-table DTO.
-pub(crate) struct SealedMountDeltaObservationV3<'a, K> {
+/// Borrowed proof that one durable-but-unadopted receipt is the exact
+/// expected-after collector result for a linear mount delta.  It exposes only
+/// the sealed lifecycle projection needed to build the paired append; no
+/// positive observation exists until S1 adopts that exact pair.
+pub(crate) struct SealedUnadoptedMountDeltaObservationV3<'a, K> {
     delta: &'a RetainedCollectorMountDeltaV3<K>,
-    next: &'a RetainedCollectorObservationV3,
+    next: &'a UnadoptedCollectorGenerationV3,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
@@ -567,7 +642,10 @@ pub(crate) enum RetainedCollectorAppendEventV3<'a> {
     FreshAbsence(&'a FreshAbsenceObservationV2),
 }
 
-pub(crate) struct RetainedCollectorAppendV3<'a> {
+/// Borrowed append material from a durable-but-unadopted generation.  It is
+/// only a projection for constructing the exact next lifecycle record; it is
+/// not positive collector evidence.
+pub(crate) struct UnadoptedCollectorAppendV3<'a> {
     event: RetainedCollectorAppendEventV3<'a>,
     operation_nonce: &'a str,
     _not_send_or_sync: PhantomData<Rc<()>>,
@@ -577,6 +655,7 @@ pub(crate) struct RetainedCollectorAppendV3<'a> {
 /// be caller supplied: construction requires a still-live, lifecycle-bound
 /// unique collector observation and every use replays that observation.
 pub(crate) struct RetainedCollectorIssueBindingV3<'a> {
+    receipt_root_owner: &'a RetainedCollectorReceiptRootOwnerV3,
     retained: &'a RetainedCollectorObservationV3,
     boot_session_uuid: String,
     lifecycle_record_sha256: String,
@@ -592,6 +671,7 @@ pub(crate) struct RetainedCollectorIssueBindingV3<'a> {
 pub(crate) struct RetainedTerminalAbsenceV3<'a> {
     fresh_absence_sha256: String,
     operation_nonce: String,
+    receipt_root_owner: &'a RetainedCollectorReceiptRootOwnerV3,
     retained: &'a RetainedCollectorObservationV3,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
@@ -753,13 +833,14 @@ impl RetainedPreparedCollectorCapabilityV3 {
             schema_version: 3,
         };
         let (manifest_bytes, manifest_sha256) = canonical_prepared_manifest(&manifest)?;
-        let receipt_root = RetainedReceiptRootV3::from_held(
-            receipt_root,
-            manifest.policy.receipt_root_identity,
-            manifest.receipt_root_initial_binding.ok_or_else(|| {
-                invalid("new prepared collector manifest lost its initial receipt-root binding")
-            })?,
-        )?;
+        let receipt_root =
+            RetainedCollectorReceiptRootOwnerV3::from_root(RetainedReceiptRootV3::from_held(
+                receipt_root,
+                manifest.policy.receipt_root_identity,
+                manifest.receipt_root_initial_binding.ok_or_else(|| {
+                    invalid("new prepared collector manifest lost its initial receipt-root binding")
+                })?,
+            )?);
         let retained = Self {
             artifact_root,
             backing,
@@ -769,7 +850,7 @@ impl RetainedPreparedCollectorCapabilityV3 {
             manifest_sha256,
             mountpoint: UnderlyingMountpointGuardV3::Held(mountpoint_held),
             operation_nonce: operation_nonce.to_string(),
-            receipt_root: Some(receipt_root),
+            initial_receipt_root_owner: Some(receipt_root),
             _not_send_or_sync: PhantomData,
         };
         retained.revalidate()?;
@@ -838,11 +919,12 @@ impl RetainedPreparedCollectorCapabilityV3 {
             &manifest.backing_exact,
         )?;
         let mountpoint = reopen_prepared_mountpoint(&manifest.mountpoint)?;
-        let receipt_root = RetainedReceiptRootV3::from_held(
-            receipt_root,
-            manifest.policy.receipt_root_identity,
-            receipt_root_initial_binding,
-        )?;
+        let receipt_root =
+            RetainedCollectorReceiptRootOwnerV3::from_root(RetainedReceiptRootV3::from_held(
+                receipt_root,
+                manifest.policy.receipt_root_identity,
+                receipt_root_initial_binding,
+            )?);
         let retained = Self {
             artifact_root,
             backing,
@@ -852,7 +934,7 @@ impl RetainedPreparedCollectorCapabilityV3 {
             manifest_sha256,
             mountpoint,
             operation_nonce: operation_nonce.to_string(),
-            receipt_root: Some(receipt_root),
+            initial_receipt_root_owner: Some(receipt_root),
             _not_send_or_sync: PhantomData,
         };
         retained.revalidate()?;
@@ -925,11 +1007,10 @@ impl RetainedPreparedCollectorCapabilityV3 {
         let initial = self.manifest.receipt_root_initial_binding.ok_or_else(|| {
             invalid("legacy prepared manifest has no exact initial receipt-root endpoint")
         })?;
-        let root = self
-            .receipt_root
-            .as_ref()
-            .ok_or_else(|| invalid("prepared receipt-root generation is in flight"))?;
-        if !root.snapshot.roster.is_empty() || root.current_binding != initial {
+        let root = self.initial_receipt_root_owner.as_ref().ok_or_else(|| {
+            invalid("prepared initial receipt-root owner was already transferred")
+        })?;
+        if !root.root.snapshot.roster.is_empty() || root.root.current_binding != initial {
             return Err(invalid(
                 "prepared lifecycle can bind only the exact empty initial receipt-root endpoint",
             ));
@@ -976,22 +1057,9 @@ impl RetainedPreparedCollectorCapabilityV3 {
             &self.manifest.artifact_root_initial_roster,
             &self.manifest.policy.artifacts,
         )?;
-        let receipt_root = self
-            .receipt_root
-            .as_ref()
-            .ok_or_else(|| invalid("prepared receipt-root generation is in flight"))?;
-        receipt_root.revalidate()?;
-        if receipt_root.stable_identity != self.manifest.policy.receipt_root_identity {
-            return Err(invalid(
-                "retained receipt-root generation differs from the prepared identity",
-            ));
+        if let Some(receipt_root) = &self.initial_receipt_root_owner {
+            receipt_root.revalidate_for_prepared(&self.manifest)?;
         }
-        if self.manifest.receipt_root_initial_binding != Some(receipt_root.initial_binding) {
-            return Err(invalid(
-                "retained receipt-root initial full binding differs from its manifest",
-            ));
-        }
-        validate_receipt_directory(&receipt_root.current_binding)?;
         self.backing
             .revalidate_identity_after_persistence(&self.manifest.backing)?;
         if self.backing.exact_identity_v3()? != self.manifest.backing_exact {
@@ -1023,9 +1091,9 @@ impl RetainedPreparedCollectorCapabilityV3 {
         lifecycle_records: &[Vec<u8>],
     ) -> Result<(), RestartCollectorErrorV3> {
         self.revalidate()?;
-        self.receipt_root
+        self.initial_receipt_root_owner
             .as_ref()
-            .ok_or_else(|| invalid("prepared receipt-root generation is in flight"))?
+            .ok_or_else(|| invalid("prepared initial receipt-root owner was already transferred"))?
             .revalidate_lifecycle_records(lifecycle_records)
     }
 
@@ -1034,23 +1102,39 @@ impl RetainedPreparedCollectorCapabilityV3 {
         lifecycle_records: &[Vec<u8>],
     ) -> Result<(), RestartCollectorErrorV3> {
         self.revalidate()?;
-        self.receipt_root
+        self.initial_receipt_root_owner
             .as_mut()
-            .ok_or_else(|| invalid("prepared receipt-root generation is in flight"))?
+            .ok_or_else(|| invalid("prepared initial receipt-root owner was already transferred"))?
             .bind_lifecycle_records(lifecycle_records)?;
         self.revalidate()
     }
 
-    pub(crate) fn collect_reconciliation_from_active(
+    /// Move the unique G0/reopened receipt-root owner into the whole S2
+    /// operation store. This handoff is one-shot; prepared evidence remains
+    /// replayable afterwards but can no longer publish or recapture a root.
+    pub(crate) fn take_initial_receipt_root_owner(
         &mut self,
+    ) -> Result<RetainedCollectorReceiptRootOwnerV3, RestartCollectorErrorV3> {
+        self.revalidate()?;
+        let owner = self.initial_receipt_root_owner.take().ok_or_else(|| {
+            invalid("prepared initial receipt-root owner was already transferred")
+        })?;
+        owner.revalidate_for_prepared(&self.manifest)?;
+        Ok(owner)
+    }
+
+    pub(crate) fn collect_reconciliation_from_active(
+        &self,
         seed: ActiveRestartCollectorSeedV3<'_>,
+        receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
     ) -> Result<PendingRestartObservationV3, RestartCollectorErrorV3> {
-        self.collect_reconciliation_from_active_with_hook(seed, |_| Ok(()))
+        self.collect_reconciliation_from_active_with_hook(seed, receipt_root_owner, |_| Ok(()))
     }
 
     pub(crate) fn collect_reconciliation_from_active_with_hook<H>(
-        &mut self,
+        &self,
         seed: ActiveRestartCollectorSeedV3<'_>,
+        receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
         after_iomedia_capture: H,
     ) -> Result<PendingRestartObservationV3, RestartCollectorErrorV3>
     where
@@ -1081,24 +1165,22 @@ impl RetainedPreparedCollectorCapabilityV3 {
             prepared_backing: &self.manifest.backing,
             receipt_root: Path::new(&self.manifest.policy.receipt_root),
         };
-        let receipt_root = self
-            .receipt_root
-            .take()
-            .ok_or_else(|| invalid("prepared receipt-root generation is already in flight"))?;
+        receipt_root_owner.revalidate_for_prepared(&self.manifest)?;
         collect_live_with_root(
             request,
             CollectorPurposeV3::ReconciliationSnapshot,
             None,
             Some(&seed),
-            receipt_root,
+            receipt_root_owner,
             after_iomedia_capture,
         )
     }
 
     pub(crate) fn collect_fresh_absence_from_active(
-        &mut self,
+        &self,
         epoch: ActiveRestartCollectorEpochV3<'_>,
         snapshot: &ReconciliationSnapshotV2,
+        receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
     ) -> Result<PendingRestartObservationV3, RestartCollectorErrorV3> {
         self.revalidate()?;
         epoch.revalidate_for_prepared(
@@ -1131,10 +1213,7 @@ impl RetainedPreparedCollectorCapabilityV3 {
         }
         let snapshot_sha = reconciliation_snapshot_sha256(snapshot)
             .map_err(|error| invalid(format!("reconciliation snapshot digest failed: {error}")))?;
-        let receipt_root = self
-            .receipt_root
-            .take()
-            .ok_or_else(|| invalid("prepared receipt-root generation is already in flight"))?;
+        receipt_root_owner.revalidate_for_prepared(&self.manifest)?;
         collect_live_with_root(
             LiveRestartCollectorRequestV3 {
                 artifact_root: &self.artifact_root.path,
@@ -1148,7 +1227,7 @@ impl RetainedPreparedCollectorCapabilityV3 {
             CollectorPurposeV3::FreshAbsence,
             Some((snapshot, snapshot_sha)),
             None,
-            receipt_root,
+            receipt_root_owner,
             |_| Ok(()),
         )
     }
@@ -1158,10 +1237,37 @@ pub(crate) fn lifecycle_manifest_initial_receipt_root_binding(
     manifest_bytes: &[u8],
     _seal: &PreparedCollectorLifecycleSealV3,
 ) -> Result<Option<FilesystemObjectBindingV3>, RestartCollectorErrorV3> {
+    prepared_manifest_initial_receipt_root_binding(manifest_bytes)
+}
+
+pub(crate) fn s1_manifest_initial_receipt_root_binding(
+    manifest_bytes: &[u8],
+    _seal: &S1PreparedManifestReadSealV3,
+) -> Result<Option<FilesystemObjectBindingV3>, RestartCollectorErrorV3> {
+    prepared_manifest_initial_receipt_root_binding(manifest_bytes)
+}
+
+fn prepared_manifest_initial_receipt_root_binding(
+    manifest_bytes: &[u8],
+) -> Result<Option<FilesystemObjectBindingV3>, RestartCollectorErrorV3> {
+    let projection: serde_json::Value = serde_json::from_slice(manifest_bytes)
+        .map_err(|error| invalid(format!("prepared collector manifest JSON failed: {error}")))?;
+    let object = projection
+        .as_object()
+        .ok_or_else(|| invalid("prepared collector manifest JSON is not an object"))?;
+    if !object.contains_key("receipt_root_initial_binding") {
+        // Historical prepared sidecars predate the external receipt-root
+        // generation contract. They remain exact opaque lifecycle evidence,
+        // but can never mint a live root owner or enter the new forward path.
+        return Ok(None);
+    }
     let manifest: PreparedCollectorManifestV3 = serde_json::from_slice(manifest_bytes)
         .map_err(|error| invalid(format!("prepared collector manifest JSON failed: {error}")))?;
     validate_prepared_manifest(&manifest)?;
-    Ok(manifest.receipt_root_initial_binding)
+    manifest
+        .receipt_root_initial_binding
+        .map(Some)
+        .ok_or_else(|| invalid("prepared collector manifest explicitly nulls its receipt root"))
 }
 
 fn prepared_backing_profile(
@@ -1580,11 +1686,12 @@ where
     validate_request(&request)?;
     let receipt_root_held = HeldDirectoryV3::capture(request.receipt_root, "receipt root")?;
     let receipt_root_initial = receipt_root_held.binding;
-    let receipt_root = RetainedReceiptRootV3::from_held(
-        receipt_root_held,
-        request.policy.receipt_root_identity,
-        receipt_root_initial,
-    )?;
+    let receipt_root =
+        RetainedCollectorReceiptRootOwnerV3::from_root(RetainedReceiptRootV3::from_held(
+            receipt_root_held,
+            request.policy.receipt_root_identity,
+            receipt_root_initial,
+        )?);
     collect_live_with_root(
         request,
         purpose,
@@ -1600,7 +1707,7 @@ fn collect_live_with_root<H>(
     purpose: CollectorPurposeV3,
     prior_snapshot: Option<(&ReconciliationSnapshotV2, String)>,
     active_seed: Option<&ActiveRestartCollectorSeedV3<'_>>,
-    receipt_root: RetainedReceiptRootV3,
+    receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
     after_iomedia_capture: H,
 ) -> Result<PendingRestartObservationV3, RestartCollectorErrorV3>
 where
@@ -1622,14 +1729,14 @@ where
         .policy
         .artifact_root_identity
         .matches_binding(&artifact_root.binding, artifact_root_roster.len())
-        || receipt_root.stable_identity != request.policy.receipt_root_identity
-        || receipt_root.path != request.receipt_root
+        || receipt_root_owner.root.stable_identity != request.policy.receipt_root_identity
+        || receipt_root_owner.root.path != request.receipt_root
     {
         return Err(invalid(
             "live collector roots differ from their prepared stable identities",
         ));
     }
-    receipt_root.revalidate()?;
+    receipt_root_owner.revalidate()?;
     let before = monotonic_nanoseconds()?;
     if before <= request.bindings.restart_started_monotonic_nanoseconds
         || prior_snapshot
@@ -1678,7 +1785,7 @@ where
         Some(validate_prior_snapshot_receipt(
             snapshot,
             &request.bindings.baseline_inventory_sha256,
-            &receipt_root.snapshot,
+            &receipt_root_owner.root.snapshot,
         )?)
     } else {
         None
@@ -1803,7 +1910,7 @@ where
             prepared_backing: request.prepared_backing.clone(),
         },
         receipt,
-        receipt_root,
+        receipt_root_owner,
     })
 }
 
@@ -1816,35 +1923,39 @@ impl PendingRestartObservationV3 {
     #[cfg(test)]
     pub(crate) fn persist_and_retain(
         self,
-    ) -> Result<RetainedCollectorObservationV3, RestartCollectorErrorV3> {
+    ) -> Result<UnadoptedCollectorGenerationV3, RestartCollectorErrorV3> {
         self.persist_and_retain_inner(|| Ok(()))
     }
 
     pub(crate) fn persist_for_unmount_delta(
         self,
         delta: &RetainedCollectorMountDeltaV3<UnmountingV3>,
-    ) -> Result<RetainedCollectorObservationV3, RestartCollectorErrorV3> {
-        let retained = self.persist_and_retain_inner(|| Ok(()))?;
-        delta.seal_observation(&retained)?;
-        Ok(retained)
+    ) -> Result<UnadoptedCollectorGenerationV3, RestartCollectorErrorV3> {
+        let unadopted = self.persist_and_retain_inner(|| Ok(()))?;
+        delta.validate_unadopted_observation(&unadopted, MountDeltaDirectionV3::Unmount)?;
+        Ok(unadopted)
     }
 
     pub(crate) fn persist_and_append(
         self,
         operation: &mut ReconciliationOperationStoreV3<'_, '_, ActiveRestartEpochV3>,
     ) -> Result<(), RestartCollectorErrorV3> {
-        let retained = match self.persist_and_retain_inner(|| Ok(())) {
-            Ok(retained) => retained,
+        operation.arm_collector_persistence().map_err(|error| {
+            invalid(format!(
+                "could not arm the collector persistence transaction: {error}"
+            ))
+        })?;
+        let unadopted = match self.persist_and_retain_inner(|| Ok(())) {
+            Ok(unadopted) => unadopted,
             Err(error) => {
-                operation.poison_pending_collector();
                 return Err(error);
             }
         };
         operation
-            .append_retained_collector(retained)
+            .append_unadopted_collector_armed(unadopted)
             .map_err(|error| {
                 invalid(format!(
-                    "durable lifecycle append rejected retained collector evidence: {error}"
+                    "durable lifecycle append rejected unadopted collector generation: {error}"
                 ))
             })?;
         Ok(())
@@ -1854,7 +1965,7 @@ impl PendingRestartObservationV3 {
     fn persist_and_retain_with_hook<F>(
         self,
         after_persistence: F,
-    ) -> Result<RetainedCollectorObservationV3, RestartCollectorErrorV3>
+    ) -> Result<UnadoptedCollectorGenerationV3, RestartCollectorErrorV3>
     where
         F: FnOnce() -> Result<(), RestartCollectorErrorV3>,
     {
@@ -1864,7 +1975,7 @@ impl PendingRestartObservationV3 {
     fn persist_and_retain_inner<F>(
         self,
         after_persistence: F,
-    ) -> Result<RetainedCollectorObservationV3, RestartCollectorErrorV3>
+    ) -> Result<UnadoptedCollectorGenerationV3, RestartCollectorErrorV3>
     where
         F: FnOnce() -> Result<(), RestartCollectorErrorV3>,
     {
@@ -1876,20 +1987,27 @@ impl PendingRestartObservationV3 {
             ));
         }
         let receipt_sha256 = sha256(&bytes);
-        self.receipt_root.revalidate()?;
+        self.receipt_root_owner.revalidate()?;
+        let before_root_binding = self.receipt_root_owner.root.current_binding;
+        let RetainedCollectorReceiptRootOwnerV3 {
+            root: receipt_root,
+            _not_send_or_sync: _,
+        } = self.receipt_root_owner;
         let (durable, receipt_root) = DurableCollectorReceiptV3::persist(
-            self.receipt_root,
+            receipt_root,
             &self.receipt,
             bytes.clone(),
             &receipt_sha256,
         )?;
+        let receipt_root_owner = RetainedCollectorReceiptRootOwnerV3::from_root(receipt_root);
         after_persistence()?;
 
         // No typed lifecycle observation exists before every held descriptor
         // and the complete mount table have survived this post-persistence
         // replay.
         self.guard.revalidate(&self.receipt)?;
-        durable.revalidate(&receipt_root)?;
+        let expected_lifecycle_binding = durable.lifecycle_binding();
+        durable.revalidate_unadopted(&receipt_root_owner.root, &expected_lifecycle_binding)?;
         let decoded: RestartCollectorReceiptV3 = serde_json::from_slice(&bytes)
             .map_err(|error| invalid(format!("persisted receipt JSON failed: {error}")))?;
         if decoded != self.receipt || canonical_json(&decoded)? != bytes {
@@ -1933,53 +2051,303 @@ impl PendingRestartObservationV3 {
                 )?)
             }
         };
-        let evidence = RetainedCollectorEvidenceV3 {
+        let core = UnadoptedCollectorGenerationCoreV3 {
+            before_root_binding,
             durable,
             guard: self.guard,
-            lifecycle_record: None,
+            expected_lifecycle_binding,
             observation,
             receipt: self.receipt,
-            receipt_root: Some(receipt_root),
+            receipt_root_owner,
             receipt_sha256,
             _not_send_or_sync: PhantomData,
         };
+        let unadopted = UnadoptedCollectorGenerationV3 { core };
+        unadopted.revalidate()?;
         match (purpose, match_result) {
+            (CollectorPurposeV3::FreshAbsence, ReconciliationMatchV2::Zero)
+            | (CollectorPurposeV3::ReconciliationSnapshot, _) => Ok(unadopted),
+            (CollectorPurposeV3::FreshAbsence, _) => Err(invalid(
+                "FreshAbsence unadopted generation must have an exact Zero match",
+            )),
+        }
+    }
+}
+
+impl UnadoptedCollectorGenerationCoreV3 {
+    fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.guard.revalidate(&self.receipt)?;
+        self.durable.revalidate_unadopted(
+            &self.receipt_root_owner.root,
+            &self.expected_lifecycle_binding,
+        )?;
+        if self.before_root_binding == self.receipt_root_owner.root.current_binding
+            || !same_directory_object(
+                self.before_root_binding,
+                self.receipt_root_owner.root.current_binding,
+            )
+            || self.before_root_binding.nlink.checked_add(1)
+                != Some(self.receipt_root_owner.root.current_binding.nlink)
+            || self.expected_lifecycle_binding != self.durable.lifecycle_binding()
+            || sha256(&canonical_json(&self.receipt)?) != self.receipt_sha256
+        {
+            return Err(invalid(
+                "unadopted collector generation changed its exact G -> G+1 binding",
+            ));
+        }
+        let expected = match self.receipt.purpose {
+            CollectorPurposeV3::ReconciliationSnapshot => {
+                FinalizedRestartObservationV3::ReconciliationSnapshot(
+                    reconciliation_snapshot_from_receipt(
+                        &self.receipt,
+                        &self.receipt_sha256,
+                        self.expected_lifecycle_binding.clone(),
+                    )?,
+                )
+            }
+            CollectorPurposeV3::FreshAbsence => {
+                FinalizedRestartObservationV3::FreshAbsence(fresh_absence_from_receipt(
+                    &self.receipt,
+                    &self.receipt_sha256,
+                    self.expected_lifecycle_binding.clone(),
+                )?)
+            }
+        };
+        if self.observation != expected {
+            return Err(invalid(
+                "unadopted collector projection differs from its durable receipt",
+            ));
+        }
+        Ok(())
+    }
+
+    fn append_material(&self) -> Result<UnadoptedCollectorAppendV3<'_>, RestartCollectorErrorV3> {
+        self.revalidate()?;
+        let event = match &self.observation {
+            FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot) => {
+                RetainedCollectorAppendEventV3::ReconciliationSnapshot(snapshot)
+            }
+            FinalizedRestartObservationV3::FreshAbsence(observation) => {
+                RetainedCollectorAppendEventV3::FreshAbsence(observation)
+            }
+        };
+        Ok(UnadoptedCollectorAppendV3 {
+            event,
+            operation_nonce: &self.receipt.operation_nonce,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    fn into_positive(
+        mut self,
+        append: RetainedLifecycleRecordAppendV3,
+        adopted_binding: CollectorReceiptFileBindingV3,
+    ) -> Result<
+        (
+            RetainedCollectorReceiptRootOwnerV3,
+            RetainedCollectorObservationV3,
+        ),
+        RestartCollectorErrorV3,
+    > {
+        self.revalidate()?;
+        if adopted_binding != self.expected_lifecycle_binding {
+            return Err(invalid(
+                "S1 adopted collector binding differs from the unadopted generation",
+            ));
+        }
+        self.receipt_root_owner
+            .root
+            .adopt_unadopted_tail(adopted_binding)?;
+        self.durable.revalidate(&self.receipt_root_owner.root)?;
+        let purpose = self.receipt.purpose;
+        let match_result = self.receipt.match_result;
+        let evidence = RetainedCollectorEvidenceV3 {
+            durable: self.durable,
+            guard: self.guard,
+            lifecycle_record: Some(append),
+            observation: self.observation,
+            receipt: self.receipt,
+            receipt_sha256: self.receipt_sha256,
+            _not_send_or_sync: PhantomData,
+        };
+        let retained = match (purpose, match_result) {
             (CollectorPurposeV3::ReconciliationSnapshot, ReconciliationMatchV2::Zero) => {
-                Ok(RetainedCollectorObservationV3::Reconciliation(
-                    RetainedCollectorMatchV3::Zero(RetainedZeroMatchV3 { evidence }),
+                RetainedCollectorObservationV3::Reconciliation(RetainedCollectorMatchV3::Zero(
+                    RetainedZeroMatchV3 { evidence },
                 ))
             }
             (
                 CollectorPurposeV3::ReconciliationSnapshot,
                 ReconciliationMatchV2::Unique { mounted: false },
-            ) => Ok(RetainedCollectorObservationV3::Reconciliation(
+            ) => RetainedCollectorObservationV3::Reconciliation(
                 RetainedCollectorMatchV3::UniqueAttached(RetainedUniqueMatchV3 {
                     evidence,
                     _state: PhantomData,
                 }),
-            )),
+            ),
             (
                 CollectorPurposeV3::ReconciliationSnapshot,
                 ReconciliationMatchV2::Unique { mounted: true },
-            ) => Ok(RetainedCollectorObservationV3::Reconciliation(
+            ) => RetainedCollectorObservationV3::Reconciliation(
                 RetainedCollectorMatchV3::UniqueMounted(RetainedUniqueMatchV3 {
                     evidence,
                     _state: PhantomData,
                 }),
-            )),
+            ),
             (
                 CollectorPurposeV3::ReconciliationSnapshot,
                 ReconciliationMatchV2::Ambiguous { .. },
-            ) => Ok(RetainedCollectorObservationV3::Reconciliation(
+            ) => RetainedCollectorObservationV3::Reconciliation(
                 RetainedCollectorMatchV3::Ambiguous(RetainedAmbiguousMatchV3 { evidence }),
-            )),
-            (CollectorPurposeV3::FreshAbsence, ReconciliationMatchV2::Zero) => Ok(
-                RetainedCollectorObservationV3::FreshAbsence(RetainedFreshAbsenceV3 { evidence }),
             ),
-            (CollectorPurposeV3::FreshAbsence, _) => Err(invalid(
-                "FreshAbsence retained evidence must have an exact Zero match",
-            )),
+            (CollectorPurposeV3::FreshAbsence, ReconciliationMatchV2::Zero) => {
+                RetainedCollectorObservationV3::FreshAbsence(RetainedFreshAbsenceV3 { evidence })
+            }
+            (CollectorPurposeV3::FreshAbsence, _) => {
+                return Err(invalid(
+                    "FreshAbsence adopted evidence must have an exact Zero match",
+                ));
+            }
+        };
+        retained.revalidate_bound()?;
+        self.receipt_root_owner.revalidate_observation(&retained)?;
+        Ok((self.receipt_root_owner, retained))
+    }
+}
+
+impl UnadoptedCollectorGenerationV3 {
+    pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.core.revalidate()
+    }
+
+    pub(crate) fn append_material(
+        &self,
+    ) -> Result<UnadoptedCollectorAppendV3<'_>, RestartCollectorErrorV3> {
+        self.core.append_material()
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        &self.core.receipt.operation_nonce
+    }
+
+    pub(crate) fn purpose(&self) -> CollectorPurposeV3 {
+        self.core.receipt.purpose
+    }
+
+    pub(crate) fn validate_fresh_absence_successor(
+        &self,
+        prior: &RetainedCollectorObservationV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate()?;
+        let prior_snapshot = prior.snapshot_for_fresh_absence()?;
+        if self.core.receipt.purpose != CollectorPurposeV3::FreshAbsence
+            || self.core.receipt.match_result != ReconciliationMatchV2::Zero
+        {
+            return Err(invalid(
+                "an unadopted collector successor is not exact FreshAbsence",
+            ));
         }
+        let expected_snapshot_sha256 = reconciliation_snapshot_sha256(prior_snapshot)
+            .map_err(|error| invalid(format!("retained snapshot digest failed: {error}")))?;
+        if self.core.receipt.reconciliation_snapshot_sha256.as_deref()
+            != Some(expected_snapshot_sha256.as_str())
+            || self.core.receipt.operation_nonce != prior_snapshot.operation_nonce
+            || self.core.receipt.restart_epoch_nonce != prior_snapshot.restart_epoch_nonce
+            || self.core.receipt.boot_session_uuid != prior_snapshot.boot_session_uuid
+            || self.core.receipt.backing_identity_sha256 != prior_snapshot.backing_identity_sha256
+            || self.core.receipt.collector_policy_sha256 != prior_snapshot.collector_policy_sha256
+            || self.core.receipt.mountpoint_underlying_sha256
+                != prior_snapshot.mountpoint_underlying_sha256
+        {
+            return Err(invalid(
+                "FreshAbsence receipt is not the exact successor of the retained predictable snapshot",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn into_s1_transfer(
+        self,
+    ) -> Result<S1CollectorReceiptAppendTransferV3, RestartCollectorErrorV3> {
+        self.core.revalidate()?;
+        let new_receipt = self.core.durable.file.try_clone()?;
+        let new_bytes = self.core.durable.bytes.clone();
+        Ok(S1CollectorReceiptAppendTransferV3 {
+            core: self.core,
+            new_bytes,
+            new_receipt,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl S1CollectorReceiptAppendTransferV3 {
+    pub(crate) fn into_s1_parts(
+        self,
+        _seal: S1CollectorReceiptAppendReadSealV3,
+    ) -> (
+        UnadoptedCollectorGenerationAfterTransferV3,
+        FilesystemObjectBindingV3,
+        FilesystemObjectBindingV3,
+        CollectorReceiptFileBindingV3,
+        File,
+        Vec<u8>,
+    ) {
+        let Self {
+            core,
+            new_bytes,
+            new_receipt,
+            _not_send_or_sync: _,
+        } = self;
+        let before = core.before_root_binding;
+        let after = core.receipt_root_owner.root.current_binding;
+        let binding = core.expected_lifecycle_binding.clone();
+        (
+            UnadoptedCollectorGenerationAfterTransferV3 { core },
+            before,
+            after,
+            binding,
+            new_receipt,
+            new_bytes,
+        )
+    }
+}
+
+impl UnadoptedCollectorGenerationAfterTransferV3 {
+    pub(crate) fn bind_adopted_pair(
+        self,
+        append: RetainedLifecycleRecordAppendV3,
+        adoption: S1AdoptedCollectorPairV3,
+    ) -> Result<
+        (
+            RetainedCollectorReceiptRootOwnerV3,
+            RetainedCollectorObservationV3,
+        ),
+        RestartCollectorErrorV3,
+    > {
+        self.core.revalidate()?;
+        append.require_s1_adopted().map_err(|error| {
+            invalid(format!(
+                "collector pair lifecycle capsule lacks exact S1 adoption: {error}"
+            ))
+        })?;
+        append.revalidate().map_err(|error| {
+            invalid(format!(
+                "collector pair lifecycle capsule failed exact replay: {error}"
+            ))
+        })?;
+        let (operation_name, lifecycle_sha256, sequence, collector_binding) =
+            adoption.into_collector_parts(S1CollectorPairAdoptionReadSealV3 { _private: () });
+        if operation_name != format!("operation-{}", self.core.receipt.operation_nonce)
+            || lifecycle_sha256 != append.digest()
+            || sequence != append.sequence()
+            || collector_binding != self.core.expected_lifecycle_binding
+        {
+            return Err(invalid(
+                "S1 collector-pair acknowledgement differs from the unadopted generation",
+            ));
+        }
+        self.core.into_positive(append, collector_binding)
     }
 }
 
@@ -1990,10 +2358,7 @@ impl RetainedCollectorEvidenceV3 {
     }
 
     fn revalidate_retained_capsule(&self) -> Result<(), RestartCollectorErrorV3> {
-        let receipt_root = self.receipt_root.as_ref().ok_or_else(|| {
-            invalid("retained collector capsule lost its unique receipt-root owner")
-        })?;
-        self.durable.revalidate(receipt_root)?;
+        self.durable.revalidate_entry()?;
         if sha256(&canonical_json(&self.receipt)?) != self.receipt_sha256 {
             return Err(invalid(
                 "retained collector receipt digest changed after final replay",
@@ -2047,11 +2412,7 @@ impl RetainedCollectorEvidenceV3 {
         expected_after: &[MountBindingV3],
         direction: MountDeltaDirectionV3,
     ) -> Result<(), RestartCollectorErrorV3> {
-        let receipt_root = self
-            .receipt_root
-            .as_ref()
-            .ok_or_else(|| invalid("pre-delta collector lost its unique receipt-root owner"))?;
-        self.durable.revalidate(receipt_root)?;
+        self.durable.revalidate_entry()?;
         let record = self
             .lifecycle_record
             .as_ref()
@@ -2066,60 +2427,6 @@ impl RetainedCollectorEvidenceV3 {
         }
         self.guard
             .revalidate_across_mount_delta(&self.receipt, expected_after, direction)
-    }
-
-    fn append_capability(&self) -> Result<RetainedCollectorAppendV3<'_>, RestartCollectorErrorV3> {
-        self.revalidate()?;
-        if self.lifecycle_record.is_some() {
-            return Err(invalid(
-                "retained collector observation was already appended to lifecycle storage",
-            ));
-        }
-        if self.receipt_root.is_none() {
-            return Err(invalid(
-                "unappended collector observation lost its unique receipt-root generation",
-            ));
-        }
-        let event = match &self.observation {
-            FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot) => {
-                RetainedCollectorAppendEventV3::ReconciliationSnapshot(snapshot)
-            }
-            FinalizedRestartObservationV3::FreshAbsence(observation) => {
-                RetainedCollectorAppendEventV3::FreshAbsence(observation)
-            }
-        };
-        Ok(RetainedCollectorAppendV3 {
-            event,
-            operation_nonce: &self.receipt.operation_nonce,
-            _not_send_or_sync: PhantomData,
-        })
-    }
-
-    fn bind_lifecycle_record(
-        &mut self,
-        append: RetainedLifecycleRecordAppendV3,
-    ) -> Result<(), RestartCollectorErrorV3> {
-        self.revalidate()?;
-        append.require_s1_adopted().map_err(|error| {
-            invalid(format!(
-                "collector cannot bind a lifecycle capsule not adopted by S1: {error}"
-            ))
-        })?;
-        append.revalidate().map_err(|error| {
-            invalid(format!(
-                "collector lifecycle capsule failed replay: {error}"
-            ))
-        })?;
-        if self.lifecycle_record.is_some()
-            || !valid_digest(append.digest())
-            || append.sequence() == 0
-        {
-            return Err(invalid(
-                "retained collector lifecycle-record binding is duplicate or malformed",
-            ));
-        }
-        self.lifecycle_record = Some(append);
-        self.revalidate()
     }
 }
 
@@ -2136,6 +2443,7 @@ impl RetainedCollectorObservationV3 {
         }
     }
 
+    #[cfg(test)]
     fn evidence_mut(&mut self) -> &mut RetainedCollectorEvidenceV3 {
         match self {
             Self::Reconciliation(match_result) => match match_result {
@@ -2150,19 +2458,6 @@ impl RetainedCollectorObservationV3 {
 
     pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
         self.evidence().revalidate()
-    }
-
-    pub(crate) fn append_capability(
-        &self,
-    ) -> Result<RetainedCollectorAppendV3<'_>, RestartCollectorErrorV3> {
-        self.evidence().append_capability()
-    }
-
-    pub(crate) fn bind_lifecycle_record(
-        &mut self,
-        append: RetainedLifecycleRecordAppendV3,
-    ) -> Result<(), RestartCollectorErrorV3> {
-        self.evidence_mut().bind_lifecycle_record(append)
     }
 
     pub(crate) fn revalidate_bound(&self) -> Result<(), RestartCollectorErrorV3> {
@@ -2208,7 +2503,7 @@ impl RetainedCollectorObservationV3 {
         &self,
         prior: &Self,
     ) -> Result<(), RestartCollectorErrorV3> {
-        self.revalidate_unbound()?;
+        self.revalidate_bound()?;
         let prior_snapshot = prior.snapshot_for_fresh_absence()?;
         let next = match self {
             Self::FreshAbsence(value) => &value.evidence,
@@ -2237,20 +2532,11 @@ impl RetainedCollectorObservationV3 {
         Ok(())
     }
 
-    fn revalidate_unbound(&self) -> Result<(), RestartCollectorErrorV3> {
-        self.revalidate()?;
-        if self.evidence().lifecycle_record.is_some() {
-            return Err(invalid(
-                "post-delta collector was already bound to a lifecycle record",
-            ));
-        }
-        Ok(())
-    }
-
-    pub(crate) fn issue_binding(
-        &self,
-    ) -> Result<RetainedCollectorIssueBindingV3<'_>, RestartCollectorErrorV3> {
-        self.revalidate_bound()?;
+    fn issue_binding<'a>(
+        &'a self,
+        receipt_root_owner: &'a RetainedCollectorReceiptRootOwnerV3,
+    ) -> Result<RetainedCollectorIssueBindingV3<'a>, RestartCollectorErrorV3> {
+        receipt_root_owner.revalidate_observation(self)?;
         match self {
             Self::Reconciliation(RetainedCollectorMatchV3::UniqueAttached(_))
             | Self::Reconciliation(RetainedCollectorMatchV3::UniqueMounted(_)) => {}
@@ -2271,6 +2557,7 @@ impl RetainedCollectorObservationV3 {
         let lifecycle_record_sequence = lifecycle_record.sequence();
         let unique_binding_sha256 = unique_collector_binding_sha256(&evidence.receipt)?;
         Ok(RetainedCollectorIssueBindingV3 {
+            receipt_root_owner,
             retained: self,
             boot_session_uuid: evidence.receipt.boot_session_uuid.clone(),
             lifecycle_record_sha256,
@@ -2282,10 +2569,11 @@ impl RetainedCollectorObservationV3 {
         })
     }
 
-    pub(crate) fn terminal_absence(
-        &self,
-    ) -> Result<RetainedTerminalAbsenceV3<'_>, RestartCollectorErrorV3> {
-        self.revalidate_bound()?;
+    fn terminal_absence<'a>(
+        &'a self,
+        receipt_root_owner: &'a RetainedCollectorReceiptRootOwnerV3,
+    ) -> Result<RetainedTerminalAbsenceV3<'a>, RestartCollectorErrorV3> {
+        receipt_root_owner.revalidate_observation(self)?;
         let evidence = match self {
             Self::FreshAbsence(value) => &value.evidence,
             Self::Reconciliation(_) => {
@@ -2307,6 +2595,7 @@ impl RetainedCollectorObservationV3 {
                 invalid(format!("terminal FreshAbsence digest failed: {error}"))
             })?,
             operation_nonce: evidence.receipt.operation_nonce.clone(),
+            receipt_root_owner,
             retained: self,
             _not_send_or_sync: PhantomData,
         };
@@ -2411,11 +2700,12 @@ impl RetainedCollectorLineageV3 {
             .revalidate_across_mount_delta(expected_after, direction)
     }
 
-    pub(crate) fn issue_binding(
-        &self,
-    ) -> Result<RetainedCollectorIssueBindingV3<'_>, RestartCollectorErrorV3> {
+    fn issue_binding<'a>(
+        &'a self,
+        receipt_root_owner: &'a RetainedCollectorReceiptRootOwnerV3,
+    ) -> Result<RetainedCollectorIssueBindingV3<'a>, RestartCollectorErrorV3> {
         self.revalidate_bound()?;
-        self.current_observation().issue_binding()
+        self.current_observation().issue_binding(receipt_root_owner)
     }
 
     pub(crate) fn snapshot_for_fresh_absence(
@@ -2458,11 +2748,13 @@ impl RetainedCollectorLineageV3 {
         next.validate_fresh_absence_successor(&self.first)
     }
 
-    pub(crate) fn terminal_absence(
-        &self,
-    ) -> Result<RetainedTerminalAbsenceV3<'_>, RestartCollectorErrorV3> {
+    fn terminal_absence<'a>(
+        &'a self,
+        receipt_root_owner: &'a RetainedCollectorReceiptRootOwnerV3,
+    ) -> Result<RetainedTerminalAbsenceV3<'a>, RestartCollectorErrorV3> {
         self.revalidate_bound()?;
-        self.current_observation().terminal_absence()
+        self.current_observation()
+            .terminal_absence(receipt_root_owner)
     }
 
     fn first_snapshot_sha256(&self) -> Result<String, RestartCollectorErrorV3> {
@@ -2538,7 +2830,8 @@ impl RetainedTerminalAbsenceV3<'_> {
     }
 
     pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
-        self.retained.revalidate_bound()?;
+        self.receipt_root_owner
+            .revalidate_observation(self.retained)?;
         let evidence = match self.retained {
             RetainedCollectorObservationV3::FreshAbsence(value) => &value.evidence,
             RetainedCollectorObservationV3::Reconciliation(_) => {
@@ -2592,7 +2885,8 @@ impl RetainedCollectorIssueBindingV3<'_> {
     }
 
     pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
-        self.retained.revalidate_bound()?;
+        self.receipt_root_owner
+            .revalidate_observation(self.retained)?;
         let evidence = self.retained.evidence();
         if evidence.receipt.boot_session_uuid != self.boot_session_uuid
             || evidence.receipt.operation_nonce != self.operation_nonce
@@ -2658,7 +2952,7 @@ fn unique_collector_binding_sha256(
     })?))
 }
 
-impl RetainedCollectorAppendV3<'_> {
+impl UnadoptedCollectorAppendV3<'_> {
     pub(crate) fn event(&self) -> &RetainedCollectorAppendEventV3<'_> {
         &self.event
     }
@@ -2945,15 +3239,44 @@ impl RetainedReceiptRootV3 {
     }
 
     fn revalidate_retained_generation_chain(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_generation_chain(None)
+    }
+
+    fn revalidate_unadopted_generation_chain(
+        &self,
+        expected_tail: &CollectorReceiptFileBindingV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_generation_chain(Some(expected_tail))
+    }
+
+    fn revalidate_generation_chain(
+        &self,
+        expected_tail: Option<&CollectorReceiptFileBindingV3>,
+    ) -> Result<(), RestartCollectorErrorV3> {
         self.revalidate()?;
         let mut generations = self
             .snapshot
             .entries
             .iter()
-            .map(|entry| {
-                let binding = entry.lifecycle_binding.as_ref().ok_or_else(|| {
-                    invalid("receipt-root owner lost a retained generation binding")
-                })?;
+            .enumerate()
+            .map(|(index, entry)| {
+                let is_tail = index + 1 == self.snapshot.entries.len();
+                let binding = match (
+                    entry.lifecycle_binding.as_ref(),
+                    entry.expected_lifecycle_binding.as_ref(),
+                ) {
+                    (Some(binding), None) => binding,
+                    (None, Some(binding))
+                        if is_tail && expected_tail.is_some_and(|tail| tail == binding) =>
+                    {
+                        binding
+                    }
+                    _ => {
+                        return Err(invalid(
+                            "receipt-root owner lost or ambiguously adopted a generation binding",
+                        ));
+                    }
+                };
                 if binding.final_basename() != entry.name
                     || binding.canonical_sha256() != sha256(&entry.bytes)
                     || binding.exact_binding() != entry.binding
@@ -2965,6 +3288,16 @@ impl RetainedReceiptRootV3 {
                 Ok(binding)
             })
             .collect::<Result<Vec<_>, RestartCollectorErrorV3>>()?;
+        if expected_tail.is_some()
+            != self.snapshot.entries.last().is_some_and(|entry| {
+                entry.lifecycle_binding.is_none()
+                    && entry.expected_lifecycle_binding.as_ref() == expected_tail
+            })
+        {
+            return Err(invalid(
+                "receipt-root owner unadopted tail does not match its one-shot delta",
+            ));
+        }
         generations.sort_by_key(|binding| binding.root_generation_ordinal());
         let mut prior_root = self.initial_binding;
         for (index, binding) in generations.into_iter().enumerate() {
@@ -2985,6 +3318,25 @@ impl RetainedReceiptRootV3 {
             ));
         }
         self.revalidate()
+    }
+
+    fn adopt_unadopted_tail(
+        &mut self,
+        binding: CollectorReceiptFileBindingV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_unadopted_generation_chain(&binding)?;
+        let entry = self
+            .snapshot
+            .entries
+            .iter_mut()
+            .find(|entry| {
+                entry.expected_lifecycle_binding.as_ref() == Some(&binding)
+                    && entry.lifecycle_binding.is_none()
+            })
+            .ok_or_else(|| invalid("unadopted receipt-root tail disappeared"))?;
+        entry.expected_lifecycle_binding = None;
+        entry.lifecycle_binding = Some(binding);
+        self.revalidate_retained_generation_chain()
     }
 
     fn revalidate_lifecycle_records(
@@ -3037,6 +3389,10 @@ impl RetainedReceiptRootV3 {
                     .lifecycle_binding
                     .as_ref()
                     .is_some_and(|retained| retained != reference)
+                || entry
+                    .expected_lifecycle_binding
+                    .as_ref()
+                    .is_some_and(|expected| expected != reference)
             {
                 return Err(invalid(
                     "lifecycle collector reference differs from its exact retained receipt inode",
@@ -3072,9 +3428,111 @@ impl RetainedReceiptRootV3 {
                 .entries
                 .binary_search_by(|entry| entry.name.as_str().cmp(reference.final_basename()))
                 .map_err(|_| invalid("lifecycle receipt binding disappeared during retention"))?;
+            if self.snapshot.entries[index]
+                .expected_lifecycle_binding
+                .as_ref()
+                .is_some_and(|expected| expected != &reference)
+            {
+                return Err(invalid(
+                    "lifecycle binding differs from the unadopted receipt generation",
+                ));
+            }
+            self.snapshot.entries[index].expected_lifecycle_binding = None;
             self.snapshot.entries[index].lifecycle_binding = Some(reference);
         }
         self.revalidate_lifecycle_records(lifecycle_records)
+    }
+}
+
+impl RetainedCollectorReceiptRootOwnerV3 {
+    fn from_root(root: RetainedReceiptRootV3) -> Self {
+        Self {
+            root,
+            _not_send_or_sync: PhantomData,
+        }
+    }
+
+    pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.root.revalidate_retained_generation_chain()
+    }
+
+    fn revalidate_for_prepared(
+        &self,
+        manifest: &PreparedCollectorManifestV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate()?;
+        if self.root.stable_identity != manifest.policy.receipt_root_identity
+            || self.root.path != Path::new(&manifest.policy.receipt_root)
+            || manifest.receipt_root_initial_binding != Some(self.root.initial_binding)
+        {
+            return Err(invalid(
+                "receipt-root owner differs from the exact prepared manifest",
+            ));
+        }
+        validate_receipt_directory(&self.root.current_binding)
+    }
+
+    pub(crate) fn revalidate_lifecycle_records(
+        &self,
+        lifecycle_records: &[Vec<u8>],
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.root.revalidate_lifecycle_records(lifecycle_records)
+    }
+
+    pub(crate) fn bind_lifecycle_records(
+        &mut self,
+        lifecycle_records: &[Vec<u8>],
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.root.bind_lifecycle_records(lifecycle_records)
+    }
+
+    pub(crate) fn revalidate_observation(
+        &self,
+        observation: &RetainedCollectorObservationV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate()?;
+        observation.revalidate_bound()?;
+        observation.evidence().durable.revalidate(&self.root)
+    }
+
+    pub(crate) fn revalidate_lineage(
+        &self,
+        lineage: &RetainedCollectorLineageV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate()?;
+        lineage.revalidate_bound()?;
+        lineage.first.evidence().durable.revalidate(&self.root)?;
+        if !matches!(lineage.current, RetainedCollectorCurrentV3::First) {
+            lineage
+                .current_observation()
+                .evidence()
+                .durable
+                .revalidate(&self.root)?;
+        }
+        self.revalidate()
+    }
+
+    pub(crate) fn revalidate_mount_delta<K>(
+        &self,
+        delta: &RetainedCollectorMountDeltaV3<K>,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_lineage(&delta.prior)
+    }
+
+    pub(crate) fn issue_binding<'a>(
+        &'a self,
+        lineage: &'a RetainedCollectorLineageV3,
+    ) -> Result<RetainedCollectorIssueBindingV3<'a>, RestartCollectorErrorV3> {
+        self.revalidate_lineage(lineage)?;
+        lineage.issue_binding(self)
+    }
+
+    pub(crate) fn terminal_absence<'a>(
+        &'a self,
+        lineage: &'a RetainedCollectorLineageV3,
+    ) -> Result<RetainedTerminalAbsenceV3<'a>, RestartCollectorErrorV3> {
+        self.revalidate_lineage(lineage)?;
+        lineage.terminal_absence(self)
     }
 }
 
@@ -3099,14 +3557,14 @@ impl S1RetainedCollectorReceiptRootV3 {
                 ))
             })?;
         validate_prepared_manifest(&manifest)?;
-        let root = RetainedReceiptRootV3::capture(
+        let mut root = RetainedReceiptRootV3::capture(
             Path::new(&manifest.policy.receipt_root),
             manifest.policy.receipt_root_identity,
             manifest.receipt_root_initial_binding.ok_or_else(|| {
                 invalid("legacy prepared manifest has no durable initial receipt-root endpoint")
             })?,
         )?;
-        root.revalidate_lifecycle_records(lifecycle_records)?;
+        root.bind_lifecycle_records(lifecycle_records)?;
         Ok(Self {
             root,
             _not_send_or_sync: PhantomData,
@@ -3118,6 +3576,143 @@ impl S1RetainedCollectorReceiptRootV3 {
         lifecycle_records: &[Vec<u8>],
     ) -> Result<(), RestartCollectorErrorV3> {
         self.root.revalidate_lifecycle_records(lifecycle_records)
+    }
+
+    pub(crate) fn preflight_exact_append(
+        &mut self,
+        before_lifecycle: &[Vec<u8>],
+        before: FilesystemObjectBindingV3,
+        after: FilesystemObjectBindingV3,
+        binding: CollectorReceiptFileBindingV3,
+        new_file: File,
+        bytes: Vec<u8>,
+    ) -> Result<S1CollectorReceiptAppendCommitV3, RestartCollectorErrorV3> {
+        if self.root.current_binding != before
+            || before == after
+            || !same_directory_object(before, after)
+            || before.nlink.checked_add(1) != Some(after.nlink)
+            || binding.root_after() != after
+            || usize::try_from(binding.root_generation_ordinal()).ok()
+                != Some(self.root.snapshot.roster.len() + 1)
+            || binding.canonical_sha256() != sha256(&bytes)
+            || binding.final_basename() != format!("collector-{}.json", binding.canonical_sha256())
+        {
+            return Err(invalid(
+                "S1 collector receipt transfer is not the exact next root generation",
+            ));
+        }
+        let live_root = fstat_binding(self.root.directory.as_raw_fd(), "S1 receipt root")?;
+        if live_root != after
+            || lstat_binding(&self.root.path, "S1 receipt root")? != after
+            || !self
+                .root
+                .stable_identity
+                .matches_binding(&after, self.root.snapshot.roster.len() + 1)
+        {
+            return Err(invalid(
+                "S1 retained receipt root differs from the transferred successor endpoint",
+            ));
+        }
+        validate_receipt_directory(&after)?;
+        verify_fd_binding_secure(self.root.directory.as_raw_fd(), &after, "S1 receipt root")?;
+        let root_text = path_text(&self.root.path, "S1 receipt root")?;
+        self.root
+            .snapshot
+            .revalidate_entries(self.root.directory.as_raw_fd(), &root_text)?;
+        self.root
+            .revalidate_lifecycle_references_only(before_lifecycle)?;
+        let exact_binding = binding.exact_binding();
+        let held = fstat_binding(new_file.as_raw_fd(), "S1 transferred collector receipt")?;
+        if held != exact_binding
+            || fstatat_binding(
+                self.root.directory.as_raw_fd(),
+                binding.final_basename(),
+                "S1 transferred collector receipt pathname",
+            )? != exact_binding
+            || read_fd_exact(&new_file, &held)? != bytes
+            || self.root.snapshot.entries.iter().any(|entry| {
+                entry.name == binding.final_basename()
+                    || (entry.binding.dev, entry.binding.inode)
+                        == (exact_binding.dev, exact_binding.inode)
+            })
+        {
+            return Err(invalid(
+                "S1 transferred collector receipt differs from its final exact inode",
+            ));
+        }
+        verify_fd_binding_secure(
+            new_file.as_raw_fd(),
+            &exact_binding,
+            "S1 transferred collector receipt",
+        )?;
+        let receipt: RestartCollectorReceiptV3 = serde_json::from_slice(&bytes)
+            .map_err(|error| invalid(format!("S1 transferred receipt JSON failed: {error}")))?;
+        if canonical_json(&receipt)? != bytes || receipt.collector_policy.receipt_root != root_text
+        {
+            return Err(invalid(
+                "S1 transferred collector receipt is noncanonical or belongs to another root",
+            ));
+        }
+        validate_receipt(&receipt)?;
+        validate_fresh_receipt_prior_relationship(&receipt, &self.root.snapshot.entries)?;
+        let new_name = binding.final_basename().to_string();
+        let entry_insert_index = self
+            .root
+            .snapshot
+            .entries
+            .binary_search_by(|entry| entry.name.cmp(&new_name))
+            .err()
+            .ok_or_else(|| invalid("S1 receipt-root successor duplicates an existing entry"))?;
+        let mut next_roster = self.root.snapshot.roster.clone();
+        next_roster.push(new_name.clone());
+        next_roster.sort();
+        if next_roster.windows(2).any(|pair| pair[0] == pair[1])
+            || list_directory(self.root.directory.as_raw_fd(), MAX_RECEIPT_FILES)? != next_roster
+        {
+            return Err(invalid(
+                "S1 receipt-root successor roster is not old roster plus one exact receipt",
+            ));
+        }
+        let next_aggregate_bytes =
+            checked_receipt_aggregate_bytes(self.root.snapshot.aggregate_bytes, bytes.len())?;
+        self.root
+            .snapshot
+            .entries
+            .try_reserve(1)
+            .map_err(|error| invalid(format!("S1 receipt entry reserve failed: {error}")))?;
+        self.root
+            .snapshot
+            .roster
+            .try_reserve(1)
+            .map_err(|error| invalid(format!("S1 receipt roster reserve failed: {error}")))?;
+        Ok(S1CollectorReceiptAppendCommitV3 {
+            after_binding: after,
+            entry: ValidatedExistingReceiptV3 {
+                binding: exact_binding,
+                bytes,
+                expected_lifecycle_binding: None,
+                file: new_file,
+                lifecycle_binding: Some(binding),
+                name: new_name,
+                receipt,
+            },
+            entry_insert_index,
+            next_aggregate_bytes,
+            next_roster,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    /// No allocation, syscall, serialization, or replay is permitted here.
+    /// All fallible work belongs to `preflight_exact_append`.
+    pub(crate) fn commit_exact_append(&mut self, plan: S1CollectorReceiptAppendCommitV3) {
+        self.root.snapshot.aggregate_bytes = plan.next_aggregate_bytes;
+        self.root.snapshot.roster = plan.next_roster;
+        self.root
+            .snapshot
+            .entries
+            .insert(plan.entry_insert_index, plan.entry);
+        self.root.current_binding = plan.after_binding;
     }
 
     pub(crate) fn s1_census_projection(
@@ -3214,6 +3809,7 @@ fn capture_receipt_root_closed_world(
         entries.push(ValidatedExistingReceiptV3 {
             binding,
             bytes,
+            expected_lifecycle_binding: None,
             file,
             lifecycle_binding: None,
             name: name.clone(),
@@ -3529,19 +4125,21 @@ impl DurableCollectorReceiptV3 {
             .map_err(|error| invalid(format!("final collector receipt JSON failed: {error}")))?;
         root.snapshot.aggregate_bytes =
             checked_receipt_aggregate_bytes(root.snapshot.aggregate_bytes, bytes.len())?;
+        let expected_lifecycle_binding = CollectorReceiptFileBindingV3::from_retained_collector(
+            CollectorReceiptFileBindingSealV3 { _private: () },
+            receipt_sha256.to_string(),
+            final_name.clone(),
+            file_binding,
+            after,
+            u32::try_from(root.snapshot.roster.len() + 1)
+                .map_err(|_| invalid("collector receipt generation ordinal exceeds u32"))?,
+        );
         root.snapshot.entries.push(ValidatedExistingReceiptV3 {
             binding: file_binding,
             bytes: bytes.clone(),
+            expected_lifecycle_binding: Some(expected_lifecycle_binding.clone()),
             file: root_entry_file,
-            lifecycle_binding: Some(CollectorReceiptFileBindingV3::from_retained_collector(
-                CollectorReceiptFileBindingSealV3 { _private: () },
-                receipt_sha256.to_string(),
-                final_name.clone(),
-                file_binding,
-                after,
-                u32::try_from(root.snapshot.roster.len() + 1)
-                    .map_err(|_| invalid("collector receipt generation ordinal exceeds u32"))?,
-            )),
+            lifecycle_binding: None,
             name: final_name.clone(),
             receipt: decoded,
         });
@@ -3563,19 +4161,37 @@ impl DurableCollectorReceiptV3 {
             root_generation_ordinal: u32::try_from(root.snapshot.roster.len())
                 .map_err(|_| invalid("collector receipt generation ordinal exceeds u32"))?,
         };
-        durable.revalidate(&root)?;
+        durable.revalidate_unadopted(&root, &expected_lifecycle_binding)?;
         Ok((durable, root))
     }
 
     fn revalidate(&self, owner: &RetainedReceiptRootV3) -> Result<(), RestartCollectorErrorV3> {
-        owner.revalidate_retained_generation_chain()?;
-        let directory = fstat_binding(self.directory.as_raw_fd(), "collector receipt directory")?;
-        let named_directory = lstat_binding(&self.path, "receipt root")?;
-        if !stable_root_object_matches(&self.directory_identity, &directory)
-            || !same_directory_object(directory, named_directory)
-            || !stable_root_object_matches(&self.directory_identity, &self.root_after_binding)
-            || !same_directory_object(self.root_after_binding, directory)
-            || owner.path != self.path
+        self.revalidate_against_owner(owner, None)
+    }
+
+    fn revalidate_unadopted(
+        &self,
+        owner: &RetainedReceiptRootV3,
+        expected_lifecycle_binding: &CollectorReceiptFileBindingV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        if self.lifecycle_binding() != *expected_lifecycle_binding {
+            return Err(invalid(
+                "unadopted collector receipt differs from its expected lifecycle projection",
+            ));
+        }
+        self.revalidate_against_owner(owner, Some(expected_lifecycle_binding))
+    }
+
+    fn revalidate_against_owner(
+        &self,
+        owner: &RetainedReceiptRootV3,
+        expected_lifecycle_binding: Option<&CollectorReceiptFileBindingV3>,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        match expected_lifecycle_binding {
+            Some(expected) => owner.revalidate_unadopted_generation_chain(expected)?,
+            None => owner.revalidate_retained_generation_chain()?,
+        }
+        if owner.path != self.path
             || owner.stable_identity != self.directory_identity
             || self.root_generation_ordinal == 0
         {
@@ -3588,11 +4204,45 @@ impl DurableCollectorReceiptV3 {
             entry.name == self.final_name
                 && entry.binding == self.file_binding
                 && entry.bytes == self.bytes
-                && entry.lifecycle_binding.as_ref() == Some(&lifecycle_binding)
+                && match expected_lifecycle_binding {
+                    Some(expected) => {
+                        expected == &lifecycle_binding
+                            && entry.lifecycle_binding.is_none()
+                            && entry.expected_lifecycle_binding.as_ref() == Some(expected)
+                    }
+                    None => {
+                        entry.expected_lifecycle_binding.is_none()
+                            && entry.lifecycle_binding.as_ref() == Some(&lifecycle_binding)
+                    }
+                }
         });
         if owner_matches.count() != 1 {
             return Err(invalid(
                 "unique receipt-root owner does not retain this exact historical capsule",
+            ));
+        }
+        self.revalidate_entry()?;
+        match expected_lifecycle_binding {
+            Some(expected) => owner.revalidate_unadopted_generation_chain(expected),
+            None => owner.revalidate_retained_generation_chain(),
+        }
+    }
+
+    /// Replay only this immutable receipt capsule and its stable directory
+    /// anchor. The current full directory endpoint is deliberately owned and
+    /// checked by `RetainedCollectorReceiptRootOwnerV3`; a later legitimate
+    /// generation must not invalidate an earlier observation.
+    fn revalidate_entry(&self) -> Result<(), RestartCollectorErrorV3> {
+        let directory = fstat_binding(self.directory.as_raw_fd(), "collector receipt directory")?;
+        let named_directory = lstat_binding(&self.path, "receipt root")?;
+        if !stable_root_object_matches(&self.directory_identity, &directory)
+            || !same_directory_object(directory, named_directory)
+            || !stable_root_object_matches(&self.directory_identity, &self.root_after_binding)
+            || !same_directory_object(self.root_after_binding, directory)
+            || self.root_generation_ordinal == 0
+        {
+            return Err(invalid(
+                "collector receipt root changed identity before capsule replay",
             ));
         }
         verify_fd_binding_secure(
@@ -3655,7 +4305,7 @@ impl DurableCollectorReceiptV3 {
                 "collector receipt directory changed across final replay",
             ));
         }
-        owner.revalidate_retained_generation_chain()
+        Ok(())
     }
 }
 
@@ -5370,13 +6020,8 @@ impl<K> RetainedCollectorMountDeltaV3<K> {
         &self,
         next: &RetainedCollectorObservationV3,
         direction: MountDeltaDirectionV3,
-        require_bound: bool,
     ) -> Result<(), RestartCollectorErrorV3> {
-        if require_bound {
-            next.revalidate_bound()?;
-        } else {
-            next.revalidate_unbound()?;
-        }
+        next.revalidate_bound()?;
         let prior = self.prior.current_observation().evidence();
         let next_evidence = next.evidence();
         let expected_match = match direction {
@@ -5419,15 +6064,65 @@ impl<K> RetainedCollectorMountDeltaV3<K> {
         }
         Ok(())
     }
+
+    fn validate_unadopted_observation(
+        &self,
+        next: &UnadoptedCollectorGenerationV3,
+        direction: MountDeltaDirectionV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        next.revalidate()?;
+        let prior = self.prior.current_observation().evidence();
+        let next_evidence = &next.core;
+        let expected_match = match direction {
+            MountDeltaDirectionV3::Mount => ReconciliationMatchV2::Unique { mounted: true },
+            MountDeltaDirectionV3::Unmount => ReconciliationMatchV2::Unique { mounted: false },
+        };
+        let expected_underlying_revalidated = matches!(direction, MountDeltaDirectionV3::Unmount);
+        if next_evidence.receipt.purpose != CollectorPurposeV3::ReconciliationSnapshot
+            || next_evidence.receipt.match_result != expected_match
+            || next_evidence
+                .receipt
+                .mount_evidence
+                .mountpoint_underlying_revalidated
+                != expected_underlying_revalidated
+            || next_evidence.receipt.mount_evidence.mounts_before != self.after
+            || next_evidence.receipt.mount_evidence.mounts_after != self.after
+            || next_evidence.guard.mounts != self.after
+            || next_evidence.receipt.operation_nonce != self.operation_nonce
+            || next_evidence.receipt.operation_nonce != prior.receipt.operation_nonce
+            || next_evidence.receipt.boot_session_uuid != prior.receipt.boot_session_uuid
+            || next_evidence.receipt.restart_epoch_nonce != prior.receipt.restart_epoch_nonce
+            || next_evidence.receipt.collector_policy_sha256
+                != prior.receipt.collector_policy_sha256
+            || next_evidence.receipt.backing_identity_sha256
+                != prior.receipt.backing_identity_sha256
+            || next_evidence.receipt.mountpoint_underlying_sha256
+                != prior.receipt.mountpoint_underlying_sha256
+            || next_evidence.receipt.matching_groups != prior.receipt.matching_groups
+        {
+            return Err(invalid(
+                "unadopted post-delta collector does not bind the exact operation, epoch, unique group, or expected mount snapshot",
+            ));
+        }
+        self.prior
+            .revalidate_across_mount_delta(&self.after, direction)?;
+        if mount_table_snapshot()? != self.after {
+            return Err(invalid(
+                "mount table changed after unadopted post-delta collector final replay",
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl RetainedCollectorMountDeltaV3<MountingV3> {
-    pub(crate) fn seal_observation<'a>(
+    pub(crate) fn seal_unadopted_observation<'a>(
         &'a self,
-        next: &'a RetainedCollectorObservationV3,
-    ) -> Result<SealedMountDeltaObservationV3<'a, MountingV3>, RestartCollectorErrorV3> {
-        self.validate_post_delta(next, MountDeltaDirectionV3::Mount, false)?;
-        Ok(SealedMountDeltaObservationV3 {
+        next: &'a UnadoptedCollectorGenerationV3,
+    ) -> Result<SealedUnadoptedMountDeltaObservationV3<'a, MountingV3>, RestartCollectorErrorV3>
+    {
+        self.validate_unadopted_observation(next, MountDeltaDirectionV3::Mount)?;
+        Ok(SealedUnadoptedMountDeltaObservationV3 {
             delta: self,
             next,
             _not_send_or_sync: PhantomData,
@@ -5438,7 +6133,7 @@ impl RetainedCollectorMountDeltaV3<MountingV3> {
         &'a self,
         next: &'a RetainedCollectorObservationV3,
     ) -> Result<SealedMountDeltaAdvanceV3<'a, MountingV3>, RestartCollectorErrorV3> {
-        self.validate_post_delta(next, MountDeltaDirectionV3::Mount, true)?;
+        self.validate_post_delta(next, MountDeltaDirectionV3::Mount)?;
         Ok(SealedMountDeltaAdvanceV3 {
             delta: self,
             next,
@@ -5448,12 +6143,13 @@ impl RetainedCollectorMountDeltaV3<MountingV3> {
 }
 
 impl RetainedCollectorMountDeltaV3<UnmountingV3> {
-    pub(crate) fn seal_observation<'a>(
+    pub(crate) fn seal_unadopted_observation<'a>(
         &'a self,
-        next: &'a RetainedCollectorObservationV3,
-    ) -> Result<SealedMountDeltaObservationV3<'a, UnmountingV3>, RestartCollectorErrorV3> {
-        self.validate_post_delta(next, MountDeltaDirectionV3::Unmount, false)?;
-        Ok(SealedMountDeltaObservationV3 {
+        next: &'a UnadoptedCollectorGenerationV3,
+    ) -> Result<SealedUnadoptedMountDeltaObservationV3<'a, UnmountingV3>, RestartCollectorErrorV3>
+    {
+        self.validate_unadopted_observation(next, MountDeltaDirectionV3::Unmount)?;
+        Ok(SealedUnadoptedMountDeltaObservationV3 {
             delta: self,
             next,
             _not_send_or_sync: PhantomData,
@@ -5464,7 +6160,7 @@ impl RetainedCollectorMountDeltaV3<UnmountingV3> {
         &'a self,
         next: &'a RetainedCollectorObservationV3,
     ) -> Result<SealedMountDeltaAdvanceV3<'a, UnmountingV3>, RestartCollectorErrorV3> {
-        self.validate_post_delta(next, MountDeltaDirectionV3::Unmount, true)?;
+        self.validate_post_delta(next, MountDeltaDirectionV3::Unmount)?;
         Ok(SealedMountDeltaAdvanceV3 {
             delta: self,
             next,
@@ -5476,7 +6172,7 @@ impl RetainedCollectorMountDeltaV3<UnmountingV3> {
         self,
         next: RetainedCollectorObservationV3,
     ) -> Result<RetainedCollectorLineageV3, RestartCollectorErrorV3> {
-        self.validate_post_delta(&next, MountDeltaDirectionV3::Unmount, true)?;
+        self.validate_post_delta(&next, MountDeltaDirectionV3::Unmount)?;
         let RetainedCollectorMountDeltaV3 { after, prior, .. } = self;
         prior.into_mount_delta_current(MountDeltaDirectionV3::Unmount, after, next)
     }
@@ -5534,9 +6230,9 @@ impl<K> SealedMountDeltaAdvanceV3<'_, K> {
     }
 }
 
-impl<K> SealedMountDeltaObservationV3<'_, K> {
+impl<K> SealedUnadoptedMountDeltaObservationV3<'_, K> {
     pub(crate) fn mount_evidence_sha256(&self) -> &str {
-        &self.next.evidence().receipt.mount_evidence_sha256
+        &self.next.core.receipt.mount_evidence_sha256
     }
 
     pub(crate) fn operation_nonce(&self) -> &str {
@@ -5546,11 +6242,12 @@ impl<K> SealedMountDeltaObservationV3<'_, K> {
     pub(crate) fn post_effect_collector_binding(
         &self,
     ) -> Result<PostEffectCollectorBindingV3, RestartCollectorErrorV3> {
-        let evidence = self.next.evidence();
+        self.next.revalidate()?;
+        let evidence = &self.next.core;
         let binding = PostEffectCollectorBindingV3::from_retained_collector(
             PostEffectCollectorBindingSealV3 { _private: () },
             evidence.receipt.boot_session_uuid.clone(),
-            evidence.durable.lifecycle_binding(),
+            evidence.expected_lifecycle_binding.clone(),
             evidence.receipt_sha256.clone(),
             self.delta.prior.first_snapshot_sha256()?,
             evidence.receipt.mount_evidence_sha256.clone(),
@@ -5561,7 +6258,7 @@ impl<K> SealedMountDeltaObservationV3<'_, K> {
             || binding.observation_sha256() != self.mount_evidence_sha256()
         {
             return Err(invalid(
-                "post-effect collector binding changed across sealed observation",
+                "unadopted post-effect collector binding changed across sealed observation",
             ));
         }
         Ok(binding)
