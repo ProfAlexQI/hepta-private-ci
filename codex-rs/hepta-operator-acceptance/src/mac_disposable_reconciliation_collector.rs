@@ -796,7 +796,7 @@ impl RetainedPreparedCollectorCapabilityV3 {
             .map_err(|error| {
                 invalid(format!("prepared collector manifest JSON failed: {error}"))
             })?;
-        let (canonical, manifest_sha256) = canonical_prepared_manifest(&manifest)?;
+        let (canonical, manifest_sha256) = canonical_prepared_manifest_bytes(&manifest)?;
         if canonical != manifest_bytes
             || manifest_sha256 != expected_manifest_sha256
             || manifest.profile_sha256 != expected_profile_sha256
@@ -806,6 +806,11 @@ impl RetainedPreparedCollectorCapabilityV3 {
                 "prepared collector manifest differs from its exact durable commitment",
             ));
         }
+        let receipt_root_initial_binding =
+            manifest.receipt_root_initial_binding.ok_or_else(|| {
+                invalid("legacy prepared collector manifest cannot enter active receipt generation")
+            })?;
+        validate_prepared_manifest(&manifest)?;
         let artifact_root =
             HeldDirectoryV3::capture(Path::new(&manifest.policy.artifact_root), "artifact root")?;
         let receipt_root =
@@ -836,9 +841,7 @@ impl RetainedPreparedCollectorCapabilityV3 {
         let receipt_root = RetainedReceiptRootV3::from_held(
             receipt_root,
             manifest.policy.receipt_root_identity,
-            manifest.receipt_root_initial_binding.ok_or_else(|| {
-                invalid("legacy prepared collector manifest cannot enter active receipt generation")
-            })?,
+            receipt_root_initial_binding,
         )?;
         let retained = Self {
             artifact_root,
@@ -1217,6 +1220,12 @@ fn canonical_prepared_manifest(
     manifest: &PreparedCollectorManifestV3,
 ) -> Result<(Vec<u8>, String), RestartCollectorErrorV3> {
     validate_prepared_manifest(manifest)?;
+    canonical_prepared_manifest_bytes(manifest)
+}
+
+fn canonical_prepared_manifest_bytes(
+    manifest: &PreparedCollectorManifestV3,
+) -> Result<(Vec<u8>, String), RestartCollectorErrorV3> {
     let bytes = canonical_json(manifest)?;
     if bytes.is_empty() || bytes.len() > MAX_RECEIPT_BYTES {
         return Err(invalid(
@@ -1564,6 +1573,11 @@ fn collect_live<H>(
 where
     H: FnOnce(&mut HeldRestartIOMediaInventoryV3) -> Result<(), RestartCollectorErrorV3>,
 {
+    // Preserve the rootless test harness's original fail-closed ordering: a
+    // same-path replacement is first rejected against the prepared policy.
+    // Production collection enters through a retained prepared capability and
+    // never uses this test-only DTO path.
+    validate_request(&request)?;
     let receipt_root_held = HeldDirectoryV3::capture(request.receipt_root, "receipt root")?;
     let receipt_root_initial = receipt_root_held.binding;
     let receipt_root = RetainedReceiptRootV3::from_held(
@@ -1875,7 +1889,7 @@ impl PendingRestartObservationV3 {
         // and the complete mount table have survived this post-persistence
         // replay.
         self.guard.revalidate(&self.receipt)?;
-        durable.revalidate()?;
+        durable.revalidate(&receipt_root)?;
         let decoded: RestartCollectorReceiptV3 = serde_json::from_slice(&bytes)
             .map_err(|error| invalid(format!("persisted receipt JSON failed: {error}")))?;
         if decoded != self.receipt || canonical_json(&decoded)? != bytes {
@@ -1976,21 +1990,10 @@ impl RetainedCollectorEvidenceV3 {
     }
 
     fn revalidate_retained_capsule(&self) -> Result<(), RestartCollectorErrorV3> {
-        self.durable.revalidate()?;
-        if let Some(root) = &self.receipt_root {
-            root.revalidate()?;
-            let binding = self.durable.lifecycle_binding();
-            let matches = root.snapshot.entries.iter().filter(|entry| {
-                entry.name == binding.final_basename()
-                    && entry.binding == binding.exact_binding()
-                    && sha256(&entry.bytes) == binding.canonical_sha256()
-            });
-            if matches.count() != 1 {
-                return Err(invalid(
-                    "retained receipt-root generation does not own this exact receipt capsule",
-                ));
-            }
-        }
+        let receipt_root = self.receipt_root.as_ref().ok_or_else(|| {
+            invalid("retained collector capsule lost its unique receipt-root owner")
+        })?;
+        self.durable.revalidate(receipt_root)?;
         if sha256(&canonical_json(&self.receipt)?) != self.receipt_sha256 {
             return Err(invalid(
                 "retained collector receipt digest changed after final replay",
@@ -2044,7 +2047,11 @@ impl RetainedCollectorEvidenceV3 {
         expected_after: &[MountBindingV3],
         direction: MountDeltaDirectionV3,
     ) -> Result<(), RestartCollectorErrorV3> {
-        self.durable.revalidate()?;
+        let receipt_root = self
+            .receipt_root
+            .as_ref()
+            .ok_or_else(|| invalid("pre-delta collector lost its unique receipt-root owner"))?;
+        self.durable.revalidate(receipt_root)?;
         let record = self
             .lifecycle_record
             .as_ref()
@@ -2872,39 +2879,6 @@ impl ReceiptRootSnapshotV3 {
 }
 
 impl RetainedReceiptRootV3 {
-    fn try_clone_exact(&self) -> Result<Self, RestartCollectorErrorV3> {
-        self.revalidate()?;
-        let entries = self
-            .snapshot
-            .entries
-            .iter()
-            .map(|entry| {
-                Ok(ValidatedExistingReceiptV3 {
-                    binding: entry.binding,
-                    bytes: entry.bytes.clone(),
-                    file: entry.file.try_clone()?,
-                    lifecycle_binding: entry.lifecycle_binding.clone(),
-                    name: entry.name.clone(),
-                    receipt: entry.receipt.clone(),
-                })
-            })
-            .collect::<Result<Vec<_>, RestartCollectorErrorV3>>()?;
-        let cloned = Self {
-            current_binding: self.current_binding,
-            directory: self.directory.try_clone()?,
-            initial_binding: self.initial_binding,
-            path: self.path.clone(),
-            snapshot: ReceiptRootSnapshotV3 {
-                aggregate_bytes: self.snapshot.aggregate_bytes,
-                entries,
-                roster: self.snapshot.roster.clone(),
-            },
-            stable_identity: self.stable_identity,
-        };
-        cloned.revalidate()?;
-        Ok(cloned)
-    }
-
     fn from_held(
         held: HeldDirectoryV3,
         stable_identity: StableDirectoryIdentityV3,
@@ -2968,6 +2942,49 @@ impl RetainedReceiptRootV3 {
             ));
         }
         Ok(())
+    }
+
+    fn revalidate_retained_generation_chain(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate()?;
+        let mut generations = self
+            .snapshot
+            .entries
+            .iter()
+            .map(|entry| {
+                let binding = entry.lifecycle_binding.as_ref().ok_or_else(|| {
+                    invalid("receipt-root owner lost a retained generation binding")
+                })?;
+                if binding.final_basename() != entry.name
+                    || binding.canonical_sha256() != sha256(&entry.bytes)
+                    || binding.exact_binding() != entry.binding
+                {
+                    return Err(invalid(
+                        "receipt-root owner generation differs from its exact receipt capsule",
+                    ));
+                }
+                Ok(binding)
+            })
+            .collect::<Result<Vec<_>, RestartCollectorErrorV3>>()?;
+        generations.sort_by_key(|binding| binding.root_generation_ordinal());
+        let mut prior_root = self.initial_binding;
+        for (index, binding) in generations.into_iter().enumerate() {
+            let root_after = binding.root_after();
+            if usize::try_from(binding.root_generation_ordinal()).ok() != Some(index + 1)
+                || !same_directory_object(prior_root, root_after)
+                || prior_root.nlink.checked_add(1) != Some(root_after.nlink)
+            {
+                return Err(invalid(
+                    "receipt-root owner retained generation chain is not exact and contiguous",
+                ));
+            }
+            prior_root = root_after;
+        }
+        if prior_root != self.current_binding {
+            return Err(invalid(
+                "receipt-root owner current full endpoint differs from its retained chain",
+            ));
+        }
+        self.revalidate()
     }
 
     fn revalidate_lifecycle_records(
@@ -3062,13 +3079,6 @@ impl RetainedReceiptRootV3 {
 }
 
 impl S1RetainedCollectorReceiptRootV3 {
-    pub(crate) fn try_clone_exact(&self) -> Result<Self, RestartCollectorErrorV3> {
-        Ok(Self {
-            root: self.root.try_clone_exact()?,
-            _not_send_or_sync: PhantomData,
-        })
-    }
-
     pub(crate) fn retained_descriptor_count(&self) -> usize {
         1 + self.root.snapshot.entries.len()
     }
@@ -3141,11 +3151,6 @@ fn capture_receipt_root_closed_world(
     directory.revalidate("receipt root")?;
     validate_receipt_directory(&directory.binding)?;
     let roster = list_directory(directory.file.as_raw_fd(), MAX_RECEIPT_FILES)?;
-    if roster.len() >= MAX_RECEIPT_FILES {
-        return Err(invalid(
-            "collector receipt root has no bounded descriptor slot for a new receipt",
-        ));
-    }
     if roster
         .iter()
         .any(|name| name.starts_with(".incoming-collector-") || !valid_final_receipt_name(name))
@@ -3403,6 +3408,7 @@ impl DurableCollectorReceiptV3 {
                 "collector receipt persistence exceeds its aggregate byte or descriptor budget",
             ));
         }
+        root.revalidate_retained_generation_chain()?;
         let path = root.path.clone();
         let directory = root.directory.try_clone()?;
         let before = fstat_binding(directory.as_raw_fd(), "collector receipt directory")?;
@@ -3557,20 +3563,36 @@ impl DurableCollectorReceiptV3 {
             root_generation_ordinal: u32::try_from(root.snapshot.roster.len())
                 .map_err(|_| invalid("collector receipt generation ordinal exceeds u32"))?,
         };
-        durable.revalidate()?;
+        durable.revalidate(&root)?;
         Ok((durable, root))
     }
 
-    fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+    fn revalidate(&self, owner: &RetainedReceiptRootV3) -> Result<(), RestartCollectorErrorV3> {
+        owner.revalidate_retained_generation_chain()?;
         let directory = fstat_binding(self.directory.as_raw_fd(), "collector receipt directory")?;
         let named_directory = lstat_binding(&self.path, "receipt root")?;
         if !stable_root_object_matches(&self.directory_identity, &directory)
             || !same_directory_object(directory, named_directory)
-            || directory != self.root_after_binding
+            || !stable_root_object_matches(&self.directory_identity, &self.root_after_binding)
+            || !same_directory_object(self.root_after_binding, directory)
+            || owner.path != self.path
+            || owner.stable_identity != self.directory_identity
             || self.root_generation_ordinal == 0
         {
             return Err(invalid(
                 "collector receipt root changed identity before capsule replay",
+            ));
+        }
+        let lifecycle_binding = self.lifecycle_binding();
+        let owner_matches = owner.snapshot.entries.iter().filter(|entry| {
+            entry.name == self.final_name
+                && entry.binding == self.file_binding
+                && entry.bytes == self.bytes
+                && entry.lifecycle_binding.as_ref() == Some(&lifecycle_binding)
+        });
+        if owner_matches.count() != 1 {
+            return Err(invalid(
+                "unique receipt-root owner does not retain this exact historical capsule",
             ));
         }
         verify_fd_binding_secure(
@@ -3633,7 +3655,7 @@ impl DurableCollectorReceiptV3 {
                 "collector receipt directory changed across final replay",
             ));
         }
-        Ok(())
+        owner.revalidate_retained_generation_chain()
     }
 }
 

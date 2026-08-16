@@ -813,6 +813,53 @@ fn prepared_manifest_is_fixed_replayed_and_bound_by_the_first_record() {
 }
 
 #[test]
+fn s1_replays_legacy_manifest_without_receipt_root_generation_as_a_blocker() {
+    let temporary = tempfile::tempdir().expect("control root parent");
+    let control_root = temporary.path().join("control");
+    let initial_control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&control_root).expect("control root");
+    drop(initial_control);
+    let operations = File::open(control_root.join("operations")).expect("operations descriptor");
+    let manifest = br#"{"schema":"modeled-prepared-collector-manifest-v3"}"#;
+    let (mut store, issues) = DurableLifecycleStoreV3::create_new_format_with_hook(
+        &operations,
+        NONCE,
+        unsafe { libc::geteuid() },
+        unsafe { libc::getegid() },
+        Some(manifest),
+        |_| Ok(()),
+    )
+    .expect("publish legacy manifest-bound operation");
+    let event = sidecar_bound_prepared(&store);
+    let mut journal = DisposableLifecycleJournalV2::new(NONCE).expect("journal");
+    store
+        .append(&mut journal, event)
+        .expect("append legacy manifest-bound first record");
+    drop(issues);
+    drop(store);
+    drop(operations);
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&control_root).expect("reopen control");
+    let assessment = control
+        .assess_read_only()
+        .expect("legacy receipt-root None remains readable and fail closed");
+    let receipt = assessment.receipt();
+    assert!(!receipt.admission_authority);
+    assert!(!receipt.authority.any());
+    assert!(!receipt.new_operation_precondition_satisfied);
+    assert_eq!(receipt.blocking_operation_nonces, [NONCE.to_string()]);
+    let census = assessment
+        .into_blocking_control_census(NONCE)
+        .expect("legacy manifest remains an exact blocking S1 capsule");
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    assert!(
+        ReconciliationOperationStoreV3::open_existing(census, &epoch).is_err(),
+        "legacy receipt-root None must not mint a production restart store"
+    );
+}
+
+#[test]
 fn restart_admission_rejects_same_byte_prepared_manifest_inode_replacement() {
     let root = tempfile::tempdir().expect("control root parent");
     let control_root = root.path().join("control");

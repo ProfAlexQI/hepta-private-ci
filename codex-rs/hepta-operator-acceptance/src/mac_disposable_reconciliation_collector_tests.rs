@@ -2,6 +2,7 @@ use super::*;
 
 use crate::mac_disposable_lifecycle::DisposableLifecycleEventV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleJournalV2;
+use crate::mac_disposable_lifecycle::PreparedCollectorManifestBindingV3;
 use crate::mac_disposable_lifecycle_store::CensusBoundDurableLifecycleStoreV3;
 use crate::mac_disposable_lifecycle_store::DurableLifecycleStoreV3;
 use crate::mac_disposable_lifecycle_store::ReconciliationDurableLifecycleStoreV3;
@@ -489,6 +490,23 @@ fn inventory(objects: Vec<RestartIOMediaObjectV3>) -> RestartIOMediaInventoryV3 
 
 fn backing_artifact(basename: &str) -> PreparedArtifactBindingV3 {
     PreparedArtifactBindingV3::new(ArtifactRoleV3::BackingImage, basename).unwrap()
+}
+
+fn receipt_for_test_generation(
+    template: &RestartCollectorReceiptV3,
+    ordinal: u64,
+) -> RestartCollectorReceiptV3 {
+    let mut receipt = template.clone();
+    receipt.monotonic_before_nanoseconds = template
+        .monotonic_after_nanoseconds
+        .checked_add(ordinal.saturating_mul(2))
+        .expect("test receipt timestamp overflow");
+    receipt.monotonic_after_nanoseconds = receipt
+        .monotonic_before_nanoseconds
+        .checked_add(1)
+        .expect("test receipt timestamp overflow");
+    validate_receipt(&receipt).expect("test receipt generation remains canonical");
+    receipt
 }
 
 fn synthetic_policy() -> RestartCollectorPolicyV3 {
@@ -1774,6 +1792,121 @@ fn receipt_root_g0_g1_survives_drop_reopen_and_rejects_legal_same_byte_swap() {
 }
 
 #[test]
+fn test_only_owner_g2_keeps_the_historical_g1_capsule_valid() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let pending = collect_reconciliation_snapshot_v3(fixture.request())
+        .expect("collect test-only G1 receipt");
+    let mut retained = pending
+        .persist_and_retain()
+        .expect("persist test-only G1 receipt");
+    let (root, second_receipt) = {
+        let evidence = retained.evidence_mut();
+        assert_eq!(
+            evidence
+                .durable
+                .lifecycle_binding()
+                .root_generation_ordinal(),
+            1
+        );
+        let second = receipt_for_test_generation(&evidence.receipt, 2);
+        let root = evidence
+            .receipt_root
+            .take()
+            .expect("G1 evidence owns the unique receipt-root generation");
+        (root, second)
+    };
+    let second_bytes = canonical_json(&second_receipt).expect("canonical G2 test receipt");
+    let second_sha256 = sha256(&second_bytes);
+    // This direct private call is a test-only owner harness. It proves the A
+    // capsule invariant without adding production successor orchestration.
+    let (second_durable, root) =
+        DurableCollectorReceiptV3::persist(root, &second_receipt, second_bytes, &second_sha256)
+            .expect("advance the test-only owner to G2");
+    assert_eq!(
+        second_durable.lifecycle_binding().root_generation_ordinal(),
+        2
+    );
+    second_durable
+        .revalidate(&root)
+        .expect("G2 capsule is owned by the current root owner");
+    retained.evidence_mut().receipt_root = Some(root);
+    retained
+        .revalidate()
+        .expect("current G2 owner keeps its historical G1 capsule valid");
+}
+
+#[test]
+fn receipt_root_capacity_allows_exact_64_reopen_but_rejects_any_65th_entry() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let PendingRestartObservationV3 {
+        guard: _,
+        receipt: template,
+        receipt_root,
+    } = collect_reconciliation_snapshot_v3(fixture.request())
+        .expect("collect capacity-test receipt template");
+    let initial_binding = receipt_root.initial_binding;
+    let stable_identity = receipt_root.stable_identity;
+    drop(receipt_root);
+    for ordinal in 1..=u64::try_from(MAX_RECEIPT_FILES).unwrap() {
+        let receipt = receipt_for_test_generation(&template, ordinal);
+        let bytes = canonical_json(&receipt).expect("canonical capacity-test receipt");
+        let digest = sha256(&bytes);
+        write_private(
+            &fixture
+                .persistence_root
+                .join(format!("collector-{digest}.json")),
+            &bytes,
+        );
+    }
+    File::open(&fixture.persistence_root)
+        .expect("open full test receipt root")
+        .sync_all()
+        .expect("sync full test receipt root");
+
+    let full_root =
+        RetainedReceiptRootV3::capture(&fixture.persistence_root, stable_identity, initial_binding)
+            .expect("an exact 64-entry root remains reopenable");
+    assert_eq!(full_root.snapshot.entries.len(), MAX_RECEIPT_FILES);
+    let overflow_receipt =
+        receipt_for_test_generation(&template, u64::try_from(MAX_RECEIPT_FILES).unwrap() + 1);
+    let overflow_bytes = canonical_json(&overflow_receipt).expect("canonical overflow receipt");
+    let overflow_sha256 = sha256(&overflow_bytes);
+    assert!(
+        DurableCollectorReceiptV3::persist(
+            full_root,
+            &overflow_receipt,
+            overflow_bytes,
+            &overflow_sha256,
+        )
+        .is_err(),
+        "a full 64-entry owner admitted a 65th publication"
+    );
+    assert_eq!(
+        std::fs::read_dir(&fixture.persistence_root)
+            .expect("read full receipt root")
+            .count(),
+        MAX_RECEIPT_FILES
+    );
+    RetainedReceiptRootV3::capture(&fixture.persistence_root, stable_identity, initial_binding)
+        .expect("failed 65th publication leaves the exact 64-entry root reopenable");
+
+    let extra_bytes = b"test-only-over-capacity-entry";
+    let extra_name = format!("collector-{}.json", sha256(extra_bytes));
+    write_private(&fixture.persistence_root.join(extra_name), extra_bytes);
+    assert!(
+        RetainedReceiptRootV3::capture(
+            &fixture.persistence_root,
+            stable_identity,
+            initial_binding,
+        )
+        .is_err(),
+        "a 65-entry receipt root bypassed the closed-world reopen bound"
+    );
+}
+
+#[test]
 fn drop_all_fd_reopen_rejects_missing_orphan_temp_extra_and_net_zero_root_drift() {
     let _lock = live_collector_test_lock();
     for mutation in ["missing", "orphan", "temp", "extra", "endpoint-drift"] {
@@ -2093,20 +2226,29 @@ fn legacy_prepared_manifest_without_initial_root_round_trips_but_cannot_reopen_l
     let replayed: PreparedCollectorManifestV3 = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(canonical_json(&replayed).unwrap(), bytes);
     drop(retained);
+    std::fs::remove_dir_all(&fixture.artifact_root).expect("remove legacy artifact root");
+    std::fs::remove_dir(&fixture.mountpoint_path).expect("remove legacy mountpoint");
+    std::fs::remove_dir_all(&fixture.persistence_root).expect("remove legacy receipt root");
+    let error = match RetainedPreparedCollectorCapabilityV3::reopen_from_exact_manifest(
+        &operation_nonce,
+        &bytes,
+        &digest,
+        &legacy.profile_sha256,
+    ) {
+        Ok(_) => panic!("legacy manifest without G0 must remain blocking/read-only"),
+        Err(error) => error,
+    };
     assert!(
-        RetainedPreparedCollectorCapabilityV3::reopen_from_exact_manifest(
-            &operation_nonce,
-            &bytes,
-            &digest,
-            &legacy.profile_sha256,
-        )
-        .is_err(),
-        "legacy manifest without G0 must remain blocking/read-only"
+        error
+            .to_string()
+            .contains("legacy prepared collector manifest cannot enter active receipt generation"),
+        "legacy manifest must fail before observing any prepared path: {error}"
     );
 }
 
 #[test]
 fn reconciliation_replay_accepts_historical_prepared_baseline_and_seals_current_boot_zero() {
+    let _lock = live_collector_test_lock();
     let mut fixture = LiveCollectorFixture::new();
     let current_boot = fixture.bindings.boot_session_uuid.clone();
     let historical_boot = "12345678-1234-4abc-8abc-123456789abc".to_string();
@@ -2446,16 +2588,43 @@ fn rootless_closed_world_receipts_prior_projection_and_metadata_are_fail_closed(
     std::fs::remove_file(&collision_path).unwrap();
 
     let transient = collect_reconciliation_snapshot_v3(fixture.request()).unwrap();
-    let transient_path = fixture.persistence_root.join("transient-create-delete");
+    let transient_receipt_path = fixture.persistence_root.join(format!(
+        "collector-{}.json",
+        sha256(&canonical_json(transient.receipt()).unwrap())
+    ));
+    let transient_marker_path = fixture.persistence_root.join("transient-create-delete");
     assert!(
         transient
             .persist_and_retain_with_hook(|| {
-                std::fs::write(&transient_path, b"transient")?;
-                std::fs::remove_file(&transient_path)?;
+                std::fs::write(&transient_marker_path, b"transient")?;
+                std::fs::remove_file(&transient_marker_path)?;
                 Ok(())
             })
             .is_err()
     );
+    assert!(
+        transient_receipt_path.is_file(),
+        "the post-publish cutpoint must leave an exact orphan receipt"
+    );
+    let orphan_blocker = collect_reconciliation_snapshot_v3(fixture.request()).unwrap();
+    let error = match orphan_blocker.persist_and_retain() {
+        Ok(_) => panic!("a receipt without an exact lifecycle binding admitted a successor"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("receipt-root owner lost a retained generation binding"),
+        "an orphan receipt failed for the wrong reason: {error}"
+    );
+    assert_eq!(
+        std::fs::read_dir(&fixture.persistence_root)
+            .expect("read orphaned receipt root")
+            .count(),
+        1,
+        "orphan rejection published another receipt"
+    );
+    std::fs::remove_file(&transient_receipt_path).unwrap();
 
     let metadata_drift = collect_reconciliation_snapshot_v3(fixture.request()).unwrap();
     let metadata_path = fixture.persistence_root.join(format!(
@@ -2471,6 +2640,11 @@ fn rootless_closed_world_receipts_prior_projection_and_metadata_are_fail_closed(
             })
             .is_err()
     );
+    assert!(
+        metadata_path.is_file(),
+        "the metadata-drift cutpoint must leave an exact orphan receipt"
+    );
+    std::fs::remove_file(&metadata_path).unwrap();
 
     let pending = collect_reconciliation_snapshot_v3(fixture.request()).unwrap();
     let snapshot_receipt_model = pending.receipt().clone();
@@ -2557,6 +2731,8 @@ fn rootless_live_zero_requires_persistence_and_fails_closed_before_backing_unlin
         &[],
     )
     .unwrap();
+    let receipt_root_initial = lstat_binding(&persistence_root, "test initial receipt root")
+        .expect("capture test-only G0 receipt-root binding");
     let bindings = RestartCollectorBindingsV3 {
         backing_identity_sha256: sha256(&canonical_json(&prepared_backing).unwrap()),
         baseline_inventory_sha256: baseline.sha256().unwrap(),
@@ -2630,13 +2806,24 @@ fn rootless_live_zero_requires_persistence_and_fails_closed_before_backing_unlin
             })
             .unwrap()
     };
-    append(DisposableLifecycleEventV2::OperationPrepared {
-        baseline_inventory_sha256: bindings.baseline_inventory_sha256.clone(),
-        backing_identity_sha256: bindings.backing_identity_sha256.clone(),
-        boot_session_uuid: bindings.boot_session_uuid.clone(),
-        collector_policy_sha256: bindings.collector_policy_sha256.clone(),
-        mountpoint_underlying_sha256: bindings.mountpoint_underlying_sha256.clone(),
-    });
+    append(
+        DisposableLifecycleEventV2::OperationPreparedWithManifestV3 {
+            baseline_inventory_sha256: bindings.baseline_inventory_sha256.clone(),
+            backing_identity_sha256: bindings.backing_identity_sha256.clone(),
+            boot_session_uuid: bindings.boot_session_uuid.clone(),
+            collector_policy_sha256: bindings.collector_policy_sha256.clone(),
+            mountpoint_underlying_sha256: bindings.mountpoint_underlying_sha256.clone(),
+            prepared_manifest: PreparedCollectorManifestBindingV3 {
+                birthtime_nanoseconds: receipt_root_initial.birthtime_nanoseconds,
+                birthtime_seconds: receipt_root_initial.birthtime_seconds,
+                dev: receipt_root_initial.dev,
+                generation: receipt_root_initial.generation,
+                inode: receipt_root_initial.inode,
+                receipt_root_initial: Some(receipt_root_initial),
+                sha256: sha256(b"rootless-test-only-prepared-manifest-v3"),
+            },
+        },
+    );
     drop(append);
     let mut resumed = DisposableLifecycleJournalV2::resume_for_reconciliation(&records).unwrap();
     resumed

@@ -1391,6 +1391,35 @@ fn historical_v1_unknown_or_noncanonical_semantics_are_explicit_blockers() {
 }
 
 #[test]
+fn historical_v1_obligation_rejects_a_v3_sidecar_before_opening_it() {
+    let temporary = tempfile::tempdir().expect("temporary historical volume");
+    let root = create_root(temporary.path());
+    let nonce = create_historical_root(
+        temporary.path(),
+        HistoricalSemanticMutation::UnknownSemantics,
+    );
+    let sidecar = temporary
+        .path()
+        .join(format!("{HISTORICAL_ROOT_PREFIX}{nonce}"))
+        .join("publication")
+        .join(format!("{HISTORICAL_OBLIGATION_PREFIX}{nonce}"))
+        .join(EFFECT_ISSUE_ROOT_V3);
+    write_canonical_file(&sidecar, &serde_json::json!({}));
+
+    let control = LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("reopen control");
+    let error = match control.assess_read_only() {
+        Ok(_) => panic!("historical V1 obligation accepted a V3 sidecar"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("historical obligation contains a V3 operation sidecar"),
+        "unexpected rejection: {error}"
+    );
+}
+
+#[test]
 fn historical_v1_order_and_nonce_transplants_fail_before_closure() {
     for mutation in [
         HistoricalSemanticMutation::BarrierOrderGap,

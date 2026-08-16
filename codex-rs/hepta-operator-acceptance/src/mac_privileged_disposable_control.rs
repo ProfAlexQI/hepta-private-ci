@@ -214,12 +214,19 @@ struct OperationCapsule {
     directory: File,
     effect_issues: Option<EffectIssueRootCapsuleV3>,
     identity: Identity,
+    lifecycle_kind: OperationCapsuleLifecycleKind,
     name: String,
     prepared_manifest: Option<RecordCapsule>,
     record_names: Vec<String>,
     records: Vec<RecordCapsule>,
     restart_admissions: Option<RestartAdmissionRootCapsuleV3>,
     roster: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OperationCapsuleLifecycleKind {
+    HistoricalV1,
+    V2,
 }
 
 struct EffectIssueRootCapsuleV3 {
@@ -1000,13 +1007,20 @@ impl LivePrivilegedDisposablePolicyV2 {
         total_bytes: &mut usize,
         retained_fds: &mut RetainedFdBudget,
     ) -> Result<OperationCapsule, PrivilegedDisposableControlErrorV2> {
-        self.open_record_set(self.operations.as_raw_fd(), name, total_bytes, retained_fds)
+        self.open_record_set(
+            self.operations.as_raw_fd(),
+            name,
+            OperationCapsuleLifecycleKind::V2,
+            total_bytes,
+            retained_fds,
+        )
     }
 
     fn open_record_set(
         &self,
         parent_fd: RawFd,
         name: &str,
+        lifecycle_kind: OperationCapsuleLifecycleKind,
         total_bytes: &mut usize,
         retained_fds: &mut RetainedFdBudget,
     ) -> Result<OperationCapsule, PrivilegedDisposableControlErrorV2> {
@@ -1116,6 +1130,45 @@ impl LivePrivilegedDisposablePolicyV2 {
                 name: record_name.clone(),
             });
         }
+        let lifecycle_bytes = records
+            .iter()
+            .map(|record| record.bytes.clone())
+            .collect::<Vec<_>>();
+        let receipt_root_generation_enabled = match (
+            lifecycle_kind,
+            dispatch_lifecycle_records(&lifecycle_bytes).map_err(|error| {
+                invalid(format!(
+                    "lifecycle replay failed before opening V3 sidecars: {error}"
+                ))
+            })?,
+        ) {
+            (OperationCapsuleLifecycleKind::V2, LifecycleDispatchV2::V2(inspection)) => inspection
+                .prepared_manifest
+                .as_ref()
+                .is_some_and(|binding| binding.receipt_root_initial.is_some()),
+            (OperationCapsuleLifecycleKind::HistoricalV1, LifecycleDispatchV2::HistoricalV1(_))
+                if issue_like.is_empty()
+                    && prepared_manifest_like.is_empty()
+                    && restart_admission_like.is_empty() =>
+            {
+                false
+            }
+            (OperationCapsuleLifecycleKind::HistoricalV1, LifecycleDispatchV2::HistoricalV1(_)) => {
+                return Err(invalid(
+                    "historical obligation contains a V3 operation sidecar",
+                ));
+            }
+            (OperationCapsuleLifecycleKind::V2, LifecycleDispatchV2::HistoricalV1(_)) => {
+                return Err(invalid(
+                    "V2 operations roster contains a historical V1 lifecycle",
+                ));
+            }
+            (OperationCapsuleLifecycleKind::HistoricalV1, LifecycleDispatchV2::V2(_)) => {
+                return Err(invalid(
+                    "historical obligation roster contains a V2 lifecycle",
+                ));
+            }
+        };
         let effect_issues = if issue_like.is_empty() {
             None
         } else {
@@ -1175,22 +1228,6 @@ impl LivePrivilegedDisposablePolicyV2 {
                 &self.filesystem,
             )?)
         };
-        let lifecycle_bytes = records
-            .iter()
-            .map(|record| record.bytes.clone())
-            .collect::<Vec<_>>();
-        let receipt_root_generation_enabled = match dispatch_lifecycle_records(&lifecycle_bytes)
-            .map_err(|error| {
-                invalid(format!(
-                    "lifecycle replay failed before receipt-root census: {error}"
-                ))
-            })? {
-            LifecycleDispatchV2::V2(inspection) => inspection
-                .prepared_manifest
-                .as_ref()
-                .is_some_and(|binding| binding.receipt_root_initial.is_some()),
-            LifecycleDispatchV2::HistoricalV1(_) => false,
-        };
         let collector_receipts = if receipt_root_generation_enabled {
             let manifest = prepared_manifest.as_ref().ok_or_else(|| {
                 invalid("receipt-root lifecycle lost its prepared collector manifest")
@@ -1228,6 +1265,7 @@ impl LivePrivilegedDisposablePolicyV2 {
             directory,
             effect_issues,
             identity,
+            lifecycle_kind,
             name: name.to_string(),
             prepared_manifest,
             record_names,
@@ -1402,6 +1440,7 @@ impl LivePrivilegedDisposablePolicyV2 {
                 let capsule = self.open_record_set(
                     publication.as_raw_fd(),
                     &obligation_name,
+                    OperationCapsuleLifecycleKind::HistoricalV1,
                     total_bytes,
                     retained_fds,
                 )?;
@@ -2451,6 +2490,7 @@ impl FreshOperationAdmissionSinkV3<'_, '_> {
                 roster: Vec::new(),
             }),
             identity: operation_identity,
+            lifecycle_kind: OperationCapsuleLifecycleKind::V2,
             name: final_name.clone(),
             prepared_manifest,
             record_names: Vec::new(),
@@ -3785,39 +3825,68 @@ impl OperationCapsule {
                 filesystem,
             )?;
         }
-        if !self.records.is_empty() {
-            let lifecycle = self
-                .records
-                .iter()
-                .map(|record| record.bytes.clone())
-                .collect::<Vec<_>>();
-            let inspection = match dispatch_lifecycle_records(&lifecycle)
-                .map_err(|error| invalid(format!("retained lifecycle is invalid: {error}")))?
-            {
-                LifecycleDispatchV2::V2(inspection) => inspection,
-                LifecycleDispatchV2::HistoricalV1(_) => {
-                    return Err(invalid(
-                        "V2 operation capsule changed into a historical lifecycle",
-                    ));
-                }
-            };
-            self.validate_prepared_lifecycle_binding(&inspection)?;
-        }
         let lifecycle = self
             .records
             .iter()
             .map(|record| record.bytes.clone())
             .collect::<Vec<_>>();
-        match (&self.prepared_manifest, &self.collector_receipts) {
-            (Some(_), Some(receipts)) => receipts.revalidate(&lifecycle).map_err(|error| {
+        let receipt_root_generation_enabled = if lifecycle.is_empty() {
+            if self.lifecycle_kind != OperationCapsuleLifecycleKind::V2 {
+                return Err(invalid("historical obligation has no lifecycle records"));
+            }
+            self.prepared_manifest.is_some()
+        } else {
+            match (
+                self.lifecycle_kind,
+                dispatch_lifecycle_records(&lifecycle)
+                    .map_err(|error| invalid(format!("retained lifecycle is invalid: {error}")))?,
+            ) {
+                (OperationCapsuleLifecycleKind::V2, LifecycleDispatchV2::V2(inspection)) => {
+                    self.validate_prepared_lifecycle_binding(&inspection)?;
+                    inspection
+                        .prepared_manifest
+                        .as_ref()
+                        .is_some_and(|binding| binding.receipt_root_initial.is_some())
+                }
+                (
+                    OperationCapsuleLifecycleKind::HistoricalV1,
+                    LifecycleDispatchV2::HistoricalV1(_),
+                ) => {
+                    if self.effect_issues.is_some()
+                        || self.prepared_manifest.is_some()
+                        || self.restart_admissions.is_some()
+                        || self.collector_receipts.is_some()
+                    {
+                        return Err(invalid(
+                            "historical obligation acquired a V3 operation sidecar",
+                        ));
+                    }
+                    false
+                }
+                (OperationCapsuleLifecycleKind::V2, LifecycleDispatchV2::HistoricalV1(_)) => {
+                    return Err(invalid(format!(
+                        "V2 operation capsule {} changed into a historical lifecycle",
+                        self.name
+                    )));
+                }
+                (OperationCapsuleLifecycleKind::HistoricalV1, LifecycleDispatchV2::V2(_)) => {
+                    return Err(invalid(format!(
+                        "historical obligation capsule {} changed into a V2 lifecycle",
+                        self.name
+                    )));
+                }
+            }
+        };
+        match (receipt_root_generation_enabled, &self.collector_receipts) {
+            (true, Some(receipts)) => receipts.revalidate(&lifecycle).map_err(|error| {
                 invalid(format!(
                     "S1 external collector receipt-root mirror changed: {error}"
                 ))
             })?,
-            (None, None) => {}
+            (false, None) => {}
             _ => {
                 return Err(invalid(
-                    "prepared manifest and S1 collector receipt-root mirror differ",
+                    "lifecycle receipt-root generation and S1 collector mirror differ",
                 ));
             }
         }
