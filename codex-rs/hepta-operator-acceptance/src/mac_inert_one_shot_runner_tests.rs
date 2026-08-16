@@ -103,6 +103,66 @@ assert_not_impl_any!(
         AsRawFd,
         From<File>
 );
+assert_not_impl_any!(
+    SameSupervisorRunnerDeathProofV3:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
+assert_not_impl_any!(
+    AuthenticatedDispatchedRunnerV3<PersistedUnmountEffectV3>:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
+assert_not_impl_any!(
+    IssuedRunnerDispatchFailureV3<PersistedUnmountEffectV3>:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
+assert_not_impl_any!(
+    SameSupervisorDispatchedCompletionV3<PersistedUnmountEffectV3>:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
+assert_not_impl_any!(
+    SuccessfulRunnerCallbackV3<PersistedUnmountEffectV3>:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
+assert_not_impl_any!(
+    IssuedRunnerDispatchFailureDeathProvedV3<PersistedUnmountEffectV3>:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        From<File>
+);
 
 #[test]
 fn inert_child_entry() {
@@ -1086,6 +1146,102 @@ fn sealed_grant_rejects_wrong_lease_payload_or_issue_digest_before_send() {
     grant.record.wire.command[0] ^= 1;
     grant.record.wire.envelope.issued_record_sha256 = "aa".repeat(32);
     assert!(grant.validate(&runner.runner_epoch).is_err());
+}
+
+#[test]
+fn only_positive_typed_dispatch_and_same_supervisor_proof_mint_callback_success() {
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let (_directory, lease, runner) = spawn_runner(&epoch);
+    let command = b"typed-positive-callback";
+    let grant = build_test_grant(&epoch, &runner, &lease, command);
+    let command_sha256 = grant.durable_binding.command_sha256.clone();
+    let issued_record_sha256 = grant.durable_binding.issued_record_sha256.clone();
+    let session = match runner.dispatch_sealed(grant, Duration::from_secs(5)) {
+        Ok(session) => session,
+        Err(failure) => panic!("positive dispatch failed: {}", failure.error()),
+    };
+    let completion = session
+        .finish_same_supervisor(Duration::from_secs(5))
+        .expect("same-supervisor positive completion");
+    let callback = completion
+        .into_callback_success()
+        .expect("positive callback capability");
+    callback
+        .consume_exact(
+            77,
+            NONCE,
+            &command_sha256,
+            &issued_record_sha256,
+            EffectPurposeV3::ForwardFlow,
+        )
+        .expect("exact one-use callback consumption");
+}
+
+#[test]
+fn positive_callback_rejects_transplant_and_authority_drift() {
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let (_directory, lease, runner) = spawn_runner(&epoch);
+    let command = b"typed-callback-transplant";
+    let grant = build_test_grant(&epoch, &runner, &lease, command);
+    let command_sha256 = grant.durable_binding.command_sha256.clone();
+    let issued_record_sha256 = grant.durable_binding.issued_record_sha256.clone();
+    let session = match runner.dispatch_sealed(grant, Duration::from_secs(5)) {
+        Ok(session) => session,
+        Err(failure) => panic!("positive dispatch failed: {}", failure.error()),
+    };
+    let callback = session
+        .finish_same_supervisor(Duration::from_secs(5))
+        .expect("same-supervisor positive completion")
+        .into_callback_success()
+        .expect("positive callback capability");
+    let error = callback
+        .consume_exact(
+            77,
+            &"aa".repeat(32),
+            &command_sha256,
+            &issued_record_sha256,
+            EffectPurposeV3::ForwardFlow,
+        )
+        .expect_err("operation transplant must fail closed");
+    assert!(matches!(error, InertRunnerErrorV3::Invalid(_)));
+
+    let (_directory, lease, runner) = spawn_runner(&epoch);
+    let grant = build_test_grant(&epoch, &runner, &lease, b"typed-authority-drift");
+    let session = match runner.dispatch_sealed(grant, Duration::from_secs(5)) {
+        Ok(session) => session,
+        Err(failure) => panic!("positive dispatch failed: {}", failure.error()),
+    };
+    let mut completion = session
+        .finish_same_supervisor(Duration::from_secs(5))
+        .expect("same-supervisor positive completion");
+    completion.receipt.authority.production_authority = true;
+    let error = match completion.into_callback_success() {
+        Ok(_) => panic!("authority-bearing receipt minted callback success"),
+        Err(error) => error,
+    };
+    assert!(matches!(error, InertRunnerErrorV3::Invalid(_)));
+}
+
+#[test]
+fn failed_dispatch_finishes_only_in_failure_specific_death_proved_state() {
+    let epoch = FreshProcessEpochV3::establish().expect("fresh process epoch");
+    let (_directory, lease, runner) = spawn_slow_runner(&epoch);
+    let grant = build_test_grant(&epoch, &runner, &lease, b"typed-failed-dispatch");
+    let failure = match runner.dispatch_sealed(grant, Duration::from_millis(50)) {
+        Ok(_) => panic!("slow runner unexpectedly completed its dispatch"),
+        Err(failure) => failure,
+    };
+    assert!(matches!(
+        failure.error(),
+        InertRunnerErrorV3::TimeoutIssuedOrUncertain
+    ));
+    let terminal = failure
+        .finish_after_death_proof(Duration::from_secs(1))
+        .expect("failed dispatch exact death proof");
+    assert!(matches!(
+        terminal.error(),
+        InertRunnerErrorV3::TimeoutIssuedOrUncertain
+    ));
 }
 
 #[test]

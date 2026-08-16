@@ -23,7 +23,11 @@ use crate::mac_disposable_lifecycle_store::RestartAdmissionRootS1TransferV3;
 use crate::mac_disposable_lifecycle_store::RetainedEffectIssueSourceV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleIssueSourceV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorIssueBindingV3;
+use crate::mac_disposable_reconciliation_collector::SealedCollectorEffectIssuePlanV3;
+use crate::mac_disposable_reconciliation_collector::SealedEjectEffectPlanV3;
+use crate::mac_disposable_reconciliation_collector::SealedUnmountEffectPlanV3;
 use crate::mac_inert_one_shot_runner::AuthenticatedEffectEpochBindingV3;
+use crate::mac_inert_one_shot_runner::RunnerIssueReadSealV3;
 #[cfg(test)]
 use crate::mac_iomedia_identity::current_boot_session_uuid;
 use crate::mac_privileged_disposable_control::EffectIssueAppendSinkV3;
@@ -98,6 +102,45 @@ pub(crate) enum EffectKindV3 {
     Mount,
     Unmount,
     Eject,
+}
+
+mod issued_effect_kind_seal_v3 {
+    pub trait Sealed {}
+}
+
+/// Type-level identity for one exact persisted unmount issue.  This marker has
+/// no value constructor and grants no effect authority; it only prevents an
+/// owned issue key from being transplanted into the eject path.
+pub(crate) struct PersistedUnmountEffectV3 {
+    _private: (),
+}
+
+/// Type-level identity for one exact persisted eject issue.  Like the unmount
+/// marker, it is an inert compile-time discriminator only.
+pub(crate) struct PersistedEjectEffectV3 {
+    _private: (),
+}
+
+impl issued_effect_kind_seal_v3::Sealed for PersistedUnmountEffectV3 {}
+impl issued_effect_kind_seal_v3::Sealed for PersistedEjectEffectV3 {}
+
+trait IssuedEffectKindSpecV3: issued_effect_kind_seal_v3::Sealed {
+    const KIND: EffectKindV3;
+}
+
+impl IssuedEffectKindSpecV3 for PersistedUnmountEffectV3 {
+    const KIND: EffectKindV3 = EffectKindV3::Unmount;
+}
+
+impl IssuedEffectKindSpecV3 for PersistedEjectEffectV3 {
+    const KIND: EffectKindV3 = EffectKindV3::Eject;
+}
+
+/// Read seal shared only with the collector's opaque effect-plan projection.
+/// The collector can require this type to reveal a derived command, but no
+/// other module can construct the seal or turn caller strings into a plan.
+pub(crate) struct IssuePlanReadSealV3 {
+    _private: (),
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -940,6 +983,82 @@ pub(crate) struct RetainedDurableEffectIssueV3<'store> {
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
+/// Owned identity of one exact V2/V3 issue pair after the V3 file has been
+/// durably replayed and admitted into S1.  It deliberately owns no descriptor
+/// and exposes no record, command, or digest projection.  A later consumer
+/// must move it through `AdoptedIssuedEffectUseSinkV3`, which replays the whole
+/// issue store and the exact retained inode before producing runner material.
+pub(crate) struct AdoptedIssuedEffectKeyV3<K> {
+    identity: AdoptedIssuedEffectIdentityV3<K>,
+    plan: SealedOwnedCollectorEffectPlanV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+struct AdoptedIssuedEffectIdentityV3<K> {
+    effect_id: u64,
+    issue_binding: FilesystemBindingV3,
+    issue_name: String,
+    operation_nonce: String,
+    record: IssuedEffectRecordV3,
+    record_canonical_bytes: Vec<u8>,
+    record_sha256: String,
+    _kind: PhantomData<fn() -> K>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+enum SealedOwnedCollectorEffectPlanV3 {
+    Unmount(SealedUnmountEffectPlanV3),
+    Eject(SealedEjectEffectPlanV3),
+    #[cfg(test)]
+    Synthetic,
+}
+
+/// One-use whole-store replay boundary for an adopted issue key.  Construction
+/// requires the lifecycle-store-private read seal; holding a copied digest is
+/// therefore insufficient to use an owned key after its short persistence
+/// borrow has ended.
+pub(crate) struct AdoptedIssuedEffectUseSinkV3<'store> {
+    store: &'store mut DurableEffectIssueStoreV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Exact inert dispatch material produced only after a moved adopted key has
+/// been revalidated against the complete issue store.  Its parts remain sealed
+/// to the whole-operation owner; this module has no runner or effect primitive.
+pub(crate) struct OwnedIssuedEffectDispatchMaterialV3<K> {
+    record: IssuedEffectRecordV3,
+    record_canonical_bytes: Vec<u8>,
+    record_sha256: String,
+    _kind: PhantomData<fn() -> K>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// One linear post-replay pair.  It keeps the exact collector plan beside the
+/// runner material, so dispatch can move the material while the grant retains
+/// the plan until callback/observation typestate consumes it.
+pub(crate) struct AdoptedIssuedEffectDispatchV3<K> {
+    material: OwnedIssuedEffectDispatchMaterialV3<K>,
+    plan: SealedOwnedCollectorEffectPlanV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+impl<K> AdoptedIssuedEffectKeyV3<K> {
+    /// Validate the lifecycle owner's expected effect ID without exposing an
+    /// ID/digest projection that could be detached from this owned key.
+    pub(crate) fn require_effect_id(
+        &self,
+        expected_effect_id: u64,
+        _seal: &OperationIssueReadSealV3,
+    ) -> Result<(), DurableEffectIssueStoreErrorV3> {
+        if expected_effect_id == 0 || self.identity.effect_id != expected_effect_id {
+            return Err(invalid(
+                "owned adopted issue differs from the lifecycle-selected effect ID",
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Sealed one-shot consumer for S1-retained restart issue descriptors. Its
 /// fields and constructor stay private to this module, so the lifecycle
 /// source cannot be opened into a raw `File` tuple by another crate caller.
@@ -1336,6 +1455,7 @@ impl DurableEffectIssueStoreV3 {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn persist_bound<'store>(
         &'store mut self,
         lifecycle: &VerifiedLifecycleIssueRosterV3,
@@ -1350,6 +1470,131 @@ impl DurableEffectIssueStoreV3 {
             CollectorIssueInputV3::Retained(collector),
             |_| Ok(()),
         )
+    }
+
+    /// Persist and S1-adopt the exact unmount derived by the owned collector
+    /// plan.  No command, effect kind, purpose, collector digest, or unique
+    /// binding is accepted from the caller.
+    pub(crate) fn persist_unmount_adopted(
+        &mut self,
+        lifecycle: &VerifiedLifecycleIssueRosterV3,
+        plan: SealedUnmountEffectPlanV3,
+        epochs: EffectEpochEvidenceV3,
+        s1: EffectIssueAppendSinkV3<'_, '_>,
+    ) -> Result<AdoptedIssuedEffectKeyV3<PersistedUnmountEffectV3>, DurableEffectIssueStoreErrorV3>
+    {
+        let identity = {
+            let read = IssuePlanReadSealV3 { _private: () };
+            let issue_plan = match plan.issue_plan(&read) {
+                Ok(issue_plan) => issue_plan,
+                Err(error) => {
+                    self.poisoned = true;
+                    return Err(invalid(format!(
+                        "sealed unmount collector plan failed issue projection: {error}"
+                    )));
+                }
+            };
+            if let Err(error) = issue_plan.revalidate_for_issue(&read) {
+                self.poisoned = true;
+                return Err(invalid(format!(
+                    "sealed unmount collector plan failed pre-persistence replay: {error}"
+                )));
+            }
+            let identity =
+                self.persist_typed_adopted_inner(lifecycle, &issue_plan, &read, epochs, s1)?;
+            if let Err(error) = issue_plan.revalidate_for_issue(&read) {
+                self.poisoned = true;
+                return Err(DurableEffectIssueStoreErrorV3::PersistenceUncertain(
+                    format!("sealed unmount collector plan changed after issue adoption: {error}"),
+                ));
+            }
+            identity
+        };
+        Ok(AdoptedIssuedEffectKeyV3 {
+            identity,
+            plan: SealedOwnedCollectorEffectPlanV3::Unmount(plan),
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    /// Eject counterpart of `persist_unmount_adopted`.  Keeping two
+    /// concrete entrypoints makes the plan marker part of the function type and
+    /// prevents dynamic kind selection at the durability boundary.
+    pub(crate) fn persist_eject_adopted(
+        &mut self,
+        lifecycle: &VerifiedLifecycleIssueRosterV3,
+        plan: SealedEjectEffectPlanV3,
+        epochs: EffectEpochEvidenceV3,
+        s1: EffectIssueAppendSinkV3<'_, '_>,
+    ) -> Result<AdoptedIssuedEffectKeyV3<PersistedEjectEffectV3>, DurableEffectIssueStoreErrorV3>
+    {
+        let identity = {
+            let read = IssuePlanReadSealV3 { _private: () };
+            let issue_plan = match plan.issue_plan(&read) {
+                Ok(issue_plan) => issue_plan,
+                Err(error) => {
+                    self.poisoned = true;
+                    return Err(invalid(format!(
+                        "sealed eject collector plan failed issue projection: {error}"
+                    )));
+                }
+            };
+            if let Err(error) = issue_plan.revalidate_for_issue(&read) {
+                self.poisoned = true;
+                return Err(invalid(format!(
+                    "sealed eject collector plan failed pre-persistence replay: {error}"
+                )));
+            }
+            let identity =
+                self.persist_typed_adopted_inner(lifecycle, &issue_plan, &read, epochs, s1)?;
+            if let Err(error) = issue_plan.revalidate_for_issue(&read) {
+                self.poisoned = true;
+                return Err(DurableEffectIssueStoreErrorV3::PersistenceUncertain(
+                    format!("sealed eject collector plan changed after issue adoption: {error}"),
+                ));
+            }
+            identity
+        };
+        Ok(AdoptedIssuedEffectKeyV3 {
+            identity,
+            plan: SealedOwnedCollectorEffectPlanV3::Eject(plan),
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    fn persist_typed_adopted_inner<K>(
+        &mut self,
+        lifecycle: &VerifiedLifecycleIssueRosterV3,
+        plan: &SealedCollectorEffectIssuePlanV3<'_, K>,
+        read: &IssuePlanReadSealV3,
+        epochs: EffectEpochEvidenceV3,
+        s1: EffectIssueAppendSinkV3<'_, '_>,
+    ) -> Result<AdoptedIssuedEffectIdentityV3<K>, DurableEffectIssueStoreErrorV3>
+    where
+        K: IssuedEffectKindSpecV3,
+    {
+        let command = plan.command_for_issue(read).clone();
+        let collector = plan.collector_binding_for_issue(read);
+        let mut retained = self.persist_with_hook(
+            lifecycle,
+            command,
+            epochs,
+            CollectorIssueInputV3::Retained(collector),
+            |_| Ok(()),
+        )?;
+        if let Err(error) = retained.adopt_into_s1(s1) {
+            retained.store.poisoned = true;
+            return Err(DurableEffectIssueStoreErrorV3::PersistenceUncertain(
+                format!("exact V3 issue was durable but S1 adoption failed: {error}"),
+            ));
+        }
+        if let Err(error) = retained.require_s1_adopted() {
+            retained.store.poisoned = true;
+            return Err(DurableEffectIssueStoreErrorV3::PersistenceUncertain(
+                format!("exact V3 issue lost its S1 adoption: {error}"),
+            ));
+        }
+        retained.into_adopted_identity()
     }
 
     fn persist_with_hook<'store, F>(
@@ -1645,6 +1890,37 @@ impl DurableEffectIssueStoreV3 {
             ));
         }
         Ok(())
+    }
+
+    /// Seal one later use of an owned adopted key to this exact live issue
+    /// store.  The caller must itself own the whole-operation read seal; this
+    /// prevents a digest-only projection from becoming runner material.
+    pub(crate) fn adopted_issue_use_sink<'store>(
+        &'store mut self,
+        _seal: &OperationIssueReadSealV3,
+    ) -> Result<AdoptedIssuedEffectUseSinkV3<'store>, DurableEffectIssueStoreErrorV3> {
+        if let Err(error) = self.revalidate_s1_adopted() {
+            self.poisoned = true;
+            return Err(error);
+        }
+        Ok(AdoptedIssuedEffectUseSinkV3 {
+            store: self,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    #[cfg(test)]
+    fn adopted_issue_use_sink_for_test(
+        &mut self,
+    ) -> Result<AdoptedIssuedEffectUseSinkV3<'_>, DurableEffectIssueStoreErrorV3> {
+        if let Err(error) = self.revalidate_s1_adopted() {
+            self.poisoned = true;
+            return Err(error);
+        }
+        Ok(AdoptedIssuedEffectUseSinkV3 {
+            store: self,
+            _not_send_or_sync: PhantomData,
+        })
     }
 
     pub(crate) fn revalidate_required(
@@ -2052,6 +2328,372 @@ impl RetainedDurableEffectIssueV3<'_> {
             return Err(invalid("V3 issue capsule has not been adopted by S1"));
         }
         Ok(())
+    }
+
+    #[cfg(test)]
+    fn into_adopted_key_for_test<K>(
+        self,
+    ) -> Result<AdoptedIssuedEffectKeyV3<K>, DurableEffectIssueStoreErrorV3>
+    where
+        K: IssuedEffectKindSpecV3,
+    {
+        // Production reaches this state only through the retained S1 append
+        // sink.  Unit tests use the explicit test-only edge to isolate owned
+        // key replay without constructing the full S1 assessment fixture.
+        self.store.issues[self.index].s1_adopted = true;
+        Ok(AdoptedIssuedEffectKeyV3 {
+            identity: self.into_adopted_identity()?,
+            plan: SealedOwnedCollectorEffectPlanV3::Synthetic,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    fn into_adopted_identity<K>(
+        self,
+    ) -> Result<AdoptedIssuedEffectIdentityV3<K>, DurableEffectIssueStoreErrorV3>
+    where
+        K: IssuedEffectKindSpecV3,
+    {
+        if let Err(error) = self.require_s1_adopted() {
+            self.store.poisoned = true;
+            return Err(DurableEffectIssueStoreErrorV3::PersistenceUncertain(
+                format!("owned issue key could not retain exact S1 adoption: {error}"),
+            ));
+        }
+        let built = (|| {
+            let issue = &self.store.issues[self.index];
+            let decoded: IssuedEffectRecordV3 =
+                serde_json::from_slice(&issue.bytes).map_err(|error| {
+                    invalid(format!("adopted V3 issue bytes no longer decode: {error}"))
+                })?;
+            if issue.record.effect_kind != K::KIND
+                || issue.record.command.kind() != K::KIND
+                || issue.record.unique_binding_sha256.is_none()
+                || decoded != issue.record
+                || canonical_json(&decoded)? != issue.bytes
+                || sha256(&issue.bytes) != issue.record_sha256
+                || issue_name(issue.record.effect_id, &issue.record_sha256) != issue.name
+            {
+                return Err(invalid(
+                    "adopted V3 issue kind, command, or collector binding differs from its typed plan",
+                ));
+            }
+            Ok(AdoptedIssuedEffectIdentityV3 {
+                effect_id: issue.record.effect_id,
+                issue_binding: issue.binding,
+                issue_name: issue.name.clone(),
+                operation_nonce: self.store.operation_nonce.clone(),
+                record: issue.record.clone(),
+                record_canonical_bytes: issue.bytes.clone(),
+                record_sha256: issue.record_sha256.clone(),
+                _kind: PhantomData,
+                _not_send_or_sync: PhantomData,
+            })
+        })();
+        match built {
+            Ok(key) => Ok(key),
+            Err(error) => {
+                self.store.poisoned = true;
+                Err(DurableEffectIssueStoreErrorV3::PersistenceUncertain(
+                    error.to_string(),
+                ))
+            }
+        }
+    }
+}
+
+impl AdoptedIssuedEffectUseSinkV3<'_> {
+    pub(crate) fn consume_unmount(
+        self,
+        key: AdoptedIssuedEffectKeyV3<PersistedUnmountEffectV3>,
+    ) -> Result<
+        AdoptedIssuedEffectDispatchV3<PersistedUnmountEffectV3>,
+        DurableEffectIssueStoreErrorV3,
+    > {
+        let AdoptedIssuedEffectKeyV3 { identity, plan, .. } = key;
+        let plan = match plan {
+            SealedOwnedCollectorEffectPlanV3::Unmount(plan) => plan,
+            SealedOwnedCollectorEffectPlanV3::Eject(_) => {
+                self.store.poisoned = true;
+                return Err(invalid(
+                    "typed unmount issue key carried an eject collector plan",
+                ));
+            }
+            #[cfg(test)]
+            SealedOwnedCollectorEffectPlanV3::Synthetic => {
+                self.store.poisoned = true;
+                return Err(invalid(
+                    "test-only synthetic issue key entered production unmount dispatch",
+                ));
+            }
+        };
+        let read = IssuePlanReadSealV3 { _private: () };
+        let issue_plan = match plan.issue_plan(&read) {
+            Ok(issue_plan) => issue_plan,
+            Err(error) => {
+                self.store.poisoned = true;
+                return Err(invalid(format!(
+                    "sealed unmount collector plan failed dispatch projection: {error}"
+                )));
+            }
+        };
+        if let Err(error) = issue_plan.revalidate_for_issue(&read) {
+            self.store.poisoned = true;
+            return Err(invalid(format!(
+                "sealed unmount collector plan failed dispatch replay: {error}"
+            )));
+        }
+        let material = self.consume_inner(identity, &issue_plan, &read)?;
+        Ok(AdoptedIssuedEffectDispatchV3 {
+            material,
+            plan: SealedOwnedCollectorEffectPlanV3::Unmount(plan),
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn consume_eject(
+        self,
+        key: AdoptedIssuedEffectKeyV3<PersistedEjectEffectV3>,
+    ) -> Result<AdoptedIssuedEffectDispatchV3<PersistedEjectEffectV3>, DurableEffectIssueStoreErrorV3>
+    {
+        let AdoptedIssuedEffectKeyV3 { identity, plan, .. } = key;
+        let plan = match plan {
+            SealedOwnedCollectorEffectPlanV3::Eject(plan) => plan,
+            SealedOwnedCollectorEffectPlanV3::Unmount(_) => {
+                self.store.poisoned = true;
+                return Err(invalid(
+                    "typed eject issue key carried an unmount collector plan",
+                ));
+            }
+            #[cfg(test)]
+            SealedOwnedCollectorEffectPlanV3::Synthetic => {
+                self.store.poisoned = true;
+                return Err(invalid(
+                    "test-only synthetic issue key entered production eject dispatch",
+                ));
+            }
+        };
+        let read = IssuePlanReadSealV3 { _private: () };
+        let issue_plan = match plan.issue_plan(&read) {
+            Ok(issue_plan) => issue_plan,
+            Err(error) => {
+                self.store.poisoned = true;
+                return Err(invalid(format!(
+                    "sealed eject collector plan failed dispatch projection: {error}"
+                )));
+            }
+        };
+        if let Err(error) = issue_plan.revalidate_for_issue(&read) {
+            self.store.poisoned = true;
+            return Err(invalid(format!(
+                "sealed eject collector plan failed dispatch replay: {error}"
+            )));
+        }
+        let material = self.consume_inner(identity, &issue_plan, &read)?;
+        Ok(AdoptedIssuedEffectDispatchV3 {
+            material,
+            plan: SealedOwnedCollectorEffectPlanV3::Eject(plan),
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    fn consume_inner<K>(
+        self,
+        identity: AdoptedIssuedEffectIdentityV3<K>,
+        plan: &SealedCollectorEffectIssuePlanV3<'_, K>,
+        read: &IssuePlanReadSealV3,
+    ) -> Result<OwnedIssuedEffectDispatchMaterialV3<K>, DurableEffectIssueStoreErrorV3>
+    where
+        K: IssuedEffectKindSpecV3,
+    {
+        let replayed = (|| {
+            self.store.revalidate_s1_adopted()?;
+            let collector = plan.collector_binding_for_issue(read);
+            collector.revalidate().map_err(|error| {
+                invalid(format!(
+                    "sealed collector binding failed owned-key replay: {error}"
+                ))
+            })?;
+            let plan_command = plan.command_for_issue(read);
+            let plan_command_bytes = canonical_json(plan_command)?;
+            if identity.record.command != *plan_command
+                || identity.record.command_canonical_json.as_bytes() != plan_command_bytes
+                || identity.record.command_sha256 != sha256(&plan_command_bytes)
+                || identity.record.operation_nonce != collector.operation_nonce()
+                || identity.record.boot_session_uuid != collector.boot_session_uuid()
+                || identity.record.prior_collector_lifecycle_record_sha256
+                    != collector.lifecycle_record_sha256()
+                || identity.record.prior_collector_lifecycle_sequence
+                    != collector.lifecycle_record_sequence()
+                || identity.record.prior_collector_receipt_sha256 != collector.receipt_sha256()
+                || identity.record.unique_binding_sha256.as_deref()
+                    != Some(collector.unique_binding_sha256())
+            {
+                return Err(invalid(
+                    "owned adopted issue differs from its still-retained sealed collector plan",
+                ));
+            }
+            let mut matches = self
+                .store
+                .issues
+                .iter()
+                .filter(|issue| issue.record.effect_id == identity.effect_id);
+            let issue = matches.next().ok_or_else(|| {
+                invalid("owned adopted issue is absent from the retained issue store")
+            })?;
+            if matches.next().is_some()
+                || self.store.operation_nonce != identity.operation_nonce
+                || issue.binding != identity.issue_binding
+                || issue.name != identity.issue_name
+                || issue.bytes != identity.record_canonical_bytes
+                || issue.record_sha256 != identity.record_sha256
+                || issue.record != identity.record
+                || issue.record.effect_kind != K::KIND
+                || issue.record.command.kind() != K::KIND
+                || issue.record.unique_binding_sha256.is_none()
+                || !issue.s1_adopted
+            {
+                return Err(invalid(
+                    "owned adopted issue changed or was transplanted across whole-store replay",
+                ));
+            }
+            Ok(OwnedIssuedEffectDispatchMaterialV3 {
+                record: identity.record,
+                record_canonical_bytes: identity.record_canonical_bytes,
+                record_sha256: identity.record_sha256,
+                _kind: PhantomData,
+                _not_send_or_sync: PhantomData,
+            })
+        })();
+        match replayed {
+            Ok(material) => Ok(material),
+            Err(error) => {
+                self.store.poisoned = true;
+                Err(error)
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn consume_for_test<K>(
+        self,
+        key: AdoptedIssuedEffectKeyV3<K>,
+    ) -> Result<OwnedIssuedEffectDispatchMaterialV3<K>, DurableEffectIssueStoreErrorV3>
+    where
+        K: IssuedEffectKindSpecV3,
+    {
+        let AdoptedIssuedEffectKeyV3 { identity, plan, .. } = key;
+        if !matches!(plan, SealedOwnedCollectorEffectPlanV3::Synthetic) {
+            self.store.poisoned = true;
+            return Err(invalid(
+                "production collector plan entered the test-only issue sink",
+            ));
+        }
+        let replayed = (|| {
+            self.store.revalidate_s1_adopted()?;
+            let mut matches = self
+                .store
+                .issues
+                .iter()
+                .filter(|issue| issue.record.effect_id == identity.effect_id);
+            let issue = matches.next().ok_or_else(|| {
+                invalid("owned adopted issue is absent from the retained issue store")
+            })?;
+            if matches.next().is_some()
+                || self.store.operation_nonce != identity.operation_nonce
+                || issue.binding != identity.issue_binding
+                || issue.name != identity.issue_name
+                || issue.bytes != identity.record_canonical_bytes
+                || issue.record_sha256 != identity.record_sha256
+                || issue.record != identity.record
+                || issue.record.effect_kind != K::KIND
+                || issue.record.command.kind() != K::KIND
+                || issue.record.unique_binding_sha256.is_none()
+                || !issue.s1_adopted
+            {
+                return Err(invalid(
+                    "owned adopted issue changed or was transplanted across whole-store replay",
+                ));
+            }
+            Ok(OwnedIssuedEffectDispatchMaterialV3 {
+                record: identity.record,
+                record_canonical_bytes: identity.record_canonical_bytes,
+                record_sha256: identity.record_sha256,
+                _kind: PhantomData,
+                _not_send_or_sync: PhantomData,
+            })
+        })();
+        match replayed {
+            Ok(material) => Ok(material),
+            Err(error) => {
+                self.store.poisoned = true;
+                Err(error)
+            }
+        }
+    }
+}
+
+impl AdoptedIssuedEffectDispatchV3<PersistedUnmountEffectV3> {
+    pub(crate) fn into_parts(
+        self,
+    ) -> Result<
+        (
+            OwnedIssuedEffectDispatchMaterialV3<PersistedUnmountEffectV3>,
+            SealedUnmountEffectPlanV3,
+        ),
+        DurableEffectIssueStoreErrorV3,
+    > {
+        match self.plan {
+            SealedOwnedCollectorEffectPlanV3::Unmount(plan) => Ok((self.material, plan)),
+            SealedOwnedCollectorEffectPlanV3::Eject(_) => Err(invalid(
+                "typed unmount dispatch carried an eject collector plan",
+            )),
+            #[cfg(test)]
+            SealedOwnedCollectorEffectPlanV3::Synthetic => Err(invalid(
+                "test-only synthetic issue plan entered production unmount dispatch",
+            )),
+        }
+    }
+}
+
+impl AdoptedIssuedEffectDispatchV3<PersistedEjectEffectV3> {
+    pub(crate) fn into_parts(
+        self,
+    ) -> Result<
+        (
+            OwnedIssuedEffectDispatchMaterialV3<PersistedEjectEffectV3>,
+            SealedEjectEffectPlanV3,
+        ),
+        DurableEffectIssueStoreErrorV3,
+    > {
+        match self.plan {
+            SealedOwnedCollectorEffectPlanV3::Eject(plan) => Ok((self.material, plan)),
+            SealedOwnedCollectorEffectPlanV3::Unmount(_) => Err(invalid(
+                "typed eject dispatch carried an unmount collector plan",
+            )),
+            #[cfg(test)]
+            SealedOwnedCollectorEffectPlanV3::Synthetic => Err(invalid(
+                "test-only synthetic issue plan entered production eject dispatch",
+            )),
+        }
+    }
+}
+
+impl<K> OwnedIssuedEffectDispatchMaterialV3<K> {
+    /// The marker `K` remains on the argument at the runner call boundary, so
+    /// unmount and eject dispatch cannot share a dynamically selected command
+    /// path before the runner has checked all durable process/runner identities
+    /// in the record.  No lifecycle- or crate-wide raw-parts outlet exists.
+    pub(crate) fn into_runner_parts(
+        self,
+        _seal: RunnerIssueReadSealV3,
+    ) -> (IssuedEffectRecordV3, Vec<u8>, String) {
+        (self.record, self.record_canonical_bytes, self.record_sha256)
+    }
+
+    #[cfg(test)]
+    fn test_record(&self) -> &IssuedEffectRecordV3 {
+        &self.record
     }
 }
 

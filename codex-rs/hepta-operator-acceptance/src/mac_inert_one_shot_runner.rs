@@ -33,9 +33,10 @@
 use crate::durable::canonical_json;
 use crate::durable::sha256;
 use crate::mac_disposable_effect_issue_store::EffectPurposeV3 as DurableEffectPurposeV3;
+use crate::mac_disposable_effect_issue_store::OwnedIssuedEffectDispatchMaterialV3;
+#[cfg(test)]
+use crate::mac_disposable_effect_issue_store::PersistedUnmountEffectV3;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
-use crate::mac_disposable_lifecycle_store::RetainedOperationEffectIssueV3;
-use crate::mac_disposable_lifecycle_store::SealedRunnerIssueMaterialV3;
 #[cfg(feature = "fixed-runner-supervisor")]
 use crate::mac_inert_fixed_launcher::FixedInertRunnerBindingV3;
 use crate::mac_inert_runner_executable::FixedExecutableEvidenceV3;
@@ -462,9 +463,10 @@ pub struct PriorRunnerDeathReceiptV3 {
 /// Only the original live handle can construct this same-supervisor proof.
 /// A copied JSON receipt is evidence, not a restart capability.
 #[derive(Debug)]
-pub struct SameSupervisorRunnerDeathProofV3 {
+pub(crate) struct SameSupervisorRunnerDeathProofV3 {
     receipt: PriorRunnerDeathReceiptV3,
     receipt_sha256: String,
+    _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -499,10 +501,9 @@ struct RecoveredRunnerDeathReceiptV3 {
 /// Cross-restart proof has its own schema and deliberately contains none of
 /// the kqueue/pipe/waitpid signals reserved for a same-supervisor proof. It
 /// retains the re-acquired global lease and an exclusive lifetime borrow of
-/// the exact blocking operation.  `sha256()` is evidence inspection only: a
-/// future effect consumer must consume a whole-store sealed transition that
-/// performs a fresh exact S1/V2/V3 replay.  No production digest-only consumer
-/// exists in this inert lane.
+/// the exact blocking operation.  It has no production receipt, digest, or
+/// callback-success projection: a future effect consumer must consume a
+/// whole-store sealed transition that performs a fresh exact S1/V2/V3 replay.
 pub(crate) struct RecoveredRunnerDeathProofV3<'store> {
     receipt: RecoveredRunnerDeathReceiptV3,
     receipt_sha256: String,
@@ -578,17 +579,14 @@ impl RetainedControlLeaseV3 {
     }
 }
 
-impl SealedRunnerDispatchV3 {
-    pub(crate) fn from_retained_issue(
+impl<K> SealedRunnerDispatchV3<K> {
+    pub(crate) fn from_owned_issue_material(
         runner: &AuthenticatedPreRunnerV3,
         epoch: &AuthenticatedEffectEpochBindingV3,
-        issue: &RetainedOperationEffectIssueV3<'_, '_, '_>,
+        material: OwnedIssuedEffectDispatchMaterialV3<K>,
         lease: RetainedControlLeaseV3,
     ) -> Result<Self, InertRunnerErrorV3> {
         epoch.validate_current()?;
-        issue
-            .revalidate()
-            .map_err(|error| invalid(format!("retained S2 issue failed replay: {error}")))?;
         if runner.state != RunnerStateV3::Ready
             || runner.durable_issued_binding.is_some()
             || runner.process_epoch_sha256 != epoch.process_epoch_sha256()
@@ -599,9 +597,6 @@ impl SealedRunnerDispatchV3 {
             ));
         }
         let runner_read = RunnerIssueReadSealV3 { _private: () };
-        let material: SealedRunnerIssueMaterialV3 = issue
-            .seal_runner_issue(&runner_read)
-            .map_err(|error| invalid(format!("retained S2 issue handoff failed: {error}")))?;
         let (durable, issued_record_canonical_bytes, issued_record_sha256) =
             material.into_runner_parts(runner_read);
         if durable.process_epoch_sha256() != epoch.process_epoch_sha256()
@@ -680,6 +675,7 @@ impl SealedRunnerDispatchV3 {
             process_epoch_sha256: epoch.process_epoch_sha256().to_string(),
             record,
             runner_epoch_sha256: epoch.runner_epoch_sha256().to_string(),
+            _kind: PhantomData,
             _not_send_or_sync: PhantomData,
         })
     }
@@ -740,6 +736,7 @@ impl SealedRunnerDispatchV3 {
             process_epoch_sha256: epoch.binding_sha256.clone(),
             record,
             runner_epoch_sha256: runner_epoch.runner_epoch_sha256.clone(),
+            _kind: PhantomData,
             _not_send_or_sync: PhantomData,
         })
     }
@@ -781,22 +778,23 @@ struct LeaseDescriptorIdentityV3 {
     rdev: u64,
 }
 
-/// Sealed handoff produced only after S2 has durably published and replayed
-/// the exact issued record.  The production constructor intentionally lives
-/// outside this runner lane.  Until S2 wires that constructor, only the
-/// `cfg(test)` fixture below can dispatch, so this remains NO_AUTHORITY.
-pub(crate) struct SealedRunnerDispatchV3 {
+/// Sealed handoff produced only by consuming S2's owned, typed dispatch
+/// material after the exact issue has been durably published, S1-adopted, and
+/// replayed against the whole issue store.  The marker `K` survives every
+/// runner transition; this remains an inert `NO_AUTHORITY` boundary.
+pub(crate) struct SealedRunnerDispatchV3<K> {
     durable_binding: DurableIssuedBindingV3,
     lease: RetainedControlLeaseV3,
     lease_identity_sha256: String,
     process_epoch_sha256: String,
     record: RunnerDispatchRecordV3,
     runner_epoch_sha256: String,
+    _kind: PhantomData<fn() -> K>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
 #[cfg(test)]
-type PersistedIssuedRunnerGrantV3 = SealedRunnerDispatchV3;
+type PersistedIssuedRunnerGrantV3 = SealedRunnerDispatchV3<PersistedUnmountEffectV3>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RunnerStateV3 {
@@ -825,18 +823,49 @@ pub(crate) struct AuthenticatedPreRunnerV3 {
 /// A successful inert acknowledgement still owns the live runner until the
 /// caller obtains the composite same-supervisor death proof.  It is not an
 /// effect-success callback and carries no authority.
-pub(crate) struct AuthenticatedDispatchedRunnerV3 {
+pub(crate) struct AuthenticatedDispatchedRunnerV3<K> {
     runner: Option<AuthenticatedPreRunnerV3>,
-    receipt: InertDispatchReceiptV3,
+    receipt: Option<InertDispatchReceiptV3>,
+    _kind: PhantomData<fn() -> K>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
 /// Post-persistence dispatch failure.  The runner remains owned whenever the
 /// first death-proof attempt failed, so Drop can retry fail-closed cleanup.
-pub(crate) struct IssuedRunnerDispatchFailureV3 {
+pub(crate) struct IssuedRunnerDispatchFailureV3<K> {
     error: InertRunnerErrorV3,
     runner: Option<AuthenticatedPreRunnerV3>,
     proof: Option<SameSupervisorRunnerDeathProofV3>,
+    _kind: PhantomData<fn() -> K>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Exact positive dispatch acknowledgement after the original supervisor has
+/// also retained the composite runner-death proof.  The effect-kind marker is
+/// carried from the owned durable issue material; no command, receipt, proof,
+/// or digest can be projected from this capability.
+pub(crate) struct SameSupervisorDispatchedCompletionV3<K> {
+    issued: DurableIssuedBindingV3,
+    proof: SameSupervisorRunnerDeathProofV3,
+    receipt: InertDispatchReceiptV3,
+    _kind: PhantomData<fn() -> K>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// One-use successful callback capability.  It can only be minted by
+/// consuming an exact positive dispatch plus its same-supervisor death proof.
+/// A failed dispatch or a recovered proof has no transition into this type.
+pub(crate) struct SuccessfulRunnerCallbackV3<K> {
+    completion: SameSupervisorDispatchedCompletionV3<K>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Terminal same-supervisor evidence for a post-issue dispatch failure.  This
+/// deliberately has no callback-success transition and no raw proof outlet.
+pub(crate) struct IssuedRunnerDispatchFailureDeathProvedV3<K> {
+    error: InertRunnerErrorV3,
+    proof: SameSupervisorRunnerDeathProofV3,
+    _kind: PhantomData<fn() -> K>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
@@ -1894,11 +1923,13 @@ impl RunnerCommandEnvelopeV3 {
 }
 
 impl SameSupervisorRunnerDeathProofV3 {
-    pub fn receipt(&self) -> &PriorRunnerDeathReceiptV3 {
+    #[cfg(test)]
+    fn receipt(&self) -> &PriorRunnerDeathReceiptV3 {
         &self.receipt
     }
 
-    pub fn sha256(&self) -> &str {
+    #[cfg(test)]
+    fn sha256(&self) -> &str {
         &self.receipt_sha256
     }
 
@@ -2048,6 +2079,7 @@ impl<'store> RecoveredRunnerDeathProofV3<'store> {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn sha256(&self) -> Result<&str, InertRunnerErrorV3> {
         self.receipt.validate()?;
         if digest_canonical(&self.receipt)? != self.receipt_sha256 {
@@ -2057,11 +2089,7 @@ impl<'store> RecoveredRunnerDeathProofV3<'store> {
     }
 }
 
-impl AuthenticatedDispatchedRunnerV3 {
-    pub(crate) fn receipt(&self) -> &InertDispatchReceiptV3 {
-        &self.receipt
-    }
-
+impl<K> AuthenticatedDispatchedRunnerV3<K> {
     pub(crate) fn ensure_death_proof(
         &mut self,
         timeout: Duration,
@@ -2071,22 +2099,52 @@ impl AuthenticatedDispatchedRunnerV3 {
             .as_mut()
             .ok_or_else(|| invalid("dispatched runner handle was already consumed"))?;
         if runner.retained_death_proof.is_none() {
-            runner.terminate_and_retain_proof(timeout)?;
+            // A positive dispatch must reach the child's natural, successful
+            // completion.  Killing a runner is valid cleanup for a failed or
+            // abandoned dispatch, but cannot be upgraded into callback
+            // success.
+            runner.collect_death_proof(AbsoluteDeadlineV3::after(timeout)?)?;
         }
         Ok(())
     }
 
-    pub(crate) fn take_death_proof(
-        &mut self,
-    ) -> Result<SameSupervisorRunnerDeathProofV3, InertRunnerErrorV3> {
-        self.runner
-            .as_mut()
-            .and_then(|runner| runner.retained_death_proof.take())
-            .ok_or_else(|| invalid("dispatched runner death proof is not retained"))
+    /// Consume the positive dispatch session and retain the exact
+    /// same-supervisor composite death proof.  No borrowed receipt or proof is
+    /// exposed while the live runner still exists.
+    pub(crate) fn finish_same_supervisor(
+        mut self,
+        timeout: Duration,
+    ) -> Result<SameSupervisorDispatchedCompletionV3<K>, InertRunnerErrorV3> {
+        self.ensure_death_proof(timeout)?;
+        let mut runner = self
+            .runner
+            .take()
+            .ok_or_else(|| invalid("dispatched runner handle was already consumed"))?;
+        let proof = runner
+            .retained_death_proof
+            .take()
+            .ok_or_else(|| invalid("dispatched runner death proof is not retained"))?;
+        let issued = runner
+            .durable_issued_binding
+            .take()
+            .ok_or_else(|| invalid("dispatched runner lost its durable issued binding"))?;
+        let receipt = self
+            .receipt
+            .take()
+            .ok_or_else(|| invalid("dispatched runner receipt was already consumed"))?;
+        let completion = SameSupervisorDispatchedCompletionV3 {
+            issued,
+            proof,
+            receipt,
+            _kind: PhantomData,
+            _not_send_or_sync: PhantomData,
+        };
+        completion.revalidate()?;
+        Ok(completion)
     }
 }
 
-impl IssuedRunnerDispatchFailureV3 {
+impl<K> IssuedRunnerDispatchFailureV3<K> {
     pub(crate) fn error(&self) -> &InertRunnerErrorV3 {
         &self.error
     }
@@ -2111,15 +2169,117 @@ impl IssuedRunnerDispatchFailureV3 {
         Ok(())
     }
 
-    pub(crate) fn take_death_proof(
-        &mut self,
-    ) -> Result<SameSupervisorRunnerDeathProofV3, InertRunnerErrorV3> {
-        if self.proof.is_none() {
-            self.ensure_death_proof(CLEANUP_TIMEOUT_V3)?;
-        }
-        self.proof
+    /// Consume a failed dispatch only into the failure-specific terminal
+    /// state.  Unlike the positive completion, this state has no callback
+    /// transition.
+    pub(crate) fn finish_after_death_proof(
+        mut self,
+        timeout: Duration,
+    ) -> Result<IssuedRunnerDispatchFailureDeathProvedV3<K>, InertRunnerErrorV3> {
+        self.ensure_death_proof(timeout)?;
+        let proof = self
+            .proof
             .take()
-            .ok_or_else(|| invalid("failed dispatch death proof is not retained"))
+            .ok_or_else(|| invalid("failed dispatch death proof is not retained"))?;
+        let terminal = IssuedRunnerDispatchFailureDeathProvedV3 {
+            error: self.error,
+            proof,
+            _kind: PhantomData,
+            _not_send_or_sync: PhantomData,
+        };
+        terminal.revalidate()?;
+        Ok(terminal)
+    }
+}
+
+impl<K> SameSupervisorDispatchedCompletionV3<K> {
+    fn revalidate(&self) -> Result<(), InertRunnerErrorV3> {
+        self.proof.validate()?;
+        require_sha256(
+            &self.receipt.command_sha256,
+            "dispatch receipt command digest",
+        )?;
+        require_sha256(
+            &self.receipt.issued_record_sha256,
+            "dispatch receipt issued-record digest",
+        )?;
+        require_sha256(
+            &self.receipt.runner_epoch_sha256,
+            "dispatch receipt runner epoch",
+        )?;
+        if self.receipt.schema != DISPATCH_RECEIPT_SCHEMA_V3
+            || self.receipt.schema_version != 3
+            || self.receipt.authority.any()
+            || self.receipt.dispatch_count != 1
+            || !self.receipt.lease_fd_cloexec_verified
+            || !self.receipt.scm_receive_all_blockable_signals_masked
+            || !self.receipt.scm_receive_single_kernel_thread_verified
+            || self.receipt.command_sha256 != self.issued.command_sha256
+            || self.receipt.issued_record_sha256 != self.issued.issued_record_sha256
+            || self.proof.receipt.command_sha256 != self.issued.command_sha256
+            || self.proof.receipt.effect_id != self.issued.effect_id
+            || self.proof.receipt.issued_record_sha256 != self.issued.issued_record_sha256
+            || self.proof.receipt.journal_tip_before_sha256 != self.issued.journal_tip_before_sha256
+            || self.proof.receipt.operation_nonce != self.issued.operation_nonce
+            || self.proof.receipt.purpose != self.issued.purpose
+            || self.proof.receipt.runner_epoch_sha256 != self.receipt.runner_epoch_sha256
+            || self.proof.receipt.exit_status != 0
+        {
+            return Err(invalid(
+                "positive dispatch, durable issue, or same-supervisor death proof changed",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Move the exact positive completion into the only callback-success
+    /// capability in the runner lane.
+    pub(crate) fn into_callback_success(
+        self,
+    ) -> Result<SuccessfulRunnerCallbackV3<K>, InertRunnerErrorV3> {
+        self.revalidate()?;
+        Ok(SuccessfulRunnerCallbackV3 {
+            completion: self,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl<K> SuccessfulRunnerCallbackV3<K> {
+    /// Consume the callback capability against the operation owner's exact
+    /// durable issue identity.  Success returns no receipt, proof, command, or
+    /// digest projection.
+    pub(crate) fn consume_exact(
+        self,
+        effect_id: u64,
+        operation_nonce: &str,
+        command_sha256: &str,
+        issued_record_sha256: &str,
+        purpose: EffectPurposeV3,
+    ) -> Result<(), InertRunnerErrorV3> {
+        self.completion.revalidate()?;
+        let issued = &self.completion.issued;
+        if issued.effect_id != effect_id
+            || issued.operation_nonce != operation_nonce
+            || issued.command_sha256 != command_sha256
+            || issued.issued_record_sha256 != issued_record_sha256
+            || issued.purpose != purpose
+        {
+            return Err(invalid(
+                "successful callback belongs to another operation, issue, command, or purpose",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl<K> IssuedRunnerDispatchFailureDeathProvedV3<K> {
+    fn revalidate(&self) -> Result<(), InertRunnerErrorV3> {
+        self.proof.validate()
+    }
+
+    pub(crate) fn error(&self) -> &InertRunnerErrorV3 {
+        &self.error
     }
 }
 
@@ -2324,7 +2484,8 @@ impl AuthenticatedPreRunnerV3 {
         })
     }
 
-    pub fn runner_epoch_sha256(&self) -> &str {
+    #[cfg(test)]
+    fn runner_epoch_sha256(&self) -> &str {
         &self.runner_epoch.runner_epoch_sha256
     }
 
@@ -2366,9 +2527,9 @@ impl AuthenticatedPreRunnerV3 {
         Ok(binding)
     }
 
-    fn dispatch_inner(
+    fn dispatch_inner<K>(
         &mut self,
-        mut grant: SealedRunnerDispatchV3,
+        mut grant: SealedRunnerDispatchV3<K>,
         timeout: Duration,
     ) -> Result<InertDispatchReceiptV3, InertRunnerErrorV3> {
         if self.state != RunnerStateV3::Ready {
@@ -2457,15 +2618,16 @@ impl AuthenticatedPreRunnerV3 {
     /// Production one-shot transition. Both the authenticated pre-runner and
     /// the exact S2 dispatch seal are consumed; no caller can retry the same
     /// runner epoch after an issued-or-uncertain result.
-    pub(crate) fn dispatch_sealed(
+    pub(crate) fn dispatch_sealed<K>(
         mut self,
-        grant: SealedRunnerDispatchV3,
+        grant: SealedRunnerDispatchV3<K>,
         timeout: Duration,
-    ) -> Result<AuthenticatedDispatchedRunnerV3, IssuedRunnerDispatchFailureV3> {
+    ) -> Result<AuthenticatedDispatchedRunnerV3<K>, IssuedRunnerDispatchFailureV3<K>> {
         match self.dispatch_inner(grant, timeout) {
             Ok(receipt) => Ok(AuthenticatedDispatchedRunnerV3 {
                 runner: Some(self),
-                receipt,
+                receipt: Some(receipt),
+                _kind: PhantomData,
                 _not_send_or_sync: PhantomData,
             }),
             Err(error) => {
@@ -2474,6 +2636,7 @@ impl AuthenticatedPreRunnerV3 {
                     error,
                     runner: if proof.is_some() { None } else { Some(self) },
                     proof,
+                    _kind: PhantomData,
                     _not_send_or_sync: PhantomData,
                 })
             }
@@ -2675,7 +2838,8 @@ impl AuthenticatedPreRunnerV3 {
         }
     }
 
-    pub fn prove_dead(
+    #[cfg(test)]
+    fn prove_dead(
         mut self,
         timeout: Duration,
     ) -> Result<SameSupervisorRunnerDeathProofV3, InertRunnerErrorV3> {
@@ -2687,7 +2851,8 @@ impl AuthenticatedPreRunnerV3 {
             .ok_or_else(|| invalid("runner death proof was not retained"))
     }
 
-    pub fn terminate_and_prove_dead(
+    #[cfg(test)]
+    fn terminate_and_prove_dead(
         mut self,
         timeout: Duration,
     ) -> Result<SameSupervisorRunnerDeathProofV3, InertRunnerErrorV3> {
@@ -2781,6 +2946,7 @@ impl AuthenticatedPreRunnerV3 {
         self.retained_death_proof = Some(SameSupervisorRunnerDeathProofV3 {
             receipt,
             receipt_sha256,
+            _not_send_or_sync: PhantomData,
         });
         Ok(())
     }

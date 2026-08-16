@@ -10,6 +10,9 @@ use crate::durable::sha256;
 use crate::mac_disposable_effect_issue_store::ExactDisposableCommandV3;
 use crate::mac_disposable_effect_issue_store::ExactMountBindingCommandV3;
 use crate::mac_disposable_effect_issue_store::ExactMountDeltaCommandViewV3;
+use crate::mac_disposable_effect_issue_store::IssuePlanReadSealV3;
+use crate::mac_disposable_effect_issue_store::PersistedEjectEffectV3;
+use crate::mac_disposable_effect_issue_store::PersistedUnmountEffectV3;
 use crate::mac_disposable_lifecycle::CollectorReceiptFileBindingV3;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
 use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
@@ -25,6 +28,7 @@ use crate::mac_disposable_lifecycle_store::ActiveRestartEpochV3;
 use crate::mac_disposable_lifecycle_store::PreparedCollectorLifecycleSealV3;
 use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleRecordAppendV3;
+use crate::mac_disposable_lifecycle_store::SuccessfulIssuedEffectTransitionSealV3;
 use crate::mac_iomedia_identity::DiskImageBackingIdentityV2;
 use crate::mac_iomedia_identity::ExactDiskImageBackingIdentityV3;
 pub use crate::mac_iomedia_identity::FilesystemObjectBindingV3;
@@ -663,6 +667,81 @@ pub(crate) struct RetainedCollectorIssueBindingV3<'a> {
     operation_nonce: String,
     receipt_sha256: String,
     unique_binding_sha256: String,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Owned, descriptor-backed plan for the only unmount which the current
+/// retained unique-mounted observation admits.  Construction consumes both
+/// the receipt-root generation owner and the complete collector lineage, so a
+/// sibling cannot retain one evidence-bearing copy while issuing from
+/// another.  The exact command and all of its digests remain private.
+pub(crate) struct SealedUnmountEffectPlanV3 {
+    core: SealedCollectorEffectPlanCoreV3,
+}
+
+/// Owned, descriptor-backed plan for the only eject which the current
+/// retained unique-attached observation admits.  As with the unmount plan,
+/// there is no constructor from a command, effect kind, group digest, mount
+/// binding, or serialized projection.
+pub(crate) struct SealedEjectEffectPlanV3 {
+    core: SealedCollectorEffectPlanCoreV3,
+}
+
+struct SealedCollectorEffectPlanCoreV3 {
+    command: ExactDisposableCommandV3,
+    command_canonical_bytes: Vec<u8>,
+    command_sha256: String,
+    lineage: RetainedCollectorLineageV3,
+    provenance: SealedCollectorEffectPlanProvenanceV3,
+    receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct SealedCollectorEffectPlanProvenanceV3 {
+    boot_session_uuid: String,
+    collector_receipt_sha256: String,
+    lifecycle_record_sequence: u32,
+    lifecycle_record_sha256: String,
+    operation_nonce: String,
+    restart_epoch_nonce: String,
+    specific: SealedCollectorEffectSpecificProvenanceV3,
+    unique_binding_sha256: String,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum SealedCollectorEffectSpecificProvenanceV3 {
+    Unmount {
+        mounted_binding: MountBindingV3,
+        mounted_binding_sha256: String,
+    },
+    Eject {
+        disk_image_group_sha256: String,
+    },
+}
+
+#[derive(Clone, Copy)]
+enum SealedCollectorEffectPlanKindV3 {
+    Unmount,
+    Eject,
+}
+
+struct DerivedCollectorEffectPlanV3 {
+    command: ExactDisposableCommandV3,
+    command_canonical_bytes: Vec<u8>,
+    command_sha256: String,
+    provenance: SealedCollectorEffectPlanProvenanceV3,
+}
+
+/// Seal-gated borrowed issue material.  The effect store may inspect this
+/// value only with its own private read seal; retaining or serializing the
+/// material is impossible and the underlying owner/lineage stay in the owned
+/// plan until the issued runner reaches a terminal proof state.
+pub(crate) struct SealedCollectorEffectIssuePlanV3<'a, K> {
+    collector_binding: RetainedCollectorIssueBindingV3<'a>,
+    command: &'a ExactDisposableCommandV3,
+    plan: &'a SealedCollectorEffectPlanCoreV3,
+    _kind: PhantomData<K>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
@@ -2952,6 +3031,163 @@ fn unique_collector_binding_sha256(
     })?))
 }
 
+fn derive_collector_effect_plan(
+    receipt_root_owner: &RetainedCollectorReceiptRootOwnerV3,
+    lineage: &RetainedCollectorLineageV3,
+    kind: SealedCollectorEffectPlanKindV3,
+) -> Result<DerivedCollectorEffectPlanV3, RestartCollectorErrorV3> {
+    receipt_root_owner.revalidate_lineage(lineage)?;
+    let current = lineage.current_observation();
+    let evidence = current.evidence();
+    if evidence.receipt.authority.any() {
+        return Err(invalid(
+            "sealed collector effect plan cannot inherit any authority bit",
+        ));
+    }
+    let group = match (kind, current) {
+        (
+            SealedCollectorEffectPlanKindV3::Unmount,
+            RetainedCollectorObservationV3::Reconciliation(
+                RetainedCollectorMatchV3::UniqueMounted(unique),
+            ),
+        ) => exact_unique_group(&unique.evidence.receipt)?,
+        (
+            SealedCollectorEffectPlanKindV3::Eject,
+            RetainedCollectorObservationV3::Reconciliation(
+                RetainedCollectorMatchV3::UniqueAttached(unique),
+            ),
+        ) => exact_unique_group(&unique.evidence.receipt)?,
+        (SealedCollectorEffectPlanKindV3::Unmount, _) => {
+            return Err(invalid(
+                "sealed unmount plan requires the retained unique-mounted current observation",
+            ));
+        }
+        (SealedCollectorEffectPlanKindV3::Eject, _) => {
+            return Err(invalid(
+                "sealed eject plan requires the retained unique-attached current observation",
+            ));
+        }
+    };
+    let collector_binding = receipt_root_owner.issue_binding(lineage)?;
+    collector_binding.revalidate()?;
+    let (command, specific) = match kind {
+        SealedCollectorEffectPlanKindV3::Unmount => {
+            let mounted_binding = exact_unmount_target(&evidence.receipt, group)?;
+            let mounted_binding_sha256 = sha256(&canonical_json(&mounted_binding)?);
+            (
+                ExactDisposableCommandV3::UnmountVolume {
+                    mounted_binding_sha256: mounted_binding_sha256.clone(),
+                },
+                SealedCollectorEffectSpecificProvenanceV3::Unmount {
+                    mounted_binding,
+                    mounted_binding_sha256,
+                },
+            )
+        }
+        SealedCollectorEffectPlanKindV3::Eject => {
+            let disk_image_group_sha256 = exact_eject_target(&evidence.receipt, group)?;
+            (
+                ExactDisposableCommandV3::EjectImage {
+                    disk_image_group_sha256: disk_image_group_sha256.clone(),
+                },
+                SealedCollectorEffectSpecificProvenanceV3::Eject {
+                    disk_image_group_sha256,
+                },
+            )
+        }
+    };
+    let command_canonical_bytes = canonical_json(&command)?;
+    let command_sha256 = sha256(&command_canonical_bytes);
+    Ok(DerivedCollectorEffectPlanV3 {
+        command,
+        command_canonical_bytes,
+        command_sha256,
+        provenance: SealedCollectorEffectPlanProvenanceV3 {
+            boot_session_uuid: collector_binding.boot_session_uuid.clone(),
+            collector_receipt_sha256: collector_binding.receipt_sha256.clone(),
+            lifecycle_record_sequence: collector_binding.lifecycle_record_sequence,
+            lifecycle_record_sha256: collector_binding.lifecycle_record_sha256.clone(),
+            operation_nonce: collector_binding.operation_nonce.clone(),
+            restart_epoch_nonce: evidence.receipt.restart_epoch_nonce.clone(),
+            specific,
+            unique_binding_sha256: collector_binding.unique_binding_sha256.clone(),
+        },
+    })
+}
+
+fn exact_unmount_target(
+    receipt: &RestartCollectorReceiptV3,
+    group: &MatchingDiskImageGroupV3,
+) -> Result<MountBindingV3, RestartCollectorErrorV3> {
+    let group_mount_count = receipt
+        .mount_evidence
+        .mounts_after
+        .iter()
+        .filter(|mount| group_source_matches(group, &mount.mount_from))
+        .count();
+    let targets = receipt
+        .mount_evidence
+        .mounts_after
+        .iter()
+        .filter(|mount| {
+            mount.mount_on == receipt.collector_policy.mountpoint
+                && group_source_matches(group, &mount.mount_from)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let [target] = targets.as_slice() else {
+        return Err(invalid(
+            "unique-mounted collector does not retain exactly one group-bound mount entry",
+        ));
+    };
+    if group_mount_count != 1 {
+        return Err(invalid(
+            "unique-mounted collector retains an additional disk-image group mount alias",
+        ));
+    }
+    validate_mount_binding_shape(target)?;
+    Ok(target.clone())
+}
+
+fn exact_eject_target(
+    receipt: &RestartCollectorReceiptV3,
+    group: &MatchingDiskImageGroupV3,
+) -> Result<String, RestartCollectorErrorV3> {
+    if receipt
+        .mount_evidence
+        .mounts_after
+        .iter()
+        .any(|mount| group_source_matches(group, &mount.mount_from))
+    {
+        return Err(invalid(
+            "sealed eject plan requires the unique disk-image group to be fully unmounted",
+        ));
+    }
+    unique_volume_identity_sha256(group)
+}
+
+fn validate_derived_collector_effect_plan(
+    command: &ExactDisposableCommandV3,
+    command_canonical_bytes: &[u8],
+    command_sha256: &str,
+    provenance: &SealedCollectorEffectPlanProvenanceV3,
+    derived: &DerivedCollectorEffectPlanV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    if command != &derived.command
+        || command_canonical_bytes != derived.command_canonical_bytes
+        || command_sha256 != derived.command_sha256
+        || provenance != &derived.provenance
+        || canonical_json(command)? != command_canonical_bytes
+        || sha256(command_canonical_bytes) != command_sha256
+        || !valid_digest(command_sha256)
+    {
+        return Err(invalid(
+            "sealed collector effect plan changed command or exact retained provenance",
+        ));
+    }
+    Ok(())
+}
+
 impl UnadoptedCollectorAppendV3<'_> {
     pub(crate) fn event(&self) -> &RetainedCollectorAppendEventV3<'_> {
         &self.event
@@ -3519,7 +3755,7 @@ impl RetainedCollectorReceiptRootOwnerV3 {
         self.revalidate_lineage(&delta.prior)
     }
 
-    pub(crate) fn issue_binding<'a>(
+    fn issue_binding<'a>(
         &'a self,
         lineage: &'a RetainedCollectorLineageV3,
     ) -> Result<RetainedCollectorIssueBindingV3<'a>, RestartCollectorErrorV3> {
@@ -3533,6 +3769,210 @@ impl RetainedCollectorReceiptRootOwnerV3 {
     ) -> Result<RetainedTerminalAbsenceV3<'a>, RestartCollectorErrorV3> {
         self.revalidate_lineage(lineage)?;
         lineage.terminal_absence(self)
+    }
+
+    pub(crate) fn into_sealed_unmount_effect_plan(
+        self,
+        lineage: RetainedCollectorLineageV3,
+    ) -> Result<SealedUnmountEffectPlanV3, RestartCollectorErrorV3> {
+        Ok(SealedUnmountEffectPlanV3 {
+            core: SealedCollectorEffectPlanCoreV3::new(
+                self,
+                lineage,
+                SealedCollectorEffectPlanKindV3::Unmount,
+            )?,
+        })
+    }
+
+    pub(crate) fn into_sealed_eject_effect_plan(
+        self,
+        lineage: RetainedCollectorLineageV3,
+    ) -> Result<SealedEjectEffectPlanV3, RestartCollectorErrorV3> {
+        Ok(SealedEjectEffectPlanV3 {
+            core: SealedCollectorEffectPlanCoreV3::new(
+                self,
+                lineage,
+                SealedCollectorEffectPlanKindV3::Eject,
+            )?,
+        })
+    }
+}
+
+impl SealedCollectorEffectPlanCoreV3 {
+    fn new(
+        receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
+        lineage: RetainedCollectorLineageV3,
+        kind: SealedCollectorEffectPlanKindV3,
+    ) -> Result<Self, RestartCollectorErrorV3> {
+        let derived = derive_collector_effect_plan(&receipt_root_owner, &lineage, kind)?;
+        let plan = Self {
+            command: derived.command,
+            command_canonical_bytes: derived.command_canonical_bytes,
+            command_sha256: derived.command_sha256,
+            lineage,
+            provenance: derived.provenance,
+            receipt_root_owner,
+            _not_send_or_sync: PhantomData,
+        };
+        plan.revalidate(kind)?;
+        Ok(plan)
+    }
+
+    fn revalidate(
+        &self,
+        kind: SealedCollectorEffectPlanKindV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        let derived = derive_collector_effect_plan(&self.receipt_root_owner, &self.lineage, kind)?;
+        validate_derived_collector_effect_plan(
+            &self.command,
+            &self.command_canonical_bytes,
+            &self.command_sha256,
+            &self.provenance,
+            &derived,
+        )
+    }
+
+    fn issue_plan<K>(
+        &self,
+        kind: SealedCollectorEffectPlanKindV3,
+    ) -> Result<SealedCollectorEffectIssuePlanV3<'_, K>, RestartCollectorErrorV3> {
+        self.revalidate(kind)?;
+        let collector_binding = self.receipt_root_owner.issue_binding(&self.lineage)?;
+        let issue = SealedCollectorEffectIssuePlanV3 {
+            collector_binding,
+            command: &self.command,
+            plan: self,
+            _kind: PhantomData,
+            _not_send_or_sync: PhantomData,
+        };
+        issue.revalidate_inner(kind)?;
+        Ok(issue)
+    }
+}
+
+impl SealedUnmountEffectPlanV3 {
+    pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.core
+            .revalidate(SealedCollectorEffectPlanKindV3::Unmount)
+    }
+
+    pub(crate) fn issue_plan(
+        &self,
+        _seal: &IssuePlanReadSealV3,
+    ) -> Result<
+        SealedCollectorEffectIssuePlanV3<'_, PersistedUnmountEffectV3>,
+        RestartCollectorErrorV3,
+    > {
+        self.core
+            .issue_plan(SealedCollectorEffectPlanKindV3::Unmount)
+    }
+
+    /// Recover the exact mount-delta owner after the issued runner has been
+    /// positively death-proved.  This consumes the whole effect plan and uses
+    /// only its internally derived command; no caller command or digest enters
+    /// the transition.
+    pub(crate) fn into_unmount_delta(
+        self,
+        _seal: &SuccessfulIssuedEffectTransitionSealV3,
+    ) -> Result<
+        (
+            RetainedCollectorReceiptRootOwnerV3,
+            RetainedCollectorMountDeltaV3<UnmountingV3>,
+        ),
+        RestartCollectorErrorV3,
+    > {
+        self.revalidate()?;
+        let SealedCollectorEffectPlanCoreV3 {
+            command,
+            lineage,
+            receipt_root_owner,
+            ..
+        } = self.core;
+        let delta = lineage.into_unmount_delta(&command)?;
+        receipt_root_owner.revalidate_mount_delta(&delta)?;
+        Ok((receipt_root_owner, delta))
+    }
+}
+
+impl SealedEjectEffectPlanV3 {
+    pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.core.revalidate(SealedCollectorEffectPlanKindV3::Eject)
+    }
+
+    pub(crate) fn issue_plan(
+        &self,
+        _seal: &IssuePlanReadSealV3,
+    ) -> Result<SealedCollectorEffectIssuePlanV3<'_, PersistedEjectEffectV3>, RestartCollectorErrorV3>
+    {
+        self.core.issue_plan(SealedCollectorEffectPlanKindV3::Eject)
+    }
+
+    /// Return the still-exact unique-attached collector ownership after a
+    /// positively death-proved eject dispatch.  The Stage4 pending-eject
+    /// transition remains responsible for consuming this pair into its
+    /// callback/observation typestate.
+    pub(crate) fn into_retained_lineage(
+        self,
+        _seal: &SuccessfulIssuedEffectTransitionSealV3,
+    ) -> Result<
+        (
+            RetainedCollectorReceiptRootOwnerV3,
+            RetainedCollectorLineageV3,
+        ),
+        RestartCollectorErrorV3,
+    > {
+        self.revalidate()?;
+        Ok((self.core.receipt_root_owner, self.core.lineage))
+    }
+}
+
+impl<K> SealedCollectorEffectIssuePlanV3<'_, K> {
+    fn revalidate_inner(
+        &self,
+        kind: SealedCollectorEffectPlanKindV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.plan.revalidate(kind)?;
+        self.collector_binding.revalidate()?;
+        if canonical_json(self.command)? != self.plan.command_canonical_bytes
+            || sha256(&self.plan.command_canonical_bytes) != self.plan.command_sha256
+        {
+            return Err(invalid(
+                "sealed collector effect issue command changed after plan derivation",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn command_for_issue(
+        &self,
+        _seal: &IssuePlanReadSealV3,
+    ) -> &ExactDisposableCommandV3 {
+        self.command
+    }
+
+    pub(crate) fn collector_binding_for_issue(
+        &self,
+        _seal: &IssuePlanReadSealV3,
+    ) -> &RetainedCollectorIssueBindingV3<'_> {
+        &self.collector_binding
+    }
+}
+
+impl SealedCollectorEffectIssuePlanV3<'_, PersistedUnmountEffectV3> {
+    pub(crate) fn revalidate_for_issue(
+        &self,
+        _seal: &IssuePlanReadSealV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_inner(SealedCollectorEffectPlanKindV3::Unmount)
+    }
+}
+
+impl SealedCollectorEffectIssuePlanV3<'_, PersistedEjectEffectV3> {
+    pub(crate) fn revalidate_for_issue(
+        &self,
+        _seal: &IssuePlanReadSealV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_inner(SealedCollectorEffectPlanKindV3::Eject)
     }
 }
 
@@ -5905,7 +6345,7 @@ impl RetainedCollectorLineageV3 {
         })
     }
 
-    pub(crate) fn into_unmount_delta(
+    fn into_unmount_delta(
         self,
         command: &ExactDisposableCommandV3,
     ) -> Result<RetainedCollectorMountDeltaV3<UnmountingV3>, RestartCollectorErrorV3> {

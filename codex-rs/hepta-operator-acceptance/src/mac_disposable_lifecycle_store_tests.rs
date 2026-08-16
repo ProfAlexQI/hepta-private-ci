@@ -1,4 +1,5 @@
 use super::*;
+use crate::mac_disposable_effect_issue_store::ExactDisposableCommandV3;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
 use crate::mac_disposable_lifecycle::ReconciliationMatchV2;
 use crate::mac_disposable_lifecycle::fresh_absence_sha256;
@@ -31,23 +32,29 @@ type ActiveRestartOperationStoreForCompileAssertions =
 type RetainedLifecycleAppendForCompileAssertions = RetainedLifecycleRecordAppendV3;
 type RetainedLifecycleIssueSourceForCompileAssertions = RetainedLifecycleIssueSourceV3<'static>;
 type RetainedEffectIssueSourceForCompileAssertions = RetainedEffectIssueSourceV3;
-type RetainedOperationIssueForCompileAssertions =
-    RetainedOperationEffectIssueV3<'static, 'static, 'static>;
 type PersistedRunnerGrantForCompileAssertions =
-    PersistedIssuedRunnerGrantV3<'static, 'static, 'static>;
+    PersistedIssuedRunnerGrantV3<'static, 'static, PersistedUnmountEffectV3>;
 type PersistedIssueLeaseSealForCompileAssertions = PersistedIssueLeaseSealV3;
 type RecoveredIssueVerifierSealForCompileAssertions = RecoveredIssueVerifierSealV3;
-type SealedRunnerIssueMaterialForCompileAssertions = SealedRunnerIssueMaterialV3;
-type IssuedEffectSessionForCompileAssertions = IssuedEffectSessionV3<'static, 'static, 'static>;
+type IssuedTransitionBindingForCompileAssertions =
+    PersistedIssuedTransitionBindingV3<PersistedUnmountEffectV3>;
+type SealedCollectorPlanForCompileAssertions =
+    SealedOwnedCollectorEffectPlanV3<PersistedUnmountEffectV3>;
+type SuccessfulTransitionSealForCompileAssertions = SuccessfulIssuedEffectTransitionSealV3;
+type IssuedEffectSessionForCompileAssertions =
+    IssuedEffectSessionV3<'static, 'static, PersistedUnmountEffectV3>;
 type IssuedEffectFailureForCompileAssertions =
-    IssuedEffectDispatchFailureV3<'static, 'static, 'static>;
+    IssuedEffectDispatchFailureV3<'static, 'static, PersistedUnmountEffectV3>;
 type IssuedEffectDeathProvedForCompileAssertions =
-    IssuedEffectDeathProvedV3<'static, 'static, 'static>;
+    SuccessfulIssuedEffectDeathProvedV3<'static, 'static, PersistedUnmountEffectV3>;
+type IssuedEffectFailureDeathProvedForCompileAssertions =
+    IssuedEffectDispatchFailureDeathProvedV3<'static, 'static, PersistedUnmountEffectV3>;
 type PendingUnmountCallbackStoreForCompileAssertions =
     PendingUnmountReconciliationOperationStoreV3<'static, 'static, AwaitingUnmountCallbackV3>;
 type PendingUnmountObservationStoreForCompileAssertions =
     PendingUnmountReconciliationOperationStoreV3<'static, 'static, AwaitingUnmountObservationV3>;
-type RetainedUnmountCallbackForCompileAssertions = RetainedSuccessfulUnmountCallbackV3;
+type SuccessfulUnmountCallbackForCompileAssertions =
+    SuccessfulRunnerCallbackV3<PersistedUnmountEffectV3>;
 type CompletedOperationStoreForCompileAssertions =
     CompletedReconciliationOperationStoreV3<'static, 'static>;
 type ExistingWiringForCompileAssertions = ExistingCensusStoreWiringV3<'static, 'static>;
@@ -124,16 +131,19 @@ assert_not_impl!(
     RetainedEffectIssueSourceForCompileAssertions,
     From<std::fs::File>
 );
-assert_not_impl!(RetainedOperationIssueForCompileAssertions, Clone);
-assert_not_impl!(RetainedOperationIssueForCompileAssertions, Send);
-assert_not_impl!(RetainedOperationIssueForCompileAssertions, Sync);
-assert_not_impl!(RetainedOperationIssueForCompileAssertions, serde::Serialize);
+assert_not_impl!(IssuedTransitionBindingForCompileAssertions, Clone);
+assert_not_impl!(IssuedTransitionBindingForCompileAssertions, Send);
+assert_not_impl!(IssuedTransitionBindingForCompileAssertions, Sync);
 assert_not_impl!(
-    RetainedOperationIssueForCompileAssertions,
+    IssuedTransitionBindingForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    IssuedTransitionBindingForCompileAssertions,
     std::os::fd::AsRawFd
 );
 assert_not_impl!(
-    RetainedOperationIssueForCompileAssertions,
+    IssuedTransitionBindingForCompileAssertions,
     From<std::fs::File>
 );
 assert_not_impl!(PersistedRunnerGrantForCompileAssertions, Clone);
@@ -178,19 +188,28 @@ assert_not_impl!(
     RecoveredIssueVerifierSealForCompileAssertions,
     From<std::fs::File>
 );
-assert_not_impl!(SealedRunnerIssueMaterialForCompileAssertions, Clone);
-assert_not_impl!(SealedRunnerIssueMaterialForCompileAssertions, Send);
-assert_not_impl!(SealedRunnerIssueMaterialForCompileAssertions, Sync);
+assert_not_impl!(SealedCollectorPlanForCompileAssertions, Clone);
+assert_not_impl!(SealedCollectorPlanForCompileAssertions, Send);
+assert_not_impl!(SealedCollectorPlanForCompileAssertions, Sync);
+assert_not_impl!(SealedCollectorPlanForCompileAssertions, serde::Serialize);
 assert_not_impl!(
-    SealedRunnerIssueMaterialForCompileAssertions,
+    SealedCollectorPlanForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(SealedCollectorPlanForCompileAssertions, From<std::fs::File>);
+assert_not_impl!(SuccessfulTransitionSealForCompileAssertions, Clone);
+assert_not_impl!(SuccessfulTransitionSealForCompileAssertions, Send);
+assert_not_impl!(SuccessfulTransitionSealForCompileAssertions, Sync);
+assert_not_impl!(
+    SuccessfulTransitionSealForCompileAssertions,
     serde::Serialize
 );
 assert_not_impl!(
-    SealedRunnerIssueMaterialForCompileAssertions,
+    SuccessfulTransitionSealForCompileAssertions,
     std::os::fd::AsRawFd
 );
 assert_not_impl!(
-    SealedRunnerIssueMaterialForCompileAssertions,
+    SuccessfulTransitionSealForCompileAssertions,
     From<std::fs::File>
 );
 assert_not_impl!(IssuedEffectSessionForCompileAssertions, Clone);
@@ -224,6 +243,21 @@ assert_not_impl!(
 );
 assert_not_impl!(
     IssuedEffectDeathProvedForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(IssuedEffectFailureDeathProvedForCompileAssertions, Clone);
+assert_not_impl!(IssuedEffectFailureDeathProvedForCompileAssertions, Send);
+assert_not_impl!(IssuedEffectFailureDeathProvedForCompileAssertions, Sync);
+assert_not_impl!(
+    IssuedEffectFailureDeathProvedForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    IssuedEffectFailureDeathProvedForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    IssuedEffectFailureDeathProvedForCompileAssertions,
     From<std::fs::File>
 );
 assert_not_impl!(PendingUnmountCallbackStoreForCompileAssertions, Clone);
@@ -272,23 +306,23 @@ assert_not_impl!(
     PendingUnmountObservationStoreForCompileAssertions,
     From<String>
 );
-assert_not_impl!(RetainedUnmountCallbackForCompileAssertions, Clone);
-assert_not_impl!(RetainedUnmountCallbackForCompileAssertions, Send);
-assert_not_impl!(RetainedUnmountCallbackForCompileAssertions, Sync);
+assert_not_impl!(SuccessfulUnmountCallbackForCompileAssertions, Clone);
+assert_not_impl!(SuccessfulUnmountCallbackForCompileAssertions, Send);
+assert_not_impl!(SuccessfulUnmountCallbackForCompileAssertions, Sync);
 assert_not_impl!(
-    RetainedUnmountCallbackForCompileAssertions,
+    SuccessfulUnmountCallbackForCompileAssertions,
     serde::Serialize
 );
 assert_not_impl!(
-    RetainedUnmountCallbackForCompileAssertions,
+    SuccessfulUnmountCallbackForCompileAssertions,
     std::os::fd::AsRawFd
 );
 assert_not_impl!(
-    RetainedUnmountCallbackForCompileAssertions,
+    SuccessfulUnmountCallbackForCompileAssertions,
     From<std::fs::File>
 );
-assert_not_impl!(RetainedUnmountCallbackForCompileAssertions, From<Vec<u8>>);
-assert_not_impl!(RetainedUnmountCallbackForCompileAssertions, From<String>);
+assert_not_impl!(SuccessfulUnmountCallbackForCompileAssertions, From<Vec<u8>>);
+assert_not_impl!(SuccessfulUnmountCallbackForCompileAssertions, From<String>);
 assert_not_impl!(
     RetainedLifecycleAppendForCompileAssertions,
     std::os::fd::AsRawFd
@@ -530,39 +564,6 @@ fn incoming_record_path(fixture: &Fixture, nonce: &str) -> std::path::PathBuf {
 
 fn final_record_path(fixture: &Fixture, nonce: &str) -> std::path::PathBuf {
     fixture.operation_path(nonce).join("00000001.json")
-}
-
-#[test]
-fn retained_unmount_callback_is_bound_to_the_exact_issue() {
-    let callback =
-        RetainedSuccessfulUnmountCallbackV3::for_test(7, NONCE, &digest('c'), &digest('e'));
-    callback
-        .revalidate_against(7, NONCE, &digest('c'), &digest('e'))
-        .expect("exact callback binding");
-    assert!(
-        callback
-            .revalidate_against(8, NONCE, &digest('c'), &digest('e'))
-            .is_err(),
-        "effect transplant must fail"
-    );
-    assert!(
-        callback
-            .revalidate_against(7, &"2".repeat(64), &digest('c'), &digest('e'))
-            .is_err(),
-        "operation transplant must fail"
-    );
-    assert!(
-        callback
-            .revalidate_against(7, NONCE, &digest('d'), &digest('e'))
-            .is_err(),
-        "command transplant must fail"
-    );
-    assert!(
-        callback
-            .revalidate_against(7, NONCE, &digest('c'), &digest('f'))
-            .is_err(),
-        "issue-file transplant must fail"
-    );
 }
 
 #[test]
@@ -1606,83 +1607,6 @@ fn recovered_death_proof_consumes_exact_s1_issue_and_reacquired_lease() {
     assert_eq!(proof.sha256().expect("sealed recovered digest").len(), 64);
     drop(proof);
     assert!(!store.poisoned());
-}
-
-#[test]
-fn dropping_or_forgetting_unconsumed_grant_path_keeps_whole_store_poisoned() {
-    for drop_kind in ["grant", "session", "failure", "forgotten-grant"] {
-        let temporary = tempfile::tempdir().expect("control parent");
-        let root = temporary.path().join("control");
-        let boot = current_boot_session_uuid().expect("current boot");
-        let epochs = EffectEpochEvidenceV3::bind_current_boot(
-            &boot,
-            &digest('3'),
-            &digest('4'),
-            &digest('5'),
-            &digest('6'),
-        )
-        .expect("old issued epoch");
-        create_recoverable_issue(&root, epochs);
-
-        let control =
-            LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("reopen S1 control");
-        let census = control
-            .assess_read_only()
-            .expect("blocking assessment")
-            .into_blocking_control_census(NONCE)
-            .expect("blocking census");
-        let epoch = FreshProcessEpochV3::establish().expect("current process epoch");
-        let mut store = ReconciliationOperationStoreV3::open_existing(census, &epoch)
-            .expect("exact issued operation")
-            .activate_without_admission_for_test()
-            .expect("test active restart typestate");
-        let record = store
-            .issues
-            .replayed_issue(1)
-            .expect("exact retained V3 issue")
-            .clone();
-        let record_canonical_bytes =
-            canonical_json(&record).expect("canonical retained V3 issue bytes");
-        let record_sha256 = sha256(&record_canonical_bytes);
-        let issue = RetainedOperationEffectIssueV3 {
-            effect_id: 1,
-            record,
-            record_canonical_bytes,
-            record_sha256,
-            store: &mut store,
-            _not_send_or_sync: PhantomData,
-        };
-        let mut grant = PersistedIssuedRunnerGrantV3::new_armed(issue, None);
-        if drop_kind != "forgotten-grant" {
-            // Ordinary Drop cases start disarmed to prove that each release
-            // path independently fails closed. The forgotten case exercises
-            // the production constructor's always-armed invariant.
-            grant.issue.store.poisoned = false;
-        }
-
-        match drop_kind {
-            "grant" => drop(grant),
-            "forgotten-grant" => std::mem::forget(grant),
-            "session" => drop(IssuedEffectSessionV3 {
-                runner: None,
-                grant: Some(grant),
-                proof_and_grant_transferred: false,
-                _not_send_or_sync: PhantomData,
-            }),
-            "failure" => drop(IssuedEffectDispatchFailureV3 {
-                error: "injected unconsumed failure".to_string(),
-                runner_failure: None,
-                grant: Some(grant),
-                proof_and_grant_transferred: false,
-                _not_send_or_sync: PhantomData,
-            }),
-            _ => unreachable!("closed drop-kind roster"),
-        }
-        assert!(
-            store.poisoned(),
-            "releasing or forgetting {drop_kind} exposed a reusable whole-store capability"
-        );
-    }
 }
 
 #[test]

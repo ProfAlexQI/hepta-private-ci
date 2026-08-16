@@ -262,6 +262,70 @@ assert_not_impl_any!(
         TryFrom<File>
 );
 assert_not_impl_any!(
+    SealedUnmountEffectPlanV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<ExactDisposableCommandV3>,
+        From<RetainedCollectorReceiptRootOwnerV3>,
+        From<RetainedCollectorLineageV3>,
+        From<String>
+);
+assert_not_impl_any!(
+    SealedEjectEffectPlanV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<ExactDisposableCommandV3>,
+        From<RetainedCollectorReceiptRootOwnerV3>,
+        From<RetainedCollectorLineageV3>,
+        From<String>
+);
+assert_not_impl_any!(
+    SealedCollectorEffectIssuePlanV3<'static, PersistedUnmountEffectV3>:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<ExactDisposableCommandV3>,
+        From<String>
+);
+assert_not_impl_any!(
+    SealedCollectorEffectIssuePlanV3<'static, PersistedEjectEffectV3>:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<ExactDisposableCommandV3>,
+        From<String>
+);
+assert_not_impl_any!(
     RetainedCollectorMountDeltaV3<MountingV3>:
         Clone,
         Send,
@@ -395,6 +459,113 @@ fn exact_mount_delta_helpers_reject_extra_changed_and_unsorted_states() {
     unsorted.reverse();
     assert!(exact_added_mount(&before, &unsorted).is_none());
     assert!(exact_removed_mount(&unsorted, &before).is_none());
+}
+
+fn synthetic_derived_effect_plan_for_test(
+    kind: SealedCollectorEffectPlanKindV3,
+) -> DerivedCollectorEffectPlanV3 {
+    let specific = match kind {
+        SealedCollectorEffectPlanKindV3::Unmount => {
+            let mounted_binding =
+                synthetic_mount([9, 4], "/dev/disk9s4", "/private/tmp/hepta-mount", 0);
+            let mounted_binding_sha256 = sha256(&canonical_json(&mounted_binding).unwrap());
+            SealedCollectorEffectSpecificProvenanceV3::Unmount {
+                mounted_binding,
+                mounted_binding_sha256,
+            }
+        }
+        SealedCollectorEffectPlanKindV3::Eject => {
+            SealedCollectorEffectSpecificProvenanceV3::Eject {
+                disk_image_group_sha256: "b".repeat(64),
+            }
+        }
+    };
+    let command = match &specific {
+        SealedCollectorEffectSpecificProvenanceV3::Unmount {
+            mounted_binding_sha256,
+            ..
+        } => ExactDisposableCommandV3::UnmountVolume {
+            mounted_binding_sha256: mounted_binding_sha256.clone(),
+        },
+        SealedCollectorEffectSpecificProvenanceV3::Eject {
+            disk_image_group_sha256,
+        } => ExactDisposableCommandV3::EjectImage {
+            disk_image_group_sha256: disk_image_group_sha256.clone(),
+        },
+    };
+    let command_canonical_bytes = canonical_json(&command).unwrap();
+    DerivedCollectorEffectPlanV3 {
+        command,
+        command_sha256: sha256(&command_canonical_bytes),
+        command_canonical_bytes,
+        provenance: SealedCollectorEffectPlanProvenanceV3 {
+            boot_session_uuid: "12345678-1234-4234-8234-123456789abc".to_string(),
+            collector_receipt_sha256: "c".repeat(64),
+            lifecycle_record_sequence: 7,
+            lifecycle_record_sha256: "d".repeat(64),
+            operation_nonce: "e".repeat(64),
+            restart_epoch_nonce: "f".repeat(64),
+            specific,
+            unique_binding_sha256: "1".repeat(64),
+        },
+    }
+}
+
+#[test]
+fn sealed_effect_plan_snapshot_rejects_command_digest_kind_and_lineage_transplants() {
+    let expected = synthetic_derived_effect_plan_for_test(SealedCollectorEffectPlanKindV3::Unmount);
+    let stored = synthetic_derived_effect_plan_for_test(SealedCollectorEffectPlanKindV3::Unmount);
+    validate_derived_collector_effect_plan(
+        &stored.command,
+        &stored.command_canonical_bytes,
+        &stored.command_sha256,
+        &stored.provenance,
+        &expected,
+    )
+    .expect("exact internally derived plan snapshot");
+
+    let mut wrong_digest =
+        synthetic_derived_effect_plan_for_test(SealedCollectorEffectPlanKindV3::Unmount);
+    wrong_digest.command_sha256 = "2".repeat(64);
+    assert!(
+        validate_derived_collector_effect_plan(
+            &wrong_digest.command,
+            &wrong_digest.command_canonical_bytes,
+            &wrong_digest.command_sha256,
+            &wrong_digest.provenance,
+            &expected,
+        )
+        .is_err(),
+        "caller digest must not replace the internally derived command digest"
+    );
+
+    let mut cross_operation =
+        synthetic_derived_effect_plan_for_test(SealedCollectorEffectPlanKindV3::Unmount);
+    cross_operation.provenance.operation_nonce = "3".repeat(64);
+    assert!(
+        validate_derived_collector_effect_plan(
+            &cross_operation.command,
+            &cross_operation.command_canonical_bytes,
+            &cross_operation.command_sha256,
+            &cross_operation.provenance,
+            &expected,
+        )
+        .is_err(),
+        "an exact command must not transplant across retained operations"
+    );
+
+    let eject = synthetic_derived_effect_plan_for_test(SealedCollectorEffectPlanKindV3::Eject);
+    assert!(
+        validate_derived_collector_effect_plan(
+            &eject.command,
+            &eject.command_canonical_bytes,
+            &eject.command_sha256,
+            &eject.provenance,
+            &expected,
+        )
+        .is_err(),
+        "eject group evidence must not enter the typed unmount plan"
+    );
 }
 
 fn synthetic_backing(path: &str) -> DiskImageBackingIdentityV2 {
@@ -546,6 +717,97 @@ fn inventory(objects: Vec<RestartIOMediaObjectV3>) -> RestartIOMediaInventoryV3 
         objects,
         schema: "hepta_mac_restart_iomedia_inventory_v3".to_string(),
     }
+}
+
+#[test]
+fn sealed_unmount_target_is_derived_from_one_exact_group_bound_mount() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let mut receipt = collect_reconciliation_snapshot_v3(fixture.request())
+        .expect("collect receipt template")
+        .receipt()
+        .clone();
+    let group = MatchingDiskImageGroupV3 {
+        candidate: candidate(90, fixture.backing_path.to_str().unwrap()),
+        member_bsd_names: vec!["disk90s1".to_string()],
+        member_registry_entry_ids: vec![id(91)],
+    };
+    let target = synthetic_mount(
+        [90, 1],
+        "/dev/disk90s1",
+        fixture.mountpoint_path.to_str().unwrap(),
+        0,
+    );
+    receipt.mount_evidence.mounts_after = vec![target.clone()];
+    assert_eq!(exact_unmount_target(&receipt, &group).unwrap(), target);
+
+    receipt.mount_evidence.mounts_after.push(target.clone());
+    assert!(
+        exact_unmount_target(&receipt, &group).is_err(),
+        "duplicate matching mount entries must not derive an unmount command"
+    );
+    receipt.mount_evidence.mounts_after = vec![
+        target.clone(),
+        synthetic_mount([90, 2], "/dev/disk90s1", "/private/tmp/foreign-mount", 0),
+    ];
+    assert!(
+        exact_unmount_target(&receipt, &group).is_err(),
+        "another mount alias of the same disk-image group must block one-shot unmount"
+    );
+    receipt.mount_evidence.mounts_after = vec![synthetic_mount(
+        [90, 1],
+        "/dev/disk999s1",
+        fixture.mountpoint_path.to_str().unwrap(),
+        0,
+    )];
+    assert!(
+        exact_unmount_target(&receipt, &group).is_err(),
+        "a caller-selected mount source must not replace the retained group member"
+    );
+}
+
+#[test]
+fn sealed_eject_target_is_derived_only_after_the_exact_group_is_fully_unmounted() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let mut receipt = collect_reconciliation_snapshot_v3(fixture.request())
+        .expect("collect receipt template")
+        .receipt()
+        .clone();
+    let group = MatchingDiskImageGroupV3 {
+        candidate: candidate(92, fixture.backing_path.to_str().unwrap()),
+        member_bsd_names: vec!["disk92s1".to_string()],
+        member_registry_entry_ids: vec![id(93)],
+    };
+    receipt.mount_evidence.mounts_after.clear();
+    assert_eq!(
+        exact_eject_target(&receipt, &group).unwrap(),
+        unique_volume_identity_sha256(&group).unwrap(),
+        "the eject target must be the canonical retained group digest"
+    );
+
+    receipt.mount_evidence.mounts_after.push(synthetic_mount(
+        [92, 1],
+        "/dev/disk92s1",
+        "/private/tmp/foreign-alias",
+        0,
+    ));
+    assert!(
+        exact_eject_target(&receipt, &group).is_err(),
+        "any remaining mount alias of the retained group must block eject"
+    );
+
+    receipt.mount_evidence.mounts_after = vec![synthetic_mount(
+        [120, 1],
+        "/dev/disk120s1",
+        "/private/tmp/unrelated-mount",
+        0,
+    )];
+    assert_eq!(
+        exact_eject_target(&receipt, &group).unwrap(),
+        unique_volume_identity_sha256(&group).unwrap(),
+        "an unrelated retained mount must not rewrite the exact eject target"
+    );
 }
 
 fn backing_artifact(basename: &str) -> PreparedArtifactBindingV3 {

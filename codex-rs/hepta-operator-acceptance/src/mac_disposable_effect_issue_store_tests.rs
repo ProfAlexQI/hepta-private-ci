@@ -47,6 +47,80 @@ assert_not_impl_any!(
         TryFrom<File>
 );
 
+assert_not_impl_any!(
+    AdoptedIssuedEffectKeyV3<PersistedUnmountEffectV3>:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<IssuedEffectRecordV3>,
+        From<ExactDisposableCommandV3>,
+        From<EffectKindV3>,
+        From<EffectPurposeV3>,
+        From<String>,
+        From<u64>
+);
+
+assert_not_impl_any!(
+    OwnedIssuedEffectDispatchMaterialV3<PersistedUnmountEffectV3>:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<IssuedEffectRecordV3>,
+        From<ExactDisposableCommandV3>,
+        From<EffectKindV3>,
+        From<EffectPurposeV3>,
+        From<String>,
+        From<u64>
+);
+
+assert_not_impl_any!(
+    AdoptedIssuedEffectDispatchV3<PersistedUnmountEffectV3>:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<IssuedEffectRecordV3>,
+        From<ExactDisposableCommandV3>,
+        From<EffectKindV3>,
+        From<EffectPurposeV3>,
+        From<String>,
+        From<u64>
+);
+
+assert_not_impl_any!(
+    AdoptedIssuedEffectUseSinkV3<'static>:
+        Clone,
+        Send,
+        Sync,
+        Serialize,
+        serde::de::DeserializeOwned,
+        AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>
+);
+
 fn digest(byte: char) -> String {
     byte.to_string().repeat(64)
 }
@@ -395,6 +469,126 @@ fn persist_unmount(
     ));
     retained.revalidate().expect("retained final replay");
     retained.record_sha256().to_string()
+}
+
+fn persist_owned_unmount_key_for_test(
+    fixture: &mut StoreFixture,
+    lifecycle: &VerifiedLifecycleIssueRosterV3,
+    epochs: EffectEpochEvidenceV3,
+) -> AdoptedIssuedEffectKeyV3<PersistedUnmountEffectV3> {
+    fixture
+        .store
+        .persist(lifecycle, unmount_command(), epochs, Some(digest('c')))
+        .expect("persist unmount issue")
+        .into_adopted_key_for_test()
+        .expect("seal owned adopted unmount key")
+}
+
+#[test]
+fn owned_adopted_key_outlives_the_persistence_borrow_and_requires_whole_store_replay() {
+    let mut lifecycle = LifecycleFixture::new();
+    let mut fixture = StoreFixture::new(&lifecycle.before_issue);
+    let issued = lifecycle.append_unmount();
+    let key = persist_owned_unmount_key_for_test(&mut fixture, &issued, lifecycle.epochs('7'));
+
+    // The mutable persistence borrow ended before the sink is created.  The
+    // moved key becomes dispatch material only after replaying the complete
+    // retained issue roster and its S1-adopted flags.
+    let sink = fixture
+        .store
+        .adopted_issue_use_sink_for_test()
+        .expect("whole-store replay sink");
+    let material = sink.consume_for_test(key).expect("consume exact owned key");
+    assert_eq!(material.test_record().effect_id(), 1);
+    assert_eq!(
+        material.test_record().command_sha256(),
+        sha256(material.test_record().command_canonical_bytes())
+    );
+    assert_eq!(
+        material
+            .test_record()
+            .prior_collector_lifecycle_record_sha256,
+        sha256(&lifecycle.records[2])
+    );
+    assert_eq!(
+        material.test_record().prior_collector_receipt_sha256,
+        digest('e')
+    );
+    assert_eq!(material.test_record().runner_epoch_sha256(), &digest('8'));
+}
+
+#[test]
+fn owned_key_rejects_kind_and_in_memory_command_self_reports() {
+    // A durable unmount cannot be retyped as an eject key.
+    let mut lifecycle = LifecycleFixture::new();
+    let mut fixture = StoreFixture::new(&lifecycle.before_issue);
+    let issued = lifecycle.append_unmount();
+    let retained = fixture
+        .store
+        .persist(
+            &issued,
+            unmount_command(),
+            lifecycle.epochs('7'),
+            Some(digest('c')),
+        )
+        .expect("persist unmount issue");
+    assert!(
+        retained
+            .into_adopted_key_for_test::<PersistedEjectEffectV3>()
+            .is_err(),
+        "unmount issue was retyped as an eject key"
+    );
+    assert!(fixture.store.poisoned());
+
+    // Even a same-kind caller rewrite cannot enter an owned key: the in-memory
+    // record must remain byte-for-byte equal to the final reopened issue file.
+    let mut lifecycle = LifecycleFixture::new();
+    let mut fixture = StoreFixture::new(&lifecycle.before_issue);
+    let issued = lifecycle.append_unmount();
+    let retained = fixture
+        .store
+        .persist(
+            &issued,
+            unmount_command(),
+            lifecycle.epochs('7'),
+            Some(digest('c')),
+        )
+        .expect("persist unmount issue");
+    retained.store.issues[retained.index].record.command =
+        ExactDisposableCommandV3::UnmountVolume {
+            mounted_binding_sha256: digest('f'),
+        };
+    assert!(
+        retained
+            .into_adopted_key_for_test::<PersistedUnmountEffectV3>()
+            .is_err(),
+        "caller-shaped command rewrite entered an owned key"
+    );
+    assert!(fixture.store.poisoned());
+}
+
+#[test]
+fn owned_key_cannot_be_transplanted_to_an_equivalent_second_issue_store() {
+    let mut lifecycle_a = LifecycleFixture::new();
+    let mut fixture_a = StoreFixture::new(&lifecycle_a.before_issue);
+    let issued_a = lifecycle_a.append_unmount();
+    let key =
+        persist_owned_unmount_key_for_test(&mut fixture_a, &issued_a, lifecycle_a.epochs('7'));
+
+    let mut lifecycle_b = LifecycleFixture::new();
+    let mut fixture_b = StoreFixture::new(&lifecycle_b.before_issue);
+    let issued_b = lifecycle_b.append_unmount();
+    let _other_key =
+        persist_owned_unmount_key_for_test(&mut fixture_b, &issued_b, lifecycle_b.epochs('7'));
+    let sink = fixture_b
+        .store
+        .adopted_issue_use_sink_for_test()
+        .expect("second store replay sink");
+    assert!(
+        sink.consume_for_test(key).is_err(),
+        "same-byte issue from a different retained inode/store was accepted"
+    );
+    assert!(fixture_b.store.poisoned());
 }
 
 #[test]

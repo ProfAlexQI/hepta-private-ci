@@ -9,8 +9,8 @@ use crate::durable::sha256;
 use crate::mac_disposable_effect_issue_store::DurableEffectIssueStoreErrorV3;
 use crate::mac_disposable_effect_issue_store::DurableEffectIssueStoreV3;
 use crate::mac_disposable_effect_issue_store::EffectEpochEvidenceV3;
-use crate::mac_disposable_effect_issue_store::ExactDisposableCommandV3;
-use crate::mac_disposable_effect_issue_store::IssuedEffectRecordV3;
+use crate::mac_disposable_effect_issue_store::PersistedEjectEffectV3;
+use crate::mac_disposable_effect_issue_store::PersistedUnmountEffectV3;
 use crate::mac_disposable_effect_issue_store::RetainedEffectIssueReplaySinkV3;
 use crate::mac_disposable_effect_issue_store::VerifiedLifecycleIssueRosterV3;
 use crate::mac_disposable_lifecycle::CallbackOutcomeV2;
@@ -39,20 +39,23 @@ use crate::mac_disposable_reconciliation_collector::RetainedCollectorMountDeltaV
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorReceiptRootOwnerV3;
 use crate::mac_disposable_reconciliation_collector::RetainedPreparedCollectorCapabilityV3;
 use crate::mac_disposable_reconciliation_collector::RetainedTerminalAbsenceV3;
+use crate::mac_disposable_reconciliation_collector::SealedEjectEffectPlanV3;
+use crate::mac_disposable_reconciliation_collector::SealedUnmountEffectPlanV3;
 use crate::mac_disposable_reconciliation_collector::UnadoptedCollectorGenerationV3;
 use crate::mac_disposable_reconciliation_collector::UnmountingV3;
 use crate::mac_disposable_reconciliation_collector::lifecycle_manifest_initial_receipt_root_binding;
 use crate::mac_inert_one_shot_runner::AuthenticatedDispatchedRunnerV3;
 use crate::mac_inert_one_shot_runner::AuthenticatedPreRunnerV3;
+use crate::mac_inert_one_shot_runner::EffectPurposeV3 as RunnerEffectPurposeV3;
 use crate::mac_inert_one_shot_runner::FreshProcessEpochV3;
-use crate::mac_inert_one_shot_runner::InertDispatchReceiptV3;
 use crate::mac_inert_one_shot_runner::InertRunnerErrorV3;
+use crate::mac_inert_one_shot_runner::IssuedRunnerDispatchFailureDeathProvedV3;
 use crate::mac_inert_one_shot_runner::IssuedRunnerDispatchFailureV3;
 use crate::mac_inert_one_shot_runner::RecoveredRunnerDeathProofV3;
 use crate::mac_inert_one_shot_runner::RestartAdmissionEpochBindingV3;
-use crate::mac_inert_one_shot_runner::RunnerIssueReadSealV3;
-use crate::mac_inert_one_shot_runner::SameSupervisorRunnerDeathProofV3;
+use crate::mac_inert_one_shot_runner::SameSupervisorDispatchedCompletionV3;
 use crate::mac_inert_one_shot_runner::SealedRunnerDispatchV3;
+use crate::mac_inert_one_shot_runner::SuccessfulRunnerCallbackV3;
 use crate::mac_iomedia_identity::HeldRestartIOMediaInventoryV3;
 use crate::mac_iomedia_identity::capture_restart_iomedia_inventory_v3;
 use crate::mac_privileged_disposable_control::BlockingOperationV3;
@@ -1247,15 +1250,12 @@ impl<R> ReconciliationOperationStoreV3<'_, '_, R> {
     }
 }
 
-/// No callback DTO is accepted at the mount-delta boundary.  The runner bridge
-/// will eventually construct this token only after validating the exact issued
-/// record and a successful authenticated callback.  This inert lane
-/// deliberately provides no production constructor.
-pub(crate) struct RetainedSuccessfulUnmountCallbackV3 {
-    command_sha256: String,
-    effect_id: u64,
-    issued_record_sha256: String,
-    operation_nonce: String,
+/// Private proof that an owned collector effect plan is being consumed only
+/// from the positive typed runner chain.  The collector requires this seal
+/// before it will release either an unmount delta or an eject lineage; no
+/// sibling can advance collector typestate merely by possessing a plan.
+pub(crate) struct SuccessfulIssuedEffectTransitionSealV3 {
+    _private: (),
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
@@ -1267,31 +1267,30 @@ pub(crate) struct AwaitingUnmountObservationV3;
 /// delta.  It has no authority or descriptor outlet.
 pub(crate) struct PendingUnmountReconciliationOperationStoreV3<'a, 'e, S> {
     census: RetainedControlCensusV3<'a, BlockingOperationV3, PendingUnmountDeltaV3>,
-    command_sha256: String,
     delta: RetainedCollectorMountDeltaV3<UnmountingV3>,
-    effect_id: u64,
     epoch: &'e FreshProcessEpochV3,
-    issued_record_sha256: String,
+    issued: PersistedIssuedTransitionBindingV3<PersistedUnmountEffectV3>,
     issues: DurableEffectIssueStoreV3,
     journal: DisposableLifecycleJournalV2,
     poisoned: bool,
     prepared: Option<RetainedPreparedCollectorCapabilityV3>,
     receipt_root_owner: Option<RetainedCollectorReceiptRootOwnerV3>,
     restart: ActiveRestartEpochV3,
+    runner_callback: Option<SuccessfulRunnerCallbackV3<PersistedUnmountEffectV3>>,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
     _state: PhantomData<fn() -> S>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
-/// Whole-operation retained issue capability.  It borrows the S1 census,
-/// wrapper-owned V2 journal/record descriptors, bound collector evidence and
-/// V3 issue store together; no sub-capability or descriptor can be extracted.
-pub(crate) struct RetainedOperationEffectIssueV3<'store, 'a, 'e> {
+/// Private exact binding retained across the issued runner and pending-effect
+/// typestates.  It is created only from a typed S1-adopted issue and has no
+/// public field, serde implementation, or digest projection.
+struct PersistedIssuedTransitionBindingV3<K> {
+    command_sha256: String,
     effect_id: u64,
-    record: IssuedEffectRecordV3,
-    record_canonical_bytes: Vec<u8>,
-    record_sha256: String,
-    store: &'store mut ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>,
+    issued_record_sha256: String,
+    operation_nonce: String,
+    _kind: PhantomData<fn() -> K>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
@@ -1300,16 +1299,6 @@ pub(crate) struct RetainedOperationEffectIssueV3<'store, 'a, 'e> {
 /// mint it, so they expose no crate-wide record/bytes/digest projection.
 pub(crate) struct OperationIssueReadSealV3 {
     _private: (),
-}
-
-/// Opaque one-shot handoff from the whole-operation issue capability to the
-/// runner module. Its contents can be opened only with the runner-private
-/// `RunnerIssueReadSealV3`.
-pub(crate) struct SealedRunnerIssueMaterialV3 {
-    record: IssuedEffectRecordV3,
-    record_canonical_bytes: Vec<u8>,
-    record_sha256: String,
-    _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
 /// Private proof that the exact V2/V3 issue pair was durably replayed,
@@ -1329,31 +1318,74 @@ pub(crate) struct RecoveredIssueVerifierSealV3 {
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
-struct PersistedOperationIssueSealV3 {
-    effect_id: u64,
-    record: IssuedEffectRecordV3,
-    record_canonical_bytes: Vec<u8>,
-    record_sha256: String,
-    lease_seal: PersistedIssueLeaseSealV3,
-}
-
-/// The only production-capable S2-to-runner handoff.  `issue` is the actual
-/// exclusive borrow of the whole reconciliation store; `dispatch` embeds the
-/// exact durable issue bytes and the S1-derived lease.  Neither component has
-/// a raw descriptor or digest projection.  There is deliberately no benign
-/// Drop path: until a future sealed successor consumes this entire token, any
-/// release would otherwise make an issued-or-uncertain operation reusable.
-pub(crate) struct PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
-    issue: RetainedOperationEffectIssueV3<'store, 'a, 'e>,
-    dispatch: Option<SealedRunnerDispatchV3>,
+/// Private sum used only inside the lifecycle owner.  Dedicated production
+/// constructors create exactly one variant for the matching marker `K`; no
+/// dynamic kind or raw command crosses this boundary.
+struct SealedOwnedCollectorEffectPlanV3<K> {
+    eject: Option<SealedEjectEffectPlanV3>,
+    unmount: Option<SealedUnmountEffectPlanV3>,
+    _kind: PhantomData<fn() -> K>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
-/// Inert dispatch acknowledgement plus the still-live whole-store borrow.
+trait LifecycleIssuedKindSpecV3: Sized {
+    fn revalidate_plan(
+        plan: &SealedOwnedCollectorEffectPlanV3<Self>,
+    ) -> Result<(), DurableLifecycleStoreErrorV3>;
+}
+
+impl LifecycleIssuedKindSpecV3 for PersistedUnmountEffectV3 {
+    fn revalidate_plan(
+        plan: &SealedOwnedCollectorEffectPlanV3<Self>,
+    ) -> Result<(), DurableLifecycleStoreErrorV3> {
+        if plan.eject.is_some() {
+            return Err(invalid(
+                "typed unmount grant contains an eject collector plan",
+            ));
+        }
+        plan.unmount
+            .as_ref()
+            .ok_or_else(|| invalid("typed unmount grant lost its collector plan"))?
+            .revalidate()
+            .map_err(Into::into)
+    }
+}
+
+impl LifecycleIssuedKindSpecV3 for PersistedEjectEffectV3 {
+    fn revalidate_plan(
+        plan: &SealedOwnedCollectorEffectPlanV3<Self>,
+    ) -> Result<(), DurableLifecycleStoreErrorV3> {
+        if plan.unmount.is_some() {
+            return Err(invalid(
+                "typed eject grant contains an unmount collector plan",
+            ));
+        }
+        plan.eject
+            .as_ref()
+            .ok_or_else(|| invalid("typed eject grant lost its collector plan"))?
+            .revalidate()
+            .map_err(Into::into)
+    }
+}
+
+/// The only production-capable S2-to-runner handoff.  It owns the whole
+/// operation store, typed collector plan, authenticated pre-runner and exact
+/// S1-backed dispatch seal.  There is no self-reference and no borrow which
+/// can outlive the retained issue roster.
+pub(crate) struct PersistedIssuedRunnerGrantV3<'a, 'e, K> {
+    dispatch: Option<SealedRunnerDispatchV3<K>>,
+    issued: Option<PersistedIssuedTransitionBindingV3<K>>,
+    plan: Option<SealedOwnedCollectorEffectPlanV3<K>>,
+    runner: Option<AuthenticatedPreRunnerV3>,
+    store: Option<ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Inert dispatch acknowledgement plus the still-live whole-store grant.
 /// This is not a privileged callback-success token.
-pub(crate) struct IssuedEffectSessionV3<'store, 'a, 'e> {
-    runner: Option<AuthenticatedDispatchedRunnerV3>,
-    grant: Option<PersistedIssuedRunnerGrantV3<'store, 'a, 'e>>,
+pub(crate) struct IssuedEffectSessionV3<'a, 'e, K> {
+    runner: Option<AuthenticatedDispatchedRunnerV3<K>>,
+    grant: Option<PersistedIssuedRunnerGrantV3<'a, 'e, K>>,
     proof_and_grant_transferred: bool,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
@@ -1361,23 +1393,29 @@ pub(crate) struct IssuedEffectSessionV3<'store, 'a, 'e> {
 /// A post-durability dispatch failure retains the same whole-store grant until
 /// a composite death proof exists.  Best-effort cleanup may retain that proof,
 /// but Drop still poisons unless an explicit transition moves the proof and
-/// whole-store grant together into `IssuedEffectDeathProvedV3`.
-pub(crate) struct IssuedEffectDispatchFailureV3<'store, 'a, 'e> {
+/// whole-store grant together into the failure-specific terminal type.
+pub(crate) struct IssuedEffectDispatchFailureV3<'a, 'e, K> {
     error: String,
-    runner_failure: Option<IssuedRunnerDispatchFailureV3>,
-    grant: Option<PersistedIssuedRunnerGrantV3<'store, 'a, 'e>>,
+    runner_failure: Option<IssuedRunnerDispatchFailureV3<K>>,
+    grant: Option<PersistedIssuedRunnerGrantV3<'a, 'e, K>>,
     proof_and_grant_transferred: bool,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
-/// Same-supervisor death evidence still bound to the exact issued operation.
-/// There is no owned-proof projection.  Until a future durable successor
-/// consumes this entire value, its retained grant keeps the wrapper armed and
-/// poisons again on Drop.
-pub(crate) struct IssuedEffectDeathProvedV3<'store, 'a, 'e> {
-    proof: SameSupervisorRunnerDeathProofV3,
-    receipt: Option<InertDispatchReceiptV3>,
-    _grant: PersistedIssuedRunnerGrantV3<'store, 'a, 'e>,
+/// Positive dispatch acknowledgement plus same-supervisor death evidence,
+/// still owning the exact typed whole-store grant.  Only concrete marker
+/// implementations may consume it into an effect-specific pending typestate.
+pub(crate) struct SuccessfulIssuedEffectDeathProvedV3<'a, 'e, K> {
+    completion: Option<SameSupervisorDispatchedCompletionV3<K>>,
+    grant: Option<PersistedIssuedRunnerGrantV3<'a, 'e, K>>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Dispatch failure with a retained same-supervisor death proof.  It has no
+/// conversion to a positive callback or pending effect typestate.
+pub(crate) struct IssuedEffectDispatchFailureDeathProvedV3<'a, 'e, K> {
+    failure: IssuedRunnerDispatchFailureDeathProvedV3<K>,
+    _grant: PersistedIssuedRunnerGrantV3<'a, 'e, K>,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
@@ -1576,43 +1614,6 @@ impl RetainedLifecycleRecordAppendV3 {
             ));
         }
         Ok(())
-    }
-}
-
-impl RetainedSuccessfulUnmountCallbackV3 {
-    fn revalidate_against(
-        &self,
-        effect_id: u64,
-        operation_nonce: &str,
-        command_sha256: &str,
-        issued_record_sha256: &str,
-    ) -> Result<(), DurableLifecycleStoreErrorV3> {
-        if self.effect_id != effect_id
-            || self.operation_nonce != operation_nonce
-            || self.command_sha256 != command_sha256
-            || self.issued_record_sha256 != issued_record_sha256
-        {
-            return Err(invalid(
-                "successful unmount callback belongs to another operation, issue, or command",
-            ));
-        }
-        Ok(())
-    }
-
-    #[cfg(test)]
-    fn for_test(
-        effect_id: u64,
-        operation_nonce: &str,
-        command_sha256: &str,
-        issued_record_sha256: &str,
-    ) -> Self {
-        Self {
-            command_sha256: command_sha256.to_string(),
-            effect_id,
-            issued_record_sha256: issued_record_sha256.to_string(),
-            operation_nonce: operation_nonce.to_string(),
-            _not_send_or_sync: PhantomData,
-        }
     }
 }
 
@@ -3358,199 +3359,294 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
         Ok(digest)
     }
 
-    /// Persist one reconciliation issue as a single S2-owned transaction:
-    /// exact bound collector -> durable V2 issued tip -> durable V3 issue ->
-    /// S1 admission of that exact issue descriptor.  Any cut after the V2
-    /// append is issued-or-uncertain and poisons this wrapper.
-    fn persist_reconciliation_issue_inner(
-        &mut self,
-        command: ExactDisposableCommandV3,
-        epochs: EffectEpochEvidenceV3,
-    ) -> Result<PersistedOperationIssueSealV3, DurableLifecycleStoreErrorV3> {
-        self.require_no_collector_pending("effect issue")?;
-        self.persist_reconciliation_issue_transaction(command, epochs, true)
+    /// Persist the next exact unmount issue and move the complete operation,
+    /// collector plan, authenticated runner and S1 lease into one owned grant.
+    /// No caller supplies a command, digest, effect ID, kind, or collector
+    /// projection.
+    pub(crate) fn persist_unmount_runner_grant(
+        mut self,
+        runner: AuthenticatedPreRunnerV3,
+    ) -> Result<
+        PersistedIssuedRunnerGrantV3<'a, 'e, PersistedUnmountEffectV3>,
+        DurableLifecycleStoreErrorV3,
+    > {
+        self.require_no_collector_pending("typed unmount issue")?;
+        self.prepare_owned_effect_issue()?;
+        let epoch_binding = runner.bind_effect_epoch(self.epoch)?;
+        let epochs = EffectEpochEvidenceV3::from_authenticated(epoch_binding)?;
+        let owner = self
+            .receipt_root_owner
+            .take()
+            .ok_or_else(|| invalid("typed unmount issue lost its unique receipt-root owner"))?;
+        let lineage = self
+            .collector
+            .take()
+            .ok_or_else(|| invalid("typed unmount issue lost its retained collector lineage"))?;
+        let plan = owner.into_sealed_unmount_effect_plan(lineage)?;
+        plan.revalidate()?;
+        let effect_id = self.next_effect_id()?;
+        self.poisoned = true;
+        let issued_append = self.append_issued_or_uncertain_holding_poison(
+            DisposableLifecycleEventV2::UnmountIssuedOrUncertain {
+                effect_id,
+                purpose: EffectPurposeV2::Reconciliation,
+            },
+        )?;
+        issued_append.require_s1_adopted()?;
+        plan.revalidate()?;
+        let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
+        let key = {
+            let sink = self.census.selected_effect_issue_sink()?;
+            self.issues
+                .persist_unmount_adopted(&lifecycle, plan, epochs, sink)?
+        };
+        let read = OperationIssueReadSealV3 { _private: () };
+        key.require_effect_id(effect_id, &read)?;
+        let issued =
+            self.retain_issued_transition_binding::<PersistedUnmountEffectV3>(effect_id, &read)?;
+        let adopted_dispatch = self
+            .issues
+            .adopted_issue_use_sink(&read)?
+            .consume_unmount(key)?;
+        let (material, plan) = adopted_dispatch.into_parts()?;
+        let lease = self
+            .census
+            .duplicate_control_lease(PersistedIssueLeaseSealV3 {
+                _private: (),
+                _not_send_or_sync: PhantomData,
+            })?;
+        let dispatch_epoch = runner.bind_effect_epoch(self.epoch)?;
+        let dispatch = SealedRunnerDispatchV3::from_owned_issue_material(
+            &runner,
+            &dispatch_epoch,
+            material,
+            lease,
+        )?;
+        plan.revalidate()?;
+        self.revalidate_issued_transition(&issued)?;
+        Ok(PersistedIssuedRunnerGrantV3 {
+            dispatch: Some(dispatch),
+            issued: Some(issued),
+            plan: Some(SealedOwnedCollectorEffectPlanV3 {
+                eject: None,
+                unmount: Some(plan),
+                _kind: PhantomData,
+                _not_send_or_sync: PhantomData,
+            }),
+            runner: Some(runner),
+            store: Some(self),
+            _not_send_or_sync: PhantomData,
+        })
     }
 
-    fn persist_reconciliation_issue_holding_poison(
-        &mut self,
-        command: ExactDisposableCommandV3,
-        epochs: EffectEpochEvidenceV3,
-    ) -> Result<PersistedOperationIssueSealV3, DurableLifecycleStoreErrorV3> {
-        self.require_no_collector_pending("effect issue")?;
-        self.persist_reconciliation_issue_transaction(command, epochs, false)
+    /// Eject counterpart of `persist_unmount_runner_grant`.  The marker and
+    /// concrete plan are fixed in the function type, so no dynamically chosen
+    /// command can cross the durable issue boundary.
+    pub(crate) fn persist_eject_runner_grant(
+        mut self,
+        runner: AuthenticatedPreRunnerV3,
+    ) -> Result<
+        PersistedIssuedRunnerGrantV3<'a, 'e, PersistedEjectEffectV3>,
+        DurableLifecycleStoreErrorV3,
+    > {
+        self.require_no_collector_pending("typed eject issue")?;
+        self.prepare_owned_effect_issue()?;
+        let epoch_binding = runner.bind_effect_epoch(self.epoch)?;
+        let epochs = EffectEpochEvidenceV3::from_authenticated(epoch_binding)?;
+        let owner = self
+            .receipt_root_owner
+            .take()
+            .ok_or_else(|| invalid("typed eject issue lost its unique receipt-root owner"))?;
+        let lineage = self
+            .collector
+            .take()
+            .ok_or_else(|| invalid("typed eject issue lost its retained collector lineage"))?;
+        let plan = owner.into_sealed_eject_effect_plan(lineage)?;
+        plan.revalidate()?;
+        let effect_id = self.next_effect_id()?;
+        self.poisoned = true;
+        let issued_append = self.append_issued_or_uncertain_holding_poison(
+            DisposableLifecycleEventV2::EjectIssuedOrUncertain {
+                effect_id,
+                purpose: EffectPurposeV2::Reconciliation,
+            },
+        )?;
+        issued_append.require_s1_adopted()?;
+        plan.revalidate()?;
+        let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
+        let key = {
+            let sink = self.census.selected_effect_issue_sink()?;
+            self.issues
+                .persist_eject_adopted(&lifecycle, plan, epochs, sink)?
+        };
+        let read = OperationIssueReadSealV3 { _private: () };
+        key.require_effect_id(effect_id, &read)?;
+        let issued =
+            self.retain_issued_transition_binding::<PersistedEjectEffectV3>(effect_id, &read)?;
+        let adopted_dispatch = self
+            .issues
+            .adopted_issue_use_sink(&read)?
+            .consume_eject(key)?;
+        let (material, plan) = adopted_dispatch.into_parts()?;
+        let lease = self
+            .census
+            .duplicate_control_lease(PersistedIssueLeaseSealV3 {
+                _private: (),
+                _not_send_or_sync: PhantomData,
+            })?;
+        let dispatch_epoch = runner.bind_effect_epoch(self.epoch)?;
+        let dispatch = SealedRunnerDispatchV3::from_owned_issue_material(
+            &runner,
+            &dispatch_epoch,
+            material,
+            lease,
+        )?;
+        plan.revalidate()?;
+        self.revalidate_issued_transition(&issued)?;
+        Ok(PersistedIssuedRunnerGrantV3 {
+            dispatch: Some(dispatch),
+            issued: Some(issued),
+            plan: Some(SealedOwnedCollectorEffectPlanV3 {
+                eject: Some(plan),
+                unmount: None,
+                _kind: PhantomData,
+                _not_send_or_sync: PhantomData,
+            }),
+            runner: Some(runner),
+            store: Some(self),
+            _not_send_or_sync: PhantomData,
+        })
     }
 
-    fn persist_reconciliation_issue_transaction(
-        &mut self,
-        command: ExactDisposableCommandV3,
-        epochs: EffectEpochEvidenceV3,
-        disarm_on_success: bool,
-    ) -> Result<PersistedOperationIssueSealV3, DurableLifecycleStoreErrorV3> {
+    fn prepare_owned_effect_issue(&mut self) -> Result<(), DurableLifecycleStoreErrorV3> {
         if self.poisoned {
             return Err(invalid(
                 "reconciliation operation store is poisoned; exact restart replay is required",
             ));
         }
-        let collector = self.collector.as_ref().ok_or_else(|| {
-            invalid("effect issue requires one wrapper-owned retained collector observation")
-        })?;
-        collector.revalidate_bound().map_err(|error| {
+        self.revalidate_existing_issues()?;
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
             invalid(format!(
-                "wrapper-owned collector failed replay before issue: {error}"
+                "fresh process epoch changed before typed issue: {error}"
             ))
         })?;
-        let effect_id = self
-            .journal
-            .last_effect_id()
-            .checked_add(1)
-            .ok_or_else(|| invalid("effect ID overflowed"))?;
-        let event = match &command {
-            ExactDisposableCommandV3::UnmountVolume { .. } => {
-                DisposableLifecycleEventV2::UnmountIssuedOrUncertain {
-                    effect_id,
-                    purpose: EffectPurposeV2::Reconciliation,
-                }
-            }
-            ExactDisposableCommandV3::EjectImage { .. } => {
-                DisposableLifecycleEventV2::EjectIssuedOrUncertain {
-                    effect_id,
-                    purpose: EffectPurposeV2::Reconciliation,
-                }
-            }
-            _ => {
-                return Err(invalid(
-                    "restart reconciliation may issue only unmount or eject commands",
-                ));
-            }
-        };
-        let issued_append = self.append_reconciliation_inner_holding_poison(
-            ReconciliationLifecycleEventV3(event),
-            true,
-        )?;
-        let post_durability = (|| {
-            issued_append.require_s1_adopted()?;
-            let lifecycle =
-                VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
-            let collector = self
-                .collector
-                .as_ref()
-                .expect("collector is preserved across the issued append");
-            let collector_binding = self
-                .receipt_root_owner
-                .as_ref()
-                .ok_or_else(|| invalid("effect issue lost its unique receipt-root owner"))?
-                .issue_binding(collector)
-                .map_err(|error| {
-                    invalid(format!(
-                        "retained collector could not seal the effect issue: {error}"
-                    ))
-                })?;
-            let mut retained =
-                self.issues
-                    .persist_bound(&lifecycle, &collector_binding, command, epochs)?;
-            let issue_read = OperationIssueReadSealV3 { _private: () };
-            let (effect_id, record, record_canonical_bytes, record_sha256) = {
-                let effect_id = retained.effect_id();
-                retained.revalidate()?;
-                let sink = self.census.selected_effect_issue_sink()?;
-                retained.adopt_into_s1(sink)?;
-                retained.require_s1_adopted()?;
-                retained.revalidate()?;
-                (
-                    effect_id,
-                    retained.sealed_record(&issue_read).clone(),
-                    retained.sealed_record_canonical_bytes(&issue_read).to_vec(),
-                    retained.sealed_record_sha256(&issue_read).to_string(),
-                )
-            };
-            self.revalidate_issue_state(effect_id)?;
-            Ok(PersistedOperationIssueSealV3 {
-                effect_id,
-                record,
-                record_canonical_bytes,
-                record_sha256,
-                lease_seal: PersistedIssueLeaseSealV3 {
-                    _private: (),
-                    _not_send_or_sync: PhantomData,
-                },
-            })
-        })();
-        if post_durability.is_ok() && disarm_on_success {
-            self.poisoned = false;
-        }
-        post_durability
+        Ok(())
     }
 
-    #[cfg(test)]
-    pub(crate) fn persist_reconciliation_issue<'store>(
-        &'store mut self,
-        command: ExactDisposableCommandV3,
-        epochs: EffectEpochEvidenceV3,
-    ) -> Result<RetainedOperationEffectIssueV3<'store, 'a, 'e>, DurableLifecycleStoreErrorV3> {
-        let persisted = self.persist_reconciliation_issue_inner(command, epochs)?;
-        Ok(RetainedOperationEffectIssueV3 {
-            effect_id: persisted.effect_id,
-            record: persisted.record,
-            record_canonical_bytes: persisted.record_canonical_bytes,
-            record_sha256: persisted.record_sha256,
-            store: self,
+    fn next_effect_id(&self) -> Result<u64, DurableLifecycleStoreErrorV3> {
+        self.journal
+            .last_effect_id()
+            .checked_add(1)
+            .ok_or_else(|| invalid("effect ID overflowed"))
+    }
+
+    fn append_issued_or_uncertain_holding_poison(
+        &mut self,
+        event: DisposableLifecycleEventV2,
+    ) -> Result<RetainedLifecycleRecordAppendV3, DurableLifecycleStoreErrorV3> {
+        if !self.poisoned || self.collector.is_some() || self.receipt_root_owner.is_some() {
+            return Err(invalid(
+                "typed issue append did not exclusively move collector ownership into its plan",
+            ));
+        }
+        let valid = matches!(
+            &event,
+            DisposableLifecycleEventV2::UnmountIssuedOrUncertain {
+                purpose: EffectPurposeV2::Reconciliation,
+                ..
+            } | DisposableLifecycleEventV2::EjectIssuedOrUncertain {
+                purpose: EffectPurposeV2::Reconciliation,
+                ..
+            }
+        );
+        if !valid {
+            return Err(invalid(
+                "typed issue append accepts only reconciliation unmount/eject issuance",
+            ));
+        }
+        let digest = self
+            .store
+            .append_reconciliation(&mut self.journal, ReconciliationLifecycleEventV3(event))?;
+        let mut append = RetainedLifecycleRecordAppendV3::retain(&self.store, &digest)?;
+        let sink = self.census.selected_lifecycle_record_sink()?;
+        append.adopt_into_s1(sink)?;
+        append.require_s1_adopted()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed after issued lifecycle append: {error}"
+            ))
+        })?;
+        Ok(append)
+    }
+
+    fn retain_issued_transition_binding<K>(
+        &self,
+        effect_id: u64,
+        read: &OperationIssueReadSealV3,
+    ) -> Result<PersistedIssuedTransitionBindingV3<K>, DurableLifecycleStoreErrorV3> {
+        let record = self
+            .issues
+            .replayed_issue_sealed(effect_id, read)
+            .ok_or_else(|| invalid("typed adopted issue disappeared before grant construction"))?;
+        let issued_record_sha256 = sha256(&canonical_json(record).map_err(|error| {
+            invalid(format!(
+                "typed adopted issue is not canonical after exact replay: {error}"
+            ))
+        })?);
+        if record.effect_id() != effect_id
+            || record.operation_nonce() != self.operation_nonce()
+            || record.purpose()
+                != crate::mac_disposable_effect_issue_store::EffectPurposeV3::RestartReconciliation
+        {
+            return Err(invalid(
+                "typed adopted issue differs from its reconciliation operation or effect",
+            ));
+        }
+        Ok(PersistedIssuedTransitionBindingV3 {
+            command_sha256: record.command_sha256().to_string(),
+            effect_id,
+            issued_record_sha256,
+            operation_nonce: record.operation_nonce().to_string(),
+            _kind: PhantomData,
             _not_send_or_sync: PhantomData,
         })
     }
 
-    /// Persist, replay, and S1-adopt an exact issue before minting the only
-    /// runner grant. The epoch evidence is derived internally from the live
-    /// authenticated pre-runner; callers cannot supply nonce/digest strings.
-    pub(crate) fn persist_runner_grant<'store>(
-        &'store mut self,
-        runner: &AuthenticatedPreRunnerV3,
-        command: ExactDisposableCommandV3,
-    ) -> Result<PersistedIssuedRunnerGrantV3<'store, 'a, 'e>, DurableLifecycleStoreErrorV3> {
-        let epoch_binding = runner.bind_effect_epoch(self.epoch)?;
-        let epochs = EffectEpochEvidenceV3::from_authenticated(epoch_binding)?;
-        let persisted = self.persist_reconciliation_issue_holding_poison(command, epochs)?;
-        if let Err(error) = self.revalidate_issue_state(persisted.effect_id) {
-            self.poisoned = true;
-            return Err(error);
+    fn revalidate_issued_transition<K>(
+        &self,
+        issued: &PersistedIssuedTransitionBindingV3<K>,
+    ) -> Result<(), DurableLifecycleStoreErrorV3> {
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed during typed issue replay: {error}"
+            ))
+        })?;
+        let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
+        self.issues.revalidate_required(&lifecycle)?;
+        self.issues.revalidate_s1_adopted()?;
+        let read = OperationIssueReadSealV3 { _private: () };
+        let record = self
+            .issues
+            .replayed_issue_sealed(issued.effect_id, &read)
+            .ok_or_else(|| invalid("typed issued transition disappeared from exact replay"))?;
+        let record_sha256 = sha256(&canonical_json(record).map_err(|error| {
+            invalid(format!(
+                "typed issued transition is not canonical after replay: {error}"
+            ))
+        })?);
+        if record.operation_nonce() != issued.operation_nonce
+            || record.command_sha256() != issued.command_sha256
+            || record_sha256 != issued.issued_record_sha256
+            || record.purpose()
+                != crate::mac_disposable_effect_issue_store::EffectPurposeV3::RestartReconciliation
+        {
+            return Err(invalid(
+                "typed issued transition changed across S1/S2 replay",
+            ));
         }
-        let dispatch_epoch = match runner.bind_effect_epoch(self.epoch) {
-            Ok(epoch) => epoch,
-            Err(error) => {
-                self.poisoned = true;
-                return Err(error.into());
-            }
-        };
-        let lease = match self.census.duplicate_control_lease(persisted.lease_seal) {
-            Ok(lease) => lease,
-            Err(error) => {
-                self.poisoned = true;
-                return Err(error.into());
-            }
-        };
-        let mut issue = RetainedOperationEffectIssueV3 {
-            effect_id: persisted.effect_id,
-            record: persisted.record,
-            record_canonical_bytes: persisted.record_canonical_bytes,
-            record_sha256: persisted.record_sha256,
-            store: self,
-            _not_send_or_sync: PhantomData,
-        };
-        let dispatch = match SealedRunnerDispatchV3::from_retained_issue(
-            runner,
-            &dispatch_epoch,
-            &issue,
-            lease,
-        ) {
-            Ok(dispatch) => dispatch,
-            Err(error) => {
-                issue.poison_after_unconsumed_runner_proof_drop();
-                return Err(error.into());
-            }
-        };
-        Ok(PersistedIssuedRunnerGrantV3::new_armed(
-            issue,
-            Some(dispatch),
-        ))
+        Ok(())
     }
 
     /// Produce the distinct fresh-supervisor death proof for the latest exact
@@ -3636,128 +3732,6 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             },
         )
         .map_err(Into::into)
-    }
-
-    /// Consume the stable reconciliation wrapper into a pending unmount using
-    /// only its latest exact S2-owned issue and its wrapper-owned bound
-    /// UniqueMounted collector.  No caller-supplied effect ID, command bytes,
-    /// digest, or mount-table DTO is accepted.
-    pub(crate) fn begin_latest_unmount_delta(
-        mut self,
-    ) -> Result<
-        PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmountCallbackV3>,
-        DurableLifecycleStoreErrorV3,
-    > {
-        self.require_no_collector_pending("unmount delta")?;
-        if self.poisoned {
-            return Err(invalid(
-                "poisoned reconciliation store cannot begin an unmount delta",
-            ));
-        }
-        let effect_id = self.journal.last_effect_id();
-        if effect_id == 0 {
-            return Err(invalid(
-                "unmount delta requires the latest durable reconciliation issue",
-            ));
-        }
-        self.revalidate_issue_state(effect_id)?;
-        let (command, command_sha256, issued_record_sha256) = {
-            let issue_read = OperationIssueReadSealV3 { _private: () };
-            let issue = self
-                .issues
-                .replayed_issue_sealed(effect_id, &issue_read)
-                .ok_or_else(|| invalid("latest durable effect has no retained V3 issue"))?;
-            let record_sha256 = sha256(&canonical_json(issue).map_err(|error| {
-                invalid(format!(
-                    "latest retained V3 issue is not canonical after exact replay: {error}"
-                ))
-            })?);
-            (
-                issue.command().clone(),
-                issue.command_sha256().to_string(),
-                record_sha256,
-            )
-        };
-        let collector = self
-            .collector
-            .take()
-            .ok_or_else(|| invalid("latest unmount issue lost its retained collector"))?;
-        let delta = collector.into_unmount_delta(&command).map_err(|error| {
-            invalid(format!(
-                "latest durable unmount issue cannot seal an exact mount delta: {error}"
-            ))
-        })?;
-        delta.revalidate_live_pending().map_err(|error| {
-            invalid(format!(
-                "exact unmount delta changed before S1 entered PendingUnmount: {error}"
-            ))
-        })?;
-        let ReconciliationOperationStoreV3 {
-            census,
-            epoch,
-            journal,
-            poisoned: _,
-            prepared,
-            collector: _,
-            receipt_root_owner,
-            issues,
-            restart,
-            store,
-        } = self;
-        let census = census.begin_unmount_delta(delta.sealed_plan())?;
-        let pending = PendingUnmountReconciliationOperationStoreV3 {
-            census,
-            command_sha256,
-            delta,
-            effect_id,
-            epoch,
-            issued_record_sha256,
-            issues,
-            journal,
-            poisoned: false,
-            prepared,
-            receipt_root_owner,
-            restart,
-            store,
-            _state: PhantomData,
-            _not_send_or_sync: PhantomData,
-        };
-        pending.revalidate_pending_issue()?;
-        Ok(pending)
-    }
-
-    fn revalidate_issue_state(&self, effect_id: u64) -> Result<(), DurableLifecycleStoreErrorV3> {
-        self.census.revalidate()?;
-        self.epoch.validate_current().map_err(|error| {
-            invalid(format!(
-                "fresh process epoch changed during issue replay: {error}"
-            ))
-        })?;
-        let collector = self
-            .collector
-            .as_ref()
-            .ok_or_else(|| invalid("retained issue lost its collector capability"))?;
-        self.receipt_root_owner
-            .as_ref()
-            .ok_or_else(|| invalid("retained issue lost its unique receipt-root owner"))?
-            .issue_binding(collector)
-            .map_err(|error| invalid(format!("retained issue collector replay failed: {error}")))?
-            .revalidate()
-            .map_err(|error| invalid(format!("retained issue collector changed: {error}")))?;
-        let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
-        self.issues.revalidate_required(&lifecycle)?;
-        self.issues.revalidate_s1_adopted()?;
-        let issue_read = OperationIssueReadSealV3 { _private: () };
-        if self
-            .issues
-            .replayed_issue_sealed(effect_id, &issue_read)
-            .is_none()
-        {
-            return Err(invalid(
-                "retained V3 issue disappeared from the exact bijection",
-            ));
-        }
-        Ok(())
     }
 
     fn revalidate_recovery_issue_state(
@@ -4081,7 +4055,7 @@ impl<S> PendingUnmountReconciliationOperationStoreV3<'_, '_, S> {
         let issue_read = OperationIssueReadSealV3 { _private: () };
         let issue = self
             .issues
-            .replayed_issue_sealed(self.effect_id, &issue_read)
+            .replayed_issue_sealed(self.issued.effect_id, &issue_read)
             .ok_or_else(|| invalid("pending-unmount V3 issue disappeared"))?;
         let issued_record_sha256 = sha256(&canonical_json(issue).map_err(|error| {
             invalid(format!(
@@ -4090,10 +4064,13 @@ impl<S> PendingUnmountReconciliationOperationStoreV3<'_, '_, S> {
         })?);
         let plan = self.delta.sealed_plan();
         if issue.operation_nonce() != self.store.operation_nonce()
-            || issue.command_sha256() != self.command_sha256
+            || issue.operation_nonce() != self.issued.operation_nonce
+            || issue.command_sha256() != self.issued.command_sha256
             || plan.operation_nonce() != self.store.operation_nonce()
-            || plan.command_sha256() != self.command_sha256
-            || issued_record_sha256 != self.issued_record_sha256
+            || plan.command_sha256() != self.issued.command_sha256
+            || issued_record_sha256 != self.issued.issued_record_sha256
+            || issue.purpose()
+                != crate::mac_disposable_effect_issue_store::EffectPurposeV3::RestartReconciliation
         {
             return Err(invalid(
                 "pending-unmount operation, command, collector delta, or retained issue diverged",
@@ -4123,7 +4100,7 @@ impl<S> PendingUnmountReconciliationOperationStoreV3<'_, '_, S> {
             DisposableLifecycleEventV2::UnmountCallbackObserved {
                 effect_id,
                 outcome: CallbackOutcomeV2::Succeeded,
-            } if *effect_id == self.effect_id
+            } if *effect_id == self.issued.effect_id
         );
         if !valid_event {
             return Err(invalid(
@@ -4149,57 +4126,60 @@ impl<S> PendingUnmountReconciliationOperationStoreV3<'_, '_, S> {
 }
 
 impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmountCallbackV3> {
-    /// Append callback success only from the sealed runner token.  There is no
-    /// production constructor for that token in this inert lane.
+    /// Consume the internally retained positive runner callback and append the
+    /// exact durable lifecycle callback.  No callback DTO, effect ID, digest,
+    /// or proof is accepted from the caller.
     pub(crate) fn append_successful_callback(
         mut self,
-        callback: RetainedSuccessfulUnmountCallbackV3,
     ) -> Result<
         PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmountObservationV3>,
         DurableLifecycleStoreErrorV3,
     > {
-        callback.revalidate_against(
-            self.effect_id,
-            self.store.operation_nonce(),
-            &self.command_sha256,
-            &self.issued_record_sha256,
-        )?;
+        self.revalidate_pending_issue()?;
+        self.runner_callback
+            .take()
+            .ok_or_else(|| invalid("pending unmount lost its positive runner callback"))?
+            .consume_exact(
+                self.issued.effect_id,
+                &self.issued.operation_nonce,
+                &self.issued.command_sha256,
+                &self.issued.issued_record_sha256,
+                RunnerEffectPurposeV3::RestartReconciliation,
+            )?;
         let append =
             self.append_pending_unmount(ReconciliationLifecycleEventV3::unmount_callback(
-                self.effect_id,
+                self.issued.effect_id,
                 CallbackOutcomeV2::Succeeded,
             ))?;
         append.require_s1_adopted()?;
         let PendingUnmountReconciliationOperationStoreV3 {
             census,
-            command_sha256,
             delta,
-            effect_id,
             epoch,
-            issued_record_sha256,
+            issued,
             issues,
             journal,
             poisoned: _,
             prepared,
             receipt_root_owner,
             restart,
+            runner_callback: _,
             store,
             _state: _,
             _not_send_or_sync: _,
         } = self;
         Ok(PendingUnmountReconciliationOperationStoreV3 {
             census,
-            command_sha256,
             delta,
-            effect_id,
             epoch,
-            issued_record_sha256,
+            issued,
             issues,
             journal,
             poisoned: false,
             prepared,
             receipt_root_owner,
             restart,
+            runner_callback: None,
             store,
             _state: PhantomData,
             _not_send_or_sync: PhantomData,
@@ -4311,7 +4291,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
         let digest = self.store.append_reconciliation(
             &mut self.journal,
             ReconciliationLifecycleEventV3::unmount_observed(
-                self.effect_id,
+                self.issued.effect_id,
                 mount_absence_sha256,
                 collector_binding,
             ),
@@ -4336,21 +4316,25 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
 
         let PendingUnmountReconciliationOperationStoreV3 {
             census,
-            command_sha256: _,
             delta,
-            effect_id: _,
             epoch,
-            issued_record_sha256: _,
+            issued: _,
             issues,
             journal,
             poisoned: _,
             prepared,
             receipt_root_owner,
             restart,
+            runner_callback,
             store,
             _state: _,
             _not_send_or_sync: _,
         } = self;
+        if runner_callback.is_some() {
+            return Err(invalid(
+                "post-unmount observation retained an unconsumed runner callback",
+            ));
+        }
         let advance = delta.seal_advance(&next).map_err(|error| {
             invalid(format!(
                 "post-unmount retained evidence cannot seal the S1 stable advance: {error}"
@@ -4410,88 +4394,49 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
     }
 }
 
-impl RetainedOperationEffectIssueV3<'_, '_, '_> {
-    pub(crate) fn effect_id(&self) -> u64 {
-        self.effect_id
-    }
-
-    pub(crate) fn seal_runner_issue(
-        &self,
-        _runner: &RunnerIssueReadSealV3,
-    ) -> Result<SealedRunnerIssueMaterialV3, DurableLifecycleStoreErrorV3> {
-        self.revalidate()?;
-        Ok(SealedRunnerIssueMaterialV3 {
-            record: self.record.clone(),
-            record_canonical_bytes: self.record_canonical_bytes.clone(),
-            record_sha256: self.record_sha256.clone(),
-            _not_send_or_sync: PhantomData,
-        })
-    }
-
-    pub(crate) fn poison_after_unconsumed_runner_proof_drop(&mut self) {
-        self.store.poisoned = true;
-    }
-
+#[allow(private_bounds)]
+impl<'a, 'e, K> PersistedIssuedRunnerGrantV3<'a, 'e, K>
+where
+    K: LifecycleIssuedKindSpecV3,
+{
     pub(crate) fn revalidate(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
-        self.store.revalidate_issue_state(self.effect_id)
-    }
-}
-
-impl SealedRunnerIssueMaterialV3 {
-    pub(crate) fn into_runner_parts(
-        self,
-        _runner: RunnerIssueReadSealV3,
-    ) -> (IssuedEffectRecordV3, Vec<u8>, String) {
-        (self.record, self.record_canonical_bytes, self.record_sha256)
-    }
-}
-
-impl<'store, 'a, 'e> PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
-    fn new_armed(
-        issue: RetainedOperationEffectIssueV3<'store, 'a, 'e>,
-        dispatch: Option<SealedRunnerDispatchV3>,
-    ) -> Self {
-        // Keep the wrapper armed while the linear grant exists.  `Drop` is a
-        // useful explicit guard, but safe Rust may also forget a value.  Only
-        // a future sealed durable successor which consumes this entire grant
-        // may introduce a private disarm transition.
-        issue.store.poisoned = true;
-        Self {
-            issue,
-            dispatch,
-            _not_send_or_sync: PhantomData,
-        }
-    }
-
-    pub(crate) fn effect_id(&self) -> u64 {
-        self.issue.effect_id()
-    }
-
-    pub(crate) fn revalidate(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
-        self.issue.revalidate()
+        let plan = self
+            .plan
+            .as_ref()
+            .ok_or_else(|| invalid("typed runner grant lost its collector plan"))?;
+        let issued = self
+            .issued
+            .as_ref()
+            .ok_or_else(|| invalid("typed runner grant lost its adopted issue binding"))?;
+        let store = self
+            .store
+            .as_ref()
+            .ok_or_else(|| invalid("typed runner grant lost its whole operation store"))?;
+        K::revalidate_plan(plan)?;
+        store.revalidate_issued_transition(issued)
     }
 
     pub(crate) fn dispatch(
         mut self,
-        runner: AuthenticatedPreRunnerV3,
         timeout: std::time::Duration,
-    ) -> Result<IssuedEffectSessionV3<'store, 'a, 'e>, IssuedEffectDispatchFailureV3<'store, 'a, 'e>>
-    {
-        if let Err(error) = self.issue.revalidate() {
-            self.issue.poison_after_unconsumed_runner_proof_drop();
-            drop(runner);
+    ) -> Result<IssuedEffectSessionV3<'a, 'e, K>, IssuedEffectDispatchFailureV3<'a, 'e, K>> {
+        if let Err(error) = self.revalidate() {
             return Err(IssuedEffectDispatchFailureV3 {
-                error: format!("exact S2 issue changed before dispatch: {error}"),
+                error: format!("exact typed issue changed before dispatch: {error}"),
                 runner_failure: None,
                 grant: Some(self),
                 proof_and_grant_transferred: false,
                 _not_send_or_sync: PhantomData,
             });
         }
+        let runner = self
+            .runner
+            .take()
+            .expect("typed runner grant retains its one-shot pre-runner");
         let dispatch = self
             .dispatch
             .take()
-            .expect("persisted runner grant is one-shot and still sealed");
+            .expect("typed runner grant retains its one-shot dispatch seal");
         match runner.dispatch_sealed(dispatch, timeout) {
             Ok(runner) => Ok(IssuedEffectSessionV3 {
                 runner: Some(runner),
@@ -4513,26 +4458,15 @@ impl<'store, 'a, 'e> PersistedIssuedRunnerGrantV3<'store, 'a, 'e> {
     }
 }
 
-impl Drop for PersistedIssuedRunnerGrantV3<'_, '_, '_> {
+impl<K> Drop for PersistedIssuedRunnerGrantV3<'_, '_, K> {
     fn drop(&mut self) {
-        // The grant is the linear whole-operation capability.  Dispatching it,
-        // proving the runner dead, or merely observing that proof does not by
-        // itself durably advance reconciliation.  SAFE-INERT has no sealed
-        // successor yet, so every Drop remains fail-closed.  A future
-        // successor must consume this whole token and perform its durable
-        // transition before it may add a private disarm path.
-        self.issue.poison_after_unconsumed_runner_proof_drop();
+        if let Some(store) = self.store.as_mut() {
+            store.poisoned = true;
+        }
     }
 }
 
-impl<'store, 'a, 'e> IssuedEffectSessionV3<'store, 'a, 'e> {
-    pub(crate) fn receipt(&self) -> &InertDispatchReceiptV3 {
-        self.runner
-            .as_ref()
-            .expect("live issued session retains its runner")
-            .receipt()
-    }
-
+impl<'a, 'e, K> IssuedEffectSessionV3<'a, 'e, K> {
     pub(crate) fn ensure_death_proof(
         &mut self,
         timeout: std::time::Duration,
@@ -4550,29 +4484,25 @@ impl<'store, 'a, 'e> IssuedEffectSessionV3<'store, 'a, 'e> {
     pub(crate) fn finish_after_death_proof(
         mut self,
         timeout: std::time::Duration,
-    ) -> Result<IssuedEffectDeathProvedV3<'store, 'a, 'e>, InertRunnerErrorV3> {
-        self.ensure_death_proof(timeout)?;
-        let mut runner = self
-            .runner
-            .take()
-            .expect("issued session retains its runner until death proof");
-        let proof = runner.take_death_proof()?;
-        let receipt = runner.receipt().clone();
+    ) -> Result<SuccessfulIssuedEffectDeathProvedV3<'a, 'e, K>, InertRunnerErrorV3> {
+        let runner = self.runner.take().ok_or_else(|| {
+            InertRunnerErrorV3::Invalid("issued session runner was already consumed".to_string())
+        })?;
+        let completion = runner.finish_same_supervisor(timeout)?;
         let grant = self
             .grant
             .take()
-            .expect("issued session retains its whole-store grant");
+            .expect("issued session retains its typed whole-store grant");
         self.proof_and_grant_transferred = true;
-        Ok(IssuedEffectDeathProvedV3 {
-            proof,
-            receipt: Some(receipt),
-            _grant: grant,
+        Ok(SuccessfulIssuedEffectDeathProvedV3 {
+            completion: Some(completion),
+            grant: Some(grant),
             _not_send_or_sync: PhantomData,
         })
     }
 }
 
-impl Drop for IssuedEffectSessionV3<'_, '_, '_> {
+impl<K> Drop for IssuedEffectSessionV3<'_, '_, K> {
     fn drop(&mut self) {
         if self.proof_and_grant_transferred {
             return;
@@ -4582,19 +4512,15 @@ impl Drop for IssuedEffectSessionV3<'_, '_, '_> {
             .as_mut()
             .map(|runner| runner.ensure_death_proof(std::time::Duration::from_secs(5)))
             .transpose();
-        // Cleanup may retain a valid proof inside the runner, but Drop is not
-        // the sealed state transition which consumes and returns that proof.
-        // Releasing the whole-store borrow without an explicit successor
-        // would make the issued operation reusable while its only proof is
-        // destroyed.  Always poison unless `finish_after_death_proof` moved
-        // both the proof and grant into `IssuedEffectDeathProvedV3`.
-        if let Some(grant) = self.grant.as_mut() {
-            grant.issue.poison_after_unconsumed_runner_proof_drop();
+        if let Some(grant) = self.grant.as_mut()
+            && let Some(store) = grant.store.as_mut()
+        {
+            store.poisoned = true;
         }
     }
 }
 
-impl<'store, 'a, 'e> IssuedEffectDispatchFailureV3<'store, 'a, 'e> {
+impl<'a, 'e, K> IssuedEffectDispatchFailureV3<'a, 'e, K> {
     pub(crate) fn error(&self) -> &str {
         &self.error
     }
@@ -4602,29 +4528,27 @@ impl<'store, 'a, 'e> IssuedEffectDispatchFailureV3<'store, 'a, 'e> {
     pub(crate) fn finish_after_death_proof(
         mut self,
         timeout: std::time::Duration,
-    ) -> Result<IssuedEffectDeathProvedV3<'store, 'a, 'e>, InertRunnerErrorV3> {
-        let failure = self.runner_failure.as_mut().ok_or_else(|| {
+    ) -> Result<IssuedEffectDispatchFailureDeathProvedV3<'a, 'e, K>, InertRunnerErrorV3> {
+        let failure = self.runner_failure.take().ok_or_else(|| {
             InertRunnerErrorV3::Invalid(
                 "pre-dispatch rejection has no issued runner death receipt".to_string(),
             )
         })?;
-        failure.ensure_death_proof(timeout)?;
-        let proof = failure.take_death_proof()?;
+        let failure = failure.finish_after_death_proof(timeout)?;
         let grant = self
             .grant
             .take()
-            .expect("failed dispatch retains its whole-store grant");
+            .expect("failed dispatch retains its typed whole-store grant");
         self.proof_and_grant_transferred = true;
-        Ok(IssuedEffectDeathProvedV3 {
-            proof,
-            receipt: None,
+        Ok(IssuedEffectDispatchFailureDeathProvedV3 {
+            failure,
             _grant: grant,
             _not_send_or_sync: PhantomData,
         })
     }
 }
 
-impl Drop for IssuedEffectDispatchFailureV3<'_, '_, '_> {
+impl<K> Drop for IssuedEffectDispatchFailureV3<'_, '_, K> {
     fn drop(&mut self) {
         if self.proof_and_grant_transferred {
             return;
@@ -4634,19 +4558,114 @@ impl Drop for IssuedEffectDispatchFailureV3<'_, '_, '_> {
             .as_mut()
             .map(|failure| failure.ensure_death_proof(std::time::Duration::from_secs(5)))
             .transpose();
-        if let Some(grant) = self.grant.as_mut() {
-            grant.issue.poison_after_unconsumed_runner_proof_drop();
+        if let Some(grant) = self.grant.as_mut()
+            && let Some(store) = grant.store.as_mut()
+        {
+            store.poisoned = true;
         }
     }
 }
 
-impl IssuedEffectDeathProvedV3<'_, '_, '_> {
-    pub(crate) fn proof(&self) -> &SameSupervisorRunnerDeathProofV3 {
-        &self.proof
+impl<K> IssuedEffectDispatchFailureDeathProvedV3<'_, '_, K> {
+    pub(crate) fn error(&self) -> &InertRunnerErrorV3 {
+        self.failure.error()
     }
+}
 
-    pub(crate) fn receipt(&self) -> Option<&InertDispatchReceiptV3> {
-        self.receipt.as_ref()
+impl<'a, 'e> SuccessfulIssuedEffectDeathProvedV3<'a, 'e, PersistedUnmountEffectV3> {
+    /// The only production route into PendingUnmount.  It consumes the exact
+    /// positive runner completion and whole grant, then opens the collector
+    /// plan with a lifecycle-private success seal.  Failed dispatch and
+    /// recovered death proof types have no analogous method.
+    pub(crate) fn into_pending_unmount(
+        mut self,
+    ) -> Result<
+        PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmountCallbackV3>,
+        DurableLifecycleStoreErrorV3,
+    > {
+        let callback = self
+            .completion
+            .take()
+            .ok_or_else(|| invalid("positive unmount completion was already consumed"))?
+            .into_callback_success()?;
+        let mut grant = self
+            .grant
+            .take()
+            .ok_or_else(|| invalid("positive unmount completion lost its whole-store grant"))?;
+        grant.revalidate()?;
+        let seal = SuccessfulIssuedEffectTransitionSealV3 {
+            _private: (),
+            _not_send_or_sync: PhantomData,
+        };
+        let mut plan = grant
+            .plan
+            .take()
+            .ok_or_else(|| invalid("positive unmount completion lost its collector plan"))?;
+        if plan.eject.is_some() {
+            return Err(invalid(
+                "positive unmount completion contains an eject collector plan",
+            ));
+        }
+        let plan = plan
+            .unmount
+            .take()
+            .ok_or_else(|| invalid("positive unmount completion lost its unmount plan"))?;
+        let (receipt_root_owner, delta) = plan.into_unmount_delta(&seal)?;
+        delta.revalidate_live_pending().map_err(|error| {
+            invalid(format!(
+                "positive unmount plan changed before S1 pending transition: {error}"
+            ))
+        })?;
+        let store = grant
+            .store
+            .take()
+            .ok_or_else(|| invalid("positive unmount completion lost its operation store"))?;
+        let issued = grant
+            .issued
+            .take()
+            .ok_or_else(|| invalid("positive unmount completion lost its adopted issue"))?;
+        if grant.runner.is_some() || grant.dispatch.is_some() {
+            return Err(invalid(
+                "positive unmount completion retained an unused pre-runner or dispatch seal",
+            ));
+        }
+        store.revalidate_issued_transition(&issued)?;
+        let ReconciliationOperationStoreV3 {
+            census,
+            epoch,
+            journal,
+            poisoned: _,
+            prepared,
+            collector,
+            receipt_root_owner: prior_owner,
+            issues,
+            restart,
+            store,
+        } = store;
+        if collector.is_some() || prior_owner.is_some() {
+            return Err(invalid(
+                "typed unmount grant duplicated collector ownership outside its plan",
+            ));
+        }
+        let census = census.begin_unmount_delta(delta.sealed_plan())?;
+        let pending = PendingUnmountReconciliationOperationStoreV3 {
+            census,
+            delta,
+            epoch,
+            issued,
+            issues,
+            journal,
+            poisoned: false,
+            prepared,
+            receipt_root_owner: Some(receipt_root_owner),
+            restart,
+            runner_callback: Some(callback),
+            store,
+            _state: PhantomData,
+            _not_send_or_sync: PhantomData,
+        };
+        pending.revalidate_pending_issue()?;
+        Ok(pending)
     }
 }
 
