@@ -25,6 +25,17 @@ macro_rules! assert_not_impl {
     };
 }
 
+macro_rules! assert_opaque_capability {
+    ($type:ty) => {
+        assert_not_impl!($type, Clone);
+        assert_not_impl!($type, Send);
+        assert_not_impl!($type, Sync);
+        assert_not_impl!($type, serde::Serialize);
+        assert_not_impl!($type, std::os::fd::AsRawFd);
+        assert_not_impl!($type, From<std::fs::File>);
+    };
+}
+
 type FreshOperationStoreForCompileAssertions = CensusBoundDurableLifecycleStoreV3<'static>;
 type RestartOperationStoreForCompileAssertions = ReconciliationOperationStoreV3<'static, 'static>;
 type ActiveRestartOperationStoreForCompileAssertions =
@@ -34,6 +45,8 @@ type RetainedLifecycleIssueSourceForCompileAssertions = RetainedLifecycleIssueSo
 type RetainedEffectIssueSourceForCompileAssertions = RetainedEffectIssueSourceV3;
 type PersistedRunnerGrantForCompileAssertions =
     PersistedIssuedRunnerGrantV3<'static, 'static, PersistedUnmountEffectV3>;
+type PersistedEjectRunnerGrantForCompileAssertions =
+    PersistedIssuedRunnerGrantV3<'static, 'static, PersistedEjectEffectV3>;
 type PersistedIssueLeaseSealForCompileAssertions = PersistedIssueLeaseSealV3;
 type RecoveredIssueVerifierSealForCompileAssertions = RecoveredIssueVerifierSealV3;
 type IssuedTransitionBindingForCompileAssertions =
@@ -41,23 +54,42 @@ type IssuedTransitionBindingForCompileAssertions =
 type SealedCollectorPlanForCompileAssertions =
     SealedOwnedCollectorEffectPlanV3<PersistedUnmountEffectV3>;
 type SuccessfulTransitionSealForCompileAssertions = SuccessfulIssuedEffectTransitionSealV3;
+type EjectExpectationArmSealForCompileAssertions = EjectExpectationArmSealV3;
 type IssuedEffectSessionForCompileAssertions =
     IssuedEffectSessionV3<'static, 'static, PersistedUnmountEffectV3>;
+type EjectIssuedEffectSessionForCompileAssertions =
+    IssuedEffectSessionV3<'static, 'static, PersistedEjectEffectV3>;
 type IssuedEffectFailureForCompileAssertions =
     IssuedEffectDispatchFailureV3<'static, 'static, PersistedUnmountEffectV3>;
+type EjectIssuedEffectFailureForCompileAssertions =
+    IssuedEffectDispatchFailureV3<'static, 'static, PersistedEjectEffectV3>;
 type IssuedEffectDeathProvedForCompileAssertions =
     SuccessfulIssuedEffectDeathProvedV3<'static, 'static, PersistedUnmountEffectV3>;
 type IssuedEffectFailureDeathProvedForCompileAssertions =
     IssuedEffectDispatchFailureDeathProvedV3<'static, 'static, PersistedUnmountEffectV3>;
+type EjectFailureDeathProvedForCompileAssertions =
+    IssuedEffectDispatchFailureDeathProvedV3<'static, 'static, PersistedEjectEffectV3>;
 type PendingUnmountCallbackStoreForCompileAssertions =
     PendingUnmountReconciliationOperationStoreV3<'static, 'static, AwaitingUnmountCallbackV3>;
 type PendingUnmountObservationStoreForCompileAssertions =
     PendingUnmountReconciliationOperationStoreV3<'static, 'static, AwaitingUnmountObservationV3>;
+type PendingEjectCallbackStoreForCompileAssertions =
+    PendingEjectReconciliationOperationStoreV3<'static, 'static, AwaitingEjectCallbackV3>;
+type PendingEjectObservationStoreForCompileAssertions =
+    PendingEjectReconciliationOperationStoreV3<'static, 'static, AwaitingEjectObservationV3>;
+type EjectDeathProvedForCompileAssertions =
+    SuccessfulIssuedEffectDeathProvedV3<'static, 'static, PersistedEjectEffectV3>;
 type SuccessfulUnmountCallbackForCompileAssertions =
     SuccessfulRunnerCallbackV3<PersistedUnmountEffectV3>;
+type SuccessfulEjectCallbackForCompileAssertions =
+    SuccessfulRunnerCallbackV3<PersistedEjectEffectV3>;
 type CompletedOperationStoreForCompileAssertions =
     CompletedReconciliationOperationStoreV3<'static, 'static>;
 type ExistingWiringForCompileAssertions = ExistingCensusStoreWiringV3<'static, 'static>;
+assert_opaque_capability!(PersistedEjectRunnerGrantForCompileAssertions);
+assert_opaque_capability!(EjectIssuedEffectSessionForCompileAssertions);
+assert_opaque_capability!(EjectIssuedEffectFailureForCompileAssertions);
+assert_opaque_capability!(EjectFailureDeathProvedForCompileAssertions);
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Clone);
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Send);
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Sync);
@@ -212,6 +244,21 @@ assert_not_impl!(
     SuccessfulTransitionSealForCompileAssertions,
     From<std::fs::File>
 );
+assert_not_impl!(EjectExpectationArmSealForCompileAssertions, Clone);
+assert_not_impl!(EjectExpectationArmSealForCompileAssertions, Send);
+assert_not_impl!(EjectExpectationArmSealForCompileAssertions, Sync);
+assert_not_impl!(
+    EjectExpectationArmSealForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    EjectExpectationArmSealForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    EjectExpectationArmSealForCompileAssertions,
+    From<std::fs::File>
+);
 assert_not_impl!(IssuedEffectSessionForCompileAssertions, Clone);
 assert_not_impl!(IssuedEffectSessionForCompileAssertions, Send);
 assert_not_impl!(IssuedEffectSessionForCompileAssertions, Sync);
@@ -306,6 +353,52 @@ assert_not_impl!(
     PendingUnmountObservationStoreForCompileAssertions,
     From<String>
 );
+assert_not_impl!(PendingEjectCallbackStoreForCompileAssertions, Clone);
+assert_not_impl!(PendingEjectCallbackStoreForCompileAssertions, Send);
+assert_not_impl!(PendingEjectCallbackStoreForCompileAssertions, Sync);
+assert_not_impl!(
+    PendingEjectCallbackStoreForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    PendingEjectCallbackStoreForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    PendingEjectCallbackStoreForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(PendingEjectCallbackStoreForCompileAssertions, From<Vec<u8>>);
+assert_not_impl!(PendingEjectCallbackStoreForCompileAssertions, From<String>);
+assert_not_impl!(PendingEjectObservationStoreForCompileAssertions, Clone);
+assert_not_impl!(PendingEjectObservationStoreForCompileAssertions, Send);
+assert_not_impl!(PendingEjectObservationStoreForCompileAssertions, Sync);
+assert_not_impl!(
+    PendingEjectObservationStoreForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    PendingEjectObservationStoreForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    PendingEjectObservationStoreForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(
+    PendingEjectObservationStoreForCompileAssertions,
+    From<Vec<u8>>
+);
+assert_not_impl!(
+    PendingEjectObservationStoreForCompileAssertions,
+    From<String>
+);
+assert_not_impl!(EjectDeathProvedForCompileAssertions, Clone);
+assert_not_impl!(EjectDeathProvedForCompileAssertions, Send);
+assert_not_impl!(EjectDeathProvedForCompileAssertions, Sync);
+assert_not_impl!(EjectDeathProvedForCompileAssertions, serde::Serialize);
+assert_not_impl!(EjectDeathProvedForCompileAssertions, std::os::fd::AsRawFd);
+assert_not_impl!(EjectDeathProvedForCompileAssertions, From<std::fs::File>);
 assert_not_impl!(SuccessfulUnmountCallbackForCompileAssertions, Clone);
 assert_not_impl!(SuccessfulUnmountCallbackForCompileAssertions, Send);
 assert_not_impl!(SuccessfulUnmountCallbackForCompileAssertions, Sync);
@@ -323,6 +416,23 @@ assert_not_impl!(
 );
 assert_not_impl!(SuccessfulUnmountCallbackForCompileAssertions, From<Vec<u8>>);
 assert_not_impl!(SuccessfulUnmountCallbackForCompileAssertions, From<String>);
+assert_not_impl!(SuccessfulEjectCallbackForCompileAssertions, Clone);
+assert_not_impl!(SuccessfulEjectCallbackForCompileAssertions, Send);
+assert_not_impl!(SuccessfulEjectCallbackForCompileAssertions, Sync);
+assert_not_impl!(
+    SuccessfulEjectCallbackForCompileAssertions,
+    serde::Serialize
+);
+assert_not_impl!(
+    SuccessfulEjectCallbackForCompileAssertions,
+    std::os::fd::AsRawFd
+);
+assert_not_impl!(
+    SuccessfulEjectCallbackForCompileAssertions,
+    From<std::fs::File>
+);
+assert_not_impl!(SuccessfulEjectCallbackForCompileAssertions, From<Vec<u8>>);
+assert_not_impl!(SuccessfulEjectCallbackForCompileAssertions, From<String>);
 assert_not_impl!(
     RetainedLifecycleAppendForCompileAssertions,
     std::os::fd::AsRawFd
@@ -420,6 +530,17 @@ impl Fixture {
 
 fn digest(byte: char) -> String {
     byte.to_string().repeat(64)
+}
+
+fn source_section<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
+    let start = source
+        .find(start)
+        .unwrap_or_else(|| panic!("source section start disappeared: {start}"));
+    let rest = &source[start..];
+    let end = rest
+        .find(end)
+        .unwrap_or_else(|| panic!("source section end disappeared after {start}: {end}"));
+    &rest[..end]
 }
 
 fn prepared() -> DisposableLifecycleEventV2 {
@@ -2319,4 +2440,166 @@ fn reconciliation_wrapper_is_poisoned_by_nonselected_blocker_drift() {
             .is_err()
     );
     assert!(store.poisoned());
+}
+
+#[test]
+fn stage_d_eject_positive_path_is_one_consuming_typestate_chain() {
+    let _: fn(
+        ActiveRestartOperationStoreForCompileAssertions,
+        AuthenticatedPreRunnerV3,
+    ) -> Result<
+        PersistedEjectRunnerGrantForCompileAssertions,
+        DurableLifecycleStoreErrorV3,
+    > = ActiveRestartOperationStoreForCompileAssertions::persist_eject_runner_grant;
+    let _: fn(
+        PersistedEjectRunnerGrantForCompileAssertions,
+        std::time::Duration,
+    ) -> Result<
+        EjectIssuedEffectSessionForCompileAssertions,
+        EjectIssuedEffectFailureForCompileAssertions,
+    > = PersistedEjectRunnerGrantForCompileAssertions::dispatch;
+    let _: fn(
+        EjectIssuedEffectSessionForCompileAssertions,
+        std::time::Duration,
+    ) -> Result<
+        EjectDeathProvedForCompileAssertions,
+        crate::mac_inert_one_shot_runner::InertRunnerErrorV3,
+    > = EjectIssuedEffectSessionForCompileAssertions::finish_after_death_proof;
+    let _: fn(
+        EjectDeathProvedForCompileAssertions,
+    ) -> Result<
+        PendingEjectCallbackStoreForCompileAssertions,
+        DurableLifecycleStoreErrorV3,
+    > = EjectDeathProvedForCompileAssertions::into_pending_eject;
+    let _: fn(
+        PendingEjectCallbackStoreForCompileAssertions,
+    ) -> Result<
+        PendingEjectObservationStoreForCompileAssertions,
+        DurableLifecycleStoreErrorV3,
+    > = PendingEjectCallbackStoreForCompileAssertions::append_successful_callback;
+    let _: fn(
+        PendingEjectObservationStoreForCompileAssertions,
+    ) -> Result<
+        ActiveRestartOperationStoreForCompileAssertions,
+        DurableLifecycleStoreErrorV3,
+    > = PendingEjectObservationStoreForCompileAssertions::collect_persist_append_and_advance;
+}
+
+#[test]
+fn stage_d_eject_source_keeps_arm_positive_and_pair_boundaries_closed() {
+    let store_source = include_str!("mac_disposable_lifecycle_store.rs");
+    let collector_source = include_str!("mac_disposable_reconciliation_collector.rs");
+
+    assert_eq!(
+        store_source
+            .matches("pub(crate) fn into_pending_eject(")
+            .count(),
+        1,
+        "only the exact positive runner completion may mint PendingEject"
+    );
+
+    let issue = source_section(
+        store_source,
+        "pub(crate) fn persist_eject_runner_grant(",
+        "\n    fn prepare_owned_effect_issue(",
+    );
+    let consume = issue
+        .find(".consume_eject(key)?")
+        .expect("typed adopted eject key must be consumed");
+    let arm = issue
+        .find(".into_armed_expectation(")
+        .expect("live eject plan must become a pending expectation");
+    let dispatch = issue
+        .find("SealedRunnerDispatchV3::from_owned_issue_material(")
+        .expect("sealed runner dispatch must remain present");
+    assert!(
+        consume < arm && arm < dispatch,
+        "the exact durable issue must be consumed, then armed, before dispatch material exists"
+    );
+    assert!(issue.contains("armed.revalidate_pending()?"));
+
+    let positive = source_section(
+        store_source,
+        "impl<'a, 'e> SuccessfulIssuedEffectDeathProvedV3<'a, 'e, PersistedEjectEffectV3>",
+        "\nimpl DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>",
+    );
+    assert!(positive.contains("pub(crate) fn into_pending_eject("));
+    assert!(positive.contains("grant.revalidate()?"));
+    assert!(positive.contains("eject.revalidate_pending()?"));
+    assert!(positive.contains("PendingEjectReconciliationOperationStoreV3 {"));
+    assert!(!positive.contains("begin_unmount_delta"));
+    assert!(!positive.contains("RecoveredRunnerDeathProofV3"));
+    assert!(!positive.contains("IssuedEffectDispatchFailureDeathProvedV3"));
+
+    let pending_type = source_section(
+        store_source,
+        "pub(crate) struct PendingEjectReconciliationOperationStoreV3",
+        "\n/// Private exact binding retained across the issued runner",
+    );
+    assert!(
+        pending_type
+            .contains("RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>")
+    );
+    assert!(!pending_type.contains("PendingUnmountDeltaV3"));
+
+    let callback = source_section(
+        store_source,
+        "impl<'a, 'e> PendingEjectReconciliationOperationStoreV3<'a, 'e, AwaitingEjectCallbackV3>",
+        "\nimpl<'a, 'e> PendingEjectReconciliationOperationStoreV3<'a, 'e, AwaitingEjectObservationV3>",
+    );
+    assert!(callback.contains("CallbackOutcomeV2::Succeeded"));
+    assert!(callback.contains("consume_exact("));
+    assert!(callback.contains("runner_callback: None"));
+
+    let observation = source_section(
+        store_source,
+        "impl<'a, 'e> PendingEjectReconciliationOperationStoreV3<'a, 'e, AwaitingEjectObservationV3>",
+        "\nimpl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmountCallbackV3>",
+    );
+    let collect = observation
+        .find(".collect_reconciliation_after_eject(epoch, eject)")
+        .expect("post-eject collector must consume its armed expectation");
+    let lifecycle = observation
+        .find("ReconciliationLifecycleEventV3::eject_observed(")
+        .expect("post-eject receipt must have a bound lifecycle record");
+    let pair_sink = observation
+        .find(".selected_collector_receipt_lifecycle_pair_sink()")
+        .expect("post-eject append must use the collector pair sink");
+    let adopt = observation
+        .find(".adopt_collector_pair_into_s1(sink, transfer)")
+        .expect("post-eject receipt and lifecycle record must be adopted together");
+    let bind = observation
+        .find(".bind_adopted_pair(after_transfer, append, adoption)")
+        .expect("positive lineage must wait for exact S1 pair adoption");
+    assert!(collect < lifecycle && lifecycle < pair_sink && pair_sink < adopt && adopt < bind);
+    assert!(observation.contains("collector: Some(lineage)"));
+    assert!(observation.contains("receipt_root_owner: Some(receipt_root_owner)"));
+    assert!(!observation.contains("begin_unmount_delta"));
+    assert!(!observation.contains("advance_unmount_delta"));
+
+    let event = source_section(
+        store_source,
+        "fn eject_observed(\n",
+        "\n    #[cfg(test)]\n    pub fn fresh_absence_observed",
+    );
+    assert!(event.contains("collector: Some(collector)"));
+
+    let ejected_zero = source_section(
+        collector_source,
+        "impl EjectObservationAfterTransferV3",
+        "\nimpl RetainedCollectorEvidenceV3",
+    );
+    assert!(ejected_zero.contains("generation.bind_adopted_pair(append, adoption)?"));
+    assert!(ejected_zero.contains("EjectInventoryEndpointV3::ExpectedAfter"));
+    assert!(ejected_zero.contains("lineage.into_ejected_zero(binding, next)?"));
+    assert!(ejected_zero.contains("receipt_root_owner.revalidate_lineage(&lineage)?"));
+
+    let generation = source_section(
+        collector_source,
+        "fn revalidate_unadopted_generation_chain(",
+        "\n    fn adopt_unadopted_tail(",
+    );
+    assert!(generation.contains("root_generation_ordinal()).ok() != Some(index + 1)"));
+    assert!(generation.contains("prior_root.nlink.checked_add(1) != Some(root_after.nlink)"));
+    assert!(generation.contains("prior_root != self.current_binding"));
 }

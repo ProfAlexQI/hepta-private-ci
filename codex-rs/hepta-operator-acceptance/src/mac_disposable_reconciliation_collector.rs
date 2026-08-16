@@ -25,6 +25,7 @@ use crate::mac_disposable_lifecycle::reconciliation_snapshot_sha256;
 use crate::mac_disposable_lifecycle_store::ActiveRestartCollectorEpochV3;
 use crate::mac_disposable_lifecycle_store::ActiveRestartCollectorSeedV3;
 use crate::mac_disposable_lifecycle_store::ActiveRestartEpochV3;
+use crate::mac_disposable_lifecycle_store::EjectExpectationArmSealV3;
 use crate::mac_disposable_lifecycle_store::PreparedCollectorLifecycleSealV3;
 use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleRecordAppendV3;
@@ -574,6 +575,11 @@ enum RetainedCollectorCurrentV3 {
         expected_after: Vec<MountBindingV3>,
         observation: RetainedCollectorObservationV3,
     },
+    EjectedZero {
+        binding: EjectExpectationBindingV3,
+        observation: RetainedCollectorObservationV3,
+        prior: Box<RetainedCollectorCurrentV3>,
+    },
     FreshAbsence(RetainedCollectorObservationV3),
 }
 
@@ -687,6 +693,66 @@ pub(crate) struct SealedEjectEffectPlanV3 {
     core: SealedCollectorEffectPlanCoreV3,
 }
 
+/// Exact pre-dispatch eject expectation.  It replaces the live unique-attached
+/// effect plan once the issue is durable and before the command is dispatched.
+/// Pending replay admits only the exact retained before inventory or its
+/// internally derived expected-after inventory; it never requires the ejected
+/// IOMedia descriptors to remain live after a successful effect.
+pub(crate) struct ArmedEjectExpectationV3 {
+    core: ArmedEjectExpectationCoreV3,
+    receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+struct ArmedEjectExpectationCoreV3 {
+    binding: EjectExpectationBindingV3,
+    lineage: RetainedCollectorLineageV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct EjectExpectationBindingV3 {
+    before_inventory: RestartIOMediaInventoryV3,
+    command_sha256: String,
+    disk_image_group_sha256: String,
+    expected_after_inventory: RestartIOMediaInventoryV3,
+    expected_after_inventory_sha256: String,
+    provenance: SealedCollectorEffectPlanProvenanceV3,
+    unchanged_mounts: Vec<MountBindingV3>,
+}
+
+#[derive(Clone, Copy)]
+enum EjectInventoryEndpointV3 {
+    Pending,
+    ExpectedAfter,
+}
+
+/// Live post-eject collection plus the exact consumed pre-effect expectation.
+/// This is not positive evidence until its receipt and lifecycle record are
+/// durably paired and adopted by S1.
+pub(crate) struct PendingEjectCollectorObservationV3 {
+    expectation: ArmedEjectExpectationCoreV3,
+    pending: PendingRestartObservationV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct UnadoptedEjectObservationV3 {
+    expectation: ArmedEjectExpectationCoreV3,
+    generation: UnadoptedCollectorGenerationV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct EjectObservationAfterTransferV3 {
+    expectation: ArmedEjectExpectationCoreV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct SealedUnadoptedEjectObservationV3<'a> {
+    expectation: &'a ArmedEjectExpectationCoreV3,
+    generation: &'a UnadoptedCollectorGenerationV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
 struct SealedCollectorEffectPlanCoreV3 {
     command: ExactDisposableCommandV3,
     command_canonical_bytes: Vec<u8>,
@@ -697,7 +763,7 @@ struct SealedCollectorEffectPlanCoreV3 {
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct SealedCollectorEffectPlanProvenanceV3 {
     boot_session_uuid: String,
     collector_receipt_sha256: String,
@@ -709,7 +775,7 @@ struct SealedCollectorEffectPlanProvenanceV3 {
     unique_binding_sha256: String,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum SealedCollectorEffectSpecificProvenanceV3 {
     Unmount {
         mounted_binding: MountBindingV3,
@@ -1253,6 +1319,69 @@ impl RetainedPreparedCollectorCapabilityV3 {
             receipt_root_owner,
             after_iomedia_capture,
         )
+    }
+
+    /// Collect the exact post-eject reconciliation endpoint.  Unlike the
+    /// admission and post-unmount paths this deliberately uses the active
+    /// epoch rather than the admission live-before seed: a successful eject
+    /// must remove the retained disk-image group, so requiring the original
+    /// live inventory here would make the positive transition unreachable.
+    pub(crate) fn collect_reconciliation_after_eject(
+        &self,
+        epoch: ActiveRestartCollectorEpochV3<'_>,
+        armed: ArmedEjectExpectationV3,
+    ) -> Result<PendingEjectCollectorObservationV3, RestartCollectorErrorV3> {
+        self.revalidate()?;
+        epoch.revalidate_for_prepared(
+            &self.operation_nonce,
+            &self.manifest_sha256,
+            &self.manifest.profile_sha256,
+        )?;
+        armed.revalidate_pending()?;
+        let ArmedEjectExpectationV3 {
+            core,
+            receipt_root_owner,
+            _not_send_or_sync: _,
+        } = armed;
+        core.revalidate_with_owner(&receipt_root_owner, EjectInventoryEndpointV3::Pending)?;
+        let bindings = RestartCollectorBindingsV3 {
+            backing_identity_sha256: self.backing_identity_sha256()?,
+            baseline_inventory_sha256: self.baseline_inventory_sha256()?,
+            boot_session_uuid: epoch.boot_session_uuid().to_string(),
+            collector_policy_sha256: self.collector_policy_sha256()?,
+            mountpoint_underlying_sha256: self.mountpoint_underlying_sha256()?,
+            operation_nonce: epoch.operation_nonce().to_string(),
+            restart_epoch_nonce: epoch.restart_epoch_nonce().to_string(),
+            restart_started_monotonic_nanoseconds: epoch.restart_started_monotonic_nanoseconds(),
+        };
+        receipt_root_owner.revalidate_for_prepared(&self.manifest)?;
+        let pending = collect_live_with_root(
+            LiveRestartCollectorRequestV3 {
+                artifact_root: &self.artifact_root.path,
+                baseline: &self.manifest.baseline,
+                bindings: &bindings,
+                mountpoint_identity: &self.manifest.mountpoint,
+                policy: &self.manifest.policy,
+                prepared_backing: &self.manifest.backing,
+                receipt_root: Path::new(&self.manifest.policy.receipt_root),
+            },
+            CollectorPurposeV3::ReconciliationSnapshot,
+            None,
+            None,
+            receipt_root_owner,
+            |_| Ok(()),
+        )?;
+        epoch.revalidate_for_prepared(
+            &self.operation_nonce,
+            &self.manifest_sha256,
+            &self.manifest.profile_sha256,
+        )?;
+        core.validate_pending_observation(&pending)?;
+        Ok(PendingEjectCollectorObservationV3 {
+            expectation: core,
+            pending,
+            _not_send_or_sync: PhantomData,
+        })
     }
 
     pub(crate) fn collect_fresh_absence_from_active(
@@ -2153,6 +2282,22 @@ impl PendingRestartObservationV3 {
     }
 }
 
+impl PendingEjectCollectorObservationV3 {
+    pub(crate) fn persist_and_retain(
+        self,
+    ) -> Result<UnadoptedEjectObservationV3, RestartCollectorErrorV3> {
+        self.expectation
+            .validate_pending_observation(&self.pending)?;
+        let generation = self.pending.persist_and_retain_inner(|| Ok(()))?;
+        self.expectation.validate_unadopted(&generation)?;
+        Ok(UnadoptedEjectObservationV3 {
+            expectation: self.expectation,
+            generation,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
 impl UnadoptedCollectorGenerationCoreV3 {
     fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
         self.guard.revalidate(&self.receipt)?;
@@ -2427,6 +2572,112 @@ impl UnadoptedCollectorGenerationAfterTransferV3 {
             ));
         }
         self.core.into_positive(append, collector_binding)
+    }
+}
+
+impl UnadoptedEjectObservationV3 {
+    pub(crate) fn sealed_observation(
+        &self,
+    ) -> Result<SealedUnadoptedEjectObservationV3<'_>, RestartCollectorErrorV3> {
+        self.expectation.validate_unadopted(&self.generation)?;
+        Ok(SealedUnadoptedEjectObservationV3 {
+            expectation: &self.expectation,
+            generation: &self.generation,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn into_s1_transfer(
+        self,
+    ) -> Result<
+        (
+            EjectObservationAfterTransferV3,
+            S1CollectorReceiptAppendTransferV3,
+        ),
+        RestartCollectorErrorV3,
+    > {
+        self.expectation.validate_unadopted(&self.generation)?;
+        let transfer = self.generation.into_s1_transfer()?;
+        Ok((
+            EjectObservationAfterTransferV3 {
+                expectation: self.expectation,
+                _not_send_or_sync: PhantomData,
+            },
+            transfer,
+        ))
+    }
+}
+
+impl SealedUnadoptedEjectObservationV3<'_> {
+    fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.expectation.validate_unadopted(self.generation)
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        &self.expectation.binding.provenance.operation_nonce
+    }
+
+    pub(crate) fn iomedia_absence_sha256(&self) -> &str {
+        &self.generation.core.receipt.iomedia_evidence_sha256
+    }
+
+    pub(crate) fn post_effect_collector_binding(
+        &self,
+    ) -> Result<PostEffectCollectorBindingV3, RestartCollectorErrorV3> {
+        self.revalidate()?;
+        let evidence = &self.generation.core;
+        let binding = PostEffectCollectorBindingV3::from_retained_collector(
+            PostEffectCollectorBindingSealV3 { _private: () },
+            evidence.receipt.boot_session_uuid.clone(),
+            evidence.expected_lifecycle_binding.clone(),
+            evidence.receipt_sha256.clone(),
+            self.expectation.lineage.first_snapshot_sha256()?,
+            evidence.receipt.iomedia_evidence_sha256.clone(),
+            evidence.receipt.operation_nonce.clone(),
+            evidence.receipt.restart_epoch_nonce.clone(),
+        );
+        if binding.operation_nonce() != self.operation_nonce()
+            || binding.observation_sha256() != self.iomedia_absence_sha256()
+        {
+            return Err(invalid(
+                "unadopted eject collector binding changed across its sealed observation",
+            ));
+        }
+        Ok(binding)
+    }
+}
+
+impl EjectObservationAfterTransferV3 {
+    pub(crate) fn bind_adopted_pair(
+        self,
+        generation: UnadoptedCollectorGenerationAfterTransferV3,
+        append: RetainedLifecycleRecordAppendV3,
+        adoption: S1AdoptedCollectorPairV3,
+    ) -> Result<
+        (
+            RetainedCollectorReceiptRootOwnerV3,
+            RetainedCollectorLineageV3,
+        ),
+        RestartCollectorErrorV3,
+    > {
+        let (receipt_root_owner, next) = generation.bind_adopted_pair(append, adoption)?;
+        self.expectation
+            .revalidate_with_owner(&receipt_root_owner, EjectInventoryEndpointV3::ExpectedAfter)?;
+        validate_eject_successor_shape(
+            &self.expectation.lineage.first,
+            self.expectation.prior_observation(),
+            &self.expectation.binding,
+            &next.evidence().receipt,
+            &next.evidence().guard,
+        )?;
+        let ArmedEjectExpectationCoreV3 {
+            binding,
+            lineage,
+            _not_send_or_sync: _,
+        } = self.expectation;
+        let lineage = lineage.into_ejected_zero(binding, next)?;
+        receipt_root_owner.revalidate_lineage(&lineage)?;
+        Ok((receipt_root_owner, lineage))
     }
 }
 
@@ -2706,6 +2957,7 @@ impl RetainedCollectorLineageV3 {
         match &self.current {
             RetainedCollectorCurrentV3::First => &self.first,
             RetainedCollectorCurrentV3::MountDelta { observation, .. }
+            | RetainedCollectorCurrentV3::EjectedZero { observation, .. }
             | RetainedCollectorCurrentV3::FreshAbsence(observation) => observation,
         }
     }
@@ -2752,6 +3004,26 @@ impl RetainedCollectorLineageV3 {
                 observation.revalidate_bound()?;
                 validate_lineage_successor(&self.first, observation, expected_after, *direction)
             }
+            RetainedCollectorCurrentV3::EjectedZero {
+                binding,
+                observation,
+                prior,
+            } => {
+                self.revalidate_current_retained_capsules(prior)?;
+                observation.revalidate_bound()?;
+                let prior_observation = current_observation_for(&self.first, prior);
+                prior_observation.evidence().guard.revalidate_eject_stable(
+                    &prior_observation.evidence().receipt,
+                    &binding.unchanged_mounts,
+                )?;
+                validate_eject_successor_shape(
+                    &self.first,
+                    prior_observation,
+                    binding,
+                    &observation.evidence().receipt,
+                    &observation.evidence().guard,
+                )
+            }
             RetainedCollectorCurrentV3::FreshAbsence(observation) => {
                 // FreshAbsence may legitimately follow eject, so the first
                 // live IOMedia guard no longer describes current reality.  Its
@@ -2759,6 +3031,55 @@ impl RetainedCollectorLineageV3 {
                 // the current absence observation owns the live replay.
                 self.first.evidence().revalidate_retained_capsule()?;
                 observation.revalidate_bound()?;
+                observation.validate_fresh_absence_successor(&self.first)
+            }
+        }
+    }
+
+    fn revalidate_retained_capsules(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.first.evidence().revalidate_retained_capsule()?;
+        self.revalidate_current_retained_capsules(&self.current)
+    }
+
+    fn revalidate_receipt_entries(
+        &self,
+        root: &RetainedReceiptRootV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.first.evidence().durable.revalidate(root)?;
+        revalidate_current_receipt_entries(root, &self.current)
+    }
+
+    fn revalidate_current_retained_capsules(
+        &self,
+        current: &RetainedCollectorCurrentV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        match current {
+            RetainedCollectorCurrentV3::First => Ok(()),
+            RetainedCollectorCurrentV3::MountDelta {
+                direction,
+                expected_after,
+                observation,
+            } => {
+                observation.evidence().revalidate_retained_capsule()?;
+                validate_lineage_successor(&self.first, observation, expected_after, *direction)
+            }
+            RetainedCollectorCurrentV3::EjectedZero {
+                binding,
+                observation,
+                prior,
+            } => {
+                self.revalidate_current_retained_capsules(prior)?;
+                observation.evidence().revalidate_retained_capsule()?;
+                validate_eject_successor_shape(
+                    &self.first,
+                    current_observation_for(&self.first, prior),
+                    binding,
+                    &observation.evidence().receipt,
+                    &observation.evidence().guard,
+                )
+            }
+            RetainedCollectorCurrentV3::FreshAbsence(observation) => {
+                observation.evidence().revalidate_retained_capsule()?;
                 observation.validate_fresh_absence_successor(&self.first)
             }
         }
@@ -2864,6 +3185,63 @@ impl RetainedCollectorLineageV3 {
         };
         lineage.revalidate_bound()?;
         Ok(lineage)
+    }
+
+    fn into_ejected_zero(
+        self,
+        binding: EjectExpectationBindingV3,
+        next: RetainedCollectorObservationV3,
+    ) -> Result<Self, RestartCollectorErrorV3> {
+        let prior_observation = current_observation_for(&self.first, &self.current);
+        validate_eject_successor_shape(
+            &self.first,
+            prior_observation,
+            &binding,
+            &next.evidence().receipt,
+            &next.evidence().guard,
+        )?;
+        let lineage = Self {
+            current: RetainedCollectorCurrentV3::EjectedZero {
+                binding,
+                observation: next,
+                prior: Box::new(self.current),
+            },
+            first: self.first,
+            _not_send_or_sync: PhantomData,
+        };
+        lineage.revalidate_bound()?;
+        Ok(lineage)
+    }
+}
+
+fn current_observation_for<'a>(
+    first: &'a RetainedCollectorObservationV3,
+    current: &'a RetainedCollectorCurrentV3,
+) -> &'a RetainedCollectorObservationV3 {
+    match current {
+        RetainedCollectorCurrentV3::First => first,
+        RetainedCollectorCurrentV3::MountDelta { observation, .. }
+        | RetainedCollectorCurrentV3::EjectedZero { observation, .. }
+        | RetainedCollectorCurrentV3::FreshAbsence(observation) => observation,
+    }
+}
+
+fn revalidate_current_receipt_entries(
+    root: &RetainedReceiptRootV3,
+    current: &RetainedCollectorCurrentV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    match current {
+        RetainedCollectorCurrentV3::First => Ok(()),
+        RetainedCollectorCurrentV3::MountDelta { observation, .. }
+        | RetainedCollectorCurrentV3::FreshAbsence(observation) => {
+            observation.evidence().durable.revalidate(root)
+        }
+        RetainedCollectorCurrentV3::EjectedZero {
+            observation, prior, ..
+        } => {
+            revalidate_current_receipt_entries(root, prior)?;
+            observation.evidence().durable.revalidate(root)
+        }
     }
 }
 
@@ -3166,6 +3544,174 @@ fn exact_eject_target(
     unique_volume_identity_sha256(group)
 }
 
+fn derive_eject_expectation_binding(
+    lineage: &RetainedCollectorLineageV3,
+    command_sha256: &str,
+    provenance: &SealedCollectorEffectPlanProvenanceV3,
+) -> Result<EjectExpectationBindingV3, RestartCollectorErrorV3> {
+    lineage.revalidate_retained_capsules()?;
+    let current = lineage.current_observation();
+    let evidence = current.evidence();
+    let unique = match current {
+        RetainedCollectorObservationV3::Reconciliation(
+            RetainedCollectorMatchV3::UniqueAttached(unique),
+        ) => unique,
+        _ => {
+            return Err(invalid(
+                "eject expectation requires the retained unique-attached current observation",
+            ));
+        }
+    };
+    let group = exact_unique_group(&unique.evidence.receipt)?;
+    let disk_image_group_sha256 = exact_eject_target(&evidence.receipt, group)?;
+    let SealedCollectorEffectSpecificProvenanceV3::Eject {
+        disk_image_group_sha256: provenance_group_sha256,
+    } = &provenance.specific
+    else {
+        return Err(invalid(
+            "eject expectation inherited non-eject effect provenance",
+        ));
+    };
+    let lifecycle_record = evidence
+        .lifecycle_record
+        .as_ref()
+        .ok_or_else(|| invalid("eject expectation lacks its prior lifecycle capsule"))?;
+    let unique_binding_sha256 = unique_collector_binding_sha256(&evidence.receipt)?;
+    if !valid_digest(command_sha256)
+        || provenance_group_sha256 != &disk_image_group_sha256
+        || provenance.boot_session_uuid != evidence.receipt.boot_session_uuid
+        || provenance.collector_receipt_sha256 != evidence.receipt_sha256
+        || provenance.lifecycle_record_sequence != lifecycle_record.sequence()
+        || provenance.lifecycle_record_sha256 != lifecycle_record.digest()
+        || provenance.operation_nonce != evidence.receipt.operation_nonce
+        || provenance.restart_epoch_nonce != evidence.receipt.restart_epoch_nonce
+        || provenance.unique_binding_sha256 != unique_binding_sha256
+    {
+        return Err(invalid(
+            "eject expectation differs from the exact durable issue provenance",
+        ));
+    }
+    let before_inventory = evidence.receipt.iomedia_inventory.clone();
+    let expected_after_inventory = evidence
+        .receipt
+        .current_expected_absence_inventory
+        .as_ref()
+        .ok_or_else(|| invalid("unique-attached eject source has no exact expected absence"))?
+        .clone();
+    let expected_after_inventory_sha256 = sha256(&canonical_json(&expected_after_inventory)?);
+    if evidence
+        .receipt
+        .current_expected_absence_inventory_sha256
+        .as_deref()
+        != Some(expected_after_inventory_sha256.as_str())
+    {
+        return Err(invalid(
+            "eject expected-after inventory differs from its source receipt digest",
+        ));
+    }
+    validate_eject_inventory_endpoint(
+        &before_inventory,
+        &expected_after_inventory,
+        group,
+        &before_inventory,
+        EjectInventoryEndpointV3::Pending,
+    )?;
+    let first = lineage.first.evidence();
+    let first_expected = first
+        .receipt
+        .current_expected_absence_inventory
+        .as_ref()
+        .ok_or_else(|| invalid("first reconciliation receipt has no exact expected absence"))?;
+    let first_expected_sha256 = first
+        .receipt
+        .current_expected_absence_inventory_sha256
+        .as_deref()
+        .ok_or_else(|| invalid("first reconciliation receipt has no expected-absence digest"))?;
+    if first_expected != &expected_after_inventory
+        || first_expected_sha256 != expected_after_inventory_sha256
+    {
+        return Err(invalid(
+            "eject expected-after inventory differs from the immutable first snapshot",
+        ));
+    }
+    Ok(EjectExpectationBindingV3 {
+        before_inventory,
+        command_sha256: command_sha256.to_string(),
+        disk_image_group_sha256,
+        expected_after_inventory,
+        expected_after_inventory_sha256,
+        provenance: provenance.clone(),
+        unchanged_mounts: evidence.receipt.mount_evidence.mounts_after.clone(),
+    })
+}
+
+fn validate_eject_inventory_endpoint(
+    before_inventory: &RestartIOMediaInventoryV3,
+    expected_after_inventory: &RestartIOMediaInventoryV3,
+    group: &MatchingDiskImageGroupV3,
+    observed: &RestartIOMediaInventoryV3,
+    endpoint: EjectInventoryEndpointV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    validate_restart_iomedia_inventory_v3(before_inventory)?;
+    validate_restart_iomedia_inventory_v3(expected_after_inventory)?;
+    validate_restart_iomedia_inventory_v3(observed)?;
+    let derived = derive_current_expected_absence_v3(
+        before_inventory,
+        &ReconciliationMatchV2::Unique { mounted: false },
+        std::slice::from_ref(group),
+    )?
+    .ok_or_else(|| invalid("unique eject source did not derive one expected-after inventory"))?;
+    if derived != *expected_after_inventory
+        || before_inventory.boot_session_uuid != expected_after_inventory.boot_session_uuid
+        || observed.boot_session_uuid != before_inventory.boot_session_uuid
+    {
+        return Err(invalid(
+            "eject expected-after inventory is not the exact before inventory minus its unique group",
+        ));
+    }
+    let matches = match endpoint {
+        EjectInventoryEndpointV3::Pending => {
+            observed == before_inventory || observed == expected_after_inventory
+        }
+        EjectInventoryEndpointV3::ExpectedAfter => observed == expected_after_inventory,
+    };
+    if !matches {
+        return Err(invalid(
+            "eject inventory observed neither the admitted endpoint nor its exact expected-after state",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_eject_mount_endpoint(
+    unchanged_mounts: &[MountBindingV3],
+    observed_before: &[MountBindingV3],
+    observed_after: &[MountBindingV3],
+    live_mounts: &[MountBindingV3],
+    mountpoint_underlying_revalidated: bool,
+    no_nested_mounts: bool,
+) -> Result<(), RestartCollectorErrorV3> {
+    for mount in unchanged_mounts
+        .iter()
+        .chain(observed_before)
+        .chain(observed_after)
+        .chain(live_mounts)
+    {
+        validate_mount_binding_shape(mount)?;
+    }
+    if observed_before != unchanged_mounts
+        || observed_after != unchanged_mounts
+        || live_mounts != unchanged_mounts
+        || !mountpoint_underlying_revalidated
+        || !no_nested_mounts
+    {
+        return Err(invalid(
+            "post-eject mount census differs from its exact unchanged endpoint",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_derived_collector_effect_plan(
     command: &ExactDisposableCommandV3,
     command_canonical_bytes: &[u8],
@@ -3183,6 +3729,182 @@ fn validate_derived_collector_effect_plan(
     {
         return Err(invalid(
             "sealed collector effect plan changed command or exact retained provenance",
+        ));
+    }
+    Ok(())
+}
+
+impl ArmedEjectExpectationCoreV3 {
+    fn prior_observation(&self) -> &RetainedCollectorObservationV3 {
+        self.lineage.current_observation()
+    }
+
+    fn revalidate_binding(&self) -> Result<(), RestartCollectorErrorV3> {
+        let derived = derive_eject_expectation_binding(
+            &self.lineage,
+            &self.binding.command_sha256,
+            &self.binding.provenance,
+        )?;
+        if derived != self.binding {
+            return Err(invalid(
+                "armed eject expectation changed its exact retained endpoints",
+            ));
+        }
+        Ok(())
+    }
+
+    fn revalidate_with_owner(
+        &self,
+        receipt_root_owner: &RetainedCollectorReceiptRootOwnerV3,
+        endpoint: EjectInventoryEndpointV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        receipt_root_owner.revalidate_lineage_retained_capsules(&self.lineage)?;
+        self.revalidate_binding()?;
+        let prior = self.prior_observation();
+        let evidence = prior.evidence();
+        evidence
+            .guard
+            .revalidate_eject_stable(&evidence.receipt, &self.binding.unchanged_mounts)?;
+        let group = exact_unique_group(&evidence.receipt)?;
+        if unique_volume_identity_sha256(group)? != self.binding.disk_image_group_sha256 {
+            return Err(invalid(
+                "armed eject expectation changed its unique disk-image group",
+            ));
+        }
+        let current = capture_restart_iomedia_inventory_v3()?;
+        current.revalidate_after_persistence()?;
+        validate_eject_inventory_endpoint(
+            &self.binding.before_inventory,
+            &self.binding.expected_after_inventory,
+            group,
+            current.report(),
+            endpoint,
+        )?;
+        current.revalidate_after_persistence()?;
+        receipt_root_owner.revalidate_lineage_retained_capsules(&self.lineage)
+    }
+
+    fn validate_pending_observation(
+        &self,
+        pending: &PendingRestartObservationV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_with_owner(
+            &pending.receipt_root_owner,
+            EjectInventoryEndpointV3::ExpectedAfter,
+        )?;
+        pending.guard.revalidate(&pending.receipt)?;
+        validate_eject_successor_shape(
+            &self.lineage.first,
+            self.prior_observation(),
+            &self.binding,
+            &pending.receipt,
+            &pending.guard,
+        )?;
+        pending.receipt_root_owner.revalidate()
+    }
+
+    fn validate_unadopted(
+        &self,
+        generation: &UnadoptedCollectorGenerationV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        generation.revalidate()?;
+        generation
+            .core
+            .receipt_root_owner
+            .revalidate_lineage_retained_capsules(&self.lineage)?;
+        self.revalidate_binding()?;
+        validate_eject_successor_shape(
+            &self.lineage.first,
+            self.prior_observation(),
+            &self.binding,
+            &generation.core.receipt,
+            &generation.core.guard,
+        )
+    }
+}
+
+impl ArmedEjectExpectationV3 {
+    pub(crate) fn revalidate_pending(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.core
+            .revalidate_with_owner(&self.receipt_root_owner, EjectInventoryEndpointV3::Pending)
+    }
+
+    pub(crate) fn validate_issued_binding(
+        &self,
+        operation_nonce: &str,
+        command_sha256: &str,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_pending()?;
+        if operation_nonce != self.core.binding.provenance.operation_nonce
+            || command_sha256 != self.core.binding.command_sha256
+        {
+            return Err(invalid(
+                "issued eject binding differs from its armed collector expectation",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn validate_eject_successor_shape(
+    first: &RetainedCollectorObservationV3,
+    prior: &RetainedCollectorObservationV3,
+    binding: &EjectExpectationBindingV3,
+    next: &RestartCollectorReceiptV3,
+    next_guard: &LiveReplayGuardV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    let prior = prior.evidence();
+    let first = first.evidence();
+    let group = exact_unique_group(&prior.receipt)?;
+    validate_eject_inventory_endpoint(
+        &binding.before_inventory,
+        &binding.expected_after_inventory,
+        group,
+        &next.iomedia_inventory,
+        EjectInventoryEndpointV3::ExpectedAfter,
+    )?;
+    validate_eject_mount_endpoint(
+        &binding.unchanged_mounts,
+        &next.mount_evidence.mounts_before,
+        &next.mount_evidence.mounts_after,
+        &next_guard.mounts,
+        next.mount_evidence.mountpoint_underlying_revalidated,
+        next.mount_evidence.no_nested_mounts,
+    )?;
+    let expected_after_sha256 = sha256(&canonical_json(&binding.expected_after_inventory)?);
+    if expected_after_sha256 != binding.expected_after_inventory_sha256
+        || unique_volume_identity_sha256(group)? != binding.disk_image_group_sha256
+        || next.purpose != CollectorPurposeV3::ReconciliationSnapshot
+        || next.match_result != ReconciliationMatchV2::Zero
+        || !next.matching_groups.is_empty()
+        || next.current_expected_absence_inventory.as_ref()
+            != Some(&binding.expected_after_inventory)
+        || next.current_expected_absence_inventory_sha256.as_deref()
+            != Some(binding.expected_after_inventory_sha256.as_str())
+        || next.iomedia_evidence_sha256 != binding.expected_after_inventory_sha256
+        || next.operation_nonce != binding.provenance.operation_nonce
+        || next.operation_nonce != prior.receipt.operation_nonce
+        || next.boot_session_uuid != binding.provenance.boot_session_uuid
+        || next.boot_session_uuid != prior.receipt.boot_session_uuid
+        || next.restart_epoch_nonce != binding.provenance.restart_epoch_nonce
+        || next.restart_epoch_nonce != prior.receipt.restart_epoch_nonce
+        || next.collector_policy_sha256 != prior.receipt.collector_policy_sha256
+        || next.backing_identity_sha256 != prior.receipt.backing_identity_sha256
+        || next.mountpoint_underlying_sha256 != prior.receipt.mountpoint_underlying_sha256
+        || next.baseline_inventory_sha256 != prior.receipt.baseline_inventory_sha256
+        || next.artifact_evidence_sha256 != prior.receipt.artifact_evidence_sha256
+        || next.monotonic_before_nanoseconds <= prior.receipt.monotonic_after_nanoseconds
+        || next.reconciliation_snapshot_sha256.is_some()
+        || first.receipt.current_expected_absence_inventory.as_ref()
+            != Some(&binding.expected_after_inventory)
+        || first
+            .receipt
+            .current_expected_absence_inventory_sha256
+            .as_deref()
+            != Some(binding.expected_after_inventory_sha256.as_str())
+    {
+        return Err(invalid(
+            "post-eject collector is not the exact Zero successor of its armed expectation",
         ));
     }
     Ok(())
@@ -3737,14 +4459,17 @@ impl RetainedCollectorReceiptRootOwnerV3 {
     ) -> Result<(), RestartCollectorErrorV3> {
         self.revalidate()?;
         lineage.revalidate_bound()?;
-        lineage.first.evidence().durable.revalidate(&self.root)?;
-        if !matches!(lineage.current, RetainedCollectorCurrentV3::First) {
-            lineage
-                .current_observation()
-                .evidence()
-                .durable
-                .revalidate(&self.root)?;
-        }
+        lineage.revalidate_receipt_entries(&self.root)?;
+        self.revalidate()
+    }
+
+    fn revalidate_lineage_retained_capsules(
+        &self,
+        lineage: &RetainedCollectorLineageV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate()?;
+        lineage.revalidate_retained_capsules()?;
+        lineage.revalidate_receipt_entries(&self.root)?;
         self.revalidate()
     }
 
@@ -3907,22 +4632,56 @@ impl SealedEjectEffectPlanV3 {
         self.core.issue_plan(SealedCollectorEffectPlanKindV3::Eject)
     }
 
-    /// Return the still-exact unique-attached collector ownership after a
-    /// positively death-proved eject dispatch.  The Stage4 pending-eject
-    /// transition remains responsible for consuming this pair into its
-    /// callback/observation typestate.
-    pub(crate) fn into_retained_lineage(
+    /// Consume the pre-effect live plan after exact issue persistence and
+    /// before dispatch.  The returned expectation permits only the retained
+    /// before inventory or its exact derived expected-after endpoint; no
+    /// positive path can later demand that ejected IOMedia remain live.
+    pub(crate) fn into_armed_expectation(
         self,
-        _seal: &SuccessfulIssuedEffectTransitionSealV3,
-    ) -> Result<
-        (
-            RetainedCollectorReceiptRootOwnerV3,
-            RetainedCollectorLineageV3,
-        ),
-        RestartCollectorErrorV3,
-    > {
+        _seal: &EjectExpectationArmSealV3,
+    ) -> Result<ArmedEjectExpectationV3, RestartCollectorErrorV3> {
         self.revalidate()?;
-        Ok((self.core.receipt_root_owner, self.core.lineage))
+        let SealedCollectorEffectPlanCoreV3 {
+            command,
+            command_canonical_bytes,
+            command_sha256,
+            lineage,
+            provenance,
+            receipt_root_owner,
+            _not_send_or_sync: _,
+        } = self.core;
+        let ExactDisposableCommandV3::EjectImage {
+            disk_image_group_sha256,
+        } = &command
+        else {
+            return Err(invalid(
+                "sealed eject plan changed command kind before arming",
+            ));
+        };
+        if canonical_json(&command)? != command_canonical_bytes
+            || sha256(&command_canonical_bytes) != command_sha256
+        {
+            return Err(invalid(
+                "sealed eject command changed before expectation arming",
+            ));
+        }
+        let binding = derive_eject_expectation_binding(&lineage, &command_sha256, &provenance)?;
+        if disk_image_group_sha256 != &binding.disk_image_group_sha256 {
+            return Err(invalid(
+                "eject command group differs from its armed expected-after inventory",
+            ));
+        }
+        let armed = ArmedEjectExpectationV3 {
+            core: ArmedEjectExpectationCoreV3 {
+                binding,
+                lineage,
+                _not_send_or_sync: PhantomData,
+            },
+            receipt_root_owner,
+            _not_send_or_sync: PhantomData,
+        };
+        armed.revalidate_pending()?;
+        Ok(armed)
     }
 }
 
@@ -5217,6 +5976,62 @@ impl LiveReplayGuardV3 {
             ));
         }
         Ok(())
+    }
+
+    /// Replay the persistent evidence which must remain exact across eject
+    /// without touching the pre-effect held IOMedia descriptors.  The latter
+    /// are expected to disappear; current IOMedia is checked separately
+    /// against the sealed before/expected-after endpoints.
+    fn revalidate_eject_stable(
+        &self,
+        receipt: &RestartCollectorReceiptV3,
+        unchanged_mounts: &[MountBindingV3],
+    ) -> Result<(), RestartCollectorErrorV3> {
+        if self.mounts != unchanged_mounts
+            || receipt.mount_evidence.mounts_before != unchanged_mounts
+            || receipt.mount_evidence.mounts_after != unchanged_mounts
+        {
+            return Err(invalid(
+                "eject expectation changed the exact stable mount census",
+            ));
+        }
+        for mount in unchanged_mounts {
+            validate_mount_binding_shape(mount)?;
+        }
+        if unchanged_mounts.len() > MAX_MOUNT_ENTRIES
+            || unchanged_mounts.windows(2).any(|pair| pair[0] >= pair[1])
+        {
+            return Err(invalid(
+                "eject stable mount census is oversized or not strictly sorted",
+            ));
+        }
+        self.mountpoint.revalidate()?;
+        if mount_table_snapshot()? != unchanged_mounts {
+            return Err(invalid(
+                "mount table changed while the eject expectation was pending",
+            ));
+        }
+        self.backing
+            .revalidate_identity_after_persistence(&self.prepared_backing)?;
+        self.artifact_root.revalidate("artifact root")?;
+        let roster = list_directory(self.artifact_root.file.as_raw_fd(), MAX_ARTIFACT_ENTRIES)?;
+        let absent = self
+            .artifact_evidence
+            .artifacts
+            .iter()
+            .all(|artifact| roster.binary_search(&artifact.basename).is_err());
+        if roster != self.artifact_evidence.roster
+            || absent != self.artifact_evidence.operation_artifacts_absent
+            || self.artifact_root.binding != self.artifact_evidence.root_binding
+        {
+            return Err(invalid(
+                "operation-artifact census changed while eject was pending",
+            ));
+        }
+        if current_boot_session_uuid()? != receipt.boot_session_uuid {
+            return Err(invalid("boot changed while eject was pending"));
+        }
+        validate_receipt(receipt)
     }
 
     fn revalidate_across_mount_delta(

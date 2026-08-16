@@ -30,6 +30,7 @@ use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
 use crate::mac_disposable_lifecycle::TerminalDispositionV2;
 use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
 use crate::mac_disposable_lifecycle::reconciliation_snapshot_sha256;
+use crate::mac_disposable_reconciliation_collector::ArmedEjectExpectationV3;
 use crate::mac_disposable_reconciliation_collector::PendingRestartObservationV3;
 use crate::mac_disposable_reconciliation_collector::RestartBaselineInventoryV3;
 use crate::mac_disposable_reconciliation_collector::RestartCollectorErrorV3;
@@ -39,7 +40,6 @@ use crate::mac_disposable_reconciliation_collector::RetainedCollectorMountDeltaV
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorReceiptRootOwnerV3;
 use crate::mac_disposable_reconciliation_collector::RetainedPreparedCollectorCapabilityV3;
 use crate::mac_disposable_reconciliation_collector::RetainedTerminalAbsenceV3;
-use crate::mac_disposable_reconciliation_collector::SealedEjectEffectPlanV3;
 use crate::mac_disposable_reconciliation_collector::SealedUnmountEffectPlanV3;
 use crate::mac_disposable_reconciliation_collector::UnadoptedCollectorGenerationV3;
 use crate::mac_disposable_reconciliation_collector::UnmountingV3;
@@ -952,11 +952,15 @@ impl ReconciliationLifecycleEventV3 {
         Self(DisposableLifecycleEventV2::EjectCallbackObserved { effect_id, outcome })
     }
 
-    fn eject_observed(effect_id: u64, iomedia_absence_sha256: String) -> Self {
+    fn eject_observed(
+        effect_id: u64,
+        iomedia_absence_sha256: String,
+        collector: PostEffectCollectorBindingV3,
+    ) -> Self {
         Self(DisposableLifecycleEventV2::EjectObserved {
             effect_id,
             iomedia_absence_sha256,
-            collector: None,
+            collector: Some(collector),
         })
     }
 
@@ -1250,17 +1254,28 @@ impl<R> ReconciliationOperationStoreV3<'_, '_, R> {
     }
 }
 
-/// Private proof that an owned collector effect plan is being consumed only
-/// from the positive typed runner chain.  The collector requires this seal
-/// before it will release either an unmount delta or an eject lineage; no
-/// sibling can advance collector typestate merely by possessing a plan.
+/// Private proof that an owned unmount plan is being consumed only from the
+/// positive typed runner chain. Eject uses the distinct pre-dispatch arm seal
+/// because its old live IOMedia evidence must not survive as a requirement
+/// after the effect.
 pub(crate) struct SuccessfulIssuedEffectTransitionSealV3 {
+    _private: (),
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Private one-shot proof that an eject plan is being converted from its
+/// pre-effect live form into the only expectation which may cross dispatch.
+/// It is minted only after the exact V2/V3 issue pair has been durably
+/// replayed and adopted, and before the runner receives its dispatch seal.
+pub(crate) struct EjectExpectationArmSealV3 {
     _private: (),
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
 pub(crate) struct AwaitingUnmountCallbackV3;
 pub(crate) struct AwaitingUnmountObservationV3;
+pub(crate) struct AwaitingEjectCallbackV3;
+pub(crate) struct AwaitingEjectObservationV3;
 
 /// Whole-operation pending-unmount typestate.  It continues to own the exact
 /// S1 census, S2 journal and issue store, and the retained pre-effect collector
@@ -1277,6 +1292,26 @@ pub(crate) struct PendingUnmountReconciliationOperationStoreV3<'a, 'e, S> {
     receipt_root_owner: Option<RetainedCollectorReceiptRootOwnerV3>,
     restart: ActiveRestartEpochV3,
     runner_callback: Option<SuccessfulRunnerCallbackV3<PersistedUnmountEffectV3>>,
+    store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
+    _state: PhantomData<fn() -> S>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Whole-operation pending-eject typestate. Eject never mutates the mount
+/// table, so S1 remains in its exact stable mount census while the collector
+/// expectation advances only in S2. The expectation owns the prior lineage
+/// and unique receipt-root generation throughout callback and observation.
+pub(crate) struct PendingEjectReconciliationOperationStoreV3<'a, 'e, S> {
+    census: RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
+    eject: Option<ArmedEjectExpectationV3>,
+    epoch: &'e FreshProcessEpochV3,
+    issued: PersistedIssuedTransitionBindingV3<PersistedEjectEffectV3>,
+    issues: DurableEffectIssueStoreV3,
+    journal: DisposableLifecycleJournalV2,
+    poisoned: bool,
+    prepared: Option<RetainedPreparedCollectorCapabilityV3>,
+    restart: ActiveRestartEpochV3,
+    runner_callback: Option<SuccessfulRunnerCallbackV3<PersistedEjectEffectV3>>,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
     _state: PhantomData<fn() -> S>,
     _not_send_or_sync: PhantomData<Rc<()>>,
@@ -1322,7 +1357,7 @@ pub(crate) struct RecoveredIssueVerifierSealV3 {
 /// constructors create exactly one variant for the matching marker `K`; no
 /// dynamic kind or raw command crosses this boundary.
 struct SealedOwnedCollectorEffectPlanV3<K> {
-    eject: Option<SealedEjectEffectPlanV3>,
+    eject: Option<ArmedEjectExpectationV3>,
     unmount: Option<SealedUnmountEffectPlanV3>,
     _kind: PhantomData<fn() -> K>,
     _not_send_or_sync: PhantomData<Rc<()>>,
@@ -1363,7 +1398,7 @@ impl LifecycleIssuedKindSpecV3 for PersistedEjectEffectV3 {
         plan.eject
             .as_ref()
             .ok_or_else(|| invalid("typed eject grant lost its collector plan"))?
-            .revalidate()
+            .revalidate_pending()
             .map_err(Into::into)
     }
 }
@@ -3488,6 +3523,15 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             .adopted_issue_use_sink(&read)?
             .consume_eject(key)?;
         let (material, plan) = adopted_dispatch.into_parts()?;
+        // The pre-effect plan may not cross dispatch: a successful eject
+        // legitimately removes the exact live IOMedia group which that plan
+        // retains. Convert it now into the bounded before-or-expected-after
+        // expectation, while the durable issue and current state still replay.
+        let armed = plan.into_armed_expectation(&EjectExpectationArmSealV3 {
+            _private: (),
+            _not_send_or_sync: PhantomData,
+        })?;
+        armed.revalidate_pending()?;
         let lease = self
             .census
             .duplicate_control_lease(PersistedIssueLeaseSealV3 {
@@ -3501,13 +3545,13 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             material,
             lease,
         )?;
-        plan.revalidate()?;
+        armed.revalidate_pending()?;
         self.revalidate_issued_transition(&issued)?;
         Ok(PersistedIssuedRunnerGrantV3 {
             dispatch: Some(dispatch),
             issued: Some(issued),
             plan: Some(SealedOwnedCollectorEffectPlanV3 {
-                eject: Some(plan),
+                eject: Some(armed),
                 unmount: None,
                 _kind: PhantomData,
                 _not_send_or_sync: PhantomData,
@@ -4125,6 +4169,301 @@ impl<S> PendingUnmountReconciliationOperationStoreV3<'_, '_, S> {
     }
 }
 
+impl<S> PendingEjectReconciliationOperationStoreV3<'_, '_, S> {
+    fn revalidate_pending_issue(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
+        self.revalidate_pending_issue_inner(false)
+    }
+
+    fn revalidate_pending_issue_inner(
+        &self,
+        allow_armed_durability_poison: bool,
+    ) -> Result<(), DurableLifecycleStoreErrorV3> {
+        if (!allow_armed_durability_poison && self.poisoned)
+            || self.store.poisoned()
+            || self.issues.poisoned()
+        {
+            return Err(invalid(
+                "pending-eject operation is poisoned; exact restart replay is required",
+            ));
+        }
+        // Eject must leave the complete mount table unchanged. Keeping the
+        // original Stable census here makes any add/remove/change fail without
+        // inventing a false S1 mount-delta transition.
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed during pending-eject replay: {error}"
+            ))
+        })?;
+        let eject = self
+            .eject
+            .as_ref()
+            .ok_or_else(|| invalid("pending-eject operation lost its armed expectation"))?;
+        eject.revalidate_pending().map_err(|error| {
+            invalid(format!(
+                "pending-eject collector expectation failed exact replay: {error}"
+            ))
+        })?;
+        self.census.revalidate()?;
+        eject.validate_issued_binding(&self.issued.operation_nonce, &self.issued.command_sha256)?;
+        let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
+        self.issues.revalidate_required(&lifecycle)?;
+        self.issues.revalidate_s1_adopted()?;
+        let issue_read = OperationIssueReadSealV3 { _private: () };
+        let issue = self
+            .issues
+            .replayed_issue_sealed(self.issued.effect_id, &issue_read)
+            .ok_or_else(|| invalid("pending-eject V3 issue disappeared"))?;
+        let issued_record_sha256 = sha256(&canonical_json(issue).map_err(|error| {
+            invalid(format!(
+                "pending-eject retained V3 issue is not canonical after exact replay: {error}"
+            ))
+        })?);
+        if issue.operation_nonce() != self.store.operation_nonce()
+            || issue.operation_nonce() != self.issued.operation_nonce
+            || issue.command_sha256() != self.issued.command_sha256
+            || issued_record_sha256 != self.issued.issued_record_sha256
+            || issue.purpose()
+                != crate::mac_disposable_effect_issue_store::EffectPurposeV3::RestartReconciliation
+        {
+            return Err(invalid(
+                "pending-eject operation, command, expectation, or retained issue diverged",
+            ));
+        }
+        Ok(())
+    }
+
+    fn append_pending_eject(
+        &mut self,
+        event: ReconciliationLifecycleEventV3,
+    ) -> Result<RetainedLifecycleRecordAppendV3, DurableLifecycleStoreErrorV3> {
+        self.revalidate_pending_issue()?;
+        let valid_event = matches!(
+            &event.0,
+            DisposableLifecycleEventV2::EjectCallbackObserved {
+                effect_id,
+                outcome: CallbackOutcomeV2::Succeeded,
+            } if *effect_id == self.issued.effect_id
+        );
+        if !valid_event {
+            return Err(invalid(
+                "ordinary pending-eject append accepts only its exact successful callback; collector observations require paired S1 adoption",
+            ));
+        }
+        self.poisoned = true;
+        let result = (|| {
+            let digest = self.store.append_reconciliation(&mut self.journal, event)?;
+            let mut append = RetainedLifecycleRecordAppendV3::retain(&self.store, &digest)?;
+            let sink = self.census.selected_lifecycle_record_sink()?;
+            append.adopt_into_s1(sink)?;
+            append.require_s1_adopted()?;
+            self.revalidate_pending_issue_inner(true)?;
+            Ok(append)
+        })();
+        // The caller consumes this wrapper and may disarm poison only after a
+        // complete next typestate has been assembled.
+        result
+    }
+}
+
+impl<'a, 'e> PendingEjectReconciliationOperationStoreV3<'a, 'e, AwaitingEjectCallbackV3> {
+    /// Consume the internally retained positive runner callback and append the
+    /// exact durable eject callback. No callback DTO or caller digest enters.
+    pub(crate) fn append_successful_callback(
+        mut self,
+    ) -> Result<
+        PendingEjectReconciliationOperationStoreV3<'a, 'e, AwaitingEjectObservationV3>,
+        DurableLifecycleStoreErrorV3,
+    > {
+        self.revalidate_pending_issue()?;
+        self.runner_callback
+            .take()
+            .ok_or_else(|| invalid("pending eject lost its positive runner callback"))?
+            .consume_exact(
+                self.issued.effect_id,
+                &self.issued.operation_nonce,
+                &self.issued.command_sha256,
+                &self.issued.issued_record_sha256,
+                RunnerEffectPurposeV3::RestartReconciliation,
+            )?;
+        let append = self.append_pending_eject(ReconciliationLifecycleEventV3::eject_callback(
+            self.issued.effect_id,
+            CallbackOutcomeV2::Succeeded,
+        ))?;
+        append.require_s1_adopted()?;
+        let PendingEjectReconciliationOperationStoreV3 {
+            census,
+            eject,
+            epoch,
+            issued,
+            issues,
+            journal,
+            poisoned: _,
+            prepared,
+            restart,
+            runner_callback: _,
+            store,
+            _state: _,
+            _not_send_or_sync: _,
+        } = self;
+        Ok(PendingEjectReconciliationOperationStoreV3 {
+            census,
+            eject,
+            epoch,
+            issued,
+            issues,
+            journal,
+            poisoned: false,
+            prepared,
+            restart,
+            runner_callback: None,
+            store,
+            _state: PhantomData,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl<'a, 'e> PendingEjectReconciliationOperationStoreV3<'a, 'e, AwaitingEjectObservationV3> {
+    /// Collect, persist, append, and S1-adopt the exact post-eject Zero state
+    /// as one consuming transition. The armed expectation, not the original
+    /// pre-effect live seed, admits the expected inventory disappearance.
+    pub(crate) fn collect_persist_append_and_advance(
+        mut self,
+    ) -> Result<
+        ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3>,
+        DurableLifecycleStoreErrorV3,
+    > {
+        self.revalidate_pending_issue()?;
+        if self.runner_callback.is_some() {
+            self.poisoned = true;
+            return Err(invalid(
+                "post-eject observation retained an unconsumed runner callback",
+            ));
+        }
+        let epoch = ActiveRestartCollectorEpochV3 {
+            operation_nonce: self.store.operation_nonce(),
+            owner: &self.restart,
+            _not_send_or_sync: PhantomData,
+        };
+        let prepared = self.prepared.as_ref().ok_or_else(|| {
+            invalid("post-eject collection lacks its retained prepared capability")
+        })?;
+        // Consuming the armed expectation also moves the unique receipt-root
+        // owner and prior lineage into the collector. From here on, no error
+        // may return a reusable pending wrapper.
+        self.poisoned = true;
+        let eject = self
+            .eject
+            .take()
+            .ok_or_else(|| invalid("post-eject collection lost its armed expectation"))?;
+        let pending = prepared
+            .collect_reconciliation_after_eject(epoch, eject)
+            .map_err(|error| {
+                invalid(format!(
+                    "post-eject live collection failed exact expectation replay: {error}"
+                ))
+            })?;
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed across post-eject collection: {error}"
+            ))
+        })?;
+        self.store.revalidate()?;
+        let unadopted = pending.persist_and_retain().map_err(|error| {
+            invalid(format!(
+                "post-eject collector persistence or exact expectation seal failed: {error}"
+            ))
+        })?;
+        let (operation_nonce, iomedia_absence_sha256, collector_binding) = {
+            let observation = unadopted.sealed_observation()?;
+            (
+                observation.operation_nonce().to_string(),
+                observation.iomedia_absence_sha256().to_string(),
+                observation.post_effect_collector_binding()?,
+            )
+        };
+        if operation_nonce != self.store.operation_nonce() {
+            return Err(invalid("post-eject collector belongs to another operation"));
+        }
+        // The external receipt root is now G+1 while S1 retains G. Persist the
+        // bound EjectObserved record and atomically adopt both exact deltas.
+        let digest = self.store.append_reconciliation(
+            &mut self.journal,
+            ReconciliationLifecycleEventV3::eject_observed(
+                self.issued.effect_id,
+                iomedia_absence_sha256,
+                collector_binding,
+            ),
+        )?;
+        let mut append = RetainedLifecycleRecordAppendV3::retain(&self.store, &digest)?;
+        let (eject_after_transfer, transfer) = unadopted.into_s1_transfer()?;
+        let sink = self
+            .census
+            .selected_collector_receipt_lifecycle_pair_sink()?;
+        let (after_transfer, adoption) = append.adopt_collector_pair_into_s1(sink, transfer)?;
+        append.require_s1_adopted()?;
+        let (receipt_root_owner, lineage) =
+            eject_after_transfer.bind_adopted_pair(after_transfer, append, adoption)?;
+        receipt_root_owner.revalidate_lineage(&lineage)?;
+
+        let PendingEjectReconciliationOperationStoreV3 {
+            census,
+            eject,
+            epoch,
+            issued: _,
+            issues,
+            journal,
+            poisoned: _,
+            prepared,
+            restart,
+            runner_callback,
+            store,
+            _state: _,
+            _not_send_or_sync: _,
+        } = self;
+        if eject.is_some() || runner_callback.is_some() {
+            return Err(invalid(
+                "post-eject transition retained consumed expectation or callback ownership",
+            ));
+        }
+        let mut stable = ReconciliationOperationStoreV3 {
+            census,
+            epoch,
+            journal,
+            poisoned: true,
+            prepared,
+            collector: Some(lineage),
+            receipt_root_owner: Some(receipt_root_owner),
+            issues,
+            restart,
+            store,
+        };
+        stable.census.revalidate()?;
+        stable.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed after post-eject stable transition: {error}"
+            ))
+        })?;
+        stable.revalidate_existing_issues()?;
+        let lineage = stable
+            .collector
+            .as_ref()
+            .ok_or_else(|| invalid("post-eject stable transition lost its lineage"))?;
+        lineage.revalidate_bound()?;
+        stable
+            .receipt_root_owner
+            .as_ref()
+            .ok_or_else(|| invalid("post-eject stable transition lost its receipt-root owner"))?
+            .revalidate_lineage(lineage)?;
+        // The S1 stable mount census, exact EjectedZero collector, issue store,
+        // epoch and receipt-root generation have all replayed successfully.
+        stable.poisoned = false;
+        Ok(stable)
+    }
+}
+
 impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmountCallbackV3> {
     /// Consume the internally retained positive runner callback and append the
     /// exact durable lifecycle callback.  No callback DTO, effect ID, digest,
@@ -4658,6 +4997,93 @@ impl<'a, 'e> SuccessfulIssuedEffectDeathProvedV3<'a, 'e, PersistedUnmountEffectV
             poisoned: false,
             prepared,
             receipt_root_owner: Some(receipt_root_owner),
+            restart,
+            runner_callback: Some(callback),
+            store,
+            _state: PhantomData,
+            _not_send_or_sync: PhantomData,
+        };
+        pending.revalidate_pending_issue()?;
+        Ok(pending)
+    }
+}
+
+impl<'a, 'e> SuccessfulIssuedEffectDeathProvedV3<'a, 'e, PersistedEjectEffectV3> {
+    /// The only production route into PendingEject. The collector plan was
+    /// armed before dispatch, so replay here accepts exactly the retained
+    /// before inventory or its uniquely derived expected-after inventory and
+    /// never requires the ejected IOMedia group to remain live.
+    pub(crate) fn into_pending_eject(
+        mut self,
+    ) -> Result<
+        PendingEjectReconciliationOperationStoreV3<'a, 'e, AwaitingEjectCallbackV3>,
+        DurableLifecycleStoreErrorV3,
+    > {
+        let callback = self
+            .completion
+            .take()
+            .ok_or_else(|| invalid("positive eject completion was already consumed"))?
+            .into_callback_success()?;
+        let mut grant = self
+            .grant
+            .take()
+            .ok_or_else(|| invalid("positive eject completion lost its whole-store grant"))?;
+        grant.revalidate()?;
+        let mut plan = grant
+            .plan
+            .take()
+            .ok_or_else(|| invalid("positive eject completion lost its armed expectation"))?;
+        if plan.unmount.is_some() {
+            return Err(invalid(
+                "positive eject completion contains an unmount collector plan",
+            ));
+        }
+        let eject = plan
+            .eject
+            .take()
+            .ok_or_else(|| invalid("positive eject completion lost its eject expectation"))?;
+        eject.revalidate_pending()?;
+        let store = grant
+            .store
+            .take()
+            .ok_or_else(|| invalid("positive eject completion lost its operation store"))?;
+        let issued = grant
+            .issued
+            .take()
+            .ok_or_else(|| invalid("positive eject completion lost its adopted issue"))?;
+        if grant.runner.is_some() || grant.dispatch.is_some() {
+            return Err(invalid(
+                "positive eject completion retained an unused pre-runner or dispatch seal",
+            ));
+        }
+        store.revalidate_issued_transition(&issued)?;
+        eject.validate_issued_binding(&issued.operation_nonce, &issued.command_sha256)?;
+        let ReconciliationOperationStoreV3 {
+            census,
+            epoch,
+            journal,
+            poisoned: _,
+            prepared,
+            collector,
+            receipt_root_owner: prior_owner,
+            issues,
+            restart,
+            store,
+        } = store;
+        if collector.is_some() || prior_owner.is_some() {
+            return Err(invalid(
+                "typed eject grant duplicated collector ownership outside its expectation",
+            ));
+        }
+        let pending = PendingEjectReconciliationOperationStoreV3 {
+            census,
+            eject: Some(eject),
+            epoch,
+            issued,
+            issues,
+            journal,
+            poisoned: false,
+            prepared,
             restart,
             runner_callback: Some(callback),
             store,

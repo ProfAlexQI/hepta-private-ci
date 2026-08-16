@@ -438,6 +438,10 @@ pub enum DisposableLifecycleEventV2 {
     EjectObserved {
         effect_id: u64,
         iomedia_absence_sha256: String,
+        /// Historical records legitimately omit this projection. New
+        /// prepared-manifest V3 records may only reach the reducer through a
+        /// sealed retained collector observation and must carry the exact
+        /// next receipt-root generation.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         collector: Option<PostEffectCollectorBindingV3>,
     },

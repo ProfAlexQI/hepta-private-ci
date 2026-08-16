@@ -296,6 +296,86 @@ assert_not_impl_any!(
         From<String>
 );
 assert_not_impl_any!(
+    ArmedEjectExpectationV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<RestartIOMediaInventoryV3>,
+        From<ExactDisposableCommandV3>,
+        From<String>
+);
+assert_not_impl_any!(
+    PendingEjectCollectorObservationV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<RestartIOMediaInventoryV3>,
+        From<ExactDisposableCommandV3>,
+        From<String>
+);
+assert_not_impl_any!(
+    UnadoptedEjectObservationV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<RestartIOMediaInventoryV3>,
+        From<ExactDisposableCommandV3>,
+        From<String>
+);
+assert_not_impl_any!(
+    EjectObservationAfterTransferV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<RestartIOMediaInventoryV3>,
+        From<ExactDisposableCommandV3>,
+        From<String>
+);
+assert_not_impl_any!(
+    SealedUnadoptedEjectObservationV3<'static>:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<RestartIOMediaInventoryV3>,
+        From<ExactDisposableCommandV3>,
+        From<String>
+);
+assert_not_impl_any!(
     SealedCollectorEffectIssuePlanV3<'static, PersistedUnmountEffectV3>:
         Clone,
         Send,
@@ -1352,6 +1432,176 @@ fn current_boot_expected_absence_is_full_exact_and_unique_subtraction_is_closed_
             &foreign_member,
         )
         .is_err()
+    );
+}
+
+#[test]
+fn eject_inventory_endpoints_are_exact_before_or_complete_unique_group_subtraction() {
+    let path = "/private/tmp/hepta.img";
+    let prepared = synthetic_backing(path);
+    let unrelated = object(1, "disk1", None);
+    let first_member = object(10, "disk10", Some(candidate(100, path)));
+    let second_member = object(11, "disk10s1", Some(candidate(100, path)));
+    let before = inventory(vec![
+        unrelated.clone(),
+        first_member.clone(),
+        second_member.clone(),
+    ]);
+    let groups = classify_matching_groups(&before, &prepared).unwrap();
+    let [group] = groups.as_slice() else {
+        panic!("synthetic eject source must contain exactly one matching group");
+    };
+    let expected_after = derive_current_expected_absence_v3(
+        &before,
+        &ReconciliationMatchV2::Unique { mounted: false },
+        std::slice::from_ref(group),
+    )
+    .unwrap()
+    .expect("unique attached state derives an exact expected-after inventory");
+    assert_eq!(expected_after, inventory(vec![unrelated.clone()]));
+
+    validate_eject_inventory_endpoint(
+        &before,
+        &expected_after,
+        group,
+        &before,
+        EjectInventoryEndpointV3::Pending,
+    )
+    .unwrap();
+    validate_eject_inventory_endpoint(
+        &before,
+        &expected_after,
+        group,
+        &expected_after,
+        EjectInventoryEndpointV3::Pending,
+    )
+    .unwrap();
+    assert!(
+        validate_eject_inventory_endpoint(
+            &before,
+            &expected_after,
+            group,
+            &before,
+            EjectInventoryEndpointV3::ExpectedAfter,
+        )
+        .is_err()
+    );
+    validate_eject_inventory_endpoint(
+        &before,
+        &expected_after,
+        group,
+        &expected_after,
+        EjectInventoryEndpointV3::ExpectedAfter,
+    )
+    .unwrap();
+
+    let partial_group_removal = inventory(vec![unrelated.clone(), second_member]);
+    assert!(
+        validate_eject_inventory_endpoint(
+            &before,
+            &expected_after,
+            group,
+            &partial_group_removal,
+            EjectInventoryEndpointV3::Pending,
+        )
+        .is_err()
+    );
+
+    let unrelated_removed = inventory(Vec::new());
+    assert!(
+        validate_eject_inventory_endpoint(
+            &before,
+            &expected_after,
+            group,
+            &unrelated_removed,
+            EjectInventoryEndpointV3::ExpectedAfter,
+        )
+        .is_err()
+    );
+
+    let unrelated_added = inventory(vec![unrelated.clone(), object(20, "disk20", None)]);
+    assert!(
+        validate_eject_inventory_endpoint(
+            &before,
+            &expected_after,
+            group,
+            &unrelated_added,
+            EjectInventoryEndpointV3::ExpectedAfter,
+        )
+        .is_err()
+    );
+
+    let mut unrelated_property_drift = expected_after.clone();
+    unrelated_property_drift.objects[0]
+        .provenance
+        .disk_arbitration
+        .internal = Some(false);
+    validate_restart_iomedia_inventory_v3(&unrelated_property_drift).unwrap();
+    assert!(
+        validate_eject_inventory_endpoint(
+            &before,
+            &expected_after,
+            group,
+            &unrelated_property_drift,
+            EjectInventoryEndpointV3::ExpectedAfter,
+        )
+        .is_err()
+    );
+
+    let mut wrong_expected_after = expected_after.clone();
+    wrong_expected_after.objects.push(first_member);
+    assert!(
+        validate_eject_inventory_endpoint(
+            &before,
+            &wrong_expected_after,
+            group,
+            &wrong_expected_after,
+            EjectInventoryEndpointV3::ExpectedAfter,
+        )
+        .is_err()
+    );
+
+    let mut foreign_boot = expected_after.clone();
+    foreign_boot.boot_session_uuid = "87654321-4321-4321-8321-cba987654321".to_string();
+    assert!(
+        validate_eject_inventory_endpoint(
+            &before,
+            &expected_after,
+            group,
+            &foreign_boot,
+            EjectInventoryEndpointV3::ExpectedAfter,
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn eject_mount_endpoint_rejects_any_change_while_iomedia_disappears() {
+    let unchanged = vec![synthetic_mount(
+        [1, 1],
+        "/dev/disk1s1",
+        "/private/tmp/unrelated-mount",
+        0,
+    )];
+    validate_eject_mount_endpoint(&unchanged, &unchanged, &unchanged, &unchanged, true, true)
+        .unwrap();
+
+    let mut changed = unchanged.clone();
+    changed[0].mount_flags = libc::MNT_RDONLY as u64;
+    assert!(
+        validate_eject_mount_endpoint(&unchanged, &unchanged, &changed, &changed, true, true)
+            .is_err()
+    );
+    assert!(
+        validate_eject_mount_endpoint(&unchanged, &unchanged, &unchanged, &[], true, true).is_err()
+    );
+    assert!(
+        validate_eject_mount_endpoint(&unchanged, &unchanged, &unchanged, &unchanged, false, true)
+            .is_err()
+    );
+    assert!(
+        validate_eject_mount_endpoint(&unchanged, &unchanged, &unchanged, &unchanged, true, false)
+            .is_err()
     );
 }
 

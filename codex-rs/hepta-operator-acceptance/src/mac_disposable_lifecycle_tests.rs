@@ -683,6 +683,123 @@ fn v3_restart_post_effect_binding_is_exact_and_cannot_be_omitted_or_transplanted
     .expect("exact post-unmount binding");
 }
 
+#[test]
+fn v3_restart_eject_observation_rejects_forged_none_and_advances_exact_receipt_generation() {
+    let operation_nonce = digest('3');
+    let boot = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let epoch = digest('4');
+    let iomedia_absence = digest('7');
+    let mut first_snapshot = snapshot(
+        &operation_nonce,
+        boot,
+        &epoch,
+        101,
+        '5',
+        ReconciliationMatchV2::Unique { mounted: false },
+    );
+    first_snapshot.collector_receipt_file =
+        Some(receipt_file_binding('5', 2, receipt_root_binding(1, 3), 1));
+    let first_snapshot_sha256 =
+        reconciliation_snapshot_sha256(&first_snapshot).expect("first snapshot digest");
+
+    let mut records = Vec::new();
+    let mut initial = DisposableLifecycleJournalV2::new(&operation_nonce).expect("journal");
+    append(
+        &mut initial,
+        &mut records,
+        prepared_v3_with_receipt_root(receipt_root_binding(1, 2)),
+    )
+    .expect("V3 prepare");
+    let mut resumed =
+        DisposableLifecycleJournalV2::resume_for_reconciliation(&records).expect("restart");
+    append(&mut resumed, &mut records, restart(boot, 100, &epoch)).expect("epoch");
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::ReconciliationSnapshotObserved {
+            snapshot: first_snapshot,
+        },
+    )
+    .expect("snapshot");
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::EjectIssuedOrUncertain {
+            effect_id: 1,
+            purpose: EffectPurposeV2::Reconciliation,
+        },
+    )
+    .expect("issue");
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::EjectCallbackObserved {
+            effect_id: 1,
+            outcome: CallbackOutcomeV2::Succeeded,
+        },
+    )
+    .expect("callback");
+
+    let forged_none_bytes = canonical_json(&serde_json::json!({
+        "kind": "eject_observed",
+        "value": {
+            "effect_id": 1,
+            "iomedia_absence_sha256": iomedia_absence,
+        },
+    }))
+    .expect("forged legacy-shaped EjectObserved");
+    let forged_none: DisposableLifecycleEventV2 =
+        serde_json::from_slice(&forged_none_bytes).expect("legacy projection remains replayable");
+    assert!(matches!(
+        &forged_none,
+        DisposableLifecycleEventV2::EjectObserved {
+            collector: None,
+            ..
+        }
+    ));
+    assert!(
+        append(&mut resumed.clone(), &mut records.clone(), forged_none).is_err(),
+        "prepared-manifest V3 accepted a forged collector omission"
+    );
+
+    let mut exact = post_effect_binding(
+        &operation_nonce,
+        boot,
+        &epoch,
+        &first_snapshot_sha256,
+        '6',
+        &iomedia_absence,
+    );
+    exact.collector_receipt_file =
+        Some(receipt_file_binding('6', 3, receipt_root_binding(1, 4), 2));
+    let exact_event = DisposableLifecycleEventV2::EjectObserved {
+        effect_id: 1,
+        iomedia_absence_sha256: iomedia_absence,
+        collector: Some(exact),
+    };
+    let exact_bytes = canonical_json(&exact_event).expect("canonical exact EjectObserved");
+    let exact_text = String::from_utf8(exact_bytes.clone()).expect("UTF-8 canonical event");
+    assert!(exact_text.contains("collector_receipt_file"));
+    assert_eq!(
+        serde_json::from_slice::<DisposableLifecycleEventV2>(&exact_bytes)
+            .expect("round-trip exact EjectObserved"),
+        exact_event
+    );
+    append(&mut resumed, &mut records, exact_event).expect("exact post-eject binding");
+    let (ready_snapshot, ready_expected_absence) = resumed
+        .restart_fresh_absence_binding()
+        .expect("exact post-eject binding advances the reducer to Ejected");
+    assert_eq!(ready_snapshot, first_snapshot_sha256);
+    assert_eq!(ready_expected_absence, digest('8'));
+
+    let roster = collector_receipt_file_roster_v3(&records).expect("exact collector roster");
+    assert_eq!(roster.len(), 2);
+    assert_eq!(roster[0].root_generation_ordinal, 1);
+    assert_eq!(roster[1].root_generation_ordinal, 2);
+    assert_eq!(roster[0].canonical_sha256, digest('5'));
+    assert_eq!(roster[1].canonical_sha256, digest('6'));
+}
+
 fn full_flow(operation_nonce: &str) -> Vec<DisposableLifecycleEventV2> {
     let observation = absence(operation_nonce, "12345678-1234-1234-1234-123456789abc", 10);
     let absence_digest = fresh_absence_sha256(&observation).expect("absence digest");
