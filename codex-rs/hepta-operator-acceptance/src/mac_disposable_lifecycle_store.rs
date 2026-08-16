@@ -4949,23 +4949,27 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
                     ..
                 },
                 Some(retained),
-            ) if prepared_manifest
-                == &PreparedCollectorManifestBindingV3 {
-                    birthtime_nanoseconds: retained.binding.birthtime_nsec,
-                    birthtime_seconds: retained.binding.birthtime_sec,
-                    dev: retained.binding.dev,
-                    generation: retained.binding.generation,
-                    inode: retained.binding.ino,
-                    receipt_root_initial: if prepared_manifest.receipt_root_initial.is_some() {
-                        lifecycle_manifest_initial_receipt_root_binding(
-                            &retained.bytes,
-                            &PreparedCollectorLifecycleSealV3 { _private: () },
-                        )?
-                    } else {
-                        None
-                    },
-                    sha256: retained.digest.clone(),
-                } =>
+            ) if {
+                // The sidecar is the source of truth for whether the exact
+                // receipt-root endpoint is present.  Never let the lifecycle
+                // projection decide whether we inspect that sidecar field:
+                // doing so would make Some/None and None/Some mismatches
+                // indistinguishable until later external-path replay.
+                let actual_receipt_root_initial = lifecycle_manifest_initial_receipt_root_binding(
+                    &retained.bytes,
+                    &PreparedCollectorLifecycleSealV3 { _private: () },
+                )?;
+                prepared_manifest
+                    == &PreparedCollectorManifestBindingV3 {
+                        birthtime_nanoseconds: retained.binding.birthtime_nsec,
+                        birthtime_seconds: retained.binding.birthtime_sec,
+                        dev: retained.binding.dev,
+                        generation: retained.binding.generation,
+                        inode: retained.binding.ino,
+                        receipt_root_initial: actual_receipt_root_initial,
+                        sha256: retained.digest.clone(),
+                    }
+            } =>
             {
                 Ok(())
             }
@@ -4993,18 +4997,13 @@ impl<M: StoreModeV3> DurableLifecycleStoreV3<M> {
         let inspection = inspect_lifecycle_v2(&lifecycle)?;
         match (self.format, self.prepared_manifest.as_ref()) {
             (OperationFormatV3::RequiredPreparedManifestV3, Some(retained)) => {
-                let receipt_root_initial = if inspection
-                    .prepared_manifest
-                    .as_ref()
-                    .is_some_and(|binding| binding.receipt_root_initial.is_some())
-                {
-                    lifecycle_manifest_initial_receipt_root_binding(
-                        &retained.bytes,
-                        &PreparedCollectorLifecycleSealV3 { _private: () },
-                    )?
-                } else {
-                    None
-                };
+                // Parse the retained sidecar unconditionally.  A lifecycle
+                // record cannot suppress a real root binding with None, or
+                // invent one for a legacy sidecar with Some.
+                let receipt_root_initial = lifecycle_manifest_initial_receipt_root_binding(
+                    &retained.bytes,
+                    &PreparedCollectorLifecycleSealV3 { _private: () },
+                )?;
                 let expected = PreparedCollectorManifestBindingV3 {
                     birthtime_nanoseconds: retained.binding.birthtime_nsec,
                     birthtime_seconds: retained.binding.birthtime_sec,

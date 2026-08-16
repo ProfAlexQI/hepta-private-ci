@@ -99,6 +99,65 @@ fn prepared_v3_with_receipt_root(initial: FilesystemObjectBindingV3) -> Disposab
     event
 }
 
+fn receipt_generation_records(bindings: &[CollectorReceiptFileBindingV3]) -> Vec<Vec<u8>> {
+    assert!(bindings.len() <= 2, "test helper only models G0 through G2");
+    let operation_nonce = digest('3');
+    let boot = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let epoch = digest('4');
+    let mut initial = DisposableLifecycleJournalV2::new(&operation_nonce).unwrap();
+    let mut records = Vec::new();
+    append(
+        &mut initial,
+        &mut records,
+        prepared_v3_with_receipt_root(receipt_root_binding(1, 2)),
+    )
+    .unwrap();
+    let mut resumed = DisposableLifecycleJournalV2::resume_for_reconciliation(&records).unwrap();
+    append(&mut resumed, &mut records, restart(boot, 100, &epoch)).unwrap();
+
+    let Some(first) = bindings.first() else {
+        return records;
+    };
+    let mut first_snapshot = snapshot(
+        &operation_nonce,
+        boot,
+        &epoch,
+        101,
+        '5',
+        ReconciliationMatchV2::Zero,
+    );
+    first_snapshot.collector_receipt_sha256 = first.canonical_sha256.clone();
+    first_snapshot.collector_receipt_file = Some(first.clone());
+    let first_snapshot_sha256 = reconciliation_snapshot_sha256(&first_snapshot).unwrap();
+    append(
+        &mut resumed,
+        &mut records,
+        DisposableLifecycleEventV2::ReconciliationSnapshotObserved {
+            snapshot: first_snapshot,
+        },
+    )
+    .unwrap();
+
+    if let Some(second) = bindings.get(1) {
+        let mut final_absence = absence(&operation_nonce, boot, 104);
+        final_absence.collector_receipt_sha256 = second.canonical_sha256.clone();
+        final_absence.collector_receipt_file = Some(second.clone());
+        final_absence.current_expected_absence_inventory_sha256 = Some(digest('6'));
+        final_absence.iomedia_evidence_sha256 = digest('6');
+        final_absence.reconciliation_snapshot_sha256 = Some(first_snapshot_sha256);
+        final_absence.restart_epoch_nonce = Some(epoch);
+        append(
+            &mut resumed,
+            &mut records,
+            DisposableLifecycleEventV2::FreshAbsenceObserved {
+                observation: final_absence,
+            },
+        )
+        .unwrap();
+    }
+    records
+}
+
 fn post_effect_binding(
     operation_nonce: &str,
     boot_session_uuid: &str,
@@ -286,6 +345,75 @@ fn receipt_root_generations_g0_g1_g2_replay_in_record_order() {
     assert_eq!(roster, [first, second]);
     DisposableLifecycleJournalV2::resume_for_reconciliation(&records)
         .expect("G2 replay must retain the exact first G1 reference");
+}
+
+#[test]
+fn exact_receipt_append_accepts_only_zero_or_one_exact_generation() {
+    let first = receipt_file_binding('5', 2, receipt_root_binding(1, 3), 1);
+    let second = receipt_file_binding('f', 3, receipt_root_binding(1, 4), 2);
+    let g0 = receipt_generation_records(&[]);
+    let g1 = receipt_generation_records(std::slice::from_ref(&first));
+    let g2 = receipt_generation_records(&[first.clone(), second.clone()]);
+
+    assert_eq!(exact_collector_receipt_append_v3(&g0, &g0).unwrap(), None);
+    assert_eq!(
+        exact_collector_receipt_append_v3(&g0, &g1).unwrap(),
+        Some(first.clone())
+    );
+    assert_eq!(
+        exact_collector_receipt_append_v3(&g1, &g2).unwrap(),
+        Some(second)
+    );
+    assert!(
+        exact_collector_receipt_append_v3(&g0, &g2).is_err(),
+        "skipping a receipt-root generation must be rejected"
+    );
+}
+
+#[test]
+fn exact_receipt_append_rejects_reorder_and_mutated_prior_binding() {
+    let first = receipt_file_binding('5', 2, receipt_root_binding(1, 3), 1);
+    let second = receipt_file_binding('f', 3, receipt_root_binding(1, 4), 2);
+    let before_g1 = receipt_generation_records(std::slice::from_ref(&first));
+    let before_g2 = receipt_generation_records(&[first.clone(), second.clone()]);
+
+    let reordered_first = receipt_file_binding('f', 3, receipt_root_binding(1, 3), 1);
+    let reordered_second = receipt_file_binding('5', 2, receipt_root_binding(1, 4), 2);
+    let reordered = receipt_generation_records(&[reordered_first, reordered_second]);
+    assert!(
+        exact_collector_receipt_append_v3(&before_g2, &reordered).is_err(),
+        "a separately valid reordered lineage must not replace the retained prefix"
+    );
+
+    let mut mutated_first = first;
+    mutated_first.root_after.ctime_nanoseconds += 1;
+    let mutated_prior = receipt_generation_records(&[mutated_first, second]);
+    assert!(
+        exact_collector_receipt_append_v3(&before_g1, &mutated_prior).is_err(),
+        "a separately valid same-digest prior binding mutation must be rejected"
+    );
+}
+
+#[test]
+fn exact_receipt_append_replays_legacy_without_changing_canonical_bytes() {
+    let operation_nonce = digest('3');
+    let mut journal = DisposableLifecycleJournalV2::new(&operation_nonce).unwrap();
+    let mut legacy = Vec::new();
+    append(&mut journal, &mut legacy, prepared()).unwrap();
+    let original = legacy.clone();
+
+    assert_eq!(
+        exact_collector_receipt_append_v3(&legacy, &legacy).unwrap(),
+        None
+    );
+    assert_eq!(legacy, original);
+    let replayed: DisposableLifecycleRecordV2 = serde_json::from_slice(&legacy[0]).unwrap();
+    assert_eq!(canonical_record(&replayed).unwrap(), legacy[0]);
+    assert!(
+        !String::from_utf8(legacy[0].clone())
+            .unwrap()
+            .contains("collector_receipt_file")
+    );
 }
 
 #[test]

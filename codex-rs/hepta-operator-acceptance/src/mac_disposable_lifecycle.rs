@@ -1655,6 +1655,33 @@ pub(crate) fn collector_receipt_file_roster_v3(
     Ok(result)
 }
 
+/// Replay both lifecycle chains and prove that `after` contains either the
+/// exact same collector-receipt lineage or exactly one appended generation.
+///
+/// The returned binding is the sole appended receipt, when one exists. This
+/// deliberately compares the complete retained bindings rather than only
+/// their digest or generation ordinal.
+pub(crate) fn exact_collector_receipt_append_v3(
+    before: &[Vec<u8>],
+    after: &[Vec<u8>],
+) -> Result<Option<CollectorReceiptFileBindingV3>, LifecycleErrorV2> {
+    let before_roster = collector_receipt_file_roster_v3(before)?;
+    let after_roster = collector_receipt_file_roster_v3(after)?;
+    let maximum_after_len = before_roster
+        .len()
+        .checked_add(1)
+        .ok_or_else(|| invalid("collector receipt lineage length overflowed"))?;
+    if after_roster.len() < before_roster.len()
+        || after_roster.len() > maximum_after_len
+        || !after_roster.starts_with(&before_roster)
+    {
+        return Err(invalid(
+            "collector receipt lineage is not an exact zero-or-one append",
+        ));
+    }
+    Ok(after_roster.get(before_roster.len()).cloned())
+}
+
 fn replay(records: &[Vec<u8>]) -> Result<DisposableLifecycleJournalV2, LifecycleErrorV2> {
     if records.is_empty() {
         return Err(invalid("lifecycle contains no records"));
