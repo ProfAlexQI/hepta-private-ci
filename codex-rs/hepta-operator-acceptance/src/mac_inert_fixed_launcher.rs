@@ -179,14 +179,22 @@ impl FixedInertRunnerBindingV3 {
             if self.strict_production_policy {
                 verify_acl_absent(retained.descriptor.as_raw_fd())?;
             }
-            if identity != retained.identity {
+            if !retained_directory_identity_matches(
+                &retained.identity,
+                &identity,
+                self.strict_production_policy,
+            ) {
                 return Err(invalid("retained fixed runner ancestor changed"));
             }
         }
 
         let fresh_root = open_cstr(c"/", libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC)?;
         let fresh_root_identity = file_identity(fresh_root.as_raw_fd())?;
-        if fresh_root_identity != self.parent_chain[0].identity {
+        if !retained_directory_identity_matches(
+            &self.parent_chain[0].identity,
+            &fresh_root_identity,
+            self.strict_production_policy,
+        ) {
             return Err(invalid("named root differs from retained root"));
         }
         if self.strict_production_policy {
@@ -203,7 +211,12 @@ impl FixedInertRunnerBindingV3 {
                 component,
                 libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
             )?;
-            if file_identity(fresh.as_raw_fd())? != retained.identity {
+            let fresh_identity = file_identity(fresh.as_raw_fd())?;
+            if !retained_directory_identity_matches(
+                &retained.identity,
+                &fresh_identity,
+                self.strict_production_policy,
+            ) {
                 return Err(invalid("named fixed runner ancestor was replaced"));
             }
             if self.strict_production_policy {
@@ -355,6 +368,29 @@ fn validate_directory_policy(identity: &FixedFileIdentityV3, strict: bool) -> io
         ));
     }
     Ok(())
+}
+
+fn retained_directory_identity_matches(
+    expected: &FixedFileIdentityV3,
+    observed: &FixedFileIdentityV3,
+    strict: bool,
+) -> bool {
+    if strict {
+        return expected == observed;
+    }
+    // Test runners live below a shared TMPDIR. Unrelated parallel TempDir
+    // creation legitimately changes ancestor ctime/mtime/nlink/size, but it
+    // must never permit an ancestor inode or policy replacement. Production
+    // remains strict and compares the complete identity above.
+    expected.birthtime_nanoseconds == observed.birthtime_nanoseconds
+        && expected.device == observed.device
+        && expected.file_type_and_mode == observed.file_type_and_mode
+        && expected.flags == observed.flags
+        && expected.generation == observed.generation
+        && expected.group == observed.group
+        && expected.inode == observed.inode
+        && expected.owner == observed.owner
+        && expected.rdev == observed.rdev
 }
 
 fn validate_binary_policy(
@@ -553,6 +589,12 @@ mod tests {
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
+    fn test_lock() -> std::sync::MutexGuard<'static, ()> {
+        TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     fn copied_runner() -> (TempDir, PathBuf) {
         let directory = TempDir::new().expect("fixed runner test root");
         let parent = directory.path().join("trusted");
@@ -570,7 +612,7 @@ mod tests {
 
     #[test]
     fn fixed_binding_rejects_wrong_packaging_digest() {
-        let _guard = TEST_LOCK.lock().expect("fixed launcher test lock");
+        let _guard = test_lock();
         let (_directory, runner) = copied_runner();
         let error =
             FixedInertRunnerBindingV3::open_for_test_with_expected(&runner, &"00".repeat(32))
@@ -581,7 +623,7 @@ mod tests {
 
     #[test]
     fn fixed_binding_rejects_same_bytes_at_a_replacement_inode() {
-        let _guard = TEST_LOCK.lock().expect("fixed launcher test lock");
+        let _guard = test_lock();
         let (_directory, runner) = copied_runner();
         let binding = FixedInertRunnerBindingV3::open_for_test(&runner).expect("fixed binding");
         let displaced = runner.with_extension("displaced");
@@ -594,7 +636,7 @@ mod tests {
 
     #[test]
     fn fixed_binding_rejects_a_replaced_parent_directory() {
-        let _guard = TEST_LOCK.lock().expect("fixed launcher test lock");
+        let _guard = test_lock();
         let (directory, runner) = copied_runner();
         let binding = FixedInertRunnerBindingV3::open_for_test(&runner).expect("fixed binding");
         let retained_parent = runner.parent().expect("runner parent");
@@ -609,8 +651,40 @@ mod tests {
     }
 
     #[test]
+    fn non_strict_test_ancestors_ignore_namespace_counters_but_not_identity() {
+        let _guard = test_lock();
+        let (_directory, runner) = copied_runner();
+        let parent = File::open(runner.parent().expect("runner parent"))
+            .expect("open fixed runner test parent");
+        let expected = file_identity(parent.as_raw_fd()).expect("test parent identity");
+        let mut namespace_churn = expected.clone();
+        namespace_churn.ctime_nanoseconds = namespace_churn.ctime_nanoseconds.saturating_add(1);
+        namespace_churn.mtime_nanoseconds = namespace_churn.mtime_nanoseconds.saturating_add(1);
+        namespace_churn.link_count = namespace_churn.link_count.saturating_add(1);
+        namespace_churn.size = namespace_churn.size.saturating_add(1);
+        assert!(retained_directory_identity_matches(
+            &expected,
+            &namespace_churn,
+            false,
+        ));
+        assert!(!retained_directory_identity_matches(
+            &expected,
+            &namespace_churn,
+            true,
+        ));
+
+        let mut replacement = expected.clone();
+        replacement.inode = replacement.inode.saturating_add(1);
+        assert!(!retained_directory_identity_matches(
+            &expected,
+            &replacement,
+            false,
+        ));
+    }
+
+    #[test]
     fn fixed_binding_rejects_every_binary_special_mode_bit() {
-        let _guard = TEST_LOCK.lock().expect("fixed launcher test lock");
+        let _guard = test_lock();
         for special in [libc::S_ISUID, libc::S_ISGID, libc::S_ISVTX] {
             let (_directory, runner) = copied_runner();
             fs::set_permissions(
@@ -624,7 +698,7 @@ mod tests {
 
     #[test]
     fn closed_world_mapping_is_exact_and_alias_free() {
-        let _guard = TEST_LOCK.lock().expect("fixed launcher test lock");
+        let _guard = test_lock();
         let sources = [
             File::open("/dev/null").expect("first source"),
             File::open("/dev/null").expect("second source"),

@@ -1431,9 +1431,13 @@ fn partial_hello_prefix_hits_one_absolute_startup_deadline() {
         "unexpected partial-hello startup error: {error:?}",
     );
     let elapsed = started.elapsed();
+    // This wall-clock span deliberately includes fixed-runner admission
+    // (multiple full-binary hashes) and bounded child reap. The exact 100 ms
+    // startup relation is covered deterministically below; this is only a
+    // liveness watchdog proving that the 30-second partial child was killed.
     assert!(
-        elapsed < Duration::from_secs(5),
-        "partial-hello startup deadline took {elapsed:?}",
+        elapsed < Duration::from_secs(10),
+        "partial-hello startup cleanup exceeded its liveness watchdog: {elapsed:?}",
     );
     drop(lease);
     let contender = OpenOptions::new()
