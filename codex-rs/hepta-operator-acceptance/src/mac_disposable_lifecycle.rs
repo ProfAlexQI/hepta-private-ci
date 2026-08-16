@@ -200,6 +200,230 @@ impl CollectorReceiptFileBindingV3 {
     }
 }
 
+/// Durable lifecycle link for one retained collector observation in the
+/// terminal namespace-absence lineage.  This is a serializable projection,
+/// not a capability: production append remains sealed by the lifecycle store.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TerminalCollectorLineageV3 {
+    pub(crate) collector_receipt_sha256: String,
+    pub(crate) lifecycle_record_sha256: String,
+    pub(crate) lifecycle_sequence: u32,
+    pub(crate) observation_sha256: String,
+}
+
+impl TerminalCollectorLineageV3 {
+    pub(crate) fn new(
+        collector_receipt_sha256: String,
+        lifecycle_record_sha256: String,
+        lifecycle_sequence: u32,
+        observation_sha256: String,
+    ) -> Result<Self, LifecycleErrorV2> {
+        let value = Self {
+            collector_receipt_sha256,
+            lifecycle_record_sha256,
+            lifecycle_sequence,
+            observation_sha256,
+        };
+        validate_terminal_collector_lineage_v3(&value, "terminal collector lineage")?;
+        Ok(value)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TerminalLatestZeroKindV3 {
+    FirstSnapshot,
+    PostEject,
+}
+
+/// Exact V2 restart-start and V3 restart-admission lineage carried forward to
+/// the terminal FreshAbsence observation.  The admission digest is checked
+/// against its retained sidecar by the lifecycle store; the reducer also
+/// cross-binds the V2 start record, prepared manifest, operation, boot, and
+/// restart epoch that it can independently replay.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TerminalRestartAdmissionLineageV3 {
+    pub(crate) prepared_manifest_sha256: String,
+    pub(crate) prepared_profile_sha256: String,
+    pub(crate) process_epoch_sha256: String,
+    pub(crate) restart_admission_sha256: String,
+    pub(crate) restart_started_lifecycle_record_sha256: String,
+    pub(crate) restart_started_lifecycle_sequence: u32,
+}
+
+impl TerminalRestartAdmissionLineageV3 {
+    pub(crate) fn new(
+        prepared_manifest_sha256: String,
+        prepared_profile_sha256: String,
+        process_epoch_sha256: String,
+        restart_admission_sha256: String,
+        restart_started_lifecycle_record_sha256: String,
+        restart_started_lifecycle_sequence: u32,
+    ) -> Result<Self, LifecycleErrorV2> {
+        let value = Self {
+            prepared_manifest_sha256,
+            prepared_profile_sha256,
+            process_epoch_sha256,
+            restart_admission_sha256,
+            restart_started_lifecycle_record_sha256,
+            restart_started_lifecycle_sequence,
+        };
+        validate_terminal_restart_admission_lineage_v3(&value)?;
+        Ok(value)
+    }
+}
+
+/// Exact retained evidence for the two crash-distinct backing-absence cases.
+/// A live unlink proves the original retained inode reached `nlink == 0`;
+/// recovery proves only that the prepared canonical basename is absent.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "binding", rename_all = "snake_case")]
+pub(crate) enum TerminalBackingAbsenceEvidenceV3 {
+    LiveUnlinked(crate::mac_iomedia_identity::UnlinkedBackingBindingV3),
+    RecoveredPathAbsent(crate::mac_iomedia_identity::BackingPathAbsenceBindingV3),
+}
+
+/// Exact retained artifact-root endpoints around the externally observed
+/// removal of the sole prepared backing basename.  Endpoint equality does not
+/// claim that no transient third-party namespace churn occurred between them.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TerminalArtifactNamespaceDeltaV3 {
+    pub(crate) after_entries: Vec<String>,
+    pub(crate) after_root: crate::mac_iomedia_identity::FilesystemObjectBindingV3,
+    pub(crate) authority: DisposableAuthorityV2,
+    pub(crate) backing_basename: String,
+    pub(crate) before_entries: Vec<String>,
+    pub(crate) before_root: crate::mac_iomedia_identity::FilesystemObjectBindingV3,
+}
+
+impl TerminalArtifactNamespaceDeltaV3 {
+    pub(crate) fn from_retained_endpoints(
+        backing_basename: String,
+        before_root: crate::mac_iomedia_identity::FilesystemObjectBindingV3,
+        before_entries: Vec<String>,
+        after_root: crate::mac_iomedia_identity::FilesystemObjectBindingV3,
+        after_entries: Vec<String>,
+    ) -> Result<Self, LifecycleErrorV2> {
+        let value = Self {
+            after_entries,
+            after_root,
+            authority: DisposableAuthorityV2::none(),
+            backing_basename,
+            before_entries,
+            before_root,
+        };
+        validate_terminal_artifact_namespace_delta_v3(&value)?;
+        Ok(value)
+    }
+}
+
+/// Exact predecessor-only closure material embedded in the terminal
+/// FreshAbsence observation.  It deliberately contains no digest or lifecycle
+/// record identity for that FreshAbsence record itself; those values do not
+/// exist until after this projection has been canonicalized and persisted.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TerminalFreshAbsenceBindingV3 {
+    pub(crate) artifact_evidence_sha256: String,
+    pub(crate) artifact_namespace_delta: TerminalArtifactNamespaceDeltaV3,
+    pub(crate) authority: DisposableAuthorityV2,
+    pub(crate) backing_absence: TerminalBackingAbsenceEvidenceV3,
+    pub(crate) boot_session_uuid: String,
+    pub(crate) collector_policy_sha256: String,
+    pub(crate) first: TerminalCollectorLineageV3,
+    pub(crate) fresh_collector_receipt_sha256: String,
+    pub(crate) fresh_iomedia_evidence_sha256: String,
+    pub(crate) fresh_mount_evidence_sha256: String,
+    pub(crate) fresh_receipt_root_generation: u32,
+    pub(crate) latest: TerminalCollectorLineageV3,
+    pub(crate) latest_zero_kind: TerminalLatestZeroKindV3,
+    pub(crate) operation_nonce: String,
+    pub(crate) prepared_backing_exact_sha256: String,
+    pub(crate) restart: TerminalRestartAdmissionLineageV3,
+    pub(crate) restart_epoch_nonce: String,
+}
+
+impl TerminalFreshAbsenceBindingV3 {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_retained_projection(
+        operation_nonce: String,
+        boot_session_uuid: String,
+        restart_epoch_nonce: String,
+        collector_policy_sha256: String,
+        prepared_backing_exact_sha256: String,
+        restart: TerminalRestartAdmissionLineageV3,
+        first: TerminalCollectorLineageV3,
+        latest_zero_kind: TerminalLatestZeroKindV3,
+        latest: TerminalCollectorLineageV3,
+        backing_absence: TerminalBackingAbsenceEvidenceV3,
+        artifact_namespace_delta: TerminalArtifactNamespaceDeltaV3,
+        artifact_evidence_sha256: String,
+        fresh_collector_receipt_sha256: String,
+        fresh_receipt_root_generation: u32,
+        fresh_iomedia_evidence_sha256: String,
+        fresh_mount_evidence_sha256: String,
+    ) -> Result<Self, LifecycleErrorV2> {
+        let value = Self {
+            artifact_evidence_sha256,
+            artifact_namespace_delta,
+            authority: DisposableAuthorityV2::none(),
+            backing_absence,
+            boot_session_uuid,
+            collector_policy_sha256,
+            first,
+            fresh_collector_receipt_sha256,
+            fresh_iomedia_evidence_sha256,
+            fresh_mount_evidence_sha256,
+            fresh_receipt_root_generation,
+            latest,
+            latest_zero_kind,
+            operation_nonce,
+            prepared_backing_exact_sha256,
+            restart,
+            restart_epoch_nonce,
+        };
+        validate_terminal_fresh_absence_binding_shape_v3(&value)?;
+        Ok(value)
+    }
+}
+
+/// Final closure over the already-durable terminal FreshAbsence record.  This
+/// record points only backwards: Fresh receipt -> FreshAbsence V2 record ->
+/// TerminalAbsenceProved V2, avoiding a hash self-reference.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TerminalNamespaceClosureV3 {
+    pub(crate) authority: DisposableAuthorityV2,
+    pub(crate) fresh_absence_collector_receipt_sha256: String,
+    pub(crate) fresh_absence_lifecycle_record_sha256: String,
+    pub(crate) fresh_absence_lifecycle_sequence: u32,
+    pub(crate) fresh_absence_sha256: String,
+    pub(crate) terminal_binding_sha256: String,
+}
+
+impl TerminalNamespaceClosureV3 {
+    pub(crate) fn from_retained_fresh(
+        binding: &TerminalFreshAbsenceBindingV3,
+        fresh_absence_sha256: String,
+        fresh_absence_lifecycle_record_sha256: String,
+        fresh_absence_lifecycle_sequence: u32,
+    ) -> Result<Self, LifecycleErrorV2> {
+        let value = Self {
+            authority: DisposableAuthorityV2::none(),
+            fresh_absence_collector_receipt_sha256: binding.fresh_collector_receipt_sha256.clone(),
+            fresh_absence_lifecycle_record_sha256,
+            fresh_absence_lifecycle_sequence,
+            fresh_absence_sha256,
+            terminal_binding_sha256: terminal_fresh_absence_binding_sha256(binding)?,
+        };
+        validate_terminal_namespace_closure_shape_v3(&value)?;
+        Ok(value)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FreshAbsenceObservationV2 {
@@ -233,6 +457,11 @@ pub struct FreshAbsenceObservationV2 {
     /// Restart epoch that owns the observation.  Fresh-process observations
     /// must leave this empty.
     pub restart_epoch_nonce: Option<String>,
+    /// Exact Stage-E namespace-absence lineage. Historical and forward-flow
+    /// observations omit it byte-for-byte; prepared-manifest restart
+    /// completion requires it and a matching terminal closure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) terminal_binding_v3: Option<TerminalFreshAbsenceBindingV3>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -466,6 +695,8 @@ pub enum DisposableLifecycleEventV2 {
     TerminalAbsenceProved {
         disposition: TerminalDispositionV2,
         fresh_absence_sha256: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        closure_v3: Option<TerminalNamespaceClosureV3>,
     },
 }
 
@@ -570,6 +801,13 @@ enum Mode {
     RestartReconcileOnly,
 }
 
+#[derive(Clone, Copy)]
+struct ReducerRecordContext<'a> {
+    current_record_sha256: &'a str,
+    previous_record_sha256: Option<&'a str>,
+    sequence: u32,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LifecycleProcessModeV2 {
     FreshProcess,
@@ -588,12 +826,18 @@ struct Reducer {
     collector_receipt_root_generation:
         Option<(u32, crate::mac_iomedia_identity::FilesystemObjectBindingV3)>,
     fresh_absence_sha256: Option<String>,
+    fresh_absence_record_sha256: Option<String>,
+    fresh_absence_record_sequence: Option<u32>,
+    fresh_absence_terminal_binding_v3: Option<TerminalFreshAbsenceBindingV3>,
+    first_terminal_collector_lineage_v3: Option<TerminalCollectorLineageV3>,
     epoch_snapshot_seen: bool,
     epoch_snapshot_sha256: Option<String>,
     epoch_snapshot_expected_absence_sha256: Option<String>,
     epoch_snapshot_was_zero: bool,
     is_replay: bool,
     last_effect_id: u64,
+    latest_terminal_zero_kind_v3: Option<TerminalLatestZeroKindV3>,
+    latest_terminal_zero_lineage_v3: Option<TerminalCollectorLineageV3>,
     manual: bool,
     mode: Mode,
     mountpoint_underlying_sha256: Option<String>,
@@ -610,6 +854,8 @@ struct Reducer {
     restart_epoch_nonce: Option<String>,
     restart_epoch_boot_session_uuid: Option<String>,
     restart_epoch_collector_policy_sha256: Option<String>,
+    restart_started_lifecycle_record_sha256: Option<String>,
+    restart_started_lifecycle_sequence: Option<u32>,
     restart_monotonic_nanoseconds: u64,
     terminal: Option<TerminalDispositionV2>,
 }
@@ -625,12 +871,18 @@ impl Reducer {
             collector_policy_sha256: None,
             collector_receipt_root_generation: None,
             fresh_absence_sha256: None,
+            fresh_absence_record_sha256: None,
+            fresh_absence_record_sequence: None,
+            fresh_absence_terminal_binding_v3: None,
+            first_terminal_collector_lineage_v3: None,
             epoch_snapshot_seen: false,
             epoch_snapshot_sha256: None,
             epoch_snapshot_expected_absence_sha256: None,
             epoch_snapshot_was_zero: false,
             is_replay: mode == Mode::Replay,
             last_effect_id: 0,
+            latest_terminal_zero_kind_v3: None,
+            latest_terminal_zero_lineage_v3: None,
             manual: false,
             mode,
             mountpoint_underlying_sha256: None,
@@ -647,12 +899,18 @@ impl Reducer {
             restart_epoch_nonce: None,
             restart_epoch_boot_session_uuid: None,
             restart_epoch_collector_policy_sha256: None,
+            restart_started_lifecycle_record_sha256: None,
+            restart_started_lifecycle_sequence: None,
             restart_monotonic_nanoseconds: 0,
             terminal: None,
         }
     }
 
-    fn apply(&mut self, event: &DisposableLifecycleEventV2) -> Result<(), LifecycleErrorV2> {
+    fn apply(
+        &mut self,
+        event: &DisposableLifecycleEventV2,
+        record: ReducerRecordContext<'_>,
+    ) -> Result<(), LifecycleErrorV2> {
         if self.phase == Phase::Terminal {
             return Err(invalid("record follows the unique terminal record"));
         }
@@ -678,6 +936,11 @@ impl Reducer {
                     | DisposableLifecycleEventV2::Quarantined { .. }
                     | DisposableLifecycleEventV2::TerminalAbsenceProved {
                         disposition: TerminalDispositionV2::Aborted,
+                        ..
+                    }
+                    | DisposableLifecycleEventV2::TerminalAbsenceProved {
+                        disposition: TerminalDispositionV2::Completed,
+                        closure_v3: Some(_),
                         ..
                     }
             )
@@ -840,6 +1103,20 @@ impl Reducer {
                     iomedia_absence_sha256,
                 )?;
                 self.observe_after_callback(*effect_id, EffectKind::Eject, Phase::Ejected)?;
+                if let Some(collector) = collector {
+                    let latest = TerminalCollectorLineageV3 {
+                        collector_receipt_sha256: collector.collector_receipt_sha256.clone(),
+                        lifecycle_record_sha256: record.current_record_sha256.to_string(),
+                        lifecycle_sequence: record.sequence,
+                        observation_sha256: iomedia_absence_sha256.clone(),
+                    };
+                    validate_terminal_collector_lineage_v3(
+                        &latest,
+                        "post-eject terminal collector lineage",
+                    )?;
+                    self.latest_terminal_zero_kind_v3 = Some(TerminalLatestZeroKindV3::PostEject);
+                    self.latest_terminal_zero_lineage_v3 = Some(latest);
+                }
             }
             DisposableLifecycleEventV2::RestartReconciliationStarted {
                 boot_session_uuid,
@@ -873,6 +1150,9 @@ impl Reducer {
                 self.epoch_snapshot_sha256 = None;
                 self.epoch_snapshot_expected_absence_sha256 = None;
                 self.epoch_snapshot_was_zero = false;
+                self.first_terminal_collector_lineage_v3 = None;
+                self.latest_terminal_zero_kind_v3 = None;
+                self.latest_terminal_zero_lineage_v3 = None;
                 self.restart_epoch_boot_session_uuid = Some(boot_session_uuid.clone());
                 self.restart_epoch_collector_policy_sha256 = Some(collector_policy_sha256.clone());
                 self.restart_epoch_nonces
@@ -880,12 +1160,18 @@ impl Reducer {
                 self.restart_epoch_nonce = Some(restart_epoch_nonce.clone());
                 self.restart_monotonic_nanoseconds = *monotonic_nanoseconds;
                 self.fresh_absence_sha256 = None;
+                self.fresh_absence_record_sha256 = None;
+                self.fresh_absence_record_sequence = None;
+                self.fresh_absence_terminal_binding_v3 = None;
+                self.restart_started_lifecycle_record_sha256 =
+                    Some(record.current_record_sha256.to_string());
+                self.restart_started_lifecycle_sequence = Some(record.sequence);
             }
             DisposableLifecycleEventV2::ReconciliationSnapshotObserved { snapshot } => {
-                self.apply_reconciliation_snapshot(snapshot)?;
+                self.apply_reconciliation_snapshot(snapshot, record)?;
             }
             DisposableLifecycleEventV2::FreshAbsenceObserved { observation } => {
-                let next_root = self.validate_fresh_absence(observation)?;
+                let next_root = self.validate_fresh_absence(observation, record)?;
                 if self.phase == Phase::Empty
                     || self.fresh_absence_sha256.is_some()
                     || self.pending.is_some()
@@ -913,6 +1199,9 @@ impl Reducer {
                     ));
                 }
                 self.fresh_absence_sha256 = Some(fresh_absence_sha256(observation)?);
+                self.fresh_absence_record_sha256 = Some(record.current_record_sha256.to_string());
+                self.fresh_absence_record_sequence = Some(record.sequence);
+                self.fresh_absence_terminal_binding_v3 = observation.terminal_binding_v3.clone();
                 self.collector_receipt_root_generation = next_root;
             }
             DisposableLifecycleEventV2::ManualIntervention { reason_sha256 } => {
@@ -929,6 +1218,7 @@ impl Reducer {
             DisposableLifecycleEventV2::TerminalAbsenceProved {
                 disposition,
                 fresh_absence_sha256,
+                closure_v3,
             } => {
                 require_digest(fresh_absence_sha256, "terminal fresh absence")?;
                 if self.fresh_absence_sha256.as_ref() != Some(fresh_absence_sha256) {
@@ -947,26 +1237,52 @@ impl Reducer {
                     ));
                 }
                 match disposition {
-                    TerminalDispositionV2::Completed
-                        if self.mode == Mode::RestartReconcileOnly
-                            || self.phase != Phase::Ejected =>
-                    {
-                        return Err(invalid(
-                            "completed terminal requires the uninterrupted full eject flow",
-                        ));
+                    TerminalDispositionV2::Completed if self.mode == Mode::RestartReconcileOnly => {
+                        let eligible_phase = if self.epoch_snapshot_was_zero {
+                            self.phase == Phase::Prepared
+                        } else {
+                            self.phase == Phase::Ejected
+                        };
+                        if self.prepared_manifest.is_none()
+                            || !self.restart_epoch_open
+                            || !self.epoch_snapshot_seen
+                            || !eligible_phase
+                        {
+                            return Err(invalid(
+                                "restart completion requires one prepared-manifest exact namespace-absence lineage",
+                            ));
+                        }
+                        let closure = closure_v3.as_ref().ok_or_else(|| {
+                            invalid(
+                                "prepared-manifest restart completion omitted its exact terminal closure",
+                            )
+                        })?;
+                        self.validate_terminal_namespace_closure_v3(
+                            closure,
+                            fresh_absence_sha256,
+                            record,
+                        )?;
+                    }
+                    TerminalDispositionV2::Completed => {
+                        if self.phase != Phase::Ejected || closure_v3.is_some() {
+                            return Err(invalid(
+                                "forward completed terminal requires the uninterrupted full eject flow without restart closure data",
+                            ));
+                        }
                     }
                     TerminalDispositionV2::Aborted
                         if self.mode != Mode::RestartReconcileOnly
                             || !self.restart_epoch_open
                             || !self.epoch_snapshot_seen
                             || (self.epoch_snapshot_was_zero && self.phase != Phase::Prepared)
-                            || (!self.epoch_snapshot_was_zero && self.phase != Phase::Ejected) =>
+                            || (!self.epoch_snapshot_was_zero && self.phase != Phase::Ejected)
+                            || closure_v3.is_some() =>
                     {
                         return Err(invalid(
                             "aborted terminal requires a fresh restart reconciliation closure",
                         ));
                     }
-                    TerminalDispositionV2::Completed | TerminalDispositionV2::Aborted => {}
+                    TerminalDispositionV2::Aborted => {}
                 }
                 self.terminal = Some(*disposition);
                 self.phase = Phase::Terminal;
@@ -1047,6 +1363,7 @@ impl Reducer {
     fn apply_reconciliation_snapshot(
         &mut self,
         snapshot: &ReconciliationSnapshotV2,
+        record: ReducerRecordContext<'_>,
     ) -> Result<(), LifecycleErrorV2> {
         if self.mode != Mode::RestartReconcileOnly
             || self.epoch_snapshot_seen
@@ -1141,19 +1458,32 @@ impl Reducer {
         self.callback_succeeded = false;
         self.reconciliation_after_nanoseconds = snapshot.monotonic_after_nanoseconds;
         self.reconciliation_boot_session_uuid = Some(snapshot.boot_session_uuid.clone());
+        let snapshot_sha256 = reconciliation_snapshot_sha256(snapshot)?;
+        let first_lineage = TerminalCollectorLineageV3 {
+            collector_receipt_sha256: snapshot.collector_receipt_sha256.clone(),
+            lifecycle_record_sha256: record.current_record_sha256.to_string(),
+            lifecycle_sequence: record.sequence,
+            observation_sha256: snapshot_sha256.clone(),
+        };
+        validate_terminal_collector_lineage_v3(&first_lineage, "first terminal collector lineage")?;
         self.epoch_snapshot_seen = true;
-        self.epoch_snapshot_sha256 = Some(reconciliation_snapshot_sha256(snapshot)?);
+        self.epoch_snapshot_sha256 = Some(snapshot_sha256);
         self.epoch_snapshot_expected_absence_sha256 =
             snapshot.current_expected_absence_inventory_sha256.clone();
         self.epoch_snapshot_was_zero = matches!(snapshot.match_result, ReconciliationMatchV2::Zero);
         self.reconciliation_receipts
             .insert(snapshot.collector_receipt_sha256.clone());
         self.collector_receipt_root_generation = next_root;
+        self.first_terminal_collector_lineage_v3 = Some(first_lineage.clone());
         match snapshot.match_result {
             ReconciliationMatchV2::Zero => {
+                self.latest_terminal_zero_kind_v3 = Some(TerminalLatestZeroKindV3::FirstSnapshot);
+                self.latest_terminal_zero_lineage_v3 = Some(first_lineage);
                 self.phase = Phase::Prepared;
             }
             ReconciliationMatchV2::Unique { mounted } => {
+                self.latest_terminal_zero_kind_v3 = None;
+                self.latest_terminal_zero_lineage_v3 = None;
                 self.phase = if mounted {
                     Phase::Mounted
                 } else {
@@ -1161,6 +1491,8 @@ impl Reducer {
                 };
             }
             ReconciliationMatchV2::Ambiguous { matching_objects } => {
+                self.latest_terminal_zero_kind_v3 = None;
+                self.latest_terminal_zero_lineage_v3 = None;
                 if matching_objects < 2 {
                     return Err(invalid(
                         "ambiguous snapshot must contain at least two matches",
@@ -1175,6 +1507,7 @@ impl Reducer {
     fn validate_fresh_absence(
         &self,
         observation: &FreshAbsenceObservationV2,
+        record: ReducerRecordContext<'_>,
     ) -> Result<
         Option<(u32, crate::mac_iomedia_identity::FilesystemObjectBindingV3)>,
         LifecycleErrorV2,
@@ -1230,7 +1563,113 @@ impl Reducer {
                 "fresh absence differs from prepared operation bindings",
             ));
         }
+        if let Some(binding) = observation.terminal_binding_v3.as_ref() {
+            self.validate_terminal_fresh_absence_binding_v3(binding, observation, record)?;
+        }
         Ok(next_root)
+    }
+
+    fn validate_terminal_fresh_absence_binding_v3(
+        &self,
+        binding: &TerminalFreshAbsenceBindingV3,
+        observation: &FreshAbsenceObservationV2,
+        record: ReducerRecordContext<'_>,
+    ) -> Result<(), LifecycleErrorV2> {
+        validate_terminal_fresh_absence_binding_shape_v3(binding)?;
+        let prepared_manifest = self.prepared_manifest.as_ref().ok_or_else(|| {
+            invalid("terminal FreshAbsence binding requires a prepared-manifest lifecycle")
+        })?;
+        let first = self
+            .first_terminal_collector_lineage_v3
+            .as_ref()
+            .ok_or_else(|| invalid("terminal FreshAbsence binding lost its first snapshot"))?;
+        let latest = self
+            .latest_terminal_zero_lineage_v3
+            .as_ref()
+            .ok_or_else(|| invalid("terminal FreshAbsence binding has no latest zero state"))?;
+        let latest_kind = self.latest_terminal_zero_kind_v3.ok_or_else(|| {
+            invalid("terminal FreshAbsence binding has no latest zero state kind")
+        })?;
+        let restart_started_sha256 = self
+            .restart_started_lifecycle_record_sha256
+            .as_deref()
+            .ok_or_else(|| invalid("terminal FreshAbsence binding lost restart-start record"))?;
+        let restart_started_sequence = self
+            .restart_started_lifecycle_sequence
+            .ok_or_else(|| invalid("terminal FreshAbsence binding lost restart-start sequence"))?;
+        let fresh_receipt_file = observation.collector_receipt_file.as_ref().ok_or_else(|| {
+            invalid("terminal FreshAbsence binding requires its exact retained receipt inode")
+        })?;
+        let backing_prepared_sha256 = match &binding.backing_absence {
+            TerminalBackingAbsenceEvidenceV3::LiveUnlinked(evidence) => {
+                &evidence.prepared_backing_sha256
+            }
+            TerminalBackingAbsenceEvidenceV3::RecoveredPathAbsent(evidence) => {
+                &evidence.prepared_backing_sha256
+            }
+        };
+        if self.mode != Mode::RestartReconcileOnly
+            || !self.restart_epoch_open
+            || binding.operation_nonce != self.operation_nonce
+            || self.restart_epoch_boot_session_uuid.as_ref() != Some(&binding.boot_session_uuid)
+            || self.restart_epoch_nonce.as_ref() != Some(&binding.restart_epoch_nonce)
+            || self.restart_epoch_collector_policy_sha256.as_ref()
+                != Some(&binding.collector_policy_sha256)
+            || backing_prepared_sha256 != &binding.prepared_backing_exact_sha256
+            || binding.restart.prepared_manifest_sha256 != prepared_manifest.sha256
+            || binding.restart.restart_started_lifecycle_record_sha256 != restart_started_sha256
+            || binding.restart.restart_started_lifecycle_sequence != restart_started_sequence
+            || &binding.first != first
+            || binding.latest_zero_kind != latest_kind
+            || &binding.latest != latest
+            || binding.restart.restart_started_lifecycle_sequence
+                >= binding.first.lifecycle_sequence
+            || binding.first.lifecycle_sequence > binding.latest.lifecycle_sequence
+            || binding.latest.lifecycle_sequence >= record.sequence
+            || binding.fresh_collector_receipt_sha256 != observation.collector_receipt_sha256
+            || binding.fresh_receipt_root_generation != fresh_receipt_file.root_generation_ordinal
+            || binding.artifact_evidence_sha256 != observation.artifact_evidence_sha256
+            || binding.fresh_iomedia_evidence_sha256 != observation.iomedia_evidence_sha256
+            || binding.fresh_mount_evidence_sha256 != observation.mount_evidence_sha256
+        {
+            return Err(invalid(
+                "terminal FreshAbsence binding differs from its exact retained restart lineage",
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_terminal_namespace_closure_v3(
+        &self,
+        closure: &TerminalNamespaceClosureV3,
+        fresh_absence_sha256: &str,
+        record: ReducerRecordContext<'_>,
+    ) -> Result<(), LifecycleErrorV2> {
+        validate_terminal_namespace_closure_shape_v3(closure)?;
+        let binding = self
+            .fresh_absence_terminal_binding_v3
+            .as_ref()
+            .ok_or_else(|| invalid("terminal closure has no retained FreshAbsence binding"))?;
+        let binding_sha256 = terminal_fresh_absence_binding_sha256(binding)?;
+        if closure.fresh_absence_sha256 != fresh_absence_sha256
+            || closure.fresh_absence_collector_receipt_sha256
+                != binding.fresh_collector_receipt_sha256
+            || closure.fresh_absence_lifecycle_record_sha256
+                != self
+                    .fresh_absence_record_sha256
+                    .as_deref()
+                    .unwrap_or_default()
+            || Some(closure.fresh_absence_lifecycle_sequence) != self.fresh_absence_record_sequence
+            || closure.terminal_binding_sha256 != binding_sha256
+            || record.previous_record_sha256
+                != Some(closure.fresh_absence_lifecycle_record_sha256.as_str())
+            || closure.fresh_absence_lifecycle_sequence.checked_add(1) != Some(record.sequence)
+        {
+            return Err(invalid(
+                "terminal namespace closure differs from its exact durable FreshAbsence predecessor",
+            ));
+        }
+        Ok(())
     }
 
     fn require_purpose(&self, purpose: EffectPurposeV2) -> Result<(), LifecycleErrorV2> {
@@ -1442,8 +1881,6 @@ impl DisposableLifecycleJournalV2 {
             .records
             .checked_add(1)
             .ok_or_else(|| invalid("record count overflows before persistence"))?;
-        let mut next_reducer = self.reducer.clone();
-        next_reducer.apply(&event)?;
         let record = DisposableLifecycleRecordV2 {
             authority: DisposableAuthorityV2::none(),
             event,
@@ -1454,6 +1891,16 @@ impl DisposableLifecycleJournalV2 {
             sequence: self.sequence,
         };
         let bytes = canonical_record(&record)?;
+        let digest = sha256(&bytes);
+        let mut next_reducer = self.reducer.clone();
+        next_reducer.apply(
+            &record.event,
+            ReducerRecordContext {
+                current_record_sha256: &digest,
+                previous_record_sha256: record.previous_record_sha256.as_deref(),
+                sequence: record.sequence,
+            },
+        )?;
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| persist(&record, &bytes))) {
             Ok(Ok(())) => {}
             Ok(Err(error)) => {
@@ -1468,7 +1915,6 @@ impl DisposableLifecycleJournalV2 {
                 ));
             }
         }
-        let digest = sha256(&bytes);
         self.previous_record_sha256 = Some(digest.clone());
         self.sequence = next_sequence;
         self.records = next_records;
@@ -1604,6 +2050,14 @@ pub fn fresh_absence_sha256(
         .map_err(|error| LifecycleErrorV2::Serialization(error.to_string()))
 }
 
+pub(crate) fn terminal_fresh_absence_binding_sha256(
+    binding: &TerminalFreshAbsenceBindingV3,
+) -> Result<String, LifecycleErrorV2> {
+    canonical_json(binding)
+        .map(|bytes| sha256(&bytes))
+        .map_err(|error| LifecycleErrorV2::Serialization(error.to_string()))
+}
+
 pub fn reconciliation_snapshot_sha256(
     snapshot: &ReconciliationSnapshotV2,
 ) -> Result<String, LifecycleErrorV2> {
@@ -1727,8 +2181,16 @@ fn replay(records: &[Vec<u8>]) -> Result<DisposableLifecycleJournalV2, Lifecycle
             return Err(invalid("operation nonce changed within lifecycle"));
         }
         operation_nonce = Some(record.operation_nonce.clone());
-        reducer.apply(&record.event)?;
-        previous = Some(sha256(bytes));
+        let current_record_sha256 = sha256(bytes);
+        reducer.apply(
+            &record.event,
+            ReducerRecordContext {
+                current_record_sha256: &current_record_sha256,
+                previous_record_sha256: record.previous_record_sha256.as_deref(),
+                sequence: record.sequence,
+            },
+        )?;
+        previous = Some(current_record_sha256);
     }
     let records_len = records.len();
     let sequence = u32::try_from(records_len)
@@ -1770,6 +2232,221 @@ fn classify_historical_v1(
     }
 }
 
+fn validate_terminal_collector_lineage_v3(
+    lineage: &TerminalCollectorLineageV3,
+    label: &str,
+) -> Result<(), LifecycleErrorV2> {
+    for (value, suffix) in [
+        (&lineage.collector_receipt_sha256, "collector receipt"),
+        (&lineage.lifecycle_record_sha256, "lifecycle record"),
+        (&lineage.observation_sha256, "observation"),
+    ] {
+        require_digest(value, &format!("{label} {suffix}"))?;
+    }
+    if lineage.lifecycle_sequence == 0 {
+        return Err(invalid(format!("{label} sequence is zero")));
+    }
+    Ok(())
+}
+
+fn validate_terminal_restart_admission_lineage_v3(
+    lineage: &TerminalRestartAdmissionLineageV3,
+) -> Result<(), LifecycleErrorV2> {
+    for (value, label) in [
+        (
+            &lineage.prepared_manifest_sha256,
+            "terminal prepared manifest",
+        ),
+        (
+            &lineage.prepared_profile_sha256,
+            "terminal prepared profile",
+        ),
+        (&lineage.process_epoch_sha256, "terminal process epoch"),
+        (
+            &lineage.restart_admission_sha256,
+            "terminal restart admission",
+        ),
+        (
+            &lineage.restart_started_lifecycle_record_sha256,
+            "terminal restart-start lifecycle record",
+        ),
+    ] {
+        require_digest(value, label)?;
+    }
+    if lineage.restart_started_lifecycle_sequence == 0 {
+        return Err(invalid(
+            "terminal restart-admission lineage has zero lifecycle sequence",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_terminal_artifact_namespace_delta_v3(
+    delta: &TerminalArtifactNamespaceDeltaV3,
+) -> Result<(), LifecycleErrorV2> {
+    if delta.authority.any()
+        || delta.backing_basename.is_empty()
+        || delta.backing_basename.as_bytes().contains(&0)
+        || delta.backing_basename.as_bytes().contains(&b'/')
+        || delta.before_entries != [delta.backing_basename.clone()]
+        || !delta.after_entries.is_empty()
+        || validate_collector_receipt_root_binding_v3(&delta.before_root).is_err()
+        || validate_collector_receipt_root_binding_v3(&delta.after_root).is_err()
+        || !same_collector_receipt_root_object_v3(&delta.before_root, &delta.after_root)
+    {
+        return Err(invalid(
+            "terminal artifact namespace delta is malformed, non-exact, or grants authority",
+        ));
+    }
+    let before_entries = u64::try_from(delta.before_entries.len())
+        .map_err(|_| invalid("terminal artifact roster length overflowed"))?;
+    let after_entries = u64::try_from(delta.after_entries.len())
+        .map_err(|_| invalid("terminal artifact roster length overflowed"))?;
+    if delta.before_root.nlink.checked_sub(before_entries)
+        != delta.after_root.nlink.checked_sub(after_entries)
+    {
+        return Err(invalid(
+            "terminal artifact root link count does not match its exact roster delta",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_terminal_backing_absence_evidence_v3(
+    evidence: &TerminalBackingAbsenceEvidenceV3,
+) -> Result<(), LifecycleErrorV2> {
+    match evidence {
+        TerminalBackingAbsenceEvidenceV3::LiveUnlinked(binding) => {
+            crate::mac_iomedia_identity::validate_unlinked_backing_binding_v3(binding).map_err(
+                |error| invalid(format!("terminal live backing absence is invalid: {error}")),
+            )
+        }
+        TerminalBackingAbsenceEvidenceV3::RecoveredPathAbsent(binding) => {
+            crate::mac_iomedia_identity::validate_backing_path_absence_binding_v3(binding).map_err(
+                |error| {
+                    invalid(format!(
+                        "terminal recovered backing absence is invalid: {error}"
+                    ))
+                },
+            )
+        }
+    }
+}
+
+fn validate_terminal_fresh_absence_binding_shape_v3(
+    binding: &TerminalFreshAbsenceBindingV3,
+) -> Result<(), LifecycleErrorV2> {
+    if binding.authority.any() {
+        return Err(invalid(
+            "terminal FreshAbsence binding grants disposable authority",
+        ));
+    }
+    require_nonce(&binding.operation_nonce)?;
+    require_uuid(&binding.boot_session_uuid)?;
+    require_nonce(&binding.restart_epoch_nonce)?;
+    for (value, label) in [
+        (
+            &binding.artifact_evidence_sha256,
+            "terminal artifact evidence",
+        ),
+        (
+            &binding.collector_policy_sha256,
+            "terminal collector policy",
+        ),
+        (
+            &binding.fresh_collector_receipt_sha256,
+            "terminal FreshAbsence collector receipt",
+        ),
+        (
+            &binding.fresh_iomedia_evidence_sha256,
+            "terminal FreshAbsence IOMedia evidence",
+        ),
+        (
+            &binding.fresh_mount_evidence_sha256,
+            "terminal FreshAbsence mount evidence",
+        ),
+        (
+            &binding.prepared_backing_exact_sha256,
+            "terminal exact prepared backing",
+        ),
+    ] {
+        require_digest(value, label)?;
+    }
+    if binding.fresh_receipt_root_generation == 0 {
+        return Err(invalid(
+            "terminal FreshAbsence receipt-root generation is zero",
+        ));
+    }
+    validate_terminal_restart_admission_lineage_v3(&binding.restart)?;
+    validate_terminal_collector_lineage_v3(&binding.first, "terminal first lineage")?;
+    validate_terminal_collector_lineage_v3(&binding.latest, "terminal latest-zero lineage")?;
+    validate_terminal_backing_absence_evidence_v3(&binding.backing_absence)?;
+    validate_terminal_artifact_namespace_delta_v3(&binding.artifact_namespace_delta)?;
+
+    let (prepared_backing_sha256, canonical_path) = match &binding.backing_absence {
+        TerminalBackingAbsenceEvidenceV3::LiveUnlinked(evidence) => (
+            &evidence.prepared_backing_sha256,
+            evidence.canonical_path.as_str(),
+        ),
+        TerminalBackingAbsenceEvidenceV3::RecoveredPathAbsent(evidence) => (
+            &evidence.prepared_backing_sha256,
+            evidence.canonical_path.as_str(),
+        ),
+    };
+    let backing_basename = std::path::Path::new(canonical_path)
+        .file_name()
+        .and_then(|name| name.to_str());
+    let latest_shape_valid = match binding.latest_zero_kind {
+        TerminalLatestZeroKindV3::FirstSnapshot => binding.latest == binding.first,
+        TerminalLatestZeroKindV3::PostEject => {
+            binding.latest.lifecycle_sequence > binding.first.lifecycle_sequence
+                && binding.latest.collector_receipt_sha256 != binding.first.collector_receipt_sha256
+        }
+    };
+    if prepared_backing_sha256 != &binding.prepared_backing_exact_sha256
+        || backing_basename != Some(binding.artifact_namespace_delta.backing_basename.as_str())
+        || binding.restart.restart_started_lifecycle_sequence >= binding.first.lifecycle_sequence
+        || !latest_shape_valid
+        || binding.fresh_collector_receipt_sha256 == binding.latest.collector_receipt_sha256
+    {
+        return Err(invalid(
+            "terminal FreshAbsence binding has inconsistent predecessor lineage",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_terminal_namespace_closure_shape_v3(
+    closure: &TerminalNamespaceClosureV3,
+) -> Result<(), LifecycleErrorV2> {
+    if closure.authority.any() {
+        return Err(invalid("terminal namespace closure grants authority"));
+    }
+    for (value, label) in [
+        (
+            &closure.fresh_absence_collector_receipt_sha256,
+            "terminal closure FreshAbsence collector receipt",
+        ),
+        (
+            &closure.fresh_absence_lifecycle_record_sha256,
+            "terminal closure FreshAbsence lifecycle record",
+        ),
+        (
+            &closure.fresh_absence_sha256,
+            "terminal closure FreshAbsence observation",
+        ),
+        (&closure.terminal_binding_sha256, "terminal closure binding"),
+    ] {
+        require_digest(value, label)?;
+    }
+    if closure.fresh_absence_lifecycle_sequence == 0 {
+        return Err(invalid(
+            "terminal namespace closure has zero FreshAbsence lifecycle sequence",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_fresh_absence_shape(
     observation: &FreshAbsenceObservationV2,
 ) -> Result<(), LifecycleErrorV2> {
@@ -1789,6 +2466,9 @@ pub(crate) fn validate_fresh_absence_shape(
         &observation.collector_receipt_sha256,
         false,
     )?;
+    if let Some(binding) = observation.terminal_binding_v3.as_ref() {
+        validate_terminal_fresh_absence_binding_shape_v3(binding)?;
+    }
     if observation.restart_epoch_nonce.is_some()
         != observation.reconciliation_snapshot_sha256.is_some()
         || observation.restart_epoch_nonce.is_some()

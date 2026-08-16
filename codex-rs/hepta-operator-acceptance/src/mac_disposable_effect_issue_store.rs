@@ -32,6 +32,7 @@ use crate::mac_inert_one_shot_runner::RunnerIssueReadSealV3;
 use crate::mac_iomedia_identity::current_boot_session_uuid;
 use crate::mac_privileged_disposable_control::EffectIssueAppendSinkV3;
 use crate::mac_privileged_disposable_control::FreshOperationAdmissionSinkV3;
+use crate::mac_privileged_disposable_control::S1EffectIssueReadSealV3;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -557,6 +558,11 @@ enum LifecycleReplaySourceV3 {
         records: Vec<RetainedLifecycleRecordV3>,
         roster: Vec<String>,
     },
+    /// Short-lived semantic replay over bytes whose exact descriptors,
+    /// pathnames, and closed-world rosters are retained and revalidated by
+    /// S1.  This source is created only behind `S1EffectIssueReadSealV3` and
+    /// never escapes the S1 bijection verifier.
+    S1DescriptorRetained,
     #[cfg(test)]
     Synthetic,
 }
@@ -877,10 +883,77 @@ impl VerifiedLifecycleIssueRosterV3 {
                 }
                 Ok(())
             }
+            LifecycleReplaySourceV3::S1DescriptorRetained => Ok(()),
             #[cfg(test)]
             LifecycleReplaySourceV3::Synthetic => Ok(()),
         }
     }
+}
+
+/// Verify the complete V2 issued-event to V3 issue-file bijection over exact
+/// descriptor-retained S1 capsules.  Raw JSON never produces a capability:
+/// only S1 can construct the seal, this function returns `Result<()>`, and S1
+/// revalidates every descriptor/name/byte roster before and after capture.
+pub(crate) fn validate_effect_issue_bijection_for_s1(
+    lifecycle_records: &[Vec<u8>],
+    issue_records: &[(&str, &[u8])],
+    operation_nonce: &str,
+    _seal: S1EffectIssueReadSealV3,
+) -> Result<(), DurableEffectIssueStoreErrorV3> {
+    let lifecycle = VerifiedLifecycleIssueRosterV3::replay_with_source(
+        lifecycle_records,
+        LifecycleReplaySourceV3::S1DescriptorRetained,
+    )?;
+    if lifecycle.operation_nonce != operation_nonce {
+        return Err(invalid(
+            "S1 operation nonce differs from its exact lifecycle issue roster",
+        ));
+    }
+    if issue_records.len() != lifecycle.issues.len() {
+        return Err(invalid(
+            "S1 V2 issued roster and retained V3 issue roster are not an exact bijection",
+        ));
+    }
+
+    let mut by_effect = BTreeMap::new();
+    for (name, bytes) in issue_records {
+        if bytes.is_empty() || bytes.len() > MAX_ISSUE_BYTES_V3 {
+            return Err(invalid(
+                "S1 retained V3 issue size is outside its fixed bound",
+            ));
+        }
+        let (effect_id, name_sha256) = parse_issue_name(name)
+            .ok_or_else(|| invalid("S1 retained V3 issue name is noncanonical"))?;
+        if by_effect.contains_key(&effect_id) {
+            return Err(invalid(
+                "S1 retained V3 issue roster duplicates an effect ID",
+            ));
+        }
+        if sha256(bytes) != name_sha256 {
+            return Err(invalid(
+                "S1 retained V3 issue bytes differ from their filename digest",
+            ));
+        }
+        let expected = lifecycle
+            .issues
+            .iter()
+            .find(|issue| issue.effect_id == effect_id)
+            .ok_or_else(|| invalid("S1 retained V3 issue is orphaned from V2 lifecycle"))?;
+        decode_and_validate_record(bytes, name, expected)?;
+        by_effect.insert(effect_id, ());
+    }
+
+    for expected in &lifecycle.issues {
+        if by_effect.remove(&expected.effect_id).is_none() {
+            return Err(invalid(
+                "S1 retained V3 issue is missing for a V2 issued record",
+            ));
+        }
+    }
+    if !by_effect.is_empty() {
+        return Err(invalid("S1 retained V3 issue roster contains orphans"));
+    }
+    lifecycle.revalidate()
 }
 
 fn issued_binding(

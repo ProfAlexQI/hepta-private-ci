@@ -9,12 +9,19 @@ use crate::mac_apfs_barrier_fixture::FileIdentityV1;
 use crate::mac_apfs_barrier_fixture::MountPhaseV1;
 use crate::mac_apfs_barrier_fixture::RawUnmountReceiptV1;
 use crate::mac_apfs_barrier_fixture::StatFsFactsV1;
+use crate::mac_disposable_effect_issue_store::DurableEffectIssueStoreV3;
+use crate::mac_disposable_effect_issue_store::EffectEpochEvidenceV3;
+use crate::mac_disposable_effect_issue_store::ExactDisposableCommandV3;
+use crate::mac_disposable_effect_issue_store::VerifiedLifecycleIssueRosterV3;
 use crate::mac_disposable_lifecycle::DisposableLifecycleEventV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleJournalV2;
 use crate::mac_disposable_lifecycle::EffectPurposeV2;
 use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
+use crate::mac_disposable_lifecycle::ReconciliationMatchV2;
+use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
 use crate::mac_disposable_lifecycle::TerminalDispositionV2;
 use crate::mac_disposable_lifecycle::fresh_absence_sha256;
+use crate::mac_disposable_lifecycle::reconciliation_snapshot_sha256;
 use crate::mac_privileged_broker::ObjectBindingV1;
 use std::ffi::CString;
 use std::fs;
@@ -286,6 +293,213 @@ fn write_operation_events(
     }
 }
 
+fn append_disk_lifecycle_event(
+    operation: &Path,
+    journal: &mut DisposableLifecycleJournalV2,
+    records: &mut Vec<Vec<u8>>,
+    event: DisposableLifecycleEventV2,
+) {
+    journal
+        .append_with(event, |_, canonical| {
+            records.push(canonical.to_vec());
+            Ok(())
+        })
+        .expect("append lifecycle event");
+    let sequence = records.len();
+    let mut record = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o400)
+        .open(operation.join(format!("{sequence:08}.json")))
+        .expect("create lifecycle record");
+    record
+        .write_all(&records[sequence - 1])
+        .expect("write lifecycle record");
+    record.sync_all().expect("sync lifecycle record");
+}
+
+/// Publish one fully terminal restart lifecycle with a real, canonical V3
+/// eject issue.  This deliberately uses the production issue serializer; S1
+/// tests mutate only the resulting exact files and never forge a positive
+/// issue DTO as setup.
+fn write_terminal_v3_issue_operation(root: &Path, operation_nonce: &str) -> std::path::PathBuf {
+    let operation = root
+        .join(OPERATIONS_NAME)
+        .join(format!("{OPERATION_PREFIX}{operation_nonce}"));
+    fs::create_dir(&operation).expect("create V3 operation");
+    fs::set_permissions(&operation, fs::Permissions::from_mode(0o700))
+        .expect("set V3 operation mode");
+
+    let boot = current_boot_session_uuid().expect("current boot UUID");
+    let restart_epoch_nonce = digest('e');
+    let mut records = Vec::new();
+    let mut initial = DisposableLifecycleJournalV2::new(operation_nonce).expect("fresh journal");
+    append_disk_lifecycle_event(
+        &operation,
+        &mut initial,
+        &mut records,
+        DisposableLifecycleEventV2::OperationPrepared {
+            baseline_inventory_sha256: digest('1'),
+            backing_identity_sha256: digest('2'),
+            boot_session_uuid: boot.clone(),
+            collector_policy_sha256: digest('3'),
+            mountpoint_underlying_sha256: digest('4'),
+        },
+    );
+    let mut journal =
+        DisposableLifecycleJournalV2::resume_for_reconciliation(&records).expect("restart journal");
+    append_disk_lifecycle_event(
+        &operation,
+        &mut journal,
+        &mut records,
+        DisposableLifecycleEventV2::RestartReconciliationStarted {
+            boot_session_uuid: boot.clone(),
+            collector_policy_sha256: digest('3'),
+            monotonic_nanoseconds: 100,
+            restart_epoch_nonce: restart_epoch_nonce.clone(),
+        },
+    );
+    let snapshot = ReconciliationSnapshotV2 {
+        backing_identity_sha256: digest('2'),
+        boot_session_uuid: boot.clone(),
+        collector_policy_sha256: digest('3'),
+        collector_receipt_file: None,
+        collector_receipt_sha256: digest('5'),
+        current_expected_absence_inventory_sha256: Some(digest('9')),
+        iomedia_evidence_sha256: digest('8'),
+        match_result: ReconciliationMatchV2::Unique { mounted: false },
+        monotonic_after_nanoseconds: 102,
+        monotonic_before_nanoseconds: 101,
+        mount_evidence_sha256: digest('6'),
+        mountpoint_underlying_sha256: digest('4'),
+        operation_nonce: operation_nonce.to_string(),
+        restart_epoch_nonce: restart_epoch_nonce.clone(),
+    };
+    let snapshot_sha256 = reconciliation_snapshot_sha256(&snapshot).expect("snapshot digest");
+    append_disk_lifecycle_event(
+        &operation,
+        &mut journal,
+        &mut records,
+        DisposableLifecycleEventV2::ReconciliationSnapshotObserved { snapshot },
+    );
+
+    let operation_directory = File::open(&operation).expect("open V3 operation");
+    let uid = unsafe { libc::geteuid() };
+    let gid = unsafe { libc::getegid() };
+    let before_issue = VerifiedLifecycleIssueRosterV3::capture(&operation_directory, uid, gid)
+        .expect("capture lifecycle before V3 issue");
+    let mut issues =
+        DurableEffectIssueStoreV3::create_new(&operation_directory, &before_issue, uid, gid)
+            .expect("create mandatory V3 issue root");
+    append_disk_lifecycle_event(
+        &operation,
+        &mut journal,
+        &mut records,
+        DisposableLifecycleEventV2::EjectIssuedOrUncertain {
+            effect_id: 1,
+            purpose: EffectPurposeV2::Reconciliation,
+        },
+    );
+    let issued = VerifiedLifecycleIssueRosterV3::capture(&operation_directory, uid, gid)
+        .expect("capture issued lifecycle");
+    let epochs = EffectEpochEvidenceV3::bind_current_boot(
+        &boot,
+        &digest('a'),
+        &digest('b'),
+        &digest('c'),
+        &digest('d'),
+    )
+    .expect("bind test runner epoch");
+    let retained = issues
+        .persist(
+            &issued,
+            ExactDisposableCommandV3::EjectImage {
+                disk_image_group_sha256: digest('7'),
+            },
+            epochs,
+            Some(digest('f')),
+        )
+        .expect("persist exact V3 eject issue");
+    retained.revalidate().expect("replay exact V3 issue");
+    drop(retained);
+    drop(issues);
+
+    append_disk_lifecycle_event(
+        &operation,
+        &mut journal,
+        &mut records,
+        DisposableLifecycleEventV2::EjectCallbackObserved {
+            effect_id: 1,
+            outcome: crate::mac_disposable_lifecycle::CallbackOutcomeV2::Succeeded,
+        },
+    );
+    append_disk_lifecycle_event(
+        &operation,
+        &mut journal,
+        &mut records,
+        DisposableLifecycleEventV2::EjectObserved {
+            effect_id: 1,
+            iomedia_absence_sha256: digest('9'),
+            collector: None,
+        },
+    );
+    let absence = FreshAbsenceObservationV2 {
+        artifact_evidence_sha256: digest('a'),
+        baseline_inventory_sha256: digest('1'),
+        backing_identity_sha256: digest('2'),
+        boot_session_uuid: boot,
+        collector_policy_sha256: digest('3'),
+        collector_receipt_file: None,
+        collector_receipt_sha256: digest('b'),
+        current_expected_absence_inventory_sha256: Some(digest('9')),
+        iomedia_evidence_sha256: digest('9'),
+        monotonic_after_nanoseconds: 105,
+        monotonic_before_nanoseconds: 104,
+        mount_evidence_sha256: digest('c'),
+        mountpoint_underlying_sha256: digest('4'),
+        no_matching_iomedia: true,
+        no_nested_mounts: true,
+        operation_nonce: operation_nonce.to_string(),
+        operation_artifacts_absent: true,
+        post_inventory_sha256: digest('1'),
+        reconciliation_snapshot_sha256: Some(snapshot_sha256),
+        restart_epoch_nonce: Some(restart_epoch_nonce),
+        terminal_binding_v3: None,
+    };
+    let absence_sha256 = fresh_absence_sha256(&absence).expect("fresh absence digest");
+    append_disk_lifecycle_event(
+        &operation,
+        &mut journal,
+        &mut records,
+        DisposableLifecycleEventV2::FreshAbsenceObserved {
+            observation: absence,
+        },
+    );
+    append_disk_lifecycle_event(
+        &operation,
+        &mut journal,
+        &mut records,
+        DisposableLifecycleEventV2::TerminalAbsenceProved {
+            disposition: TerminalDispositionV2::Aborted,
+            fresh_absence_sha256: absence_sha256,
+            closure_v3: None,
+        },
+    );
+    File::open(&operation)
+        .expect("reopen terminal operation")
+        .sync_all()
+        .expect("sync terminal operation");
+
+    let issue_root = operation.join(EFFECT_ISSUE_ROOT_V3);
+    let mut issue_paths = fs::read_dir(&issue_root)
+        .expect("read exact issue root")
+        .map(|entry| entry.expect("issue entry").path())
+        .collect::<Vec<_>>();
+    issue_paths.sort();
+    assert_eq!(issue_paths.len(), 1);
+    issue_paths.remove(0)
+}
+
 fn completed_operation_events(operation_nonce: &str) -> Vec<DisposableLifecycleEventV2> {
     let boot = "12345678-1234-1234-1234-123456789abc";
     let observation = FreshAbsenceObservationV2 {
@@ -309,6 +523,7 @@ fn completed_operation_events(operation_nonce: &str) -> Vec<DisposableLifecycleE
         post_inventory_sha256: digest('1'),
         reconciliation_snapshot_sha256: None,
         restart_epoch_nonce: None,
+        terminal_binding_v3: None,
     };
     let absence_sha256 = fresh_absence_sha256(&observation).expect("absence digest");
     vec![
@@ -358,6 +573,7 @@ fn completed_operation_events(operation_nonce: &str) -> Vec<DisposableLifecycleE
         DisposableLifecycleEventV2::TerminalAbsenceProved {
             disposition: TerminalDispositionV2::Completed,
             fresh_absence_sha256: absence_sha256,
+            closure_v3: None,
         },
     ]
 }
@@ -671,6 +887,180 @@ fn clean_storage_receipt_is_complete_but_never_grants_authority() {
 }
 
 #[test]
+fn terminal_v3_issue_bijection_allows_fresh_census() {
+    let temporary = tempfile::tempdir().expect("temporary root parent");
+    let root = create_root(temporary.path());
+    let nonce = digest('1');
+    write_terminal_v3_issue_operation(&root, &nonce);
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open terminal V3 control");
+    let assessment = control
+        .assess_read_only()
+        .expect("exact terminal V3 assessment");
+    assert_eq!(assessment.receipt().completed_operation_nonces, [nonce]);
+    assessment
+        .into_fresh_control_census()
+        .expect("exact V2/V3 terminal bijection permits fresh census");
+}
+
+#[test]
+fn terminal_v3_missing_issue_blocks_fresh_census() {
+    let temporary = tempfile::tempdir().expect("temporary root parent");
+    let root = create_root(temporary.path());
+    let nonce = digest('2');
+    let issue = write_terminal_v3_issue_operation(&root, &nonce);
+    fs::remove_file(issue).expect("delete exact terminal V3 issue");
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open terminal V3 control");
+    let error = control
+        .assess_read_only()
+        .err()
+        .expect("missing terminal issue must block before fresh census");
+    assert!(
+        error.to_string().contains("bijection"),
+        "unexpected missing-issue error: {error}"
+    );
+}
+
+#[test]
+fn terminal_v3_removed_issue_root_cannot_downgrade_to_legacy_v2() {
+    let temporary = tempfile::tempdir().expect("temporary root parent");
+    let root = create_root(temporary.path());
+    let nonce = digest('3');
+    let issue = write_terminal_v3_issue_operation(&root, &nonce);
+    fs::remove_dir_all(issue.parent().expect("exact V3 issue root"))
+        .expect("remove whole V3 issue root");
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open terminal V3 control");
+    let error = control
+        .assess_read_only()
+        .err()
+        .expect("removed terminal issue root must not downgrade to legacy V2");
+    assert!(
+        error.to_string().contains("bijection"),
+        "unexpected removed-root error: {error}"
+    );
+}
+
+#[test]
+fn terminal_v3_legal_orphan_issue_blocks_fresh_census() {
+    let temporary = tempfile::tempdir().expect("temporary root parent");
+    let root = create_root(temporary.path());
+    let nonce = digest('3');
+    let issue = write_terminal_v3_issue_operation(&root, &nonce);
+    let issue_root = issue.parent().expect("issue root").to_path_buf();
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&fs::read(&issue).expect("read exact issue"))
+            .expect("decode exact issue JSON");
+    value["effect_id"] = serde_json::Value::from(2_u64);
+    let orphan_bytes = canonical_json(&value).expect("canonical legal orphan JSON");
+    let orphan_name = format!("effect-{:020}-{}.json", 2, sha256(&orphan_bytes));
+    fs::remove_file(&issue).expect("remove exact V3 issue");
+    let mut orphan = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o400)
+        .open(issue_root.join(orphan_name))
+        .expect("create canonical orphan issue");
+    orphan
+        .write_all(&orphan_bytes)
+        .expect("write canonical orphan issue");
+    orphan.sync_all().expect("sync canonical orphan issue");
+
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open terminal V3 control");
+    let error = control
+        .assess_read_only()
+        .err()
+        .expect("legal orphan issue must block before fresh census");
+    assert!(
+        error.to_string().contains("orphaned"),
+        "unexpected orphan-issue error: {error}"
+    );
+}
+
+#[test]
+fn rootless_effectful_completed_v2_is_ambiguous_and_blocks() {
+    let temporary = tempfile::tempdir().expect("temporary root parent");
+    let root = create_root(temporary.path());
+    let nonce = digest('5');
+    write_operation_events(&root, &nonce, completed_operation_events(&nonce));
+
+    let control = LivePrivilegedDisposablePolicyV2::create_for_test(&root)
+        .expect("open rootless effectful control");
+    let error = control
+        .assess_read_only()
+        .err()
+        .expect("rootless effectful V2 must be ambiguous with a removed V3 issue root");
+    assert!(
+        error.to_string().contains("bijection"),
+        "unexpected rootless-effectful error: {error}"
+    );
+}
+
+#[test]
+fn terminal_v3_same_bytes_issue_replacement_after_capture_blocks_fresh_census() {
+    let temporary = tempfile::tempdir().expect("temporary root parent");
+    let root = create_root(temporary.path());
+    let nonce = digest('4');
+    let issue = write_terminal_v3_issue_operation(&root, &nonce);
+    let control =
+        LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open terminal V3 control");
+    let assessment = control
+        .assess_read_only()
+        .expect("capture exact terminal V3 issue descriptor");
+
+    let bytes = fs::read(&issue).expect("read exact issue bytes");
+    fs::rename(&issue, temporary.path().join("displaced-terminal-issue"))
+        .expect("displace retained issue inode");
+    let mut replacement = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o400)
+        .open(&issue)
+        .expect("create same-bytes issue replacement");
+    replacement
+        .write_all(&bytes)
+        .expect("write same issue bytes");
+    replacement.sync_all().expect("sync replacement issue");
+
+    let error = assessment
+        .into_fresh_control_census()
+        .err()
+        .expect("same-bytes replacement must block fresh census");
+    assert!(
+        error.to_string().contains("changed"),
+        "unexpected replacement error: {error}"
+    );
+}
+
+#[test]
+fn terminal_classification_preflights_issue_bijection_before_receipt_mutation() {
+    let source = include_str!("mac_privileged_disposable_control.rs");
+    let start = source
+        .find("pub(crate) fn complete_selected_lifecycle_append(")
+        .expect("terminal S1 transition disappeared");
+    let section = &source[start..];
+    let end = section
+        .find("\n    fn selected_lifecycle_inspection(")
+        .expect("terminal S1 transition end disappeared");
+    let section = &section[..end];
+    let gate = section
+        .find("self.validate_selected_effect_issue_bijection()?")
+        .expect("terminal transition lost its exact issue gate");
+    let mutation = section
+        .find("remove_exact_once(")
+        .expect("terminal blocker classification mutation disappeared");
+    assert!(
+        gate < mutation,
+        "terminal issue gate must precede every blocker/completed receipt mutation"
+    );
+}
+
+#[test]
 fn one_policy_and_flock_can_cast_only_one_live_s1_assessment() {
     let temporary = tempfile::tempdir().expect("temporary root parent");
     let root = temporary.path().join("control");
@@ -707,7 +1097,11 @@ fn operation_directory_nonce_is_bound_to_v2_journal_nonce() {
         Ok(_) => panic!("transplanted journal unexpectedly passed"),
         Err(error) => error,
     };
-    assert!(error.to_string().contains("directory nonce differs"));
+    let message = error.to_string();
+    assert!(
+        message.contains("operation nonce differs") || message.contains("directory nonce differs"),
+        "unexpected operation-directory nonce error: {message}"
+    );
 }
 
 #[test]
@@ -749,7 +1143,7 @@ fn exact_blocking_census_rejects_unknown_completed_and_noncanonical_targets() {
         let temporary = tempfile::tempdir().expect("temporary root parent");
         let root = create_root(temporary.path());
         let nonce = digest('c');
-        write_operation_events(&root, &nonce, completed_operation_events(&nonce));
+        write_terminal_v3_issue_operation(&root, &nonce);
         let control =
             LivePrivilegedDisposablePolicyV2::create_for_test(&root).expect("open control");
         let assessment = control.assess_read_only().expect("completed assessment");
@@ -1505,6 +1899,7 @@ fn closure_absence(operation_nonce: &str) -> FreshAbsenceObservationV2 {
         post_inventory_sha256: digest('6'),
         reconciliation_snapshot_sha256: None,
         restart_epoch_nonce: None,
+        terminal_binding_v3: None,
     }
 }
 

@@ -1,4 +1,6 @@
 use super::*;
+use crate::mac_iomedia_identity::BackingPathAbsenceBindingV3;
+use crate::mac_iomedia_identity::ExactBackingPathComponentV3;
 use crate::mac_iomedia_identity::FilesystemObjectBindingV3;
 use pretty_assertions::assert_eq;
 
@@ -203,7 +205,168 @@ fn absence(
         post_inventory_sha256: digest('a'),
         reconciliation_snapshot_sha256: None,
         restart_epoch_nonce: None,
+        terminal_binding_v3: None,
     }
+}
+
+fn terminal_backing_and_artifact_delta() -> (
+    TerminalBackingAbsenceEvidenceV3,
+    TerminalArtifactNamespaceDeltaV3,
+) {
+    let root = receipt_root_binding(90, 2);
+    let artifact_before = receipt_root_binding(91, 3);
+    let artifact_after = receipt_root_binding(91, 2);
+    let prepared_ancestors = vec![
+        ExactBackingPathComponentV3 {
+            binding: root,
+            directory: true,
+            path: "/".to_string(),
+        },
+        ExactBackingPathComponentV3 {
+            binding: artifact_before,
+            directory: true,
+            path: "/artifact".to_string(),
+        },
+    ];
+    let observed_ancestors = vec![
+        ExactBackingPathComponentV3 {
+            binding: root,
+            directory: true,
+            path: "/".to_string(),
+        },
+        ExactBackingPathComponentV3 {
+            binding: artifact_after,
+            directory: true,
+            path: "/artifact".to_string(),
+        },
+    ];
+    let backing =
+        TerminalBackingAbsenceEvidenceV3::RecoveredPathAbsent(BackingPathAbsenceBindingV3 {
+            authority_granted: false,
+            basename: "backing.img".to_string(),
+            canonical_path: "/artifact/backing.img".to_string(),
+            kind: "namespace_absent".to_string(),
+            observed_ancestors,
+            prepared_ancestors,
+            prepared_backing_sha256: digest('0'),
+            schema: "hepta_mac_backing_path_absence_v3".to_string(),
+        });
+    let artifact = TerminalArtifactNamespaceDeltaV3::from_retained_endpoints(
+        "backing.img".to_string(),
+        artifact_before,
+        vec!["backing.img".to_string()],
+        artifact_after,
+        Vec::new(),
+    )
+    .expect("exact artifact namespace delta");
+    (backing, artifact)
+}
+
+fn terminal_fresh_binding(
+    operation_nonce: &str,
+    boot: &str,
+    epoch: &str,
+    restart_record_sha256: &str,
+    first_snapshot_sha256: &str,
+    first_record_sha256: &str,
+) -> TerminalFreshAbsenceBindingV3 {
+    let first = TerminalCollectorLineageV3::new(
+        digest('5'),
+        first_record_sha256.to_string(),
+        3,
+        first_snapshot_sha256.to_string(),
+    )
+    .expect("first terminal lineage");
+    let restart = TerminalRestartAdmissionLineageV3::new(
+        digest('d'),
+        digest('9'),
+        digest('8'),
+        digest('7'),
+        restart_record_sha256.to_string(),
+        2,
+    )
+    .expect("terminal restart admission lineage");
+    let (backing_absence, artifact_namespace_delta) = terminal_backing_and_artifact_delta();
+    TerminalFreshAbsenceBindingV3::from_retained_projection(
+        operation_nonce.to_string(),
+        boot.to_string(),
+        epoch.to_string(),
+        digest('e'),
+        digest('0'),
+        restart,
+        first.clone(),
+        TerminalLatestZeroKindV3::FirstSnapshot,
+        first,
+        backing_absence,
+        artifact_namespace_delta,
+        digest('d'),
+        digest('6'),
+        2,
+        digest('6'),
+        digest('2'),
+    )
+    .expect("terminal FreshAbsence binding")
+}
+
+fn terminal_restart_before_fresh() -> (
+    DisposableLifecycleJournalV2,
+    Vec<Vec<u8>>,
+    FreshAbsenceObservationV2,
+    TerminalFreshAbsenceBindingV3,
+) {
+    let operation_nonce = digest('3');
+    let boot = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    let epoch = digest('4');
+    let mut initial = DisposableLifecycleJournalV2::new(&operation_nonce).expect("journal");
+    let mut records = Vec::new();
+    append(
+        &mut initial,
+        &mut records,
+        prepared_v3_with_receipt_root(receipt_root_binding(1, 2)),
+    )
+    .expect("prepared manifest");
+    let mut journal =
+        DisposableLifecycleJournalV2::resume_for_reconciliation(&records).expect("resume");
+    let restart_record_sha256 =
+        append(&mut journal, &mut records, restart(boot, 100, &epoch)).expect("restart start");
+    let mut first_snapshot = snapshot(
+        &operation_nonce,
+        boot,
+        &epoch,
+        101,
+        '5',
+        ReconciliationMatchV2::Zero,
+    );
+    first_snapshot.collector_receipt_file =
+        Some(receipt_file_binding('5', 2, receipt_root_binding(1, 3), 1));
+    let first_snapshot_sha256 =
+        reconciliation_snapshot_sha256(&first_snapshot).expect("first snapshot digest");
+    let first_record_sha256 = append(
+        &mut journal,
+        &mut records,
+        DisposableLifecycleEventV2::ReconciliationSnapshotObserved {
+            snapshot: first_snapshot,
+        },
+    )
+    .expect("first snapshot record");
+    let terminal_binding = terminal_fresh_binding(
+        &operation_nonce,
+        boot,
+        &epoch,
+        &restart_record_sha256,
+        &first_snapshot_sha256,
+        &first_record_sha256,
+    );
+    let mut observation = absence(&operation_nonce, boot, 103);
+    observation.collector_receipt_sha256 = digest('6');
+    observation.collector_receipt_file =
+        Some(receipt_file_binding('6', 3, receipt_root_binding(1, 4), 2));
+    observation.current_expected_absence_inventory_sha256 = Some(digest('6'));
+    observation.iomedia_evidence_sha256 = digest('6');
+    observation.reconciliation_snapshot_sha256 = Some(first_snapshot_sha256);
+    observation.restart_epoch_nonce = Some(epoch);
+    observation.terminal_binding_v3 = Some(terminal_binding.clone());
+    (journal, records, observation, terminal_binding)
 }
 
 #[test]
@@ -220,9 +383,217 @@ fn forward_absence_canonical_json_omits_the_restart_only_expected_inventory_bind
             .unwrap()
             .contains("collector_receipt_file")
     );
+    assert!(
+        !String::from_utf8(bytes.clone())
+            .unwrap()
+            .contains("terminal_binding_v3")
+    );
     assert_eq!(
         serde_json::from_slice::<FreshAbsenceObservationV2>(&bytes).unwrap(),
         observation
+    );
+
+    let terminal = DisposableLifecycleEventV2::TerminalAbsenceProved {
+        closure_v3: None,
+        disposition: TerminalDispositionV2::Completed,
+        fresh_absence_sha256: digest('f'),
+    };
+    let terminal_bytes = canonical_json(&terminal).expect("canonical legacy terminal");
+    assert!(
+        !String::from_utf8(terminal_bytes.clone())
+            .unwrap()
+            .contains("closure_v3")
+    );
+    let replayed: DisposableLifecycleEventV2 =
+        serde_json::from_slice(&terminal_bytes).expect("legacy terminal replay");
+    assert_eq!(canonical_json(&replayed).unwrap(), terminal_bytes);
+}
+
+#[test]
+fn prepared_manifest_restart_completed_requires_exact_terminal_closure() {
+    let (mut journal, mut records, observation, terminal_binding) = terminal_restart_before_fresh();
+    let fresh_absence_sha256 = fresh_absence_sha256(&observation).expect("FreshAbsence digest");
+    let fresh_record_sha256 = append(
+        &mut journal,
+        &mut records,
+        DisposableLifecycleEventV2::FreshAbsenceObserved { observation },
+    )
+    .expect("terminal FreshAbsence record");
+    let closure = TerminalNamespaceClosureV3::from_retained_fresh(
+        &terminal_binding,
+        fresh_absence_sha256.clone(),
+        fresh_record_sha256,
+        4,
+    )
+    .expect("terminal namespace closure");
+    append(
+        &mut journal,
+        &mut records,
+        DisposableLifecycleEventV2::TerminalAbsenceProved {
+            closure_v3: Some(closure),
+            disposition: TerminalDispositionV2::Completed,
+            fresh_absence_sha256,
+        },
+    )
+    .expect("completed exact namespace absence");
+
+    assert_eq!(
+        inspect_lifecycle_v2(&records)
+            .expect("exact completed replay")
+            .disposition,
+        LifecycleDispositionV2::TerminalCompleted
+    );
+    let fresh_text = String::from_utf8(records[3].clone()).expect("FreshAbsence UTF-8");
+    let terminal_text = String::from_utf8(records[4].clone()).expect("terminal UTF-8");
+    assert!(fresh_text.contains("terminal_binding_v3"));
+    assert!(fresh_text.contains("recovered_path_absent"));
+    assert!(terminal_text.contains("closure_v3"));
+    assert!(!fresh_text.contains("fresh_absence_lifecycle_record_sha256"));
+}
+
+#[test]
+fn prepared_manifest_restart_rejects_missing_or_forged_terminal_closure() {
+    let (mut journal, mut records, observation, terminal_binding) = terminal_restart_before_fresh();
+    let fresh_absence_sha256 = fresh_absence_sha256(&observation).expect("FreshAbsence digest");
+    let fresh_record_sha256 = append(
+        &mut journal,
+        &mut records,
+        DisposableLifecycleEventV2::FreshAbsenceObserved { observation },
+    )
+    .expect("terminal FreshAbsence record");
+
+    assert!(
+        append(
+            &mut journal.clone(),
+            &mut records.clone(),
+            DisposableLifecycleEventV2::TerminalAbsenceProved {
+                closure_v3: None,
+                disposition: TerminalDispositionV2::Completed,
+                fresh_absence_sha256: fresh_absence_sha256.clone(),
+            },
+        )
+        .is_err(),
+        "prepared-manifest restart completed without its terminal closure"
+    );
+
+    let exact = TerminalNamespaceClosureV3::from_retained_fresh(
+        &terminal_binding,
+        fresh_absence_sha256.clone(),
+        fresh_record_sha256,
+        4,
+    )
+    .expect("exact closure");
+    for mutation in [
+        "authority",
+        "fresh_receipt",
+        "fresh_record",
+        "fresh_sequence",
+        "fresh_observation",
+        "terminal_binding",
+    ] {
+        let mut forged = exact.clone();
+        match mutation {
+            "authority" => forged.authority.production_authority = true,
+            "fresh_receipt" => forged.fresh_absence_collector_receipt_sha256 = digest('a'),
+            "fresh_record" => forged.fresh_absence_lifecycle_record_sha256 = digest('a'),
+            "fresh_sequence" => forged.fresh_absence_lifecycle_sequence += 1,
+            "fresh_observation" => forged.fresh_absence_sha256 = digest('a'),
+            "terminal_binding" => forged.terminal_binding_sha256 = digest('a'),
+            _ => unreachable!(),
+        }
+        assert!(
+            append(
+                &mut journal.clone(),
+                &mut records.clone(),
+                DisposableLifecycleEventV2::TerminalAbsenceProved {
+                    closure_v3: Some(forged),
+                    disposition: TerminalDispositionV2::Completed,
+                    fresh_absence_sha256: fresh_absence_sha256.clone(),
+                },
+            )
+            .is_err(),
+            "forged terminal closure field {mutation} was accepted"
+        );
+    }
+
+    assert!(
+        append(
+            &mut journal,
+            &mut records,
+            DisposableLifecycleEventV2::TerminalAbsenceProved {
+                closure_v3: Some(exact),
+                disposition: TerminalDispositionV2::Aborted,
+                fresh_absence_sha256,
+            },
+        )
+        .is_err(),
+        "legacy restart abort accepted a Stage-E completion closure"
+    );
+}
+
+#[test]
+fn terminal_fresh_binding_rejects_forged_retained_lineage() {
+    for mutation in [
+        "operation",
+        "restart_start",
+        "first_record",
+        "latest_receipt",
+        "fresh_receipt",
+        "backing",
+        "artifact_authority",
+    ] {
+        let (mut journal, mut records, mut observation, _) = terminal_restart_before_fresh();
+        let binding = observation
+            .terminal_binding_v3
+            .as_mut()
+            .expect("terminal binding");
+        match mutation {
+            "operation" => binding.operation_nonce = digest('a'),
+            "restart_start" => {
+                binding.restart.restart_started_lifecycle_record_sha256 = digest('a')
+            }
+            "first_record" => binding.first.lifecycle_record_sha256 = digest('a'),
+            "latest_receipt" => binding.latest.collector_receipt_sha256 = digest('a'),
+            "fresh_receipt" => binding.fresh_collector_receipt_sha256 = digest('a'),
+            "backing" => binding.prepared_backing_exact_sha256 = digest('a'),
+            "artifact_authority" => {
+                binding
+                    .artifact_namespace_delta
+                    .authority
+                    .deletion_authority = true
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            append(
+                &mut journal,
+                &mut records,
+                DisposableLifecycleEventV2::FreshAbsenceObserved { observation },
+            )
+            .is_err(),
+            "forged terminal FreshAbsence field {mutation} was accepted"
+        );
+    }
+}
+
+#[test]
+fn deserialized_terminal_projection_cannot_bypass_reducer_lineage_checks() {
+    let (mut journal, mut records, observation, _) = terminal_restart_before_fresh();
+    let mut value = serde_json::to_value(&observation).expect("terminal projection JSON");
+    value["terminal_binding_v3"]["authority"]["production_authority"] =
+        serde_json::Value::Bool(true);
+    let forged: FreshAbsenceObservationV2 =
+        serde_json::from_value(value).expect("raw history projection remains deserializable");
+    assert!(
+        append(
+            &mut journal,
+            &mut records,
+            DisposableLifecycleEventV2::FreshAbsenceObserved {
+                observation: forged,
+            },
+        )
+        .is_err(),
+        "raw serde projection became positive terminal authority"
     );
 }
 
@@ -848,6 +1219,7 @@ fn full_flow(operation_nonce: &str) -> Vec<DisposableLifecycleEventV2> {
         },
         DisposableLifecycleEventV2::FreshAbsenceObserved { observation },
         DisposableLifecycleEventV2::TerminalAbsenceProved {
+            closure_v3: None,
             disposition: TerminalDispositionV2::Completed,
             fresh_absence_sha256: absence_digest,
         },
@@ -1381,6 +1753,7 @@ fn every_issued_cutpoint_restarts_abort_only_and_requires_fresh_absence() {
         resumed
             .append_with(
                 DisposableLifecycleEventV2::TerminalAbsenceProved {
+                    closure_v3: None,
                     disposition: TerminalDispositionV2::Aborted,
                     fresh_absence_sha256: absence_digest,
                 },
@@ -1475,6 +1848,7 @@ fn forward_flow_cannot_relabel_completion_as_restart_abort() {
             &mut journal,
             &mut records,
             DisposableLifecycleEventV2::TerminalAbsenceProved {
+                closure_v3: None,
                 disposition: TerminalDispositionV2::Aborted,
                 fresh_absence_sha256: absence_digest,
             },
@@ -1639,6 +2013,7 @@ fn persisted_absence_without_terminal_is_superseded_by_a_fresh_restart_epoch() {
         &mut resumed,
         &mut records,
         DisposableLifecycleEventV2::TerminalAbsenceProved {
+            closure_v3: None,
             disposition: TerminalDispositionV2::Aborted,
             fresh_absence_sha256: absence_sha,
         },
@@ -1668,6 +2043,7 @@ fn effect_ids_are_monotonic_unique_and_terminal_is_absence_only() {
             &mut journal,
             &mut records,
             DisposableLifecycleEventV2::TerminalAbsenceProved {
+                closure_v3: None,
                 disposition: TerminalDispositionV2::Aborted,
                 fresh_absence_sha256: digest('9'),
             },

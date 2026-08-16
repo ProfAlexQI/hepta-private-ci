@@ -19,29 +19,43 @@ use crate::mac_disposable_lifecycle::DisposableLifecycleEventV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleJournalV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleRecordV2;
 use crate::mac_disposable_lifecycle::EffectPurposeV2;
-#[cfg(test)]
 use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
 use crate::mac_disposable_lifecycle::LifecycleErrorV2;
 use crate::mac_disposable_lifecycle::LifecycleProcessModeV2;
 use crate::mac_disposable_lifecycle::PostEffectCollectorBindingV3;
 use crate::mac_disposable_lifecycle::PreparedCollectorManifestBindingV3;
-#[cfg(test)]
 use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
 use crate::mac_disposable_lifecycle::TerminalDispositionV2;
+use crate::mac_disposable_lifecycle::TerminalFreshAbsenceBindingV3;
+use crate::mac_disposable_lifecycle::TerminalNamespaceClosureV3;
+use crate::mac_disposable_lifecycle::TerminalRestartAdmissionLineageV3;
+use crate::mac_disposable_lifecycle::fresh_absence_sha256;
 use crate::mac_disposable_lifecycle::inspect_lifecycle_v2;
+#[cfg(test)]
 use crate::mac_disposable_lifecycle::reconciliation_snapshot_sha256;
 use crate::mac_disposable_reconciliation_collector::ArmedEjectExpectationV3;
+use crate::mac_disposable_reconciliation_collector::AwaitingExternalBackingAbsenceV3;
+use crate::mac_disposable_reconciliation_collector::PendingRecoveredFirstZeroObservationV3;
 use crate::mac_disposable_reconciliation_collector::PendingRestartObservationV3;
+use crate::mac_disposable_reconciliation_collector::PendingTerminalFreshObservationV3;
+use crate::mac_disposable_reconciliation_collector::PreparedBackingAbsenceProvenanceV3;
+use crate::mac_disposable_reconciliation_collector::RecoveredPreparedCollectorCapabilityV3;
+use crate::mac_disposable_reconciliation_collector::ReopenedPreparedCollectorCapabilityV3;
 use crate::mac_disposable_reconciliation_collector::RestartBaselineInventoryV3;
 use crate::mac_disposable_reconciliation_collector::RestartCollectorErrorV3;
+use crate::mac_disposable_reconciliation_collector::RetainedBackingAbsentProvenanceV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorAppendEventV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorLineageV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorMountDeltaV3;
 use crate::mac_disposable_reconciliation_collector::RetainedCollectorReceiptRootOwnerV3;
+use crate::mac_disposable_reconciliation_collector::RetainedCompletedNamespaceAbsenceV3;
 use crate::mac_disposable_reconciliation_collector::RetainedPreparedCollectorCapabilityV3;
+#[cfg(test)]
 use crate::mac_disposable_reconciliation_collector::RetainedTerminalAbsenceV3;
 use crate::mac_disposable_reconciliation_collector::SealedUnmountEffectPlanV3;
 use crate::mac_disposable_reconciliation_collector::UnadoptedCollectorGenerationV3;
+use crate::mac_disposable_reconciliation_collector::UnadoptedRecoveredFirstZeroObservationV3;
+use crate::mac_disposable_reconciliation_collector::UnadoptedTerminalFreshObservationV3;
 use crate::mac_disposable_reconciliation_collector::UnmountingV3;
 use crate::mac_disposable_reconciliation_collector::lifecycle_manifest_initial_receipt_root_binding;
 use crate::mac_inert_one_shot_runner::AuthenticatedDispatchedRunnerV3;
@@ -918,6 +932,10 @@ impl ReconciliationLifecycleEventV3 {
         Self(DisposableLifecycleEventV2::ReconciliationSnapshotObserved { snapshot })
     }
 
+    fn snapshot_observed_sealed(snapshot: ReconciliationSnapshotV2) -> Self {
+        Self(DisposableLifecycleEventV2::ReconciliationSnapshotObserved { snapshot })
+    }
+
     fn unmount_issued(effect_id: u64) -> Self {
         Self(DisposableLifecycleEventV2::UnmountIssuedOrUncertain {
             effect_id,
@@ -964,8 +982,7 @@ impl ReconciliationLifecycleEventV3 {
         })
     }
 
-    #[cfg(test)]
-    pub fn fresh_absence_observed(observation: FreshAbsenceObservationV2) -> Self {
+    fn fresh_absence_observed(observation: FreshAbsenceObservationV2) -> Self {
         Self(DisposableLifecycleEventV2::FreshAbsenceObserved { observation })
     }
 
@@ -1017,6 +1034,26 @@ impl FreshPreparedLifecycleEventV3 {
 }
 
 impl ReconciliationTerminalEventV3 {
+    fn completed_namespace_absence(
+        terminal_binding: &TerminalFreshAbsenceBindingV3,
+        fresh_absence_sha256: String,
+        fresh_record_sha256: String,
+        fresh_record_sequence: u32,
+    ) -> Result<Self, DurableLifecycleStoreErrorV3> {
+        let closure_v3 = TerminalNamespaceClosureV3::from_retained_fresh(
+            terminal_binding,
+            fresh_absence_sha256.clone(),
+            fresh_record_sha256,
+            fresh_record_sequence,
+        )?;
+        Ok(Self(DisposableLifecycleEventV2::TerminalAbsenceProved {
+            disposition: TerminalDispositionV2::Completed,
+            fresh_absence_sha256,
+            closure_v3: Some(closure_v3),
+        }))
+    }
+
+    #[cfg(test)]
     fn from_retained_absence(
         absence: &RetainedTerminalAbsenceV3<'_>,
     ) -> Result<Self, DurableLifecycleStoreErrorV3> {
@@ -1028,6 +1065,7 @@ impl ReconciliationTerminalEventV3 {
         Ok(Self(DisposableLifecycleEventV2::TerminalAbsenceProved {
             disposition: TerminalDispositionV2::Aborted,
             fresh_absence_sha256: absence.fresh_absence_sha256().to_string(),
+            closure_v3: None,
         }))
     }
 
@@ -1039,6 +1077,7 @@ impl ReconciliationTerminalEventV3 {
         Self(DisposableLifecycleEventV2::TerminalAbsenceProved {
             disposition,
             fresh_absence_sha256,
+            closure_v3: None,
         })
     }
 }
@@ -1237,6 +1276,7 @@ pub(crate) struct ReconciliationOperationStoreV3<'a, 'e, R = NeedsRestartEpochV3
     journal: DisposableLifecycleJournalV2,
     poisoned: bool,
     prepared: Option<RetainedPreparedCollectorCapabilityV3>,
+    recovered_prepared: Option<RecoveredPreparedCollectorCapabilityV3>,
     collector: Option<RetainedCollectorLineageV3>,
     receipt_root_owner: Option<RetainedCollectorReceiptRootOwnerV3>,
     issues: DurableEffectIssueStoreV3,
@@ -1272,6 +1312,24 @@ pub(crate) struct EjectExpectationArmSealV3 {
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
+/// Private one-shot proof that the whole-operation owner is consuming its
+/// exact prepared capability, latest terminal-Zero lineage, and receipt-root
+/// generation into the Stage E namespace-absence chain.  The collector may
+/// inspect this seal but cannot construct it or recover a raw prepared/path
+/// capability from it.
+pub(crate) struct PreparedBackingAbsenceTransitionSealV3 {
+    _private: (),
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Borrow-only proof used by the collector to expose the terminal Fresh
+/// projection from an already-adopted, still-owned namespace-absence capsule.
+/// The serializable projection never becomes a capability by itself.
+pub(crate) struct CompletedNamespaceAbsenceReadSealV3 {
+    _private: (),
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
 pub(crate) struct AwaitingUnmountCallbackV3;
 pub(crate) struct AwaitingUnmountObservationV3;
 pub(crate) struct AwaitingEjectCallbackV3;
@@ -1289,6 +1347,7 @@ pub(crate) struct PendingUnmountReconciliationOperationStoreV3<'a, 'e, S> {
     journal: DisposableLifecycleJournalV2,
     poisoned: bool,
     prepared: Option<RetainedPreparedCollectorCapabilityV3>,
+    recovered_prepared: Option<RecoveredPreparedCollectorCapabilityV3>,
     receipt_root_owner: Option<RetainedCollectorReceiptRootOwnerV3>,
     restart: ActiveRestartEpochV3,
     runner_callback: Option<SuccessfulRunnerCallbackV3<PersistedUnmountEffectV3>>,
@@ -1310,11 +1369,361 @@ pub(crate) struct PendingEjectReconciliationOperationStoreV3<'a, 'e, S> {
     journal: DisposableLifecycleJournalV2,
     poisoned: bool,
     prepared: Option<RetainedPreparedCollectorCapabilityV3>,
+    recovered_prepared: Option<RecoveredPreparedCollectorCapabilityV3>,
     restart: ActiveRestartEpochV3,
     runner_callback: Option<SuccessfulRunnerCallbackV3<PersistedEjectEffectV3>>,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
     _state: PhantomData<fn() -> S>,
     _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Store-owned half of the Stage E namespace-absence transaction.  The
+/// prepared collector, exact first/latest lineage, receipt-root owner, and
+/// backing evidence move into a collector-owned provenance value; this core
+/// retains every remaining whole-operation capability while permanently
+/// armed.  No intermediate state can be converted back into `Active`.
+struct StageETerminalOperationCoreV3<'a, 'e> {
+    census: RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3>,
+    epoch: &'e FreshProcessEpochV3,
+    issues: DurableEffectIssueStoreV3,
+    journal: DisposableLifecycleJournalV2,
+    poisoned: bool,
+    restart: ActiveRestartEpochV3,
+    store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+impl StageETerminalOperationCoreV3<'_, '_> {
+    fn revalidate_armed(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
+        if !self.poisoned || self.store.poisoned() || self.issues.poisoned() {
+            return Err(invalid(
+                "Stage E whole-store transaction is not permanently armed",
+            ));
+        }
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed during Stage E replay: {error}"
+            ))
+        })?;
+        self.store.revalidate()?;
+        let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(self.store.issue_source())?;
+        self.issues.revalidate_required(&lifecycle)?;
+        self.issues.revalidate_s1_adopted()?;
+        Ok(())
+    }
+}
+
+impl<'a, 'e> AwaitingExternalBackingAbsenceOperationStoreV3<'a, 'e> {
+    /// Observe only an externally performed unlink.  This consumes the exact
+    /// prepared backing FD and does not issue, request, or imply a Delete
+    /// effect.  Failure returns no armed operation capability.
+    pub(crate) fn observe_external_namespace_absence(
+        self,
+    ) -> Result<BackingAbsentReconciliationOperationStoreV3<'a, 'e>, DurableLifecycleStoreErrorV3>
+    {
+        self.core.revalidate_armed()?;
+        let absent = self.awaiting.observe_live_namespace_absence()?;
+        absent.revalidate()?;
+        self.core.revalidate_armed()?;
+        Ok(BackingAbsentReconciliationOperationStoreV3 {
+            core: self.core,
+            absent,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl<'a, 'e> BackingAbsentReconciliationOperationStoreV3<'a, 'e> {
+    /// Capture the one terminal-only Fresh observation while the low-level
+    /// live-unlinked or recovered pathname-absence proof remains owned by the
+    /// collector provenance.  This does not publish a receipt yet.
+    pub(crate) fn collect_terminal_fresh(
+        self,
+    ) -> Result<
+        PendingTerminalFreshReconciliationOperationStoreV3<'a, 'e>,
+        DurableLifecycleStoreErrorV3,
+    > {
+        self.core.revalidate_armed()?;
+        self.absent.revalidate()?;
+        let epoch = ActiveRestartCollectorEpochV3 {
+            operation_nonce: self.core.store.operation_nonce(),
+            owner: &self.core.restart,
+            _not_send_or_sync: PhantomData,
+        };
+        let pending = self.absent.collect_terminal_fresh(epoch)?;
+        self.core.revalidate_armed()?;
+        Ok(PendingTerminalFreshReconciliationOperationStoreV3 {
+            core: self.core,
+            pending,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl<'a, 'e> PendingTerminalFreshReconciliationOperationStoreV3<'a, 'e> {
+    /// Publish the terminal-only Fresh receipt, append its bound V2 event,
+    /// and atomically adopt the exact G->G+1 receipt/lifecycle pair into S1.
+    /// The low-level absence proof remains inside the consumed collector value
+    /// throughout; no DTO or digest can stand in for it.
+    pub(crate) fn persist_append_and_ready(
+        mut self,
+    ) -> Result<ReadyToCompleteReconciliationOperationStoreV3<'a, 'e>, DurableLifecycleStoreErrorV3>
+    {
+        self.core.revalidate_armed()?;
+        self.core.poisoned = true;
+        let unadopted: UnadoptedTerminalFreshObservationV3 = self.pending.persist_and_retain()?;
+        let (operation_nonce, observation, terminal_binding) = {
+            let sealed = unadopted.sealed_observation()?;
+            (
+                sealed.operation_nonce().to_string(),
+                sealed.fresh_absence_observation()?.clone(),
+                sealed.terminal_binding()?.clone(),
+            )
+        };
+        if operation_nonce != self.core.store.operation_nonce() {
+            return Err(invalid(
+                "terminal Fresh collector belongs to another operation",
+            ));
+        }
+        let fresh_absence_sha256 = fresh_absence_sha256(&observation)?;
+        // The receipt root is now G+1 while S1 still owns G.  Do not call a
+        // generic census revalidation/adoption in this interval.
+        let digest = self.core.store.append_reconciliation(
+            &mut self.core.journal,
+            ReconciliationLifecycleEventV3::fresh_absence_observed(observation),
+        )?;
+        let mut append = RetainedLifecycleRecordAppendV3::retain(&self.core.store, &digest)?;
+        let sequence = append.sequence();
+        let (after_transfer, transfer) = unadopted.into_s1_transfer()?;
+        let sink = self
+            .core
+            .census
+            .selected_collector_receipt_lifecycle_pair_sink()?;
+        let (generation_after, adoption) = append.adopt_collector_pair_into_s1(sink, transfer)?;
+        append.require_s1_adopted()?;
+        let absence = after_transfer.bind_adopted_pair(generation_after, append, adoption)?;
+        let read = CompletedNamespaceAbsenceReadSealV3 {
+            _private: (),
+            _not_send_or_sync: PhantomData,
+        };
+        absence.revalidate(&read)?;
+        if absence.terminal_binding(&read)? != &terminal_binding {
+            return Err(invalid(
+                "adopted terminal Fresh evidence differs from its lifecycle projection",
+            ));
+        }
+        absence.require_fresh_lifecycle_record(&read, &digest, sequence)?;
+        self.core.revalidate_armed()?;
+        Ok(ReadyToCompleteReconciliationOperationStoreV3 {
+            core: self.core,
+            absence,
+            fresh_absence_sha256,
+            fresh_record_sequence: sequence,
+            fresh_record_sha256: digest,
+            terminal_binding,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl<'a, 'e> PendingRecoveredFirstZeroOperationStoreV3<'a, 'e> {
+    /// Publish the recovered current-epoch first Zero and pair-adopt its
+    /// receipt with `ReconciliationSnapshotObserved`.  Only the returned
+    /// continuation can consume the still-live recovered namespace proof into
+    /// BackingAbsent; no ordinary Active/effect state is reconstructed.
+    pub(crate) fn persist_append_and_arm_recovered(
+        mut self,
+    ) -> Result<BackingAbsentReconciliationOperationStoreV3<'a, 'e>, DurableLifecycleStoreErrorV3>
+    {
+        self.core.revalidate_armed()?;
+        self.core.poisoned = true;
+        let unadopted: UnadoptedRecoveredFirstZeroObservationV3 =
+            self.pending.persist_and_retain()?;
+        let (operation_nonce, snapshot) = {
+            let sealed = unadopted.sealed_observation()?;
+            let append = sealed.append_material()?;
+            let RetainedCollectorAppendEventV3::ReconciliationSnapshot(snapshot) = append.event()
+            else {
+                return Err(invalid(
+                    "recovered first-Zero collector changed lifecycle event kind",
+                ));
+            };
+            (sealed.operation_nonce().to_string(), (*snapshot).clone())
+        };
+        if operation_nonce != self.core.store.operation_nonce() {
+            return Err(invalid(
+                "recovered first-Zero collector belongs to another operation",
+            ));
+        }
+        let digest = self.core.store.append_reconciliation(
+            &mut self.core.journal,
+            ReconciliationLifecycleEventV3::snapshot_observed_sealed(snapshot),
+        )?;
+        let mut append = RetainedLifecycleRecordAppendV3::retain(&self.core.store, &digest)?;
+        let (after_transfer, transfer) = unadopted.into_s1_transfer()?;
+        let sink = self
+            .core
+            .census
+            .selected_collector_receipt_lifecycle_pair_sink()?;
+        let (generation_after, adoption) = append.adopt_collector_pair_into_s1(sink, transfer)?;
+        append.require_s1_adopted()?;
+        let continuation = after_transfer.bind_adopted_pair(generation_after, append, adoption)?;
+        let provenance = continuation.into_backing_absence_provenance(
+            self.restart_lineage,
+            PreparedBackingAbsenceTransitionSealV3 {
+                _private: (),
+                _not_send_or_sync: PhantomData,
+            },
+        )?;
+        let PreparedBackingAbsenceProvenanceV3::RecoveredAbsent(absent) = provenance else {
+            return Err(invalid(
+                "recovered first-Zero continuation produced a live prepared provenance",
+            ));
+        };
+        absent.revalidate()?;
+        self.core.revalidate_armed()?;
+        Ok(BackingAbsentReconciliationOperationStoreV3 {
+            core: self.core,
+            absent,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+/// Present prepared backing after the whole operation has irreversibly armed
+/// its external-absence observation.  Dropping or forgetting this value can
+/// only retain/lose the blocking census; it cannot reconstruct `Active`.
+pub(crate) struct AwaitingExternalBackingAbsenceOperationStoreV3<'a, 'e> {
+    core: StageETerminalOperationCoreV3<'a, 'e>,
+    awaiting: AwaitingExternalBackingAbsenceV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Exact live-unlinked or restart-recovered namespace-absence provenance,
+/// retained before the terminal-only Fresh collector publishes G+1.
+pub(crate) struct BackingAbsentReconciliationOperationStoreV3<'a, 'e> {
+    core: StageETerminalOperationCoreV3<'a, 'e>,
+    absent: RetainedBackingAbsentProvenanceV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Terminal-only Fresh collection has captured exact live IOMedia/mount/
+/// namespace endpoints but has not crossed its no-replace receipt boundary.
+pub(crate) struct PendingTerminalFreshReconciliationOperationStoreV3<'a, 'e> {
+    core: StageETerminalOperationCoreV3<'a, 'e>,
+    pending: PendingTerminalFreshObservationV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Recovered path-absence collection for the current restart epoch has
+/// captured its mandatory first Zero, but its receipt and V2 snapshot record
+/// have not yet crossed paired S1 adoption.
+pub(crate) struct PendingRecoveredFirstZeroOperationStoreV3<'a, 'e> {
+    core: StageETerminalOperationCoreV3<'a, 'e>,
+    pending: PendingRecoveredFirstZeroObservationV3,
+    restart_lineage: TerminalRestartAdmissionLineageV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Terminal Fresh receipt and its V2 record are both durable and paired into
+/// S1.  Completion consumes this whole value; no raw event or digest enters.
+pub(crate) struct ReadyToCompleteReconciliationOperationStoreV3<'a, 'e> {
+    core: StageETerminalOperationCoreV3<'a, 'e>,
+    absence: RetainedCompletedNamespaceAbsenceV3,
+    fresh_absence_sha256: String,
+    fresh_record_sequence: u32,
+    fresh_record_sha256: String,
+    terminal_binding: TerminalFreshAbsenceBindingV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Exact positive terminal chain retained by the completed wrapper.  Both V2
+/// records and the collector-owned first/latest/Fresh namespace evidence stay
+/// descriptor-backed for the lifetime of the completed state.
+struct RetainedCompletedNamespaceClosureV3 {
+    absence: RetainedCompletedNamespaceAbsenceV3,
+    terminal_binding: TerminalFreshAbsenceBindingV3,
+    terminal_record: RetainedLifecycleRecordAppendV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+impl<'a, 'e> ReadyToCompleteReconciliationOperationStoreV3<'a, 'e> {
+    /// Consume the exact terminal Fresh pair into the only positive Completed
+    /// state.  Poison is already armed and is never cleared: the durable V2
+    /// terminal append, retained final record, S1 adoption, and
+    /// Blocking->Completed census transition either all produce this owned
+    /// successor or return no reusable operation capability.
+    pub(crate) fn complete(
+        mut self,
+    ) -> Result<CompletedReconciliationOperationStoreV3<'a, 'e>, DurableLifecycleStoreErrorV3> {
+        self.core.revalidate_armed()?;
+        let read = CompletedNamespaceAbsenceReadSealV3 {
+            _private: (),
+            _not_send_or_sync: PhantomData,
+        };
+        self.absence.revalidate(&read)?;
+        let replayed_binding = self.absence.terminal_binding(&read)?;
+        if replayed_binding != &self.terminal_binding {
+            return Err(invalid(
+                "ReadyToComplete terminal binding differs from its retained namespace evidence",
+            ));
+        }
+        self.absence.require_fresh_lifecycle_record(
+            &read,
+            &self.fresh_record_sha256,
+            self.fresh_record_sequence,
+        )?;
+        let event = ReconciliationTerminalEventV3::completed_namespace_absence(
+            &self.terminal_binding,
+            self.fresh_absence_sha256.clone(),
+            self.fresh_record_sha256.clone(),
+            self.fresh_record_sequence,
+        )?;
+        self.core.poisoned = true;
+        let digest = self
+            .core
+            .store
+            .append_reconciliation_terminal(&mut self.core.journal, event)?;
+        let mut terminal_record =
+            RetainedLifecycleRecordAppendV3::retain(&self.core.store, &digest)?;
+        let sink = self.core.census.selected_terminal_record_sink()?;
+        terminal_record.adopt_into_s1(sink)?;
+        terminal_record.require_s1_adopted()?;
+        let census = self
+            .core
+            .census
+            .complete_selected_lifecycle_append(&terminal_record)?;
+        let lifecycle =
+            VerifiedLifecycleIssueRosterV3::capture_from_s2(self.core.store.issue_source())?;
+        self.core.issues.revalidate_required(&lifecycle)?;
+        self.core.issues.revalidate_s1_adopted()?;
+        self.core.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed after Stage E terminal append: {error}"
+            ))
+        })?;
+        self.absence.revalidate(&read)?;
+        let completed = CompletedReconciliationOperationStoreV3 {
+            census,
+            epoch: self.core.epoch,
+            issues: self.core.issues,
+            journal: self.core.journal,
+            namespace_closure: Some(RetainedCompletedNamespaceClosureV3 {
+                absence: self.absence,
+                terminal_binding: self.terminal_binding,
+                terminal_record,
+                _not_send_or_sync: PhantomData,
+            }),
+            prepared: None,
+            recovered_prepared: None,
+            receipt_root_owner: None,
+            restart: self.core.restart,
+            store: self.core.store,
+        };
+        completed.revalidate()?;
+        Ok(completed)
+    }
 }
 
 /// Private exact binding retained across the issued runner and pending-effect
@@ -1660,7 +2069,9 @@ pub(crate) struct CompletedReconciliationOperationStoreV3<'a, 'e> {
     epoch: &'e FreshProcessEpochV3,
     issues: DurableEffectIssueStoreV3,
     journal: DisposableLifecycleJournalV2,
+    namespace_closure: Option<RetainedCompletedNamespaceClosureV3>,
     prepared: Option<RetainedPreparedCollectorCapabilityV3>,
+    recovered_prepared: Option<RecoveredPreparedCollectorCapabilityV3>,
     receipt_root_owner: Option<RetainedCollectorReceiptRootOwnerV3>,
     restart: ActiveRestartEpochV3,
     store: DurableLifecycleStoreV3<ReconciliationOnlyStoreV3>,
@@ -1868,7 +2279,7 @@ impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
                 "operation without the exact prepared manifest is blocking and cannot enter the production V3 effect path",
             ));
         }
-        let mut prepared = if let Some(manifest) = store.prepared_manifest.as_ref() {
+        let reopened_prepared = if let Some(manifest) = store.prepared_manifest.as_ref() {
             let seal = PreparedCollectorLifecycleSealV3 { _private: () };
             Some(
                 RetainedPreparedCollectorCapabilityV3::reopen_from_lifecycle_manifest(
@@ -1881,16 +2292,36 @@ impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
         } else {
             None
         };
+        let mut prepared = None;
+        let mut recovered_prepared = None;
+        match reopened_prepared {
+            Some(ReopenedPreparedCollectorCapabilityV3::Present(value)) => {
+                prepared = Some(value);
+            }
+            Some(ReopenedPreparedCollectorCapabilityV3::PathAbsentCandidate(value)) => {
+                recovered_prepared = Some(value);
+            }
+            None => {}
+        }
+        if exact_prepared_format && (prepared.is_some() == recovered_prepared.is_some()) {
+            return Err(invalid(
+                "exact prepared reopen must retain exactly one present or path-absent prepared capability",
+            ));
+        }
         let mut receipt_root_owner = None;
-        if let Some(prepared) = &mut prepared {
-            let records = store
-                .records
-                .iter()
-                .map(|record| record.bytes.clone())
-                .collect::<Vec<_>>();
-            let mut owner = prepared.take_initial_receipt_root_owner()?;
+        let records = store
+            .records
+            .iter()
+            .map(|record| record.bytes.clone())
+            .collect::<Vec<_>>();
+        if let Some(value) = &mut prepared {
+            let mut owner = value.take_initial_receipt_root_owner()?;
             owner.bind_lifecycle_records(&records)?;
             receipt_root_owner = Some(owner);
+            census.revalidate()?;
+        } else if let Some(value) = &mut recovered_prepared {
+            value.bind_receipt_root_to_lifecycle(&records)?;
+            receipt_root_owner = Some(value.take_initial_receipt_root_owner()?);
             census.revalidate()?;
         }
         let lifecycle = VerifiedLifecycleIssueRosterV3::capture_from_s2(store.issue_source())?;
@@ -1916,6 +2347,7 @@ impl<'e, 'h> ExistingCensusStoreWiringV3<'e, 'h> {
             journal,
             poisoned: false,
             prepared,
+            recovered_prepared,
             receipt_root_owner,
             restart: NeedsRestartEpochV3 {
                 _not_send_or_sync: PhantomData,
@@ -2905,6 +3337,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, NeedsRestartEpochV3> {
             journal: self.journal,
             poisoned: self.poisoned,
             prepared: self.prepared,
+            recovered_prepared: self.recovered_prepared,
             collector: self.collector,
             receipt_root_owner: self.receipt_root_owner,
             issues: self.issues,
@@ -2937,6 +3370,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, NeedsRestartEpochV3> {
             journal: self.journal,
             poisoned: self.poisoned,
             prepared: self.prepared,
+            recovered_prepared: self.recovered_prepared,
             collector: self.collector,
             receipt_root_owner: self.receipt_root_owner,
             issues: self.issues,
@@ -2970,6 +3404,195 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             )));
         }
         Ok(())
+    }
+
+    fn terminal_restart_lineage(
+        &self,
+    ) -> Result<TerminalRestartAdmissionLineageV3, DurableLifecycleStoreErrorV3> {
+        let admissions =
+            self.store.restart_admissions.as_ref().ok_or_else(|| {
+                invalid("Stage E requires the exact retained restart-admission root")
+            })?;
+        let admission = admissions.records.last().ok_or_else(|| {
+            invalid("Stage E requires one exact current restart-admission capsule")
+        })?;
+        let record = &admission.record;
+        if admission.digest != self.restart.admission_sha256
+            || record.operation_nonce != self.store.operation_nonce()
+            || record.prepared_manifest_sha256 != self.restart.prepared_manifest_sha256
+            || record.prepared_profile_sha256 != self.restart.prepared_profile_sha256
+            || record.process_epoch_sha256 != self.restart.process_epoch_sha256
+            || record.restart_epoch_nonce != self.restart.restart_epoch_nonce
+            || record.boot_session_uuid != self.restart.boot_session_uuid
+        {
+            return Err(invalid(
+                "Stage E restart projection differs from its active retained admission",
+            ));
+        }
+        let lifecycle_index = usize::try_from(record.lifecycle_sequence)
+            .ok()
+            .and_then(|sequence| sequence.checked_sub(1))
+            .ok_or_else(|| invalid("Stage E restart lifecycle sequence is invalid"))?;
+        let lifecycle = self.store.records.get(lifecycle_index).ok_or_else(|| {
+            invalid("Stage E restart admission references a missing lifecycle record")
+        })?;
+        if sha256(&lifecycle.bytes) != record.lifecycle_record_sha256 {
+            return Err(invalid(
+                "Stage E restart admission differs from its exact retained lifecycle inode",
+            ));
+        }
+        let parsed: DisposableLifecycleRecordV2 = serde_json::from_slice(&lifecycle.bytes)
+            .map_err(|error| invalid(format!("Stage E restart record JSON failed: {error}")))?;
+        if parsed.sequence != record.lifecycle_sequence
+            || !matches!(
+                parsed.event,
+                DisposableLifecycleEventV2::RestartReconciliationStarted { .. }
+            )
+        {
+            return Err(invalid(
+                "Stage E restart admission is not paired with its exact restart-start event",
+            ));
+        }
+        TerminalRestartAdmissionLineageV3::new(
+            record.prepared_manifest_sha256.clone(),
+            record.prepared_profile_sha256.clone(),
+            record.process_epoch_sha256.clone(),
+            admission.digest.clone(),
+            record.lifecycle_record_sha256.clone(),
+            record.lifecycle_sequence,
+        )
+        .map_err(Into::into)
+    }
+
+    /// Permanently consume a present prepared operation and terminal-Zero
+    /// collector lineage before any external unlink is observed.  This is the
+    /// only live route into Stage E; it creates no delete effect or authority.
+    pub(crate) fn arm_external_backing_absence(
+        mut self,
+    ) -> Result<AwaitingExternalBackingAbsenceOperationStoreV3<'a, 'e>, DurableLifecycleStoreErrorV3>
+    {
+        self.require_no_collector_pending("Stage E external-absence arm")?;
+        if self.poisoned || self.store.poisoned() || self.issues.poisoned() {
+            return Err(invalid("poisoned active restart cannot arm Stage E"));
+        }
+        if self.recovered_prepared.is_some() {
+            return Err(invalid(
+                "path-absent prepared recovery cannot enter the live external-absence arm",
+            ));
+        }
+        self.revalidate_existing_issues()?;
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed before Stage E arm: {error}"
+            ))
+        })?;
+        let restart = self.terminal_restart_lineage()?;
+        let prepared = self
+            .prepared
+            .take()
+            .ok_or_else(|| invalid("Stage E live arm lacks its present prepared capability"))?;
+        let lineage = self
+            .collector
+            .take()
+            .ok_or_else(|| invalid("Stage E live arm lacks its retained terminal-Zero lineage"))?;
+        let owner = self.receipt_root_owner.take().ok_or_else(|| {
+            invalid("Stage E live arm lost its unique receipt-root generation owner")
+        })?;
+        // This consumed wrapper never becomes reusable again.  Arm before the
+        // prepared/lineage/owner handoff so errors, panics, Drop, and forget
+        // all fail closed around the blocking S1 census.
+        self.poisoned = true;
+        let provenance = prepared.into_backing_absence_provenance(
+            lineage,
+            owner,
+            restart,
+            PreparedBackingAbsenceTransitionSealV3 {
+                _private: (),
+                _not_send_or_sync: PhantomData,
+            },
+        )?;
+        let PreparedBackingAbsenceProvenanceV3::AwaitingExternal(awaiting) = provenance else {
+            return Err(invalid(
+                "present prepared capability produced a recovered Stage E provenance",
+            ));
+        };
+        let core = StageETerminalOperationCoreV3 {
+            census: self.census,
+            epoch: self.epoch,
+            issues: self.issues,
+            journal: self.journal,
+            poisoned: true,
+            restart: self.restart,
+            store: self.store,
+            _not_send_or_sync: PhantomData,
+        };
+        core.revalidate_armed()?;
+        Ok(AwaitingExternalBackingAbsenceOperationStoreV3 {
+            core,
+            awaiting,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    /// Disjoint restart-recovery route.  It consumes a path-absent prepared
+    /// candidate into the current epoch's mandatory first Zero collection;
+    /// generic collection, issue creation, and effect dispatch never receive
+    /// this capability.
+    pub(crate) fn collect_recovered_first_zero(
+        mut self,
+    ) -> Result<PendingRecoveredFirstZeroOperationStoreV3<'a, 'e>, DurableLifecycleStoreErrorV3>
+    {
+        self.require_no_collector_pending("recovered Stage E first-Zero collection")?;
+        if self.poisoned || self.store.poisoned() || self.issues.poisoned() {
+            return Err(invalid(
+                "poisoned active restart cannot collect recovered first Zero",
+            ));
+        }
+        if self.prepared.is_some() || self.collector.is_some() {
+            return Err(invalid(
+                "recovered first-Zero collection requires only the path-absent prepared candidate",
+            ));
+        }
+        self.revalidate_existing_issues()?;
+        self.census.revalidate()?;
+        self.epoch.validate_current().map_err(|error| {
+            invalid(format!(
+                "fresh process epoch changed before recovered first Zero: {error}"
+            ))
+        })?;
+        let restart_lineage = self.terminal_restart_lineage()?;
+        let recovered = self.recovered_prepared.take().ok_or_else(|| {
+            invalid("recovered first-Zero collection lacks its path-absent prepared capability")
+        })?;
+        let owner = self.receipt_root_owner.take().ok_or_else(|| {
+            invalid("recovered first-Zero collection lost its unique receipt-root owner")
+        })?;
+        self.poisoned = true;
+        let seed = ActiveRestartCollectorSeedV3 {
+            operation_nonce: self.store.operation_nonce(),
+            owner: &self.restart,
+            _not_send_or_sync: PhantomData,
+        };
+        seed.require_owner(&self.restart)?;
+        let pending = recovered.collect_recovered_first_zero(seed, owner)?;
+        let core = StageETerminalOperationCoreV3 {
+            census: self.census,
+            epoch: self.epoch,
+            issues: self.issues,
+            journal: self.journal,
+            poisoned: true,
+            restart: self.restart,
+            store: self.store,
+            _not_send_or_sync: PhantomData,
+        };
+        core.revalidate_armed()?;
+        Ok(PendingRecoveredFirstZeroOperationStoreV3 {
+            core,
+            pending,
+            restart_lineage,
+            _not_send_or_sync: PhantomData,
+        })
     }
 
     fn collector_seed(
@@ -3105,6 +3728,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
     /// snapshot whose full current-boot expected-absence inventory was sealed
     /// before cleanup. It cannot be requested from a raw snapshot DTO or from
     /// the original admission live-before seed.
+    #[cfg(test)]
     pub(crate) fn collect_fresh_absence(
         &mut self,
     ) -> Result<PendingRestartObservationV3, DurableLifecycleStoreErrorV3> {
@@ -3218,6 +3842,91 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             _not_send_or_sync: PhantomData,
         };
         foreign_seed.require_owner(&self.restart)?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reject_foreign_iomedia_deltas_for_test(
+        &self,
+    ) -> Result<(), DurableLifecycleStoreErrorV3> {
+        let seed = ActiveRestartCollectorSeedV3 {
+            operation_nonce: self.store.operation_nonce(),
+            owner: &self.restart,
+            _not_send_or_sync: PhantomData,
+        };
+        seed.require_owner(&self.restart)?;
+        let admitted = self.restart.live_before.report();
+        if admitted.objects.len() < 2 {
+            return Err(invalid(
+                "foreign-IOMedia removal test requires at least two admitted objects",
+            ));
+        }
+
+        let mut removed = admitted.clone();
+        removed.objects.pop();
+
+        let mut added = admitted.clone();
+        let mut foreign = admitted.objects[0].clone();
+        let existing_ids = admitted
+            .objects
+            .iter()
+            .map(|object| object.provenance.registry_entry_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let foreign_id = (1_u64..)
+            .map(|offset| format!("{:016x}", u64::MAX - offset))
+            .find(|candidate| !existing_ids.contains(candidate.as_str()))
+            .ok_or_else(|| invalid("could not allocate a foreign test registry ID"))?;
+        let existing_bsd_names = admitted
+            .objects
+            .iter()
+            .map(|object| object.provenance.bsd_name.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let foreign_bsd_name = (900_000_u64..)
+            .map(|suffix| format!("disk{suffix}"))
+            .find(|candidate| !existing_bsd_names.contains(candidate.as_str()))
+            .ok_or_else(|| invalid("could not allocate a foreign test BSD name"))?;
+        let foreign_path = format!("IOService:/OpenClawForeignIOMedia/{foreign_id}");
+        foreign.provenance.registry_entry_id = foreign_id.clone();
+        foreign.provenance.registry_path = foreign_path.clone();
+        foreign.provenance.bsd_name = foreign_bsd_name;
+        let first = foreign
+            .provenance
+            .ancestry
+            .first_mut()
+            .ok_or_else(|| invalid("admitted test object lacks its first ancestry node"))?;
+        first.registry_entry_id = foreign_id;
+        first.registry_path = Some(foreign_path);
+        added.objects.push(foreign);
+        added.objects.sort_by(|left, right| {
+            left.provenance
+                .registry_entry_id
+                .cmp(&right.provenance.registry_entry_id)
+        });
+
+        let mut property_drift = admitted.clone();
+        let property = &mut property_drift.objects[0]
+            .provenance
+            .disk_arbitration
+            .internal;
+        *property = Some(!property.unwrap_or(false));
+
+        for (label, inventory) in [
+            ("removed", removed),
+            ("added", added),
+            ("property-drifted", property_drift),
+        ] {
+            crate::mac_iomedia_identity::validate_restart_iomedia_inventory_v3(&inventory)
+                .map_err(|error| {
+                    invalid(format!(
+                        "foreign {label} IOMedia test inventory is malformed: {error}"
+                    ))
+                })?;
+            if seed.require_exact_live_inventory(&inventory).is_ok() {
+                return Err(invalid(format!(
+                    "active restart seed accepted a foreign {label} IOMedia inventory"
+                )));
+            }
+        }
         Ok(())
     }
 
@@ -3943,6 +4652,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
         result
     }
 
+    #[cfg(test)]
     pub(crate) fn complete_reconciliation_from_retained_absence(
         self,
     ) -> Result<CompletedReconciliationOperationStoreV3<'a, 'e>, DurableLifecycleStoreErrorV3> {
@@ -3977,6 +4687,7 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
         self.complete_reconciliation_inner(event)
     }
 
+    #[cfg(test)]
     fn complete_reconciliation_inner(
         mut self,
         event: ReconciliationTerminalEventV3,
@@ -4011,16 +4722,20 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
                 "fresh process epoch changed after terminal append: {error}"
             ))
         })?;
-        Ok(CompletedReconciliationOperationStoreV3 {
+        let completed = CompletedReconciliationOperationStoreV3 {
             census,
             epoch: self.epoch,
             issues: self.issues,
             journal: self.journal,
+            namespace_closure: None,
             prepared: self.prepared,
+            recovered_prepared: self.recovered_prepared,
             receipt_root_owner: self.receipt_root_owner,
             restart: self.restart,
             store: self.store,
-        })
+        };
+        completed.revalidate()?;
+        Ok(completed)
     }
 
     fn revalidate_existing_issues(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
@@ -4030,7 +4745,12 @@ impl<'a, 'e> ReconciliationOperationStoreV3<'a, 'e, ActiveRestartEpochV3> {
             .iter()
             .map(|record| record.bytes.clone())
             .collect::<Vec<_>>();
-        if self.prepared.is_some() {
+        if self.prepared.is_some() && self.recovered_prepared.is_some() {
+            return Err(invalid(
+                "reconciliation store retained both present and recovered prepared capabilities",
+            ));
+        }
+        if self.prepared.is_some() || self.recovered_prepared.is_some() {
             match self.receipt_root_owner.as_ref() {
                 Some(owner) => {
                     owner.revalidate_lifecycle_records(&lifecycle_records)?;
@@ -4300,6 +5020,7 @@ impl<'a, 'e> PendingEjectReconciliationOperationStoreV3<'a, 'e, AwaitingEjectCal
             journal,
             poisoned: _,
             prepared,
+            recovered_prepared,
             restart,
             runner_callback: _,
             store,
@@ -4315,6 +5036,7 @@ impl<'a, 'e> PendingEjectReconciliationOperationStoreV3<'a, 'e, AwaitingEjectCal
             journal,
             poisoned: false,
             prepared,
+            recovered_prepared,
             restart,
             runner_callback: None,
             store,
@@ -4417,6 +5139,7 @@ impl<'a, 'e> PendingEjectReconciliationOperationStoreV3<'a, 'e, AwaitingEjectObs
             journal,
             poisoned: _,
             prepared,
+            recovered_prepared,
             restart,
             runner_callback,
             store,
@@ -4434,6 +5157,7 @@ impl<'a, 'e> PendingEjectReconciliationOperationStoreV3<'a, 'e, AwaitingEjectObs
             journal,
             poisoned: true,
             prepared,
+            recovered_prepared,
             collector: Some(lineage),
             receipt_root_owner: Some(receipt_root_owner),
             issues,
@@ -4500,6 +5224,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             journal,
             poisoned: _,
             prepared,
+            recovered_prepared,
             receipt_root_owner,
             restart,
             runner_callback: _,
@@ -4516,6 +5241,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             journal,
             poisoned: false,
             prepared,
+            recovered_prepared,
             receipt_root_owner,
             restart,
             runner_callback: None,
@@ -4662,6 +5388,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             journal,
             poisoned: _,
             prepared,
+            recovered_prepared,
             receipt_root_owner,
             restart,
             runner_callback,
@@ -4691,6 +5418,7 @@ impl<'a, 'e> PendingUnmountReconciliationOperationStoreV3<'a, 'e, AwaitingUnmoun
             journal,
             poisoned: true,
             prepared,
+            recovered_prepared,
             collector: Some(lineage),
             receipt_root_owner,
             issues,
@@ -4975,6 +5703,7 @@ impl<'a, 'e> SuccessfulIssuedEffectDeathProvedV3<'a, 'e, PersistedUnmountEffectV
             journal,
             poisoned: _,
             prepared,
+            recovered_prepared,
             collector,
             receipt_root_owner: prior_owner,
             issues,
@@ -4996,6 +5725,7 @@ impl<'a, 'e> SuccessfulIssuedEffectDeathProvedV3<'a, 'e, PersistedUnmountEffectV
             journal,
             poisoned: false,
             prepared,
+            recovered_prepared,
             receipt_root_owner: Some(receipt_root_owner),
             restart,
             runner_callback: Some(callback),
@@ -5064,6 +5794,7 @@ impl<'a, 'e> SuccessfulIssuedEffectDeathProvedV3<'a, 'e, PersistedEjectEffectV3>
             journal,
             poisoned: _,
             prepared,
+            recovered_prepared,
             collector,
             receipt_root_owner: prior_owner,
             issues,
@@ -5084,6 +5815,7 @@ impl<'a, 'e> SuccessfulIssuedEffectDeathProvedV3<'a, 'e, PersistedEjectEffectV3>
             journal,
             poisoned: false,
             prepared,
+            recovered_prepared,
             restart,
             runner_callback: Some(callback),
             store,
@@ -5196,7 +5928,6 @@ impl DurableLifecycleStoreV3<ReconciliationOnlyStoreV3> {
 }
 
 impl CompletedReconciliationOperationStoreV3<'_, '_> {
-    #[cfg(test)]
     fn revalidate(&self) -> Result<(), DurableLifecycleStoreErrorV3> {
         self.census.revalidate()?;
         self.store.revalidate()?;
@@ -5205,14 +5936,82 @@ impl CompletedReconciliationOperationStoreV3<'_, '_> {
         self.epoch
             .validate_current()
             .map_err(|error| invalid(format!("completed epoch changed: {error}")))?;
-        if !matches!(
-            self.journal.disposition(),
-            crate::mac_disposable_lifecycle::LifecycleDispositionV2::TerminalCompleted
-                | crate::mac_disposable_lifecycle::LifecycleDispositionV2::TerminalAborted
-        ) {
-            return Err(invalid(
-                "completed operation retained a nonterminal replay journal",
-            ));
+        use crate::mac_disposable_lifecycle::LifecycleDispositionV2;
+        match (self.journal.disposition(), self.namespace_closure.as_ref()) {
+            (LifecycleDispositionV2::TerminalCompleted, Some(closure)) => {
+                let read = CompletedNamespaceAbsenceReadSealV3 {
+                    _private: (),
+                    _not_send_or_sync: PhantomData,
+                };
+                closure.absence.revalidate(&read)?;
+                if closure.absence.terminal_binding(&read)? != &closure.terminal_binding {
+                    return Err(invalid(
+                        "completed namespace binding differs from its retained collector lineage",
+                    ));
+                }
+                closure.terminal_record.revalidate()?;
+                closure.terminal_record.require_s1_adopted()?;
+                if self.journal.terminal_record_sha256() != Some(closure.terminal_record.digest())
+                    || usize::try_from(closure.terminal_record.sequence()).ok()
+                        != Some(self.store.records.len())
+                    || self.store.records.last().is_none_or(|record| {
+                        sha256(&record.bytes) != closure.terminal_record.digest()
+                    })
+                {
+                    return Err(invalid(
+                        "completed terminal record differs from the exact journal/store tip",
+                    ));
+                }
+                let record: DisposableLifecycleRecordV2 =
+                    serde_json::from_slice(&closure.terminal_record.bytes).map_err(|error| {
+                        invalid(format!("completed terminal record JSON failed: {error}"))
+                    })?;
+                let DisposableLifecycleEventV2::TerminalAbsenceProved {
+                    disposition: TerminalDispositionV2::Completed,
+                    fresh_absence_sha256,
+                    closure_v3: Some(projected),
+                } = record.event
+                else {
+                    return Err(invalid(
+                        "completed Stage E record lost its positive namespace closure",
+                    ));
+                };
+                closure.absence.require_fresh_lifecycle_record(
+                    &read,
+                    &projected.fresh_absence_lifecycle_record_sha256,
+                    projected.fresh_absence_lifecycle_sequence,
+                )?;
+                let expected = TerminalNamespaceClosureV3::from_retained_fresh(
+                    &closure.terminal_binding,
+                    fresh_absence_sha256,
+                    projected.fresh_absence_lifecycle_record_sha256.clone(),
+                    projected.fresh_absence_lifecycle_sequence,
+                )?;
+                if projected != expected
+                    || record.previous_record_sha256
+                        != Some(projected.fresh_absence_lifecycle_record_sha256)
+                {
+                    return Err(invalid(
+                        "completed namespace closure differs from its exact Fresh predecessor",
+                    ));
+                }
+            }
+            (LifecycleDispositionV2::TerminalAborted, None) => {}
+            (LifecycleDispositionV2::TerminalCompleted, None) => {
+                return Err(invalid(
+                    "positive completed operation lost its retained Stage E namespace closure",
+                ));
+            }
+            (LifecycleDispositionV2::TerminalAborted, Some(_)) => {
+                return Err(invalid(
+                    "legacy aborted operation unexpectedly owns a positive namespace closure",
+                ));
+            }
+            _ => {
+                return Err(invalid(
+                    "completed operation retained a nonterminal replay journal",
+                ));
+            }
         }
         Ok(())
     }

@@ -3305,8 +3305,7 @@ mod platform {
         /// historical terminal inode. Raw DTO recovery is deliberately
         /// test-only: production integration must supply a sealed retained
         /// prepared capability rather than caller-authored serializable data.
-        #[cfg(test)]
-        pub fn recover_from_exact_prepared_for_test(
+        fn recover_from_exact_prepared_inner(
             prepared: &ExactDiskImageBackingIdentityV3,
         ) -> Result<Self, AcceptanceError> {
             validate_exact_disk_image_backing_identity_v3(prepared)?;
@@ -3429,6 +3428,20 @@ mod platform {
                 files,
                 _not_send_or_sync: PhantomData,
             })
+        }
+
+        pub(crate) fn recover_from_exact_prepared_sealed(
+            _seal: crate::mac_disposable_reconciliation_collector::PreparedBackingAbsenceRecoverySealV3,
+            prepared: &ExactDiskImageBackingIdentityV3,
+        ) -> Result<Self, AcceptanceError> {
+            Self::recover_from_exact_prepared_inner(prepared)
+        }
+
+        #[cfg(test)]
+        pub fn recover_from_exact_prepared_for_test(
+            prepared: &ExactDiskImageBackingIdentityV3,
+        ) -> Result<Self, AcceptanceError> {
+            Self::recover_from_exact_prepared_inner(prepared)
         }
 
         pub fn binding(&self) -> &BackingPathAbsenceBindingV3 {
@@ -5485,6 +5498,15 @@ impl HeldUnlinkedDiskImageBackingV3 {
 
 #[cfg(not(target_os = "macos"))]
 impl HeldBackingPathAbsenceV3 {
+    pub(crate) fn recover_from_exact_prepared_sealed(
+        _seal: crate::mac_disposable_reconciliation_collector::PreparedBackingAbsenceRecoverySealV3,
+        _prepared: &ExactDiskImageBackingIdentityV3,
+    ) -> Result<Self, AcceptanceError> {
+        Err(invalid(
+            "backing path-absence recovery is unsupported outside macOS",
+        ))
+    }
+
     #[cfg(test)]
     pub fn recover_from_exact_prepared_for_test(
         _prepared: &ExactDiskImageBackingIdentityV3,

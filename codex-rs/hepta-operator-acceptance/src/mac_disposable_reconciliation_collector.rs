@@ -19,13 +19,21 @@ use crate::mac_disposable_lifecycle::FreshAbsenceObservationV2;
 use crate::mac_disposable_lifecycle::PostEffectCollectorBindingV3;
 use crate::mac_disposable_lifecycle::ReconciliationMatchV2;
 use crate::mac_disposable_lifecycle::ReconciliationSnapshotV2;
+use crate::mac_disposable_lifecycle::TerminalArtifactNamespaceDeltaV3;
+use crate::mac_disposable_lifecycle::TerminalBackingAbsenceEvidenceV3;
+use crate::mac_disposable_lifecycle::TerminalCollectorLineageV3;
+use crate::mac_disposable_lifecycle::TerminalFreshAbsenceBindingV3;
+use crate::mac_disposable_lifecycle::TerminalLatestZeroKindV3;
+use crate::mac_disposable_lifecycle::TerminalRestartAdmissionLineageV3;
 use crate::mac_disposable_lifecycle::collector_receipt_file_roster_v3;
 use crate::mac_disposable_lifecycle::fresh_absence_sha256;
 use crate::mac_disposable_lifecycle::reconciliation_snapshot_sha256;
 use crate::mac_disposable_lifecycle_store::ActiveRestartCollectorEpochV3;
 use crate::mac_disposable_lifecycle_store::ActiveRestartCollectorSeedV3;
 use crate::mac_disposable_lifecycle_store::ActiveRestartEpochV3;
+use crate::mac_disposable_lifecycle_store::CompletedNamespaceAbsenceReadSealV3;
 use crate::mac_disposable_lifecycle_store::EjectExpectationArmSealV3;
+use crate::mac_disposable_lifecycle_store::PreparedBackingAbsenceTransitionSealV3;
 use crate::mac_disposable_lifecycle_store::PreparedCollectorLifecycleSealV3;
 use crate::mac_disposable_lifecycle_store::ReconciliationOperationStoreV3;
 use crate::mac_disposable_lifecycle_store::RetainedLifecycleRecordAppendV3;
@@ -33,8 +41,10 @@ use crate::mac_disposable_lifecycle_store::SuccessfulIssuedEffectTransitionSealV
 use crate::mac_iomedia_identity::DiskImageBackingIdentityV2;
 use crate::mac_iomedia_identity::ExactDiskImageBackingIdentityV3;
 pub use crate::mac_iomedia_identity::FilesystemObjectBindingV3;
+use crate::mac_iomedia_identity::HeldBackingPathAbsenceV3;
 use crate::mac_iomedia_identity::HeldDiskImageBacking;
 use crate::mac_iomedia_identity::HeldRestartIOMediaInventoryV3;
+use crate::mac_iomedia_identity::HeldUnlinkedDiskImageBackingV3;
 use crate::mac_iomedia_identity::RestartDiskImageCandidateV3;
 use crate::mac_iomedia_identity::RestartIOMediaInventoryV3;
 use crate::mac_iomedia_identity::capture_restart_iomedia_inventory_v3;
@@ -246,6 +256,27 @@ struct MountEvidenceV3 {
     schema: String,
 }
 
+/// Predecessor-only Stage E evidence embedded in the terminal collector
+/// receipt.  It intentionally omits the receipt's own digest, final inode,
+/// and root-generation endpoint because those values exist only after this
+/// JSON has been canonicalized, renamed, fsynced, reopened, and replayed.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct TerminalBackingAbsenceReceiptV3 {
+    artifact_namespace_delta: TerminalArtifactNamespaceDeltaV3,
+    authority: DisposableAuthorityV2,
+    backing_absence: TerminalBackingAbsenceEvidenceV3,
+    boot_session_uuid: String,
+    collector_policy_sha256: String,
+    first: TerminalCollectorLineageV3,
+    latest: TerminalCollectorLineageV3,
+    latest_zero_kind: TerminalLatestZeroKindV3,
+    operation_nonce: String,
+    prepared_backing_sha256: String,
+    restart: TerminalRestartAdmissionLineageV3,
+    restart_epoch_nonce: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RestartCollectorReceiptV3 {
@@ -280,6 +311,8 @@ pub struct RestartCollectorReceiptV3 {
     pub restart_epoch_nonce: String,
     pub schema: String,
     pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    terminal_backing_absence_v3: Option<TerminalBackingAbsenceReceiptV3>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -306,6 +339,8 @@ struct LiveRestartCollectorRequestV3<'a> {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PreparedCollectorManifestV3 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    artifact_root_initial_binding: Option<FilesystemObjectBindingV3>,
     artifact_root_initial_roster: Vec<String>,
     authority: DisposableAuthorityV2,
     backing: DiskImageBackingIdentityV2,
@@ -328,6 +363,15 @@ enum PreparedBaselineGuardV3 {
     DurableCommitment,
 }
 
+/// Private bridge proving that restart-only pathname-absence recovery is
+/// driven by an exact, already-validated prepared manifest.  The IOMedia
+/// module can consume this seal but no caller can mint one from the
+/// serializable exact-backing projection.
+pub(crate) struct PreparedBackingAbsenceRecoverySealV3 {
+    _private: (),
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
 /// Non-serializable prepared collector authority.  The canonical manifest is
 /// useful only while these exact live descriptors continue to replay.  A
 /// restart may reconstruct this capability solely from an exact durable
@@ -336,6 +380,32 @@ pub(crate) struct RetainedPreparedCollectorCapabilityV3 {
     artifact_root: HeldDirectoryV3,
     backing: HeldDiskImageBacking,
     baseline_guard: PreparedBaselineGuardV3,
+    manifest: PreparedCollectorManifestV3,
+    manifest_bytes: Vec<u8>,
+    manifest_sha256: String,
+    mountpoint: UnderlyingMountpointGuardV3,
+    operation_nonce: String,
+    initial_receipt_root_owner: Option<RetainedCollectorReceiptRootOwnerV3>,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Result of reopening one exact durable prepared manifest.  A present
+/// backing can re-enter ordinary collection.  A path-absent candidate is a
+/// disjoint capability with no collection, issue, or effect-plan methods and
+/// can only enter the Stage E terminal-absence chain.
+pub(crate) enum ReopenedPreparedCollectorCapabilityV3 {
+    Present(RetainedPreparedCollectorCapabilityV3),
+    PathAbsentCandidate(RecoveredPreparedCollectorCapabilityV3),
+}
+
+/// Restart-only retained prepared provenance after the exact prepared
+/// basename is already absent.  It owns the sealed pathname-absence capsule,
+/// immutable prepared bytes, exact artifact-root endpoint, mountpoint, and
+/// the unique receipt-root owner.  It cannot be converted back into a present
+/// prepared capability.
+pub(crate) struct RecoveredPreparedCollectorCapabilityV3 {
+    artifact_root: HeldDirectoryV3,
+    absence: HeldBackingPathAbsenceV3,
     manifest: PreparedCollectorManifestV3,
     manifest_bytes: Vec<u8>,
     manifest_sha256: String,
@@ -368,6 +438,53 @@ struct LiveReplayGuardV3 {
     prepared_backing: DiskImageBackingIdentityV2,
 }
 
+enum CollectorReplayGuardV3 {
+    Live(LiveReplayGuardV3),
+    RecoveredFirstZero(RecoveredFirstZeroReplayGuardV3),
+    RetainedOnly(RetainedOnlyReplayGuardV3),
+    TerminalFresh(TerminalFreshReplayGuardV3),
+}
+
+struct RetainedOnlyReplayGuardV3 {
+    mounts: Vec<MountBindingV3>,
+}
+
+/// Exact restart-recovered first-Zero endpoint before its receipt/lifecycle
+/// pair is adopted.  The pathname-absence capsule, empty artifact root, full
+/// IOMedia census, mountpoint, and mount table remain live through the paired
+/// commit.  Successful adoption consumes this guard: the durable first
+/// observation is downgraded to retained-capsule-only replay while the
+/// namespace evidence moves into the Stage E continuation.
+struct RecoveredFirstZeroReplayGuardV3 {
+    absence: HeldBackingPathAbsenceV3,
+    artifact_evidence: ArtifactEvidenceV3,
+    artifact_root: HeldDirectoryV3,
+    iomedia: HeldRestartIOMediaInventoryV3,
+    manifest: PreparedCollectorManifestV3,
+    manifest_bytes: Vec<u8>,
+    manifest_sha256: String,
+    mountpoint: UnderlyingMountpointGuardV3,
+    mounts: Vec<MountBindingV3>,
+}
+
+struct TerminalFreshReplayGuardV3 {
+    absence: HeldBackingAbsenceEvidenceV3,
+    artifact_evidence: ArtifactEvidenceV3,
+    artifact_root: HeldDirectoryV3,
+    iomedia: HeldRestartIOMediaInventoryV3,
+    manifest: PreparedCollectorManifestV3,
+    manifest_bytes: Vec<u8>,
+    manifest_sha256: String,
+    mountpoint: UnderlyingMountpointGuardV3,
+    mounts: Vec<MountBindingV3>,
+    terminal: TerminalBackingAbsenceReceiptV3,
+}
+
+enum HeldBackingAbsenceEvidenceV3 {
+    LiveUnlinked(HeldUnlinkedDiskImageBackingV3),
+    RecoveredPathAbsent(HeldBackingPathAbsenceV3),
+}
+
 enum UnderlyingMountpointGuardV3 {
     Held(HeldDirectoryV3),
     DeferredWhileMounted {
@@ -378,7 +495,7 @@ enum UnderlyingMountpointGuardV3 {
 }
 
 pub(crate) struct PendingRestartObservationV3 {
-    guard: LiveReplayGuardV3,
+    guard: CollectorReplayGuardV3,
     receipt: RestartCollectorReceiptV3,
     receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
 }
@@ -452,7 +569,7 @@ struct UnadoptedCollectorGenerationCoreV3 {
     before_root_binding: FilesystemObjectBindingV3,
     durable: DurableCollectorReceiptV3,
     expected_lifecycle_binding: CollectorReceiptFileBindingV3,
-    guard: LiveReplayGuardV3,
+    guard: CollectorReplayGuardV3,
     observation: FinalizedRestartObservationV3,
     receipt: RestartCollectorReceiptV3,
     receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
@@ -519,7 +636,7 @@ pub(crate) struct MountedV3;
 
 struct RetainedCollectorEvidenceV3 {
     durable: DurableCollectorReceiptV3,
-    guard: LiveReplayGuardV3,
+    guard: CollectorReplayGuardV3,
     lifecycle_record: Option<RetainedLifecycleRecordAppendV3>,
     observation: FinalizedRestartObservationV3,
     receipt: RestartCollectorReceiptV3,
@@ -580,7 +697,14 @@ enum RetainedCollectorCurrentV3 {
         observation: RetainedCollectorObservationV3,
         prior: Box<RetainedCollectorCurrentV3>,
     },
-    FreshAbsence(RetainedCollectorObservationV3),
+    RecoveredEjectedZero {
+        observation: RetainedCollectorObservationV3,
+        prior: Box<RetainedCollectorCurrentV3>,
+    },
+    FreshAbsence {
+        observation: RetainedCollectorObservationV3,
+        prior: Box<RetainedCollectorCurrentV3>,
+    },
 }
 
 pub(crate) struct MountingV3;
@@ -744,6 +868,121 @@ pub(crate) struct UnadoptedEjectObservationV3 {
 
 pub(crate) struct EjectObservationAfterTransferV3 {
     expectation: ArmedEjectExpectationCoreV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Consuming Stage E split.  Present prepared evidence can only wait for an
+/// external namespace unlink; a restart-recovered absent path already owns a
+/// sealed basename-absence proof.  Neither branch has a route back to normal
+/// collection, issue creation, or effect dispatch.
+pub(crate) enum PreparedBackingAbsenceProvenanceV3 {
+    AwaitingExternal(AwaitingExternalBackingAbsenceV3),
+    RecoveredAbsent(RetainedBackingAbsentProvenanceV3),
+}
+
+pub(crate) struct AwaitingExternalBackingAbsenceV3 {
+    backing: HeldDiskImageBacking,
+    core: PreparedBackingAbsenceCoreV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct RetainedBackingAbsentProvenanceV3 {
+    absence: HeldBackingAbsenceEvidenceV3,
+    artifact_namespace_delta: TerminalArtifactNamespaceDeltaV3,
+    core: PreparedBackingAbsenceCoreV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Recovered pathname absence can create the current restart epoch's first
+/// reconciliation observation only through this consuming transaction.  The
+/// generic live collector cannot reopen the absent backing and none of these
+/// wrappers exposes a raw receipt, digest, path, or descriptor constructor.
+pub(crate) struct PendingRecoveredFirstZeroObservationV3 {
+    pending: PendingRestartObservationV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct UnadoptedRecoveredFirstZeroObservationV3 {
+    generation: UnadoptedCollectorGenerationV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct RecoveredFirstZeroAfterTransferV3 {
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct SealedUnadoptedRecoveredFirstZeroObservationV3<'a> {
+    generation: &'a UnadoptedCollectorGenerationV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Whole recovered Stage E owner after the exact current-epoch Zero receipt
+/// and lifecycle record have been adopted together by S1.  It owns both the
+/// retained predecessor lineage/root generation and the still-live recovered
+/// namespace proof, and has only the consuming terminal-provenance outlet.
+pub(crate) struct RecoveredStageEContinuationV3 {
+    absence: HeldBackingPathAbsenceV3,
+    artifact_root: HeldDirectoryV3,
+    lineage: RetainedCollectorLineageV3,
+    manifest: PreparedCollectorManifestV3,
+    manifest_bytes: Vec<u8>,
+    manifest_sha256: String,
+    mountpoint: UnderlyingMountpointGuardV3,
+    operation_nonce: String,
+    receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+struct PreparedBackingAbsenceCoreV3 {
+    artifact_root: HeldDirectoryV3,
+    artifact_root_before: FilesystemObjectBindingV3,
+    lineage: RetainedCollectorLineageV3,
+    manifest: PreparedCollectorManifestV3,
+    manifest_bytes: Vec<u8>,
+    manifest_sha256: String,
+    mountpoint: UnderlyingMountpointGuardV3,
+    operation_nonce: String,
+    receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
+    restart: TerminalRestartAdmissionLineageV3,
+    terminal_first: TerminalCollectorLineageV3,
+    terminal_latest: TerminalCollectorLineageV3,
+    terminal_latest_zero_kind: TerminalLatestZeroKindV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Stage E collection pending publication.  The predecessor lineage and
+/// absence provenance remain owned until the receipt, lifecycle record, and
+/// S1 root generation are adopted as one pair.
+pub(crate) struct PendingTerminalFreshObservationV3 {
+    pending: PendingRestartObservationV3,
+    prior: RetainedCollectorLineageV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct UnadoptedTerminalFreshObservationV3 {
+    generation: UnadoptedCollectorGenerationV3,
+    prior: RetainedCollectorLineageV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct TerminalFreshObservationAfterTransferV3 {
+    prior: RetainedCollectorLineageV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+/// Owned terminal namespace-absence capsule retained by ReadyToComplete and
+/// the completed store.  It keeps the entire first/latest/Fresh lineage and
+/// unique receipt-root generation alive; terminal lifecycle code can borrow
+/// only the existing sealed token and never extract either owner.
+pub(crate) struct RetainedCompletedNamespaceAbsenceV3 {
+    lineage: RetainedCollectorLineageV3,
+    receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
+    _not_send_or_sync: PhantomData<Rc<()>>,
+}
+
+pub(crate) struct SealedUnadoptedTerminalFreshObservationV3<'a> {
+    generation: &'a UnadoptedCollectorGenerationV3,
+    prior: &'a RetainedCollectorLineageV3,
     _not_send_or_sync: PhantomData<Rc<()>>,
 }
 
@@ -962,6 +1201,7 @@ impl RetainedPreparedCollectorCapabilityV3 {
         let receipt_root_initial_roster =
             list_directory(receipt_root.file.as_raw_fd(), MAX_RECEIPT_FILES)?;
         let manifest = PreparedCollectorManifestV3 {
+            artifact_root_initial_binding: Some(artifact_root.binding),
             artifact_root_initial_roster,
             authority: DisposableAuthorityV2::none(),
             backing: backing_identity,
@@ -1002,12 +1242,12 @@ impl RetainedPreparedCollectorCapabilityV3 {
         Ok(retained)
     }
 
-    fn reopen_from_exact_manifest(
+    fn reopen_classified_from_exact_manifest(
         operation_nonce: &str,
         manifest_bytes: &[u8],
         expected_manifest_sha256: &str,
         expected_profile_sha256: &str,
-    ) -> Result<Self, RestartCollectorErrorV3> {
+    ) -> Result<ReopenedPreparedCollectorCapabilityV3, RestartCollectorErrorV3> {
         if !valid_nonce(operation_nonce)
             || !valid_digest(expected_manifest_sha256)
             || !valid_digest(expected_profile_sha256)
@@ -1041,28 +1281,8 @@ impl RetainedPreparedCollectorCapabilityV3 {
             HeldDirectoryV3::capture(Path::new(&manifest.policy.artifact_root), "artifact root")?;
         let receipt_root =
             HeldDirectoryV3::capture(Path::new(&manifest.policy.receipt_root), "receipt root")?;
-        validate_prepared_artifact_root(
-            &artifact_root,
-            &manifest.policy.artifact_root_identity,
-            &manifest.artifact_root_initial_roster,
-            &manifest.policy.artifacts,
-        )?;
         validate_prepared_receipt_root(&receipt_root, &manifest.policy.receipt_root_identity)?;
         validate_receipt_directory(&receipt_root.binding)?;
-        let backing = hold_disk_image_backing(Path::new(&manifest.policy.backing_path))?;
-        let live_backing = backing.identity()?;
-        if !prepared_backing_candidate_matches(&live_backing, &manifest.backing)?
-            || backing.exact_identity_v3()? != manifest.backing_exact
-        {
-            return Err(invalid(
-                "live backing differs from the exact durable prepared identity",
-            ));
-        }
-        validate_prepared_backing_artifact(
-            &artifact_root,
-            &manifest.policy,
-            &manifest.backing_exact,
-        )?;
         let mountpoint = reopen_prepared_mountpoint(&manifest.mountpoint)?;
         let receipt_root =
             RetainedCollectorReceiptRootOwnerV3::from_root(RetainedReceiptRootV3::from_held(
@@ -1070,20 +1290,88 @@ impl RetainedPreparedCollectorCapabilityV3 {
                 manifest.policy.receipt_root_identity,
                 receipt_root_initial_binding,
             )?);
-        let retained = Self {
-            artifact_root,
-            backing,
-            baseline_guard: PreparedBaselineGuardV3::DurableCommitment,
-            manifest,
-            manifest_bytes: canonical,
-            manifest_sha256,
-            mountpoint,
-            operation_nonce: operation_nonce.to_string(),
-            initial_receipt_root_owner: Some(receipt_root),
-            _not_send_or_sync: PhantomData,
-        };
-        retained.revalidate()?;
-        Ok(retained)
+        match hold_disk_image_backing(Path::new(&manifest.policy.backing_path)) {
+            Ok(backing) => {
+                validate_prepared_artifact_root(
+                    &artifact_root,
+                    &manifest.policy.artifact_root_identity,
+                    &manifest.artifact_root_initial_roster,
+                    &manifest.policy.artifacts,
+                )?;
+                let live_backing = backing.identity()?;
+                if !prepared_backing_candidate_matches(&live_backing, &manifest.backing)?
+                    || backing.exact_identity_v3()? != manifest.backing_exact
+                {
+                    return Err(invalid(
+                        "live backing differs from the exact durable prepared identity",
+                    ));
+                }
+                validate_prepared_backing_artifact(
+                    &artifact_root,
+                    &manifest.policy,
+                    &manifest.backing_exact,
+                )?;
+                let retained = Self {
+                    artifact_root,
+                    backing,
+                    baseline_guard: PreparedBaselineGuardV3::DurableCommitment,
+                    manifest,
+                    manifest_bytes: canonical,
+                    manifest_sha256,
+                    mountpoint,
+                    operation_nonce: operation_nonce.to_string(),
+                    initial_receipt_root_owner: Some(receipt_root),
+                    _not_send_or_sync: PhantomData,
+                };
+                retained.revalidate()?;
+                Ok(ReopenedPreparedCollectorCapabilityV3::Present(retained))
+            }
+            Err(_) => {
+                let absence = HeldBackingPathAbsenceV3::recover_from_exact_prepared_sealed(
+                    PreparedBackingAbsenceRecoverySealV3 {
+                        _private: (),
+                        _not_send_or_sync: PhantomData,
+                    },
+                    &manifest.backing_exact,
+                )?;
+                validate_recovered_artifact_root(&artifact_root, &manifest)?;
+                let recovered = RecoveredPreparedCollectorCapabilityV3 {
+                    artifact_root,
+                    absence,
+                    manifest,
+                    manifest_bytes: canonical,
+                    manifest_sha256,
+                    mountpoint,
+                    operation_nonce: operation_nonce.to_string(),
+                    initial_receipt_root_owner: Some(receipt_root),
+                    _not_send_or_sync: PhantomData,
+                };
+                recovered.revalidate()?;
+                Ok(ReopenedPreparedCollectorCapabilityV3::PathAbsentCandidate(
+                    recovered,
+                ))
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn reopen_from_exact_manifest(
+        operation_nonce: &str,
+        manifest_bytes: &[u8],
+        expected_manifest_sha256: &str,
+        expected_profile_sha256: &str,
+    ) -> Result<Self, RestartCollectorErrorV3> {
+        match Self::reopen_classified_from_exact_manifest(
+            operation_nonce,
+            manifest_bytes,
+            expected_manifest_sha256,
+            expected_profile_sha256,
+        )? {
+            ReopenedPreparedCollectorCapabilityV3::Present(prepared) => Ok(prepared),
+            ReopenedPreparedCollectorCapabilityV3::PathAbsentCandidate(_) => Err(invalid(
+                "test present-prepared reopen observed a recovered absent backing",
+            )),
+        }
     }
 
     fn manifest_bytes(&self) -> &[u8] {
@@ -1168,14 +1456,14 @@ impl RetainedPreparedCollectorCapabilityV3 {
         manifest_bytes: &[u8],
         expected_manifest_sha256: &str,
         _seal: &PreparedCollectorLifecycleSealV3,
-    ) -> Result<Self, RestartCollectorErrorV3> {
+    ) -> Result<ReopenedPreparedCollectorCapabilityV3, RestartCollectorErrorV3> {
         let parsed: PreparedCollectorManifestV3 =
             serde_json::from_slice(manifest_bytes).map_err(|error| {
                 invalid(format!(
                     "prepared collector manifest JSON failed before sealed replay: {error}"
                 ))
             })?;
-        Self::reopen_from_exact_manifest(
+        Self::reopen_classified_from_exact_manifest(
             operation_nonce,
             manifest_bytes,
             expected_manifest_sha256,
@@ -1439,6 +1727,914 @@ impl RetainedPreparedCollectorCapabilityV3 {
             |_| Ok(()),
         )
     }
+
+    pub(crate) fn into_backing_absence_provenance(
+        self,
+        lineage: RetainedCollectorLineageV3,
+        receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
+        restart: TerminalRestartAdmissionLineageV3,
+        _seal: PreparedBackingAbsenceTransitionSealV3,
+    ) -> Result<PreparedBackingAbsenceProvenanceV3, RestartCollectorErrorV3> {
+        self.revalidate()?;
+        if self.initial_receipt_root_owner.is_some() {
+            return Err(invalid(
+                "prepared backing-absence transition requires the whole store to own the receipt root",
+            ));
+        }
+        receipt_root_owner.revalidate_lineage(&lineage)?;
+        let (latest_zero_kind, first, latest) = terminal_lineage_projection(&lineage)?;
+        validate_terminal_restart_projection(
+            &restart,
+            &self.manifest_sha256,
+            &self.manifest.profile_sha256,
+        )?;
+        let artifact_root_before =
+            self.manifest.artifact_root_initial_binding.ok_or_else(|| {
+                invalid("legacy prepared manifest cannot enter exact Stage E artifact closure")
+            })?;
+        if self.artifact_root.binding != artifact_root_before {
+            return Err(invalid(
+                "live prepared artifact root differs from its exact initial endpoint",
+            ));
+        }
+        let RetainedPreparedCollectorCapabilityV3 {
+            artifact_root,
+            backing,
+            baseline_guard: _,
+            manifest,
+            manifest_bytes,
+            manifest_sha256,
+            mountpoint,
+            operation_nonce,
+            initial_receipt_root_owner: _,
+            _not_send_or_sync: _,
+        } = self;
+        Ok(PreparedBackingAbsenceProvenanceV3::AwaitingExternal(
+            AwaitingExternalBackingAbsenceV3 {
+                backing,
+                core: PreparedBackingAbsenceCoreV3 {
+                    artifact_root,
+                    artifact_root_before,
+                    lineage,
+                    manifest,
+                    manifest_bytes,
+                    manifest_sha256,
+                    mountpoint,
+                    operation_nonce,
+                    receipt_root_owner,
+                    restart,
+                    terminal_first: first,
+                    terminal_latest: latest,
+                    terminal_latest_zero_kind: latest_zero_kind,
+                    _not_send_or_sync: PhantomData,
+                },
+                _not_send_or_sync: PhantomData,
+            },
+        ))
+    }
+}
+
+impl RecoveredPreparedCollectorCapabilityV3 {
+    fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        if !valid_nonce(&self.operation_nonce)
+            || self.manifest.operation_nonce != self.operation_nonce
+        {
+            return Err(invalid(
+                "recovered prepared collector operation binding changed",
+            ));
+        }
+        validate_prepared_manifest(&self.manifest)?;
+        let (bytes, digest) = canonical_prepared_manifest(&self.manifest)?;
+        if bytes != self.manifest_bytes || digest != self.manifest_sha256 {
+            return Err(invalid(
+                "recovered prepared collector manifest changed after exact replay",
+            ));
+        }
+        validate_recovered_artifact_root(&self.artifact_root, &self.manifest)?;
+        self.absence.revalidate_after_persistence()?;
+        let prepared_backing_sha256 = sha256(&canonical_json(&self.manifest.backing_exact)?);
+        if self.absence.binding().prepared_backing_sha256 != prepared_backing_sha256
+            || self.absence.binding().canonical_path != self.manifest.backing_exact.canonical_path
+        {
+            return Err(invalid(
+                "recovered backing-path absence differs from the exact prepared manifest",
+            ));
+        }
+        if let Some(receipt_root) = &self.initial_receipt_root_owner {
+            receipt_root.revalidate_for_prepared(&self.manifest)?;
+        }
+        self.mountpoint.revalidate()?;
+        Ok(())
+    }
+
+    pub(crate) fn bind_receipt_root_to_lifecycle(
+        &mut self,
+        lifecycle_records: &[Vec<u8>],
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate()?;
+        self.initial_receipt_root_owner
+            .as_mut()
+            .ok_or_else(|| {
+                invalid("recovered prepared receipt-root owner was already transferred")
+            })?
+            .bind_lifecycle_records(lifecycle_records)?;
+        self.revalidate()
+    }
+
+    pub(crate) fn take_initial_receipt_root_owner(
+        &mut self,
+    ) -> Result<RetainedCollectorReceiptRootOwnerV3, RestartCollectorErrorV3> {
+        self.revalidate()?;
+        let owner = self.initial_receipt_root_owner.take().ok_or_else(|| {
+            invalid("recovered prepared receipt-root owner was already transferred")
+        })?;
+        owner.revalidate_for_prepared(&self.manifest)?;
+        Ok(owner)
+    }
+
+    /// Consume one restart-recovered path-absent prepared capability into the
+    /// current restart epoch's mandatory first Zero observation.  This is a
+    /// distinct collector from the live path: it never reopens the backing,
+    /// and it retains the exact pathname-absence proof through receipt
+    /// persistence and paired S1 adoption.
+    pub(crate) fn collect_recovered_first_zero(
+        self,
+        seed: ActiveRestartCollectorSeedV3<'_>,
+        receipt_root_owner: RetainedCollectorReceiptRootOwnerV3,
+    ) -> Result<PendingRecoveredFirstZeroObservationV3, RestartCollectorErrorV3> {
+        self.revalidate()?;
+        if self.initial_receipt_root_owner.is_some() {
+            return Err(invalid(
+                "recovered first-Zero collection requires the whole store to own the receipt root",
+            ));
+        }
+        seed.revalidate_for_prepared(
+            &self.operation_nonce,
+            &self.manifest_sha256,
+            &self.manifest.profile_sha256,
+        )?;
+        receipt_root_owner.revalidate_for_prepared(&self.manifest)?;
+
+        let before = monotonic_nanoseconds()?;
+        if before <= seed.restart_started_monotonic_nanoseconds() {
+            return Err(invalid(
+                "recovered first-Zero window is not later than restart admission",
+            ));
+        }
+        let mounts_before = mount_table_snapshot()?;
+        reject_nested_mounts(&mounts_before, &self.manifest.policy)?;
+        let iomedia = capture_restart_iomedia_inventory_v3()?;
+        iomedia.revalidate_after_persistence()?;
+        if iomedia.report().boot_session_uuid != seed.boot_session_uuid() {
+            return Err(invalid(
+                "recovered first-Zero IOMedia inventory belongs to another boot",
+            ));
+        }
+        seed.require_exact_live_inventory(iomedia.report())?;
+        let matching_groups = classify_matching_groups(iomedia.report(), &self.manifest.backing)?;
+        let (match_result, mountpoint_is_mounted) =
+            classify_mount_state(&matching_groups, &mounts_before, &self.manifest.policy)?;
+        if match_result != ReconciliationMatchV2::Zero
+            || mountpoint_is_mounted
+            || !matching_groups.is_empty()
+        {
+            return Err(invalid(
+                "recovered first-Zero still observes the prepared disk-image group or mount",
+            ));
+        }
+        if !matches!(&self.mountpoint, UnderlyingMountpointGuardV3::Held(_)) {
+            return Err(invalid(
+                "recovered first-Zero cannot revalidate the underlying mountpoint",
+            ));
+        }
+        self.mountpoint.revalidate()?;
+        self.artifact_root
+            .revalidate("recovered first-Zero artifact root")?;
+        let artifact_roster =
+            list_directory(self.artifact_root.file.as_raw_fd(), MAX_ARTIFACT_ENTRIES)?;
+        if !artifact_roster.is_empty() {
+            return Err(invalid(
+                "recovered first-Zero artifact root is not exactly empty",
+            ));
+        }
+        let artifact_evidence = ArtifactEvidenceV3 {
+            artifacts: self.manifest.policy.artifacts.clone(),
+            artifact_root: self.manifest.policy.artifact_root.clone(),
+            authority: DisposableAuthorityV2::none(),
+            operation_artifacts_absent: true,
+            root_binding: self.artifact_root.binding,
+            roster: artifact_roster,
+            schema: ARTIFACT_SCHEMA.to_string(),
+        };
+        let mounts_after = mount_table_snapshot()?;
+        if mounts_after != mounts_before {
+            return Err(invalid(
+                "mount table changed during recovered first-Zero collection",
+            ));
+        }
+        reject_nested_mounts(&mounts_after, &self.manifest.policy)?;
+        let after = monotonic_nanoseconds()?;
+        if after < before || current_boot_session_uuid()? != seed.boot_session_uuid() {
+            return Err(invalid(
+                "boot or monotonic endpoint changed during recovered first-Zero collection",
+            ));
+        }
+        self.absence.revalidate_after_persistence()?;
+        let current_expected_absence_inventory = Some(iomedia.report().clone());
+        let current_expected_absence_inventory_sha256 =
+            Some(sha256(&canonical_json(iomedia.report())?));
+        let mount_evidence = MountEvidenceV3 {
+            authority: DisposableAuthorityV2::none(),
+            mountpoint_underlying_revalidated: true,
+            mounts_after: mounts_after.clone(),
+            mounts_before,
+            no_nested_mounts: true,
+            schema: MOUNT_SCHEMA.to_string(),
+        };
+        let post_inventory = RestartBaselineInventoryV3::from_inventory(iomedia.report())?;
+        let receipt = RestartCollectorReceiptV3 {
+            artifact_evidence: artifact_evidence.clone(),
+            artifact_evidence_sha256: sha256(&canonical_json(&artifact_evidence)?),
+            authority: DisposableAuthorityV2::none(),
+            backing_identity: self.manifest.backing.clone(),
+            backing_identity_sha256: sha256(&canonical_json(&self.manifest.backing)?),
+            baseline_inventory: self.manifest.baseline.clone(),
+            baseline_inventory_sha256: self.manifest.baseline.sha256()?,
+            baseline_restored: true,
+            boot_session_uuid: seed.boot_session_uuid().to_string(),
+            collector_policy: self.manifest.policy.clone(),
+            collector_policy_sha256: self.manifest.policy.sha256()?,
+            current_expected_absence_inventory,
+            current_expected_absence_inventory_sha256,
+            iomedia_evidence_sha256: sha256(&canonical_json(iomedia.report())?),
+            iomedia_inventory: iomedia.report().clone(),
+            match_result: ReconciliationMatchV2::Zero,
+            matching_groups: Vec::new(),
+            monotonic_after_nanoseconds: after,
+            monotonic_before_nanoseconds: before,
+            mount_evidence_sha256: sha256(&canonical_json(&mount_evidence)?),
+            mount_evidence,
+            mountpoint_underlying: self.manifest.mountpoint.clone(),
+            mountpoint_underlying_sha256: self.manifest.mountpoint.sha256()?,
+            operation_artifacts_absent: true,
+            operation_nonce: self.operation_nonce.clone(),
+            post_inventory_sha256: post_inventory.sha256()?,
+            purpose: CollectorPurposeV3::ReconciliationSnapshot,
+            reconciliation_snapshot_sha256: None,
+            restart_epoch_nonce: seed.restart_epoch_nonce().to_string(),
+            schema: RECEIPT_SCHEMA.to_string(),
+            schema_version: 3,
+            terminal_backing_absence_v3: None,
+        };
+        validate_recovered_first_zero_receipt_shape(&receipt)?;
+        validate_receipt(&receipt)?;
+        seed.revalidate_live()?;
+        seed.require_exact_live_inventory(iomedia.report())?;
+
+        let RecoveredPreparedCollectorCapabilityV3 {
+            artifact_root,
+            absence,
+            manifest,
+            manifest_bytes,
+            manifest_sha256,
+            mountpoint,
+            operation_nonce: _,
+            initial_receipt_root_owner: _,
+            _not_send_or_sync: _,
+        } = self;
+        let pending = PendingRestartObservationV3 {
+            guard: CollectorReplayGuardV3::RecoveredFirstZero(RecoveredFirstZeroReplayGuardV3 {
+                absence,
+                artifact_evidence,
+                artifact_root,
+                iomedia,
+                manifest,
+                manifest_bytes,
+                manifest_sha256,
+                mountpoint,
+                mounts: mounts_after,
+            }),
+            receipt,
+            receipt_root_owner,
+        };
+        pending.guard.revalidate(&pending.receipt)?;
+        seed.revalidate_live()?;
+        let CollectorReplayGuardV3::RecoveredFirstZero(guard) = &pending.guard else {
+            return Err(invalid(
+                "recovered first-Zero pending guard changed before handoff",
+            ));
+        };
+        seed.require_exact_live_inventory(guard.iomedia.report())?;
+        Ok(PendingRecoveredFirstZeroObservationV3 {
+            pending,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl RecoveredStageEContinuationV3 {
+    fn revalidate_internal(&self) -> Result<(), RestartCollectorErrorV3> {
+        validate_prepared_manifest(&self.manifest)?;
+        let (manifest_bytes, manifest_sha256) = canonical_prepared_manifest(&self.manifest)?;
+        if manifest_bytes != self.manifest_bytes
+            || manifest_sha256 != self.manifest_sha256
+            || self.operation_nonce != self.manifest.operation_nonce
+        {
+            return Err(invalid(
+                "recovered Stage E continuation changed its exact prepared manifest",
+            ));
+        }
+        self.absence.revalidate_after_persistence()?;
+        if self.absence.binding().prepared_backing_sha256
+            != sha256(&canonical_json(&self.manifest.backing_exact)?)
+            || self.absence.binding().canonical_path != self.manifest.backing_exact.canonical_path
+        {
+            return Err(invalid(
+                "recovered Stage E continuation changed its prepared backing absence",
+            ));
+        }
+        validate_recovered_artifact_root(&self.artifact_root, &self.manifest)?;
+        self.mountpoint.revalidate()?;
+        self.receipt_root_owner
+            .revalidate_lineage_retained_capsules(&self.lineage)?;
+        let snapshot = self.lineage.first_snapshot_raw()?;
+        if !matches!(&self.lineage.current, RetainedCollectorCurrentV3::First)
+            || snapshot.match_result != ReconciliationMatchV2::Zero
+            || snapshot.operation_nonce != self.operation_nonce
+            || snapshot.collector_policy_sha256 != self.manifest.policy.sha256()?
+            || snapshot.backing_identity_sha256 != sha256(&canonical_json(&self.manifest.backing)?)
+            || snapshot.mountpoint_underlying_sha256 != self.manifest.mountpoint.sha256()?
+            || snapshot.current_expected_absence_inventory_sha256.is_none()
+        {
+            return Err(invalid(
+                "recovered Stage E continuation lost its exact current-epoch first Zero",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn into_backing_absence_provenance(
+        self,
+        restart: TerminalRestartAdmissionLineageV3,
+        _seal: PreparedBackingAbsenceTransitionSealV3,
+    ) -> Result<PreparedBackingAbsenceProvenanceV3, RestartCollectorErrorV3> {
+        self.revalidate_internal()?;
+        let (latest_zero_kind, first, latest) = terminal_lineage_projection(&self.lineage)?;
+        validate_terminal_restart_projection(
+            &restart,
+            &self.manifest_sha256,
+            &self.manifest.profile_sha256,
+        )?;
+        let artifact_root_before =
+            self.manifest.artifact_root_initial_binding.ok_or_else(|| {
+                invalid("legacy prepared manifest cannot enter recovered Stage E closure")
+            })?;
+        let artifact_namespace_delta = terminal_artifact_namespace_delta(
+            &self.manifest,
+            artifact_root_before,
+            self.artifact_root.binding,
+        )?;
+        let RecoveredStageEContinuationV3 {
+            absence,
+            artifact_root,
+            lineage,
+            manifest,
+            manifest_bytes,
+            manifest_sha256,
+            mountpoint,
+            operation_nonce,
+            receipt_root_owner,
+            _not_send_or_sync: _,
+        } = self;
+        Ok(PreparedBackingAbsenceProvenanceV3::RecoveredAbsent(
+            RetainedBackingAbsentProvenanceV3 {
+                absence: HeldBackingAbsenceEvidenceV3::RecoveredPathAbsent(absence),
+                artifact_namespace_delta,
+                core: PreparedBackingAbsenceCoreV3 {
+                    artifact_root,
+                    artifact_root_before,
+                    lineage,
+                    manifest,
+                    manifest_bytes,
+                    manifest_sha256,
+                    mountpoint,
+                    operation_nonce,
+                    receipt_root_owner,
+                    restart,
+                    terminal_first: first,
+                    terminal_latest: latest,
+                    terminal_latest_zero_kind: latest_zero_kind,
+                    _not_send_or_sync: PhantomData,
+                },
+                _not_send_or_sync: PhantomData,
+            },
+        ))
+    }
+}
+
+fn terminal_lineage_projection(
+    lineage: &RetainedCollectorLineageV3,
+) -> Result<
+    (
+        TerminalLatestZeroKindV3,
+        TerminalCollectorLineageV3,
+        TerminalCollectorLineageV3,
+    ),
+    RestartCollectorErrorV3,
+> {
+    lineage.revalidate_retained_capsules()?;
+    let first_snapshot = lineage.first_snapshot_raw()?;
+    let first = terminal_collector_lineage(
+        lineage.first.evidence(),
+        reconciliation_snapshot_sha256(first_snapshot)
+            .map_err(|error| invalid(format!("terminal first snapshot digest failed: {error}")))?,
+    )?;
+    match &lineage.current {
+        RetainedCollectorCurrentV3::First => {
+            if !matches!(
+                lineage.first,
+                RetainedCollectorObservationV3::Reconciliation(RetainedCollectorMatchV3::Zero(_))
+            ) {
+                return Err(invalid(
+                    "Stage E without eject requires the immutable first observation to be Zero",
+                ));
+            }
+            Ok((
+                TerminalLatestZeroKindV3::FirstSnapshot,
+                first.clone(),
+                first,
+            ))
+        }
+        RetainedCollectorCurrentV3::EjectedZero { observation, .. }
+        | RetainedCollectorCurrentV3::RecoveredEjectedZero { observation, .. } => {
+            if !matches!(
+                observation,
+                RetainedCollectorObservationV3::Reconciliation(RetainedCollectorMatchV3::Zero(_))
+            ) {
+                return Err(invalid(
+                    "Stage E post-eject lineage lost its exact Zero observation",
+                ));
+            }
+            let latest = terminal_collector_lineage(
+                observation.evidence(),
+                observation
+                    .evidence()
+                    .receipt
+                    .iomedia_evidence_sha256
+                    .clone(),
+            )?;
+            Ok((TerminalLatestZeroKindV3::PostEject, first, latest))
+        }
+        RetainedCollectorCurrentV3::MountDelta { .. }
+        | RetainedCollectorCurrentV3::FreshAbsence { .. } => Err(invalid(
+            "Stage E requires latest EjectedZero or an immutable first Zero",
+        )),
+    }
+}
+
+fn terminal_collector_lineage(
+    evidence: &RetainedCollectorEvidenceV3,
+    observation_sha256: String,
+) -> Result<TerminalCollectorLineageV3, RestartCollectorErrorV3> {
+    evidence.revalidate_retained_capsule()?;
+    let record = evidence
+        .lifecycle_record
+        .as_ref()
+        .ok_or_else(|| invalid("terminal collector predecessor lacks its lifecycle capsule"))?;
+    TerminalCollectorLineageV3::new(
+        evidence.receipt_sha256.clone(),
+        record.digest().to_string(),
+        record.sequence(),
+        observation_sha256,
+    )
+    .map_err(|error| invalid(format!("terminal collector lineage is malformed: {error}")))
+}
+
+fn validate_terminal_restart_projection(
+    restart: &TerminalRestartAdmissionLineageV3,
+    manifest_sha256: &str,
+    profile_sha256: &str,
+) -> Result<(), RestartCollectorErrorV3> {
+    if restart.prepared_manifest_sha256 != manifest_sha256
+        || restart.prepared_profile_sha256 != profile_sha256
+        || !valid_digest(&restart.process_epoch_sha256)
+        || !valid_digest(&restart.restart_admission_sha256)
+        || !valid_digest(&restart.restart_started_lifecycle_record_sha256)
+        || restart.restart_started_lifecycle_sequence == 0
+    {
+        return Err(invalid(
+            "terminal restart-admission projection differs from retained prepared provenance",
+        ));
+    }
+    Ok(())
+}
+
+fn terminal_artifact_namespace_delta(
+    manifest: &PreparedCollectorManifestV3,
+    before: FilesystemObjectBindingV3,
+    after: FilesystemObjectBindingV3,
+) -> Result<TerminalArtifactNamespaceDeltaV3, RestartCollectorErrorV3> {
+    let [artifact] = manifest.policy.artifacts.as_slice() else {
+        return Err(invalid(
+            "Stage E requires exactly one prepared BackingImage artifact",
+        ));
+    };
+    if artifact.role != ArtifactRoleV3::BackingImage
+        || manifest.artifact_root_initial_roster != [artifact.basename.clone()]
+        || !manifest
+            .policy
+            .artifact_root_identity
+            .matches_binding(&before, 1)
+        || !manifest
+            .policy
+            .artifact_root_identity
+            .matches_binding(&after, 0)
+        || !same_directory_object(before, after)
+    {
+        return Err(invalid(
+            "artifact namespace endpoints are not exact [BackingImage] -> []",
+        ));
+    }
+    TerminalArtifactNamespaceDeltaV3::from_retained_endpoints(
+        artifact.basename.clone(),
+        before,
+        vec![artifact.basename.clone()],
+        after,
+        Vec::new(),
+    )
+    .map_err(|error| invalid(format!("terminal artifact namespace delta failed: {error}")))
+}
+
+impl AwaitingExternalBackingAbsenceV3 {
+    pub(crate) fn observe_live_namespace_absence(
+        mut self,
+    ) -> Result<RetainedBackingAbsentProvenanceV3, RestartCollectorErrorV3> {
+        // The external unlink has already happened when this consuming
+        // observation is invoked.  Replaying the old pathname/root endpoint
+        // here would make both sides of the transition unreachable: before
+        // unlink the low-level observer correctly rejects, after unlink a
+        // path-present replay correctly rejects.  The arm transition already
+        // performed that replay; now retain only immutable prepared/lineage
+        // capsules and let the original backing FD prove the exact delta.
+        self.core.revalidate_manifest()?;
+        self.core
+            .receipt_root_owner
+            .revalidate_lineage_retained_capsules(&self.core.lineage)?;
+        let absence = self.backing.observe_namespace_unlinked()?;
+        absence.revalidate_after_persistence()?;
+        self.core.artifact_root.file.sync_all()?;
+        let after = fstat_binding(
+            self.core.artifact_root.file.as_raw_fd(),
+            "artifact root after external backing unlink",
+        )?;
+        if lstat_binding(
+            &self.core.artifact_root.path,
+            "artifact root pathname after external backing unlink",
+        )? != after
+            || !list_directory(
+                self.core.artifact_root.file.as_raw_fd(),
+                MAX_ARTIFACT_ENTRIES,
+            )?
+            .is_empty()
+        {
+            return Err(invalid(
+                "artifact root did not reach the exact empty endpoint after external unlink",
+            ));
+        }
+        verify_fd_binding_secure(
+            self.core.artifact_root.file.as_raw_fd(),
+            &after,
+            "artifact root after external backing unlink",
+        )?;
+        let artifact_namespace_delta = terminal_artifact_namespace_delta(
+            &self.core.manifest,
+            self.core.artifact_root_before,
+            after,
+        )?;
+        self.core.artifact_root.binding = after;
+        let retained = RetainedBackingAbsentProvenanceV3 {
+            absence: HeldBackingAbsenceEvidenceV3::LiveUnlinked(absence),
+            artifact_namespace_delta,
+            core: self.core,
+            _not_send_or_sync: PhantomData,
+        };
+        retained.revalidate()?;
+        Ok(retained)
+    }
+}
+
+impl PreparedBackingAbsenceCoreV3 {
+    fn revalidate_manifest(&self) -> Result<(), RestartCollectorErrorV3> {
+        if !valid_nonce(&self.operation_nonce)
+            || self.manifest.operation_nonce != self.operation_nonce
+        {
+            return Err(invalid("Stage E prepared operation binding changed"));
+        }
+        validate_prepared_manifest(&self.manifest)?;
+        let (bytes, digest) = canonical_prepared_manifest(&self.manifest)?;
+        if bytes != self.manifest_bytes || digest != self.manifest_sha256 {
+            return Err(invalid("Stage E prepared manifest changed"));
+        }
+        validate_terminal_restart_projection(
+            &self.restart,
+            &self.manifest_sha256,
+            &self.manifest.profile_sha256,
+        )?;
+        let (kind, first, latest) = terminal_lineage_projection(&self.lineage)?;
+        if kind != self.terminal_latest_zero_kind
+            || first != self.terminal_first
+            || latest != self.terminal_latest
+        {
+            return Err(invalid("Stage E terminal collector lineage changed"));
+        }
+        self.mountpoint.revalidate()?;
+        Ok(())
+    }
+
+    fn revalidate_present(
+        &self,
+        backing: &HeldDiskImageBacking,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_manifest()?;
+        self.receipt_root_owner.revalidate_lineage(&self.lineage)?;
+        if self.artifact_root.binding != self.artifact_root_before {
+            return Err(invalid(
+                "Stage E present artifact root changed before external absence",
+            ));
+        }
+        validate_prepared_artifact_root(
+            &self.artifact_root,
+            &self.manifest.policy.artifact_root_identity,
+            &self.manifest.artifact_root_initial_roster,
+            &self.manifest.policy.artifacts,
+        )?;
+        backing.revalidate_identity_after_persistence(&self.manifest.backing)?;
+        if backing.exact_identity_v3()? != self.manifest.backing_exact {
+            return Err(invalid(
+                "Stage E present backing differs from the exact prepared identity",
+            ));
+        }
+        validate_prepared_backing_artifact(
+            &self.artifact_root,
+            &self.manifest.policy,
+            &self.manifest.backing_exact,
+        )
+    }
+
+    fn revalidate_absent(
+        &self,
+        absence: &HeldBackingAbsenceEvidenceV3,
+        delta: &TerminalArtifactNamespaceDeltaV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_manifest()?;
+        self.receipt_root_owner
+            .revalidate_lineage_retained_capsules(&self.lineage)?;
+        absence.revalidate()?;
+        let prepared_backing_sha256 = sha256(&canonical_json(&self.manifest.backing_exact)?);
+        if absence.prepared_backing_sha256() != prepared_backing_sha256 {
+            return Err(invalid(
+                "Stage E absence evidence differs from the exact prepared backing digest",
+            ));
+        }
+        self.artifact_root.revalidate("absent artifact root")?;
+        if !list_directory(self.artifact_root.file.as_raw_fd(), MAX_ARTIFACT_ENTRIES)?.is_empty()
+            || terminal_artifact_namespace_delta(
+                &self.manifest,
+                self.artifact_root_before,
+                self.artifact_root.binding,
+            )? != *delta
+        {
+            return Err(invalid(
+                "Stage E absent artifact-root endpoint or delta changed",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl HeldBackingAbsenceEvidenceV3 {
+    fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        match self {
+            Self::LiveUnlinked(value) => value.revalidate_after_persistence()?,
+            Self::RecoveredPathAbsent(value) => value.revalidate_after_persistence()?,
+        }
+        Ok(())
+    }
+
+    fn prepared_backing_sha256(&self) -> &str {
+        match self {
+            Self::LiveUnlinked(value) => &value.binding().prepared_backing_sha256,
+            Self::RecoveredPathAbsent(value) => &value.binding().prepared_backing_sha256,
+        }
+    }
+
+    fn projection(&self) -> TerminalBackingAbsenceEvidenceV3 {
+        match self {
+            Self::LiveUnlinked(value) => {
+                TerminalBackingAbsenceEvidenceV3::LiveUnlinked(value.binding().clone())
+            }
+            Self::RecoveredPathAbsent(value) => {
+                TerminalBackingAbsenceEvidenceV3::RecoveredPathAbsent(value.binding().clone())
+            }
+        }
+    }
+}
+
+impl RetainedBackingAbsentProvenanceV3 {
+    pub(crate) fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.core
+            .revalidate_absent(&self.absence, &self.artifact_namespace_delta)
+    }
+
+    pub(crate) fn collect_terminal_fresh(
+        self,
+        epoch: ActiveRestartCollectorEpochV3<'_>,
+    ) -> Result<PendingTerminalFreshObservationV3, RestartCollectorErrorV3> {
+        self.revalidate()?;
+        epoch.revalidate_for_prepared(
+            &self.core.operation_nonce,
+            &self.core.manifest_sha256,
+            &self.core.manifest.profile_sha256,
+        )?;
+        let latest = self.core.lineage.current_observation().evidence();
+        let expected_inventory = latest
+            .receipt
+            .current_expected_absence_inventory
+            .as_ref()
+            .ok_or_else(|| invalid("terminal Zero lineage lacks exact expected inventory"))?;
+        if latest.receipt.match_result != ReconciliationMatchV2::Zero
+            || !latest.receipt.matching_groups.is_empty()
+            || expected_inventory != &latest.receipt.iomedia_inventory
+            || latest
+                .receipt
+                .current_expected_absence_inventory_sha256
+                .as_deref()
+                != Some(sha256(&canonical_json(expected_inventory)?).as_str())
+        {
+            return Err(invalid(
+                "terminal latest lineage is not an exact retained Zero endpoint",
+            ));
+        }
+        let before = monotonic_nanoseconds()?;
+        if before <= epoch.restart_started_monotonic_nanoseconds()
+            || before <= latest.receipt.monotonic_after_nanoseconds
+        {
+            return Err(invalid(
+                "terminal FreshAbsence window is not later than its exact predecessor",
+            ));
+        }
+        let mounts_before = mount_table_snapshot()?;
+        if mounts_before != latest.receipt.mount_evidence.mounts_after {
+            return Err(invalid(
+                "terminal FreshAbsence mount census differs from latest Zero",
+            ));
+        }
+        reject_nested_mounts(&mounts_before, &self.core.manifest.policy)?;
+        let iomedia = capture_restart_iomedia_inventory_v3()?;
+        iomedia.revalidate_after_persistence()?;
+        if iomedia.report() != expected_inventory
+            || iomedia.report().boot_session_uuid != epoch.boot_session_uuid()
+        {
+            return Err(invalid(
+                "terminal FreshAbsence IOMedia census differs from exact expected absence",
+            ));
+        }
+        self.core.mountpoint.revalidate()?;
+        let mounts_after = mount_table_snapshot()?;
+        if mounts_after != mounts_before {
+            return Err(invalid(
+                "mount table changed during terminal FreshAbsence collection",
+            ));
+        }
+        let after = monotonic_nanoseconds()?;
+        if after < before || current_boot_session_uuid()? != epoch.boot_session_uuid() {
+            return Err(invalid(
+                "boot or monotonic endpoint changed during terminal FreshAbsence collection",
+            ));
+        }
+        let artifact_roster = list_directory(
+            self.core.artifact_root.file.as_raw_fd(),
+            MAX_ARTIFACT_ENTRIES,
+        )?;
+        if !artifact_roster.is_empty() {
+            return Err(invalid(
+                "terminal FreshAbsence artifact root is not exactly empty",
+            ));
+        }
+        let artifact_evidence = ArtifactEvidenceV3 {
+            artifacts: self.core.manifest.policy.artifacts.clone(),
+            artifact_root: self.core.manifest.policy.artifact_root.clone(),
+            authority: DisposableAuthorityV2::none(),
+            operation_artifacts_absent: true,
+            root_binding: self.core.artifact_root.binding,
+            roster: artifact_roster,
+            schema: ARTIFACT_SCHEMA.to_string(),
+        };
+        let mount_evidence = MountEvidenceV3 {
+            authority: DisposableAuthorityV2::none(),
+            mountpoint_underlying_revalidated: true,
+            mounts_after: mounts_after.clone(),
+            mounts_before: mounts_before,
+            no_nested_mounts: true,
+            schema: MOUNT_SCHEMA.to_string(),
+        };
+        let terminal = TerminalBackingAbsenceReceiptV3 {
+            artifact_namespace_delta: self.artifact_namespace_delta.clone(),
+            authority: DisposableAuthorityV2::none(),
+            backing_absence: self.absence.projection(),
+            boot_session_uuid: epoch.boot_session_uuid().to_string(),
+            collector_policy_sha256: self.core.manifest.policy.sha256()?,
+            first: self.core.terminal_first.clone(),
+            latest: self.core.terminal_latest.clone(),
+            latest_zero_kind: self.core.terminal_latest_zero_kind,
+            operation_nonce: self.core.operation_nonce.clone(),
+            prepared_backing_sha256: sha256(&canonical_json(&self.core.manifest.backing_exact)?),
+            restart: self.core.restart.clone(),
+            restart_epoch_nonce: epoch.restart_epoch_nonce().to_string(),
+        };
+        let current_baseline = RestartBaselineInventoryV3::from_inventory(iomedia.report())?;
+        let post_inventory_sha256 = current_baseline.sha256()?;
+        let current_expected_absence_inventory = Some(iomedia.report().clone());
+        let current_expected_absence_inventory_sha256 =
+            Some(sha256(&canonical_json(iomedia.report())?));
+        let first_snapshot_sha256 = self.core.lineage.first_snapshot_sha256()?;
+        let artifact_evidence_sha256 = sha256(&canonical_json(&artifact_evidence)?);
+        let iomedia_evidence_sha256 = sha256(&canonical_json(iomedia.report())?);
+        let mount_evidence_sha256 = sha256(&canonical_json(&mount_evidence)?);
+        let receipt = RestartCollectorReceiptV3 {
+            artifact_evidence: artifact_evidence.clone(),
+            artifact_evidence_sha256,
+            authority: DisposableAuthorityV2::none(),
+            backing_identity: self.core.manifest.backing.clone(),
+            backing_identity_sha256: sha256(&canonical_json(&self.core.manifest.backing)?),
+            baseline_inventory: self.core.manifest.baseline.clone(),
+            baseline_inventory_sha256: self.core.manifest.baseline.sha256()?,
+            baseline_restored: true,
+            boot_session_uuid: epoch.boot_session_uuid().to_string(),
+            collector_policy: self.core.manifest.policy.clone(),
+            collector_policy_sha256: self.core.manifest.policy.sha256()?,
+            current_expected_absence_inventory,
+            current_expected_absence_inventory_sha256,
+            iomedia_evidence_sha256,
+            iomedia_inventory: iomedia.report().clone(),
+            match_result: ReconciliationMatchV2::Zero,
+            matching_groups: Vec::new(),
+            monotonic_after_nanoseconds: after,
+            monotonic_before_nanoseconds: before,
+            mount_evidence,
+            mount_evidence_sha256,
+            mountpoint_underlying: self.core.manifest.mountpoint.clone(),
+            mountpoint_underlying_sha256: self.core.manifest.mountpoint.sha256()?,
+            operation_artifacts_absent: true,
+            operation_nonce: self.core.operation_nonce.clone(),
+            post_inventory_sha256,
+            purpose: CollectorPurposeV3::FreshAbsence,
+            reconciliation_snapshot_sha256: Some(first_snapshot_sha256),
+            restart_epoch_nonce: epoch.restart_epoch_nonce().to_string(),
+            schema: RECEIPT_SCHEMA.to_string(),
+            schema_version: 3,
+            terminal_backing_absence_v3: Some(terminal.clone()),
+        };
+        validate_receipt(&receipt)?;
+        let PreparedBackingAbsenceCoreV3 {
+            artifact_root,
+            artifact_root_before: _,
+            lineage,
+            manifest,
+            manifest_bytes,
+            manifest_sha256,
+            mountpoint,
+            operation_nonce: _,
+            receipt_root_owner,
+            restart: _,
+            terminal_first: _,
+            terminal_latest: _,
+            terminal_latest_zero_kind: _,
+            _not_send_or_sync: _,
+        } = self.core;
+        let pending = PendingRestartObservationV3 {
+            guard: CollectorReplayGuardV3::TerminalFresh(TerminalFreshReplayGuardV3 {
+                absence: self.absence,
+                artifact_evidence,
+                artifact_root,
+                iomedia,
+                manifest,
+                manifest_bytes,
+                manifest_sha256,
+                mountpoint,
+                mounts: mounts_after,
+                terminal,
+            }),
+            receipt,
+            receipt_root_owner,
+        };
+        pending.guard.revalidate(&pending.receipt)?;
+        Ok(PendingTerminalFreshObservationV3 {
+            pending,
+            prior: lineage,
+            _not_send_or_sync: PhantomData,
+        })
+    }
 }
 
 pub(crate) fn lifecycle_manifest_initial_receipt_root_binding(
@@ -1584,6 +2780,15 @@ fn validate_prepared_manifest(
         || manifest.mountpoint.path != manifest.policy.mountpoint
         || !manifest.receipt_root_initial_roster.is_empty()
         || manifest
+            .artifact_root_initial_binding
+            .is_some_and(|binding| {
+                validate_filesystem_binding_shape(&binding, true, "prepared artifact root").is_err()
+                    || !manifest
+                        .policy
+                        .artifact_root_identity
+                        .matches_binding(&binding, manifest.artifact_root_initial_roster.len())
+            })
+        || manifest
             .receipt_root_initial_binding
             .is_some_and(|binding| {
                 validate_receipt_directory(&binding).is_err()
@@ -1667,6 +2872,45 @@ fn validate_prepared_artifact_root(
     if initial_roster != required || roster != required {
         return Err(invalid(
             "retained prepared artifact root contains an unprepared roster delta",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_recovered_artifact_root(
+    root: &HeldDirectoryV3,
+    manifest: &PreparedCollectorManifestV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    root.revalidate("recovered artifact root")?;
+    let roster = list_directory(root.file.as_raw_fd(), MAX_ARTIFACT_ENTRIES)?;
+    let required = manifest
+        .policy
+        .artifacts
+        .iter()
+        .map(|artifact| artifact.basename.clone())
+        .collect::<Vec<_>>();
+    let before = manifest.artifact_root_initial_binding.ok_or_else(|| {
+        invalid("legacy prepared manifest cannot prove an exact artifact-root absence delta")
+    })?;
+    if manifest.artifact_root_initial_roster != required
+        || required.len() != 1
+        || manifest.policy.artifacts.len() != 1
+        || manifest.policy.artifacts[0].role != ArtifactRoleV3::BackingImage
+        || !roster.is_empty()
+        || !manifest
+            .policy
+            .artifact_root_identity
+            .matches_binding(&root.binding, 0)
+        || !manifest
+            .policy
+            .artifact_root_identity
+            .matches_binding(&before, required.len())
+        || !same_directory_object(before, root.binding)
+        || Path::new(&manifest.policy.artifact_root).join(&required[0])
+            != Path::new(&manifest.backing_exact.canonical_path)
+    {
+        return Err(invalid(
+            "recovered artifact root is not the exact prepared [BackingImage] -> [] endpoint",
         ));
     }
     Ok(())
@@ -2090,6 +3334,7 @@ where
         restart_epoch_nonce: request.bindings.restart_epoch_nonce.clone(),
         schema: RECEIPT_SCHEMA.to_string(),
         schema_version: 3,
+        terminal_backing_absence_v3: None,
     };
     validate_receipt(&receipt)?;
     if purpose == CollectorPurposeV3::FreshAbsence
@@ -2108,7 +3353,7 @@ where
         seed.require_exact_live_inventory(iomedia.report())?;
     }
     Ok(PendingRestartObservationV3 {
-        guard: LiveReplayGuardV3 {
+        guard: CollectorReplayGuardV3::Live(LiveReplayGuardV3 {
             artifact_evidence: receipt.artifact_evidence.clone(),
             artifact_root,
             backing,
@@ -2116,7 +3361,7 @@ where
             mountpoint,
             mounts: mounts_after,
             prepared_backing: request.prepared_backing.clone(),
-        },
+        }),
         receipt,
         receipt_root_owner,
     })
@@ -2282,6 +3527,205 @@ impl PendingRestartObservationV3 {
     }
 }
 
+impl PendingRecoveredFirstZeroObservationV3 {
+    pub(crate) fn persist_and_retain(
+        self,
+    ) -> Result<UnadoptedRecoveredFirstZeroObservationV3, RestartCollectorErrorV3> {
+        self.pending.guard.revalidate(&self.pending.receipt)?;
+        if !matches!(
+            &self.pending.guard,
+            CollectorReplayGuardV3::RecoveredFirstZero(_)
+        ) {
+            return Err(invalid(
+                "recovered first-Zero pending observation lost its sealed absence guard",
+            ));
+        }
+        let generation = self.pending.persist_and_retain_inner(|| Ok(()))?;
+        validate_unadopted_recovered_first_zero(&generation)?;
+        Ok(UnadoptedRecoveredFirstZeroObservationV3 {
+            generation,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl UnadoptedRecoveredFirstZeroObservationV3 {
+    pub(crate) fn sealed_observation(
+        &self,
+    ) -> Result<SealedUnadoptedRecoveredFirstZeroObservationV3<'_>, RestartCollectorErrorV3> {
+        validate_unadopted_recovered_first_zero(&self.generation)?;
+        Ok(SealedUnadoptedRecoveredFirstZeroObservationV3 {
+            generation: &self.generation,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn into_s1_transfer(
+        self,
+    ) -> Result<
+        (
+            RecoveredFirstZeroAfterTransferV3,
+            S1CollectorReceiptAppendTransferV3,
+        ),
+        RestartCollectorErrorV3,
+    > {
+        validate_unadopted_recovered_first_zero(&self.generation)?;
+        let transfer = self.generation.into_s1_transfer()?;
+        Ok((
+            RecoveredFirstZeroAfterTransferV3 {
+                _not_send_or_sync: PhantomData,
+            },
+            transfer,
+        ))
+    }
+}
+
+impl SealedUnadoptedRecoveredFirstZeroObservationV3<'_> {
+    fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        validate_unadopted_recovered_first_zero(self.generation)
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        &self.generation.core.receipt.operation_nonce
+    }
+
+    pub(crate) fn append_material(
+        &self,
+    ) -> Result<UnadoptedCollectorAppendV3<'_>, RestartCollectorErrorV3> {
+        self.revalidate()?;
+        self.generation.append_material()
+    }
+}
+
+impl RecoveredFirstZeroAfterTransferV3 {
+    pub(crate) fn bind_adopted_pair(
+        self,
+        generation: UnadoptedCollectorGenerationAfterTransferV3,
+        append: RetainedLifecycleRecordAppendV3,
+        adoption: S1AdoptedCollectorPairV3,
+    ) -> Result<RecoveredStageEContinuationV3, RestartCollectorErrorV3> {
+        let (receipt_root_owner, next) = generation.bind_adopted_pair(append, adoption)?;
+        let RetainedCollectorObservationV3::Reconciliation(RetainedCollectorMatchV3::Zero(
+            RetainedZeroMatchV3 { evidence },
+        )) = next
+        else {
+            return Err(invalid(
+                "recovered first-Zero pair adopted a non-Zero observation",
+            ));
+        };
+        let RetainedCollectorEvidenceV3 {
+            durable,
+            guard,
+            lifecycle_record,
+            observation,
+            receipt,
+            receipt_sha256,
+            _not_send_or_sync: _,
+        } = evidence;
+        let CollectorReplayGuardV3::RecoveredFirstZero(guard) = guard else {
+            return Err(invalid(
+                "recovered first-Zero pair lost its exact namespace guard",
+            ));
+        };
+        let RecoveredFirstZeroReplayGuardV3 {
+            absence,
+            artifact_evidence: _,
+            artifact_root,
+            iomedia: _,
+            manifest,
+            manifest_bytes,
+            manifest_sha256,
+            mountpoint,
+            mounts,
+        } = guard;
+        let retained_first = RetainedCollectorObservationV3::Reconciliation(
+            RetainedCollectorMatchV3::Zero(RetainedZeroMatchV3 {
+                evidence: RetainedCollectorEvidenceV3 {
+                    durable,
+                    guard: CollectorReplayGuardV3::RetainedOnly(RetainedOnlyReplayGuardV3 {
+                        mounts,
+                    }),
+                    lifecycle_record,
+                    observation,
+                    receipt,
+                    receipt_sha256,
+                    _not_send_or_sync: PhantomData,
+                },
+            }),
+        );
+        let operation_nonce = manifest.operation_nonce.clone();
+        let lineage = RetainedCollectorLineageV3::from_first(retained_first)?;
+        receipt_root_owner.revalidate_lineage_retained_capsules(&lineage)?;
+        let continuation = RecoveredStageEContinuationV3 {
+            absence,
+            artifact_root,
+            lineage,
+            manifest,
+            manifest_bytes,
+            manifest_sha256,
+            mountpoint,
+            operation_nonce,
+            receipt_root_owner,
+            _not_send_or_sync: PhantomData,
+        };
+        continuation.revalidate_internal()?;
+        Ok(continuation)
+    }
+}
+
+fn validate_unadopted_recovered_first_zero(
+    generation: &UnadoptedCollectorGenerationV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    generation.revalidate()?;
+    validate_recovered_first_zero_receipt_shape(&generation.core.receipt)?;
+    if !matches!(
+        &generation.core.guard,
+        CollectorReplayGuardV3::RecoveredFirstZero(_)
+    ) {
+        return Err(invalid(
+            "unadopted recovered first observation is not an exact sealed Zero snapshot",
+        ));
+    }
+    match &generation.core.observation {
+        FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot)
+            if snapshot.match_result == ReconciliationMatchV2::Zero
+                && snapshot.current_expected_absence_inventory_sha256.is_some() =>
+        {
+            Ok(())
+        }
+        FinalizedRestartObservationV3::ReconciliationSnapshot(_)
+        | FinalizedRestartObservationV3::FreshAbsence(_) => Err(invalid(
+            "recovered first-Zero lifecycle projection changed kind or match",
+        )),
+    }
+}
+
+fn validate_recovered_first_zero_receipt_shape(
+    receipt: &RestartCollectorReceiptV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    if receipt.purpose != CollectorPurposeV3::ReconciliationSnapshot
+        || receipt.match_result != ReconciliationMatchV2::Zero
+        || !receipt.matching_groups.is_empty()
+        || !receipt.operation_artifacts_absent
+        || !receipt.artifact_evidence.operation_artifacts_absent
+        || !receipt.artifact_evidence.roster.is_empty()
+        || !receipt.baseline_restored
+        || receipt.reconciliation_snapshot_sha256.is_some()
+        || receipt.terminal_backing_absence_v3.is_some()
+        || receipt.current_expected_absence_inventory.as_ref() != Some(&receipt.iomedia_inventory)
+        || receipt.current_expected_absence_inventory_sha256.as_deref()
+            != Some(sha256(&canonical_json(&receipt.iomedia_inventory)?).as_str())
+        || receipt.mount_evidence.mounts_before != receipt.mount_evidence.mounts_after
+        || !receipt.mount_evidence.no_nested_mounts
+        || !receipt.mount_evidence.mountpoint_underlying_revalidated
+    {
+        return Err(invalid(
+            "recovered first observation is not exact Zero IOMedia, mount, and artifact absence",
+        ));
+    }
+    Ok(())
+}
+
 impl PendingEjectCollectorObservationV3 {
     pub(crate) fn persist_and_retain(
         self,
@@ -2295,6 +3739,280 @@ impl PendingEjectCollectorObservationV3 {
             generation,
             _not_send_or_sync: PhantomData,
         })
+    }
+}
+
+impl PendingTerminalFreshObservationV3 {
+    pub(crate) fn persist_and_retain(
+        self,
+    ) -> Result<UnadoptedTerminalFreshObservationV3, RestartCollectorErrorV3> {
+        self.prior.revalidate_retained_capsules()?;
+        self.pending.guard.revalidate(&self.pending.receipt)?;
+        if self.pending.receipt.terminal_backing_absence_v3.is_none() {
+            return Err(invalid(
+                "terminal FreshAbsence pending receipt lacks retained absence evidence",
+            ));
+        }
+        let generation = self.pending.persist_and_retain_inner(|| Ok(()))?;
+        validate_unadopted_terminal_fresh(&self.prior, &generation)?;
+        Ok(UnadoptedTerminalFreshObservationV3 {
+            generation,
+            prior: self.prior,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+}
+
+impl UnadoptedTerminalFreshObservationV3 {
+    pub(crate) fn sealed_observation(
+        &self,
+    ) -> Result<SealedUnadoptedTerminalFreshObservationV3<'_>, RestartCollectorErrorV3> {
+        validate_unadopted_terminal_fresh(&self.prior, &self.generation)?;
+        Ok(SealedUnadoptedTerminalFreshObservationV3 {
+            generation: &self.generation,
+            prior: &self.prior,
+            _not_send_or_sync: PhantomData,
+        })
+    }
+
+    pub(crate) fn into_s1_transfer(
+        self,
+    ) -> Result<
+        (
+            TerminalFreshObservationAfterTransferV3,
+            S1CollectorReceiptAppendTransferV3,
+        ),
+        RestartCollectorErrorV3,
+    > {
+        validate_unadopted_terminal_fresh(&self.prior, &self.generation)?;
+        let transfer = self.generation.into_s1_transfer()?;
+        Ok((
+            TerminalFreshObservationAfterTransferV3 {
+                prior: self.prior,
+                _not_send_or_sync: PhantomData,
+            },
+            transfer,
+        ))
+    }
+}
+
+impl SealedUnadoptedTerminalFreshObservationV3<'_> {
+    fn revalidate(&self) -> Result<(), RestartCollectorErrorV3> {
+        validate_unadopted_terminal_fresh(self.prior, self.generation)
+    }
+
+    pub(crate) fn operation_nonce(&self) -> &str {
+        &self.generation.core.receipt.operation_nonce
+    }
+
+    pub(crate) fn append_material(
+        &self,
+    ) -> Result<UnadoptedCollectorAppendV3<'_>, RestartCollectorErrorV3> {
+        self.revalidate()?;
+        self.generation.append_material()
+    }
+
+    pub(crate) fn fresh_absence_observation(
+        &self,
+    ) -> Result<&FreshAbsenceObservationV2, RestartCollectorErrorV3> {
+        self.revalidate()?;
+        match &self.generation.core.observation {
+            FinalizedRestartObservationV3::FreshAbsence(observation) => Ok(observation),
+            FinalizedRestartObservationV3::ReconciliationSnapshot(_) => Err(invalid(
+                "terminal unadopted generation changed observation kind",
+            )),
+        }
+    }
+
+    pub(crate) fn terminal_binding(
+        &self,
+    ) -> Result<&TerminalFreshAbsenceBindingV3, RestartCollectorErrorV3> {
+        self.revalidate()?;
+        match &self.generation.core.observation {
+            FinalizedRestartObservationV3::FreshAbsence(observation) => observation
+                .terminal_binding_v3
+                .as_ref()
+                .ok_or_else(|| invalid("terminal FreshAbsence projection is absent")),
+            FinalizedRestartObservationV3::ReconciliationSnapshot(_) => Err(invalid(
+                "terminal unadopted generation changed observation kind",
+            )),
+        }
+    }
+}
+
+impl TerminalFreshObservationAfterTransferV3 {
+    pub(crate) fn bind_adopted_pair(
+        self,
+        generation: UnadoptedCollectorGenerationAfterTransferV3,
+        append: RetainedLifecycleRecordAppendV3,
+        adoption: S1AdoptedCollectorPairV3,
+    ) -> Result<RetainedCompletedNamespaceAbsenceV3, RestartCollectorErrorV3> {
+        let (receipt_root_owner, next) = generation.bind_adopted_pair(append, adoption)?;
+        validate_terminal_or_legacy_fresh_successor(&self.prior.first, &next)?;
+        let lineage = self.prior.advance_fresh_absence(next)?;
+        receipt_root_owner.revalidate_lineage(&lineage)?;
+        let retained = RetainedCompletedNamespaceAbsenceV3 {
+            lineage,
+            receipt_root_owner,
+            _not_send_or_sync: PhantomData,
+        };
+        retained.revalidate_internal()?;
+        Ok(retained)
+    }
+}
+
+fn validate_unadopted_terminal_fresh(
+    prior: &RetainedCollectorLineageV3,
+    generation: &UnadoptedCollectorGenerationV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    prior.revalidate_retained_capsules()?;
+    generation.revalidate()?;
+    if generation.core.receipt.purpose != CollectorPurposeV3::FreshAbsence
+        || generation.core.receipt.match_result != ReconciliationMatchV2::Zero
+        || generation
+            .core
+            .receipt
+            .terminal_backing_absence_v3
+            .is_none()
+    {
+        return Err(invalid(
+            "unadopted terminal generation is not exact Stage E FreshAbsence",
+        ));
+    }
+    let projected = match &generation.core.observation {
+        FinalizedRestartObservationV3::FreshAbsence(observation) => observation,
+        FinalizedRestartObservationV3::ReconciliationSnapshot(_) => {
+            return Err(invalid(
+                "unadopted terminal generation changed observation kind",
+            ));
+        }
+    };
+    if projected.terminal_binding_v3.is_none() {
+        return Err(invalid(
+            "unadopted terminal FreshAbsence lacks its sealed lifecycle projection",
+        ));
+    }
+    let first_snapshot = prior.first_snapshot_raw()?;
+    let first_sha = reconciliation_snapshot_sha256(first_snapshot)
+        .map_err(|error| invalid(format!("terminal first snapshot digest failed: {error}")))?;
+    let (expected_latest_zero_kind, expected_first, expected_latest) =
+        terminal_lineage_projection(prior)?;
+    let terminal = generation
+        .core
+        .receipt
+        .terminal_backing_absence_v3
+        .as_ref()
+        .expect("validated terminal projection");
+    require_exact_terminal_lineage_claim(
+        terminal.latest_zero_kind,
+        &terminal.first,
+        &terminal.latest,
+        expected_latest_zero_kind,
+        &expected_first,
+        &expected_latest,
+    )?;
+    if generation
+        .core
+        .receipt
+        .reconciliation_snapshot_sha256
+        .as_deref()
+        != Some(first_sha.as_str())
+        || generation.core.receipt.operation_nonce != first_snapshot.operation_nonce
+        || generation.core.receipt.restart_epoch_nonce != first_snapshot.restart_epoch_nonce
+        || generation.core.receipt.boot_session_uuid != first_snapshot.boot_session_uuid
+    {
+        return Err(invalid(
+            "unadopted terminal FreshAbsence differs from its retained first lineage",
+        ));
+    }
+    Ok(())
+}
+
+fn require_exact_terminal_lineage_claim(
+    actual_kind: TerminalLatestZeroKindV3,
+    actual_first: &TerminalCollectorLineageV3,
+    actual_latest: &TerminalCollectorLineageV3,
+    expected_kind: TerminalLatestZeroKindV3,
+    expected_first: &TerminalCollectorLineageV3,
+    expected_latest: &TerminalCollectorLineageV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    if actual_kind != expected_kind
+        || actual_first != expected_first
+        || actual_latest != expected_latest
+    {
+        return Err(invalid(
+            "terminal FreshAbsence predecessor kind, first, or latest lineage changed",
+        ));
+    }
+    Ok(())
+}
+
+impl RetainedCompletedNamespaceAbsenceV3 {
+    fn revalidate_internal(&self) -> Result<(), RestartCollectorErrorV3> {
+        self.receipt_root_owner.revalidate_lineage(&self.lineage)?;
+        let current = self.lineage.current_observation();
+        let evidence = current.evidence();
+        let observation = match &evidence.observation {
+            FinalizedRestartObservationV3::FreshAbsence(observation) => observation,
+            FinalizedRestartObservationV3::ReconciliationSnapshot(_) => {
+                return Err(invalid(
+                    "completed namespace absence lost terminal FreshAbsence",
+                ));
+            }
+        };
+        if observation.terminal_binding_v3.is_none()
+            || evidence.receipt.terminal_backing_absence_v3.is_none()
+        {
+            return Err(invalid(
+                "completed namespace absence lost its exact Stage E binding",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn revalidate(
+        &self,
+        _seal: &CompletedNamespaceAbsenceReadSealV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_internal()
+    }
+
+    pub(crate) fn terminal_binding(
+        &self,
+        _seal: &CompletedNamespaceAbsenceReadSealV3,
+    ) -> Result<&TerminalFreshAbsenceBindingV3, RestartCollectorErrorV3> {
+        self.revalidate_internal()?;
+        match &self.lineage.current_observation().evidence().observation {
+            FinalizedRestartObservationV3::FreshAbsence(observation) => observation
+                .terminal_binding_v3
+                .as_ref()
+                .ok_or_else(|| invalid("completed terminal binding is absent")),
+            FinalizedRestartObservationV3::ReconciliationSnapshot(_) => Err(invalid(
+                "completed namespace absence changed observation kind",
+            )),
+        }
+    }
+
+    pub(crate) fn require_fresh_lifecycle_record(
+        &self,
+        _seal: &CompletedNamespaceAbsenceReadSealV3,
+        digest: &str,
+        sequence: u32,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.revalidate_internal()?;
+        let record = self
+            .lineage
+            .current_observation()
+            .evidence()
+            .lifecycle_record
+            .as_ref()
+            .ok_or_else(|| invalid("completed FreshAbsence lacks its lifecycle record"))?;
+        if record.digest() != digest || record.sequence() != sequence {
+            return Err(invalid(
+                "completed FreshAbsence lifecycle record differs from ReadyToComplete",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -2958,7 +4676,8 @@ impl RetainedCollectorLineageV3 {
             RetainedCollectorCurrentV3::First => &self.first,
             RetainedCollectorCurrentV3::MountDelta { observation, .. }
             | RetainedCollectorCurrentV3::EjectedZero { observation, .. }
-            | RetainedCollectorCurrentV3::FreshAbsence(observation) => observation,
+            | RetainedCollectorCurrentV3::RecoveredEjectedZero { observation, .. }
+            | RetainedCollectorCurrentV3::FreshAbsence { observation, .. } => observation,
         }
     }
 
@@ -3024,14 +4743,20 @@ impl RetainedCollectorLineageV3 {
                     &observation.evidence().guard,
                 )
             }
-            RetainedCollectorCurrentV3::FreshAbsence(observation) => {
+            RetainedCollectorCurrentV3::RecoveredEjectedZero { observation, prior } => {
+                self.revalidate_current_retained_capsules(prior)?;
+                observation.revalidate_bound()?;
+                validate_recovered_ejected_zero(&self.first, observation)
+            }
+            RetainedCollectorCurrentV3::FreshAbsence { observation, prior } => {
                 // FreshAbsence may legitimately follow eject, so the first
                 // live IOMedia guard no longer describes current reality.  Its
                 // immutable receipt and adopted V2 capsule remain retained;
                 // the current absence observation owns the live replay.
                 self.first.evidence().revalidate_retained_capsule()?;
+                self.revalidate_current_retained_capsules(prior)?;
                 observation.revalidate_bound()?;
-                observation.validate_fresh_absence_successor(&self.first)
+                validate_terminal_or_legacy_fresh_successor(&self.first, observation)
             }
         }
     }
@@ -3078,9 +4803,15 @@ impl RetainedCollectorLineageV3 {
                     &observation.evidence().guard,
                 )
             }
-            RetainedCollectorCurrentV3::FreshAbsence(observation) => {
+            RetainedCollectorCurrentV3::RecoveredEjectedZero { observation, prior } => {
+                self.revalidate_current_retained_capsules(prior)?;
                 observation.evidence().revalidate_retained_capsule()?;
-                observation.validate_fresh_absence_successor(&self.first)
+                validate_recovered_ejected_zero(&self.first, observation)
+            }
+            RetainedCollectorCurrentV3::FreshAbsence { observation, prior } => {
+                self.revalidate_current_retained_capsules(prior)?;
+                observation.evidence().revalidate_retained_capsule()?;
+                validate_terminal_or_legacy_fresh_successor(&self.first, observation)
             }
         }
     }
@@ -3130,9 +4861,12 @@ impl RetainedCollectorLineageV3 {
         self,
         next: RetainedCollectorObservationV3,
     ) -> Result<Self, RestartCollectorErrorV3> {
-        next.validate_fresh_absence_successor(&self.first)?;
+        validate_terminal_or_legacy_fresh_successor(&self.first, &next)?;
         let lineage = Self {
-            current: RetainedCollectorCurrentV3::FreshAbsence(next),
+            current: RetainedCollectorCurrentV3::FreshAbsence {
+                observation: next,
+                prior: Box::new(self.current),
+            },
             first: self.first,
             _not_send_or_sync: PhantomData,
         };
@@ -3222,7 +4956,8 @@ fn current_observation_for<'a>(
         RetainedCollectorCurrentV3::First => first,
         RetainedCollectorCurrentV3::MountDelta { observation, .. }
         | RetainedCollectorCurrentV3::EjectedZero { observation, .. }
-        | RetainedCollectorCurrentV3::FreshAbsence(observation) => observation,
+        | RetainedCollectorCurrentV3::RecoveredEjectedZero { observation, .. }
+        | RetainedCollectorCurrentV3::FreshAbsence { observation, .. } => observation,
     }
 }
 
@@ -3232,13 +4967,20 @@ fn revalidate_current_receipt_entries(
 ) -> Result<(), RestartCollectorErrorV3> {
     match current {
         RetainedCollectorCurrentV3::First => Ok(()),
-        RetainedCollectorCurrentV3::MountDelta { observation, .. }
-        | RetainedCollectorCurrentV3::FreshAbsence(observation) => {
+        RetainedCollectorCurrentV3::MountDelta { observation, .. } => {
+            observation.evidence().durable.revalidate(root)
+        }
+        RetainedCollectorCurrentV3::FreshAbsence { observation, prior } => {
+            revalidate_current_receipt_entries(root, prior)?;
             observation.evidence().durable.revalidate(root)
         }
         RetainedCollectorCurrentV3::EjectedZero {
             observation, prior, ..
         } => {
+            revalidate_current_receipt_entries(root, prior)?;
+            observation.evidence().durable.revalidate(root)
+        }
+        RetainedCollectorCurrentV3::RecoveredEjectedZero { observation, prior } => {
             revalidate_current_receipt_entries(root, prior)?;
             observation.evidence().durable.revalidate(root)
         }
@@ -3261,7 +5003,7 @@ fn validate_lineage_successor(
         || next.receipt.match_result != expected_match
         || next.receipt.mount_evidence.mounts_before != expected_after
         || next.receipt.mount_evidence.mounts_after != expected_after
-        || next.guard.mounts != expected_after
+        || next.guard.mounts() != expected_after
         || next.receipt.operation_nonce != prior.receipt.operation_nonce
         || next.receipt.boot_session_uuid != prior.receipt.boot_session_uuid
         || next.receipt.restart_epoch_nonce != prior.receipt.restart_epoch_nonce
@@ -3272,6 +5014,48 @@ fn validate_lineage_successor(
     {
         return Err(invalid(
             "collector lineage current observation is not the exact successor of its first snapshot",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_terminal_or_legacy_fresh_successor(
+    first: &RetainedCollectorObservationV3,
+    next: &RetainedCollectorObservationV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    let next_evidence = next.evidence();
+    let Some(terminal) = next_evidence.receipt.terminal_backing_absence_v3.as_ref() else {
+        return next.validate_fresh_absence_successor(first);
+    };
+    next.revalidate_bound()?;
+    first.evidence().revalidate_retained_capsule()?;
+    let first_snapshot = match &first.evidence().observation {
+        FinalizedRestartObservationV3::ReconciliationSnapshot(snapshot) => snapshot,
+        FinalizedRestartObservationV3::FreshAbsence(_) => {
+            return Err(invalid(
+                "terminal lineage first observation is not a snapshot",
+            ));
+        }
+    };
+    let expected_first_sha = reconciliation_snapshot_sha256(first_snapshot)
+        .map_err(|error| invalid(format!("terminal first snapshot digest failed: {error}")))?;
+    let expected_first = terminal_collector_lineage(first.evidence(), expected_first_sha.clone())?;
+    if terminal.first != expected_first
+        || next_evidence
+            .receipt
+            .reconciliation_snapshot_sha256
+            .as_deref()
+            != Some(expected_first_sha.as_str())
+        || next_evidence.receipt.operation_nonce != first_snapshot.operation_nonce
+        || next_evidence.receipt.restart_epoch_nonce != first_snapshot.restart_epoch_nonce
+        || next_evidence.receipt.boot_session_uuid != first_snapshot.boot_session_uuid
+        || next_evidence.receipt.backing_identity_sha256 != first_snapshot.backing_identity_sha256
+        || next_evidence.receipt.collector_policy_sha256 != first_snapshot.collector_policy_sha256
+        || next_evidence.receipt.mountpoint_underlying_sha256
+            != first_snapshot.mountpoint_underlying_sha256
+    {
+        return Err(invalid(
+            "terminal FreshAbsence is not the exact successor of its retained first snapshot",
         ));
     }
     Ok(())
@@ -3851,8 +5635,9 @@ fn validate_eject_successor_shape(
     prior: &RetainedCollectorObservationV3,
     binding: &EjectExpectationBindingV3,
     next: &RestartCollectorReceiptV3,
-    next_guard: &LiveReplayGuardV3,
+    next_guard: &CollectorReplayGuardV3,
 ) -> Result<(), RestartCollectorErrorV3> {
+    let next_guard = next_guard.live()?;
     let prior = prior.evidence();
     let first = first.evidence();
     let group = exact_unique_group(&prior.receipt)?;
@@ -3905,6 +5690,38 @@ fn validate_eject_successor_shape(
     {
         return Err(invalid(
             "post-eject collector is not the exact Zero successor of its armed expectation",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_recovered_ejected_zero(
+    first: &RetainedCollectorObservationV3,
+    next: &RetainedCollectorObservationV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    first.evidence().revalidate_retained_capsule()?;
+    next.evidence().revalidate_retained_capsule()?;
+    let first_receipt = &first.evidence().receipt;
+    let next_receipt = &next.evidence().receipt;
+    let expected = first_receipt
+        .current_expected_absence_inventory
+        .as_ref()
+        .ok_or_else(|| invalid("recovered first snapshot lacks exact expected absence"))?;
+    if next_receipt.purpose != CollectorPurposeV3::ReconciliationSnapshot
+        || next_receipt.match_result != ReconciliationMatchV2::Zero
+        || !next_receipt.matching_groups.is_empty()
+        || next_receipt.iomedia_inventory != *expected
+        || next_receipt.current_expected_absence_inventory.as_ref() != Some(expected)
+        || next_receipt.operation_nonce != first_receipt.operation_nonce
+        || next_receipt.boot_session_uuid != first_receipt.boot_session_uuid
+        || next_receipt.restart_epoch_nonce != first_receipt.restart_epoch_nonce
+        || next_receipt.collector_policy_sha256 != first_receipt.collector_policy_sha256
+        || next_receipt.backing_identity_sha256 != first_receipt.backing_identity_sha256
+        || next_receipt.mountpoint_underlying_sha256 != first_receipt.mountpoint_underlying_sha256
+        || next_receipt.monotonic_before_nanoseconds <= first_receipt.monotonic_after_nanoseconds
+    {
+        return Err(invalid(
+            "recovered EjectedZero is not the exact durable successor of its first snapshot",
         ));
     }
     Ok(())
@@ -4036,6 +5853,35 @@ fn fresh_absence_from_receipt(
             "fresh absence does not project from the exact durable receipt",
         ));
     }
+    let terminal_binding_v3 = receipt
+        .terminal_backing_absence_v3
+        .as_ref()
+        .map(|terminal| {
+            TerminalFreshAbsenceBindingV3::from_retained_projection(
+                terminal.operation_nonce.clone(),
+                terminal.boot_session_uuid.clone(),
+                terminal.restart_epoch_nonce.clone(),
+                terminal.collector_policy_sha256.clone(),
+                terminal.prepared_backing_sha256.clone(),
+                terminal.restart.clone(),
+                terminal.first.clone(),
+                terminal.latest_zero_kind,
+                terminal.latest.clone(),
+                terminal.backing_absence.clone(),
+                terminal.artifact_namespace_delta.clone(),
+                receipt.artifact_evidence_sha256.clone(),
+                receipt_sha256.to_string(),
+                receipt_file.root_generation_ordinal(),
+                receipt.iomedia_evidence_sha256.clone(),
+                receipt.mount_evidence_sha256.clone(),
+            )
+            .map_err(|error| {
+                invalid(format!(
+                    "terminal FreshAbsence lifecycle projection failed: {error}"
+                ))
+            })
+        })
+        .transpose()?;
     Ok(FreshAbsenceObservationV2 {
         artifact_evidence_sha256: receipt.artifact_evidence_sha256.clone(),
         baseline_inventory_sha256: receipt.baseline_inventory_sha256.clone(),
@@ -4059,6 +5905,7 @@ fn fresh_absence_from_receipt(
         post_inventory_sha256: receipt.post_inventory_sha256.clone(),
         reconciliation_snapshot_sha256: receipt.reconciliation_snapshot_sha256.clone(),
         restart_epoch_nonce: Some(receipt.restart_epoch_nonce.clone()),
+        terminal_binding_v3,
     })
 }
 
@@ -5963,6 +7810,178 @@ fn classify_mount_state(
     Ok((result, mounted))
 }
 
+impl CollectorReplayGuardV3 {
+    fn revalidate(
+        &self,
+        receipt: &RestartCollectorReceiptV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        match self {
+            Self::Live(guard) => guard.revalidate(receipt),
+            Self::RecoveredFirstZero(guard) => guard.revalidate(receipt),
+            Self::RetainedOnly(guard) => {
+                validate_receipt(receipt)?;
+                if guard.mounts != receipt.mount_evidence.mounts_after {
+                    return Err(invalid("retained-only collector mount projection changed"));
+                }
+                Ok(())
+            }
+            Self::TerminalFresh(guard) => guard.revalidate(receipt),
+        }
+    }
+
+    fn live(&self) -> Result<&LiveReplayGuardV3, RestartCollectorErrorV3> {
+        match self {
+            Self::Live(guard) => Ok(guard),
+            Self::RecoveredFirstZero(_) | Self::RetainedOnly(_) | Self::TerminalFresh(_) => {
+                Err(invalid(
+                    "terminal FreshAbsence guard cannot enter a live effect or mount transition",
+                ))
+            }
+        }
+    }
+
+    fn mounts(&self) -> &[MountBindingV3] {
+        match self {
+            Self::Live(guard) => &guard.mounts,
+            Self::RecoveredFirstZero(guard) => &guard.mounts,
+            Self::RetainedOnly(guard) => &guard.mounts,
+            Self::TerminalFresh(guard) => &guard.mounts,
+        }
+    }
+
+    fn revalidate_eject_stable(
+        &self,
+        receipt: &RestartCollectorReceiptV3,
+        unchanged_mounts: &[MountBindingV3],
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.live()?
+            .revalidate_eject_stable(receipt, unchanged_mounts)
+    }
+
+    fn revalidate_across_mount_delta(
+        &self,
+        receipt: &RestartCollectorReceiptV3,
+        expected_after: &[MountBindingV3],
+        direction: MountDeltaDirectionV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        self.live()?
+            .revalidate_across_mount_delta(receipt, expected_after, direction)
+    }
+}
+
+impl RecoveredFirstZeroReplayGuardV3 {
+    fn revalidate(
+        &self,
+        receipt: &RestartCollectorReceiptV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        validate_recovered_first_zero_receipt_shape(receipt)?;
+        validate_receipt(receipt)?;
+        let (manifest_bytes, manifest_sha256) = canonical_prepared_manifest(&self.manifest)?;
+        let prepared_backing_sha256 = sha256(&canonical_json(&self.manifest.backing_exact)?);
+        if receipt.purpose != CollectorPurposeV3::ReconciliationSnapshot
+            || receipt.match_result != ReconciliationMatchV2::Zero
+            || !receipt.matching_groups.is_empty()
+            || receipt.terminal_backing_absence_v3.is_some()
+            || receipt.operation_nonce != self.manifest.operation_nonce
+            || receipt.collector_policy != self.manifest.policy
+            || receipt.backing_identity != self.manifest.backing
+            || receipt.mountpoint_underlying != self.manifest.mountpoint
+            || manifest_bytes != self.manifest_bytes
+            || manifest_sha256 != self.manifest_sha256
+            || self.absence.binding().prepared_backing_sha256 != prepared_backing_sha256
+            || self.absence.binding().canonical_path != self.manifest.backing_exact.canonical_path
+        {
+            return Err(invalid(
+                "recovered first-Zero receipt changed its exact prepared provenance",
+            ));
+        }
+        self.absence.revalidate_after_persistence()?;
+        self.artifact_root
+            .revalidate("recovered first-Zero artifact root")?;
+        let roster = list_directory(self.artifact_root.file.as_raw_fd(), MAX_ARTIFACT_ENTRIES)?;
+        if !roster.is_empty()
+            || self.artifact_root.binding != self.artifact_evidence.root_binding
+            || self.artifact_evidence.roster != roster
+            || !self.artifact_evidence.operation_artifacts_absent
+            || receipt.artifact_evidence != self.artifact_evidence
+        {
+            return Err(invalid("recovered first-Zero artifact endpoint changed"));
+        }
+        self.iomedia.revalidate_after_persistence()?;
+        if self.iomedia.report() != &receipt.iomedia_inventory
+            || receipt.current_expected_absence_inventory.as_ref() != Some(self.iomedia.report())
+            || receipt.current_expected_absence_inventory_sha256.as_deref()
+                != Some(sha256(&canonical_json(self.iomedia.report())?).as_str())
+        {
+            return Err(invalid(
+                "recovered first-Zero retained IOMedia endpoint changed",
+            ));
+        }
+        self.mountpoint.revalidate()?;
+        if mount_table_snapshot()? != self.mounts
+            || receipt.mount_evidence.mounts_before != self.mounts
+            || receipt.mount_evidence.mounts_after != self.mounts
+            || !receipt.mount_evidence.mountpoint_underlying_revalidated
+            || current_boot_session_uuid()? != receipt.boot_session_uuid
+        {
+            return Err(invalid(
+                "recovered first-Zero mount or boot endpoint changed",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl TerminalFreshReplayGuardV3 {
+    fn revalidate(
+        &self,
+        receipt: &RestartCollectorReceiptV3,
+    ) -> Result<(), RestartCollectorErrorV3> {
+        validate_receipt(receipt)?;
+        self.absence.revalidate()?;
+        let (manifest_bytes, manifest_sha256) = canonical_prepared_manifest(&self.manifest)?;
+        if manifest_bytes != self.manifest_bytes
+            || manifest_sha256 != self.manifest_sha256
+            || receipt.terminal_backing_absence_v3.as_ref() != Some(&self.terminal)
+            || self.terminal.backing_absence != self.absence.projection()
+            || self.terminal.prepared_backing_sha256
+                != sha256(&canonical_json(&self.manifest.backing_exact)?)
+        {
+            return Err(invalid(
+                "terminal FreshAbsence prepared or backing evidence changed",
+            ));
+        }
+        self.artifact_root.revalidate("terminal artifact root")?;
+        let roster = list_directory(self.artifact_root.file.as_raw_fd(), MAX_ARTIFACT_ENTRIES)?;
+        if !roster.is_empty()
+            || self.artifact_root.binding != self.artifact_evidence.root_binding
+            || self.artifact_evidence.roster != roster
+            || !self.artifact_evidence.operation_artifacts_absent
+            || self.terminal.artifact_namespace_delta.after_root != self.artifact_root.binding
+            || self.terminal.artifact_namespace_delta.after_entries != roster
+        {
+            return Err(invalid("terminal FreshAbsence artifact endpoint changed"));
+        }
+        self.iomedia.revalidate_after_persistence()?;
+        if self.iomedia.report() != &receipt.iomedia_inventory {
+            return Err(invalid(
+                "terminal FreshAbsence retained IOMedia census changed",
+            ));
+        }
+        self.mountpoint.revalidate()?;
+        if mount_table_snapshot()? != self.mounts
+            || self.mounts != receipt.mount_evidence.mounts_after
+            || receipt.mount_evidence.mounts_before != self.mounts
+            || current_boot_session_uuid()? != receipt.boot_session_uuid
+        {
+            return Err(invalid(
+                "terminal FreshAbsence mount or boot endpoint changed",
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl LiveReplayGuardV3 {
     fn revalidate(
         &self,
@@ -6772,6 +8791,11 @@ fn validate_receipt(receipt: &RestartCollectorReceiptV3) -> Result<(), RestartCo
                 && receipt.mount_evidence.mountpoint_underlying_revalidated => {}
         _ => return Err(invalid("restart collector purpose binding is malformed")),
     }
+    if let Some(terminal) = &receipt.terminal_backing_absence_v3 {
+        validate_terminal_backing_absence_receipt(receipt, terminal)?;
+    } else if receipt.purpose == CollectorPurposeV3::ReconciliationSnapshot {
+        // All nonterminal collectors deliberately omit the Stage E evidence.
+    }
     match receipt.match_result {
         ReconciliationMatchV2::Zero if receipt.matching_groups.is_empty() => {}
         ReconciliationMatchV2::Unique { .. } if receipt.matching_groups.len() == 1 => {}
@@ -6780,6 +8804,58 @@ fn validate_receipt(receipt: &RestartCollectorReceiptV3) -> Result<(), RestartCo
                 && usize::try_from(matching_objects).ok()
                     == Some(receipt.matching_groups.len()) => {}
         _ => return Err(invalid("restart collector match result is inconsistent")),
+    }
+    Ok(())
+}
+
+fn validate_terminal_backing_absence_receipt(
+    receipt: &RestartCollectorReceiptV3,
+    terminal: &TerminalBackingAbsenceReceiptV3,
+) -> Result<(), RestartCollectorErrorV3> {
+    let (prepared_backing_sha256, canonical_path) = match &terminal.backing_absence {
+        TerminalBackingAbsenceEvidenceV3::LiveUnlinked(binding) => {
+            (&binding.prepared_backing_sha256, &binding.canonical_path)
+        }
+        TerminalBackingAbsenceEvidenceV3::RecoveredPathAbsent(binding) => {
+            (&binding.prepared_backing_sha256, &binding.canonical_path)
+        }
+    };
+    if receipt.purpose != CollectorPurposeV3::FreshAbsence
+        || terminal.authority.any()
+        || terminal.operation_nonce != receipt.operation_nonce
+        || terminal.boot_session_uuid != receipt.boot_session_uuid
+        || terminal.restart_epoch_nonce != receipt.restart_epoch_nonce
+        || terminal.collector_policy_sha256 != receipt.collector_policy_sha256
+        || terminal.prepared_backing_sha256 != *prepared_backing_sha256
+        || canonical_path != &receipt.backing_identity.canonical_path
+        || terminal.artifact_namespace_delta.authority.any()
+        || terminal.artifact_namespace_delta.after_entries != receipt.artifact_evidence.roster
+        || terminal.artifact_namespace_delta.after_root != receipt.artifact_evidence.root_binding
+        || terminal.artifact_namespace_delta.before_entries
+            != receipt
+                .collector_policy
+                .artifacts
+                .iter()
+                .map(|artifact| artifact.basename.clone())
+                .collect::<Vec<_>>()
+        || terminal.first.lifecycle_sequence == 0
+        || terminal.latest.lifecycle_sequence == 0
+        || !valid_digest(&terminal.first.collector_receipt_sha256)
+        || !valid_digest(&terminal.first.lifecycle_record_sha256)
+        || !valid_digest(&terminal.first.observation_sha256)
+        || !valid_digest(&terminal.latest.collector_receipt_sha256)
+        || !valid_digest(&terminal.latest.lifecycle_record_sha256)
+        || !valid_digest(&terminal.latest.observation_sha256)
+        || !valid_digest(&terminal.restart.prepared_manifest_sha256)
+        || !valid_digest(&terminal.restart.prepared_profile_sha256)
+        || !valid_digest(&terminal.restart.process_epoch_sha256)
+        || !valid_digest(&terminal.restart.restart_admission_sha256)
+        || !valid_digest(&terminal.restart.restart_started_lifecycle_record_sha256)
+        || terminal.restart.restart_started_lifecycle_sequence == 0
+    {
+        return Err(invalid(
+            "terminal backing-absence receipt projection is malformed or inconsistent",
+        ));
     }
     Ok(())
 }
@@ -7129,7 +9205,7 @@ impl RetainedCollectorLineageV3 {
             ));
         }
         let before = evidence.receipt.mount_evidence.mounts_after.clone();
-        if before != evidence.guard.mounts
+        if before != evidence.guard.mounts()
             || before.iter().any(|mount| {
                 mount.mount_on == target.mount_on || group_source_matches(group, &mount.mount_from)
             })
@@ -7187,7 +9263,7 @@ impl RetainedCollectorLineageV3 {
         };
         let group = exact_unique_group(&unique.evidence.receipt)?;
         let before = evidence.receipt.mount_evidence.mounts_after.clone();
-        if before != evidence.guard.mounts {
+        if before != evidence.guard.mounts() {
             return Err(invalid(
                 "unique-mounted retained guard differs from its exact receipt snapshot",
             ));
@@ -7293,7 +9369,7 @@ impl<K> RetainedCollectorMountDeltaV3<K> {
                 != expected_underlying_revalidated
             || next_evidence.receipt.mount_evidence.mounts_before != self.after
             || next_evidence.receipt.mount_evidence.mounts_after != self.after
-            || next_evidence.guard.mounts != self.after
+            || next_evidence.guard.mounts() != self.after
             || next_evidence.receipt.operation_nonce != self.operation_nonce
             || next_evidence.receipt.operation_nonce != prior.receipt.operation_nonce
             || next_evidence.receipt.boot_session_uuid != prior.receipt.boot_session_uuid
@@ -7342,7 +9418,7 @@ impl<K> RetainedCollectorMountDeltaV3<K> {
                 != expected_underlying_revalidated
             || next_evidence.receipt.mount_evidence.mounts_before != self.after
             || next_evidence.receipt.mount_evidence.mounts_after != self.after
-            || next_evidence.guard.mounts != self.after
+            || next_evidence.guard.mounts() != self.after
             || next_evidence.receipt.operation_nonce != self.operation_nonce
             || next_evidence.receipt.operation_nonce != prior.receipt.operation_nonce
             || next_evidence.receipt.boot_session_uuid != prior.receipt.boot_session_uuid

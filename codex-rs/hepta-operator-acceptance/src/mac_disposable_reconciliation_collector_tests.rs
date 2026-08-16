@@ -376,6 +376,153 @@ assert_not_impl_any!(
         From<String>
 );
 assert_not_impl_any!(
+    RecoveredPreparedCollectorCapabilityV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<Vec<u8>>,
+        From<String>
+);
+assert_not_impl_any!(
+    PendingRecoveredFirstZeroObservationV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<RestartIOMediaInventoryV3>,
+        From<String>
+);
+assert_not_impl_any!(
+    UnadoptedRecoveredFirstZeroObservationV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<Vec<u8>>,
+        From<String>
+);
+assert_not_impl_any!(
+    SealedUnadoptedRecoveredFirstZeroObservationV3<'static>:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<Vec<u8>>,
+        From<String>
+);
+assert_not_impl_any!(
+    RecoveredFirstZeroAfterTransferV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<Vec<u8>>,
+        From<String>
+);
+assert_not_impl_any!(
+    RecoveredStageEContinuationV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<RetainedCollectorLineageV3>,
+        From<RestartIOMediaInventoryV3>,
+        From<String>
+);
+assert_not_impl_any!(
+    AwaitingExternalBackingAbsenceV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<String>
+);
+assert_not_impl_any!(
+    RetainedBackingAbsentProvenanceV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<String>
+);
+assert_not_impl_any!(
+    PendingTerminalFreshObservationV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<String>
+);
+assert_not_impl_any!(
+    RetainedCompletedNamespaceAbsenceV3:
+        Clone,
+        Send,
+        Sync,
+        serde::Serialize,
+        serde::de::DeserializeOwned,
+        std::os::fd::AsRawFd,
+        std::os::fd::AsFd,
+        std::os::fd::IntoRawFd,
+        From<File>,
+        TryFrom<File>,
+        From<String>
+);
+assert_not_impl_any!(
     SealedCollectorEffectIssuePlanV3<'static, PersistedUnmountEffectV3>:
         Clone,
         Send,
@@ -1436,6 +1583,129 @@ fn current_boot_expected_absence_is_full_exact_and_unique_subtraction_is_closed_
 }
 
 #[test]
+fn recovered_first_zero_shape_rejects_nonzero_iomedia_mount_and_artifact_drift() {
+    let _lock = live_collector_test_lock();
+    let fixture = LiveCollectorFixture::new();
+    let pending = collect_reconciliation_snapshot_v3(fixture.request())
+        .expect("collect synthetic current-epoch Zero receipt");
+    let mut recovered = pending.receipt().clone();
+    assert_eq!(recovered.match_result, ReconciliationMatchV2::Zero);
+    recovered.artifact_evidence.roster.clear();
+    recovered.artifact_evidence.operation_artifacts_absent = true;
+    recovered.artifact_evidence_sha256 =
+        sha256(&canonical_json(&recovered.artifact_evidence).unwrap());
+    recovered.operation_artifacts_absent = true;
+    recovered.baseline_restored = true;
+    recovered.reconciliation_snapshot_sha256 = None;
+    recovered.terminal_backing_absence_v3 = None;
+    validate_recovered_first_zero_receipt_shape(&recovered)
+        .expect("exact synthetic recovered first Zero shape");
+
+    let mut nonzero = recovered.clone();
+    nonzero.match_result = ReconciliationMatchV2::Unique { mounted: false };
+    assert!(validate_recovered_first_zero_receipt_shape(&nonzero).is_err());
+
+    let mut extra_iomedia = recovered.clone();
+    extra_iomedia
+        .iomedia_inventory
+        .objects
+        .push(object(99, "disk99", None));
+    extra_iomedia
+        .iomedia_inventory
+        .objects
+        .sort_by(|left, right| {
+            left.provenance
+                .registry_entry_id
+                .cmp(&right.provenance.registry_entry_id)
+        });
+    extra_iomedia.iomedia_evidence_sha256 =
+        sha256(&canonical_json(&extra_iomedia.iomedia_inventory).unwrap());
+    assert!(validate_recovered_first_zero_receipt_shape(&extra_iomedia).is_err());
+
+    let mut mount_drift = recovered.clone();
+    mount_drift
+        .mount_evidence
+        .mounts_after
+        .push(synthetic_mount(
+            [31, 41],
+            "/dev/disk99",
+            "/private/tmp/hepta-recovered-drift",
+            0,
+        ));
+    mount_drift.mount_evidence.mounts_after.sort();
+    mount_drift.mount_evidence_sha256 =
+        sha256(&canonical_json(&mount_drift.mount_evidence).unwrap());
+    assert!(validate_recovered_first_zero_receipt_shape(&mount_drift).is_err());
+
+    let mut artifact_drift = recovered.clone();
+    artifact_drift.operation_artifacts_absent = false;
+    artifact_drift.artifact_evidence.operation_artifacts_absent = false;
+    artifact_drift.artifact_evidence_sha256 =
+        sha256(&canonical_json(&artifact_drift.artifact_evidence).unwrap());
+    assert!(validate_recovered_first_zero_receipt_shape(&artifact_drift).is_err());
+
+    let retained_only = CollectorReplayGuardV3::RetainedOnly(RetainedOnlyReplayGuardV3 {
+        mounts: recovered.mount_evidence.mounts_after.clone(),
+    });
+    assert!(retained_only.live().is_err());
+    assert!(
+        retained_only
+            .revalidate_eject_stable(&recovered, &recovered.mount_evidence.mounts_after)
+            .is_err()
+    );
+    assert!(
+        retained_only
+            .revalidate_across_mount_delta(
+                &recovered,
+                &recovered.mount_evidence.mounts_after,
+                MountDeltaDirectionV3::Unmount,
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn terminal_predecessor_claim_rejects_latest_or_kind_substitution() {
+    let digest = |byte: char| byte.to_string().repeat(64);
+    let first = TerminalCollectorLineageV3::new(digest('1'), digest('2'), 4, digest('3')).unwrap();
+    let latest = TerminalCollectorLineageV3::new(digest('4'), digest('5'), 8, digest('6')).unwrap();
+    let substituted =
+        TerminalCollectorLineageV3::new(digest('7'), digest('8'), 9, digest('9')).unwrap();
+
+    require_exact_terminal_lineage_claim(
+        TerminalLatestZeroKindV3::PostEject,
+        &first,
+        &latest,
+        TerminalLatestZeroKindV3::PostEject,
+        &first,
+        &latest,
+    )
+    .unwrap();
+    assert!(
+        require_exact_terminal_lineage_claim(
+            TerminalLatestZeroKindV3::PostEject,
+            &first,
+            &substituted,
+            TerminalLatestZeroKindV3::PostEject,
+            &first,
+            &latest,
+        )
+        .is_err()
+    );
+    assert!(
+        require_exact_terminal_lineage_claim(
+            TerminalLatestZeroKindV3::FirstSnapshot,
+            &first,
+            &latest,
+            TerminalLatestZeroKindV3::PostEject,
+            &first,
+            &latest,
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn eject_inventory_endpoints_are_exact_before_or_complete_unique_group_subtraction() {
     let path = "/private/tmp/hepta.img";
     let prepared = synthetic_backing(path);
@@ -2170,6 +2440,9 @@ fn active_collector_rejects_inventory_mutation_and_cross_epoch_seed_transplant()
         active.reject_cross_epoch_collector_seed_for_test().is_err(),
         "a held live-before seed must remain bound to its exact Active owner"
     );
+    active
+        .reject_foreign_iomedia_deltas_for_test()
+        .expect("add/remove/property drift must all fail the exact admitted-seed comparison");
     assert!(
         active
             .collect_reconciliation_with_post_capture_substitution_for_test()

@@ -13,6 +13,7 @@ use crate::mac_apfs_barrier_fixture::AttachmentObligationVerificationV1;
 use crate::mac_apfs_barrier_fixture::ObligationDispositionV1;
 use crate::mac_apfs_barrier_fixture::replay_attachment_obligation_records;
 use crate::mac_apfs_barrier_fixture::verify_disposable_fixture_tree;
+use crate::mac_disposable_effect_issue_store::validate_effect_issue_bijection_for_s1;
 use crate::mac_disposable_lifecycle::CollectorReceiptFileBindingV3;
 use crate::mac_disposable_lifecycle::DisposableAuthorityV2;
 use crate::mac_disposable_lifecycle::DisposableLifecycleEventV2;
@@ -572,6 +573,14 @@ pub(crate) struct S1PreparedManifestReadSealV3 {
 /// Only S1 can construct this seal, so the lifecycle module's opaque
 /// restart-admission transfer cannot be inspected by sibling callers.
 pub(crate) struct S1RestartAdmissionReadSealV3 {
+    _private: (),
+}
+
+/// Only the descriptor-retaining S1 census may ask the issue module to
+/// interpret lifecycle and issue bytes as one exact semantic bijection.  The
+/// verifier returns no decoded record or capability, and sibling modules
+/// cannot construct this seal from caller-provided projections.
+pub(crate) struct S1EffectIssueReadSealV3 {
     _private: (),
 }
 
@@ -1365,6 +1374,7 @@ impl LivePrivilegedDisposablePolicyV2 {
             self.expected_gid,
             &self.filesystem,
         )?;
+        capsule.validate_effect_issue_bijection_at_capture()?;
         Ok(capsule)
     }
 
@@ -3295,24 +3305,34 @@ impl EffectIssueAppendSinkV3<'_, '_> {
         let expected_uid = census.assessment._policy.expected_uid;
         let expected_gid = census.assessment._policy.expected_gid;
         let filesystem = census.assessment._policy.filesystem.clone();
-        let appended_bytes = census.assessment._operations[target_index]
-            .effect_issues
-            .as_mut()
-            .ok_or_else(|| {
-                invalid("selected operation lacks the mandatory retained V3 issue root")
-            })?
-            .absorb_exact_append(
-                operation_fd,
-                expected_uid,
-                expected_gid,
-                &filesystem,
-                s2_issue_directory,
-                issue,
-                bytes,
-                &issue_name,
-                &issue_sha256,
-                remaining_bytes,
-            )?;
+        let appended_bytes = {
+            let capsule = &mut census.assessment._operations[target_index];
+            let appended_bytes = capsule
+                .effect_issues
+                .as_mut()
+                .ok_or_else(|| {
+                    invalid("selected operation lacks the mandatory retained V3 issue root")
+                })?
+                .absorb_exact_append(
+                    operation_fd,
+                    expected_uid,
+                    expected_gid,
+                    &filesystem,
+                    s2_issue_directory,
+                    issue,
+                    bytes,
+                    &issue_name,
+                    &issue_sha256,
+                    remaining_bytes,
+                )?;
+            // A lifecycle-issued append intentionally creates a short V2-only
+            // window. Close that window exactly here, after S1 has retained
+            // the matching V3 descriptor, rather than in generic census
+            // revalidation where the legitimate two-phase transaction would
+            // self-reject.
+            capsule.validate_effect_issue_bijection_at_capture()?;
+            appended_bytes
+        };
         census.assessment._retained_fd_count = next_fd_count;
         census.assessment._retained_record_bytes = census
             .assessment
@@ -3907,6 +3927,11 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
                 "completed transition requires the exact durable terminal lifecycle record",
             ));
         }
+        // Terminal completion is a second stable semantic boundary.  Re-prove
+        // the full V2/V3 issue bijection immediately before any blocker,
+        // completed-roster, or serialized receipt mutation; do not rely only
+        // on the earlier per-issue append closure.
+        self.validate_selected_effect_issue_bijection()?;
         if remove_exact_once(
             &mut self.assessment._operation_blockers,
             &self.admission.operation_nonce,
@@ -3992,6 +4017,27 @@ impl<'a> RetainedControlCensusV3<'a, BlockingOperationV3, StableMountStateV3> {
             }
         };
         Ok(inspection)
+    }
+
+    fn validate_selected_effect_issue_bijection(
+        &self,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        let target_index = self
+            .assessment
+            ._operations
+            .iter()
+            .position(|capsule| capsule.name == self.admission.operation_name)
+            .ok_or_else(|| invalid("selected blocking capsule disappeared"))?;
+        if self
+            .assessment
+            ._operations
+            .iter()
+            .skip(target_index + 1)
+            .any(|capsule| capsule.name == self.admission.operation_name)
+        {
+            return Err(invalid("selected blocking capsule is duplicated"));
+        }
+        self.assessment._operations[target_index].validate_effect_issue_bijection_at_capture()
     }
 }
 
@@ -4205,6 +4251,50 @@ impl OperationCapsule {
                 "lifecycle prepared-manifest binding differs from the exact retained S1 capsule",
             )),
         }
+    }
+
+    /// Semantically bind every retained V3 issue file to exactly one issued
+    /// lifecycle event. Descriptor, pathname, inode, and byte stability are
+    /// established by `open_record_set`/`revalidate`; the private seal lets
+    /// the issue module decode those exact bytes without exposing a raw DTO
+    /// constructor or any positive issue capability.
+    ///
+    /// A V2 operation without a V3 issue root is conservatively treated as an
+    /// empty V3 roster. It remains compatible only when its exact lifecycle
+    /// contains no issued-or-uncertain event; otherwise the absent root is
+    /// ambiguous with a removed V3 root and must block. Any operation that
+    /// does carry the V3 root must have a complete bijection, including the
+    /// empty-root/zero-issued case.
+    fn validate_effect_issue_bijection_at_capture(
+        &self,
+    ) -> Result<(), PrivilegedDisposableControlErrorV2> {
+        if self.lifecycle_kind != OperationCapsuleLifecycleKind::V2 {
+            return Ok(());
+        }
+        let lifecycle = self
+            .records
+            .iter()
+            .map(|record| record.bytes.clone())
+            .collect::<Vec<_>>();
+        let issues = self
+            .effect_issues
+            .as_ref()
+            .map(|effect_issues| {
+                effect_issues
+                    .issues
+                    .iter()
+                    .map(|issue| (issue.name.as_str(), issue.bytes.as_slice()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let nonce = operation_nonce(&self.name)?;
+        validate_effect_issue_bijection_for_s1(
+            &lifecycle,
+            &issues,
+            nonce,
+            S1EffectIssueReadSealV3 { _private: () },
+        )
+        .map_err(|error| invalid(format!("S1 V2/V3 effect-issue bijection failed: {error}")))
     }
 
     fn preflight_after_record_append_state(

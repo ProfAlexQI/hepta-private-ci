@@ -85,11 +85,30 @@ type SuccessfulEjectCallbackForCompileAssertions =
     SuccessfulRunnerCallbackV3<PersistedEjectEffectV3>;
 type CompletedOperationStoreForCompileAssertions =
     CompletedReconciliationOperationStoreV3<'static, 'static>;
+type AwaitingExternalBackingAbsenceStoreForCompileAssertions =
+    AwaitingExternalBackingAbsenceOperationStoreV3<'static, 'static>;
+type BackingAbsentStoreForCompileAssertions =
+    BackingAbsentReconciliationOperationStoreV3<'static, 'static>;
+type PendingTerminalFreshStoreForCompileAssertions =
+    PendingTerminalFreshReconciliationOperationStoreV3<'static, 'static>;
+type PendingRecoveredFirstZeroStoreForCompileAssertions =
+    PendingRecoveredFirstZeroOperationStoreV3<'static, 'static>;
+type ReadyToCompleteStoreForCompileAssertions =
+    ReadyToCompleteReconciliationOperationStoreV3<'static, 'static>;
+type PreparedBackingAbsenceSealForCompileAssertions = PreparedBackingAbsenceTransitionSealV3;
+type CompletedNamespaceAbsenceReadSealForCompileAssertions = CompletedNamespaceAbsenceReadSealV3;
 type ExistingWiringForCompileAssertions = ExistingCensusStoreWiringV3<'static, 'static>;
 assert_opaque_capability!(PersistedEjectRunnerGrantForCompileAssertions);
 assert_opaque_capability!(EjectIssuedEffectSessionForCompileAssertions);
 assert_opaque_capability!(EjectIssuedEffectFailureForCompileAssertions);
 assert_opaque_capability!(EjectFailureDeathProvedForCompileAssertions);
+assert_opaque_capability!(AwaitingExternalBackingAbsenceStoreForCompileAssertions);
+assert_opaque_capability!(BackingAbsentStoreForCompileAssertions);
+assert_opaque_capability!(PendingTerminalFreshStoreForCompileAssertions);
+assert_opaque_capability!(PendingRecoveredFirstZeroStoreForCompileAssertions);
+assert_opaque_capability!(ReadyToCompleteStoreForCompileAssertions);
+assert_opaque_capability!(PreparedBackingAbsenceSealForCompileAssertions);
+assert_opaque_capability!(CompletedNamespaceAbsenceReadSealForCompileAssertions);
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Clone);
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Send);
 assert_not_impl!(FreshOperationStoreForCompileAssertions, Sync);
@@ -2318,6 +2337,7 @@ fn terminal_append_consumes_blocking_store_into_completed_census() {
         post_inventory_sha256: digest('a'),
         reconciliation_snapshot_sha256: Some(snapshot_sha256),
         restart_epoch_nonce: Some(restart_epoch),
+        terminal_binding_v3: None,
     };
     let absence_sha256 = fresh_absence_sha256(&absence).expect("absence digest");
     store
@@ -2332,6 +2352,7 @@ fn terminal_append_consumes_blocking_store_into_completed_census() {
                 DisposableLifecycleEventV2::TerminalAbsenceProved {
                     disposition: TerminalDispositionV2::Aborted,
                     fresh_absence_sha256: absence_sha256.clone(),
+                    closure_v3: None,
                 },
             ))
             .is_err()
@@ -2580,7 +2601,7 @@ fn stage_d_eject_source_keeps_arm_positive_and_pair_boundaries_closed() {
     let event = source_section(
         store_source,
         "fn eject_observed(\n",
-        "\n    #[cfg(test)]\n    pub fn fresh_absence_observed",
+        "\n    fn fresh_absence_observed",
     );
     assert!(event.contains("collector: Some(collector)"));
 
@@ -2602,4 +2623,174 @@ fn stage_d_eject_source_keeps_arm_positive_and_pair_boundaries_closed() {
     assert!(generation.contains("root_generation_ordinal()).ok() != Some(index + 1)"));
     assert!(generation.contains("prior_root.nlink.checked_add(1) != Some(root_after.nlink)"));
     assert!(generation.contains("prior_root != self.current_binding"));
+}
+
+#[test]
+fn stage_e_namespace_absence_is_one_consuming_typestate_chain() {
+    let _: fn(
+        ActiveRestartOperationStoreForCompileAssertions,
+    ) -> Result<
+        AwaitingExternalBackingAbsenceStoreForCompileAssertions,
+        DurableLifecycleStoreErrorV3,
+    > = ActiveRestartOperationStoreForCompileAssertions::arm_external_backing_absence;
+    let _: fn(
+        AwaitingExternalBackingAbsenceStoreForCompileAssertions,
+    ) -> Result<BackingAbsentStoreForCompileAssertions, DurableLifecycleStoreErrorV3> =
+        AwaitingExternalBackingAbsenceStoreForCompileAssertions::observe_external_namespace_absence;
+    let _: fn(
+        BackingAbsentStoreForCompileAssertions,
+    ) -> Result<
+        PendingTerminalFreshStoreForCompileAssertions,
+        DurableLifecycleStoreErrorV3,
+    > = BackingAbsentStoreForCompileAssertions::collect_terminal_fresh;
+    let _: fn(
+        PendingTerminalFreshStoreForCompileAssertions,
+    )
+        -> Result<ReadyToCompleteStoreForCompileAssertions, DurableLifecycleStoreErrorV3> =
+        PendingTerminalFreshStoreForCompileAssertions::persist_append_and_ready;
+    let _: fn(
+        ReadyToCompleteStoreForCompileAssertions,
+    )
+        -> Result<CompletedOperationStoreForCompileAssertions, DurableLifecycleStoreErrorV3> =
+        ReadyToCompleteStoreForCompileAssertions::complete;
+    let _: fn(
+        ActiveRestartOperationStoreForCompileAssertions,
+    ) -> Result<
+        PendingRecoveredFirstZeroStoreForCompileAssertions,
+        DurableLifecycleStoreErrorV3,
+    > = ActiveRestartOperationStoreForCompileAssertions::collect_recovered_first_zero;
+    let _: fn(
+        PendingRecoveredFirstZeroStoreForCompileAssertions,
+    ) -> Result<BackingAbsentStoreForCompileAssertions, DurableLifecycleStoreErrorV3> =
+        PendingRecoveredFirstZeroStoreForCompileAssertions::persist_append_and_arm_recovered;
+}
+
+#[test]
+fn stage_e_source_keeps_absence_receipt_pair_and_terminal_closed() {
+    let source = include_str!("mac_disposable_lifecycle_store.rs");
+
+    let arm = source_section(
+        source,
+        "pub(crate) fn arm_external_backing_absence(",
+        "\n    /// The only production collection entrypoint.",
+    );
+    assert!(arm.contains("self.poisoned = true;"));
+    assert!(arm.contains("into_backing_absence_provenance("));
+    assert!(arm.contains("PreparedBackingAbsenceProvenanceV3::AwaitingExternal"));
+    assert!(!arm.contains("ExactDisposableCommandV3"));
+
+    let recovered = source_section(
+        source,
+        "pub(crate) fn collect_recovered_first_zero(",
+        "\n    /// The only production collection entrypoint.",
+    );
+    assert!(recovered.contains("self.prepared.is_some() || self.collector.is_some()"));
+    assert!(recovered.contains("self.recovered_prepared.take()"));
+    assert!(recovered.contains("self.poisoned = true;"));
+    assert!(recovered.contains("let seed = ActiveRestartCollectorSeedV3"));
+    assert!(recovered.contains("seed.require_owner(&self.restart)?"));
+    assert!(recovered.contains("collect_recovered_first_zero(seed, owner)"));
+    assert!(!recovered.contains("let epoch = ActiveRestartCollectorEpochV3"));
+    let census_before = recovered
+        .find("self.census.revalidate()?")
+        .expect("recovered admission must revalidate S1 before minting its seed");
+    let seed = recovered
+        .find("let seed = ActiveRestartCollectorSeedV3")
+        .expect("recovered admission must mint the live-before seed");
+    let owner = recovered
+        .find("seed.require_owner(&self.restart)?")
+        .expect("recovered admission seed must retain its exact restart owner");
+    let collect = recovered
+        .find("collect_recovered_first_zero(seed, owner)")
+        .expect("recovered collection must consume the admission-bound seed");
+    let census_after = recovered
+        .find("core.revalidate_armed()?")
+        .expect("recovered admission must revalidate S1 after collection");
+    assert!(census_before < seed && seed < owner && owner < collect && collect < census_after);
+    assert!(!recovered.contains("persist_unmount_runner_grant"));
+    assert!(!recovered.contains("persist_eject_runner_grant"));
+
+    let recovered_pair = source_section(
+        source,
+        "pub(crate) fn persist_append_and_arm_recovered(",
+        "\n/// Present prepared backing after",
+    );
+    assert!(recovered_pair.contains("ReconciliationLifecycleEventV3::snapshot_observed_sealed"));
+    assert!(recovered_pair.contains("selected_collector_receipt_lifecycle_pair_sink()"));
+    assert!(recovered_pair.contains("adopt_collector_pair_into_s1(sink, transfer)"));
+    assert!(recovered_pair.contains("into_backing_absence_provenance("));
+    assert!(recovered_pair.contains("PreparedBackingAbsenceProvenanceV3::RecoveredAbsent"));
+
+    let pair = source_section(
+        source,
+        "pub(crate) fn persist_append_and_ready(",
+        "\n/// Present prepared backing after",
+    );
+    let receipt = pair
+        .find("self.pending.persist_and_retain()?")
+        .expect("terminal Fresh must persist its owned receipt");
+    let lifecycle = pair
+        .find("ReconciliationLifecycleEventV3::fresh_absence_observed(observation)")
+        .expect("terminal Fresh must append its sealed lifecycle projection");
+    let sink = pair
+        .find("selected_collector_receipt_lifecycle_pair_sink()")
+        .expect("terminal Fresh must use paired S1 adoption");
+    let adoption = pair
+        .find("adopt_collector_pair_into_s1(sink, transfer)")
+        .expect("terminal Fresh must adopt receipt and lifecycle together");
+    let retained = pair
+        .find("bind_adopted_pair(generation_after, append, adoption)")
+        .expect("ReadyToComplete must own the adopted low-level absence lineage");
+    assert!(receipt < lifecycle && lifecycle < sink && sink < adoption && adoption < retained);
+    assert!(pair.contains("absence.require_fresh_lifecycle_record"));
+
+    let complete = source_section(
+        source,
+        "pub(crate) fn complete(\n",
+        "\n/// Private exact binding retained across",
+    );
+    let terminal = complete
+        .find("append_reconciliation_terminal")
+        .expect("completion must durably append its terminal record");
+    let retain = complete
+        .find("RetainedLifecycleRecordAppendV3::retain")
+        .expect("completion must retain the exact final record inode");
+    let adopt = complete
+        .find("terminal_record.adopt_into_s1")
+        .expect("completion must S1-adopt the final record");
+    let census = complete
+        .find("complete_selected_lifecycle_append")
+        .expect("completion must consume Blocking into Completed");
+    assert!(terminal < retain && retain < adopt && adopt < census);
+    assert!(complete.contains("namespace_closure: Some("));
+    assert!(complete.contains("prepared: None"));
+    assert!(complete.contains("recovered_prepared: None"));
+
+    let completed_replay = source_section(
+        source,
+        "impl CompletedReconciliationOperationStoreV3<'_, '_> {",
+        "\nimpl<M: StoreModeV3> DurableLifecycleStoreV3<M>",
+    );
+    assert!(completed_replay.contains("LifecycleDispositionV2::TerminalCompleted"));
+    assert!(
+        completed_replay
+            .contains("match (self.journal.disposition(), self.namespace_closure.as_ref())")
+    );
+    assert!(completed_replay.contains("closure.absence.revalidate(&read)?"));
+    assert!(completed_replay.contains("closure.terminal_record.revalidate()?"));
+    assert!(completed_replay.contains("closure.terminal_record.require_s1_adopted()?"));
+    assert!(completed_replay.contains("TerminalDispositionV2::Completed"));
+    assert!(completed_replay.contains("TerminalNamespaceClosureV3::from_retained_fresh("));
+    assert!(completed_replay.contains("projected != expected"));
+    assert!(completed_replay.contains("LifecycleDispositionV2::TerminalAborted"));
+
+    assert!(source.contains("closure_v3: Some(closure_v3)"));
+    assert!(source.contains("#[cfg(test)]\n    pub(crate) fn collect_fresh_absence("));
+    assert!(source.contains(
+        "#[cfg(test)]\n    pub(crate) fn complete_reconciliation_from_retained_absence("
+    ));
+    assert!(!source.contains("remove_file("));
+    assert!(!source.contains("remove_dir("));
+    assert!(!source.contains("unlink("));
+    assert!(!source.contains("unlinkat("));
 }
