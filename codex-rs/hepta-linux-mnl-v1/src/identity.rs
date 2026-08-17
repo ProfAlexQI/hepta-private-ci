@@ -98,7 +98,8 @@ pub(crate) fn missing_successor_tooling_pins() -> Vec<String> {
         ("collector_binary_sha256", pins.collector_binary_sha256),
     ]
     .into_iter()
-    .filter_map(|(name, pin)| pin.is_none().then(|| name.to_string()))
+    .filter(|(_, pin)| pin.is_none())
+    .map(|(name, _)| name.to_string())
     .collect()
 }
 

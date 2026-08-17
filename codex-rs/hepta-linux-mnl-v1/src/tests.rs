@@ -347,7 +347,7 @@ fn strict_canonical_decoder_rejects_whitespace_and_unknown_fields() {
         decode_canonical_json(&canonical).expect("decode canonical");
     assert_eq!(decoded, documents);
 
-    let mut padded = canonical.clone();
+    let mut padded = canonical;
     padded.push(b'\n');
     assert!(decode_canonical_json::<PublishedProfileDocumentsV1>(&padded).is_err());
 
