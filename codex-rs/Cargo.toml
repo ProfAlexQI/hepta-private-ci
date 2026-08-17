@@ -48,6 +48,7 @@ members = [
     "hepta-evidence",
     "hepta-linux-qualification-v8",
     "hepta-linux-v8-native",
+    "hepta-nix-mnl-v1",
     "hepta-memory",
     "hepta-native-gateway",
     "hepta-operator-acceptance",
