@@ -1,0 +1,44 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+
+rust_library(
+    name = "hepta-mac-mnl-v1-lib",
+    srcs = glob(["src/*.rs"]),
+    crate_name = "codex_hepta_mac_mnl_v1",
+    crate_root = "src/lib.rs",
+    edition = "2024",
+    visibility = ["//visibility:private"],
+    deps = [
+        "@crates//:rand",
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:sha2",
+        "@crates//:thiserror",
+    ],
+)
+
+rust_test(
+    name = "hepta-mac-mnl-v1-tests",
+    crate = ":hepta-mac-mnl-v1-lib",
+)
+
+rust_binary(
+    name = "hepta-mac-mnl-plan-v1",
+    srcs = ["src/bin/hepta-mac-mnl-plan-v1.rs"],
+    crate_root = "src/bin/hepta-mac-mnl-plan-v1.rs",
+    edition = "2024",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":hepta-mac-mnl-v1-lib",
+    ],
+)
+
+rust_binary(
+    name = "hepta-mac-mnl-verify-v1",
+    srcs = ["src/bin/hepta-mac-mnl-verify-v1.rs"],
+    crate_root = "src/bin/hepta-mac-mnl-verify-v1.rs",
+    edition = "2024",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":hepta-mac-mnl-v1-lib",
+    ],
+)
