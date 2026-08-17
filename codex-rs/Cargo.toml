@@ -46,6 +46,7 @@ members = [
     "hooks",
     "hepta-contracts",
     "hepta-evidence",
+    "hepta-linux-mnl-v1",
     "hepta-linux-qualification-v8",
     "hepta-linux-v8-native",
     "hepta-mac-mnl-v1",
