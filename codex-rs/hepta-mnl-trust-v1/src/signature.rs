@@ -300,6 +300,7 @@ pub(crate) fn inspect_canonical_detached_signature_with_policy(
 
     Ok(VerifiedDetachedSignatureInspectionV1 {
         manifest_sha256: sha256_hex(canonical_manifest),
+        payload_bytes: exact_payload.to_vec(),
         payload_byte_count,
         payload_schema: manifest.payload_schema,
         payload_sha256,

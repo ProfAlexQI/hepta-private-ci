@@ -2,14 +2,17 @@
 //!
 //! This crate has no filesystem, process, network, clock, replay-store, or
 //! signing implementation. It records the exact completion blockers and can
-//! structurally inspect an out-of-tree Git ancestry path. Structural ancestry
-//! is not a trust decision and never authorizes a live action.
+//! structurally inspect an out-of-tree Git ancestry path or prepare an exact
+//! replay slot/full-binding record from already inspected signature roles.
+//! These structural observations are not trust decisions and never authorize
+//! a live action.
 
 #![forbid(unsafe_code)]
 
 mod ancestry;
 mod capability;
 mod model;
+mod replay;
 mod signature;
 
 pub use ancestry::ANCESTRY_PATH_PROOF_SCHEMA;
@@ -48,6 +51,23 @@ pub use model::RawGitCommitSidecarV1;
 pub use model::RepositoryIdentityV1;
 pub use model::StructuralAncestryInspectionV1;
 pub use model::VerifiedDetachedSignatureInspectionV1;
+pub use replay::COPY_ACK_REPLAY_CLAIM_SCHEMA;
+pub use replay::CopyAckReplayClaimWireV1;
+pub use replay::MAX_REPLAY_CLAIM_BYTES;
+pub use replay::MAX_SIGNED_FRESHNESS_LIFETIME_SECONDS;
+pub use replay::PRE_RUN_REPLAY_CLAIM_SCHEMA;
+pub use replay::PreRunReplayClaimWireV1;
+pub use replay::PreparedCopyAckReplayClaimV1;
+pub use replay::PreparedPreRunReplayClaimV1;
+pub use replay::ReplayClaimNamespaceV1;
+pub use replay::ReplayPlatformScopeV1;
+pub use replay::SIGNED_PRE_RUN_REPLAY_PROFILE_SCHEMA;
+pub use replay::SignedPreRunReplayProfileV1;
+pub use replay::derive_copy_ack_replay_slot_sha256;
+pub use replay::derive_pre_run_replay_slot_sha256;
+pub use replay::derive_run_identity_sha256;
+pub use replay::inspect_canonical_copy_ack_replay_claim;
+pub use replay::inspect_canonical_pre_run_replay_claim;
 pub use signature::ALL_DETACHED_SIGNATURE_ROLES;
 pub use signature::DETACHED_SIGNATURE_ALGORITHM;
 pub use signature::DETACHED_SIGNATURE_MANIFEST_SCHEMA;
@@ -74,6 +94,8 @@ pub(crate) fn invalid(message: impl Into<String>) -> MnlTrustError {
     MnlTrustError::Invalid(message.into())
 }
 
+#[cfg(test)]
+mod replay_tests;
 #[cfg(test)]
 mod signature_tests;
 #[cfg(test)]

@@ -50,6 +50,7 @@ members = [
     "hepta-linux-qualification-v8",
     "hepta-linux-v8-native",
     "hepta-mac-mnl-v1",
+    "hepta-mnl-replay-v1",
     "hepta-mnl-trust-v1",
     "hepta-nix-mnl-v1",
     "hepta-memory",
@@ -196,6 +197,7 @@ codex-home = { path = "codex-home" }
 codex-http-client = { path = "http-client" }
 codex-hepta-contracts = { path = "hepta-contracts" }
 codex-hepta-evidence = { path = "hepta-evidence" }
+codex-hepta-mnl-replay-v1 = { path = "hepta-mnl-replay-v1" }
 codex-hepta-mnl-trust-v1 = { path = "hepta-mnl-trust-v1" }
 codex-hepta-memory = { path = "hepta-memory" }
 codex-hepta-native-gateway = { path = "hepta-native-gateway" }

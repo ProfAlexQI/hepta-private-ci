@@ -248,6 +248,7 @@ impl<'a> RawDetachedEd25519SignatureV1<'a> {
 #[derive(Debug)]
 pub struct VerifiedDetachedSignatureInspectionV1 {
     pub(crate) manifest_sha256: String,
+    pub(crate) payload_bytes: Vec<u8>,
     pub(crate) payload_byte_count: u64,
     pub(crate) payload_schema: String,
     pub(crate) payload_sha256: String,
@@ -272,6 +273,15 @@ impl VerifiedDetachedSignatureInspectionV1 {
 
     pub fn payload_byte_count(&self) -> u64 {
         self.payload_byte_count
+    }
+
+    /// Returns the exact bytes whose detached signature was inspected.
+    ///
+    /// Keeping these bytes inside the opaque inspection is what allows later
+    /// structural layers to re-parse signed semantics instead of accepting a
+    /// caller-authored digest twin. The bytes remain non-authorizing.
+    pub fn exact_payload_bytes(&self) -> &[u8] {
+        &self.payload_bytes
     }
 
     pub fn payload_schema(&self) -> &str {

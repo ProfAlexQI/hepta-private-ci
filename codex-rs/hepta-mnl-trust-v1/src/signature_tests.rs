@@ -457,12 +457,20 @@ struct SignatureFixture {
 }
 
 fn signed_fixture(role: DetachedSignatureRoleV1) -> SignatureFixture {
+    let payload = format!("{{\"role\":\"{}\",\"value\":1}}", role.payload_schema()).into_bytes();
+    signed_fixture_for_payload(role, TEST_PROFILE_ID, payload)
+}
+
+fn signed_fixture_for_payload(
+    role: DetachedSignatureRoleV1,
+    profile_id: &str,
+    payload: Vec<u8>,
+) -> SignatureFixture {
     let (policy, signing_keys) = test_policy();
     let role_index = ALL_DETACHED_SIGNATURE_ROLES
         .iter()
         .position(|candidate| *candidate == role)
         .expect("role is in exact roster");
-    let payload = format!("{{\"role\":\"{}\",\"value\":1}}", role.payload_schema()).into_bytes();
     let mut manifest = DetachedSignatureManifestV1 {
         schema: DETACHED_SIGNATURE_MANIFEST_SCHEMA.to_string(),
         algorithm: DETACHED_SIGNATURE_ALGORITHM.to_string(),
@@ -471,7 +479,7 @@ fn signed_fixture(role: DetachedSignatureRoleV1) -> SignatureFixture {
         trust_root_revision: policy.trust_root_revision,
         trust_policy_sha256: signature_policy_sha256(&policy).expect("test policy digest"),
         signer_key_id: policy.entries[role_index].signer_key_id.clone(),
-        profile_id: TEST_PROFILE_ID.to_string(),
+        profile_id: profile_id.to_string(),
         payload_schema: role.payload_schema().to_string(),
         payload_byte_count: payload.len() as u64,
         payload_sha256: sha256(&payload),
@@ -488,6 +496,15 @@ fn signed_fixture(role: DetachedSignatureRoleV1) -> SignatureFixture {
         policy,
         signature,
     }
+}
+
+pub(crate) fn inspect_test_signature_payload(
+    role: DetachedSignatureRoleV1,
+    profile_id: &str,
+    payload: Vec<u8>,
+) -> Result<VerifiedDetachedSignatureInspectionV1, MnlTrustError> {
+    let fixture = signed_fixture_for_payload(role, profile_id, payload);
+    inspect_fixture(&fixture, role)
 }
 
 fn test_policy() -> (SignaturePolicyMaterialV1, Vec<SigningKey>) {

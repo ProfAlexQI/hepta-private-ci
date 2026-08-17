@@ -1,0 +1,26 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+rust_library(
+    name = "hepta-mnl-replay-v1-lib",
+    srcs = glob(["src/*.rs"]),
+    crate_name = "codex_hepta_mnl_replay_v1",
+    crate_root = "src/lib.rs",
+    edition = "2024",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//codex-rs/hepta-mnl-trust-v1:hepta-mnl-trust-v1-lib",
+        "@crates//:rustix",
+        "@crates//:sha2",
+        "@crates//:thiserror",
+    ],
+)
+
+rust_test(
+    name = "hepta-mnl-replay-v1-tests",
+    crate = ":hepta-mnl-replay-v1-lib",
+    deps = [
+        "@crates//:serde",
+        "@crates//:static_assertions",
+        "@crates//:tempfile",
+    ],
+)
