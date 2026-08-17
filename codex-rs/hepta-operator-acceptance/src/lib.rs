@@ -1,9 +1,35 @@
 #![recursion_limit = "256"]
 
+#[cfg(all(feature = "fixed-runner-child", feature = "fixed-runner-supervisor"))]
+compile_error!(
+    "fixed-runner-child and fixed-runner-supervisor are mutually exclusive; build the child with --no-default-features"
+);
+
 mod ceremony;
 mod durable;
 mod evidence;
 pub mod frozen_tool;
+#[cfg(target_os = "macos")]
+pub mod mac_apfs_barrier_fixture;
+#[cfg(target_os = "macos")]
+pub(crate) mod mac_disposable_effect_issue_store;
+#[cfg(target_os = "macos")]
+pub(crate) mod mac_disposable_lifecycle;
+#[cfg(target_os = "macos")]
+pub(crate) mod mac_disposable_lifecycle_store;
+#[cfg(target_os = "macos")]
+pub(crate) mod mac_disposable_reconciliation_collector;
+#[cfg(all(target_os = "macos", feature = "fixed-runner-supervisor"))]
+pub(crate) mod mac_inert_fixed_launcher;
+#[cfg(target_os = "macos")]
+pub(crate) mod mac_inert_one_shot_runner;
+#[cfg(target_os = "macos")]
+pub(crate) mod mac_inert_runner_executable;
+pub mod mac_iomedia_identity;
+#[cfg(target_os = "macos")]
+pub mod mac_privileged_broker;
+#[cfg(target_os = "macos")]
+pub(crate) mod mac_privileged_disposable_control;
 mod manifest_inventory;
 pub mod mnl_scope_v1;
 mod model;
@@ -52,6 +78,9 @@ use trust::TrustInputs;
 pub use model::PreparedChallenge;
 pub use model::SealedAcceptance;
 pub use preflight::require_formal_environment;
+
+#[cfg(all(target_os = "macos", feature = "fixed-runner-child"))]
+pub use mac_inert_one_shot_runner::run_inert_child_from_environment as run_fixed_inert_runner_v3;
 
 const CHALLENGE_SCHEMA: &str = "hepta_operator_acceptance_v1";
 const RECEIPT_SCHEMA: &str = "hepta_operator_acceptance_receipt_v1";

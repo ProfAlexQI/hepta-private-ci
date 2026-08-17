@@ -30,6 +30,8 @@ use super::evidence::parse_step_tsv;
 use super::evidence::reject_conflicting_markers_for_test;
 use super::evidence::reject_reserved_kv_fields;
 use super::evidence::require_windows_step_results;
+use super::evidence::resolve_frozen_receipt_path_for_test;
+use super::evidence::resolve_frozen_receipt_path_with_parent_for_test;
 use super::evidence::valid_utc_timestamp_for_test;
 use super::evidence::validate_github_prepared_profile_for_test;
 use super::evidence::validate_kv_execution_fields;
@@ -63,6 +65,46 @@ use super::model::ReceiptEvidenceBindingV3;
 use super::model::ReceiptProvenanceV3;
 use super::profiles;
 use super::run_cli_v3;
+
+#[cfg(unix)]
+#[test]
+fn frozen_fixture_resolver_maps_only_safe_canonical_children() {
+    let temporary = private_tempdir();
+    let mirror = temporary.path().join("mirror");
+    fs::create_dir(&mirror).expect("mirror parent");
+    private_dir(&mirror);
+    let fixture = mirror.join("valid-fixture");
+    fs::create_dir(&fixture).expect("fixture root");
+    private_dir(&fixture);
+
+    let logical_parent = Path::new(super::RECEIPTS_PARENT);
+    let logical = logical_parent.join("valid-fixture");
+    assert_eq!(
+        resolve_frozen_receipt_path_with_parent_for_test(&logical, &mirror)
+            .expect("safe canonical child maps into the mirror"),
+        fixture.canonicalize().expect("canonical fixture")
+    );
+
+    let outside = temporary.path().join("outside");
+    let outside_error = resolve_frozen_receipt_path_with_parent_for_test(&outside, &mirror)
+        .expect_err("noncanonical logical root must be rejected");
+    assert!(outside_error.to_string().contains("outside the canonical"));
+
+    let unsafe_logical = logical_parent.join("../escape");
+    let unsafe_error = resolve_frozen_receipt_path_with_parent_for_test(&unsafe_logical, &mirror)
+        .expect_err("unsafe canonical-relative path must be rejected");
+    assert!(
+        unsafe_error
+            .to_string()
+            .contains("unsafe canonical-relative")
+    );
+
+    let missing = logical_parent.join("missing-fixture");
+    assert!(
+        resolve_frozen_receipt_path_with_parent_for_test(&missing, &mirror).is_err(),
+        "missing physical fixture root must fail closed"
+    );
+}
 
 #[test]
 fn compiled_gate_and_prerequisite_profiles_are_exact() {
@@ -408,7 +450,9 @@ fn github_v2_semantics_are_compiled_but_final_identity_stays_unpinned() {
     ));
     assert!(profiles::authoritative_artifact(EvidenceProfileV3::GithubHostedExactV2).is_some());
     let prepared = profiles::frozen_github_prepared_profile_identity();
-    let profile_path = Path::new(prepared.prepared_root).join("PROFILE.json");
+    let profile_path = resolve_frozen_receipt_path_for_test(Path::new(prepared.prepared_root))
+        .expect("prepared GitHub fixture root")
+        .join("PROFILE.json");
     let profile_bytes = fs::read(&profile_path).expect("sealed prepared GitHub profile");
     validate_github_prepared_profile_for_test(&profile_bytes, &candidate)
         .expect("compiled GitHub v2 prepared-profile semantics");
@@ -620,14 +664,15 @@ fn mac_reemitted_wrapper_preserves_real_original_provenance_and_detects_races() 
     fs::create_dir(&receipts).expect("receipts");
     private_dir(&receipts);
     let receipts = receipts.canonicalize().expect("canonical receipts");
-    let original_root = Path::new(
+    let original_root = resolve_frozen_receipt_path_for_test(Path::new(
         "/Volumes/T5/hepta-vnext/artifacts/receipts/vnext-main-52ec4b3868-mac-exact-attempt-2-20260813T052744Z",
-    );
+    ))
+    .expect("Mac original fixture root");
     let receipts_parent = Path::new("/Volumes/T5/hepta-vnext/artifacts/receipts");
     let frozen = profiles::frozen_original_identity(EvidenceProfileV3::MacExactV6)
         .expect("Mac original identity");
     let original = load_legacy_manifest_with_policy(
-        original_root,
+        &original_root,
         frozen.manifest_relative_path,
         frozen.manifest_sha256,
         frozen.entry_count,
@@ -824,7 +869,8 @@ fn portable_original_non_content_provenance_matches_compiled_identity() {
     let frozen = profiles::frozen_original_identity(EvidenceProfileV3::PortableInputsV1)
         .expect("portable original identity");
     let original = load_legacy_manifest_with_policy(
-        Path::new(frozen.receipt_root),
+        &resolve_frozen_receipt_path_for_test(Path::new(frozen.receipt_root))
+            .expect("portable original fixture root"),
         frozen.manifest_relative_path,
         frozen.manifest_sha256,
         frozen.entry_count,
@@ -961,13 +1007,22 @@ fn frozen_path_trust_attempt_4_and_upstream_receipts_validate_directly() {
     }
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn frozen_mac_rev7_wrapper_validates_with_live_provenance() {
+    let candidate = exact_candidate();
+    let receipts = Path::new("/Volumes/T5/hepta-vnext/artifacts/receipts");
+    let receipt = frozen_reemitted_binding(EvidenceProfileV3::MacExactV6);
+    validate_receipt_for_test(&receipt, receipts, &candidate)
+        .unwrap_or_else(|error| panic!("frozen MacExactV6 rev7 wrapper: {error}"));
+}
+
 #[cfg(unix)]
 #[test]
-fn frozen_mac_portable_and_nix_rev7_wrappers_validate_with_live_provenance() {
+fn frozen_portable_and_nix_rev7_wrappers_validate_with_live_provenance() {
     let candidate = exact_candidate();
     let receipts = Path::new("/Volumes/T5/hepta-vnext/artifacts/receipts");
     for profile in [
-        EvidenceProfileV3::MacExactV6,
         EvidenceProfileV3::PortableInputsV1,
         EvidenceProfileV3::NixExactV3,
     ] {
@@ -980,9 +1035,10 @@ fn frozen_mac_portable_and_nix_rev7_wrappers_validate_with_live_provenance() {
 #[cfg(unix)]
 #[test]
 fn frozen_nix_raw_status_is_qualification_pass_not_container_lifecycle_state() {
-    let root = Path::new(
+    let root = resolve_frozen_receipt_path_for_test(Path::new(
         "/Volumes/T5/hepta-vnext/artifacts/receipts/vnext-main-52ec4b3868-nix-exact-reemitted-rev7-prepared-20260813T185012Z",
-    );
+    ))
+    .expect("Nix wrapper fixture root");
     let mut inner = parse_key_values(
         &fs::read(root.join("receipt/result.txt")).expect("read frozen Nix result"),
     )
@@ -1012,11 +1068,12 @@ fn canonical_path_trust_attempt_3_cannot_substitute_for_frozen_attempt_4() {
         .expect_err("PathTrust attempt-3 must not replace frozen attempt-4");
     assert!(error.to_string().contains("compiled exact identity"));
 
-    let attempt_3 = Path::new(
+    let attempt_3 = resolve_frozen_receipt_path_for_test(Path::new(
         "/Volumes/T5/hepta-vnext/artifacts/receipts/vnext-main-52ec4b3868-canonical-path-trust-v3-attempt-3-20260813T113220Z",
-    );
+    ))
+    .expect("PathTrust attempt-3 fixture root");
     let marker_error = reject_conflicting_markers_for_test(
-        attempt_3,
+        &attempt_3,
         "SHA256SUMS",
         "9d22240b2a34c998ef439ea4ff205a43b65a4c3b37abb90ad17a5ff269b17541",
         16,
@@ -2542,7 +2599,8 @@ fn reseal_synthetic_wrapper(fixture: &mut SyntheticReemittedWrapperFixture) {
 fn frozen_direct_binding(profile: EvidenceProfileV3) -> ReceiptEvidenceBindingV3 {
     let identity = profiles::frozen_receipt_identity(profile).expect("frozen receipt identity");
     assert!(identity.inner.is_none());
-    let root = Path::new(identity.receipt_root);
+    let root = resolve_frozen_receipt_path_for_test(Path::new(identity.receipt_root))
+        .expect("frozen direct receipt fixture root");
     let layer =
         profiles::layer_profile(profile, ManifestLayerIdV3::Outer).expect("compiled outer profile");
     ReceiptEvidenceBindingV3 {
@@ -2562,7 +2620,7 @@ fn frozen_direct_binding(profile: EvidenceProfileV3) -> ReceiptEvidenceBindingV3
         profile,
         provenance: ReceiptProvenanceV3::Direct,
         receipt_root: identity.receipt_root.to_string(),
-        required_artifacts: artifact_bindings(root, profile),
+        required_artifacts: artifact_bindings(&root, profile),
     }
 }
 
@@ -2570,7 +2628,8 @@ fn frozen_direct_binding(profile: EvidenceProfileV3) -> ReceiptEvidenceBindingV3
 fn frozen_reemitted_binding(profile: EvidenceProfileV3) -> ReceiptEvidenceBindingV3 {
     let identity = profiles::frozen_receipt_identity(profile).expect("frozen receipt identity");
     let original = profiles::frozen_original_identity(profile).expect("frozen original identity");
-    let root = Path::new(identity.receipt_root);
+    let root = resolve_frozen_receipt_path_for_test(Path::new(identity.receipt_root))
+        .expect("frozen reemitted receipt fixture root");
     let outer =
         profiles::layer_profile(profile, ManifestLayerIdV3::Outer).expect("compiled outer profile");
     let bind_layer = |layer: profiles::LayerProfileV3, frozen: profiles::FrozenReceiptLayerV3| {
@@ -2598,8 +2657,8 @@ fn frozen_reemitted_binding(profile: EvidenceProfileV3) -> ReceiptEvidenceBindin
         manifest_layers,
         profile,
         provenance: ReceiptProvenanceV3::ReemittedWrapper {
-            attestation: read_bound_artifact(root, "provenance/reemission-attestation.json"),
-            hardlink_topology: read_bound_artifact(root, "provenance/hardlink-topology.tsv"),
+            attestation: read_bound_artifact(&root, "provenance/reemission-attestation.json"),
+            hardlink_topology: read_bound_artifact(&root, "provenance/hardlink-topology.tsv"),
             original: OriginalReceiptBindingV3 {
                 manifest_entry_count: original.entry_count,
                 manifest_relative_path: original.manifest_relative_path.to_string(),
@@ -2607,19 +2666,19 @@ fn frozen_reemitted_binding(profile: EvidenceProfileV3) -> ReceiptEvidenceBindin
                 receipt_root: original.receipt_root.to_string(),
             },
             original_extended_metadata_inventory: read_bound_artifact(
-                root,
+                &root,
                 "provenance/original-extended-metadata.tsv",
             ),
             original_metadata_inventory: read_bound_artifact(
-                root,
+                &root,
                 "provenance/original-metadata.tsv",
             ),
             original_tree_relative_path: "provenance/original-tree".to_string(),
-            projection_map: read_bound_artifact(root, "provenance/projection-map.tsv"),
-            reemitter: read_bound_artifact(root, "provenance/reemitter"),
+            projection_map: read_bound_artifact(&root, "provenance/projection-map.tsv"),
+            reemitter: read_bound_artifact(&root, "provenance/reemitter"),
         },
         receipt_root: identity.receipt_root.to_string(),
-        required_artifacts: artifact_bindings(root, profile),
+        required_artifacts: artifact_bindings(&root, profile),
     }
 }
 

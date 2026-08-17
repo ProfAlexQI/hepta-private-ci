@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::path::Component;
 use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 
 use serde_json::Map;
 use serde_json::Value;
@@ -11,6 +13,8 @@ use crate::durable::MAX_SMALL_FILE_BYTES;
 use crate::durable::canonical_json;
 use crate::durable::secure_canonical_file_path;
 use crate::durable::secure_read;
+#[cfg(test)]
+use crate::durable::secure_root;
 use crate::durable::sha256;
 use crate::manifest_inventory::LegacyExtendedMetadataPolicy;
 use crate::manifest_inventory::VerifiedManifest;
@@ -589,6 +593,25 @@ fn validate_receipt(
     receipts_parent: &Path,
     required_file: Option<&CandidateBundleBindingV3>,
 ) -> Result<VerifiedReceipt, AcceptanceError> {
+    let receipt_root = Path::new(&binding.receipt_root);
+    validate_receipt_with_io_roots(
+        binding,
+        profile,
+        receipts_parent,
+        required_file,
+        receipt_root,
+        None,
+    )
+}
+
+fn validate_receipt_with_io_roots(
+    binding: &ReceiptEvidenceBindingV3,
+    profile: EvidenceProfileV3,
+    receipts_parent: &Path,
+    required_file: Option<&CandidateBundleBindingV3>,
+    receipt_io_root: &Path,
+    original_io_root: Option<&Path>,
+) -> Result<VerifiedReceipt, AcceptanceError> {
     if binding.profile != profile {
         return Err(invalid("receipt profile differs from its compiled role"));
     }
@@ -612,7 +635,7 @@ fn validate_receipt(
     let mut layers = BTreeMap::new();
     for (source, expected_id) in binding.manifest_layers.iter().zip(expected_layers) {
         validate_layer_binding(profile, source, *expected_id)?;
-        let manifest = load_layer(receipt_root, source)?;
+        let manifest = load_layer(receipt_io_root, source)?;
         verify_mode_manifest(
             source,
             &manifest,
@@ -651,7 +674,12 @@ fn validate_receipt(
         }
     }
     validate_required_artifacts(binding, profile, &layers)?;
-    let original = validate_receipt_provenance(binding, &layers, receipts_parent)?;
+    let original = validate_receipt_provenance_with_io_root(
+        binding,
+        &layers,
+        receipts_parent,
+        original_io_root,
+    )?;
     reject_conflicting_terminal_evidence(profile, &layers, &binding.provenance)?;
     let verified = VerifiedReceipt {
         layers,
@@ -718,7 +746,35 @@ pub(super) fn validate_receipt_for_test(
     receipts_parent: &Path,
     candidate: &CandidateBindingV3,
 ) -> Result<(), AcceptanceError> {
-    let verified = validate_receipt(binding, binding.profile, receipts_parent, None)?;
+    validate_frozen_receipt_identity(binding, binding.profile)?;
+    let receipt_io_root = resolve_frozen_receipt_path_for_test(Path::new(&binding.receipt_root))?;
+    let original_io_root = match &binding.provenance {
+        ReceiptProvenanceV3::ReemittedWrapper { original, .. } => {
+            let frozen = profiles::frozen_original_identity(binding.profile).ok_or_else(|| {
+                invalid(format!(
+                    "PROFILE_IDENTITY_UNPINNED: original {:?} receipt identity is not frozen",
+                    binding.profile
+                ))
+            })?;
+            if original.receipt_root != frozen.receipt_root {
+                return Err(invalid(
+                    "wrapper original receipt differs from the compiled exact identity",
+                ));
+            }
+            Some(resolve_frozen_receipt_path_for_test(Path::new(
+                &original.receipt_root,
+            ))?)
+        }
+        ReceiptProvenanceV3::Direct => None,
+    };
+    let verified = validate_receipt_with_io_roots(
+        binding,
+        binding.profile,
+        receipts_parent,
+        None,
+        &receipt_io_root,
+        original_io_root.as_deref(),
+    )?;
     match binding.profile {
         EvidenceProfileV3::CanonicalPathTrustV2
         | EvidenceProfileV3::PortableInputsV1
@@ -737,6 +793,45 @@ pub(super) fn validate_receipt_for_test(
         }
     }
     verified.reverify()
+}
+
+#[cfg(test)]
+pub(super) fn resolve_frozen_receipt_path_for_test(
+    logical_root: &Path,
+) -> Result<PathBuf, AcceptanceError> {
+    let physical_parent = std::env::var_os("HEPTA_V3_TEST_RECEIPTS_PARENT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(super::RECEIPTS_PARENT));
+    resolve_frozen_receipt_path_with_parent_for_test(logical_root, &physical_parent)
+}
+
+#[cfg(test)]
+pub(super) fn resolve_frozen_receipt_path_with_parent_for_test(
+    logical_root: &Path,
+    physical_parent: &Path,
+) -> Result<PathBuf, AcceptanceError> {
+    let logical_parent = Path::new(super::RECEIPTS_PARENT);
+    let relative = logical_root
+        .strip_prefix(logical_parent)
+        .map_err(|_| invalid("test receipt root is outside the canonical receipts parent"))?;
+    if relative.as_os_str().is_empty()
+        || relative
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(invalid(
+            "test receipt root has an unsafe canonical-relative path",
+        ));
+    }
+    let physical_parent = secure_root(physical_parent, "test receipt mirror parent")?;
+    let physical_root = physical_parent.join(relative);
+    let physical_root = secure_root(&physical_root, "test receipt mirror root")?;
+    if !physical_root.starts_with(&physical_parent) || physical_root == physical_parent {
+        return Err(invalid(
+            "test receipt mirror root is not a strict child of its parent",
+        ));
+    }
+    Ok(physical_root)
 }
 
 fn validate_required_artifacts(
@@ -846,16 +941,18 @@ struct ProjectionRow {
     wrapper: String,
 }
 
-fn validate_receipt_provenance(
+fn validate_receipt_provenance_with_io_root(
     binding: &ReceiptEvidenceBindingV3,
     layers: &BTreeMap<ManifestLayerIdV3, VerifiedManifest>,
     receipts_parent: &Path,
+    original_io_root: Option<&Path>,
 ) -> Result<Option<crate::manifest_inventory::LegacyManifestSnapshot>, AcceptanceError> {
     validate_receipt_provenance_with_identity(
         binding,
         layers,
         receipts_parent,
         profiles::frozen_original_identity(binding.profile),
+        original_io_root,
         &mut || Ok(()),
     )
 }
@@ -865,6 +962,7 @@ fn validate_receipt_provenance_with_identity(
     layers: &BTreeMap<ManifestLayerIdV3, VerifiedManifest>,
     receipts_parent: &Path,
     frozen_original: Option<profiles::FrozenOriginalIdentityV3>,
+    original_io_root: Option<&Path>,
     before_final_original_reverification: &mut dyn FnMut() -> Result<(), AcceptanceError>,
 ) -> Result<Option<crate::manifest_inventory::LegacyManifestSnapshot>, AcceptanceError> {
     let ReceiptProvenanceV3::ReemittedWrapper {
@@ -971,7 +1069,7 @@ fn validate_receipt_provenance_with_identity(
         _ => LegacyExtendedMetadataPolicy::None,
     };
     let before = load_legacy_manifest_with_policy(
-        original_root,
+        original_io_root.unwrap_or(original_root),
         &original.manifest_relative_path,
         &original.manifest_sha256,
         original.manifest_entry_count,
@@ -1119,6 +1217,7 @@ pub(super) fn validate_reemitted_wrapper_for_test(
         &layers,
         receipts_parent,
         Some(frozen_original),
+        None,
         &mut before_final_original_reverification,
     )?;
     Ok(())

@@ -5,6 +5,11 @@ name = "codex-hepta-operator-acceptance"
 version.workspace = true
 publish = false
 
+[features]
+default = ["fixed-runner-supervisor"]
+fixed-runner-child = []
+fixed-runner-supervisor = []
+
 [lib]
 name = "codex_hepta_operator_acceptance"
 path = "src/lib.rs"
@@ -28,6 +33,12 @@ test = false
 [[bin]]
 name = "hepta-operator-acceptance-freeze-tool-v1"
 path = "src/bin/hepta-operator-acceptance-freeze-tool-v1.rs"
+test = false
+
+[[bin]]
+name = "hepta-inert-one-shot-runner-v3"
+path = "src/bin/com.hepta.inert-one-shot-runner-v3.rs"
+required-features = ["fixed-runner-child"]
 test = false
 
 [lints]
