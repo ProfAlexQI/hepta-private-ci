@@ -130,6 +130,21 @@ pub(crate) fn open_child_directory(parent: &OwnedFd, leaf: &str) -> ReplayStoreR
     .map_err(|error| syscall_error("openat2 replay-store namespace", error))
 }
 
+pub(crate) fn open_fixed_child_directory_across_mount(
+    parent: &OwnedFd,
+    leaf: &str,
+) -> ReplayStoreResultV1<OwnedFd> {
+    validate_leaf(leaf, "fixed procfs mount child")?;
+    rustix::fs::openat2(
+        parent,
+        leaf,
+        DIRECTORY_OPEN_FLAGS,
+        Mode::empty(),
+        ROOT_RESOLVE_FLAGS,
+    )
+    .map_err(|error| syscall_error("openat2 fixed procfs mount child", error))
+}
+
 pub(crate) fn probe_leaf_exists(parent: &OwnedFd, leaf: &str) -> bool {
     validate_leaf(leaf, "replay claim leaf").is_err()
         || rustix::fs::openat2(

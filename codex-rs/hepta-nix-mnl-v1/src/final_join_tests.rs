@@ -80,6 +80,7 @@ fn exact_nix_final_freeze_projection_covers_source_roles_and_named_materials() {
             "docker_image_config_id",
             "docker_image_manifest",
             "nix_store_seed_inventory",
+            "workspace_check_contract",
         ]
     );
     assert_eq!(
@@ -92,6 +93,7 @@ fn exact_nix_final_freeze_projection_covers_source_roles_and_named_materials() {
             binding.docker_platform_config_image_id_sha256.as_str(),
             PINNED_IMAGE_SHA256,
             binding.nix_store_seed_inventory_sha256.as_str(),
+            binding.workspace_check_contract_sha256.as_str(),
         ]
     );
     assert!(
@@ -138,6 +140,7 @@ fn every_plan_pin_axis_changes_the_non_authorizing_freeze_projection() {
         ("source tree", digest('a')),
         ("Docker config image", digest('b')),
         ("seed inventory", digest('c')),
+        ("workspace check contract", digest('d')),
         ("final-freeze payload", digest('d')),
     ] {
         let mut changed = original.clone();
@@ -145,6 +148,7 @@ fn every_plan_pin_axis_changes_the_non_authorizing_freeze_projection() {
             "source tree" => changed.source_tree_manifest_sha256 = value,
             "Docker config image" => changed.docker_platform_config_image_id_sha256 = value,
             "seed inventory" => changed.nix_store_seed_inventory_sha256 = value,
+            "workspace check contract" => changed.workspace_check_contract_sha256 = value,
             "final-freeze payload" => changed.final_artifact_freeze_payload_sha256 = value,
             _ => unreachable!(),
         }

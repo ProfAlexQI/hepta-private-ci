@@ -7,12 +7,14 @@ use crate::*;
 assert_not_impl_any!(InspectedNixClosedRunPlanV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
 assert_not_impl_any!(JoinedNixClosedRunPlanPreparedClaimInspectionV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
 
-const TEST_SANDBOX_PLAN_BYTE_COUNT: usize = 57_524;
+const TEST_SANDBOX_PLAN_BYTE_COUNT: usize = 67_115;
 const TEST_SANDBOX_PLAN_SHA256: &str =
-    "bd42d959c45d3c50a9b5de77918a03d83af66259655487bca967e5cc62bb4686";
-const TEST_PRESEALED_PLAN_BYTE_COUNT: usize = 45_033;
+    "a16f0ee59b131432c6f699b66ab5458eb61508e106b75104018898e7f8fe86a3";
+const TEST_PRESEALED_PLAN_BYTE_COUNT: usize = 54_624;
 const TEST_PRESEALED_PLAN_SHA256: &str =
-    "6b09e63a9dfeb8b574cdfa5a0930fc25a79574a949ace0e6e461ce1442931960";
+    "91dd2460b461d28e2c63fa7d4874a4e99ee62c0c5f4d11431cc0179112b086b9";
+const TEST_WORKSPACE_CHECK_CONTRACT_SHA256: &str =
+    "9ea0da8a6f8db9a34be2ae29546d3ab1d2f9afc5e00e9615d674a5ce63e359d5";
 
 #[test]
 fn exact_sandbox_plan_is_canonical_closed_and_non_authorizing() {
@@ -46,7 +48,7 @@ fn exact_sandbox_plan_is_canonical_closed_and_non_authorizing() {
 
     assert!(plan.authority.is_fully_closed());
     assert_eq!(plan.schema, NIX_CLOSED_RUN_PLAN_SCHEMA);
-    assert_eq!(plan.schema_version, 2);
+    assert_eq!(plan.schema_version, 3);
     assert_eq!(
         plan.successor_receipt_identity_contract,
         NixSuccessorReceiptIdentityContractV2 {
@@ -612,6 +614,35 @@ fn exact_sandbox_plan_is_canonical_closed_and_non_authorizing() {
                     && command.stderr_limit_bytes > 0
             })
     );
+    let discovered_inventory = plan
+        .stages
+        .iter()
+        .find(|stage| stage.kind == ClosedRunStageKindV1::ReadOnlyArtifactVerification)
+        .expect("read-only artifact verification stage")
+        .commands
+        .iter()
+        .find(|command| {
+            matches!(
+                command.arguments.as_slice(),
+                [ClosedArgumentV1::QualifiedCheckOutputRelative { relative_path }]
+                    if relative_path
+                        == "share/hepta/check-suite-v1/discovered-inventory.json"
+            )
+        })
+        .expect("bounded discovered-inventory read-back command");
+    assert_eq!(
+        discovered_inventory.executable,
+        ClosedExecutableV1::FixedAbsolute {
+            path: "/bin/cat".to_string(),
+        }
+    );
+    assert!(matches!(
+        discovered_inventory.stdout_handling,
+        ClosedStdoutHandlingV1::BoundedCapture {
+            maximum_bytes: 16_777_216,
+        }
+    ));
+    assert!(discovered_inventory.truncation_is_failure);
     let streaming: Vec<_> = plan
         .dynamic_evidence_traversal
         .closure_member_commands
@@ -703,6 +734,906 @@ fn exact_sandbox_plan_is_canonical_closed_and_non_authorizing() {
 }
 
 #[test]
+fn workspace_check_contract_is_exact_canonical_and_requires_supervisor_reparse() {
+    let plan = sandbox_plan();
+    let contract = &plan.workspace_check_contract;
+    let binding = &plan.binding;
+
+    assert_eq!(contract.schema, NIX_WORKSPACE_CHECK_CONTRACT_SCHEMA);
+    assert_eq!(contract.schema_version, 1);
+    assert_eq!(contract.nix_system, "x86_64-linux");
+    assert_eq!(
+        contract.flake_attribute,
+        "/workspace#checks.x86_64-linux.workspace"
+    );
+    assert_eq!(contract.package_count, 11);
+    assert_eq!(
+        crate::run_plan::WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS,
+        [
+            ("codex-hepta-contracts", "hepta-contracts"),
+            ("codex-hepta-evidence", "hepta-evidence"),
+            ("codex-hepta-governance", "ext/hepta-governance"),
+            ("codex-hepta-memory", "hepta-memory"),
+            ("codex-hepta-memory-extension", "ext/hepta-memory"),
+            ("codex-hepta-mnl-replay-v1", "hepta-mnl-replay-v1"),
+            ("codex-hepta-mnl-trust-v1", "hepta-mnl-trust-v1"),
+            ("codex-hepta-native-gateway", "hepta-native-gateway"),
+            ("codex-hepta-nix-mnl-v1", "hepta-nix-mnl-v1"),
+            ("codex-hepta-paths", "hepta-paths"),
+            ("codex-hepta-runtime", "hepta-runtime"),
+        ]
+    );
+    assert_eq!(
+        format!(
+            "{} 0.0.0 (workspace-member:{})",
+            crate::run_plan::WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[2].0,
+            crate::run_plan::WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[2].1
+        ),
+        "codex-hepta-governance 0.0.0 (workspace-member:ext/hepta-governance)"
+    );
+    assert_eq!(
+        format!(
+            "{} 0.0.0 (workspace-member:{})",
+            crate::run_plan::WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[4].0,
+            crate::run_plan::WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[4].1
+        ),
+        "codex-hepta-memory-extension 0.0.0 (workspace-member:ext/hepta-memory)"
+    );
+    assert_eq!(
+        contract.packages,
+        [
+            "codex-hepta-contracts",
+            "codex-hepta-evidence",
+            "codex-hepta-governance",
+            "codex-hepta-memory",
+            "codex-hepta-memory-extension",
+            "codex-hepta-mnl-replay-v1",
+            "codex-hepta-mnl-trust-v1",
+            "codex-hepta-native-gateway",
+            "codex-hepta-nix-mnl-v1",
+            "codex-hepta-paths",
+            "codex-hepta-runtime",
+        ]
+    );
+    assert!(contract.packages.windows(2).all(|pair| pair[0] < pair[1]));
+    assert_eq!(
+        contract.expected_inventory_schema,
+        NIX_WORKSPACE_EXPECTED_INVENTORY_SCHEMA
+    );
+    assert_eq!(
+        contract.expected_inventory_digest_algorithm,
+        "sha256_exact_utf8_canonical_json_single_lf_file_bytes_v1"
+    );
+    assert_eq!(
+        contract.expected_inventory_file_encoding,
+        "utf8_canonical_json_then_exactly_one_lf_v1"
+    );
+    assert!(contract.expected_inventory_is_exact_canonical_json);
+    assert_eq!(
+        contract.expected_inventory_maximum_file_bytes_including_trailing_lf,
+        16_777_216
+    );
+    assert_eq!(
+        contract.expected_inventory_sha256,
+        binding.workspace_check_expected_inventory_sha256
+    );
+    assert!(contract.expected_inventory_sha256_covers_exact_file_bytes_including_trailing_lf);
+    assert_eq!(
+        contract.expected_nonempty_suite_count,
+        binding.workspace_check_expected_nonempty_suite_count
+    );
+    assert_eq!(
+        contract.expected_suite_count,
+        binding.workspace_check_expected_suite_count
+    );
+    assert_eq!(contract.expected_suite_count, 11);
+    assert_eq!(
+        contract.expected_test_count,
+        binding.workspace_check_expected_test_count
+    );
+    assert_eq!(contract.cargo_nextest_version, "0.9.124");
+    assert_eq!(contract.cargo_version_requirement, "1.95.0");
+    assert_eq!(contract.rustc_version_requirement, "1.95.0");
+    assert_eq!(contract.runner_name, "cargo-nextest");
+    assert_eq!(contract.suite_scope, "hepta_nix_linux_exact_packages_v1");
+    assert_eq!(contract.target_triple, "x86_64-unknown-linux-gnu");
+    assert_eq!(
+        contract.expected_inventory_source_relative_path,
+        "nix/hepta-expected-check-inventory-v1.json"
+    );
+    assert_eq!(contract.list_message_format, "json");
+    assert_eq!(contract.run_message_format, "libtest-json-plus");
+    assert_eq!(contract.run_message_format_version, "0.1");
+    assert!(contract.locked);
+    assert!(contract.offline);
+    assert!(contract.no_fail_fast);
+    assert_eq!(contract.retries, 0);
+    assert_eq!(contract.test_threads, 1);
+    assert_eq!(
+        contract.flaky_result,
+        "unreachable_retries_zero_no_cli_option"
+    );
+    assert_eq!(contract.profile, "default");
+    assert_eq!(contract.user_config_file, "none");
+    assert!(contract.ignore_default_filter);
+    let recipe = &contract.recipe;
+    assert_eq!(recipe.archive, "none");
+    assert_eq!(recipe.binaries_metadata, "none");
+    assert_eq!(recipe.build_jobs, 1);
+    assert_eq!(recipe.build_profile, "test");
+    assert!(!recipe.caller_manifest_allowed);
+    assert!(recipe.candidate_verify_revalidates_discovered_inventory_after_run);
+    assert!(recipe.candidate_verify_revalidates_tool_versions_after_run);
+    assert_eq!(
+        recipe.cargo_metadata_argv,
+        [
+            "cargo",
+            "metadata",
+            "--locked",
+            "--offline",
+            "--no-deps",
+            "--format-version",
+            "1",
+            "--manifest-path",
+            "Cargo.toml",
+        ]
+    );
+    assert!(recipe.cargo_metadata_projection_preflight_before_nextest_list);
+    assert_eq!(
+        recipe.execution_order,
+        [
+            "capture_exact_tool_versions",
+            "validate_exact_tool_versions",
+            "cargo_metadata",
+            "validate_exact_nextest_config",
+            "parse_and_compare_cargo_target_projection",
+            "nextest_list",
+            "canonicalize_discovered_inventory",
+            "compare_expected_inventory",
+            "nextest_run",
+            "verify_candidate_summary_and_discovered_inventory",
+        ]
+    );
+    assert_eq!(
+        recipe.expected_inventory_compare_argv,
+        [
+            "cmp",
+            "--silent",
+            "<run_unique_tmpdir>/hepta-check-suite-v1/discovered-inventory.json",
+            "nix/hepta-expected-check-inventory-v1.json",
+        ]
+    );
+    assert!(recipe.expected_inventory_compared_before_nextest_run);
+    assert_eq!(
+        recipe.wrapper_explicit_environment_overrides,
+        [
+            ClosedWorkspaceCheckEnvironmentV1 {
+                name: "CARGO_BUILD_JOBS".to_string(),
+                value: "1".to_string(),
+            },
+            ClosedWorkspaceCheckEnvironmentV1 {
+                name: "CARGO_INCREMENTAL".to_string(),
+                value: "0".to_string(),
+            },
+            ClosedWorkspaceCheckEnvironmentV1 {
+                name: "CARGO_NET_OFFLINE".to_string(),
+                value: "true".to_string(),
+            },
+            ClosedWorkspaceCheckEnvironmentV1 {
+                name: "CARGO_TARGET_DIR".to_string(),
+                value: "<run_unique_tmpdir>/hepta-nextest-target".to_string(),
+            },
+            ClosedWorkspaceCheckEnvironmentV1 {
+                name: "CARGO_TERM_COLOR".to_string(),
+                value: "never".to_string(),
+            },
+            ClosedWorkspaceCheckEnvironmentV1 {
+                name: "NO_COLOR".to_string(),
+                value: "1".to_string(),
+            },
+            ClosedWorkspaceCheckEnvironmentV1 {
+                name: "RUST_BACKTRACE".to_string(),
+                value: "0".to_string(),
+            },
+        ]
+    );
+    assert!(
+        recipe
+            .wrapper_explicit_environment_overrides
+            .windows(2)
+            .all(|pair| pair[0].name < pair[1].name)
+    );
+    assert!(recipe.list_and_run_share_target_dir);
+    assert_eq!(
+        recipe.list_argv,
+        expected_workspace_check_argv(false, &contract.packages)
+    );
+    assert_eq!(recipe.manifest_path, "codex-rs/Cargo.toml");
+    assert!(recipe.nextest_list_launches_test_binaries_for_enumeration);
+    assert!(recipe.nextest_config_preflight_before_nextest_list);
+    assert_eq!(recipe.nextest_reuse_build_option, "absent");
+    assert!(!recipe.no_run);
+    assert_eq!(recipe.no_tests_behavior, "fail");
+    assert!(!recipe.release);
+    assert_eq!(
+        recipe.run_argv,
+        expected_workspace_check_argv(true, &contract.packages)
+    );
+    assert_eq!(
+        recipe.run_environment,
+        [ClosedWorkspaceCheckEnvironmentV1 {
+            name: "NEXTEST_EXPERIMENTAL_LIBTEST_JSON".to_string(),
+            value: "1".to_string(),
+        }]
+    );
+    assert_eq!(recipe.target_dir_remap, "none");
+    assert!(recipe.tool_versions_preflight_before_cargo_metadata_and_nextest_list);
+    assert_eq!(recipe.workspace_remap, "none");
+    assert_eq!(recipe.workspace_root, "codex-rs");
+    assert!(
+        recipe
+            .cargo_metadata_argv
+            .iter()
+            .chain(&recipe.expected_inventory_compare_argv)
+            .chain(&recipe.list_argv)
+            .chain(&recipe.run_argv)
+            .all(|argument| {
+                !argument.starts_with("/nix/store/")
+                    && argument != &binding.workspace_check_contract_sha256
+                    && argument != &binding.workspace_check_expected_inventory_sha256
+            })
+    );
+    for forbidden in [
+        "--manifest-path",
+        "--lib",
+        "--bins",
+        "--tests",
+        "--examples",
+        "--all-targets",
+        "--target",
+    ] {
+        assert!(
+            !recipe
+                .list_argv
+                .iter()
+                .any(|argument| argument == forbidden)
+        );
+        assert!(!recipe.run_argv.iter().any(|argument| argument == forbidden));
+    }
+    assert_eq!(contract.leak_timeout_period, "200ms");
+    assert_eq!(contract.leak_timeout_result, "fail");
+    assert!(contract.nextest_config_exact_bytes_required);
+    assert_eq!(
+        contract.nextest_config_relative_path,
+        "nix/hepta-nextest.toml"
+    );
+    assert_eq!(
+        contract.nextest_config_sha256,
+        binding.nextest_config_sha256
+    );
+    assert_eq!(contract.slow_timeout_period, "900s");
+    assert_eq!(contract.slow_timeout_terminate_after, 1);
+    assert_eq!(contract.slow_timeout_grace_period, "10s");
+    assert_eq!(contract.slow_timeout_on_timeout, "fail");
+    assert_eq!(
+        contract.toolchain_manifest_sha256,
+        binding.workspace_check_toolchain_manifest_sha256
+    );
+    let selection = &contract.selection;
+    assert!(!selection.all);
+    assert!(!selection.all_features);
+    assert_eq!(
+        selection.benchmark_mode,
+        "nextest_list_kind_lib_only;reject_any_additional_target_or_suite"
+    );
+    assert_eq!(selection.build_target, "native_x86_64-unknown-linux-gnu");
+    assert_eq!(
+        selection.cargo_target_selection_mode,
+        "exact_cargo_metadata_single_lib_roster_joined_to_nextest_list_kind_lib_v1"
+    );
+    assert_eq!(
+        selection.doctests,
+        "cargo_metadata_roster_doctest_false;nextest_no_doctests"
+    );
+    assert!(selection.exclude.is_empty());
+    assert!(selection.features.is_empty());
+    assert_eq!(selection.filter_expression, "none");
+    assert_eq!(
+        selection.ignored_test_policy,
+        "reject_inventory_and_do_not_run"
+    );
+    assert!(selection.nextest_list_suites_must_join_cargo_metadata_projection);
+    assert!(!selection.no_default_features);
+    assert_eq!(selection.package_selection_mode, "explicit_exact_allowlist");
+    assert_eq!(selection.packages, contract.packages);
+    assert_eq!(selection.partition, "none");
+    assert!(selection.target_selector_argv.is_empty());
+    assert!(selection.test_name_filters.is_empty());
+    assert!(!selection.workspace);
+    assert_eq!(
+        contract.package_id_normalized_format,
+        "{package} 0.0.0 (workspace-member:{relative})"
+    );
+    assert!(contract.raw_nextest_package_id_cargo_path_uri_required);
+    assert!(contract.raw_nextest_package_id_source_must_equal_suite_cwd);
+    assert_eq!(
+        contract.test_identity_inventory_algorithm,
+        "sha256_domain_hepta.mnl.check-suite.inventory.v1_pid_norm_path_uri_source=cwd_cwd=common_abs_root/member(package)_format={package}_0.0.0_(workspace-member:{relative})_u64n_sortuniq_suites(lp_pkg,lp_pid,lp_bin,lp_kind,lp_name,u64_tests)_u64n_sortuniq_tests(lp_pkg,lp_pid,lp_bin,lp_kind,lp_name,lp_test,u8_ignored0)_v1"
+    );
+    assert!(
+        contract
+            .outcome
+            .expected_equals_discovered_test_identity_set
+    );
+    assert!(
+        contract
+            .outcome
+            .discovered_equals_executed_test_identity_set
+    );
+    assert!(contract.outcome.executed_equals_passed_test_identity_set);
+    assert_eq!(contract.outcome.required_failed_count, 0);
+    assert_eq!(contract.outcome.required_ignored_count, 0);
+    assert_eq!(contract.outcome.required_measured_count, 0);
+    assert_eq!(contract.outcome.required_filtered_out_count, 0);
+    assert_eq!(contract.outcome.required_skipped_count, 0);
+    assert_eq!(contract.outcome.required_retried_count, 0);
+    assert_eq!(contract.outcome.required_timed_out_count, 0);
+
+    let reparse = &contract.supervisor_reparse;
+    assert!(!reparse.candidate_raw_material_retained_in_check_output);
+    assert!(!reparse.candidate_reported_recipe_authoritative);
+    assert!(!reparse.candidate_summary_authoritative);
+    assert!(!reparse.candidate_summary_contains_subject_product_identity);
+    assert!(reparse.candidate_summary_must_equal_recomputed_values);
+    assert_eq!(
+        reparse.candidate_summary_relative_path,
+        "share/hepta/check-suite-v1.json"
+    );
+    assert_eq!(
+        reparse.candidate_summary_relative_path,
+        plan.evidence_collection.check_manifest_relative_path
+    );
+    assert_eq!(
+        reparse.discovered_inventory_relative_path,
+        "share/hepta/check-suite-v1/discovered-inventory.json"
+    );
+    assert!(reparse.supervisor_reparses_raw_list_and_events);
+    assert!(reparse.supervisor_reparses_raw_cargo_metadata);
+    assert!(reparse.supervisor_recomputes_inventory_counts_and_outcomes);
+    assert!(reparse.raw_inputs_require_eof_and_no_truncation);
+    assert!(reparse.raw_capture_independent_of_candidate);
+    assert!(reparse.trusted_supervisor_binds_exact_check_derivation_and_wrapper);
+    assert!(reparse.trusted_supervisor_raw_capture_out_of_store);
+    assert!(reparse.trusted_supervisor_capture_paths_bound_by_future_terminal_evidence);
+    assert!(reparse.reject_duplicate_unknown_or_unfinished_events);
+    assert!(!reparse.semantic_inventory_digest_alone_authoritative);
+    assert!(reparse.source_workspace_check_only);
+    assert!(!reparse.subject_product_executed_by_workspace_check);
+    assert!(reparse.subject_product_binding_must_equal_retained_product);
+    assert!(reparse.product_and_check_output_and_derivation_paths_must_be_distinct);
+    let reparse_json = serde_json::to_string(reparse).expect("supervisor reparse contract");
+    for forbidden in [
+        "events_jsonl_relative_path",
+        "list_json_relative_path",
+        "runner_version_relative_path",
+        "share/hepta/check-suite-v1/raw/",
+    ] {
+        assert!(!reparse_json.contains(forbidden));
+    }
+    assert_eq!(
+        binding.workspace_check_contract_sha256,
+        sha256(&serde_json::to_vec(contract).expect("canonical workspace check contract"))
+    );
+    assert_eq!(
+        binding.workspace_check_contract_sha256,
+        TEST_WORKSPACE_CHECK_CONTRACT_SHA256
+    );
+    let canonical_contract = serde_json::to_vec(contract).expect("workspace check contract");
+    let recursively_sorted: serde_json::Value =
+        serde_json::from_slice(&canonical_contract).expect("workspace check contract value");
+    assert_eq!(
+        canonical_contract,
+        serde_json::to_vec(&recursively_sorted).expect("recursively sorted contract")
+    );
+}
+
+#[test]
+fn workspace_check_contract_transplants_missing_scope_and_outcome_drift_are_rejected() {
+    let plan = sandbox_plan();
+    let mut mutations = Vec::new();
+
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.packages.swap(0, 1);
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.packages.pop();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.package_count = 10;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.expected_test_count += 1;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.cargo_nextest_version = "0.9.125".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.cargo_version_requirement = "1.95.1".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.rustc_version_requirement = "1.95.1".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.run_message_format_version = "0.2".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.leak_timeout_result = "pass".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.profile = "other".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.user_config_file = "ambient".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.ignore_default_filter = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .expected_inventory_digest_algorithm = "old".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .expected_inventory_file_encoding = "canonical_json_without_lf".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .expected_inventory_maximum_file_bytes_including_trailing_lf = 16_777_215;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .expected_inventory_sha256_covers_exact_file_bytes_including_trailing_lf = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.recipe.archive = "set".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.recipe.binaries_metadata = "set".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.recipe.build_jobs = 2;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.recipe.build_profile = "release".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .caller_manifest_allowed = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .candidate_verify_revalidates_discovered_inventory_after_run = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .candidate_verify_revalidates_tool_versions_after_run = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.recipe.cargo_metadata_argv[1] = "check".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .cargo_metadata_projection_preflight_before_nextest_list = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .execution_order
+        .swap(1, 4);
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .expected_inventory_compare_argv[0] = "diff".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .expected_inventory_compared_before_nextest_run = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .tool_versions_preflight_before_cargo_metadata_and_nextest_list = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .wrapper_explicit_environment_overrides[0]
+        .value = "2".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .list_argv
+        .push("--tests".to_string());
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.recipe.manifest_path = "other/Cargo.toml".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .nextest_list_launches_test_binaries_for_enumeration = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .nextest_config_preflight_before_nextest_list = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.recipe.no_run = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.recipe.no_tests_behavior = "pass".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.recipe.release = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .list_and_run_share_target_dir = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .nextest_reuse_build_option = "present".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .recipe
+        .run_argv
+        .push("--lib".to_string());
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.recipe.run_environment[0].value = "0".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.recipe.target_dir_remap = "set".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.recipe.workspace_remap = "set".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.recipe.workspace_root = "other".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .nextest_config_exact_bytes_required = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .nextest_config_relative_path = "nix/other-nextest.toml".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.nextest_config_sha256 = digest('2');
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.slow_timeout_period = "901s".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .slow_timeout_terminate_after = 2;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.slow_timeout_grace_period = "11s".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.slow_timeout_on_timeout = "pass".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.toolchain_manifest_sha256 = digest('1');
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .package_id_normalized_format = "raw".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .raw_nextest_package_id_cargo_path_uri_required = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .raw_nextest_package_id_source_must_equal_suite_cwd = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .test_identity_inventory_algorithm = "old".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.selection.all = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.selection.all_features = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.selection.benchmark_mode = "run".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.selection.build_target = "other-target".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .selection
+        .cargo_target_selection_mode = "all_targets".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.selection.doctests = "enabled".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .selection
+        .exclude
+        .push("codex-hepta-runtime".to_string());
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .selection
+        .features
+        .push("other".to_string());
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.selection.filter_expression = "test(all())".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .selection
+        .ignored_test_policy = "run".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .selection
+        .nextest_list_suites_must_join_cargo_metadata_projection = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .selection
+        .no_default_features = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .selection
+        .package_selection_mode = "workspace".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.selection.packages.pop();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.selection.partition = "count:1/2".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .selection
+        .target_selector_argv
+        .push("--tests".to_string());
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .selection
+        .test_name_filters
+        .push("one_test".to_string());
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.workspace_check_contract.selection.workspace = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .outcome
+        .required_filtered_out_count = 1;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .outcome
+        .required_measured_count = 1;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .outcome
+        .discovered_equals_executed_test_identity_set = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .candidate_summary_authoritative = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .candidate_summary_contains_subject_product_identity = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .candidate_summary_must_equal_recomputed_values = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .candidate_raw_material_retained_in_check_output = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .candidate_reported_recipe_authoritative = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .candidate_summary_relative_path = "other.json".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .discovered_inventory_relative_path = "other.json".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .product_and_check_output_and_derivation_paths_must_be_distinct = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .raw_capture_independent_of_candidate = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .raw_inputs_require_eof_and_no_truncation = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .reject_duplicate_unknown_or_unfinished_events = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .semantic_inventory_digest_alone_authoritative = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .source_workspace_check_only = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .subject_product_executed_by_workspace_check = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .subject_product_binding_must_equal_retained_product = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .supervisor_recomputes_inventory_counts_and_outcomes = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .supervisor_reparses_raw_cargo_metadata = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .supervisor_reparses_raw_list_and_events = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .trusted_supervisor_capture_paths_bound_by_future_terminal_evidence = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .trusted_supervisor_binds_exact_check_derivation_and_wrapper = false;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .workspace_check_contract
+        .supervisor_reparse
+        .trusted_supervisor_raw_capture_out_of_store = false;
+    mutations.push(changed);
+
+    for changed in mutations {
+        assert!(
+            inspect_canonical_nix_closed_run_plan(
+                &serde_json::to_vec(&changed).expect("changed canonical plan")
+            )
+            .is_err()
+        );
+    }
+
+    let mut missing = serde_json::to_value(&plan).expect("plan JSON");
+    missing
+        .as_object_mut()
+        .expect("plan object")
+        .remove("workspace_check_contract");
+    assert!(
+        inspect_canonical_nix_closed_run_plan(
+            &serde_json::to_vec(&missing).expect("missing contract JSON")
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn successor_receipt_v2_identity_is_shared_exact_and_never_falls_back_to_v1() {
     let plan = sandbox_plan();
     let contract = &plan.successor_receipt_identity_contract;
@@ -719,6 +1650,10 @@ fn successor_receipt_v2_identity_is_shared_exact_and_never_falls_back_to_v1() {
 
     assert_eq!(contract.run_identity_sha256, shared);
     assert_ne!(contract.run_identity_sha256, legacy);
+    assert_eq!(
+        legacy,
+        "ffe62e1f7c662a95b0fb5ad405d541df11cdf82cb26b4e48604363a991595398"
+    );
     assert_eq!(contract.receipt_schema_version, 2);
     assert_eq!(
         contract.run_identity_algorithm,
@@ -913,6 +1848,9 @@ fn plan_bytes_exclude_self_profile_claim_publication_and_downstream_digests() {
         "seal_event_sha256",
         "copy_ack",
         "terminal_manifest",
+        "discovered_inventory_sha256",
+        "events_sha256",
+        "check_result_sha256",
     ] {
         assert!(
             !text.contains(forbidden),
@@ -1041,6 +1979,7 @@ fn every_redundantly_derived_binding_rejects_a_stale_plan() {
     reject!(host_identity_sha256, digest('5'));
     reject!(nix_store_seed_bundle, artifact('a', "0444"));
     reject!(nix_store_seed_inventory_sha256, digest('a'));
+    reject!(nextest_config_sha256, digest('a'));
     reject!(profile_id, "other-pre-run-v1".to_string());
     reject!(run_nonce_sha256, digest('6'));
     reject!(runner_binary, artifact('a', "0555"));
@@ -1048,6 +1987,12 @@ fn every_redundantly_derived_binding_rejects_a_stale_plan() {
     reject!(source_archive, artifact('a', "0444"));
     reject!(source_tree_manifest_sha256, digest('a'));
     reject!(verifier_binary, artifact('a', "0555"));
+    reject!(workspace_check_contract_sha256, digest('a'));
+    reject!(workspace_check_expected_inventory_sha256, digest('a'));
+    reject!(workspace_check_expected_nonempty_suite_count, 18);
+    reject!(workspace_check_expected_suite_count, 20);
+    reject!(workspace_check_expected_test_count, 124);
+    reject!(workspace_check_toolchain_manifest_sha256, digest('b'));
 }
 
 #[test]
@@ -1071,6 +2016,26 @@ fn pre_sign_only_binding_variations_rederive_distinct_non_authorizing_plans() {
         head: "c".repeat(40),
         tree: "d".repeat(40),
     };
+    variations.push(changed);
+    let mut changed = binding();
+    changed.workspace_check_expected_inventory_sha256 = digest('1');
+    changed.workspace_check_contract_sha256 =
+        nix_workspace_check_contract_sha256(&changed).expect("changed check contract digest");
+    variations.push(changed);
+    let mut changed = binding();
+    changed.nextest_config_sha256 = digest('2');
+    changed.workspace_check_contract_sha256 =
+        nix_workspace_check_contract_sha256(&changed).expect("changed nextest config digest");
+    variations.push(changed);
+    let mut changed = binding();
+    changed.workspace_check_expected_test_count += 1;
+    changed.workspace_check_contract_sha256 =
+        nix_workspace_check_contract_sha256(&changed).expect("changed check count digest");
+    variations.push(changed);
+    let mut changed = binding();
+    changed.workspace_check_toolchain_manifest_sha256 = digest('b');
+    changed.workspace_check_contract_sha256 = nix_workspace_check_contract_sha256(&changed)
+        .expect("changed check toolchain manifest digest");
     variations.push(changed);
 
     for variation in variations {
@@ -1178,6 +2143,47 @@ fn static_container_command_mount_environment_resource_and_policy_drift_are_reje
     mutations.push(changed);
     let mut changed = plan.clone();
     changed.failure_policy.automatic_retry = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    let stage = changed
+        .stages
+        .iter_mut()
+        .find(|stage| stage.kind == ClosedRunStageKindV1::ReadOnlyArtifactVerification)
+        .expect("read-only artifact verification stage");
+    let discovered_index = stage
+        .commands
+        .iter()
+        .position(|command| {
+            matches!(
+                command.arguments.as_slice(),
+                [ClosedArgumentV1::QualifiedCheckOutputRelative { relative_path }]
+                    if relative_path
+                        == "share/hepta/check-suite-v1/discovered-inventory.json"
+            )
+        })
+        .expect("discovered-inventory command");
+    stage.commands.remove(discovered_index);
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    let discovered = changed
+        .stages
+        .iter_mut()
+        .find(|stage| stage.kind == ClosedRunStageKindV1::ReadOnlyArtifactVerification)
+        .expect("read-only artifact verification stage")
+        .commands
+        .iter_mut()
+        .find(|command| {
+            matches!(
+                command.arguments.as_slice(),
+                [ClosedArgumentV1::QualifiedCheckOutputRelative { relative_path }]
+                    if relative_path
+                        == "share/hepta/check-suite-v1/discovered-inventory.json"
+            )
+        })
+        .expect("discovered-inventory command");
+    discovered.arguments = vec![ClosedArgumentV1::QualifiedCheckOutputRelative {
+        relative_path: "share/hepta/check-suite-v1.json".to_string(),
+    }];
     mutations.push(changed);
     let mut changed = plan;
     changed.stages.swap(4, 5);
@@ -1459,6 +2465,40 @@ fn isolation_artifact_identity_and_shared_run_identity_must_be_exact() {
     oversized_seed.nix_store_seed_bundle.byte_count = 64 * 1024 * 1024 * 1024 + 1;
     assert!(derive_nix_closed_run_plan(oversized_seed).is_err());
 
+    let mut empty_expected_suite = binding();
+    empty_expected_suite.workspace_check_expected_suite_count = 0;
+    assert!(derive_nix_closed_run_plan(empty_expected_suite).is_err());
+
+    let mut empty_nonempty_suite_count = binding();
+    empty_nonempty_suite_count.workspace_check_expected_nonempty_suite_count = 0;
+    assert!(derive_nix_closed_run_plan(empty_nonempty_suite_count).is_err());
+
+    let mut too_many_nonempty_suites = binding();
+    too_many_nonempty_suites.workspace_check_expected_nonempty_suite_count =
+        too_many_nonempty_suites.workspace_check_expected_suite_count + 1;
+    assert!(derive_nix_closed_run_plan(too_many_nonempty_suites).is_err());
+
+    let mut too_few_expected_suites = binding();
+    too_few_expected_suites.workspace_check_expected_suite_count = 10;
+    assert!(derive_nix_closed_run_plan(too_few_expected_suites).is_err());
+
+    let mut too_many_expected_suites = binding();
+    too_many_expected_suites.workspace_check_expected_suite_count = 12;
+    assert!(derive_nix_closed_run_plan(too_many_expected_suites).is_err());
+
+    let mut too_many_expected_tests = binding();
+    too_many_expected_tests.workspace_check_expected_test_count = 65_537;
+    assert!(derive_nix_closed_run_plan(too_many_expected_tests).is_err());
+
+    let mut fewer_tests_than_nonempty_suites = binding();
+    fewer_tests_than_nonempty_suites.workspace_check_expected_test_count =
+        fewer_tests_than_nonempty_suites.workspace_check_expected_nonempty_suite_count - 1;
+    assert!(derive_nix_closed_run_plan(fewer_tests_than_nonempty_suites).is_err());
+
+    let mut stale_check_contract = binding();
+    stale_check_contract.workspace_check_expected_inventory_sha256 = digest('e');
+    assert!(derive_nix_closed_run_plan(stale_check_contract).is_err());
+
     let mut incomplete_presealed = binding();
     incomplete_presealed.isolation_mode = NixIsolationModeV1::PresealedOfflineClosure;
     incomplete_presealed.presealed_offline_closure_sha256 = Some(digest('a'));
@@ -1569,7 +2609,7 @@ fn sandbox_plan() -> NixClosedRunPlanWireV1 {
 pub(crate) fn binding() -> NixClosedRunPlanBindingV1 {
     let boot = digest('b');
     let run_nonce = digest('d');
-    NixClosedRunPlanBindingV1 {
+    let mut binding = NixClosedRunPlanBindingV1 {
         boot_id_sha256: boot.clone(),
         challenge_nonce_sha256: digest('c'),
         collector_binary: artifact('2', "0555"),
@@ -1588,6 +2628,7 @@ pub(crate) fn binding() -> NixClosedRunPlanBindingV1 {
         isolation_mode: NixIsolationModeV1::NixSandboxEnabled,
         nix_store_seed_bundle: artifact('8', "0444"),
         nix_store_seed_inventory_sha256: digest('9'),
+        nextest_config_sha256: digest('1'),
         presealed_offline_closure_sha256: None,
         presealed_check_output_store_path: None,
         presealed_output_store_path: None,
@@ -1599,7 +2640,61 @@ pub(crate) fn binding() -> NixClosedRunPlanBindingV1 {
         source_archive: artifact('1', "0444"),
         source_tree_manifest_sha256: digest('e'),
         verifier_binary: artifact('7', "0555"),
+        workspace_check_contract_sha256: digest('2'),
+        workspace_check_expected_inventory_sha256:
+            "0f80219876ca481d6d4156a58393c5d316a74d469d82134a041311590436832b".to_string(),
+        workspace_check_expected_nonempty_suite_count: 11,
+        workspace_check_expected_suite_count: 11,
+        workspace_check_expected_test_count: 235,
+        workspace_check_toolchain_manifest_sha256: digest('a'),
+    };
+    binding.workspace_check_contract_sha256 =
+        nix_workspace_check_contract_sha256(&binding).expect("workspace check contract digest");
+    binding
+}
+
+fn expected_workspace_check_argv(run: bool, packages: &[String]) -> Vec<String> {
+    let mut argv = vec![
+        "cargo".to_string(),
+        "nextest".to_string(),
+        "--user-config-file".to_string(),
+        "none".to_string(),
+        "--config-file".to_string(),
+        "nix/hepta-nextest.toml".to_string(),
+        "--profile".to_string(),
+        "default".to_string(),
+        if run { "run" } else { "list" }.to_string(),
+        "--ignore-default-filter".to_string(),
+        "--locked".to_string(),
+        "--offline".to_string(),
+    ];
+    for package in packages {
+        argv.push("-p".to_string());
+        argv.push(package.clone());
     }
+    if run {
+        argv.extend([
+            "--no-fail-fast".to_string(),
+            "--no-tests".to_string(),
+            "fail".to_string(),
+            "--retries".to_string(),
+            "0".to_string(),
+            "--test-threads".to_string(),
+            "1".to_string(),
+            "--message-format".to_string(),
+            "libtest-json-plus".to_string(),
+            "--message-format-version".to_string(),
+            "0.1".to_string(),
+        ]);
+    } else {
+        argv.extend([
+            "--list-type".to_string(),
+            "full".to_string(),
+            "--message-format".to_string(),
+            "json".to_string(),
+        ]);
+    }
+    argv
 }
 
 fn artifact(character: char, mode: &str) -> ClosedArtifactPinV1 {

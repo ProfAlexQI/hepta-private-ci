@@ -1,0 +1,7 @@
+[profile.default]
+# This file is passed explicitly with --config-file. It does not inherit the
+# workspace's developer/CI retry policy: a sealed check is one-shot.
+retries = 0
+leak-timeout = { period = "200ms", result = "fail" }
+slow-timeout = { period = "900s", terminate-after = 1, grace-period = "10s", on-timeout = "fail" }
+test-threads = 1

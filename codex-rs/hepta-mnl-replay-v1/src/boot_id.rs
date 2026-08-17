@@ -1,4 +1,5 @@
 use std::io::Read;
+use std::os::fd::AsFd;
 use std::os::fd::OwnedFd;
 use std::path::Path;
 
@@ -13,9 +14,9 @@ use crate::error::syscall_error;
 use crate::secure_fs::FileIdentityV1;
 use crate::secure_fs::identity_for_fd;
 use crate::secure_fs::open_child_directory;
+use crate::secure_fs::open_fixed_child_directory_across_mount;
 use crate::secure_fs::open_readonly_file_beneath;
 use crate::secure_fs::open_root_directory;
-use crate::secure_fs::same_directory_identity;
 
 const BOOT_ID_BYTES: usize = 36;
 const BOOT_ID_FILE_BYTES: usize = BOOT_ID_BYTES + 1;
@@ -27,26 +28,56 @@ const PROC_BOOT_ID_MODE: u32 = 0o444;
 #[derive(Debug)]
 pub(crate) struct FixedProcfsBootIdSourceV1 {
     proc_root: OwnedFd,
-    proc_root_identity: FileIdentityV1,
+    proc_root_identity: ProcfsDirectoryIdentityV1,
+    proc_sys_root: OwnedFd,
+    proc_sys_root_identity: ProcfsDirectoryIdentityV1,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ProcfsDirectoryIdentityV1 {
+    file: FileIdentityV1,
+    mount_id: u64,
 }
 
 impl FixedProcfsBootIdSourceV1 {
     pub(crate) fn open() -> ReplayStoreResultV1<Self> {
         let proc_root = open_root_directory(Path::new("/proc"))?;
-        let proc_root_identity = identity_for_fd(&proc_root)?;
-        require_proc_root(proc_root_identity)?;
+        let proc_root_identity = procfs_directory_identity_for_fd(&proc_root)?;
+        require_proc_root(proc_root_identity.file)?;
         require_procfs(&proc_root)?;
+        // Container runtimes commonly expose /proc/sys as its own read-only
+        // procfs mount. Open that exact compile-time path as a second fixed
+        // root, then restore NO_XDEV for every descendant below it.
+        let proc_sys_root = open_fixed_child_directory_across_mount(&proc_root, "sys")?;
+        let proc_sys_root_identity = procfs_directory_identity_for_fd(&proc_sys_root)?;
+        require_proc_sys_root(proc_sys_root_identity.file)?;
+        require_procfs(&proc_sys_root)?;
         Ok(Self {
             proc_root,
             proc_root_identity,
+            proc_sys_root,
+            proc_sys_root_identity,
         })
     }
 
     pub(crate) fn observe_sha256(&self) -> ReplayStoreResultV1<String> {
-        require_proc_root(identity_for_fd(&self.proc_root)?)?;
+        let proc_root_identity = procfs_directory_identity_for_fd(&self.proc_root)?;
+        require_proc_root(proc_root_identity.file)?;
         require_procfs(&self.proc_root)?;
-        let sys = open_child_directory(&self.proc_root, "sys")?;
-        let kernel = open_child_directory(&sys, "kernel")?;
+        if !same_procfs_directory_identity(proc_root_identity, self.proc_root_identity) {
+            return Err(ReplayStoreErrorV1::RaceDetected(
+                "retained procfs root identity drifted before boot-id read".to_string(),
+            ));
+        }
+        let proc_sys_root_identity = procfs_directory_identity_for_fd(&self.proc_sys_root)?;
+        require_proc_sys_root(proc_sys_root_identity.file)?;
+        require_procfs(&self.proc_sys_root)?;
+        if !same_procfs_directory_identity(proc_sys_root_identity, self.proc_sys_root_identity) {
+            return Err(ReplayStoreErrorV1::RaceDetected(
+                "retained procfs sys root identity drifted before boot-id read".to_string(),
+            ));
+        }
+        let kernel = open_child_directory(&self.proc_sys_root, "kernel")?;
         let random = open_child_directory(&kernel, "random")?;
         let mut boot_id = open_readonly_file_beneath(&random, "boot_id", "kernel boot-id leaf")?;
         let identity_before = identity_for_fd(&boot_id)?;
@@ -66,25 +97,81 @@ impl FixedProcfsBootIdSourceV1 {
     }
 
     pub(crate) fn revalidate(&self) -> ReplayStoreResultV1<()> {
-        let retained = identity_for_fd(&self.proc_root)?;
-        require_proc_root(retained)?;
+        let retained = procfs_directory_identity_for_fd(&self.proc_root)?;
+        require_proc_root(retained.file)?;
         require_procfs(&self.proc_root)?;
-        if !same_directory_identity(retained, self.proc_root_identity) {
+        if !same_procfs_directory_identity(retained, self.proc_root_identity) {
             return Err(ReplayStoreErrorV1::RaceDetected(
                 "retained procfs root identity drifted".to_string(),
             ));
         }
+        let retained_sys = procfs_directory_identity_for_fd(&self.proc_sys_root)?;
+        require_proc_sys_root(retained_sys.file)?;
+        require_procfs(&self.proc_sys_root)?;
+        if !same_procfs_directory_identity(retained_sys, self.proc_sys_root_identity) {
+            return Err(ReplayStoreErrorV1::RaceDetected(
+                "retained procfs sys root identity drifted".to_string(),
+            ));
+        }
         let reopened = open_root_directory(Path::new("/proc"))?;
-        let reopened_identity = identity_for_fd(&reopened)?;
-        require_proc_root(reopened_identity)?;
+        let reopened_identity = procfs_directory_identity_for_fd(&reopened)?;
+        require_proc_root(reopened_identity.file)?;
         require_procfs(&reopened)?;
-        if !same_directory_identity(reopened_identity, self.proc_root_identity) {
+        if !same_procfs_directory_identity(reopened_identity, self.proc_root_identity) {
             return Err(ReplayStoreErrorV1::RaceDetected(
                 "canonical /proc path no longer names the retained procfs root".to_string(),
             ));
         }
+        let reopened_sys = open_fixed_child_directory_across_mount(&reopened, "sys")?;
+        let reopened_sys_identity = procfs_directory_identity_for_fd(&reopened_sys)?;
+        require_proc_sys_root(reopened_sys_identity.file)?;
+        require_procfs(&reopened_sys)?;
+        if !same_procfs_directory_identity(reopened_sys_identity, self.proc_sys_root_identity) {
+            return Err(ReplayStoreErrorV1::RaceDetected(
+                "canonical /proc/sys path no longer names the retained procfs sys root".to_string(),
+            ));
+        }
         Ok(())
     }
+}
+
+fn procfs_directory_identity_for_fd<Fd: AsFd>(
+    descriptor: Fd,
+) -> ReplayStoreResultV1<ProcfsDirectoryIdentityV1> {
+    let descriptor = descriptor.as_fd();
+    let file = identity_for_fd(descriptor)?;
+    let statx = rustix::fs::statx(
+        descriptor,
+        "",
+        rustix::fs::AtFlags::EMPTY_PATH | rustix::fs::AtFlags::NO_AUTOMOUNT,
+        rustix::fs::StatxFlags::MNT_ID,
+    )
+    .map_err(|error| syscall_error("statx fixed procfs mount identity", error))?;
+    if !rustix::fs::StatxFlags::from_bits_retain(statx.stx_mask)
+        .contains(rustix::fs::StatxFlags::MNT_ID)
+        || statx.stx_mnt_id == 0
+    {
+        return Err(ReplayStoreErrorV1::IdentityMismatch(
+            "fixed procfs mount identity is unavailable".to_string(),
+        ));
+    }
+    Ok(ProcfsDirectoryIdentityV1 {
+        file,
+        mount_id: statx.stx_mnt_id,
+    })
+}
+
+fn same_procfs_directory_identity(
+    left: ProcfsDirectoryIdentityV1,
+    right: ProcfsDirectoryIdentityV1,
+) -> bool {
+    left.file.device == right.file.device
+        && left.file.inode == right.file.inode
+        && left.file.uid == right.file.uid
+        && left.file.gid == right.file.gid
+        && left.file.mode == right.file.mode
+        && left.file.file_type == right.file.file_type
+        && left.mount_id == right.mount_id
 }
 
 pub fn derive_linux_boot_id_sha256(bytes: &[u8]) -> ReplayStoreResultV1<String> {
@@ -134,6 +221,21 @@ fn require_proc_root(identity: FileIdentityV1) -> ReplayStoreResultV1<()> {
     {
         return Err(ReplayStoreErrorV1::IdentityMismatch(
             "fixed /proc root is not the exact root-owned 0555 directory".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn require_proc_sys_root(identity: FileIdentityV1) -> ReplayStoreResultV1<()> {
+    if identity.file_type != FileType::Directory
+        || identity.mode != PROC_ROOT_MODE
+        || identity.uid != 0
+        || identity.gid != 0
+        || identity.link_count == 0
+    {
+        return Err(ReplayStoreErrorV1::IdentityMismatch(
+            "fixed /proc/sys root is not the exact root-owned 0555 directory on retained procfs"
+                .to_string(),
         ));
     }
     Ok(())
@@ -191,6 +293,45 @@ mod tests {
     #[test]
     fn fixed_procfs_observation_is_stable() {
         let source = FixedProcfsBootIdSourceV1::open().expect("open fixed procfs");
+        assert_ne!(source.proc_root_identity.mount_id, 0);
+        assert_ne!(source.proc_sys_root_identity.mount_id, 0);
+
+        let mut positive_nlink_drift = source.proc_root_identity;
+        positive_nlink_drift.file.link_count = positive_nlink_drift
+            .file
+            .link_count
+            .checked_add(1)
+            .expect("procfs nlink test increment");
+        assert!(same_procfs_directory_identity(
+            positive_nlink_drift,
+            source.proc_root_identity,
+        ));
+
+        let mut mount_drift = source.proc_root_identity;
+        mount_drift.mount_id = mount_drift
+            .mount_id
+            .checked_add(1)
+            .expect("procfs mount-id test increment");
+        assert!(!same_procfs_directory_identity(
+            mount_drift,
+            source.proc_root_identity,
+        ));
+        for mutate in [
+            |identity: &mut ProcfsDirectoryIdentityV1| identity.file.device ^= 1,
+            |identity: &mut ProcfsDirectoryIdentityV1| identity.file.inode ^= 1,
+            |identity: &mut ProcfsDirectoryIdentityV1| identity.file.mode ^= 0o100,
+        ] {
+            let mut drift = source.proc_root_identity;
+            mutate(&mut drift);
+            assert!(!same_procfs_directory_identity(
+                drift,
+                source.proc_root_identity,
+            ));
+        }
+        let mut zero_nlink = source.proc_root_identity.file;
+        zero_nlink.link_count = 0;
+        assert!(require_proc_root(zero_nlink).is_err());
+
         let before = source.observe_sha256().expect("first boot observation");
         let after = source.observe_sha256().expect("second boot observation");
         assert_eq!(before, after);

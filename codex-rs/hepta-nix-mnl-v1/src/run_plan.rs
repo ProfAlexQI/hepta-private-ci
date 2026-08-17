@@ -18,13 +18,17 @@ use crate::PINNED_IMAGE_SHA256;
 use crate::RepositoryIdentityV1;
 use crate::invalid;
 
-pub const NIX_CLOSED_RUN_PLAN_SCHEMA: &str = "hepta_nix_mnl_closed_run_plan_shape_v2";
+pub const NIX_CLOSED_RUN_PLAN_SCHEMA: &str = "hepta_nix_mnl_closed_run_plan_shape_v3";
 pub const NIX_SUCCESSOR_RECEIPT_SCHEMA: &str =
     "hepta_nix_exact_mnl_successor_candidate_evidence_v2";
 pub const NIX_SUCCESSOR_RECEIPT_SCHEMA_VERSION: u32 = 2;
 pub const NIX_SUCCESSOR_RUN_IDENTITY_SCHEMA: &str = "hepta_mnl_successor_run_identity_v1";
 pub const NIX_SUCCESSOR_RUN_IDENTITY_ALGORITHM: &str = "hepta.mnl.run-identity.v1";
-pub const MAX_NIX_CLOSED_RUN_PLAN_BYTES: usize = 64 * 1024;
+pub const NIX_WORKSPACE_CHECK_CONTRACT_SCHEMA: &str = "hepta_nix_mnl_workspace_check_contract_v1";
+pub const NIX_WORKSPACE_EXPECTED_INVENTORY_SCHEMA: &str =
+    "hepta_nix_mnl_expected_check_inventory_v1";
+pub const NIX_WORKSPACE_CHECK_CONTRACT_NAMED_MATERIAL: &str = "workspace_check_contract";
+pub const MAX_NIX_CLOSED_RUN_PLAN_BYTES: usize = 72 * 1024;
 
 const DATA_ROOT: &str = "/data";
 const DOCKER_SOCKET: &str = "/var/run/docker.sock";
@@ -48,9 +52,41 @@ const MAX_TOTAL_CLOSURE_NAR_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 const MAX_CPU_INDEX: u32 = 4095;
 const MAX_STDOUT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_STDERR_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_WORKSPACE_CHECK_INVENTORY_BYTES: u64 = 16 * 1024 * 1024;
 const GLOBAL_LOCK_NAME: &str = "hepta-nix-mnl-successor-v1-exclusive";
 const GLOBAL_LOCK_PATH: &str = "/data/hepta-nix-mnl-v1/locks/global.lock";
 const CHECK_FLAKE_ATTRIBUTE: &str = "/workspace#checks.x86_64-linux.workspace";
+const CARGO_NEXTEST_VERSION: &str = "0.9.124";
+const WORKSPACE_CHECK_TEST_IDENTITY_ALGORITHM: &str = "sha256_domain_hepta.mnl.check-suite.inventory.v1_pid_norm_path_uri_source=cwd_cwd=common_abs_root/member(package)_format={package}_0.0.0_(workspace-member:{relative})_u64n_sortuniq_suites(lp_pkg,lp_pid,lp_bin,lp_kind,lp_name,u64_tests)_u64n_sortuniq_tests(lp_pkg,lp_pid,lp_bin,lp_kind,lp_name,lp_test,u8_ignored0)_v1";
+pub(crate) const WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS: [(&str, &str); 11] = [
+    ("codex-hepta-contracts", "hepta-contracts"),
+    ("codex-hepta-evidence", "hepta-evidence"),
+    ("codex-hepta-governance", "ext/hepta-governance"),
+    ("codex-hepta-memory", "hepta-memory"),
+    ("codex-hepta-memory-extension", "ext/hepta-memory"),
+    ("codex-hepta-mnl-replay-v1", "hepta-mnl-replay-v1"),
+    ("codex-hepta-mnl-trust-v1", "hepta-mnl-trust-v1"),
+    ("codex-hepta-native-gateway", "hepta-native-gateway"),
+    ("codex-hepta-nix-mnl-v1", "hepta-nix-mnl-v1"),
+    ("codex-hepta-paths", "hepta-paths"),
+    ("codex-hepta-runtime", "hepta-runtime"),
+];
+const WORKSPACE_CHECK_PACKAGES: [&str; 11] = [
+    WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[0].0,
+    WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[1].0,
+    WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[2].0,
+    WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[3].0,
+    WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[4].0,
+    WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[5].0,
+    WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[6].0,
+    WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[7].0,
+    WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[8].0,
+    WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[9].0,
+    WORKSPACE_CHECK_PACKAGE_MEMBER_PATHS[10].0,
+];
+const EXACT_EXPECTED_WORKSPACE_CHECK_SUITES: u32 = 11;
+const MAX_EXPECTED_WORKSPACE_CHECK_TESTS: u32 = 65_536;
+const MAX_EXPECTED_WORKSPACE_CHECK_INVENTORY_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -151,6 +187,7 @@ pub struct NixClosedRunPlanBindingV1 {
     pub isolation_mode: NixIsolationModeV1,
     pub nix_store_seed_bundle: ClosedArtifactPinV1,
     pub nix_store_seed_inventory_sha256: String,
+    pub nextest_config_sha256: String,
     pub presealed_offline_closure_sha256: Option<String>,
     pub presealed_check_output_store_path: Option<String>,
     pub presealed_output_store_path: Option<String>,
@@ -162,6 +199,238 @@ pub struct NixClosedRunPlanBindingV1 {
     pub source_archive: ClosedArtifactPinV1,
     pub source_tree_manifest_sha256: String,
     pub verifier_binary: ClosedArtifactPinV1,
+    pub workspace_check_contract_sha256: String,
+    pub workspace_check_expected_inventory_sha256: String,
+    pub workspace_check_expected_nonempty_suite_count: u32,
+    pub workspace_check_expected_suite_count: u32,
+    pub workspace_check_expected_test_count: u32,
+    pub workspace_check_toolchain_manifest_sha256: String,
+}
+
+/// Exact successor check outcome required by the closed plan.
+///
+/// The three equality fields refer to complete test-identity sets, not merely
+/// equal cardinalities. The inventory domain binds sorted, unique suite tuples
+/// `(package, normalized_package_id, binary_id, target_kind, target_name,
+/// test_count)` followed by test tuples `(package, normalized_package_id,
+/// binary_id, target_kind, target_name, test_name, ignored=false)`. A raw
+/// nextest package ID is accepted only when it is a Cargo path URI whose
+/// source equals the suite working directory. Every suite working directory
+/// must be the exact frozen package-to-member relative path beneath one common
+/// absolute workspace root, then the ID is normalized to the frozen
+/// `{package} 0.0.0 (workspace-member:{relative})` representation. This is a
+/// structural declaration binding, not observed source provenance.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClosedWorkspaceCheckOutcomeContractV1 {
+    pub discovered_equals_executed_test_identity_set: bool,
+    pub executed_equals_passed_test_identity_set: bool,
+    pub expected_equals_discovered_test_identity_set: bool,
+    pub required_failed_count: u32,
+    pub required_filtered_out_count: u32,
+    pub required_ignored_count: u32,
+    pub required_measured_count: u32,
+    pub required_retried_count: u32,
+    pub required_skipped_count: u32,
+    pub required_timed_out_count: u32,
+}
+
+/// Exact raw-material verification the trusted supervisor must perform.
+///
+/// The deterministic candidate check output retains only its canonical
+/// discovered inventory and candidate summary. It does not retain or
+/// authorize raw Cargo metadata or nextest streams. A future trusted supervisor
+/// must capture all of those raw inputs independently outside the candidate
+/// store output and bind their capture paths in terminal evidence before
+/// reparsing them. A candidate-reported copy of the recipe does not prove the
+/// invocation; the future supervisor must bind the exact check derivation and
+/// wrapper.
+/// The candidate summary contains no subject-product, store-path, or
+/// derivation identity. A future trusted supervisor must bind the separately
+/// retained product. This source-workspace check does not execute it, so a
+/// later exact-product smoke gate remains required.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClosedWorkspaceCheckSupervisorReparseV1 {
+    pub candidate_raw_material_retained_in_check_output: bool,
+    pub candidate_reported_recipe_authoritative: bool,
+    pub candidate_summary_authoritative: bool,
+    pub candidate_summary_contains_subject_product_identity: bool,
+    pub candidate_summary_must_equal_recomputed_values: bool,
+    pub candidate_summary_relative_path: String,
+    pub discovered_inventory_relative_path: String,
+    pub product_and_check_output_and_derivation_paths_must_be_distinct: bool,
+    pub raw_capture_independent_of_candidate: bool,
+    pub raw_inputs_require_eof_and_no_truncation: bool,
+    pub reject_duplicate_unknown_or_unfinished_events: bool,
+    pub semantic_inventory_digest_alone_authoritative: bool,
+    pub source_workspace_check_only: bool,
+    pub subject_product_binding_must_equal_retained_product: bool,
+    pub subject_product_executed_by_workspace_check: bool,
+    pub supervisor_recomputes_inventory_counts_and_outcomes: bool,
+    pub supervisor_reparses_raw_cargo_metadata: bool,
+    pub supervisor_reparses_raw_list_and_events: bool,
+    pub trusted_supervisor_binds_exact_check_derivation_and_wrapper: bool,
+    pub trusted_supervisor_capture_paths_bound_by_future_terminal_evidence: bool,
+    pub trusted_supervisor_raw_capture_out_of_store: bool,
+}
+
+/// Exact nextest/Cargo selection axes used by the frozen workspace check.
+///
+/// Every axis is explicit so ambient workspace configuration, default
+/// filters, feature selection, or caller CLI arguments cannot widen or narrow
+/// the expected test identity set. The exact Cargo metadata projection requires
+/// a single lib target per package with `test=true` and `doctest=false`.
+/// Cargo 1.95 does not report target `bench` or required-features axes here, so
+/// no claim is made about them. Every nextest list suite must be `kind=lib`,
+/// join that exact target roster, and reject any additional target or suite.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClosedWorkspaceCheckSelectionV1 {
+    pub all: bool,
+    pub all_features: bool,
+    pub benchmark_mode: String,
+    pub build_target: String,
+    pub cargo_target_selection_mode: String,
+    pub doctests: String,
+    pub exclude: Vec<String>,
+    pub features: Vec<String>,
+    pub filter_expression: String,
+    pub ignored_test_policy: String,
+    pub nextest_list_suites_must_join_cargo_metadata_projection: bool,
+    pub no_default_features: bool,
+    pub package_selection_mode: String,
+    pub packages: Vec<String>,
+    pub partition: String,
+    pub target_selector_argv: Vec<String>,
+    pub test_name_filters: Vec<String>,
+    pub workspace: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClosedWorkspaceCheckEnvironmentV1 {
+    pub name: String,
+    pub value: String,
+}
+
+/// Exact logical Cargo/nextest recipe.
+///
+/// These are frozen intended argv and environment values, not independently
+/// observed execution. The argv values use source-relative logical paths only.
+/// `wrapper_explicit_environment_overrides` lists only values exported by the
+/// check wrapper; inherited Nix/stdenv variables are instead bound by the
+/// exact derivation and toolchain identities and are not claimed to be fully
+/// enumerated here.
+/// They deliberately exclude Nix store paths, the contract's own digest, and
+/// every post-run result digest. Metadata projection parsing and comparison
+/// precede nextest list; canonical inventory comparison follows list and only
+/// an exact match permits nextest run. After the run, candidate verification
+/// must re-read that discovered inventory and require byte equality with both
+/// the frozen inventory and its own recomputation before installation.
+/// Nextest list itself launches test
+/// binaries for enumeration, which is recorded without treating
+/// candidate-reported invocation as authority.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClosedWorkspaceCheckRecipeV1 {
+    pub archive: String,
+    pub binaries_metadata: String,
+    pub build_jobs: u32,
+    pub build_profile: String,
+    pub caller_manifest_allowed: bool,
+    pub candidate_verify_revalidates_discovered_inventory_after_run: bool,
+    pub candidate_verify_revalidates_tool_versions_after_run: bool,
+    pub cargo_metadata_argv: Vec<String>,
+    pub cargo_metadata_projection_preflight_before_nextest_list: bool,
+    pub execution_order: Vec<String>,
+    pub expected_inventory_compare_argv: Vec<String>,
+    pub expected_inventory_compared_before_nextest_run: bool,
+    pub list_and_run_share_target_dir: bool,
+    pub list_argv: Vec<String>,
+    pub manifest_path: String,
+    pub nextest_config_preflight_before_nextest_list: bool,
+    pub nextest_list_launches_test_binaries_for_enumeration: bool,
+    pub nextest_reuse_build_option: String,
+    pub no_run: bool,
+    pub no_tests_behavior: String,
+    pub release: bool,
+    pub run_argv: Vec<String>,
+    pub run_environment: Vec<ClosedWorkspaceCheckEnvironmentV1>,
+    pub target_dir_remap: String,
+    pub tool_versions_preflight_before_cargo_metadata_and_nextest_list: bool,
+    pub workspace_remap: String,
+    pub workspace_root: String,
+    pub wrapper_explicit_environment_overrides: Vec<ClosedWorkspaceCheckEnvironmentV1>,
+}
+
+/// Canonical, non-authorizing contract for the selected Nix workspace check.
+///
+/// Only this pre-run policy and the expected canonical inventory are frozen.
+/// The expected inventory also freezes Cargo metadata's exact eleven-package
+/// target projection: member path, package/version, empty feature map, one lib
+/// target, `test=true`, and `doctest=false`. Cargo 1.95 exposes no target
+/// `bench` or required-features field in this projection; those axes are not
+/// inferred. The nextest list must contain only the exact joined `kind=lib`
+/// suites and reject every additional target or suite. Discovered inventories,
+/// event streams, summaries, and result digests are post-run evidence and
+/// deliberately do not appear here.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NixWorkspaceCheckContractV1 {
+    pub cargo_nextest_version: String,
+    pub cargo_version_requirement: String,
+    pub expected_inventory_digest_algorithm: String,
+    pub expected_inventory_file_encoding: String,
+    pub expected_inventory_is_exact_canonical_json: bool,
+    pub expected_inventory_maximum_file_bytes_including_trailing_lf: u64,
+    pub expected_inventory_schema: String,
+    pub expected_inventory_sha256: String,
+    pub expected_inventory_sha256_covers_exact_file_bytes_including_trailing_lf: bool,
+    pub expected_inventory_source_relative_path: String,
+    pub expected_nonempty_suite_count: u32,
+    pub expected_suite_count: u32,
+    pub expected_test_count: u32,
+    pub flake_attribute: String,
+    pub flaky_result: String,
+    pub ignore_default_filter: bool,
+    pub leak_timeout_period: String,
+    pub leak_timeout_result: String,
+    pub list_message_format: String,
+    pub locked: bool,
+    pub nextest_config_exact_bytes_required: bool,
+    pub nextest_config_relative_path: String,
+    pub nextest_config_sha256: String,
+    pub nix_system: String,
+    pub no_fail_fast: bool,
+    pub offline: bool,
+    pub outcome: ClosedWorkspaceCheckOutcomeContractV1,
+    pub package_count: u32,
+    pub package_id_normalized_format: String,
+    pub packages: Vec<String>,
+    pub profile: String,
+    pub raw_nextest_package_id_cargo_path_uri_required: bool,
+    pub raw_nextest_package_id_source_must_equal_suite_cwd: bool,
+    pub recipe: ClosedWorkspaceCheckRecipeV1,
+    pub retries: u32,
+    pub run_message_format: String,
+    pub run_message_format_version: String,
+    pub runner_name: String,
+    pub rustc_version_requirement: String,
+    pub schema: String,
+    pub schema_version: u32,
+    pub selection: ClosedWorkspaceCheckSelectionV1,
+    pub slow_timeout_grace_period: String,
+    pub slow_timeout_on_timeout: String,
+    pub slow_timeout_period: String,
+    pub slow_timeout_terminate_after: u32,
+    pub suite_scope: String,
+    pub supervisor_reparse: ClosedWorkspaceCheckSupervisorReparseV1,
+    pub target_triple: String,
+    pub test_identity_inventory_algorithm: String,
+    pub test_threads: u32,
+    pub toolchain_manifest_sha256: String,
+    pub user_config_file: String,
 }
 
 /// Canonical identity contract for the successor receipt revision.
@@ -783,6 +1052,7 @@ pub struct NixClosedRunPlanWireV1 {
     pub tool_execution: ClosedToolExecutionPlanV1,
     pub verifier_container: ClosedContainerSpecV1,
     pub verifier_docker_exec_policy: ClosedVerifierDockerExecPolicyV1,
+    pub workspace_check_contract: NixWorkspaceCheckContractV1,
 }
 
 #[derive(Debug)]
@@ -941,6 +1211,7 @@ pub fn derive_nix_closed_run_plan(
 ) -> Result<NixClosedRunPlanWireV1, NixMnlError> {
     validate_binding(&binding)?;
     let successor_receipt_identity_contract = successor_receipt_identity_contract(&binding);
+    let workspace_check_contract = exact_nix_workspace_check_contract(&binding);
     let run_root = format!(
         "{DATA_ROOT}/hepta-nix-mnl-v1-runs/{}",
         binding.run_identity_sha256
@@ -1206,7 +1477,7 @@ pub fn derive_nix_closed_run_plan(
         },
         run_root,
         schema: NIX_CLOSED_RUN_PLAN_SCHEMA.to_string(),
-        schema_version: 2,
+        schema_version: 3,
         seccomp_input: ClosedSeccompInputV1 {
             artifact_host_path: seccomp_host_path,
             artifact_role: ClosedArtifactRoleV1::SeccompProfile,
@@ -1253,6 +1524,7 @@ pub fn derive_nix_closed_run_plan(
             user: "65532:65532".to_string(),
             working_directory: SOURCE_CONTAINER_ROOT.to_string(),
         },
+        workspace_check_contract,
     })
 }
 
@@ -1270,7 +1542,7 @@ pub fn inspect_canonical_nix_closed_run_plan(
     if canonical != bytes {
         return Err(invalid("closed Nix run plan is not exact canonical JSON"));
     }
-    if plan.schema != NIX_CLOSED_RUN_PLAN_SCHEMA || plan.schema_version != 2 {
+    if plan.schema != NIX_CLOSED_RUN_PLAN_SCHEMA || plan.schema_version != 3 {
         return Err(invalid("closed Nix run plan schema or version differs"));
     }
     if !plan.authority.is_fully_closed() {
@@ -1311,6 +1583,278 @@ fn successor_receipt_identity_contract(
         run_identity_sha256: binding.run_identity_sha256.clone(),
         run_nonce_sha256: binding.run_nonce_sha256.clone(),
     }
+}
+
+pub(crate) fn exact_nix_workspace_check_contract(
+    binding: &NixClosedRunPlanBindingV1,
+) -> NixWorkspaceCheckContractV1 {
+    NixWorkspaceCheckContractV1 {
+        cargo_nextest_version: CARGO_NEXTEST_VERSION.to_string(),
+        cargo_version_requirement: "1.95.0".to_string(),
+        expected_inventory_digest_algorithm:
+            "sha256_exact_utf8_canonical_json_single_lf_file_bytes_v1".to_string(),
+        expected_inventory_file_encoding: "utf8_canonical_json_then_exactly_one_lf_v1".to_string(),
+        expected_inventory_is_exact_canonical_json: true,
+        expected_inventory_maximum_file_bytes_including_trailing_lf:
+            MAX_EXPECTED_WORKSPACE_CHECK_INVENTORY_BYTES,
+        expected_inventory_schema: NIX_WORKSPACE_EXPECTED_INVENTORY_SCHEMA.to_string(),
+        expected_inventory_sha256: binding.workspace_check_expected_inventory_sha256.clone(),
+        expected_inventory_sha256_covers_exact_file_bytes_including_trailing_lf: true,
+        expected_inventory_source_relative_path: "nix/hepta-expected-check-inventory-v1.json"
+            .to_string(),
+        expected_nonempty_suite_count: binding.workspace_check_expected_nonempty_suite_count,
+        expected_suite_count: binding.workspace_check_expected_suite_count,
+        expected_test_count: binding.workspace_check_expected_test_count,
+        flake_attribute: CHECK_FLAKE_ATTRIBUTE.to_string(),
+        flaky_result: "unreachable_retries_zero_no_cli_option".to_string(),
+        ignore_default_filter: true,
+        leak_timeout_period: "200ms".to_string(),
+        leak_timeout_result: "fail".to_string(),
+        list_message_format: "json".to_string(),
+        locked: true,
+        nextest_config_exact_bytes_required: true,
+        nextest_config_relative_path: "nix/hepta-nextest.toml".to_string(),
+        nextest_config_sha256: binding.nextest_config_sha256.clone(),
+        nix_system: "x86_64-linux".to_string(),
+        no_fail_fast: true,
+        offline: true,
+        outcome: ClosedWorkspaceCheckOutcomeContractV1 {
+            discovered_equals_executed_test_identity_set: true,
+            executed_equals_passed_test_identity_set: true,
+            expected_equals_discovered_test_identity_set: true,
+            required_failed_count: 0,
+            required_filtered_out_count: 0,
+            required_ignored_count: 0,
+            required_measured_count: 0,
+            required_retried_count: 0,
+            required_skipped_count: 0,
+            required_timed_out_count: 0,
+        },
+        package_count: WORKSPACE_CHECK_PACKAGES.len() as u32,
+        package_id_normalized_format: "{package} 0.0.0 (workspace-member:{relative})".to_string(),
+        packages: WORKSPACE_CHECK_PACKAGES
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        profile: "default".to_string(),
+        raw_nextest_package_id_cargo_path_uri_required: true,
+        raw_nextest_package_id_source_must_equal_suite_cwd: true,
+        recipe: exact_nix_workspace_check_recipe(),
+        retries: 0,
+        run_message_format: "libtest-json-plus".to_string(),
+        run_message_format_version: "0.1".to_string(),
+        runner_name: "cargo-nextest".to_string(),
+        rustc_version_requirement: "1.95.0".to_string(),
+        schema: NIX_WORKSPACE_CHECK_CONTRACT_SCHEMA.to_string(),
+        schema_version: 1,
+        selection: ClosedWorkspaceCheckSelectionV1 {
+            all: false,
+            all_features: false,
+            benchmark_mode: "nextest_list_kind_lib_only;reject_any_additional_target_or_suite"
+                .to_string(),
+            build_target: "native_x86_64-unknown-linux-gnu".to_string(),
+            cargo_target_selection_mode:
+                "exact_cargo_metadata_single_lib_roster_joined_to_nextest_list_kind_lib_v1"
+                    .to_string(),
+            doctests: "cargo_metadata_roster_doctest_false;nextest_no_doctests".to_string(),
+            exclude: Vec::new(),
+            features: Vec::new(),
+            filter_expression: "none".to_string(),
+            ignored_test_policy: "reject_inventory_and_do_not_run".to_string(),
+            nextest_list_suites_must_join_cargo_metadata_projection: true,
+            no_default_features: false,
+            package_selection_mode: "explicit_exact_allowlist".to_string(),
+            packages: WORKSPACE_CHECK_PACKAGES
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            partition: "none".to_string(),
+            target_selector_argv: Vec::new(),
+            test_name_filters: Vec::new(),
+            workspace: false,
+        },
+        slow_timeout_grace_period: "10s".to_string(),
+        slow_timeout_on_timeout: "fail".to_string(),
+        slow_timeout_period: "900s".to_string(),
+        slow_timeout_terminate_after: 1,
+        supervisor_reparse: ClosedWorkspaceCheckSupervisorReparseV1 {
+            candidate_raw_material_retained_in_check_output: false,
+            candidate_reported_recipe_authoritative: false,
+            candidate_summary_authoritative: false,
+            candidate_summary_contains_subject_product_identity: false,
+            candidate_summary_must_equal_recomputed_values: true,
+            candidate_summary_relative_path: "share/hepta/check-suite-v1.json".to_string(),
+            discovered_inventory_relative_path:
+                "share/hepta/check-suite-v1/discovered-inventory.json".to_string(),
+            product_and_check_output_and_derivation_paths_must_be_distinct: true,
+            raw_capture_independent_of_candidate: true,
+            raw_inputs_require_eof_and_no_truncation: true,
+            reject_duplicate_unknown_or_unfinished_events: true,
+            semantic_inventory_digest_alone_authoritative: false,
+            source_workspace_check_only: true,
+            subject_product_executed_by_workspace_check: false,
+            subject_product_binding_must_equal_retained_product: true,
+            supervisor_recomputes_inventory_counts_and_outcomes: true,
+            supervisor_reparses_raw_cargo_metadata: true,
+            supervisor_reparses_raw_list_and_events: true,
+            trusted_supervisor_binds_exact_check_derivation_and_wrapper: true,
+            trusted_supervisor_capture_paths_bound_by_future_terminal_evidence: true,
+            trusted_supervisor_raw_capture_out_of_store: true,
+        },
+        suite_scope: "hepta_nix_linux_exact_packages_v1".to_string(),
+        target_triple: "x86_64-unknown-linux-gnu".to_string(),
+        test_identity_inventory_algorithm: WORKSPACE_CHECK_TEST_IDENTITY_ALGORITHM.to_string(),
+        test_threads: 1,
+        toolchain_manifest_sha256: binding.workspace_check_toolchain_manifest_sha256.clone(),
+        user_config_file: "none".to_string(),
+    }
+}
+
+fn exact_nix_workspace_check_recipe() -> ClosedWorkspaceCheckRecipeV1 {
+    let mut common = vec![
+        "cargo".to_string(),
+        "nextest".to_string(),
+        "--user-config-file".to_string(),
+        "none".to_string(),
+        "--config-file".to_string(),
+        "nix/hepta-nextest.toml".to_string(),
+        "--profile".to_string(),
+        "default".to_string(),
+    ];
+    let mut list_argv = common.clone();
+    list_argv.push("list".to_string());
+    append_workspace_check_common_selection_argv(&mut list_argv);
+    list_argv.extend([
+        "--list-type".to_string(),
+        "full".to_string(),
+        "--message-format".to_string(),
+        "json".to_string(),
+    ]);
+
+    common.push("run".to_string());
+    append_workspace_check_common_selection_argv(&mut common);
+    common.extend([
+        "--no-fail-fast".to_string(),
+        "--no-tests".to_string(),
+        "fail".to_string(),
+        "--retries".to_string(),
+        "0".to_string(),
+        "--test-threads".to_string(),
+        "1".to_string(),
+        "--message-format".to_string(),
+        "libtest-json-plus".to_string(),
+        "--message-format-version".to_string(),
+        "0.1".to_string(),
+    ]);
+
+    ClosedWorkspaceCheckRecipeV1 {
+        archive: "none".to_string(),
+        binaries_metadata: "none".to_string(),
+        build_jobs: 1,
+        build_profile: "test".to_string(),
+        caller_manifest_allowed: false,
+        candidate_verify_revalidates_discovered_inventory_after_run: true,
+        candidate_verify_revalidates_tool_versions_after_run: true,
+        cargo_metadata_argv: vec![
+            "cargo".to_string(),
+            "metadata".to_string(),
+            "--locked".to_string(),
+            "--offline".to_string(),
+            "--no-deps".to_string(),
+            "--format-version".to_string(),
+            "1".to_string(),
+            "--manifest-path".to_string(),
+            "Cargo.toml".to_string(),
+        ],
+        cargo_metadata_projection_preflight_before_nextest_list: true,
+        execution_order: vec![
+            "capture_exact_tool_versions".to_string(),
+            "validate_exact_tool_versions".to_string(),
+            "cargo_metadata".to_string(),
+            "validate_exact_nextest_config".to_string(),
+            "parse_and_compare_cargo_target_projection".to_string(),
+            "nextest_list".to_string(),
+            "canonicalize_discovered_inventory".to_string(),
+            "compare_expected_inventory".to_string(),
+            "nextest_run".to_string(),
+            "verify_candidate_summary_and_discovered_inventory".to_string(),
+        ],
+        expected_inventory_compare_argv: vec![
+            "cmp".to_string(),
+            "--silent".to_string(),
+            "<run_unique_tmpdir>/hepta-check-suite-v1/discovered-inventory.json".to_string(),
+            "nix/hepta-expected-check-inventory-v1.json".to_string(),
+        ],
+        expected_inventory_compared_before_nextest_run: true,
+        list_and_run_share_target_dir: true,
+        list_argv,
+        manifest_path: "codex-rs/Cargo.toml".to_string(),
+        nextest_config_preflight_before_nextest_list: true,
+        nextest_list_launches_test_binaries_for_enumeration: true,
+        nextest_reuse_build_option: "absent".to_string(),
+        no_run: false,
+        no_tests_behavior: "fail".to_string(),
+        release: false,
+        run_argv: common,
+        run_environment: vec![ClosedWorkspaceCheckEnvironmentV1 {
+            name: "NEXTEST_EXPERIMENTAL_LIBTEST_JSON".to_string(),
+            value: "1".to_string(),
+        }],
+        target_dir_remap: "none".to_string(),
+        tool_versions_preflight_before_cargo_metadata_and_nextest_list: true,
+        workspace_remap: "none".to_string(),
+        workspace_root: "codex-rs".to_string(),
+        wrapper_explicit_environment_overrides: vec![
+            ClosedWorkspaceCheckEnvironmentV1 {
+                name: "CARGO_BUILD_JOBS".to_string(),
+                value: "1".to_string(),
+            },
+            ClosedWorkspaceCheckEnvironmentV1 {
+                name: "CARGO_INCREMENTAL".to_string(),
+                value: "0".to_string(),
+            },
+            ClosedWorkspaceCheckEnvironmentV1 {
+                name: "CARGO_NET_OFFLINE".to_string(),
+                value: "true".to_string(),
+            },
+            ClosedWorkspaceCheckEnvironmentV1 {
+                name: "CARGO_TARGET_DIR".to_string(),
+                value: "<run_unique_tmpdir>/hepta-nextest-target".to_string(),
+            },
+            ClosedWorkspaceCheckEnvironmentV1 {
+                name: "CARGO_TERM_COLOR".to_string(),
+                value: "never".to_string(),
+            },
+            ClosedWorkspaceCheckEnvironmentV1 {
+                name: "NO_COLOR".to_string(),
+                value: "1".to_string(),
+            },
+            ClosedWorkspaceCheckEnvironmentV1 {
+                name: "RUST_BACKTRACE".to_string(),
+                value: "0".to_string(),
+            },
+        ],
+    }
+}
+
+fn append_workspace_check_common_selection_argv(argv: &mut Vec<String>) {
+    argv.extend([
+        "--ignore-default-filter".to_string(),
+        "--locked".to_string(),
+        "--offline".to_string(),
+    ]);
+    for package in WORKSPACE_CHECK_PACKAGES {
+        argv.push("-p".to_string());
+        argv.push(package.to_string());
+    }
+}
+
+pub(crate) fn nix_workspace_check_contract_sha256(
+    binding: &NixClosedRunPlanBindingV1,
+) -> Result<String, NixMnlError> {
+    Ok(sha256_hex(&serde_json::to_vec(
+        &exact_nix_workspace_check_contract(binding),
+    )?))
 }
 
 pub fn join_nix_closed_run_plan_to_prepared_claim(
@@ -1367,9 +1911,22 @@ fn validate_binding(binding: &NixClosedRunPlanBindingV1) -> Result<(), NixMnlErr
             &binding.nix_store_seed_inventory_sha256,
             "Nix store seed inventory",
         ),
+        (&binding.nextest_config_sha256, "nextest config"),
         (&binding.run_identity_sha256, "run identity"),
         (&binding.run_nonce_sha256, "run nonce"),
         (&binding.source_tree_manifest_sha256, "source tree manifest"),
+        (
+            &binding.workspace_check_contract_sha256,
+            "workspace check contract",
+        ),
+        (
+            &binding.workspace_check_expected_inventory_sha256,
+            "workspace check expected inventory",
+        ),
+        (
+            &binding.workspace_check_toolchain_manifest_sha256,
+            "workspace check toolchain manifest",
+        ),
     ] {
         require_sha256(value, label)?;
     }
@@ -1386,6 +1943,24 @@ fn validate_binding(binding: &NixClosedRunPlanBindingV1) -> Result<(), NixMnlErr
     {
         return Err(invalid(
             "closed Nix run plan does not use the shared run-identity algorithm",
+        ));
+    }
+    if binding.workspace_check_expected_suite_count != EXACT_EXPECTED_WORKSPACE_CHECK_SUITES
+        || binding.workspace_check_expected_nonempty_suite_count == 0
+        || binding.workspace_check_expected_nonempty_suite_count
+            > binding.workspace_check_expected_suite_count
+        || binding.workspace_check_expected_test_count == 0
+        || binding.workspace_check_expected_test_count > MAX_EXPECTED_WORKSPACE_CHECK_TESTS
+        || binding.workspace_check_expected_test_count
+            < binding.workspace_check_expected_nonempty_suite_count
+    {
+        return Err(invalid(
+            "workspace check expected suite or test counts are outside their exact bounds",
+        ));
+    }
+    if binding.workspace_check_contract_sha256 != nix_workspace_check_contract_sha256(binding)? {
+        return Err(invalid(
+            "workspace check contract digest differs from its exact canonical contract",
         ));
     }
     validate_artifact(&binding.source_archive, "0444", "source archive")?;
@@ -2084,6 +2659,17 @@ fn output_verification_commands() -> Vec<ClosedCommandSpecV1> {
             300,
         ),
     ]);
+    let mut discovered_inventory = command(
+        "/bin/cat",
+        &[ClosedArgumentV1::QualifiedCheckOutputRelative {
+            relative_path: "share/hepta/check-suite-v1/discovered-inventory.json".to_string(),
+        }],
+        300,
+    );
+    discovered_inventory.stdout_handling = ClosedStdoutHandlingV1::BoundedCapture {
+        maximum_bytes: MAX_WORKSPACE_CHECK_INVENTORY_BYTES,
+    };
+    commands.push(discovered_inventory);
     commands
 }
 
@@ -2271,7 +2857,7 @@ fn exact_evidence_algorithms() -> ClosedEvidenceAlgorithmPlanV1 {
         source_archive_bytes: "sha256_exact_source_archive_bytes_v1".to_string(),
         stderr_bytes: "sha256_complete_raw_stderr_plus_u64be_size_no_truncation_v1".to_string(),
         stdout_bytes: "sha256_complete_raw_stdout_plus_u64be_size_no_truncation_v1".to_string(),
-        suite_inventory: "sha256_domain_count_then_bytewise_sorted_unique_lp_test_name_no_cr_or_control_v1".to_string(),
+        suite_inventory: WORKSPACE_CHECK_TEST_IDENTITY_ALGORITHM.to_string(),
     }
 }
 

@@ -12,6 +12,7 @@ use codex_hepta_mnl_trust_v1::match_final_freeze_to_prepared_claim;
 use crate::ClosedArtifactPinV1;
 use crate::InspectedNixClosedRunPlanV1;
 use crate::JoinedNixClosedRunPlanPreparedClaimInspectionV1;
+use crate::NIX_WORKSPACE_CHECK_CONTRACT_NAMED_MATERIAL;
 use crate::NixClosedRunPlanBindingV1;
 use crate::NixMnlError;
 use crate::PINNED_IMAGE_SHA256;
@@ -137,6 +138,10 @@ pub(crate) fn expected_nix_final_freeze_projection(
             named_material(
                 NIX_STORE_SEED_INVENTORY_MATERIAL,
                 &binding.nix_store_seed_inventory_sha256,
+            ),
+            named_material(
+                NIX_WORKSPACE_CHECK_CONTRACT_NAMED_MATERIAL,
+                &binding.workspace_check_contract_sha256,
             ),
         ],
         platform_artifacts: vec![

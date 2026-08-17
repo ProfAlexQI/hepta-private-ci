@@ -51,7 +51,32 @@
           codex-rs = codex-rs;
           default = codex-rs;
         }
+        // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+          # Proposal-only discovery. Its output is explicitly non-authorizing;
+          # the full check consumes a separately reviewed frozen inventory.
+          hepta-workspace-check-discovery = pkgs.callPackage ./nix/hepta-workspace-check.nix {
+            product = codex-rs;
+            discoveryOnly = true;
+          };
+        }
       );
+
+      # This is deliberately an independent output. The product derivation
+      # has doCheck=false; aliasing it here would not execute or inventory any
+      # tests and would make the product and check store paths identical.
+      checks.x86_64-linux =
+        let
+          pkgs = import nixpkgs {
+            system = "x86_64-linux";
+            overlays = [ rust-overlay.overlays.default ];
+          };
+        in
+        {
+          workspace = pkgs.callPackage ./nix/hepta-workspace-check.nix {
+            product = self.packages.x86_64-linux.codex-rs;
+            expectedInventory = ./nix/hepta-expected-check-inventory-v1.json;
+          };
+        };
 
       devShells = forAllSystems (system:
         let

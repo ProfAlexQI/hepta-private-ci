@@ -7,15 +7,15 @@ const TEST_TRUST_ROOT_ID: &str = "hepta-mnl-test-only-signature-root-v1";
 const TEST_PRE_RUN_PROFILE_ID: &str = "hepta-mnl-test-only-pre-run-v1";
 // Must equal the sandbox closed-plan golden in hepta-nix-mnl-v1/run_plan_tests.rs.
 const TEST_NIX_SANDBOX_CLOSED_PLAN_SHA256: &str =
-    "bd42d959c45d3c50a9b5de77918a03d83af66259655487bca967e5cc62bb4686";
+    "a16f0ee59b131432c6f699b66ab5458eb61508e106b75104018898e7f8fe86a3";
 const TEST_PRE_RUN_SLOT_GOLDEN: &str =
     "74de5bc5c1c44cfeedf74b5d9bc234937bb9dfb2d2d3cf27930bf46154a2a357";
 const TEST_PRE_RUN_FULL_BINDING_GOLDEN: &str =
-    "f4bfb374c3264bd8e81f1ab93a0216cc5b869f3c4a919b382575abdb9157fdce";
+    "2012586cffc7f8dd3c98a7a06f22a072efdfe304e5dbef20fc74d5d4ec76a2fa";
 const TEST_COPY_SLOT_GOLDEN: &str =
     "24c78cddc11ec907367b2d999195193469801fd506b7c9226ce524282448e510";
 const TEST_COPY_FULL_BINDING_GOLDEN: &str =
-    "8e8d0fe3cdf773629250b56f27ba670a9e6754457c3be3afea9dd205284861ba";
+    "48cf431ff2a0e6849f75666e563abe37d12565e99390a459f00589ac1b787d3c";
 
 assert_not_impl_any!(PreparedPreRunReplayClaimV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
 assert_not_impl_any!(PreparedCopyAckReplayClaimV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);

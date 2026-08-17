@@ -17,7 +17,7 @@ fn typed_final_freeze_consumes_n1_n2_and_remains_non_authorizing() {
         inspected.ancestry().final_tooling()
     );
     assert_eq!(inspected.platform_artifacts().len(), 6);
-    assert_eq!(inspected.named_materials().len(), 3);
+    assert_eq!(inspected.named_materials().len(), 4);
     assert!(!inspected.authorizes_live());
     assert!(!inspected.actual_artifact_bytes_observed());
     assert!(!inspected.source_provenance_observed());
@@ -54,6 +54,7 @@ fn typed_final_freeze_consumes_n1_n2_and_remains_non_authorizing() {
             "docker_image_config_id",
             "docker_image_manifest",
             "nix_store_seed_inventory",
+            "workspace_check_contract",
         ]
     );
 }
@@ -288,7 +289,7 @@ fn matcher_rejects_common_source_artifact_and_material_projection_drift() {
             expected.platform_artifacts[index].artifact.mode = "0400".to_string()
         });
     }
-    for index in 0..3 {
+    for index in 0..4 {
         reject_expected_mutation(|expected| expected.named_materials[index].sha256 = digest('9'));
     }
 }
@@ -420,6 +421,7 @@ fn test_payload(ancestry: &StructuralAncestryInspectionV1) -> FinalArtifactFreez
             named_material("docker_image_config_id", 'd'),
             named_material("docker_image_manifest", 'e'),
             named_material("nix_store_seed_inventory", 'f'),
+            named_material("workspace_check_contract", 'b'),
         ],
         phase_a_anchor: exact_phase_a_anchor(),
         platform_artifacts: vec![
