@@ -10,6 +10,7 @@
 mod ancestry;
 mod capability;
 mod model;
+mod signature;
 
 pub use ancestry::ANCESTRY_PATH_PROOF_SCHEMA;
 pub use ancestry::MAX_ANCESTRY_COMMITS;
@@ -36,13 +37,30 @@ pub use model::CapabilityStateV1;
 pub use model::CompletionCapabilityLedgerV1;
 pub use model::CompletionCapabilityV1;
 pub use model::CompletionDispositionV1;
+pub use model::DetachedSignatureManifestV1;
+pub use model::DetachedSignatureRoleV1;
 pub use model::EvidenceOriginV1;
 pub use model::GitAncestryPathManifestV1;
 pub use model::GitAncestryPathPolicyV1;
 pub use model::GitCommitManifestEntryV1;
+pub use model::RawDetachedEd25519SignatureV1;
 pub use model::RawGitCommitSidecarV1;
 pub use model::RepositoryIdentityV1;
 pub use model::StructuralAncestryInspectionV1;
+pub use model::VerifiedDetachedSignatureInspectionV1;
+pub use signature::ALL_DETACHED_SIGNATURE_ROLES;
+pub use signature::DETACHED_SIGNATURE_ALGORITHM;
+pub use signature::DETACHED_SIGNATURE_MANIFEST_SCHEMA;
+pub use signature::MAX_DETACHED_SIGNATURE_MANIFEST_BYTES;
+pub use signature::MAX_DETACHED_SIGNATURE_PAYLOAD_BYTES;
+pub use signature::PRODUCTION_SIGNATURE_POLICY_AVAILABLE;
+pub use signature::inspect_final_artifact_freeze_signature;
+pub use signature::inspect_freeze_manifest_signature;
+pub use signature::inspect_independent_copy_ack_signature;
+pub use signature::inspect_post_run_result_envelope_signature;
+pub use signature::inspect_pre_run_profile_signature;
+pub use signature::inspect_supervisor_seal_signature;
+pub use signature::inspect_terminal_manifest_signature;
 
 #[derive(Debug, thiserror::Error)]
 pub enum MnlTrustError {
@@ -56,5 +74,7 @@ pub(crate) fn invalid(message: impl Into<String>) -> MnlTrustError {
     MnlTrustError::Invalid(message.into())
 }
 
+#[cfg(test)]
+mod signature_tests;
 #[cfg(test)]
 mod tests;

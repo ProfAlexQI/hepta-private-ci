@@ -3424,6 +3424,7 @@ dependencies = [
 name = "codex-hepta-mnl-trust-v1"
 version = "0.0.0"
 dependencies = [
+ "ed25519-dalek",
  "gix-hash",
  "gix-object",
  "serde",

@@ -191,3 +191,130 @@ impl StructuralAncestryInspectionV1 {
         false
     }
 }
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub enum DetachedSignatureRoleV1 {
+    #[serde(rename = "final_artifact_freeze")]
+    FinalArtifactFreeze,
+    #[serde(rename = "pre_run_profile")]
+    PreRunProfile,
+    #[serde(rename = "freeze_manifest")]
+    FreezeManifest,
+    #[serde(rename = "supervisor_seal")]
+    SupervisorSeal,
+    #[serde(rename = "independent_copy_ack")]
+    IndependentCopyAck,
+    #[serde(rename = "terminal_manifest")]
+    TerminalManifest,
+    #[serde(rename = "post_run_result_envelope")]
+    PostRunResultEnvelope,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DetachedSignatureManifestV1 {
+    pub schema: String,
+    pub algorithm: String,
+    pub role: DetachedSignatureRoleV1,
+    pub trust_root_id: String,
+    pub trust_root_revision: u64,
+    pub trust_policy_sha256: String,
+    pub signer_key_id: String,
+    pub profile_id: String,
+    pub payload_schema: String,
+    pub payload_byte_count: u64,
+    pub payload_sha256: String,
+    pub signature_sha256: String,
+}
+
+/// Borrowed raw 64-byte detached Ed25519 signature supplied beside its
+/// canonical manifest. This input is not a proof token.
+#[derive(Debug)]
+pub struct RawDetachedEd25519SignatureV1<'a> {
+    pub(crate) raw_signature: &'a [u8],
+}
+
+impl<'a> RawDetachedEd25519SignatureV1<'a> {
+    pub const fn new(raw_signature: &'a [u8]) -> Self {
+        Self { raw_signature }
+    }
+}
+
+/// Opaque observation that one compiled role key verified a detached
+/// signature over exact payload bytes.
+///
+/// This observation does not validate payload semantics, freshness,
+/// publication, copy-domain independence, or any live authority.
+#[derive(Debug)]
+pub struct VerifiedDetachedSignatureInspectionV1 {
+    pub(crate) manifest_sha256: String,
+    pub(crate) payload_byte_count: u64,
+    pub(crate) payload_schema: String,
+    pub(crate) payload_sha256: String,
+    pub(crate) profile_id: String,
+    pub(crate) role: DetachedSignatureRoleV1,
+    pub(crate) signature_sha256: String,
+    pub(crate) signed_frame_sha256: String,
+    pub(crate) signer_key_id: String,
+    pub(crate) trust_policy_sha256: String,
+    pub(crate) trust_root_id: String,
+    pub(crate) trust_root_revision: u64,
+    pub(crate) _seal: DetachedSignatureInspectionSealV1,
+}
+
+#[derive(Debug)]
+pub(crate) struct DetachedSignatureInspectionSealV1;
+
+impl VerifiedDetachedSignatureInspectionV1 {
+    pub fn manifest_sha256(&self) -> &str {
+        &self.manifest_sha256
+    }
+
+    pub fn payload_byte_count(&self) -> u64 {
+        self.payload_byte_count
+    }
+
+    pub fn payload_schema(&self) -> &str {
+        &self.payload_schema
+    }
+
+    pub fn payload_sha256(&self) -> &str {
+        &self.payload_sha256
+    }
+
+    pub fn profile_id(&self) -> &str {
+        &self.profile_id
+    }
+
+    pub fn role(&self) -> DetachedSignatureRoleV1 {
+        self.role
+    }
+
+    pub fn signature_sha256(&self) -> &str {
+        &self.signature_sha256
+    }
+
+    pub fn signed_frame_sha256(&self) -> &str {
+        &self.signed_frame_sha256
+    }
+
+    pub fn signer_key_id(&self) -> &str {
+        &self.signer_key_id
+    }
+
+    pub fn trust_policy_sha256(&self) -> &str {
+        &self.trust_policy_sha256
+    }
+
+    pub fn trust_root_id(&self) -> &str {
+        &self.trust_root_id
+    }
+
+    pub fn trust_root_revision(&self) -> u64 {
+        self.trust_root_revision
+    }
+
+    pub const fn authorizes_live(&self) -> bool {
+        false
+    }
+}

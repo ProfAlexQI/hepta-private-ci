@@ -8,6 +8,7 @@ rust_library(
     edition = "2024",
     visibility = ["//visibility:private"],
     deps = [
+        "@crates//:ed25519-dalek",
         "@crates//:gix-hash",
         "@crates//:gix-object",
         "@crates//:serde",
