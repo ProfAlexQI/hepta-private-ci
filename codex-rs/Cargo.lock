@@ -3421,6 +3421,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-mnl-trust-v1"
+version = "0.0.0"
+dependencies = [
+ "gix-hash",
+ "gix-object",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "static_assertions",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "codex-hepta-native-gateway"
 version = "0.0.0"
 dependencies = [
