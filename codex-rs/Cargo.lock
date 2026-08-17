@@ -3433,6 +3433,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-nix-mnl-v1"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "static_assertions",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "codex-hepta-operator-acceptance"
 version = "0.0.0"
 dependencies = [

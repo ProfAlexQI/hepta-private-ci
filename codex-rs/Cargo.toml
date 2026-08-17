@@ -50,6 +50,7 @@ members = [
     "hepta-linux-qualification-v8",
     "hepta-linux-v8-native",
     "hepta-mac-mnl-v1",
+    "hepta-nix-mnl-v1",
     "hepta-memory",
     "hepta-native-gateway",
     "hepta-operator-acceptance",
