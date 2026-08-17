@@ -292,9 +292,18 @@ fn compiled_blockers() -> Vec<String> {
         "external_receipt_set_pin_missing_from_external_profile",
         "independent_copy_ack_statement_missing",
         "independent_copy_ack_signature_missing",
-        "real_detached_signature_verifier_missing",
-        "durable_atomic_one_shot_replay_store_missing",
-        "live_pre_run_wall_clock_supervisor_missing",
+        "production_role_separated_signature_policy_missing",
+        "production_durable_replay_policy_and_crash_reboot_qualification_missing",
+        "production_wall_clock_immediate_spawn_state_machine_missing",
+        "typed_final_artifact_freeze_semantics_not_joined_to_platform_plan",
+        "final_tooling_ancestry_proof_not_joined_to_platform_plan",
+        "successor_receipt_run_identity_algorithm_migration_missing",
+        "live_read_only_host_collector_and_closed_runner_missing",
+        "qualified_workspace_flake_check_output_missing",
+        "qualified_nix_sandbox_container_feasibility_missing",
+        "auditable_network_attempt_observer_missing",
+        "exact_state_mutation_pre_post_inventory_diff_missing",
+        "independent_bundle_copy_readback_process_identity_missing",
     ]
     .into_iter()
     .map(str::to_string)
@@ -666,7 +675,8 @@ fn validate_run(evidence: &CandidateEvidenceV1) -> Result<(), NixMnlError> {
     if evidence.run.boot_id_sha256 != evidence.host.boot_id_sha256 {
         return Err(invalid("run/host boot identity transplant"));
     }
-    let expected = run_identity_sha256(&evidence.run.run_nonce, &evidence.run.boot_id_sha256)?;
+    let expected =
+        legacy_receipt_run_identity_sha256(&evidence.run.run_nonce, &evidence.run.boot_id_sha256)?;
     if evidence.run.run_identity_sha256 != expected {
         return Err(invalid("run identity digest transplant"));
     }
@@ -1076,7 +1086,13 @@ struct RunHashMaterial<'a> {
     schema: &'static str,
 }
 
-fn run_identity_sha256(run_nonce: &str, boot_id_sha256: &str) -> Result<String, NixMnlError> {
+// Frozen V1 candidate receipts use this canonical-JSON identity. The successor
+// closed plan deliberately uses the shared trust-domain framing instead; a new
+// receipt revision must migrate explicitly rather than reinterpret frozen V1.
+pub(crate) fn legacy_receipt_run_identity_sha256(
+    run_nonce: &str,
+    boot_id_sha256: &str,
+) -> Result<String, NixMnlError> {
     sha256_json(&RunHashMaterial {
         boot_id_sha256,
         run_nonce,
@@ -1577,7 +1593,7 @@ pub(crate) fn populate_derived_fields(
     evidence: &mut CandidateEvidenceV1,
 ) -> Result<(), NixMnlError> {
     evidence.run.run_identity_sha256 =
-        run_identity_sha256(&evidence.run.run_nonce, &evidence.run.boot_id_sha256)?;
+        legacy_receipt_run_identity_sha256(&evidence.run.run_nonce, &evidence.run.boot_id_sha256)?;
     evidence.build.derivation_path_sha256 = sha256(evidence.build.derivation_path.as_bytes());
     evidence.build.output_store_path_sha256 = sha256(evidence.build.output_store_path.as_bytes());
     evidence.checks.subject_binary_sha256 = evidence.build.binary_sha256.clone();

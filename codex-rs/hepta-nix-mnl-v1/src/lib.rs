@@ -6,9 +6,11 @@
 //! verifier remain compile-time blocked until separately frozen inputs exist.
 
 mod model;
+mod run_plan;
 mod verify;
 
 pub use model::*;
+pub use run_plan::*;
 pub use verify::*;
 
 use thiserror::Error;
@@ -32,6 +34,9 @@ pub(crate) fn blocked(message: impl Into<String>) -> NixMnlError {
 pub(crate) fn invalid(message: impl Into<String>) -> NixMnlError {
     NixMnlError::Invalid(message.into())
 }
+
+#[cfg(test)]
+mod run_plan_tests;
 
 #[cfg(test)]
 mod tests;

@@ -298,7 +298,7 @@ fn production_status_plan_verify_and_live_execution_are_blocked_before_run() {
     let status = production_status();
     assert_eq!(status.disposition, ProductionDispositionV1::Blocked);
     assert!(!status.ready_to_plan);
-    assert_eq!(status.blockers.len(), 15);
+    assert_eq!(status.blockers.len(), 24);
     assert!(
         status
             .blockers
@@ -342,18 +342,29 @@ fn production_status_plan_verify_and_live_execution_are_blocked_before_run() {
     assert!(
         status
             .blockers
-            .contains(&"real_detached_signature_verifier_missing".to_string())
+            .contains(&"production_role_separated_signature_policy_missing".to_string())
     );
+    assert!(status.blockers.contains(
+        &"production_durable_replay_policy_and_crash_reboot_qualification_missing".to_string()
+    ));
     assert!(
         status
             .blockers
-            .contains(&"durable_atomic_one_shot_replay_store_missing".to_string())
+            .contains(&"production_wall_clock_immediate_spawn_state_machine_missing".to_string())
     );
-    assert!(
-        status
-            .blockers
-            .contains(&"live_pre_run_wall_clock_supervisor_missing".to_string())
-    );
+    for blocker in [
+        "typed_final_artifact_freeze_semantics_not_joined_to_platform_plan",
+        "final_tooling_ancestry_proof_not_joined_to_platform_plan",
+        "successor_receipt_run_identity_algorithm_migration_missing",
+        "live_read_only_host_collector_and_closed_runner_missing",
+        "qualified_workspace_flake_check_output_missing",
+        "qualified_nix_sandbox_container_feasibility_missing",
+        "auditable_network_attempt_observer_missing",
+        "exact_state_mutation_pre_post_inventory_diff_missing",
+        "independent_bundle_copy_readback_process_identity_missing",
+    ] {
+        assert!(status.blockers.contains(&blocker.to_string()));
+    }
     assert!(matches!(
         plan_production_run(),
         Err(NixMnlError::Blocked(_))
@@ -366,6 +377,23 @@ fn production_status_plan_verify_and_live_execution_are_blocked_before_run() {
         verify_production_evidence(b"not even evidence"),
         Err(NixMnlError::Blocked(_))
     ));
+}
+
+#[test]
+fn successor_plan_run_identity_requires_explicit_receipt_algorithm_migration() {
+    let run_nonce = digest('d');
+    let boot_id = digest('b');
+    let successor =
+        codex_hepta_mnl_trust_v1::derive_run_identity_sha256(&run_nonce, &boot_id).unwrap();
+    let frozen_v1 =
+        crate::verify::legacy_receipt_run_identity_sha256(&run_nonce, &boot_id).unwrap();
+
+    assert_ne!(successor, frozen_v1);
+    assert!(
+        production_status()
+            .blockers
+            .contains(&"successor_receipt_run_identity_algorithm_migration_missing".to_string())
+    );
 }
 
 #[test]

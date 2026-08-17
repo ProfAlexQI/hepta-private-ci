@@ -6,17 +6,21 @@ use crate::*;
 const TEST_TRUST_ROOT_ID: &str = "hepta-mnl-test-only-signature-root-v1";
 const TEST_FINAL_PROFILE_ID: &str = "hepta-mnl-test-only-final-freeze-v1";
 const TEST_PRE_RUN_PROFILE_ID: &str = "hepta-mnl-test-only-pre-run-v1";
+// Must equal the sandbox closed-plan golden in hepta-nix-mnl-v1/run_plan_tests.rs.
+const TEST_NIX_SANDBOX_CLOSED_PLAN_SHA256: &str =
+    "b73d8fddc9e0c606217e83332a757a80c94f67750a17d092bcb405281004d22c";
 const TEST_PRE_RUN_SLOT_GOLDEN: &str =
     "74de5bc5c1c44cfeedf74b5d9bc234937bb9dfb2d2d3cf27930bf46154a2a357";
 const TEST_PRE_RUN_FULL_BINDING_GOLDEN: &str =
-    "31b5c2168816bd9e3b1bd53a3c6d7426af83ed5efac0aa537603ffdae0c910d1";
+    "d874b8032f0d6999c85053e13363923cab462b2e0ef7ab54c9be42f2f2f29171";
 const TEST_COPY_SLOT_GOLDEN: &str =
     "24c78cddc11ec907367b2d999195193469801fd506b7c9226ce524282448e510";
 const TEST_COPY_FULL_BINDING_GOLDEN: &str =
-    "3dcd65df75190d9a66fbdaf80cfac8c79ea63922b951a851697d158f1e0fb3c2";
+    "b343764de34f2151dc4a95d6a89968de1d603e99c17e5385f92dfa445b30e037";
 
 assert_not_impl_any!(PreparedPreRunReplayClaimV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
 assert_not_impl_any!(PreparedCopyAckReplayClaimV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
+assert_not_impl_any!(MatchedPreparedPreRunReplayClaimInspectionV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
 
 #[test]
 fn replay_namespace_and_platform_wire_ids_are_exact() {
@@ -60,6 +64,10 @@ fn pre_run_and_copy_claims_are_structural_and_non_authorizing() {
     assert_eq!(prepared_pre_run.not_before_unix_seconds(), 1_700_000_000);
     assert_eq!(prepared_pre_run.expires_at_unix_seconds(), 1_700_000_120);
     assert_eq!(prepared_pre_run.maximum_lifetime_seconds(), 300);
+    assert_eq!(
+        prepared_pre_run.platform_closed_run_plan_sha256(),
+        TEST_NIX_SANDBOX_CLOSED_PLAN_SHA256
+    );
     assert_eq!(prepared_pre_run.session_nonce_sha256(), digest('d'));
     assert_eq!(
         prepared_pre_run.final_leaf_name(),
@@ -123,6 +131,107 @@ fn replay_slot_and_full_binding_goldens_are_stable() {
             .record_bytes()
             .windows(prepared_pre_run.full_binding_sha256().len())
             .any(|window| window == prepared_pre_run.full_binding_sha256().as_bytes())
+    );
+}
+
+#[test]
+fn closed_run_plan_digest_changes_binding_without_changing_the_nonce_slot() {
+    let original = fixture();
+    let changed = fixture_with_signed_profile_mutation(|profile| {
+        profile.platform_closed_run_plan_sha256 = digest('8');
+    });
+    let original = inspect_pre_run(&original).expect("original pre-run replay shape");
+    let changed = inspect_pre_run(&changed).expect("changed-plan pre-run replay shape");
+
+    assert_eq!(original.replay_slot_sha256(), changed.replay_slot_sha256());
+    assert_ne!(
+        original.platform_closed_run_plan_sha256(),
+        changed.platform_closed_run_plan_sha256()
+    );
+    assert_ne!(
+        original.full_binding_sha256(),
+        changed.full_binding_sha256()
+    );
+
+    let original_fixture = fixture();
+    let changed_fixture = fixture_with_signed_profile_mutation(|profile| {
+        profile.platform_closed_run_plan_sha256 = digest('8');
+    });
+    let original_pre_run = inspect_pre_run(&original_fixture).expect("original prepared claim");
+    let changed_pre_run = inspect_pre_run(&changed_fixture).expect("changed prepared claim");
+    let original_copy_wire = copy_wire(&original_fixture, &original_pre_run);
+    let changed_copy_wire = copy_wire(&changed_fixture, &changed_pre_run);
+    let original_copy = inspect_canonical_copy_ack_replay_claim(
+        &original_pre_run,
+        &serde_json::to_vec(&original_copy_wire).expect("original copy claim"),
+    )
+    .expect("original copy binding");
+    let changed_copy = inspect_canonical_copy_ack_replay_claim(
+        &changed_pre_run,
+        &serde_json::to_vec(&changed_copy_wire).expect("changed copy claim"),
+    )
+    .expect("changed copy binding");
+    assert_eq!(
+        original_copy.replay_slot_sha256(),
+        changed_copy.replay_slot_sha256()
+    );
+    assert_ne!(
+        original_copy.pre_run_full_binding_sha256(),
+        changed_copy.pre_run_full_binding_sha256()
+    );
+    assert_ne!(
+        original_copy.full_binding_sha256(),
+        changed_copy.full_binding_sha256()
+    );
+}
+
+#[test]
+fn prepared_claim_lineage_join_is_exact_and_non_authorizing() {
+    let fixture = fixture();
+    let prepared = inspect_pre_run(&fixture).expect("prepared claim");
+    let expected = expected_lineage(&prepared);
+    let matched = inspect_prepared_pre_run_replay_claim_lineage(prepared, &expected)
+        .expect("exact prepared-claim lineage");
+
+    assert_eq!(
+        matched.prepared_claim().platform_closed_run_plan_sha256(),
+        expected.platform_closed_run_plan_sha256
+    );
+    assert_eq!(
+        matched.prepared_claim().run_nonce_sha256(),
+        expected.run_nonce_sha256
+    );
+    assert!(!matched.authorizes_live());
+    assert!(!matched.durable_commit_observed());
+    assert!(!matched.launch_grant_available());
+}
+
+#[test]
+fn prepared_claim_lineage_join_rejects_every_transplant_axis() {
+    macro_rules! reject {
+        ($field:ident, $value:expr) => {{
+            let fixture = fixture();
+            let prepared = inspect_pre_run(&fixture).expect("prepared claim");
+            let mut expected = expected_lineage(&prepared);
+            expected.$field = $value;
+            let error = inspect_prepared_pre_run_replay_claim_lineage(prepared, &expected)
+                .expect_err(concat!("must reject changed ", stringify!($field)));
+            assert!(error.to_string().contains("exact platform lineage"));
+        }};
+    }
+
+    reject!(platform_scope, ReplayPlatformScopeV1::MacOs);
+    reject!(platform_closed_run_plan_sha256, digest('8'));
+    reject!(profile_id, "other-profile-v1".to_string());
+    reject!(run_identity_sha256, digest('7'));
+    reject!(run_nonce_sha256, digest('6'));
+    reject!(boot_id_sha256, digest('5'));
+    reject!(host_identity_sha256, digest('4'));
+    reject!(challenge_nonce_sha256, digest('3'));
+    reject!(final_artifact_freeze_payload_sha256, digest('2'));
+    reject!(
+        final_artifact_freeze_profile_id,
+        "other-final-freeze-v1".to_string()
     );
 }
 
@@ -262,6 +371,14 @@ fn signed_profile_rejects_unrepresentable_time_and_store_alias_directly() {
     });
     let error = inspect_pre_run(&alias).expect_err("signed replay-store alias must fail");
     assert!(error.to_string().contains("stores are not independent"));
+
+    for invalid_digest in ["0".repeat(64), "A".repeat(64), "a".repeat(63)] {
+        let invalid = fixture_with_signed_profile_mutation(|profile| {
+            profile.platform_closed_run_plan_sha256 = invalid_digest;
+        });
+        let error = inspect_pre_run(&invalid).expect_err("invalid signed plan digest must fail");
+        assert!(error.to_string().contains("platform closed run plan"));
+    }
 }
 
 #[test]
@@ -310,6 +427,7 @@ fn every_pre_run_wire_binding_is_independently_rejected_when_transplanted() {
     reject!(maximum_lifetime_seconds, 301);
     reject!(namespace, ReplayClaimNamespaceV1::IndependentCopyAck);
     reject!(not_before_unix_seconds, 1_700_000_001);
+    reject!(platform_closed_run_plan_sha256, digest('2'));
     reject!(platform_scope, ReplayPlatformScopeV1::MacOs);
     reject!(pre_run_profile_manifest_sha256, digest('2'));
     reject!(pre_run_profile_payload_sha256, digest('2'));
@@ -531,6 +649,7 @@ fn fixture_with_signed_profile_mutation(
         host_identity_sha256: digest('f'),
         maximum_lifetime_seconds: 300,
         not_before_unix_seconds: 1_700_000_000,
+        platform_closed_run_plan_sha256: TEST_NIX_SANDBOX_CLOSED_PLAN_SHA256.to_string(),
         platform_scope: ReplayPlatformScopeV1::Nix,
         pre_run_replay_store_identity_sha256: digest('1'),
         profile_id: TEST_PRE_RUN_PROFILE_ID.to_string(),
@@ -573,6 +692,7 @@ fn fixture_with_signed_profile_mutation(
         maximum_lifetime_seconds: signed_profile.maximum_lifetime_seconds,
         namespace: ReplayClaimNamespaceV1::PreRunLaunch,
         not_before_unix_seconds: signed_profile.not_before_unix_seconds,
+        platform_closed_run_plan_sha256: signed_profile.platform_closed_run_plan_sha256.clone(),
         platform_scope: signed_profile.platform_scope,
         pre_run_profile_manifest_sha256: pre_run.manifest_sha256().to_string(),
         pre_run_profile_payload_sha256: pre_run.payload_sha256().to_string(),
@@ -607,6 +727,25 @@ fn inspect_pre_run(fixture: &ReplayFixture) -> Result<PreparedPreRunReplayClaimV
         &fixture.pre_run,
         &fixture.canonical_pre_run,
     )
+}
+
+fn expected_lineage(
+    prepared: &PreparedPreRunReplayClaimV1,
+) -> ExpectedPreparedPreRunReplayClaimLineageV1 {
+    ExpectedPreparedPreRunReplayClaimLineageV1 {
+        boot_id_sha256: prepared.boot_id_sha256().to_string(),
+        challenge_nonce_sha256: prepared.challenge_nonce_sha256().to_string(),
+        final_artifact_freeze_payload_sha256: prepared
+            .final_artifact_freeze_payload_sha256()
+            .to_string(),
+        final_artifact_freeze_profile_id: prepared.final_artifact_freeze_profile_id().to_string(),
+        host_identity_sha256: prepared.host_identity_sha256().to_string(),
+        platform_closed_run_plan_sha256: prepared.platform_closed_run_plan_sha256().to_string(),
+        platform_scope: prepared.platform_scope(),
+        profile_id: prepared.profile_id().to_string(),
+        run_identity_sha256: prepared.run_identity_sha256().to_string(),
+        run_nonce_sha256: prepared.run_nonce_sha256().to_string(),
+    }
 }
 
 fn copy_wire(

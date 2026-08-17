@@ -8,6 +8,7 @@ rust_library(
     edition = "2024",
     visibility = ["//visibility:private"],
     deps = [
+        "//codex-rs/hepta-mnl-trust-v1:hepta-mnl-trust-v1-lib",
         "@crates//:serde",
         "@crates//:serde_json",
         "@crates//:sha2",

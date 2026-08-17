@@ -3463,6 +3463,7 @@ dependencies = [
 name = "codex-hepta-nix-mnl-v1"
 version = "0.0.0"
 dependencies = [
+ "codex-hepta-mnl-trust-v1",
  "serde",
  "serde_json",
  "sha2 0.10.9",

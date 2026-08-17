@@ -6,7 +6,10 @@ rust_library(
     crate_name = "codex_hepta_mnl_trust_v1",
     crate_root = "src/lib.rs",
     edition = "2024",
-    visibility = ["//codex-rs/hepta-mnl-replay-v1:__pkg__"],
+    visibility = [
+        "//codex-rs/hepta-mnl-replay-v1:__pkg__",
+        "//codex-rs/hepta-nix-mnl-v1:__pkg__",
+    ],
     deps = [
         "@crates//:ed25519-dalek",
         "@crates//:gix-hash",

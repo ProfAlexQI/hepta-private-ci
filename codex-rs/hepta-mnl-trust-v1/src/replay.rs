@@ -7,15 +7,17 @@ use crate::MnlTrustError;
 use crate::VerifiedDetachedSignatureInspectionV1;
 use crate::invalid;
 
-pub const PRE_RUN_REPLAY_CLAIM_SCHEMA: &str = "hepta_mnl_pre_run_replay_claim_v1";
+// Pre-production schema reset: v2 adds the externally signed closed-plan
+// digest. No v1 production profile or durable claim has ever been published.
+pub const PRE_RUN_REPLAY_CLAIM_SCHEMA: &str = "hepta_mnl_pre_run_replay_claim_v2";
 pub const COPY_ACK_REPLAY_CLAIM_SCHEMA: &str = "hepta_mnl_copy_ack_replay_claim_v1";
-pub const SIGNED_PRE_RUN_REPLAY_PROFILE_SCHEMA: &str = "hepta_mnl_signed_pre_run_replay_profile_v1";
+pub const SIGNED_PRE_RUN_REPLAY_PROFILE_SCHEMA: &str = "hepta_mnl_signed_pre_run_replay_profile_v2";
 pub const MAX_REPLAY_CLAIM_BYTES: usize = 64 * 1024;
 pub const MAX_SIGNED_FRESHNESS_LIFETIME_SECONDS: u64 = 60 * 60;
 
 const PRE_RUN_SLOT_DOMAIN: &[u8] = b"hepta.mnl.replay-slot.pre-run.v1\0";
 const COPY_ACK_SLOT_DOMAIN: &[u8] = b"hepta.mnl.replay-slot.copy-ack.v1\0";
-const PRE_RUN_FULL_BINDING_DOMAIN: &[u8] = b"hepta.mnl.replay-binding.pre-run.v1\0";
+const PRE_RUN_FULL_BINDING_DOMAIN: &[u8] = b"hepta.mnl.replay-binding.pre-run.v2\0";
 const COPY_ACK_FULL_BINDING_DOMAIN: &[u8] = b"hepta.mnl.replay-binding.copy-ack.v1\0";
 const RUN_IDENTITY_DOMAIN: &[u8] = b"hepta.mnl.run-identity.v1\0";
 const MAX_IDENTIFIER_BYTES: usize = 128;
@@ -63,6 +65,7 @@ pub struct SignedPreRunReplayProfileV1 {
     pub host_identity_sha256: String,
     pub maximum_lifetime_seconds: u64,
     pub not_before_unix_seconds: u64,
+    pub platform_closed_run_plan_sha256: String,
     pub platform_scope: ReplayPlatformScopeV1,
     pub pre_run_replay_store_identity_sha256: String,
     pub profile_id: String,
@@ -92,6 +95,7 @@ pub struct PreRunReplayClaimWireV1 {
     pub maximum_lifetime_seconds: u64,
     pub namespace: ReplayClaimNamespaceV1,
     pub not_before_unix_seconds: u64,
+    pub platform_closed_run_plan_sha256: String,
     pub platform_scope: ReplayPlatformScopeV1,
     pub pre_run_profile_manifest_sha256: String,
     pub pre_run_profile_payload_sha256: String,
@@ -159,6 +163,7 @@ pub struct PreparedPreRunReplayClaimV1 {
     host_identity_sha256: String,
     maximum_lifetime_seconds: u64,
     not_before_unix_seconds: u64,
+    platform_closed_run_plan_sha256: String,
     platform_scope: ReplayPlatformScopeV1,
     profile_id: String,
     copy_replay_store_identity_sha256: String,
@@ -168,6 +173,33 @@ pub struct PreparedPreRunReplayClaimV1 {
     run_identity_sha256: String,
     run_nonce_sha256: String,
     session_nonce_sha256: String,
+}
+
+/// Caller-side values that must equal an already prepared signed pre-run
+/// claim before a platform-specific closed plan may be joined to it.
+///
+/// This value is only an equality expectation. It carries no signature,
+/// freshness, durability, or execution authority.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExpectedPreparedPreRunReplayClaimLineageV1 {
+    pub boot_id_sha256: String,
+    pub challenge_nonce_sha256: String,
+    pub final_artifact_freeze_payload_sha256: String,
+    pub final_artifact_freeze_profile_id: String,
+    pub host_identity_sha256: String,
+    pub platform_closed_run_plan_sha256: String,
+    pub platform_scope: ReplayPlatformScopeV1,
+    pub profile_id: String,
+    pub run_identity_sha256: String,
+    pub run_nonce_sha256: String,
+}
+
+/// Opaque observation that one prepared signed claim exactly matched one
+/// platform lineage expectation. The token deliberately remains
+/// non-authorizing and retains the original prepared claim.
+#[derive(Debug)]
+pub struct MatchedPreparedPreRunReplayClaimInspectionV1 {
+    prepared_claim: PreparedPreRunReplayClaimV1,
 }
 
 #[derive(Debug)]
@@ -305,6 +337,14 @@ impl PreparedPreRunReplayClaimV1 {
         &self.generation_epoch_id
     }
 
+    pub fn final_artifact_freeze_payload_sha256(&self) -> &str {
+        &self.final_artifact_freeze_signature.payload_sha256
+    }
+
+    pub fn final_artifact_freeze_profile_id(&self) -> &str {
+        &self.final_artifact_freeze_signature.profile_id
+    }
+
     pub fn host_identity_sha256(&self) -> &str {
         &self.host_identity_sha256
     }
@@ -315,6 +355,10 @@ impl PreparedPreRunReplayClaimV1 {
 
     pub const fn not_before_unix_seconds(&self) -> u64 {
         self.not_before_unix_seconds
+    }
+
+    pub fn platform_closed_run_plan_sha256(&self) -> &str {
+        &self.platform_closed_run_plan_sha256
     }
 
     pub fn platform_scope(&self) -> ReplayPlatformScopeV1 {
@@ -376,6 +420,53 @@ impl PreparedCopyAckReplayClaimV1 {
     pub fn copy_replay_store_identity_sha256(&self) -> &str {
         &self.copy_replay_store_identity_sha256
     }
+}
+
+impl MatchedPreparedPreRunReplayClaimInspectionV1 {
+    pub fn prepared_claim(&self) -> &PreparedPreRunReplayClaimV1 {
+        &self.prepared_claim
+    }
+
+    pub const fn authorizes_live(&self) -> bool {
+        false
+    }
+
+    pub const fn durable_commit_observed(&self) -> bool {
+        false
+    }
+
+    pub const fn launch_grant_available(&self) -> bool {
+        false
+    }
+
+    pub const fn wall_clock_verified(&self) -> bool {
+        false
+    }
+}
+
+pub fn inspect_prepared_pre_run_replay_claim_lineage(
+    prepared_claim: PreparedPreRunReplayClaimV1,
+    expected: &ExpectedPreparedPreRunReplayClaimLineageV1,
+) -> Result<MatchedPreparedPreRunReplayClaimInspectionV1, MnlTrustError> {
+    if prepared_claim.platform_scope() != expected.platform_scope
+        || prepared_claim.platform_closed_run_plan_sha256()
+            != expected.platform_closed_run_plan_sha256
+        || prepared_claim.profile_id() != expected.profile_id
+        || prepared_claim.run_identity_sha256() != expected.run_identity_sha256
+        || prepared_claim.run_nonce_sha256() != expected.run_nonce_sha256
+        || prepared_claim.boot_id_sha256() != expected.boot_id_sha256
+        || prepared_claim.host_identity_sha256() != expected.host_identity_sha256
+        || prepared_claim.challenge_nonce_sha256() != expected.challenge_nonce_sha256
+        || prepared_claim.final_artifact_freeze_payload_sha256()
+            != expected.final_artifact_freeze_payload_sha256
+        || prepared_claim.final_artifact_freeze_profile_id()
+            != expected.final_artifact_freeze_profile_id
+    {
+        return Err(invalid(
+            "prepared signed replay claim differs from its exact platform lineage expectation",
+        ));
+    }
+    Ok(MatchedPreparedPreRunReplayClaimInspectionV1 { prepared_claim })
 }
 
 pub fn inspect_canonical_pre_run_replay_claim(
@@ -444,6 +535,10 @@ pub fn inspect_canonical_pre_run_replay_claim(
         (&claim.challenge_nonce_sha256, "challenge nonce"),
         (&claim.copy_session_nonce_sha256, "copy session nonce"),
         (&claim.host_identity_sha256, "host identity"),
+        (
+            &claim.platform_closed_run_plan_sha256,
+            "platform closed run plan",
+        ),
         (&claim.run_identity_sha256, "run identity"),
         (&claim.run_nonce_sha256, "run nonce"),
         (&claim.session_nonce_sha256, "session nonce"),
@@ -491,6 +586,7 @@ pub fn inspect_canonical_pre_run_replay_claim(
         host_identity_sha256: claim.host_identity_sha256,
         maximum_lifetime_seconds: claim.maximum_lifetime_seconds,
         not_before_unix_seconds: claim.not_before_unix_seconds,
+        platform_closed_run_plan_sha256: claim.platform_closed_run_plan_sha256,
         platform_scope: claim.platform_scope,
         profile_id: claim.profile_id,
         copy_replay_store_identity_sha256: claim.copy_replay_store_identity_sha256,
@@ -775,6 +871,10 @@ fn validate_signed_pre_run_profile(
         (&profile.copy_session_nonce_sha256, "copy session nonce"),
         (&profile.host_identity_sha256, "host identity"),
         (
+            &profile.platform_closed_run_plan_sha256,
+            "platform closed run plan",
+        ),
+        (
             &profile.pre_run_replay_store_identity_sha256,
             "pre-run replay store identity",
         ),
@@ -832,6 +932,7 @@ fn pre_run_claim_matches_signed_profile(
         && claim.host_identity_sha256 == profile.host_identity_sha256
         && claim.maximum_lifetime_seconds == profile.maximum_lifetime_seconds
         && claim.not_before_unix_seconds == profile.not_before_unix_seconds
+        && claim.platform_closed_run_plan_sha256 == profile.platform_closed_run_plan_sha256
         && claim.platform_scope == profile.platform_scope
         && claim.pre_run_replay_store_identity_sha256
             == profile.pre_run_replay_store_identity_sha256
