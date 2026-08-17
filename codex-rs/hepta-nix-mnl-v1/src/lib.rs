@@ -5,10 +5,12 @@
 //! It can describe and shape-check evidence, but the production planner and
 //! verifier remain compile-time blocked until separately frozen inputs exist.
 
+mod final_join;
 mod model;
 mod run_plan;
 mod verify;
 
+pub use final_join::*;
 pub use model::*;
 pub use run_plan::*;
 pub use verify::*;
@@ -34,6 +36,9 @@ pub(crate) fn blocked(message: impl Into<String>) -> NixMnlError {
 pub(crate) fn invalid(message: impl Into<String>) -> NixMnlError {
     NixMnlError::Invalid(message.into())
 }
+
+#[cfg(test)]
+mod final_join_tests;
 
 #[cfg(test)]
 mod run_plan_tests;

@@ -416,6 +416,11 @@ fn valid_fixture() -> Fixture {
     }
 }
 
+pub(crate) fn inspect_test_structural_ancestry() -> StructuralAncestryInspectionV1 {
+    let fixture = valid_fixture();
+    inspect_fixture(&fixture).expect("test structural ancestry")
+}
+
 fn manifest(
     final_tooling: RepositoryIdentityV1,
     commits: Vec<GitCommitManifestEntryV1>,

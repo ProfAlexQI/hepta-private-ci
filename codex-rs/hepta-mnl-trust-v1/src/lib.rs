@@ -2,15 +2,17 @@
 //!
 //! This crate has no filesystem, process, network, clock, replay-store, or
 //! signing implementation. It records the exact completion blockers and can
-//! structurally inspect an out-of-tree Git ancestry path or prepare an exact
-//! replay slot/full-binding record from already inspected signature roles.
-//! These structural observations are not trust decisions and never authorize
-//! a live action.
+//! structurally inspect an out-of-tree Git ancestry path, consume that path
+//! with signed final-freeze semantics, or prepare an exact replay
+//! slot/full-binding record from already inspected signature roles. These
+//! structural observations are not provenance proofs or trust decisions and
+//! never authorize a live action.
 
 #![forbid(unsafe_code)]
 
 mod ancestry;
 mod capability;
+mod final_freeze;
 mod model;
 mod replay;
 mod signature;
@@ -33,6 +35,19 @@ pub use capability::exact_phase_a_capability_ledger;
 pub use capability::exact_phase_a_capability_ledger_bytes;
 pub use capability::inspect_canonical_phase_a_capability_ledger;
 pub use capability::validate_phase_a_capability_ledger;
+pub use final_freeze::CanonicalSourceFreezeV1;
+pub use final_freeze::ExpectedCanonicalSourceFreezeV1;
+pub use final_freeze::ExpectedPlatformArtifactBytesV1;
+pub use final_freeze::ExpectedPlatformArtifactFreezeV1;
+pub use final_freeze::FINAL_ARTIFACT_FREEZE_PAYLOAD_SCHEMA;
+pub use final_freeze::FinalArtifactFreezePayloadV1;
+pub use final_freeze::FrozenArtifactBytesV1;
+pub use final_freeze::InspectedFinalArtifactFreezeV1;
+pub use final_freeze::MatchedFinalFreezePlanClaimInspectionV1;
+pub use final_freeze::NamedMaterialFreezeV1;
+pub use final_freeze::PlatformArtifactFreezeV1;
+pub use final_freeze::inspect_final_artifact_freeze_semantics;
+pub use final_freeze::match_final_freeze_to_prepared_claim;
 pub use model::AbsentCapabilityLedgerInspectionV1;
 pub use model::AuthorityDispositionV1;
 pub use model::CapabilityEntryV1;
@@ -97,6 +112,8 @@ pub(crate) fn invalid(message: impl Into<String>) -> MnlTrustError {
     MnlTrustError::Invalid(message.into())
 }
 
+#[cfg(test)]
+mod final_freeze_tests;
 #[cfg(test)]
 mod replay_tests;
 #[cfg(test)]

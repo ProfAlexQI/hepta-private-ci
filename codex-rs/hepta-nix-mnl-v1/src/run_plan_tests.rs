@@ -7,12 +7,12 @@ use crate::*;
 assert_not_impl_any!(InspectedNixClosedRunPlanV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
 assert_not_impl_any!(JoinedNixClosedRunPlanPreparedClaimInspectionV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
 
-const TEST_SANDBOX_PLAN_BYTE_COUNT: usize = 56_968;
+const TEST_SANDBOX_PLAN_BYTE_COUNT: usize = 57_524;
 const TEST_SANDBOX_PLAN_SHA256: &str =
-    "b73d8fddc9e0c606217e83332a757a80c94f67750a17d092bcb405281004d22c";
-const TEST_PRESEALED_PLAN_BYTE_COUNT: usize = 44_477;
+    "bd42d959c45d3c50a9b5de77918a03d83af66259655487bca967e5cc62bb4686";
+const TEST_PRESEALED_PLAN_BYTE_COUNT: usize = 45_033;
 const TEST_PRESEALED_PLAN_SHA256: &str =
-    "cf00e3595d39b6fd0ba43521b576f39cf48dbd5df0e0f97ea0b73550b358b408";
+    "6b09e63a9dfeb8b574cdfa5a0930fc25a79574a949ace0e6e461ce1442931960";
 
 #[test]
 fn exact_sandbox_plan_is_canonical_closed_and_non_authorizing() {
@@ -45,6 +45,21 @@ fn exact_sandbox_plan_is_canonical_closed_and_non_authorizing() {
     assert!(!inspected.wall_clock_verified());
 
     assert!(plan.authority.is_fully_closed());
+    assert_eq!(plan.schema, NIX_CLOSED_RUN_PLAN_SCHEMA);
+    assert_eq!(plan.schema_version, 2);
+    assert_eq!(
+        plan.successor_receipt_identity_contract,
+        NixSuccessorReceiptIdentityContractV2 {
+            boot_id_sha256: plan.binding.boot_id_sha256.clone(),
+            legacy_candidate_evidence_v1_accepted: false,
+            receipt_schema: NIX_SUCCESSOR_RECEIPT_SCHEMA.to_string(),
+            receipt_schema_version: NIX_SUCCESSOR_RECEIPT_SCHEMA_VERSION,
+            run_identity_algorithm: NIX_SUCCESSOR_RUN_IDENTITY_ALGORITHM.to_string(),
+            run_identity_schema: NIX_SUCCESSOR_RUN_IDENTITY_SCHEMA.to_string(),
+            run_identity_sha256: plan.binding.run_identity_sha256.clone(),
+            run_nonce_sha256: plan.binding.run_nonce_sha256.clone(),
+        }
+    );
     let builder = plan.builder_container.as_ref().expect("sandbox builder");
     let verifier = &plan.verifier_container;
     assert_eq!(builder.role, ClosedContainerRoleV1::Builder);
@@ -688,6 +703,31 @@ fn exact_sandbox_plan_is_canonical_closed_and_non_authorizing() {
 }
 
 #[test]
+fn successor_receipt_v2_identity_is_shared_exact_and_never_falls_back_to_v1() {
+    let plan = sandbox_plan();
+    let contract = &plan.successor_receipt_identity_contract;
+    let shared = codex_hepta_mnl_trust_v1::derive_run_identity_sha256(
+        &contract.run_nonce_sha256,
+        &contract.boot_id_sha256,
+    )
+    .expect("shared successor run identity");
+    let legacy = crate::verify::legacy_receipt_run_identity_sha256(
+        &contract.run_nonce_sha256,
+        &contract.boot_id_sha256,
+    )
+    .expect("frozen V1 run identity");
+
+    assert_eq!(contract.run_identity_sha256, shared);
+    assert_ne!(contract.run_identity_sha256, legacy);
+    assert_eq!(contract.receipt_schema_version, 2);
+    assert_eq!(
+        contract.run_identity_algorithm,
+        NIX_SUCCESSOR_RUN_IDENTITY_ALGORITHM
+    );
+    assert!(!contract.legacy_candidate_evidence_v1_accepted);
+}
+
+#[test]
 fn sandbox_and_presealed_plan_byte_goldens_are_stable() {
     let sandbox_bytes = serde_json::to_vec(&sandbox_plan()).expect("sandbox plan bytes");
     assert_eq!(sandbox_bytes.len(), TEST_SANDBOX_PLAN_BYTE_COUNT);
@@ -1163,6 +1203,20 @@ fn authority_isolation_materialization_and_evidence_drift_are_rejected() {
     mutations.push(changed);
     let mut changed = plan.clone();
     changed
+        .successor_receipt_identity_contract
+        .legacy_candidate_evidence_v1_accepted = true;
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
+        .successor_receipt_identity_contract
+        .run_identity_sha256 = digest('0');
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed.successor_receipt_identity_contract.receipt_schema =
+        "hepta_nix_exact_mnl_successor_candidate_evidence_v1".to_string();
+    mutations.push(changed);
+    let mut changed = plan.clone();
+    changed
         .builder_container
         .as_mut()
         .expect("builder")
@@ -1512,7 +1566,7 @@ fn sandbox_plan() -> NixClosedRunPlanWireV1 {
     derive_nix_closed_run_plan(binding()).expect("sandbox closed plan")
 }
 
-fn binding() -> NixClosedRunPlanBindingV1 {
+pub(crate) fn binding() -> NixClosedRunPlanBindingV1 {
     let boot = digest('b');
     let run_nonce = digest('d');
     NixClosedRunPlanBindingV1 {

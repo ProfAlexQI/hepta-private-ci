@@ -4,19 +4,18 @@ use static_assertions::assert_not_impl_any;
 use crate::*;
 
 const TEST_TRUST_ROOT_ID: &str = "hepta-mnl-test-only-signature-root-v1";
-const TEST_FINAL_PROFILE_ID: &str = "hepta-mnl-test-only-final-freeze-v1";
 const TEST_PRE_RUN_PROFILE_ID: &str = "hepta-mnl-test-only-pre-run-v1";
 // Must equal the sandbox closed-plan golden in hepta-nix-mnl-v1/run_plan_tests.rs.
 const TEST_NIX_SANDBOX_CLOSED_PLAN_SHA256: &str =
-    "b73d8fddc9e0c606217e83332a757a80c94f67750a17d092bcb405281004d22c";
+    "bd42d959c45d3c50a9b5de77918a03d83af66259655487bca967e5cc62bb4686";
 const TEST_PRE_RUN_SLOT_GOLDEN: &str =
     "74de5bc5c1c44cfeedf74b5d9bc234937bb9dfb2d2d3cf27930bf46154a2a357";
 const TEST_PRE_RUN_FULL_BINDING_GOLDEN: &str =
-    "d874b8032f0d6999c85053e13363923cab462b2e0ef7ab54c9be42f2f2f29171";
+    "f4bfb374c3264bd8e81f1ab93a0216cc5b869f3c4a919b382575abdb9157fdce";
 const TEST_COPY_SLOT_GOLDEN: &str =
     "24c78cddc11ec907367b2d999195193469801fd506b7c9226ce524282448e510";
 const TEST_COPY_FULL_BINDING_GOLDEN: &str =
-    "b343764de34f2151dc4a95d6a89968de1d603e99c17e5385f92dfa445b30e037";
+    "8e8d0fe3cdf773629250b56f27ba670a9e6754457c3be3afea9dd205284861ba";
 
 assert_not_impl_any!(PreparedPreRunReplayClaimV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
 assert_not_impl_any!(PreparedCopyAckReplayClaimV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
@@ -604,25 +603,22 @@ fn replay_claims_require_exact_canonical_bounded_json() {
     );
 }
 
-struct ReplayFixture {
-    canonical_pre_run: Vec<u8>,
-    final_freeze: VerifiedDetachedSignatureInspectionV1,
-    pre_run: VerifiedDetachedSignatureInspectionV1,
-    pre_run_wire: PreRunReplayClaimWireV1,
+pub(crate) struct ReplayFixture {
+    pub(crate) canonical_pre_run: Vec<u8>,
+    pub(crate) final_freeze: InspectedFinalArtifactFreezeV1,
+    pub(crate) pre_run: VerifiedDetachedSignatureInspectionV1,
+    pub(crate) pre_run_wire: PreRunReplayClaimWireV1,
 }
 
-fn fixture() -> ReplayFixture {
+pub(crate) fn fixture() -> ReplayFixture {
     fixture_with_signed_profile_mutation(|_| {})
 }
 
 fn fixture_with_signed_profile_mutation(
     mutate: impl FnOnce(&mut SignedPreRunReplayProfileV1),
 ) -> ReplayFixture {
-    let final_freeze = inspection(
-        DetachedSignatureRoleV1::FinalArtifactFreeze,
-        TEST_FINAL_PROFILE_ID,
-        br#"{"schema":"test_final_artifact_freeze_v1"}"#.to_vec(),
-    );
+    let final_freeze = crate::final_freeze_tests::inspected_test_final_freeze();
+    let final_freeze_signature = final_freeze.signature_inspection();
     let challenge_nonce_sha256 = digest('c');
     let session_nonce_sha256 = digest('d');
     let copy_session_nonce_sha256 = digest('e');
@@ -639,12 +635,16 @@ fn fixture_with_signed_profile_mutation(
         copy_replay_store_identity_sha256: digest('6'),
         copy_session_nonce_sha256,
         expires_at_unix_seconds: 1_700_000_120,
-        final_artifact_freeze_manifest_sha256: final_freeze.manifest_sha256().to_string(),
-        final_artifact_freeze_payload_sha256: final_freeze.payload_sha256().to_string(),
-        final_artifact_freeze_profile_id: final_freeze.profile_id().to_string(),
-        final_artifact_freeze_signature_sha256: final_freeze.signature_sha256().to_string(),
-        final_artifact_freeze_signed_frame_sha256: final_freeze.signed_frame_sha256().to_string(),
-        final_artifact_freeze_signer_key_id: final_freeze.signer_key_id().to_string(),
+        final_artifact_freeze_manifest_sha256: final_freeze_signature.manifest_sha256().to_string(),
+        final_artifact_freeze_payload_sha256: final_freeze_signature.payload_sha256().to_string(),
+        final_artifact_freeze_profile_id: final_freeze_signature.profile_id().to_string(),
+        final_artifact_freeze_signature_sha256: final_freeze_signature
+            .signature_sha256()
+            .to_string(),
+        final_artifact_freeze_signed_frame_sha256: final_freeze_signature
+            .signed_frame_sha256()
+            .to_string(),
+        final_artifact_freeze_signer_key_id: final_freeze_signature.signer_key_id().to_string(),
         generation_epoch_id: "test-generation-epoch-v1".to_string(),
         host_identity_sha256: digest('f'),
         maximum_lifetime_seconds: 300,
@@ -721,7 +721,9 @@ fn fixture_with_signed_profile_mutation(
     }
 }
 
-fn inspect_pre_run(fixture: &ReplayFixture) -> Result<PreparedPreRunReplayClaimV1, MnlTrustError> {
+pub(crate) fn inspect_pre_run(
+    fixture: &ReplayFixture,
+) -> Result<PreparedPreRunReplayClaimV1, MnlTrustError> {
     inspect_canonical_pre_run_replay_claim(
         &fixture.final_freeze,
         &fixture.pre_run,
@@ -729,7 +731,7 @@ fn inspect_pre_run(fixture: &ReplayFixture) -> Result<PreparedPreRunReplayClaimV
     )
 }
 
-fn expected_lineage(
+pub(crate) fn expected_lineage(
     prepared: &PreparedPreRunReplayClaimV1,
 ) -> ExpectedPreparedPreRunReplayClaimLineageV1 {
     ExpectedPreparedPreRunReplayClaimLineageV1 {

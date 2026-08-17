@@ -18,7 +18,12 @@ use crate::PINNED_IMAGE_SHA256;
 use crate::RepositoryIdentityV1;
 use crate::invalid;
 
-pub const NIX_CLOSED_RUN_PLAN_SCHEMA: &str = "hepta_nix_mnl_closed_run_plan_shape_v1";
+pub const NIX_CLOSED_RUN_PLAN_SCHEMA: &str = "hepta_nix_mnl_closed_run_plan_shape_v2";
+pub const NIX_SUCCESSOR_RECEIPT_SCHEMA: &str =
+    "hepta_nix_exact_mnl_successor_candidate_evidence_v2";
+pub const NIX_SUCCESSOR_RECEIPT_SCHEMA_VERSION: u32 = 2;
+pub const NIX_SUCCESSOR_RUN_IDENTITY_SCHEMA: &str = "hepta_mnl_successor_run_identity_v1";
+pub const NIX_SUCCESSOR_RUN_IDENTITY_ALGORITHM: &str = "hepta.mnl.run-identity.v1";
 pub const MAX_NIX_CLOSED_RUN_PLAN_BYTES: usize = 64 * 1024;
 
 const DATA_ROOT: &str = "/data";
@@ -157,6 +162,24 @@ pub struct NixClosedRunPlanBindingV1 {
     pub source_archive: ClosedArtifactPinV1,
     pub source_tree_manifest_sha256: String,
     pub verifier_binary: ClosedArtifactPinV1,
+}
+
+/// Canonical identity contract for the successor receipt revision.
+///
+/// Frozen CandidateEvidence V1 continues to use its legacy canonical-JSON
+/// identity. This contract is embedded in every successor closed plan so a
+/// future V2 receipt builder cannot silently fall back to or reinterpret V1.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NixSuccessorReceiptIdentityContractV2 {
+    pub boot_id_sha256: String,
+    pub legacy_candidate_evidence_v1_accepted: bool,
+    pub receipt_schema: String,
+    pub receipt_schema_version: u32,
+    pub run_identity_algorithm: String,
+    pub run_identity_schema: String,
+    pub run_identity_sha256: String,
+    pub run_nonce_sha256: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -756,6 +779,7 @@ pub struct NixClosedRunPlanWireV1 {
     pub seccomp_input: ClosedSeccompInputV1,
     pub source_materialization: ClosedSourceMaterializationPlanV1,
     pub stages: Vec<ClosedRunStageV1>,
+    pub successor_receipt_identity_contract: NixSuccessorReceiptIdentityContractV2,
     pub tool_execution: ClosedToolExecutionPlanV1,
     pub verifier_container: ClosedContainerSpecV1,
     pub verifier_docker_exec_policy: ClosedVerifierDockerExecPolicyV1,
@@ -763,6 +787,7 @@ pub struct NixClosedRunPlanWireV1 {
 
 #[derive(Debug)]
 pub struct InspectedNixClosedRunPlanV1 {
+    binding: NixClosedRunPlanBindingV1,
     boot_id_sha256: String,
     canonical_bytes: Vec<u8>,
     challenge_nonce_sha256: String,
@@ -783,6 +808,10 @@ pub struct JoinedNixClosedRunPlanPreparedClaimInspectionV1 {
 }
 
 impl InspectedNixClosedRunPlanV1 {
+    pub(crate) fn binding(&self) -> &NixClosedRunPlanBindingV1 {
+        &self.binding
+    }
+
     pub fn canonical_bytes(&self) -> &[u8] {
         &self.canonical_bytes
     }
@@ -869,6 +898,15 @@ impl InspectedNixClosedRunPlanV1 {
 }
 
 impl JoinedNixClosedRunPlanPreparedClaimInspectionV1 {
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        InspectedNixClosedRunPlanV1,
+        MatchedPreparedPreRunReplayClaimInspectionV1,
+    ) {
+        (self.plan, self.matched_claim)
+    }
+
     pub fn plan(&self) -> &InspectedNixClosedRunPlanV1 {
         &self.plan
     }
@@ -902,6 +940,7 @@ pub fn derive_nix_closed_run_plan(
     binding: NixClosedRunPlanBindingV1,
 ) -> Result<NixClosedRunPlanWireV1, NixMnlError> {
     validate_binding(&binding)?;
+    let successor_receipt_identity_contract = successor_receipt_identity_contract(&binding);
     let run_root = format!(
         "{DATA_ROOT}/hepta-nix-mnl-v1-runs/{}",
         binding.run_identity_sha256
@@ -1167,7 +1206,7 @@ pub fn derive_nix_closed_run_plan(
         },
         run_root,
         schema: NIX_CLOSED_RUN_PLAN_SCHEMA.to_string(),
-        schema_version: 1,
+        schema_version: 2,
         seccomp_input: ClosedSeccompInputV1 {
             artifact_host_path: seccomp_host_path,
             artifact_role: ClosedArtifactRoleV1::SeccompProfile,
@@ -1190,6 +1229,7 @@ pub fn derive_nix_closed_run_plan(
             read_only_after_materialization: true,
         },
         stages: exact_stages(sandbox),
+        successor_receipt_identity_contract,
         tool_execution: exact_tool_execution(
             &external_freeze_root,
             &supervisor_root,
@@ -1230,7 +1270,7 @@ pub fn inspect_canonical_nix_closed_run_plan(
     if canonical != bytes {
         return Err(invalid("closed Nix run plan is not exact canonical JSON"));
     }
-    if plan.schema != NIX_CLOSED_RUN_PLAN_SCHEMA || plan.schema_version != 1 {
+    if plan.schema != NIX_CLOSED_RUN_PLAN_SCHEMA || plan.schema_version != 2 {
         return Err(invalid("closed Nix run plan schema or version differs"));
     }
     if !plan.authority.is_fully_closed() {
@@ -1243,6 +1283,7 @@ pub fn inspect_canonical_nix_closed_run_plan(
         ));
     }
     Ok(InspectedNixClosedRunPlanV1 {
+        binding: plan.binding.clone(),
         boot_id_sha256: plan.binding.boot_id_sha256,
         canonical_bytes: canonical,
         challenge_nonce_sha256: plan.binding.challenge_nonce_sha256,
@@ -1255,6 +1296,21 @@ pub fn inspect_canonical_nix_closed_run_plan(
         run_identity_sha256: plan.binding.run_identity_sha256,
         run_nonce_sha256: plan.binding.run_nonce_sha256,
     })
+}
+
+fn successor_receipt_identity_contract(
+    binding: &NixClosedRunPlanBindingV1,
+) -> NixSuccessorReceiptIdentityContractV2 {
+    NixSuccessorReceiptIdentityContractV2 {
+        boot_id_sha256: binding.boot_id_sha256.clone(),
+        legacy_candidate_evidence_v1_accepted: false,
+        receipt_schema: NIX_SUCCESSOR_RECEIPT_SCHEMA.to_string(),
+        receipt_schema_version: NIX_SUCCESSOR_RECEIPT_SCHEMA_VERSION,
+        run_identity_algorithm: NIX_SUCCESSOR_RUN_IDENTITY_ALGORITHM.to_string(),
+        run_identity_schema: NIX_SUCCESSOR_RUN_IDENTITY_SCHEMA.to_string(),
+        run_identity_sha256: binding.run_identity_sha256.clone(),
+        run_nonce_sha256: binding.run_nonce_sha256.clone(),
+    }
 }
 
 pub fn join_nix_closed_run_plan_to_prepared_claim(

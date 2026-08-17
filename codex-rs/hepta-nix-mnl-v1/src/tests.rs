@@ -353,9 +353,9 @@ fn production_status_plan_verify_and_live_execution_are_blocked_before_run() {
             .contains(&"production_wall_clock_immediate_spawn_state_machine_missing".to_string())
     );
     for blocker in [
-        "typed_final_artifact_freeze_semantics_not_joined_to_platform_plan",
-        "final_tooling_ancestry_proof_not_joined_to_platform_plan",
-        "successor_receipt_run_identity_algorithm_migration_missing",
+        "production_typed_final_artifact_freeze_material_unavailable",
+        "production_final_tooling_ancestry_material_unavailable",
+        "successor_receipt_v2_builder_and_verifier_missing",
         "live_read_only_host_collector_and_closed_runner_missing",
         "qualified_workspace_flake_check_output_missing",
         "qualified_nix_sandbox_container_feasibility_missing",
@@ -392,7 +392,7 @@ fn successor_plan_run_identity_requires_explicit_receipt_algorithm_migration() {
     assert!(
         production_status()
             .blockers
-            .contains(&"successor_receipt_run_identity_algorithm_migration_missing".to_string())
+            .contains(&"successor_receipt_v2_builder_and_verifier_missing".to_string())
     );
 }
 

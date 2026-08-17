@@ -3,6 +3,7 @@ use serde::Serialize;
 use sha2::Digest;
 
 use crate::DetachedSignatureRoleV1;
+use crate::InspectedFinalArtifactFreezeV1;
 use crate::MnlTrustError;
 use crate::VerifiedDetachedSignatureInspectionV1;
 use crate::invalid;
@@ -442,6 +443,24 @@ impl MatchedPreparedPreRunReplayClaimInspectionV1 {
     pub const fn wall_clock_verified(&self) -> bool {
         false
     }
+
+    pub(crate) fn matches_final_artifact_freeze_signature(
+        &self,
+        inspection: &VerifiedDetachedSignatureInspectionV1,
+    ) -> bool {
+        let prepared_claim = &self.prepared_claim;
+        prepared_claim.binding.trust_root_id == inspection.trust_root_id()
+            && prepared_claim.binding.trust_root_revision == inspection.trust_root_revision()
+            && prepared_claim.binding.trust_policy_sha256 == inspection.trust_policy_sha256()
+            && prepared_claim.final_artifact_freeze_signature.matches(
+                inspection.profile_id(),
+                inspection.signer_key_id(),
+                inspection.manifest_sha256(),
+                inspection.payload_sha256(),
+                inspection.signed_frame_sha256(),
+                inspection.signature_sha256(),
+            )
+    }
 }
 
 pub fn inspect_prepared_pre_run_replay_claim_lineage(
@@ -470,10 +489,11 @@ pub fn inspect_prepared_pre_run_replay_claim_lineage(
 }
 
 pub fn inspect_canonical_pre_run_replay_claim(
-    final_artifact_freeze: &VerifiedDetachedSignatureInspectionV1,
+    final_artifact_freeze: &InspectedFinalArtifactFreezeV1,
     pre_run_profile: &VerifiedDetachedSignatureInspectionV1,
     canonical_claim: &[u8],
 ) -> Result<PreparedPreRunReplayClaimV1, MnlTrustError> {
+    let final_artifact_freeze = final_artifact_freeze.signature_inspection();
     require_signature_role(
         final_artifact_freeze,
         DetachedSignatureRoleV1::FinalArtifactFreeze,
