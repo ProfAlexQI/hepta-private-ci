@@ -12,6 +12,8 @@ pub enum ReplayStoreErrorV1 {
     IdentityMismatch(String),
     #[error("MNL replay-store race or replacement detected: {0}")]
     RaceDetected(String),
+    #[error("MNL pre-run state is uncertain after replay publication attempt: {0}")]
+    UncertainAfterPublicationAttempt(String),
     #[error("{operation} failed with errno {errno}")]
     Syscall { operation: &'static str, errno: i32 },
     #[error("{operation}: {source}")]

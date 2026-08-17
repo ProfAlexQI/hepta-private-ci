@@ -154,7 +154,11 @@ pub struct PreparedPreRunReplayClaimV1 {
     boot_id_sha256: String,
     challenge_nonce_sha256: String,
     copy_session_nonce_sha256: String,
+    expires_at_unix_seconds: u64,
+    generation_epoch_id: String,
     host_identity_sha256: String,
+    maximum_lifetime_seconds: u64,
+    not_before_unix_seconds: u64,
     platform_scope: ReplayPlatformScopeV1,
     profile_id: String,
     copy_replay_store_identity_sha256: String,
@@ -163,6 +167,7 @@ pub struct PreparedPreRunReplayClaimV1 {
     pre_run_replay_store_identity_sha256: String,
     run_identity_sha256: String,
     run_nonce_sha256: String,
+    session_nonce_sha256: String,
 }
 
 #[derive(Debug)]
@@ -292,8 +297,24 @@ impl PreparedPreRunReplayClaimV1 {
         &self.copy_session_nonce_sha256
     }
 
+    pub const fn expires_at_unix_seconds(&self) -> u64 {
+        self.expires_at_unix_seconds
+    }
+
+    pub fn generation_epoch_id(&self) -> &str {
+        &self.generation_epoch_id
+    }
+
     pub fn host_identity_sha256(&self) -> &str {
         &self.host_identity_sha256
+    }
+
+    pub const fn maximum_lifetime_seconds(&self) -> u64 {
+        self.maximum_lifetime_seconds
+    }
+
+    pub const fn not_before_unix_seconds(&self) -> u64 {
+        self.not_before_unix_seconds
     }
 
     pub fn platform_scope(&self) -> ReplayPlatformScopeV1 {
@@ -322,6 +343,10 @@ impl PreparedPreRunReplayClaimV1 {
 
     pub fn run_nonce_sha256(&self) -> &str {
         &self.run_nonce_sha256
+    }
+
+    pub fn session_nonce_sha256(&self) -> &str {
+        &self.session_nonce_sha256
     }
 }
 
@@ -461,7 +486,11 @@ pub fn inspect_canonical_pre_run_replay_claim(
         boot_id_sha256: claim.boot_id_sha256,
         challenge_nonce_sha256: claim.challenge_nonce_sha256,
         copy_session_nonce_sha256: claim.copy_session_nonce_sha256,
+        expires_at_unix_seconds: claim.expires_at_unix_seconds,
+        generation_epoch_id: claim.generation_epoch_id,
         host_identity_sha256: claim.host_identity_sha256,
+        maximum_lifetime_seconds: claim.maximum_lifetime_seconds,
+        not_before_unix_seconds: claim.not_before_unix_seconds,
         platform_scope: claim.platform_scope,
         profile_id: claim.profile_id,
         copy_replay_store_identity_sha256: claim.copy_replay_store_identity_sha256,
@@ -472,6 +501,7 @@ pub fn inspect_canonical_pre_run_replay_claim(
         pre_run_replay_store_identity_sha256: claim.pre_run_replay_store_identity_sha256,
         run_identity_sha256: claim.run_identity_sha256,
         run_nonce_sha256: claim.run_nonce_sha256,
+        session_nonce_sha256: claim.session_nonce_sha256,
     })
 }
 

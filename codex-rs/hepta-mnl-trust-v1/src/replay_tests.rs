@@ -54,6 +54,14 @@ fn pre_run_and_copy_claims_are_structural_and_non_authorizing() {
     );
     assert_eq!(prepared_pre_run.profile_id(), TEST_PRE_RUN_PROFILE_ID);
     assert_eq!(
+        prepared_pre_run.generation_epoch_id(),
+        "test-generation-epoch-v1"
+    );
+    assert_eq!(prepared_pre_run.not_before_unix_seconds(), 1_700_000_000);
+    assert_eq!(prepared_pre_run.expires_at_unix_seconds(), 1_700_000_120);
+    assert_eq!(prepared_pre_run.maximum_lifetime_seconds(), 300);
+    assert_eq!(prepared_pre_run.session_nonce_sha256(), digest('d'));
+    assert_eq!(
         prepared_pre_run.final_leaf_name(),
         format!("{}.claim-v1", prepared_pre_run.replay_slot_sha256())
     );

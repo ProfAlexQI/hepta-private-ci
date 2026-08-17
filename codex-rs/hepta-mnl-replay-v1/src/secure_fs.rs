@@ -171,6 +171,23 @@ pub(crate) fn open_claim_file(parent: &OwnedFd, leaf: &str) -> ReplayStoreResult
     Ok(File::from(descriptor))
 }
 
+pub(crate) fn open_readonly_file_beneath(
+    parent: &OwnedFd,
+    leaf: &str,
+    label: &str,
+) -> ReplayStoreResultV1<File> {
+    validate_leaf(leaf, label)?;
+    let descriptor = rustix::fs::openat2(
+        parent,
+        leaf,
+        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+        DESCENDANT_RESOLVE_FLAGS,
+    )
+    .map_err(|error| syscall_error("openat2 fixed read-only file", error))?;
+    Ok(File::from(descriptor))
+}
+
 pub(crate) fn identity_for_fd<Fd: std::os::fd::AsFd>(
     descriptor: Fd,
 ) -> ReplayStoreResultV1<FileIdentityV1> {
