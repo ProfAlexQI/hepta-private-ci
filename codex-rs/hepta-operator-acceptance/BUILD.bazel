@@ -2,6 +2,7 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 rust_library(
     name = "hepta-operator-acceptance-lib",
+    crate_features = ["fixed-runner-supervisor"],
     srcs = glob(["src/**/*.rs"]),
     crate_name = "codex_hepta_operator_acceptance",
     crate_root = "src/lib.rs",
@@ -22,10 +23,16 @@ rust_library(
 rust_test(
     name = "hepta-operator-acceptance-tests",
     crate = ":hepta-operator-acceptance-lib",
+    crate_features = ["fixed-runner-supervisor"],
     deps = [
         "@crates//:pretty_assertions",
         "@crates//:tempfile",
     ],
+    tags = [
+        "no-cache",
+        "no-sandbox",
+    ],
+    timeout = "long",
 )
 
 rust_binary(

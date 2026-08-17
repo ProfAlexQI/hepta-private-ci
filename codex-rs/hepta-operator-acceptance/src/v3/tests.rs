@@ -732,8 +732,14 @@ fn mac_reemitted_wrapper_preserves_real_original_provenance_and_detects_races() 
     .expect("canonical semantic mode");
     for (relative, entry) in &original.entries {
         let destination = original_tree.join(relative);
-        fs::create_dir_all(destination.parent().expect("archive parent")).expect("archive dirs");
-        private_dir(destination.parent().expect("archive parent"));
+        let archive_parent = destination.parent().expect("archive parent");
+        fs::create_dir_all(archive_parent).expect("archive dirs");
+        for directory in archive_parent.ancestors() {
+            if !directory.starts_with(&original_tree) {
+                break;
+            }
+            private_dir(directory);
+        }
         fs::copy(original_root.join(relative), &destination).expect("archive copy");
         strip_macos_extended_metadata(&destination);
         fs::set_permissions(&destination, fs::Permissions::from_mode(0o400))

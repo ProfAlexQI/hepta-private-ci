@@ -30,6 +30,16 @@ use std::process::Command;
 
 static LIVE_COLLECTOR_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+fn private_tempdir(prefix: &str) -> tempfile::TempDir {
+    let directory = tempfile::Builder::new()
+        .prefix(prefix)
+        .tempdir_in(env!("CARGO_MANIFEST_DIR"))
+        .expect("create private test directory");
+    std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700))
+        .expect("set private test directory mode");
+    directory
+}
+
 fn synthetic_receipt_file_binding(receipt_sha256: &str) -> CollectorReceiptFileBindingV3 {
     let root_after = FilesystemObjectBindingV3 {
         birthtime_nanoseconds: 1,
@@ -1128,14 +1138,8 @@ struct LiveCollectorFixture {
 
 impl LiveCollectorFixture {
     fn new() -> Self {
-        let fixture = tempfile::Builder::new()
-            .prefix(".restart-collector-redteam-fixture-")
-            .tempdir_in(env!("CARGO_MANIFEST_DIR"))
-            .unwrap();
-        let persistence = tempfile::Builder::new()
-            .prefix(".restart-collector-redteam-receipts-")
-            .tempdir_in(env!("CARGO_MANIFEST_DIR"))
-            .unwrap();
+        let fixture = private_tempdir(".restart-collector-redteam-fixture-");
+        let persistence = private_tempdir(".restart-collector-redteam-receipts-");
         let fixture_root = std::fs::canonicalize(fixture.path()).unwrap();
         let persistence_root = std::fs::canonicalize(persistence.path()).unwrap();
         let mountpoint = fixture_root.join("mountpoint");
@@ -2501,10 +2505,7 @@ fn active_collector_reservation_blocks_duplicate_pending_even_after_drop() {
 fn first_lineage_receipt_unlink_or_same_byte_replacement_is_permanently_rejected() {
     let _lock = live_collector_test_lock();
     for replace in [false, true] {
-        let _control_fixture = tempfile::Builder::new()
-            .prefix(".restart-collector-redteam-control-")
-            .tempdir_in(env!("CARGO_MANIFEST_DIR"))
-            .expect("create independent control-root owner");
+        let _control_fixture = private_tempdir(".restart-collector-redteam-control-");
         let mut fixture = LiveCollectorFixture::new();
         let operation_nonce = fixture.bindings.operation_nonce.clone();
         let control_root = _control_fixture.path().join(if replace {
@@ -2545,10 +2546,7 @@ fn first_lineage_receipt_unlink_or_same_byte_replacement_is_permanently_rejected
 #[test]
 fn receipt_root_g0_g1_survives_drop_reopen_and_rejects_legal_same_byte_swap() {
     let _lock = live_collector_test_lock();
-    let _control_fixture = tempfile::Builder::new()
-        .prefix(".restart-collector-redteam-control-")
-        .tempdir_in(env!("CARGO_MANIFEST_DIR"))
-        .expect("create independent control-root owner");
+    let _control_fixture = private_tempdir(".restart-collector-redteam-control-");
     let mut fixture = LiveCollectorFixture::new();
     let operation_nonce = fixture.bindings.operation_nonce.clone();
     let control_root = _control_fixture.path().join("control-generation-reopen");
@@ -2772,10 +2770,7 @@ fn receipt_root_capacity_allows_exact_64_reopen_but_rejects_any_65th_entry() {
 fn drop_all_fd_reopen_rejects_missing_orphan_temp_extra_and_net_zero_root_drift() {
     let _lock = live_collector_test_lock();
     for mutation in ["missing", "orphan", "temp", "extra", "endpoint-drift"] {
-        let _control_fixture = tempfile::Builder::new()
-            .prefix(".restart-collector-redteam-control-")
-            .tempdir_in(env!("CARGO_MANIFEST_DIR"))
-            .expect("create independent control-root owner");
+        let _control_fixture = private_tempdir(".restart-collector-redteam-control-");
         let mut fixture = LiveCollectorFixture::new();
         let operation_nonce = fixture.bindings.operation_nonce.clone();
         let control_root = _control_fixture
@@ -3347,10 +3342,7 @@ fn unadopted_generation_produces_one_exact_noncloneable_s1_transfer() {
 #[test]
 fn deferred_underlying_mountpoint_guard_reopens_only_the_prepared_child() {
     let _lock = live_collector_test_lock();
-    let fixture = tempfile::Builder::new()
-        .prefix(".deferred-mountpoint-guard-")
-        .tempdir_in(env!("CARGO_MANIFEST_DIR"))
-        .unwrap();
+    let fixture = private_tempdir(".deferred-mountpoint-guard-");
     let root = std::fs::canonicalize(fixture.path()).unwrap();
     let parent = root.join("mount-parent");
     let mountpoint = parent.join("mountpoint");
@@ -3375,10 +3367,7 @@ fn live_disk_image_url_symlink_alias_matches_the_prepared_held_file() {
     // The production backing guard intentionally retains and replays every
     // ancestor. Keep this fixture out of the shared TMPDIR, whose metadata is
     // legitimately churned by unrelated parallel tests.
-    let fixture = tempfile::Builder::new()
-        .prefix(".disk-image-url-alias-")
-        .tempdir_in(env!("CARGO_MANIFEST_DIR"))
-        .unwrap();
+    let fixture = private_tempdir(".disk-image-url-alias-");
     let root = std::fs::canonicalize(fixture.path()).unwrap();
     let target = root.join("prepared.img");
     let other = root.join("other.img");
@@ -3616,15 +3605,9 @@ fn rootless_live_zero_requires_persistence_and_fails_closed_before_backing_unlin
     // Keep the descriptor-bound fixture out of the shared TMPDIR: unrelated parallel
     // tests legitimately churn that directory's metadata, which the production
     // ancestor replay must continue to reject.
-    let fixture = tempfile::Builder::new()
-        .prefix(".restart-collector-fixture-")
-        .tempdir_in(env!("CARGO_MANIFEST_DIR"))
-        .unwrap();
+    let fixture = private_tempdir(".restart-collector-fixture-");
     let fixture_root = std::fs::canonicalize(fixture.path()).unwrap();
-    let persistence = tempfile::Builder::new()
-        .prefix(".restart-collector-receipts-")
-        .tempdir_in(env!("CARGO_MANIFEST_DIR"))
-        .unwrap();
+    let persistence = private_tempdir(".restart-collector-receipts-");
     let persistence_root = std::fs::canonicalize(persistence.path()).unwrap();
     let mountpoint = fixture_root.join("mountpoint");
     let artifact_root = fixture_root.join("artifacts");

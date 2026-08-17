@@ -93,6 +93,7 @@ osx.from_archive(
         "https://swcdn.apple.com/content/downloads/09/08/047-91568-A_Y1CFZWQCD4/4xekpyz43i26dbp4enxfro8eb1q7wiujh5/CLTools_macOSNMOS_SDK.pkg",
     ],
 )
+osx.libraries(names = ["libbsm"])
 osx.frameworks(names = [
     "ApplicationServices",
     "AppKit",
