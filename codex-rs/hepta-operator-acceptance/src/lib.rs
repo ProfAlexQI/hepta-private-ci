@@ -32,6 +32,7 @@ pub mod mac_privileged_broker;
 pub(crate) mod mac_privileged_disposable_control;
 mod manifest_inventory;
 pub mod mnl_scope_v1;
+pub mod mnl_successor_v1;
 mod model;
 mod preflight;
 mod qualification_evidence;

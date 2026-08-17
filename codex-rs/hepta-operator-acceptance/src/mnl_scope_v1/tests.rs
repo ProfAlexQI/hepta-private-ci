@@ -15,14 +15,18 @@ fn current_exact_state_is_blocked_on_linux_without_claiming_the_full_matrix() {
         assess(&input_with_linux(RequiredGateObservationV1::Missing))
             .expect("current scoped assessment"),
         ScopedQualificationAssessmentV1 {
-            blockers: vec!["gate:linux-x86_64:MISSING".to_string()],
+            blockers: vec![
+                "gate:macos-aarch64:CONTENT_NOT_REVERIFIED".to_string(),
+                "gate:linux-x86_64:MISSING".to_string(),
+                "gate:nix-x86_64-linux:CONTENT_NOT_REVERIFIED".to_string(),
+            ],
             candidate: exact_contract().candidate,
             deferred_gate_count: 2,
             full_matrix_verdict: FullMatrixVerdictV1::NotClaimed,
             listed_gate_count: 5,
             ready_for_scoped_challenge: false,
             required_gate_count: 3,
-            required_pass_count: 2,
+            required_pass_count: 0,
             schema: ASSESSMENT_SCHEMA.to_string(),
             scope_verdict: ScopeVerdictV1::Blocked,
         }
@@ -30,20 +34,25 @@ fn current_exact_state_is_blocked_on_linux_without_claiming_the_full_matrix() {
 }
 
 #[test]
-fn three_required_passes_allow_only_the_scoped_pass() {
+fn digest_shaped_pass_declarations_never_create_scoped_readiness() {
     assert_eq!(
-        assess(&input_with_linux(pass(LINUX_RECEIPT_MANIFEST))).expect("scoped PASS"),
+        assess(&input_with_linux(pass(LINUX_RECEIPT_MANIFEST)))
+            .expect("digest declarations are assessed fail-closed"),
         ScopedQualificationAssessmentV1 {
-            blockers: Vec::new(),
+            blockers: vec![
+                "gate:macos-aarch64:CONTENT_NOT_REVERIFIED".to_string(),
+                "gate:linux-x86_64:CONTENT_NOT_REVERIFIED".to_string(),
+                "gate:nix-x86_64-linux:CONTENT_NOT_REVERIFIED".to_string(),
+            ],
             candidate: exact_contract().candidate,
             deferred_gate_count: 2,
             full_matrix_verdict: FullMatrixVerdictV1::NotClaimed,
             listed_gate_count: 5,
-            ready_for_scoped_challenge: true,
+            ready_for_scoped_challenge: false,
             required_gate_count: 3,
-            required_pass_count: 3,
+            required_pass_count: 0,
             schema: ASSESSMENT_SCHEMA.to_string(),
-            scope_verdict: ScopeVerdictV1::Pass,
+            scope_verdict: ScopeVerdictV1::Blocked,
         }
     );
 }
@@ -55,14 +64,18 @@ fn failed_required_gate_is_pinned_and_blocks_the_scope() {
     assert_eq!(
         assessment,
         ScopedQualificationAssessmentV1 {
-            blockers: vec!["gate:linux-x86_64:FAIL".to_string()],
+            blockers: vec![
+                "gate:macos-aarch64:CONTENT_NOT_REVERIFIED".to_string(),
+                "gate:linux-x86_64:FAIL".to_string(),
+                "gate:nix-x86_64-linux:CONTENT_NOT_REVERIFIED".to_string(),
+            ],
             candidate: exact_contract().candidate,
             deferred_gate_count: 2,
             full_matrix_verdict: FullMatrixVerdictV1::NotClaimed,
             listed_gate_count: 5,
             ready_for_scoped_challenge: false,
             required_gate_count: 3,
-            required_pass_count: 2,
+            required_pass_count: 0,
             schema: ASSESSMENT_SCHEMA.to_string(),
             scope_verdict: ScopeVerdictV1::Blocked,
         }

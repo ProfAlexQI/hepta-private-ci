@@ -20,7 +20,7 @@ pub fn assess(
     }
 
     let mut blockers = Vec::new();
-    let mut required_pass_count = 0;
+    let required_pass_count = 0;
     for (evidence, contract) in input.evidence.iter().zip(&input.contract.gates) {
         match (evidence, contract) {
             (
@@ -36,7 +36,11 @@ pub fn assess(
             ) if gate == expected_gate && profile == expected_profile => match observation {
                 RequiredGateObservationV1::Pass { receipt } => {
                     validate_receipt_pin(&receipt.sha256)?;
-                    required_pass_count += 1;
+                    // This legacy scope assessor only validates the shape of a
+                    // caller-supplied manifest pin. It does not read or
+                    // semantically verify the receipt, so it must never count
+                    // the declaration as PASS or create challenge readiness.
+                    blockers.push(format!("gate:{}:CONTENT_NOT_REVERIFIED", gate.as_str()));
                 }
                 RequiredGateObservationV1::Fail { receipt } => {
                     validate_receipt_pin(&receipt.sha256)?;
