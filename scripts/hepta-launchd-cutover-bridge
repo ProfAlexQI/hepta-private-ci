@@ -329,6 +329,14 @@ verify_evidence_receipts() {
     echo "canary did not inherit the snapshot recutover predecessor exactly" >&2
     return 1
   }
+  if [[ "$(jq -r '.writer_barrier.self_test_exemption' "$snapshot_receipt")" != true ]]; then
+    jq -e --argjson writer_barrier "$(jq -c '.writer_barrier' "$snapshot_receipt")" '
+      .writer_admission_closed == true and .snapshot_writer_barrier == $writer_barrier
+    ' "$canary_receipt" >/dev/null || {
+      echo "canary did not inherit the production writer barrier exactly" >&2
+      return 1
+    }
+  fi
 }
 
 verify_snapshot_source_fresh() {
@@ -338,6 +346,41 @@ verify_snapshot_source_fresh() {
     echo "state snapshot source is no longer quiescent and byte-exact" >&2
     return 1
   }
+}
+
+writer_restore_receipt_for_plan() {
+  local plan="$1" bundle="$2" snapshot barrier
+  snapshot="$bundle/$(jq -r '.evidence.snapshot.relative_path' "$plan")"
+  if [[ "$(jq -r '.writer_barrier.self_test_exemption' "$snapshot")" == true ]]; then
+    return 0
+  fi
+  barrier="$(jq -r '.writer_barrier.receipt' "$snapshot")"
+  absolute_non_root "$barrier" || return 1
+  if [[ "$barrier" == *.json ]]; then
+    printf '%s\n' "${barrier%.json}.restore.json"
+  else
+    printf '%s\n' "$barrier.restore.json"
+  fi
+}
+
+ensure_legacy_writer_restored() {
+  local plan="$1" bundle="$2" snapshot barrier restore manifest release guard
+  snapshot="$bundle/$(jq -r '.evidence.snapshot.relative_path' "$plan")"
+  if [[ "$(jq -r '.writer_barrier.self_test_exemption' "$snapshot")" == true ]]; then
+    return 0
+  fi
+  barrier="$(jq -r '.writer_barrier.receipt' "$snapshot")"
+  restore="$(writer_restore_receipt_for_plan "$plan" "$bundle")" || return 1
+  manifest="$(jq -r '.manifest' "$plan")"
+  release="$(dirname "$manifest")"
+  guard="$release/scripts/hepta-cutover-guard"
+  [[ -f "$guard" && -x "$guard" && ! -L "$guard" ]] || return 1
+  if [[ -e "$restore" || -L "$restore" ]]; then
+    "$guard" verify-restore --receipt "$barrier" --restore-receipt "$restore" >/dev/null || return 1
+  else
+    /usr/bin/sudo -n "$guard" restore-writer --receipt "$barrier" --output-receipt "$restore" >/dev/null || return 1
+    "$guard" verify-restore --receipt "$barrier" --restore-receipt "$restore" >/dev/null || return 1
+  fi
 }
 
 reserve_private_receipt() {
@@ -507,7 +550,7 @@ remove_chain_cursor_cas() {
 
 prepare_bundle_locked() {
   local manifest="$1" launch_root="$2" bundle="$3" snapshot_receipt="$4" canary_receipt="$5" soak_receipt="$6"
-  local release install_root gateway_label watchdog_label gateway_relative watchdog_relative
+  local release install_root gateway_label watchdog_label gateway_relative watchdog_relative guard
   local legacy_gateway legacy_watchdog vnext_gateway vnext_watchdog legacy_program legacy_program_canonical legacy_install_root
   absolute_non_root "$launch_root" || return 1
   absolute_non_root "$bundle" || return 1
@@ -524,6 +567,11 @@ prepare_bundle_locked() {
   verify_evidence_receipts "$manifest" "$snapshot_receipt" "$canary_receipt" "$soak_receipt" || return 1
   verify_snapshot_source_fresh "$manifest" "$snapshot_receipt" || return 1
   release="$(dirname "$manifest")"
+  guard="$release/scripts/hepta-cutover-guard"
+  [[ -f "$guard" && -x "$guard" && ! -L "$guard" ]] || {
+    echo "release cutover guard is missing or unsafe" >&2
+    return 1
+  }
   install_root="$(jq -r '.runtime.install_root' "$manifest")"
   absolute_non_root "$install_root" || return 1
   "$release/scripts/hepta-generation-pointer" verify \
@@ -614,7 +662,7 @@ prepare_bundle_locked() {
   bridge_set_closed_modes "$stage" || return 1
   bridge_clear_metadata "$stage"
   bridge_build_closure "$stage"
-  mv -n "$stage" "$bundle" || return 1
+  "$guard" publish-directory --staged "$stage" --destination "$bundle" >/dev/null || return 1
   [[ ! -e "$stage" && -d "$bundle" ]] || return 1
   stage=""
   trap - RETURN
@@ -911,7 +959,7 @@ verify_current_rebase_head_provenance() {
 prepare_recutover_bundle_locked() {
   local manifest="$1" launch_root="$2" bundle="$3" snapshot_receipt="$4" canary_receipt="$5" soak_receipt="$6"
   local parent_bundle="$7" predecessor_receipt="$8" parent_plan parent_plan_sha parent_plan_schema parent_epoch epoch chain_cursor predecessor_sha predecessor_sequence predecessor_plan_sha supersedes=false
-  local base_bundle plan_tmp
+  local base_bundle plan_tmp guard
   verify_bundle "$parent_bundle" >/dev/null || return 1
   parent_bundle="$(cd "$parent_bundle" && pwd -P)"
   parent_plan="$parent_bundle/plan.json"
@@ -968,6 +1016,8 @@ prepare_recutover_bundle_locked() {
     return 1
   }
   base_bundle="$(dirname "$bundle")/.hepta-recutover-base.$$.${RANDOM}"
+  guard="$(dirname "$manifest")/scripts/hepta-cutover-guard"
+  [[ -f "$guard" && -x "$guard" && ! -L "$guard" ]] || return 1
   [[ ! -e "$base_bundle" && ! -L "$base_bundle" ]] || return 1
   trap 'chmod -R u+w "${base_bundle:-}" 2>/dev/null || true; rm -rf "${base_bundle:-}"; rm -f "${plan_tmp:-}"; trap - RETURN' RETURN
   prepare_bundle_locked "$manifest" "$launch_root" "$base_bundle" "$snapshot_receipt" "$canary_receipt" "$soak_receipt" >/dev/null
@@ -995,7 +1045,7 @@ prepare_recutover_bundle_locked() {
   bridge_clear_metadata "$base_bundle"
   bridge_build_closure "$base_bundle"
   [[ ! -e "$bundle" && ! -L "$bundle" ]] || { echo "bridge bundle already exists: $bundle" >&2; return 1; }
-  mv -n "$base_bundle" "$bundle"
+  "$guard" publish-directory --staged "$base_bundle" --destination "$bundle" >/dev/null
   [[ ! -e "$base_bundle" && -d "$bundle" ]] || return 1
   base_bundle=""
   verify_bundle "$bundle" >/dev/null || return 1
@@ -1419,6 +1469,12 @@ replace_plist_pair() {
       return 1
     }
   fi
+  if [[ "$target_generation" == legacy ]]; then
+    ensure_legacy_writer_restored "$plan" "$bundle" || {
+      echo "legacy writer could not be restored from the bound barrier" >&2
+      return 1
+    }
+  fi
   if ! publish_plist_pair "$plan" "$bundle" "$target_generation" "$launch_root" "$gateway_label" "$watchdog_label" \
     || ! reload_plist_pair "$launch_root" "$gateway_label" "$watchdog_label" "$service_mode" \
     || ! wait_for_service_pair "$plan" "$target_generation" "$service_mode"; then
@@ -1446,6 +1502,7 @@ transition_locked() {
   local plan_schema epoch="" parent_plan_sha="" previous_plan_sha
   local launch_root chain_cursor prior_cursor_sha="" prior_cursor_json="" chain_pending_sha chain_final_sha final_receipt_sha
   local receipt_tmp pending_tmp chain_pending_tmp chain_final_tmp chain_finalized_tmp pending_sha
+  local writer_restore_receipt="" writer_restore_sha=""
   verify_bundle "$bundle" >/dev/null || return 1
   plan="$bundle/plan.json"; plan_sha="$(sha256_file "$plan")"
   plan_schema="$(jq -r '.schema' "$plan")"
@@ -1554,6 +1611,12 @@ transition_locked() {
   write_chain_cursor_cas "$chain_cursor" "$prior_cursor_sha" "$chain_pending_tmp" || return 1
   chain_pending_sha="$(sha256_file "$chain_cursor")"
   replace_plist_pair "$plan" "$bundle" "$source_generation" "$target_generation" "$service_mode" || return 1
+  if [[ "$target_generation" == legacy ]]; then
+    writer_restore_receipt="$(writer_restore_receipt_for_plan "$plan" "$bundle")" || return 1
+    if [[ -n "$writer_restore_receipt" ]]; then
+      writer_restore_sha="$(sha256_file "$writer_restore_receipt")" || return 1
+    fi
+  fi
   jq -n --arg transition "$command" --arg bundle "$bundle" --arg plan_sha256 "$plan_sha" --arg plan_schema "$plan_schema" \
     --arg epoch "$epoch" --arg parent_plan_sha256 "$parent_plan_sha" \
     --arg source "$source_generation" --arg target "$target_generation" \
@@ -1565,9 +1628,10 @@ transition_locked() {
     --arg previous_receipt "$previous_path" --arg previous_receipt_sha256 "$previous_sha" \
     --arg gateway_sha256 "$(jq -r ".${target_generation}.gateway.sha256" "$plan")" \
     --arg watchdog_sha256 "$(jq -r ".${target_generation}.watchdog.sha256" "$plan")" \
+    --arg writer_restore_receipt "$writer_restore_receipt" --arg writer_restore_sha256 "$writer_restore_sha" \
     --arg applied_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson sequence "$sequence" \
-    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_transition_v2" else "hepta_vnext_launchd_bridge_transition_v1" end),status:"ready",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),sequence:$sequence,transition:$transition,bundle:$bundle,plan_sha256:$plan_sha256,source_generation:$source,target_generation:$target,source_health_path:$source_health_path,target_health_path:$target_health_path,service_mode:$service_mode,chain_cursor:$chain_cursor,pending_receipt:$pending_receipt,pending_receipt_sha256:$pending_receipt_sha256,pending_cursor_sha256:$pending_cursor_sha256,prior_cursor_sha256:(if $prior_cursor_sha256=="" then null else $prior_cursor_sha256 end),chain_head_committed:true,previous_receipt:(if $previous_receipt=="" then null else $previous_receipt end),previous_receipt_sha256:(if $previous_receipt_sha256=="" then null else $previous_receipt_sha256 end),installed:{gateway_sha256:$gateway_sha256,watchdog_sha256:$watchdog_sha256},applied_at:$applied_at,applied:true,service_pair_reloaded:true,post_transition_health_path:$target_health_path,post_transition_health_verified:true,post_transition_bounded_soak_verified:($service_mode == "launchctl" and $target == "vnext"),legacy_authority_reclassified:false}' >"$receipt_tmp"
+    '{schema:(if $plan_schema == "hepta_vnext_launchd_bridge_plan_v2" then "hepta_vnext_launchd_bridge_transition_v2" else "hepta_vnext_launchd_bridge_transition_v1" end),status:"ready",epoch:(if $epoch=="" then null else ($epoch|tonumber) end),parent_plan_sha256:(if $parent_plan_sha256=="" then null else $parent_plan_sha256 end),sequence:$sequence,transition:$transition,bundle:$bundle,plan_sha256:$plan_sha256,source_generation:$source,target_generation:$target,source_health_path:$source_health_path,target_health_path:$target_health_path,service_mode:$service_mode,chain_cursor:$chain_cursor,pending_receipt:$pending_receipt,pending_receipt_sha256:$pending_receipt_sha256,pending_cursor_sha256:$pending_cursor_sha256,prior_cursor_sha256:(if $prior_cursor_sha256=="" then null else $prior_cursor_sha256 end),chain_head_committed:true,previous_receipt:(if $previous_receipt=="" then null else $previous_receipt end),previous_receipt_sha256:(if $previous_receipt_sha256=="" then null else $previous_receipt_sha256 end),installed:{gateway_sha256:$gateway_sha256,watchdog_sha256:$watchdog_sha256},writer_barrier_restore:(if $writer_restore_receipt=="" then null else {receipt:$writer_restore_receipt,sha256:$writer_restore_sha256,writer_admission_closed:false} end),applied_at:$applied_at,applied:true,service_pair_reloaded:true,post_transition_health_path:$target_health_path,post_transition_health_verified:true,post_transition_bounded_soak_verified:($service_mode == "launchctl" and $target == "vnext"),legacy_authority_reclassified:false}' >"$receipt_tmp"
   final_receipt_sha="$(sha256_file "$receipt_tmp")"
   jq -n --arg plan_sha256 "$plan_sha" --arg plan_schema "$plan_schema" --arg epoch "$epoch" \
     --arg parent_plan_sha256 "$parent_plan_sha" --arg current_generation "$target_generation" \
@@ -2363,6 +2427,7 @@ self_test() {
   temp_root="${TMPDIR:-/tmp}"
   root="$(mktemp -d "${temp_root%/}/hepta-launchd-bridge-self-test.XXXXXX")"
   HEPTA_BRIDGE_SELF_TEST_ROOT="$root"
+  export HEPTA_STATE_SNAPSHOT_SELF_TEST_ROOT="$root"
   HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID=""
   trap 'if [[ -n "${HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID:-}" ]]; then kill "$HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID" 2>/dev/null || true; wait "$HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID" 2>/dev/null || true; fi; chflags -R nouchg,noschg "$HEPTA_BRIDGE_SELF_TEST_ROOT" 2>/dev/null || true; chmod -RN "$HEPTA_BRIDGE_SELF_TEST_ROOT" 2>/dev/null || true; chmod -R u+w "$HEPTA_BRIDGE_SELF_TEST_ROOT" 2>/dev/null || true; rm -rf "$HEPTA_BRIDGE_SELF_TEST_ROOT"' EXIT
   health_mode_file="$root/health-mode.txt"
@@ -2459,7 +2524,7 @@ PY_HEALTH_SERVER
   tooling_repository="$root/tooling-repository"
   mkdir -p "$tooling_repository/scripts"
   for relative in \
-    scripts/hepta-immutable-release-tree scripts/hepta-generation-pointer scripts/hepta-install-live-gateway \
+    scripts/hepta-immutable-release-tree scripts/hepta-cutover-guard scripts/hepta-generation-pointer scripts/hepta-install-live-gateway \
     scripts/hepta-install-live-watchdog scripts/hepta-launchd-cutover-bridge scripts/hepta-live-soak.sh \
     scripts/hepta-state-snapshot scripts/hepta-watchdog.sh; do
     cp "$source_repository/$relative" "$tooling_repository/$relative"

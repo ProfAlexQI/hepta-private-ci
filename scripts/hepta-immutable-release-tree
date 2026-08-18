@@ -267,6 +267,7 @@ materialize_release_v1() {
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
   for script in \
     hepta-immutable-release-tree \
+    hepta-cutover-guard \
     hepta-generation-pointer \
     hepta-install-live-gateway \
     hepta-install-live-watchdog \
@@ -603,7 +604,7 @@ build_closed_tree_closure_v1() {
 tooling_scripts_json_v2() {
   local repository="$1" commit="$2" script relative mode object working_sha blob_sha json='[]'
   for script in \
-    hepta-immutable-release-tree hepta-generation-pointer hepta-install-live-gateway \
+    hepta-immutable-release-tree hepta-cutover-guard hepta-generation-pointer hepta-install-live-gateway \
     hepta-install-live-watchdog hepta-launchd-cutover-bridge hepta-live-soak.sh \
     hepta-state-snapshot hepta-watchdog.sh; do
     relative="scripts/$script"
@@ -634,8 +635,8 @@ verify_release_v2() {
     and (.source.commit | test("^[0-9a-f]{40}$")) and (.source.tree | test("^[0-9a-f]{40}$"))
     and .tooling.commit == .source.commit and .tooling.tree == .source.tree
     and .tooling.repository_clean == true and .tooling.head_equals_source_commit == true
-    and .tooling.all_tracked_blobs_exact == true and (.tooling.scripts | length == 8)
-    and ([.tooling.scripts[].relative_path] | sort) == (["scripts/hepta-generation-pointer","scripts/hepta-immutable-release-tree","scripts/hepta-install-live-gateway","scripts/hepta-install-live-watchdog","scripts/hepta-launchd-cutover-bridge","scripts/hepta-live-soak.sh","scripts/hepta-state-snapshot","scripts/hepta-watchdog.sh"] | sort)
+    and .tooling.all_tracked_blobs_exact == true and (.tooling.scripts | length == 9)
+    and ([.tooling.scripts[].relative_path] | sort) == (["scripts/hepta-cutover-guard","scripts/hepta-generation-pointer","scripts/hepta-immutable-release-tree","scripts/hepta-install-live-gateway","scripts/hepta-install-live-watchdog","scripts/hepta-launchd-cutover-bridge","scripts/hepta-live-soak.sh","scripts/hepta-state-snapshot","scripts/hepta-watchdog.sh"] | sort)
     and all(.tooling.scripts[]; (.git_mode == "100755") and (.blob_oid | test("^[0-9a-f]{40}$")) and (.sha256 | test("^[0-9a-f]{64}$")))
     and .closure.profile == "immutable-release-v2"
     and .closure.typed_inventory == "TYPED-INVENTORY.tsv"
@@ -764,7 +765,8 @@ materialize_release() {
   clear_node_metadata_v1 "$stage"
   build_closed_tree_closure_v1 "$stage" immutable-release-v2
   fsync_tree "$stage"
-  mv -n "$stage" "$destination"
+  "$repository/scripts/hepta-cutover-guard" publish-directory \
+    --staged "$stage" --destination "$destination" >/dev/null
   [[ ! -e "$stage" && -d "$destination" && ! -L "$destination" ]] || { echo "release no-replace publication failed" >&2; return 1; }
   stage=""; fsync_paths "$destination_parent"
   trap - EXIT
@@ -801,7 +803,7 @@ self_test() {
   clean_repository="$root/tooling-repository"
   mkdir -p "$clean_repository/scripts"
   for relative in \
-    scripts/hepta-immutable-release-tree scripts/hepta-generation-pointer scripts/hepta-install-live-gateway \
+    scripts/hepta-immutable-release-tree scripts/hepta-cutover-guard scripts/hepta-generation-pointer scripts/hepta-install-live-gateway \
     scripts/hepta-install-live-watchdog scripts/hepta-launchd-cutover-bridge scripts/hepta-live-soak.sh \
     scripts/hepta-state-snapshot scripts/hepta-watchdog.sh; do
     cp "$source_repository/$relative" "$clean_repository/$relative"
@@ -832,7 +834,7 @@ self_test() {
   jq -e --arg commit "$source_commit" '
     .schema == "hepta_vnext_immutable_release_v2" and .source.commit == $commit
     and .source.tree == .tooling.tree and .tooling.commit == $commit
-    and (.tooling.scripts | length == 8) and .closure.profile == "immutable-release-v2"
+    and (.tooling.scripts | length == 9) and .closure.profile == "immutable-release-v2"
     and .runtime.state_snapshot_acl_profile == "hepta_vnext_state_acl_profile_deny_only_v1"
   ' "$release/manifest.json" >/dev/null
   [[ "$(stat -f '%Lp' "$release")" == 500 \
@@ -889,7 +891,7 @@ self_test() {
     echo "immutable release accepted dirty tooling bytes" >&2
     exit 1
   fi
-  jq -cn '{schema:"hepta_vnext_immutable_release_self_test_v2",status:"ready",canary_port:17373,canonical_clean_repository_required:true,head_equals_source_commit:true,tooling_commit_tree_and_eight_blobs_bound:true,full_typed_closed_world_inventory:true,exact_directory_0500_and_file_0400_0500_modes:true,regular_nlink_one:true,extra_directory_rejected:true,fifo_rejected:true,external_hardlink_rejected:true,allow_acl_file_rejected:true,allow_acl_directory_rejected:true,xattr_rejected:true,unreadable_xattr_rejected:true,bsd_flags_rejected:true,coherent_snapshot_downgrade_rejected:true,snapshot_profile_v3_bound:true,snapshot_acl_profile_bound:true,unrelated_binary_rejected:true,contract_bound:true,production_unchanged:true}'
+  jq -cn '{schema:"hepta_vnext_immutable_release_self_test_v2",status:"ready",canary_port:17373,canonical_clean_repository_required:true,head_equals_source_commit:true,tooling_commit_tree_and_nine_blobs_bound:true,full_typed_closed_world_inventory:true,exact_directory_0500_and_file_0400_0500_modes:true,regular_nlink_one:true,extra_directory_rejected:true,fifo_rejected:true,external_hardlink_rejected:true,allow_acl_file_rejected:true,allow_acl_directory_rejected:true,xattr_rejected:true,unreadable_xattr_rejected:true,bsd_flags_rejected:true,coherent_snapshot_downgrade_rejected:true,snapshot_profile_v3_bound:true,snapshot_acl_profile_bound:true,unrelated_binary_rejected:true,contract_bound:true,production_unchanged:true}'
 }
 
 command="${1:-}"

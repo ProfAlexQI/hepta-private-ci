@@ -75,7 +75,7 @@ receipt; the canary binds those digests while still exercising a private copy.
 gateway/watchdog labels, and loopback port into one immutable manifest. The
 v2 materializer runs only from its canonical clean Git repository, requires
 `HEAD` to equal the exact lowercase 40-hex `--source-commit`, and binds that
-commit and tree plus the blob OID and working-byte SHA-256 of all eight release
+commit and tree plus the blob OID and working-byte SHA-256 of all nine release
 scripts. Every script must be a tracked executable blob at that commit. It also
 invokes the candidate executable's exact live-shell contract before copying it
 and again when the manifest is verified. The published release is a typed
@@ -161,14 +161,18 @@ final full source rescan and formally verifies the exact staged ready receipt
 and source before atomically publishing those ready bytes. Only a successful
 post-publication byte/metadata check removes the operation lock.
 
-> **Formal deployment gate:** the shell implementation is currently a WIP and
-> is not production-authorized. Its `mv -n` directory publication does not
-> provide Darwin `RENAME_EXCL`, pathnames are not held through long-lived
-> directory descriptors, and the final quiescence scan is not protected by a
-> writer-admission barrier that remains held through canary and cutover. Until
-> a native publisher plus a credential-separated/root-owned namespace and
-> cross-phase writer barrier close those gaps, self-test receipts are model
-> evidence only and must not authorize a snapshot, aggregate, or transition.
+The release-bound `hepta-cutover-guard` closes the deployment boundary on
+Darwin. Directory publication uses `renameatx_np(RENAME_EXCL)` with source and
+destination parent dirfds, verifies the published inode, and durably syncs both
+parents. Before a production snapshot, the operator unloads both legacy jobs
+and the root guard seals the exact legacy executable as mode `0400` plus the
+system-immutable flag. Its no-replace receipt binds the executable inode and
+digest, state-root inode, operator uid, and both launchd labels. Snapshot
+materialization, persisted canary, bridge preparation, cutover, and recutover
+all bind or reverify that barrier. Rollback restores the exact executable mode
+through the root guard and records a separately verifiable restore receipt;
+fresh recutover therefore requires a new barrier and new snapshot/canary/soak
+evidence after the legacy writer is stopped again.
 
 `hepta-state-snapshot verify --receipt` recomputes the destination inventories,
 while `hepta-state-snapshot verify-source --receipt` rechecks that the original

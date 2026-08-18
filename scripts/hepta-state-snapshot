@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat >&2 <<'EOF'
 usage:
-  hepta-state-snapshot --source-state-root DIR --destination-state-root DIR [--legacy-label LABEL] [--receipt PATH] [--predecessor-rollback-receipt PATH] [--materialize]
+  hepta-state-snapshot --source-state-root DIR --destination-state-root DIR [--legacy-label LABEL] [--receipt PATH] [--predecessor-rollback-receipt PATH] [--writer-barrier-receipt PATH] [--materialize]
   hepta-state-snapshot verify --receipt PATH
   hepta-state-snapshot verify-source --receipt PATH
   hepta-state-snapshot self-test
@@ -15,6 +15,9 @@ nonempty WAL, copies every top-level entry into a new separate state root, and
 writes a receipt after source identity and portable payload inventories agree.
 Fresh recutover snapshots bind the exact applied rollback receipt, its plan SHA,
 and sequence through --predecessor-rollback-receipt.
+Every materialized production snapshot also requires a live writer-barrier
+receipt. The barrier is reverified before copying and immediately before the
+ready receipt is published.
 The v3 mode profile permits regular files only at 0400, 0444, 0500, or 0600,
 and directories only at 0700. Every other mode is rejected. Every original
 mode is bound per path and must be preserved exactly.
@@ -28,6 +31,39 @@ sha256_file() { shasum -a 256 "$1" | awk '{print $1}'; }
 SNAPSHOT_PROFILE_V3=full-state-root-v3
 MODE_PROFILE_V3=hepta_vnext_state_mode_profile_v3
 ACL_PROFILE_V3=hepta_vnext_state_acl_profile_deny_only_v1
+
+writer_barrier_self_test_exempt_v3() {
+  local source_root="$1" legacy_label="$2" test_root="${HEPTA_STATE_SNAPSHOT_SELF_TEST_ROOT:-}"
+  [[ "$legacy_label" == *.selftest \
+    && -n "$test_root" && "$test_root" == /* && "$test_root" != / \
+    && -d "$test_root" && ! -L "$test_root" \
+    && "$(cd "$test_root" && pwd -P)" == "$test_root" \
+    && "$source_root" == "$test_root/"* ]]
+}
+
+verify_writer_barrier_v3() {
+  local barrier_receipt="$1" source_root="$2" legacy_label="$3" script_dir guard barrier_state barrier_label
+  if [[ -z "$barrier_receipt" ]]; then
+    writer_barrier_self_test_exempt_v3 "$source_root" "$legacy_label" || {
+      echo "materialized production snapshot requires --writer-barrier-receipt" >&2
+      return 1
+    }
+    return 0
+  fi
+  absolute_non_root "$barrier_receipt" || return 1
+  barrier_receipt="$(realpath "$barrier_receipt")" || return 1
+  [[ -f "$barrier_receipt" && ! -L "$barrier_receipt" ]] || return 1
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+  guard="$script_dir/hepta-cutover-guard"
+  [[ -f "$guard" && -x "$guard" && ! -L "$guard" ]] || return 1
+  "$guard" verify-writer --receipt "$barrier_receipt" >/dev/null || return 1
+  barrier_state="$(jq -r '.state_root // empty' "$barrier_receipt")"
+  barrier_label="$(jq -r '.legacy_label // empty' "$barrier_receipt")"
+  [[ "$barrier_state" == "$source_root" && "$barrier_label" == "$legacy_label" ]] || {
+    echo "writer barrier subject does not match the snapshot source and label" >&2
+    return 1
+  }
+}
 
 fsync_paths() {
   local python3_bin
@@ -593,11 +629,17 @@ write_private_new() {
 }
 
 publish_directory_no_replace_v3() {
-  local staged="$1" destination="$2" parent
+  local staged="$1" destination="$2" parent script_dir guard
   parent="$(dirname "$destination")"
   [[ -d "$staged" && ! -L "$staged" && ! -e "$destination" && ! -L "$destination" ]] || return 1
   fsync_tree "$staged" || return 1
-  mv -n "$staged" "$destination" || return 1
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+  guard="$script_dir/hepta-cutover-guard"
+  [[ -f "$guard" && -x "$guard" && ! -L "$guard" ]] || {
+    echo "Darwin cutover guard is missing or unsafe" >&2
+    return 1
+  }
+  "$guard" publish-directory --staged "$staged" --destination "$destination" >/dev/null || return 1
   [[ ! -e "$staged" && ! -L "$staged" && -d "$destination" && ! -L "$destination" ]] || {
     echo "snapshot destination publication lost the no-replace race" >&2
     return 1
@@ -869,6 +911,7 @@ snapshot_v3_pre_atomic() {
 snapshot() {
   local source_root="$1" destination_root="$2" receipt="$3" materialize="$4" legacy_label="$5"
   local predecessor_receipt="${6:-}" predecessor_sha="" predecessor_plan_sha="" predecessor_sequence=""
+  local writer_barrier_receipt="${7:-}" writer_barrier_sha="" writer_barrier_json='null'
   local destination_parent destination_name operation_lock stage payload_root temp_root snapshot_id binding binding_sha
   local source_identity_before source_identity_after source_portable destination_portable
   local source_modes_before source_modes_after destination_modes source_acls_before source_acls_after destination_acls
@@ -907,6 +950,17 @@ snapshot() {
     predecessor_sha="$(sha256_file "$predecessor_receipt")"
     predecessor_plan_sha="$(jq -r '.plan_sha256' "$predecessor_receipt")"
     predecessor_sequence="$(jq -r '.sequence' "$predecessor_receipt")"
+  fi
+  if [[ "$materialize" == true ]]; then
+    verify_writer_barrier_v3 "$writer_barrier_receipt" "$source_root" "$legacy_label" || return 1
+    if [[ -n "$writer_barrier_receipt" ]]; then
+      writer_barrier_receipt="$(realpath "$writer_barrier_receipt")" || return 1
+      writer_barrier_sha="$(sha256_file "$writer_barrier_receipt")"
+      writer_barrier_json="$(jq -cn --arg receipt "$writer_barrier_receipt" --arg sha256 "$writer_barrier_sha" \
+        '{schema:"hepta_vnext_writer_barrier_v1",receipt:$receipt,sha256:$sha256,writer_admission_closed:true,self_test_exemption:false}')"
+    else
+      writer_barrier_json='{"schema":"hepta_vnext_writer_barrier_self_test_exemption_v1","receipt":null,"sha256":null,"writer_admission_closed":true,"self_test_exemption":true}'
+    fi
   fi
 
   if [[ "$materialize" != true ]]; then
@@ -1070,6 +1124,7 @@ snapshot() {
     return 1
   }
 
+  verify_writer_barrier_v3 "$writer_barrier_receipt" "$source_root" "$legacy_label" || return 1
   jq -n --arg snapshot_id "$snapshot_id" --arg source "$source_root" --arg destination "$destination_root" \
     --arg profile "$SNAPSHOT_PROFILE_V3" --arg mode_profile "$MODE_PROFILE_V3" --arg acl_profile "$ACL_PROFILE_V3" \
     --arg legacy_label "$legacy_label" --arg source_identity_sha256 "$source_identity_sha" \
@@ -1079,11 +1134,11 @@ snapshot() {
     --arg hardlink_topology_inventory_sha256 "$hardlink_sha" --arg binding "$binding" --arg binding_sha256 "$binding_sha" \
     --arg predecessor_receipt "$predecessor_receipt" --arg predecessor_sha "$predecessor_sha" \
     --arg predecessor_plan_sha "$predecessor_plan_sha" --arg predecessor_sequence "$predecessor_sequence" \
-    --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson entry_count "$entry_count" \
+    --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson writer_barrier "$writer_barrier_json" --argjson entry_count "$entry_count" \
     --argjson file_count "$file_count" --argjson top_level_entry_count "$top_level_count" \
     --argjson sqlite_sidecar_count "$sidecar_count" --argjson key_file_count "$key_count" \
     --argjson hardlink_group_count "$hardlink_group_count" --argjson hardlink_alias_count "$hardlink_alias_count" \
-    '{schema:"hepta_vnext_state_snapshot_receipt_v3",profile:$profile,mode_profile:$mode_profile,acl_profile:$acl_profile,status:"ready",scope:"full-state-root",snapshot_id:$snapshot_id,source_state_root:$source,destination_state_root:$destination,legacy_launchd_label:$legacy_label,legacy_launchd_unloaded:true,source_identity_inventory_sha256:$source_identity_sha256,portable_payload_inventory_sha256:$portable_payload_sha256,original_mode_inventory_sha256:$original_mode_inventory_sha256,acl_inventory_sha256:$acl_inventory_sha256,top_level_inventory_sha256:$top_level_inventory_sha256,sqlite_sidecar_inventory_sha256:$sqlite_sidecar_inventory_sha256,key_inventory_sha256:$key_inventory_sha256,hardlink_topology_inventory_sha256:$hardlink_topology_inventory_sha256,destination_binding:$binding,destination_binding_sha256:$binding_sha256,recutover_predecessor:(if $predecessor_sha=="" then null else {receipt:$predecessor_receipt,sha256:$predecessor_sha,plan_sha256:$predecessor_plan_sha,sequence:($predecessor_sequence|tonumber)} end),entry_count:$entry_count,file_count:$file_count,top_level_entry_count:$top_level_entry_count,sqlite_sidecar_count:$sqlite_sidecar_count,key_file_count:$key_file_count,hardlink_group_count:$hardlink_group_count,hardlink_alias_count:$hardlink_alias_count,created_at:$created_at,writer_stopped:true,wal_empty:true,source_unchanged:true,destination_exact_copy:true,all_top_level_entries_covered:true,regular_file_mode_contract:{allowed_modes:["0400","0444","0500","0600"],exact_allowlist:true},directory_mode_contract:{allowed_modes:["0700"],exact_allowlist:true},mode_policy_validated:true,original_modes_preserved:true,acl_allow_aces_forbidden:true,acl_deny_only_preserved:true,acl_inventory_bound:true,modes_uid_gid_mtime_flags_acl_xattr_preserved:true,wal_shm_and_keys_covered:true,hardlinks_preserved:true,external_hardlinks_rejected:true,identity_inventory_separate:true,replay_protected_by_destination_binding:true,atomic_no_replace_publication:true,durable_publication:true,final_source_rescan:true,service_changed:false}' >"$receipt_tmp"
+    '{schema:"hepta_vnext_state_snapshot_receipt_v3",profile:$profile,mode_profile:$mode_profile,acl_profile:$acl_profile,status:"ready",scope:"full-state-root",snapshot_id:$snapshot_id,source_state_root:$source,destination_state_root:$destination,legacy_launchd_label:$legacy_label,legacy_launchd_unloaded:true,writer_barrier:$writer_barrier,source_identity_inventory_sha256:$source_identity_sha256,portable_payload_inventory_sha256:$portable_payload_sha256,original_mode_inventory_sha256:$original_mode_inventory_sha256,acl_inventory_sha256:$acl_inventory_sha256,top_level_inventory_sha256:$top_level_inventory_sha256,sqlite_sidecar_inventory_sha256:$sqlite_sidecar_inventory_sha256,key_inventory_sha256:$key_inventory_sha256,hardlink_topology_inventory_sha256:$hardlink_topology_inventory_sha256,destination_binding:$binding,destination_binding_sha256:$binding_sha256,recutover_predecessor:(if $predecessor_sha=="" then null else {receipt:$predecessor_receipt,sha256:$predecessor_sha,plan_sha256:$predecessor_plan_sha,sequence:($predecessor_sequence|tonumber)} end),entry_count:$entry_count,file_count:$file_count,top_level_entry_count:$top_level_entry_count,sqlite_sidecar_count:$sqlite_sidecar_count,key_file_count:$key_file_count,hardlink_group_count:$hardlink_group_count,hardlink_alias_count:$hardlink_alias_count,created_at:$created_at,writer_stopped:true,wal_empty:true,source_unchanged:true,destination_exact_copy:true,all_top_level_entries_covered:true,regular_file_mode_contract:{allowed_modes:["0400","0444","0500","0600"],exact_allowlist:true},directory_mode_contract:{allowed_modes:["0700"],exact_allowlist:true},mode_policy_validated:true,original_modes_preserved:true,acl_allow_aces_forbidden:true,acl_deny_only_preserved:true,acl_inventory_bound:true,modes_uid_gid_mtime_flags_acl_xattr_preserved:true,wal_shm_and_keys_covered:true,hardlinks_preserved:true,external_hardlinks_rejected:true,identity_inventory_separate:true,replay_protected_by_destination_binding:true,atomic_no_replace_publication:true,durable_publication:true,final_source_rescan:true,writer_admission_closed:true,service_changed:false}' >"$receipt_tmp"
   # Prove the exact ready bytes and the final source state before the ready
   # path exists. Publication below is then only a durable no-replace commit of
   # those already-verified bytes.
@@ -1349,6 +1404,7 @@ verify_snapshot_receipt_v3() {
   local receipt="$1" destination binding portable modes acls expected_portable expected_modes expected_acls expected_top expected_sidecar expected_key
   local hardlinks expected_hardlinks actual_count actual_files actual_top actual_sidecars actual_keys actual_hardlink_groups actual_hardlink_aliases temp_root
   local predecessor_receipt predecessor_sha predecessor_plan predecessor_sequence
+  local source legacy_label barrier_receipt barrier_sha barrier_exempt
   absolute_non_root "$receipt" || return 1
   [[ -f "$receipt" && ! -L "$receipt" ]] || {
     echo "snapshot receipt is missing or unsafe" >&2
@@ -1365,6 +1421,15 @@ verify_snapshot_receipt_v3() {
     and .source_state_root != .destination_state_root
     and (.legacy_launchd_label | test("^[A-Za-z0-9][A-Za-z0-9._-]*$"))
     and .legacy_launchd_unloaded == true
+    and .writer_admission_closed == true
+    and (.writer_barrier.schema == "hepta_vnext_writer_barrier_v1" or .writer_barrier.schema == "hepta_vnext_writer_barrier_self_test_exemption_v1")
+    and .writer_barrier.writer_admission_closed == true
+    and (.writer_barrier.self_test_exemption | type == "boolean")
+    and (if .writer_barrier.self_test_exemption then
+      .writer_barrier.receipt == null and .writer_barrier.sha256 == null
+    else
+      (.writer_barrier.receipt | startswith("/")) and (.writer_barrier.sha256 | test("^[0-9a-f]{64}$"))
+    end)
     and (.source_identity_inventory_sha256 | test("^[0-9a-f]{64}$"))
     and (.portable_payload_inventory_sha256 | test("^[0-9a-f]{64}$"))
     and (.original_mode_inventory_sha256 | test("^[0-9a-f]{64}$"))
@@ -1402,6 +1467,36 @@ verify_snapshot_receipt_v3() {
     echo "invalid full-root v3 state snapshot receipt" >&2
     return 1
   }
+  source="$(jq -r '.source_state_root' "$receipt")"
+  legacy_label="$(jq -r '.legacy_launchd_label' "$receipt")"
+  barrier_exempt="$(jq -r '.writer_barrier.self_test_exemption' "$receipt")"
+  if [[ "$barrier_exempt" == true ]]; then
+    writer_barrier_self_test_exempt_v3 "$source" "$legacy_label" || {
+      echo "snapshot writer barrier self-test exemption escaped its isolated root" >&2
+      return 1
+    }
+  else
+    barrier_receipt="$(jq -r '.writer_barrier.receipt' "$receipt")"
+    barrier_sha="$(jq -r '.writer_barrier.sha256' "$receipt")"
+    absolute_non_root "$barrier_receipt" || return 1
+    [[ "$(realpath "$barrier_receipt")" == "$barrier_receipt" \
+      && -f "$barrier_receipt" && ! -L "$barrier_receipt" \
+      && "$(sha256_file "$barrier_receipt")" == "$barrier_sha" ]] || {
+      echo "snapshot writer barrier receipt path or digest changed" >&2
+      return 1
+    }
+    jq -e --arg source "$source" --arg legacy_label "$legacy_label" '
+      .schema == "hepta_vnext_writer_barrier_v1" and .status == "ready"
+      and .state_root == $source and .legacy_label == $legacy_label
+      and (.legacy_labels | type == "array" and length >= 1 and index($legacy_label) != null)
+      and .launchd_unloaded == true and .state_root_quiescent == true
+      and .writer_admission_closed == true and .system_immutable == true
+      and .sealed_mode == "0400" and (.program_sha256 | test("^[0-9a-f]{64}$"))
+    ' "$barrier_receipt" >/dev/null || {
+      echo "snapshot writer barrier receipt does not statically bind the source" >&2
+      return 1
+    }
+  fi
   destination="$(jq -r '.destination_state_root' "$receipt")"
   binding="$(jq -r '.destination_binding' "$receipt")"
   absolute_non_root "$destination" || return 1
@@ -1520,6 +1615,9 @@ verify_snapshot_source_v3() {
   expected_identity="$(jq -r '.source_identity_inventory_sha256' "$receipt")"
   expected_modes="$(jq -r '.original_mode_inventory_sha256' "$receipt")"
   expected_acls="$(jq -r '.acl_inventory_sha256' "$receipt")"
+  if [[ "$(jq -r '.writer_barrier.self_test_exemption' "$receipt")" != true ]]; then
+    verify_writer_barrier_v3 "$(jq -r '.writer_barrier.receipt' "$receipt")" "$source" "$legacy_label" || return 1
+  fi
   absolute_non_root "$source" || return 1
   validate_full_tree_v3 "$source" true "$legacy_label" || return 1
   temp_root="${TMPDIR:-/tmp}"
@@ -1969,7 +2067,7 @@ if [[ "${1:-}" == "verify" || "${1:-}" == "verify-source" ]]; then
   fi
   exit 0
 fi
-source_root=""; destination_root=""; receipt=""; predecessor_rollback_receipt=""; materialize=false; legacy_label=ai.hepta.gateway
+source_root=""; destination_root=""; receipt=""; predecessor_rollback_receipt=""; writer_barrier_receipt=""; materialize=false; legacy_label=ai.hepta.gateway
 while (( $# > 0 )); do
   case "$1" in
     --source-state-root) shift; [[ $# -gt 0 ]] || usage; source_root="$1" ;;
@@ -1977,10 +2075,11 @@ while (( $# > 0 )); do
     --legacy-label) shift; [[ $# -gt 0 ]] || usage; legacy_label="$1" ;;
     --receipt) shift; [[ $# -gt 0 ]] || usage; receipt="$1" ;;
     --predecessor-rollback-receipt) shift; [[ $# -gt 0 ]] || usage; predecessor_rollback_receipt="$1" ;;
+    --writer-barrier-receipt) shift; [[ $# -gt 0 ]] || usage; writer_barrier_receipt="$1" ;;
     --materialize) materialize=true ;;
     *) usage ;;
   esac
   shift
 done
 [[ -n "$source_root" && -n "$destination_root" ]] || usage
-snapshot "$source_root" "$destination_root" "$receipt" "$materialize" "$legacy_label" "$predecessor_rollback_receipt"
+snapshot "$source_root" "$destination_root" "$receipt" "$materialize" "$legacy_label" "$predecessor_rollback_receipt" "$writer_barrier_receipt"
