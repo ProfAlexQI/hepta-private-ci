@@ -37,7 +37,7 @@ pub enum CognitiveStoreError {
     Unavailable(String),
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
 pub struct ProjectionGeneration(pub(crate) u64);
 
 impl ProjectionGeneration {
@@ -88,6 +88,10 @@ impl CognitiveStore {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn owner_agent_id(&self) -> &AgentId {
+        &self.owner_agent_id
     }
 
     pub async fn append_source(

@@ -25,6 +25,52 @@ use crate::cognitive_store::unavailable;
 use crate::cognitive_store::validate_key;
 
 impl CognitiveStore {
+    /// Creates a user-confirmed memory and fails if its stable identity exists.
+    pub async fn remember_memory(
+        &self,
+        access: &CognitiveAccess,
+        draft: &MemoryDraft,
+    ) -> Result<MemoryRevisionRecord, CognitiveStoreError> {
+        require_explicit_active_revision(&draft.revision)?;
+        self.create_memory(access, draft).await
+    }
+
+    /// Appends a user-confirmed correction using compare-and-swap semantics.
+    pub async fn correct_memory(
+        &self,
+        access: &CognitiveAccess,
+        memory_id: &StableMemoryId,
+        expected_revision: u64,
+        draft: &MemoryRevisionDraft,
+    ) -> Result<MemoryRevisionRecord, CognitiveStoreError> {
+        require_explicit_active_revision(draft)?;
+        self.revise_memory(access, memory_id, expected_revision, draft)
+            .await
+    }
+
+    /// Appends a user-confirmed tombstone using compare-and-swap semantics.
+    pub async fn forget_memory(
+        &self,
+        access: &CognitiveAccess,
+        memory_id: &StableMemoryId,
+        expected_revision: u64,
+        draft: &ForgetMemoryDraft,
+    ) -> Result<MemoryRevisionRecord, CognitiveStoreError> {
+        let revision = MemoryRevisionDraft {
+            scope: draft.scope.clone(),
+            content: "Memory withdrawn by explicit user request.".to_string(),
+            verification: MemoryVerification::Verified,
+            lifecycle: MemoryLifecycleState::Tombstoned {
+                reason: draft.reason.clone(),
+            },
+            valid_from_unix_seconds: draft.valid_from_unix_seconds,
+            valid_to_unix_seconds: None,
+            citations: draft.citations.clone(),
+        };
+        self.revise_memory(access, memory_id, expected_revision, &revision)
+            .await
+    }
+
     pub async fn create_memory(
         &self,
         access: &CognitiveAccess,
@@ -291,7 +337,7 @@ fn validate_revision_draft(draft: &MemoryRevisionDraft) -> Result<(), CognitiveS
     Ok(())
 }
 
-async fn decode_revision(
+pub(crate) async fn decode_revision(
     pool: &sqlx::SqlitePool,
     row: sqlx::sqlite::SqliteRow,
     scope: CognitiveScope,
@@ -367,4 +413,25 @@ async fn decode_revision(
             })?,
         citations,
     })
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ForgetMemoryDraft {
+    pub scope: CognitiveScope,
+    pub reason: String,
+    pub valid_from_unix_seconds: i64,
+    pub citations: Vec<SourceRevisionId>,
+}
+
+fn require_explicit_active_revision(
+    draft: &MemoryRevisionDraft,
+) -> Result<(), CognitiveStoreError> {
+    if draft.verification != MemoryVerification::Verified
+        || draft.lifecycle != MemoryLifecycleState::Active
+    {
+        return Err(CognitiveStoreError::Invalid(
+            "explicit remember/correct requires a verified active revision".to_string(),
+        ));
+    }
+    Ok(())
 }

@@ -5,6 +5,7 @@ use crate::CognitiveAccess;
 use crate::CognitiveScope;
 use crate::CognitiveStore;
 use crate::CognitiveStoreError;
+use crate::ForgetMemoryDraft;
 use crate::MemoryDraft;
 use crate::MemoryLifecycleState;
 use crate::MemoryRevisionDraft;
@@ -30,7 +31,7 @@ async fn memory_identity_survives_verified_revisions_and_tombstone() {
         .await
         .expect("source");
     let first = store
-        .create_memory(
+        .remember_memory(
             &access,
             &MemoryDraft {
                 stable_key: "person-name".to_string(),
@@ -52,39 +53,38 @@ async fn memory_identity_survives_verified_revisions_and_tombstone() {
         "The user's preferred name is Grace.",
         citation.clone(),
     );
-    corrected.verification = MemoryVerification::Provisional;
     corrected.valid_from_unix_seconds = 200;
     let second = store
-        .revise_memory(&access, &first.id.memory_id, 1, &corrected)
+        .correct_memory(&access, &first.id.memory_id, 1, &corrected)
         .await
         .expect("second revision");
     assert_eq!(second.id.memory_id, first.id.memory_id);
     assert_eq!(second.id.revision, 2);
     assert_eq!(second.supersedes_revision, Some(1));
-    assert_eq!(second.verification, MemoryVerification::Provisional);
+    assert_eq!(second.verification, MemoryVerification::Verified);
 
-    let tombstone = MemoryRevisionDraft {
+    let tombstone = ForgetMemoryDraft {
         scope: CognitiveScope::AgentPrivate,
-        content: "Memory withdrawn by explicit user request.".to_string(),
-        verification: MemoryVerification::Verified,
-        lifecycle: MemoryLifecycleState::Tombstoned {
-            reason: "explicit_forget".to_string(),
-        },
+        reason: "explicit_forget".to_string(),
         valid_from_unix_seconds: 300,
-        valid_to_unix_seconds: None,
         citations: vec![citation],
     };
     let third = store
-        .revise_memory(&access, &first.id.memory_id, 2, &tombstone)
+        .forget_memory(&access, &first.id.memory_id, 2, &tombstone)
         .await
         .expect("tombstone revision");
     assert_eq!(third.id.memory_id, first.id.memory_id);
     assert_eq!(third.id.revision, 3);
     assert_eq!(third.supersedes_revision, Some(2));
-    assert_eq!(third.lifecycle, tombstone.lifecycle);
+    assert_eq!(
+        third.lifecycle,
+        MemoryLifecycleState::Tombstoned {
+            reason: tombstone.reason,
+        }
+    );
 
     let stale = store
-        .revise_memory(&access, &first.id.memory_id, 1, &corrected)
+        .correct_memory(&access, &first.id.memory_id, 1, &corrected)
         .await
         .expect_err("stale revision must fail");
     assert!(matches!(stale, CognitiveStoreError::Conflict(_)));

@@ -1,0 +1,690 @@
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+
+use codex_hepta_contracts::Sha256Digest;
+use serde::Serialize;
+use sqlx::Row;
+use unicode_segmentation::UnicodeSegmentation;
+
+use crate::CognitiveAccess;
+use crate::CognitiveScope;
+use crate::CognitiveStore;
+use crate::CognitiveStoreError;
+use crate::LedgerSourceKind;
+use crate::MemoryLifecycleState;
+use crate::MemoryRevisionId;
+use crate::MemoryRevisionRecord;
+use crate::MemoryVerification;
+use crate::ProjectionGeneration;
+use crate::SourceEventId;
+use crate::SourceRevisionId;
+use crate::StableMemoryId;
+use crate::cognitive_store::decode_scope;
+use crate::cognitive_store::unavailable;
+
+pub const MAX_RETRIEVAL_QUERY_BYTES: usize = 2 * 1024;
+pub const MAX_RETRIEVAL_CHANNEL_CANDIDATES: usize = 32;
+pub const MAX_RETRIEVAL_RESULTS: usize = 4;
+
+const RRF_K: u64 = 60;
+const RRF_SCALE: u64 = 1_000_000;
+const MAX_FTS_TERMS: usize = 64;
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct SourceCitationRecord {
+    pub id: SourceRevisionId,
+    pub scope: CognitiveScope,
+    pub kind: LedgerSourceKind,
+    pub content: Vec<u8>,
+    pub content_sha256: Sha256Digest,
+    pub observed_at_unix_seconds: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct MemoryExplanation {
+    pub memory: MemoryRevisionRecord,
+    pub citations: Vec<SourceCitationRecord>,
+    pub kg_projection_generation: Option<ProjectionGeneration>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RetrievalChannel {
+    MemoryFts,
+    EntityFts,
+    GraphOneHop,
+    Recency,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct SourceRevalidationBinding {
+    pub id: SourceRevisionId,
+    pub scope: CognitiveScope,
+    pub content_sha256: Sha256Digest,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct MemoryRevalidationBinding {
+    pub memory: MemoryRevisionId,
+    pub scope: CognitiveScope,
+    pub content_sha256: Sha256Digest,
+    pub verification: MemoryVerification,
+    pub lifecycle: MemoryLifecycleState,
+    pub valid_from_unix_seconds: i64,
+    pub valid_to_unix_seconds: Option<i64>,
+    pub citations: Vec<SourceRevalidationBinding>,
+    pub kg_projection_generation: Option<ProjectionGeneration>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct RetrievalCandidate {
+    pub memory: MemoryRevisionRecord,
+    pub reciprocal_rank_score: u64,
+    pub channels: Vec<RetrievalChannel>,
+    pub revalidation: MemoryRevalidationBinding,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct RetrievalBatch {
+    pub query_sha256: Sha256Digest,
+    pub candidates: Vec<RetrievalCandidate>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RetrievalRequest {
+    query: String,
+    now_unix_seconds: i64,
+}
+
+impl RetrievalRequest {
+    pub fn new(query: impl Into<String>, now_unix_seconds: i64) -> Self {
+        Self {
+            query: query.into(),
+            now_unix_seconds,
+        }
+    }
+
+    pub fn query(&self) -> &str {
+        &self.query
+    }
+
+    pub fn now_unix_seconds(&self) -> i64 {
+        self.now_unix_seconds
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RevalidationDrift {
+    HeadRevision,
+    Scope,
+    ContentHash,
+    Verification,
+    Lifecycle,
+    Validity,
+    CitationSet,
+    SourceHash,
+    KgProjectionGeneration,
+    NotEligible,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RevalidationStatus {
+    Current(MemoryExplanation),
+    Stale(RevalidationDrift),
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct MemoryKey {
+    memory_id: String,
+    revision: u64,
+}
+
+#[derive(Default)]
+struct AggregatedRank {
+    score: u64,
+    channels: BTreeSet<RetrievalChannel>,
+}
+
+struct EntitySeed {
+    projection_scope: String,
+    generation: i64,
+    node_id: String,
+    memory: MemoryKey,
+}
+
+impl CognitiveStore {
+    pub async fn read_memory_head(
+        &self,
+        access: &CognitiveAccess,
+        memory_id: &StableMemoryId,
+    ) -> Result<MemoryRevisionRecord, CognitiveStoreError> {
+        self.latest_memory(access, memory_id).await
+    }
+
+    pub async fn read_citation(
+        &self,
+        access: &CognitiveAccess,
+        citation: &SourceRevisionId,
+    ) -> Result<SourceCitationRecord, CognitiveStoreError> {
+        let row =
+            sqlx::query("SELECT * FROM source_ledger WHERE source_id = ? AND source_revision = ?")
+                .bind(citation.source_id.as_str())
+                .bind(to_i64(citation.revision, "source revision")?)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(unavailable)?
+                .ok_or_else(|| {
+                    CognitiveStoreError::Invalid("citation does not exist".to_string())
+                })?;
+        let owner: String = row.try_get("owner_agent_id").map_err(unavailable)?;
+        let scope = decode_scope(&row)?;
+        self.authorize(access, &scope)?;
+        if owner != self.owner_agent_id.as_str() {
+            return Err(CognitiveStoreError::Corrupt(
+                "citation owner does not match its cognitive store".to_string(),
+            ));
+        }
+        let content: Vec<u8> = row.try_get("content").map_err(unavailable)?;
+        let content_sha256 = Sha256Digest::parse(
+            row.try_get::<String, _>("content_sha256")
+                .map_err(unavailable)?,
+        )
+        .map_err(CognitiveStoreError::Corrupt)?;
+        if content_sha256 != Sha256Digest::for_bytes(&content) {
+            return Err(CognitiveStoreError::Corrupt(
+                "citation content digest does not match stored content".to_string(),
+            ));
+        }
+        Ok(SourceCitationRecord {
+            id: citation.clone(),
+            scope,
+            kind: LedgerSourceKind::parse(row.try_get("source_kind").map_err(unavailable)?)
+                .map_err(CognitiveStoreError::Corrupt)?,
+            content,
+            content_sha256,
+            observed_at_unix_seconds: row
+                .try_get("observed_at_unix_seconds")
+                .map_err(unavailable)?,
+        })
+    }
+
+    pub async fn explain_memory_head(
+        &self,
+        access: &CognitiveAccess,
+        memory_id: &StableMemoryId,
+    ) -> Result<MemoryExplanation, CognitiveStoreError> {
+        let memory = self.read_memory_head(access, memory_id).await?;
+        let mut citations = Vec::with_capacity(memory.citations.len());
+        for citation in &memory.citations {
+            let source = self.read_citation(access, citation).await?;
+            if source.scope != memory.scope {
+                return Err(CognitiveStoreError::Corrupt(
+                    "memory head and citation scope diverged".to_string(),
+                ));
+            }
+            citations.push(source);
+        }
+        let kg_projection_generation = self.projection_generation_for_scope(&memory.scope).await?;
+        let current_head: i64 =
+            sqlx::query_scalar("SELECT revision FROM memory_heads WHERE memory_id = ?")
+                .bind(memory.id.memory_id.as_str())
+                .fetch_one(&self.pool)
+                .await
+                .map_err(unavailable)?;
+        if current_head != to_i64(memory.id.revision, "memory revision")? {
+            return Err(CognitiveStoreError::Conflict(
+                "memory head changed while its explanation was read".to_string(),
+            ));
+        }
+        Ok(MemoryExplanation {
+            memory,
+            citations,
+            kg_projection_generation,
+        })
+    }
+
+    /// Performs bounded automatic retrieval without attaching content to a model request.
+    pub async fn retrieve_memory_candidates(
+        &self,
+        access: &CognitiveAccess,
+        request: &RetrievalRequest,
+    ) -> Result<RetrievalBatch, CognitiveStoreError> {
+        self.authorize(access, &CognitiveScope::AgentPrivate)?;
+        if request.query.trim().is_empty() || request.query.len() > MAX_RETRIEVAL_QUERY_BYTES {
+            return Err(CognitiveStoreError::Invalid(format!(
+                "retrieval query must contain 1..={MAX_RETRIEVAL_QUERY_BYTES} bytes"
+            )));
+        }
+        let fts_query = bounded_fts_query(&request.query).ok_or_else(|| {
+            CognitiveStoreError::Invalid("retrieval query contains no searchable terms".to_string())
+        })?;
+        let workspace = access.workspace_sha256().map(Sha256Digest::as_str);
+        let memory_fts = self
+            .memory_fts_channel(access, &fts_query, request.now_unix_seconds)
+            .await?;
+        let entity_seeds = self
+            .entity_fts_channel(access, &fts_query, request.now_unix_seconds)
+            .await?;
+        let entity = entity_seeds
+            .iter()
+            .map(|seed| seed.memory.clone())
+            .collect::<Vec<_>>();
+        let graph = self
+            .graph_channel(&entity_seeds, request.now_unix_seconds)
+            .await?;
+        let recency = self
+            .recency_channel(workspace, request.now_unix_seconds)
+            .await?;
+        let mut ranked = BTreeMap::new();
+        add_rrf_channel(&mut ranked, &memory_fts, RetrievalChannel::MemoryFts);
+        add_rrf_channel(&mut ranked, &entity, RetrievalChannel::EntityFts);
+        add_rrf_channel(&mut ranked, &graph, RetrievalChannel::GraphOneHop);
+        add_rrf_channel(&mut ranked, &recency, RetrievalChannel::Recency);
+        let mut ranked = ranked.into_iter().collect::<Vec<_>>();
+        ranked.sort_by(|left, right| {
+            right
+                .1
+                .score
+                .cmp(&left.1.score)
+                .then_with(|| left.0.cmp(&right.0))
+        });
+        let mut candidates = Vec::with_capacity(MAX_RETRIEVAL_RESULTS);
+        for (key, rank) in ranked {
+            if candidates.len() == MAX_RETRIEVAL_RESULTS {
+                break;
+            }
+            let memory_id =
+                StableMemoryId::parse(key.memory_id).map_err(CognitiveStoreError::Corrupt)?;
+            let explanation = self.explain_memory_head(access, &memory_id).await?;
+            if explanation.memory.id.revision != key.revision
+                || !eligible(&explanation.memory, request.now_unix_seconds)
+            {
+                continue;
+            }
+            candidates.push(RetrievalCandidate {
+                memory: explanation.memory.clone(),
+                reciprocal_rank_score: rank.score,
+                channels: rank.channels.into_iter().collect(),
+                revalidation: binding_from_explanation(&explanation),
+            });
+        }
+        Ok(RetrievalBatch {
+            query_sha256: Sha256Digest::for_bytes(request.query.as_bytes()),
+            candidates,
+        })
+    }
+
+    pub async fn revalidate_memory_candidate(
+        &self,
+        access: &CognitiveAccess,
+        binding: &MemoryRevalidationBinding,
+        now_unix_seconds: i64,
+    ) -> Result<RevalidationStatus, CognitiveStoreError> {
+        self.authorize(access, &binding.scope)?;
+        let head =
+            sqlx::query_scalar::<_, i64>("SELECT revision FROM memory_heads WHERE memory_id = ?")
+                .bind(binding.memory.memory_id.as_str())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(unavailable)?;
+        if head != Some(to_i64(binding.memory.revision, "memory revision")?) {
+            return Ok(RevalidationStatus::Stale(RevalidationDrift::HeadRevision));
+        }
+        let explanation = self
+            .explain_memory_head(access, &binding.memory.memory_id)
+            .await?;
+        let memory = &explanation.memory;
+        if memory.scope != binding.scope {
+            return Ok(RevalidationStatus::Stale(RevalidationDrift::Scope));
+        }
+        if memory.content_sha256 != binding.content_sha256 {
+            return Ok(RevalidationStatus::Stale(RevalidationDrift::ContentHash));
+        }
+        if memory.verification != binding.verification {
+            return Ok(RevalidationStatus::Stale(RevalidationDrift::Verification));
+        }
+        if memory.lifecycle != binding.lifecycle {
+            return Ok(RevalidationStatus::Stale(RevalidationDrift::Lifecycle));
+        }
+        if memory.valid_from_unix_seconds != binding.valid_from_unix_seconds
+            || memory.valid_to_unix_seconds != binding.valid_to_unix_seconds
+        {
+            return Ok(RevalidationStatus::Stale(RevalidationDrift::Validity));
+        }
+        let source_bindings = explanation
+            .citations
+            .iter()
+            .map(|source| SourceRevalidationBinding {
+                id: source.id.clone(),
+                scope: source.scope.clone(),
+                content_sha256: source.content_sha256.clone(),
+            })
+            .collect::<Vec<_>>();
+        if source_bindings
+            .iter()
+            .map(|source| &source.id)
+            .collect::<Vec<_>>()
+            != binding
+                .citations
+                .iter()
+                .map(|source| &source.id)
+                .collect::<Vec<_>>()
+        {
+            return Ok(RevalidationStatus::Stale(RevalidationDrift::CitationSet));
+        }
+        if source_bindings != binding.citations {
+            return Ok(RevalidationStatus::Stale(RevalidationDrift::SourceHash));
+        }
+        if explanation.kg_projection_generation != binding.kg_projection_generation {
+            return Ok(RevalidationStatus::Stale(
+                RevalidationDrift::KgProjectionGeneration,
+            ));
+        }
+        if !eligible(memory, now_unix_seconds) {
+            return Ok(RevalidationStatus::Stale(RevalidationDrift::NotEligible));
+        }
+        Ok(RevalidationStatus::Current(explanation))
+    }
+
+    async fn projection_generation_for_scope(
+        &self,
+        scope: &CognitiveScope,
+    ) -> Result<Option<ProjectionGeneration>, CognitiveStoreError> {
+        let generation = sqlx::query_scalar::<_, i64>(
+            "SELECT generation FROM kg_projection WHERE projection_scope = ?",
+        )
+        .bind(scope.projection_key())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        generation
+            .map(|generation| {
+                u64::try_from(generation)
+                    .map(ProjectionGeneration)
+                    .map_err(|_| CognitiveStoreError::Corrupt("negative KG generation".to_string()))
+            })
+            .transpose()
+    }
+
+    async fn memory_fts_channel(
+        &self,
+        access: &CognitiveAccess,
+        fts_query: &str,
+        now: i64,
+    ) -> Result<Vec<MemoryKey>, CognitiveStoreError> {
+        let rows = sqlx::query(
+            "SELECT f.memory_id, f.revision FROM memory_fts f
+             JOIN memory_heads h ON h.memory_id = f.memory_id AND h.revision = f.revision
+             JOIN memory_revisions r ON r.memory_id = f.memory_id AND r.revision = f.revision
+             WHERE memory_fts MATCH ? AND r.owner_agent_id = ?
+               AND (r.scope_kind = 'agent_private' OR
+                    (r.scope_kind = 'workspace_private' AND r.workspace_sha256 = ?))
+               AND r.verification = 'verified' AND r.lifecycle = 'active'
+               AND r.valid_from_unix_seconds <= ?
+               AND (r.valid_to_unix_seconds IS NULL OR ? < r.valid_to_unix_seconds)
+             ORDER BY bm25(memory_fts), f.memory_id, f.revision LIMIT ?",
+        )
+        .bind(fts_query)
+        .bind(self.owner_agent_id.as_str())
+        .bind(access.workspace_sha256().map(Sha256Digest::as_str))
+        .bind(now)
+        .bind(now)
+        .bind(channel_limit())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        decode_memory_keys(rows)
+    }
+
+    async fn entity_fts_channel(
+        &self,
+        access: &CognitiveAccess,
+        fts_query: &str,
+        now: i64,
+    ) -> Result<Vec<EntitySeed>, CognitiveStoreError> {
+        let workspace_scope = access
+            .workspace_sha256()
+            .map(|workspace_sha256| CognitiveScope::WorkspacePrivate {
+                workspace_sha256: workspace_sha256.clone(),
+            })
+            .map(|scope| scope.projection_key());
+        let rows = sqlx::query(
+            "SELECT f.projection_scope, f.generation, f.node_id,
+                    n.memory_id, n.memory_revision
+             FROM kg_entity_fts f
+             JOIN kg_projection p ON p.projection_scope = f.projection_scope
+                                  AND p.generation = f.generation
+             JOIN kg_nodes n ON n.projection_scope = f.projection_scope
+                            AND n.generation = f.generation AND n.node_id = f.node_id
+             JOIN memory_heads h ON h.memory_id = n.memory_id
+                                AND h.revision = n.memory_revision
+             JOIN memory_revisions r ON r.memory_id = n.memory_id
+                                    AND r.revision = n.memory_revision
+             WHERE kg_entity_fts MATCH ?
+               AND (f.projection_scope = 'agent_private' OR f.projection_scope = ?)
+               AND n.valid_from_unix_seconds <= ?
+               AND (n.valid_to_unix_seconds IS NULL OR ? < n.valid_to_unix_seconds)
+               AND r.owner_agent_id = ? AND r.verification = 'verified'
+               AND r.lifecycle = 'active' AND r.valid_from_unix_seconds <= ?
+               AND (r.valid_to_unix_seconds IS NULL OR ? < r.valid_to_unix_seconds)
+             ORDER BY bm25(kg_entity_fts), f.projection_scope, f.node_id, n.memory_id LIMIT ?",
+        )
+        .bind(fts_query)
+        .bind(workspace_scope)
+        .bind(now)
+        .bind(now)
+        .bind(self.owner_agent_id.as_str())
+        .bind(now)
+        .bind(now)
+        .bind(channel_limit())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        let mut seen = BTreeSet::new();
+        rows.into_iter()
+            .filter_map(|row| {
+                let result = (|| {
+                    let memory = decode_memory_key(&row, "memory_id", "memory_revision")?;
+                    if !seen.insert(memory.clone()) {
+                        return Ok(None);
+                    }
+                    Ok(Some(EntitySeed {
+                        projection_scope: row.try_get("projection_scope").map_err(unavailable)?,
+                        generation: row.try_get("generation").map_err(unavailable)?,
+                        node_id: row.try_get("node_id").map_err(unavailable)?,
+                        memory,
+                    }))
+                })();
+                result.transpose()
+            })
+            .collect()
+    }
+
+    async fn graph_channel(
+        &self,
+        seeds: &[EntitySeed],
+        now: i64,
+    ) -> Result<Vec<MemoryKey>, CognitiveStoreError> {
+        let mut seen = BTreeSet::new();
+        let mut result = Vec::new();
+        for seed in seeds {
+            if result.len() == MAX_RETRIEVAL_CHANNEL_CANDIDATES {
+                break;
+            }
+            let rows = sqlx::query(
+                "SELECT e.edge_id, e.memory_id AS edge_memory_id,
+                        e.memory_revision AS edge_memory_revision,
+                        n.node_id, n.memory_id AS node_memory_id,
+                        n.memory_revision AS node_memory_revision
+                 FROM kg_edges e JOIN kg_nodes n
+                   ON n.projection_scope = e.projection_scope AND n.generation = e.generation
+                  AND n.node_id = CASE WHEN e.from_node_id = ?
+                                       THEN e.to_node_id ELSE e.from_node_id END
+                 JOIN memory_heads eh ON eh.memory_id = e.memory_id
+                                     AND eh.revision = e.memory_revision
+                 JOIN memory_heads nh ON nh.memory_id = n.memory_id
+                                     AND nh.revision = n.memory_revision
+                 JOIN memory_revisions er ON er.memory_id = e.memory_id
+                                         AND er.revision = e.memory_revision
+                 JOIN memory_revisions nr ON nr.memory_id = n.memory_id
+                                         AND nr.revision = n.memory_revision
+                 WHERE e.projection_scope = ? AND e.generation = ?
+                   AND (e.from_node_id = ? OR e.to_node_id = ?)
+                   AND e.valid_from_unix_seconds <= ?
+                   AND (e.valid_to_unix_seconds IS NULL OR ? < e.valid_to_unix_seconds)
+                   AND n.valid_from_unix_seconds <= ?
+                   AND (n.valid_to_unix_seconds IS NULL OR ? < n.valid_to_unix_seconds)
+                   AND er.verification = 'verified' AND er.lifecycle = 'active'
+                   AND nr.verification = 'verified' AND nr.lifecycle = 'active'
+                   AND er.valid_from_unix_seconds <= ?
+                   AND (er.valid_to_unix_seconds IS NULL OR ? < er.valid_to_unix_seconds)
+                   AND nr.valid_from_unix_seconds <= ?
+                   AND (nr.valid_to_unix_seconds IS NULL OR ? < nr.valid_to_unix_seconds)
+                 ORDER BY e.edge_id, n.node_id",
+            )
+            .bind(&seed.node_id)
+            .bind(&seed.projection_scope)
+            .bind(seed.generation)
+            .bind(&seed.node_id)
+            .bind(&seed.node_id)
+            .bind(now)
+            .bind(now)
+            .bind(now)
+            .bind(now)
+            .bind(now)
+            .bind(now)
+            .bind(now)
+            .bind(now)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unavailable)?;
+            for row in rows {
+                for key in [
+                    decode_memory_key(&row, "edge_memory_id", "edge_memory_revision")?,
+                    decode_memory_key(&row, "node_memory_id", "node_memory_revision")?,
+                ] {
+                    if seen.insert(key.clone()) {
+                        result.push(key);
+                    }
+                    if result.len() == MAX_RETRIEVAL_CHANNEL_CANDIDATES {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    async fn recency_channel(
+        &self,
+        workspace: Option<&str>,
+        now: i64,
+    ) -> Result<Vec<MemoryKey>, CognitiveStoreError> {
+        let rows = sqlx::query(
+            "SELECT r.memory_id, r.revision FROM memory_heads h
+             JOIN memory_revisions r ON r.memory_id = h.memory_id AND r.revision = h.revision
+             WHERE r.owner_agent_id = ?
+               AND (r.scope_kind = 'agent_private' OR
+                    (r.scope_kind = 'workspace_private' AND r.workspace_sha256 = ?))
+               AND r.verification = 'verified' AND r.lifecycle = 'active'
+               AND r.valid_from_unix_seconds <= ?
+               AND (r.valid_to_unix_seconds IS NULL OR ? < r.valid_to_unix_seconds)
+             ORDER BY r.recorded_at_unix_seconds DESC, r.memory_id, r.revision LIMIT ?",
+        )
+        .bind(self.owner_agent_id.as_str())
+        .bind(workspace)
+        .bind(now)
+        .bind(now)
+        .bind(channel_limit())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        decode_memory_keys(rows)
+    }
+}
+
+fn bounded_fts_query(query: &str) -> Option<String> {
+    let mut terms = BTreeSet::new();
+    for word in query.unicode_words().take(MAX_FTS_TERMS) {
+        terms.insert(format!("\"{}\"", word.replace('"', "\"\"")));
+    }
+    (!terms.is_empty()).then(|| terms.into_iter().collect::<Vec<_>>().join(" OR "))
+}
+
+fn add_rrf_channel(
+    ranked: &mut BTreeMap<MemoryKey, AggregatedRank>,
+    channel: &[MemoryKey],
+    source: RetrievalChannel,
+) {
+    let mut seen = BTreeSet::new();
+    for (index, memory) in channel
+        .iter()
+        .filter(|memory| seen.insert((*memory).clone()))
+        .take(MAX_RETRIEVAL_CHANNEL_CANDIDATES)
+        .enumerate()
+    {
+        let rank = u64::try_from(index + 1).unwrap_or(u64::MAX);
+        let aggregate = ranked.entry(memory.clone()).or_default();
+        aggregate.score += RRF_SCALE / (RRF_K + rank);
+        aggregate.channels.insert(source);
+    }
+}
+
+fn decode_memory_keys(
+    rows: Vec<sqlx::sqlite::SqliteRow>,
+) -> Result<Vec<MemoryKey>, CognitiveStoreError> {
+    rows.iter()
+        .map(|row| decode_memory_key(row, "memory_id", "revision"))
+        .collect()
+}
+
+fn decode_memory_key(
+    row: &sqlx::sqlite::SqliteRow,
+    memory_column: &str,
+    revision_column: &str,
+) -> Result<MemoryKey, CognitiveStoreError> {
+    let revision: i64 = row.try_get(revision_column).map_err(unavailable)?;
+    Ok(MemoryKey {
+        memory_id: row.try_get(memory_column).map_err(unavailable)?,
+        revision: u64::try_from(revision)
+            .map_err(|_| CognitiveStoreError::Corrupt("negative memory revision".to_string()))?,
+    })
+}
+
+fn binding_from_explanation(explanation: &MemoryExplanation) -> MemoryRevalidationBinding {
+    MemoryRevalidationBinding {
+        memory: explanation.memory.id.clone(),
+        scope: explanation.memory.scope.clone(),
+        content_sha256: explanation.memory.content_sha256.clone(),
+        verification: explanation.memory.verification,
+        lifecycle: explanation.memory.lifecycle.clone(),
+        valid_from_unix_seconds: explanation.memory.valid_from_unix_seconds,
+        valid_to_unix_seconds: explanation.memory.valid_to_unix_seconds,
+        citations: explanation
+            .citations
+            .iter()
+            .map(|source| SourceRevalidationBinding {
+                id: source.id.clone(),
+                scope: source.scope.clone(),
+                content_sha256: source.content_sha256.clone(),
+            })
+            .collect(),
+        kg_projection_generation: explanation.kg_projection_generation,
+    }
+}
+
+fn eligible(memory: &MemoryRevisionRecord, now: i64) -> bool {
+    memory.verification == MemoryVerification::Verified
+        && memory.lifecycle == MemoryLifecycleState::Active
+        && memory.valid_from_unix_seconds <= now
+        && memory.valid_to_unix_seconds.is_none_or(|until| now < until)
+}
+
+fn channel_limit() -> i64 {
+    i64::try_from(MAX_RETRIEVAL_CHANNEL_CANDIDATES).unwrap_or(i64::MAX)
+}
+
+fn to_i64(value: u64, label: &str) -> Result<i64, CognitiveStoreError> {
+    i64::try_from(value).map_err(|_| CognitiveStoreError::Invalid(format!("{label} exceeds i64")))
+}

@@ -35,6 +35,10 @@ impl CognitiveAccess {
     pub fn agent_id(&self) -> &AgentId {
         &self.agent_id
     }
+
+    pub fn workspace_sha256(&self) -> Option<&Sha256Digest> {
+        self.workspace_sha256.as_ref()
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -118,6 +122,18 @@ impl LedgerSourceKind {
             Self::TurnSummary => "turn_summary",
         }
     }
+
+    pub(crate) fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "user_message" => Ok(Self::UserMessage),
+            "assistant_conclusion" => Ok(Self::AssistantConclusion),
+            "explicit_memory_directive" => Ok(Self::ExplicitMemoryDirective),
+            "persisted_tool_result" => Ok(Self::PersistedToolResult),
+            "file_observation" => Ok(Self::FileObservation),
+            "turn_summary" => Ok(Self::TurnSummary),
+            _ => Err("invalid ledger source kind".to_string()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -193,9 +209,26 @@ impl StableMemoryId {
         &self.0
     }
 
-    pub(crate) fn parse(value: String) -> Result<Self, String> {
+    pub fn parse(value: impl Into<String>) -> Result<Self, String> {
+        let value = value.into();
         parse_stable_id(&value, "memory:v2:")?;
         Ok(Self(value))
+    }
+}
+
+impl TryFrom<String> for StableMemoryId {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::parse(value)
+    }
+}
+
+impl TryFrom<&str> for StableMemoryId {
+    type Error = String;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::parse(value)
     }
 }
 
