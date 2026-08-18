@@ -127,7 +127,11 @@ impl HeptaFleetLayout {
     }
 
     pub fn agent(&self, agent_id: &AgentId) -> HeptaAgentLayout {
-        HeptaAgentLayout::new(self.agents_root.join(agent_id.as_str()), agent_id.clone())
+        HeptaAgentLayout::new(
+            self.agents_root.join(agent_id.as_str()),
+            self.run_root.clone(),
+            agent_id.clone(),
+        )
     }
 }
 
@@ -139,6 +143,7 @@ pub struct HeptaAgentLayout {
     agent_config: PathBuf,
     home_root: PathBuf,
     run_root: PathBuf,
+    agentd_control_socket: PathBuf,
     app_server_socket: PathBuf,
     writer_lock: PathBuf,
     generation_cursor: PathBuf,
@@ -149,13 +154,15 @@ pub struct HeptaAgentLayout {
 }
 
 impl HeptaAgentLayout {
-    fn new(agent_root: PathBuf, agent_id: AgentId) -> Self {
+    fn new(agent_root: PathBuf, fleet_run_root: PathBuf, agent_id: AgentId) -> Self {
         let run_root = agent_root.join("run");
         let releases_root = agent_root.join("releases");
+        let socket_key = compact_socket_key(&agent_id);
         Self {
             agent_config: agent_root.join("agent.toml"),
             home_root: agent_root.join("home"),
-            app_server_socket: run_root.join("app-server.sock"),
+            agentd_control_socket: fleet_run_root.join(format!("a{socket_key}.ctl")),
+            app_server_socket: fleet_run_root.join(format!("a{socket_key}.app")),
             writer_lock: run_root.join("writer.lock"),
             generation_cursor: run_root.join("generation.json"),
             logs_root: agent_root.join("logs"),
@@ -192,6 +199,10 @@ impl HeptaAgentLayout {
         &self.app_server_socket
     }
 
+    pub fn agentd_control_socket(&self) -> &Path {
+        &self.agentd_control_socket
+    }
+
     pub fn writer_lock(&self) -> &Path {
         &self.writer_lock
     }
@@ -215,6 +226,49 @@ impl HeptaAgentLayout {
     pub fn cognitive_root(&self) -> &Path {
         &self.cognitive_root
     }
+}
+
+/// Encodes all 128 AgentId bits into 26 lowercase RFC 4648 base32 characters.
+///
+/// macOS limits Unix-domain socket paths to 103 bytes. Keeping the complete
+/// identity while avoiding the deep per-agent directory prevents collisions
+/// and leaves the production fleet root enough path-length headroom.
+fn compact_socket_key(agent_id: &AgentId) -> String {
+    const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
+    let mut uuid_bytes = [0_u8; 16];
+    let mut nibble = None;
+    let mut index = 0;
+    for byte in agent_id.as_str().bytes().filter(|byte| *byte != b'-') {
+        let value = match byte {
+            b'0'..=b'9' => byte - b'0',
+            b'a'..=b'f' => byte - b'a' + 10,
+            _ => unreachable!("AgentId has already validated its alphabet"),
+        };
+        if let Some(high) = nibble.take() {
+            uuid_bytes[index] = high << 4 | value;
+            index += 1;
+        } else {
+            nibble = Some(value);
+        }
+    }
+    debug_assert_eq!(index, uuid_bytes.len());
+
+    let mut output = String::with_capacity(26);
+    let mut accumulator = 0_u32;
+    let mut bits = 0_u8;
+    for byte in uuid_bytes {
+        accumulator = accumulator << 8 | u32::from(byte);
+        bits += 8;
+        while bits >= 5 {
+            bits -= 5;
+            output.push(ALPHABET[((accumulator >> bits) & 0x1f) as usize] as char);
+        }
+    }
+    if bits > 0 {
+        output.push(ALPHABET[((accumulator << (5 - bits)) & 0x1f) as usize] as char);
+    }
+    debug_assert_eq!(output.len(), 26);
+    output
 }
 
 #[cfg(test)]
