@@ -29,6 +29,9 @@ use codex_hepta_paths::HeptaAgentLayout;
 use codex_hepta_paths::HeptaFleetRoot;
 use codex_hepta_supervisor::SupervisordAgentStatus;
 use codex_hepta_supervisor::SupervisordClient;
+use codex_hepta_supervisor::SupervisordControlFence;
+use codex_hepta_supervisor::SupervisordMutation;
+use codex_hepta_supervisor::SupervisordMutationAccepted;
 use core_test_support::responses;
 
 const CHILD_MODE_ENV: &str = "HEPTA_TEST_SUPERVISORD_CHILD";
@@ -98,11 +101,14 @@ async fn five_real_agents_survive_daemon_restart_and_isolate_one_agent_release_c
     let mut process_guard = AgentProcessGuard::default();
     let mut daemon = DaemonChild::spawn(&fleet_root, &log_path)?;
     let client = wait_for_daemon(&registry, &mut daemon, &log_path).await?;
+    let first_supervisor_epoch = client.health().await?.supervisor_epoch;
 
     for agent in &agents[..2] {
-        client
-            .start(agent.agent_id.clone(), release_v1.clone())
+        let before = client.snapshot(agent.agent_id.clone()).await?;
+        let accepted = client
+            .start(before.control_fence.clone(), release_v1.clone())
             .await?;
+        assert_mutation_accepted(SupervisordMutation::Start, &before.control_fence, &accepted)?;
         wait_for_release(&client, agent, &release_v1, None, &mut process_guard).await?;
     }
     let dual = client.roster(16).await?;
@@ -114,7 +120,10 @@ async fn five_real_agents_survive_daemon_restart_and_isolate_one_agent_release_c
     let peer_b_before_rejected_upgrade = client.snapshot(agents[1].agent_id.clone()).await?;
     ensure!(
         client
-            .upgrade(agents[1].agent_id.clone(), release_v2.clone())
+            .upgrade(
+                peer_b_before_rejected_upgrade.control_fence.clone(),
+                release_v2.clone(),
+            )
             .await
             .is_err(),
         "Agent B used a release allowed only for Agent A"
@@ -124,11 +133,28 @@ async fn five_real_agents_survive_daemon_restart_and_isolate_one_agent_release_c
         &client.snapshot(agents[1].agent_id.clone()).await?,
         "Agent B changed after a rejected release",
     )?;
+    ensure!(
+        client
+            .upgrade(
+                peer_b_before_rejected_upgrade.control_fence.clone(),
+                ReleaseId::parse("missing-release")?,
+            )
+            .await
+            .is_err(),
+        "an uninstalled release entered the mutation path"
+    );
+    assert_exact_status(
+        &peer_b_before_rejected_upgrade,
+        &client.snapshot(agents[1].agent_id.clone()).await?,
+        "Agent B changed after an uninstalled release rejection",
+    )?;
 
     for agent in &agents[2..] {
-        client
-            .start(agent.agent_id.clone(), release_v1.clone())
+        let before = client.snapshot(agent.agent_id.clone()).await?;
+        let accepted = client
+            .start(before.control_fence.clone(), release_v1.clone())
             .await?;
+        assert_mutation_accepted(SupervisordMutation::Start, &before.control_fence, &accepted)?;
         wait_for_release(&client, agent, &release_v1, None, &mut process_guard).await?;
     }
     let five = client.roster(16).await?;
@@ -136,27 +162,122 @@ async fn five_real_agents_survive_daemon_restart_and_isolate_one_agent_release_c
         five.len() == 5 && five.iter().all(|status| status.healthy),
         "the five-Agent fleet did not become independently healthy: {five:?}"
     );
+    for status in &five {
+        assert_status_fence_coherent(status)?;
+        assert_exact_status(
+            status,
+            &client.snapshot(status.agent_id.clone()).await?,
+            "roster and point snapshot observed different authority state",
+        )?;
+    }
 
-    let peer_baseline = peer_baseline(&client, &agents[1..]).await?;
+    let before_drain = client.snapshot(agents[4].agent_id.clone()).await?;
+    let accepted = client.drain(before_drain.control_fence.clone()).await?;
+    assert_mutation_accepted(
+        SupervisordMutation::Drain,
+        &before_drain.control_fence,
+        &accepted,
+    )?;
+    wait_for_stopped(&client, &agents[4], &mut process_guard).await?;
+    let stopped = client.snapshot(agents[4].agent_id.clone()).await?;
+    let accepted = client.restart(stopped.control_fence.clone()).await?;
+    assert_mutation_accepted(
+        SupervisordMutation::Restart,
+        &stopped.control_fence,
+        &accepted,
+    )?;
+    wait_for_release(&client, &agents[4], &release_v1, None, &mut process_guard).await?;
+
+    let before_stop = client.snapshot(agents[3].agent_id.clone()).await?;
+    let accepted = client.stop(before_stop.control_fence.clone()).await?;
+    assert_mutation_accepted(
+        SupervisordMutation::Stop,
+        &before_stop.control_fence,
+        &accepted,
+    )?;
+    wait_for_stopped(&client, &agents[3], &mut process_guard).await?;
+    let stopped = client.snapshot(agents[3].agent_id.clone()).await?;
+    let accepted = client.restart(stopped.control_fence.clone()).await?;
+    assert_mutation_accepted(
+        SupervisordMutation::Restart,
+        &stopped.control_fence,
+        &accepted,
+    )?;
+    wait_for_release(&client, &agents[3], &release_v1, None, &mut process_guard).await?;
+
+    let mut peer_status_baseline = peer_baseline(&client, &agents[1..]).await?;
     let initial_a = client.snapshot(agents[0].agent_id.clone()).await?;
     let initial_a_pid = require_pid(&initial_a)?;
 
-    client.kill(agents[0].agent_id.clone()).await?;
+    let accepted = client.kill(initial_a.control_fence.clone()).await?;
+    assert_mutation_accepted(
+        SupervisordMutation::Kill,
+        &initial_a.control_fence,
+        &accepted,
+    )?;
     wait_for_stopped(&client, &agents[0], &mut process_guard).await?;
-    assert_peers_unchanged(&client, &agents[1..], &peer_baseline).await?;
+    assert_peers_unchanged(&client, &agents[1..], &peer_status_baseline).await?;
 
-    client.restart(agents[0].agent_id.clone()).await?;
-    let restarted_a =
+    let stopped_a = client.snapshot(agents[0].agent_id.clone()).await?;
+    ensure!(
+        client.drain(stopped_a.control_fence.clone()).await.is_err(),
+        "a stopped Agent entered an invalid drain transition"
+    );
+    assert_exact_status(
+        &stopped_a,
+        &client.snapshot(agents[0].agent_id.clone()).await?,
+        "invalid drain changed Agent A control state",
+    )?;
+    let accepted = client.restart(stopped_a.control_fence.clone()).await?;
+    assert_mutation_accepted(
+        SupervisordMutation::Restart,
+        &stopped_a.control_fence,
+        &accepted,
+    )?;
+    let mut restarted_a =
         wait_for_release(&client, &agents[0], &release_v1, None, &mut process_guard).await?;
     ensure!(
         require_pid(&restarted_a)? != initial_a_pid,
         "Agent A restart reused its killed process"
     );
-    assert_peers_unchanged(&client, &agents[1..], &peer_baseline).await?;
+    assert_peers_unchanged(&client, &agents[1..], &peer_status_baseline).await?;
 
-    client
-        .upgrade(agents[0].agent_id.clone(), release_v2.clone())
+    let concurrent_fence = restarted_a.control_fence.clone();
+    let (left, right) = tokio::join!(
+        client.restart(concurrent_fence.clone()),
+        client.restart(concurrent_fence.clone())
+    );
+    ensure!(
+        usize::from(left.is_ok()) + usize::from(right.is_ok()) == 1,
+        "two clients using one fence did not produce exactly one winner: left={left:?} right={right:?}"
+    );
+    let (concurrent_accepted, concurrent_rejected) = match (left, right) {
+        (Ok(accepted), Err(rejected)) | (Err(rejected), Ok(accepted)) => (accepted, rejected),
+        _ => bail!("same-fence winner cardinality changed after validation"),
+    };
+    ensure!(
+        concurrent_rejected
+            .to_string()
+            .contains("(stale_control_fence)"),
+        "the losing same-fence client did not receive stale_control_fence: {concurrent_rejected}"
+    );
+    assert_mutation_accepted(
+        SupervisordMutation::Restart,
+        &concurrent_fence,
+        &concurrent_accepted,
+    )?;
+    restarted_a =
+        wait_for_release(&client, &agents[0], &release_v1, None, &mut process_guard).await?;
+    assert_peers_unchanged(&client, &agents[1..], &peer_status_baseline).await?;
+
+    let accepted = client
+        .upgrade(restarted_a.control_fence.clone(), release_v2.clone())
         .await?;
+    assert_mutation_accepted(
+        SupervisordMutation::Upgrade,
+        &restarted_a.control_fence,
+        &accepted,
+    )?;
     let upgraded_a = wait_for_release(
         &client,
         &agents[0],
@@ -169,7 +290,7 @@ async fn five_real_agents_survive_daemon_restart_and_isolate_one_agent_release_c
         require_pid(&upgraded_a)? != require_pid(&restarted_a)?,
         "Agent A upgrade did not replace its process"
     );
-    assert_peers_unchanged(&client, &agents[1..], &peer_baseline).await?;
+    assert_peers_unchanged(&client, &agents[1..], &peer_status_baseline).await?;
 
     let before_daemon_restart = snapshot_all(&client, &agents).await?;
     assert_agentd_endpoints(&agents, &before_daemon_restart).await?;
@@ -178,6 +299,11 @@ async fn five_real_agents_survive_daemon_restart_and_isolate_one_agent_release_c
 
     let mut restarted_daemon = DaemonChild::spawn(&fleet_root, &log_path)?;
     let restarted_client = wait_for_daemon(&registry, &mut restarted_daemon, &log_path).await?;
+    let restarted_supervisor_epoch = restarted_client.health().await?.supervisor_epoch;
+    ensure!(
+        restarted_supervisor_epoch != first_supervisor_epoch,
+        "supervisord reused its daemon epoch after process restart"
+    );
     for (agent, before) in agents.iter().zip(&before_daemon_restart) {
         let expected_release = before
             .current_release
@@ -191,13 +317,26 @@ async fn five_real_agents_survive_daemon_restart_and_isolate_one_agent_release_c
             &mut process_guard,
         )
         .await?;
-        assert_exact_status(before, &adopted, "daemon restart replaced an agent")?;
+        assert_runtime_status(before, &adopted, "daemon restart replaced an agent")?;
+        ensure!(
+            adopted.control_fence.supervisor_epoch == restarted_supervisor_epoch,
+            "adopted Agent did not receive the restarted daemon epoch"
+        );
     }
     assert_agentd_endpoints(&agents, &before_daemon_restart).await?;
+    peer_status_baseline = peer_baseline(&restarted_client, &agents[1..]).await?;
 
-    restarted_client
-        .rollback(agents[0].agent_id.clone())
+    let before_rollback = restarted_client
+        .snapshot(agents[0].agent_id.clone())
         .await?;
+    let accepted = restarted_client
+        .rollback(before_rollback.control_fence.clone())
+        .await?;
+    assert_mutation_accepted(
+        SupervisordMutation::Rollback,
+        &before_rollback.control_fence,
+        &accepted,
+    )?;
     let rolled_back_a = wait_for_release(
         &restarted_client,
         &agents[0],
@@ -210,10 +349,12 @@ async fn five_real_agents_survive_daemon_restart_and_isolate_one_agent_release_c
         require_pid(&rolled_back_a)? != require_pid(&upgraded_a)?,
         "Agent A rollback did not replace its process"
     );
-    assert_peers_unchanged(&restarted_client, &agents[1..], &peer_baseline).await?;
+    assert_peers_unchanged(&restarted_client, &agents[1..], &peer_status_baseline).await?;
 
     for agent in &agents {
-        restarted_client.kill(agent.agent_id.clone()).await?;
+        let before = restarted_client.snapshot(agent.agent_id.clone()).await?;
+        let accepted = restarted_client.kill(before.control_fence.clone()).await?;
+        assert_mutation_accepted(SupervisordMutation::Kill, &before.control_fence, &accepted)?;
     }
     for agent in &agents {
         wait_for_stopped(&restarted_client, agent, &mut process_guard).await?;
@@ -484,6 +625,53 @@ fn assert_exact_status(
     ensure!(
         actual == expected,
         "{message}: expected={expected:?} actual={actual:?}"
+    );
+    Ok(())
+}
+
+fn assert_runtime_status(
+    expected: &SupervisordAgentStatus,
+    actual: &SupervisordAgentStatus,
+    message: &str,
+) -> Result<()> {
+    let mut actual = actual.clone();
+    actual.control_fence = expected.control_fence.clone();
+    assert_exact_status(expected, &actual, message)
+}
+
+fn assert_mutation_accepted(
+    operation: SupervisordMutation,
+    request_fence: &SupervisordControlFence,
+    accepted: &SupervisordMutationAccepted,
+) -> Result<()> {
+    ensure!(
+        accepted.operation == operation,
+        "mutation response operation changed: expected={operation:?} actual={:?}",
+        accepted.operation
+    );
+    ensure!(
+        accepted.accepted_state_digest == request_fence.state_digest,
+        "mutation response did not bind the accepted pre-state digest"
+    );
+    ensure!(
+        accepted.agent.control_fence.state_digest != request_fence.state_digest,
+        "accepted mutation did not issue a distinct post-state fence"
+    );
+    Ok(())
+}
+
+fn assert_status_fence_coherent(status: &SupervisordAgentStatus) -> Result<()> {
+    let fence = &status.control_fence;
+    ensure!(
+        fence.agent_id == status.agent_id
+            && fence.lifecycle == status.lifecycle
+            && fence.lifecycle_generation == status.lifecycle_generation
+            && fence.spawn_generation == status.spawn_generation
+            && fence.runtime_generation == status.runtime_generation
+            && fence.current_release == status.current_release
+            && fence.previous_release == status.previous_release
+            && fence.release_change_pending == status.release_change_pending,
+        "status and its authority fence were assembled from different snapshots: {status:?}"
     );
     Ok(())
 }

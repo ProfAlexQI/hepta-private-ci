@@ -30,9 +30,7 @@ impl<D: ProcessDriver> Supervisor<D> {
             ))
         })?;
         if current.identity() == target.identity() || current.command() == target.command() {
-            return Err(SupervisorError::Invalid(format!(
-                "agent {agent_id} upgrade requires a distinct release identity and command"
-            )));
+            return Err(SupervisorError::TargetReleaseUnchanged(agent_id.clone()));
         }
         let lifecycle = self.record(agent_id)?.lifecycle;
         if lifecycle.lifecycle != AgentLifecycle::Running {

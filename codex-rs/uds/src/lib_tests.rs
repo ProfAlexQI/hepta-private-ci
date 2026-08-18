@@ -91,6 +91,8 @@ async fn stream_round_trips_data_between_listener_and_client() {
 
     let server_task = tokio::spawn(async move {
         let mut server_stream = listener.accept().await.expect("connection should accept");
+        #[cfg(unix)]
+        ensure_current_user_peer(&server_stream).expect("same-user peer should be accepted");
         let mut request = [0; 7];
         server_stream
             .read_exact(&mut request)

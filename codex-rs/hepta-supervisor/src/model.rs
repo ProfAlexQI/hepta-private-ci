@@ -165,6 +165,10 @@ impl ProcessIdentity {
     pub fn system_id(&self) -> u64 {
         self.system_id
     }
+
+    pub(crate) fn incarnation(&self) -> &str {
+        &self.incarnation
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -238,4 +242,40 @@ pub struct AgentSupervisorSnapshot {
     pub release_change_pending: bool,
     pub events: Vec<SupervisorEvent>,
     pub logs: Vec<ProcessLog>,
+    pub(crate) control_revision: u64,
+    pub(crate) restart_pending: bool,
+    pub(crate) release_state_generation: u64,
+    pub(crate) runtime_phase: Option<ControlRuntimePhase>,
+    pub(crate) runtime_release: Option<String>,
+    pub(crate) runtime_incarnation: Option<String>,
+    pub(crate) runtime_fenced: bool,
+    pub(crate) release_change: Option<ControlReleaseChange>,
+    pub(crate) has_last_command: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ControlRuntimePhase {
+    AwaitingHealth,
+    Running,
+    Draining,
+    Stopping,
+    Killing,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ControlReleaseChangePhase {
+    WaitingForTargetExit,
+    TargetStarting,
+    AutomaticRollbackStarting,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct ControlReleaseChange {
+    pub origin_release: String,
+    pub target_release: String,
+    pub prior_previous_release: Option<String>,
+    pub phase: ControlReleaseChangePhase,
+    pub explicit_rollback: bool,
 }

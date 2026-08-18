@@ -25,6 +25,13 @@ pub async fn is_stale_socket_path(socket_path: impl AsRef<Path>) -> IoResult<boo
     platform::is_stale_socket_path(socket_path.as_ref()).await
 }
 
+/// Rejects a connected peer whose operating-system user identity differs from
+/// the current process. Call this before reading any owner-local control
+/// protocol bytes from the stream.
+pub fn ensure_current_user_peer(stream: &UnixStream) -> IoResult<()> {
+    platform::ensure_current_user_peer(&stream.inner)
+}
+
 /// Async Unix domain socket listener.
 pub struct UnixListener {
     inner: platform::Listener,
@@ -89,6 +96,7 @@ mod platform {
     use std::io::Result as IoResult;
     use std::os::unix::fs::FileTypeExt;
     use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::io::AsRawFd;
     use std::path::Path;
 
     use tokio::fs;
@@ -149,6 +157,64 @@ mod platform {
 
     pub(super) async fn connect_stream(socket_path: &Path) -> IoResult<Stream> {
         UnixStream::connect(socket_path).await
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    pub(super) fn ensure_current_user_peer(stream: &Stream) -> IoResult<()> {
+        let mut credentials = libc::ucred {
+            pid: 0,
+            uid: 0,
+            gid: 0,
+        };
+        let mut credentials_len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+        let result = unsafe {
+            libc::getsockopt(
+                stream.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_PEERCRED,
+                std::ptr::addr_of_mut!(credentials).cast(),
+                &mut credentials_len,
+            )
+        };
+        if result != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        ensure_peer_uid(credentials.uid)
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    pub(super) fn ensure_current_user_peer(stream: &Stream) -> IoResult<()> {
+        let mut peer_uid: libc::uid_t = 0;
+        let mut peer_gid: libc::gid_t = 0;
+        let result = unsafe { libc::getpeereid(stream.as_raw_fd(), &mut peer_uid, &mut peer_gid) };
+        if result != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        ensure_peer_uid(peer_uid)
+    }
+
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "macos",
+        target_os = "ios"
+    )))]
+    pub(super) fn ensure_current_user_peer(_stream: &Stream) -> IoResult<()> {
+        Err(io::Error::new(
+            ErrorKind::Unsupported,
+            "peer user identity is unavailable on this platform",
+        ))
+    }
+
+    fn ensure_peer_uid(peer_uid: libc::uid_t) -> IoResult<()> {
+        if peer_uid == unsafe { libc::getuid() } {
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                ErrorKind::PermissionDenied,
+                "Unix socket peer is not owned by the current user",
+            ))
+        }
     }
 
     pub(super) async fn is_stale_socket_path(socket_path: &Path) -> IoResult<bool> {
@@ -213,6 +279,13 @@ mod platform {
         Async::new(WindowsUnixStream::from(stream))
             .map(FuturesAsyncReadCompatExt::compat)
             .map(Stream)
+    }
+
+    pub(super) fn ensure_current_user_peer(_stream: &Stream) -> IoResult<()> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "peer user identity is unavailable on this platform",
+        ))
     }
 
     pub(super) async fn is_stale_socket_path(socket_path: &Path) -> IoResult<bool> {

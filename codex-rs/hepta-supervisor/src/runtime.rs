@@ -82,6 +82,7 @@ pub(crate) struct AgentSlot<P> {
     pub previous_release: Option<AgentRelease>,
     pub release_change: Option<ReleaseChange>,
     pub release_state_generation: u64,
+    pub control_revision: u64,
     pub events: BoundedQueue<SupervisorEvent>,
     pub logs: BoundedQueue<ProcessLog>,
 }
@@ -96,6 +97,7 @@ impl<P> AgentSlot<P> {
             previous_release: None,
             release_change: None,
             release_state_generation: 0,
+            control_revision: 0,
             events: BoundedQueue::new(config.event_capacity),
             logs: BoundedQueue::new(config.log_capacity),
         }

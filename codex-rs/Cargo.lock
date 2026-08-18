@@ -3747,14 +3747,17 @@ dependencies = [
  "codex-hepta-fleet",
  "codex-hepta-paths",
  "codex-uds",
+ "constant_time_eq",
  "libc",
  "pretty_assertions",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
+ "uuid",
 ]
 
 [[package]]
@@ -4896,6 +4899,7 @@ name = "codex-uds"
 version = "0.0.0"
 dependencies = [
  "async-io",
+ "libc",
  "pretty_assertions",
  "tempfile",
  "tokio",

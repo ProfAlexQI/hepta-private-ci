@@ -16,8 +16,10 @@ use crate::SupervisorError;
 use crate::daemon_protocol::MAX_SUPERVISORD_CONTROL_FRAME_BYTES;
 use crate::daemon_protocol::SUPERVISORD_CONTROL_SCHEMA_VERSION;
 use crate::daemon_protocol::SupervisordAgentStatus;
+use crate::daemon_protocol::SupervisordControlFence;
 use crate::daemon_protocol::SupervisordHealth;
 use crate::daemon_protocol::SupervisordMethod;
+use crate::daemon_protocol::SupervisordMutationAccepted;
 use crate::daemon_protocol::SupervisordPayload;
 use crate::daemon_protocol::SupervisordRequest;
 use crate::daemon_protocol::SupervisordResponse;
@@ -65,55 +67,55 @@ impl SupervisordClient {
 
     pub async fn start(
         &self,
-        agent_id: AgentId,
+        fence: SupervisordControlFence,
         release_id: ReleaseId,
-    ) -> Result<SupervisordAgentStatus, SupervisorError> {
-        self.agent(SupervisordMethod::Start {
-            agent_id,
-            release_id,
-        })
-        .await
+    ) -> Result<SupervisordMutationAccepted, SupervisorError> {
+        self.mutation(SupervisordMethod::Start { fence, release_id })
+            .await
     }
 
     pub async fn drain(
         &self,
-        agent_id: AgentId,
-    ) -> Result<SupervisordAgentStatus, SupervisorError> {
-        self.agent(SupervisordMethod::Drain { agent_id }).await
+        fence: SupervisordControlFence,
+    ) -> Result<SupervisordMutationAccepted, SupervisorError> {
+        self.mutation(SupervisordMethod::Drain { fence }).await
     }
 
-    pub async fn stop(&self, agent_id: AgentId) -> Result<SupervisordAgentStatus, SupervisorError> {
-        self.agent(SupervisordMethod::Stop { agent_id }).await
+    pub async fn stop(
+        &self,
+        fence: SupervisordControlFence,
+    ) -> Result<SupervisordMutationAccepted, SupervisorError> {
+        self.mutation(SupervisordMethod::Stop { fence }).await
     }
 
-    pub async fn kill(&self, agent_id: AgentId) -> Result<SupervisordAgentStatus, SupervisorError> {
-        self.agent(SupervisordMethod::Kill { agent_id }).await
+    pub async fn kill(
+        &self,
+        fence: SupervisordControlFence,
+    ) -> Result<SupervisordMutationAccepted, SupervisorError> {
+        self.mutation(SupervisordMethod::Kill { fence }).await
     }
 
     pub async fn restart(
         &self,
-        agent_id: AgentId,
-    ) -> Result<SupervisordAgentStatus, SupervisorError> {
-        self.agent(SupervisordMethod::Restart { agent_id }).await
+        fence: SupervisordControlFence,
+    ) -> Result<SupervisordMutationAccepted, SupervisorError> {
+        self.mutation(SupervisordMethod::Restart { fence }).await
     }
 
     pub async fn upgrade(
         &self,
-        agent_id: AgentId,
+        fence: SupervisordControlFence,
         release_id: ReleaseId,
-    ) -> Result<SupervisordAgentStatus, SupervisorError> {
-        self.agent(SupervisordMethod::Upgrade {
-            agent_id,
-            release_id,
-        })
-        .await
+    ) -> Result<SupervisordMutationAccepted, SupervisorError> {
+        self.mutation(SupervisordMethod::Upgrade { fence, release_id })
+            .await
     }
 
     pub async fn rollback(
         &self,
-        agent_id: AgentId,
-    ) -> Result<SupervisordAgentStatus, SupervisorError> {
-        self.agent(SupervisordMethod::Rollback { agent_id }).await
+        fence: SupervisordControlFence,
+    ) -> Result<SupervisordMutationAccepted, SupervisorError> {
+        self.mutation(SupervisordMethod::Rollback { fence }).await
     }
 
     async fn agent(
@@ -126,9 +128,30 @@ impl SupervisordClient {
         }
     }
 
+    async fn mutation(
+        &self,
+        method: SupervisordMethod,
+    ) -> Result<SupervisordMutationAccepted, SupervisorError> {
+        match self.send(method).await? {
+            SupervisordPayload::MutationAccepted {
+                operation,
+                accepted_state_digest,
+                agent,
+            } => Ok(SupervisordMutationAccepted {
+                operation,
+                accepted_state_digest,
+                agent,
+            }),
+            payload => unexpected(payload),
+        }
+    }
+
     async fn send(&self, method: SupervisordMethod) -> Result<SupervisordPayload, SupervisorError> {
         let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
         let request = SupervisordRequest::new(request_id, method);
+        request
+            .validate()
+            .map_err(|_| SupervisorError::Invalid("invalid supervisord request".to_string()))?;
         let stream = timeout(self.timeout, UnixStream::connect(&self.socket_path))
             .await
             .map_err(|_| SupervisorError::Invalid("supervisord connect timed out".to_string()))??;
@@ -168,7 +191,11 @@ impl SupervisordClient {
             ));
         }
         match response.payload {
-            SupervisordPayload::Error { code, message } => Err(SupervisorError::Invalid(format!(
+            SupervisordPayload::Error {
+                code,
+                message,
+                actual: _,
+            } => Err(SupervisorError::Invalid(format!(
                 "supervisord rejected request ({code}): {message}"
             ))),
             payload => Ok(payload),

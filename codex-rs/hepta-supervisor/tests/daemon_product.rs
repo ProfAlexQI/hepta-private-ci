@@ -41,6 +41,7 @@ async fn product_binary_is_single_instance_owner_only_and_bad_frames_are_isolate
     let client = wait_for_daemon(&registry).await?;
     let health = client.health().await?;
     ensure!(health.ready && health.registered_agents == 1);
+    let initial_epoch = health.supervisor_epoch;
     ensure!(
         std::fs::metadata(registry.layout().supervisor_socket())?
             .permissions()
@@ -65,7 +66,30 @@ async fn product_binary_is_single_instance_owner_only_and_bad_frames_are_isolate
         "a second daemon acquired the fleet"
     );
 
-    send_malformed_frame(registry.layout().supervisor_socket(), b"{bad json}\n")?;
+    let malformed = send_bounded_frame(registry.layout().supervisor_socket(), b"{bad json}\n")?;
+    assert_wire_error(&malformed, 0, "invalid_frame")?;
+    let old_schema = send_bounded_frame(
+        registry.layout().supervisor_socket(),
+        br#"{"schema_version":1,"request_id":9,"method":{"type":"health"}}
+"#,
+    )?;
+    assert_wire_error(&old_schema, 9, "unsupported_schema")?;
+    let zero_request = send_bounded_frame(
+        registry.layout().supervisor_socket(),
+        br#"{"schema_version":2,"request_id":0,"method":{"type":"health"}}
+"#,
+    )?;
+    assert_wire_error(&zero_request, 0, "invalid_frame")?;
+    let unknown_field = send_bounded_frame(
+        registry.layout().supervisor_socket(),
+        br#"{"schema_version":2,"request_id":10,"method":{"type":"health"},"program":"/secret/agentd"}
+"#,
+    )?;
+    assert_wire_error(&unknown_field, 0, "invalid_frame")?;
+    ensure!(
+        !unknown_field.to_string().contains("/secret/agentd"),
+        "invalid frame reflected private request content"
+    );
     ensure!(
         client.health().await?.ready,
         "malformed frame stopped daemon"
@@ -79,14 +103,19 @@ async fn product_binary_is_single_instance_owner_only_and_bad_frames_are_isolate
     daemon.kill()?;
     let mut restarted = DaemonChild::spawn(fleet_root.as_path())?;
     let restarted_client = wait_for_daemon(&registry).await?;
-    ensure!(restarted_client.health().await?.ready);
+    let restarted_health = restarted_client.health().await?;
+    ensure!(restarted_health.ready);
+    ensure!(
+        restarted_health.supervisor_epoch != initial_epoch,
+        "supervisord reused its authority epoch after daemon restart"
+    );
     let roster = restarted_client.roster(16).await?;
     ensure!(roster.len() == 1 && roster[0].agent_id == agent_id);
     restarted.terminate()?;
     Ok(())
 }
 
-fn send_malformed_frame(path: &std::path::Path, frame: &[u8]) -> Result<()> {
+fn send_bounded_frame(path: &std::path::Path, frame: &[u8]) -> Result<serde_json::Value> {
     let mut stream = std::os::unix::net::UnixStream::connect(path)?;
     stream.set_read_timeout(Some(Duration::from_secs(3)))?;
     stream.write_all(frame)?;
@@ -96,6 +125,17 @@ fn send_malformed_frame(path: &std::path::Path, frame: &[u8]) -> Result<()> {
     ensure!(
         response.ends_with(b"\n"),
         "bad frame did not get bounded error"
+    );
+    Ok(serde_json::from_slice(&response)?)
+}
+
+fn assert_wire_error(value: &serde_json::Value, request_id: u64, code: &str) -> Result<()> {
+    ensure!(
+        value["schema_version"] == 2
+            && value["request_id"] == request_id
+            && value["payload"]["type"] == "error"
+            && value["payload"]["code"] == code,
+        "unexpected bounded error payload: {value}"
     );
     Ok(())
 }
