@@ -46,6 +46,7 @@ members = [
     "hooks",
     "hepta-contracts",
     "hepta-evidence",
+    "hepta-fleet",
     "hepta-memory",
     "hepta-native-gateway",
     "hepta-operator-acceptance",
@@ -190,6 +191,7 @@ codex-home = { path = "codex-home" }
 codex-http-client = { path = "http-client" }
 codex-hepta-contracts = { path = "hepta-contracts" }
 codex-hepta-evidence = { path = "hepta-evidence" }
+codex-hepta-fleet = { path = "hepta-fleet" }
 codex-hepta-memory = { path = "hepta-memory" }
 codex-hepta-native-gateway = { path = "hepta-native-gateway" }
 codex-hepta-paths = { path = "hepta-paths" }
