@@ -19,6 +19,7 @@ use codex_hepta_fleet::WorkspaceBinding;
 use codex_hepta_paths::HeptaAgentLayout;
 use codex_hepta_paths::HeptaFleetRoot;
 use codex_hepta_supervisor::AgentCommand;
+use codex_hepta_supervisor::AgentRelease;
 use codex_hepta_supervisor::Supervisor;
 use codex_hepta_supervisor::SupervisorConfig;
 use codex_hepta_supervisor::UnixProcessDriver;
@@ -111,11 +112,24 @@ impl FleetHarness {
         })
     }
 
+    #[allow(dead_code)]
     pub(crate) fn start(&mut self, agent: &AgentFixture) -> Result<()> {
-        let binary = PathBuf::from(env!("CARGO_BIN_EXE_codex-hepta-agentd"));
+        let binary = agentd_binary();
         let command = AgentCommand::new(binary, Vec::new())?;
         self.supervisor
             .start(&agent.agent_id, command, Instant::now())?;
+        self.started = true;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn start_release(
+        &mut self,
+        agent: &AgentFixture,
+        release: AgentRelease,
+    ) -> Result<()> {
+        self.supervisor
+            .start_release(&agent.agent_id, release, Instant::now())?;
         self.started = true;
         Ok(())
     }
@@ -176,6 +190,10 @@ impl FleetHarness {
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
     }
+}
+
+pub(crate) fn agentd_binary() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_codex-hepta-agentd"))
 }
 
 impl Drop for FleetHarness {

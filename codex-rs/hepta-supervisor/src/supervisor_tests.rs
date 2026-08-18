@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::VecDeque;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -21,6 +22,7 @@ use super::Supervisor;
 use crate::AdoptSpec;
 use crate::Adoption;
 use crate::AgentCommand;
+use crate::AgentRelease;
 use crate::ManagedProcess;
 use crate::ProcessDriver;
 use crate::ProcessDriverError;
@@ -93,6 +95,10 @@ fn command() -> Result<AgentCommand, SupervisorError> {
     AgentCommand::new("/fake/hepta-agentd", Vec::new())
 }
 
+fn release(identity: &str, program: &str) -> Result<AgentRelease, SupervisorError> {
+    AgentRelease::new(identity, AgentCommand::new(program, Vec::new())?)
+}
+
 fn config() -> SupervisorConfig {
     SupervisorConfig {
         health_timeout: Duration::from_millis(10),
@@ -119,6 +125,7 @@ struct FakeWorld {
     next_id: u64,
     processes: BTreeMap<u64, FakeState>,
     reject_adoption: BTreeSet<AgentId>,
+    reject_spawn_programs: BTreeSet<PathBuf>,
 }
 
 struct FakeState {
@@ -192,6 +199,14 @@ impl FakeControl {
             .insert(agent_id);
     }
 
+    fn reject_spawn_program(&self, program: impl Into<PathBuf>) {
+        self.world
+            .lock()
+            .expect("fake world lock")
+            .reject_spawn_programs
+            .insert(program.into());
+    }
+
     fn counts(&self, agent_id: &AgentId) -> (usize, usize, usize) {
         let world = self.world.lock().expect("fake world lock");
         let state = world
@@ -226,6 +241,9 @@ impl ProcessDriver for FakeDriver {
         spec: &SpawnSpec,
     ) -> Result<SpawnedProcess<Self::Process>, ProcessDriverError> {
         let mut world = self.world.lock().expect("fake world lock");
+        if world.reject_spawn_programs.contains(&spec.command.program) {
+            return Err(ProcessDriverError::new("injected spawn failure"));
+        }
         world.next_id += 1;
         let id = world.next_id;
         let identity = ProcessIdentity::new(id, format!("fake-{id}-{}", spec.generation))
@@ -516,4 +534,165 @@ fn stale_runtime_is_fenced_without_touching_peer() -> Result<(), SupervisorError
         AgentLifecycle::Running
     );
     Ok(())
+}
+
+#[test]
+fn successful_upgrade_and_explicit_rollback_change_only_target_agent() -> Result<(), SupervisorError>
+{
+    let fleet = TestFleet::new()?;
+    let control = FakeControl::default();
+    let now = Instant::now();
+    let (mut supervisor, _) =
+        Supervisor::recover(fleet.registry.clone(), control.driver(), config(), now)?;
+    supervisor.start_release(
+        &fleet.first,
+        release("release-v1", "/fake/release-v1/hepta-agentd")?,
+        now,
+    )?;
+    supervisor.start_release(
+        &fleet.second,
+        release("peer-release", "/fake/peer/hepta-agentd")?,
+        now,
+    )?;
+    control.set_healthy(&fleet.first);
+    control.set_healthy(&fleet.second);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+    let peer_before = supervisor.snapshot(&fleet.second).expect("peer snapshot");
+
+    supervisor.upgrade(
+        &fleet.first,
+        release("release-v2", "/fake/release-v2/hepta-agentd")?,
+        now,
+    )?;
+    assert!(matches!(
+        supervisor.restart(&fleet.first, now),
+        Err(SupervisorError::ReleaseChangePending(agent_id)) if agent_id == fleet.first
+    ));
+    finish_release_drain(&mut supervisor, &control, &fleet.first, now);
+    control.set_healthy(&fleet.first);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+    let upgraded = supervisor
+        .snapshot(&fleet.first)
+        .expect("upgraded snapshot");
+    assert_eq!(upgraded.active_release.as_deref(), Some("release-v2"));
+    assert_eq!(upgraded.previous_release.as_deref(), Some("release-v1"));
+    assert!(!upgraded.release_change_pending);
+    assert!(upgraded.events.iter().any(|event| {
+        matches!(
+            &event.kind,
+            SupervisorEventKind::UpgradeCommitted { previous, target }
+                if previous == "release-v1" && target == "release-v2"
+        )
+    }));
+
+    supervisor.rollback(&fleet.first, now)?;
+    finish_release_drain(&mut supervisor, &control, &fleet.first, now);
+    control.set_healthy(&fleet.first);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+    let rolled_back = supervisor
+        .snapshot(&fleet.first)
+        .expect("rollback snapshot");
+    assert_eq!(rolled_back.active_release.as_deref(), Some("release-v1"));
+    assert_eq!(rolled_back.previous_release.as_deref(), Some("release-v2"));
+    assert!(!rolled_back.release_change_pending);
+    assert!(rolled_back.events.iter().any(|event| {
+        matches!(
+            &event.kind,
+            SupervisorEventKind::ExplicitRollbackCommitted { previous, target }
+                if previous == "release-v2" && target == "release-v1"
+        )
+    }));
+
+    let peer_after = supervisor.snapshot(&fleet.second).expect("peer snapshot");
+    assert_eq!(peer_after.process_system_id, peer_before.process_system_id);
+    assert_eq!(peer_after.spawn_generation, peer_before.spawn_generation);
+    assert_eq!(control.counts(&fleet.second), (0, 0, 0));
+    Ok(())
+}
+
+#[test]
+fn failed_spawn_and_failed_health_each_auto_rollback_once() -> Result<(), SupervisorError> {
+    let fleet = TestFleet::new()?;
+    let control = FakeControl::default();
+    let now = Instant::now();
+    let (mut supervisor, _) =
+        Supervisor::recover(fleet.registry.clone(), control.driver(), config(), now)?;
+    supervisor.start_release(
+        &fleet.first,
+        release("release-v1", "/fake/release-v1/hepta-agentd")?,
+        now,
+    )?;
+    control.set_healthy(&fleet.first);
+    supervisor.tick(now);
+
+    control.reject_spawn_program("/fake/release-spawn-fails/hepta-agentd");
+    supervisor.upgrade(
+        &fleet.first,
+        release(
+            "release-spawn-fails",
+            "/fake/release-spawn-fails/hepta-agentd",
+        )?,
+        now,
+    )?;
+    finish_release_drain(&mut supervisor, &control, &fleet.first, now);
+    control.set_healthy(&fleet.first);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+    let recovered = supervisor
+        .snapshot(&fleet.first)
+        .expect("recovered snapshot");
+    assert_eq!(recovered.active_release.as_deref(), Some("release-v1"));
+    assert!(!recovered.release_change_pending);
+
+    supervisor.upgrade(
+        &fleet.first,
+        release(
+            "release-health-fails",
+            "/fake/release-health-fails/hepta-agentd",
+        )?,
+        now,
+    )?;
+    finish_release_drain(&mut supervisor, &control, &fleet.first, now);
+    assert_eq!(
+        supervisor.tick(now + Duration::from_millis(11)),
+        TickReport::default()
+    );
+    control.set_exit(&fleet.first);
+    assert_eq!(
+        supervisor.tick(now + Duration::from_millis(12)),
+        TickReport::default()
+    );
+    control.set_healthy(&fleet.first);
+    assert_eq!(
+        supervisor.tick(now + Duration::from_millis(12)),
+        TickReport::default()
+    );
+    let final_snapshot = supervisor.snapshot(&fleet.first).expect("final snapshot");
+    assert_eq!(final_snapshot.active_release.as_deref(), Some("release-v1"));
+    assert!(!final_snapshot.release_change_pending);
+    assert!(final_snapshot.events.iter().any(|event| {
+        matches!(
+            &event.kind,
+            SupervisorEventKind::AutomaticRollbackCommitted { failed, restored }
+                if failed == "release-health-fails" && restored == "release-v1"
+        )
+    }));
+    let spawn_count = control.spawn_count(&fleet.first);
+    assert_eq!(
+        supervisor.tick(now + Duration::from_secs(10)),
+        TickReport::default()
+    );
+    assert_eq!(control.spawn_count(&fleet.first), spawn_count);
+    Ok(())
+}
+
+fn finish_release_drain(
+    supervisor: &mut Supervisor<FakeDriver>,
+    control: &FakeControl,
+    agent_id: &AgentId,
+    now: Instant,
+) {
+    control.set_drained(agent_id);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+    control.set_exit(agent_id);
+    assert_eq!(supervisor.tick(now), TickReport::default());
 }

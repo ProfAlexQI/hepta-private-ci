@@ -16,6 +16,55 @@ pub struct AgentCommand {
     pub args: Vec<OsString>,
 }
 
+/// Immutable process command bound to a caller-supplied release identity.
+///
+/// Release identities are deliberately opaque to the supervisor. The release
+/// builder is responsible for making the command path immutable; the
+/// supervisor only enforces bounded local values and refuses an "upgrade"
+/// whose identity or command is unchanged.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgentRelease {
+    identity: String,
+    command: AgentCommand,
+}
+
+impl AgentRelease {
+    pub fn new(
+        identity: impl Into<String>,
+        command: AgentCommand,
+    ) -> Result<Self, SupervisorError> {
+        let identity = identity.into();
+        if identity.is_empty()
+            || identity.len() > 128
+            || !identity.is_ascii()
+            || !identity
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+        {
+            return Err(SupervisorError::Invalid(
+                "release identity must be 1..=128 ASCII letters, digits, '.', '_' or '-'"
+                    .to_string(),
+            ));
+        }
+        Ok(Self { identity, command })
+    }
+
+    pub fn identity(&self) -> &str {
+        &self.identity
+    }
+
+    pub fn command(&self) -> &AgentCommand {
+        &self.command
+    }
+
+    pub(crate) fn unversioned(command: AgentCommand) -> Self {
+        Self {
+            identity: "unversioned".to_string(),
+            command,
+        }
+    }
+}
+
 impl AgentCommand {
     pub fn new(program: impl Into<PathBuf>, args: Vec<OsString>) -> Result<Self, SupervisorError> {
         let program = program.into();
@@ -144,6 +193,13 @@ pub enum SupervisorEventKind {
     StopRequested,
     KillRequested,
     RestartQueued,
+    UpgradeQueued { previous: String, target: String },
+    UpgradeCommitted { previous: String, target: String },
+    AutomaticRollbackQueued { failed: String, target: String },
+    AutomaticRollbackCommitted { failed: String, restored: String },
+    AutomaticRollbackFailed { failed: String, rollback: String },
+    ExplicitRollbackQueued { previous: String, target: String },
+    ExplicitRollbackCommitted { previous: String, target: String },
     Exited(ProcessExit),
     OrphanAdopted,
     OrphanMissing,
@@ -173,6 +229,11 @@ pub struct TickReport {
 pub struct AgentSupervisorSnapshot {
     pub active: bool,
     pub runtime_generation: Option<u64>,
+    pub spawn_generation: Option<u64>,
+    pub process_system_id: Option<u64>,
+    pub active_release: Option<String>,
+    pub previous_release: Option<String>,
+    pub release_change_pending: bool,
     pub events: Vec<SupervisorEvent>,
     pub logs: Vec<ProcessLog>,
 }

@@ -40,13 +40,19 @@ impl<D: ProcessDriver> Supervisor<D> {
             slot.runtime = Some(runtime);
             return Ok(());
         }
+        if self.continue_release_change_after_exit(agent_id, slot, now)? {
+            return Ok(());
+        }
         if slot.restart_pending {
             slot.restart_pending = false;
-            let command = slot
-                .last_command
-                .clone()
-                .ok_or_else(|| SupervisorError::NoPreviousCommand(agent_id.clone()))?;
-            self.start_slot(agent_id, slot, command, now)?;
+            let release = slot.active_release.clone().or_else(|| {
+                slot.last_command
+                    .clone()
+                    .map(crate::AgentRelease::unversioned)
+            });
+            let release =
+                release.ok_or_else(|| SupervisorError::NoPreviousCommand(agent_id.clone()))?;
+            self.start_release_slot(agent_id, slot, release, now)?;
         }
         Ok(())
     }
@@ -103,6 +109,7 @@ impl<D: ProcessDriver> Supervisor<D> {
                     SupervisorEventKind::Lifecycle(AgentLifecycle::Running),
                 );
                 slot.event(next.generation, SupervisorEventKind::Healthy);
+                self.release_became_healthy(slot, next.generation);
             }
             RuntimePhase::AwaitingHealth { deadline: limit } if now >= limit => {
                 let next = self.registry.compare_and_transition(

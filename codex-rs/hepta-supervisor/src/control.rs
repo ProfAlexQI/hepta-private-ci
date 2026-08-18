@@ -102,12 +102,18 @@ impl<D: ProcessDriver> Supervisor<D> {
         slot: &mut AgentSlot<D::Process>,
         now: Instant,
     ) -> Result<(), SupervisorError> {
-        let command = slot
-            .last_command
-            .clone()
-            .ok_or_else(|| SupervisorError::NoPreviousCommand(agent_id.clone()))?;
+        if slot.release_change.is_some() {
+            return Err(SupervisorError::ReleaseChangePending(agent_id.clone()));
+        }
+        let release = slot.active_release.clone().or_else(|| {
+            slot.last_command
+                .clone()
+                .map(crate::AgentRelease::unversioned)
+        });
+        let release =
+            release.ok_or_else(|| SupervisorError::NoPreviousCommand(agent_id.clone()))?;
         if slot.runtime.is_none() {
-            return self.start_slot(agent_id, slot, command, now);
+            return self.start_release_slot(agent_id, slot, release, now);
         }
         let lifecycle = self.record(agent_id)?.lifecycle.lifecycle;
         let result = if matches!(

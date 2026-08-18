@@ -6,6 +6,7 @@ use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
 
 use crate::AgentCommand;
+use crate::AgentRelease;
 use crate::ProcessDriverError;
 use crate::ProcessIdentity;
 use crate::ProcessLog;
@@ -34,6 +35,21 @@ pub(crate) struct AgentRuntime<P> {
     pub fenced: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ReleaseChangePhase {
+    WaitingForTargetExit,
+    TargetStarting,
+    AutomaticRollbackStarting,
+}
+
+pub(crate) struct ReleaseChange {
+    pub origin: AgentRelease,
+    pub target: AgentRelease,
+    pub prior_previous: Option<AgentRelease>,
+    pub phase: ReleaseChangePhase,
+    pub explicit_rollback: bool,
+}
+
 pub(crate) struct BoundedQueue<T> {
     capacity: usize,
     pub items: VecDeque<T>,
@@ -59,6 +75,9 @@ pub(crate) struct AgentSlot<P> {
     pub runtime: Option<AgentRuntime<P>>,
     pub last_command: Option<AgentCommand>,
     pub restart_pending: bool,
+    pub active_release: Option<AgentRelease>,
+    pub previous_release: Option<AgentRelease>,
+    pub release_change: Option<ReleaseChange>,
     pub events: BoundedQueue<SupervisorEvent>,
     pub logs: BoundedQueue<ProcessLog>,
 }
@@ -69,6 +88,9 @@ impl<P> AgentSlot<P> {
             runtime: None,
             last_command: None,
             restart_pending: false,
+            active_release: None,
+            previous_release: None,
+            release_change: None,
             events: BoundedQueue::new(config.event_capacity),
             logs: BoundedQueue::new(config.log_capacity),
         }

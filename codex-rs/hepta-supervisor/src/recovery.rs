@@ -7,6 +7,7 @@ use codex_hepta_fleet::AgentRecord;
 use crate::AdoptSpec;
 use crate::Adoption;
 use crate::AgentCommand;
+use crate::AgentRelease;
 use crate::ManagedProcess;
 use crate::ProcessDriver;
 use crate::SpawnSpec;
@@ -32,6 +33,16 @@ impl<D: ProcessDriver> Supervisor<D> {
         agent_id: &AgentId,
         slot: &mut AgentSlot<D::Process>,
         command: AgentCommand,
+        now: Instant,
+    ) -> Result<(), SupervisorError> {
+        self.start_release_slot(agent_id, slot, AgentRelease::unversioned(command), now)
+    }
+
+    pub(crate) fn start_release_slot(
+        &mut self,
+        agent_id: &AgentId,
+        slot: &mut AgentSlot<D::Process>,
+        release: AgentRelease,
         now: Instant,
     ) -> Result<(), SupervisorError> {
         let health_deadline = deadline(now, self.config.health_timeout)?;
@@ -69,7 +80,7 @@ impl<D: ProcessDriver> Supervisor<D> {
             run_root: record.layout.run_root().to_path_buf(),
             control_socket: record.layout.agentd_control_socket().to_path_buf(),
             logs_root: record.layout.logs_root().to_path_buf(),
-            command: command.clone(),
+            command: release.command().clone(),
         };
         let mut spawned = match self.driver.spawn(&spec) {
             Ok(spawned) => spawned,
@@ -99,7 +110,8 @@ impl<D: ProcessDriver> Supervisor<D> {
             )?;
             return Err(error);
         }
-        slot.last_command = Some(command);
+        slot.last_command = Some(release.command().clone());
+        slot.active_release = Some(release);
         slot.runtime = Some(AgentRuntime {
             process: spawned.process,
             identity: spawned.identity,

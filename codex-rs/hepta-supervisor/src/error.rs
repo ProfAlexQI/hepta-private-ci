@@ -38,6 +38,10 @@ pub enum SupervisorError {
     AlreadyActive(AgentId),
     #[error("agent {0} has no previous child command")]
     NoPreviousCommand(AgentId),
+    #[error("agent {0} has no previous healthy release to roll back")]
+    NoPreviousRelease(AgentId),
+    #[error("agent {0} already has a release change in progress")]
+    ReleaseChangePending(AgentId),
     #[error("agent {0} has an unresolved process lease")]
     UnresolvedLease(AgentId),
     #[error("corrupt supervisor process lease: {0}")]

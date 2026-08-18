@@ -8,6 +8,7 @@ use codex_hepta_fleet::FleetRegistry;
 
 use crate::AgentCommand;
 use crate::AgentFault;
+use crate::AgentRelease;
 use crate::AgentSupervisorSnapshot;
 use crate::ProcessDriver;
 use crate::SupervisorConfig;
@@ -68,6 +69,23 @@ impl<D: ProcessDriver> Supervisor<D> {
             .map(|slot| AgentSupervisorSnapshot {
                 active: slot.runtime.is_some(),
                 runtime_generation: slot.runtime.as_ref().map(|runtime| runtime.generation),
+                spawn_generation: slot
+                    .runtime
+                    .as_ref()
+                    .map(|runtime| runtime.spawn_generation),
+                process_system_id: slot
+                    .runtime
+                    .as_ref()
+                    .map(|runtime| runtime.identity.system_id()),
+                active_release: slot
+                    .active_release
+                    .as_ref()
+                    .map(|release| release.identity().to_string()),
+                previous_release: slot
+                    .previous_release
+                    .as_ref()
+                    .map(|release| release.identity().to_string()),
+                release_change_pending: slot.release_change.is_some(),
                 events: slot.events.items.iter().cloned().collect(),
                 logs: slot.logs.items.iter().cloned().collect(),
             })
@@ -81,6 +99,17 @@ impl<D: ProcessDriver> Supervisor<D> {
     ) -> Result<(), SupervisorError> {
         self.with_slot(agent_id, |supervisor, slot| {
             supervisor.start_slot(agent_id, slot, command, now)
+        })
+    }
+
+    pub fn start_release(
+        &mut self,
+        agent_id: &AgentId,
+        release: AgentRelease,
+        now: Instant,
+    ) -> Result<(), SupervisorError> {
+        self.with_slot(agent_id, |supervisor, slot| {
+            supervisor.start_release_slot(agent_id, slot, release, now)
         })
     }
 
@@ -105,6 +134,27 @@ impl<D: ProcessDriver> Supervisor<D> {
     pub fn restart(&mut self, agent_id: &AgentId, now: Instant) -> Result<(), SupervisorError> {
         self.with_slot(agent_id, |supervisor, slot| {
             supervisor.restart_slot(agent_id, slot, now)
+        })
+    }
+
+    pub fn upgrade(
+        &mut self,
+        agent_id: &AgentId,
+        target: AgentRelease,
+        now: Instant,
+    ) -> Result<(), SupervisorError> {
+        self.with_slot(agent_id, |supervisor, slot| {
+            supervisor.upgrade_slot(agent_id, slot, target, now, false)
+        })
+    }
+
+    pub fn rollback(&mut self, agent_id: &AgentId, now: Instant) -> Result<(), SupervisorError> {
+        self.with_slot(agent_id, |supervisor, slot| {
+            let target = slot
+                .previous_release
+                .clone()
+                .ok_or_else(|| SupervisorError::NoPreviousRelease(agent_id.clone()))?;
+            supervisor.upgrade_slot(agent_id, slot, target, now, true)
         })
     }
 
