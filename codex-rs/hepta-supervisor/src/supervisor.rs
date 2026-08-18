@@ -25,6 +25,10 @@ pub struct Supervisor<D: ProcessDriver> {
     slots: BTreeMap<AgentId, AgentSlot<D::Process>>,
 }
 
+#[cfg(test)]
+#[path = "supervisor_tests.rs"]
+mod tests;
+
 impl<D: ProcessDriver> Supervisor<D> {
     pub fn recover(
         registry: FleetRegistry,
