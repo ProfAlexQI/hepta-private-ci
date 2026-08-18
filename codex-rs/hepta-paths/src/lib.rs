@@ -5,6 +5,13 @@
 
 #![forbid(unsafe_code)]
 
+mod fleet;
+
+pub use fleet::HEPTA_FLEET_ROOT_ENV;
+pub use fleet::HeptaAgentLayout;
+pub use fleet::HeptaFleetLayout;
+pub use fleet::HeptaFleetRoot;
+
 use std::env;
 use std::fmt;
 use std::path::Component;

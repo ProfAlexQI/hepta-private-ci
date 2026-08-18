@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod agent_id;
 #[cfg(test)]
 mod callers_manifest_tests;
 mod canonical;
@@ -9,6 +10,7 @@ mod provider;
 mod receipt;
 mod stable_id;
 
+pub use agent_id::AgentId;
 pub use identity::ActionId;
 pub use identity::DecisionId;
 pub use identity::ReceiptId;

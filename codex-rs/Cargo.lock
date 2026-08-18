@@ -3434,6 +3434,8 @@ name = "codex-hepta-paths"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "codex-hepta-contracts",
+ "pretty_assertions",
  "tempfile",
 ]
 
