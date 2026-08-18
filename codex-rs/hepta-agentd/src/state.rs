@@ -270,6 +270,7 @@ impl AgentdState {
                     && !fenced,
                 ready: lifecycle == AgentLifecycle::Running && app_server_ready && !fenced,
                 fenced,
+                lifecycle,
                 process_id: std::process::id(),
                 workspace: self.identity.workspace.clone(),
                 home_root: self.identity.home_root.clone(),

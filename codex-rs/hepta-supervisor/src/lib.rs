@@ -3,6 +3,9 @@
 //! The supervisor does not execute turns or forward messages, models, or tokens.
 
 mod control;
+mod daemon;
+mod daemon_client;
+mod daemon_protocol;
 mod driver;
 mod error;
 mod lease;
@@ -16,6 +19,15 @@ mod tick;
 #[cfg(unix)]
 mod unix;
 
+pub use daemon::run_supervisord;
+pub use daemon_client::SupervisordClient;
+pub use daemon_protocol::SUPERVISORD_CONTROL_SCHEMA_VERSION;
+pub use daemon_protocol::SupervisordAgentStatus;
+pub use daemon_protocol::SupervisordHealth;
+pub use daemon_protocol::SupervisordMethod;
+pub use daemon_protocol::SupervisordPayload;
+pub use daemon_protocol::SupervisordRequest;
+pub use daemon_protocol::SupervisordResponse;
 pub use driver::AdoptSpec;
 pub use driver::Adoption;
 pub use driver::ManagedProcess;

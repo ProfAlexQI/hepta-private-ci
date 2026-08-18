@@ -96,6 +96,36 @@ fn health_probe_requires_exact_agent_generation_pid_and_roots() {
 
     let wrong_pid = health_response(&identity, expected_agent, 7, 7, 42);
     assert!(!serve_and_probe(&identity, 4, wrong_pid));
+
+    let running = running_health_response(&identity, 7, 8, 41);
+    assert!(serve_and_probe(&identity, 5, running.clone()));
+    assert!(serve_and_probe(&identity, 6, running));
+}
+
+fn running_health_response(
+    identity: &HealthProbeIdentity,
+    spawn_generation: u64,
+    current_generation: u64,
+    process_id: u32,
+) -> AgentdResponse {
+    let mut response = health_response(
+        identity,
+        identity.agent_id.clone(),
+        spawn_generation,
+        current_generation,
+        process_id,
+    );
+    response.payload = AgentdPayload::Health(HealthSnapshot {
+        promotion_ready: true,
+        ready: true,
+        fenced: false,
+        lifecycle: codex_hepta_fleet::AgentLifecycle::Running,
+        process_id,
+        workspace: identity.workspace.clone(),
+        home_root: identity.home_root.clone(),
+        run_root: identity.run_root.clone(),
+    });
+    response
 }
 
 fn health_response(
@@ -115,6 +145,7 @@ fn health_response(
             promotion_ready: true,
             ready: false,
             fenced: false,
+            lifecycle: codex_hepta_fleet::AgentLifecycle::Starting,
             process_id,
             workspace: identity.workspace.clone(),
             home_root: identity.home_root.clone(),

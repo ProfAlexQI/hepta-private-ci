@@ -108,7 +108,7 @@ impl<D: ProcessDriver> Supervisor<D> {
         let release = slot.active_release.clone().or_else(|| {
             slot.last_command
                 .clone()
-                .map(crate::AgentRelease::unversioned)
+                .and_then(|command| crate::AgentRelease::unversioned(command).ok())
         });
         let release =
             release.ok_or_else(|| SupervisorError::NoPreviousCommand(agent_id.clone()))?;

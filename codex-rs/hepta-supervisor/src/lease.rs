@@ -8,13 +8,14 @@ use std::sync::atomic::Ordering;
 
 use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
+use codex_hepta_fleet::ReleaseId;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::ProcessIdentity;
 use crate::SupervisorError;
 
-pub(crate) const PROCESS_LEASE_SCHEMA_VERSION: u32 = 1;
+pub(crate) const PROCESS_LEASE_SCHEMA_VERSION: u32 = 2;
 const PROCESS_LEASE_FILE: &str = "supervisor-process.json";
 const MAX_LEASE_BYTES: u64 = 4_096;
 static LEASE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -25,6 +26,7 @@ pub(crate) struct ProcessLease {
     pub schema_version: u32,
     pub agent_id: AgentId,
     pub spawn_generation: u64,
+    pub release_id: ReleaseId,
     pub identity: ProcessIdentity,
 }
 

@@ -48,7 +48,7 @@ impl<D: ProcessDriver> Supervisor<D> {
             let release = slot.active_release.clone().or_else(|| {
                 slot.last_command
                     .clone()
-                    .map(crate::AgentRelease::unversioned)
+                    .and_then(|command| crate::AgentRelease::unversioned(command).ok())
             });
             let release =
                 release.ok_or_else(|| SupervisorError::NoPreviousCommand(agent_id.clone()))?;
@@ -95,6 +95,7 @@ impl<D: ProcessDriver> Supervisor<D> {
         let ProcessState::Running { healthy, drained } = observation.state else {
             unreachable!("exited state returned above")
         };
+        runtime.healthy = healthy;
         match runtime.phase {
             RuntimePhase::AwaitingHealth { .. } if healthy => {
                 let next = self.registry.compare_and_transition(
@@ -109,7 +110,7 @@ impl<D: ProcessDriver> Supervisor<D> {
                     SupervisorEventKind::Lifecycle(AgentLifecycle::Running),
                 );
                 slot.event(next.generation, SupervisorEventKind::Healthy);
-                self.release_became_healthy(slot, next.generation);
+                self.release_became_healthy(agent_id, slot, next.generation)?;
             }
             RuntimePhase::AwaitingHealth { deadline: limit } if now >= limit => {
                 let next = self.registry.compare_and_transition(
@@ -171,6 +172,7 @@ impl<D: ProcessDriver> Supervisor<D> {
             schema_version: PROCESS_LEASE_SCHEMA_VERSION,
             agent_id: agent_id.clone(),
             spawn_generation: runtime.spawn_generation,
+            release_id: runtime.release_id.clone(),
             identity: runtime.identity.clone(),
         };
         remove_lease(record.layout.run_root(), &lease)?;

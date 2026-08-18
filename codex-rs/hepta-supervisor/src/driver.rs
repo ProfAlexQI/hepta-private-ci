@@ -26,7 +26,10 @@ pub struct AdoptSpec {
     pub agent_id: AgentId,
     pub registry_generation: u64,
     pub spawn_generation: u64,
+    pub workspace: PathBuf,
+    pub home_root: PathBuf,
     pub run_root: PathBuf,
+    pub control_socket: PathBuf,
     pub identity: ProcessIdentity,
 }
 

@@ -5,6 +5,8 @@ use std::time::Duration;
 
 use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
+use codex_hepta_fleet::RegisteredRelease;
+use codex_hepta_fleet::ReleaseId;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -16,15 +18,10 @@ pub struct AgentCommand {
     pub args: Vec<OsString>,
 }
 
-/// Immutable process command bound to a caller-supplied release identity.
-///
-/// Release identities are deliberately opaque to the supervisor. The release
-/// builder is responsible for making the command path immutable; the
-/// supervisor only enforces bounded local values and refuses an "upgrade"
-/// whose identity or command is unchanged.
+/// Immutable process command resolved from the fleet-owned release catalog.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AgentRelease {
-    identity: String,
+    identity: ReleaseId,
     command: AgentCommand,
 }
 
@@ -33,35 +30,39 @@ impl AgentRelease {
         identity: impl Into<String>,
         command: AgentCommand,
     ) -> Result<Self, SupervisorError> {
-        let identity = identity.into();
-        if identity.is_empty()
-            || identity.len() > 128
-            || !identity.is_ascii()
-            || !identity
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
-        {
-            return Err(SupervisorError::Invalid(
-                "release identity must be 1..=128 ASCII letters, digits, '.', '_' or '-'"
-                    .to_string(),
-            ));
-        }
+        let identity = ReleaseId::parse(identity.into())?;
         Ok(Self { identity, command })
     }
 
     pub fn identity(&self) -> &str {
-        &self.identity
+        self.identity.as_str()
     }
 
     pub fn command(&self) -> &AgentCommand {
         &self.command
     }
 
-    pub(crate) fn unversioned(command: AgentCommand) -> Self {
-        Self {
-            identity: "unversioned".to_string(),
+    pub(crate) fn unversioned(command: AgentCommand) -> Result<Self, SupervisorError> {
+        Self::new("unversioned", command)
+    }
+
+    pub(crate) fn release_id(&self) -> &ReleaseId {
+        &self.identity
+    }
+}
+
+impl TryFrom<RegisteredRelease> for AgentRelease {
+    type Error = SupervisorError;
+
+    fn try_from(release: RegisteredRelease) -> Result<Self, Self::Error> {
+        let command = AgentCommand::new(
+            release.program,
+            release.args.into_iter().map(OsString::from).collect(),
+        )?;
+        Ok(Self {
+            identity: release.release_id,
             command,
-        }
+        })
     }
 }
 
@@ -228,6 +229,7 @@ pub struct TickReport {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AgentSupervisorSnapshot {
     pub active: bool,
+    pub healthy: bool,
     pub runtime_generation: Option<u64>,
     pub spawn_generation: Option<u64>,
     pub process_system_id: Option<u64>,

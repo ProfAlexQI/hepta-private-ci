@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
+use codex_hepta_fleet::ReleaseId;
 
 use crate::AgentCommand;
 use crate::AgentRelease;
@@ -30,8 +31,10 @@ pub(crate) struct AgentRuntime<P> {
     pub process: P,
     pub identity: ProcessIdentity,
     pub spawn_generation: u64,
+    pub release_id: ReleaseId,
     pub generation: u64,
     pub phase: RuntimePhase,
+    pub healthy: bool,
     pub fenced: bool,
 }
 
@@ -78,6 +81,7 @@ pub(crate) struct AgentSlot<P> {
     pub active_release: Option<AgentRelease>,
     pub previous_release: Option<AgentRelease>,
     pub release_change: Option<ReleaseChange>,
+    pub release_state_generation: u64,
     pub events: BoundedQueue<SupervisorEvent>,
     pub logs: BoundedQueue<ProcessLog>,
 }
@@ -91,6 +95,7 @@ impl<P> AgentSlot<P> {
             active_release: None,
             previous_release: None,
             release_change: None,
+            release_state_generation: 0,
             events: BoundedQueue::new(config.event_capacity),
             logs: BoundedQueue::new(config.log_capacity),
         }

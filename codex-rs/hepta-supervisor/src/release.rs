@@ -73,40 +73,79 @@ impl<D: ProcessDriver> Supervisor<D> {
         Ok(())
     }
 
-    pub(crate) fn release_became_healthy(&self, slot: &mut AgentSlot<D::Process>, generation: u64) {
-        let Some(change) = slot.release_change.take() else {
-            return;
-        };
-        match change.phase {
-            ReleaseChangePhase::TargetStarting => {
-                slot.previous_release = Some(change.origin.clone());
-                let kind = if change.explicit_rollback {
-                    SupervisorEventKind::ExplicitRollbackCommitted {
-                        previous: change.origin.identity().to_string(),
-                        target: change.target.identity().to_string(),
-                    }
-                } else {
-                    SupervisorEventKind::UpgradeCommitted {
-                        previous: change.origin.identity().to_string(),
-                        target: change.target.identity().to_string(),
-                    }
-                };
-                slot.event(generation, kind);
-            }
-            ReleaseChangePhase::AutomaticRollbackStarting => {
-                slot.previous_release = change.prior_previous;
-                slot.event(
-                    generation,
-                    SupervisorEventKind::AutomaticRollbackCommitted {
-                        failed: change.target.identity().to_string(),
-                        restored: change.origin.identity().to_string(),
-                    },
-                );
-            }
-            ReleaseChangePhase::WaitingForTargetExit => {
-                slot.release_change = Some(change);
+    pub(crate) fn release_became_healthy(
+        &mut self,
+        agent_id: &AgentId,
+        slot: &mut AgentSlot<D::Process>,
+        generation: u64,
+    ) -> Result<(), SupervisorError> {
+        if let Some(change) = slot.release_change.take() {
+            match change.phase {
+                ReleaseChangePhase::TargetStarting => {
+                    slot.previous_release = Some(change.origin.clone());
+                    let kind = if change.explicit_rollback {
+                        SupervisorEventKind::ExplicitRollbackCommitted {
+                            previous: change.origin.identity().to_string(),
+                            target: change.target.identity().to_string(),
+                        }
+                    } else {
+                        SupervisorEventKind::UpgradeCommitted {
+                            previous: change.origin.identity().to_string(),
+                            target: change.target.identity().to_string(),
+                        }
+                    };
+                    slot.event(generation, kind);
+                }
+                ReleaseChangePhase::AutomaticRollbackStarting => {
+                    slot.previous_release = change.prior_previous;
+                    slot.event(
+                        generation,
+                        SupervisorEventKind::AutomaticRollbackCommitted {
+                            failed: change.target.identity().to_string(),
+                            restored: change.origin.identity().to_string(),
+                        },
+                    );
+                }
+                ReleaseChangePhase::WaitingForTargetExit => {
+                    slot.release_change = Some(change);
+                }
             }
         }
+        self.persist_release_state(agent_id, slot)
+    }
+
+    pub(crate) fn persist_release_state(
+        &self,
+        agent_id: &AgentId,
+        slot: &mut AgentSlot<D::Process>,
+    ) -> Result<(), SupervisorError> {
+        let current = slot
+            .active_release
+            .as_ref()
+            .map(|release| release.release_id().clone());
+        let previous = slot
+            .previous_release
+            .as_ref()
+            .map(|release| release.release_id().clone());
+        if current
+            .as_ref()
+            .is_some_and(|release| release.as_str() == "unversioned")
+        {
+            return Ok(());
+        }
+        let actual = self.record(agent_id)?.release_state;
+        slot.release_state_generation = actual.generation;
+        if actual.current == current && actual.previous == previous {
+            return Ok(());
+        }
+        let next = self.registry.compare_and_set_release_state(
+            agent_id,
+            actual.generation,
+            current,
+            previous,
+        )?;
+        slot.release_state_generation = next.generation;
+        Ok(())
     }
 
     pub(crate) fn continue_release_change_after_exit(

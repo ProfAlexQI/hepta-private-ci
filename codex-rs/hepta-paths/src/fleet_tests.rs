@@ -29,6 +29,7 @@ fn production_layout_is_stable_and_fleet_scoped() -> Result<()> {
             run_root: expected_root.join("run"),
             supervisor_socket: expected_root.join("run/supervisor.sock"),
             supervisor_lock: expected_root.join("run/supervisor.lock"),
+            releases_root: expected_root.join("releases"),
             agents_root: expected_root.join("agents"),
         }
     );

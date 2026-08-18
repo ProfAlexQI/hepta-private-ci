@@ -54,6 +54,7 @@ impl<D: ProcessDriver> Supervisor<D> {
         let mut report = TickReport::default();
         for (agent_id, record) in snapshot.agents {
             let result = supervisor.with_slot(&agent_id, |supervisor, slot| {
+                supervisor.restore_release_state(&agent_id, slot, &record)?;
                 supervisor.recover_slot(&agent_id, slot, &record, now)
             });
             if let Err(error) = result {
@@ -68,6 +69,10 @@ impl<D: ProcessDriver> Supervisor<D> {
             .get(agent_id)
             .map(|slot| AgentSupervisorSnapshot {
                 active: slot.runtime.is_some(),
+                healthy: slot
+                    .runtime
+                    .as_ref()
+                    .is_some_and(|runtime| runtime.healthy && !runtime.fenced),
                 runtime_generation: slot.runtime.as_ref().map(|runtime| runtime.generation),
                 spawn_generation: slot
                     .runtime
@@ -89,6 +94,10 @@ impl<D: ProcessDriver> Supervisor<D> {
                 events: slot.events.items.iter().cloned().collect(),
                 logs: slot.logs.items.iter().cloned().collect(),
             })
+    }
+
+    pub fn agent_ids(&self) -> Vec<AgentId> {
+        self.slots.keys().cloned().collect()
     }
 
     pub fn start(

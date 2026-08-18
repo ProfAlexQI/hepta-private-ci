@@ -21,6 +21,7 @@ use codex_hepta_agent_protocol::AgentdRequest;
 use codex_hepta_agent_protocol::AgentdResponse;
 use codex_hepta_agent_protocol::MAX_CONTROL_FRAME_BYTES;
 use codex_hepta_contracts::AgentId;
+use codex_hepta_fleet::AgentLifecycle;
 
 use crate::AdoptSpec;
 use crate::Adoption;
@@ -39,6 +40,8 @@ use crate::driver::SpawnedProcess;
 const LOG_CHUNK_BYTES: usize = 4_096;
 const HEALTH_PROBE_INTERVAL: Duration = Duration::from_millis(50);
 const HEALTH_PROBE_IO_TIMEOUT: Duration = Duration::from_millis(200);
+const ADOPTION_PROBE_ATTEMPTS: u64 = 3;
+const REJECTED_ORPHAN_EXIT_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Unix child wrapper with non-blocking polling and bounded per-child log channels.
 pub struct UnixProcessDriver {
@@ -59,9 +62,23 @@ impl UnixProcessDriver {
 }
 
 pub struct UnixManagedProcess {
-    child: Child,
+    handle: UnixProcessHandle,
     logs: Receiver<ProcessLog>,
     health_probe: HealthProbe,
+}
+
+enum UnixProcessHandle {
+    Child(Child),
+    Adopted { process_id: u32 },
+}
+
+impl UnixProcessHandle {
+    fn process_id(&self) -> u32 {
+        match self {
+            Self::Child(child) => child.id(),
+            Self::Adopted { process_id } => *process_id,
+        }
+    }
 }
 
 impl ManagedProcess for UnixManagedProcess {
@@ -73,32 +90,48 @@ impl ManagedProcess for UnixManagedProcess {
                 Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
             }
         }
-        let state = match self.child.try_wait()? {
-            Some(status) => {
-                self.health_probe.shutdown();
-                ProcessState::Exited(ProcessExit {
-                    success: status.success(),
-                    code: status.code(),
-                })
-            }
-            None => ProcessState::Running {
-                healthy: self.health_probe.ready(),
-                drained: false,
+        let state = match &mut self.handle {
+            UnixProcessHandle::Child(child) => match child.try_wait()? {
+                Some(status) => {
+                    self.health_probe.shutdown();
+                    ProcessState::Exited(ProcessExit {
+                        success: status.success(),
+                        code: status.code(),
+                    })
+                }
+                None => ProcessState::Running {
+                    healthy: self.health_probe.ready(),
+                    drained: false,
+                },
             },
+            UnixProcessHandle::Adopted { process_id } => {
+                if process_exists(u64::from(*process_id))? {
+                    ProcessState::Running {
+                        healthy: self.health_probe.ready(),
+                        drained: false,
+                    }
+                } else {
+                    self.health_probe.shutdown();
+                    ProcessState::Exited(ProcessExit {
+                        success: false,
+                        code: None,
+                    })
+                }
+            }
         };
         Ok(ProcessObservation { state, logs })
     }
 
     fn request_drain(&mut self) -> Result<(), ProcessDriverError> {
-        send_signal(self.child.id(), libc::SIGTERM)
+        send_signal(self.handle.process_id(), libc::SIGTERM)
     }
 
     fn request_stop(&mut self) -> Result<(), ProcessDriverError> {
-        send_signal(self.child.id(), libc::SIGTERM)
+        send_signal(self.handle.process_id(), libc::SIGTERM)
     }
 
     fn kill(&mut self) -> Result<(), ProcessDriverError> {
-        self.child.kill().map_err(Into::into)
+        send_signal(self.handle.process_id(), libc::SIGKILL)
     }
 }
 
@@ -123,13 +156,14 @@ impl ProcessDriver for UnixProcessDriver {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let mut child = command.spawn()?;
-        let health_probe = match HealthProbe::spawn(spec, child.id()) {
-            Ok(probe) => probe,
-            Err(error) => {
-                let _ = child.kill();
-                return Err(error);
-            }
-        };
+        let health_probe =
+            match HealthProbe::spawn(HealthProbeIdentity::from_spawn(spec, child.id())) {
+                Ok(probe) => probe,
+                Err(error) => {
+                    let _ = child.kill();
+                    return Err(error);
+                }
+            };
         let Some(stdout) = child.stdout.take() else {
             let _ = child.kill();
             return Err(ProcessDriverError::new("child stdout pipe is missing"));
@@ -149,7 +183,7 @@ impl ProcessDriver for UnixProcessDriver {
         Ok(SpawnedProcess {
             identity,
             process: UnixManagedProcess {
-                child,
+                handle: UnixProcessHandle::Child(child),
                 logs,
                 health_probe,
             },
@@ -157,13 +191,33 @@ impl ProcessDriver for UnixProcessDriver {
     }
 
     fn adopt(&mut self, spec: &AdoptSpec) -> Result<Adoption<Self::Process>, ProcessDriverError> {
-        // std::process cannot safely recover wait ownership or prove PID incarnation after a
-        // supervisor restart. Refuse adoption until agentd provides a signed UDS handshake.
-        if process_exists(spec.identity.system_id())? {
-            Ok(Adoption::Rejected)
-        } else {
-            Ok(Adoption::Missing)
+        if !process_exists(spec.identity.system_id())? {
+            return Ok(Adoption::Missing);
         }
+        let process_id = u32::try_from(spec.identity.system_id())
+            .map_err(|_| ProcessDriverError::new("stored child PID does not fit u32"))?;
+        let health_identity = HealthProbeIdentity::from_adopt(spec, process_id);
+        if prove_adoption_identity(&health_identity) {
+            let health_probe = HealthProbe::spawn(health_identity)?;
+            let (_sender, logs) = std::sync::mpsc::sync_channel(1);
+            return Ok(Adoption::Adopted(UnixManagedProcess {
+                handle: UnixProcessHandle::Adopted { process_id },
+                logs,
+                health_probe,
+            }));
+        }
+
+        send_signal(process_id, libc::SIGKILL)?;
+        let deadline = std::time::Instant::now() + REJECTED_ORPHAN_EXIT_TIMEOUT;
+        while process_exists(u64::from(process_id))? && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        if process_exists(u64::from(process_id))? {
+            return Err(ProcessDriverError::new(
+                "rejected orphan agentd did not exit after SIGKILL",
+            ));
+        }
+        Ok(Adoption::Rejected)
     }
 }
 
@@ -173,16 +227,7 @@ struct HealthProbe {
 }
 
 impl HealthProbe {
-    fn spawn(spec: &SpawnSpec, process_id: u32) -> Result<Self, ProcessDriverError> {
-        let identity = HealthProbeIdentity {
-            agent_id: spec.agent_id.clone(),
-            spawn_generation: spec.generation,
-            process_id,
-            workspace: spec.workspace.clone(),
-            home_root: spec.home_root.clone(),
-            run_root: spec.run_root.clone(),
-            control_socket: spec.control_socket.clone(),
-        };
+    fn spawn(identity: HealthProbeIdentity) -> Result<Self, ProcessDriverError> {
         let ready = Arc::new(AtomicBool::new(false));
         let shutdown = Arc::new(AtomicBool::new(false));
         let worker_ready = Arc::clone(&ready);
@@ -220,6 +265,32 @@ struct HealthProbeIdentity {
     control_socket: PathBuf,
 }
 
+impl HealthProbeIdentity {
+    fn from_spawn(spec: &SpawnSpec, process_id: u32) -> Self {
+        Self {
+            agent_id: spec.agent_id.clone(),
+            spawn_generation: spec.generation,
+            process_id,
+            workspace: spec.workspace.clone(),
+            home_root: spec.home_root.clone(),
+            run_root: spec.run_root.clone(),
+            control_socket: spec.control_socket.clone(),
+        }
+    }
+
+    fn from_adopt(spec: &AdoptSpec, process_id: u32) -> Self {
+        Self {
+            agent_id: spec.agent_id.clone(),
+            spawn_generation: spec.spawn_generation,
+            process_id,
+            workspace: spec.workspace.clone(),
+            home_root: spec.home_root.clone(),
+            run_root: spec.run_root.clone(),
+            control_socket: spec.control_socket.clone(),
+        }
+    }
+}
+
 fn run_health_probe(
     identity: HealthProbeIdentity,
     ready: Arc<AtomicBool>,
@@ -241,11 +312,41 @@ fn probe_health_once(
     identity: &HealthProbeIdentity,
     request_id: u64,
 ) -> Result<bool, ProcessDriverError> {
+    Ok(query_health_once(identity, request_id)?.ready)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct HealthProbeObservation {
+    exact_identity: bool,
+    ready: bool,
+}
+
+fn prove_adoption_identity(identity: &HealthProbeIdentity) -> bool {
+    for request_id in 1..=ADOPTION_PROBE_ATTEMPTS {
+        if query_health_once(identity, request_id)
+            .is_ok_and(|observation| observation.exact_identity)
+        {
+            return true;
+        }
+        if request_id != ADOPTION_PROBE_ATTEMPTS {
+            std::thread::sleep(HEALTH_PROBE_INTERVAL);
+        }
+    }
+    false
+}
+
+fn query_health_once(
+    identity: &HealthProbeIdentity,
+    request_id: u64,
+) -> Result<HealthProbeObservation, ProcessDriverError> {
     let request = AgentdRequest::health(request_id, identity.spawn_generation);
     let mut bytes = serde_json::to_vec(&request)?;
     bytes.push(b'\n');
     if bytes.len() as u64 > MAX_CONTROL_FRAME_BYTES {
-        return Ok(false);
+        return Ok(HealthProbeObservation {
+            exact_identity: false,
+            ready: false,
+        });
     }
 
     let mut stream = std::os::unix::net::UnixStream::connect(&identity.control_socket)?;
@@ -258,24 +359,50 @@ fn probe_health_once(
     let mut response_bytes = Vec::new();
     let count = reader.read_until(b'\n', &mut response_bytes)?;
     if count == 0 || count as u64 > MAX_CONTROL_FRAME_BYTES || !response_bytes.ends_with(b"\n") {
-        return Ok(false);
+        return Ok(HealthProbeObservation {
+            exact_identity: false,
+            ready: false,
+        });
     }
     let response: AgentdResponse = serde_json::from_slice(&response_bytes)?;
     let exact_envelope = response.schema_version == AGENTD_CONTROL_SCHEMA_VERSION
         && response.request_id == request_id
         && response.agent_id == identity.agent_id
-        && response.spawn_generation == identity.spawn_generation
-        && response.current_generation == identity.spawn_generation;
+        && response.spawn_generation == identity.spawn_generation;
     let AgentdPayload::Health(health) = response.payload else {
-        return Ok(false);
+        return Ok(HealthProbeObservation {
+            exact_identity: false,
+            ready: false,
+        });
     };
-    Ok(exact_envelope
-        && health.promotion_ready
+    let generation_matches = match health.lifecycle {
+        AgentLifecycle::Starting => response.current_generation == identity.spawn_generation,
+        AgentLifecycle::Running => identity
+            .spawn_generation
+            .checked_add(1)
+            .is_some_and(|generation| response.current_generation == generation),
+        AgentLifecycle::Draining => identity
+            .spawn_generation
+            .checked_add(2)
+            .is_some_and(|generation| response.current_generation == generation),
+        AgentLifecycle::Stopped | AgentLifecycle::Failed => false,
+    };
+    let readiness_matches = match health.lifecycle {
+        AgentLifecycle::Starting => health.promotion_ready && !health.ready,
+        AgentLifecycle::Running => health.promotion_ready && health.ready,
+        AgentLifecycle::Draining | AgentLifecycle::Stopped | AgentLifecycle::Failed => false,
+    };
+    let exact_identity = exact_envelope
+        && generation_matches
         && !health.fenced
         && health.process_id == identity.process_id
         && health.workspace == identity.workspace
         && health.home_root == identity.home_root
-        && health.run_root == identity.run_root)
+        && health.run_root == identity.run_root;
+    Ok(HealthProbeObservation {
+        exact_identity,
+        ready: exact_identity && readiness_matches,
+    })
 }
 
 fn spawn_log_reader(

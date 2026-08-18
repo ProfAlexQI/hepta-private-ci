@@ -12,6 +12,7 @@ use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::AgentManifest;
 use codex_hepta_fleet::FleetRegistry;
+use codex_hepta_fleet::ReleaseId;
 use codex_hepta_fleet::ResourceBudget;
 use codex_hepta_fleet::WorkspaceBinding;
 use codex_hepta_paths::HeptaFleetRoot;
@@ -484,6 +485,61 @@ fn recovery_adopts_one_orphan_and_rejects_another() -> Result<(), SupervisorErro
             .lifecycle,
         AgentLifecycle::Failed
     );
+    Ok(())
+}
+
+#[test]
+fn recovery_closes_running_release_state_crash_window() -> Result<(), SupervisorError> {
+    let fleet = TestFleet::new()?;
+    let release_id = ReleaseId::parse("release-after-crash")?;
+    let source = fleet._temp.path().join("release-after-crash");
+    std::fs::write(&source, b"#!/bin/sh\nexit 0\n")?;
+    fleet
+        .registry
+        .install_release(release_id.clone(), &source, Vec::new())?;
+    fleet.registry.allow_release(&fleet.first, &release_id)?;
+    let product_release =
+        AgentRelease::try_from(fleet.registry.resolve_release(&fleet.first, &release_id)?)?;
+
+    let control = FakeControl::default();
+    let now = Instant::now();
+    let (mut first_supervisor, _) =
+        Supervisor::recover(fleet.registry.clone(), control.driver(), config(), now)?;
+    first_supervisor.start_release(&fleet.first, product_release, now)?;
+    control.set_healthy(&fleet.first);
+
+    // Model a daemon crash after the Running lifecycle became durable but before
+    // its corresponding current-release revision was appended.
+    let starting = fleet
+        .registry
+        .load()?
+        .agent(&fleet.first)
+        .expect("registered agent")
+        .lifecycle
+        .clone();
+    fleet.registry.compare_and_transition(
+        &fleet.first,
+        starting.generation,
+        AgentLifecycle::Running,
+    )?;
+    drop(first_supervisor);
+
+    let (recovered, report) =
+        Supervisor::recover(fleet.registry.clone(), control.driver(), config(), now)?;
+    assert_eq!(report, TickReport::default());
+    let snapshot = recovered.snapshot(&fleet.first).expect("recovered slot");
+    assert!(snapshot.active);
+    assert_eq!(
+        snapshot.active_release.as_deref(),
+        Some(release_id.as_str())
+    );
+    let durable = fleet.registry.load()?;
+    let release_state = &durable
+        .agent(&fleet.first)
+        .expect("registered agent")
+        .release_state;
+    assert_eq!(release_state.current.as_ref(), Some(&release_id));
+    assert_eq!(release_state.previous, None);
     Ok(())
 }
 

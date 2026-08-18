@@ -1,0 +1,170 @@
+#![cfg(unix)]
+
+use std::io::Read;
+use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
+use std::process::Child;
+use std::process::Command;
+use std::process::Stdio;
+use std::time::Duration;
+use std::time::Instant;
+
+use anyhow::Result;
+use anyhow::ensure;
+use codex_hepta_contracts::AgentId;
+use codex_hepta_fleet::AgentManifest;
+use codex_hepta_fleet::FleetRegistry;
+use codex_hepta_fleet::ResourceBudget;
+use codex_hepta_fleet::WorkspaceBinding;
+use codex_hepta_paths::HeptaFleetRoot;
+use codex_hepta_supervisor::SupervisordClient;
+
+const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn product_binary_is_single_instance_owner_only_and_bad_frames_are_isolated() -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    let root = temp.path().canonicalize()?;
+    let fleet_root = HeptaFleetRoot::parse(root.join("fleet"))?;
+    let registry = FleetRegistry::initialize(fleet_root.clone())?;
+    let workspace = root.join("workspace");
+    std::fs::create_dir(&workspace)?;
+    let workspace = workspace.canonicalize()?;
+    let agent_id = AgentId::parse(AGENT_ID).map_err(anyhow::Error::msg)?;
+    registry.register(AgentManifest::new(
+        agent_id.clone(),
+        WorkspaceBinding::new(workspace, &fleet_root)?,
+        ResourceBudget::local_default(),
+    )?)?;
+
+    let mut daemon = DaemonChild::spawn(fleet_root.as_path())?;
+    let client = wait_for_daemon(&registry).await?;
+    let health = client.health().await?;
+    ensure!(health.ready && health.registered_agents == 1);
+    ensure!(
+        std::fs::metadata(registry.layout().supervisor_socket())?
+            .permissions()
+            .mode()
+            & 0o777
+            == 0o600
+    );
+    ensure!(
+        std::fs::metadata(registry.layout().supervisor_lock())?
+            .permissions()
+            .mode()
+            & 0o777
+            == 0o600
+    );
+
+    let second = Command::new(env!("CARGO_BIN_EXE_hepta-supervisord"))
+        .arg("--fleet-root")
+        .arg(fleet_root.as_path())
+        .output()?;
+    ensure!(
+        !second.status.success(),
+        "a second daemon acquired the fleet"
+    );
+
+    send_malformed_frame(registry.layout().supervisor_socket(), b"{bad json}\n")?;
+    ensure!(
+        client.health().await?.ready,
+        "malformed frame stopped daemon"
+    );
+    send_oversized_frame(registry.layout().supervisor_socket())?;
+    ensure!(
+        client.health().await?.ready,
+        "oversized frame stopped daemon"
+    );
+
+    daemon.kill()?;
+    let mut restarted = DaemonChild::spawn(fleet_root.as_path())?;
+    let restarted_client = wait_for_daemon(&registry).await?;
+    ensure!(restarted_client.health().await?.ready);
+    let roster = restarted_client.roster(16).await?;
+    ensure!(roster.len() == 1 && roster[0].agent_id == agent_id);
+    restarted.terminate()?;
+    Ok(())
+}
+
+fn send_malformed_frame(path: &std::path::Path, frame: &[u8]) -> Result<()> {
+    let mut stream = std::os::unix::net::UnixStream::connect(path)?;
+    stream.set_read_timeout(Some(Duration::from_secs(3)))?;
+    stream.write_all(frame)?;
+    stream.shutdown(std::net::Shutdown::Write)?;
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response)?;
+    ensure!(
+        response.ends_with(b"\n"),
+        "bad frame did not get bounded error"
+    );
+    Ok(())
+}
+
+fn send_oversized_frame(path: &std::path::Path) -> Result<()> {
+    let mut stream = std::os::unix::net::UnixStream::connect(path)?;
+    stream.set_write_timeout(Some(Duration::from_secs(3)))?;
+    stream.write_all(&vec![b'x'; 65_537])?;
+    stream.shutdown(std::net::Shutdown::Write)?;
+    Ok(())
+}
+
+async fn wait_for_daemon(registry: &FleetRegistry) -> Result<SupervisordClient> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let client = SupervisordClient::new(registry.layout().supervisor_socket().to_path_buf())?;
+    loop {
+        if client.health().await.is_ok() {
+            return Ok(client);
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "supervisord did not become ready"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+struct DaemonChild(Child);
+
+impl DaemonChild {
+    fn spawn(fleet_root: &std::path::Path) -> Result<Self> {
+        let child = Command::new(env!("CARGO_BIN_EXE_hepta-supervisord"))
+            .arg("--fleet-root")
+            .arg(fleet_root)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        Ok(Self(child))
+    }
+
+    fn kill(&mut self) -> Result<()> {
+        self.0.kill()?;
+        self.0.wait()?;
+        Ok(())
+    }
+
+    fn terminate(&mut self) -> Result<()> {
+        let status = Command::new("/bin/kill")
+            .arg("-TERM")
+            .arg(self.0.id().to_string())
+            .status()?;
+        ensure!(status.success(), "failed to terminate supervisord");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if self.0.try_wait()?.is_some() {
+                return Ok(());
+            }
+            ensure!(Instant::now() < deadline, "supervisord ignored SIGTERM");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+
+impl Drop for DaemonChild {
+    fn drop(&mut self) {
+        if self.0.try_wait().ok().flatten().is_none() {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+}

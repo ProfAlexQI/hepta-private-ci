@@ -3534,6 +3534,7 @@ dependencies = [
  "pretty_assertions",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.18",
  "toml 0.9.11+spec-1.1.0",
@@ -3740,16 +3741,20 @@ dependencies = [
 name = "codex-hepta-supervisor"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "codex-hepta-agent-protocol",
  "codex-hepta-contracts",
  "codex-hepta-fleet",
  "codex-hepta-paths",
+ "codex-uds",
  "libc",
  "pretty_assertions",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]

@@ -28,6 +28,36 @@ use crate::runtime::driver_error;
 use crate::runtime::is_live_lifecycle;
 
 impl<D: ProcessDriver> Supervisor<D> {
+    pub(crate) fn restore_release_state(
+        &self,
+        agent_id: &AgentId,
+        slot: &mut AgentSlot<D::Process>,
+        record: &AgentRecord,
+    ) -> Result<(), SupervisorError> {
+        slot.release_state_generation = record.release_state.generation;
+        slot.active_release = record
+            .release_state
+            .current
+            .as_ref()
+            .map(|release_id| self.registry.resolve_release(agent_id, release_id))
+            .transpose()?
+            .map(AgentRelease::try_from)
+            .transpose()?;
+        slot.previous_release = record
+            .release_state
+            .previous
+            .as_ref()
+            .map(|release_id| self.registry.resolve_release(agent_id, release_id))
+            .transpose()?
+            .map(AgentRelease::try_from)
+            .transpose()?;
+        slot.last_command = slot
+            .active_release
+            .as_ref()
+            .map(|release| release.command().clone());
+        Ok(())
+    }
+
     pub(crate) fn start_slot(
         &mut self,
         agent_id: &AgentId,
@@ -35,7 +65,7 @@ impl<D: ProcessDriver> Supervisor<D> {
         command: AgentCommand,
         now: Instant,
     ) -> Result<(), SupervisorError> {
-        self.start_release_slot(agent_id, slot, AgentRelease::unversioned(command), now)
+        self.start_release_slot(agent_id, slot, AgentRelease::unversioned(command)?, now)
     }
 
     pub(crate) fn start_release_slot(
@@ -98,6 +128,7 @@ impl<D: ProcessDriver> Supervisor<D> {
             schema_version: PROCESS_LEASE_SCHEMA_VERSION,
             agent_id: agent_id.clone(),
             spawn_generation: starting.generation,
+            release_id: release.release_id().clone(),
             identity: spawned.identity.clone(),
         };
         if let Err(error) = write_lease(record.layout.run_root(), &lease) {
@@ -116,10 +147,12 @@ impl<D: ProcessDriver> Supervisor<D> {
             process: spawned.process,
             identity: spawned.identity,
             spawn_generation: starting.generation,
+            release_id: lease.release_id,
             generation: starting.generation,
             phase: RuntimePhase::AwaitingHealth {
                 deadline: health_deadline,
             },
+            healthy: false,
             fenced: false,
         });
         slot.event(starting.generation, SupervisorEventKind::Spawned);
@@ -151,11 +184,28 @@ impl<D: ProcessDriver> Supervisor<D> {
             record.lifecycle.generation,
             record.lifecycle.lifecycle,
         )?;
+        if lease.release_id.as_str() != "unversioned" {
+            let leased = AgentRelease::try_from(
+                self.registry.resolve_release(agent_id, &lease.release_id)?,
+            )?;
+            if slot
+                .active_release
+                .as_ref()
+                .is_none_or(|active| active.release_id() != &lease.release_id)
+            {
+                slot.previous_release = slot.active_release.take();
+                slot.last_command = Some(leased.command().clone());
+                slot.active_release = Some(leased);
+            }
+        }
         let spec = AdoptSpec {
             agent_id: agent_id.clone(),
             registry_generation: record.lifecycle.generation,
             spawn_generation: lease.spawn_generation,
+            workspace: record.manifest.workspace.as_path().to_path_buf(),
+            home_root: record.layout.home_root().to_path_buf(),
             run_root: record.layout.run_root().to_path_buf(),
+            control_socket: record.layout.agentd_control_socket().to_path_buf(),
             identity: lease.identity.clone(),
         };
         match self
@@ -191,14 +241,22 @@ impl<D: ProcessDriver> Supervisor<D> {
                     process,
                     identity: lease.identity,
                     spawn_generation: lease.spawn_generation,
+                    release_id: lease.release_id,
                     generation: record.lifecycle.generation,
                     phase,
+                    healthy: false,
                     fenced: false,
                 });
                 slot.event(
                     record.lifecycle.generation,
                     SupervisorEventKind::OrphanAdopted,
                 );
+                if record.lifecycle.lifecycle == AgentLifecycle::Running {
+                    // A daemon can die after committing the Running lifecycle but before
+                    // appending the matching release-state revision. The lease and exact
+                    // agentd handshake prove the live release; close that crash window now.
+                    self.persist_release_state(agent_id, slot)?;
+                }
             }
             Adoption::Missing => {
                 remove_lease(record.layout.run_root(), &lease)?;
@@ -215,6 +273,7 @@ impl<D: ProcessDriver> Supervisor<D> {
                 slot.event(generation, SupervisorEventKind::OrphanMissing);
             }
             Adoption::Rejected => {
+                remove_lease(record.layout.run_root(), &lease)?;
                 let generation = if is_live_lifecycle(record.lifecycle.lifecycle) {
                     self.transition_without_runtime(
                         agent_id,

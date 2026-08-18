@@ -75,6 +75,7 @@ pub struct HeptaFleetLayout {
     run_root: PathBuf,
     supervisor_socket: PathBuf,
     supervisor_lock: PathBuf,
+    releases_root: PathBuf,
     agents_root: PathBuf,
 }
 
@@ -87,6 +88,7 @@ impl HeptaFleetLayout {
             supervisor_database: state_root.join("supervisor.sqlite3"),
             supervisor_socket: run_root.join("supervisor.sock"),
             supervisor_lock: run_root.join("supervisor.lock"),
+            releases_root: fleet_root.as_path().join("releases"),
             agents_root: fleet_root.as_path().join("agents"),
             fleet_root,
             state_root,
@@ -120,6 +122,12 @@ impl HeptaFleetLayout {
 
     pub fn supervisor_lock(&self) -> &Path {
         &self.supervisor_lock
+    }
+
+    /// Fleet-owned immutable release catalog. Agents and control clients
+    /// never supply executable paths to the supervisor.
+    pub fn releases_root(&self) -> &Path {
+        &self.releases_root
     }
 
     pub fn agents_root(&self) -> &Path {

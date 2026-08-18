@@ -17,7 +17,10 @@ use crate::AGENT_STATE_SCHEMA_VERSION;
 use crate::AgentLifecycle;
 use crate::AgentLifecycleState;
 use crate::AgentManifest;
+use crate::AgentReleaseState;
 use crate::FleetRegistryError;
+use crate::release::initialize_release_state;
+use crate::release::load_release_state;
 
 const LIFECYCLE_FILE_PREFIX: &str = "lifecycle-";
 const LIFECYCLE_FILE_SUFFIX: &str = ".json";
@@ -27,6 +30,7 @@ static STAGING_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 pub struct AgentRecord {
     pub manifest: AgentManifest,
     pub lifecycle: AgentLifecycleState,
+    pub release_state: AgentReleaseState,
     pub layout: HeptaAgentLayout,
 }
 
@@ -54,6 +58,7 @@ impl FleetRegistry {
             layout.fleet_root().as_path(),
             layout.state_root(),
             layout.run_root(),
+            layout.releases_root(),
             layout.agents_root(),
         ] {
             std::fs::create_dir_all(directory)?;
@@ -71,6 +76,7 @@ impl FleetRegistry {
             registry.layout.fleet_root().as_path(),
             registry.layout.state_root(),
             registry.layout.run_root(),
+            registry.layout.releases_root(),
             registry.layout.agents_root(),
         ] {
             validate_physical_directory(directory)?;
@@ -192,6 +198,8 @@ impl FleetRegistry {
             &lifecycle_json(&initial)?,
         )?;
         sync_directory(&staging_root.join("run"))?;
+        initialize_release_state(&staging_root.join("releases"), &manifest.agent_id)?;
+        sync_directory(&staging_root.join("releases"))?;
         sync_directory(staging_root)
     }
 
@@ -220,9 +228,11 @@ impl FleetRegistry {
             )));
         }
         let lifecycle = load_lifecycle(layout.run_root(), agent_id)?;
+        let release_state = load_release_state(layout.releases_root(), agent_id)?;
         Ok(AgentRecord {
             manifest,
             lifecycle,
+            release_state,
             layout,
         })
     }

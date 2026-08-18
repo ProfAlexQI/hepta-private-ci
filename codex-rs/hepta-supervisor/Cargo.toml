@@ -10,19 +10,36 @@ name = "codex_hepta_supervisor"
 path = "src/lib.rs"
 doctest = false
 
+[[bin]]
+name = "hepta-supervisord"
+path = "src/main.rs"
+test = false
+
 [lints]
 workspace = true
 
 [dependencies]
+anyhow = { workspace = true }
 codex-hepta-agent-protocol = { workspace = true }
 codex-hepta-contracts = { workspace = true }
 codex-hepta-fleet = { workspace = true }
+codex-hepta-paths = { workspace = true }
+codex-uds = { workspace = true }
 libc = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true, features = [
+    "fs",
+    "io-util",
+    "macros",
+    "rt-multi-thread",
+    "signal",
+    "sync",
+    "time",
+] }
+tokio-util = { workspace = true }
 
 [dev-dependencies]
-codex-hepta-paths = { workspace = true }
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }

@@ -13,7 +13,7 @@ use codex_hepta_fleet::AgentLifecycle;
 use serde::Deserialize;
 use serde::Serialize;
 
-pub const AGENTD_CONTROL_SCHEMA_VERSION: u32 = 1;
+pub const AGENTD_CONTROL_SCHEMA_VERSION: u32 = 2;
 pub const MAX_CONTROL_FRAME_BYTES: u64 = 65_536;
 pub const MAX_EVENT_BATCH: u16 = 256;
 pub const MAX_FEDERATION_CONTROL_LIST: u16 = 128;
@@ -317,6 +317,7 @@ pub struct HealthSnapshot {
     /// True only after the supervisor promoted this spawn to Running.
     pub ready: bool,
     pub fenced: bool,
+    pub lifecycle: AgentLifecycle,
     pub process_id: u32,
     pub workspace: PathBuf,
     pub home_root: PathBuf,
@@ -397,6 +398,7 @@ mod tests {
                 promotion_ready: true,
                 ready: true,
                 fenced: false,
+                lifecycle: AgentLifecycle::Running,
                 process_id: 17,
                 workspace: PathBuf::from("/tmp/workspace"),
                 home_root: PathBuf::from("/tmp/home"),

@@ -7,6 +7,7 @@
 mod error;
 mod model;
 mod registry;
+mod release;
 
 pub use error::FleetRegistryError;
 pub use model::AGENT_MANIFEST_SCHEMA_VERSION;
@@ -19,3 +20,9 @@ pub use model::WorkspaceBinding;
 pub use registry::AgentRecord;
 pub use registry::FleetRegistry;
 pub use registry::FleetSnapshot;
+pub use release::AGENT_RELEASE_STATE_SCHEMA_VERSION;
+pub use release::AgentReleaseState;
+pub use release::RELEASE_METADATA_SCHEMA_VERSION;
+pub use release::RegisteredRelease;
+pub use release::ReleaseId;
+pub use release::ReleaseMetadata;
