@@ -342,8 +342,9 @@ pub(crate) async fn decode_revision(
     row: sqlx::sqlite::SqliteRow,
     scope: CognitiveScope,
 ) -> Result<MemoryRevisionRecord, CognitiveStoreError> {
-    let memory_id = StableMemoryId::parse(row.try_get("memory_id").map_err(unavailable)?)
-        .map_err(CognitiveStoreError::Corrupt)?;
+    let memory_id =
+        StableMemoryId::parse(row.try_get::<String, _>("memory_id").map_err(unavailable)?)
+            .map_err(CognitiveStoreError::Corrupt)?;
     let revision: i64 = row.try_get("revision").map_err(unavailable)?;
     let citations = sqlx::query(
         "SELECT source_id, source_revision FROM memory_citations

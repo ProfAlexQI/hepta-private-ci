@@ -8,7 +8,6 @@ use crate::CognitiveStoreError;
 use crate::ForgetMemoryDraft;
 use crate::MemoryDraft;
 use crate::MemoryLifecycleState;
-use crate::MemoryRevisionDraft;
 use crate::MemoryVerification;
 use crate::cognitive_test_support::agent_id;
 use crate::cognitive_test_support::layout;

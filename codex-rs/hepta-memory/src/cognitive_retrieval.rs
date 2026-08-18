@@ -16,7 +16,6 @@ use crate::MemoryRevisionId;
 use crate::MemoryRevisionRecord;
 use crate::MemoryVerification;
 use crate::ProjectionGeneration;
-use crate::SourceEventId;
 use crate::SourceRevisionId;
 use crate::StableMemoryId;
 use crate::cognitive_store::decode_scope;
@@ -130,7 +129,7 @@ pub enum RevalidationDrift {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RevalidationStatus {
-    Current(MemoryExplanation),
+    Current(Box<MemoryExplanation>),
     Stale(RevalidationDrift),
 }
 
@@ -384,7 +383,7 @@ impl CognitiveStore {
         if !eligible(memory, now_unix_seconds) {
             return Ok(RevalidationStatus::Stale(RevalidationDrift::NotEligible));
         }
-        Ok(RevalidationStatus::Current(explanation))
+        Ok(RevalidationStatus::Current(Box::new(explanation)))
     }
 
     async fn projection_generation_for_scope(
