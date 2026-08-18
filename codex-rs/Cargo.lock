@@ -4238,6 +4238,7 @@ dependencies = [
  "codex-extension-api",
  "codex-history",
  "codex-protocol",
+ "codex-rollout",
  "codex-state",
  "codex-thread-store",
  "codex-utils-absolute-path",
@@ -4249,6 +4250,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "zstd",
 ]
 
 [[package]]

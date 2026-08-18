@@ -17,6 +17,7 @@ use codex_extension_api::ThreadIdleInput;
 use codex_extension_api::ThreadLifecycleContributor;
 use codex_extension_api::ThreadResumeInput;
 use codex_history::RolloutItem;
+use codex_history::RolloutLine;
 use codex_protocol::ThreadId;
 use codex_protocol::error::CodexErr;
 use codex_protocol::models::snapshot_local_user_input;
@@ -27,6 +28,7 @@ use codex_protocol::protocol::ThreadQueueChangedEvent;
 use codex_protocol::protocol::W3cTraceContext;
 use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;
 use codex_protocol::user_input::UserInput;
+use codex_rollout::open_rollout_line_reader;
 use codex_thread_store::MAX_QUEUE_ITEMS;
 use codex_thread_store::QueueStore;
 use codex_thread_store::QueuedUserSubmissionRecord;
@@ -616,54 +618,78 @@ async fn persisted_turn_for_client_id(
     // Local threads are materialized lazily. Before the first accepted user
     // message the configured rollout path is intentionally absent, so there
     // cannot yet be a durable client-id match to reconcile.
-    if let Some(path) = thread.rollout_path() {
-        match tokio::fs::metadata(&path).await {
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => {
+    let Some(path) = thread.rollout_path() else {
+        return Ok(None);
+    };
+    let mut reader = match open_rollout_line_reader(&path).await {
+        Ok(reader) => reader,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(queue_rollout_error(&path, "open", error)),
+    };
+    let mut current_turn_id = None;
+    let mut found = None;
+    while let Some(line) = reader
+        .next_line()
+        .await
+        .map_err(|error| queue_rollout_error(&path, "read", error))?
+    {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(record) = serde_json::from_str::<RolloutLine>(&line) else {
+            continue;
+        };
+        scan_persisted_client_line(record.item, client_id, &mut current_turn_id, &mut found)?;
+    }
+    Ok(found)
+}
+
+fn scan_persisted_client_line(
+    item: RolloutItem,
+    client_id: &str,
+    current_turn_id: &mut Option<String>,
+    found: &mut Option<String>,
+) -> Result<(), QueueServiceError> {
+    match item {
+        RolloutItem::EventMsg(EventMsg::TurnStarted(event)) => {
+            *current_turn_id = Some(event.turn_id);
+        }
+        RolloutItem::TurnContext(context) if context.turn_id.is_some() => {
+            *current_turn_id = context.turn_id;
+        }
+        RolloutItem::EventMsg(EventMsg::UserMessage(event))
+            if event.client_id.as_deref() == Some(client_id) =>
+        {
+            let Some(turn_id) = current_turn_id.clone() else {
                 return Err(ThreadStoreError::Internal {
                     message: format!(
-                        "failed to inspect rollout path `{}` before queue reconciliation: {error}",
-                        path.display()
+                        "persisted user message {client_id} has no owning turn identity"
                     ),
                 }
                 .into());
-            }
+            };
+            found.get_or_insert(turn_id);
         }
-    }
-    let history = thread.load_history(/*include_archived*/ false).await?;
-    let mut current_turn_id = None;
-    let mut found = None;
-    for item in history.items {
-        match item {
-            RolloutItem::EventMsg(EventMsg::TurnStarted(event)) => {
-                current_turn_id = Some(event.turn_id);
-            }
-            RolloutItem::TurnContext(context) => {
-                if context.turn_id.is_some() {
-                    current_turn_id = context.turn_id;
-                }
-            }
-            RolloutItem::EventMsg(EventMsg::UserMessage(event))
-                if event.client_id.as_deref() == Some(client_id) =>
-            {
-                let Some(turn_id) = current_turn_id.clone() else {
-                    return Err(ThreadStoreError::Internal {
-                        message: format!(
-                            "persisted user message {client_id} has no owning turn identity"
-                        ),
-                    }
-                    .into());
-                };
-                found.get_or_insert(turn_id);
-            }
-            RolloutItem::EventMsg(EventMsg::TurnComplete(event)) => {
-                if current_turn_id.as_deref() == Some(event.turn_id.as_str()) {
-                    current_turn_id = None;
-                }
-            }
-            _ => {}
+        RolloutItem::EventMsg(EventMsg::TurnComplete(event))
+            if current_turn_id.as_deref() == Some(event.turn_id.as_str()) =>
+        {
+            *current_turn_id = None;
         }
+        _ => {}
     }
-    Ok(found)
+    Ok(())
+}
+
+fn queue_rollout_error(
+    path: &std::path::Path,
+    operation: &str,
+    error: std::io::Error,
+) -> QueueServiceError {
+    ThreadStoreError::Internal {
+        message: format!(
+            "failed to {operation} rollout `{}` during queue reconciliation: {error}",
+            path.display()
+        ),
+    }
+    .into()
 }

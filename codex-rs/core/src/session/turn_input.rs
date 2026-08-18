@@ -144,13 +144,23 @@ pub(super) async fn handle(
     mode: TurnInputMode,
     submission_id: String,
 ) -> CodexResult<TurnInputSubmission> {
+    // Each routing mode carries a substantial state machine. Heap-erasing the
+    // selected branch keeps polling `handle` within Tokio's default worker stack.
     match mode {
-        TurnInputMode::StartOrSteer => start_or_steer(session, request, submission_id).await,
+        TurnInputMode::StartOrSteer => {
+            Box::pin(start_or_steer(session, request, submission_id)).await
+        }
         TurnInputMode::StartIfIdle => {
-            start_if_idle(session, request, submission_id, /*is_recovery*/ false).await
+            Box::pin(start_if_idle(
+                session,
+                request,
+                submission_id,
+                /*is_recovery*/ false,
+            ))
+            .await
         }
         TurnInputMode::Steer { expected_turn_id } => {
-            steer(session, request, expected_turn_id, submission_id).await
+            Box::pin(steer(session, request, expected_turn_id, submission_id)).await
         }
     }
 }

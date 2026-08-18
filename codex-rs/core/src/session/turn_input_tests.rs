@@ -64,6 +64,26 @@ fn user_message(text: &str) -> ResponseItem {
     }
 }
 
+#[tokio::test]
+async fn turn_input_dispatch_future_stays_bounded() {
+    let (session, _turn_context, _rx) = make_session_and_context_with_rx().await;
+    let future = handle(
+        &session,
+        TurnInputRequest::user_input(vec![UserInput::Text {
+            text: "bounded future".to_string(),
+            text_elements: Vec::new(),
+        }]),
+        TurnInputMode::StartOrSteer,
+        "future-size".to_string(),
+    );
+    let size = std::mem::size_of_val(&future);
+
+    assert!(
+        size < 64 * 1024,
+        "turn-input dispatch future is {size} bytes"
+    );
+}
+
 async fn submit_start_only(
     session: &Arc<Session>,
     input: SubmittedTurnInput,

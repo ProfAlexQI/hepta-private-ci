@@ -572,7 +572,10 @@ pub(super) async fn submission_loop(
                     mode,
                     reply,
                 } => {
-                    let result = turn_input::handle(&sess, *request, mode, sub.id.clone()).await;
+                    // Keep the turn-input dispatcher future out of the long-lived
+                    // submission loop's worker-stack frame.
+                    let result =
+                        Box::pin(turn_input::handle(&sess, *request, mode, sub.id.clone())).await;
                     let _ = reply.send(result);
                     false
                 }

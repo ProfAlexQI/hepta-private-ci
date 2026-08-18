@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -26,6 +27,7 @@ use codex_extension_api::ThreadIdleInput;
 use codex_extension_api::ThreadLifecycleContributor;
 use codex_extension_api::ThreadResumeInput;
 use codex_history::RolloutItem;
+use codex_history::RolloutLine;
 use codex_protocol::ThreadId;
 use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::items::TurnItem;
@@ -37,6 +39,7 @@ use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;
 use codex_protocol::user_input::UserInput;
 use codex_queue_extension::QueueServiceError;
 use codex_queue_extension::QueuedItemService;
+use codex_rollout::open_rollout_line_reader;
 use codex_state::SqliteConfig;
 use codex_state::StateRuntime;
 use codex_thread_store::LocalQueueStore;
@@ -284,19 +287,22 @@ async fn persisted_client_message_count(
     thread: &codex_core::CodexThread,
     client_id: &str,
 ) -> anyhow::Result<usize> {
-    Ok(thread
-        .load_history(/*include_archived*/ false)
-        .await?
-        .items
-        .into_iter()
-        .filter(|item| {
-            matches!(
-                item,
-                RolloutItem::EventMsg(EventMsg::UserMessage(event))
-                    if event.client_id.as_deref() == Some(client_id)
-            )
-        })
-        .count())
+    let path = thread.rollout_path().context("rollout path unavailable")?;
+    let mut reader = open_rollout_line_reader(&path).await?;
+    let mut count = 0;
+    while let Some(line) = reader.next_line().await? {
+        let Ok(record) = serde_json::from_str::<RolloutLine>(&line) else {
+            continue;
+        };
+        if matches!(
+            record.item,
+            RolloutItem::EventMsg(EventMsg::UserMessage(event))
+                if event.client_id.as_deref() == Some(client_id)
+        ) {
+            count += 1;
+        }
+    }
+    Ok(count)
 }
 
 async fn emit_idle(service: &QueuedItemService, thread_id: ThreadId) {
@@ -446,7 +452,8 @@ async fn starting_a_selected_item_preserves_the_remaining_queue() -> anyhow::Res
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn persisted_admission_survives_delete_crash_without_model_replay() -> anyhow::Result<()> {
+async fn persisted_admission_reconciles_compressed_rollout_with_invalid_line() -> anyhow::Result<()>
+{
     let server = start_mock_server().await;
     let response =
         responses::mount_sse_once(&server, responses::sse_completed("durable-turn")).await;
@@ -484,19 +491,33 @@ async fn persisted_admission_survives_delete_crash_without_model_replay() -> any
     );
     assert_eq!(vec![queued.clone()], service.list(thread_id).await?);
 
+    wait_for_event_match(test.codex.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_)).then_some(())
+    })
+    .await;
+    let rollout_path = test
+        .codex
+        .rollout_path()
+        .context("rollout path unavailable")?;
+    test.codex.shutdown_and_wait().await?;
+    let mut rollout = b"not-json\n".to_vec();
+    rollout.extend(fs::read(&rollout_path)?);
+    let compressed_path = rollout_path.with_extension("jsonl.zst");
+    fs::write(
+        &compressed_path,
+        zstd::stream::encode_all(rollout.as_slice(), /*level*/ 3)?,
+    )?;
+    fs::remove_file(&rollout_path)?;
+
     // A new service instance models restart after Core persisted the message
-    // but the old process died before queue deletion.
+    // but the old process died before queue deletion. Reconciliation must use
+    // the compressed representation and skip the invalid prefix line.
     let restarted = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
     let replay = restarted
         .start(test.codex.as_ref(), Some(queued.id), /*trace*/ None)
         .await?;
     assert!(matches!(replay, StartIfIdleSubmission::Started { .. }));
     assert!(restarted.list(thread_id).await?.is_empty());
-
-    wait_for_event_match(test.codex.as_ref(), |event| {
-        matches!(event, EventMsg::TurnComplete(_)).then_some(())
-    })
-    .await;
     assert_eq!(1, response.requests().len());
     assert_eq!(
         1,
