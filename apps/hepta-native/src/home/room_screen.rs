@@ -1,7 +1,7 @@
 //! The `RoomScreen` widget is the UI view that displays a single room or thread's timeline
 //! of events (messages，state changes, etc.), along with an input bar at the bottom.
 
-use std::{borrow::Cow, cell::RefCell, ops::{DerefMut, Range}, sync::Arc};
+use std::{borrow::Cow, cell::RefCell, ops::{DerefMut, Range}, sync::Arc, time::{Duration, Instant}};
 
 use hashbrown::{HashMap, HashSet};
 use imbl::Vector;
@@ -27,7 +27,7 @@ use ruma::{OwnedUserId, api::client::receipt::create_receipt::v3::ReceiptType, e
 
 use matrix_sdk_ui::sync_service::State;
 use crate::{
-    app::{AppStateAction, ConfirmDeleteAction, SelectedRoom}, avatar_cache, event_preview::{plaintext_body_of_timeline_item, text_preview_of_encrypted_message, text_preview_of_member_profile_change, text_preview_of_other_message_like, text_preview_of_other_state, text_preview_of_room_membership_change, text_preview_of_timeline_item}, home::{edited_indicator::EditedIndicatorWidgetRefExt, link_preview::{LinkPreviewCache, LinkPreviewRef, LinkPreviewWidgetRefExt}, loading_pane::{LoadingPaneState, LoadingPaneWidgetExt}, room_image_viewer::{fetch_full_image_for_viewer, get_image_name_and_filesize}, rooms_list::{RoomsListAction, RoomsListRef}, rooms_list_header::RoomsListHeaderAction, tombstone_footer::SuccessorRoomDetails}, media_cache::{MediaCache, MediaCacheEntry}, profile::{
+    app::{AppStateAction, ConfirmDeleteAction, SelectedRoom}, avatar_cache, event_preview::{plaintext_body_of_timeline_item, text_preview_of_encrypted_message, text_preview_of_member_profile_change, text_preview_of_other_message_like, text_preview_of_other_state, text_preview_of_room_membership_change, text_preview_of_timeline_item}, home::{edited_indicator::EditedIndicatorWidgetRefExt, link_preview::{LinkPreviewCache, LinkPreviewRef, LinkPreviewWidgetRefExt}, loading_pane::{LoadingPaneState, LoadingPaneWidgetExt}, room_image_viewer::{fetch_full_image_for_viewer, get_image_name_and_filesize}, rooms_list::{RoomsListAction, RoomsListRef}, rooms_list_header::RoomsListHeaderAction, timeline_update_queue::TimelineUpdateReceiver, tombstone_footer::SuccessorRoomDetails}, media_cache::{MediaCache, MediaCacheEntry}, profile::{
         user_profile::{ShowUserProfileAction, UserProfile, UserProfileAndRoomId, UserProfilePaneInfo, UserProfileSlidingPaneRef, UserProfileSlidingPaneWidgetExt},
         user_profile_cache,
     },
@@ -35,7 +35,7 @@ use crate::{
     shared::{
         attachment_download::{enqueue_already_downloading_notification, DownloadDisplayState, DownloadKind, DownloadableAttachment, PendingDownload, PendingDownloadState, TimelineUpdateSenderOption, TransferKind, media_source_mxc, start_attachment_download, start_attachment_share}, avatar::{AvatarState, AvatarWidgetRefExt}, confirmation_modal::ConfirmationModalContent, file_upload_modal::FileUploadAttemptId, html_or_plaintext::{HtmlOrPlaintextRef, HtmlOrPlaintextWidgetRefExt, RobrixHtmlLinkAction}, image_viewer::{ImageViewerAction, ImageViewerMetaData, LoadState}, jump_to_bottom_button::{JumpToBottomButtonWidgetExt, UnreadMessageCount}, popup_list::{PopupKind, enqueue_popup_notification}, restore_status_view::RestoreStatusViewWidgetExt, room_input_popup_menu::{RoomInputPopupMenuAction, RoomInputPopupMenuRef, RoomInputPopupMenuWidgetExt}, styles::*, text_or_image::{TextOrImageAction, TextOrImageRef, TextOrImageWidgetRefExt}, timestamp::TimestampWidgetRefExt
     },
-    sliding_sync::{BackwardsPaginateUntilEventRequest, MatrixRequest, PaginationDirection, TimelineEndpoints, TimelineKind, TimelineRequestSender, UserPowerLevels, submit_async_request, take_timeline_endpoints}, utils::{self, MEDIA_THUMBNAIL_FORMAT, RoomNameId, unix_time_millis_to_datetime}
+    sliding_sync::{BackwardsPaginateUntilEventRequest, MatrixRequest, PaginationDirection, TimelineEndpoints, TimelineKind, TimelineRequestSender, UserPowerLevels, rebuild_timeline_endpoints, submit_async_request, take_timeline_endpoints}, utils::{self, MEDIA_THUMBNAIL_FORMAT, RoomNameId, unix_time_millis_to_datetime}
 };
 use crate::home::event_reaction_list::ReactionListWidgetRefExt;
 use crate::home::room_read_receipt::AvatarRowWidgetRefExt;
@@ -68,6 +68,11 @@ use timeline_item_preview::{
 /// This is a safety measure to prevent the main UI thread
 /// from getting into a long-running loop if an event cannot be found quickly.
 const MAX_ITEMS_TO_SEARCH_THROUGH: usize = 100;
+
+/// Keep timeline work inside a small slice of one UI frame. If either budget is reached,
+/// `process_timeline_updates` schedules another UI wake instead of monopolizing rendering.
+const MAX_TIMELINE_UPDATES_PER_FRAME: usize = 64;
+const TIMELINE_UPDATE_FRAME_BUDGET: Duration = Duration::from_millis(4);
 
 /// The max size (width or height) of a blurhash image to decode.
 /// Blurhash is a blurred placeholder — it is designed to be decoded at a small
@@ -1421,12 +1426,11 @@ impl Widget for RoomScreen {
                 && !list.is_filling_viewport()
             {
                 log!("Automatically paginating timeline to fill viewport for room {:?}", self.room_name_id);
-                tl_state.is_paginating = true;
-                submit_async_request(MatrixRequest::PaginateTimeline {
+                tl_state.is_paginating = submit_async_request(MatrixRequest::PaginateTimeline {
                     timeline_kind: tl_state.kind.clone(),
                     num_events: 50,
                     direction: PaginationDirection::Backwards,
-                });
+                }).was_accepted();
             }
         }
 
@@ -1524,7 +1528,11 @@ impl RoomScreen {
         let mut should_continue_backwards_pagination = false;
         let mut typing_users = None;
         let mut num_updates = 0;
-        while let Ok(update) = tl.update_receiver.try_recv() {
+        let frame_started = Instant::now();
+        while num_updates < MAX_TIMELINE_UPDATES_PER_FRAME
+            && frame_started.elapsed() < TIMELINE_UPDATE_FRAME_BUDGET
+        {
+            let Ok(update) = tl.update_receiver.try_recv() else { break };
             num_updates += 1;
             match update {
                 TimelineUpdate::FirstUpdate { initial_items } => {
@@ -1909,13 +1917,51 @@ impl RoomScreen {
             }
         }
 
+        // A rejected critical transition cannot be reconstructed from a timeline snapshot.
+        // Destroy this generation before doing any more UI work, visibly report the interruption,
+        // and rebuild only this room/thread transport. Dropping the old receiver fences every old
+        // producer; the new channel starts with no inherited loss marker.
+        let delivery_lost_kind = tl
+            .update_receiver
+            .delivery_lost()
+            .then(|| tl.kind.clone());
+        if let Some(kind) = delivery_lost_kind {
+            enqueue_popup_notification(
+                "Timeline updates overflowed and this room was reloaded to avoid showing an unknown state.",
+                PopupKind::Warning,
+                Some(8.0),
+            );
+            timeline_state_store::invalidate(cx, &kind);
+            self.hide_timeline();
+            if rebuild_timeline_endpoints(&kind) {
+                self.show_timeline(cx);
+            } else {
+                error!("Failed to rebuild timeline transport for {kind}");
+                enqueue_popup_notification(
+                    "This room could not be reloaded. Close and reopen it to retry.",
+                    PopupKind::Error,
+                    None,
+                );
+            }
+            return;
+        }
+
+        // Coalesced latest-state overflow remains recoverable. Ask the authoritative timeline
+        // subscriber for a fresh cache-clearing snapshot instead of blocking its Tokio task.
+        let resync_requested = tl.update_receiver.take_resync_needed();
+        if resync_requested {
+            tl.request_sender.send_modify(|req| {
+                req.resync_generation = req.resync_generation.wrapping_add(1);
+            });
+        }
+        let updates_remain = tl.update_receiver.has_pending();
+
         if should_continue_backwards_pagination {
-            tl.is_paginating = true;
-            submit_async_request(MatrixRequest::PaginateTimeline {
+            tl.is_paginating = submit_async_request(MatrixRequest::PaginateTimeline {
                 timeline_kind: tl.kind.clone(),
                 num_events: 50,
                 direction: PaginationDirection::Backwards,
-            });
+            }).was_accepted();
         }
 
         if done_loading {
@@ -1931,6 +1977,12 @@ impl RoomScreen {
         if num_updates > 0 {
             // log!("Applied {} timeline updates for room {}, redrawing with {} items...", num_updates, tl.kind.room_id(), tl.items.len());
             self.redraw(cx);
+        }
+        if updates_remain || resync_requested {
+            // Preserve forward progress without draining an unbounded amount of work in one
+            // Makepad signal/frame. A resync request also gets another wake so a very fast
+            // subscriber response is not stranded behind this frame.
+            SignalToUI::set_ui_signal();
         }
     }
 
@@ -2134,7 +2186,7 @@ impl RoomScreen {
         portal_list: &PortalListRef,
         info: &DownloadableAttachment,
         kind: TransferKind,
-        start: fn(DownloadableAttachment, TimelineUpdateSenderOption),
+        start: fn(DownloadableAttachment, TimelineUpdateSenderOption) -> bool,
     ) {
         let Some(tl) = self.tl_state.as_mut() else { return };
         let mxc = media_source_mxc(&info.media_source);
@@ -2149,7 +2201,13 @@ impl RoomScreen {
         });
         portal_list.redraw(cx);
         let update_sender = tl.media_cache.timeline_update_sender().cloned();
-        start(info.clone(), update_sender);
+        if !start(info.clone(), update_sender) {
+            // The bounded worker queue explicitly rejected the transfer. Remove the optimistic
+            // in-progress state so the user can retry immediately rather than seeing a spinner
+            // for a request that does not exist.
+            tl.pending_downloads.retain(|pending| &pending.mxc != mxc);
+            portal_list.redraw(cx);
+        }
     }
 
     /// Handles any [`MessageAction`]s received by this RoomScreen.
@@ -2714,12 +2772,11 @@ impl RoomScreen {
         if is_first_time_being_loaded {
             if !tl_state.fully_paginated && !tl_state.is_paginating {
                 log!("Sending a first-time backwards pagination request for {}", tl_state.kind);
-                tl_state.is_paginating = true;
-                submit_async_request(MatrixRequest::PaginateTimeline {
+                tl_state.is_paginating = submit_async_request(MatrixRequest::PaginateTimeline {
                     timeline_kind: tl_state.kind.clone(),
                     num_events: 50,
                     direction: PaginationDirection::Backwards,
-                });
+                }).was_accepted();
             }
 
             // Even though we specify that room member profiles should be lazy-loaded,
@@ -3054,12 +3111,11 @@ impl RoomScreen {
         }
 
         log!("Timeline hit first item, sending back pagination request for room {}", tl.kind);
-        tl.is_paginating = true;
-        submit_async_request(MatrixRequest::PaginateTimeline {
+        tl.is_paginating = submit_async_request(MatrixRequest::PaginateTimeline {
             timeline_kind: tl.kind.clone(),
             num_events: 50,
             direction: PaginationDirection::Backwards,
-        });
+        }).was_accepted();
     }
 }
 
@@ -3429,10 +3485,9 @@ struct TimelineUiState {
 
     /// The channel receiver for timeline updates for this room.
     ///
-    /// Here we use a synchronous (non-async) channel because the receiver runs
-    /// in a sync context and the sender runs in an async context,
-    /// which is okay because a sender on an unbounded channel never needs to block.
-    update_receiver: crossbeam_channel::Receiver<TimelineUpdate>,
+    /// This synchronous endpoint is non-blocking on both sides. Its bounded implementation
+    /// reserves space for critical transitions and coalesces high-rate latest-state updates.
+    update_receiver: TimelineUpdateReceiver,
 
     /// The sender for timeline requests from a RoomScreen showing this room
     /// to the background async task that handles this room's timeline updates.

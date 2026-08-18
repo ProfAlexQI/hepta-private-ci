@@ -13,7 +13,7 @@ use serde::{Deserialize, Deserializer};
 use url::Url;
 
 use crate::{
-    home::room_screen::TimelineUpdate,
+    home::{room_screen::TimelineUpdate, timeline_update_queue::TimelineUpdateSender},
     media_cache::MediaCache,
     shared::text_or_image::{TextOrImageRef, TextOrImageWidgetRefExt},
     sliding_sync::{submit_async_request, MatrixRequest, UrlPreviewError},
@@ -509,14 +509,14 @@ pub struct LinkPreviewCache {
     /// The actual cached data.
     cache: BTreeMap<String, Arc<Mutex<TimestampedCacheEntry>>>,
     /// A channel to send updates to a particular timeline when a link preview request has completed.
-    timeline_update_sender: Option<crossbeam_channel::Sender<TimelineUpdate>>,
+    timeline_update_sender: Option<TimelineUpdateSender>,
 }
 
 impl LinkPreviewCache {
     /// Creates a new link preview cache that will optionally send updates
     /// when a link preview request has completed.
     pub const fn new(
-        timeline_update_sender: Option<crossbeam_channel::Sender<TimelineUpdate>>,
+        timeline_update_sender: Option<TimelineUpdateSender>,
     ) -> Self {
         Self {
             cache: BTreeMap::new(),
@@ -539,12 +539,22 @@ impl LinkPreviewCache {
             timestamp: Instant::now(),
         }));
         self.cache.insert(url.to_owned(), entry_ref.clone());
-        submit_async_request(MatrixRequest::GetUrlPreview {
+        let submission = submit_async_request(MatrixRequest::GetUrlPreview {
             url: url.to_owned(),
             on_fetched: insert_into_cache,
-            destination: entry_ref,
+            destination: entry_ref.clone(),
             update_sender: self.timeline_update_sender.clone(),
         });
+        if !submission.was_accepted() {
+            // Do not leave this URL permanently marked Requested when the bounded worker queue
+            // rejects the fetch. The normal callback path already knows how to mark failure and
+            // wake the timeline.
+            insert_into_cache(
+                entry_ref,
+                Err(UrlPreviewError::ClientNotAvailable),
+                self.timeline_update_sender.clone(),
+            );
+        }
         LinkPreviewCacheEntry::Requested
     }
 
@@ -581,7 +591,7 @@ impl LinkPreviewCache {
 fn insert_into_cache(
     value_ref: Arc<Mutex<TimestampedCacheEntry>>,
     data: Result<LinkPreviewData, UrlPreviewError>,
-    update_sender: Option<crossbeam_channel::Sender<TimelineUpdate>>,
+    update_sender: Option<TimelineUpdateSender>,
 ) {
     let new_entry = match data {
         Ok(data) => LinkPreviewCacheEntry::LoadedLinkPreview(data),

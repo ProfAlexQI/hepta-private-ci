@@ -5,13 +5,13 @@ use makepad_widgets::SignalToUI;
 use matrix_sdk::ruma::{OwnedMxcUri, events::room::MediaSource};
 use robius_share::ShareSheet;
 use crate::{
-    home::room_screen::TimelineUpdate,
+    home::{room_screen::TimelineUpdate, timeline_update_queue::TimelineUpdateSender},
     shared::popup_list::{PopupKind, enqueue_popup_notification},
     sliding_sync::{MatrixRequest, submit_async_request},
     temp_storage::get_temp_dir_path,
 };
 
-pub type TimelineUpdateSenderOption = Option<crossbeam_channel::Sender<TimelineUpdate>>;
+pub type TimelineUpdateSenderOption = Option<TimelineUpdateSender>;
 
 /// The result of a download request.
 pub enum MediaDownloadResult {
@@ -115,7 +115,7 @@ fn download_media(
     info: DownloadableAttachment,
     update_sender: TimelineUpdateSenderOption,
     on_downloaded: impl FnOnce(String, OwnedMxcUri, Vec<u8>, TimelineUpdateSenderOption) + Send + 'static,
-) {
+) -> bool {
     let mxc = media_source_mxc(&info.media_source).clone();
     let filename = info.filename.clone();
     submit_async_request(MatrixRequest::DownloadMedia {
@@ -135,17 +135,18 @@ fn download_media(
                 finish_download_indicator(&update_sender, Some(&mxc), DownloadOutcome::Cancelled)
             }
         }),
-    });
+    })
+    .was_accepted()
 }
 
 /// Downloads the attachment and shows the native save dialog for it.
 pub fn start_attachment_download(
     info: DownloadableAttachment,
     update_sender: TimelineUpdateSenderOption,
-) {
+) -> bool {
     download_media(info, update_sender, |filename, mxc, bytes, sender| {
         show_save_dialog(filename, bytes, Some(mxc), sender);
-    });
+    })
 }
 
 /// Saves an attachment already in memory directly to storage, without showing any dialog.
@@ -158,7 +159,7 @@ pub fn save_loaded_attachment(filename: String, bytes: Arc<[u8]>) {
 pub fn start_attachment_share(
     info: DownloadableAttachment,
     update_sender: TimelineUpdateSenderOption,
-) {
+) -> bool {
     let mime = info.kind.basic_mime_type();
     download_media(info, update_sender, move |filename, mxc, bytes, sender| {
         // Success shows a "Shared" indicator; a share-step failure (already shown as
@@ -169,7 +170,7 @@ pub fn start_attachment_share(
             DownloadOutcome::Cancelled
         };
         finish_download_indicator(&sender, Some(&mxc), outcome);
-    });
+    })
 }
 
 /// Opens the native share sheet for an attachment already in memory.

@@ -27,7 +27,7 @@ use robius_open::Uri;
 use ruma::{RoomId, events::tag::Tags};
 use tokio::{
     runtime::Handle,
-    sync::{broadcast, mpsc::{Sender, UnboundedReceiver, UnboundedSender}, watch, Notify, Semaphore}, task::JoinHandle, time::error::Elapsed,
+    sync::{broadcast, mpsc::Sender, watch, Notify, Semaphore}, task::JoinHandle, time::error::Elapsed,
 };
 use url::Url;
 use std::{borrow::Cow, cmp::{max, min}, future::Future, hash::{BuildHasherDefault, DefaultHasher}, iter::Peekable, ops::{Deref, DerefMut, Not}, path::{Path, PathBuf}, sync::{Arc, LazyLock, Mutex, atomic::{AtomicBool, Ordering}}, time::Duration};
@@ -35,7 +35,7 @@ use std::io;
 use hashbrown::{HashMap, HashSet};
 use crate::{
     app::AppStateAction, app_data_dir, cache_dir, avatar_cache::AvatarUpdate, event_preview::{BeforeText, TextPreview, text_preview_of_raw_timeline_event, text_preview_of_timeline_item}, home::{
-        add_room::KnockResultAction, invite_screen::{JoinRoomResultAction, LeaveRoomResultAction}, link_preview::LinkPreviewData, room_screen::{InviteResultAction, TimelineUpdate}, rooms_list::{self, InvitedRoomInfo, InviterInfo, JoinedRoomInfo, RoomsListUpdate, enqueue_rooms_list_update}, rooms_list_header::RoomsListHeaderAction, tombstone_footer::SuccessorRoomDetails
+        add_room::KnockResultAction, invite_screen::{JoinRoomResultAction, LeaveRoomResultAction}, link_preview::LinkPreviewData, room_screen::{InviteResultAction, TimelineUpdate}, rooms_list::{self, InvitedRoomInfo, InviterInfo, JoinedRoomInfo, RoomsListUpdate, enqueue_rooms_list_update}, rooms_list_header::RoomsListHeaderAction, timeline_update_queue::{TimelineUpdateReceiver, TimelineUpdateSendError, TimelineUpdateSender, timeline_update_channel}, tombstone_footer::SuccessorRoomDetails
     }, login::login_screen::LoginAction, logout::{logout_confirm_modal::LogoutAction, logout_state_machine::{LogoutConfig, is_logout_in_progress, logout_with_state_machine}}, persistence::{self, ClientSessionPersisted, load_app_state}, profile::{
         user_profile::UserProfile,
         user_profile_cache::{UserProfileUpdate, enqueue_user_profile_update},
@@ -45,9 +45,14 @@ use crate::{
 };
 
 mod requests;
+mod request_queue;
 mod user_power_levels;
 
 pub use requests::*;
+use request_queue::{
+    MatrixRequestReceiver, MatrixRequestSender, MatrixRequestSubmitDisposition,
+    MatrixRequestSubmitError, is_critical_request, matrix_request_channel,
+};
 pub use user_power_levels::UserPowerLevels;
 
 #[derive(Parser, Default)]
@@ -279,11 +284,95 @@ async fn login(
 
 
 
+/// Immediate outcome of handing a request to the bounded Matrix worker transport.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MatrixRequestSubmission {
+    Enqueued,
+    /// Retained in the capacity-bounded critical retry FIFO.
+    Deferred,
+    /// Not retained. Critical call sites also receive an immediate visible retry notice.
+    Rejected,
+}
+
+impl MatrixRequestSubmission {
+    pub fn was_accepted(self) -> bool {
+        matches!(self, Self::Enqueued | Self::Deferred)
+    }
+}
+
 /// Submits a request to the worker thread to be executed asynchronously.
-pub fn submit_async_request(req: MatrixRequest) {
-    if let Some(sender) = REQUEST_SENDER.lock().unwrap().as_ref() {
-        sender.send(req)
-            .expect("BUG: matrix worker task receiver has died!");
+pub fn submit_async_request(req: MatrixRequest) -> MatrixRequestSubmission {
+    let is_critical = is_critical_request(&req);
+    let result = REQUEST_SENDER
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_ref()
+        .map(|sender| sender.try_submit(req));
+    match result {
+        Some(Ok(MatrixRequestSubmitDisposition::Deferred)) => {
+            warning!("Critical Matrix request retained in bounded retry queue");
+            MatrixRequestSubmission::Deferred
+        }
+        Some(Ok(_)) => MatrixRequestSubmission::Enqueued,
+        Some(Err(MatrixRequestSubmitError::CriticalRejected)) => {
+            warning!("Critical Matrix request rejected after both bounded lanes filled");
+            enqueue_popup_notification(
+                "Matrix is busy; this action was rejected and was not sent. Please retry.",
+                PopupKind::Warning,
+                Some(6.0),
+            );
+            MatrixRequestSubmission::Rejected
+        }
+        Some(Err(error)) => {
+            warning!("Matrix request rejected by bounded worker queue: {error:?}");
+            if is_critical {
+                enqueue_popup_notification(
+                    "Matrix is unavailable; this action was not sent. Please retry.",
+                    PopupKind::Warning,
+                    Some(6.0),
+                );
+            }
+            MatrixRequestSubmission::Rejected
+        }
+        None => {
+            warning!("Matrix request rejected because the worker is not ready");
+            if is_critical {
+                enqueue_popup_notification(
+                    "Matrix is not ready; this action was not sent. Please retry.",
+                    PopupKind::Warning,
+                    Some(6.0),
+                );
+            }
+            MatrixRequestSubmission::Rejected
+        }
+    }
+}
+
+/// Deliver one timeline update without blocking and without allowing a closed UI endpoint to
+/// panic a Matrix worker task.
+///
+/// The result stays explicit: recoverable snapshot backpressure and fatal critical-delivery loss
+/// must never be presented to a caller as successful delivery.
+fn send_timeline_update(
+    sender: &TimelineUpdateSender,
+    update: TimelineUpdate,
+) -> Result<(), TimelineUpdateSendError> {
+    match sender.send(update) {
+        Ok(()) => {
+            SignalToUI::set_ui_signal();
+            Ok(())
+        }
+        Err(TimelineUpdateSendError::Backpressured) => {
+            warning!("Timeline update rejected by bounded UI queue; exact resync requested");
+            SignalToUI::set_ui_signal();
+            Err(TimelineUpdateSendError::Backpressured)
+        }
+        Err(TimelineUpdateSendError::DeliveryLost) => {
+            error!("Critical timeline update could not be retained; transport generation fenced");
+            SignalToUI::set_ui_signal();
+            Err(TimelineUpdateSendError::DeliveryLost)
+        }
+        Err(TimelineUpdateSendError::Closed) => Err(TimelineUpdateSendError::Closed),
     }
 }
 
@@ -312,7 +401,7 @@ where
 /// All this task does is wait for [`MatrixRequests`] from the main UI thread
 /// and then executes them within an async runtime context.
 async fn matrix_worker_task(
-    mut request_receiver: UnboundedReceiver<MatrixRequest>,
+    mut request_receiver: MatrixRequestReceiver,
     login_sender: Sender<LoginRequest>,
 ) -> Result<()> {
     log!("Started matrix_worker_task.");
@@ -361,8 +450,9 @@ async fn matrix_worker_task(
                 // Spawn a new async task that will make the actual pagination request.
                 let _paginate_task = Handle::current().spawn(async move {
                     log!("Starting {direction} pagination request for {timeline_kind}...");
-                    sender.send(TimelineUpdate::PaginationRunning(direction)).unwrap();
-                    SignalToUI::set_ui_signal();
+                    if send_timeline_update(&sender, TimelineUpdate::PaginationRunning(direction)).is_err() {
+                        return;
+                    }
 
                     let res = if direction == PaginationDirection::Forwards {
                         timeline.paginate_forwards(num_events).await
@@ -376,19 +466,17 @@ async fn matrix_worker_task(
                                 if direction == PaginationDirection::Forwards { "end" } else { "start" },
                                 if fully_paginated { "yes" } else { "no" },
                             );
-                            sender.send(TimelineUpdate::PaginationIdle {
+                            let _ = send_timeline_update(&sender, TimelineUpdate::PaginationIdle {
                                 fully_paginated,
                                 direction,
-                            }).unwrap();
-                            SignalToUI::set_ui_signal();
+                            });
                         }
                         Err(error) => {
                             error!("Error sending {direction} pagination request for {timeline_kind}: {error:?}");
-                            sender.send(TimelineUpdate::PaginationError {
+                            let _ = send_timeline_update(&sender, TimelineUpdate::PaginationError {
                                 error,
                                 direction,
-                            }).unwrap();
-                            SignalToUI::set_ui_signal();
+                            });
                         }
                     }
                 });
@@ -408,11 +496,10 @@ async fn matrix_worker_task(
                         Ok(_) => log!("Successfully edited message {timeline_event_item_id:?} in {timeline_kind}."),
                         Err(ref e) => error!("Error editing message {timeline_event_item_id:?} in {timeline_kind}: {e:?}"),
                     }
-                    sender.send(TimelineUpdate::MessageEdited {
+                    let _ = send_timeline_update(&sender, TimelineUpdate::MessageEdited {
                         timeline_event_item_id,
                         result,
-                    }).unwrap();
-                    SignalToUI::set_ui_signal();
+                    });
                 });
             }
 
@@ -433,10 +520,9 @@ async fn matrix_worker_task(
                             // error!("Error fetching details for event {event_id} in {timeline_kind}: {_e:?}");
                         }
                     }
-                    if sender.send(TimelineUpdate::EventDetailsFetched { event_id, result }).is_err() {
+                    if send_timeline_update(&sender, TimelineUpdate::EventDetailsFetched { event_id, result }).is_err() {
                         error!("Failed to send fetched event details to UI for {timeline_kind}");
                     }
-                    SignalToUI::set_ui_signal();
                 });
             }
 
@@ -460,7 +546,7 @@ async fn matrix_worker_task(
                         None => None,
                     };
 
-                    if sender.send(TimelineUpdate::ThreadSummaryDetailsFetched {
+                    if send_timeline_update(&sender, TimelineUpdate::ThreadSummaryDetailsFetched {
                         thread_root_event_id,
                         timeline_item_index,
                         num_replies,
@@ -468,7 +554,6 @@ async fn matrix_worker_task(
                     }).is_err() {
                         error!("Failed to send fetched thread summary details to UI for {timeline_kind}");
                     }
-                    SignalToUI::set_ui_signal();
                 });
             }
 
@@ -482,8 +567,7 @@ async fn matrix_worker_task(
                     log!("Sending sync room members request for {timeline_kind}...");
                     timeline.fetch_members().await;
                     log!("Completed sync room members request for {timeline_kind}.");
-                    sender.send(TimelineUpdate::RoomMembersSynced).unwrap();
-                    SignalToUI::set_ui_signal();
+                    let _ = send_timeline_update(&sender, TimelineUpdate::RoomMembersSynced);
                 });
             }
 
@@ -527,10 +611,11 @@ async fn matrix_worker_task(
                             }
                             log!("Successfully created thread-focused timeline for room {room_id}, thread {thread_root_event_id}.");
                             let thread_timeline = Arc::new(thread_timeline);
-                            let (timeline_update_sender, timeline_update_receiver) = crossbeam_channel::unbounded();
+                            let (timeline_update_sender, timeline_update_receiver) = timeline_update_channel();
                             let (request_sender, request_receiver) = watch::channel(TimelineRequest {
                                 backwards_paginate: Vec::new(),
                                 is_timeline_open: true,
+                                resync_generation: 0,
                             });
                             let timeline_subscriber_handler_task = Handle::current().spawn(
                                 timeline_subscriber_handler(
@@ -544,6 +629,7 @@ async fn matrix_worker_task(
                                 thread_root_event_id.clone(),
                                 PerTimelineDetails {
                                     timeline: thread_timeline,
+                                    thread_root_event_id: Some(thread_root_event_id),
                                     timeline_update_sender,
                                     timeline_singleton_endpoints: Some((
                                         timeline_update_receiver,
@@ -705,8 +791,9 @@ async fn matrix_worker_task(
                 let _get_members_task = Handle::current().spawn(async move {
                     let send_update = |members: Vec<matrix_sdk::room::RoomMember>, source: &str| {
                         log!("{} {} members for {timeline_kind}", source, members.len());
-                        sender.send(TimelineUpdate::RoomMembersListFetched { members }).unwrap();
-                        SignalToUI::set_ui_signal();
+                        if send_timeline_update(&sender, TimelineUpdate::RoomMembersListFetched { members }).is_err() {
+                            warning!("Room member update receiver closed for {timeline_kind}");
+                        }
                     };
 
                     let room = timeline.room();
@@ -882,11 +969,10 @@ async fn matrix_worker_task(
                 };
 
                 let _get_unreads_task = Handle::current().spawn(async move {
-                    match sender.send(TimelineUpdate::NewUnreadMessagesCount(
+                    if send_timeline_update(&sender, TimelineUpdate::NewUnreadMessagesCount(
                         UnreadMessageCount::Known(timeline.room().num_unread_messages())
-                    )) {
-                        Ok(_) => SignalToUI::set_ui_signal(),
-                        Err(e) => log!("Failed to send timeline update: {e:?} for GetNumberUnreadMessages request for {timeline_kind}"),
+                    )).is_err() {
+                        log!("Failed to send timeline update for GetNumberUnreadMessages request for {timeline_kind}");
                     }
                     if let TimelineKind::MainRoom { room_id } = timeline_kind {
                         enqueue_rooms_list_update(RoomsListUpdate::UpdateNumUnreadMessages {
@@ -1137,10 +1223,13 @@ async fn matrix_worker_task(
                                     .unwrap_or_else(|| user_id.to_string())
                             }
                         })).await;
-                        if let Err(e) = timeline_update_sender.send(TimelineUpdate::TypingUsers { users }) {
-                            error!("Error: timeline update sender couldn't send the list of typing users: {e:?}");
+                        match send_timeline_update(&timeline_update_sender, TimelineUpdate::TypingUsers { users }) {
+                            Ok(()) | Err(TimelineUpdateSendError::Backpressured) => {}
+                            Err(TimelineUpdateSendError::Closed | TimelineUpdateSendError::DeliveryLost) => {
+                                log!("Typing update transport ended for room {room_id}");
+                                break;
+                            }
                         }
-                        SignalToUI::set_ui_signal();
                     }
                     // log!("Note: typing notifications recv loop has ended for room {}", room_id);
                 });
@@ -1165,23 +1254,32 @@ async fn matrix_worker_task(
                     if let Some(client_user_id) = current_user_id() {
                         if let Some((event_id, receipt)) = timeline.latest_user_read_receipt(&client_user_id).await {
                             log!("Received own user read receipt for {timeline_kind}: {receipt:?}, event ID: {event_id:?}");
-                            if sender.send(TimelineUpdate::OwnUserReadReceipt(receipt)).is_err() {
-                                error!("Failed to send own user read receipt to UI.");
+                            match send_timeline_update(&sender, TimelineUpdate::OwnUserReadReceipt(receipt)) {
+                                Ok(()) | Err(TimelineUpdateSendError::Backpressured) => {}
+                                Err(TimelineUpdateSendError::Closed | TimelineUpdateSendError::DeliveryLost) => {
+                                    return;
+                                }
                             }
                         }
 
                         while update_receiver.next().await.is_some() {
                             if let Some((_, receipt)) = timeline.latest_user_read_receipt(&client_user_id).await {
-                                if sender.send(TimelineUpdate::OwnUserReadReceipt(receipt)).is_err() {
-                                    error!("Failed to send own user read receipt to UI.");
+                                match send_timeline_update(&sender, TimelineUpdate::OwnUserReadReceipt(receipt)) {
+                                    Ok(()) | Err(TimelineUpdateSendError::Backpressured) => {}
+                                    Err(TimelineUpdateSendError::Closed | TimelineUpdateSendError::DeliveryLost) => {
+                                        break;
+                                    }
                                 }
                                 // When read receipts change (from other devices), update unread count
                                 let unread_count = timeline.room().num_unread_messages();
                                 let unread_mentions = timeline.room().num_unread_mentions();
-                                if sender.send(TimelineUpdate::NewUnreadMessagesCount(
+                                match send_timeline_update(&sender, TimelineUpdate::NewUnreadMessagesCount(
                                     UnreadMessageCount::Known(unread_count)
-                                )).is_err() {
-                                    error!("Failed to send unread message count update to UI.");
+                                )) {
+                                    Ok(()) | Err(TimelineUpdateSendError::Backpressured) => {}
+                                    Err(TimelineUpdateSendError::Closed | TimelineUpdateSendError::DeliveryLost) => {
+                                        break;
+                                    }
                                 }
                                 if let TimelineKind::MainRoom { room_id } = &timeline_kind {
                                     // Update the rooms list with new unread counts
@@ -1214,16 +1312,18 @@ async fn matrix_worker_task(
                 let subscribe_pinned_events_task = Handle::current().spawn(async move {
                     // Send an initial update, as the stream may not update immediately.
                     let pinned_events = main_timeline.room().pinned_event_ids().unwrap_or_default();
-                    match sender.send(TimelineUpdate::PinnedEvents(pinned_events)) {
-                        Ok(()) => SignalToUI::set_ui_signal(),
-                        Err(_) => log!("Failed to send initial pinned events update to UI."),
+                    if let Err(error) = send_timeline_update(&sender, TimelineUpdate::PinnedEvents(pinned_events)) {
+                        log!("Failed to send initial pinned events update to UI: {error}");
                     }
                     let update_receiver = main_timeline.room().pinned_event_ids_stream();
                     pin_mut!(update_receiver);
                     while let Some(pinned_events) = update_receiver.next().await {
-                        match sender.send(TimelineUpdate::PinnedEvents(pinned_events)) {
-                            Ok(()) => SignalToUI::set_ui_signal(),
-                            Err(e) => log!("Failed to send pinned events update: {e:?}"),
+                        match send_timeline_update(&sender, TimelineUpdate::PinnedEvents(pinned_events)) {
+                            Ok(()) | Err(TimelineUpdateSendError::Backpressured) => {}
+                            Err(TimelineUpdateSendError::Closed | TimelineUpdateSendError::DeliveryLost) => {
+                                log!("Pinned-events update transport ended");
+                                break;
+                            }
                         }
                     }
                 });
@@ -1382,13 +1482,12 @@ async fn matrix_worker_task(
 
                 #[cfg(feature = "tsp")]
                 if upload.sign_with_tsp {
-                    let _ = sender.send(TimelineUpdate::FileUploadError {
+                    let _ = send_timeline_update(&sender, TimelineUpdate::FileUploadError {
                         upload_id,
                         error: "TSP-signed attachment uploads are not supported yet.".to_string(),
                         upload,
                         retryable: false,
                     });
-                    SignalToUI::set_ui_signal();
                     continue;
                 }
 
@@ -1405,13 +1504,14 @@ async fn matrix_worker_task(
                     use matrix_sdk_ui::timeline::AttachmentConfig as TimelineAttachmentConfig;
 
                     let upload_future = async move {
-                        let _ = sender_clone.send(TimelineUpdate::FileUploadStarted {
+                        if send_timeline_update(&sender_clone, TimelineUpdate::FileUploadStarted {
                             upload_id,
                             file_name: upload.file_data.file_name(),
                             in_reply_to: upload.in_reply_to.clone(),
                             abort_handle,
-                        });
-                        SignalToUI::set_ui_signal();
+                        }).is_err() {
+                            return;
+                        }
 
                         let max_upload_size = match get_client() {
                             Some(client) => match client.load_or_fetch_max_upload_size().await {
@@ -1437,13 +1537,12 @@ async fn matrix_worker_task(
                                     utils::format_decimal_file_size(upload.file_data.size),
                                     utils::format_decimal_file_size(max_size),
                                 );
-                                let _ = sender_clone.send(TimelineUpdate::FileUploadError {
+                                let _ = send_timeline_update(&sender_clone, TimelineUpdate::FileUploadError {
                                     upload_id,
                                     error,
                                     upload,
                                     retryable: false,
                                 });
-                                SignalToUI::set_ui_signal();
                                 return;
                             }
                         }
@@ -1519,14 +1618,13 @@ async fn matrix_worker_task(
                                 let progress = subscriber.get();
                                 let current: u64 = progress.current as u64;
                                 let total: u64 = progress.total as u64;
-                                if progress_sender.send(TimelineUpdate::FileUploadUpdate {
+                                if send_timeline_update(&progress_sender, TimelineUpdate::FileUploadUpdate {
                                     upload_id,
                                     current,
                                     total,
                                 }).is_err() {
                                     break;
                                 }
-                                SignalToUI::set_ui_signal();
                                 // Wait for next update
                                 if subscriber.next().await.is_none() {
                                     break;
@@ -1537,13 +1635,13 @@ async fn matrix_worker_task(
                         match send_request.await {
                             Ok(()) => {
                                 log!("Successfully sent attachment to {timeline_kind}.");
-                                let _ = sender_clone.send(TimelineUpdate::FileUploadComplete {
+                                let _ = send_timeline_update(&sender_clone, TimelineUpdate::FileUploadComplete {
                                     upload_id,
                                 });
                             }
                             Err(e) => {
                                 error!("Failed to send attachment to {timeline_kind}: {e:?}");
-                                let _ = sender_clone.send(TimelineUpdate::FileUploadError {
+                                let _ = send_timeline_update(&sender_clone, TimelineUpdate::FileUploadError {
                                     upload_id,
                                     error: format!("{e}"),
                                     upload: upload_for_error,
@@ -1552,7 +1650,6 @@ async fn matrix_worker_task(
                             }
                         }
 
-                        SignalToUI::set_ui_signal();
                     };
 
                     match Abortable::new(upload_future, abort_registration).await {
@@ -1598,12 +1695,11 @@ async fn matrix_worker_task(
                     match timeline.room().power_levels().await {
                         Ok(power_levels) => {
                             log!("Successfully fetched power levels for {timeline_kind}.");
-                            if sender.send(TimelineUpdate::UserPowerLevels(
+                            if send_timeline_update(&sender, TimelineUpdate::UserPowerLevels(
                                 UserPowerLevels::from(&power_levels, &user_id),
                             )).is_err() {
                                 error!("Failed to send room power levels to UI.")
                             }
-                            SignalToUI::set_ui_signal();
                         }
                         Err(e) => {
                             error!("Failed to fetch power levels for {timeline_kind}: {e:?}");
@@ -1664,9 +1760,8 @@ async fn matrix_worker_task(
                     } else {
                         room.unpin_event(&event_id).await
                     };
-                    match sender.send(TimelineUpdate::PinResult { event_id, pin, result }) {
-                        Ok(_) => SignalToUI::set_ui_signal(),
-                        Err(_) => log!("Failed to send UI update for pin event."),
+                    if send_timeline_update(&sender, TimelineUpdate::PinResult { event_id, pin, result }).is_err() {
+                        log!("Failed to send UI update for pin event.");
                     }
                 });
             }
@@ -1772,7 +1867,7 @@ fn get_or_create_tokio_runtime() -> &'static tokio::runtime::Runtime {
 
 /// The sender used by [`submit_async_request`] to send requests to the async worker thread.
 /// Currently there is only one, but it can be cloned if we need more concurrent senders.
-static REQUEST_SENDER: Mutex<Option<UnboundedSender<MatrixRequest>>> = Mutex::new(None);
+static REQUEST_SENDER: Mutex<Option<MatrixRequestSender>> = Mutex::new(None);
 
 /// A client object that is proactively created during initialization
 /// in order to speed up the client-building process when the user logs in.
@@ -1853,6 +1948,11 @@ pub struct TimelineRequest {
     /// The timeline subscriber stops sending updates while it's closed,
     /// and when it gets re-opened, it sends one catch-up update.
     pub is_timeline_open: bool,
+    /// Monotonic request for an exact, cache-clearing timeline snapshot.
+    ///
+    /// RoomScreen increments this after observing that its bounded update queue rejected an
+    /// update. The subscriber replies from its authoritative local timeline state.
+    pub resync_generation: u64,
 }
 
 /// The return type for [`take_timeline_endpoints()`].
@@ -1861,8 +1961,8 @@ pub struct TimelineRequest {
 /// between the timeline UI (`RoomScreen`] and the background worker tasks.
 /// If the relevant room was tombstoned, this also includes info about its successor room.
 pub struct TimelineEndpoints {
-    pub update_sender: crossbeam_channel::Sender<TimelineUpdate>,
-    pub update_receiver: crossbeam_channel::Receiver<TimelineUpdate>,
+    pub update_sender: TimelineUpdateSender,
+    pub update_receiver: TimelineUpdateReceiver,
     pub request_sender: TimelineRequestSender,
     pub successor_room: Option<SuccessorRoom>,
     pub is_encrypted: bool,
@@ -1884,19 +1984,22 @@ enum TimelineSubscriber {
 struct PerTimelineDetails {
     /// A shared reference to a room's main timeline or thread's timeline of events.
     timeline: Arc<Timeline>,
+    /// Present only for thread-focused timelines. It is retained across transport rebuilds so a
+    /// fresh subscriber cannot accidentally start with main-room semantics.
+    thread_root_event_id: Option<OwnedEventId>,
     /// A clone-able sender for updates to this timeline.
-    timeline_update_sender: crossbeam_channel::Sender<TimelineUpdate>,
+    timeline_update_sender: TimelineUpdateSender,
     /// A tuple of two separate channel endpoints that can only be taken *once* by the main UI thread:
     /// 1. The single receiver that can receive updates from this timeline.
-    ///    * When a new room is joined (or a thread is opened), an unbounded crossbeam channel will be created
-    ///      and its sender given to a background task (the `timeline_subscriber_handler()`)
-    ///      that enqueues timeline updates as it receives timeline vector diffs from the server.
+    ///    * When a new room is joined (or a thread is opened), a bounded timeline update channel
+    ///      is created. Critical transitions use a capacity-reserved FIFO; high-rate latest-state
+    ///      updates are coalesced before the UI consumes them.
     ///    * The UI thread can take ownership of this update receiver in order to receive updates
     ///      to this room or thread timeline, but only one receiver can exist at a time.
     /// 2. The sender that can send requests to the background timeline subscriber handler,
     ///    e.g., to watch for a specific event to be prepended to the timeline (via back pagination).
     timeline_singleton_endpoints: Option<(
-        crossbeam_channel::Receiver<TimelineUpdate>,
+        TimelineUpdateReceiver,
         TimelineRequestSender,
     )>,
     /// The backend subscriber task that handles updates to this timeline and sends them to the UI.
@@ -1914,11 +2017,30 @@ impl PerTimelineDetails {
             self.timeline.clone(),
             self.timeline_update_sender.clone(),
             request_receiver,
-            // a thread timeline will already have spawned its subscriber task at creation,
-            // so we can only reach this point for a main room timeline.
-            None,
+            self.thread_root_event_id.clone(),
         ));
         self.timeline_subscriber = TimelineSubscriber::Running(task);
+    }
+
+    /// Replace only this timeline's UI transport generation.
+    ///
+    /// Dropping the old receiver fences every producer still holding an old sender. The SDK
+    /// timeline is retained, while its old subscriber is aborted and restarted lazily when the
+    /// UI takes the fresh endpoints.
+    fn rebuild_transport(&mut self) {
+        let (timeline_update_sender, timeline_update_receiver) = timeline_update_channel();
+        let (request_sender, request_receiver) = watch::channel(TimelineRequest {
+            backwards_paginate: Vec::new(),
+            is_timeline_open: true,
+            resync_generation: 0,
+        });
+
+        if let TimelineSubscriber::Running(task) = &self.timeline_subscriber {
+            task.abort();
+        }
+        self.timeline_update_sender = timeline_update_sender;
+        self.timeline_singleton_endpoints = Some((timeline_update_receiver, request_sender));
+        self.timeline_subscriber = TimelineSubscriber::NotStarted { request_receiver };
     }
 }
 impl Drop for PerTimelineDetails {
@@ -1980,7 +2102,7 @@ fn get_timeline(kind: &TimelineKind) -> Option<Arc<Timeline>> {
 }
 
 /// Obtains the lock on `ALL_JOINED_ROOMS` and returns the timeline and timeline update sender for the given timeline kind.
-fn get_timeline_and_sender(kind: &TimelineKind) -> Option<(Arc<Timeline>, crossbeam_channel::Sender<TimelineUpdate>)> {
+fn get_timeline_and_sender(kind: &TimelineKind) -> Option<(Arc<Timeline>, TimelineUpdateSender)> {
     get_per_timeline_details(ALL_JOINED_ROOMS.lock().unwrap().deref_mut(), kind)
         .map(|details| (details.timeline.clone(), details.timeline_update_sender.clone()))
 }
@@ -2146,6 +2268,40 @@ pub fn take_timeline_endpoints(kind: &TimelineKind) -> Option<TimelineEndpoints>
     })
 }
 
+/// Destroy a failed timeline-update transport generation and install fresh singleton endpoints.
+///
+/// This is intentionally synchronous and narrow: it does not rebuild the Matrix SDK timeline or
+/// execute Matrix work. RoomScreen first drops the failed receiver, then calls this function and
+/// immediately takes the new endpoints. Every task still holding an old sender is fenced by that
+/// dropped receiver, while the old subscriber is aborted by [`PerTimelineDetails::rebuild_transport`].
+pub fn rebuild_timeline_endpoints(kind: &TimelineKind) -> bool {
+    let mut all_joined_rooms = ALL_JOINED_ROOMS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let Some(room_info) = all_joined_rooms.get_mut(kind.room_id()) else {
+        return false;
+    };
+    let details = match kind {
+        TimelineKind::MainRoom { .. } => {
+            // This guard owns a producer wired to the old timeline sender. Drop it before the UI
+            // immediately subscribes again against the fresh generation.
+            room_info.typing_notice_subscriber.take();
+            &mut room_info.main_timeline
+        }
+        TimelineKind::Thread {
+            thread_root_event_id,
+            ..
+        } => {
+            let Some(details) = room_info.thread_timelines.get_mut(thread_root_event_id) else {
+                return false;
+            };
+            details
+        }
+    };
+    details.rebuild_transport();
+    true
+}
+
 const DEFAULT_HOMESERVER: &str = "matrix.org";
 
 fn username_to_full_user_id(
@@ -2263,8 +2419,12 @@ async fn start_matrix_client_login_and_sync(rt: Handle) {
     persistence::cleanup_orphan_db_dirs().await;
 
     // Create a channel for sending requests from the main UI thread to a background worker task.
-    let (sender, receiver) = tokio::sync::mpsc::unbounded_channel::<MatrixRequest>();
-    REQUEST_SENDER.lock().unwrap().replace(sender);
+    let (sender, receiver) = matrix_request_channel();
+    let request_sender_generation = sender.clone();
+    REQUEST_SENDER
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .replace(sender);
 
     let (login_sender, mut login_receiver) = tokio::sync::mpsc::channel(1);
 
@@ -2595,6 +2755,17 @@ async fn start_matrix_client_login_and_sync(rt: Handle) {
             if !h.is_finished() {
                 let _ = h.await;
             }
+        }
+        // Never leave a closed sender installed: later UI actions must fail as NotReady rather
+        // than panic because a stale receiver disappeared.
+        let mut installed_sender = REQUEST_SENDER
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        if installed_sender
+            .as_ref()
+            .is_some_and(|sender| sender.same_channel(&request_sender_generation))
+        {
+            installed_sender.take();
         }
         return;
     }
@@ -3029,9 +3200,8 @@ async fn update_room(
             {
                 if let Some(timeline_update_sender) = get_timeline_update_sender(&new_room_id) {
                     log!("Updating room {new_room_id} user power levels.");
-                    match timeline_update_sender.send(TimelineUpdate::UserPowerLevels(nupl)) {
-                        Ok(_) => SignalToUI::set_ui_signal(),
-                        Err(_) => error!("Failed to send the UserPowerLevels update to room {new_room_id}"),
+                    if send_timeline_update(&timeline_update_sender, TimelineUpdate::UserPowerLevels(nupl)).is_err() {
+                        error!("Failed to send the UserPowerLevels update to room {new_room_id}");
                     }
                 } else {
                     error!("BUG: could not find JoinedRoomDetails for room {new_room_id} where power levels changed.");
@@ -3041,9 +3211,8 @@ async fn update_room(
             if !old_room.is_encrypted && new_room.is_encrypted {
                 if let Some(timeline_update_sender) = get_timeline_update_sender(&new_room_id) {
                     log!("Room {new_room_id} is now encrypted.");
-                    match timeline_update_sender.send(TimelineUpdate::RoomEncrypted) {
-                        Ok(_) => SignalToUI::set_ui_signal(),
-                        Err(_) => error!("Failed to send the RoomEncrypted update to room {new_room_id}"),
+                    if send_timeline_update(&timeline_update_sender, TimelineUpdate::RoomEncrypted).is_err() {
+                        error!("Failed to send the RoomEncrypted update to room {new_room_id}");
                     }
                 } else {
                     error!("BUG: could not find JoinedRoomDetails for room {new_room_id} that became encrypted.");
@@ -3161,13 +3330,14 @@ async fn add_new_room(
             .await
             .map_err(|e| anyhow::anyhow!("BUG: Failed to build timeline for room {}: {e}", new_room.room_id))?,
     );
-    let (timeline_update_sender, timeline_update_receiver) = crossbeam_channel::unbounded();
+    let (timeline_update_sender, timeline_update_receiver) = timeline_update_channel();
 
     // The `timeline_subscriber_handler` async task is spawned lazily when the room/thread is first opened.
     // All we do here is set up a channel between the UI and backend, for future use.
     let (request_sender, request_receiver) = watch::channel(TimelineRequest {
         backwards_paginate: Vec::new(),
         is_timeline_open: true,
+        resync_generation: 0,
     });
 
     // We need to add the room to the `ALL_JOINED_ROOMS` list before we can send
@@ -3180,6 +3350,7 @@ async fn add_new_room(
             room_id: new_room.room_id.clone(),
             main_timeline: PerTimelineDetails {
                 timeline,
+                thread_root_event_id: None,
                 timeline_singleton_endpoints: Some((timeline_update_receiver, request_sender)),
                 timeline_update_sender,
                 timeline_subscriber: TimelineSubscriber::NotStarted { request_receiver },
@@ -3447,7 +3618,7 @@ fn spawn_fetch_successor_room_preview(
     client: Client,
     successor_room: Option<SuccessorRoom>,
     tombstoned_room_id: OwnedRoomId,
-    timeline_update_sender: crossbeam_channel::Sender<TimelineUpdate>,
+    timeline_update_sender: TimelineUpdateSender,
 ) {
     Handle::current().spawn(async move {
         log!("Updating room {tombstoned_room_id} to be tombstoned, {successor_room:?}");
@@ -3468,9 +3639,8 @@ fn spawn_fetch_successor_room_preview(
             SuccessorRoomDetails::None
         };
 
-        match timeline_update_sender.send(TimelineUpdate::Tombstoned(srd)) {
-            Ok(_) => SignalToUI::set_ui_signal(),
-            Err(_) => error!("Failed to send the Tombstoned update to room {tombstoned_room_id}"),
+        if send_timeline_update(&timeline_update_sender, TimelineUpdate::Tombstoned(srd)).is_err() {
+            error!("Failed to send the Tombstoned update to room {tombstoned_room_id}");
         }
     });
 }
@@ -3794,7 +3964,7 @@ const LOG_ROOM_LIST_DIFFS: bool = cfg!(feature = "log_room_list_diffs");
 /// One instance of this async task is spawned for each room or thread that is opened by the user.
 async fn timeline_subscriber_handler(
     timeline: Arc<Timeline>,
-    timeline_update_sender: crossbeam_channel::Sender<TimelineUpdate>,
+    timeline_update_sender: TimelineUpdateSender,
     mut request_receiver: watch::Receiver<TimelineRequest>,
     thread_root_event_id: Option<OwnedEventId>,
 ) {
@@ -3828,11 +3998,12 @@ async fn timeline_subscriber_handler(
     let (mut timeline_items, mut subscriber) = timeline.subscribe().await;
     log!("Received initial timeline update of {} items for room {room_id}, thread {thread_root_event_id:?}.", timeline_items.len());
 
-    timeline_update_sender.send(TimelineUpdate::FirstUpdate {
+    if send_timeline_update(&timeline_update_sender, TimelineUpdate::FirstUpdate {
         initial_items: timeline_items.clone(),
-    }).unwrap_or_else(
-        |_e| panic!("Error: timeline update sender couldn't send first update ({} items) to room {room_id}, thread {thread_root_event_id:?}...!", timeline_items.len())
-    );
+    }).is_err() {
+        log!("Timeline UI closed before first update for room {room_id}, thread {thread_root_event_id:?}");
+        return;
+    }
 
     // the event ID to search for while loading previous items into the timeline.
     let mut target_event_id = None;
@@ -3845,6 +4016,8 @@ async fn timeline_subscriber_handler(
     // Whether any update changes have arrived since this timeline was last closed,
     // meaning that we need to send an cumulative update when the timeline gets re-opened.
     let mut has_unsent_changes = false;
+    // The initial FirstUpdate already represents the current generation.
+    let mut applied_resync_generation = request_receiver.borrow().resync_generation;
 
     loop { tokio::select! {
         // we should check for new requests before handling new timeline updates,
@@ -3854,29 +4027,49 @@ async fn timeline_subscriber_handler(
         // Handle updates to the current backwards pagination requests.
         Ok(()) = request_receiver.changed() => {
             let prev_target_event_id = target_event_id.clone();
-            let (now_open, new_request_details) = {
+            let (now_open, new_request_details, requested_resync_generation) = {
                 let req = request_receiver.borrow_and_update();
                 let details = req.backwards_paginate.iter()
                     .find_map(|r| r.room_id
                         .eq(&room_id)
                         .then(|| (r.target_event_id.clone(), r.starting_index, r.current_tl_len))
                     );
-                (req.is_timeline_open, details)
+                (req.is_timeline_open, details, req.resync_generation)
             };
 
-            // On reopen, send one catch-up snapshot, but only if something actually
-            // changed while closed (otherwise the UI already has the current items).
-            if now_open && !is_timeline_open && has_unsent_changes {
+            let exact_resync_requested = requested_resync_generation != applied_resync_generation;
+            applied_resync_generation = requested_resync_generation;
+
+            // On reopen, send one catch-up snapshot if something changed while closed. A
+            // recoverable coalesced-state overflow also receives an exact snapshot. Critical
+            // delivery loss is handled separately by destroying this transport generation.
+            if now_open
+                && ((exact_resync_requested) || (!is_timeline_open && has_unsent_changes))
+            {
                 let len = timeline_items.len();
-                if timeline_update_sender.send(TimelineUpdate::NewItems {
+                match timeline_update_sender.send(TimelineUpdate::NewItems {
                     new_items: timeline_items.clone(),
                     changed_indices: 0..len,
                     clear_cache: true,
                     is_append: false,
-                }).is_ok() {
-                    SignalToUI::set_ui_signal();
+                }) {
+                    Ok(()) => {
+                        SignalToUI::set_ui_signal();
+                        has_unsent_changes = false;
+                    }
+                    Err(TimelineUpdateSendError::Closed) => return,
+                    Err(TimelineUpdateSendError::Backpressured) => {
+                        SignalToUI::set_ui_signal();
+                        warning!("Timeline catch-up remains pending for room {room_id}, thread {thread_root_event_id:?}");
+                    }
+                    Err(TimelineUpdateSendError::DeliveryLost) => {
+                        SignalToUI::set_ui_signal();
+                        return;
+                    }
                 }
-                has_unsent_changes = false;
+            } else if exact_resync_requested {
+                // A closed timeline will receive one exact catch-up when it is opened again.
+                has_unsent_changes = true;
             }
             is_timeline_open = now_open;
 
@@ -3912,16 +4105,14 @@ async fn timeline_subscriber_handler(
                         // thus, we can clear the locally-tracked target event ID.
                         target_event_id = None;
                         found_target_event_id = None;
-                        timeline_update_sender.send(
+                        if send_timeline_update(&timeline_update_sender,
                             TimelineUpdate::TargetEventFound {
                                 target_event_id: new_target_event_id.clone(),
                                 index: target_event_tl_index,
                             }
-                        ).unwrap_or_else(
-                            |_e| panic!("Error: timeline update sender couldn't send TargetEventFound({new_target_event_id}, {target_event_tl_index}) to room {room_id}, thread {thread_root_event_id:?}!")
-                        );
-                        // Send a Makepad-level signal to update this room's timeline UI view.
-                        SignalToUI::set_ui_signal();
+                        ).is_err() {
+                            warning!("TargetEventFound delivery failed for room {room_id}, thread {thread_root_event_id:?}");
+                        }
                     }
                     else {
                         log!("Target event not in timeline. Starting backwards pagination \
@@ -4091,29 +4282,42 @@ async fn timeline_subscriber_handler(
                 // Only send updates to the UI while this timeline is open.
                 // While it's closed, we process the updates locally until it is re-opened again.
                 if is_timeline_open {
-                    timeline_update_sender.send(TimelineUpdate::NewItems {
+                    match timeline_update_sender.send(TimelineUpdate::NewItems {
                         new_items: timeline_items.clone(),
                         changed_indices,
                         clear_cache,
                         is_append,
-                    }).expect("Error: timeline update sender couldn't send update with new items!");
+                    }) {
+                        Ok(()) => {
+                            SignalToUI::set_ui_signal();
+                            has_unsent_changes = false;
+                        }
+                        Err(TimelineUpdateSendError::Closed) => return,
+                        Err(TimelineUpdateSendError::Backpressured) => {
+                            SignalToUI::set_ui_signal();
+                            has_unsent_changes = true;
+                            warning!("Timeline snapshot remains pending for room {room_id}, thread {thread_root_event_id:?}");
+                            continue;
+                        }
+                        Err(TimelineUpdateSendError::DeliveryLost) => {
+                            SignalToUI::set_ui_signal();
+                            return;
+                        }
+                    }
 
                     // We must send this update *after* the actual NewItems update,
                     // otherwise the UI thread (RoomScreen) won't be able to correctly locate the target event.
                     if let Some((index, found_event_id)) = found_target_event_id.take() {
                         target_event_id = None;
-                        timeline_update_sender.send(
+                        if send_timeline_update(&timeline_update_sender,
                             TimelineUpdate::TargetEventFound {
                                 target_event_id: found_event_id.clone(),
                                 index,
                             }
-                        ).unwrap_or_else(
-                            |_e| panic!("Error: timeline update sender couldn't send TargetEventFound({found_event_id}, {index}) to room {room_id}, thread {thread_root_event_id:?}!")
-                        );
+                        ).is_err() {
+                            warning!("TargetEventFound delivery failed for room {room_id}, thread {thread_root_event_id:?}");
+                        }
                     }
-
-                    // Send a Makepad-level signal to update this room's timeline UI view.
-                    SignalToUI::set_ui_signal();
                 } else {
                     // Closed: our local items are updated above; remember to catch the UI up on reopen.
                     has_unsent_changes = true;

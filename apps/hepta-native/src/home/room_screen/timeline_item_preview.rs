@@ -172,11 +172,14 @@ pub(super) fn populate_thread_root_summary(
                 let needs_refresh = fetched_summary
                     .is_none_or(|fs| fs.latest_reply_preview_text.is_none());
                 if needs_refresh && pending_thread_summary_fetches.insert(thread_root_event_id.clone()) {
-                    submit_async_request(MatrixRequest::FetchThreadSummaryDetails {
+                    let accepted = submit_async_request(MatrixRequest::FetchThreadSummaryDetails {
                         timeline_kind: timeline_kind.clone(),
-                        thread_root_event_id,
+                        thread_root_event_id: thread_root_event_id.clone(),
                         timeline_item_index,
-                    });
+                    }).was_accepted();
+                    if !accepted {
+                        pending_thread_summary_fetches.remove(&thread_root_event_id);
+                    }
                 }
             }
             fetched_summary.and_then(|fs| fs.latest_reply_preview_text.as_deref())

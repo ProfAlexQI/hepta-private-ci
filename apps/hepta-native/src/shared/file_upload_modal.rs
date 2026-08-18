@@ -448,12 +448,17 @@ impl Widget for FileUploadModal {
                     caption => Some(caption.to_string()),
                 };
                 if let Some(mut upload) = self.upload.take() {
+                    let retry_upload = upload.clone();
                     upload.file_data.caption = caption;
                     // The preview is only needed by this modal, not the bg matrix task.
                     upload.file_data.preview = FilePreview::None;
-                    submit_attachment_upload(upload);
-                    self.reset(cx);
-                    Cx::post_action(FileUploadModalAction::Hide);
+                    if submit_attachment_upload(upload) {
+                        self.reset(cx);
+                        Cx::post_action(FileUploadModalAction::Hide);
+                    } else {
+                        // Keep the user's selected file and preview available for one-click retry.
+                        self.upload = Some(retry_upload);
+                    }
                 }
             }
         }
@@ -467,7 +472,7 @@ impl Widget for FileUploadModal {
 }
 
 /// Submits a confirmed attachment upload request to the Matrix worker.
-pub fn submit_attachment_upload(upload: AttachmentUpload) {
+pub fn submit_attachment_upload(upload: AttachmentUpload) -> bool {
     #[cfg(feature = "tsp")]
     if upload.sign_with_tsp {
         enqueue_popup_notification(
@@ -475,14 +480,15 @@ pub fn submit_attachment_upload(upload: AttachmentUpload) {
             PopupKind::Error,
             None,
         );
-        return;
+        return false;
     }
 
     let upload_id = next_file_upload_attempt_id();
     submit_async_request(MatrixRequest::SendAttachment {
         upload_id,
         upload,
-    });
+    })
+    .was_accepted()
 }
 
 /// Generates the file info string, like `"name • size • type"`.

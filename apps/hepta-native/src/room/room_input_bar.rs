@@ -323,7 +323,7 @@ impl RoomInputBar {
                         LocationMessageEventContent::new(geo_uri.clone(), geo_uri)
                     )
                 );
-                let replied_to = self.replying_to.take().and_then(|(event_tl_item, _emb)|
+                let replied_to = self.replying_to.as_ref().and_then(|(event_tl_item, _emb)|
                     event_tl_item.event_id().map(|event_id| {
                         let enforce_thread = if timeline_kind.thread_root_event_id().is_some() {
                             EnforceThread::Threaded(ReplyWithinThread::Yes)
@@ -345,7 +345,7 @@ impl RoomInputBar {
                         }
                     )
                 );
-                submit_async_request(MatrixRequest::SendMessage {
+                let submission = submit_async_request(MatrixRequest::SendMessage {
                     timeline_kind: timeline_kind.clone(),
                     message,
                     replied_to,
@@ -353,9 +353,11 @@ impl RoomInputBar {
                     sign_with_tsp: self.is_tsp_signing_enabled(cx),
                 });
 
-                self.clear_replying_to(cx);
-                location_preview.clear();
-                location_preview.redraw(cx);
+                if submission.was_accepted() {
+                    self.clear_replying_to(cx);
+                    location_preview.clear();
+                    location_preview.redraw(cx);
+                }
             }
         }
 
@@ -367,7 +369,7 @@ impl RoomInputBar {
             let entered_text = mentionable_text_input.text().trim().to_string();
             if !entered_text.is_empty() {
                 let message = mentionable_text_input.create_message_with_mentions(&entered_text);
-                let replied_to = self.replying_to.take().and_then(|(event_tl_item, _emb)|
+                let replied_to = self.replying_to.as_ref().and_then(|(event_tl_item, _emb)|
                     event_tl_item.event_id().map(|event_id| {
                         let enforce_thread = if timeline_kind.thread_root_event_id().is_some() {
                             EnforceThread::Threaded(ReplyWithinThread::Yes)
@@ -389,7 +391,7 @@ impl RoomInputBar {
                         }
                     )
                 );
-                submit_async_request(MatrixRequest::SendMessage {
+                let submission = submit_async_request(MatrixRequest::SendMessage {
                     timeline_kind: timeline_kind.clone(),
                     message,
                     replied_to,
@@ -397,9 +399,11 @@ impl RoomInputBar {
                     sign_with_tsp: self.is_tsp_signing_enabled(cx),
                 });
 
-                self.clear_replying_to(cx);
-                mentionable_text_input.set_text(cx, "");
-                self.enable_send_message_button(cx, false);
+                if submission.was_accepted() {
+                    self.clear_replying_to(cx);
+                    mentionable_text_input.set_text(cx, "");
+                    self.enable_send_message_button(cx, false);
+                }
             }
         }
 

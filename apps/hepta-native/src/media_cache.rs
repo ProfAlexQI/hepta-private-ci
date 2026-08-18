@@ -3,7 +3,7 @@ use hashbrown::{hash_map::RawEntryMut, HashMap};
 use makepad_widgets::{error, SignalToUI};
 use matrix_sdk::{media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings}, ruma::{events::room::MediaSource, OwnedMxcUri}, Error, HttpError};
 use matrix_sdk::reqwest::StatusCode;
-use crate::{home::room_screen::TimelineUpdate, shared::attachment_download::media_source_mxc, sliding_sync::{self, MatrixRequest}};
+use crate::{home::{room_screen::TimelineUpdate, timeline_update_queue::TimelineUpdateSender}, shared::attachment_download::media_source_mxc, sliding_sync::{self, MatrixRequest}};
 
 /// The value type in the media cache, one per Matrix URI.
 #[derive(Debug, Clone)]
@@ -37,7 +37,7 @@ pub struct MediaCache {
     /// looking up entries by reference (`&OwnedMxcUri`) without cloning the key.
     cache: HashMap<OwnedMxcUri, MediaCacheValue>,
     /// A channel to send updates to a particular timeline when a media request has completed.
-    timeline_update_sender: Option<crossbeam_channel::Sender<TimelineUpdate>>,
+    timeline_update_sender: Option<TimelineUpdateSender>,
 }
 impl Deref for MediaCache {
     type Target = HashMap<OwnedMxcUri, MediaCacheValue>;
@@ -58,7 +58,7 @@ impl MediaCache {
     /// It will also optionally send updates to the given timeline update sender
     /// when a media request has completed.
     pub fn new(
-        timeline_update_sender: Option<crossbeam_channel::Sender<TimelineUpdate>>,
+        timeline_update_sender: Option<TimelineUpdateSender>,
     ) -> Self {
         Self {
             cache: HashMap::new(),
@@ -66,7 +66,7 @@ impl MediaCache {
         }
     }
 
-    pub fn timeline_update_sender(&self) -> Option<&crossbeam_channel::Sender<TimelineUpdate>> {
+    pub fn timeline_update_sender(&self) -> Option<&TimelineUpdateSender> {
         self.timeline_update_sender.as_ref()
     }
 
@@ -160,15 +160,27 @@ impl MediaCache {
             }
         }
 
-        sliding_sync::submit_async_request(MatrixRequest::FetchMedia {
-            media_request: MediaRequestParameters {
-                source: source.clone(),
-                format: requested_format,
-            },
+        let media_request = MediaRequestParameters {
+            source: source.clone(),
+            format: requested_format,
+        };
+        let submission = sliding_sync::submit_async_request(MatrixRequest::FetchMedia {
+            media_request: media_request.clone(),
             on_fetched: insert_into_cache,
-            destination: entry_ref_to_fetch,
+            destination: entry_ref_to_fetch.clone(),
             update_sender: self.timeline_update_sender.clone(),
         });
+        if !submission.was_accepted() {
+            // A bounded worker queue must not leave a cache entry permanently stuck in
+            // `Requested`. Mark it retryable through the existing failed-entry path and wake the
+            // owning timeline so a later draw can retry after cache cleanup.
+            *entry_ref_to_fetch.lock().unwrap() =
+                MediaCacheEntry::Failed(StatusCode::SERVICE_UNAVAILABLE);
+            if let Some(sender) = self.timeline_update_sender.as_ref() {
+                let _ = sender.send(TimelineUpdate::MediaFetched(media_request));
+            }
+            SignalToUI::set_ui_signal();
+        }
         post_request_retval
     }
 
@@ -234,7 +246,7 @@ fn insert_into_cache<D: Into<Arc<[u8]>>>(
     value_ref: &Mutex<MediaCacheEntry>,
     request: MediaRequestParameters,
     data: matrix_sdk::Result<D>,
-    update_sender: Option<crossbeam_channel::Sender<TimelineUpdate>>,
+    update_sender: Option<TimelineUpdateSender>,
 ) {
     let new_value = match data {
         Ok(data) => {

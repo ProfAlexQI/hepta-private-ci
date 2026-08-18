@@ -17,7 +17,7 @@ use ruma::OwnedRoomOrAliasId;
 
 use crate::{
     avatar_cache::AvatarUpdate,
-    home::{link_preview::LinkPreviewData, room_screen::TimelineUpdate},
+    home::{link_preview::LinkPreviewData, timeline_update_queue::TimelineUpdateSender},
     media_cache::{MediaCacheEntry, MediaCacheEntryRef},
     persistence::ClientSessionPersisted,
     profile::user_profile::UserProfile,
@@ -53,7 +53,7 @@ pub type OnMediaFetchedFn = fn(
     &Mutex<MediaCacheEntry>,
     MediaRequestParameters,
     matrix_sdk::Result<Vec<u8>>,
-    Option<crossbeam_channel::Sender<TimelineUpdate>>,
+    Option<TimelineUpdateSender>,
 );
 
 /// Error types for URL preview operations.
@@ -83,7 +83,7 @@ impl std::error::Error for UrlPreviewError {}
 pub type OnLinkPreviewFetchedFn = fn(
     Arc<Mutex<crate::home::link_preview::TimestampedCacheEntry>>,
     Result<LinkPreviewData, UrlPreviewError>,
-    Option<crossbeam_channel::Sender<TimelineUpdate>>,
+    Option<TimelineUpdateSender>,
 );
 
 /// Actions emitted in response to a [`MatrixRequest::GenerateMatrixLink`].
@@ -377,7 +377,7 @@ pub enum MatrixRequest {
         media_request: MediaRequestParameters,
         on_fetched: OnMediaFetchedFn,
         destination: MediaCacheEntryRef,
-        update_sender: Option<crossbeam_channel::Sender<TimelineUpdate>>,
+        update_sender: Option<TimelineUpdateSender>,
     },
     /// Request to send a message to the given room.
     SendMessage {
@@ -473,7 +473,7 @@ pub enum MatrixRequest {
         url: String,
         on_fetched: OnLinkPreviewFetchedFn,
         destination: Arc<Mutex<crate::home::link_preview::TimestampedCacheEntry>>,
-        update_sender: Option<crossbeam_channel::Sender<TimelineUpdate>>,
+        update_sender: Option<TimelineUpdateSender>,
     },
     /// Request to download a media attachment/file.
     ///

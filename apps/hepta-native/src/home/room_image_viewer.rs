@@ -8,14 +8,14 @@ use matrix_sdk::{
 };
 use matrix_sdk::reqwest::StatusCode;
 
-use crate::{home::room_screen::TimelineUpdate, media_cache::{error_to_media_cache_entry, MediaCacheEntry}, shared::image_viewer::ImageViewerError, sliding_sync::{submit_async_request, MatrixRequest}};
+use crate::{home::timeline_update_queue::TimelineUpdateSender, media_cache::{error_to_media_cache_entry, MediaCacheEntry}, shared::image_viewer::ImageViewerError, sliding_sync::{submit_async_request, MatrixRequest}};
 
 /// Fetches the full-size image for the image viewer.
 ///
 /// The image viewer is already showing a thumbnail, so this returns nothing.
 /// [`show_fetched_image_in_viewer`] will be called when the full image arrives.
 pub fn fetch_full_image_for_viewer(media_source: MediaSource) {
-    submit_async_request(MatrixRequest::FetchMedia {
+    let submission = submit_async_request(MatrixRequest::FetchMedia {
         media_request: MediaRequestParameters {
             source: media_source,
             format: MediaFormat::File,
@@ -25,6 +25,13 @@ pub fn fetch_full_image_for_viewer(media_source: MediaSource) {
         destination: Arc::new(Mutex::new(MediaCacheEntry::Requested)),
         update_sender: None,
     });
+    if !submission.was_accepted() {
+        // The viewer has already entered Loading state. Complete that state explicitly instead
+        // of leaving an infinite spinner when the bounded worker queue rejects the fetch.
+        Cx::post_action(ImageViewerFetchAction::Failed(
+            ImageViewerError::ConnectionFailed,
+        ));
+    }
 }
 
 /// Gets the image's file name and size in bytes from an event timeline item.
@@ -52,7 +59,7 @@ fn show_fetched_image_in_viewer(
     _destination: &Mutex<MediaCacheEntry>,
     request: MediaRequestParameters,
     data: matrix_sdk::Result<Vec<u8>>,
-    _update_sender: Option<crossbeam_channel::Sender<TimelineUpdate>>,
+    _update_sender: Option<TimelineUpdateSender>,
 ) {
     let action = match data {
         Ok(data) => ImageViewerFetchAction::Loaded(data.into()),

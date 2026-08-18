@@ -13,6 +13,7 @@ pub mod loading_pane;
 pub mod location_preview;
 pub mod main_desktop_ui;
 pub mod room_screen;
+pub mod timeline_update_queue;
 pub mod room_read_receipt;
 pub mod rooms_list;
 pub mod rooms_list_entry;
