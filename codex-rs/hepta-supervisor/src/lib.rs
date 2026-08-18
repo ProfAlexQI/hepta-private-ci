@@ -2,6 +2,7 @@
 //!
 //! The supervisor does not execute turns or forward messages, models, or tokens.
 
+mod control;
 mod driver;
 mod error;
 mod lease;
@@ -9,6 +10,7 @@ mod model;
 mod recovery;
 mod runtime;
 mod supervisor;
+mod tick;
 
 #[cfg(unix)]
 mod unix;

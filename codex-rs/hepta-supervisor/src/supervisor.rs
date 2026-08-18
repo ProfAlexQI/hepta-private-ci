@@ -80,6 +80,44 @@ impl<D: ProcessDriver> Supervisor<D> {
         })
     }
 
+    pub fn drain(&mut self, agent_id: &AgentId, now: Instant) -> Result<(), SupervisorError> {
+        self.with_slot(agent_id, |supervisor, slot| {
+            supervisor.drain_slot(agent_id, slot, now)
+        })
+    }
+
+    pub fn stop(&mut self, agent_id: &AgentId, now: Instant) -> Result<(), SupervisorError> {
+        self.with_slot(agent_id, |supervisor, slot| {
+            supervisor.stop_slot(agent_id, slot, now)
+        })
+    }
+
+    pub fn kill(&mut self, agent_id: &AgentId) -> Result<(), SupervisorError> {
+        self.with_slot(agent_id, |supervisor, slot| {
+            supervisor.kill_slot(agent_id, slot)
+        })
+    }
+
+    pub fn restart(&mut self, agent_id: &AgentId, now: Instant) -> Result<(), SupervisorError> {
+        self.with_slot(agent_id, |supervisor, slot| {
+            supervisor.restart_slot(agent_id, slot, now)
+        })
+    }
+
+    pub fn tick(&mut self, now: Instant) -> TickReport {
+        let mut report = TickReport::default();
+        let agent_ids: Vec<_> = self.slots.keys().cloned().collect();
+        for agent_id in agent_ids {
+            let result = self.with_slot(&agent_id, |supervisor, slot| {
+                supervisor.tick_slot(&agent_id, slot, now)
+            });
+            if let Err(error) = result {
+                self.record_fault(&agent_id, &error, &mut report);
+            }
+        }
+        report
+    }
+
     fn with_slot<R>(
         &mut self,
         agent_id: &AgentId,
