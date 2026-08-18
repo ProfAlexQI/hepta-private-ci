@@ -44,6 +44,7 @@ members = [
     "core-plugins",
     "diagnostics",
     "hooks",
+    "hepta-agent-protocol",
     "hepta-contracts",
     "hepta-evidence",
     "hepta-fleet",
@@ -190,6 +191,7 @@ codex-code-mode-protocol = { path = "code-mode-protocol" }
 codex-code-mode-runtime = { path = "code-mode-runtime" }
 codex-home = { path = "codex-home" }
 codex-http-client = { path = "http-client" }
+codex-hepta-agent-protocol = { path = "hepta-agent-protocol" }
 codex-hepta-contracts = { path = "hepta-contracts" }
 codex-hepta-evidence = { path = "hepta-evidence" }
 codex-hepta-fleet = { path = "hepta-fleet" }

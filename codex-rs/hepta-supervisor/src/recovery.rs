@@ -63,9 +63,11 @@ impl<D: ProcessDriver> Supervisor<D> {
         let spec = SpawnSpec {
             agent_id: agent_id.clone(),
             generation: starting.generation,
+            fleet_root: self.registry.layout().fleet_root().as_path().to_path_buf(),
             workspace: record.manifest.workspace.as_path().to_path_buf(),
             home_root: record.layout.home_root().to_path_buf(),
             run_root: record.layout.run_root().to_path_buf(),
+            control_socket: record.layout.agentd_control_socket().to_path_buf(),
             logs_root: record.layout.logs_root().to_path_buf(),
             command: command.clone(),
         };

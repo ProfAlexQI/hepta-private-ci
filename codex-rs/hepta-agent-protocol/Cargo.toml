@@ -1,12 +1,12 @@
 [package]
 edition.workspace = true
 license.workspace = true
-name = "codex-hepta-supervisor"
+name = "codex-hepta-agent-protocol"
 version.workspace = true
 publish = false
 
 [lib]
-name = "codex_hepta_supervisor"
+name = "codex_hepta_agent_protocol"
 path = "src/lib.rs"
 doctest = false
 
@@ -14,15 +14,10 @@ doctest = false
 workspace = true
 
 [dependencies]
-codex-hepta-agent-protocol = { workspace = true }
 codex-hepta-contracts = { workspace = true }
 codex-hepta-fleet = { workspace = true }
-libc = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
 
 [dev-dependencies]
-codex-hepta-paths = { workspace = true }
 pretty_assertions = { workspace = true }
-tempfile = { workspace = true }
+serde_json = { workspace = true }

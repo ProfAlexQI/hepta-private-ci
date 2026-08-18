@@ -12,9 +12,11 @@ use crate::ProcessLog;
 pub struct SpawnSpec {
     pub agent_id: AgentId,
     pub generation: u64,
+    pub fleet_root: PathBuf,
     pub workspace: PathBuf,
     pub home_root: PathBuf,
     pub run_root: PathBuf,
+    pub control_socket: PathBuf,
     pub logs_root: PathBuf,
     pub command: AgentCommand,
 }

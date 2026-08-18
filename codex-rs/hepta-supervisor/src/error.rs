@@ -22,6 +22,12 @@ impl From<std::io::Error> for ProcessDriverError {
     }
 }
 
+impl From<serde_json::Error> for ProcessDriverError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::new(error.to_string())
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum SupervisorError {
     #[error("invalid supervisor value: {0}")]
