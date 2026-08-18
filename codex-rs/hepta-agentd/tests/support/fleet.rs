@@ -24,7 +24,7 @@ use codex_hepta_supervisor::SupervisorConfig;
 use codex_hepta_supervisor::UnixProcessDriver;
 use codex_utils_absolute_path::AbsolutePathBuf;
 
-const READY_TIMEOUT: Duration = Duration::from_secs(20);
+const READY_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub(crate) struct AgentFixture {
     pub(crate) agent_id: AgentId,

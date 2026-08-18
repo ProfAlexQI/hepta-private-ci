@@ -55,7 +55,11 @@ pub struct SupervisorConfig {
 impl SupervisorConfig {
     pub fn local_default() -> Self {
         Self {
-            health_timeout: Duration::from_secs(10),
+            // A cold App Server start may need to hydrate its local runtime and
+            // scan agent-owned configuration before the UDS health endpoint is
+            // available. Keep this well above the observed debug/cold-start
+            // time so the lifecycle controller does not kill a healthy agent.
+            health_timeout: Duration::from_secs(60),
             drain_timeout: Duration::from_secs(30),
             stop_grace: Duration::from_secs(5),
             event_capacity: 128,
