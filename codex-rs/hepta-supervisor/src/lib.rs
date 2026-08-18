@@ -4,7 +4,11 @@
 
 mod driver;
 mod error;
+mod lease;
 mod model;
+mod recovery;
+mod runtime;
+mod supervisor;
 
 #[cfg(unix)]
 mod unix;
@@ -30,6 +34,7 @@ pub use model::SupervisorConfig;
 pub use model::SupervisorEvent;
 pub use model::SupervisorEventKind;
 pub use model::TickReport;
+pub use supervisor::Supervisor;
 
 #[cfg(unix)]
 pub use unix::UnixManagedProcess;
