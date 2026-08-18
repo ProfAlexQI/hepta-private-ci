@@ -551,7 +551,7 @@ remove_chain_cursor_cas() {
 prepare_bundle_locked() {
   local manifest="$1" launch_root="$2" bundle="$3" snapshot_receipt="$4" canary_receipt="$5" soak_receipt="$6"
   local release install_root gateway_label watchdog_label gateway_relative watchdog_relative guard
-  local legacy_gateway legacy_watchdog vnext_gateway vnext_watchdog legacy_program legacy_program_canonical legacy_install_root
+  local legacy_gateway legacy_watchdog vnext_gateway vnext_watchdog legacy_program legacy_program_canonical legacy_program_mode legacy_install_root
   absolute_non_root "$launch_root" || return 1
   absolute_non_root "$bundle" || return 1
   [[ -d "$launch_root" && ! -L "$launch_root" && "$(cd "$launch_root" && pwd -P)" == "$launch_root" ]] || {
@@ -601,10 +601,19 @@ prepare_bundle_locked() {
   legacy_program="$(plutil -extract ProgramArguments.0 raw -o - "$legacy_gateway")"
   absolute_non_root "$legacy_program" || return 1
   legacy_program_canonical="$(realpath "$legacy_program")" || return 1
-  [[ -f "$legacy_program_canonical" && -x "$legacy_program_canonical" ]] || {
-    echo "legacy gateway executable is missing" >&2
-    return 1
-  }
+  [[ -f "$legacy_program_canonical" && ! -L "$legacy_program_canonical" ]] || return 1
+  legacy_program_mode="$(stat -f '%Lp' "$legacy_program_canonical")"
+  if [[ ! -x "$legacy_program_canonical" ]]; then
+    [[ "$legacy_program_mode" == 400 \
+      && "$(jq -r '.program' "$(jq -r '.writer_barrier.receipt' "$snapshot_receipt")")" == "$legacy_program_canonical" ]] || {
+      echo "legacy gateway is neither executable nor the exact sealed writer" >&2
+      return 1
+    }
+    "$guard" verify-writer --receipt "$(jq -r '.writer_barrier.receipt' "$snapshot_receipt")" >/dev/null || {
+      echo "legacy gateway seal is not live during bridge preparation" >&2
+      return 1
+    }
+  fi
   legacy_install_root="$(cd "$(dirname "$(dirname "$legacy_program")")" && pwd -P)"
   [[ "$(cd "$install_root" && pwd -P)" != "$legacy_install_root" ]] || {
     echo "vNext must use an install root separate from legacy" >&2
