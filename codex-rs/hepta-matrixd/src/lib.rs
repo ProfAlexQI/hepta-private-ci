@@ -12,6 +12,7 @@
 #![recursion_limit = "256"]
 
 mod config;
+mod control;
 mod runner;
 
 use std::collections::BTreeMap;
@@ -30,6 +31,10 @@ use codex_app_server_client::RemoteAppServerEndpoint;
 use codex_app_server_client::RemoteAppServerRequestHandle;
 use codex_app_server_client::TypedRequestError;
 use codex_app_server_protocol::ClientRequest;
+use codex_app_server_protocol::CommandExecutionApprovalDecision;
+use codex_app_server_protocol::CommandExecutionRequestApprovalResponse;
+use codex_app_server_protocol::FileChangeApprovalDecision;
+use codex_app_server_protocol::FileChangeRequestApprovalResponse;
 use codex_app_server_protocol::ProjectCreateParams;
 use codex_app_server_protocol::ProjectCreateResponse;
 use codex_app_server_protocol::ProjectRoot;
@@ -51,15 +56,19 @@ use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
 use codex_app_server_protocol::ThreadTurnsListParams;
 use codex_app_server_protocol::ThreadTurnsListResponse;
+use codex_app_server_protocol::TurnInterruptParams;
+use codex_app_server_protocol::TurnInterruptResponse;
 use codex_app_server_protocol::TurnItemsView;
 use codex_app_server_protocol::UserInput;
 use codex_hepta_agentd::AgentdClient;
 use codex_hepta_agentd::SessionTransport;
 use codex_hepta_contracts::AgentId;
+use codex_hepta_matrix_protocol::LocalApprovalDecision;
 use codex_hepta_matrix_protocol::MatrixEventId;
 use codex_hepta_matrix_protocol::MatrixRoomId;
 use codex_hepta_matrix_protocol::client_user_message_id;
 use codex_hepta_matrix_protocol::room_project_idempotency_key;
+use codex_hepta_matrix_store::PendingApprovalKind;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use tokio::sync::Semaphore;
 
@@ -67,11 +76,15 @@ mod runtime;
 
 pub use config::HEPTA_MATRIX_ALLOWED_ROOMS_ENV;
 pub use config::HEPTA_MATRIX_ALLOWED_SENDERS_ENV;
+pub use config::HEPTA_MATRIX_BINDING_DIGEST_ENV;
 pub use config::HEPTA_MATRIX_BINDING_REVISION_ENV;
 pub use config::HEPTA_MATRIX_DEVICE_DISPLAY_NAME_ENV;
 pub use config::HEPTA_MATRIX_DEVICE_ID_ENV;
 pub use config::HEPTA_MATRIX_HOMESERVER_ENV;
 pub use config::HEPTA_MATRIX_PASSWORD_ENV;
+pub use config::HEPTA_MATRIX_PLANE_EPOCH_ENV;
+pub use config::HEPTA_MATRIX_PROCESS_INCARNATION_ENV;
+pub use config::HEPTA_MATRIX_RELEASE_ID_ENV;
 pub use config::HEPTA_MATRIX_REQUIRE_EXPLICIT_MENTION_ENV;
 pub use config::HEPTA_MATRIX_STORE_PASSPHRASE_ENV;
 pub use config::HEPTA_MATRIX_SYNC_TIMELINE_LIMIT_ENV;
@@ -80,6 +93,7 @@ pub use config::HEPTA_MATRIX_USER_ID_ENV;
 pub use config::MatrixdConfig;
 pub use config::MatrixdConfigError;
 pub use config::MatrixdCredentials;
+pub use config::MatrixdProcessIdentity;
 pub use runner::MatrixdRunError;
 pub use runner::run;
 
@@ -805,6 +819,98 @@ impl RemoteMatrixAppServerTransport {
             .request_typed(request)
             .await
             .map_err(|error| MatrixBridgeError::AppServer(error.to_string()))
+    }
+
+    async fn interrupt_turn(
+        &self,
+        thread_id: String,
+        turn_id: String,
+    ) -> Result<(), MatrixBridgeError> {
+        let response: Result<TurnInterruptResponse, TypedRequestError> = self
+            .request_handle
+            .request_typed(ClientRequest::TurnInterrupt {
+                request_id: self.request_id(),
+                params: TurnInterruptParams { thread_id, turn_id },
+            })
+            .await;
+        match response {
+            Ok(_) => Ok(()),
+            Err(TypedRequestError::Server { method, source })
+                if method == "turn/interrupt"
+                    && source.code == JSON_RPC_INVALID_REQUEST_CODE
+                    && source.data.is_none()
+                    && source.message == "no active turn to interrupt" =>
+            {
+                // A repeated cancellation after the turn terminal event is a
+                // safe idempotent no-op. No other server error is weakened.
+                Ok(())
+            }
+            Err(error) => Err(MatrixBridgeError::AppServer(error.to_string())),
+        }
+    }
+
+    async fn resolve_approval(
+        &self,
+        request_id: RequestId,
+        request_kind: PendingApprovalKind,
+        decision: LocalApprovalDecision,
+    ) -> Result<(), MatrixBridgeError> {
+        let result = match request_kind {
+            PendingApprovalKind::CommandExecution => {
+                serde_json::to_value(CommandExecutionRequestApprovalResponse {
+                    decision: command_approval_decision(decision),
+                })
+            }
+            PendingApprovalKind::FileChange => {
+                serde_json::to_value(FileChangeRequestApprovalResponse {
+                    decision: file_change_approval_decision(decision),
+                })
+            }
+        }
+        .map_err(|error| MatrixBridgeError::Protocol(error.to_string()))?;
+        self.request_handle
+            .resolve_server_request(request_id, result)
+            .await
+            .map_err(MatrixBridgeError::Io)
+    }
+
+    async fn reject_server_request(
+        &self,
+        request_id: RequestId,
+        code: i64,
+        message: String,
+    ) -> Result<(), MatrixBridgeError> {
+        self.request_handle
+            .reject_server_request(
+                request_id,
+                codex_app_server_protocol::JSONRPCErrorError {
+                    code,
+                    data: None,
+                    message,
+                },
+            )
+            .await
+            .map_err(MatrixBridgeError::Io)
+    }
+}
+
+fn command_approval_decision(decision: LocalApprovalDecision) -> CommandExecutionApprovalDecision {
+    match decision {
+        LocalApprovalDecision::Accept => CommandExecutionApprovalDecision::Accept,
+        LocalApprovalDecision::AcceptForSession => {
+            CommandExecutionApprovalDecision::AcceptForSession
+        }
+        LocalApprovalDecision::Decline => CommandExecutionApprovalDecision::Decline,
+        LocalApprovalDecision::Cancel => CommandExecutionApprovalDecision::Cancel,
+    }
+}
+
+fn file_change_approval_decision(decision: LocalApprovalDecision) -> FileChangeApprovalDecision {
+    match decision {
+        LocalApprovalDecision::Accept => FileChangeApprovalDecision::Accept,
+        LocalApprovalDecision::AcceptForSession => FileChangeApprovalDecision::AcceptForSession,
+        LocalApprovalDecision::Decline => FileChangeApprovalDecision::Decline,
+        LocalApprovalDecision::Cancel => FileChangeApprovalDecision::Cancel,
     }
 }
 

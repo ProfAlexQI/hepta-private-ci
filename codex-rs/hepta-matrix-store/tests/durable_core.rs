@@ -2,10 +2,13 @@ use std::error::Error;
 use std::fs;
 
 use codex_hepta_contracts::AgentId;
+use codex_hepta_matrix_protocol::LocalApprovalDecision;
 use codex_hepta_matrix_protocol::MatrixEventId;
 use codex_hepta_matrix_protocol::MatrixRoomId;
 use codex_hepta_matrix_protocol::MatrixTransactionId;
 use codex_hepta_matrix_protocol::MatrixUserId;
+use codex_hepta_matrix_protocol::MatrixdEventKind;
+use codex_hepta_matrix_protocol::PendingApproval;
 use codex_hepta_matrix_protocol::client_user_message_id;
 use codex_hepta_matrix_protocol::outbox_id as protocol_outbox_id;
 use codex_hepta_matrix_protocol::room_project_idempotency_key;
@@ -22,6 +25,8 @@ use codex_hepta_matrix_store::OutboxDisposition;
 use codex_hepta_matrix_store::OutboxDraft;
 use codex_hepta_matrix_store::OutboxKind;
 use codex_hepta_matrix_store::OutboxState;
+use codex_hepta_matrix_store::PendingApprovalDraft;
+use codex_hepta_matrix_store::PendingApprovalKind;
 use codex_hepta_matrix_store::RoomBindingDraft;
 use codex_hepta_matrix_store::RoomThreadBindingDraft;
 use codex_hepta_paths::HeptaAgentLayout;
@@ -148,6 +153,34 @@ fn outbox_draft(
         generation: 1,
         created_at_ms,
     })
+}
+
+fn pending_approval_draft(
+    approval_key: &str,
+    generation: u64,
+    process_incarnation: &str,
+    created_at_ms: u64,
+) -> PendingApprovalDraft {
+    PendingApprovalDraft {
+        approval: PendingApproval {
+            approval_key: approval_key.to_string(),
+            kind: "command_execution".to_string(),
+            thread_id: "thread-control".to_string(),
+            turn_id: "turn-control".to_string(),
+            summary: "Run a local command".to_string(),
+            created_at_ms,
+            allowed_decisions: vec![
+                LocalApprovalDecision::Accept,
+                LocalApprovalDecision::AcceptForSession,
+                LocalApprovalDecision::Decline,
+                LocalApprovalDecision::Cancel,
+            ],
+        },
+        request_id_json: "17".to_string(),
+        request_kind: PendingApprovalKind::CommandExecution,
+        attached_agent_generation: generation,
+        process_incarnation: process_incarnation.to_string(),
+    }
 }
 
 #[tokio::test]
@@ -803,6 +836,337 @@ async fn cursor_gap_requires_snapshot_then_resumes_exactly() -> TestResult {
     assert!(!resumed.gap);
     assert_eq!(resumed.events.len(), 1);
     assert_eq!(resumed.events[0].txn_id, Some(final_draft.txn_id));
+    Ok(())
+}
+
+#[tokio::test]
+async fn pending_approval_is_owner_local_fenced_and_restart_safe() -> TestResult {
+    let temp = TempDir::new()?;
+    let first = agent(FIRST_AGENT)?;
+    let second = agent(SECOND_AGENT)?;
+    let first_store =
+        MatrixDurableStore::open(&layout(&temp, &first)?, MatrixDurableConfig::default()).await?;
+    let second_store =
+        MatrixDurableStore::open(&layout(&temp, &second)?, MatrixDurableConfig::default()).await?;
+    let draft = pending_approval_draft("approval-control", 7, "matrixd-incarnation-1", 100);
+    let stored = first_store.store_pending_approval(&draft).await?;
+    assert_eq!(stored.approval, draft.approval);
+    assert_eq!(
+        first_store.store_pending_approval(&draft).await?,
+        stored,
+        "an exact projector replay is idempotent"
+    );
+    assert!(
+        second_store
+            .control_snapshot()
+            .await?
+            .pending_approvals
+            .is_empty()
+    );
+
+    assert_eq!(
+        first_store
+            .begin_pending_approval_resolution(
+                "approval-control",
+                8,
+                "matrixd-incarnation-1",
+                LocalApprovalDecision::Accept,
+                101,
+            )
+            .await,
+        Err(MatrixDurableError::Conflict),
+        "another attached Agent generation cannot resolve the request"
+    );
+    let resolving = first_store
+        .begin_pending_approval_resolution(
+            "approval-control",
+            7,
+            "matrixd-incarnation-1",
+            LocalApprovalDecision::Accept,
+            101,
+        )
+        .await?;
+    assert_eq!(
+        resolving.resolution_decision,
+        Some(LocalApprovalDecision::Accept)
+    );
+    first_store.close().await;
+    let first_store =
+        MatrixDurableStore::open(&layout(&temp, &first)?, MatrixDurableConfig::default()).await?;
+    assert_eq!(
+        first_store
+            .pending_approval("approval-control")
+            .await?
+            .ok_or("missing durable approval")?,
+        resolving
+    );
+    assert_eq!(
+        first_store
+            .begin_pending_approval_resolution(
+                "approval-control",
+                7,
+                "matrixd-incarnation-1",
+                LocalApprovalDecision::Accept,
+                102,
+            )
+            .await?,
+        resolving,
+        "a crash-window retry may only repeat the already-persisted decision"
+    );
+    assert_eq!(
+        first_store
+            .begin_pending_approval_resolution(
+                "approval-control",
+                7,
+                "matrixd-incarnation-1",
+                LocalApprovalDecision::Decline,
+                102,
+            )
+            .await,
+        Err(MatrixDurableError::Conflict)
+    );
+    first_store
+        .complete_pending_approval_resolution(
+            "approval-control",
+            7,
+            "matrixd-incarnation-1",
+            LocalApprovalDecision::Accept,
+            102,
+        )
+        .await?;
+    let stale = pending_approval_draft("approval-stale", 7, "matrixd-incarnation-1", 103);
+    first_store.store_pending_approval(&stale).await?;
+    first_store
+        .begin_pending_approval_resolution(
+            "approval-stale",
+            7,
+            "matrixd-incarnation-1",
+            LocalApprovalDecision::Accept,
+            103,
+        )
+        .await?;
+    assert_eq!(
+        first_store
+            .fence_stale_pending_approvals(7, "matrixd-incarnation-2", 104)
+            .await?,
+        0,
+        "same-generation restart must transfer rather than discard pending authority"
+    );
+    let rebound = first_store
+        .pending_approval("approval-stale")
+        .await?
+        .ok_or("missing rebound approval")?;
+    assert_eq!(rebound.process_incarnation, "matrixd-incarnation-2");
+    assert_eq!(
+        rebound.resolution_decision,
+        Some(LocalApprovalDecision::Accept),
+        "crash-before-remote-send must preserve the only retryable decision"
+    );
+    assert_eq!(
+        first_store
+            .begin_pending_approval_resolution(
+                "approval-stale",
+                7,
+                "matrixd-incarnation-1",
+                LocalApprovalDecision::Accept,
+                105,
+            )
+            .await,
+        Err(MatrixDurableError::Conflict),
+        "the old incarnation must be fenced after transfer"
+    );
+    assert_eq!(
+        first_store
+            .begin_pending_approval_resolution(
+                "approval-stale",
+                7,
+                "matrixd-incarnation-2",
+                LocalApprovalDecision::Decline,
+                105,
+            )
+            .await,
+        Err(MatrixDurableError::Conflict),
+        "a restart cannot change the persisted crash-window decision"
+    );
+    first_store
+        .complete_pending_approval_resolution(
+            "approval-stale",
+            7,
+            "matrixd-incarnation-2",
+            LocalApprovalDecision::Accept,
+            105,
+        )
+        .await?;
+
+    let old_generation =
+        pending_approval_draft("approval-old-generation", 6, "matrixd-incarnation-old", 106);
+    first_store.store_pending_approval(&old_generation).await?;
+    assert_eq!(
+        first_store
+            .fence_stale_pending_approvals(7, "matrixd-incarnation-2", 107)
+            .await?,
+        1,
+        "a request attached to another Agent generation must be terminated"
+    );
+    assert!(
+        first_store
+            .pending_approval("approval-old-generation")
+            .await?
+            .is_none()
+    );
+    let events = first_store.read_control_events(0, 16).await?.batch;
+    assert_eq!(events.events.len(), 7);
+    assert!(matches!(
+        events.events[0].kind,
+        MatrixdEventKind::ApprovalPending { .. }
+    ));
+    assert!(matches!(
+        events.events[1].kind,
+        MatrixdEventKind::ApprovalResolved { .. }
+    ));
+    assert!(matches!(
+        events.events[2].kind,
+        MatrixdEventKind::ApprovalPending { .. }
+    ));
+    assert!(matches!(
+        events.events[3].kind,
+        MatrixdEventKind::ApprovalPending { .. }
+    ));
+    assert!(matches!(
+        events.events[4].kind,
+        MatrixdEventKind::ApprovalResolved { .. }
+    ));
+    assert!(matches!(
+        events.events[5].kind,
+        MatrixdEventKind::ApprovalPending { .. }
+    ));
+    assert!(matches!(
+        events.events[6].kind,
+        MatrixdEventKind::ApprovalResolved { .. }
+    ));
+    Ok(())
+}
+
+#[tokio::test]
+async fn server_resolved_notification_closes_local_completion_crash_window() -> TestResult {
+    let temp = TempDir::new()?;
+    let agent_id = agent(FIRST_AGENT)?;
+    let store =
+        MatrixDurableStore::open(&layout(&temp, &agent_id)?, MatrixDurableConfig::default())
+            .await?;
+    let mut draft =
+        pending_approval_draft("approval-server-resolved", 7, "matrixd-incarnation-1", 100);
+    draft.request_id_json = "18".to_string();
+    store.store_pending_approval(&draft).await?;
+    store
+        .begin_pending_approval_resolution(
+            "approval-server-resolved",
+            7,
+            "matrixd-incarnation-1",
+            LocalApprovalDecision::Accept,
+            101,
+        )
+        .await?;
+    assert_eq!(
+        store
+            .fence_stale_pending_approvals(7, "matrixd-incarnation-2", 102)
+            .await?,
+        0,
+        "same-generation restart must inherit remote-success reconciliation state"
+    );
+
+    assert_eq!(
+        store
+            .reconcile_server_request_resolved(
+                "18",
+                "wrong-thread",
+                7,
+                "matrixd-incarnation-2",
+                103,
+            )
+            .await,
+        Err(MatrixDurableError::Conflict),
+        "a resolved notification cannot terminalize another thread's request"
+    );
+    assert_eq!(
+        store
+            .reconcile_server_request_resolved(
+                "18",
+                "thread-control",
+                7,
+                "matrixd-incarnation-1",
+                103,
+            )
+            .await,
+        Err(MatrixDurableError::Conflict),
+        "the crashed incarnation cannot reconcile after authority transfer"
+    );
+    let reconciled = store
+        .reconcile_server_request_resolved("18", "thread-control", 7, "matrixd-incarnation-2", 104)
+        .await?
+        .ok_or("resolved notification did not find pending request")?;
+    assert_eq!(
+        reconciled.resolution_decision,
+        Some(LocalApprovalDecision::Accept)
+    );
+    assert!(
+        store
+            .pending_approval("approval-server-resolved")
+            .await?
+            .is_none()
+    );
+    assert!(
+        store
+            .reconcile_server_request_resolved(
+                "18",
+                "thread-control",
+                7,
+                "matrixd-incarnation-2",
+                105,
+            )
+            .await?
+            .is_none(),
+        "duplicate authoritative resolution must be an idempotent no-op"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn control_cursor_gap_resets_to_snapshot_and_active_turn_is_paired() -> TestResult {
+    let temp = TempDir::new()?;
+    let agent_id = agent(FIRST_AGENT)?;
+    let store = MatrixDurableStore::open(
+        &layout(&temp, &agent_id)?,
+        MatrixDurableConfig {
+            event_capacity: 2,
+            ..MatrixDurableConfig::default()
+        },
+    )
+    .await?;
+    store.record_turn_started("thread-1", "turn-1", 10).await?;
+    store
+        .record_turn_completed("thread-1", "turn-1", 11)
+        .await?;
+    store.record_turn_started("thread-2", "turn-2", 12).await?;
+    let gap = store.read_control_events(0, 16).await?.batch;
+    assert!(gap.gap);
+    assert!(gap.events.is_empty());
+    assert_eq!(gap.next_cursor, 0);
+
+    let snapshot = store.control_snapshot().await?;
+    assert_eq!(snapshot.cursor, 3);
+    assert_eq!(snapshot.active_thread_id.as_deref(), Some("thread-2"));
+    assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-2"));
+    store
+        .record_turn_completed("thread-2", "turn-2", 13)
+        .await?;
+    let resumed = store.read_control_events(snapshot.cursor, 16).await?.batch;
+    assert!(!resumed.gap);
+    assert_eq!(resumed.events.len(), 1);
+    assert_eq!(resumed.events[0].cursor, 4);
+    let snapshot = store.control_snapshot().await?;
+    assert!(snapshot.active_thread_id.is_none());
+    assert!(snapshot.active_turn_id.is_none());
     Ok(())
 }
 

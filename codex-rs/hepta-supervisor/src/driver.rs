@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_fleet::ReleaseId;
 
 use crate::AgentCommand;
@@ -39,7 +40,10 @@ pub struct MatrixSpawnSpec {
     pub agent_id: AgentId,
     pub agent_generation: u64,
     pub binding_revision: u64,
+    pub binding_digest: Sha256Digest,
     pub release_id: ReleaseId,
+    pub process_incarnation: String,
+    pub plane_epoch: u64,
     pub fleet_root: PathBuf,
     pub workspace: PathBuf,
     pub matrix_root: PathBuf,
@@ -54,7 +58,10 @@ pub struct MatrixAdoptSpec {
     pub agent_id: AgentId,
     pub agent_generation: u64,
     pub binding_revision: u64,
+    pub binding_digest: Sha256Digest,
     pub release_id: ReleaseId,
+    pub process_incarnation: String,
+    pub plane_epoch: u64,
     pub control_socket: PathBuf,
     pub identity: ProcessIdentity,
 }

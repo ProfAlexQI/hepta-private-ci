@@ -63,6 +63,15 @@ impl UnixStream {
             .await
             .map(|inner| Self { inner })
     }
+
+    /// Fail closed unless the connected peer belongs to this process owner.
+    ///
+    /// Owner-only socket permissions protect rendezvous by path; this check
+    /// additionally binds accepted mutation authority to the kernel-reported
+    /// peer identity on Unix.
+    pub fn ensure_current_user_peer(&self) -> IoResult<()> {
+        platform::ensure_current_user_peer(&self.inner)
+    }
 }
 
 impl AsyncRead for UnixStream {
@@ -182,7 +191,14 @@ mod platform {
         ensure_peer_uid(credentials.uid)
     }
 
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "netbsd",
+        target_os = "dragonfly"
+    ))]
     pub(super) fn ensure_current_user_peer(stream: &Stream) -> IoResult<()> {
         let mut peer_uid: libc::uid_t = 0;
         let mut peer_gid: libc::gid_t = 0;
@@ -197,7 +213,11 @@ mod platform {
         target_os = "linux",
         target_os = "android",
         target_os = "macos",
-        target_os = "ios"
+        target_os = "ios",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "netbsd",
+        target_os = "dragonfly"
     )))]
     pub(super) fn ensure_current_user_peer(_stream: &Stream) -> IoResult<()> {
         Err(io::Error::new(

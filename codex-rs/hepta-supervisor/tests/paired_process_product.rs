@@ -17,6 +17,7 @@ use codex_hepta_agent_protocol::AgentdRequest;
 use codex_hepta_agent_protocol::AgentdResponse;
 use codex_hepta_agent_protocol::HealthSnapshot;
 use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::AgentLifecycleState;
 use codex_hepta_fleet::AgentManifest;
@@ -138,7 +139,13 @@ struct PairFleet {
 
 impl PairFleet {
     fn new(count: usize) -> Result<Self> {
-        let temp = tempfile::tempdir()?;
+        // The child fixtures bind the same compact control sockets as the
+        // product.  Keep the synthetic fleet under a short root so Darwin's
+        // SUN_LEN limit is exercised against production geometry, not the
+        // SSD harness's intentionally deep temporary directory.
+        let temp = tempfile::Builder::new()
+            .prefix("hsup-pairs-")
+            .tempdir_in("/tmp")?;
         let root = HeptaFleetRoot::parse(temp.path().join("fleet"))?;
         let registry = FleetRegistry::initialize(root.clone())?;
         let mut agents = Vec::new();
@@ -462,6 +469,11 @@ fn run_matrix_child() -> Result<()> {
     let agent_id = AgentId::parse(std::env::var("HEPTA_AGENT_ID")?)?;
     let agent_generation = std::env::var("HEPTA_AGENT_GENERATION")?.parse::<u64>()?;
     let binding_revision = std::env::var("HEPTA_MATRIX_BINDING_REVISION")?.parse::<u64>()?;
+    let binding_digest = Sha256Digest::parse(std::env::var("HEPTA_MATRIX_BINDING_DIGEST")?)
+        .map_err(anyhow::Error::msg)?;
+    let release_id = std::env::var("HEPTA_MATRIX_RELEASE_ID")?;
+    let process_incarnation = std::env::var("HEPTA_MATRIX_PROCESS_INCARNATION")?;
+    let plane_epoch = std::env::var("HEPTA_MATRIX_PLANE_EPOCH")?.parse::<u64>()?;
     let socket = PathBuf::from(
         std::env::var_os("HEPTA_MATRIXD_CONTROL_SOCKET").context("HEPTA_MATRIXD_CONTROL_SOCKET")?,
     );
@@ -476,9 +488,12 @@ fn run_matrix_child() -> Result<()> {
             schema_version: MATRIXD_CONTROL_SCHEMA_VERSION,
             request_id: request.request_id,
             agent_id: agent_id.clone(),
+            release_id: release_id.clone(),
             binding_revision,
-            agent_generation,
-            connection_epoch: 1,
+            binding_digest: binding_digest.clone(),
+            attached_agent_generation: agent_generation,
+            process_incarnation: process_incarnation.clone(),
+            plane_epoch,
             payload: MatrixdPayload::Health(MatrixdHealth {
                 lifecycle: MatrixdLifecycle::Ready,
                 process_id: std::process::id(),

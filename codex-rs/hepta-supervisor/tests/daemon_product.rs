@@ -23,7 +23,13 @@ const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn product_binary_is_single_instance_owner_only_and_bad_frames_are_isolated() -> Result<()> {
-    let temp = tempfile::tempdir()?;
+    // The production fleet root is deliberately short enough for Darwin's
+    // Unix-domain socket limit.  The SSD build harness uses a much deeper TMP
+    // root, so keep this product test's synthetic fleet under a short root as
+    // well instead of testing an impossible deployment geometry.
+    let temp = tempfile::Builder::new()
+        .prefix("hsup-product-")
+        .tempdir_in("/tmp")?;
     let root = temp.path().canonicalize()?;
     let fleet_root = HeptaFleetRoot::parse(root.join("fleet"))?;
     let registry = FleetRegistry::initialize(fleet_root.clone())?;
@@ -152,12 +158,13 @@ async fn wait_for_daemon(registry: &FleetRegistry) -> Result<SupervisordClient> 
     let deadline = Instant::now() + Duration::from_secs(10);
     let client = SupervisordClient::new(registry.layout().supervisor_socket().to_path_buf())?;
     loop {
-        if client.health().await.is_ok() {
-            return Ok(client);
-        }
+        let last_error = match client.health().await {
+            Ok(_) => return Ok(client),
+            Err(error) => error,
+        };
         ensure!(
             Instant::now() < deadline,
-            "supervisord did not become ready"
+            "supervisord did not become ready: {last_error:#}"
         );
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
@@ -172,7 +179,10 @@ impl DaemonChild {
             .arg(fleet_root)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            // Keep daemon startup failures visible to the test harness.  A
+            // discarded stderr turns every early exit into the same opaque
+            // "did not become ready" timeout.
+            .stderr(Stdio::inherit())
             .spawn()?;
         Ok(Self(child))
     }

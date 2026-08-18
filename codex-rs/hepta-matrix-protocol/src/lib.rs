@@ -16,9 +16,17 @@ use serde::Deserialize;
 use serde::Serialize;
 
 pub const MATRIX_BINDING_SCHEMA_VERSION: u32 = 1;
-pub const MATRIXD_CONTROL_SCHEMA_VERSION: u32 = 1;
-pub const MAX_MATRIXD_CONTROL_FRAME_BYTES: u64 = 65_536;
+pub const MATRIXD_CONTROL_SCHEMA_VERSION: u32 = 2;
+/// One bounded owner-local control frame.
+///
+/// The bound is deliberately large enough for the protocol's maximum
+/// approval/event batch and room roster, while still limiting each of the 32
+/// concurrent UDS connections to one MiB of request/response buffering.
+pub const MAX_MATRIXD_CONTROL_FRAME_BYTES: u64 = 1_048_576;
 pub const MAX_MATRIXD_EVENT_BATCH: u16 = 256;
+pub const MAX_PENDING_APPROVALS: usize = 256;
+pub const MAX_PENDING_APPROVAL_SUMMARY_BYTES: usize = 1_024;
+pub const MAX_RUNTIME_IDENTIFIER_BYTES: usize = 512;
 const MAX_MATRIX_IDENTIFIER_BYTES: usize = 255;
 const MAX_MATRIX_BINDING_ENTRIES: usize = 256;
 const CLIENT_MESSAGE_ID_DOMAIN: &[u8] = b"hepta.matrix.client-user-message.v1";
@@ -336,15 +344,73 @@ impl MatrixBindingV1 {
     }
 }
 
+pub fn matrix_binding_digest(
+    binding: &MatrixBindingV1,
+) -> Result<Sha256Digest, MatrixProtocolError> {
+    binding.validate()?;
+    serde_json::to_vec(binding)
+        .map(|bytes| Sha256Digest::for_bytes(&bytes))
+        .map_err(|error| MatrixProtocolError::Invalid(error.to_string()))
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MatrixdFence {
+    pub binding_revision: u64,
+    pub binding_digest: Sha256Digest,
+    pub attached_agent_generation: u64,
+    pub process_incarnation: String,
+    pub plane_epoch: u64,
+}
+
+impl MatrixdFence {
+    pub fn validate(&self) -> Result<(), MatrixProtocolError> {
+        if self.binding_revision == 0
+            || self.attached_agent_generation == 0
+            || self.plane_epoch == 0
+        {
+            return Err(MatrixProtocolError::Invalid(
+                "Matrix fence generations, revision, and epoch must be non-zero".to_string(),
+            ));
+        }
+        validate_runtime_identifier(&self.process_incarnation, "Matrix process incarnation")?;
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MatrixdRequest {
     pub schema_version: u32,
     pub request_id: u64,
     pub agent_id: AgentId,
-    pub expected_binding_revision: u64,
-    pub expected_agent_generation: u64,
+    pub fence: Option<MatrixdFence>,
     pub method: MatrixdMethod,
+}
+
+impl MatrixdRequest {
+    pub fn validate(&self) -> Result<(), MatrixProtocolError> {
+        if self.schema_version != MATRIXD_CONTROL_SCHEMA_VERSION || self.request_id == 0 {
+            return Err(MatrixProtocolError::Invalid(
+                "Matrix control schema must be current and request ID non-zero".to_string(),
+            ));
+        }
+        match (&self.method, &self.fence) {
+            (MatrixdMethod::Health | MatrixdMethod::Snapshot, None) => Ok(()),
+            (MatrixdMethod::Health | MatrixdMethod::Snapshot, Some(_)) => {
+                Err(MatrixProtocolError::Invalid(
+                    "Matrix Health and Snapshot are unfenced bootstrap methods".to_string(),
+                ))
+            }
+            (_, Some(fence)) => {
+                fence.validate()?;
+                self.method.validate()
+            }
+            (_, None) => Err(MatrixProtocolError::Invalid(
+                "Matrix mutation and event methods require an exact fence".to_string(),
+            )),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -366,7 +432,30 @@ pub enum MatrixdMethod {
     },
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+impl MatrixdMethod {
+    fn validate(&self) -> Result<(), MatrixProtocolError> {
+        match self {
+            Self::Health | Self::Snapshot => Ok(()),
+            Self::Events { limit, .. } => {
+                if !(1..=MAX_MATRIXD_EVENT_BATCH).contains(limit) {
+                    return Err(MatrixProtocolError::Invalid(
+                        "Matrix event batch limit is out of bounds".to_string(),
+                    ));
+                }
+                Ok(())
+            }
+            Self::CancelTurn { thread_id, turn_id } => {
+                validate_runtime_identifier(thread_id, "Matrix cancel thread ID")?;
+                validate_runtime_identifier(turn_id, "Matrix cancel turn ID")
+            }
+            Self::ResolveApproval { approval_key, .. } => {
+                validate_runtime_identifier(approval_key, "Matrix approval key")
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LocalApprovalDecision {
     Accept,
@@ -377,14 +466,93 @@ pub enum LocalApprovalDecision {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct PendingApproval {
+    pub approval_key: String,
+    pub kind: String,
+    pub thread_id: String,
+    pub turn_id: String,
+    pub summary: String,
+    pub created_at_ms: u64,
+    pub allowed_decisions: Vec<LocalApprovalDecision>,
+}
+
+impl PendingApproval {
+    pub fn validate(&self) -> Result<(), MatrixProtocolError> {
+        validate_runtime_identifier(&self.approval_key, "Matrix approval key")?;
+        validate_runtime_identifier(&self.kind, "Matrix approval kind")?;
+        validate_runtime_identifier(&self.thread_id, "Matrix approval thread ID")?;
+        validate_runtime_identifier(&self.turn_id, "Matrix approval turn ID")?;
+        if self.summary.is_empty()
+            || self.summary.len() > MAX_PENDING_APPROVAL_SUMMARY_BYTES
+            || self.summary.chars().any(is_forbidden_summary_character)
+        {
+            return Err(MatrixProtocolError::Invalid(
+                "Matrix approval summary must be 1..=1024 safe UTF-8 bytes".to_string(),
+            ));
+        }
+        if self.created_at_ms == 0 {
+            return Err(MatrixProtocolError::Invalid(
+                "Matrix approval creation time must be non-zero".to_string(),
+            ));
+        }
+        if self.allowed_decisions.is_empty()
+            || self.allowed_decisions.len() > 4
+            || self
+                .allowed_decisions
+                .iter()
+                .copied()
+                .collect::<BTreeSet<_>>()
+                .len()
+                != self.allowed_decisions.len()
+        {
+            return Err(MatrixProtocolError::Invalid(
+                "Matrix approval decisions must contain 1..=4 unique values".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct MatrixdResponse {
     pub schema_version: u32,
     pub request_id: u64,
     pub agent_id: AgentId,
+    pub release_id: String,
     pub binding_revision: u64,
-    pub agent_generation: u64,
-    pub connection_epoch: u64,
+    pub binding_digest: Sha256Digest,
+    pub attached_agent_generation: u64,
+    pub process_incarnation: String,
+    pub plane_epoch: u64,
     pub payload: MatrixdPayload,
+}
+
+impl MatrixdResponse {
+    pub fn fence(&self) -> MatrixdFence {
+        MatrixdFence {
+            binding_revision: self.binding_revision,
+            binding_digest: self.binding_digest.clone(),
+            attached_agent_generation: self.attached_agent_generation,
+            process_incarnation: self.process_incarnation.clone(),
+            plane_epoch: self.plane_epoch,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), MatrixProtocolError> {
+        if self.schema_version != MATRIXD_CONTROL_SCHEMA_VERSION || self.request_id == 0 {
+            return Err(MatrixProtocolError::Invalid(
+                "Matrix response schema must be current and request ID non-zero".to_string(),
+            ));
+        }
+        validate_runtime_identifier(&self.release_id, "Matrix release ID")?;
+        self.fence().validate()?;
+        match &self.payload {
+            MatrixdPayload::Snapshot(snapshot) => snapshot.validate(),
+            MatrixdPayload::Events(events) => events.validate_shape(),
+            _ => Ok(()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -430,8 +598,41 @@ pub struct MatrixdSnapshot {
     pub oldest_outbox_age_seconds: Option<u64>,
     pub active_thread_id: Option<String>,
     pub active_turn_id: Option<String>,
-    pub pending_approvals: u16,
+    pub pending_approvals: Vec<PendingApproval>,
     pub resync_required: bool,
+    pub event_cursor: u64,
+}
+
+impl MatrixdSnapshot {
+    pub fn validate(&self) -> Result<(), MatrixProtocolError> {
+        validate_unique_bounded(&self.active_rooms, "active Matrix rooms")?;
+        if let Some(thread_id) = &self.active_thread_id {
+            validate_runtime_identifier(thread_id, "Matrix active thread ID")?;
+        }
+        if let Some(turn_id) = &self.active_turn_id {
+            validate_runtime_identifier(turn_id, "Matrix active turn ID")?;
+        }
+        if self.active_thread_id.is_some() != self.active_turn_id.is_some() {
+            return Err(MatrixProtocolError::Invalid(
+                "Matrix active thread and turn IDs must both be present or absent".to_string(),
+            ));
+        }
+        if self.pending_approvals.len() > MAX_PENDING_APPROVALS {
+            return Err(MatrixProtocolError::Invalid(
+                "Matrix pending approval snapshot exceeds its bound".to_string(),
+            ));
+        }
+        let mut keys = BTreeSet::new();
+        for approval in &self.pending_approvals {
+            approval.validate()?;
+            if !keys.insert(approval.approval_key.as_str()) {
+                return Err(MatrixProtocolError::Invalid(
+                    "Matrix pending approval keys must be unique".to_string(),
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -444,40 +645,15 @@ pub struct MatrixdEvent {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MatrixdEventKind {
-    Lifecycle {
-        lifecycle: MatrixdLifecycle,
-    },
-    AgentConnection {
-        connected: bool,
-        generation: u64,
-    },
-    MatrixConnection {
-        connected: bool,
-    },
-    QueueDepth {
-        inbox: u32,
-        outbox: u32,
-    },
-    TurnStarted {
-        thread_id: String,
-        turn_id: String,
-    },
-    TurnCompleted {
-        thread_id: String,
-        turn_id: String,
-    },
-    ApprovalPending {
-        approval_key: String,
-        thread_id: String,
-        turn_id: String,
-        kind: String,
-    },
-    ApprovalResolved {
-        approval_key: String,
-    },
-    ResyncRequired {
-        reason_code: String,
-    },
+    Lifecycle { lifecycle: MatrixdLifecycle },
+    AgentConnection { connected: bool, generation: u64 },
+    MatrixConnection { connected: bool },
+    QueueDepth { inbox: u32, outbox: u32 },
+    TurnStarted { thread_id: String, turn_id: String },
+    TurnCompleted { thread_id: String, turn_id: String },
+    ApprovalPending { approval: PendingApproval },
+    ApprovalResolved { approval_key: String },
+    ResyncRequired { reason_code: String },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -487,6 +663,69 @@ pub struct MatrixdEventBatch {
     pub gap: bool,
     pub next_cursor: u64,
     pub latest_cursor: u64,
+}
+
+impl MatrixdEventBatch {
+    pub fn validate_after(&self, after_cursor: u64) -> Result<(), MatrixProtocolError> {
+        self.validate_shape()?;
+        if self.gap {
+            if !self.events.is_empty() || self.next_cursor != after_cursor {
+                return Err(MatrixProtocolError::Invalid(
+                    "Matrix event gap must be an empty non-advancing batch".to_string(),
+                ));
+            }
+            return Ok(());
+        }
+        let mut expected = after_cursor;
+        for event in &self.events {
+            expected = expected.checked_add(1).ok_or_else(|| {
+                MatrixProtocolError::Invalid("Matrix event cursor overflow".to_string())
+            })?;
+            if event.cursor != expected {
+                return Err(MatrixProtocolError::Invalid(
+                    "Matrix event cursors must be strictly contiguous".to_string(),
+                ));
+            }
+        }
+        if self.next_cursor != expected || self.latest_cursor < self.next_cursor {
+            return Err(MatrixProtocolError::Invalid(
+                "Matrix event cursors do not describe the consumed batch and server head"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_shape(&self) -> Result<(), MatrixProtocolError> {
+        if self.events.len() > usize::from(MAX_MATRIXD_EVENT_BATCH)
+            || self.latest_cursor < self.next_cursor
+        {
+            return Err(MatrixProtocolError::Invalid(
+                "Matrix event batch shape is invalid".to_string(),
+            ));
+        }
+        for event in &self.events {
+            match &event.kind {
+                MatrixdEventKind::TurnStarted { thread_id, turn_id }
+                | MatrixdEventKind::TurnCompleted { thread_id, turn_id } => {
+                    validate_runtime_identifier(thread_id, "Matrix event thread ID")?;
+                    validate_runtime_identifier(turn_id, "Matrix event turn ID")?;
+                }
+                MatrixdEventKind::ApprovalPending { approval } => approval.validate()?,
+                MatrixdEventKind::ApprovalResolved { approval_key } => {
+                    validate_runtime_identifier(approval_key, "Matrix approval key")?;
+                }
+                MatrixdEventKind::ResyncRequired { reason_code } => {
+                    validate_runtime_identifier(reason_code, "Matrix resync reason code")?;
+                }
+                MatrixdEventKind::Lifecycle { .. }
+                | MatrixdEventKind::AgentConnection { .. }
+                | MatrixdEventKind::MatrixConnection { .. }
+                | MatrixdEventKind::QueueDepth { .. } => {}
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
@@ -527,6 +766,30 @@ fn validate_opaque_identifier(value: &str, label: &str) -> Result<(), MatrixProt
     Ok(())
 }
 
+fn validate_runtime_identifier(value: &str, label: &str) -> Result<(), MatrixProtocolError> {
+    if value.is_empty()
+        || value.len() > MAX_RUNTIME_IDENTIFIER_BYTES
+        || value.chars().any(char::is_control)
+        || value.chars().any(char::is_whitespace)
+    {
+        return Err(MatrixProtocolError::Invalid(format!(
+            "{label} must contain 1..={MAX_RUNTIME_IDENTIFIER_BYTES} non-control, non-whitespace bytes"
+        )));
+    }
+    Ok(())
+}
+
+fn is_forbidden_summary_character(character: char) -> bool {
+    character.is_control()
+        || matches!(
+            character,
+            '\u{061c}'
+                | '\u{200e}'..='\u{200f}'
+                | '\u{202a}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}'
+        )
+}
+
 fn validate_unique_bounded<T: Ord + Clone>(
     values: &[T],
     label: &str,
@@ -560,8 +823,37 @@ fn framed_digest(domain: &[u8], fields: &[&[u8]]) -> Sha256Digest {
 mod tests {
     use super::*;
 
+    const BINDING_DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
     fn agent_id() -> AgentId {
         AgentId::parse("018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12").expect("valid agent id")
+    }
+
+    fn fence() -> MatrixdFence {
+        MatrixdFence {
+            binding_revision: 7,
+            binding_digest: Sha256Digest::parse(BINDING_DIGEST).expect("digest"),
+            attached_agent_generation: 11,
+            process_incarnation: "matrixd-incarnation-19".to_string(),
+            plane_epoch: 19,
+        }
+    }
+
+    fn pending_approval() -> PendingApproval {
+        PendingApproval {
+            approval_key: "approval-1".to_string(),
+            kind: "command_execution".to_string(),
+            thread_id: "thread-1".to_string(),
+            turn_id: "turn-1".to_string(),
+            summary: "Run a local command".to_string(),
+            created_at_ms: 1_777_777_777_000,
+            allowed_decisions: vec![
+                LocalApprovalDecision::Accept,
+                LocalApprovalDecision::AcceptForSession,
+                LocalApprovalDecision::Decline,
+                LocalApprovalDecision::Cancel,
+            ],
+        }
     }
 
     #[test]
@@ -608,18 +900,266 @@ mod tests {
             schema_version: MATRIXD_CONTROL_SCHEMA_VERSION,
             request_id: 9,
             agent_id: agent_id(),
-            expected_binding_revision: 4,
-            expected_agent_generation: 11,
+            fence: Some(fence()),
             method: MatrixdMethod::CancelTurn {
                 thread_id: "thr-1".to_string(),
                 turn_id: "turn-2".to_string(),
             },
         };
+        request.validate().expect("request should validate");
         let bytes = serde_json::to_vec(&request).expect("serialize request");
         assert!(bytes.len() as u64 <= MAX_MATRIXD_CONTROL_FRAME_BYTES);
         assert_eq!(
             serde_json::from_slice::<MatrixdRequest>(&bytes).expect("parse request"),
             request
+        );
+    }
+
+    #[test]
+    fn bootstrap_and_fenced_methods_are_disjoint() {
+        let mut request = MatrixdRequest {
+            schema_version: MATRIXD_CONTROL_SCHEMA_VERSION,
+            request_id: 1,
+            agent_id: agent_id(),
+            fence: None,
+            method: MatrixdMethod::Snapshot,
+        };
+        request.validate().expect("snapshot bootstrap");
+        request.fence = Some(fence());
+        assert!(request.validate().is_err());
+        request.method = MatrixdMethod::Events {
+            after_cursor: 0,
+            limit: 32,
+        };
+        request.validate().expect("fenced events");
+        request.fence = None;
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn pending_approval_rejects_uninitialized_unsafe_or_duplicate_values() {
+        let mut approval = pending_approval();
+        approval.validate().expect("approval should validate");
+        approval.created_at_ms = 0;
+        assert!(approval.validate().is_err());
+        approval = pending_approval();
+        approval.summary = "spoof\u{202e}txt".to_string();
+        assert!(approval.validate().is_err());
+        approval = pending_approval();
+        approval.allowed_decisions =
+            vec![LocalApprovalDecision::Accept, LocalApprovalDecision::Accept];
+        assert!(approval.validate().is_err());
+    }
+
+    #[test]
+    fn runtime_identifiers_are_bounded_separately_from_matrix_identifiers() {
+        let long_runtime_id = "x".repeat(300);
+        validate_runtime_identifier(&long_runtime_id, "runtime").expect("runtime ID");
+        assert!(MatrixDeviceId::parse(long_runtime_id).is_err());
+        assert!(validate_runtime_identifier(&"x".repeat(513), "runtime").is_err());
+    }
+
+    #[test]
+    fn event_cursor_contract_requires_contiguous_or_empty_gap() {
+        MatrixdEventBatch {
+            events: vec![
+                MatrixdEvent {
+                    cursor: 8,
+                    kind: MatrixdEventKind::QueueDepth {
+                        inbox: 1,
+                        outbox: 2,
+                    },
+                },
+                MatrixdEvent {
+                    cursor: 9,
+                    kind: MatrixdEventKind::ApprovalPending {
+                        approval: pending_approval(),
+                    },
+                },
+            ],
+            gap: false,
+            next_cursor: 9,
+            latest_cursor: 12,
+        }
+        .validate_after(7)
+        .expect("contiguous batch");
+
+        MatrixdEventBatch {
+            events: Vec::new(),
+            gap: true,
+            next_cursor: 7,
+            latest_cursor: 12,
+        }
+        .validate_after(7)
+        .expect("non-advancing gap");
+
+        assert!(
+            MatrixdEventBatch {
+                events: vec![MatrixdEvent {
+                    cursor: 9,
+                    kind: MatrixdEventKind::QueueDepth {
+                        inbox: 0,
+                        outbox: 0
+                    },
+                }],
+                gap: false,
+                next_cursor: 9,
+                latest_cursor: 9,
+            }
+            .validate_after(7)
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn frozen_control_json_fixtures_are_exact() {
+        let request = MatrixdRequest {
+            schema_version: MATRIXD_CONTROL_SCHEMA_VERSION,
+            request_id: 41,
+            agent_id: agent_id(),
+            fence: Some(fence()),
+            method: MatrixdMethod::ResolveApproval {
+                approval_key: "approval-1".to_string(),
+                decision: LocalApprovalDecision::Accept,
+            },
+        };
+        let request_json = serde_json::to_string(&request).expect("serialize request");
+        assert_eq!(
+            request_json,
+            r#"{"schema_version":2,"request_id":41,"agent_id":"018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12","fence":{"binding_revision":7,"binding_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","attached_agent_generation":11,"process_incarnation":"matrixd-incarnation-19","plane_epoch":19},"method":{"type":"resolve_approval","approval_key":"approval-1","decision":"accept"}}"#
+        );
+
+        let response = MatrixdResponse {
+            schema_version: MATRIXD_CONTROL_SCHEMA_VERSION,
+            request_id: 41,
+            agent_id: agent_id(),
+            release_id: "release-7".to_string(),
+            binding_revision: 7,
+            binding_digest: Sha256Digest::parse(BINDING_DIGEST).expect("digest"),
+            attached_agent_generation: 11,
+            process_incarnation: "matrixd-incarnation-19".to_string(),
+            plane_epoch: 19,
+            payload: MatrixdPayload::Snapshot(MatrixdSnapshot {
+                lifecycle: MatrixdLifecycle::Ready,
+                expected_mxid: MatrixUserId::parse("@hepta-a:example.test").expect("mxid"),
+                active_rooms: vec![MatrixRoomId::parse("!room-a:example.test").expect("room")],
+                inbox_depth: 1,
+                outbox_depth: 2,
+                oldest_inbox_age_seconds: Some(3),
+                oldest_outbox_age_seconds: None,
+                active_thread_id: Some("thread-1".to_string()),
+                active_turn_id: Some("turn-1".to_string()),
+                pending_approvals: vec![pending_approval()],
+                resync_required: false,
+                event_cursor: 9,
+            }),
+        };
+        response.validate().expect("response should validate");
+        let response_json = serde_json::to_string(&response).expect("serialize response");
+        assert_eq!(
+            response_json,
+            r#"{"schema_version":2,"request_id":41,"agent_id":"018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12","release_id":"release-7","binding_revision":7,"binding_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","attached_agent_generation":11,"process_incarnation":"matrixd-incarnation-19","plane_epoch":19,"payload":{"type":"snapshot","lifecycle":"ready","expected_mxid":"@hepta-a:example.test","active_rooms":["!room-a:example.test"],"inbox_depth":1,"outbox_depth":2,"oldest_inbox_age_seconds":3,"oldest_outbox_age_seconds":null,"active_thread_id":"thread-1","active_turn_id":"turn-1","pending_approvals":[{"approval_key":"approval-1","kind":"command_execution","thread_id":"thread-1","turn_id":"turn-1","summary":"Run a local command","created_at_ms":1777777777000,"allowed_decisions":["accept","accept_for_session","decline","cancel"]}],"resync_required":false,"event_cursor":9}}"#
+        );
+
+        let error = MatrixdResponse {
+            payload: MatrixdPayload::Error {
+                code: "stale_fence".to_string(),
+                message: "request fence does not match this process".to_string(),
+            },
+            ..response
+        };
+        assert_eq!(
+            serde_json::to_string(&error).expect("serialize error"),
+            r#"{"schema_version":2,"request_id":41,"agent_id":"018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12","release_id":"release-7","binding_revision":7,"binding_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","attached_agent_generation":11,"process_incarnation":"matrixd-incarnation-19","plane_epoch":19,"payload":{"type":"error","code":"stale_fence","message":"request fence does not match this process"}}"#
+        );
+    }
+
+    #[test]
+    fn maximum_valid_snapshot_and_event_batch_fit_one_control_frame() {
+        let runtime_id = |prefix: &str, index: usize| {
+            let prefix = format!("{prefix}-{index}-");
+            format!(
+                "{prefix}{}",
+                "x".repeat(MAX_RUNTIME_IDENTIFIER_BYTES - prefix.len())
+            )
+        };
+        let approvals = (0..MAX_PENDING_APPROVALS)
+            .map(|index| PendingApproval {
+                approval_key: runtime_id("approval", index),
+                kind: runtime_id("kind", index),
+                thread_id: runtime_id("thread", index),
+                turn_id: runtime_id("turn", index),
+                summary: "s".repeat(MAX_PENDING_APPROVAL_SUMMARY_BYTES),
+                created_at_ms: 1,
+                allowed_decisions: vec![
+                    LocalApprovalDecision::Accept,
+                    LocalApprovalDecision::AcceptForSession,
+                    LocalApprovalDecision::Decline,
+                    LocalApprovalDecision::Cancel,
+                ],
+            })
+            .collect::<Vec<_>>();
+        let rooms = (0..MAX_MATRIX_BINDING_ENTRIES)
+            .map(|index| {
+                MatrixRoomId::parse(format!("!room-{index}-{}:example.test", "r".repeat(210)))
+                    .expect("maximum room fixture")
+            })
+            .collect::<Vec<_>>();
+        let response = MatrixdResponse {
+            schema_version: MATRIXD_CONTROL_SCHEMA_VERSION,
+            request_id: 1,
+            agent_id: agent_id(),
+            release_id: runtime_id("release", 0),
+            binding_revision: 1,
+            binding_digest: Sha256Digest::parse(BINDING_DIGEST).expect("digest"),
+            attached_agent_generation: 1,
+            process_incarnation: runtime_id("incarnation", 0),
+            plane_epoch: 1,
+            payload: MatrixdPayload::Snapshot(MatrixdSnapshot {
+                lifecycle: MatrixdLifecycle::Ready,
+                expected_mxid: MatrixUserId::parse("@hepta:example.test").expect("mxid"),
+                active_rooms: rooms,
+                inbox_depth: u32::MAX,
+                outbox_depth: u32::MAX,
+                oldest_inbox_age_seconds: Some(u64::MAX),
+                oldest_outbox_age_seconds: Some(u64::MAX),
+                active_thread_id: Some(runtime_id("active-thread", 0)),
+                active_turn_id: Some(runtime_id("active-turn", 0)),
+                pending_approvals: approvals.clone(),
+                resync_required: false,
+                event_cursor: MAX_PENDING_APPROVALS as u64,
+            }),
+        };
+        response.validate().expect("maximum snapshot validates");
+        assert!(
+            (serde_json::to_vec(&response).expect("snapshot JSON").len() as u64)
+                < MAX_MATRIXD_CONTROL_FRAME_BYTES
+        );
+
+        let events = approvals
+            .into_iter()
+            .enumerate()
+            .map(|(index, approval)| MatrixdEvent {
+                cursor: index as u64 + 1,
+                kind: MatrixdEventKind::ApprovalPending { approval },
+            })
+            .collect::<Vec<_>>();
+        let batch = MatrixdEventBatch {
+            events,
+            gap: false,
+            next_cursor: MAX_PENDING_APPROVALS as u64,
+            latest_cursor: MAX_PENDING_APPROVALS as u64,
+        };
+        batch
+            .validate_after(0)
+            .expect("maximum event batch validates");
+        let response = MatrixdResponse {
+            payload: MatrixdPayload::Events(batch),
+            ..response
+        };
+        assert!(
+            (serde_json::to_vec(&response).expect("event JSON").len() as u64)
+                < MAX_MATRIXD_CONTROL_FRAME_BYTES
         );
     }
 

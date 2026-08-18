@@ -1,6 +1,9 @@
 use std::fmt;
 
 use codex_hepta_contracts::AgentId;
+use codex_hepta_matrix_protocol::LocalApprovalDecision;
+use codex_hepta_matrix_protocol::MatrixdEventBatch;
+use codex_hepta_matrix_protocol::PendingApproval;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -15,6 +18,63 @@ pub const MAX_EVENT_CAPACITY: usize = 65_536;
 pub const MAX_DELTA_BATCH_BYTES: usize = 64 * 1024;
 pub const MAX_PAYLOAD_BYTES: usize = 1024 * 1024;
 pub const MAX_PAGE_ITEMS: usize = 4_096;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PendingApprovalKind {
+    CommandExecution,
+    FileChange,
+}
+
+impl PendingApprovalKind {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::CommandExecution => "command_execution",
+            Self::FileChange => "file_change",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "command_execution" => Some(Self::CommandExecution),
+            "file_change" => Some(Self::FileChange),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingApprovalDraft {
+    pub approval: PendingApproval,
+    pub request_id_json: String,
+    pub request_kind: PendingApprovalKind,
+    pub attached_agent_generation: u64,
+    pub process_incarnation: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingApprovalRecord {
+    pub approval: PendingApproval,
+    pub request_id_json: String,
+    pub request_kind: PendingApprovalKind,
+    pub attached_agent_generation: u64,
+    pub process_incarnation: String,
+    pub resolution_decision: Option<LocalApprovalDecision>,
+    pub resolving_at_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MatrixControlSnapshot {
+    pub cursor: u64,
+    pub active_thread_id: Option<String>,
+    pub active_turn_id: Option<String>,
+    pub pending_approvals: Vec<PendingApproval>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MatrixControlPage {
+    pub batch: MatrixdEventBatch,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MatrixDurableConfig {

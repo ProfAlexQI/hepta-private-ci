@@ -7,6 +7,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
 use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::ReleaseId;
 use serde::Deserialize;
@@ -16,7 +17,7 @@ use crate::ProcessIdentity;
 use crate::SupervisorError;
 
 pub(crate) const PROCESS_LEASE_SCHEMA_VERSION: u32 = 2;
-pub(crate) const MATRIX_PROCESS_LEASE_SCHEMA_VERSION: u32 = 1;
+pub(crate) const MATRIX_PROCESS_LEASE_SCHEMA_VERSION: u32 = 2;
 const PROCESS_LEASE_FILE: &str = "supervisor-process.json";
 const MAX_LEASE_BYTES: u64 = 4_096;
 static LEASE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -39,6 +40,9 @@ pub(crate) struct MatrixProcessLease {
     pub attached_agent_generation: u64,
     pub release_id: ReleaseId,
     pub binding_revision: u64,
+    pub binding_digest: Sha256Digest,
+    pub process_incarnation: String,
+    pub plane_epoch: u64,
     pub identity: ProcessIdentity,
 }
 
@@ -168,6 +172,9 @@ pub(crate) fn read_matrix_lease(
     if lease.schema_version != MATRIX_PROCESS_LEASE_SCHEMA_VERSION
         || lease.attached_agent_generation == 0
         || lease.binding_revision == 0
+        || lease.plane_epoch == 0
+        || lease.process_incarnation.is_empty()
+        || lease.process_incarnation.len() > 512
     {
         return Err(SupervisorError::CorruptLease(
             "Matrix process lease has invalid bounded identity fields".to_string(),

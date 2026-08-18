@@ -14,6 +14,7 @@ use codex_hepta_agent_protocol::AgentdRequest;
 use codex_hepta_agent_protocol::AgentdResponse;
 use codex_hepta_agent_protocol::HealthSnapshot;
 use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_fleet::ReleaseId;
 use pretty_assertions::assert_eq;
 
@@ -117,7 +118,10 @@ fn failed_exact_adoption_never_signals_an_unrelated_live_pid() {
             agent_id,
             agent_generation: 1,
             binding_revision: 1,
+            binding_digest: Sha256Digest::for_bytes(b"binding"),
             release_id: ReleaseId::parse("matrix-stale-pid-test").expect("release id"),
+            process_incarnation: "matrixd-test-incarnation".to_string(),
+            plane_epoch: 1,
             control_socket: socket,
             identity,
         })

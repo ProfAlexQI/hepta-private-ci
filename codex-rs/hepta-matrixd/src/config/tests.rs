@@ -55,14 +55,25 @@ fn binding(agent_id: AgentId) -> MatrixBindingV1 {
     }
 }
 
+fn process_identity(binding: &MatrixBindingV1) -> MatrixdProcessIdentity {
+    MatrixdProcessIdentity {
+        release_id: "release-test".to_string(),
+        binding_digest: matrix_binding_digest(binding).expect("binding digest"),
+        process_incarnation: "matrixd-test-incarnation".to_string(),
+        plane_epoch: 1,
+    }
+}
+
 #[test]
 fn config_binds_one_running_spawn_generation_without_exposing_secrets() {
     let (_temp, fleet_root, agent_id) = configured_fleet();
+    let binding = binding(agent_id.clone());
     let config = MatrixdConfig::load(
         fleet_root,
-        agent_id.clone(),
+        agent_id,
         1,
-        binding(agent_id),
+        binding.clone(),
+        process_identity(&binding),
         MatrixdCredentials::new("super-private-value", Some("store-secret".to_string()))
             .expect("credentials"),
         64,
@@ -81,11 +92,13 @@ fn config_binds_one_running_spawn_generation_without_exposing_secrets() {
 #[test]
 fn config_rejects_a_generation_that_does_not_own_the_running_agentd() {
     let (_temp, fleet_root, agent_id) = configured_fleet();
+    let binding = binding(agent_id.clone());
     let error = MatrixdConfig::load(
         fleet_root,
-        agent_id.clone(),
+        agent_id,
         2,
-        binding(agent_id),
+        binding.clone(),
+        process_identity(&binding),
         MatrixdCredentials::new("password", None).expect("credentials"),
         64,
         Duration::from_secs(30),

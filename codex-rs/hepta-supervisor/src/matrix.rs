@@ -1,11 +1,17 @@
 use std::io::ErrorKind;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::AgentRecord;
 use codex_hepta_matrix_protocol::MatrixBindingV1;
+use codex_hepta_matrix_protocol::matrix_binding_digest;
 
 use crate::Adoption;
 use crate::ManagedProcess;
@@ -32,6 +38,7 @@ use crate::runtime::driver_error;
 const MAX_MATRIX_BINDING_BYTES: u64 = 65_536;
 const MATRIX_RESTART_MIN: Duration = Duration::from_millis(250);
 const MATRIX_RESTART_MAX: Duration = Duration::from_secs(30);
+static MATRIX_INCARNATION_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 impl<D: ProcessDriver> Supervisor<D> {
     pub(crate) fn start_matrix_companion(
@@ -86,6 +93,21 @@ impl<D: ProcessDriver> Supervisor<D> {
                 return;
             }
         };
+        let binding_digest = match matrix_binding_digest(&binding) {
+            Ok(digest) => digest,
+            Err(error) => {
+                self.degrade_matrix(slot, attached_agent_generation, error.to_string(), now);
+                return;
+            }
+        };
+        let (process_incarnation, plane_epoch) =
+            match next_matrix_incarnation(agent_id, attached_agent_generation, &binding_digest) {
+                Ok(identity) => identity,
+                Err(error) => {
+                    self.degrade_matrix(slot, attached_agent_generation, error.to_string(), now);
+                    return;
+                }
+            };
         match read_matrix_lease(record.layout.matrixd_process_lease()) {
             Ok(None) => {}
             Ok(Some(_)) => {
@@ -106,7 +128,10 @@ impl<D: ProcessDriver> Supervisor<D> {
             agent_id: agent_id.clone(),
             agent_generation: attached_agent_generation,
             binding_revision: binding.revision,
+            binding_digest: binding_digest.clone(),
             release_id: release.release_id().clone(),
+            process_incarnation: process_incarnation.clone(),
+            plane_epoch,
             fleet_root: self.registry.layout().fleet_root().as_path().to_path_buf(),
             workspace: record.manifest.workspace.as_path().to_path_buf(),
             matrix_root: record.layout.matrix_root().to_path_buf(),
@@ -133,6 +158,9 @@ impl<D: ProcessDriver> Supervisor<D> {
             attached_agent_generation,
             release_id: release.release_id().clone(),
             binding_revision: binding.revision,
+            binding_digest: binding_digest.clone(),
+            process_incarnation: process_incarnation.clone(),
+            plane_epoch,
             identity: spawned.identity.clone(),
         };
         if let Err(error) = write_matrix_lease(record.layout.matrixd_process_lease(), &lease) {
@@ -155,6 +183,9 @@ impl<D: ProcessDriver> Supervisor<D> {
             attached_agent_generation,
             release_id: lease.release_id,
             binding_revision: binding.revision,
+            binding_digest,
+            process_incarnation,
+            plane_epoch,
             phase: MatrixRuntimePhase::AwaitingHealth {
                 deadline: health_deadline,
             },
@@ -193,6 +224,13 @@ impl<D: ProcessDriver> Supervisor<D> {
                 "Matrix lease binding revision is stale".to_string(),
             ));
         }
+        let binding_digest = matrix_binding_digest(&binding)
+            .map_err(|error| SupervisorError::CorruptLease(error.to_string()))?;
+        if binding_digest != lease.binding_digest {
+            return Err(SupervisorError::CorruptLease(
+                "Matrix lease binding digest is stale".to_string(),
+            ));
+        }
         let Some(release) = slot.active_release.as_ref() else {
             return Err(SupervisorError::CorruptLease(
                 "Matrix lease exists without an active release".to_string(),
@@ -211,7 +249,10 @@ impl<D: ProcessDriver> Supervisor<D> {
             agent_id: agent_id.clone(),
             agent_generation: lease.attached_agent_generation,
             binding_revision: lease.binding_revision,
+            binding_digest: lease.binding_digest.clone(),
             release_id: lease.release_id.clone(),
+            process_incarnation: lease.process_incarnation.clone(),
+            plane_epoch: lease.plane_epoch,
             control_socket: record.layout.matrixd_control_socket().to_path_buf(),
             identity: lease.identity.clone(),
         };
@@ -228,6 +269,9 @@ impl<D: ProcessDriver> Supervisor<D> {
                     attached_agent_generation: lease.attached_agent_generation,
                     release_id: lease.release_id,
                     binding_revision: lease.binding_revision,
+                    binding_digest: lease.binding_digest,
+                    process_incarnation: lease.process_incarnation,
+                    plane_epoch: lease.plane_epoch,
                     phase: MatrixRuntimePhase::AwaitingHealth {
                         deadline: deadline(now, self.config.health_timeout)?,
                     },
@@ -390,6 +434,9 @@ impl<D: ProcessDriver> Supervisor<D> {
                     attached_agent_generation: runtime.attached_agent_generation,
                     release_id: runtime.release_id,
                     binding_revision: runtime.binding_revision,
+                    binding_digest: runtime.binding_digest,
+                    process_incarnation: runtime.process_incarnation,
+                    plane_epoch: runtime.plane_epoch,
                     identity: runtime.identity,
                 };
                 remove_matrix_lease(record.layout.matrixd_process_lease(), &lease)?;
@@ -571,4 +618,33 @@ fn load_binding(
         )));
     }
     Ok(Some(binding))
+}
+
+fn next_matrix_incarnation(
+    agent_id: &AgentId,
+    agent_generation: u64,
+    binding_digest: &Sha256Digest,
+) -> Result<(String, u64), SupervisorError> {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| SupervisorError::Invalid(error.to_string()))?;
+    let sequence = MATRIX_INCARNATION_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let plane_epoch = u64::try_from(elapsed.as_micros())
+        .unwrap_or(u64::MAX)
+        .wrapping_add(sequence)
+        .max(1);
+    let material = serde_json::to_vec(&(
+        "hepta.matrix.process-incarnation.v1",
+        agent_id.as_str(),
+        agent_generation,
+        binding_digest.as_str(),
+        elapsed.as_nanos().to_string(),
+        sequence,
+        std::process::id(),
+    ))
+    .map_err(|error| SupervisorError::Invalid(error.to_string()))?;
+    Ok((
+        format!("matrixd-{}", Sha256Digest::for_bytes(&material).as_str()),
+        plane_epoch,
+    ))
 }

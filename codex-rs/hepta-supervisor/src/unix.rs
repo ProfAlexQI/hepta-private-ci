@@ -21,6 +21,7 @@ use codex_hepta_agent_protocol::AgentdRequest;
 use codex_hepta_agent_protocol::AgentdResponse;
 use codex_hepta_agent_protocol::MAX_CONTROL_FRAME_BYTES;
 use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_matrix_protocol::MATRIXD_CONTROL_SCHEMA_VERSION;
 use codex_hepta_matrix_protocol::MAX_MATRIXD_CONTROL_FRAME_BYTES;
@@ -236,6 +237,13 @@ impl ProcessDriver for UnixProcessDriver {
                 "HEPTA_MATRIX_BINDING_REVISION",
                 spec.binding_revision.to_string(),
             )
+            .env("HEPTA_MATRIX_RELEASE_ID", spec.release_id.as_str())
+            .env("HEPTA_MATRIX_BINDING_DIGEST", spec.binding_digest.as_str())
+            .env(
+                "HEPTA_MATRIX_PROCESS_INCARNATION",
+                &spec.process_incarnation,
+            )
+            .env("HEPTA_MATRIX_PLANE_EPOCH", spec.plane_epoch.to_string())
             .env("HEPTA_MATRIXD_CONTROL_SOCKET", &spec.control_socket)
             .env("HEPTA_AGENTD_CONTROL_SOCKET", &spec.agentd_control_socket)
             .env("HEPTA_MATRIX_ROOT", &spec.matrix_root)
@@ -401,6 +409,10 @@ struct MatrixHealthProbeIdentity {
     agent_id: AgentId,
     agent_generation: u64,
     binding_revision: u64,
+    binding_digest: Sha256Digest,
+    release_id: String,
+    process_incarnation: String,
+    plane_epoch: u64,
     process_id: u32,
     control_socket: PathBuf,
 }
@@ -411,6 +423,10 @@ impl MatrixHealthProbeIdentity {
             agent_id: spec.agent_id.clone(),
             agent_generation: spec.agent_generation,
             binding_revision: spec.binding_revision,
+            binding_digest: spec.binding_digest.clone(),
+            release_id: spec.release_id.as_str().to_string(),
+            process_incarnation: spec.process_incarnation.clone(),
+            plane_epoch: spec.plane_epoch,
             process_id,
             control_socket: spec.control_socket.clone(),
         }
@@ -421,6 +437,10 @@ impl MatrixHealthProbeIdentity {
             agent_id: spec.agent_id.clone(),
             agent_generation: spec.agent_generation,
             binding_revision: spec.binding_revision,
+            binding_digest: spec.binding_digest.clone(),
+            release_id: spec.release_id.as_str().to_string(),
+            process_incarnation: spec.process_incarnation.clone(),
+            plane_epoch: spec.plane_epoch,
             process_id,
             control_socket: spec.control_socket.clone(),
         }
@@ -559,8 +579,7 @@ fn query_matrix_health_once(
         schema_version: MATRIXD_CONTROL_SCHEMA_VERSION,
         request_id,
         agent_id: identity.agent_id.clone(),
-        expected_binding_revision: identity.binding_revision,
-        expected_agent_generation: identity.agent_generation,
+        fence: None,
         method: MatrixdMethod::Health,
     };
     let mut bytes = serde_json::to_vec(&request)?;
@@ -591,12 +610,21 @@ fn query_matrix_health_once(
         });
     }
     let response: MatrixdResponse = serde_json::from_slice(&response_bytes)?;
+    if response.validate().is_err() {
+        return Ok(HealthProbeObservation {
+            exact_identity: false,
+            ready: false,
+        });
+    }
     let exact_envelope = response.schema_version == MATRIXD_CONTROL_SCHEMA_VERSION
         && response.request_id == request_id
         && response.agent_id == identity.agent_id
+        && response.release_id == identity.release_id
         && response.binding_revision == identity.binding_revision
-        && response.agent_generation == identity.agent_generation
-        && response.connection_epoch != 0;
+        && response.binding_digest == identity.binding_digest
+        && response.attached_agent_generation == identity.agent_generation
+        && response.process_incarnation == identity.process_incarnation
+        && response.plane_epoch == identity.plane_epoch;
     let MatrixdPayload::Health(MatrixdHealth {
         lifecycle,
         process_id,

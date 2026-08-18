@@ -4,6 +4,11 @@ use std::path::PathBuf;
 
 use codex_hepta_contracts::AgentId;
 use codex_hepta_contracts::Sha256Digest;
+use codex_hepta_matrix_protocol::LocalApprovalDecision;
+use codex_hepta_matrix_protocol::MAX_PENDING_APPROVALS;
+use codex_hepta_matrix_protocol::MatrixdEvent;
+use codex_hepta_matrix_protocol::MatrixdEventBatch;
+use codex_hepta_matrix_protocol::MatrixdEventKind;
 use codex_hepta_matrix_protocol::client_user_message_id;
 use codex_hepta_matrix_protocol::room_project_idempotency_key;
 use codex_hepta_matrix_protocol::transaction_id;
@@ -27,6 +32,8 @@ use crate::InboxDraft;
 use crate::InboxQueuedDraft;
 use crate::InboxRecord;
 use crate::InboxState;
+use crate::MatrixControlPage;
+use crate::MatrixControlSnapshot;
 use crate::MatrixDurableConfig;
 use crate::MatrixEventId;
 use crate::MatrixQueueMetrics;
@@ -41,6 +48,9 @@ use crate::OutboxDraft;
 use crate::OutboxKind;
 use crate::OutboxRecord;
 use crate::OutboxState;
+use crate::PendingApprovalDraft;
+use crate::PendingApprovalKind;
+use crate::PendingApprovalRecord;
 use crate::RoomBinding;
 use crate::RoomBindingDraft;
 use crate::RoomThreadBinding;
@@ -1763,6 +1773,537 @@ impl MatrixDurableStore {
         Ok(record)
     }
 
+    pub async fn store_pending_approval(
+        &self,
+        draft: &PendingApprovalDraft,
+    ) -> Result<PendingApprovalRecord, MatrixDurableError> {
+        draft
+            .approval
+            .validate()
+            .map_err(|_| MatrixDurableError::Invalid)?;
+        validate_request_id_json(&draft.request_id_json)?;
+        validate_runtime_identifier(&draft.process_incarnation)?;
+        if draft.attached_agent_generation == 0 {
+            return Err(MatrixDurableError::Invalid);
+        }
+        let pending_json =
+            serde_json::to_string(&draft.approval).map_err(|_| MatrixDurableError::Invalid)?;
+        if pending_json.len() > 8_192 {
+            return Err(MatrixDurableError::Invalid);
+        }
+
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let existing = pending_approval_tx(&mut transaction, &draft.approval.approval_key).await?;
+        let requested = PendingApprovalRecord {
+            approval: draft.approval.clone(),
+            request_id_json: draft.request_id_json.clone(),
+            request_kind: draft.request_kind,
+            attached_agent_generation: draft.attached_agent_generation,
+            process_incarnation: draft.process_incarnation.clone(),
+            resolution_decision: None,
+            resolving_at_ms: None,
+        };
+        if let Some(existing) = existing {
+            if existing == requested {
+                transaction.commit().await.map_err(unavailable)?;
+                return Ok(existing);
+            }
+            return Err(MatrixDurableError::Conflict);
+        }
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pending_approvals")
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(unavailable)?;
+        if to_u64(count)? >= MAX_PENDING_APPROVALS as u64 {
+            return Err(MatrixDurableError::Conflict);
+        }
+        sqlx::query(
+            "INSERT INTO pending_approvals (
+                approval_key, pending_json, request_id_json, request_kind,
+                attached_agent_generation, process_incarnation, created_at_ms,
+                resolution_decision, resolving_at_ms
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)",
+        )
+        .bind(&draft.approval.approval_key)
+        .bind(&pending_json)
+        .bind(&draft.request_id_json)
+        .bind(draft.request_kind.as_str())
+        .bind(to_i64(draft.attached_agent_generation)?)
+        .bind(&draft.process_incarnation)
+        .bind(to_i64(draft.approval.created_at_ms)?)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        self.append_control_event(
+            &mut transaction,
+            MatrixdEventKind::ApprovalPending {
+                approval: draft.approval.clone(),
+            },
+            draft.approval.created_at_ms,
+        )
+        .await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(requested)
+    }
+
+    pub async fn pending_approval(
+        &self,
+        approval_key: &str,
+    ) -> Result<Option<PendingApprovalRecord>, MatrixDurableError> {
+        validate_runtime_identifier(approval_key)?;
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let approval = pending_approval_tx(&mut transaction, approval_key).await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(approval)
+    }
+
+    pub async fn begin_pending_approval_resolution(
+        &self,
+        approval_key: &str,
+        attached_agent_generation: u64,
+        process_incarnation: &str,
+        decision: LocalApprovalDecision,
+        resolving_at_ms: u64,
+    ) -> Result<PendingApprovalRecord, MatrixDurableError> {
+        validate_runtime_identifier(approval_key)?;
+        validate_runtime_identifier(process_incarnation)?;
+        if attached_agent_generation == 0 || resolving_at_ms == 0 {
+            return Err(MatrixDurableError::Invalid);
+        }
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let existing = pending_approval_tx(&mut transaction, approval_key)
+            .await?
+            .ok_or(MatrixDurableError::Conflict)?;
+        if existing.attached_agent_generation != attached_agent_generation
+            || existing.process_incarnation != process_incarnation
+            || resolving_at_ms < existing.approval.created_at_ms
+        {
+            return Err(MatrixDurableError::Conflict);
+        }
+        if let Some(existing_decision) = existing.resolution_decision {
+            if existing_decision != decision {
+                return Err(MatrixDurableError::Conflict);
+            }
+            transaction.commit().await.map_err(unavailable)?;
+            return Ok(existing);
+        }
+        let updated = sqlx::query(
+            "UPDATE pending_approvals
+             SET resolution_decision = ?, resolving_at_ms = ?
+             WHERE approval_key = ? AND attached_agent_generation = ?
+               AND process_incarnation = ? AND resolution_decision IS NULL",
+        )
+        .bind(local_approval_decision_name(decision))
+        .bind(to_i64(resolving_at_ms)?)
+        .bind(approval_key)
+        .bind(to_i64(attached_agent_generation)?)
+        .bind(process_incarnation)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if updated.rows_affected() != 1 {
+            return Err(MatrixDurableError::Conflict);
+        }
+        let record = PendingApprovalRecord {
+            resolution_decision: Some(decision),
+            resolving_at_ms: Some(resolving_at_ms),
+            ..existing
+        };
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(record)
+    }
+
+    pub async fn complete_pending_approval_resolution(
+        &self,
+        approval_key: &str,
+        attached_agent_generation: u64,
+        process_incarnation: &str,
+        decision: LocalApprovalDecision,
+        resolved_at_ms: u64,
+    ) -> Result<PendingApprovalRecord, MatrixDurableError> {
+        validate_runtime_identifier(approval_key)?;
+        validate_runtime_identifier(process_incarnation)?;
+        if attached_agent_generation == 0 || resolved_at_ms == 0 {
+            return Err(MatrixDurableError::Invalid);
+        }
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let existing = pending_approval_tx(&mut transaction, approval_key)
+            .await?
+            .ok_or(MatrixDurableError::Conflict)?;
+        if existing.attached_agent_generation != attached_agent_generation
+            || existing.process_incarnation != process_incarnation
+            || existing.resolution_decision != Some(decision)
+            || existing
+                .resolving_at_ms
+                .is_none_or(|resolving_at_ms| resolved_at_ms < resolving_at_ms)
+        {
+            return Err(MatrixDurableError::Conflict);
+        }
+        let deleted = sqlx::query(
+            "DELETE FROM pending_approvals
+             WHERE approval_key = ? AND attached_agent_generation = ?
+               AND process_incarnation = ? AND resolution_decision = ?",
+        )
+        .bind(approval_key)
+        .bind(to_i64(attached_agent_generation)?)
+        .bind(process_incarnation)
+        .bind(local_approval_decision_name(decision))
+        .execute(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if deleted.rows_affected() != 1 {
+            return Err(MatrixDurableError::Conflict);
+        }
+        self.append_control_event(
+            &mut transaction,
+            MatrixdEventKind::ApprovalResolved {
+                approval_key: approval_key.to_string(),
+            },
+            resolved_at_ms,
+        )
+        .await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(existing)
+    }
+
+    /// Reconciles App Server's authoritative `serverRequest/resolved`
+    /// notification with the owner-local pending map.
+    ///
+    /// This closes the crash window in which the response reached App Server
+    /// but the local resolution transaction did not commit. It also removes a
+    /// request that App Server resolved while changing turn state. The exact
+    /// request ID, thread, generation, and process incarnation must all agree.
+    pub async fn reconcile_server_request_resolved(
+        &self,
+        request_id_json: &str,
+        thread_id: &str,
+        attached_agent_generation: u64,
+        process_incarnation: &str,
+        resolved_at_ms: u64,
+    ) -> Result<Option<PendingApprovalRecord>, MatrixDurableError> {
+        validate_runtime_identifier(thread_id)?;
+        validate_runtime_identifier(process_incarnation)?;
+        if request_id_json.is_empty()
+            || request_id_json.len() > 1_024
+            || attached_agent_generation == 0
+            || resolved_at_ms == 0
+        {
+            return Err(MatrixDurableError::Invalid);
+        }
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let row = sqlx::query(
+            "SELECT approval_key, pending_json, request_id_json, request_kind,
+                    attached_agent_generation, process_incarnation, created_at_ms,
+                    resolution_decision, resolving_at_ms
+             FROM pending_approvals WHERE request_id_json = ?",
+        )
+        .bind(request_id_json)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        let Some(record) = row.as_ref().map(pending_approval_from_row).transpose()? else {
+            transaction.commit().await.map_err(unavailable)?;
+            return Ok(None);
+        };
+        if record.approval.thread_id != thread_id
+            || record.attached_agent_generation != attached_agent_generation
+            || record.process_incarnation != process_incarnation
+        {
+            return Err(MatrixDurableError::Conflict);
+        }
+        let deleted = sqlx::query(
+            "DELETE FROM pending_approvals
+             WHERE approval_key = ? AND request_id_json = ?
+               AND attached_agent_generation = ? AND process_incarnation = ?",
+        )
+        .bind(&record.approval.approval_key)
+        .bind(request_id_json)
+        .bind(to_i64(attached_agent_generation)?)
+        .bind(process_incarnation)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if deleted.rows_affected() != 1 {
+            return Err(MatrixDurableError::Conflict);
+        }
+        self.append_control_event(
+            &mut transaction,
+            MatrixdEventKind::ApprovalResolved {
+                approval_key: record.approval.approval_key.clone(),
+            },
+            resolved_at_ms,
+        )
+        .await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(Some(record))
+    }
+
+    /// Transfers pending App Server requests to a newly authorized sidecar
+    /// incarnation when the attached Agent generation is unchanged, while
+    /// terminalizing requests from superseded Agent generations.
+    ///
+    /// A persisted resolving decision survives the transfer unchanged, so a
+    /// crash-before-send retry cannot silently choose a different outcome.
+    /// The incarnation compare-and-swap fences the crashed process.
+    pub async fn fence_stale_pending_approvals(
+        &self,
+        attached_agent_generation: u64,
+        process_incarnation: &str,
+        fenced_at_ms: u64,
+    ) -> Result<usize, MatrixDurableError> {
+        validate_runtime_identifier(process_incarnation)?;
+        if attached_agent_generation == 0 || fenced_at_ms == 0 {
+            return Err(MatrixDurableError::Invalid);
+        }
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let rows = sqlx::query(
+            "SELECT approval_key, pending_json, request_id_json, request_kind,
+                    attached_agent_generation, process_incarnation, created_at_ms,
+                    resolution_decision, resolving_at_ms
+             FROM pending_approvals
+             WHERE attached_agent_generation != ? OR process_incarnation != ?
+             ORDER BY created_at_ms, approval_key",
+        )
+        .bind(to_i64(attached_agent_generation)?)
+        .bind(process_incarnation)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        let records = rows
+            .iter()
+            .map(pending_approval_from_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut fenced = 0_usize;
+        for record in &records {
+            if record.attached_agent_generation == attached_agent_generation {
+                let updated = sqlx::query(
+                    "UPDATE pending_approvals
+                     SET process_incarnation = ?
+                     WHERE approval_key = ? AND attached_agent_generation = ?
+                       AND process_incarnation = ?",
+                )
+                .bind(process_incarnation)
+                .bind(&record.approval.approval_key)
+                .bind(to_i64(attached_agent_generation)?)
+                .bind(&record.process_incarnation)
+                .execute(&mut *transaction)
+                .await
+                .map_err(unavailable)?;
+                if updated.rows_affected() != 1 {
+                    return Err(MatrixDurableError::Conflict);
+                }
+                self.append_control_event(
+                    &mut transaction,
+                    MatrixdEventKind::ApprovalPending {
+                        approval: record.approval.clone(),
+                    },
+                    fenced_at_ms,
+                )
+                .await?;
+            } else {
+                let deleted = sqlx::query(
+                    "DELETE FROM pending_approvals
+                     WHERE approval_key = ? AND attached_agent_generation = ?
+                       AND process_incarnation = ?",
+                )
+                .bind(&record.approval.approval_key)
+                .bind(to_i64(record.attached_agent_generation)?)
+                .bind(&record.process_incarnation)
+                .execute(&mut *transaction)
+                .await
+                .map_err(unavailable)?;
+                if deleted.rows_affected() != 1 {
+                    return Err(MatrixDurableError::Conflict);
+                }
+                self.append_control_event(
+                    &mut transaction,
+                    MatrixdEventKind::ApprovalResolved {
+                        approval_key: record.approval.approval_key.clone(),
+                    },
+                    fenced_at_ms,
+                )
+                .await?;
+                fenced += 1;
+            }
+        }
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(fenced)
+    }
+
+    pub async fn record_turn_started(
+        &self,
+        thread_id: &str,
+        turn_id: &str,
+        recorded_at_ms: u64,
+    ) -> Result<(), MatrixDurableError> {
+        validate_runtime_identifier(thread_id)?;
+        validate_runtime_identifier(turn_id)?;
+        if recorded_at_ms == 0 {
+            return Err(MatrixDurableError::Invalid);
+        }
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        sqlx::query(
+            "UPDATE matrix_control_state
+             SET active_thread_id = ?, active_turn_id = ? WHERE singleton = 1",
+        )
+        .bind(thread_id)
+        .bind(turn_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        self.append_control_event(
+            &mut transaction,
+            MatrixdEventKind::TurnStarted {
+                thread_id: thread_id.to_string(),
+                turn_id: turn_id.to_string(),
+            },
+            recorded_at_ms,
+        )
+        .await?;
+        transaction.commit().await.map_err(unavailable)
+    }
+
+    pub async fn record_turn_completed(
+        &self,
+        thread_id: &str,
+        turn_id: &str,
+        recorded_at_ms: u64,
+    ) -> Result<(), MatrixDurableError> {
+        validate_runtime_identifier(thread_id)?;
+        validate_runtime_identifier(turn_id)?;
+        if recorded_at_ms == 0 {
+            return Err(MatrixDurableError::Invalid);
+        }
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        sqlx::query(
+            "UPDATE matrix_control_state
+             SET active_thread_id = NULL, active_turn_id = NULL
+             WHERE singleton = 1 AND active_thread_id = ? AND active_turn_id = ?",
+        )
+        .bind(thread_id)
+        .bind(turn_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        self.append_control_event(
+            &mut transaction,
+            MatrixdEventKind::TurnCompleted {
+                thread_id: thread_id.to_string(),
+                turn_id: turn_id.to_string(),
+            },
+            recorded_at_ms,
+        )
+        .await?;
+        transaction.commit().await.map_err(unavailable)
+    }
+
+    pub async fn control_snapshot(&self) -> Result<MatrixControlSnapshot, MatrixDurableError> {
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let cursor = latest_control_cursor_tx(&mut transaction).await?;
+        let state = sqlx::query(
+            "SELECT active_thread_id, active_turn_id
+             FROM matrix_control_state WHERE singleton = 1",
+        )
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        let active_thread_id: Option<String> =
+            state.try_get("active_thread_id").map_err(unavailable)?;
+        let active_turn_id: Option<String> =
+            state.try_get("active_turn_id").map_err(unavailable)?;
+        if active_thread_id.is_some() != active_turn_id.is_some() {
+            return Err(MatrixDurableError::Corrupt);
+        }
+        if let Some(value) = active_thread_id.as_deref() {
+            validate_stored_runtime_identifier(value)?;
+        }
+        if let Some(value) = active_turn_id.as_deref() {
+            validate_stored_runtime_identifier(value)?;
+        }
+        let rows = sqlx::query(
+            "SELECT approval_key, pending_json, request_id_json, request_kind,
+                    attached_agent_generation, process_incarnation, created_at_ms,
+                    resolution_decision, resolving_at_ms
+             FROM pending_approvals ORDER BY created_at_ms, approval_key",
+        )
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if rows.len() > MAX_PENDING_APPROVALS {
+            return Err(MatrixDurableError::Corrupt);
+        }
+        let pending_approvals = rows
+            .iter()
+            .map(pending_approval_from_row)
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .map(|record| record.approval)
+            .collect();
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(MatrixControlSnapshot {
+            cursor,
+            active_thread_id,
+            active_turn_id,
+            pending_approvals,
+        })
+    }
+
+    pub async fn read_control_events(
+        &self,
+        after_cursor: u64,
+        limit: usize,
+    ) -> Result<MatrixControlPage, MatrixDurableError> {
+        validate_limit(limit)?;
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let latest_cursor = latest_control_cursor_tx(&mut transaction).await?;
+        if after_cursor > latest_cursor {
+            return Err(MatrixDurableError::Invalid);
+        }
+        let oldest: Option<i64> =
+            sqlx::query_scalar("SELECT MIN(cursor) FROM matrix_control_events")
+                .fetch_one(&mut *transaction)
+                .await
+                .map_err(unavailable)?;
+        let oldest = oldest.map(to_u64).transpose()?;
+        let gap = oldest.is_some_and(|cursor| cursor > after_cursor.saturating_add(1));
+        if gap {
+            transaction.commit().await.map_err(unavailable)?;
+            return Ok(MatrixControlPage {
+                batch: MatrixdEventBatch {
+                    events: Vec::new(),
+                    gap: true,
+                    next_cursor: after_cursor,
+                    latest_cursor,
+                },
+            });
+        }
+        let rows = sqlx::query(
+            "SELECT cursor, event_json FROM matrix_control_events
+             WHERE cursor > ? ORDER BY cursor LIMIT ?",
+        )
+        .bind(to_i64(after_cursor)?)
+        .bind(to_i64(limit as u64)?)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        let events = rows
+            .iter()
+            .map(control_event_from_row)
+            .collect::<Result<Vec<_>, _>>()?;
+        let next_cursor = events.last().map_or(after_cursor, |event| event.cursor);
+        let batch = MatrixdEventBatch {
+            events,
+            gap: false,
+            next_cursor,
+            latest_cursor,
+        };
+        batch
+            .validate_after(after_cursor)
+            .map_err(|_| MatrixDurableError::Corrupt)?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(MatrixControlPage { batch })
+    }
+
     pub async fn queue_metrics(
         &self,
         now_ms: u64,
@@ -1948,6 +2489,49 @@ impl MatrixDurableStore {
         sqlx::query(
             "DELETE FROM change_log
              WHERE cursor <= (SELECT COALESCE(MAX(cursor), 0) - ? FROM change_log)",
+        )
+        .bind(to_i64(self.config.event_capacity as u64)?)
+        .execute(&mut **transaction)
+        .await
+        .map_err(unavailable)?;
+        Ok(())
+    }
+
+    async fn append_control_event(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+        kind: MatrixdEventKind,
+        recorded_at_ms: u64,
+    ) -> Result<(), MatrixDurableError> {
+        if recorded_at_ms == 0 {
+            return Err(MatrixDurableError::Invalid);
+        }
+        MatrixdEventBatch {
+            events: vec![MatrixdEvent {
+                cursor: 1,
+                kind: kind.clone(),
+            }],
+            gap: false,
+            next_cursor: 1,
+            latest_cursor: 1,
+        }
+        .validate_after(0)
+        .map_err(|_| MatrixDurableError::Invalid)?;
+        let event_json = serde_json::to_string(&kind).map_err(|_| MatrixDurableError::Invalid)?;
+        if event_json.len() > 8_192 {
+            return Err(MatrixDurableError::Invalid);
+        }
+        sqlx::query("INSERT INTO matrix_control_events (event_json, recorded_at_ms) VALUES (?, ?)")
+            .bind(event_json)
+            .bind(to_i64(recorded_at_ms)?)
+            .execute(&mut **transaction)
+            .await
+            .map_err(unavailable)?;
+        sqlx::query(
+            "DELETE FROM matrix_control_events
+             WHERE cursor <= (
+                SELECT COALESCE(MAX(cursor), 0) - ? FROM matrix_control_events
+             )",
         )
         .bind(to_i64(self.config.event_capacity as u64)?)
         .execute(&mut **transaction)
@@ -2383,6 +2967,92 @@ async fn latest_cursor_tx(
     to_u64(cursor)
 }
 
+async fn latest_control_cursor_tx(
+    transaction: &mut Transaction<'_, Sqlite>,
+) -> Result<u64, MatrixDurableError> {
+    let cursor: i64 =
+        sqlx::query_scalar("SELECT COALESCE(MAX(cursor), 0) FROM matrix_control_events")
+            .fetch_one(&mut **transaction)
+            .await
+            .map_err(unavailable)?;
+    to_u64(cursor)
+}
+
+async fn pending_approval_tx(
+    transaction: &mut Transaction<'_, Sqlite>,
+    approval_key: &str,
+) -> Result<Option<PendingApprovalRecord>, MatrixDurableError> {
+    sqlx::query(
+        "SELECT approval_key, pending_json, request_id_json, request_kind,
+                attached_agent_generation, process_incarnation, created_at_ms,
+                resolution_decision, resolving_at_ms
+         FROM pending_approvals WHERE approval_key = ?",
+    )
+    .bind(approval_key)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(unavailable)?
+    .map(|row| pending_approval_from_row(&row))
+    .transpose()
+}
+
+fn pending_approval_from_row(row: &SqliteRow) -> Result<PendingApprovalRecord, MatrixDurableError> {
+    let approval_key: String = row.try_get("approval_key").map_err(unavailable)?;
+    let pending_json: String = row.try_get("pending_json").map_err(unavailable)?;
+    let request_id_json: String = row.try_get("request_id_json").map_err(unavailable)?;
+    let request_kind = PendingApprovalKind::parse(
+        row.try_get::<String, _>("request_kind")
+            .map_err(unavailable)?
+            .as_str(),
+    )
+    .ok_or(MatrixDurableError::Corrupt)?;
+    let process_incarnation: String = row.try_get("process_incarnation").map_err(unavailable)?;
+    let resolution_decision = row
+        .try_get::<Option<String>, _>("resolution_decision")
+        .map_err(unavailable)?
+        .map(|value| parse_local_approval_decision(&value).ok_or(MatrixDurableError::Corrupt))
+        .transpose()?;
+    let resolving_at_ms = row
+        .try_get::<Option<i64>, _>("resolving_at_ms")
+        .map_err(unavailable)?
+        .map(to_u64)
+        .transpose()?;
+    validate_stored_runtime_identifier(&approval_key)?;
+    validate_stored_runtime_identifier(&process_incarnation)?;
+    validate_request_id_json(&request_id_json).map_err(|_| MatrixDurableError::Corrupt)?;
+    let approval: codex_hepta_matrix_protocol::PendingApproval =
+        serde_json::from_str(&pending_json).map_err(|_| MatrixDurableError::Corrupt)?;
+    approval
+        .validate()
+        .map_err(|_| MatrixDurableError::Corrupt)?;
+    if approval.approval_key != approval_key
+        || approval.created_at_ms != to_u64(row.try_get("created_at_ms").map_err(unavailable)?)?
+        || resolution_decision.is_some() != resolving_at_ms.is_some()
+        || resolving_at_ms.is_some_and(|at_ms| at_ms < approval.created_at_ms)
+    {
+        return Err(MatrixDurableError::Corrupt);
+    }
+    Ok(PendingApprovalRecord {
+        approval,
+        request_id_json,
+        request_kind,
+        attached_agent_generation: to_u64(
+            row.try_get("attached_agent_generation")
+                .map_err(unavailable)?,
+        )?,
+        process_incarnation,
+        resolution_decision,
+        resolving_at_ms,
+    })
+}
+
+fn control_event_from_row(row: &SqliteRow) -> Result<MatrixdEvent, MatrixDurableError> {
+    let cursor = to_u64(row.try_get("cursor").map_err(unavailable)?)?;
+    let event_json: String = row.try_get("event_json").map_err(unavailable)?;
+    let kind = serde_json::from_str(&event_json).map_err(|_| MatrixDurableError::Corrupt)?;
+    Ok(MatrixdEvent { cursor, kind })
+}
+
 async fn queue_metrics_tx(
     transaction: &mut Transaction<'_, Sqlite>,
     now_ms: u64,
@@ -2712,13 +3382,14 @@ async fn verify_store(
             'matrix_meta_no_update', 'matrix_meta_no_delete', 'room_bindings',
             'room_threads', 'inbox_events', 'inbox_dispatches',
             'outbox_messages', 'outbox_txns', 'change_log',
-            'matrix_sync_checkpoint', 'matrix_sync_checkpoint_no_delete'
+            'matrix_sync_checkpoint', 'matrix_sync_checkpoint_no_delete',
+            'pending_approvals', 'matrix_control_state', 'matrix_control_events'
          )",
     )
     .fetch_one(pool)
     .await
     .map_err(unavailable)?;
-    if required_objects != 11 {
+    if required_objects != 14 {
         return Err(MatrixDurableError::Corrupt);
     }
     let row =
@@ -2852,6 +3523,53 @@ fn validate_local_identity(value: &str) -> Result<(), MatrixDurableError> {
         return Err(MatrixDurableError::Invalid);
     }
     Ok(())
+}
+
+fn validate_runtime_identifier(value: &str) -> Result<(), MatrixDurableError> {
+    if value.is_empty()
+        || value.len() > codex_hepta_matrix_protocol::MAX_RUNTIME_IDENTIFIER_BYTES
+        || value.chars().any(char::is_control)
+        || value.chars().any(char::is_whitespace)
+    {
+        return Err(MatrixDurableError::Invalid);
+    }
+    Ok(())
+}
+
+fn validate_stored_runtime_identifier(value: &str) -> Result<(), MatrixDurableError> {
+    validate_runtime_identifier(value).map_err(|_| MatrixDurableError::Corrupt)
+}
+
+fn validate_request_id_json(value: &str) -> Result<(), MatrixDurableError> {
+    if value.is_empty() || value.len() > 1_024 {
+        return Err(MatrixDurableError::Invalid);
+    }
+    match serde_json::from_str::<serde_json::Value>(value)
+        .map_err(|_| MatrixDurableError::Invalid)?
+    {
+        serde_json::Value::String(value) => validate_runtime_identifier(&value),
+        serde_json::Value::Number(value) if value.as_i64().is_some() => Ok(()),
+        _ => Err(MatrixDurableError::Invalid),
+    }
+}
+
+fn local_approval_decision_name(decision: LocalApprovalDecision) -> &'static str {
+    match decision {
+        LocalApprovalDecision::Accept => "accept",
+        LocalApprovalDecision::AcceptForSession => "accept_for_session",
+        LocalApprovalDecision::Decline => "decline",
+        LocalApprovalDecision::Cancel => "cancel",
+    }
+}
+
+fn parse_local_approval_decision(value: &str) -> Option<LocalApprovalDecision> {
+    match value {
+        "accept" => Some(LocalApprovalDecision::Accept),
+        "accept_for_session" => Some(LocalApprovalDecision::AcceptForSession),
+        "decline" => Some(LocalApprovalDecision::Decline),
+        "cancel" => Some(LocalApprovalDecision::Cancel),
+        _ => None,
+    }
 }
 
 fn validate_stored_identity(value: &str) -> Result<(), MatrixDurableError> {

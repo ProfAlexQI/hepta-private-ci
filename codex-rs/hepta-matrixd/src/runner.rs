@@ -7,7 +7,13 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use codex_app_server_client::AppServerEvent;
+use codex_app_server_protocol::CommandAction;
+use codex_app_server_protocol::CommandExecutionApprovalDecision;
+use codex_app_server_protocol::RequestId;
+use codex_app_server_protocol::ServerNotification;
+use codex_app_server_protocol::ServerRequest;
 use codex_hepta_agentd::AgentdClient;
+use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_matrix_sdk::MatrixIngress;
 use codex_hepta_matrix_sdk::MatrixSdkClient;
 use codex_hepta_matrix_sdk::MatrixSidecarConfig;
@@ -16,6 +22,8 @@ use codex_hepta_matrix_sdk::OutboxDispatchConfig;
 use codex_hepta_matrix_sdk::run_outbox_sender;
 use codex_hepta_matrix_store::MatrixDurableConfig;
 use codex_hepta_matrix_store::MatrixDurableStore;
+use codex_hepta_matrix_store::PendingApprovalDraft;
+use codex_hepta_matrix_store::PendingApprovalKind;
 use codex_hepta_matrix_store::RoomBindingDraft;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use tokio::task::JoinSet;
@@ -27,6 +35,10 @@ use crate::MatrixAppServerBridge;
 use crate::MatrixBridgeConfig;
 use crate::MatrixRuntime;
 use crate::MatrixdConfig;
+use crate::control::MatrixdConnectionState;
+use crate::control::MatrixdControlIdentity;
+use crate::control::MatrixdControlServer;
+use crate::control::MatrixdControlState;
 
 const MATRIXD_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const INBOX_RECOVERY_LIMIT: usize = 1_024;
@@ -54,14 +66,25 @@ pub async fn run(config: MatrixdConfig) -> Result<(), MatrixdRunError> {
     prepare_matrix_root(&config)?;
     let _process_lock = acquire_process_lock(&config)?;
     let store = MatrixDurableStore::open(&config.layout, MatrixDurableConfig::default()).await?;
+    store
+        .fence_stale_pending_approvals(
+            config.spawn_generation,
+            &config.process_identity.process_incarnation,
+            system_time_ms()?,
+        )
+        .await?;
     bind_rooms(&config, &store).await?;
 
     let workspace_root = AbsolutePathBuf::from_absolute_path(&config.workspace_root)
         .map_err(|error| MatrixdRunError::Invalid(error.to_string()))?;
     let connected = connect_via_agentd(&config).await?;
+    let connections = Arc::new(MatrixdConnectionState::default());
+    connections.set_agentd_connected(true);
+    let transport = connected.transport;
+    let events = connected.events;
     let bridge = MatrixAppServerBridge::new(
         MatrixBridgeConfig::new(config.agent_id.clone(), workspace_root),
-        connected.transport,
+        transport.clone(),
     )?;
     let runtime = Arc::new(MatrixRuntime::new(store.clone(), bridge));
     let sidecar_config = MatrixSidecarConfig {
@@ -90,18 +113,47 @@ pub async fn run(config: MatrixdConfig) -> Result<(), MatrixdRunError> {
         .await?;
 
     let cancel = CancellationToken::new();
+    let control_state = Arc::new(MatrixdControlState::new(
+        MatrixdControlIdentity {
+            agent_id: config.agent_id.clone(),
+            release_id: config.process_identity.release_id.clone(),
+            fence: codex_hepta_matrix_protocol::MatrixdFence {
+                binding_revision: config.binding.revision,
+                binding_digest: config.process_identity.binding_digest.clone(),
+                attached_agent_generation: config.spawn_generation,
+                process_incarnation: config.process_identity.process_incarnation.clone(),
+                plane_epoch: config.process_identity.plane_epoch,
+            },
+            expected_mxid: config.binding.expected_mxid.clone(),
+            active_rooms: config.binding.allowed_rooms.clone(),
+        },
+        store.clone(),
+        Arc::new(transport.clone()),
+        Arc::clone(&connections),
+    )?);
+    let control_server = MatrixdControlServer::bind(
+        config.layout.matrixd_control_socket().to_path_buf(),
+        control_state,
+        cancel.clone(),
+    )
+    .await?;
     let mut tasks = JoinSet::new();
+
+    tasks.spawn(async move { control_server.run().await.map_err(MatrixdRunError::Control) });
 
     {
         let sidecar = Arc::clone(&sidecar);
         let store = store.clone();
         let ingress = ingress.clone();
         let cancel = cancel.clone();
+        let connections = Arc::clone(&connections);
         tasks.spawn(async move {
-            match sidecar
+            connections.set_matrix_sync_connected(true);
+            let result = sidecar
                 .sync_durable_until_cancelled(&store, &ingress, &cancel)
-                .await?
-            {
+                .await;
+            connections.set_matrix_sync_connected(false);
+            match result? {
                 MatrixSyncExit::Cancelled if cancel.is_cancelled() => Ok(()),
                 MatrixSyncExit::Cancelled => Err(MatrixdRunError::TaskExited("matrix sync")),
                 MatrixSyncExit::IngressFenced => Err(MatrixdRunError::IngressFenced),
@@ -115,8 +167,27 @@ pub async fn run(config: MatrixdConfig) -> Result<(), MatrixdRunError> {
     }
     {
         let runtime = Arc::clone(&runtime);
+        let store = store.clone();
+        let transport = transport.clone();
         let cancel = cancel.clone();
-        tasks.spawn(async move { run_event_projector(runtime, connected.events, cancel).await });
+        let connections = Arc::clone(&connections);
+        let attached_agent_generation = config.spawn_generation;
+        let process_incarnation = config.process_identity.process_incarnation.clone();
+        tasks.spawn(async move {
+            run_event_projector(
+                EventProjectorContext {
+                    runtime,
+                    store,
+                    transport,
+                    attached_agent_generation,
+                    process_incarnation,
+                    connections,
+                },
+                events,
+                cancel,
+            )
+            .await
+        });
     }
     {
         let sidecar = Arc::clone(&sidecar);
@@ -142,8 +213,9 @@ pub async fn run(config: MatrixdConfig) -> Result<(), MatrixdRunError> {
         let socket = config.layout.agentd_control_socket().to_path_buf();
         let agent_id = config.agent_id.clone();
         let spawn_generation = config.spawn_generation;
+        let connections = Arc::clone(&connections);
         tasks.spawn(async move {
-            run_agentd_health_monitor(socket, agent_id, spawn_generation, cancel).await
+            run_agentd_health_monitor(socket, agent_id, spawn_generation, connections, cancel).await
         });
     }
 
@@ -157,6 +229,7 @@ pub async fn run(config: MatrixdConfig) -> Result<(), MatrixdRunError> {
         },
     };
 
+    connections.set_draining();
     cancel.cancel();
     let _ = tokio::time::timeout(SHUTDOWN_GRACE, async {
         while tasks.join_next().await.is_some() {}
@@ -283,24 +356,84 @@ where
     }
 }
 
-async fn run_event_projector<B>(
+struct EventProjectorContext<B> {
     runtime: Arc<MatrixRuntime<B>>,
+    store: MatrixDurableStore,
+    transport: crate::RemoteMatrixAppServerTransport,
+    attached_agent_generation: u64,
+    process_incarnation: String,
+    connections: Arc<MatrixdConnectionState>,
+}
+
+async fn run_event_projector<B>(
+    context: EventProjectorContext<B>,
     mut events: crate::RemoteMatrixAppServerEvents,
     cancel: CancellationToken,
 ) -> Result<(), MatrixdRunError>
 where
     B: crate::MatrixRuntimeBridge + 'static,
 {
+    let EventProjectorContext {
+        runtime,
+        store,
+        transport,
+        attached_agent_generation,
+        process_incarnation,
+        connections,
+    } = context;
     loop {
         let event = tokio::select! {
             biased;
             _ = cancel.cancelled() => return Ok(()),
             event = events.next_event() => event.ok_or(MatrixdRunError::AppServerDisconnected)?,
         };
-        // ServerRequest (including approvals) is intentionally ignored by the
-        // projector.  Only the owner-local control plane may resolve it.
-        if matches!(event, AppServerEvent::ServerRequest(_)) {
-            continue;
+        match &event {
+            AppServerEvent::ServerRequest(request) => {
+                project_server_request(
+                    &store,
+                    &transport,
+                    request,
+                    attached_agent_generation,
+                    &process_incarnation,
+                    system_time_ms()?,
+                )
+                .await?;
+                continue;
+            }
+            AppServerEvent::ServerNotification(notification) => match notification.as_ref() {
+                ServerNotification::TurnStarted(params) => {
+                    store
+                        .record_turn_started(&params.thread_id, &params.turn.id, system_time_ms()?)
+                        .await?;
+                }
+                ServerNotification::TurnCompleted(params) => {
+                    store
+                        .record_turn_completed(
+                            &params.thread_id,
+                            &params.turn.id,
+                            system_time_ms()?,
+                        )
+                        .await?;
+                }
+                ServerNotification::ServerRequestResolved(params) => {
+                    let request_id_json = serde_json::to_string(&params.request_id)?;
+                    store
+                        .reconcile_server_request_resolved(
+                            &request_id_json,
+                            &params.thread_id,
+                            attached_agent_generation,
+                            &process_incarnation,
+                            system_time_ms()?,
+                        )
+                        .await?;
+                }
+                _ => {}
+            },
+            AppServerEvent::Disconnected { .. } => {
+                connections.set_agentd_connected(false);
+                return Err(MatrixdRunError::AppServerDisconnected);
+            }
+            AppServerEvent::Lagged { .. } => {}
         }
         runtime
             .project_app_server_event(&event, system_time_ms()?)
@@ -308,10 +441,345 @@ where
     }
 }
 
+async fn project_server_request(
+    store: &MatrixDurableStore,
+    transport: &crate::RemoteMatrixAppServerTransport,
+    request: &ServerRequest,
+    attached_agent_generation: u64,
+    process_incarnation: &str,
+    created_at_ms: u64,
+) -> Result<(), MatrixdRunError> {
+    let (draft, supported) = match request {
+        ServerRequest::CommandExecutionRequestApproval { request_id, params } => {
+            let (summary, actionable) = command_approval_summary(params);
+            let decisions = if actionable {
+                supported_command_decisions(params.available_decisions.as_deref())
+            } else {
+                decline_only_decisions()
+            };
+            if decisions.is_empty() {
+                (None, false)
+            } else {
+                let request_id_json = serde_json::to_string(request_id)?;
+                let approval_key = stable_approval_key(
+                    "command_execution",
+                    request_id,
+                    &params.thread_id,
+                    &params.turn_id,
+                    &params.item_id,
+                    params.approval_id.as_deref(),
+                )?;
+                (
+                    Some(PendingApprovalDraft {
+                        approval: codex_hepta_matrix_protocol::PendingApproval {
+                            approval_key,
+                            kind: "command_execution".to_string(),
+                            thread_id: params.thread_id.clone(),
+                            turn_id: params.turn_id.clone(),
+                            summary,
+                            created_at_ms,
+                            allowed_decisions: decisions,
+                        },
+                        request_id_json,
+                        request_kind: PendingApprovalKind::CommandExecution,
+                        attached_agent_generation,
+                        process_incarnation: process_incarnation.to_string(),
+                    }),
+                    true,
+                )
+            }
+        }
+        ServerRequest::FileChangeRequestApproval { request_id, params } => {
+            let (summary, actionable) = file_change_approval_summary(params);
+            let request_id_json = serde_json::to_string(request_id)?;
+            let approval_key = stable_approval_key(
+                "file_change",
+                request_id,
+                &params.thread_id,
+                &params.turn_id,
+                &params.item_id,
+                None,
+            )?;
+            (
+                Some(PendingApprovalDraft {
+                    approval: codex_hepta_matrix_protocol::PendingApproval {
+                        approval_key,
+                        kind: "file_change".to_string(),
+                        thread_id: params.thread_id.clone(),
+                        turn_id: params.turn_id.clone(),
+                        summary,
+                        created_at_ms,
+                        allowed_decisions: if actionable {
+                            all_local_approval_decisions()
+                        } else {
+                            decline_only_decisions()
+                        },
+                    },
+                    request_id_json,
+                    request_kind: PendingApprovalKind::FileChange,
+                    attached_agent_generation,
+                    process_incarnation: process_incarnation.to_string(),
+                }),
+                true,
+            )
+        }
+        _ => (None, false),
+    };
+
+    if let Some(draft) = draft {
+        store.store_pending_approval(&draft).await?;
+        return Ok(());
+    }
+    if !supported {
+        transport
+            .reject_server_request(
+                request.id().clone(),
+                -32_601,
+                "server request is unsupported by owner-local Matrix control".to_string(),
+            )
+            .await?;
+    }
+    Ok(())
+}
+
+fn all_local_approval_decisions() -> Vec<codex_hepta_matrix_protocol::LocalApprovalDecision> {
+    use codex_hepta_matrix_protocol::LocalApprovalDecision;
+
+    vec![
+        LocalApprovalDecision::Accept,
+        LocalApprovalDecision::AcceptForSession,
+        LocalApprovalDecision::Decline,
+        LocalApprovalDecision::Cancel,
+    ]
+}
+
+fn decline_only_decisions() -> Vec<codex_hepta_matrix_protocol::LocalApprovalDecision> {
+    use codex_hepta_matrix_protocol::LocalApprovalDecision;
+
+    vec![
+        LocalApprovalDecision::Decline,
+        LocalApprovalDecision::Cancel,
+    ]
+}
+
+fn command_approval_summary(
+    params: &codex_app_server_protocol::CommandExecutionRequestApprovalParams,
+) -> (String, bool) {
+    let action = params
+        .command_actions
+        .as_deref()
+        .and_then(typed_action_preview)
+        .or_else(|| {
+            params
+                .command
+                .as_deref()
+                .map(|command| sanitize_summary_component(command, 480))
+                .filter(|command| !command.is_empty())
+        });
+    let mut components = Vec::new();
+    if let Some(action) = action.as_deref() {
+        components.push(format!("action: {action}"));
+    } else {
+        components.push("action: unavailable".to_string());
+    }
+    if let Some(cwd) = params.cwd.as_ref() {
+        let cwd = sanitize_summary_component(cwd.as_str(), 256);
+        if !cwd.is_empty() {
+            components.push(format!("cwd: {cwd}"));
+        }
+    }
+    if let Some(reason) = params.reason.as_deref() {
+        let reason = sanitize_summary_component(reason, 256);
+        if !reason.is_empty() {
+            components.push(format!("reason: {reason}"));
+        }
+    }
+    let mut permissions = Vec::new();
+    if params.network_approval_context.is_some()
+        || params.proposed_network_policy_amendments.is_some()
+    {
+        permissions.push("network");
+    }
+    if let Some(additional) = params.additional_permissions.as_ref() {
+        if additional.network.is_some() {
+            permissions.push("additional-network");
+        }
+        if additional.file_system.is_some() {
+            permissions.push("additional-filesystem");
+        }
+    }
+    if params.proposed_execpolicy_amendment.is_some() {
+        permissions.push("exec-policy-amendment");
+    }
+    if !permissions.is_empty() {
+        permissions.sort_unstable();
+        permissions.dedup();
+        components.push(format!("permissions: {}", permissions.join(",")));
+    }
+    let summary = sanitize_summary_component(
+        &format!("Command approval requested; {}", components.join("; ")),
+        codex_hepta_matrix_protocol::MAX_PENDING_APPROVAL_SUMMARY_BYTES,
+    );
+    (summary, action.is_some())
+}
+
+fn file_change_approval_summary(
+    params: &codex_app_server_protocol::FileChangeRequestApprovalParams,
+) -> (String, bool) {
+    let grant_root = params
+        .grant_root
+        .as_ref()
+        .map(|path| sanitize_summary_component(&path.to_string_lossy(), 512))
+        .filter(|path| !path.is_empty());
+    let reason = params
+        .reason
+        .as_deref()
+        .map(|reason| sanitize_summary_component(reason, 320))
+        .filter(|reason| !reason.is_empty());
+    let mut components = Vec::new();
+    if let Some(root) = grant_root.as_deref() {
+        components.push(format!("root: {root}"));
+    }
+    if let Some(reason) = reason.as_deref() {
+        components.push(format!("reason: {reason}"));
+    }
+    if components.is_empty() {
+        components.push("scope: unavailable".to_string());
+    }
+    let summary = sanitize_summary_component(
+        &format!("File change approval requested; {}", components.join("; ")),
+        codex_hepta_matrix_protocol::MAX_PENDING_APPROVAL_SUMMARY_BYTES,
+    );
+    (summary, grant_root.is_some())
+}
+
+fn typed_action_preview(actions: &[CommandAction]) -> Option<String> {
+    let previews = actions
+        .iter()
+        .take(3)
+        .filter_map(|action| match action {
+            CommandAction::Read { name, path, .. } => Some(format!(
+                "read {} at {}",
+                sanitize_summary_component(name, 96),
+                sanitize_summary_component(path.as_str(), 256)
+            )),
+            CommandAction::ListFiles { path, .. } => Some(format!(
+                "list files{}",
+                path.as_deref()
+                    .map(|path| format!(" at {}", sanitize_summary_component(path, 256)))
+                    .unwrap_or_default()
+            )),
+            CommandAction::Search { query, path, .. } => Some(format!(
+                "search{}{}",
+                query
+                    .as_deref()
+                    .map(|query| format!(" for {}", sanitize_summary_component(query, 160)))
+                    .unwrap_or_default(),
+                path.as_deref()
+                    .map(|path| format!(" at {}", sanitize_summary_component(path, 256)))
+                    .unwrap_or_default()
+            )),
+            CommandAction::Unknown { command } => {
+                let command = sanitize_summary_component(command, 360);
+                (!command.is_empty()).then_some(command)
+            }
+        })
+        .filter(|preview| !preview.trim().is_empty())
+        .collect::<Vec<_>>();
+    (!previews.is_empty()).then(|| previews.join(" | "))
+}
+
+fn sanitize_summary_component(value: &str, max_bytes: usize) -> String {
+    let mut output = String::new();
+    let mut pending_space = false;
+    for character in value.chars() {
+        let forbidden = character.is_control()
+            || matches!(
+                character,
+                '\u{061c}'
+                    | '\u{200e}'..='\u{200f}'
+                    | '\u{202a}'..='\u{202e}'
+                    | '\u{2066}'..='\u{2069}'
+            );
+        if forbidden || character.is_whitespace() {
+            pending_space = !output.is_empty();
+            continue;
+        }
+        let extra = usize::from(pending_space) + character.len_utf8();
+        if output.len().saturating_add(extra) > max_bytes {
+            break;
+        }
+        if pending_space {
+            output.push(' ');
+            pending_space = false;
+        }
+        output.push(character);
+    }
+    output
+}
+
+fn supported_command_decisions(
+    available: Option<&[CommandExecutionApprovalDecision]>,
+) -> Vec<codex_hepta_matrix_protocol::LocalApprovalDecision> {
+    use codex_hepta_matrix_protocol::LocalApprovalDecision;
+
+    let Some(available) = available else {
+        return all_local_approval_decisions();
+    };
+    let supports = |decision: LocalApprovalDecision| {
+        available.iter().any(|candidate| {
+            matches!(
+                (candidate, decision),
+                (
+                    CommandExecutionApprovalDecision::Accept,
+                    LocalApprovalDecision::Accept
+                ) | (
+                    CommandExecutionApprovalDecision::AcceptForSession,
+                    LocalApprovalDecision::AcceptForSession
+                ) | (
+                    CommandExecutionApprovalDecision::Decline,
+                    LocalApprovalDecision::Decline
+                ) | (
+                    CommandExecutionApprovalDecision::Cancel,
+                    LocalApprovalDecision::Cancel
+                )
+            )
+        })
+    };
+    all_local_approval_decisions()
+        .into_iter()
+        .filter(|decision| supports(*decision))
+        .collect()
+}
+
+fn stable_approval_key(
+    kind: &str,
+    request_id: &RequestId,
+    thread_id: &str,
+    turn_id: &str,
+    item_id: &str,
+    approval_id: Option<&str>,
+) -> Result<String, MatrixdRunError> {
+    let framed = serde_json::to_vec(&(
+        "hepta.matrix.pending-approval.v1",
+        kind,
+        request_id,
+        thread_id,
+        turn_id,
+        item_id,
+        approval_id,
+    ))?;
+    Ok(format!(
+        "approval-{}",
+        Sha256Digest::for_bytes(&framed).as_str()
+    ))
+}
+
 async fn run_agentd_health_monitor(
     socket: std::path::PathBuf,
     agent_id: codex_hepta_contracts::AgentId,
     spawn_generation: u64,
+    connections: Arc<MatrixdConnectionState>,
     cancel: CancellationToken,
 ) -> Result<(), MatrixdRunError> {
     let client = AgentdClient::new(socket, agent_id, spawn_generation)?;
@@ -322,10 +790,21 @@ async fn run_agentd_health_monitor(
             biased;
             _ = cancel.cancelled() => return Ok(()),
             _ = interval.tick() => {
-                let health = client.health().await?;
+                let health = match client.health().await {
+                    Ok(health) => health,
+                    Err(error) => {
+                        connections.set_agentd_connected(false);
+                        return Err(error.into());
+                    }
+                };
                 if !health.ready || health.fenced {
+                    connections.set_agentd_connected(false);
+                    if health.fenced {
+                        connections.set_fenced();
+                    }
                     return Err(MatrixdRunError::AgentdFenced);
                 }
+                connections.set_agentd_connected(true);
             }
         }
     }
@@ -378,6 +857,10 @@ pub enum MatrixdRunError {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
+    Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    Control(#[from] crate::control::MatrixdControlError),
+    #[error(transparent)]
     Agentd(#[from] codex_hepta_agentd::AgentdError),
     #[error(transparent)]
     Bridge(#[from] crate::MatrixBridgeError),
@@ -396,7 +879,27 @@ pub enum MatrixdRunError {
 #[cfg(test)]
 mod tests {
     use super::MATRIX_PLANE_GENERATION;
+    use super::command_approval_summary;
+    use super::file_change_approval_summary;
     use super::matrix_plane_generation;
+    use codex_app_server_protocol::CommandExecutionRequestApprovalParams;
+    use codex_app_server_protocol::FileChangeRequestApprovalParams;
+    use codex_hepta_matrix_protocol::MAX_PENDING_APPROVAL_SUMMARY_BYTES;
+
+    fn assert_safe_bounded_summary(summary: &str) {
+        assert!(!summary.is_empty());
+        assert!(summary.len() <= MAX_PENDING_APPROVAL_SUMMARY_BYTES);
+        assert!(!summary.chars().any(|character| {
+            character.is_control()
+                || matches!(
+                    character,
+                    '\u{061c}'
+                        | '\u{200e}'..='\u{200f}'
+                        | '\u{202a}'..='\u{202e}'
+                        | '\u{2066}'..='\u{2069}'
+                )
+        }));
+    }
 
     #[test]
     fn product_runner_has_one_durable_sync_authority() {
@@ -414,5 +917,78 @@ mod tests {
         assert_eq!(MATRIX_PLANE_GENERATION, 1);
         assert_eq!(matrix_plane_generation(1), matrix_plane_generation(2));
         assert_eq!(matrix_plane_generation(u64::MAX), MATRIX_PLANE_GENERATION);
+    }
+
+    #[test]
+    fn command_approval_summary_is_typed_safe_bounded_and_does_not_echo_hidden_fields() {
+        let long_reason = format!("why\u{202e}\n{}", "🧠".repeat(600));
+        let params: CommandExecutionRequestApprovalParams =
+            serde_json::from_value(serde_json::json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "itemId": "item-1",
+                "startedAtMs": 1,
+                "reason": long_reason,
+                "networkApprovalContext": {
+                    "host": "AUTH_TOKEN_SENTINEL.example",
+                    "protocol": "https"
+                },
+                "command": "RAW_AUTH_TOKEN_SENTINEL",
+                "cwd": "/tmp/work\u{2066}space",
+                "commandActions": [{
+                    "type": "read",
+                    "command": "TYPED_ACTION_RAW_TOKEN_SENTINEL",
+                    "name": "config\u{202e}\nfile",
+                    "path": "/tmp/input"
+                }]
+            }))
+            .expect("valid command approval fixture");
+
+        let (summary, actionable) = command_approval_summary(&params);
+        assert!(actionable);
+        assert_safe_bounded_summary(&summary);
+        assert!(summary.contains("read config file at /tmp/input"));
+        assert!(summary.contains("cwd: /tmp/work space"));
+        assert!(summary.contains("permissions: network"));
+        assert!(!summary.contains("AUTH_TOKEN_SENTINEL.example"));
+        assert!(!summary.contains("RAW_AUTH_TOKEN_SENTINEL"));
+        assert!(!summary.contains("TYPED_ACTION_RAW_TOKEN_SENTINEL"));
+    }
+
+    #[test]
+    fn file_approval_summary_bounds_multibyte_and_strips_control_and_bidi() {
+        let params: FileChangeRequestApprovalParams = serde_json::from_value(serde_json::json!({
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "itemId": "item-1",
+            "startedAtMs": 1,
+            "reason": format!("need\nwrite\u{202d}{}", "界".repeat(700)),
+            "grantRoot": "/tmp/project\u{2069}\nroot"
+        }))
+        .expect("valid file approval fixture");
+
+        let (summary, actionable) = file_change_approval_summary(&params);
+        assert!(actionable);
+        assert_safe_bounded_summary(&summary);
+        assert!(summary.contains("root: /tmp/project root"));
+        assert!(summary.contains("reason: need write"));
+    }
+
+    #[test]
+    fn file_approval_reason_without_a_concrete_scope_is_not_actionable() {
+        let params: FileChangeRequestApprovalParams = serde_json::from_value(serde_json::json!({
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "itemId": "item-1",
+            "startedAtMs": 1,
+            "reason": "please allow this change",
+            "grantRoot": null
+        }))
+        .expect("valid file approval fixture");
+
+        let (summary, actionable) = file_change_approval_summary(&params);
+        assert!(!actionable);
+        assert_safe_bounded_summary(&summary);
+        assert!(summary.contains("reason: please allow this change"));
     }
 }

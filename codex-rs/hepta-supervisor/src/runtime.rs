@@ -3,6 +3,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::ReleaseId;
 
@@ -53,6 +54,9 @@ pub(crate) struct MatrixRuntime<P> {
     pub attached_agent_generation: u64,
     pub release_id: ReleaseId,
     pub binding_revision: u64,
+    pub binding_digest: Sha256Digest,
+    pub process_incarnation: String,
+    pub plane_epoch: u64,
     pub phase: MatrixRuntimePhase,
     pub healthy: bool,
     pub fenced: bool,
