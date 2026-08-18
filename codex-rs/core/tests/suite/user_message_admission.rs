@@ -8,10 +8,10 @@ use codex_protocol::items::TurnItem;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::AskForApproval;
-use codex_protocol::protocol::CodexErrorInfo;
 use codex_protocol::protocol::EventMsg;
-use codex_protocol::protocol::Op;
 use codex_protocol::protocol::ThreadHistoryMode;
+use codex_protocol::turn_input::TurnInput as SubmittedTurnInput;
+use codex_protocol::turn_input::TurnInputRequest;
 use codex_protocol::user_input::UserInput;
 use core_test_support::responses;
 use core_test_support::responses::ev_completed;
@@ -27,27 +27,25 @@ use tokio::sync::Barrier;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 
-fn user_input(text: &str) -> Op {
-    Op::UserInput {
-        items: vec![UserInput::Text {
+fn user_input(text: &str) -> TurnInputRequest {
+    user_input_with_client_id(text, None)
+}
+
+fn user_input_with_client_id(text: &str, client_id: Option<&str>) -> TurnInputRequest {
+    TurnInputRequest::new(SubmittedTurnInput::UserInput {
+        content: vec![UserInput::Text {
             text: text.to_string(),
             text_elements: Vec::new(),
         }],
-        final_output_json_schema: None,
-        responsesapi_client_metadata: None,
-        additional_context: Default::default(),
-        thread_settings: Default::default(),
-    }
+        client_id: client_id.map(str::to_string),
+    })
 }
 
-fn empty_user_input() -> Op {
-    Op::UserInput {
-        items: Vec::new(),
-        final_output_json_schema: None,
-        responsesapi_client_metadata: None,
-        additional_context: Default::default(),
-        thread_settings: Default::default(),
-    }
+fn empty_user_input(client_id: Option<&str>) -> TurnInputRequest {
+    TurnInputRequest::new(SubmittedTurnInput::UserInput {
+        content: Vec::new(),
+        client_id: client_id.map(str::to_string),
+    })
 }
 
 #[tokio::test]
@@ -66,11 +64,7 @@ async fn user_message_admission_starts_turn_for_empty_input() {
 
     let admission = test
         .codex
-        .submit_user_input_and_wait_for_admission(
-            empty_user_input(),
-            /*trace*/ None,
-            Some("clock-wake".to_string()),
-        )
+        .submit_user_input_and_wait_for_admission(empty_user_input(Some("clock-wake")))
         .await
         .expect("empty user input should start a turn");
     assert!(matches!(admission, UserMessageAdmission::Started { .. }));
@@ -117,11 +111,9 @@ async fn persisted_user_message_admission_rejects_empty_input() {
     let error = timeout(
         Duration::from_secs(5),
         test.codex
-            .submit_user_input_and_wait_for_persisted_admission(
-                empty_user_input(),
-                /*trace*/ None,
-                Some("empty-client-message".to_string()),
-            ),
+            .submit_user_input_and_wait_for_persisted_admission(empty_user_input(Some(
+                "empty-client-message",
+            ))),
     )
     .await
     .expect("empty persisted input should be rejected promptly")
@@ -160,7 +152,7 @@ async fn default_turn_start_persists_developer_and_user_input_before_model_reque
         .await
         .expect("inject developer instructions");
     test.codex
-        .submit(user_input("turn-start user input"))
+        .start_or_steer_turn(user_input("turn-start user input"))
         .await
         .expect("submit user input");
 
@@ -227,11 +219,10 @@ async fn user_message_admission_reports_started_and_steered_for_concurrent_submi
         async move {
             barrier.wait().await;
             codex
-                .submit_user_input_and_wait_for_persisted_admission(
-                    user_input("first message"),
-                    /*trace*/ None,
-                    Some("client-message-1".to_string()),
-                )
+                .submit_user_input_and_wait_for_persisted_admission(user_input_with_client_id(
+                    "first message",
+                    Some("client-message-1"),
+                ))
                 .await
         }
     });
@@ -241,11 +232,10 @@ async fn user_message_admission_reports_started_and_steered_for_concurrent_submi
         async move {
             barrier.wait().await;
             codex
-                .submit_user_input_and_wait_for_persisted_admission(
-                    user_input("second message"),
-                    /*trace*/ None,
-                    Some("client-message-2".to_string()),
-                )
+                .submit_user_input_and_wait_for_persisted_admission(user_input_with_client_id(
+                    "second message",
+                    Some("client-message-2"),
+                ))
                 .await
         }
     });
@@ -356,9 +346,9 @@ async fn user_message_admission_reports_started_and_steered_for_concurrent_submi
     server.shutdown().await;
 }
 
-/// Handler-side settings rejection must acknowledge failure once and leave the session usable.
+/// Request-side settings rejection must fail promptly and leave the session usable.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn user_message_admission_reports_invalid_settings_and_recovers() {
+async fn user_message_admission_rejects_invalid_settings_and_recovers() {
     let (server, _completions) = start_streaming_sse_server(vec![vec![StreamingSseChunk {
         gate: None,
         body: responses::sse(vec![ev_response_created("resp-1"), ev_completed("resp-1")]),
@@ -373,22 +363,13 @@ async fn user_message_admission_reports_invalid_settings_and_recovers() {
         .await
         .expect("build approval-constrained user-message admission session");
     let codex = &test.codex;
-    let mut invalid_input = user_input("invalid approval policy");
-    let Op::UserInput {
-        thread_settings, ..
-    } = &mut invalid_input
-    else {
-        unreachable!("test helper always produces a user-input operation");
-    };
-    thread_settings.approval_policy = Some(AskForApproval::Never);
+    let mut invalid_input =
+        user_input_with_client_id("invalid approval policy", Some("invalid-client-message"));
+    invalid_input.thread_settings.approval_policy = Some(AskForApproval::Never);
 
     let error = timeout(
         Duration::from_secs(5),
-        codex.submit_user_input_and_wait_for_admission(
-            invalid_input,
-            /*trace*/ None,
-            Some("invalid-client-message".to_string()),
-        ),
+        codex.submit_user_input_and_wait_for_admission(invalid_input),
     )
     .await
     .expect("handler-side rejection should resolve promptly")
@@ -398,34 +379,12 @@ async fn user_message_admission_reports_invalid_settings_and_recovers() {
         CodexErrorDetails::InvalidRequest(_)
     ));
 
-    let error_event = loop {
-        let event = timeout(Duration::from_secs(5), codex.next_event())
-            .await
-            .expect("invalid settings should emit an error event promptly")
-            .expect("event stream should remain available");
-        match event.msg {
-            EventMsg::Error(error) => break error,
-            EventMsg::TurnComplete(_) => {
-                panic!("invalid settings completed a turn without emitting an error")
-            }
-            EventMsg::StreamError(error) => {
-                panic!("invalid settings unexpectedly started a model stream: {error:?}")
-            }
-            _ => {}
-        }
-    };
-    assert_eq!(
-        error_event.codex_error_info,
-        Some(CodexErrorInfo::BadRequest)
-    );
-
     let recovered = timeout(
         Duration::from_secs(5),
-        codex.submit_user_input_and_wait_for_admission(
-            user_input("valid message after rejected settings"),
-            /*trace*/ None,
-            Some("valid-client-message".to_string()),
-        ),
+        codex.submit_user_input_and_wait_for_admission(user_input_with_client_id(
+            "valid message after rejected settings",
+            Some("valid-client-message"),
+        )),
     )
     .await
     .expect("session should accept a valid message after rejecting invalid settings")
@@ -448,35 +407,6 @@ async fn user_message_admission_reports_invalid_settings_and_recovers() {
     server.shutdown().await;
 }
 
-/// Non-user operations must fail validation immediately instead of waiting for a user-message acknowledgement.
-#[tokio::test]
-async fn user_message_admission_rejects_non_user_operations_without_waiting() {
-    let (server, _completions) = start_streaming_sse_server(Vec::new()).await;
-    let test = test_codex()
-        .with_model("gpt-5.4")
-        .build_with_streaming_server(&server)
-        .await
-        .expect("build user-message admission session");
-    let codex = &test.codex;
-
-    let error = timeout(
-        Duration::from_secs(5),
-        codex.submit_user_input_and_wait_for_admission(
-            Op::Interrupt,
-            /*trace*/ None,
-            Some("client-message-1".to_string()),
-        ),
-    )
-    .await
-    .expect("non-user operation should be rejected promptly")
-    .expect_err("non-user operation should not use message admission");
-    assert!(matches!(
-        error.details(),
-        CodexErrorDetails::InvalidRequest(_)
-    ));
-    server.shutdown().await;
-}
-
 /// A terminated session must reject admission immediately instead of leaving a retained waiter unresolved.
 #[tokio::test]
 async fn user_message_admission_fails_promptly_after_session_shutdown() {
@@ -494,11 +424,10 @@ async fn user_message_admission_fails_promptly_after_session_shutdown() {
 
     let error = timeout(
         Duration::from_secs(5),
-        codex.submit_user_input_and_wait_for_admission(
-            user_input("after shutdown"),
-            /*trace*/ None,
-            Some("client-message-1".to_string()),
-        ),
+        codex.submit_user_input_and_wait_for_admission(user_input_with_client_id(
+            "after shutdown",
+            Some("client-message-1"),
+        )),
     )
     .await
     .expect("closed session should reject admission promptly")

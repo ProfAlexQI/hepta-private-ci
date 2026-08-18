@@ -62,6 +62,10 @@ impl AdmittedUserMessage {
         admission
     }
 
+    pub(crate) fn admission(&self) -> &UserMessageAdmission {
+        &self.admission
+    }
+
     pub(crate) fn into_parts(self) -> (UserMessageAdmission, Arc<TurnContext>) {
         (self.admission, self.turn_context)
     }
@@ -178,6 +182,24 @@ impl PendingUserMessageAdmissions {
         }
     }
 
+    /// Completes one registered submission with the exact context that Core
+    /// installed for a newly started turn.
+    pub(crate) fn complete_started(&self, submission_id: &str, turn_context: Arc<TurnContext>) {
+        self.complete(
+            submission_id,
+            Ok(AdmittedUserMessage::started(turn_context)),
+        );
+    }
+
+    /// Completes one registered submission with the exact active context that
+    /// accepted steered input.
+    pub(crate) fn complete_steered(&self, submission_id: &str, turn_context: Arc<TurnContext>) {
+        self.complete(
+            submission_id,
+            Ok(AdmittedUserMessage::steered(turn_context)),
+        );
+    }
+
     pub(crate) fn contains_client_id(&self, client_id: &str) -> bool {
         self.pending
             .lock()
@@ -187,32 +209,6 @@ impl PendingUserMessageAdmissions {
                 !matches!(&entry.state, PendingUserMessageAdmissionState::Immediate)
                     && entry.client_id.as_deref() == Some(client_id)
             })
-    }
-
-    pub(crate) fn associate_steered_by_client_id(
-        &self,
-        client_id: &str,
-        turn_context: Arc<TurnContext>,
-    ) {
-        let submission_id = self
-            .pending
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .iter()
-            .find_map(|(submission_id, entry)| {
-                (matches!(
-                    &entry.state,
-                    PendingUserMessageAdmissionState::WaitingForAdmission
-                        | PendingUserMessageAdmissionState::Persisted
-                ) && entry.client_id.as_deref() == Some(client_id))
-                .then(|| submission_id.clone())
-            });
-        if let Some(submission_id) = submission_id {
-            self.complete(
-                &submission_id,
-                Ok(AdmittedUserMessage::steered(turn_context)),
-            );
-        }
     }
 
     pub(crate) fn complete_persistence(

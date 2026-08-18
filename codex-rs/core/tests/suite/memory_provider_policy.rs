@@ -6,10 +6,12 @@ use std::time::Duration;
 
 use anyhow::Result;
 use codex_core::MemoryModelProviderPolicyHandle;
+use codex_core::MemoryTurnInputSubmission;
 use codex_core::ModelClient;
 use codex_core::Prompt;
 use codex_core::ResponseEvent;
-use codex_core::UserMessageAdmission;
+use codex_core::TurnInput;
+use codex_core::TurnInputRequest;
 use codex_core::detached_memory_responses_metadata;
 use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionRegistryBuilder;
@@ -27,7 +29,6 @@ use codex_login::auth::AgentIdentityAuthPolicy;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::EventMsg;
-use codex_protocol::protocol::Op;
 use codex_protocol::user_input::UserInput;
 use core_test_support::responses::ResponseMock;
 use core_test_support::responses::ev_assistant_message;
@@ -216,17 +217,14 @@ fn extensions_with_memory_policy(
     Arc::new(extensions.build())
 }
 
-fn user_input(text: &str) -> Op {
-    Op::UserInput {
-        items: vec![UserInput::Text {
+fn user_input(text: &str) -> TurnInputRequest {
+    TurnInputRequest::new(TurnInput::UserInput {
+        content: vec![UserInput::Text {
             text: text.to_string(),
             text_elements: Vec::new(),
         }],
-        final_output_json_schema: None,
-        responsesapi_client_metadata: None,
-        additional_context: Default::default(),
-        thread_settings: Default::default(),
-    }
+        client_id: Some("memory-parent-message".to_string()),
+    })
 }
 
 fn request_body_contains(request: &wiremock::Request, needle: &str) -> bool {
@@ -235,20 +233,28 @@ fn request_body_contains(request: &wiremock::Request, needle: &str) -> bool {
 
 async fn capture_after_parent_completion(
     test: &TestCodex,
-) -> Result<(UserMessageAdmission, MemoryModelProviderPolicyHandle)> {
-    let captured = test
+) -> Result<(String, MemoryModelProviderPolicyHandle)> {
+    let submission = test
         .codex
-        .submit_user_input_and_capture_memory_policy(
-            user_input("parent turn for detached memory"),
-            /*trace*/ None,
-            Some("memory-parent-message".to_string()),
-        )
+        .start_or_steer_turn_and_capture_memory_policy(user_input(
+            "parent turn for detached memory",
+        ))
         .await?;
+    let (turn_id, provider_policy) = match submission {
+        MemoryTurnInputSubmission::Started {
+            turn_id,
+            provider_policy,
+        } => (turn_id, provider_policy),
+        MemoryTurnInputSubmission::Steered { .. }
+        | MemoryTurnInputSubmission::NotSubmitted { .. } => {
+            anyhow::bail!("memory policy capture did not start a fresh parent turn")
+        }
+    };
     wait_for_event(&test.codex, |event| {
         matches!(event, EventMsg::TurnComplete(_))
     })
     .await;
-    Ok(captured)
+    Ok((turn_id, provider_policy))
 }
 
 async fn stream_detached_memory(
@@ -423,7 +429,7 @@ async fn memory_block_after_parent_completion_reuses_exact_turn_scope() -> Resul
         .build(&server)
         .await?;
 
-    let (admission, policy) = capture_after_parent_completion(&test).await?;
+    let (parent_turn_id, policy) = capture_after_parent_completion(&test).await?;
     assert_eq!(parent_response.requests().len(), 1);
     let error = stream_detached_memory(&test, &policy)
         .await
@@ -441,8 +447,8 @@ async fn memory_block_after_parent_completion_reuses_exact_turn_scope() -> Resul
     assert_eq!(turn.request_kind, ModelProviderRequestKind::Turn);
     assert_eq!(memory.request_kind, ModelProviderRequestKind::Memory);
     assert_eq!(turn.thread_id, memory.thread_id);
-    assert_eq!(turn.turn_id, admission.turn_id());
-    assert_eq!(memory.turn_id, admission.turn_id());
+    assert_eq!(turn.turn_id, parent_turn_id);
+    assert_eq!(memory.turn_id, parent_turn_id);
     assert_eq!(turn.turn_store_id, memory.turn_store_id);
     assert!(Arc::ptr_eq(&turn.scope, &memory.scope));
     assert_eq!(state.terminal_count.load(Ordering::SeqCst), 1);

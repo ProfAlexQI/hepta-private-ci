@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use codex_extension_api::ModelProviderRequestKind;
 use codex_protocol::error::Result as CodexResult;
-use codex_protocol::protocol::Op;
-use codex_protocol::protocol::W3cTraceContext;
+use codex_protocol::turn_input::NotSubmittedReason;
+use codex_protocol::turn_input::TurnInputRequest;
+use codex_protocol::turn_input::TurnInputSubmission;
 
 use crate::CodexThread;
 use crate::UserMessageAdmission;
@@ -20,6 +21,21 @@ use crate::user_message_admission::PendingUserMessageAdmissionState;
 pub struct MemoryModelProviderPolicyHandle {
     session: Arc<Session>,
     parent_turn: Arc<TurnContext>,
+}
+
+/// Start-or-Steer result that only grants detached Memory authority for a
+/// newly started turn.
+pub enum MemoryTurnInputSubmission {
+    Started {
+        turn_id: String,
+        provider_policy: MemoryModelProviderPolicyHandle,
+    },
+    Steered {
+        turn_id: String,
+    },
+    NotSubmitted {
+        reason: NotSubmittedReason,
+    },
 }
 
 impl MemoryModelProviderPolicyHandle {
@@ -53,25 +69,64 @@ impl MemoryModelProviderPolicyHandle {
 }
 
 impl CodexThread {
-    /// Submits user input and atomically retains the exact admitted turn as a
-    /// provider-policy capability for detached Memory work.
-    pub async fn submit_user_input_and_capture_memory_policy(
+    /// Submits ordered turn input and captures an exact provider-policy
+    /// capability only when this submission starts a new turn.
+    ///
+    /// Steered input cannot start Memory again for the active turn, and idle
+    /// queue or recovery operations use separate APIs that never call this
+    /// method.
+    pub async fn start_or_steer_turn_and_capture_memory_policy(
         &self,
-        op: Op,
-        trace: Option<W3cTraceContext>,
-        client_user_message_id: Option<String>,
-    ) -> CodexResult<(UserMessageAdmission, MemoryModelProviderPolicyHandle)> {
-        let admitted = self
-            .submit_user_input_and_wait_for_admission_inner(
-                op,
-                trace,
-                client_user_message_id,
+        request: TurnInputRequest,
+    ) -> CodexResult<MemoryTurnInputSubmission> {
+        let (submission, admitted) = self
+            .submit_turn_input_and_wait_for_exact_admission(
+                request,
                 PendingUserMessageAdmissionState::Immediate,
             )
             .await
             .map_err(codex_protocol::error::CodexErr::from)?;
-        let (admission, parent_turn) = AdmittedUserMessage::into_parts(admitted);
-        let policy = MemoryModelProviderPolicyHandle::new(Arc::clone(&self.session), parent_turn);
-        Ok((admission, policy))
+        match (submission, admitted) {
+            (TurnInputSubmission::Started { turn_id }, Some(admitted)) => {
+                let (admission, parent_turn) = AdmittedUserMessage::into_parts(admitted);
+                if !matches!(
+                    admission,
+                    UserMessageAdmission::Started {
+                        turn_id: ref admitted_turn_id
+                    } if admitted_turn_id == &turn_id
+                ) {
+                    return Err(codex_protocol::error::CodexErr::InvalidRequest(
+                        "started turn did not retain its exact Hepta admission".to_string(),
+                    ));
+                }
+                let provider_policy =
+                    MemoryModelProviderPolicyHandle::new(Arc::clone(&self.session), parent_turn);
+                Ok(MemoryTurnInputSubmission::Started {
+                    turn_id,
+                    provider_policy,
+                })
+            }
+            (TurnInputSubmission::Steered { turn_id }, Some(admitted)) => {
+                let (admission, parent_turn) = AdmittedUserMessage::into_parts(admitted);
+                drop(parent_turn);
+                if !matches!(
+                    admission,
+                    UserMessageAdmission::Steered {
+                        turn_id: ref admitted_turn_id
+                    } if admitted_turn_id == &turn_id
+                ) {
+                    return Err(codex_protocol::error::CodexErr::InvalidRequest(
+                        "steered turn did not retain its exact Hepta admission".to_string(),
+                    ));
+                }
+                Ok(MemoryTurnInputSubmission::Steered { turn_id })
+            }
+            (TurnInputSubmission::NotSubmitted { reason }, None) => {
+                Ok(MemoryTurnInputSubmission::NotSubmitted { reason })
+            }
+            _ => Err(codex_protocol::error::CodexErr::InvalidRequest(
+                "turn-input routing completed without exact Hepta admission".to_string(),
+            )),
+        }
     }
 }

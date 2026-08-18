@@ -96,6 +96,9 @@ pub(crate) trait CoreToolRuntime: ToolExecutor<ToolInvocation> {
         Vec::new()
     }
 
+    /// Observes a tool result only after all PostToolUse hooks accept it.
+    fn on_tool_result_accepted(&self, _invocation: &ToolInvocation, _result: &dyn ToolOutput) {}
+
     fn post_tool_use_payload(
         &self,
         invocation: &ToolInvocation,
@@ -610,9 +613,6 @@ impl ToolRegistry {
             return Err(err);
         }
         attempt_id.mark_host_accepted();
-
-        notify_tool_start(&invocation).await;
-
         if let Some(pre_tool_use_payload) = tool.pre_tool_use_payload(&invocation) {
             match run_pre_tool_use_hooks(
                 &invocation.session,
@@ -660,6 +660,8 @@ impl ToolRegistry {
                 } => {}
             }
         }
+
+        notify_tool_start(&invocation).await;
 
         if let Err(err) = enforce_tool_authorization(&invocation, attempt_id).await {
             dispatch_trace.record_failed(&err);
@@ -840,6 +842,7 @@ impl ToolRegistry {
                         });
                     }
                 }
+                tool.on_tool_result_accepted(&invocation, result.result.as_ref());
                 dispatch_trace.record_completed(
                     &invocation,
                     &result.call_id,

@@ -39,6 +39,7 @@ pub(crate) use lifecycle::begin_active_model_provider_policy;
 pub(crate) use lifecycle::begin_model_provider_policy;
 pub(crate) use lifecycle::has_active_model_provider_policy;
 pub use memory::MemoryModelProviderPolicyHandle;
+pub use memory::MemoryTurnInputSubmission;
 pub(crate) use response_terminal::ProviderResponseTerminal;
 pub(crate) use transport::ProviderRoutingHint;
 pub(crate) use transport::ProviderWireSemantic;

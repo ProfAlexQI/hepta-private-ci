@@ -8,6 +8,9 @@ use crate::storage::rebuild_raw_memories_file_from_memories;
 use crate::storage::sync_rollout_summaries_from_memories;
 use codex_config::types::MemoriesConfig;
 use codex_core::MemoryModelProviderPolicyHandle;
+use codex_core::MemoryTurnInputSubmission;
+use codex_core::TurnInput;
+use codex_core::TurnInputRequest;
 use codex_features::Feature;
 use codex_git_utils::diff_since_latest_init;
 use codex_git_utils::reset_git_repository;
@@ -749,23 +752,27 @@ async fn capture_memory_policy(
         .expect(1)
         .mount(server)
         .await;
-    let (_, provider_policy) = test
+    let submission = test
         .codex
-        .submit_user_input_and_capture_memory_policy(
-            Op::UserInput {
-                items: vec![UserInput::Text {
+        .start_or_steer_turn_and_capture_memory_policy(TurnInputRequest::new(
+            TurnInput::UserInput {
+                content: vec![UserInput::Text {
                     text: MEMORY_POLICY_PARENT_INPUT.to_string(),
                     text_elements: Vec::new(),
                 }],
-                final_output_json_schema: None,
-                responsesapi_client_metadata: None,
-                additional_context: Default::default(),
-                thread_settings: Default::default(),
+                client_id: None,
             },
-            /*trace*/ None,
-            /*client_user_message_id*/ None,
-        )
+        ))
         .await?;
+    let provider_policy = match submission {
+        MemoryTurnInputSubmission::Started {
+            provider_policy, ..
+        } => provider_policy,
+        MemoryTurnInputSubmission::Steered { .. }
+        | MemoryTurnInputSubmission::NotSubmitted { .. } => {
+            anyhow::bail!("memory policy capture did not start a fresh parent turn")
+        }
+    };
     wait_for_event(&test.codex, |event| {
         matches!(event, EventMsg::TurnComplete(_))
     })
