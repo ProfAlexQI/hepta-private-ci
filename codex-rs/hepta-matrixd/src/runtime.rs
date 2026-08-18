@@ -47,6 +47,7 @@ pub trait MatrixRuntimeBridge: Send + Sync {
     fn ensure_room_thread<'a>(
         &'a self,
         room_id: &'a MatrixRoomId,
+        expected_thread_id: Option<&'a str>,
     ) -> MatrixRuntimeFuture<'a, RoomThreadBinding>;
 
     fn submit_matrix_event_on_binding<'a>(
@@ -66,8 +67,14 @@ where
     fn ensure_room_thread<'a>(
         &'a self,
         room_id: &'a MatrixRoomId,
+        expected_thread_id: Option<&'a str>,
     ) -> MatrixRuntimeFuture<'a, RoomThreadBinding> {
-        Box::pin(async move { self.ensure_room_thread(room_id).await })
+        Box::pin(async move {
+            match expected_thread_id {
+                Some(thread_id) => self.reconcile_room_thread(room_id, thread_id).await,
+                None => self.ensure_room_thread(room_id).await,
+            }
+        })
     }
 
     fn submit_matrix_event_on_binding<'a>(
@@ -152,7 +159,8 @@ where
         let inbox = self
             .store
             .inbox(event_id)
-            .await?
+            .await
+            .store_operation("load inbox event")?
             .ok_or(MatrixRuntimeError::MissingInbox)?;
         self.process_inbox_locked(&inbox, now_ms).await
     }
@@ -194,7 +202,8 @@ where
         let Some(dispatch) = self
             .store
             .inbox_dispatch_for_turn(projectable.thread_id(), projectable.turn_id())
-            .await?
+            .await
+            .store_operation("find dispatch for projected turn")?
         else {
             return Ok(MatrixEventProjection::Ignored);
         };
@@ -210,12 +219,17 @@ where
         }
 
         let admission = admission_from_dispatch(&dispatch, projectable.turn_id(), now_ms)?;
-        let admitted = self.store.record_inbox_admitted(&admission).await?;
+        let admitted = self
+            .store
+            .record_inbox_admitted(&admission)
+            .await
+            .store_operation("record projected turn admission")?;
         let completed_at_ms = now_ms.max(admitted.updated_at_ms);
         let completed = self
             .store
             .complete_inbox_dispatch(&admission, completed_at_ms)
-            .await?;
+            .await
+            .store_operation("complete projected inbox dispatch")?;
         Ok(MatrixEventProjection::TurnCompleted {
             dispatch: Box::new(completed),
             disposition,
@@ -227,7 +241,11 @@ where
         limit: usize,
         now_ms: u64,
     ) -> Result<MatrixRuntimeRecovery, MatrixRuntimeError> {
-        let pending = self.store.pending_inbox(limit).await?;
+        let pending = self
+            .store
+            .pending_inbox(limit)
+            .await
+            .store_operation("list pending inbox events")?;
         let mut outcomes = Vec::with_capacity(pending.len());
         for inbox in pending {
             outcomes.push(self.process_inbox_locked(&inbox, now_ms).await?);
@@ -241,7 +259,12 @@ where
         now_ms: u64,
     ) -> Result<MatrixDispatchOutcome, MatrixRuntimeError> {
         if inbox.state == InboxState::Processed {
-            return match self.store.inbox_dispatch(&inbox.event_id).await? {
+            return match self
+                .store
+                .inbox_dispatch(&inbox.event_id)
+                .await
+                .store_operation("load processed inbox dispatch")?
+            {
                 Some(dispatch) if dispatch.state == InboxDispatchState::Completed => {
                     Ok(MatrixDispatchOutcome::Completed { dispatch })
                 }
@@ -257,7 +280,8 @@ where
         let Some(input) = supported_text_input(inbox) else {
             self.store
                 .mark_inbox_processed(&inbox.event_id, now_ms.max(inbox.received_at_ms))
-                .await?;
+                .await
+                .store_operation("mark unsupported inbox event processed")?;
             return Ok(MatrixDispatchOutcome::IgnoredUnsupported {
                 event_id: inbox.event_id.clone(),
             });
@@ -267,7 +291,8 @@ where
         // The durable store binds the deterministic project idempotency key;
         // App Server separately returns its concrete project ID.
         let project_key = room_project_idempotency_key(self.store.owner_agent_id(), &inbox.room_id);
-        self.store
+        let durable_binding = self
+            .store
             .bind_room_thread(&RoomThreadBindingDraft {
                 room_id: inbox.room_id.clone(),
                 binding_revision: inbox.binding_revision,
@@ -276,18 +301,23 @@ where
                 thread_id: None,
                 changed_at_ms: at_ms,
             })
-            .await?;
+            .await
+            .store_operation("bind deterministic room project")?;
         let dispatch = self
             .store
             .begin_inbox_dispatch(&inbox.event_id, at_ms)
-            .await?;
+            .await
+            .store_operation("begin inbox dispatch")?;
         if dispatch.project_id != project_key {
             return Err(MatrixRuntimeError::Protocol(
                 "durable dispatch project drifted from the exact Agent/room identity".to_string(),
             ));
         }
 
-        let binding = self.bridge.ensure_room_thread(&inbox.room_id).await?;
+        let binding = self
+            .bridge
+            .ensure_room_thread(&inbox.room_id, durable_binding.thread_id.as_deref())
+            .await?;
         if binding.project_id.is_empty() || binding.thread_id.is_empty() {
             return Err(MatrixRuntimeError::Protocol(
                 "App Server bridge returned a non-exact room/thread binding".to_string(),
@@ -302,7 +332,8 @@ where
                 thread_id: Some(binding.thread_id.clone()),
                 changed_at_ms: at_ms.max(dispatch.updated_at_ms),
             })
-            .await?;
+            .await
+            .store_operation("bind resolved App Server thread")?;
 
         let admission_mode = if dispatch.state == InboxDispatchState::Begun {
             MatrixAdmissionMode::AllowIfAbsent
@@ -345,7 +376,8 @@ where
                         queued_submission_id,
                         queued_at_ms: transition_at_ms,
                     })
-                    .await?;
+                    .await
+                    .store_operation("record queued Core submission")?;
                 Ok(MatrixDispatchOutcome::Queued { dispatch: queued })
             }
             MatrixSubmissionState::ReconciledTurn { turn_id } => {
@@ -360,7 +392,8 @@ where
                         turn_id,
                         admitted_at_ms: transition_at_ms,
                     })
-                    .await?;
+                    .await
+                    .store_operation("record reconciled Core turn")?;
                 Ok(MatrixDispatchOutcome::Admitted { dispatch: admitted })
             }
         }
@@ -380,26 +413,51 @@ where
             projectable.item_id(),
             projectable.kind_name(),
         );
-        let revision = if projectable.kind() == OutboxKind::TextDelta {
-            self.store.next_outbox_revision(&logical_outbox_id).await?
-        } else {
-            1
+        let kind = projectable.kind();
+        let payload = projectable.payload().as_bytes();
+        let revision = match kind {
+            OutboxKind::Final => match self
+                .store
+                .exact_outbox_revision(
+                    &logical_outbox_id,
+                    &dispatch.room_id,
+                    kind,
+                    payload,
+                    dispatch.binding_revision,
+                    dispatch.generation,
+                )
+                .await
+                .store_operation("look up exact final outbox revision")?
+            {
+                Some(revision) => revision,
+                None => self
+                    .store
+                    .next_outbox_revision(&logical_outbox_id)
+                    .await
+                    .store_operation("allocate final outbox revision")?,
+            },
+            OutboxKind::TextDelta => self
+                .store
+                .next_outbox_revision(&logical_outbox_id)
+                .await
+                .store_operation("allocate text-delta outbox revision")?,
+            _ => 1,
         };
         let txn_id = transaction_id(&logical_outbox_id, revision)?;
-        Ok(self
-            .store
+        self.store
             .enqueue_outbox(&OutboxDraft {
                 logical_outbox_id,
                 revision,
                 txn_id,
                 room_id: dispatch.room_id.clone(),
-                kind: projectable.kind(),
-                payload: projectable.payload().as_bytes().to_vec(),
+                kind,
+                payload: payload.to_vec(),
                 binding_revision: dispatch.binding_revision,
                 generation: dispatch.generation,
                 created_at_ms: now_ms,
             })
-            .await?)
+            .await
+            .store_operation("enqueue projected Matrix outbox message")
     }
 }
 
@@ -537,8 +595,7 @@ impl ProjectableEvent {
 
     fn kind_name(&self) -> &'static str {
         match self {
-            Self::Delta { .. } => "text_delta",
-            Self::Final { .. } => "final",
+            Self::Delta { .. } | Self::Final { .. } => "agent_message",
             Self::Terminal { .. } => "terminal",
         }
     }
@@ -596,8 +653,23 @@ pub enum MatrixRuntimeError {
     Bridge(#[from] MatrixBridgeError),
     #[error(transparent)]
     Store(#[from] MatrixDurableError),
+    #[error("Matrix durable store operation {operation} failed: {source}")]
+    StoreOperation {
+        operation: &'static str,
+        source: MatrixDurableError,
+    },
     #[error(transparent)]
     MatrixProtocol(#[from] MatrixProtocolError),
+}
+
+trait StoreResultExt<T> {
+    fn store_operation(self, operation: &'static str) -> Result<T, MatrixRuntimeError>;
+}
+
+impl<T> StoreResultExt<T> for Result<T, MatrixDurableError> {
+    fn store_operation(self, operation: &'static str) -> Result<T, MatrixRuntimeError> {
+        self.map_err(|source| MatrixRuntimeError::StoreOperation { operation, source })
+    }
 }
 
 #[cfg(test)]

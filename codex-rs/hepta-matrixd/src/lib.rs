@@ -9,6 +9,10 @@
 //! Matrix events never implement an approval or cancellation authority here.
 
 #![forbid(unsafe_code)]
+#![recursion_limit = "256"]
+
+mod config;
+mod runner;
 
 use std::collections::BTreeMap;
 use std::collections::HashSet;
@@ -24,6 +28,7 @@ use codex_app_server_client::RemoteAppServerClient;
 use codex_app_server_client::RemoteAppServerConnectArgs;
 use codex_app_server_client::RemoteAppServerEndpoint;
 use codex_app_server_client::RemoteAppServerRequestHandle;
+use codex_app_server_client::TypedRequestError;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::ProjectCreateParams;
 use codex_app_server_protocol::ProjectCreateResponse;
@@ -60,6 +65,24 @@ use tokio::sync::Semaphore;
 
 mod runtime;
 
+pub use config::HEPTA_MATRIX_ALLOWED_ROOMS_ENV;
+pub use config::HEPTA_MATRIX_ALLOWED_SENDERS_ENV;
+pub use config::HEPTA_MATRIX_BINDING_REVISION_ENV;
+pub use config::HEPTA_MATRIX_DEVICE_DISPLAY_NAME_ENV;
+pub use config::HEPTA_MATRIX_DEVICE_ID_ENV;
+pub use config::HEPTA_MATRIX_HOMESERVER_ENV;
+pub use config::HEPTA_MATRIX_PASSWORD_ENV;
+pub use config::HEPTA_MATRIX_REQUIRE_EXPLICIT_MENTION_ENV;
+pub use config::HEPTA_MATRIX_STORE_PASSPHRASE_ENV;
+pub use config::HEPTA_MATRIX_SYNC_TIMELINE_LIMIT_ENV;
+pub use config::HEPTA_MATRIX_SYNC_TIMEOUT_MS_ENV;
+pub use config::HEPTA_MATRIX_USER_ID_ENV;
+pub use config::MatrixdConfig;
+pub use config::MatrixdConfigError;
+pub use config::MatrixdCredentials;
+pub use runner::MatrixdRunError;
+pub use runner::run;
+
 pub use runtime::MatrixDispatchOutcome;
 pub use runtime::MatrixEventProjection;
 pub use runtime::MatrixRuntime;
@@ -74,6 +97,7 @@ const DEFAULT_PAGE_SIZE: u32 = 100;
 const DEFAULT_COMMAND_CAPACITY: usize = 64;
 const DEFAULT_EVENT_CAPACITY: usize = 512;
 const MAX_RECONCILIATION_PAGES: usize = 1_024;
+const JSON_RPC_INVALID_REQUEST_CODE: i64 = -32_600;
 
 /// The strongest admission guarantee this bridge and Core queue jointly make.
 ///
@@ -295,7 +319,32 @@ where
         let _operation = self.operation.acquire().await.map_err(|_| {
             MatrixBridgeError::Protocol("Matrix bridge operation gate closed".to_string())
         })?;
-        self.ensure_room_thread_locked(room_id).await
+        self.ensure_room_thread_locked(room_id, None).await
+    }
+
+    /// Recover an already-durable room/thread identity without creating a
+    /// replacement when App Server has not materialized the first thread yet.
+    ///
+    /// `thread/list` intentionally omits a newly started thread until its
+    /// first user message is materialized.  The Matrix durable store is the
+    /// restart authority for the exact thread ID during that interval.  A
+    /// caller supplying that ID must therefore reconcile it, never interpret
+    /// an empty list as permission to start another thread.
+    pub async fn reconcile_room_thread(
+        &self,
+        room_id: &MatrixRoomId,
+        expected_thread_id: &str,
+    ) -> Result<RoomThreadBinding, MatrixBridgeError> {
+        if expected_thread_id.is_empty() {
+            return Err(MatrixBridgeError::Invalid(
+                "durable Matrix thread identity cannot be empty".to_string(),
+            ));
+        }
+        let _operation = self.operation.acquire().await.map_err(|_| {
+            MatrixBridgeError::Protocol("Matrix bridge operation gate closed".to_string())
+        })?;
+        self.ensure_room_thread_locked(room_id, Some(expected_thread_id))
+            .await
     }
 
     pub async fn submit_matrix_event(
@@ -307,7 +356,7 @@ where
         let _operation = self.operation.acquire().await.map_err(|_| {
             MatrixBridgeError::Protocol("Matrix bridge operation gate closed".to_string())
         })?;
-        let binding = self.ensure_room_thread_locked(room_id).await?;
+        let binding = self.ensure_room_thread_locked(room_id, None).await?;
         self.submit_matrix_event_on_binding_locked(
             room_id,
             event_id,
@@ -414,6 +463,7 @@ where
     async fn ensure_room_thread_locked(
         &self,
         room_id: &MatrixRoomId,
+        expected_thread_id: Option<&str>,
     ) -> Result<RoomThreadBinding, MatrixBridgeError> {
         let project_request = self.project_request(room_id);
         let project = self
@@ -456,6 +506,29 @@ where
                 "thread/list exceeded the reconciliation page bound".to_string(),
             ));
         }
+        if let Some(expected_thread_id) = expected_thread_id {
+            return match matches.as_slice() {
+                [] => Ok(RoomThreadBinding {
+                    project_id: project.id,
+                    thread_id: expected_thread_id.to_string(),
+                    recovered: true,
+                }),
+                [thread] if thread.id == expected_thread_id => Ok(RoomThreadBinding {
+                    project_id: project.id,
+                    thread_id: thread.id.clone(),
+                    recovered: true,
+                }),
+                [thread] => Err(MatrixBridgeError::Protocol(format!(
+                    "App Server Matrix room thread {} disagrees with durable thread {expected_thread_id}",
+                    thread.id
+                ))),
+                _ => Err(MatrixBridgeError::Protocol(format!(
+                    "Matrix room project {} has multiple active bridge threads",
+                    project.id
+                ))),
+            };
+        }
+
         match matches.as_slice() {
             [thread] => Ok(RoomThreadBinding {
                 project_id: project.id,
@@ -877,18 +950,37 @@ impl MatrixAppServerTransport for RemoteMatrixAppServerTransport {
         request: BridgeTurnList,
     ) -> BridgeFuture<'_, BridgePage<BridgeTurnClientMessage>> {
         Box::pin(async move {
-            let response: ThreadTurnsListResponse = self
-                .request(ClientRequest::ThreadTurnsList {
+            let thread_id = request.thread_id;
+            let cursor = request.cursor;
+            let response: ThreadTurnsListResponse = match self
+                .request_handle
+                .request_typed(ClientRequest::ThreadTurnsList {
                     request_id: self.request_id(),
                     params: ThreadTurnsListParams {
-                        thread_id: request.thread_id,
-                        cursor: request.cursor,
+                        thread_id: thread_id.clone(),
+                        cursor: cursor.clone(),
                         limit: Some(request.limit),
                         sort_direction: Some(SortDirection::Asc),
                         items_view: Some(TurnItemsView::Full),
                     },
                 })
-                .await?;
+                .await
+            {
+                Ok(response) => response,
+                Err(error)
+                    if is_unmaterialized_thread_turns_list_error(
+                        &error,
+                        &thread_id,
+                        cursor.as_deref(),
+                    ) =>
+                {
+                    return Ok(BridgePage {
+                        data: Vec::new(),
+                        next_cursor: None,
+                    });
+                }
+                Err(error) => return Err(MatrixBridgeError::AppServer(error.to_string())),
+            };
             let mut data = Vec::new();
             for turn in response.data {
                 if turn.items_view != TurnItemsView::Full {
@@ -931,6 +1023,27 @@ impl MatrixAppServerTransport for RemoteMatrixAppServerTransport {
             Ok(bridge_queued_submission(response.queued_submission))
         })
     }
+}
+
+fn is_unmaterialized_thread_turns_list_error(
+    error: &TypedRequestError,
+    thread_id: &str,
+    cursor: Option<&str>,
+) -> bool {
+    if cursor.is_some() {
+        return false;
+    }
+    let expected_message = format!(
+        "thread {thread_id} is not materialized yet; thread/turns/list is unavailable before first user message"
+    );
+    matches!(
+        error,
+        TypedRequestError::Server { method, source }
+            if method == "thread/turns/list"
+                && source.code == JSON_RPC_INVALID_REQUEST_CODE
+                && source.data.is_none()
+                && source.message == expected_message
+    )
 }
 
 fn bridge_thread(thread: codex_app_server_protocol::Thread) -> BridgeThread {

@@ -11,6 +11,7 @@ use codex_hepta_matrix_store::InboxDisposition;
 use codex_hepta_matrix_store::InboxDraft;
 use codex_hepta_matrix_store::MatrixDurableError;
 use codex_hepta_matrix_store::MatrixDurableStore;
+use codex_hepta_matrix_store::MatrixSyncCommit;
 
 use crate::MatrixSidecarConfig;
 
@@ -142,29 +143,18 @@ impl MatrixIngress {
         None
     }
 
-    /// Persist one event before the Matrix SDK event handler returns.
+    /// Persist one already-normalized event through the durable store.
     ///
-    /// Matrix SDK calls room event handlers serially for each timeline event;
-    /// awaiting the durable store here bounds ingress without a second
-    /// unbounded queue. A failure fences this sync runtime instead of silently
-    /// acknowledging the event.
+    /// Product sync uses the batch checkpoint API. This single-event entry is
+    /// retained for deterministic transport tests and non-SDK callers; it does
+    /// not own or advance a Matrix `/sync` cursor.
     pub async fn ingest(
         &self,
         event: MatrixTimelineEvent,
     ) -> Result<IngressDisposition, MatrixIngressError> {
-        if let Some(reason) = self.filter(&event) {
-            return Ok(self.record_ignored(reason));
-        }
-        let draft = InboxDraft {
-            event_id: event.event_id,
-            room_id: event.room_id,
-            sender: event.sender,
-            event_type: event.event_type,
-            payload: event.payload,
-            binding_revision: self.config.binding.revision,
-            generation: self.config.agent_generation,
-            origin_server_ts_ms: event.origin_server_ts_ms,
-            received_at_ms: event.received_at_ms,
+        let draft = match self.prepare(event) {
+            Ok(draft) => draft,
+            Err(reason) => return Ok(IngressDisposition::Ignored(reason)),
         };
         match self.store.ingest_inbox(&draft).await {
             Ok(InboxDisposition::Accepted(_)) => {
@@ -180,6 +170,34 @@ impl MatrixIngress {
                 Err(error.into())
             }
         }
+    }
+
+    pub(crate) fn prepare(
+        &self,
+        event: MatrixTimelineEvent,
+    ) -> Result<InboxDraft, IngressIgnoredReason> {
+        if let Some(reason) = self.filter(&event) {
+            self.record_ignored(reason);
+            return Err(reason);
+        }
+        Ok(InboxDraft {
+            event_id: event.event_id,
+            room_id: event.room_id,
+            sender: event.sender,
+            event_type: event.event_type,
+            payload: event.payload,
+            binding_revision: self.config.binding.revision,
+            generation: self.config.matrix_generation,
+            origin_server_ts_ms: event.origin_server_ts_ms,
+            received_at_ms: event.received_at_ms,
+        })
+    }
+
+    pub(crate) fn record_sync_commit(&self, commit: &MatrixSyncCommit) {
+        let accepted = u64::try_from(commit.accepted).unwrap_or(u64::MAX);
+        let duplicates = u64::try_from(commit.duplicates).unwrap_or(u64::MAX);
+        self.accepted.fetch_add(accepted, Ordering::Relaxed);
+        self.duplicate.fetch_add(duplicates, Ordering::Relaxed);
     }
 }
 

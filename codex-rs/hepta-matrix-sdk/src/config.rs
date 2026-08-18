@@ -14,7 +14,12 @@ pub const MAX_SYNC_TIMEOUT: Duration = Duration::from_secs(30);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MatrixSidecarConfig {
     pub binding: MatrixBindingV1,
-    pub agent_generation: u64,
+    /// Stable authority generation for this per-Agent Matrix database.
+    ///
+    /// This is deliberately independent from the replaceable `agentd` spawn
+    /// generation. A workspace Agent upgrade must not orphan a committed
+    /// Matrix cursor, inbox admission, or stable outbox transaction.
+    pub matrix_generation: u64,
     pub sync_timeline_limit: u16,
     pub sync_timeout: Duration,
 }
@@ -27,7 +32,7 @@ impl MatrixSidecarConfig {
         if &self.binding.agent_id != layout.agent_id() {
             return Err(MatrixSidecarConfigError::WrongAgent);
         }
-        if self.agent_generation == 0
+        if self.matrix_generation == 0
             || !(MIN_SYNC_TIMELINE_LIMIT..=MAX_SYNC_TIMELINE_LIMIT)
                 .contains(&self.sync_timeline_limit)
             || !(MIN_SYNC_TIMEOUT..=MAX_SYNC_TIMEOUT).contains(&self.sync_timeout)

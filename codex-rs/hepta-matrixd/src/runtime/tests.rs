@@ -44,6 +44,7 @@ struct FakeBridgeState {
     queued: BTreeMap<String, String>,
     turns: BTreeMap<String, String>,
     admissions: usize,
+    unbound_resolutions: usize,
 }
 
 impl FakeRuntimeBridge {
@@ -59,6 +60,13 @@ impl FakeRuntimeBridge {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .admissions
+    }
+
+    fn unbound_resolutions(&self) -> usize {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unbound_resolutions
     }
 
     fn admit(&self, client_id: &str, turn_id: &str) {
@@ -81,10 +89,10 @@ impl FakeRuntimeBridge {
         state.turns.remove(client_id);
     }
 
-    fn binding(&self, _room_id: &MatrixRoomId) -> RoomThreadBinding {
+    fn binding(&self, _room_id: &MatrixRoomId, thread_id: &str) -> RoomThreadBinding {
         RoomThreadBinding {
             project_id: "app-server-project-runtime-room".to_string(),
-            thread_id: "thread-matrix-room".to_string(),
+            thread_id: thread_id.to_string(),
             recovered: true,
         }
     }
@@ -94,8 +102,26 @@ impl MatrixRuntimeBridge for FakeRuntimeBridge {
     fn ensure_room_thread<'a>(
         &'a self,
         room_id: &'a MatrixRoomId,
+        expected_thread_id: Option<&'a str>,
     ) -> MatrixRuntimeFuture<'a, RoomThreadBinding> {
-        Box::pin(async move { Ok(self.binding(room_id)) })
+        Box::pin(async move {
+            let thread_id = match expected_thread_id {
+                Some(thread_id) => thread_id.to_string(),
+                None => {
+                    let mut state = self
+                        .state
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    state.unbound_resolutions += 1;
+                    if state.unbound_resolutions == 1 {
+                        "thread-matrix-room".to_string()
+                    } else {
+                        format!("replacement-thread-{}", state.unbound_resolutions)
+                    }
+                }
+            };
+            Ok(self.binding(room_id, &thread_id))
+        })
     }
 
     fn submit_matrix_event_on_binding<'a>(
@@ -107,7 +133,7 @@ impl MatrixRuntimeBridge for FakeRuntimeBridge {
         admission_mode: MatrixAdmissionMode,
     ) -> MatrixRuntimeFuture<'a, MatrixSubmission> {
         Box::pin(async move {
-            if binding != &self.binding(room_id) {
+            if binding != &self.binding(room_id, &binding.thread_id) {
                 return Err(MatrixBridgeError::Protocol(
                     "fake received a drifting binding".to_string(),
                 ));
@@ -272,6 +298,7 @@ async fn crash_restart_and_duplicate_event_admit_core_exactly_once() -> anyhow::
         MatrixDispatchOutcome::Queued { .. }
     ));
     assert_eq!(fake.admissions(), 1);
+    assert_eq!(fake.unbound_resolutions(), 1);
     first_runtime.store().close().await;
     drop(first_runtime);
 
@@ -283,6 +310,7 @@ async fn crash_restart_and_duplicate_event_admit_core_exactly_once() -> anyhow::
         [MatrixDispatchOutcome::Queued { .. }]
     ));
     assert_eq!(fake.admissions(), 1);
+    assert_eq!(fake.unbound_resolutions(), 1);
 
     let client_id = client_user_message_id(&agent_id, &room_id(), &event_id);
     fake.admit(&client_id, "turn-1");
@@ -344,12 +372,11 @@ async fn crash_restart_and_duplicate_event_admit_core_exactly_once() -> anyhow::
         .expect("durable inbox");
     assert_eq!(inbox.state, InboxState::Processed);
     let outbox = restarted.store().pending_outbox(10).await?;
-    assert_eq!(outbox.len(), 3);
-    assert_eq!(outbox[0].kind, OutboxKind::TextDelta);
+    assert_eq!(outbox.len(), 2);
+    assert_eq!(outbox[0].kind, OutboxKind::Final);
     assert_eq!(outbox[0].payload, b"hello world");
-    assert_eq!(outbox[0].logical_txn_count, 2);
-    assert_eq!(outbox[1].kind, OutboxKind::Final);
-    assert_eq!(outbox[2].kind, OutboxKind::Terminal);
+    assert_eq!(outbox[0].logical_txn_count, 3);
+    assert_eq!(outbox[1].kind, OutboxKind::Terminal);
 
     assert!(matches!(
         restarted
@@ -360,6 +387,48 @@ async fn crash_restart_and_duplicate_event_admit_core_exactly_once() -> anyhow::
             ..
         }
     ));
+    assert_eq!(restarted.store().pending_outbox(10).await?.len(), 2);
+
+    let claimed_root = restarted.store().claim_outbox(101, 30, 1).await?;
+    assert_eq!(claimed_root.len(), 1);
+    assert_eq!(claimed_root[0].kind, OutboxKind::Final);
+    let root_event_id = MatrixEventId::parse("$matrix-agent-message-root").expect("root event id");
+    restarted
+        .store()
+        .mark_outbox_sent(
+            &claimed_root[0].stable_txn_id,
+            claimed_root[0].attempts,
+            &root_event_id,
+            102,
+        )
+        .await?;
+
+    assert!(matches!(
+        restarted
+            .project_app_server_event(&final_event("hello corrected world"), 103)
+            .await?,
+        MatrixEventProjection::Stored {
+            kind: OutboxKind::Final,
+            disposition: OutboxDisposition::Enqueued(_),
+        }
+    ));
+    let claimed_after_edit = restarted.store().claim_outbox(103, 30, 10).await?;
+    let corrected = claimed_after_edit
+        .iter()
+        .find(|record| record.kind == OutboxKind::Final)
+        .expect("corrected final claim");
+    let logical_stream = outbox_id(
+        &agent_id,
+        &room_id(),
+        "thread-matrix-room",
+        "turn-1",
+        "agent-message-1",
+        "agent_message",
+    );
+    assert_eq!(corrected.payload, b"hello corrected world");
+    assert_eq!(corrected.stable_txn_id, transaction_id(&logical_stream, 4)?);
+    assert_eq!(corrected.replaces_event_id.as_ref(), Some(&root_event_id));
+
     assert!(matches!(
         restarted
             .project_app_server_event(&completed_event(), 110)

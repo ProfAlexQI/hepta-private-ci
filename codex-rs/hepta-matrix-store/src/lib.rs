@@ -27,6 +27,8 @@ pub use model::InboxState;
 pub use model::MatrixDurableConfig;
 pub use model::MatrixQueueMetrics;
 pub use model::MatrixSnapshot;
+pub use model::MatrixSyncCheckpoint;
+pub use model::MatrixSyncCommit;
 pub use model::OutboxDisposition;
 pub use model::OutboxDraft;
 pub use model::OutboxKind;

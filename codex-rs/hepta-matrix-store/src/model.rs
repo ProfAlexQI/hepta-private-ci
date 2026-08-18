@@ -94,6 +94,27 @@ pub struct InboxDraft {
     pub received_at_ms: u64,
 }
 
+/// The Hepta-owned Matrix `/sync` cursor for one exact Agent generation.
+///
+/// The Matrix SDK may persist an internal cursor before it invokes event
+/// handlers.  This checkpoint is intentionally separate and is advanced only
+/// in the same SQLite transaction as the corresponding durable inbox batch.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MatrixSyncCheckpoint {
+    pub owner_agent_id: AgentId,
+    pub binding_revision: u64,
+    pub generation: u64,
+    pub next_batch: String,
+    pub updated_at_ms: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MatrixSyncCommit {
+    pub checkpoint: MatrixSyncCheckpoint,
+    pub accepted: usize,
+    pub duplicates: usize,
+}
+
 impl fmt::Debug for InboxDraft {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -350,6 +371,11 @@ pub struct OutboxRecord {
     pub created_at_ms: u64,
     pub updated_at_ms: u64,
     pub sent_event_id: Option<MatrixEventId>,
+    /// Original Matrix event replaced by this logical-stream revision.
+    ///
+    /// This is derived under the outbox claim transaction from the first
+    /// successfully-sent revision. It is intentionally not caller supplied.
+    pub replaces_event_id: Option<MatrixEventId>,
 }
 
 impl fmt::Debug for OutboxRecord {
@@ -371,6 +397,7 @@ impl fmt::Debug for OutboxRecord {
             .field("created_at_ms", &self.created_at_ms)
             .field("updated_at_ms", &self.updated_at_ms)
             .field("sent_event_id", &self.sent_event_id)
+            .field("replaces_event_id", &self.replaces_event_id)
             .finish()
     }
 }

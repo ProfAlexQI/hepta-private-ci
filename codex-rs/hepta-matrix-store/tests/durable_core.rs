@@ -261,6 +261,169 @@ async fn duplicate_event_and_transaction_are_exact_or_conflict() -> TestResult {
 }
 
 #[tokio::test]
+async fn sync_checkpoint_and_inbox_batch_commit_atomically_with_exact_replay() -> TestResult {
+    let temp = TempDir::new()?;
+    let agent_id = agent(FIRST_AGENT)?;
+    let layout = layout(&temp, &agent_id)?;
+    let room_id = room("!sync-checkpoint:example.test")?;
+    let store = MatrixDurableStore::open(&layout, MatrixDurableConfig::default()).await?;
+    bind_room(&store, &room_id, &user("@agent:example.test")?, 10).await?;
+
+    let first = inbox_draft(event("$sync-first")?, room_id.clone(), b"first", 20)?;
+    let second = inbox_draft(event("$sync-second")?, room_id.clone(), b"second", 21)?;
+    let initial = store
+        .commit_sync_batch(1, 1, None, "s-first", &[first.clone(), second], 22)
+        .await?;
+    assert_eq!(initial.accepted, 2);
+    assert_eq!(initial.duplicates, 0);
+    assert_eq!(initial.checkpoint.next_batch, "s-first");
+
+    let replay = store
+        .commit_sync_batch(
+            1,
+            1,
+            Some("s-first"),
+            "s-second",
+            std::slice::from_ref(&first),
+            23,
+        )
+        .await?;
+    assert_eq!(replay.accepted, 0);
+    assert_eq!(replay.duplicates, 1);
+    assert_eq!(store.pending_inbox(10).await?.len(), 2);
+    assert_eq!(
+        store
+            .sync_checkpoint(1, 1)
+            .await?
+            .ok_or("missing sync checkpoint")?
+            .next_batch,
+        "s-second"
+    );
+    let idle = store
+        .commit_sync_batch(1, 1, Some("s-second"), "s-second", &[], 24)
+        .await?;
+    assert_eq!(idle.accepted, 0);
+    assert_eq!(idle.duplicates, 0);
+    assert_eq!(idle.checkpoint.next_batch, "s-second");
+    let same_token_replay = store
+        .commit_sync_batch(1, 1, Some("s-second"), "s-second", &[first], 25)
+        .await?;
+    assert_eq!(same_token_replay.accepted, 0);
+    assert_eq!(same_token_replay.duplicates, 1);
+    assert_eq!(
+        store
+            .commit_sync_batch(1, 1, Some("s-first"), "s-third", &[], 26)
+            .await,
+        Err(MatrixDurableError::Conflict),
+        "a stale sync worker must not advance the cursor"
+    );
+    assert_eq!(
+        store.sync_checkpoint(1, 2).await,
+        Err(MatrixDurableError::AccessDenied)
+    );
+    store.close().await;
+
+    let reopened = MatrixDurableStore::open(&layout, MatrixDurableConfig::default()).await?;
+    assert_eq!(
+        reopened
+            .sync_checkpoint(1, 1)
+            .await?
+            .ok_or("missing reopened sync checkpoint")?
+            .next_batch,
+        "s-second"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn token_burst_is_one_bounded_final_and_later_updates_replace_the_root() -> TestResult {
+    let temp = TempDir::new()?;
+    let agent_id = agent(FIRST_AGENT)?;
+    let layout = layout(&temp, &agent_id)?;
+    let store = MatrixDurableStore::open(&layout, MatrixDurableConfig::default()).await?;
+    let room_id = room("!stream:example.test")?;
+    bind_room(&store, &room_id, &user("@agent:example.test")?, 10).await?;
+    let logical_stream = protocol_outbox_id(
+        &agent_id,
+        &room_id,
+        "thread-1",
+        "turn-1",
+        "message-1",
+        "agent_message",
+    );
+
+    for revision in 1..=128_u64 {
+        store
+            .enqueue_outbox(&OutboxDraft {
+                logical_outbox_id: logical_stream.clone(),
+                revision,
+                txn_id: transaction_id(&logical_stream, revision)?,
+                room_id: room_id.clone(),
+                kind: OutboxKind::TextDelta,
+                payload: b"x".to_vec(),
+                binding_revision: 1,
+                generation: 1,
+                created_at_ms: 20 + revision,
+            })
+            .await?;
+    }
+    let final_revision = 129;
+    let finalized = store
+        .enqueue_outbox(&OutboxDraft {
+            logical_outbox_id: logical_stream.clone(),
+            revision: final_revision,
+            txn_id: transaction_id(&logical_stream, final_revision)?,
+            room_id: room_id.clone(),
+            kind: OutboxKind::Final,
+            payload: b"EXACT-BURST-FINAL".to_vec(),
+            binding_revision: 1,
+            generation: 1,
+            created_at_ms: 149,
+        })
+        .await?;
+    let OutboxDisposition::Coalesced(finalized) = finalized else {
+        return Err("burst final did not close the pending stream".into());
+    };
+    assert_eq!(finalized.kind, OutboxKind::Final);
+    assert_eq!(finalized.payload, b"EXACT-BURST-FINAL");
+    assert_eq!(finalized.logical_txn_count, 129);
+    assert_eq!(store.pending_outbox(10).await?.len(), 1);
+
+    let claimed = store.claim_outbox(149, 30, 10).await?;
+    assert_eq!(claimed.len(), 1);
+    assert!(claimed[0].replaces_event_id.is_none());
+    let root_event = event("$matrix-stream-root")?;
+    store
+        .mark_outbox_sent(
+            &claimed[0].stable_txn_id,
+            claimed[0].attempts,
+            &root_event,
+            150,
+        )
+        .await?;
+
+    let edit_revision = 130;
+    store
+        .enqueue_outbox(&OutboxDraft {
+            logical_outbox_id: logical_stream.clone(),
+            revision: edit_revision,
+            txn_id: transaction_id(&logical_stream, edit_revision)?,
+            room_id: room_id.clone(),
+            kind: OutboxKind::Final,
+            payload: b"EXACT-CORRECTED-FINAL".to_vec(),
+            binding_revision: 1,
+            generation: 1,
+            created_at_ms: 160,
+        })
+        .await?;
+    let edit = store.claim_outbox(160, 30, 10).await?;
+    assert_eq!(edit.len(), 1);
+    assert_eq!(edit[0].payload, b"EXACT-CORRECTED-FINAL");
+    assert_eq!(edit[0].replaces_event_id.as_ref(), Some(&root_event));
+    Ok(())
+}
+
+#[tokio::test]
 async fn ten_thousand_deltas_are_bounded_and_final_is_exact() -> TestResult {
     let temp = TempDir::new()?;
     let agent_id = agent(FIRST_AGENT)?;
@@ -316,7 +479,7 @@ async fn ten_thousand_deltas_are_bounded_and_final_is_exact() -> TestResult {
         .filter(|record| record.kind == OutboxKind::TextDelta)
         .collect();
     assert_eq!(deltas.len(), 40);
-    assert!(deltas.iter().all(|record| record.payload.len() <= 256));
+    assert!(deltas.iter().all(|record| record.logical_txn_count <= 256));
     assert_eq!(
         deltas
             .iter()
@@ -325,10 +488,7 @@ async fn ten_thousand_deltas_are_bounded_and_final_is_exact() -> TestResult {
         10_000
     );
     assert_eq!(
-        deltas
-            .iter()
-            .flat_map(|record| record.payload.iter().copied())
-            .collect::<Vec<_>>(),
+        deltas.last().expect("last cumulative delta").payload,
         vec![b'x'; 10_000]
     );
     let finals: Vec<_> = records
@@ -338,6 +498,129 @@ async fn ten_thousand_deltas_are_bounded_and_final_is_exact() -> TestResult {
     assert_eq!(finals.len(), 1);
     assert_eq!(finals[0].payload, b"EXACT-FINAL");
     assert!(OutboxKind::Final.is_critical());
+    Ok(())
+}
+
+#[tokio::test]
+async fn capped_delta_replacement_renders_the_complete_prefix() -> TestResult {
+    let temp = TempDir::new()?;
+    let agent_id = agent(FIRST_AGENT)?;
+    let layout = layout(&temp, &agent_id)?;
+    let store = MatrixDurableStore::open(
+        &layout,
+        MatrixDurableConfig {
+            delta_coalesce_window_ms: 150,
+            max_delta_batch_bytes: 256,
+            event_capacity: 1_024,
+        },
+    )
+    .await?;
+    let room_id = room("!complete-prefix:example.test")?;
+    bind_room(&store, &room_id, &user("@agent:example.test")?, 10).await?;
+    let logical_delta = protocol_outbox_id(
+        &agent_id,
+        &room_id,
+        "thread-1",
+        "turn-1",
+        "delta-stream",
+        "text_delta",
+    );
+
+    for revision in 1..=300_u64 {
+        store
+            .enqueue_outbox(&OutboxDraft {
+                logical_outbox_id: logical_delta.clone(),
+                revision,
+                txn_id: transaction_id(&logical_delta, revision)?,
+                room_id: room_id.clone(),
+                kind: OutboxKind::TextDelta,
+                payload: vec![b'x'],
+                binding_revision: 1,
+                generation: 1,
+                created_at_ms: 20,
+            })
+            .await?;
+    }
+
+    let pending = store.pending_outbox(10).await?;
+    assert_eq!(pending.len(), 2);
+    assert_eq!(pending[0].payload, vec![b'x'; 256]);
+    assert_eq!(pending[0].logical_txn_count, 256);
+    assert_eq!(pending[1].payload, vec![b'x'; 300]);
+    assert_eq!(pending[1].logical_txn_count, 44);
+
+    let root = store.claim_outbox(170, 30, 10).await?;
+    assert_eq!(root.len(), 1);
+    assert!(root[0].replaces_event_id.is_none());
+    let root_event_id = event("$complete-prefix-root")?;
+    store
+        .mark_outbox_sent(
+            &root[0].stable_txn_id,
+            root[0].attempts,
+            &root_event_id,
+            171,
+        )
+        .await?;
+
+    let replacement = store.claim_outbox(171, 30, 10).await?;
+    assert_eq!(replacement.len(), 1);
+    assert_eq!(replacement[0].payload, vec![b'x'; 300]);
+    assert_eq!(
+        replacement[0].replaces_event_id.as_ref(),
+        Some(&root_event_id)
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn stable_matrix_plane_recovers_across_agentd_generation_rollover() -> TestResult {
+    let temp = TempDir::new()?;
+    let agent_id = agent(FIRST_AGENT)?;
+    let layout = layout(&temp, &agent_id)?;
+    let room_id = room("!rollover:example.test")?;
+    let committed_event = event("$committed-before-dispatch")?;
+    let store = MatrixDurableStore::open(&layout, MatrixDurableConfig::default()).await?;
+    bind_room(&store, &room_id, &user("@agent:example.test")?, 10).await?;
+
+    // agentd spawn generation 1 dies after Matrix commit but before Core
+    // dispatch. The Matrix plane remains generation 1 by design.
+    store
+        .ingest_inbox(&inbox_draft(
+            committed_event.clone(),
+            room_id.clone(),
+            b"committed before dispatch",
+            20,
+        )?)
+        .await?;
+
+    // It also dies after claiming a stable outbound transaction but before
+    // the Matrix send acknowledgement is committed.
+    let outbox = outbox_draft(
+        &agent_id,
+        &room_id,
+        "rollover-outbox",
+        OutboxKind::Terminal,
+        b"terminal survives rollover",
+        22,
+    )?;
+    store.enqueue_outbox(&outbox).await?;
+    let first_claim = store.claim_outbox(23, 5, 10).await?;
+    assert_eq!(first_claim.len(), 1);
+    let stable_txn_id = first_claim[0].stable_txn_id.clone();
+    store.close().await;
+
+    // agentd spawn generation 2 attaches to the same stable Matrix plane.
+    // Neither cursor nor durable work is rebound to the execution lease.
+    let reopened = MatrixDurableStore::open(&layout, MatrixDurableConfig::default()).await?;
+    let pending = reopened.pending_inbox(10).await?;
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].event_id, committed_event);
+    assert_eq!(pending[0].generation, 1);
+    let retry = reopened.claim_outbox(28, 5, 10).await?;
+    assert_eq!(retry.len(), 1);
+    assert_eq!(retry[0].stable_txn_id, stable_txn_id);
+    assert_eq!(retry[0].attempts, 2);
+    assert_eq!(retry[0].generation, 1);
     Ok(())
 }
 

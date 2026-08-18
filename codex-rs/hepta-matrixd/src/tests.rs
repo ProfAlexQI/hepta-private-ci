@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 
+use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::UserInput;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_matrix_protocol::MatrixEventId;
@@ -24,6 +25,7 @@ struct FakeState {
     history: Vec<BridgeTurnClientMessage>,
     thread_start_calls: usize,
     queue_add_calls: usize,
+    hide_threads_from_list: bool,
 }
 
 impl FakeTransport {
@@ -70,6 +72,13 @@ impl FakeTransport {
             client_user_message_id: existing.client_user_message_id,
         });
     }
+
+    fn hide_threads_from_list(&self, hide: bool) {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .hide_threads_from_list = hide;
+    }
 }
 
 struct FakeSnapshot {
@@ -115,15 +124,19 @@ impl MatrixAppServerTransport for FakeTransport {
                 .state
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let data = state
-                .threads
-                .iter()
-                .filter(|thread| {
-                    thread.project_id.as_deref() == Some(request.project_id.as_str())
-                        && thread.cwd == request.cwd
-                })
-                .cloned()
-                .collect();
+            let data = if state.hide_threads_from_list {
+                Vec::new()
+            } else {
+                state
+                    .threads
+                    .iter()
+                    .filter(|thread| {
+                        thread.project_id.as_deref() == Some(request.project_id.as_str())
+                            && thread.cwd == request.cwd
+                    })
+                    .cloned()
+                    .collect()
+            };
             Ok(BridgePage {
                 data,
                 next_cursor: None,
@@ -234,6 +247,85 @@ fn input() -> Vec<UserInput> {
     }]
 }
 
+fn turns_list_server_error(
+    method: &str,
+    code: i64,
+    message: String,
+    data: Option<serde_json::Value>,
+) -> TypedRequestError {
+    TypedRequestError::Server {
+        method: method.to_string(),
+        source: JSONRPCErrorError {
+            code,
+            data,
+            message,
+        },
+    }
+}
+
+#[test]
+fn only_exact_first_page_unmaterialized_turns_error_falls_back_to_empty_history() {
+    let thread_id = "thread-before-first-message";
+    let expected_message = format!(
+        "thread {thread_id} is not materialized yet; thread/turns/list is unavailable before first user message"
+    );
+    let exact = turns_list_server_error(
+        "thread/turns/list",
+        JSON_RPC_INVALID_REQUEST_CODE,
+        expected_message.clone(),
+        None,
+    );
+    assert!(is_unmaterialized_thread_turns_list_error(
+        &exact, thread_id, None
+    ));
+    assert!(!is_unmaterialized_thread_turns_list_error(
+        &exact,
+        thread_id,
+        Some("cursor-1")
+    ));
+
+    let wrong_method = turns_list_server_error(
+        "thread/read",
+        JSON_RPC_INVALID_REQUEST_CODE,
+        expected_message.clone(),
+        None,
+    );
+    assert!(!is_unmaterialized_thread_turns_list_error(
+        &wrong_method,
+        thread_id,
+        None
+    ));
+    let wrong_code =
+        turns_list_server_error("thread/turns/list", -32_603, expected_message.clone(), None);
+    assert!(!is_unmaterialized_thread_turns_list_error(
+        &wrong_code,
+        thread_id,
+        None
+    ));
+    let wrong_thread = turns_list_server_error(
+        "thread/turns/list",
+        JSON_RPC_INVALID_REQUEST_CODE,
+        expected_message.replace(thread_id, "another-thread"),
+        None,
+    );
+    assert!(!is_unmaterialized_thread_turns_list_error(
+        &wrong_thread,
+        thread_id,
+        None
+    ));
+    let unexpected_data = turns_list_server_error(
+        "thread/turns/list",
+        JSON_RPC_INVALID_REQUEST_CODE,
+        expected_message,
+        Some(serde_json::json!({"unexpected": true})),
+    );
+    assert!(!is_unmaterialized_thread_turns_list_error(
+        &unexpected_data,
+        thread_id,
+        None
+    ));
+}
+
 #[tokio::test]
 async fn first_message_recovers_thread_after_crash_without_second_thread_start() {
     let fake = FakeTransport::default();
@@ -262,6 +354,52 @@ async fn first_message_recovers_thread_after_crash_without_second_thread_start()
     let snapshot = fake.snapshot();
     assert_eq!(snapshot.thread_start_calls, 1);
     assert_eq!(snapshot.queue_add_calls, 1);
+}
+
+#[tokio::test]
+async fn durable_thread_identity_survives_unmaterialized_thread_list() {
+    let fake = FakeTransport::default();
+    let first_process =
+        MatrixAppServerBridge::new(config(), fake.clone()).expect("first bridge process");
+    let first = first_process
+        .ensure_room_thread(&room_id())
+        .await
+        .expect("first process starts the thread");
+    assert!(!first.recovered);
+    drop(first_process);
+
+    // Real App Server intentionally omits a new thread from thread/list until
+    // the first queued user message materializes it in state.  Recovery must
+    // use the exact durable ID instead of creating a replacement.
+    fake.hide_threads_from_list(true);
+    let restarted =
+        MatrixAppServerBridge::new(config(), fake.clone()).expect("restarted bridge process");
+    let recovered = restarted
+        .reconcile_room_thread(&room_id(), &first.thread_id)
+        .await
+        .expect("durable thread reconciles before materialization");
+    assert_eq!(recovered.thread_id, first.thread_id);
+    assert!(recovered.recovered);
+    assert_eq!(fake.snapshot().thread_start_calls, 1);
+}
+
+#[tokio::test]
+async fn durable_thread_identity_rejects_a_different_materialized_thread() {
+    let fake = FakeTransport::default();
+    let first_process =
+        MatrixAppServerBridge::new(config(), fake.clone()).expect("first bridge process");
+    let first = first_process
+        .ensure_room_thread(&room_id())
+        .await
+        .expect("first process starts the thread");
+
+    let error = first_process
+        .reconcile_room_thread(&room_id(), "different-durable-thread")
+        .await
+        .expect_err("materialized thread drift must fail closed");
+    assert!(matches!(error, MatrixBridgeError::Protocol(_)));
+    assert_eq!(fake.snapshot().thread_start_calls, 1);
+    assert_ne!(first.thread_id, "different-durable-thread");
 }
 
 #[tokio::test]

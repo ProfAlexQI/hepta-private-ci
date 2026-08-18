@@ -32,6 +32,8 @@ use crate::MatrixEventId;
 use crate::MatrixQueueMetrics;
 use crate::MatrixRoomId;
 use crate::MatrixSnapshot;
+use crate::MatrixSyncCheckpoint;
+use crate::MatrixSyncCommit;
 use crate::MatrixTransactionId;
 use crate::MatrixUserId;
 use crate::OutboxDisposition;
@@ -432,21 +434,181 @@ impl MatrixDurableStore {
         &self,
         draft: &InboxDraft,
     ) -> Result<InboxDisposition, MatrixDurableError> {
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let disposition = self.ingest_inbox_tx(&mut transaction, draft).await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(disposition)
+    }
+
+    /// Read the only authoritative `/sync` cursor for this Agent generation.
+    ///
+    /// The Matrix SDK has its own state cursor, but it is never used to choose
+    /// the next Hepta ingress batch because the SDK persists that cursor before
+    /// invoking event handlers.
+    pub async fn sync_checkpoint(
+        &self,
+        binding_revision: u64,
+        generation: u64,
+    ) -> Result<Option<MatrixSyncCheckpoint>, MatrixDurableError> {
+        if binding_revision == 0 || generation == 0 {
+            return Err(MatrixDurableError::Invalid);
+        }
+        let row = sqlx::query(
+            "SELECT owner_agent_id, binding_revision, generation, next_batch, updated_at_ms
+             FROM matrix_sync_checkpoint WHERE singleton = 1",
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let checkpoint = sync_checkpoint_from_row(&row)?;
+        if checkpoint.owner_agent_id != self.owner_agent_id
+            || checkpoint.binding_revision != binding_revision
+            || checkpoint.generation != generation
+        {
+            return Err(MatrixDurableError::AccessDenied);
+        }
+        Ok(Some(checkpoint))
+    }
+
+    /// Atomically persist one normalized Matrix batch and advance `next_batch`.
+    ///
+    /// `expected_next_batch` is a compare-and-swap guard. A crash before this
+    /// transaction commits replays the old batch; a crash after it commits
+    /// observes the new checkpoint. Event-id idempotency makes either outcome
+    /// exact without relying on the Matrix SDK handler ordering.
+    pub async fn commit_sync_batch(
+        &self,
+        binding_revision: u64,
+        generation: u64,
+        expected_next_batch: Option<&str>,
+        next_batch: &str,
+        events: &[InboxDraft],
+        updated_at_ms: u64,
+    ) -> Result<MatrixSyncCommit, MatrixDurableError> {
+        if binding_revision == 0 || generation == 0 || events.len() > self.config.event_capacity {
+            return Err(MatrixDurableError::Invalid);
+        }
+        validate_sync_token(next_batch)?;
+        if let Some(expected) = expected_next_batch {
+            validate_sync_token(expected)?;
+        }
+        if events.iter().any(|event| {
+            event.binding_revision != binding_revision || event.generation != generation
+        }) {
+            return Err(MatrixDurableError::AccessDenied);
+        }
+
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let existing = sqlx::query(
+            "SELECT owner_agent_id, binding_revision, generation, next_batch, updated_at_ms
+             FROM matrix_sync_checkpoint WHERE singleton = 1",
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(unavailable)?
+        .map(|row| sync_checkpoint_from_row(&row))
+        .transpose()?;
+        match (&existing, expected_next_batch) {
+            (None, None) => {}
+            (Some(checkpoint), Some(expected))
+                if checkpoint.owner_agent_id == self.owner_agent_id
+                    && checkpoint.binding_revision == binding_revision
+                    && checkpoint.generation == generation
+                    && checkpoint.next_batch == expected => {}
+            (Some(checkpoint), _)
+                if checkpoint.owner_agent_id != self.owner_agent_id
+                    || checkpoint.binding_revision != binding_revision
+                    || checkpoint.generation != generation =>
+            {
+                return Err(MatrixDurableError::AccessDenied);
+            }
+            _ => return Err(MatrixDurableError::Conflict),
+        }
+        let checkpoint_updated_at_ms = existing
+            .as_ref()
+            .map(|checkpoint| checkpoint.updated_at_ms.max(updated_at_ms))
+            .unwrap_or(updated_at_ms);
+
+        let mut accepted = 0_usize;
+        let mut duplicates = 0_usize;
+        for event in events {
+            match self.ingest_inbox_tx(&mut transaction, event).await? {
+                InboxDisposition::Accepted(_) => accepted += 1,
+                InboxDisposition::Duplicate(_) => duplicates += 1,
+            }
+        }
+
+        if existing.is_some() {
+            let updated = sqlx::query(
+                "UPDATE matrix_sync_checkpoint
+                 SET next_batch = ?, updated_at_ms = ?
+                 WHERE singleton = 1 AND owner_agent_id = ?
+                   AND binding_revision = ? AND generation = ? AND next_batch = ?",
+            )
+            .bind(next_batch)
+            .bind(to_i64(checkpoint_updated_at_ms)?)
+            .bind(self.owner_agent_id.as_str())
+            .bind(to_i64(binding_revision)?)
+            .bind(to_i64(generation)?)
+            .bind(expected_next_batch.ok_or(MatrixDurableError::Conflict)?)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unavailable)?;
+            if updated.rows_affected() != 1 {
+                return Err(MatrixDurableError::Conflict);
+            }
+        } else {
+            sqlx::query(
+                "INSERT INTO matrix_sync_checkpoint (
+                    singleton, owner_agent_id, binding_revision, generation,
+                    next_batch, updated_at_ms
+                 ) VALUES (1, ?, ?, ?, ?, ?)",
+            )
+            .bind(self.owner_agent_id.as_str())
+            .bind(to_i64(binding_revision)?)
+            .bind(to_i64(generation)?)
+            .bind(next_batch)
+            .bind(to_i64(checkpoint_updated_at_ms)?)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unavailable)?;
+        }
+        let checkpoint = MatrixSyncCheckpoint {
+            owner_agent_id: self.owner_agent_id.clone(),
+            binding_revision,
+            generation,
+            next_batch: next_batch.to_string(),
+            updated_at_ms: checkpoint_updated_at_ms,
+        };
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(MatrixSyncCommit {
+            checkpoint,
+            accepted,
+            duplicates,
+        })
+    }
+
+    async fn ingest_inbox_tx(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+        draft: &InboxDraft,
+    ) -> Result<InboxDisposition, MatrixDurableError> {
         validate_event_type(&draft.event_type)?;
         validate_payload(&draft.payload)?;
         if draft.binding_revision == 0 || draft.generation == 0 {
             return Err(MatrixDurableError::Invalid);
         }
-        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
-        if let Some(existing) = inbox_by_event_tx(&mut transaction, &draft.event_id).await? {
+        if let Some(existing) = inbox_by_event_tx(transaction, &draft.event_id).await? {
             if inbox_matches_draft(&existing, draft) {
-                transaction.commit().await.map_err(unavailable)?;
                 return Ok(InboxDisposition::Duplicate(existing));
             }
             return Err(MatrixDurableError::Conflict);
         }
         require_current_binding(
-            &mut transaction,
+            transaction,
             &self.owner_agent_id,
             &draft.room_id,
             draft.binding_revision,
@@ -471,12 +633,12 @@ impl MatrixDurableStore {
         .bind(to_i64(draft.generation)?)
         .bind(to_i64(draft.origin_server_ts_ms)?)
         .bind(to_i64(draft.received_at_ms)?)
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await
         .map_err(unavailable)?;
         let cursor = to_u64(inserted.last_insert_rowid())?;
         self.append_change(
-            &mut transaction,
+            transaction,
             ChangeKind::InboxAccepted,
             Some(&draft.room_id),
             Some(&draft.event_id),
@@ -498,7 +660,6 @@ impl MatrixDurableStore {
             state: InboxState::Pending,
             processed_at_ms: None,
         };
-        transaction.commit().await.map_err(unavailable)?;
         Ok(InboxDisposition::Accepted(record))
     }
 
@@ -1004,6 +1165,54 @@ impl MatrixDurableStore {
         )
         .await?;
 
+        if draft.kind == OutboxKind::Final
+            && let Some(existing) = pending_stream_record_tx(
+                &mut transaction,
+                &draft.logical_outbox_id,
+                &draft.room_id,
+                draft.binding_revision,
+                draft.generation,
+            )
+            .await?
+        {
+            let payload_sha256 = Sha256Digest::for_bytes(&draft.payload);
+            sqlx::query(
+                "UPDATE outbox_messages
+                 SET kind = 'final', payload = ?, payload_sha256 = ?,
+                     logical_txn_count = logical_txn_count + 1,
+                     next_attempt_at_ms = ?, updated_at_ms = ?
+                 WHERE outbox_id = ? AND state = 'pending' AND kind = 'text_delta'",
+            )
+            .bind(&draft.payload)
+            .bind(payload_sha256.as_str())
+            .bind(to_i64(draft.created_at_ms)?)
+            .bind(to_i64(draft.created_at_ms)?)
+            .bind(to_i64(existing.outbox_id)?)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unavailable)?;
+            insert_outbox_txn(&mut transaction, existing.outbox_id, draft).await?;
+            self.append_change(
+                &mut transaction,
+                ChangeKind::OutboxCoalesced,
+                Some(&draft.room_id),
+                None,
+                Some(&draft.txn_id),
+                draft.created_at_ms,
+            )
+            .await?;
+            let record = OutboxRecord {
+                kind: OutboxKind::Final,
+                payload: draft.payload.clone(),
+                logical_txn_count: existing.logical_txn_count + 1,
+                next_attempt_at_ms: draft.created_at_ms,
+                updated_at_ms: draft.created_at_ms,
+                ..existing
+            };
+            transaction.commit().await.map_err(unavailable)?;
+            return Ok(OutboxDisposition::Coalesced(record));
+        }
+
         if draft.kind == OutboxKind::TextDelta
             && let Some(existing) = self.coalesce_candidate(&mut transaction, draft).await?
         {
@@ -1043,22 +1252,59 @@ impl MatrixDurableStore {
             return Ok(OutboxDisposition::Coalesced(record));
         }
 
-        let payload_sha256 = Sha256Digest::for_bytes(&draft.payload);
+        let payload = if draft.kind == OutboxKind::TextDelta {
+            let latest = logical_stream_latest_tx(
+                &mut transaction,
+                &draft.logical_outbox_id,
+                &draft.room_id,
+                draft.binding_revision,
+                draft.generation,
+            )
+            .await?;
+            if latest
+                .as_ref()
+                .is_some_and(|record| record.kind == OutboxKind::Final)
+            {
+                return Err(MatrixDurableError::Conflict);
+            }
+            // Each row renders the complete stream prefix, while the
+            // coalescing limit is enforced against the raw fragments mapped
+            // to that row. A later m.replace therefore never loses history.
+            let mut payload = latest.map(|record| record.payload).unwrap_or_default();
+            payload.extend_from_slice(&draft.payload);
+            validate_payload(&payload)?;
+            payload
+        } else {
+            draft.payload.clone()
+        };
+        let payload_sha256 = Sha256Digest::for_bytes(&payload);
+        let next_attempt_at_ms = match draft.kind {
+            OutboxKind::TextDelta => draft
+                .created_at_ms
+                .checked_add(self.config.delta_coalesce_window_ms)
+                .ok_or(MatrixDurableError::Invalid)?,
+            OutboxKind::Final
+            | OutboxKind::ToolTransition
+            | OutboxKind::Approval
+            | OutboxKind::Terminal => draft.created_at_ms,
+        };
         let inserted = sqlx::query(
             "INSERT INTO outbox_messages (
-                stable_txn_id, room_id, kind, payload, payload_sha256, logical_txn_count,
+                stable_txn_id, logical_outbox_id, room_id, kind, payload, payload_sha256,
+                logical_txn_count,
                 binding_revision, generation, state, attempts, next_attempt_at_ms,
                 lease_until_ms, created_at_ms, updated_at_ms, sent_event_id
-             ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 'pending', 0, ?, NULL, ?, ?, NULL)",
+             ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 'pending', 0, ?, NULL, ?, ?, NULL)",
         )
         .bind(draft.txn_id.as_str())
+        .bind(&draft.logical_outbox_id)
         .bind(draft.room_id.as_str())
         .bind(draft.kind.as_str())
-        .bind(&draft.payload)
+        .bind(&payload)
         .bind(payload_sha256.as_str())
         .bind(to_i64(draft.binding_revision)?)
         .bind(to_i64(draft.generation)?)
-        .bind(to_i64(draft.created_at_ms)?)
+        .bind(to_i64(next_attempt_at_ms)?)
         .bind(to_i64(draft.created_at_ms)?)
         .bind(to_i64(draft.created_at_ms)?)
         .execute(&mut *transaction)
@@ -1080,17 +1326,18 @@ impl MatrixDurableStore {
             stable_txn_id: draft.txn_id.clone(),
             room_id: draft.room_id.clone(),
             kind: draft.kind,
-            payload: draft.payload.clone(),
+            payload,
             logical_txn_count: 1,
             binding_revision: draft.binding_revision,
             generation: draft.generation,
             state: OutboxState::Pending,
             attempts: 0,
-            next_attempt_at_ms: draft.created_at_ms,
+            next_attempt_at_ms,
             lease_until_ms: None,
             created_at_ms: draft.created_at_ms,
             updated_at_ms: draft.created_at_ms,
             sent_event_id: None,
+            replaces_event_id: None,
         };
         transaction.commit().await.map_err(unavailable)?;
         Ok(OutboxDisposition::Enqueued(record))
@@ -1124,6 +1371,66 @@ impl MatrixDurableStore {
         Ok(revision)
     }
 
+    /// Return the revision of an already-recorded exact stream fragment.
+    ///
+    /// Final App Server notifications may be replayed after a projector
+    /// reconnect. Reusing their original revision preserves one stable Matrix
+    /// transaction instead of manufacturing a second logical final.
+    pub async fn exact_outbox_revision(
+        &self,
+        logical_outbox_id: &str,
+        room_id: &MatrixRoomId,
+        kind: OutboxKind,
+        payload: &[u8],
+        binding_revision: u64,
+        generation: u64,
+    ) -> Result<Option<u64>, MatrixDurableError> {
+        validate_local_identity(logical_outbox_id)?;
+        validate_payload(payload)?;
+        let rows = sqlx::query(
+            "SELECT revision, room_id, fragment, fragment_sha256,
+                    binding_revision, generation
+             FROM outbox_txns
+             WHERE logical_outbox_id = ? AND kind = ?
+             ORDER BY revision",
+        )
+        .bind(logical_outbox_id)
+        .bind(kind.as_str())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let mut exact_revision = None;
+        for row in rows {
+            let fragment: Vec<u8> = row.try_get("fragment").map_err(unavailable)?;
+            let fragment_sha256: String = row.try_get("fragment_sha256").map_err(unavailable)?;
+            if Sha256Digest::for_bytes(&fragment).as_str() != fragment_sha256 {
+                return Err(MatrixDurableError::Corrupt);
+            }
+            let stored_room =
+                MatrixRoomId::parse(row.try_get::<String, _>("room_id").map_err(unavailable)?)
+                    .map_err(|_| MatrixDurableError::Corrupt)?;
+            let stored_binding = to_u64(row.try_get("binding_revision").map_err(unavailable)?)?;
+            let stored_generation = to_u64(row.try_get("generation").map_err(unavailable)?)?;
+            if stored_room != *room_id
+                || stored_binding != binding_revision
+                || stored_generation != generation
+            {
+                return Err(MatrixDurableError::Conflict);
+            }
+            if fragment == payload {
+                if exact_revision.is_some() {
+                    return Err(MatrixDurableError::Corrupt);
+                }
+                exact_revision = Some(to_u64(row.try_get("revision").map_err(unavailable)?)?);
+            }
+        }
+        Ok(exact_revision)
+    }
+
     async fn coalesce_candidate(
         &self,
         transaction: &mut Transaction<'_, Sqlite>,
@@ -1138,16 +1445,31 @@ impl MatrixDurableStore {
             .checked_sub(draft.payload.len())
             .ok_or(MatrixDurableError::Invalid)?;
         sqlx::query(
-            "SELECT outbox_id, stable_txn_id, room_id, kind,
-                    payload, payload_sha256, logical_txn_count,
-                    binding_revision, generation, state, attempts, next_attempt_at_ms,
-                    lease_until_ms, created_at_ms, updated_at_ms, sent_event_id
+            "SELECT outbox_messages.outbox_id, outbox_messages.stable_txn_id,
+                    outbox_messages.room_id, outbox_messages.kind,
+                    outbox_messages.payload, outbox_messages.payload_sha256,
+                    outbox_messages.logical_txn_count,
+                    outbox_messages.binding_revision, outbox_messages.generation,
+                    outbox_messages.state, outbox_messages.attempts,
+                    outbox_messages.next_attempt_at_ms, outbox_messages.lease_until_ms,
+                    outbox_messages.created_at_ms, outbox_messages.updated_at_ms,
+                    outbox_messages.sent_event_id
              FROM outbox_messages
-             WHERE room_id = ? AND kind = 'text_delta' AND state = 'pending'
-               AND binding_revision = ? AND generation = ?
-               AND created_at_ms BETWEEN ? AND ? AND length(payload) <= ?
-             ORDER BY outbox_id DESC LIMIT 1",
+             WHERE outbox_messages.logical_outbox_id = ?
+               AND outbox_messages.room_id = ?
+               AND outbox_messages.kind = 'text_delta'
+               AND outbox_messages.state = 'pending'
+               AND outbox_messages.binding_revision = ?
+               AND outbox_messages.generation = ?
+               AND outbox_messages.created_at_ms BETWEEN ? AND ?
+               AND (
+                   SELECT COALESCE(SUM(length(fragment)), 0)
+                   FROM outbox_txns
+                   WHERE outbox_txns.outbox_id = outbox_messages.outbox_id
+               ) <= ?
+             ORDER BY outbox_messages.outbox_id DESC LIMIT 1",
         )
+        .bind(&draft.logical_outbox_id)
         .bind(draft.room_id.as_str())
         .bind(to_i64(draft.binding_revision)?)
         .bind(to_i64(draft.generation)?)
@@ -1196,7 +1518,41 @@ impl MatrixDurableStore {
         .map_err(unavailable)?;
         let mut claimed = Vec::with_capacity(rows.len());
         for row in rows {
-            let record = outbox_from_row(&row)?;
+            let mut record = outbox_from_row(&row)?;
+            match logical_stream_dependency_tx(&mut transaction, &record.stable_txn_id).await? {
+                LogicalStreamDependency::Root => {}
+                LogicalStreamDependency::Replace(event_id) => {
+                    record.replaces_event_id = Some(event_id);
+                }
+                LogicalStreamDependency::Waiting => continue,
+                LogicalStreamDependency::RootFailed => {
+                    let updated = sqlx::query(
+                        "UPDATE outbox_messages
+                         SET state = 'permanent_failure', updated_at_ms = ?
+                         WHERE outbox_id = ? AND state = ? AND attempts = ?",
+                    )
+                    .bind(to_i64(now_ms)?)
+                    .bind(to_i64(record.outbox_id)?)
+                    .bind(record.state.as_str())
+                    .bind(to_i64(record.attempts)?)
+                    .execute(&mut *transaction)
+                    .await
+                    .map_err(unavailable)?;
+                    if updated.rows_affected() != 1 {
+                        return Err(MatrixDurableError::Conflict);
+                    }
+                    self.append_change(
+                        &mut transaction,
+                        ChangeKind::OutboxFailed,
+                        Some(&record.room_id),
+                        None,
+                        Some(&record.stable_txn_id),
+                        now_ms,
+                    )
+                    .await?;
+                    continue;
+                }
+            }
             let attempts = record
                 .attempts
                 .checked_add(1)
@@ -1830,6 +2186,123 @@ async fn insert_outbox_txn(
     Ok(())
 }
 
+async fn pending_stream_record_tx(
+    transaction: &mut Transaction<'_, Sqlite>,
+    logical_outbox_id: &str,
+    room_id: &MatrixRoomId,
+    binding_revision: u64,
+    generation: u64,
+) -> Result<Option<OutboxRecord>, MatrixDurableError> {
+    sqlx::query(
+        "SELECT message.outbox_id, message.stable_txn_id, message.room_id, message.kind,
+                message.payload, message.payload_sha256, message.logical_txn_count,
+                message.binding_revision, message.generation, message.state, message.attempts,
+                message.next_attempt_at_ms, message.lease_until_ms, message.created_at_ms,
+                message.updated_at_ms, message.sent_event_id
+         FROM outbox_messages AS message
+         WHERE message.logical_outbox_id = ? AND message.room_id = ?
+           AND message.binding_revision = ? AND message.generation = ?
+           AND message.state = 'pending' AND message.kind = 'text_delta'
+         ORDER BY message.outbox_id DESC LIMIT 1",
+    )
+    .bind(logical_outbox_id)
+    .bind(room_id.as_str())
+    .bind(to_i64(binding_revision)?)
+    .bind(to_i64(generation)?)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(unavailable)?
+    .map(|row| outbox_from_row(&row))
+    .transpose()
+}
+
+async fn logical_stream_latest_tx(
+    transaction: &mut Transaction<'_, Sqlite>,
+    logical_outbox_id: &str,
+    room_id: &MatrixRoomId,
+    binding_revision: u64,
+    generation: u64,
+) -> Result<Option<OutboxRecord>, MatrixDurableError> {
+    sqlx::query(
+        "SELECT message.outbox_id, message.stable_txn_id, message.room_id, message.kind,
+                message.payload, message.payload_sha256, message.logical_txn_count,
+                message.binding_revision, message.generation, message.state, message.attempts,
+                message.next_attempt_at_ms, message.lease_until_ms, message.created_at_ms,
+                message.updated_at_ms, message.sent_event_id
+         FROM outbox_messages AS message
+         WHERE message.logical_outbox_id = ? AND message.room_id = ?
+           AND message.binding_revision = ? AND message.generation = ?
+         ORDER BY message.outbox_id DESC LIMIT 1",
+    )
+    .bind(logical_outbox_id)
+    .bind(room_id.as_str())
+    .bind(to_i64(binding_revision)?)
+    .bind(to_i64(generation)?)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(unavailable)?
+    .map(|row| outbox_from_row(&row))
+    .transpose()
+}
+
+enum LogicalStreamDependency {
+    Root,
+    Replace(MatrixEventId),
+    Waiting,
+    RootFailed,
+}
+
+async fn logical_stream_dependency_tx(
+    transaction: &mut Transaction<'_, Sqlite>,
+    stable_txn_id: &MatrixTransactionId,
+) -> Result<LogicalStreamDependency, MatrixDurableError> {
+    let row = sqlx::query(
+        "SELECT current_txn.revision AS current_revision,
+                root_txn.revision AS root_revision,
+                root_message.state AS root_state,
+                root_message.sent_event_id AS root_sent_event_id
+         FROM outbox_txns AS current_txn
+         JOIN outbox_txns AS root_txn
+           ON root_txn.logical_outbox_id = current_txn.logical_outbox_id
+          AND root_txn.revision = (
+              SELECT MIN(candidate.revision) FROM outbox_txns AS candidate
+              WHERE candidate.logical_outbox_id = current_txn.logical_outbox_id
+          )
+         JOIN outbox_messages AS root_message ON root_message.outbox_id = root_txn.outbox_id
+         WHERE current_txn.txn_id = ?",
+    )
+    .bind(stable_txn_id.as_str())
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(unavailable)?;
+    let current_revision = to_u64(row.try_get("current_revision").map_err(unavailable)?)?;
+    let root_revision = to_u64(row.try_get("root_revision").map_err(unavailable)?)?;
+    if current_revision == root_revision {
+        return Ok(LogicalStreamDependency::Root);
+    }
+    let root_state = OutboxState::parse(
+        row.try_get::<String, _>("root_state")
+            .map_err(unavailable)?
+            .as_str(),
+    )
+    .ok_or(MatrixDurableError::Corrupt)?;
+    match root_state {
+        OutboxState::Sent => {
+            let event_id = row
+                .try_get::<Option<String>, _>("root_sent_event_id")
+                .map_err(unavailable)?
+                .ok_or(MatrixDurableError::Corrupt)?;
+            Ok(LogicalStreamDependency::Replace(
+                MatrixEventId::parse(event_id).map_err(|_| MatrixDurableError::Corrupt)?,
+            ))
+        }
+        OutboxState::PermanentFailure => Ok(LogicalStreamDependency::RootFailed),
+        OutboxState::Pending | OutboxState::InFlight | OutboxState::RetryScheduled => {
+            Ok(LogicalStreamDependency::Waiting)
+        }
+    }
+}
+
 async fn outbox_by_logical_txn_tx(
     transaction: &mut Transaction<'_, Sqlite>,
     txn_id: &MatrixTransactionId,
@@ -2001,6 +2474,22 @@ fn room_thread_from_row(row: &SqliteRow) -> Result<RoomThreadBinding, MatrixDura
     })
 }
 
+fn sync_checkpoint_from_row(row: &SqliteRow) -> Result<MatrixSyncCheckpoint, MatrixDurableError> {
+    let next_batch: String = row.try_get("next_batch").map_err(unavailable)?;
+    validate_sync_token(&next_batch).map_err(|_| MatrixDurableError::Corrupt)?;
+    Ok(MatrixSyncCheckpoint {
+        owner_agent_id: AgentId::parse(
+            row.try_get::<String, _>("owner_agent_id")
+                .map_err(unavailable)?,
+        )
+        .map_err(|_| MatrixDurableError::Corrupt)?,
+        binding_revision: to_u64(row.try_get("binding_revision").map_err(unavailable)?)?,
+        generation: to_u64(row.try_get("generation").map_err(unavailable)?)?,
+        next_batch,
+        updated_at_ms: to_u64(row.try_get("updated_at_ms").map_err(unavailable)?)?,
+    })
+}
+
 fn inbox_from_row(row: &SqliteRow) -> Result<InboxRecord, MatrixDurableError> {
     let state = InboxState::parse(
         row.try_get::<String, _>("state")
@@ -2163,6 +2652,7 @@ fn outbox_from_row(row: &SqliteRow) -> Result<OutboxRecord, MatrixDurableError> 
         created_at_ms: to_u64(row.try_get("created_at_ms").map_err(unavailable)?)?,
         updated_at_ms: to_u64(row.try_get("updated_at_ms").map_err(unavailable)?)?,
         sent_event_id,
+        replaces_event_id: None,
     })
 }
 
@@ -2221,13 +2711,14 @@ async fn verify_store(
         "SELECT COUNT(*) FROM sqlite_schema WHERE name IN (
             'matrix_meta_no_update', 'matrix_meta_no_delete', 'room_bindings',
             'room_threads', 'inbox_events', 'inbox_dispatches',
-            'outbox_messages', 'outbox_txns', 'change_log'
+            'outbox_messages', 'outbox_txns', 'change_log',
+            'matrix_sync_checkpoint', 'matrix_sync_checkpoint_no_delete'
          )",
     )
     .fetch_one(pool)
     .await
     .map_err(unavailable)?;
-    if required_objects != 9 {
+    if required_objects != 11 {
         return Err(MatrixDurableError::Corrupt);
     }
     let row =
@@ -2241,6 +2732,30 @@ async fn verify_store(
         return Err(MatrixDurableError::Corrupt);
     }
     if stored_owner != owner_agent_id.as_str() {
+        return Err(MatrixDurableError::AccessDenied);
+    }
+    let invalid_logical_streams: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)
+         FROM outbox_messages AS message
+         LEFT JOIN outbox_txns AS stable_txn
+           ON stable_txn.txn_id = message.stable_txn_id
+         WHERE message.logical_outbox_id IS NULL
+            OR stable_txn.logical_outbox_id IS NULL
+            OR message.logical_outbox_id != stable_txn.logical_outbox_id",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(unavailable)?;
+    if invalid_logical_streams != 0 {
+        return Err(MatrixDurableError::Corrupt);
+    }
+    let foreign_checkpoint: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM matrix_sync_checkpoint WHERE owner_agent_id != ?")
+            .bind(owner_agent_id.as_str())
+            .fetch_one(pool)
+            .await
+            .map_err(unavailable)?;
+    if foreign_checkpoint != 0 {
         return Err(MatrixDurableError::AccessDenied);
     }
     let foreign_owners: i64 =
@@ -2341,6 +2856,13 @@ fn validate_local_identity(value: &str) -> Result<(), MatrixDurableError> {
 
 fn validate_stored_identity(value: &str) -> Result<(), MatrixDurableError> {
     validate_local_identity(value).map_err(|_| MatrixDurableError::Corrupt)
+}
+
+fn validate_sync_token(value: &str) -> Result<(), MatrixDurableError> {
+    if !(1..=4096).contains(&value.len()) || !value.bytes().all(|byte| byte.is_ascii_graphic()) {
+        return Err(MatrixDurableError::Invalid);
+    }
+    Ok(())
 }
 
 fn validate_limit(limit: usize) -> Result<(), MatrixDurableError> {

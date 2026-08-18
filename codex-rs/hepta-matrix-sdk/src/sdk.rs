@@ -1,24 +1,26 @@
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use codex_hepta_matrix_protocol::MatrixEventId;
 use codex_hepta_matrix_protocol::MatrixRoomId;
 use codex_hepta_matrix_protocol::MatrixUserId;
+use codex_hepta_matrix_store::MatrixDurableStore;
+use codex_hepta_matrix_store::MatrixSyncCheckpoint;
 use codex_hepta_matrix_store::OutboxRecord;
 use codex_hepta_paths::HeptaAgentLayout;
 use matrix_sdk::Client;
 use matrix_sdk::Error as MatrixSdkTransportError;
 use matrix_sdk::HttpError;
-use matrix_sdk::LoopCtrl;
-use matrix_sdk::Room;
 use matrix_sdk::config::SyncSettings;
+use matrix_sdk::config::SyncToken;
 use matrix_sdk::ruma::OwnedRoomId;
 use matrix_sdk::ruma::OwnedTransactionId;
 use matrix_sdk::ruma::UInt;
 use matrix_sdk::ruma::api::client::filter::FilterDefinition;
 use matrix_sdk::ruma::api::client::sync::sync_events::v3::Filter;
+use matrix_sdk::ruma::events::AnySyncMessageLikeEvent;
+use matrix_sdk::ruma::events::AnySyncTimelineEvent;
+use matrix_sdk::ruma::events::SyncMessageLikeEvent;
 use matrix_sdk::ruma::events::room::message::MessageType;
 use matrix_sdk::ruma::events::room::message::OriginalSyncRoomMessageEvent;
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
@@ -37,11 +39,13 @@ use crate::MatrixSidecarConfigError;
 use crate::MatrixTimelineEvent;
 use crate::MatrixTransportError;
 
+const MATRIX_ROOM_MESSAGE_EVENT_TYPE: &str = "m.room.message";
+const MATRIX_ROOM_ENCRYPTED_EVENT_TYPE: &str = "m.room.encrypted";
+
 pub struct MatrixSdkClient {
     client: Client,
     config: MatrixSidecarConfig,
     paths: MatrixSdkPaths,
-    handler_installed: AtomicBool,
 }
 
 impl MatrixSdkClient {
@@ -109,7 +113,6 @@ impl MatrixSdkClient {
             client,
             config,
             paths,
-            handler_installed: AtomicBool::new(false),
         })
     }
 
@@ -125,69 +128,55 @@ impl MatrixSdkClient {
         &self.paths
     }
 
-    pub fn install_ingress_handler(&self, ingress: MatrixIngress) -> Result<(), MatrixSdkError> {
-        if self.handler_installed.swap(true, Ordering::AcqRel) {
-            return Err(MatrixSdkError::HandlerAlreadyInstalled);
-        }
-        self.client
-            .add_event_handler(move |event: OriginalSyncRoomMessageEvent, room: Room| {
-                let ingress = ingress.clone();
-                async move {
-                    if !is_text_message(&event.content) {
-                        ingress.record_ignored(IngressIgnoredReason::UnsupportedMessageType);
-                        return;
-                    }
-                    let event = match timeline_event_from_sdk(event, &room) {
-                        Ok(event) => event,
-                        Err(_) => {
-                            ingress.record_malformed_event();
-                            return;
-                        }
-                    };
-                    let _ = ingress.ingest(event).await;
-                }
-            });
-        Ok(())
-    }
-
-    /// Run bounded long-poll sync until cancellation or an ingress fence.
+    /// Run `/sync` using the Hepta durable cursor as the only ingress
+    /// authority.
     ///
-    /// Cancellation is observed at a completed `/sync` boundary instead of by
-    /// dropping an in-flight event handler. The configured request timeout
-    /// therefore bounds shutdown while allowing the current handler to finish
-    /// its durable inbox write.
-    pub async fn sync_until_cancelled(
+    /// matrix-sdk 0.18 persists its internal `next_batch` before awaiting
+    /// application event handlers.  An ordinary handler can therefore lose a
+    /// message if the process dies after the SDK cursor commit but before the
+    /// Hepta inbox write.  This loop always supplies the Hepta cursor
+    /// explicitly, normalizes the returned batch, and advances that cursor in
+    /// the same SQLite transaction as all accepted inbox events.
+    pub async fn sync_durable_until_cancelled(
         &self,
+        store: &MatrixDurableStore,
         ingress: &MatrixIngress,
         cancel: &CancellationToken,
     ) -> Result<MatrixSyncExit, MatrixSdkError> {
-        if !self.handler_installed.load(Ordering::Acquire) {
-            return Err(MatrixSdkError::HandlerMissing);
-        }
-        if cancel.is_cancelled() {
-            return Ok(MatrixSyncExit::Cancelled);
-        }
-        let settings = bounded_sync_settings(&self.config)?;
-        let cancel = cancel.clone();
-        let callback_ingress = ingress.clone();
-        self.client
-            .sync_with_callback(settings, move |_| {
-                let cancel = cancel.clone();
-                let ingress = callback_ingress.clone();
-                async move {
-                    if cancel.is_cancelled() || ingress.fatal() {
-                        LoopCtrl::Break
-                    } else {
-                        LoopCtrl::Continue
-                    }
-                }
-            })
-            .await
-            .map_err(|_| MatrixSdkError::Sync)?;
-        if ingress.fatal() {
-            Ok(MatrixSyncExit::IngressFenced)
-        } else {
-            Ok(MatrixSyncExit::Cancelled)
+        loop {
+            if cancel.is_cancelled() {
+                return Ok(MatrixSyncExit::Cancelled);
+            }
+            let checkpoint = store
+                .sync_checkpoint(self.config.binding.revision, self.config.matrix_generation)
+                .await
+                .map_err(|_| MatrixSdkError::Store)?;
+            let expected_next_batch = checkpoint
+                .as_ref()
+                .map(|checkpoint| checkpoint.next_batch.as_str());
+            let token = hepta_sync_token(checkpoint.as_ref());
+            let response = self
+                .client
+                .sync_once(bounded_sync_settings(&self.config)?.token(token))
+                .await
+                .map_err(|_| MatrixSdkError::Sync)?;
+            let received_at_ms = system_time_ms()?;
+            let events = normalized_sync_events(&response, ingress, received_at_ms)?;
+            let commit = store
+                .commit_sync_batch(
+                    self.config.binding.revision,
+                    self.config.matrix_generation,
+                    expected_next_batch,
+                    &response.next_batch,
+                    &events,
+                    received_at_ms,
+                )
+                .await
+                .map_err(|_| MatrixSdkError::Store)?;
+            ingress.record_sync_commit(&commit);
+            if cancel.is_cancelled() {
+                return Ok(MatrixSyncExit::Cancelled);
+            }
         }
     }
 
@@ -216,12 +205,18 @@ impl MatrixSdkClient {
     }
 }
 
+fn hepta_sync_token(checkpoint: Option<&MatrixSyncCheckpoint>) -> SyncToken {
+    checkpoint
+        .map(|checkpoint| SyncToken::Specific(checkpoint.next_batch.clone()))
+        .unwrap_or(SyncToken::NoToken)
+}
+
 impl MatrixOutboundTransport for MatrixSdkClient {
     fn send<'a>(&'a self, record: &'a OutboxRecord) -> MatrixSendFuture<'a> {
         Box::pin(async move {
             if !self.config.binding.allowed_rooms.contains(&record.room_id)
                 || record.binding_revision != self.config.binding.revision
-                || record.generation != self.config.agent_generation
+                || record.generation != self.config.matrix_generation
             {
                 return Err(MatrixTransportError::Permanent);
             }
@@ -234,17 +229,36 @@ impl MatrixOutboundTransport for MatrixSdkClient {
                 .get_room(&room_id)
                 .ok_or(MatrixTransportError::Retryable)?;
             let txn_id = OwnedTransactionId::from(record.stable_txn_id.as_str());
-            let content = serde_json::json!({
-                "msgtype": "m.text",
-                "body": body,
-            });
+            let content = outbound_message_content(body, record.replaces_event_id.as_ref());
             let response = room
-                .send_raw("m.room.message", content)
+                .send_raw(MATRIX_ROOM_MESSAGE_EVENT_TYPE, content)
                 .with_transaction_id(&txn_id)
                 .await
                 .map_err(|error| classify_sdk_send_error(&error))?;
             MatrixEventId::parse(response.response.event_id.as_str())
                 .map_err(|_| MatrixTransportError::Permanent)
+        })
+    }
+}
+
+fn outbound_message_content(body: &str, replaces_event_id: Option<&MatrixEventId>) -> Value {
+    if let Some(replaces_event_id) = replaces_event_id {
+        serde_json::json!({
+            "msgtype": "m.text",
+            "body": body,
+            "m.new_content": {
+                "msgtype": "m.text",
+                "body": body,
+            },
+            "m.relates_to": {
+                "rel_type": "m.replace",
+                "event_id": replaces_event_id.as_str(),
+            },
+        })
+    } else {
+        serde_json::json!({
+            "msgtype": "m.text",
+            "body": body,
         })
     }
 }
@@ -297,12 +311,10 @@ pub enum MatrixSdkError {
     Authentication,
     #[error("Matrix session identity differs from the exact binding")]
     IdentityMismatch,
-    #[error("Matrix ingress handler is already installed")]
-    HandlerAlreadyInstalled,
-    #[error("Matrix ingress handler has not been installed")]
-    HandlerMissing,
     #[error("Matrix sync failed")]
     Sync,
+    #[error("Matrix durable sync checkpoint failed")]
+    Store,
 }
 
 impl From<MatrixSidecarConfigError> for MatrixSdkError {
@@ -344,15 +356,22 @@ fn bounded_sync_settings(config: &MatrixSidecarConfig) -> Result<SyncSettings, M
             .map_err(|_| MatrixSdkError::Configuration)?,
     );
     definition.room.timeline.limit = Some(UInt::from(config.sync_timeline_limit));
-    definition.room.timeline.types = Some(vec!["m.room.message".to_string()]);
+    definition.room.timeline.types = Some(bounded_timeline_event_types());
     Ok(SyncSettings::new()
         .timeout(config.sync_timeout)
         .filter(Filter::FilterDefinition(definition)))
 }
 
-fn timeline_event_from_sdk(
+fn bounded_timeline_event_types() -> Vec<String> {
+    vec![
+        MATRIX_ROOM_MESSAGE_EVENT_TYPE.to_string(),
+        MATRIX_ROOM_ENCRYPTED_EVENT_TYPE.to_string(),
+    ]
+}
+
+fn timeline_event_from_room_id(
     event: OriginalSyncRoomMessageEvent,
-    room: &Room,
+    room_id: &str,
 ) -> Result<MatrixTimelineEvent, MatrixSdkError> {
     let content = serde_json::to_value(&event.content).map_err(|_| MatrixSdkError::Sync)?;
     let payload = serde_json::to_vec(&content).map_err(|_| MatrixSdkError::Sync)?;
@@ -360,14 +379,64 @@ fn timeline_event_from_sdk(
     Ok(MatrixTimelineEvent {
         event_id: MatrixEventId::parse(event.event_id.as_str())
             .map_err(|_| MatrixSdkError::Sync)?,
-        room_id: MatrixRoomId::parse(room.room_id().as_str()).map_err(|_| MatrixSdkError::Sync)?,
+        room_id: MatrixRoomId::parse(room_id).map_err(|_| MatrixSdkError::Sync)?,
         sender: MatrixUserId::parse(event.sender.as_str()).map_err(|_| MatrixSdkError::Sync)?,
-        event_type: "m.room.message".to_string(),
+        event_type: MATRIX_ROOM_MESSAGE_EVENT_TYPE.to_string(),
         payload,
         mentioned_user_ids,
         origin_server_ts_ms: u64::from(event.origin_server_ts.get()),
         received_at_ms: system_time_ms()?,
     })
+}
+
+fn normalized_sync_events(
+    response: &matrix_sdk::sync::SyncResponse,
+    ingress: &MatrixIngress,
+    received_at_ms: u64,
+) -> Result<Vec<codex_hepta_matrix_store::InboxDraft>, MatrixSdkError> {
+    let mut drafts = Vec::new();
+    for (room_id, room) in &response.rooms.joined {
+        for event in &room.timeline.events {
+            let deserialized = match event.raw().deserialize() {
+                Ok(event) => event,
+                Err(_) => {
+                    ingress.record_malformed_event();
+                    continue;
+                }
+            };
+            let event = match deserialized {
+                AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(
+                    SyncMessageLikeEvent::Original(event),
+                )) => event,
+                // The allowlist deliberately includes ciphertext so the SDK
+                // can decrypt it. If it remains encrypted here, key recovery
+                // is incomplete; never advance the Hepta checkpoint past it.
+                AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomEncrypted(_)) => {
+                    return Err(MatrixSdkError::Sync);
+                }
+                _ => {
+                    ingress.record_ignored(IngressIgnoredReason::UnsupportedMessageType);
+                    continue;
+                }
+            };
+            if !is_text_message(&event.content) {
+                ingress.record_ignored(IngressIgnoredReason::UnsupportedMessageType);
+                continue;
+            }
+            let mut event = match timeline_event_from_room_id(event, room_id.as_str()) {
+                Ok(event) => event,
+                Err(_) => {
+                    ingress.record_malformed_event();
+                    continue;
+                }
+            };
+            event.received_at_ms = received_at_ms;
+            if let Ok(draft) = ingress.prepare(event) {
+                drafts.push(draft);
+            }
+        }
+    }
+    Ok(drafts)
 }
 
 fn is_text_message(content: &RoomMessageEventContent) -> bool {
@@ -425,5 +494,33 @@ mod tests {
         assert!(!is_text_message(&RoomMessageEventContent::notice_plain(
             "notice"
         )));
+    }
+
+    #[test]
+    fn logical_stream_revision_uses_matrix_replace_content() {
+        let root = MatrixEventId::parse("$root:example.test").expect("valid event id");
+        let content = outbound_message_content("complete response", Some(&root));
+        assert_eq!(content["body"], "complete response");
+        assert_eq!(content["m.new_content"]["body"], "complete response");
+        assert_eq!(content["m.relates_to"]["rel_type"], "m.replace");
+        assert_eq!(content["m.relates_to"]["event_id"], root.as_str());
+        let root_content = outbound_message_content("first response", None);
+        assert!(root_content.get("m.relates_to").is_none());
+    }
+
+    #[test]
+    fn missing_hepta_checkpoint_never_reuses_the_sdk_cursor() {
+        assert!(matches!(hepta_sync_token(None), SyncToken::NoToken));
+    }
+
+    #[test]
+    fn bounded_sync_keeps_ciphertext_needed_for_sdk_decryption() {
+        assert_eq!(
+            bounded_timeline_event_types(),
+            vec![
+                MATRIX_ROOM_MESSAGE_EVENT_TYPE.to_string(),
+                MATRIX_ROOM_ENCRYPTED_EVENT_TYPE.to_string(),
+            ]
+        );
     }
 }

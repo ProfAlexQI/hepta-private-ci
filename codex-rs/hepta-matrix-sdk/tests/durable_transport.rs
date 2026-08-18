@@ -85,7 +85,7 @@ fn sidecar_config(agent_id: &AgentId) -> TestResult<MatrixSidecarConfig> {
             allowed_senders: vec![user(ALLOWED_SENDER)?],
             require_explicit_mention: true,
         },
-        agent_generation: 1,
+        matrix_generation: 1,
         sync_timeline_limit: 32,
         sync_timeout: Duration::from_secs(1),
     })
