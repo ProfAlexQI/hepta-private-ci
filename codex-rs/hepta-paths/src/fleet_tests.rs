@@ -59,6 +59,7 @@ fn agent_layout_uses_safe_id_component_and_disjoint_owned_roots() -> Result<()> 
             releases_root: agent_root.join("releases"),
             active_release: agent_root.join("releases/active"),
             cognitive_root: agent_root.join("cognitive"),
+            matrix_root: agent_root.join("matrix"),
         }
     );
 
@@ -68,8 +69,9 @@ fn agent_layout_uses_safe_id_component_and_disjoint_owned_roots() -> Result<()> 
         layout.logs_root(),
         layout.releases_root(),
         layout.cognitive_root(),
+        layout.matrix_root(),
     ]);
-    assert_eq!(owned_roots.len(), 5);
+    assert_eq!(owned_roots.len(), 6);
     assert_ne!(layout.agentd_control_socket(), layout.app_server_socket());
     Ok(())
 }

@@ -3444,6 +3444,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-matrix-store"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-contracts",
+ "codex-hepta-matrix-protocol",
+ "codex-hepta-paths",
+ "codex-state",
+ "codex-utils-absolute-path",
+ "pretty_assertions",
+ "serde",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "codex-hepta-memory"
 version = "0.0.0"
 dependencies = [

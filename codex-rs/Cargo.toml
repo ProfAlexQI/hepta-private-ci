@@ -49,6 +49,7 @@ members = [
     "hepta-contracts",
     "hepta-evidence",
     "hepta-fleet",
+    "hepta-matrix-store",
     "hepta-supervisor",
     "hepta-memory",
     "hepta-matrix-protocol",
@@ -198,6 +199,7 @@ codex-hepta-agentd = { path = "hepta-agentd" }
 codex-hepta-contracts = { path = "hepta-contracts" }
 codex-hepta-evidence = { path = "hepta-evidence" }
 codex-hepta-fleet = { path = "hepta-fleet" }
+codex-hepta-matrix-store = { path = "hepta-matrix-store" }
 codex-hepta-supervisor = { path = "hepta-supervisor" }
 codex-hepta-memory = { path = "hepta-memory" }
 codex-hepta-matrix-protocol = { path = "hepta-matrix-protocol" }

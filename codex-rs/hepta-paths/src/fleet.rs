@@ -151,6 +151,7 @@ pub struct HeptaAgentLayout {
     releases_root: PathBuf,
     active_release: PathBuf,
     cognitive_root: PathBuf,
+    matrix_root: PathBuf,
 }
 
 impl HeptaAgentLayout {
@@ -168,6 +169,7 @@ impl HeptaAgentLayout {
             logs_root: agent_root.join("logs"),
             active_release: releases_root.join("active"),
             cognitive_root: agent_root.join("cognitive"),
+            matrix_root: agent_root.join("matrix"),
             agent_id,
             agent_root,
             run_root,
@@ -225,6 +227,10 @@ impl HeptaAgentLayout {
 
     pub fn cognitive_root(&self) -> &Path {
         &self.cognitive_root
+    }
+
+    pub fn matrix_root(&self) -> &Path {
+        &self.matrix_root
     }
 }
 
