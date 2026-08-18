@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod cognitive;
 mod extension;
 mod framing;
 mod observation;

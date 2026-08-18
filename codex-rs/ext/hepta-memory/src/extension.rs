@@ -37,6 +37,7 @@ use codex_hepta_contracts::RecallRequest;
 use codex_hepta_contracts::RecallRequestId;
 use codex_hepta_contracts::RevisionStamp;
 use codex_hepta_contracts::Sha256Digest;
+use codex_hepta_memory::CognitiveRuntime;
 use codex_hepta_memory::RecallObservation;
 use codex_hepta_memory::RecallObservationReason;
 use codex_hepta_memory::shadow_recall;
@@ -45,6 +46,7 @@ use codex_protocol::user_input::UserInput;
 use codex_state::Stage1RecallCandidate;
 use codex_state::StateRuntime;
 
+use crate::cognitive::CognitiveExtension;
 use crate::framing::digest_many;
 use crate::framing::domain_digest;
 use crate::framing::path_identity_bytes;
@@ -153,13 +155,13 @@ impl HeptaMemoryThreadConfig {
 }
 
 #[derive(Clone)]
-struct HeptaMemoryThreadState {
+pub(crate) struct HeptaMemoryThreadState {
     installation_sha256: Sha256Digest,
     // Host-frozen attribution selector, not an authentication credential. It
     // scopes the request and candidate symmetrically and grants no authority.
     originator_sha256: Sha256Digest,
-    limits: RecallLimits,
-    attachment_proposal_enabled: bool,
+    pub(crate) limits: RecallLimits,
+    pub(crate) attachment_proposal_enabled: bool,
 }
 
 impl HeptaMemoryThreadState {
@@ -169,6 +171,16 @@ impl HeptaMemoryThreadState {
             workspace_sha256: workspace_digest(workspace),
             thread_sha256: domain_digest(b"hepta-memory:thread:v1", thread_id.as_bytes()),
             principal_sha256: self.originator_sha256.clone(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_cognitive_test(attachment_proposal_enabled: bool) -> Self {
+        Self {
+            installation_sha256: domain_digest(b"hepta-memory:test-installation:v1", b"test"),
+            originator_sha256: domain_digest(b"hepta-memory:test-originator:v1", b"test"),
+            limits: RecallLimits::conservative_default(),
+            attachment_proposal_enabled,
         }
     }
 }
@@ -191,16 +203,22 @@ struct PreparedMemoryAttachment {
 pub struct HeptaMemoryExtension<F> {
     resolve_thread: F,
     backend: Option<Arc<dyn Stage1RecallBackend>>,
+    legacy_attachment_enabled: bool,
 }
 
 impl<F> HeptaMemoryExtension<F> {
-    pub fn new(resolve_thread: F, state_db: Option<Arc<StateRuntime>>) -> Self {
+    pub fn new(
+        resolve_thread: F,
+        state_db: Option<Arc<StateRuntime>>,
+        legacy_attachment_enabled: bool,
+    ) -> Self {
         let backend = state_db.map(|state_db| {
             Arc::new(StateRecallBackend { state_db }) as Arc<dyn Stage1RecallBackend>
         });
         Self {
             resolve_thread,
             backend,
+            legacy_attachment_enabled,
         }
     }
 
@@ -209,6 +227,7 @@ impl<F> HeptaMemoryExtension<F> {
         Self {
             resolve_thread,
             backend,
+            legacy_attachment_enabled: true,
         }
     }
 }
@@ -285,6 +304,13 @@ where
             else {
                 return Vec::new();
             };
+            // A Cognitive Plane owns cross-thread attachment when present.
+            // Stage-1 remains a compatibility fallback only; allowing both to
+            // claim one physical send would fail the host's single-claimant
+            // invariant.
+            if !self.legacy_attachment_enabled {
+                return Vec::new();
+            }
 
             let source_thread = thread_store.level_id();
             let Ok(source_thread_id) = ThreadId::try_from(source_thread) else {
@@ -405,9 +431,10 @@ where
     F: Send + Sync,
 {
     fn is_active(&self, thread_store: &ExtensionData, turn_store: &ExtensionData) -> bool {
-        thread_store
-            .get::<HeptaMemoryThreadState>()
-            .is_some_and(|state| state.attachment_proposal_enabled)
+        self.legacy_attachment_enabled
+            && thread_store
+                .get::<HeptaMemoryThreadState>()
+                .is_some_and(|state| state.attachment_proposal_enabled)
             && turn_store.get::<PreparedMemoryAttachment>().is_some()
     }
 
@@ -416,6 +443,9 @@ where
         input: EphemeralModelInputContext<'a>,
     ) -> ModelProviderPolicyFuture<'a, Option<EphemeralModelInputProposal>> {
         Box::pin(async move {
+            if !self.legacy_attachment_enabled {
+                return Ok(None);
+            }
             // Rebind the admitted thread/turn stores to this exact physical
             // attempt before rereading any raw summary from state.
             if input.schema_version != EPHEMERAL_MODEL_INPUT_SCHEMA_VERSION
@@ -614,16 +644,28 @@ async fn read_stage1_candidate(
 pub fn install<C, F>(
     builder: &mut ExtensionRegistryBuilder<C>,
     state_db: Option<Arc<StateRuntime>>,
+    cognitive_runtime: CognitiveRuntime,
     resolve_thread: F,
 ) -> Arc<HeptaMemoryExtension<F>>
 where
     C: Sync,
     F: Fn(&C) -> Option<HeptaMemoryThreadConfig> + Send + Sync + 'static,
 {
-    let extension = Arc::new(HeptaMemoryExtension::new(resolve_thread, state_db));
+    let legacy_attachment_enabled = matches!(&cognitive_runtime, CognitiveRuntime::Absent);
+    let extension = Arc::new(HeptaMemoryExtension::new(
+        resolve_thread,
+        state_db,
+        legacy_attachment_enabled,
+    ));
     builder.thread_lifecycle_contributor(extension.clone());
     builder.turn_input_contributor(extension.clone());
     builder.ephemeral_model_input_contributor(extension.clone());
+    if !matches!(&cognitive_runtime, CognitiveRuntime::Absent) {
+        let cognitive = Arc::new(CognitiveExtension::new(cognitive_runtime));
+        builder.turn_input_contributor(cognitive.clone());
+        builder.ephemeral_model_input_contributor(cognitive.clone());
+        builder.tool_contributor(cognitive);
+    }
     extension
 }
 

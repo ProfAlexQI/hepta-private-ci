@@ -18,12 +18,16 @@ codex-hepta-contracts = { workspace = true }
 codex-hepta-memory = { workspace = true }
 codex-protocol = { workspace = true }
 codex-state = { workspace = true }
+codex-tools = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 sha2 = { workspace = true }
 tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 chrono = { workspace = true }
+codex-hepta-paths = { workspace = true }
+codex-utils-output-truncation = { workspace = true }
 codex-utils-path-uri = { workspace = true }
-serde_json = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "time"] }

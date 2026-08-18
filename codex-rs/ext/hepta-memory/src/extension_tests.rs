@@ -807,6 +807,7 @@ fn install_registers_only_the_three_owned_contributor_seams() {
     let extension = install(
         &mut builder,
         None,
+        codex_hepta_memory::CognitiveRuntime::Absent,
         resolve_test_config as fn(&TestConfig) -> Option<HeptaMemoryThreadConfig>,
     );
     let registry = builder.build();
