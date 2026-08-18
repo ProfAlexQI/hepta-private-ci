@@ -5,6 +5,7 @@
 //! It does not implement a second runtime kernel or a fleet-wide message bus.
 
 mod app_runtime;
+mod automation;
 mod client;
 mod config;
 mod control;
@@ -28,6 +29,10 @@ pub use codex_hepta_agent_protocol::MAX_CONTROL_FRAME_BYTES;
 pub use codex_hepta_agent_protocol::MAX_EVENT_BATCH;
 pub use codex_hepta_agent_protocol::SessionIngress;
 pub use codex_hepta_agent_protocol::SessionTransport;
+pub use codex_hepta_automation::AutomationSchedule;
+pub use codex_hepta_automation::AutomationTask;
+pub use codex_hepta_automation::AutomationTaskDraft;
+pub use codex_hepta_automation::AutomationTaskId;
 pub use config::AgentdConfig;
 pub use config::AgentdIdentity;
 pub use config::HEPTA_AGENT_GENERATION_ENV;

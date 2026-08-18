@@ -4,6 +4,9 @@
 
 use std::path::PathBuf;
 
+use codex_hepta_automation::AutomationTask;
+use codex_hepta_automation::AutomationTaskDraft;
+use codex_hepta_automation::AutomationTaskId;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
 use serde::Deserialize;
@@ -61,6 +64,60 @@ impl AgentdRequest {
             },
         }
     }
+
+    pub fn automation_create(
+        request_id: u64,
+        spawn_generation: u64,
+        draft: AutomationTaskDraft,
+    ) -> Self {
+        Self {
+            schema_version: AGENTD_CONTROL_SCHEMA_VERSION,
+            request_id,
+            spawn_generation,
+            method: AgentdMethod::AutomationCreate { draft },
+        }
+    }
+
+    pub fn automation_list(request_id: u64, spawn_generation: u64, limit: u16) -> Self {
+        Self {
+            schema_version: AGENTD_CONTROL_SCHEMA_VERSION,
+            request_id,
+            spawn_generation,
+            method: AgentdMethod::AutomationList { limit },
+        }
+    }
+
+    pub fn automation_cancel(
+        request_id: u64,
+        spawn_generation: u64,
+        task_id: AutomationTaskId,
+    ) -> Self {
+        Self {
+            schema_version: AGENTD_CONTROL_SCHEMA_VERSION,
+            request_id,
+            spawn_generation,
+            method: AgentdMethod::AutomationCancel { task_id },
+        }
+    }
+
+    pub fn automation_set_enabled(
+        request_id: u64,
+        spawn_generation: u64,
+        task_id: AutomationTaskId,
+        enabled: bool,
+        resume_at_ms: Option<u64>,
+    ) -> Self {
+        Self {
+            schema_version: AGENTD_CONTROL_SCHEMA_VERSION,
+            request_id,
+            spawn_generation,
+            method: AgentdMethod::AutomationSetEnabled {
+                task_id,
+                enabled,
+                resume_at_ms,
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -69,7 +126,24 @@ pub enum AgentdMethod {
     Health,
     Lifecycle,
     SessionIngress,
-    Events { after_cursor: u64, limit: u16 },
+    Events {
+        after_cursor: u64,
+        limit: u16,
+    },
+    AutomationCreate {
+        draft: AutomationTaskDraft,
+    },
+    AutomationList {
+        limit: u16,
+    },
+    AutomationCancel {
+        task_id: AutomationTaskId,
+    },
+    AutomationSetEnabled {
+        task_id: AutomationTaskId,
+        enabled: bool,
+        resume_at_ms: Option<u64>,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -90,6 +164,8 @@ pub enum AgentdPayload {
     Lifecycle(LifecycleSnapshot),
     SessionIngress(SessionIngress),
     Events(EventBatch),
+    AutomationTask(AutomationTask),
+    AutomationTasks { tasks: Vec<AutomationTask> },
     Error { code: String, message: String },
 }
 
@@ -192,6 +268,26 @@ mod tests {
         assert_eq!(
             serde_json::from_slice::<AgentdResponse>(&response_bytes).expect("parse response"),
             response
+        );
+    }
+
+    #[test]
+    fn automation_wire_round_trip_is_strict_and_bounded() {
+        let mut draft = AutomationTaskDraft::new(
+            "019153a4-3088-7e03-a56a-9b1964f75ddd",
+            "x".repeat(32 * 1024),
+            codex_hepta_automation::AutomationSchedule::Once,
+            123,
+            100,
+        );
+        draft.task_id =
+            AutomationTaskId::parse("019153a4-3088-7000-a56a-9b1964f75001").expect("task id");
+        let request = AgentdRequest::automation_create(9, 3, draft);
+        let bytes = serde_json::to_vec(&request).expect("serialize request");
+        assert!(bytes.len() as u64 <= MAX_CONTROL_FRAME_BYTES);
+        assert_eq!(
+            serde_json::from_slice::<AgentdRequest>(&bytes).expect("parse request"),
+            request
         );
     }
 }

@@ -1,5 +1,8 @@
 use std::sync::Mutex;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
+use codex_hepta_automation::AutomationStore;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::FleetRegistry;
 
@@ -14,11 +17,16 @@ use crate::LifecycleSnapshot;
 use crate::SessionIngress;
 use crate::SessionTransport;
 
+const AUTOMATION_UNAVAILABLE_CODE: &str = "automation_unavailable";
+const AUTOMATION_UNAVAILABLE_MESSAGE: &str =
+    "this Agent's private automation storage is unavailable";
+
 pub(crate) struct AgentdState {
     identity: AgentdIdentity,
     registry: FleetRegistry,
     runtime: Mutex<RuntimeState>,
     events: Mutex<EventBuffer>,
+    automation: Mutex<Option<AutomationStore>>,
 }
 
 struct RuntimeState {
@@ -50,7 +58,26 @@ impl AgentdState {
             identity,
             registry,
             events: Mutex::new(events),
+            automation: Mutex::new(None),
         })
+    }
+
+    pub(crate) fn attach_automation_store(
+        &self,
+        store: AutomationStore,
+    ) -> Result<(), AgentdError> {
+        if store.owner_agent_id() != &self.identity.agent_id {
+            return Err(AgentdError::GenerationFenced(
+                "automation store owner does not match agentd identity".to_string(),
+            ));
+        }
+        let mut automation = self.automation.lock().map_err(poisoned_state)?;
+        if automation.replace(store).is_some() {
+            return Err(AgentdError::Protocol(
+                "automation store was attached more than once".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) fn identity(&self) -> &AgentdIdentity {
@@ -72,6 +99,7 @@ impl AgentdState {
         if record.layout.home_root() != self.identity.home_root
             || record.layout.run_root() != self.identity.run_root
             || record.layout.cognitive_root() != self.identity.layout.cognitive_root()
+            || record.layout.automation_root() != self.identity.layout.automation_root()
             || record.manifest.workspace.as_path() != self.identity.workspace
         {
             return Err(AgentdError::GenerationFenced(
@@ -150,7 +178,15 @@ impl AgentdState {
         }
     }
 
-    pub(crate) fn response(
+    pub(crate) fn automation_admission_ready(&self) -> Result<bool, AgentdError> {
+        self.refresh_generation()?;
+        let runtime = self.runtime.lock().map_err(poisoned_state)?;
+        Ok(runtime.lifecycle == AgentLifecycle::Running
+            && runtime.app_server_ready
+            && !runtime.fenced)
+    }
+
+    pub(crate) async fn response(
         &self,
         request_id: u64,
         spawn_generation: u64,
@@ -163,34 +199,37 @@ impl AgentdState {
             )));
         }
         self.refresh_generation()?;
-        let runtime = self.runtime.lock().map_err(poisoned_state)?;
-        let current_generation = runtime.current_generation;
+        let (current_generation, lifecycle, app_server_ready, fenced) = {
+            let runtime = self.runtime.lock().map_err(poisoned_state)?;
+            (
+                runtime.current_generation,
+                runtime.lifecycle,
+                runtime.app_server_ready,
+                runtime.fenced,
+            )
+        };
+        let automation = self.automation.lock().map_err(poisoned_state)?.clone();
         let payload = match method {
             crate::AgentdMethod::Health => AgentdPayload::Health(HealthSnapshot {
                 promotion_ready: matches!(
-                    runtime.lifecycle,
+                    lifecycle,
                     AgentLifecycle::Starting | AgentLifecycle::Running
-                ) && runtime.app_server_ready
-                    && !runtime.fenced,
-                ready: runtime.lifecycle == AgentLifecycle::Running
-                    && runtime.app_server_ready
-                    && !runtime.fenced,
-                fenced: runtime.fenced,
+                ) && app_server_ready
+                    && !fenced,
+                ready: lifecycle == AgentLifecycle::Running && app_server_ready && !fenced,
+                fenced,
                 process_id: std::process::id(),
                 workspace: self.identity.workspace.clone(),
                 home_root: self.identity.home_root.clone(),
                 run_root: self.identity.run_root.clone(),
             }),
             crate::AgentdMethod::Lifecycle => AgentdPayload::Lifecycle(LifecycleSnapshot {
-                lifecycle: runtime.lifecycle,
-                app_server_ready: runtime.app_server_ready,
-                fenced: runtime.fenced,
+                lifecycle,
+                app_server_ready,
+                fenced,
             }),
             crate::AgentdMethod::SessionIngress => {
-                if runtime.lifecycle != AgentLifecycle::Running
-                    || !runtime.app_server_ready
-                    || runtime.fenced
-                {
+                if lifecycle != AgentLifecycle::Running || !app_server_ready || fenced {
                     AgentdPayload::Error {
                         code: "not_ready".to_string(),
                         message: "session ingress is unavailable until this generation is ready"
@@ -221,6 +260,51 @@ impl AgentdState {
                     AgentdPayload::Events(batch)
                 }
             }
+            crate::AgentdMethod::AutomationCreate { draft } => {
+                require_automation_ready(lifecycle, app_server_ready, fenced)?;
+                match automation {
+                    Some(store) => AgentdPayload::AutomationTask(store.create_task(&draft).await?),
+                    None => automation_unavailable(),
+                }
+            }
+            crate::AgentdMethod::AutomationList { limit } => {
+                require_automation_ready(lifecycle, app_server_ready, fenced)?;
+                if !(1..=256).contains(&limit) {
+                    return Err(AgentdError::Invalid(
+                        "automation list limit must be between 1 and 256".to_string(),
+                    ));
+                }
+                match automation {
+                    Some(store) => AgentdPayload::AutomationTasks {
+                        tasks: store.list_tasks(usize::from(limit)).await?,
+                    },
+                    None => automation_unavailable(),
+                }
+            }
+            crate::AgentdMethod::AutomationCancel { task_id } => {
+                require_automation_ready(lifecycle, app_server_ready, fenced)?;
+                match automation {
+                    Some(store) => {
+                        AgentdPayload::AutomationTask(store.cancel_task(task_id, now_ms()?).await?)
+                    }
+                    None => automation_unavailable(),
+                }
+            }
+            crate::AgentdMethod::AutomationSetEnabled {
+                task_id,
+                enabled,
+                resume_at_ms,
+            } => {
+                require_automation_ready(lifecycle, app_server_ready, fenced)?;
+                match automation {
+                    Some(store) => AgentdPayload::AutomationTask(
+                        store
+                            .set_enabled(task_id, enabled, resume_at_ms, now_ms()?)
+                            .await?,
+                    ),
+                    None => automation_unavailable(),
+                }
+            }
         };
         Ok(AgentdResponse {
             schema_version: crate::AGENTD_CONTROL_SCHEMA_VERSION,
@@ -231,6 +315,36 @@ impl AgentdState {
             payload,
         })
     }
+}
+
+fn automation_unavailable() -> AgentdPayload {
+    AgentdPayload::Error {
+        code: AUTOMATION_UNAVAILABLE_CODE.to_string(),
+        message: AUTOMATION_UNAVAILABLE_MESSAGE.to_string(),
+    }
+}
+
+fn require_automation_ready(
+    lifecycle: AgentLifecycle,
+    app_server_ready: bool,
+    fenced: bool,
+) -> Result<(), AgentdError> {
+    if lifecycle == AgentLifecycle::Running && app_server_ready && !fenced {
+        Ok(())
+    } else {
+        Err(AgentdError::Protocol(
+            "automation control is unavailable until this Agent generation is ready".to_string(),
+        ))
+    }
+}
+
+fn now_ms() -> Result<u64, AgentdError> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| AgentdError::Protocol("system clock precedes Unix epoch".to_string()))?
+        .as_millis();
+    u64::try_from(millis)
+        .map_err(|_| AgentdError::Protocol("system clock exceeds u64 milliseconds".to_string()))
 }
 
 fn poisoned_state<T>(_error: std::sync::PoisonError<T>) -> AgentdError {

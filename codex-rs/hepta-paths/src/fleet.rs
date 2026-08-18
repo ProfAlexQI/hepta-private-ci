@@ -152,6 +152,7 @@ pub struct HeptaAgentLayout {
     active_release: PathBuf,
     cognitive_root: PathBuf,
     matrix_root: PathBuf,
+    automation_root: PathBuf,
 }
 
 impl HeptaAgentLayout {
@@ -170,6 +171,7 @@ impl HeptaAgentLayout {
             active_release: releases_root.join("active"),
             cognitive_root: agent_root.join("cognitive"),
             matrix_root: agent_root.join("matrix"),
+            automation_root: agent_root.join("automation"),
             agent_id,
             agent_root,
             run_root,
@@ -231,6 +233,11 @@ impl HeptaAgentLayout {
 
     pub fn matrix_root(&self) -> &Path {
         &self.matrix_root
+    }
+
+    /// Private durable timer/task state for this exact Workspace Agent.
+    pub fn automation_root(&self) -> &Path {
+        &self.automation_root
     }
 }
 

@@ -3436,6 +3436,7 @@ dependencies = [
 name = "codex-hepta-agent-protocol"
 version = "0.0.0"
 dependencies = [
+ "codex-hepta-automation",
  "codex-hepta-contracts",
  "codex-hepta-fleet",
  "pretty_assertions",
@@ -3455,6 +3456,7 @@ dependencies = [
  "codex-arg0",
  "codex-config",
  "codex-hepta-agent-protocol",
+ "codex-hepta-automation",
  "codex-hepta-contracts",
  "codex-hepta-fleet",
  "codex-hepta-memory",
@@ -3473,6 +3475,24 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "codex-hepta-automation"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-contracts",
+ "codex-hepta-fleet",
+ "codex-hepta-paths",
+ "codex-state",
+ "codex-utils-absolute-path",
+ "pretty_assertions",
+ "serde",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

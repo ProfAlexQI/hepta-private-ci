@@ -1,3 +1,4 @@
+use codex_hepta_automation::AutomationError;
 use codex_hepta_fleet::FleetRegistryError;
 
 #[derive(Debug, thiserror::Error)]
@@ -10,6 +11,8 @@ pub enum AgentdError {
     Protocol(String),
     #[error(transparent)]
     Fleet(#[from] FleetRegistryError),
+    #[error(transparent)]
+    Automation(#[from] AutomationError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]

@@ -6,6 +6,8 @@ use codex_app_server_client::RemoteAppServerClient;
 use codex_app_server_client::RemoteAppServerConnectArgs;
 use codex_app_server_client::RemoteAppServerEndpoint;
 use codex_arg0::Arg0DispatchPaths;
+use codex_hepta_automation::AutomationError;
+use codex_hepta_automation::AutomationStore;
 use codex_hepta_memory::CognitiveRuntime;
 use codex_hepta_memory::CognitiveStore;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -19,6 +21,7 @@ use crate::AgentdError;
 use crate::AgentdIdentity;
 use crate::AgentdState;
 use crate::app_runtime::run_app_server;
+use crate::automation::run_automation_scheduler;
 
 const EVENT_CAPACITY: usize = 128;
 const GENERATION_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -29,6 +32,7 @@ enum CompletedRuntimeTask {
     Control,
     AppServer,
     Monitor,
+    Automation,
 }
 
 pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<(), AgentdError> {
@@ -44,6 +48,14 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
         CognitiveStore::open(&cognitive_layout).await
     })
     .await?;
+    let automation_layout = identity.layout.clone();
+    let automation_store = open_automation_store_after_generation_fence(&state, || async move {
+        AutomationStore::open(&automation_layout).await
+    })
+    .await?;
+    if let Some(store) = automation_store.as_ref() {
+        state.attach_automation_store(store.clone())?;
+    }
     let cancellation = CancellationToken::new();
     let control = AgentdControlServer::bind(
         identity.control_socket.clone(),
@@ -58,6 +70,23 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
         cognitive_runtime,
     ));
     let mut monitor_task = tokio::spawn(monitor_runtime(Arc::clone(&state)));
+    let automation_cancellation = cancellation.clone();
+    let automation_state = Arc::clone(&state);
+    let mut automation_task = tokio::spawn(async move {
+        match automation_store {
+            Some(store) => {
+                run_automation_scheduler(store, automation_state, identity, automation_cancellation)
+                    .await
+            }
+            None => {
+                // Automation is an optional per-Agent product plane. A corrupt or
+                // unavailable private store must not create a second failure domain
+                // for Codex sessions, tools, or the App Server.
+                automation_cancellation.cancelled().await;
+                Ok(())
+            }
+        }
+    });
 
     let (outcome, completed_task) = tokio::select! {
         result = &mut control_task => (
@@ -72,6 +101,10 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
             joined("generation monitor", result),
             Some(CompletedRuntimeTask::Monitor),
         ),
+        result = &mut automation_task => (
+            joined("automation scheduler", result),
+            Some(CompletedRuntimeTask::Automation),
+        ),
         signal = shutdown_signal() => {
             signal?;
             state.mark_draining()?;
@@ -84,9 +117,28 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
         &mut control_task,
         &mut app_server_task,
         &mut monitor_task,
+        &mut automation_task,
     )
     .await;
     outcome
+}
+
+async fn open_automation_store_after_generation_fence<Open, OpenFuture>(
+    state: &AgentdState,
+    open: Open,
+) -> Result<Option<AutomationStore>, AgentdError>
+where
+    Open: FnOnce() -> OpenFuture,
+    OpenFuture: Future<Output = Result<AutomationStore, codex_hepta_automation::AutomationError>>,
+{
+    state.refresh_generation()?;
+    let opened = open().await;
+    state.refresh_generation()?;
+    match opened {
+        Ok(store) => Ok(Some(store)),
+        Err(AutomationError::Unavailable | AutomationError::Corrupt) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
 }
 
 async fn open_cognitive_runtime_after_generation_fence<Open, OpenFuture>(
@@ -195,11 +247,12 @@ async fn abort_and_join<T>(task: &mut JoinHandle<T>) {
     let _ = task.await;
 }
 
-async fn cleanup_runtime_tasks<ControlOutput, AppServerOutput, MonitorOutput>(
+async fn cleanup_runtime_tasks<ControlOutput, AppServerOutput, MonitorOutput, AutomationOutput>(
     completed_task: Option<CompletedRuntimeTask>,
     control_task: &mut JoinHandle<ControlOutput>,
     app_server_task: &mut JoinHandle<AppServerOutput>,
     monitor_task: &mut JoinHandle<MonitorOutput>,
+    automation_task: &mut JoinHandle<AutomationOutput>,
 ) {
     if completed_task != Some(CompletedRuntimeTask::Control) {
         abort_and_join(control_task).await;
@@ -209,6 +262,9 @@ async fn cleanup_runtime_tasks<ControlOutput, AppServerOutput, MonitorOutput>(
     }
     if completed_task != Some(CompletedRuntimeTask::Monitor) {
         abort_and_join(monitor_task).await;
+    }
+    if completed_task != Some(CompletedRuntimeTask::Automation) {
+        abort_and_join(automation_task).await;
     }
 }
 

@@ -441,6 +441,51 @@ async fn unavailable_cognitive_store_starts_and_fails_open_with_typed_tools() ->
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn unavailable_automation_store_keeps_real_agentd_and_app_server_ready() -> Result<()> {
+    let mut fleet = FleetHarness::new()?;
+    let agent = fleet.register(AGENT_A, "workspace-a")?;
+    let model = responses::start_mock_server().await;
+    MockResponsesConfig::new(&model.uri()).write(agent.layout.home_root())?;
+    let blocking_path = agent.layout.automation_root().join("automation_1.sqlite3");
+    std::fs::create_dir(&blocking_path)?;
+
+    fleet.start(&agent)?;
+    let (control, _) = fleet.wait_ready(&agent, 1).await?;
+    ensure!(control.health().await?.ready, "agentd did not stay ready");
+    let error = control
+        .automation_list(1)
+        .await
+        .expect_err("unavailable automation must return a typed error")
+        .to_string();
+    ensure!(
+        error.contains("automation_unavailable"),
+        "typed automation error omitted its stable code: {error}"
+    );
+    ensure!(
+        !error.contains(blocking_path.to_string_lossy().as_ref())
+            && !error.to_ascii_lowercase().contains("sqlite"),
+        "typed automation error leaked storage details"
+    );
+
+    let mut product = ProductClient::connect(&agent, &control).await?;
+    let thread = product.start_thread(&agent.workspace).await?;
+    let normal = responses::mount_sse_sequence(
+        &model,
+        vec![final_sse("automation-unavailable-normal-turn")],
+    )
+    .await;
+    product
+        .run_turn(&thread, "Continue normal work without automation storage.")
+        .await?;
+    ensure!(
+        normal.requests().len() == 1,
+        "normal App Server turn did not survive automation storage outage"
+    );
+    product.shutdown().await?;
+    Ok(())
+}
+
 fn tool_sse(response_id: &str, call_id: &str, operation: &str, arguments: Value) -> String {
     responses::sse(vec![
         responses::ev_response_created(response_id),

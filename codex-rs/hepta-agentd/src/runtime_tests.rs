@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
+use codex_hepta_automation::AutomationError;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::AgentManifest;
@@ -17,6 +18,7 @@ use super::AgentdState;
 use super::CompletedRuntimeTask;
 use super::EVENT_CAPACITY;
 use super::cleanup_runtime_tasks;
+use super::open_automation_store_after_generation_fence;
 use super::open_cognitive_runtime_after_generation_fence;
 
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
@@ -29,18 +31,21 @@ async fn cleanup_never_polls_the_join_handle_already_consumed_by_select() {
         .expect("selected control task should complete");
     let mut app_server_task = tokio::spawn(std::future::pending::<()>());
     let mut monitor_task = tokio::spawn(std::future::pending::<()>());
+    let mut automation_task = tokio::spawn(std::future::pending::<()>());
 
     cleanup_runtime_tasks(
         Some(CompletedRuntimeTask::Control),
         &mut control_task,
         &mut app_server_task,
         &mut monitor_task,
+        &mut automation_task,
     )
     .await;
 
     assert!(control_task.is_finished());
     assert!(app_server_task.is_finished());
     assert!(monitor_task.is_finished());
+    assert!(automation_task.is_finished());
 }
 
 struct RuntimeFixture {
@@ -108,6 +113,50 @@ async fn unavailable_cognitive_store_degrades_without_leaking_open_error() {
     };
     assert_eq!(reason.code(), "storage_unavailable");
     assert!(!format!("{reason:?}").contains("/private/raw"));
+}
+
+#[tokio::test]
+async fn unavailable_automation_store_degrades_without_startup_failure() {
+    let fixture = runtime_fixture();
+    let store = open_automation_store_after_generation_fence(&fixture.state, || async {
+        Err(AutomationError::Unavailable)
+    })
+    .await
+    .expect("automation storage outage must not block agent execution");
+    assert!(store.is_none());
+}
+
+#[tokio::test]
+async fn automation_owner_mismatch_remains_fail_closed() {
+    let fixture = runtime_fixture();
+    let result = open_automation_store_after_generation_fence(&fixture.state, || async {
+        Err(AutomationError::AccessDenied)
+    })
+    .await;
+    assert!(matches!(
+        result,
+        Err(crate::AgentdError::Automation(
+            AutomationError::AccessDenied
+        ))
+    ));
+}
+
+#[tokio::test]
+async fn automation_generation_change_during_open_remains_fail_closed() {
+    let fixture = runtime_fixture();
+    let registry = fixture.registry.clone();
+    let agent_id = fixture.identity.agent_id.clone();
+    let result = open_automation_store_after_generation_fence(&fixture.state, move || async move {
+        registry
+            .compare_and_transition(&agent_id, 1, AgentLifecycle::Failed)
+            .expect("concurrent generation change");
+        Err(AutomationError::Unavailable)
+    })
+    .await;
+    assert!(matches!(
+        result,
+        Err(crate::AgentdError::GenerationFenced(_))
+    ));
 }
 
 #[tokio::test]

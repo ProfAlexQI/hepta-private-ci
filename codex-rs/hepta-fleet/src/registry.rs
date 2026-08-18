@@ -179,7 +179,7 @@ impl FleetRegistry {
         staging_root: &Path,
         manifest: &AgentManifest,
     ) -> Result<(), FleetRegistryError> {
-        for name in ["home", "run", "logs", "releases", "cognitive"] {
+        for name in ["home", "run", "logs", "releases", "cognitive", "automation"] {
             std::fs::create_dir(staging_root.join(name))?;
         }
         write_new_file(
@@ -204,6 +204,7 @@ impl FleetRegistry {
             layout.logs_root(),
             layout.releases_root(),
             layout.cognitive_root(),
+            layout.automation_root(),
         ] {
             validate_physical_directory(directory)?;
         }

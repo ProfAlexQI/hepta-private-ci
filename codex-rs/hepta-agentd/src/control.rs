@@ -103,7 +103,10 @@ async fn serve_connection(stream: UnixStream, state: Arc<AgentdState>) -> Result
             "unsupported agentd control schema",
         )
     } else {
-        match state.response(request.request_id, request.spawn_generation, request.method) {
+        match state
+            .response(request.request_id, request.spawn_generation, request.method)
+            .await
+        {
             Ok(response) => response,
             Err(error) => error_response(
                 &state,

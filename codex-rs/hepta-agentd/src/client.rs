@@ -3,6 +3,9 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+use codex_hepta_automation::AutomationTask;
+use codex_hepta_automation::AutomationTaskDraft;
+use codex_hepta_automation::AutomationTaskId;
 use codex_hepta_contracts::AgentId;
 use codex_uds::UnixStream;
 use tokio::io::AsyncBufReadExt;
@@ -105,6 +108,79 @@ impl AgentdClient {
             .payload
         {
             AgentdPayload::Events(events) => Ok(events),
+            payload => unexpected(payload),
+        }
+    }
+
+    pub async fn automation_create(
+        &self,
+        draft: AutomationTaskDraft,
+    ) -> Result<AutomationTask, AgentdError> {
+        match self
+            .send(AgentdRequest::automation_create(
+                self.request_id(),
+                self.spawn_generation,
+                draft,
+            ))
+            .await?
+            .payload
+        {
+            AgentdPayload::AutomationTask(task) => Ok(task),
+            payload => unexpected(payload),
+        }
+    }
+
+    pub async fn automation_list(&self, limit: u16) -> Result<Vec<AutomationTask>, AgentdError> {
+        match self
+            .send(AgentdRequest::automation_list(
+                self.request_id(),
+                self.spawn_generation,
+                limit,
+            ))
+            .await?
+            .payload
+        {
+            AgentdPayload::AutomationTasks { tasks } => Ok(tasks),
+            payload => unexpected(payload),
+        }
+    }
+
+    pub async fn automation_cancel(
+        &self,
+        task_id: AutomationTaskId,
+    ) -> Result<AutomationTask, AgentdError> {
+        match self
+            .send(AgentdRequest::automation_cancel(
+                self.request_id(),
+                self.spawn_generation,
+                task_id,
+            ))
+            .await?
+            .payload
+        {
+            AgentdPayload::AutomationTask(task) => Ok(task),
+            payload => unexpected(payload),
+        }
+    }
+
+    pub async fn automation_set_enabled(
+        &self,
+        task_id: AutomationTaskId,
+        enabled: bool,
+        resume_at_ms: Option<u64>,
+    ) -> Result<AutomationTask, AgentdError> {
+        match self
+            .send(AgentdRequest::automation_set_enabled(
+                self.request_id(),
+                self.spawn_generation,
+                task_id,
+                enabled,
+                resume_at_ms,
+            ))
+            .await?
+            .payload
+        {
+            AgentdPayload::AutomationTask(task) => Ok(task),
             payload => unexpected(payload),
         }
     }
