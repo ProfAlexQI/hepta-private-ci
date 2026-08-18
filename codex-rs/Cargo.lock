@@ -3432,6 +3432,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-matrix-protocol"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-contracts",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "url",
+]
+
+[[package]]
 name = "codex-hepta-memory"
 version = "0.0.0"
 dependencies = [

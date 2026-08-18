@@ -51,6 +51,7 @@ members = [
     "hepta-fleet",
     "hepta-supervisor",
     "hepta-memory",
+    "hepta-matrix-protocol",
     "hepta-native-gateway",
     "hepta-operator-acceptance",
     "hepta-paths",
@@ -199,6 +200,7 @@ codex-hepta-evidence = { path = "hepta-evidence" }
 codex-hepta-fleet = { path = "hepta-fleet" }
 codex-hepta-supervisor = { path = "hepta-supervisor" }
 codex-hepta-memory = { path = "hepta-memory" }
+codex-hepta-matrix-protocol = { path = "hepta-matrix-protocol" }
 codex-hepta-native-gateway = { path = "hepta-native-gateway" }
 codex-hepta-paths = { path = "hepta-paths" }
 codex-hepta-runtime = { path = "hepta-runtime" }
