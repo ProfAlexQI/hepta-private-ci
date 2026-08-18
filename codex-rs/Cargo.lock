@@ -3464,14 +3464,19 @@ dependencies = [
 name = "codex-hepta-matrixd"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "codex-app-server-client",
  "codex-app-server-protocol",
  "codex-hepta-agentd",
  "codex-hepta-contracts",
  "codex-hepta-matrix-protocol",
+ "codex-hepta-matrix-store",
+ "codex-hepta-paths",
  "codex-utils-absolute-path",
  "pretty_assertions",
  "serde",
+ "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
 ]

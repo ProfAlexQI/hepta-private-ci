@@ -548,6 +548,16 @@ impl MatrixDurableStore {
         Ok(record)
     }
 
+    pub async fn inbox(
+        &self,
+        event_id: &MatrixEventId,
+    ) -> Result<Option<InboxRecord>, MatrixDurableError> {
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let inbox = inbox_by_event_tx(&mut transaction, event_id).await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(inbox)
+    }
+
     pub async fn begin_inbox_dispatch(
         &self,
         event_id: &MatrixEventId,
@@ -895,6 +905,31 @@ impl MatrixDurableStore {
         Ok(dispatch)
     }
 
+    pub async fn inbox_dispatch_for_turn(
+        &self,
+        thread_id: &str,
+        turn_id: &str,
+    ) -> Result<Option<InboxDispatchRecord>, MatrixDurableError> {
+        validate_local_identity(thread_id)?;
+        validate_local_identity(turn_id)?;
+        let rows = sqlx::query(
+            "SELECT event_id, client_user_message_id, room_id, binding_revision, generation,
+                    project_id, state, thread_id, queued_submission_id, turn_id,
+                    begun_at_ms, updated_at_ms, completed_at_ms
+             FROM inbox_dispatches WHERE thread_id = ? AND turn_id = ? LIMIT 2",
+        )
+        .bind(thread_id)
+        .bind(turn_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        match rows.as_slice() {
+            [] => Ok(None),
+            [row] => Ok(Some(inbox_dispatch_from_row(row)?)),
+            _ => Err(MatrixDurableError::Corrupt),
+        }
+    }
+
     pub async fn pending_dispatches(
         &self,
         limit: usize,
@@ -1059,6 +1094,34 @@ impl MatrixDurableStore {
         };
         transaction.commit().await.map_err(unavailable)?;
         Ok(OutboxDisposition::Enqueued(record))
+    }
+
+    /// Return the first unused revision for one logical outbound projection.
+    ///
+    /// The fenced per-Agent runtime serializes this read with `enqueue_outbox`.
+    /// A second writer still fails closed on the database unique constraint.
+    pub async fn next_outbox_revision(
+        &self,
+        logical_outbox_id: &str,
+    ) -> Result<u64, MatrixDurableError> {
+        validate_local_identity(logical_outbox_id)?;
+        let row = sqlx::query(
+            "SELECT MAX(revision) AS max_revision
+             FROM outbox_txns WHERE logical_outbox_id = ?",
+        )
+        .bind(logical_outbox_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        let revision = row
+            .try_get::<Option<i64>, _>("max_revision")
+            .map_err(unavailable)?
+            .map(to_u64)
+            .transpose()?
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or(MatrixDurableError::Invalid)?;
+        Ok(revision)
     }
 
     async fn coalesce_candidate(

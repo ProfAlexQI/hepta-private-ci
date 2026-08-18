@@ -56,7 +56,17 @@ use codex_hepta_matrix_protocol::MatrixRoomId;
 use codex_hepta_matrix_protocol::client_user_message_id;
 use codex_hepta_matrix_protocol::room_project_idempotency_key;
 use codex_utils_absolute_path::AbsolutePathBuf;
-use tokio::sync::Mutex;
+use tokio::sync::Semaphore;
+
+mod runtime;
+
+pub use runtime::MatrixDispatchOutcome;
+pub use runtime::MatrixEventProjection;
+pub use runtime::MatrixRuntime;
+pub use runtime::MatrixRuntimeBridge;
+pub use runtime::MatrixRuntimeError;
+pub use runtime::MatrixRuntimeFuture;
+pub use runtime::MatrixRuntimeRecovery;
 
 const BRIDGE_SCHEMA: &str = "hepta.matrix.bridge.v1";
 const BRIDGE_THREAD_SOURCE: &str = "hepta.matrix";
@@ -208,6 +218,18 @@ pub enum MatrixSubmissionState {
     ReconciledTurn { turn_id: String },
 }
 
+/// Whether a bridge retry may create a new Core queue row when reconciliation
+/// finds neither a queued submission nor a persisted turn.
+///
+/// A durable dispatch that already recorded `queued` or `admitted` must use
+/// [`MatrixAdmissionMode::ReconcileOnly`].  Treating a missing Core record as
+/// permission to submit again would weaken the exactly-once admission bound.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MatrixAdmissionMode {
+    AllowIfAbsent,
+    ReconcileOnly,
+}
+
 #[derive(Clone, Debug)]
 pub struct MatrixBridgeConfig {
     pub agent_id: AgentId,
@@ -236,13 +258,13 @@ impl MatrixBridgeConfig {
 
 /// Deterministic room/thread and message-submission core.
 ///
-/// The mutex is intentionally process-local.  Product wiring must still run a
-/// single fenced `matrixd` for one Agent generation; it is not a distributed
-/// lock and never creates a central gateway.
+/// The single permit is intentionally process-local. Product wiring must still
+/// run a single fenced `matrixd` for one Agent generation; it is not a
+/// distributed lock and never creates a central gateway.
 pub struct MatrixAppServerBridge<T> {
     config: MatrixBridgeConfig,
     transport: T,
-    operation: Mutex<()>,
+    operation: Semaphore,
 }
 
 impl<T> MatrixAppServerBridge<T>
@@ -254,7 +276,7 @@ where
         Ok(Self {
             config,
             transport,
-            operation: Mutex::new(()),
+            operation: Semaphore::new(1),
         })
     }
 
@@ -270,7 +292,9 @@ where
         &self,
         room_id: &MatrixRoomId,
     ) -> Result<RoomThreadBinding, MatrixBridgeError> {
-        let _operation = self.operation.lock().await;
+        let _operation = self.operation.acquire().await.map_err(|_| {
+            MatrixBridgeError::Protocol("Matrix bridge operation gate closed".to_string())
+        })?;
         self.ensure_room_thread_locked(room_id).await
     }
 
@@ -280,13 +304,62 @@ where
         event_id: &MatrixEventId,
         input: Vec<UserInput>,
     ) -> Result<MatrixSubmission, MatrixBridgeError> {
+        let _operation = self.operation.acquire().await.map_err(|_| {
+            MatrixBridgeError::Protocol("Matrix bridge operation gate closed".to_string())
+        })?;
+        let binding = self.ensure_room_thread_locked(room_id).await?;
+        self.submit_matrix_event_on_binding_locked(
+            room_id,
+            event_id,
+            input,
+            &binding,
+            MatrixAdmissionMode::AllowIfAbsent,
+        )
+        .await
+    }
+
+    /// Submit or reconcile one event against an already persisted exact room
+    /// binding.  Runtime recovery uses `ReconcileOnly` after it has durably
+    /// observed a Core queue/turn identity.
+    pub(crate) async fn submit_matrix_event_on_binding(
+        &self,
+        room_id: &MatrixRoomId,
+        event_id: &MatrixEventId,
+        input: Vec<UserInput>,
+        binding: &RoomThreadBinding,
+        admission_mode: MatrixAdmissionMode,
+    ) -> Result<MatrixSubmission, MatrixBridgeError> {
+        let _operation = self.operation.acquire().await.map_err(|_| {
+            MatrixBridgeError::Protocol("Matrix bridge operation gate closed".to_string())
+        })?;
+        self.submit_matrix_event_on_binding_locked(
+            room_id,
+            event_id,
+            input,
+            binding,
+            admission_mode,
+        )
+        .await
+    }
+
+    async fn submit_matrix_event_on_binding_locked(
+        &self,
+        room_id: &MatrixRoomId,
+        event_id: &MatrixEventId,
+        input: Vec<UserInput>,
+        binding: &RoomThreadBinding,
+        admission_mode: MatrixAdmissionMode,
+    ) -> Result<MatrixSubmission, MatrixBridgeError> {
         if input.is_empty() {
             return Err(MatrixBridgeError::Invalid(
                 "Matrix event cannot submit empty user input".to_string(),
             ));
         }
-        let _operation = self.operation.lock().await;
-        let binding = self.ensure_room_thread_locked(room_id).await?;
+        if binding.project_id.is_empty() || binding.thread_id.is_empty() {
+            return Err(MatrixBridgeError::Protocol(
+                "Matrix submission binding has an empty project or thread identity".to_string(),
+            ));
+        }
         let client_id = client_user_message_id(&self.config.agent_id, room_id, event_id);
         let queue_match = self
             .find_queued_client_id(&binding.thread_id, &client_id)
@@ -306,7 +379,7 @@ where
                     "client message id {client_id} exists in both queue and turn history"
                 )));
             }
-            (None, None) => {
+            (None, None) if admission_mode == MatrixAdmissionMode::AllowIfAbsent => {
                 let queued = self
                     .transport
                     .add_queue(BridgeQueueAdd {
@@ -325,9 +398,14 @@ where
                     queued_submission_id: queued.id,
                 }
             }
+            (None, None) => {
+                return Err(MatrixBridgeError::Protocol(format!(
+                    "durable client message id {client_id} is missing from both Core queue and turn history"
+                )));
+            }
         };
         Ok(MatrixSubmission {
-            binding,
+            binding: binding.clone(),
             client_user_message_id: client_id,
             state,
         })
@@ -483,12 +561,10 @@ where
                 })
                 .await?;
             for message in page.data {
-                if message.client_user_message_id == client_id {
-                    if found.replace(message).is_some() {
-                        return Err(MatrixBridgeError::Protocol(format!(
-                            "client message id {client_id} appears in multiple persisted turns"
-                        )));
-                    }
+                if message.client_user_message_id == client_id && found.replace(message).is_some() {
+                    return Err(MatrixBridgeError::Protocol(format!(
+                        "client message id {client_id} appears in multiple persisted turns"
+                    )));
                 }
             }
             let Some(next) = page.next_cursor else {
