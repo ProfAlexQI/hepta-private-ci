@@ -28,6 +28,7 @@ use crate::AgentdState;
 const AUTOMATION_TICK_INTERVAL: Duration = Duration::from_millis(250);
 const AUTOMATION_LEASE_DURATION: Duration = Duration::from_secs(30);
 const AUTOMATION_DISPATCH_TIMEOUT: Duration = Duration::from_secs(5);
+const AUTOMATION_MAX_CONSECUTIVE_DISPATCH_RETRIES: u8 = 3;
 const APP_SERVER_COMMAND_CAPACITY: usize = 8;
 const APP_SERVER_EVENT_CAPACITY: usize = 16;
 
@@ -45,11 +46,18 @@ impl AgentdAutomationQueue {
         &self,
         admission: AutomationAdmission,
     ) -> Result<AutomationQueueReceipt, AgentdError> {
-        if admission.agent_id != self.identity.agent_id
-            || !self.state.automation_admission_ready()?
-        {
+        if admission.agent_id != self.identity.agent_id {
             return Err(AgentdError::GenerationFenced(
-                "automation admission does not belong to a ready Agent generation".to_string(),
+                "automation admission does not belong to the owning Agent".to_string(),
+            ));
+        }
+        if !self.state.automation_is_available()? {
+            return Err(AutomationError::Unavailable.into());
+        }
+        if !self.state.automation_admission_ready()? {
+            return Err(AgentdError::Protocol(
+                "automation admission is unavailable until this Agent generation is ready"
+                    .to_string(),
             ));
         }
         let socket_path = AbsolutePathBuf::from_absolute_path(&self.identity.app_server_socket)?;
@@ -83,9 +91,12 @@ impl AgentdAutomationQueue {
             })?;
         let _ = client.shutdown().await;
         self.state.refresh_generation()?;
+        if !self.state.automation_is_available()? {
+            return Err(AutomationError::Unavailable.into());
+        }
         if !self.state.automation_admission_ready()? {
-            return Err(AgentdError::GenerationFenced(
-                "Agent generation changed during automation admission".to_string(),
+            return Err(AgentdError::Protocol(
+                "Agent stopped accepting automation during queue admission".to_string(),
             ));
         }
         if response.queued_submission.client_user_message_id != admission.client_user_message_id
@@ -108,9 +119,14 @@ impl AutomationTurnQueue for AgentdAutomationQueue {
         admission: AutomationAdmission,
     ) -> AutomationFuture<'_, AutomationQueueReceipt> {
         Box::pin(async move {
-            self.enqueue_inner(admission)
-                .await
-                .map_err(|_| AutomationError::Dispatch)
+            match self.enqueue_inner(admission).await {
+                Ok(receipt) => Ok(receipt),
+                Err(AgentdError::GenerationFenced(_)) => Err(AutomationError::AccessDenied),
+                Err(AgentdError::Automation(
+                    error @ (AutomationError::Unavailable | AutomationError::Corrupt),
+                )) => Err(error),
+                Err(_) => Err(AutomationError::Dispatch),
+            }
         })
     }
 }
@@ -121,36 +137,113 @@ pub(crate) async fn run_automation_scheduler(
     identity: AgentdIdentity,
     cancellation: CancellationToken,
 ) -> Result<(), AgentdError> {
-    store
+    if let Err(error) = store
         .recover_stale_generation(identity.spawn_generation)
-        .await?;
+        .await
+    {
+        return stop_after_automation_error(error, &state, &cancellation).await;
+    }
     let queue = Arc::new(AgentdAutomationQueue::new(
         Arc::clone(&state),
         identity.clone(),
     ));
-    let scheduler = AutomationScheduler::new(
+    let scheduler = match AutomationScheduler::new(
         store,
         queue,
         identity.spawn_generation,
         AUTOMATION_LEASE_DURATION,
         AUTOMATION_DISPATCH_TIMEOUT,
-    )?;
+    ) {
+        Ok(scheduler) => scheduler,
+        Err(error) => return stop_after_automation_error(error, &state, &cancellation).await,
+    };
+    let mut retry_budget = DispatchRetryBudget::default();
     loop {
         tokio::select! {
             _ = cancellation.cancelled() => return Ok(()),
             _ = tokio::time::sleep(AUTOMATION_TICK_INTERVAL) => {}
         }
-        if !state.automation_admission_ready()? {
+        if !state.automation_is_available()? {
+            return wait_for_cancellation(&cancellation).await;
+        }
+        let ready = match state.automation_admission_ready() {
+            Ok(ready) => ready,
+            Err(error @ AgentdError::GenerationFenced(_)) => {
+                state.mark_fenced();
+                return Err(error);
+            }
+            Err(error) => return Err(error),
+        };
+        if !ready {
             continue;
         }
-        let now_ms = unix_time_ms()?;
+        let now_ms = match unix_time_ms() {
+            Ok(now_ms) => now_ms,
+            Err(error) => return stop_after_automation_error(error, &state, &cancellation).await,
+        };
         tokio::select! {
             _ = cancellation.cancelled() => return Ok(()),
             result = scheduler.tick(now_ms) => {
-                result?;
+                match result {
+                    Ok(tick) if retry_budget.observe(&tick) => {
+                        return stop_after_automation_error(
+                            AutomationError::Dispatch,
+                            &state,
+                            &cancellation,
+                        )
+                        .await;
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        return stop_after_automation_error(error, &state, &cancellation).await;
+                    }
+                }
             }
         }
     }
+}
+
+#[derive(Default)]
+struct DispatchRetryBudget {
+    consecutive_retries: u8,
+}
+
+impl DispatchRetryBudget {
+    /// Returns true once a bounded run of dispatch retries is exhausted.
+    /// Any idle or successful submission proves the queue is making progress
+    /// and resets the consecutive-failure counter.
+    fn observe(&mut self, tick: &codex_hepta_automation::AutomationTick) -> bool {
+        match tick {
+            codex_hepta_automation::AutomationTick::RetryScheduled { .. } => {
+                self.consecutive_retries = self.consecutive_retries.saturating_add(1);
+            }
+            codex_hepta_automation::AutomationTick::Idle
+            | codex_hepta_automation::AutomationTick::Submitted { .. } => {
+                self.consecutive_retries = 0;
+            }
+        }
+        self.consecutive_retries >= AUTOMATION_MAX_CONSECUTIVE_DISPATCH_RETRIES
+    }
+}
+
+async fn stop_after_automation_error(
+    error: AutomationError,
+    state: &AgentdState,
+    cancellation: &CancellationToken,
+) -> Result<(), AgentdError> {
+    if error == AutomationError::AccessDenied {
+        state.mark_fenced();
+        return Err(AgentdError::GenerationFenced(
+            "automation owner or generation boundary was violated".to_string(),
+        ));
+    }
+    state.mark_automation_unavailable()?;
+    wait_for_cancellation(cancellation).await
+}
+
+async fn wait_for_cancellation(cancellation: &CancellationToken) -> Result<(), AgentdError> {
+    cancellation.cancelled().await;
+    Ok(())
 }
 
 fn automation_queue_request(admission: &AutomationAdmission) -> ClientRequest {
@@ -167,18 +260,18 @@ fn automation_queue_request(admission: &AutomationAdmission) -> ClientRequest {
     }
 }
 
-fn unix_time_ms() -> Result<u64, AgentdError> {
+fn unix_time_ms() -> Result<u64, AutomationError> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|_| AgentdError::Protocol("system clock precedes Unix epoch".to_string()))?
+        .map_err(|_| AutomationError::Unavailable)?
         .as_millis();
-    u64::try_from(millis)
-        .map_err(|_| AgentdError::Protocol("system clock exceeds u64 milliseconds".to_string()))
+    u64::try_from(millis).map_err(|_| AutomationError::Unavailable)
 }
 
 #[cfg(test)]
 mod tests {
     use codex_hepta_automation::AutomationTaskId;
+    use codex_hepta_automation::AutomationTick;
     use codex_hepta_contracts::AgentId;
 
     use super::*;
@@ -211,5 +304,30 @@ mod tests {
                 text_elements: Vec::new(),
             }]
         );
+    }
+
+    #[test]
+    fn dispatch_retry_budget_is_bounded_and_progress_resets_it() {
+        let task_id =
+            AutomationTaskId::parse("019153a4-3088-7000-a56a-9b1964f75008").expect("task id");
+        let retry = AutomationTick::RetryScheduled {
+            task_id,
+            occurrence: 1,
+        };
+        let submitted = AutomationTick::Submitted {
+            task_id,
+            occurrence: 1,
+            queued_submission_id: "queue-1".to_string(),
+        };
+        let mut budget = DispatchRetryBudget::default();
+
+        assert!(!budget.observe(&retry));
+        assert!(!budget.observe(&retry));
+        assert!(budget.observe(&retry));
+
+        assert!(!budget.observe(&submitted));
+        assert!(!budget.observe(&retry));
+        assert!(!budget.observe(&AutomationTick::Idle));
+        assert!(!budget.observe(&retry));
     }
 }

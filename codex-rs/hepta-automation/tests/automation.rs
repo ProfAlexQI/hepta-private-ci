@@ -112,6 +112,17 @@ impl AutomationTurnQueue for RecordingQueue {
     }
 }
 
+struct FencedQueue;
+
+impl AutomationTurnQueue for FencedQueue {
+    fn enqueue(
+        &self,
+        _admission: AutomationAdmission,
+    ) -> AutomationFuture<'_, AutomationQueueReceipt> {
+        Box::pin(async { Err(AutomationError::AccessDenied) })
+    }
+}
+
 #[allow(
     clippy::expect_used,
     reason = "test task identifiers are fixed valid fixtures"
@@ -196,6 +207,33 @@ async fn one_shot_periodic_disable_and_cancel_are_durable() {
         AutomationTaskState::Cancelled
     );
     assert_eq!(queue.admissions().await.len(), 3);
+}
+
+#[tokio::test]
+async fn owner_or_generation_fence_is_not_downgraded_to_a_dispatch_retry() {
+    let fixture = FleetFixture::new(1);
+    let store = AutomationStore::open(&fixture.layouts[0])
+        .await
+        .expect("open store");
+    let task = draft(
+        "019153a4-3088-7000-a56a-9b1964f75009",
+        AutomationSchedule::Once,
+        100,
+    );
+    store.create_task(&task).await.expect("create task");
+    let scheduler = AutomationScheduler::new(
+        store,
+        Arc::new(FencedQueue),
+        1,
+        Duration::from_secs(30),
+        Duration::from_secs(2),
+    )
+    .expect("scheduler");
+
+    assert_eq!(
+        scheduler.tick(100).await,
+        Err(AutomationError::AccessDenied)
+    );
 }
 
 #[tokio::test]

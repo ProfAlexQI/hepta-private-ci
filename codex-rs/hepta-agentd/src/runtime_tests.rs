@@ -1,8 +1,10 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use codex_hepta_automation::AutomationError;
+use codex_hepta_automation::AutomationStore;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::AgentManifest;
@@ -12,14 +14,20 @@ use codex_hepta_fleet::WorkspaceBinding;
 use codex_hepta_memory::CognitiveRuntime;
 use codex_hepta_memory::CognitiveStoreError;
 use codex_hepta_paths::HeptaFleetRoot;
+use tokio::time::timeout;
+use tokio_util::sync::CancellationToken;
 
 use super::AgentdIdentity;
 use super::AgentdState;
 use super::CompletedRuntimeTask;
 use super::EVENT_CAPACITY;
 use super::cleanup_runtime_tasks;
+use super::monitor_runtime;
 use super::open_automation_store_after_generation_fence;
 use super::open_cognitive_runtime_after_generation_fence;
+use crate::AgentdMethod;
+use crate::AgentdPayload;
+use crate::automation::run_automation_scheduler;
 
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
@@ -153,6 +161,105 @@ async fn automation_generation_change_during_open_remains_fail_closed() {
         Err(AutomationError::Unavailable)
     })
     .await;
+    assert!(matches!(
+        result,
+        Err(crate::AgentdError::GenerationFenced(_))
+    ));
+}
+
+#[tokio::test]
+async fn runtime_automation_store_failure_stops_only_the_scheduler_plane() {
+    let fixture = runtime_fixture();
+    fixture
+        .registry
+        .compare_and_transition(&fixture.identity.agent_id, 1, AgentLifecycle::Running)
+        .expect("running generation");
+    fixture.state.refresh_generation().expect("refresh running");
+    fixture
+        .state
+        .mark_app_server_ready()
+        .expect("mark App Server ready");
+
+    let store = AutomationStore::open(&fixture.identity.layout)
+        .await
+        .expect("open automation store");
+    fixture
+        .state
+        .attach_automation_store(store.clone())
+        .expect("attach automation store");
+    let cancellation = CancellationToken::new();
+    let scheduler_task = tokio::spawn(run_automation_scheduler(
+        store.clone(),
+        Arc::clone(&fixture.state),
+        fixture.identity.clone(),
+        cancellation.clone(),
+    ));
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(
+        fixture
+            .state
+            .automation_is_available()
+            .expect("automation state"),
+        "scheduler did not enter its normal running loop"
+    );
+    store.close().await;
+    timeout(Duration::from_secs(3), async {
+        loop {
+            if !fixture
+                .state
+                .automation_is_available()
+                .expect("automation state")
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("runtime store failure was not quarantined");
+
+    assert!(
+        !scheduler_task.is_finished(),
+        "quarantined automation scheduler must wait for agentd cancellation"
+    );
+    let unavailable = fixture
+        .state
+        .response(1, 1, AgentdMethod::AutomationList { limit: 1 })
+        .await
+        .expect("typed unavailable response");
+    assert!(matches!(
+        unavailable.payload,
+        AgentdPayload::Error { ref code, .. } if code == "automation_unavailable"
+    ));
+    let health = fixture
+        .state
+        .response(2, 1, AgentdMethod::Health)
+        .await
+        .expect("health response");
+    assert!(matches!(
+        health.payload,
+        AgentdPayload::Health(ref snapshot) if snapshot.ready && !snapshot.fenced
+    ));
+
+    cancellation.cancel();
+    timeout(Duration::from_secs(1), scheduler_task)
+        .await
+        .expect("scheduler did not observe cancellation")
+        .expect("scheduler task panicked")
+        .expect("quarantined scheduler returned an error");
+}
+
+#[tokio::test]
+async fn automation_owner_fence_still_terminates_the_runtime_monitor() {
+    let fixture = runtime_fixture();
+    fixture.state.mark_fenced();
+    let result = timeout(
+        Duration::from_secs(1),
+        monitor_runtime(Arc::clone(&fixture.state)),
+    )
+    .await
+    .expect("fenced monitor did not terminate");
     assert!(matches!(
         result,
         Err(crate::AgentdError::GenerationFenced(_))

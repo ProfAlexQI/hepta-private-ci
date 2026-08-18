@@ -7,6 +7,7 @@ use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
 use anyhow::Result;
+use anyhow::anyhow;
 use anyhow::ensure;
 use app_test_support::MockResponsesConfig;
 use codex_app_server_client::AppServerEvent;
@@ -21,6 +22,8 @@ use codex_app_server_protocol::TurnStartResponse;
 use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::UserInput as V2UserInput;
 use codex_hepta_agentd::AgentdClient;
+use codex_hepta_automation::AutomationSchedule;
+use codex_hepta_automation::AutomationTaskDraft;
 use codex_hepta_memory::CognitiveAccess;
 use codex_hepta_memory::CognitiveScope;
 use codex_hepta_memory::CognitiveStore;
@@ -30,6 +33,8 @@ use codex_hepta_memory::MemoryLifecycleState;
 use codex_hepta_memory::MemoryRevisionDraft;
 use codex_hepta_memory::MemoryVerification;
 use codex_hepta_memory::SourceDraft;
+use codex_state::SqliteConfig;
+use codex_utils_absolute_path::AbsolutePathBuf;
 use core_test_support::responses;
 use core_test_support::responses::ResponseMock;
 use core_test_support::responses::ResponsesRequest;
@@ -482,6 +487,90 @@ async fn unavailable_automation_store_keeps_real_agentd_and_app_server_ready() -
         normal.requests().len() == 1,
         "normal App Server turn did not survive automation storage outage"
     );
+    product.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn runtime_automation_store_failure_does_not_end_real_agentd_or_normal_turns() -> Result<()> {
+    let mut fleet = FleetHarness::new()?;
+    let agent = fleet.register(AGENT_A, "workspace-a")?;
+    let model = responses::start_mock_server().await;
+    MockResponsesConfig::new(&model.uri()).write(agent.layout.home_root())?;
+
+    fleet.start(&agent)?;
+    let (control, _) = fleet.wait_ready(&agent, 1).await?;
+    let mut product = ProductClient::connect(&agent, &control).await?;
+    let thread = product.start_thread(&agent.workspace).await?;
+    let created_at_ms = u64::try_from(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())?;
+    let task = control
+        .automation_create(AutomationTaskDraft::new(
+            thread.clone(),
+            "runtime automation store failure probe",
+            AutomationSchedule::Once,
+            created_at_ms + 60_000,
+            created_at_ms,
+        ))
+        .await?;
+    ensure!(
+        control.automation_list(1).await? == [task],
+        "automation was not available before runtime sabotage"
+    );
+
+    let database_path = agent.layout.automation_root().join("automation_1.sqlite3");
+    let sqlite_home = AbsolutePathBuf::from_absolute_path(agent.layout.automation_root())?;
+    let sabotage = SqliteConfig::from_sqlite_home(sqlite_home)
+        .open_durable_evidence_pool(&database_path)
+        .await?;
+    sqlx::query("DROP TABLE automation_tasks")
+        .execute(&sabotage)
+        .await?;
+    sabotage.close().await;
+
+    let error = timeout(Duration::from_secs(5), async {
+        loop {
+            match control.automation_list(1).await {
+                Ok(_) => tokio::time::sleep(Duration::from_millis(25)).await,
+                Err(error) => {
+                    let rendered = error.to_string();
+                    if rendered.contains("automation_unavailable") {
+                        return Ok::<String, anyhow::Error>(rendered);
+                    }
+                    return Err(anyhow!(
+                        "unexpected automation control failure after store sabotage: {rendered}"
+                    ));
+                }
+            }
+        }
+    })
+    .await
+    .context("runtime automation store failure was not quarantined")??;
+    ensure!(
+        !error.contains(database_path.to_string_lossy().as_ref())
+            && !error.to_ascii_lowercase().contains("sqlite"),
+        "runtime automation error leaked storage details"
+    );
+    ensure!(
+        control.health().await?.ready,
+        "automation failure incorrectly stopped the real agentd"
+    );
+
+    let normal = responses::mount_sse_sequence(
+        &model,
+        vec![final_sse("runtime-automation-unavailable-normal-turn")],
+    )
+    .await;
+    product
+        .run_turn(
+            &thread,
+            "Continue normal work after the automation store failed.",
+        )
+        .await?;
+    ensure!(
+        normal.requests().len() == 1,
+        "normal model turn did not survive runtime automation failure"
+    );
+
     product.shutdown().await?;
     Ok(())
 }

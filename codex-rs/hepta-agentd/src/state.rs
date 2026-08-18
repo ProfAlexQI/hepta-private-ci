@@ -2,6 +2,7 @@ use std::sync::Mutex;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use codex_hepta_automation::AutomationError;
 use codex_hepta_automation::AutomationStore;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::FleetRegistry;
@@ -78,6 +79,15 @@ impl AgentdState {
             ));
         }
         Ok(())
+    }
+
+    pub(crate) fn mark_automation_unavailable(&self) -> Result<(), AgentdError> {
+        self.automation.lock().map_err(poisoned_state)?.take();
+        Ok(())
+    }
+
+    pub(crate) fn automation_is_available(&self) -> Result<bool, AgentdError> {
+        Ok(self.automation.lock().map_err(poisoned_state)?.is_some())
     }
 
     pub(crate) fn identity(&self) -> &AgentdIdentity {
@@ -178,6 +188,10 @@ impl AgentdState {
         }
     }
 
+    pub(crate) fn is_fenced(&self) -> Result<bool, AgentdError> {
+        Ok(self.runtime.lock().map_err(poisoned_state)?.fenced)
+    }
+
     pub(crate) fn automation_admission_ready(&self) -> Result<bool, AgentdError> {
         self.refresh_generation()?;
         let runtime = self.runtime.lock().map_err(poisoned_state)?;
@@ -263,7 +277,10 @@ impl AgentdState {
             crate::AgentdMethod::AutomationCreate { draft } => {
                 require_automation_ready(lifecycle, app_server_ready, fenced)?;
                 match automation {
-                    Some(store) => AgentdPayload::AutomationTask(store.create_task(&draft).await?),
+                    Some(store) => self.automation_result(
+                        store.create_task(&draft).await,
+                        AgentdPayload::AutomationTask,
+                    )?,
                     None => automation_unavailable(),
                 }
             }
@@ -275,18 +292,20 @@ impl AgentdState {
                     ));
                 }
                 match automation {
-                    Some(store) => AgentdPayload::AutomationTasks {
-                        tasks: store.list_tasks(usize::from(limit)).await?,
-                    },
+                    Some(store) => self
+                        .automation_result(store.list_tasks(usize::from(limit)).await, |tasks| {
+                            AgentdPayload::AutomationTasks { tasks }
+                        })?,
                     None => automation_unavailable(),
                 }
             }
             crate::AgentdMethod::AutomationCancel { task_id } => {
                 require_automation_ready(lifecycle, app_server_ready, fenced)?;
                 match automation {
-                    Some(store) => {
-                        AgentdPayload::AutomationTask(store.cancel_task(task_id, now_ms()?).await?)
-                    }
+                    Some(store) => self.automation_result(
+                        store.cancel_task(task_id, now_ms()?).await,
+                        AgentdPayload::AutomationTask,
+                    )?,
                     None => automation_unavailable(),
                 }
             }
@@ -297,11 +316,12 @@ impl AgentdState {
             } => {
                 require_automation_ready(lifecycle, app_server_ready, fenced)?;
                 match automation {
-                    Some(store) => AgentdPayload::AutomationTask(
+                    Some(store) => self.automation_result(
                         store
                             .set_enabled(task_id, enabled, resume_at_ms, now_ms()?)
-                            .await?,
-                    ),
+                            .await,
+                        AgentdPayload::AutomationTask,
+                    )?,
                     None => automation_unavailable(),
                 }
             }
@@ -314,6 +334,27 @@ impl AgentdState {
             current_generation,
             payload,
         })
+    }
+
+    fn automation_result<T>(
+        &self,
+        result: Result<T, AutomationError>,
+        success: impl FnOnce(T) -> AgentdPayload,
+    ) -> Result<AgentdPayload, AgentdError> {
+        match result {
+            Ok(value) => Ok(success(value)),
+            Err(AutomationError::Unavailable | AutomationError::Corrupt) => {
+                self.mark_automation_unavailable()?;
+                Ok(automation_unavailable())
+            }
+            Err(AutomationError::AccessDenied) => {
+                self.mark_fenced();
+                Err(AgentdError::GenerationFenced(
+                    "automation store owner or generation boundary was violated".to_string(),
+                ))
+            }
+            Err(error) => Err(error.into()),
+        }
     }
 }
 

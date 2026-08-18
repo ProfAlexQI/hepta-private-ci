@@ -81,6 +81,12 @@ where
         let result = timeout(self.dispatch_timeout, self.queue.enqueue(admission)).await;
         let receipt = match result {
             Ok(Ok(receipt)) => receipt,
+            // Owner/generation fencing is not a transient dispatch failure. Keep
+            // the lease bound to the old generation so its successor can reclaim
+            // it through the normal generation-recovery path.
+            Ok(Err(AutomationError::AccessDenied)) => {
+                return Err(AutomationError::AccessDenied);
+            }
             Ok(Err(_)) | Err(_) => {
                 self.store.release_for_retry(&lease).await?;
                 return Ok(AutomationTick::RetryScheduled {

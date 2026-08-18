@@ -161,6 +161,11 @@ where
 async fn monitor_runtime(state: Arc<AgentdState>) -> Result<(), AgentdError> {
     let mut app_server_ready = false;
     loop {
+        if state.is_fenced()? {
+            return Err(AgentdError::GenerationFenced(
+                "agentd runtime was fenced by an owner or generation violation".to_string(),
+            ));
+        }
         if let Err(error) = state.refresh_generation() {
             state.mark_fenced();
             return Err(error);
