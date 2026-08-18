@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod cognitive_federation;
 mod cognitive_kg_store;
 mod cognitive_memory_store;
 mod cognitive_model;
@@ -9,6 +10,24 @@ mod cognitive_store;
 mod framing;
 mod recall;
 
+pub use cognitive_federation::FederatedMemoryExplanation;
+pub use cognitive_federation::FederatedMemoryReader;
+pub use cognitive_federation::FederatedMemoryRevalidationBinding;
+pub use cognitive_federation::FederatedRecallSet;
+pub use cognitive_federation::FederatedRetrievalBatch;
+pub use cognitive_federation::FederatedRetrievalCandidate;
+pub use cognitive_federation::FederatedRevalidationStatus;
+pub use cognitive_federation::FederationCapability;
+pub use cognitive_federation::FederationCapabilityId;
+pub use cognitive_federation::FederationConsumerAccess;
+pub use cognitive_federation::FederationGrantRequest;
+pub use cognitive_federation::FederationGrantScope;
+pub use cognitive_federation::FederationRevalidationDrift;
+pub use cognitive_federation::FederationRevocation;
+pub use cognitive_federation::MAX_FEDERATION_CAPABILITIES_PER_STORE;
+pub use cognitive_federation::MAX_FEDERATION_CAPABILITY_REVISIONS;
+pub use cognitive_federation::MAX_FEDERATION_GRANT_LIFETIME_SECONDS;
+pub use cognitive_federation::MAX_FEDERATION_SOURCES_PER_AGENT;
 pub use cognitive_memory_store::ForgetMemoryDraft;
 pub use cognitive_model::CognitiveAccess;
 pub use cognitive_model::CognitiveScope;
@@ -54,6 +73,10 @@ pub use recall::shadow_recall;
 #[cfg(test)]
 #[path = "cognitive_store_tests.rs"]
 mod cognitive_store_tests;
+
+#[cfg(test)]
+#[path = "cognitive_federation_tests.rs"]
+mod cognitive_federation_tests;
 
 #[cfg(test)]
 #[path = "cognitive_memory_store_tests.rs"]

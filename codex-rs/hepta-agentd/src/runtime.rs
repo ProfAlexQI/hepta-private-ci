@@ -1,6 +1,8 @@
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use codex_app_server_client::RemoteAppServerClient;
 use codex_app_server_client::RemoteAppServerConnectArgs;
@@ -10,6 +12,7 @@ use codex_hepta_automation::AutomationError;
 use codex_hepta_automation::AutomationStore;
 use codex_hepta_memory::CognitiveRuntime;
 use codex_hepta_memory::CognitiveStore;
+use codex_hepta_memory::FederatedRecallSet;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
@@ -38,6 +41,13 @@ enum CompletedRuntimeTask {
 pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<(), AgentdError> {
     let (identity, registry, writer_lock) = config.into_parts();
     let _writer_lock = writer_lock;
+    let federation_owner_layouts = registry
+        .load()?
+        .agents
+        .into_values()
+        .filter(|record| record.manifest.agent_id != identity.agent_id)
+        .map(|record| record.layout)
+        .collect::<Vec<_>>();
     let state = Arc::new(AgentdState::new(
         identity.clone(),
         registry,
@@ -47,6 +57,12 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
     let cognitive_runtime = open_cognitive_runtime_after_generation_fence(&state, || async move {
         CognitiveStore::open(&cognitive_layout).await
     })
+    .await?;
+    let cognitive_runtime = attach_federation_after_generation_fence(
+        &state,
+        cognitive_runtime,
+        federation_owner_layouts,
+    )
     .await?;
     let automation_layout = identity.layout.clone();
     let automation_store = open_automation_store_after_generation_fence(&state, || async move {
@@ -139,6 +155,29 @@ where
         Err(AutomationError::Unavailable | AutomationError::Corrupt) => Ok(None),
         Err(error) => Err(error.into()),
     }
+}
+
+async fn attach_federation_after_generation_fence(
+    state: &AgentdState,
+    runtime: CognitiveRuntime,
+    owner_layouts: Vec<codex_hepta_paths::HeptaAgentLayout>,
+) -> Result<CognitiveRuntime, AgentdError> {
+    if runtime.available_store().is_none() || owner_layouts.is_empty() {
+        return Ok(runtime);
+    }
+    state.refresh_generation()?;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| AgentdError::Protocol(error.to_string()))?
+        .as_secs();
+    let now = i64::try_from(now)
+        .map_err(|_| AgentdError::Protocol("system clock overflow".to_string()))?;
+    let federation =
+        FederatedRecallSet::discover(state.identity().agent_id.clone(), owner_layouts, now).await;
+    // Discovery reads other owner stores and can outlive a lifecycle update.
+    // Fence once more before the read-only set reaches App Server.
+    state.refresh_generation()?;
+    Ok(runtime.with_federation(federation))
 }
 
 async fn open_cognitive_runtime_after_generation_fence<Open, OpenFuture>(

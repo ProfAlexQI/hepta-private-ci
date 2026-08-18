@@ -474,6 +474,19 @@ impl PartialEq for AppServerRuntimeOptions {
                     codex_hepta_memory::CognitiveRuntime::Available(right),
                 ) => Arc::ptr_eq(left, right),
                 (
+                    codex_hepta_memory::CognitiveRuntime::AvailableFederated {
+                        store: left_store,
+                        federation: left_federation,
+                    },
+                    codex_hepta_memory::CognitiveRuntime::AvailableFederated {
+                        store: right_store,
+                        federation: right_federation,
+                    },
+                ) => {
+                    Arc::ptr_eq(left_store, right_store)
+                        && Arc::ptr_eq(left_federation, right_federation)
+                }
+                (
                     codex_hepta_memory::CognitiveRuntime::Unavailable(left),
                     codex_hepta_memory::CognitiveRuntime::Unavailable(right),
                 ) => left == right,

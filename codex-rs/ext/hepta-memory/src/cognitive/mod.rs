@@ -53,7 +53,10 @@ use crate::framing::digest_many;
 use crate::framing::path_identity_bytes;
 use crate::framing::workspace_digest;
 
+mod federation;
 mod tools;
+
+pub(crate) use federation::FederatedCognitiveExtension;
 
 const COGNITIVE_SOURCE: &str = "hepta_cognitive_plane_v1";
 const COGNITIVE_ATTACHMENT_SCHEMA_VERSION: u32 = 1;
@@ -191,12 +194,9 @@ pub(crate) struct CognitiveExtension {
 
 impl CognitiveExtension {
     pub(crate) fn new(runtime: CognitiveRuntime) -> Self {
-        let recall = match &runtime {
-            CognitiveRuntime::Available(store) => {
-                Some(store.clone() as Arc<dyn CognitiveRecallBackend>)
-            }
-            CognitiveRuntime::Absent | CognitiveRuntime::Unavailable(_) => None,
-        };
+        let recall = runtime
+            .available_store()
+            .map(|store| store.clone() as Arc<dyn CognitiveRecallBackend>);
         Self { runtime, recall }
     }
 
@@ -209,10 +209,7 @@ impl CognitiveExtension {
     }
 
     fn store(&self) -> Option<&Arc<CognitiveStore>> {
-        match &self.runtime {
-            CognitiveRuntime::Available(store) => Some(store),
-            CognitiveRuntime::Absent | CognitiveRuntime::Unavailable(_) => None,
-        }
+        self.runtime.available_store()
     }
 }
 
@@ -474,14 +471,14 @@ impl ToolContributor for CognitiveExtension {
     }
 }
 
-struct DirectiveCapture {
-    content_sha256: Sha256Digest,
-    content_bytes: usize,
-    byte_exact_verification_allowed: bool,
-    query: Option<String>,
+pub(super) struct DirectiveCapture {
+    pub(super) content_sha256: Sha256Digest,
+    pub(super) content_bytes: usize,
+    pub(super) byte_exact_verification_allowed: bool,
+    pub(super) query: Option<String>,
 }
 
-fn capture_directive(input: &[UserInput]) -> DirectiveCapture {
+pub(super) fn capture_directive(input: &[UserInput]) -> DirectiveCapture {
     let mut hasher = Sha256::new();
     let mut content_bytes = 0usize;
     let mut has_text = false;

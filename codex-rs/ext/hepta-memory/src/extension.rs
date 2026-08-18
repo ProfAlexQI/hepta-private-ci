@@ -47,6 +47,7 @@ use codex_state::Stage1RecallCandidate;
 use codex_state::StateRuntime;
 
 use crate::cognitive::CognitiveExtension;
+use crate::cognitive::FederatedCognitiveExtension;
 use crate::framing::digest_many;
 use crate::framing::domain_digest;
 use crate::framing::path_identity_bytes;
@@ -661,10 +662,16 @@ where
     builder.turn_input_contributor(extension.clone());
     builder.ephemeral_model_input_contributor(extension.clone());
     if !matches!(&cognitive_runtime, CognitiveRuntime::Absent) {
+        let federation = cognitive_runtime.federation().cloned();
         let cognitive = Arc::new(CognitiveExtension::new(cognitive_runtime));
         builder.turn_input_contributor(cognitive.clone());
         builder.ephemeral_model_input_contributor(cognitive.clone());
         builder.tool_contributor(cognitive);
+        if let Some(federation) = federation {
+            let federated = Arc::new(FederatedCognitiveExtension::new(federation));
+            builder.turn_input_contributor(federated.clone());
+            builder.ephemeral_model_input_contributor(federated);
+        }
     }
     extension
 }

@@ -174,7 +174,7 @@ impl ToolExecutor<ToolCall> for DeferredCognitiveTool {
                         "cognitive runtime is not configured",
                     ));
                 }
-                CognitiveRuntime::Available(_) => {}
+                CognitiveRuntime::Available(_) | CognitiveRuntime::AvailableFederated { .. } => {}
             }
             let Some(witness) = witnesses.get(call.turn_id.as_str()) else {
                 return Err(typed_error(
@@ -215,7 +215,8 @@ impl ToolExecutor<ToolCall> for CognitiveTool {
 impl CognitiveTool {
     async fn handle_call(&self, call: ToolCall) -> Result<Box<dyn ToolOutput>, FunctionCallError> {
         let store = match &self.runtime {
-            CognitiveRuntime::Available(store) => store,
+            CognitiveRuntime::Available(store)
+            | CognitiveRuntime::AvailableFederated { store, .. } => store,
             CognitiveRuntime::Unavailable(reason) => {
                 return Err(typed_error(
                     "hepta_cognitive_unavailable",

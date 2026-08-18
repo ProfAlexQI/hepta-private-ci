@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::CognitiveStore;
 use crate::CognitiveStoreError;
+use crate::FederatedRecallSet;
 
 /// Sanitized reason why an owning runtime could not open its Cognitive Plane.
 ///
@@ -52,6 +53,10 @@ pub enum CognitiveRuntime {
     #[default]
     Absent,
     Available(Arc<CognitiveStore>),
+    AvailableFederated {
+        store: Arc<CognitiveStore>,
+        federation: Arc<FederatedRecallSet>,
+    },
     Unavailable(CognitiveUnavailableReason),
 }
 
@@ -66,14 +71,39 @@ impl CognitiveRuntime {
     pub fn available_store(&self) -> Option<&Arc<CognitiveStore>> {
         match self {
             Self::Available(store) => Some(store),
+            Self::AvailableFederated { store, .. } => Some(store),
             Self::Absent | Self::Unavailable(_) => None,
+        }
+    }
+
+    pub fn with_federation(self, federation: FederatedRecallSet) -> Self {
+        if federation.is_empty() {
+            return self;
+        }
+        match self {
+            Self::Available(store) => Self::AvailableFederated {
+                store,
+                federation: Arc::new(federation),
+            },
+            Self::AvailableFederated { store, .. } => Self::AvailableFederated {
+                store,
+                federation: Arc::new(federation),
+            },
+            Self::Absent | Self::Unavailable(_) => self,
+        }
+    }
+
+    pub fn federation(&self) -> Option<&Arc<FederatedRecallSet>> {
+        match self {
+            Self::AvailableFederated { federation, .. } => Some(federation),
+            Self::Absent | Self::Available(_) | Self::Unavailable(_) => None,
         }
     }
 
     pub fn unavailable_reason(&self) -> Option<CognitiveUnavailableReason> {
         match self {
             Self::Unavailable(reason) => Some(*reason),
-            Self::Absent | Self::Available(_) => None,
+            Self::Absent | Self::Available(_) | Self::AvailableFederated { .. } => None,
         }
     }
 }
@@ -83,6 +113,9 @@ impl fmt::Debug for CognitiveRuntime {
         match self {
             Self::Absent => formatter.write_str("CognitiveRuntime::Absent"),
             Self::Available(_) => formatter.write_str("CognitiveRuntime::Available(<owned store>)"),
+            Self::AvailableFederated { .. } => formatter.write_str(
+                "CognitiveRuntime::AvailableFederated(<owned store>, <read-only sources>)",
+            ),
             Self::Unavailable(reason) => formatter
                 .debug_tuple("CognitiveRuntime::Unavailable")
                 .field(reason)

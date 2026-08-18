@@ -14,7 +14,9 @@ fn unavailable_runtime_exposes_only_a_stable_sanitized_code() {
         Some(CognitiveUnavailableReason::StorageUnavailable)
     );
     assert_eq!(
-        runtime.unavailable_reason().map(|reason| reason.code()),
+        runtime
+            .unavailable_reason()
+            .map(super::cognitive_runtime::CognitiveUnavailableReason::code),
         Some("storage_unavailable")
     );
     assert_eq!(

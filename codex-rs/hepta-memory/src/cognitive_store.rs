@@ -54,6 +54,18 @@ pub struct CognitiveStore {
 }
 
 impl CognitiveStore {
+    pub(crate) fn from_read_only_pool(
+        pool: SqlitePool,
+        owner_agent_id: AgentId,
+        path: PathBuf,
+    ) -> Self {
+        Self {
+            pool,
+            owner_agent_id,
+            path,
+        }
+    }
+
     pub async fn open(layout: &HeptaAgentLayout) -> Result<Self, CognitiveStoreError> {
         let root = layout.cognitive_root();
         create_private_directory(root)?;
