@@ -99,7 +99,7 @@ impl CognitiveRecallBackend for CognitiveStore {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ExactDirectiveWitness {
     pub(super) turn_id: String,
     pub(super) workspace: PathBuf,
@@ -119,14 +119,38 @@ impl ExactDirectiveWitness {
 
 #[derive(Default)]
 struct CognitiveTurnWitnesses {
-    values: Mutex<VecDeque<ExactDirectiveWitness>>,
+    values: Mutex<VecDeque<CognitiveTurnWitnessState>>,
+}
+
+enum CognitiveTurnWitnessState {
+    Valid(ExactDirectiveWitness),
+    Poisoned(String),
+}
+
+impl CognitiveTurnWitnessState {
+    fn turn_id(&self) -> &str {
+        match self {
+            Self::Valid(witness) => witness.turn_id.as_str(),
+            Self::Poisoned(turn_id) => turn_id.as_str(),
+        }
+    }
 }
 
 impl CognitiveTurnWitnesses {
     fn insert(&self, witness: ExactDirectiveWitness) {
         let mut values = self.values.lock().unwrap_or_else(PoisonError::into_inner);
-        values.retain(|existing| existing.turn_id != witness.turn_id);
-        values.push_back(witness);
+        if let Some(existing) = values
+            .iter_mut()
+            .find(|existing| existing.turn_id() == witness.turn_id.as_str())
+        {
+            if matches!(existing, CognitiveTurnWitnessState::Valid(current) if current == &witness)
+            {
+                return;
+            }
+            *existing = CognitiveTurnWitnessState::Poisoned(witness.turn_id);
+            return;
+        }
+        values.push_back(CognitiveTurnWitnessState::Valid(witness));
         while values.len() > MAX_WITNESSES_PER_THREAD {
             values.pop_front();
         }
@@ -137,8 +161,14 @@ impl CognitiveTurnWitnesses {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .iter()
-            .find(|witness| witness.turn_id == turn_id)
-            .cloned()
+            .find_map(|state| match state {
+                CognitiveTurnWitnessState::Valid(witness) if witness.turn_id == turn_id => {
+                    Some(witness.clone())
+                }
+                CognitiveTurnWitnessState::Valid(_) | CognitiveTurnWitnessState::Poisoned(_) => {
+                    None
+                }
+            })
     }
 }
 
@@ -434,16 +464,12 @@ impl ToolContributor for CognitiveExtension {
         if thread_store.get::<HeptaMemoryThreadState>().is_none() {
             return Vec::new();
         }
-        let Some(witness) = thread_store
-            .get::<CognitiveTurnWitnesses>()
-            .and_then(|witnesses| witnesses.get(step_store.level_id()))
-        else {
-            return Vec::new();
-        };
-        tools::cognitive_tools(
+        let witnesses = thread_store.get_or_init(CognitiveTurnWitnesses::default);
+        tools::deferred_cognitive_tools(
             self.runtime.clone(),
             thread_store.level_id().to_string(),
-            witness,
+            step_store.level_id().to_string(),
+            witnesses,
         )
     }
 }

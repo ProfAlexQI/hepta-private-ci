@@ -402,12 +402,93 @@ async fn secret_like_remember_is_rejected_before_source_persistence() {
 }
 
 #[tokio::test]
-async fn unavailable_runtime_keeps_all_five_tools_visible_with_sanitized_typed_error() {
+async fn deferred_tools_are_visible_before_turn_input_and_fail_closed_without_exact_witness() {
+    let (_temp, store, witness) = test_runtime("directive").await;
+    let witnesses = Arc::new(CognitiveTurnWitnesses::default());
+    let tools = deferred_cognitive_tools(
+        CognitiveRuntime::Available(store),
+        THREAD_ID.to_string(),
+        TURN_ID.to_string(),
+        witnesses.clone(),
+    );
+    assert_eq!(tools.len(), 5);
+
+    let missing = tool_error(
+        tools[1]
+            .handle(call(
+                CognitiveToolOperation::Recall,
+                "call-missing-witness",
+                json!({ "query": "directive" }),
+            ))
+            .await,
+        "missing witness must fail closed",
+    );
+    let FunctionCallError::RespondToModel(missing) = missing else {
+        panic!("missing witness must be model visible");
+    };
+    assert!(missing.contains("hepta_cognitive_witness_unavailable"));
+
+    let mut other_turn = witness.clone();
+    other_turn.turn_id = "turn-cognitive-other".to_string();
+    witnesses.insert(other_turn);
+    let still_missing = tool_error(
+        tools[1]
+            .handle(call(
+                CognitiveToolOperation::Recall,
+                "call-wrong-witness",
+                json!({ "query": "directive" }),
+            ))
+            .await,
+        "a different turn witness must not authorize this executor",
+    );
+    let FunctionCallError::RespondToModel(still_missing) = still_missing else {
+        panic!("wrong witness must be model visible");
+    };
+    assert!(still_missing.contains("hepta_cognitive_witness_unavailable"));
+
+    witnesses.insert(witness);
+    let mut wrong_turn_call = call(
+        CognitiveToolOperation::Recall,
+        "call-wrong-turn",
+        json!({ "query": "directive" }),
+    );
+    wrong_turn_call.turn_id = "turn-cognitive-other".to_string();
+    let wrong_turn = tool_error(
+        tools[1].handle(wrong_turn_call).await,
+        "a different turn must not use the planned executor",
+    );
+    let FunctionCallError::RespondToModel(wrong_turn) = wrong_turn else {
+        panic!("wrong turn must be model visible");
+    };
+    assert!(wrong_turn.contains("hepta_cognitive_scope_mismatch"));
+}
+
+#[tokio::test]
+async fn conflicting_same_turn_witness_replay_is_permanently_poisoned() {
     let (_temp, _store, witness) = test_runtime("directive").await;
-    let tools = cognitive_tools(
+    let witnesses = CognitiveTurnWitnesses::default();
+    witnesses.insert(witness.clone());
+    assert_eq!(witnesses.get(TURN_ID), Some(witness.clone()));
+    witnesses.insert(witness.clone());
+    assert_eq!(witnesses.get(TURN_ID), Some(witness.clone()));
+
+    let mut conflicting = witness.clone();
+    conflicting.content_sha256 = codex_hepta_contracts::Sha256Digest::for_bytes(b"drift");
+    witnesses.insert(conflicting);
+    assert!(witnesses.get(TURN_ID).is_none());
+
+    witnesses.insert(witness);
+    assert!(witnesses.get(TURN_ID).is_none());
+}
+
+#[tokio::test]
+async fn unavailable_deferred_runtime_keeps_all_five_tools_visible_without_a_witness() {
+    let (_temp, _store, _witness) = test_runtime("directive").await;
+    let tools = deferred_cognitive_tools(
         CognitiveRuntime::Unavailable(CognitiveUnavailableReason::StorageUnavailable),
         THREAD_ID.to_string(),
-        witness,
+        TURN_ID.to_string(),
+        Arc::new(CognitiveTurnWitnesses::default()),
     );
     assert_eq!(tools.len(), 5);
     assert_eq!(

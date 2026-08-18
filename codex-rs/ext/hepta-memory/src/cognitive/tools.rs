@@ -30,6 +30,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use serde_json::json;
 
+use super::CognitiveTurnWitnesses;
 use super::ExactDirectiveWitness;
 use super::now_unix_seconds;
 use super::secret_like;
@@ -99,10 +100,20 @@ struct CognitiveTool {
     operation: CognitiveToolOperation,
 }
 
-pub(super) fn cognitive_tools(
+#[derive(Clone)]
+struct DeferredCognitiveTool {
     runtime: CognitiveRuntime,
     thread_id: String,
-    witness: ExactDirectiveWitness,
+    expected_turn_id: String,
+    witnesses: Arc<CognitiveTurnWitnesses>,
+    operation: CognitiveToolOperation,
+}
+
+pub(super) fn deferred_cognitive_tools(
+    runtime: CognitiveRuntime,
+    thread_id: String,
+    expected_turn_id: String,
+    witnesses: Arc<CognitiveTurnWitnesses>,
 ) -> Vec<Arc<dyn ToolExecutor<ToolCall>>> {
     [
         CognitiveToolOperation::Remember,
@@ -113,14 +124,74 @@ pub(super) fn cognitive_tools(
     ]
     .into_iter()
     .map(|operation| {
-        Arc::new(CognitiveTool {
+        Arc::new(DeferredCognitiveTool {
             runtime: runtime.clone(),
             thread_id: thread_id.clone(),
-            witness: witness.clone(),
+            expected_turn_id: expected_turn_id.clone(),
+            witnesses: witnesses.clone(),
             operation,
         }) as Arc<dyn ToolExecutor<ToolCall>>
     })
     .collect()
+}
+
+impl ToolExecutor<ToolCall> for DeferredCognitiveTool {
+    fn tool_name(&self) -> ToolName {
+        ToolName::namespaced(COGNITIVE_NAMESPACE, self.operation.name())
+    }
+
+    fn spec(&self) -> ToolSpec {
+        cognitive_tool_spec(self.operation)
+    }
+
+    fn supports_parallel_tool_calls(&self) -> bool {
+        self.operation.supports_parallel()
+    }
+
+    fn handle(&self, call: ToolCall) -> codex_extension_api::ToolExecutorFuture<'_> {
+        let runtime = self.runtime.clone();
+        let thread_id = self.thread_id.clone();
+        let expected_turn_id = self.expected_turn_id.clone();
+        let witnesses = self.witnesses.clone();
+        let operation = self.operation;
+        Box::pin(async move {
+            if call.turn_id != expected_turn_id {
+                return Err(typed_error(
+                    "hepta_cognitive_scope_mismatch",
+                    "tool call does not match the planned turn",
+                ));
+            }
+            match &runtime {
+                CognitiveRuntime::Unavailable(reason) => {
+                    return Err(typed_error(
+                        "hepta_cognitive_unavailable",
+                        format!("cognitive runtime is unavailable ({})", reason.code()),
+                    ));
+                }
+                CognitiveRuntime::Absent => {
+                    return Err(typed_error(
+                        "hepta_cognitive_absent",
+                        "cognitive runtime is not configured",
+                    ));
+                }
+                CognitiveRuntime::Available(_) => {}
+            }
+            let Some(witness) = witnesses.get(call.turn_id.as_str()) else {
+                return Err(typed_error(
+                    "hepta_cognitive_witness_unavailable",
+                    "the exact current-turn directive witness is unavailable",
+                ));
+            };
+            CognitiveTool {
+                runtime,
+                thread_id,
+                witness,
+                operation,
+            }
+            .handle_call(call)
+            .await
+        })
+    }
 }
 
 impl ToolExecutor<ToolCall> for CognitiveTool {
