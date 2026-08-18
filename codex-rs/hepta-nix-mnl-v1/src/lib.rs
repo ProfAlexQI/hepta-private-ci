@@ -5,12 +5,14 @@
 //! It can describe and shape-check evidence, but the production planner and
 //! verifier remain compile-time blocked until separately frozen inputs exist.
 
+mod dedicated_vm_probe;
 mod final_join;
 mod model;
 mod run_plan;
 mod sandbox_feasibility;
 mod verify;
 
+pub use dedicated_vm_probe::*;
 pub use final_join::*;
 pub use model::*;
 pub use run_plan::*;

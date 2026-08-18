@@ -7,6 +7,7 @@ use crate::*;
 assert_not_impl_any!(InspectedNixClosedRunPlanV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
 assert_not_impl_any!(JoinedNixClosedRunPlanPreparedClaimInspectionV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
 assert_not_impl_any!(InvalidatedNixSandboxContractInspectionV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
+assert_not_impl_any!(InspectedNixDedicatedVmKvmDevelopmentProbeV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
 
 const TEST_SANDBOX_PLAN_BYTE_COUNT: usize = 67_115;
 const TEST_SANDBOX_PLAN_SHA256: &str =
@@ -77,6 +78,383 @@ fn exact_sandbox_plan_is_canonical_closed_and_non_authorizing() {
     assert!(!invalidated.replay_publication_authorized());
     assert!(!invalidated.sandbox_qualified());
     assert!(!invalidated.sandbox_qualification_observed());
+
+    let vm_probe = derive_nix_dedicated_vm_kvm_development_probe_envelope(
+        &invalidated,
+        dedicated_vm_probe_observations(),
+    )
+    .expect("dedicated-VM development probe model");
+    let vm_probe_bytes = serde_json::to_vec(&vm_probe).expect("canonical VM probe model");
+    let recursively_sorted: serde_json::Value =
+        serde_json::from_slice(&vm_probe_bytes).expect("VM probe model value");
+    assert_eq!(
+        vm_probe_bytes,
+        serde_json::to_vec(&recursively_sorted).expect("recursively sorted VM probe model")
+    );
+    let inspected_vm_probe =
+        inspect_canonical_nix_dedicated_vm_kvm_development_probe(&invalidated, &vm_probe_bytes)
+            .expect("dedicated-VM development probe inspection");
+    assert_eq!(inspected_vm_probe.canonical_bytes(), vm_probe_bytes);
+    assert_eq!(inspected_vm_probe.envelope(), &vm_probe);
+    assert_eq!(
+        inspected_vm_probe.envelope_sha256(),
+        sha256(&vm_probe_bytes)
+    );
+    assert!(!inspected_vm_probe.authorizes_live());
+    assert!(!inspected_vm_probe.capability_available());
+    assert!(!inspected_vm_probe.effective_configuration_trusted());
+    assert!(!inspected_vm_probe.effective_topology_trusted());
+    assert!(!inspected_vm_probe.launch_grant_available());
+    assert!(!inspected_vm_probe.launch_performed());
+    assert!(!inspected_vm_probe.pass_authorized());
+    assert!(!inspected_vm_probe.qualification_observed());
+    assert!(!inspected_vm_probe.receipt_acceptance_authorized());
+    assert!(!inspected_vm_probe.receipt_accepted());
+    assert!(!inspected_vm_probe.replay_publication_available());
+    assert!(!inspected_vm_probe.replay_publication_authorized());
+    assert!(!inspected_vm_probe.trusted_collector_observed());
+    assert!(!inspected_vm_probe.vm_launch_authorized());
+    assert!(!inspected_vm_probe.vm_qualified());
+
+    assert!(vm_probe.authority.is_fully_closed());
+    assert_eq!(
+        vm_probe.disposition,
+        NixDedicatedVmProbeDispositionV1::DevelopmentProbeOnlyNoQualification
+    );
+    assert!(!vm_probe.launch_authorized);
+    assert_eq!(
+        vm_probe.observation_origin,
+        NixDedicatedVmObservationOriginV1::CallerSuppliedCanonicalDevelopmentMaterialNoTrustedCollector
+    );
+    assert!(!vm_probe.pass_authorized);
+    assert!(!vm_probe.qualification_observed);
+    assert!(!vm_probe.receipt_acceptance_authorized);
+    assert!(!vm_probe.replay_publication_authorized);
+    assert_eq!(
+        vm_probe.schema,
+        NIX_DEDICATED_VM_KVM_DEVELOPMENT_PROBE_SCHEMA
+    );
+    assert_eq!(
+        vm_probe.schema_version,
+        NIX_DEDICATED_VM_KVM_DEVELOPMENT_PROBE_SCHEMA_VERSION
+    );
+    assert!(!vm_probe.vm_launch_authorized);
+
+    assert_eq!(
+        vm_probe.claims.acceleration,
+        NixDedicatedVmAccelerationV1::HardwareKvmOnlyNoTcgFallback
+    );
+    assert_eq!(
+        vm_probe.claims.artifact_locator_policy,
+        NixDedicatedVmArtifactLocatorPolicyV1::OpaqueRoleOnlyNoWirePaths
+    );
+    assert_eq!(
+        vm_probe.claims.backend,
+        NixDedicatedVmBackendV1::QemuSystemX8664PcKvm
+    );
+    assert_eq!(
+        vm_probe.claims.forbidden_host_fallbacks,
+        [
+            NixDedicatedVmForbiddenHostFallbackV1::HostInitialNamespaceCapSysAdmin,
+            NixDedicatedVmForbiddenHostFallbackV1::HostPrivilegedContainerWrapper,
+            NixDedicatedVmForbiddenHostFallbackV1::HostSoftwareEmulationTcg,
+            NixDedicatedVmForbiddenHostFallbackV1::HostUnconfinedLsmFallback,
+        ]
+    );
+    assert_eq!(
+        vm_probe.claims.guest_axis_disposition,
+        NixDedicatedVmGuestAxisDispositionV1::GuestLocalAxesUnexercisedNotHostFallback
+    );
+    assert_eq!(
+        vm_probe.claims.guest_isolation_axes,
+        [
+            NixDedicatedVmGuestIsolationAxisV1::Ipc,
+            NixDedicatedVmGuestIsolationAxisV1::Mount,
+            NixDedicatedVmGuestIsolationAxisV1::Network,
+            NixDedicatedVmGuestIsolationAxisV1::Pid,
+            NixDedicatedVmGuestIsolationAxisV1::User,
+            NixDedicatedVmGuestIsolationAxisV1::Uts,
+        ]
+    );
+    assert_eq!(
+        vm_probe.claims.required_artifacts,
+        [
+            NixDedicatedVmArtifactRoleV1::BootAssemblySource,
+            NixDedicatedVmArtifactRoleV1::LinkerScript,
+            NixDedicatedVmArtifactRoleV1::ProbeHarness,
+            NixDedicatedVmArtifactRoleV1::PositiveBootSectorImage,
+            NixDedicatedVmArtifactRoleV1::NegativeInvalidSignatureBootSectorImage,
+            NixDedicatedVmArtifactRoleV1::QemuSystemX8664Backend,
+        ]
+    );
+    assert_eq!(
+        vm_probe.claims.required_devices,
+        [
+            NixDedicatedVmDeviceRoleV1::GuestReadOnlyRawFloppyBootMedia,
+            NixDedicatedVmDeviceRoleV1::GuestIsaSerialConsole,
+            NixDedicatedVmDeviceRoleV1::GuestIsaDebugExit,
+        ]
+    );
+    let requested = &vm_probe.claims.requested_configuration;
+    assert_eq!(requested.boot_drive_count, 1);
+    assert_eq!(
+        requested.boot_media_format,
+        NixDedicatedVmBootMediaFormatV1::Raw
+    );
+    assert_eq!(
+        requested.boot_media_interface,
+        NixDedicatedVmBootMediaInterfaceV1::Floppy
+    );
+    assert!(requested.boot_media_read_only);
+    assert_eq!(
+        requested.boot_order,
+        NixDedicatedVmBootOrderV1::FloppyDriveAOnly
+    );
+    assert_eq!(requested.cpu_model, "host");
+    assert_eq!(requested.debug_exit_iobase, 0xf4);
+    assert_eq!(requested.debug_exit_iosize, 4);
+    assert!(!requested.display_enabled);
+    assert_eq!(requested.machine, "pc");
+    assert_eq!(requested.memory_bytes, 67_108_864);
+    assert!(!requested.monitor_enabled);
+    assert_eq!(requested.network_device_count, 0);
+    assert!(requested.no_reboot);
+    assert!(requested.no_shutdown);
+    assert!(requested.no_user_config);
+    assert!(requested.nodefaults);
+    assert!(requested.qemu_sandbox.elevate_privileges_denied);
+    assert!(requested.qemu_sandbox.enabled);
+    assert!(requested.qemu_sandbox.obsolete_denied);
+    assert!(requested.qemu_sandbox.resource_control_denied);
+    assert!(requested.qemu_sandbox.spawn_denied);
+    assert_eq!(requested.serial_device_count, 1);
+    assert_eq!(requested.vcpu_count, 1);
+    assert_eq!(requested.writable_block_device_count, 0);
+
+    assert_eq!(
+        vm_probe.parent.invalidated_sandbox_envelope_byte_count,
+        u64::try_from(invalidated.canonical_bytes().len()).expect("N5c byte count")
+    );
+    assert_eq!(
+        vm_probe.parent.invalidated_sandbox_envelope_schema,
+        NIX_SANDBOX_REQUALIFICATION_SCHEMA
+    );
+    assert_eq!(
+        vm_probe.parent.invalidated_sandbox_envelope_schema_version,
+        NIX_SANDBOX_REQUALIFICATION_SCHEMA_VERSION
+    );
+    assert_eq!(
+        vm_probe.parent.invalidated_sandbox_envelope_sha256,
+        invalidated.envelope_sha256()
+    );
+    assert_eq!(
+        vm_probe.parent.v3_closed_plan_byte_count,
+        requalification.inspected_closed_plan_byte_count
+    );
+    assert_eq!(
+        vm_probe.parent.v3_closed_plan_disposition,
+        ClosedRunPlanDispositionV1::FreshSandboxBuildInspectionOnlyNoLaunchAuthority
+    );
+    assert_eq!(
+        vm_probe.parent.v3_closed_plan_schema,
+        NIX_CLOSED_RUN_PLAN_SCHEMA
+    );
+    assert_eq!(vm_probe.parent.v3_closed_plan_schema_version, 3);
+    assert_eq!(vm_probe.parent.v3_closed_plan_sha256, sha256(&bytes));
+    assert!(!vm_probe.observations.effective_configuration_observed);
+    assert!(!vm_probe.observations.effective_topology_observed);
+    assert_eq!(vm_probe.observations.artifacts.len(), 6);
+    assert_eq!(
+        vm_probe.observations.devices.boot_media_interface,
+        NixDedicatedVmBootMediaInterfaceV1::Floppy
+    );
+    assert_eq!(vm_probe.observations.devices.writable_block_device_count, 0);
+    assert_eq!(vm_probe.observations.host.kvm_api_version, 12);
+    assert_eq!(vm_probe.observations.host.kvm_device.rdev_major, 10);
+    assert_eq!(vm_probe.observations.host.kvm_device.rdev_minor, 232);
+    assert_eq!(vm_probe.observations.outcomes.positive_exit_code, 33);
+    let exact_positive_serial = b"HEPTA_N5D_KVM_BOOT_OK\r\n";
+    assert_eq!(exact_positive_serial.len(), 23);
+    assert_eq!(
+        sha256(exact_positive_serial),
+        "98eee34684137e9a06b1de0fdfde566ad803d93f49fe0e6604f6bdcf789a0822"
+    );
+    assert_eq!(
+        vm_probe.observations.outcomes.positive_serial_sha256,
+        "98eee34684137e9a06b1de0fdfde566ad803d93f49fe0e6604f6bdcf789a0822"
+    );
+    assert_eq!(vm_probe.observations.outcomes.negative_outcomes.len(), 3);
+    assert!(vm_probe.observations.outcomes.negative_outcomes.iter().all(
+        |outcome| outcome.exit_code == 124
+            && outcome.serial_byte_count == 0
+            && outcome.serial_sha256
+                == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    ));
+
+    let mut changed_vm_probes = Vec::new();
+    let mut changed = vm_probe.clone();
+    changed.authority.qualification_authority = true;
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.claims.forbidden_host_fallbacks.swap(0, 1);
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.claims.guest_isolation_axes.swap(0, 1);
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.claims.requested_configuration.machine = "q35".to_string();
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.claims.required_artifacts.swap(0, 1);
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.claims.required_devices.swap(0, 1);
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.launch_authorized = true;
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.parent.invalidated_sandbox_envelope_sha256 = digest('0');
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.parent.v3_closed_plan_sha256 = digest('0');
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.pass_authorized = true;
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.qualification_observed = true;
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.receipt_acceptance_authorized = true;
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.replay_publication_authorized = true;
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.schema.push_str("-drift");
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.schema_version += 1;
+    changed_vm_probes.push(changed);
+    let mut changed = vm_probe.clone();
+    changed.vm_launch_authorized = true;
+    changed_vm_probes.push(changed);
+    for changed in changed_vm_probes {
+        assert!(
+            inspect_canonical_nix_dedicated_vm_kvm_development_probe(
+                &invalidated,
+                &serde_json::to_vec(&changed).expect("changed VM probe")
+            )
+            .is_err()
+        );
+    }
+
+    let mut invalid_observations = Vec::new();
+    let mut changed = vm_probe.observations.clone();
+    changed.artifacts.swap(0, 1);
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.artifacts[3].byte_count = 511;
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.artifacts[0].byte_count = 256 * 1024 * 1024 + 1;
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.backend.artifact_sha256 = digest('0');
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.backend.process_mount_namespace_inode += 1;
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.backend.version_bytes = "v".repeat(257);
+    changed.backend.version_byte_count = 257;
+    changed.backend.version_sha256 = sha256(changed.backend.version_bytes.as_bytes());
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.devices.network_device_count = 1;
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.effective_configuration_observed = true;
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.effective_topology_observed = true;
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.host.architecture = "aarch64".to_string();
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.host.kvm_device.rdev_minor = 0;
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.outcomes.negative_outcomes.pop();
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.outcomes.positive_exit_code = 0;
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.raw_capture.entry_count = 0;
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.raw_capture.manifest_byte_count = changed.raw_capture.total_byte_count + 1;
+    invalid_observations.push(changed);
+    let mut changed = vm_probe.observations.clone();
+    changed.raw_capture.total_byte_count = 1024 * 1024 * 1024 + 1;
+    invalid_observations.push(changed);
+    for observations in invalid_observations {
+        let mut changed = vm_probe.clone();
+        changed.observations = observations;
+        assert!(
+            inspect_canonical_nix_dedicated_vm_kvm_development_probe(
+                &invalidated,
+                &serde_json::to_vec(&changed).expect("invalid VM observations")
+            )
+            .is_err()
+        );
+    }
+
+    assert!(
+        inspect_canonical_nix_dedicated_vm_kvm_development_probe(
+            &invalidated,
+            &serde_json::to_vec_pretty(&vm_probe).expect("pretty VM probe")
+        )
+        .is_err()
+    );
+    let mut unknown = serde_json::to_value(&vm_probe).expect("VM probe JSON");
+    unknown
+        .as_object_mut()
+        .expect("VM probe object")
+        .insert("unknown".to_string(), serde_json::Value::Bool(false));
+    assert!(
+        inspect_canonical_nix_dedicated_vm_kvm_development_probe(
+            &invalidated,
+            &serde_json::to_vec(&unknown).expect("unknown VM probe field")
+        )
+        .is_err()
+    );
+    assert!(inspect_canonical_nix_dedicated_vm_kvm_development_probe(&invalidated, &[]).is_err());
+    assert!(
+        inspect_canonical_nix_dedicated_vm_kvm_development_probe(
+            &invalidated,
+            &vec![b'x'; MAX_NIX_DEDICATED_VM_KVM_DEVELOPMENT_PROBE_BYTES + 1]
+        )
+        .is_err()
+    );
+    let mut trailing = vm_probe_bytes.clone();
+    trailing.push(b'\n');
+    assert!(
+        inspect_canonical_nix_dedicated_vm_kvm_development_probe(&invalidated, &trailing).is_err()
+    );
+    let mut duplicate = format!(
+        "{{\"schema\":{},",
+        serde_json::to_string(NIX_DEDICATED_VM_KVM_DEVELOPMENT_PROBE_SCHEMA)
+            .expect("VM probe schema JSON")
+    )
+    .into_bytes();
+    duplicate.extend_from_slice(&vm_probe_bytes[1..]);
+    assert!(
+        inspect_canonical_nix_dedicated_vm_kvm_development_probe(&invalidated, &duplicate).is_err()
+    );
 
     assert!(requalification.authority.is_fully_closed());
     assert_eq!(
@@ -2865,6 +3243,135 @@ fn nix_join_wrapper_projects_every_exact_plan_lineage_axis() {
 
 fn sandbox_plan() -> NixClosedRunPlanWireV1 {
     derive_nix_closed_run_plan(binding()).expect("sandbox closed plan")
+}
+
+fn dedicated_vm_probe_observations() -> NixDedicatedVmProbeObservationsV1 {
+    let artifact = |role, byte_count, mode, identity: char| NixDedicatedVmObservedArtifactV1 {
+        byte_count,
+        mode,
+        post_observation_sha256: digest(identity),
+        pre_observation_sha256: digest(identity),
+        role,
+    };
+    let host = NixDedicatedVmHostObservationV1 {
+        architecture: "x86_64".to_string(),
+        boot_id_sha256: digest('1'),
+        cgroup_identity_sha256: digest('2'),
+        cpu_identity_sha256: digest('3'),
+        egid: 1000,
+        euid: 1000,
+        host_identity_sha256: digest('4'),
+        kernel_release_sha256: digest('5'),
+        kvm_api_version: 12,
+        kvm_device: NixDedicatedVmObservedKvmDeviceV1 {
+            device_type: NixDedicatedVmObservedDeviceTypeV1::CharacterDevice,
+            gid: 993,
+            inode: 22,
+            mode: 0o660,
+            mount_id: 21,
+            rdev_major: 10,
+            rdev_minor: 232,
+            uid: 0,
+        },
+        kvm_extension_count: 31,
+        kvm_extensions_sha256: digest('6'),
+        lsm_identity_sha256: digest('7'),
+        mount_namespace_inode: 11,
+        pid_namespace_inode: 12,
+        user_namespace_inode: 13,
+    };
+    let version_bytes = "QEMU emulator version 8.2.2".to_string();
+    NixDedicatedVmProbeObservationsV1 {
+        artifacts: vec![
+            artifact(
+                NixDedicatedVmArtifactRoleV1::BootAssemblySource,
+                1093,
+                0o600,
+                'a',
+            ),
+            artifact(NixDedicatedVmArtifactRoleV1::LinkerScript, 188, 0o600, 'b'),
+            artifact(NixDedicatedVmArtifactRoleV1::ProbeHarness, 3321, 0o600, 'c'),
+            artifact(
+                NixDedicatedVmArtifactRoleV1::PositiveBootSectorImage,
+                512,
+                0o600,
+                'd',
+            ),
+            artifact(
+                NixDedicatedVmArtifactRoleV1::NegativeInvalidSignatureBootSectorImage,
+                512,
+                0o600,
+                'e',
+            ),
+            artifact(
+                NixDedicatedVmArtifactRoleV1::QemuSystemX8664Backend,
+                8_388_608,
+                0o755,
+                'f',
+            ),
+        ],
+        backend: NixDedicatedVmBackendObservationV1 {
+            argv_count: 42,
+            argv_sha256: digest('8'),
+            artifact_sha256: digest('f'),
+            environment_count: 0,
+            environment_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                .to_string(),
+            process_cgroup_identity_sha256: host.cgroup_identity_sha256.clone(),
+            process_egid: host.egid,
+            process_euid: host.euid,
+            process_lsm_identity_sha256: host.lsm_identity_sha256.clone(),
+            process_mount_namespace_inode: host.mount_namespace_inode,
+            process_pid_namespace_inode: host.pid_namespace_inode,
+            process_user_namespace_inode: host.user_namespace_inode,
+            version_byte_count: u64::try_from(version_bytes.len()).expect("QEMU version length"),
+            version_sha256: sha256(version_bytes.as_bytes()),
+            version_bytes,
+        },
+        devices: NixDedicatedVmDeviceObservationV1 {
+            boot_drive_count: 1,
+            boot_media_format: NixDedicatedVmBootMediaFormatV1::Raw,
+            boot_media_interface: NixDedicatedVmBootMediaInterfaceV1::Floppy,
+            boot_media_read_only: true,
+            boot_order: NixDedicatedVmBootOrderV1::FloppyDriveAOnly,
+            debug_exit_iobase: 0xf4,
+            debug_exit_iosize: 4,
+            network_device_count: 0,
+            observed_devices: vec![
+                NixDedicatedVmDeviceRoleV1::GuestReadOnlyRawFloppyBootMedia,
+                NixDedicatedVmDeviceRoleV1::GuestIsaSerialConsole,
+                NixDedicatedVmDeviceRoleV1::GuestIsaDebugExit,
+            ],
+            serial_device_count: 1,
+            writable_block_device_count: 0,
+        },
+        effective_configuration_observed: false,
+        effective_topology_observed: false,
+        host,
+        outcomes: NixDedicatedVmOutcomeObservationV1 {
+            negative_boot_signature_hex: "0000".to_string(),
+            negative_outcomes: (0..3)
+                .map(|_| NixDedicatedVmNegativeOutcomeV1 {
+                    exit_code: 124,
+                    serial_byte_count: 0,
+                    serial_sha256:
+                        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                            .to_string(),
+                })
+                .collect(),
+            positive_boot_signature_hex: "55aa".to_string(),
+            positive_exit_code: 33,
+            positive_serial_byte_count: 23,
+            positive_serial_sha256:
+                "98eee34684137e9a06b1de0fdfde566ad803d93f49fe0e6604f6bdcf789a0822".to_string(),
+        },
+        raw_capture: NixDedicatedVmRawCaptureObservationV1 {
+            entry_count: 18,
+            manifest_byte_count: 4096,
+            manifest_sha256: digest('9'),
+            total_byte_count: 8412,
+        },
+    }
 }
 
 pub(crate) fn binding() -> NixClosedRunPlanBindingV1 {
