@@ -452,8 +452,7 @@ async fn starting_a_selected_item_preserves_the_remaining_queue() -> anyhow::Res
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn persisted_admission_reconciles_compressed_rollout_with_invalid_line() -> anyhow::Result<()>
-{
+async fn persisted_admission_reconciles_compressed_rollout() -> anyhow::Result<()> {
     let server = start_mock_server().await;
     let response =
         responses::mount_sse_once(&server, responses::sse_completed("durable-turn")).await;
@@ -500,8 +499,7 @@ async fn persisted_admission_reconciles_compressed_rollout_with_invalid_line() -
         .rollout_path()
         .context("rollout path unavailable")?;
     test.codex.shutdown_and_wait().await?;
-    let mut rollout = b"not-json\n".to_vec();
-    rollout.extend(fs::read(&rollout_path)?);
+    let rollout = fs::read(&rollout_path)?;
     let compressed_path = rollout_path.with_extension("jsonl.zst");
     fs::write(
         &compressed_path,
@@ -511,7 +509,7 @@ async fn persisted_admission_reconciles_compressed_rollout_with_invalid_line() -
 
     // A new service instance models restart after Core persisted the message
     // but the old process died before queue deletion. Reconciliation must use
-    // the compressed representation and skip the invalid prefix line.
+    // the compressed representation without loading the whole rollout.
     let restarted = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
     let replay = restarted
         .start(test.codex.as_ref(), Some(queued.id), /*trace*/ None)
@@ -523,6 +521,56 @@ async fn persisted_admission_reconciles_compressed_rollout_with_invalid_line() -
         1,
         persisted_client_message_count(test.codex.as_ref(), "stable-client-message").await?
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn corrupt_rollout_blocks_queue_replay_and_preserves_the_item() -> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let response = responses::mount_sse_once(&server, responses::sse_completed("seed-turn")).await;
+    let test = test_codex()
+        .with_config(|config| config.include_environment_context = false)
+        .build_with_auto_env(&server)
+        .await?;
+    test.submit_text_turn("seed").await?;
+
+    let rollout_path = test
+        .codex
+        .rollout_path()
+        .context("rollout path unavailable")?;
+    let mut rollout = fs::read(&rollout_path)?;
+    rollout.extend_from_slice(b"not-json\n");
+    fs::write(&rollout_path, rollout)?;
+
+    let queue = loaded_thread_queue(&test)?;
+    let service = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let queued = service
+        .enqueue(
+            test.session_configured.thread_id,
+            structured_user_input("must not replay across corruption"),
+        )
+        .await?;
+
+    let error = service
+        .start(
+            test.codex.as_ref(),
+            Some(queued.id.clone()),
+            /*trace*/ None,
+        )
+        .await
+        .expect_err("rollout corruption must block queue replay");
+    assert!(
+        matches!(
+            error,
+            QueueServiceError::Storage(ThreadStoreError::Internal { .. })
+        ),
+        "unexpected rollout corruption error: {error:?}"
+    );
+    assert_eq!(
+        vec![queued],
+        service.list(test.session_configured.thread_id).await?
+    );
+    assert_eq!(1, response.requests().len());
     Ok(())
 }
 

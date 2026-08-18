@@ -636,9 +636,14 @@ async fn persisted_turn_for_client_id(
         if line.trim().is_empty() {
             continue;
         }
-        let Ok(record) = serde_json::from_str::<RolloutLine>(&line) else {
-            continue;
-        };
+        let record = serde_json::from_str::<RolloutLine>(&line).map_err(|error| {
+            QueueServiceError::Storage(ThreadStoreError::Internal {
+                message: format!(
+                    "failed to decode rollout `{}` during queue reconciliation: {error}",
+                    path.display()
+                ),
+            })
+        })?;
         scan_persisted_client_line(record.item, client_id, &mut current_turn_id, &mut found)?;
     }
     Ok(found)
