@@ -17,6 +17,9 @@ const TEST_PRESEALED_PLAN_SHA256: &str =
     "91dd2460b461d28e2c63fa7d4874a4e99ee62c0c5f4d11431cc0179112b086b9";
 const TEST_WORKSPACE_CHECK_CONTRACT_SHA256: &str =
     "9ea0da8a6f8db9a34be2ae29546d3ab1d2f9afc5e00e9615d674a5ce63e359d5";
+const TEST_DEDICATED_VM_DEVELOPMENT_PROBE_BYTE_COUNT: usize = 7_472;
+const TEST_DEDICATED_VM_DEVELOPMENT_PROBE_SHA256: &str =
+    "c76f0063fbbe65fd86bd4df05f4de0ea47e235e8ee16b270300352036f7a9f3b";
 
 #[test]
 fn exact_sandbox_plan_is_canonical_closed_and_non_authorizing() {
@@ -85,6 +88,14 @@ fn exact_sandbox_plan_is_canonical_closed_and_non_authorizing() {
     )
     .expect("dedicated-VM development probe model");
     let vm_probe_bytes = serde_json::to_vec(&vm_probe).expect("canonical VM probe model");
+    assert_eq!(
+        vm_probe_bytes.len(),
+        TEST_DEDICATED_VM_DEVELOPMENT_PROBE_BYTE_COUNT
+    );
+    assert_eq!(
+        sha256(&vm_probe_bytes),
+        TEST_DEDICATED_VM_DEVELOPMENT_PROBE_SHA256
+    );
     let recursively_sorted: serde_json::Value =
         serde_json::from_slice(&vm_probe_bytes).expect("VM probe model value");
     assert_eq!(
