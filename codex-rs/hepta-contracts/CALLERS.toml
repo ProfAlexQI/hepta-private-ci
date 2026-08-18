@@ -35,7 +35,11 @@ product_callers = [
 
 [[excluded]]
 crate = "codex-hepta-proof"
-reason = "No product caller; proof command remains outside the promotion stack. Its separate audit branch closes stdin by default."
+reason = "Permanently retired from the vNext product: no product caller, no live production rows, and no runtime dependency. The frozen oracle and recovery bundle retain it for archaeology."
+
+[[excluded]]
+crate = "codex-hepta-channel-adapter"
+reason = "Permanently retired from the vNext product: the live deployment has no channel process or channel state, and Telegram delivery remains owned by OpenClaw rather than Hepta."
 
 [[surface]]
 crate = "codex-hepta-memory"
@@ -110,4 +114,17 @@ product_callers = [
 ]
 store_open_mode = "open_existing_read_only"
 zero_event_interpretation = "an_empty_integrity_checked_existing_store_is_observed_empty; it is not proof of writer coverage or promotion readiness"
+promotion_eligible = false
+
+[[qualification]]
+slice = "legacy_surface_retirement"
+composition = "intentional_non_port_after_live_usage_audit"
+legacy_channel_adapter_retired = true
+legacy_memory_mutation_writer_retired = true
+legacy_proof_command_retired = true
+legacy_outbound_delivery_retired = true
+observed_live_outcome_rows = 0
+observed_live_effect_ack_rows = 0
+observed_live_preference_rows = 0
+recovery_source = "frozen_oracle_and_verified_complete_history_bundle"
 promotion_eligible = false

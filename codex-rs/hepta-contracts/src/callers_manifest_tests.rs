@@ -181,8 +181,45 @@ fn qualification_crates_are_excluded_from_product_callers() {
 
     assert!(excluded.contains("codex-hepta-shadow-qualification"));
     assert!(excluded.contains("codex-hepta-operator-acceptance"));
+    assert!(excluded.contains("codex-hepta-channel-adapter"));
     assert!(manifest.surface.iter().all(|surface| {
         surface.crate_name != "codex-hepta-shadow-qualification"
             && surface.crate_name != "codex-hepta-operator-acceptance"
     }));
+}
+
+#[test]
+fn legacy_caller_zero_surfaces_are_explicitly_retired() {
+    let manifest = manifest();
+    let retirement = manifest
+        .qualification
+        .iter()
+        .find(|entry| {
+            entry.get("slice").and_then(toml::Value::as_str) == Some("legacy_surface_retirement")
+        })
+        .expect("missing legacy surface retirement decision");
+
+    for field in [
+        "legacy_channel_adapter_retired",
+        "legacy_memory_mutation_writer_retired",
+        "legacy_proof_command_retired",
+        "legacy_outbound_delivery_retired",
+    ] {
+        assert_eq!(
+            retirement.get(field).and_then(toml::Value::as_bool),
+            Some(true),
+            "{field} must stay retired",
+        );
+    }
+    for field in [
+        "observed_live_outcome_rows",
+        "observed_live_effect_ack_rows",
+        "observed_live_preference_rows",
+    ] {
+        assert_eq!(
+            retirement.get(field).and_then(toml::Value::as_integer),
+            Some(0),
+            "{field} must match the audited live store",
+        );
+    }
 }
