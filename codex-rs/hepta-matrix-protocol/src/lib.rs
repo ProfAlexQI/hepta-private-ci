@@ -11,6 +11,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::Sha256Digest;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -20,6 +21,10 @@ pub const MAX_MATRIXD_CONTROL_FRAME_BYTES: u64 = 65_536;
 pub const MAX_MATRIXD_EVENT_BATCH: u16 = 256;
 const MAX_MATRIX_IDENTIFIER_BYTES: usize = 255;
 const MAX_MATRIX_BINDING_ENTRIES: usize = 256;
+const CLIENT_MESSAGE_ID_DOMAIN: &[u8] = b"hepta.matrix.client-user-message.v1";
+const ROOM_PROJECT_IDEMPOTENCY_DOMAIN: &[u8] = b"hepta.matrix.room-project.v1";
+const OUTBOX_ID_DOMAIN: &[u8] = b"hepta.matrix.outbox.v1";
+const MATRIX_TRANSACTION_ID_DOMAIN: &[u8] = b"hepta.matrix.transaction.v1";
 
 macro_rules! matrix_server_identifier {
     ($name:ident, $prefix:literal, $label:literal) => {
@@ -170,6 +175,78 @@ impl From<MatrixTransactionId> for String {
     fn from(value: MatrixTransactionId) -> Self {
         value.0
     }
+}
+
+/// Stable App Server idempotency identity for one exact Matrix timeline event.
+pub fn client_user_message_id(
+    agent_id: &AgentId,
+    room_id: &MatrixRoomId,
+    event_id: &MatrixEventId,
+) -> String {
+    format!(
+        "hepta-matrix-v1-{}",
+        framed_digest(
+            CLIENT_MESSAGE_ID_DOMAIN,
+            &[
+                agent_id.as_str().as_bytes(),
+                room_id.as_str().as_bytes(),
+                event_id.as_str().as_bytes(),
+            ],
+        )
+        .as_str()
+    )
+}
+
+/// Stable key used with Codex App Server's idempotent `project/create` API.
+pub fn room_project_idempotency_key(agent_id: &AgentId, room_id: &MatrixRoomId) -> String {
+    format!(
+        "hepta-matrix-room-v1-{}",
+        framed_digest(
+            ROOM_PROJECT_IDEMPOTENCY_DOMAIN,
+            &[agent_id.as_str().as_bytes(), room_id.as_str().as_bytes()],
+        )
+        .as_str()
+    )
+}
+
+/// Stable logical identity for one outbound Matrix projection.
+pub fn outbox_id(
+    agent_id: &AgentId,
+    room_id: &MatrixRoomId,
+    thread_id: &str,
+    turn_id: &str,
+    item_id: &str,
+    kind: &str,
+) -> String {
+    framed_digest(
+        OUTBOX_ID_DOMAIN,
+        &[
+            agent_id.as_str().as_bytes(),
+            room_id.as_str().as_bytes(),
+            thread_id.as_bytes(),
+            turn_id.as_bytes(),
+            item_id.as_bytes(),
+            kind.as_bytes(),
+        ],
+    )
+    .as_str()
+    .to_string()
+}
+
+/// Stable Matrix transaction ID for one immutable outbox revision.
+pub fn transaction_id(
+    logical_outbox_id: &str,
+    revision: u64,
+) -> Result<MatrixTransactionId, MatrixProtocolError> {
+    let revision = revision.to_be_bytes();
+    MatrixTransactionId::parse(format!(
+        "hepta-v1-{}",
+        framed_digest(
+            MATRIX_TRANSACTION_ID_DOMAIN,
+            &[logical_outbox_id.as_bytes(), &revision],
+        )
+        .as_str()
+    ))
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -464,6 +541,21 @@ fn validate_unique_bounded<T: Ord + Clone>(
     Ok(())
 }
 
+fn framed_digest(domain: &[u8], fields: &[&[u8]]) -> Sha256Digest {
+    let capacity = domain.len()
+        + fields
+            .iter()
+            .map(|field| std::mem::size_of::<u64>() + field.len())
+            .sum::<usize>();
+    let mut framed = Vec::with_capacity(capacity);
+    framed.extend_from_slice(domain);
+    for field in fields {
+        framed.extend_from_slice(&(field.len() as u64).to_be_bytes());
+        framed.extend_from_slice(field);
+    }
+    Sha256Digest::for_bytes(&framed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -549,5 +641,25 @@ mod tests {
         assert!(binding.validate().is_err());
         binding.allowed_rooms.clear();
         assert!(binding.validate().is_err());
+    }
+
+    #[test]
+    fn deterministic_bridge_ids_are_domain_separated_and_revision_bound() {
+        let agent = agent_id();
+        let room = MatrixRoomId::parse("!room-a:example.test").expect("room");
+        let event = MatrixEventId::parse("$event-a").expect("event");
+        let client_id = client_user_message_id(&agent, &room, &event);
+        assert_eq!(client_id, client_user_message_id(&agent, &room, &event));
+        assert_ne!(
+            client_id,
+            room_project_idempotency_key(&agent, &room),
+            "different identity domains must never alias"
+        );
+
+        let logical_outbox = outbox_id(&agent, &room, "thread-a", "turn-a", "item-a", "final");
+        let revision_one = transaction_id(&logical_outbox, 1).expect("transaction");
+        let revision_two = transaction_id(&logical_outbox, 2).expect("transaction");
+        assert_ne!(revision_one, revision_two);
+        assert!(revision_one.as_str().starts_with("hepta-v1-"));
     }
 }
