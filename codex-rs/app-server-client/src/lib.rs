@@ -1699,6 +1699,66 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bounded_remote_events_disconnect_and_require_resync_on_overflow() {
+        let (sent_tx, sent_rx) = tokio::sync::oneshot::channel();
+        let websocket_url = start_test_remote_server(|mut websocket| async move {
+            expect_remote_initialize(&mut websocket).await;
+            for sequence in 0..64 {
+                write_websocket_message(
+                    &mut websocket,
+                    JSONRPCMessage::Notification(
+                        serde_json::from_value(
+                            serde_json::to_value(agent_message_delta_notification(&format!(
+                                "delta-{sequence}"
+                            )))
+                            .expect("notification should serialize"),
+                        )
+                        .expect("notification should convert to JSON-RPC"),
+                    ),
+                )
+                .await;
+            }
+            let _ = sent_tx.send(());
+            futures::future::pending::<()>().await;
+        })
+        .await;
+        let mut client = RemoteAppServerClient::connect_with_bounded_events(
+            test_remote_connect_args(websocket_url),
+            1,
+        )
+        .await
+        .expect("bounded remote client should connect");
+
+        sent_rx
+            .await
+            .expect("server should send notification burst");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let first_event = timeout(Duration::from_secs(2), client.next_event())
+            .await
+            .expect("queued event should arrive before timeout")
+            .expect("one queued event should be retained");
+        assert!(matches!(
+            first_event,
+            AppServerEvent::ServerNotification(notification)
+                if matches!(notification.as_ref(), ServerNotification::AgentMessageDelta(_))
+        ));
+
+        let terminal_event = timeout(Duration::from_secs(2), client.next_event())
+            .await
+            .expect("overflow terminal event should arrive before timeout")
+            .expect("overflow should be reported before the event stream closes");
+        assert!(matches!(
+            terminal_event,
+            AppServerEvent::Disconnected { message }
+                if message == "bounded remote app-server event queue is full; reconnect and resync from durable thread state"
+        ));
+        assert!(client.next_event().await.is_none());
+
+        client.shutdown().await.expect("shutdown should complete");
+    }
+
+    #[tokio::test]
     async fn remote_server_request_resolution_roundtrip_works() {
         let websocket_url = start_test_remote_server(|mut websocket| async move {
             expect_remote_initialize(&mut websocket).await;

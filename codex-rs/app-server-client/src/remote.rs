@@ -15,6 +15,8 @@ use std::collections::VecDeque;
 use std::io::Error as IoError;
 use std::io::ErrorKind;
 use std::io::Result as IoResult;
+use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::AppServerEvent;
@@ -64,6 +66,7 @@ use url::Url;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(10);
 const REMOTE_APP_SERVER_MAX_WEBSOCKET_MESSAGE_SIZE: usize = 128 << 20;
+const MAX_REMOTE_EVENT_CHANNEL_CAPACITY: usize = 65_536;
 // Tungstenite still needs an HTTP request URI for the WebSocket handshake;
 // the bytes travel over the Unix socket, not TCP.
 const UDS_WEBSOCKET_HANDSHAKE_URL: &str = "ws://localhost/rpc";
@@ -150,11 +153,57 @@ enum RemoteClientCommand {
 
 pub struct RemoteAppServerClient {
     command_tx: mpsc::Sender<RemoteClientCommand>,
-    event_rx: mpsc::UnboundedReceiver<AppServerEvent>,
+    event_rx: RemoteEventReceiver,
     pending_events: VecDeque<AppServerEvent>,
     server_version: Option<String>,
     codex_home: Option<String>,
     worker_handle: tokio::task::JoinHandle<()>,
+}
+
+#[derive(Clone, Copy)]
+enum RemoteEventMode {
+    Unbounded,
+    Bounded { capacity: usize },
+}
+
+enum RemoteEventSender {
+    Unbounded(mpsc::UnboundedSender<AppServerEvent>),
+    Bounded {
+        sender: mpsc::Sender<AppServerEvent>,
+        terminal_reason: Arc<OnceLock<String>>,
+    },
+}
+
+enum RemoteEventReceiver {
+    Unbounded(mpsc::UnboundedReceiver<AppServerEvent>),
+    Bounded {
+        receiver: mpsc::Receiver<AppServerEvent>,
+        terminal_reason: Arc<OnceLock<String>>,
+        terminal_delivered: bool,
+    },
+}
+
+impl RemoteEventReceiver {
+    async fn recv(&mut self) -> Option<AppServerEvent> {
+        match self {
+            Self::Unbounded(receiver) => receiver.recv().await,
+            Self::Bounded {
+                receiver,
+                terminal_reason,
+                terminal_delivered,
+            } => match receiver.recv().await {
+                Some(event) => Some(event),
+                None if !*terminal_delivered => {
+                    *terminal_delivered = true;
+                    terminal_reason
+                        .get()
+                        .cloned()
+                        .map(|message| AppServerEvent::Disconnected { message })
+                }
+                None => None,
+            },
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -164,6 +213,42 @@ pub struct RemoteAppServerRequestHandle {
 
 impl RemoteAppServerClient {
     pub async fn connect(args: RemoteAppServerConnectArgs) -> IoResult<Self> {
+        Self::connect_with_event_mode(args, RemoteEventMode::Unbounded).await
+    }
+
+    /// Connects with a fail-fast bounded consumer event queue.
+    ///
+    /// The existing [`Self::connect`] behavior remains lossless and unbounded for
+    /// compatibility. Long-running bridges should use this entrypoint: if the
+    /// caller stops draining notifications, the remote connection closes instead
+    /// of retaining unbounded transcript data. After already queued events are
+    /// drained, [`Self::next_event`] yields one `Disconnected` event that tells the
+    /// caller to reconcile from the durable app-server state.
+    pub async fn connect_with_bounded_events(
+        args: RemoteAppServerConnectArgs,
+        event_channel_capacity: usize,
+    ) -> IoResult<Self> {
+        if !(1..=MAX_REMOTE_EVENT_CHANNEL_CAPACITY).contains(&event_channel_capacity) {
+            return Err(IoError::new(
+                ErrorKind::InvalidInput,
+                format!(
+                    "remote app-server event channel capacity must be between 1 and {MAX_REMOTE_EVENT_CHANNEL_CAPACITY}"
+                ),
+            ));
+        }
+        Self::connect_with_event_mode(
+            args,
+            RemoteEventMode::Bounded {
+                capacity: event_channel_capacity,
+            },
+        )
+        .await
+    }
+
+    async fn connect_with_event_mode(
+        args: RemoteAppServerConnectArgs,
+        event_mode: RemoteEventMode,
+    ) -> IoResult<Self> {
         let channel_capacity = args.channel_capacity.max(1);
         let initialize_params = args.initialize_params();
         match args.endpoint {
@@ -173,13 +258,25 @@ impl RemoteAppServerClient {
             } => {
                 let (endpoint, stream) =
                     connect_websocket_endpoint(websocket_url, auth_token).await?;
-                Self::connect_with_stream(channel_capacity, endpoint, stream, initialize_params)
-                    .await
+                Self::connect_with_stream(
+                    channel_capacity,
+                    event_mode,
+                    endpoint,
+                    stream,
+                    initialize_params,
+                )
+                .await
             }
             RemoteAppServerEndpoint::UnixSocket { socket_path } => {
                 let (endpoint, stream) = connect_unix_socket_endpoint(socket_path).await?;
-                Self::connect_with_stream(channel_capacity, endpoint, stream, initialize_params)
-                    .await
+                Self::connect_with_stream(
+                    channel_capacity,
+                    event_mode,
+                    endpoint,
+                    stream,
+                    initialize_params,
+                )
+                .await
             }
         }
     }
@@ -194,6 +291,7 @@ impl RemoteAppServerClient {
 
     async fn connect_with_stream<S>(
         channel_capacity: usize,
+        event_mode: RemoteEventMode,
         endpoint: String,
         stream: WebSocketStream<S>,
         initialize_params: InitializeParams,
@@ -210,8 +308,42 @@ impl RemoteAppServerClient {
         )
         .await?;
 
+        if let RemoteEventMode::Bounded { capacity } = event_mode
+            && pending_events.len() > capacity
+        {
+            return Err(IoError::new(
+                ErrorKind::OutOfMemory,
+                format!(
+                    "remote app server at `{endpoint}` emitted more initialization events than the bounded event channel can retain; reconnect and resync"
+                ),
+            ));
+        }
+
         let (command_tx, mut command_rx) = mpsc::channel::<RemoteClientCommand>(channel_capacity);
-        let (event_tx, event_rx) = mpsc::unbounded_channel::<AppServerEvent>();
+        let (event_tx, event_rx) = match event_mode {
+            RemoteEventMode::Unbounded => {
+                let (sender, receiver) = mpsc::unbounded_channel::<AppServerEvent>();
+                (
+                    RemoteEventSender::Unbounded(sender),
+                    RemoteEventReceiver::Unbounded(receiver),
+                )
+            }
+            RemoteEventMode::Bounded { capacity } => {
+                let (sender, receiver) = mpsc::channel::<AppServerEvent>(capacity);
+                let terminal_reason = Arc::new(OnceLock::new());
+                (
+                    RemoteEventSender::Bounded {
+                        sender,
+                        terminal_reason: Arc::clone(&terminal_reason),
+                    },
+                    RemoteEventReceiver::Bounded {
+                        receiver,
+                        terminal_reason,
+                        terminal_delivered: false,
+                    },
+                )
+            }
+        };
         let worker_handle = tokio::spawn(async move {
             let mut pending_requests =
                 HashMap::<RequestId, oneshot::Sender<IoResult<RequestResult>>>::new();
@@ -947,16 +1079,32 @@ fn app_server_event_from_notification(notification: JSONRPCNotification) -> Opti
     }
 }
 
-fn deliver_event(
-    event_tx: &mpsc::UnboundedSender<AppServerEvent>,
-    event: AppServerEvent,
-) -> IoResult<()> {
-    event_tx.send(event).map_err(|_| {
-        IoError::new(
-            ErrorKind::BrokenPipe,
-            "remote app-server event consumer channel is closed",
-        )
-    })
+fn deliver_event(event_tx: &RemoteEventSender, event: AppServerEvent) -> IoResult<()> {
+    match event_tx {
+        RemoteEventSender::Unbounded(sender) => sender.send(event).map_err(|_| {
+            IoError::new(
+                ErrorKind::BrokenPipe,
+                "remote app-server event consumer channel is closed",
+            )
+        }),
+        RemoteEventSender::Bounded {
+            sender,
+            terminal_reason,
+        } => sender.try_send(event).map_err(|error| match error {
+            mpsc::error::TrySendError::Full(event) => {
+                let reason = match event {
+                    AppServerEvent::Disconnected { message } => message,
+                    _ => "bounded remote app-server event queue is full; reconnect and resync from durable thread state".to_string(),
+                };
+                let _ = terminal_reason.set(reason.clone());
+                IoError::new(ErrorKind::OutOfMemory, reason)
+            }
+            mpsc::error::TrySendError::Closed(_) => IoError::new(
+                ErrorKind::BrokenPipe,
+                "remote app-server event consumer channel is closed",
+            ),
+        }),
+    }
 }
 
 fn jsonrpc_request_from_client_request(request: ClientRequest) -> JSONRPCRequest {
@@ -1025,7 +1173,7 @@ mod tests {
         });
         let client = RemoteAppServerClient {
             command_tx,
-            event_rx,
+            event_rx: RemoteEventReceiver::Unbounded(event_rx),
             pending_events: VecDeque::new(),
             server_version: None,
             codex_home: None,
