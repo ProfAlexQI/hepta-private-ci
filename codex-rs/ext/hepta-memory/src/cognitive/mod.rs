@@ -56,6 +56,7 @@ use crate::framing::workspace_digest;
 mod federation;
 mod tools;
 
+pub(crate) use federation::CombinedCognitiveEphemeralContributor;
 pub(crate) use federation::FederatedCognitiveExtension;
 
 const COGNITIVE_SOURCE: &str = "hepta_cognitive_plane_v1";
@@ -187,6 +188,33 @@ struct PreparedCognitiveAttachment {
     claimed_token_count: u32,
 }
 
+pub(super) struct CognitiveProposalMaterial {
+    pub(super) source: &'static str,
+    pub(super) source_binding_sha256: Sha256Digest,
+    pub(super) content_sha256: Sha256Digest,
+    pub(super) content: String,
+    pub(super) claimed_token_count: u32,
+}
+
+impl CognitiveProposalMaterial {
+    pub(super) fn into_proposal(
+        self,
+        input: &EphemeralModelInputContext<'_>,
+    ) -> Result<EphemeralModelInputProposal, ModelProviderPolicyError> {
+        EphemeralModelInputProposal::new(
+            EphemeralModelInputSource::parse(self.source)?,
+            input.attempt_id,
+            input.base_logical_request_sha256.clone(),
+            input.thread_id,
+            input.turn_id,
+            api_digest(&self.source_binding_sha256)?,
+            api_digest(&self.content_sha256)?,
+            self.content,
+            self.claimed_token_count,
+        )
+    }
+}
+
 pub(crate) struct CognitiveExtension {
     runtime: CognitiveRuntime,
     recall: Option<Arc<dyn CognitiveRecallBackend>>,
@@ -210,6 +238,107 @@ impl CognitiveExtension {
 
     fn store(&self) -> Option<&Arc<CognitiveStore>> {
         self.runtime.available_store()
+    }
+
+    pub(super) fn has_prepared_attachment(
+        &self,
+        thread_store: &ExtensionData,
+        turn_store: &ExtensionData,
+    ) -> bool {
+        thread_store
+            .get::<HeptaMemoryThreadState>()
+            .is_some_and(|state| state.attachment_proposal_enabled)
+            && turn_store.get::<PreparedCognitiveAttachment>().is_some()
+    }
+
+    pub(super) async fn revalidate_prepared_attachment(
+        &self,
+        input: &EphemeralModelInputContext<'_>,
+    ) -> Option<CognitiveProposalMaterial> {
+        if input.schema_version != EPHEMERAL_MODEL_INPUT_SCHEMA_VERSION
+            || input.request_kind != ModelProviderRequestKind::Turn
+            || !input.generate
+            || input.thread_id != input.thread_store.level_id()
+            || input.turn_id != input.turn_store.level_id()
+            || !input.cwd.is_absolute()
+        {
+            return None;
+        }
+        let thread_state = input.thread_store.get::<HeptaMemoryThreadState>()?;
+        if !thread_state.attachment_proposal_enabled {
+            return None;
+        }
+        let prepared = input.turn_store.get::<PreparedCognitiveAttachment>()?;
+        if prepared.thread_id != input.thread_id
+            || prepared.turn_id != input.turn_id
+            || path_identity_bytes(prepared.workspace.as_path()) != path_identity_bytes(input.cwd)
+        {
+            return None;
+        }
+        let model_context_window = input
+            .model_context_window
+            .and_then(|value| u64::try_from(value).ok())?;
+        let context_budget = model_context_window
+            .saturating_mul(u64::from(thread_state.limits.max_context_window_ppm()))
+            / 1_000_000;
+        if u64::from(prepared.claimed_token_count) > context_budget {
+            return None;
+        }
+        let now = now_unix_seconds()?;
+        let (Some(store), Some(recall)) = (self.store(), self.recall.as_ref()) else {
+            return None;
+        };
+        let access = CognitiveAccess::workspace_private(
+            store.owner_agent_id().clone(),
+            workspace_digest(input.cwd),
+        );
+        let mut explanations = Vec::with_capacity(prepared.bindings.len());
+        for binding in &prepared.bindings {
+            let Ok(status) = recall.revalidate(&access, binding, now).await else {
+                return None;
+            };
+            let RevalidationStatus::Current(explanation) = status else {
+                return None;
+            };
+            if explanation.memory.verification != MemoryVerification::Verified
+                || explanation.memory.lifecycle != MemoryLifecycleState::Active
+                || secret_like(explanation.memory.content.as_bytes())
+                || explanation
+                    .citations
+                    .iter()
+                    .any(|citation| secret_like(&citation.content))
+            {
+                return None;
+            }
+            explanations.push(*explanation);
+        }
+        let content = compile_explanations(&explanations)?;
+        let content_sha256 = Sha256Digest::for_bytes(content.as_bytes());
+        let source_binding_sha256 = cognitive_source_binding(
+            input.thread_id,
+            input.turn_id,
+            input.cwd,
+            &prepared.query_sha256,
+            &prepared.bindings,
+            &content_sha256,
+        );
+        let claimed_token_count = u32::try_from(content.len()).ok()?;
+        if source_binding_sha256 != prepared.source_binding_sha256
+            || content_sha256 != prepared.content_sha256
+            || claimed_token_count != prepared.claimed_token_count
+            || content.is_empty()
+            || content.len() > input.max_content_bytes as usize
+            || claimed_token_count > input.max_content_tokens
+        {
+            return None;
+        }
+        Some(CognitiveProposalMaterial {
+            source: COGNITIVE_SOURCE,
+            source_binding_sha256,
+            content_sha256,
+            content,
+            claimed_token_count,
+        })
     }
 }
 

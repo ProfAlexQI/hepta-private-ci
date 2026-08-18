@@ -58,6 +58,9 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
         CognitiveStore::open(&cognitive_layout).await
     })
     .await?;
+    if let Some(store) = cognitive_runtime.available_store() {
+        state.attach_cognitive_store(Arc::clone(store))?;
+    }
     let cognitive_runtime = attach_federation_after_generation_fence(
         &state,
         cognitive_runtime,

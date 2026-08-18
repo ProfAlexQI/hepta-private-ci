@@ -5,10 +5,7 @@ use sha2::Digest;
 use sha2::Sha256;
 
 pub(crate) fn workspace_digest(path: &Path) -> Sha256Digest {
-    domain_digest(
-        b"hepta-memory:workspace:v1",
-        path_identity_bytes(path).as_slice(),
-    )
+    codex_hepta_memory::workspace_binding_digest(path)
 }
 
 #[cfg(unix)]

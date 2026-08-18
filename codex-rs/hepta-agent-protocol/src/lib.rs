@@ -8,6 +8,7 @@ use codex_hepta_automation::AutomationTask;
 use codex_hepta_automation::AutomationTaskDraft;
 use codex_hepta_automation::AutomationTaskId;
 use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_fleet::AgentLifecycle;
 use serde::Deserialize;
 use serde::Serialize;
@@ -15,6 +16,65 @@ use serde::Serialize;
 pub const AGENTD_CONTROL_SCHEMA_VERSION: u32 = 1;
 pub const MAX_CONTROL_FRAME_BYTES: u64 = 65_536;
 pub const MAX_EVENT_BATCH: u16 = 256;
+pub const MAX_FEDERATION_CONTROL_LIST: u16 = 128;
+const FEDERATION_CAPABILITY_ID_PREFIX: &str = "federation:v1:";
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct MemoryFederationCapabilityId(String);
+
+impl MemoryFederationCapabilityId {
+    pub fn parse(value: impl Into<String>) -> Result<Self, String> {
+        let value = value.into();
+        let digest = value
+            .strip_prefix(FEDERATION_CAPABILITY_ID_PREFIX)
+            .ok_or_else(|| "invalid memory federation capability id".to_string())?;
+        Sha256Digest::parse(digest.to_string())?;
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for MemoryFederationCapabilityId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(value).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryFederationScopeKind {
+    AgentPrivate,
+    WorkspacePrivate,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryFederationCapabilityState {
+    Granted,
+    Revoked,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryFederationCapabilitySnapshot {
+    pub capability_id: MemoryFederationCapabilityId,
+    pub owner_agent_id: AgentId,
+    pub consumer_agent_id: AgentId,
+    pub owner_scope: MemoryFederationScopeKind,
+    pub generation: u64,
+    pub revision: u64,
+    pub effective_at_unix_seconds: i64,
+    pub expires_at_unix_seconds: i64,
+    pub state: MemoryFederationCapabilityState,
+}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -118,6 +178,60 @@ impl AgentdRequest {
             },
         }
     }
+
+    pub fn memory_federation_grant(
+        request_id: u64,
+        spawn_generation: u64,
+        consumer_agent_id: AgentId,
+        owner_scope: MemoryFederationScopeKind,
+        lifetime_seconds: u32,
+    ) -> Self {
+        Self {
+            schema_version: AGENTD_CONTROL_SCHEMA_VERSION,
+            request_id,
+            spawn_generation,
+            method: AgentdMethod::MemoryFederationGrant {
+                consumer_agent_id,
+                owner_scope,
+                lifetime_seconds,
+            },
+        }
+    }
+
+    pub fn memory_federation_revoke(
+        request_id: u64,
+        spawn_generation: u64,
+        capability_id: MemoryFederationCapabilityId,
+    ) -> Self {
+        Self {
+            schema_version: AGENTD_CONTROL_SCHEMA_VERSION,
+            request_id,
+            spawn_generation,
+            method: AgentdMethod::MemoryFederationRevoke { capability_id },
+        }
+    }
+
+    pub fn memory_federation_list(request_id: u64, spawn_generation: u64, limit: u16) -> Self {
+        Self {
+            schema_version: AGENTD_CONTROL_SCHEMA_VERSION,
+            request_id,
+            spawn_generation,
+            method: AgentdMethod::MemoryFederationList { limit },
+        }
+    }
+
+    pub fn memory_federation_status(
+        request_id: u64,
+        spawn_generation: u64,
+        capability_id: MemoryFederationCapabilityId,
+    ) -> Self {
+        Self {
+            schema_version: AGENTD_CONTROL_SCHEMA_VERSION,
+            request_id,
+            spawn_generation,
+            method: AgentdMethod::MemoryFederationStatus { capability_id },
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -144,6 +258,20 @@ pub enum AgentdMethod {
         enabled: bool,
         resume_at_ms: Option<u64>,
     },
+    MemoryFederationGrant {
+        consumer_agent_id: AgentId,
+        owner_scope: MemoryFederationScopeKind,
+        lifetime_seconds: u32,
+    },
+    MemoryFederationRevoke {
+        capability_id: MemoryFederationCapabilityId,
+    },
+    MemoryFederationList {
+        limit: u16,
+    },
+    MemoryFederationStatus {
+        capability_id: MemoryFederationCapabilityId,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -165,8 +293,20 @@ pub enum AgentdPayload {
     SessionIngress(SessionIngress),
     Events(EventBatch),
     AutomationTask(AutomationTask),
-    AutomationTasks { tasks: Vec<AutomationTask> },
-    Error { code: String, message: String },
+    AutomationTasks {
+        tasks: Vec<AutomationTask>,
+    },
+    MemoryFederationCapability(MemoryFederationCapabilitySnapshot),
+    MemoryFederationCapabilities {
+        capabilities: Vec<MemoryFederationCapabilitySnapshot>,
+    },
+    MemoryFederationStatus {
+        capability: Option<MemoryFederationCapabilitySnapshot>,
+    },
+    Error {
+        code: String,
+        message: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -289,5 +429,39 @@ mod tests {
             serde_json::from_slice::<AgentdRequest>(&bytes).expect("parse request"),
             request
         );
+    }
+
+    #[test]
+    fn memory_federation_control_is_typed_strict_and_bounded() {
+        let consumer = AgentId::parse("019153a4-3088-7e03-a56a-9b1964f75dd3").expect("consumer id");
+        let grant = AgentdRequest::memory_federation_grant(
+            10,
+            3,
+            consumer,
+            MemoryFederationScopeKind::WorkspacePrivate,
+            3_600,
+        );
+        let grant_bytes = serde_json::to_vec(&grant).expect("serialize grant");
+        assert!(grant_bytes.len() as u64 <= MAX_CONTROL_FRAME_BYTES);
+        assert_eq!(
+            serde_json::from_slice::<AgentdRequest>(&grant_bytes).expect("parse grant"),
+            grant
+        );
+
+        let capability_id =
+            MemoryFederationCapabilityId::parse(format!("federation:v1:{}", "a".repeat(64)))
+                .expect("capability id");
+        let revoke = AgentdRequest::memory_federation_revoke(11, 3, capability_id);
+        let revoke_bytes = serde_json::to_vec(&revoke).expect("serialize revoke");
+        assert!(revoke_bytes.len() as u64 <= MAX_CONTROL_FRAME_BYTES);
+        assert_eq!(
+            serde_json::from_slice::<AgentdRequest>(&revoke_bytes).expect("parse revoke"),
+            revoke
+        );
+
+        let malformed = String::from_utf8(revoke_bytes)
+            .expect("utf8")
+            .replace(&"a".repeat(64), "not-a-digest");
+        assert!(serde_json::from_str::<AgentdRequest>(&malformed).is_err());
     }
 }

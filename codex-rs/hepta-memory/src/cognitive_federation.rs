@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -30,6 +31,8 @@ pub const MAX_FEDERATION_CAPABILITIES_PER_STORE: u64 = 128;
 pub const MAX_FEDERATION_CAPABILITY_REVISIONS: u64 = 1024;
 pub const MAX_FEDERATION_GRANT_LIFETIME_SECONDS: i64 = 31 * 24 * 60 * 60;
 pub const MAX_FEDERATION_SOURCES_PER_AGENT: usize = 16;
+const MAX_FEDERATION_OWNER_LAYOUTS_PER_AGENT: usize = 128;
+const FEDERATION_REFRESH_TIMEOUT: Duration = Duration::from_secs(2);
 
 const COGNITIVE_DB_FILENAME: &str = "cognitive_1.sqlite3";
 const CAPABILITY_ID_PREFIX: &str = "federation:v1:";
@@ -62,13 +65,26 @@ impl FederationCapabilityId {
         &self.0
     }
 
-    fn parse(value: String) -> Result<Self, CognitiveStoreError> {
+    pub fn parse(value: String) -> Result<Self, CognitiveStoreError> {
         let digest = value.strip_prefix(CAPABILITY_ID_PREFIX).ok_or_else(|| {
             CognitiveStoreError::Corrupt("invalid memory federation capability id".to_string())
         })?;
         Sha256Digest::parse(digest.to_string()).map_err(CognitiveStoreError::Corrupt)?;
         Ok(Self(value))
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FederationCapabilityState {
+    Granted,
+    Revoked,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct FederationCapabilityStatus {
+    pub capability: FederationCapability,
+    pub state: FederationCapabilityState,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -474,6 +490,68 @@ impl CognitiveStore {
             revoked_at_unix_seconds,
         })
     }
+
+    pub async fn revoke_federated_recall_by_id(
+        &self,
+        owner_access: &CognitiveAccess,
+        capability_id: &FederationCapabilityId,
+        revoked_at_unix_seconds: i64,
+    ) -> Result<FederationRevocation, CognitiveStoreError> {
+        let status = self
+            .federation_capability_status(capability_id)
+            .await?
+            .ok_or_else(|| {
+                CognitiveStoreError::Invalid(
+                    "memory federation capability does not exist".to_string(),
+                )
+            })?;
+        if status.state != FederationCapabilityState::Granted {
+            return Err(CognitiveStoreError::Conflict(
+                "memory federation capability is not an active grant".to_string(),
+            ));
+        }
+        self.revoke_federated_recall(owner_access, &status.capability, revoked_at_unix_seconds)
+            .await
+    }
+
+    pub async fn federation_capability_status(
+        &self,
+        capability_id: &FederationCapabilityId,
+    ) -> Result<Option<FederationCapabilityStatus>, CognitiveStoreError> {
+        let row = sqlx::query(
+            "SELECT e.*, e.owner_workspace_sha256 AS workspace_sha256
+             FROM memory_federation_heads h JOIN memory_federation_events e
+               ON e.capability_id = h.capability_id AND e.revision = h.revision
+             WHERE h.capability_id = ?",
+        )
+        .bind(capability_id.as_str())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        row.map(decode_status).transpose()
+    }
+
+    pub async fn list_federation_capabilities(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<FederationCapabilityStatus>, CognitiveStoreError> {
+        if !(1..=MAX_FEDERATION_CAPABILITIES_PER_STORE as usize).contains(&limit) {
+            return Err(CognitiveStoreError::Invalid(format!(
+                "memory federation list limit must be 1..={MAX_FEDERATION_CAPABILITIES_PER_STORE}"
+            )));
+        }
+        let rows = sqlx::query(
+            "SELECT e.*, e.owner_workspace_sha256 AS workspace_sha256
+             FROM memory_federation_heads h JOIN memory_federation_events e
+               ON e.capability_id = h.capability_id AND e.revision = h.revision
+             ORDER BY h.capability_id LIMIT ?",
+        )
+        .bind(to_i64(limit as u64, "federation list limit")?)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        rows.into_iter().map(decode_status).collect()
+    }
 }
 
 #[derive(Clone)]
@@ -686,6 +764,7 @@ impl FederatedMemoryReader {
 pub struct FederatedRecallSet {
     consumer_agent_id: AgentId,
     readers: Vec<FederatedMemoryReader>,
+    owner_layouts: Vec<HeptaAgentLayout>,
 }
 
 impl FederatedRecallSet {
@@ -712,6 +791,7 @@ impl FederatedRecallSet {
         Ok(Self {
             consumer_agent_id,
             readers,
+            owner_layouts: Vec::new(),
         })
     }
 
@@ -720,30 +800,16 @@ impl FederatedRecallSet {
         owner_layouts: impl IntoIterator<Item = HeptaAgentLayout>,
         now_unix_seconds: i64,
     ) -> Self {
-        let mut readers = Vec::new();
-        for owner_layout in owner_layouts {
-            if readers.len() == MAX_FEDERATION_SOURCES_PER_AGENT {
-                break;
-            }
-            let Ok(discovered) = FederatedMemoryReader::discover(
-                &owner_layout,
-                &consumer_agent_id,
-                now_unix_seconds,
-            )
-            .await
-            else {
-                continue;
-            };
-            readers.extend(
-                discovered
-                    .into_iter()
-                    .take(MAX_FEDERATION_SOURCES_PER_AGENT - readers.len()),
-            );
-        }
-        Self::new(consumer_agent_id.clone(), readers).unwrap_or(Self {
+        let _ = now_unix_seconds;
+        let mut owner_layouts = owner_layouts.into_iter().collect::<Vec<_>>();
+        owner_layouts.sort_by(|left, right| left.agent_id().cmp(right.agent_id()));
+        owner_layouts.dedup_by(|left, right| left.agent_id() == right.agent_id());
+        owner_layouts.truncate(MAX_FEDERATION_OWNER_LAYOUTS_PER_AGENT);
+        Self {
             consumer_agent_id,
             readers: Vec::new(),
-        })
+            owner_layouts,
+        }
     }
 
     pub fn consumer_agent_id(&self) -> &AgentId {
@@ -751,7 +817,7 @@ impl FederatedRecallSet {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.readers.is_empty()
+        self.readers.is_empty() && self.owner_layouts.is_empty()
     }
 
     pub async fn retrieve(
@@ -764,8 +830,9 @@ impl FederatedRecallSet {
                 "memory federation caller does not match the reader set consumer".to_string(),
             ));
         }
+        let readers = self.current_readers(request.now_unix_seconds()).await;
         let mut candidates = Vec::new();
-        for reader in &self.readers {
+        for reader in &readers {
             let Ok(batch) = reader.retrieve(access, request).await else {
                 continue;
             };
@@ -805,7 +872,8 @@ impl FederatedRecallSet {
         binding: &FederatedMemoryRevalidationBinding,
         now_unix_seconds: i64,
     ) -> Result<FederatedRevalidationStatus, CognitiveStoreError> {
-        let Some(reader) = self.readers.iter().find(|reader| {
+        let readers = self.current_readers(now_unix_seconds).await;
+        let Some(reader) = readers.iter().find(|reader| {
             reader.capability.owner_agent_id == binding.source_agent_id
                 && reader.capability.id == binding.capability.id
         }) else {
@@ -814,6 +882,50 @@ impl FederatedRecallSet {
             ));
         };
         reader.revalidate(access, binding, now_unix_seconds).await
+    }
+
+    async fn current_readers(&self, now_unix_seconds: i64) -> Vec<FederatedMemoryReader> {
+        let mut readers = self.readers.clone();
+        let dynamic = tokio::time::timeout(
+            FEDERATION_REFRESH_TIMEOUT,
+            self.discover_dynamic_readers(now_unix_seconds),
+        )
+        .await
+        .unwrap_or_default();
+        readers.extend(dynamic);
+        readers.sort_by(|left, right| {
+            left.capability
+                .owner_agent_id
+                .cmp(&right.capability.owner_agent_id)
+                .then_with(|| left.capability.id.cmp(&right.capability.id))
+        });
+        readers.dedup_by(|left, right| left.capability.id == right.capability.id);
+        readers.truncate(MAX_FEDERATION_SOURCES_PER_AGENT);
+        readers
+    }
+
+    async fn discover_dynamic_readers(&self, now_unix_seconds: i64) -> Vec<FederatedMemoryReader> {
+        let mut readers = Vec::new();
+        for owner_layout in &self.owner_layouts {
+            if readers.len() == MAX_FEDERATION_SOURCES_PER_AGENT {
+                break;
+            }
+            let Ok(discovered) = FederatedMemoryReader::discover(
+                owner_layout,
+                &self.consumer_agent_id,
+                now_unix_seconds,
+            )
+            .await
+            else {
+                continue;
+            };
+            readers.extend(
+                discovered
+                    .into_iter()
+                    .take(MAX_FEDERATION_SOURCES_PER_AGENT - readers.len()),
+            );
+        }
+        readers
     }
 }
 
@@ -909,6 +1021,19 @@ fn decode_event(
     Ok(StoredCapabilityEvent {
         capability,
         action: FederationAction::parse(row.try_get("action").map_err(unavailable)?)?,
+    })
+}
+
+fn decode_status(
+    row: sqlx::sqlite::SqliteRow,
+) -> Result<FederationCapabilityStatus, CognitiveStoreError> {
+    let event = decode_event(row)?;
+    Ok(FederationCapabilityStatus {
+        capability: event.capability,
+        state: match event.action {
+            FederationAction::Grant => FederationCapabilityState::Granted,
+            FederationAction::Revoke => FederationCapabilityState::Revoked,
+        },
     })
 }
 

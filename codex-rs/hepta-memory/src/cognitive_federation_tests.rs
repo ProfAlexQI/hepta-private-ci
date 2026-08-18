@@ -8,6 +8,7 @@ use crate::CognitiveStoreError;
 use crate::FederatedMemoryReader;
 use crate::FederatedRecallSet;
 use crate::FederatedRevalidationStatus;
+use crate::FederationCapabilityState;
 use crate::FederationConsumerAccess;
 use crate::FederationGrantRequest;
 use crate::FederationGrantScope;
@@ -115,6 +116,22 @@ async fn explicit_grant_is_owner_written_consumer_read_only_and_scope_exact() {
         )
         .await
         .expect("grant");
+    let listed = owner
+        .list_federation_capabilities(16)
+        .await
+        .expect("list grants");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].capability, capability);
+    assert_eq!(listed[0].state, FederationCapabilityState::Granted);
+    assert_eq!(
+        owner
+            .federation_capability_status(capability.id())
+            .await
+            .expect("grant status")
+            .expect("grant exists")
+            .state,
+        FederationCapabilityState::Granted
+    );
     assert_eq!(capability.generation(), 1);
     assert_eq!(capability.revision(), 1);
 
@@ -224,6 +241,15 @@ async fn revoke_is_observed_by_the_next_physical_send_revalidation() {
         .expect("revoke");
     assert_eq!(revocation.generation, 1);
     assert_eq!(revocation.revision, 2);
+    assert_eq!(
+        owner
+            .federation_capability_status(capability.id())
+            .await
+            .expect("revoked status")
+            .expect("capability exists")
+            .state,
+        FederationCapabilityState::Revoked
+    );
     assert_eq!(
         reader
             .revalidate(&access, &prepared, 152)

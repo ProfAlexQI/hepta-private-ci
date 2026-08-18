@@ -1,6 +1,10 @@
 #![cfg(unix)]
 
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -22,6 +26,8 @@ use codex_app_server_protocol::TurnStartResponse;
 use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::UserInput as V2UserInput;
 use codex_hepta_agentd::AgentdClient;
+use codex_hepta_agentd::MemoryFederationCapabilityState;
+use codex_hepta_agentd::MemoryFederationScopeKind;
 use codex_hepta_automation::AutomationSchedule;
 use codex_hepta_automation::AutomationTaskDraft;
 use codex_hepta_memory::CognitiveAccess;
@@ -41,6 +47,12 @@ use core_test_support::responses::ResponsesRequest;
 use serde_json::Value;
 use serde_json::json;
 use tokio::time::timeout;
+use wiremock::Mock;
+use wiremock::Request;
+use wiremock::Respond;
+use wiremock::ResponseTemplate;
+use wiremock::matchers::method;
+use wiremock::matchers::path;
 
 mod support;
 
@@ -50,6 +62,9 @@ use support::fleet::connect_app_server;
 
 const AGENT_A: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 const AGENT_B: &str = "019153a4-3088-7e03-a56a-9b1964f75dd3";
+const AGENT_C: &str = "019153a4-3088-7e03-a56a-9b1964f75dd4";
+const AGENT_D: &str = "019153a4-3088-7e03-a56a-9b1964f75dd5";
+const AGENT_E: &str = "019153a4-3088-7e03-a56a-9b1964f75dd6";
 const COGNITIVE_NAMESPACE: &str = "hepta_cognitive";
 const COGNITIVE_REFERENCE_OPEN: &str = "<hepta_memory_reference schema=\"1\">";
 const COGNITIVE_REFERENCE_CLOSE: &str = "</hepta_memory_reference>";
@@ -146,8 +161,8 @@ impl ProductClient {
                 {
                     ensure!(
                         completed.turn.status == TurnStatus::Completed,
-                        "turn ended with {:?}",
-                        completed.turn.status
+                        "turn ended with {:#?}",
+                        completed.turn
                     );
                     return Ok::<(), anyhow::Error>(());
                 }
@@ -366,6 +381,249 @@ async fn two_real_agentd_app_servers_never_cross_recall() -> Result<()> {
 
     product_a.shutdown().await?;
     product_b.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+async fn running_consumer_observes_owner_control_grant_and_revoke_without_restart() -> Result<()> {
+    const SHARED: &str = "Owner Alpha shares the unique heliotrope observatory marker.";
+    const LOCAL: &str = "Consumer Beta keeps the local heliotrope observatory notebook.";
+
+    let mut fleet = FleetHarness::new()?;
+    let owner = fleet.register(AGENT_A, "workspace-owner")?;
+    let consumer = fleet.register(AGENT_B, "workspace-consumer")?;
+    let owner_model = responses::start_mock_server().await;
+    let consumer_model = responses::start_mock_server().await;
+    MockResponsesConfig::new(&owner_model.uri()).write(owner.layout.home_root())?;
+    MockResponsesConfig::new(&consumer_model.uri()).write(consumer.layout.home_root())?;
+    seed_verified_agent_memory(&owner, "shared-observatory-marker", SHARED).await?;
+    seed_verified_agent_memory(&consumer, "local-observatory-marker", LOCAL).await?;
+
+    fleet.start(&owner)?;
+    let (owner_control, _) = fleet.wait_ready(&owner, 1).await?;
+    fleet.start(&consumer)?;
+    let (consumer_control, _) = fleet.wait_ready(&consumer, 1).await?;
+    let mut product = ProductClient::connect(&consumer, &consumer_control).await?;
+    let thread = product.start_thread(&consumer.workspace).await?;
+
+    let before = responses::mount_sse_once(&consumer_model, final_sse("before-grant")).await;
+    product
+        .run_turn(&thread, "Recall the heliotrope observatory marker.")
+        .await
+        .context("before-grant consumer turn")?;
+    ensure!(
+        !raw_requests_contain(&before, SHARED),
+        "consumer saw owner memory before an explicit grant"
+    );
+    ensure!(
+        raw_requests_contain(&before, LOCAL),
+        "consumer did not retain its local cognitive memory before federation"
+    );
+
+    let capability = owner_control
+        .memory_federation_grant(
+            consumer.agent_id.clone(),
+            MemoryFederationScopeKind::AgentPrivate,
+            3_600,
+        )
+        .await?;
+    ensure!(capability.state == MemoryFederationCapabilityState::Granted);
+    ensure!(capability.owner_agent_id == owner.agent_id);
+    ensure!(capability.consumer_agent_id == consumer.agent_id);
+    let listed = owner_control.memory_federation_list(16).await?;
+    ensure!(listed.as_slice() == std::slice::from_ref(&capability));
+    ensure!(
+        owner_control
+            .memory_federation_status(capability.capability_id.clone())
+            .await?
+            == Some(capability.clone())
+    );
+
+    let after = responses::mount_sse_once(&consumer_model, final_sse("after-grant")).await;
+    product
+        .run_turn(&thread, "Recall the heliotrope observatory marker.")
+        .await
+        .context("after-grant consumer turn")?;
+    ensure!(
+        raw_requests_contain(&after, SHARED),
+        "already-running consumer did not dynamically observe the owner grant"
+    );
+    ensure!(
+        raw_requests_contain(&after, LOCAL),
+        "single Cognitive proposal dropped local memory while merging federation"
+    );
+    ensure!(
+        raw_requests_contain(&after, owner.agent_id.as_str()),
+        "federated context omitted source AgentId provenance"
+    );
+
+    let nested_workspace = consumer.workspace.join("other-scope");
+    std::fs::create_dir(&nested_workspace)?;
+    let nested_workspace = nested_workspace.canonicalize()?;
+    let nested_thread = product.start_thread(&nested_workspace).await?;
+    let wrong_scope = responses::mount_sse_once(&consumer_model, final_sse("wrong-scope")).await;
+    product
+        .run_turn(&nested_thread, "Recall the heliotrope observatory marker.")
+        .await
+        .context("cross-workspace consumer turn")?;
+    ensure!(
+        !raw_requests_contain(&wrong_scope, SHARED),
+        "grant escaped its registry-derived consumer workspace binding"
+    );
+
+    let self_grant = owner_control
+        .memory_federation_grant(
+            owner.agent_id.clone(),
+            MemoryFederationScopeKind::AgentPrivate,
+            3_600,
+        )
+        .await
+        .expect_err("owner cannot grant to itself")
+        .to_string();
+    ensure!(self_grant.contains("another registered AgentId"));
+
+    let first_seen = Arc::new(AtomicBool::new(false));
+    let responder = DelayedToolSequence::new(
+        Arc::clone(&first_seen),
+        tool_sse(
+            "federated-revalidate-tool",
+            "federated-revalidate-recall",
+            "recall",
+            json!({"query": "local no-op query"}),
+        ),
+        final_sse("federated-revalidate-final"),
+    );
+    let delayed_start = consumer_model
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .len();
+    Mock::given(method("POST"))
+        .and(path("/v1/responses"))
+        .respond_with(responder)
+        .up_to_n_times(3)
+        .mount(&consumer_model)
+        .await;
+    let turn = product.run_turn(&thread, "Recall the heliotrope observatory marker.");
+    let revoke = async {
+        timeout(Duration::from_secs(5), async {
+            while !first_seen.load(Ordering::Acquire) {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .context("first physical send did not reach the delayed model")?;
+        let revoked = owner_control
+            .memory_federation_revoke(capability.capability_id.clone())
+            .await?;
+        Ok::<_, anyhow::Error>(revoked)
+    };
+    let (turn_result, revoked) = tokio::join!(turn, revoke);
+    turn_result.context("revalidation consumer turn")?;
+    let revoked = revoked?;
+    ensure!(revoked.state == MemoryFederationCapabilityState::Revoked);
+    ensure!(revoked.revision == capability.revision + 1);
+
+    let captured = consumer_model.received_requests().await.unwrap_or_default();
+    let delayed = captured
+        .iter()
+        .skip(delayed_start)
+        .map(|request| String::from_utf8_lossy(&request.body).into_owned())
+        .collect::<Vec<_>>();
+    ensure!(
+        (2..=3).contains(&delayed.len()),
+        "delayed model received an unexpected number of sends: {}",
+        delayed.len()
+    );
+    ensure!(
+        delayed[0].contains(SHARED),
+        "prepared federated context was absent from the first physical send"
+    );
+    ensure!(
+        delayed
+            .iter()
+            .skip(1)
+            .all(|request| !request.contains(SHARED)),
+        "revoked federated context survived a retry/follow-up physical-send revalidation"
+    );
+    ensure!(
+        delayed.iter().all(|request| request.contains(LOCAL)),
+        "local cognitive context was lost while federated context was revoked"
+    );
+
+    let owner_database = owner.layout.cognitive_root().join("cognitive_1.sqlite3");
+    let unavailable_database = owner.layout.cognitive_root().join("cognitive_1.offline");
+    std::fs::rename(&owner_database, &unavailable_database)?;
+    let unavailable =
+        responses::mount_sse_once(&consumer_model, final_sse("owner-unavailable")).await;
+    product
+        .run_turn(
+            &thread,
+            "Continue while the federation source is unavailable.",
+        )
+        .await
+        .context("unavailable-source consumer turn")?;
+    ensure!(
+        !raw_requests_contain(&unavailable, SHARED),
+        "unavailable owner source did not degrade to no federated context"
+    );
+    ensure!(
+        consumer_control.health().await?.ready,
+        "owner-source failure incorrectly blocked normal consumer turns"
+    );
+    std::fs::rename(&unavailable_database, &owner_database)?;
+
+    product.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn five_running_agents_share_only_with_the_explicit_consumer() -> Result<()> {
+    const SHARED: &str = "Only Agent B may read the unique umber lighthouse marker.";
+
+    let mut fleet = FleetHarness::new()?;
+    let owner = fleet.register(AGENT_A, "workspace-a-five")?;
+    let consumer = fleet.register(AGENT_B, "workspace-b-five")?;
+    let agent_c = fleet.register(AGENT_C, "workspace-c-five")?;
+    let agent_d = fleet.register(AGENT_D, "workspace-d-five")?;
+    let agent_e = fleet.register(AGENT_E, "workspace-e-five")?;
+    let fixtures = [&owner, &consumer, &agent_c, &agent_d, &agent_e];
+    let mut models = Vec::new();
+    for fixture in fixtures {
+        let model = responses::start_mock_server().await;
+        MockResponsesConfig::new(&model.uri()).write(fixture.layout.home_root())?;
+        models.push(model);
+    }
+    seed_verified_agent_memory(&owner, "five-agent-shared-marker", SHARED).await?;
+
+    let mut controls = Vec::new();
+    for fixture in fixtures {
+        fleet.start(fixture)?;
+        controls.push(fleet.wait_ready(fixture, 1).await?.0);
+    }
+    controls[0]
+        .memory_federation_grant(
+            consumer.agent_id.clone(),
+            MemoryFederationScopeKind::AgentPrivate,
+            3_600,
+        )
+        .await?;
+
+    for (index, fixture) in fixtures.iter().enumerate().skip(1) {
+        let mut product = ProductClient::connect(fixture, &controls[index]).await?;
+        let thread = product.start_thread(&fixture.workspace).await?;
+        let response =
+            responses::mount_sse_once(&models[index], final_sse(&format!("five-agent-{index}")))
+                .await;
+        product
+            .run_turn(&thread, "Recall the unique umber lighthouse marker.")
+            .await?;
+        ensure!(
+            raw_requests_contain(&response, SHARED) == (index == 1),
+            "five-Agent federation leaked to the wrong consumer index {index}"
+        );
+        product.shutdown().await?;
+    }
     Ok(())
 }
 
@@ -594,6 +852,51 @@ fn final_sse(response_id: &str) -> String {
         responses::ev_assistant_message(&format!("message-{response_id}"), "done"),
         responses::ev_completed(response_id),
     ])
+}
+
+struct DelayedToolSequence {
+    call_count: AtomicUsize,
+    first_seen: Arc<AtomicBool>,
+    first: String,
+    second: String,
+}
+
+impl DelayedToolSequence {
+    fn new(first_seen: Arc<AtomicBool>, first: String, second: String) -> Self {
+        Self {
+            call_count: AtomicUsize::new(0),
+            first_seen,
+            first,
+            second,
+        }
+    }
+}
+
+impl Respond for DelayedToolSequence {
+    fn respond(&self, _request: &Request) -> ResponseTemplate {
+        let call = self.call_count.fetch_add(1, Ordering::AcqRel);
+        let body = match call {
+            0 => {
+                self.first_seen.store(true, Ordering::Release);
+                // TurnInput preparation and the first physical request have
+                // completed, while the model response is still withheld. This
+                // gives owner control a deterministic revocation window before
+                // the tool follow-up creates the next physical send.
+                std::thread::sleep(Duration::from_millis(750));
+                &self.first
+            }
+            _ => &self.second,
+        };
+        ResponseTemplate::new(200)
+            .insert_header("content-type", "text/event-stream")
+            .set_body_string(body.clone())
+    }
+}
+
+fn raw_requests_contain(mock: &ResponseMock, needle: &str) -> bool {
+    mock.requests()
+        .iter()
+        .any(|request| request.body_contains_text(needle))
 }
 
 fn tool_output(mock: &ResponseMock, call_id: &str) -> Result<Value> {

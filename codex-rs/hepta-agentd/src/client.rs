@@ -23,6 +23,9 @@ use crate::EventBatch;
 use crate::HealthSnapshot;
 use crate::LifecycleSnapshot;
 use crate::MAX_CONTROL_FRAME_BYTES;
+use crate::MemoryFederationCapabilityId;
+use crate::MemoryFederationCapabilitySnapshot;
+use crate::MemoryFederationScopeKind;
 use crate::SessionIngress;
 
 pub struct AgentdClient {
@@ -181,6 +184,82 @@ impl AgentdClient {
             .payload
         {
             AgentdPayload::AutomationTask(task) => Ok(task),
+            payload => unexpected(payload),
+        }
+    }
+
+    pub async fn memory_federation_grant(
+        &self,
+        consumer_agent_id: AgentId,
+        owner_scope: MemoryFederationScopeKind,
+        lifetime_seconds: u32,
+    ) -> Result<MemoryFederationCapabilitySnapshot, AgentdError> {
+        match self
+            .send(AgentdRequest::memory_federation_grant(
+                self.request_id(),
+                self.spawn_generation,
+                consumer_agent_id,
+                owner_scope,
+                lifetime_seconds,
+            ))
+            .await?
+            .payload
+        {
+            AgentdPayload::MemoryFederationCapability(capability) => Ok(capability),
+            payload => unexpected(payload),
+        }
+    }
+
+    pub async fn memory_federation_revoke(
+        &self,
+        capability_id: MemoryFederationCapabilityId,
+    ) -> Result<MemoryFederationCapabilitySnapshot, AgentdError> {
+        match self
+            .send(AgentdRequest::memory_federation_revoke(
+                self.request_id(),
+                self.spawn_generation,
+                capability_id,
+            ))
+            .await?
+            .payload
+        {
+            AgentdPayload::MemoryFederationCapability(capability) => Ok(capability),
+            payload => unexpected(payload),
+        }
+    }
+
+    pub async fn memory_federation_list(
+        &self,
+        limit: u16,
+    ) -> Result<Vec<MemoryFederationCapabilitySnapshot>, AgentdError> {
+        match self
+            .send(AgentdRequest::memory_federation_list(
+                self.request_id(),
+                self.spawn_generation,
+                limit,
+            ))
+            .await?
+            .payload
+        {
+            AgentdPayload::MemoryFederationCapabilities { capabilities } => Ok(capabilities),
+            payload => unexpected(payload),
+        }
+    }
+
+    pub async fn memory_federation_status(
+        &self,
+        capability_id: MemoryFederationCapabilityId,
+    ) -> Result<Option<MemoryFederationCapabilitySnapshot>, AgentdError> {
+        match self
+            .send(AgentdRequest::memory_federation_status(
+                self.request_id(),
+                self.spawn_generation,
+                capability_id,
+            ))
+            .await?
+            .payload
+        {
+            AgentdPayload::MemoryFederationStatus { capability } => Ok(capability),
             payload => unexpected(payload),
         }
     }
