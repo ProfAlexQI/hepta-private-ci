@@ -13,6 +13,7 @@ use crate::AgentSupervisorSnapshot;
 use crate::ControlReleaseChange;
 use crate::ControlReleaseChangePhase;
 use crate::ControlRuntimePhase;
+use crate::MatrixSupervisorSnapshot;
 use crate::ProcessDriver;
 use crate::SupervisorConfig;
 use crate::SupervisorError;
@@ -94,6 +95,33 @@ impl<D: ProcessDriver> Supervisor<D> {
                     .as_ref()
                     .map(|release| release.identity().to_string()),
                 release_change_pending: slot.release_change.is_some(),
+                matrix: MatrixSupervisorSnapshot {
+                    configured: slot.matrix.configured,
+                    active: slot.matrix.runtime.is_some(),
+                    healthy: slot
+                        .matrix
+                        .runtime
+                        .as_ref()
+                        .is_some_and(|runtime| runtime.healthy && !runtime.fenced),
+                    degraded: slot.matrix.degraded,
+                    process_system_id: slot
+                        .matrix
+                        .runtime
+                        .as_ref()
+                        .map(|runtime| runtime.identity.system_id()),
+                    attached_agent_generation: slot
+                        .matrix
+                        .runtime
+                        .as_ref()
+                        .map(|runtime| runtime.attached_agent_generation),
+                    binding_revision: slot
+                        .matrix
+                        .runtime
+                        .as_ref()
+                        .map(|runtime| runtime.binding_revision),
+                    restart_attempt: slot.matrix.restart_attempt,
+                    last_error: slot.matrix.last_error.clone(),
+                },
                 events: slot.events.items.iter().cloned().collect(),
                 logs: slot.logs.items.iter().cloned().collect(),
                 control_revision: slot.control_revision,

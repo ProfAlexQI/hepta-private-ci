@@ -152,14 +152,18 @@ pub struct HeptaAgentLayout {
     home_root: PathBuf,
     run_root: PathBuf,
     agentd_control_socket: PathBuf,
+    matrixd_control_socket: PathBuf,
     app_server_socket: PathBuf,
     writer_lock: PathBuf,
     generation_cursor: PathBuf,
+    matrixd_process_lease: PathBuf,
     logs_root: PathBuf,
     releases_root: PathBuf,
     active_release: PathBuf,
     cognitive_root: PathBuf,
     matrix_root: PathBuf,
+    matrix_public_binding: PathBuf,
+    matrix_secrets_root: PathBuf,
     automation_root: PathBuf,
 }
 
@@ -172,13 +176,17 @@ impl HeptaAgentLayout {
             agent_config: agent_root.join("agent.toml"),
             home_root: agent_root.join("home"),
             agentd_control_socket: fleet_run_root.join(format!("a{socket_key}.ctl")),
+            matrixd_control_socket: fleet_run_root.join(format!("a{socket_key}.mx")),
             app_server_socket: fleet_run_root.join(format!("a{socket_key}.app")),
             writer_lock: run_root.join("writer.lock"),
             generation_cursor: run_root.join("generation.json"),
+            matrixd_process_lease: run_root.join("supervisor-matrix-process.json"),
             logs_root: agent_root.join("logs"),
             active_release: releases_root.join("active"),
             cognitive_root: agent_root.join("cognitive"),
             matrix_root: agent_root.join("matrix"),
+            matrix_public_binding: agent_root.join("matrix/binding.json"),
+            matrix_secrets_root: agent_root.join("matrix/secrets"),
             automation_root: agent_root.join("automation"),
             agent_id,
             agent_root,
@@ -215,12 +223,23 @@ impl HeptaAgentLayout {
         &self.agentd_control_socket
     }
 
+    /// Per-Agent Matrix companion control socket. This remains separate from
+    /// agentd so a Matrix failure cannot block the execution plane.
+    pub fn matrixd_control_socket(&self) -> &Path {
+        &self.matrixd_control_socket
+    }
+
     pub fn writer_lock(&self) -> &Path {
         &self.writer_lock
     }
 
     pub fn generation_cursor(&self) -> &Path {
         &self.generation_cursor
+    }
+
+    /// Supervisor-owned durable identity for the per-Agent Matrix process.
+    pub fn matrixd_process_lease(&self) -> &Path {
+        &self.matrixd_process_lease
     }
 
     pub fn logs_root(&self) -> &Path {
@@ -241,6 +260,18 @@ impl HeptaAgentLayout {
 
     pub fn matrix_root(&self) -> &Path {
         &self.matrix_root
+    }
+
+    /// Non-secret Matrix room/identity binding consumed by the companion and
+    /// observed by the lifecycle supervisor.
+    pub fn matrix_public_binding(&self) -> &Path {
+        &self.matrix_public_binding
+    }
+
+    /// Private per-Agent credential/crypto-store root. The supervisor knows
+    /// only this path and must never load or copy its contents.
+    pub fn matrix_secrets_root(&self) -> &Path {
+        &self.matrix_secrets_root
     }
 
     /// Private durable timer/task state for this exact Workspace Agent.

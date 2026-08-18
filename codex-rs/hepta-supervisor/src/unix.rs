@@ -22,10 +22,20 @@ use codex_hepta_agent_protocol::AgentdResponse;
 use codex_hepta_agent_protocol::MAX_CONTROL_FRAME_BYTES;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
+use codex_hepta_matrix_protocol::MATRIXD_CONTROL_SCHEMA_VERSION;
+use codex_hepta_matrix_protocol::MAX_MATRIXD_CONTROL_FRAME_BYTES;
+use codex_hepta_matrix_protocol::MatrixdHealth;
+use codex_hepta_matrix_protocol::MatrixdLifecycle;
+use codex_hepta_matrix_protocol::MatrixdMethod;
+use codex_hepta_matrix_protocol::MatrixdPayload;
+use codex_hepta_matrix_protocol::MatrixdRequest;
+use codex_hepta_matrix_protocol::MatrixdResponse;
 
 use crate::AdoptSpec;
 use crate::Adoption;
 use crate::ManagedProcess;
+use crate::MatrixAdoptSpec;
+use crate::MatrixSpawnSpec;
 use crate::ProcessDriver;
 use crate::ProcessDriverError;
 use crate::ProcessExit;
@@ -41,7 +51,6 @@ const LOG_CHUNK_BYTES: usize = 4_096;
 const HEALTH_PROBE_INTERVAL: Duration = Duration::from_millis(50);
 const HEALTH_PROBE_IO_TIMEOUT: Duration = Duration::from_millis(200);
 const ADOPTION_PROBE_ATTEMPTS: u64 = 3;
-const REJECTED_ORPHAN_EXIT_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Unix child wrapper with non-blocking polling and bounded per-child log channels.
 pub struct UnixProcessDriver {
@@ -105,17 +114,14 @@ impl ManagedProcess for UnixManagedProcess {
                 },
             },
             UnixProcessHandle::Adopted { process_id } => {
-                if process_exists(u64::from(*process_id))? {
+                if let Some(exit) = poll_adopted_process(*process_id)? {
+                    self.health_probe.shutdown();
+                    ProcessState::Exited(exit)
+                } else {
                     ProcessState::Running {
                         healthy: self.health_probe.ready(),
                         drained: false,
                     }
-                } else {
-                    self.health_probe.shutdown();
-                    ProcessState::Exited(ProcessExit {
-                        success: false,
-                        code: None,
-                    })
                 }
             }
         };
@@ -156,14 +162,15 @@ impl ProcessDriver for UnixProcessDriver {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let mut child = command.spawn()?;
-        let health_probe =
-            match HealthProbe::spawn(HealthProbeIdentity::from_spawn(spec, child.id())) {
-                Ok(probe) => probe,
-                Err(error) => {
-                    let _ = child.kill();
-                    return Err(error);
-                }
-            };
+        let health_probe = match HealthProbe::spawn(HealthProbeIdentity::Agentd(
+            AgentHealthProbeIdentity::from_spawn(spec, child.id()),
+        )) {
+            Ok(probe) => probe,
+            Err(error) => {
+                let _ = child.kill();
+                return Err(error);
+            }
+        };
         let Some(stdout) = child.stdout.take() else {
             let _ = child.kill();
             return Err(ProcessDriverError::new("child stdout pipe is missing"));
@@ -196,7 +203,8 @@ impl ProcessDriver for UnixProcessDriver {
         }
         let process_id = u32::try_from(spec.identity.system_id())
             .map_err(|_| ProcessDriverError::new("stored child PID does not fit u32"))?;
-        let health_identity = HealthProbeIdentity::from_adopt(spec, process_id);
+        let health_identity =
+            HealthProbeIdentity::Agentd(AgentHealthProbeIdentity::from_adopt(spec, process_id));
         if prove_adoption_identity(&health_identity) {
             let health_probe = HealthProbe::spawn(health_identity)?;
             let (_sender, logs) = std::sync::mpsc::sync_channel(1);
@@ -207,16 +215,100 @@ impl ProcessDriver for UnixProcessDriver {
             }));
         }
 
-        send_signal(process_id, libc::SIGKILL)?;
-        let deadline = std::time::Instant::now() + REJECTED_ORPHAN_EXIT_TIMEOUT;
-        while process_exists(u64::from(process_id))? && std::time::Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        if process_exists(u64::from(process_id))? {
+        // A stale lease PID may already belong to an unrelated process. Failed
+        // exact UDS identity proof never grants signal authority over that PID;
+        // recovery quarantines the lease and reports Rejected instead.
+        Ok(Adoption::Rejected)
+    }
+
+    fn spawn_matrixd(
+        &mut self,
+        spec: &MatrixSpawnSpec,
+    ) -> Result<SpawnedProcess<Self::Process>, ProcessDriverError> {
+        let mut command = Command::new(&spec.command.program);
+        command
+            .args(&spec.command.args)
+            .current_dir(&spec.workspace)
+            .env("HEPTA_FLEET_ROOT", &spec.fleet_root)
+            .env("HEPTA_AGENT_ID", spec.agent_id.to_string())
+            .env("HEPTA_AGENT_GENERATION", spec.agent_generation.to_string())
+            .env(
+                "HEPTA_MATRIX_BINDING_REVISION",
+                spec.binding_revision.to_string(),
+            )
+            .env("HEPTA_MATRIXD_CONTROL_SOCKET", &spec.control_socket)
+            .env("HEPTA_AGENTD_CONTROL_SOCKET", &spec.agentd_control_socket)
+            .env("HEPTA_MATRIX_ROOT", &spec.matrix_root)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = command.spawn()?;
+        let health_probe = match HealthProbe::spawn(HealthProbeIdentity::Matrixd(
+            MatrixHealthProbeIdentity::from_spawn(spec, child.id()),
+        )) {
+            Ok(probe) => probe,
+            Err(error) => {
+                let _ = child.kill();
+                return Err(error);
+            }
+        };
+        let Some(stdout) = child.stdout.take() else {
+            let _ = child.kill();
             return Err(ProcessDriverError::new(
-                "rejected orphan agentd did not exit after SIGKILL",
+                "matrixd child stdout pipe is missing",
             ));
+        };
+        let Some(stderr) = child.stderr.take() else {
+            let _ = child.kill();
+            return Err(ProcessDriverError::new(
+                "matrixd child stderr pipe is missing",
+            ));
+        };
+        let (sender, logs) = std::sync::mpsc::sync_channel(self.log_channel_capacity);
+        spawn_log_reader(stdout, ProcessStream::Stdout, sender.clone());
+        spawn_log_reader(stderr, ProcessStream::Stderr, sender);
+        let identity = ProcessIdentity::new(
+            u64::from(child.id()),
+            format!(
+                "unix-matrix-pid-{}-agent-generation-{}",
+                child.id(),
+                spec.agent_generation
+            ),
+        )
+        .map_err(|error| ProcessDriverError::new(error.to_string()))?;
+        Ok(SpawnedProcess {
+            identity,
+            process: UnixManagedProcess {
+                handle: UnixProcessHandle::Child(child),
+                logs,
+                health_probe,
+            },
+        })
+    }
+
+    fn adopt_matrixd(
+        &mut self,
+        spec: &MatrixAdoptSpec,
+    ) -> Result<Adoption<Self::Process>, ProcessDriverError> {
+        if !process_exists(spec.identity.system_id())? {
+            return Ok(Adoption::Missing);
         }
+        let process_id = u32::try_from(spec.identity.system_id())
+            .map_err(|_| ProcessDriverError::new("stored matrixd PID does not fit u32"))?;
+        let health_identity =
+            HealthProbeIdentity::Matrixd(MatrixHealthProbeIdentity::from_adopt(spec, process_id));
+        if prove_adoption_identity(&health_identity) {
+            let health_probe = HealthProbe::spawn(health_identity)?;
+            let (_sender, logs) = std::sync::mpsc::sync_channel(1);
+            return Ok(Adoption::Adopted(UnixManagedProcess {
+                handle: UnixProcessHandle::Adopted { process_id },
+                logs,
+                health_probe,
+            }));
+        }
+
+        // See agentd adoption above: no exact handshake means no authority to
+        // signal a possibly reused PID.
         Ok(Adoption::Rejected)
     }
 }
@@ -233,7 +325,7 @@ impl HealthProbe {
         let worker_ready = Arc::clone(&ready);
         let worker_shutdown = Arc::clone(&shutdown);
         std::thread::Builder::new()
-            .name(format!("hepta-health-{}", identity.agent_id))
+            .name(format!("hepta-health-{}", identity.agent_id()))
             .spawn(move || run_health_probe(identity, worker_ready, worker_shutdown))
             .map_err(ProcessDriverError::from)?;
         Ok(Self { ready, shutdown })
@@ -255,7 +347,21 @@ impl Drop for HealthProbe {
     }
 }
 
-struct HealthProbeIdentity {
+enum HealthProbeIdentity {
+    Agentd(AgentHealthProbeIdentity),
+    Matrixd(MatrixHealthProbeIdentity),
+}
+
+impl HealthProbeIdentity {
+    fn agent_id(&self) -> &AgentId {
+        match self {
+            Self::Agentd(identity) => &identity.agent_id,
+            Self::Matrixd(identity) => &identity.agent_id,
+        }
+    }
+}
+
+struct AgentHealthProbeIdentity {
     agent_id: AgentId,
     spawn_generation: u64,
     process_id: u32,
@@ -265,7 +371,7 @@ struct HealthProbeIdentity {
     control_socket: PathBuf,
 }
 
-impl HealthProbeIdentity {
+impl AgentHealthProbeIdentity {
     fn from_spawn(spec: &SpawnSpec, process_id: u32) -> Self {
         Self {
             agent_id: spec.agent_id.clone(),
@@ -286,6 +392,36 @@ impl HealthProbeIdentity {
             workspace: spec.workspace.clone(),
             home_root: spec.home_root.clone(),
             run_root: spec.run_root.clone(),
+            control_socket: spec.control_socket.clone(),
+        }
+    }
+}
+
+struct MatrixHealthProbeIdentity {
+    agent_id: AgentId,
+    agent_generation: u64,
+    binding_revision: u64,
+    process_id: u32,
+    control_socket: PathBuf,
+}
+
+impl MatrixHealthProbeIdentity {
+    fn from_spawn(spec: &MatrixSpawnSpec, process_id: u32) -> Self {
+        Self {
+            agent_id: spec.agent_id.clone(),
+            agent_generation: spec.agent_generation,
+            binding_revision: spec.binding_revision,
+            process_id,
+            control_socket: spec.control_socket.clone(),
+        }
+    }
+
+    fn from_adopt(spec: &MatrixAdoptSpec, process_id: u32) -> Self {
+        Self {
+            agent_id: spec.agent_id.clone(),
+            agent_generation: spec.agent_generation,
+            binding_revision: spec.binding_revision,
+            process_id,
             control_socket: spec.control_socket.clone(),
         }
     }
@@ -337,6 +473,16 @@ fn prove_adoption_identity(identity: &HealthProbeIdentity) -> bool {
 
 fn query_health_once(
     identity: &HealthProbeIdentity,
+    request_id: u64,
+) -> Result<HealthProbeObservation, ProcessDriverError> {
+    match identity {
+        HealthProbeIdentity::Agentd(identity) => query_agent_health_once(identity, request_id),
+        HealthProbeIdentity::Matrixd(identity) => query_matrix_health_once(identity, request_id),
+    }
+}
+
+fn query_agent_health_once(
+    identity: &AgentHealthProbeIdentity,
     request_id: u64,
 ) -> Result<HealthProbeObservation, ProcessDriverError> {
     let request = AgentdRequest::health(request_id, identity.spawn_generation);
@@ -405,6 +551,76 @@ fn query_health_once(
     })
 }
 
+fn query_matrix_health_once(
+    identity: &MatrixHealthProbeIdentity,
+    request_id: u64,
+) -> Result<HealthProbeObservation, ProcessDriverError> {
+    let request = MatrixdRequest {
+        schema_version: MATRIXD_CONTROL_SCHEMA_VERSION,
+        request_id,
+        agent_id: identity.agent_id.clone(),
+        expected_binding_revision: identity.binding_revision,
+        expected_agent_generation: identity.agent_generation,
+        method: MatrixdMethod::Health,
+    };
+    let mut bytes = serde_json::to_vec(&request)?;
+    bytes.push(b'\n');
+    if bytes.len() as u64 > MAX_MATRIXD_CONTROL_FRAME_BYTES {
+        return Ok(HealthProbeObservation {
+            exact_identity: false,
+            ready: false,
+        });
+    }
+
+    let mut stream = std::os::unix::net::UnixStream::connect(&identity.control_socket)?;
+    stream.set_read_timeout(Some(HEALTH_PROBE_IO_TIMEOUT))?;
+    stream.set_write_timeout(Some(HEALTH_PROBE_IO_TIMEOUT))?;
+    stream.write_all(&bytes)?;
+    stream.shutdown(Shutdown::Write)?;
+
+    let mut reader = BufReader::new(stream).take(MAX_MATRIXD_CONTROL_FRAME_BYTES + 1);
+    let mut response_bytes = Vec::new();
+    let count = reader.read_until(b'\n', &mut response_bytes)?;
+    if count == 0
+        || count as u64 > MAX_MATRIXD_CONTROL_FRAME_BYTES
+        || !response_bytes.ends_with(b"\n")
+    {
+        return Ok(HealthProbeObservation {
+            exact_identity: false,
+            ready: false,
+        });
+    }
+    let response: MatrixdResponse = serde_json::from_slice(&response_bytes)?;
+    let exact_envelope = response.schema_version == MATRIXD_CONTROL_SCHEMA_VERSION
+        && response.request_id == request_id
+        && response.agent_id == identity.agent_id
+        && response.binding_revision == identity.binding_revision
+        && response.agent_generation == identity.agent_generation
+        && response.connection_epoch != 0;
+    let MatrixdPayload::Health(MatrixdHealth {
+        lifecycle,
+        process_id,
+        agentd_connected,
+        matrix_sync_connected,
+        fenced,
+    }) = response.payload
+    else {
+        return Ok(HealthProbeObservation {
+            exact_identity: false,
+            ready: false,
+        });
+    };
+    let exact_identity = exact_envelope && process_id == identity.process_id && !fenced;
+    let ready = exact_identity
+        && lifecycle == MatrixdLifecycle::Ready
+        && agentd_connected
+        && matrix_sync_connected;
+    Ok(HealthProbeObservation {
+        exact_identity,
+        ready,
+    })
+}
+
 fn spawn_log_reader(
     mut reader: impl Read + Send + 'static,
     stream: ProcessStream,
@@ -451,6 +667,41 @@ fn process_exists(system_id: u64) -> Result<bool, ProcessDriverError> {
     } else {
         Err(error.into())
     }
+}
+
+/// Poll an adopted process without confusing a terminated child zombie for a
+/// live process. After supervisor recovery the process normally is not our
+/// child, in which case `waitpid` returns `ECHILD` and the exact UDS adoption
+/// proof remains the sole source of signal authority; here we only observe its
+/// continued existence with signal 0.
+fn poll_adopted_process(process_id: u32) -> Result<Option<ProcessExit>, ProcessDriverError> {
+    let pid = i32::try_from(process_id)
+        .map_err(|_| ProcessDriverError::new("adopted child PID does not fit Unix pid_t"))?;
+    let mut status = 0_i32;
+    // SAFETY: `pid` is the exact process identity proven during adoption,
+    // `status` points to writable storage, and WNOHANG never blocks.
+    let waited = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
+    if waited > 0 {
+        let exited = libc::WIFEXITED(status);
+        return Ok(Some(ProcessExit {
+            success: exited && libc::WEXITSTATUS(status) == 0,
+            code: exited.then(|| libc::WEXITSTATUS(status)),
+        }));
+    }
+    if waited == 0 {
+        return Ok(None);
+    }
+
+    let error = std::io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ECHILD) {
+        return process_exists(u64::from(process_id)).map(|exists| {
+            (!exists).then_some(ProcessExit {
+                success: false,
+                code: None,
+            })
+        });
+    }
+    Err(error.into())
 }
 
 #[cfg(test)]

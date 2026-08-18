@@ -25,6 +25,8 @@ use crate::Adoption;
 use crate::AgentCommand;
 use crate::AgentRelease;
 use crate::ManagedProcess;
+use crate::MatrixAdoptSpec;
+use crate::MatrixSpawnSpec;
 use crate::ProcessDriver;
 use crate::ProcessDriverError;
 use crate::ProcessExit;
@@ -131,6 +133,7 @@ struct FakeWorld {
 
 struct FakeState {
     agent_id: AgentId,
+    role: FakeRole,
     identity: ProcessIdentity,
     healthy: bool,
     drained: bool,
@@ -139,6 +142,12 @@ struct FakeState {
     drain_requests: usize,
     stop_requests: usize,
     kill_requests: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FakeRole {
+    Agentd,
+    Matrixd,
 }
 
 struct FakeProcess {
@@ -154,12 +163,16 @@ impl FakeControl {
     }
 
     fn update(&self, agent_id: &AgentId, update: impl FnOnce(&mut FakeState)) {
+        self.update_role(agent_id, FakeRole::Agentd, update);
+    }
+
+    fn update_role(&self, agent_id: &AgentId, role: FakeRole, update: impl FnOnce(&mut FakeState)) {
         let mut world = self.world.lock().expect("fake world lock");
         let state = world
             .processes
             .values_mut()
             .rev()
-            .find(|state| &state.agent_id == agent_id)
+            .find(|state| &state.agent_id == agent_id && state.role == role)
             .expect("fake process");
         update(state);
     }
@@ -174,6 +187,23 @@ impl FakeControl {
 
     fn set_exit(&self, agent_id: &AgentId) {
         self.update(agent_id, |state| {
+            state.exit = Some(ProcessExit {
+                success: true,
+                code: Some(0),
+            });
+        });
+    }
+
+    fn set_matrix_healthy(&self, agent_id: &AgentId) {
+        self.update_role(agent_id, FakeRole::Matrixd, |state| state.healthy = true);
+    }
+
+    fn set_matrix_unhealthy(&self, agent_id: &AgentId) {
+        self.update_role(agent_id, FakeRole::Matrixd, |state| state.healthy = false);
+    }
+
+    fn set_matrix_exit(&self, agent_id: &AgentId) {
+        self.update_role(agent_id, FakeRole::Matrixd, |state| {
             state.exit = Some(ProcessExit {
                 success: true,
                 code: Some(0),
@@ -209,12 +239,20 @@ impl FakeControl {
     }
 
     fn counts(&self, agent_id: &AgentId) -> (usize, usize, usize) {
+        self.counts_role(agent_id, FakeRole::Agentd)
+    }
+
+    fn matrix_counts(&self, agent_id: &AgentId) -> (usize, usize, usize) {
+        self.counts_role(agent_id, FakeRole::Matrixd)
+    }
+
+    fn counts_role(&self, agent_id: &AgentId, role: FakeRole) -> (usize, usize, usize) {
         let world = self.world.lock().expect("fake world lock");
         let state = world
             .processes
             .values()
             .rev()
-            .find(|state| &state.agent_id == agent_id)
+            .find(|state| &state.agent_id == agent_id && state.role == role)
             .expect("fake process");
         (
             state.drain_requests,
@@ -229,7 +267,17 @@ impl FakeControl {
             .expect("fake world lock")
             .processes
             .values()
-            .filter(|state| &state.agent_id == agent_id)
+            .filter(|state| &state.agent_id == agent_id && state.role == FakeRole::Agentd)
+            .count()
+    }
+
+    fn matrix_spawn_count(&self, agent_id: &AgentId) -> usize {
+        self.world
+            .lock()
+            .expect("fake world lock")
+            .processes
+            .values()
+            .filter(|state| &state.agent_id == agent_id && state.role == FakeRole::Matrixd)
             .count()
     }
 }
@@ -253,6 +301,7 @@ impl ProcessDriver for FakeDriver {
             id,
             FakeState {
                 agent_id: spec.agent_id.clone(),
+                role: FakeRole::Agentd,
                 identity: identity.clone(),
                 healthy: false,
                 drained: false,
@@ -279,6 +328,63 @@ impl ProcessDriver for FakeDriver {
         }
         let Some((&id, _)) = world.processes.iter().find(|(_, state)| {
             state.agent_id == spec.agent_id
+                && state.role == FakeRole::Agentd
+                && state.identity == spec.identity
+                && state.exit.is_none()
+        }) else {
+            return Ok(Adoption::Missing);
+        };
+        Ok(Adoption::Adopted(FakeProcess {
+            id,
+            world: self.world.clone(),
+        }))
+    }
+
+    fn spawn_matrixd(
+        &mut self,
+        spec: &MatrixSpawnSpec,
+    ) -> Result<SpawnedProcess<Self::Process>, ProcessDriverError> {
+        let mut world = self.world.lock().expect("fake world lock");
+        if world.reject_spawn_programs.contains(&spec.command.program) {
+            return Err(ProcessDriverError::new("injected matrix spawn failure"));
+        }
+        world.next_id += 1;
+        let id = world.next_id;
+        let identity =
+            ProcessIdentity::new(id, format!("fake-matrix-{id}-{}", spec.agent_generation))
+                .map_err(|error| ProcessDriverError::new(error.to_string()))?;
+        world.processes.insert(
+            id,
+            FakeState {
+                agent_id: spec.agent_id.clone(),
+                role: FakeRole::Matrixd,
+                identity: identity.clone(),
+                healthy: false,
+                drained: false,
+                exit: None,
+                logs: VecDeque::new(),
+                drain_requests: 0,
+                stop_requests: 0,
+                kill_requests: 0,
+            },
+        );
+        Ok(SpawnedProcess {
+            identity,
+            process: FakeProcess {
+                id,
+                world: self.world.clone(),
+            },
+        })
+    }
+
+    fn adopt_matrixd(
+        &mut self,
+        spec: &MatrixAdoptSpec,
+    ) -> Result<Adoption<Self::Process>, ProcessDriverError> {
+        let world = self.world.lock().expect("fake world lock");
+        let Some((&id, _)) = world.processes.iter().find(|(_, state)| {
+            state.agent_id == spec.agent_id
+                && state.role == FakeRole::Matrixd
                 && state.identity == spec.identity
                 && state.exit.is_none()
         }) else {
@@ -738,6 +844,189 @@ fn failed_spawn_and_failed_health_each_auto_rollback_once() -> Result<(), Superv
         TickReport::default()
     );
     assert_eq!(control.spawn_count(&fleet.first), spawn_count);
+    Ok(())
+}
+
+#[test]
+fn paired_companions_stop_before_agent_restart_and_fail_independently()
+-> Result<(), SupervisorError> {
+    let fleet = TestFleet::new()?;
+    let release_id = ReleaseId::parse("paired-v1")?;
+    fleet.registry.install_release_bundle(
+        release_id.clone(),
+        Path::new("/bin/sh"),
+        Vec::new(),
+        Some(Path::new("/bin/sh")),
+        Vec::new(),
+    )?;
+    for agent_id in [&fleet.first, &fleet.second] {
+        fleet.registry.allow_release(agent_id, &release_id)?;
+        write_matrix_binding(&fleet.registry, agent_id, 1)?;
+    }
+    let paired =
+        AgentRelease::try_from(fleet.registry.resolve_release(&fleet.first, &release_id)?)?;
+    let peer_paired =
+        AgentRelease::try_from(fleet.registry.resolve_release(&fleet.second, &release_id)?)?;
+
+    let control = FakeControl::default();
+    let now = Instant::now();
+    let (mut supervisor, report) =
+        Supervisor::recover(fleet.registry.clone(), control.driver(), config(), now)?;
+    assert_eq!(report, TickReport::default());
+    supervisor.start_release(&fleet.first, paired, now)?;
+    supervisor.start_release(&fleet.second, peer_paired, now)?;
+    control.set_healthy(&fleet.first);
+    control.set_healthy(&fleet.second);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+    assert_eq!(control.matrix_spawn_count(&fleet.first), 1);
+    assert_eq!(control.matrix_spawn_count(&fleet.second), 1);
+    control.set_matrix_healthy(&fleet.first);
+    control.set_matrix_healthy(&fleet.second);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+    assert!(supervisor.snapshot(&fleet.first).unwrap().matrix.healthy);
+    assert!(supervisor.snapshot(&fleet.second).unwrap().matrix.healthy);
+
+    supervisor.restart(&fleet.first, now)?;
+    assert_eq!(control.matrix_counts(&fleet.first), (0, 1, 0));
+    assert_eq!(control.counts(&fleet.first), (0, 0, 0));
+    assert!(supervisor.snapshot(&fleet.second).unwrap().matrix.healthy);
+
+    control.set_matrix_exit(&fleet.first);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+    assert_eq!(control.counts(&fleet.first), (1, 0, 0));
+    control.set_drained(&fleet.first);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+    assert_eq!(control.counts(&fleet.first), (1, 1, 0));
+    control.set_exit(&fleet.first);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+    control.set_healthy(&fleet.first);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+    assert_eq!(control.matrix_spawn_count(&fleet.first), 2);
+    control.set_matrix_healthy(&fleet.first);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+
+    control.set_matrix_exit(&fleet.second);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+    assert_eq!(
+        fleet
+            .registry
+            .load()?
+            .agent(&fleet.second)
+            .unwrap()
+            .lifecycle
+            .lifecycle,
+        AgentLifecycle::Running
+    );
+    assert!(supervisor.snapshot(&fleet.second).unwrap().matrix.degraded);
+    assert!(supervisor.snapshot(&fleet.first).unwrap().matrix.healthy);
+    assert_eq!(control.counts(&fleet.second), (0, 0, 0));
+    assert_eq!(
+        supervisor.tick(now + Duration::from_millis(300)),
+        TickReport::default()
+    );
+    assert_eq!(control.matrix_spawn_count(&fleet.second), 2);
+    Ok(())
+}
+
+#[test]
+fn live_but_unhealthy_matrix_is_bounded_and_restarted_without_peer_churn()
+-> Result<(), SupervisorError> {
+    let fleet = TestFleet::new()?;
+    let release_id = ReleaseId::parse("paired-unhealthy-v1")?;
+    fleet.registry.install_release_bundle(
+        release_id.clone(),
+        Path::new("/bin/sh"),
+        Vec::new(),
+        Some(Path::new("/bin/sh")),
+        Vec::new(),
+    )?;
+    for agent_id in [&fleet.first, &fleet.second] {
+        fleet.registry.allow_release(agent_id, &release_id)?;
+        write_matrix_binding(&fleet.registry, agent_id, 1)?;
+    }
+    let first_release =
+        AgentRelease::try_from(fleet.registry.resolve_release(&fleet.first, &release_id)?)?;
+    let second_release =
+        AgentRelease::try_from(fleet.registry.resolve_release(&fleet.second, &release_id)?)?;
+
+    let control = FakeControl::default();
+    let now = Instant::now();
+    let (mut supervisor, report) =
+        Supervisor::recover(fleet.registry.clone(), control.driver(), config(), now)?;
+    assert_eq!(report, TickReport::default());
+    supervisor.start_release(&fleet.first, first_release, now)?;
+    supervisor.start_release(&fleet.second, second_release, now)?;
+    control.set_healthy(&fleet.first);
+    control.set_healthy(&fleet.second);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+    control.set_matrix_healthy(&fleet.first);
+    control.set_matrix_healthy(&fleet.second);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+
+    control.set_matrix_unhealthy(&fleet.first);
+    assert_eq!(supervisor.tick(now), TickReport::default());
+    assert!(supervisor.snapshot(&fleet.first).unwrap().matrix.degraded);
+    assert!(supervisor.snapshot(&fleet.second).unwrap().matrix.healthy);
+    assert_eq!(control.counts(&fleet.first), (0, 0, 0));
+    assert_eq!(control.counts(&fleet.second), (0, 0, 0));
+
+    assert_eq!(
+        supervisor.tick(now + Duration::from_millis(11)),
+        TickReport::default()
+    );
+    assert_eq!(control.matrix_counts(&fleet.first), (0, 1, 0));
+    assert_eq!(control.matrix_counts(&fleet.second), (0, 0, 0));
+    assert_eq!(
+        supervisor.tick(now + Duration::from_millis(22)),
+        TickReport::default()
+    );
+    assert_eq!(control.matrix_counts(&fleet.first), (0, 1, 1));
+    assert_eq!(control.matrix_counts(&fleet.second), (0, 0, 0));
+    control.set_matrix_exit(&fleet.first);
+    assert_eq!(
+        supervisor.tick(now + Duration::from_millis(23)),
+        TickReport::default()
+    );
+    assert_eq!(control.spawn_count(&fleet.first), 1);
+    assert_eq!(control.spawn_count(&fleet.second), 1);
+    assert_eq!(control.matrix_spawn_count(&fleet.second), 1);
+
+    assert_eq!(
+        supervisor.tick(now + Duration::from_millis(300)),
+        TickReport::default()
+    );
+    assert_eq!(control.matrix_spawn_count(&fleet.first), 2);
+    assert_eq!(control.matrix_spawn_count(&fleet.second), 1);
+    assert!(supervisor.snapshot(&fleet.second).unwrap().matrix.healthy);
+    Ok(())
+}
+
+fn write_matrix_binding(
+    registry: &FleetRegistry,
+    agent_id: &AgentId,
+    revision: u64,
+) -> Result<(), SupervisorError> {
+    let record = registry
+        .load()?
+        .agent(agent_id)
+        .cloned()
+        .ok_or_else(|| SupervisorError::UnknownAgent(agent_id.clone()))?;
+    let binding = serde_json::json!({
+        "schema_version": 1,
+        "agent_id": agent_id,
+        "revision": revision,
+        "homeserver": "https://matrix.example.test",
+        "expected_mxid": "@hepta:example.test",
+        "expected_device_id": "HEPTA1",
+        "allowed_rooms": ["!room:example.test"],
+        "allowed_senders": ["@operator:example.test"],
+        "require_explicit_mention": true
+    });
+    std::fs::write(
+        record.layout.matrix_public_binding(),
+        serde_json::to_vec(&binding)
+            .map_err(|error| SupervisorError::Invalid(error.to_string()))?,
+    )?;
     Ok(())
 }
 

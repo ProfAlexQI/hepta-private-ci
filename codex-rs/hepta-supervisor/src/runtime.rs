@@ -38,6 +38,56 @@ pub(crate) struct AgentRuntime<P> {
     pub fenced: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum MatrixRuntimePhase {
+    AwaitingHealth { deadline: Instant },
+    Running,
+    Unhealthy { deadline: Instant },
+    Stopping { deadline: Instant },
+    Killing,
+}
+
+pub(crate) struct MatrixRuntime<P> {
+    pub process: P,
+    pub identity: ProcessIdentity,
+    pub attached_agent_generation: u64,
+    pub release_id: ReleaseId,
+    pub binding_revision: u64,
+    pub phase: MatrixRuntimePhase,
+    pub healthy: bool,
+    pub fenced: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DeferredAgentAction {
+    Drain,
+    Stop,
+}
+
+pub(crate) struct MatrixCompanionSlot<P> {
+    pub runtime: Option<MatrixRuntime<P>>,
+    pub configured: bool,
+    pub degraded: bool,
+    pub restart_attempt: u32,
+    pub retry_at: Option<Instant>,
+    pub restart_after_exit: bool,
+    pub last_error: Option<String>,
+}
+
+impl<P> MatrixCompanionSlot<P> {
+    fn new() -> Self {
+        Self {
+            runtime: None,
+            configured: false,
+            degraded: false,
+            restart_attempt: 0,
+            retry_at: None,
+            restart_after_exit: false,
+            last_error: None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ReleaseChangePhase {
     WaitingForTargetExit,
@@ -76,6 +126,8 @@ impl<T> BoundedQueue<T> {
 
 pub(crate) struct AgentSlot<P> {
     pub runtime: Option<AgentRuntime<P>>,
+    pub matrix: MatrixCompanionSlot<P>,
+    pub deferred_agent_action: Option<DeferredAgentAction>,
     pub last_command: Option<AgentCommand>,
     pub restart_pending: bool,
     pub active_release: Option<AgentRelease>,
@@ -91,6 +143,8 @@ impl<P> AgentSlot<P> {
     pub fn new(config: &SupervisorConfig) -> Self {
         Self {
             runtime: None,
+            matrix: MatrixCompanionSlot::new(),
+            deferred_agent_action: None,
             last_command: None,
             restart_pending: false,
             active_release: None,

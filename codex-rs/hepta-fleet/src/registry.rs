@@ -81,6 +81,7 @@ impl FleetRegistry {
         ] {
             validate_physical_directory(directory)?;
         }
+        registry.migrate_legacy_matrix_roots()?;
         registry.load()?;
         Ok(registry)
     }
@@ -151,6 +152,33 @@ impl FleetRegistry {
         self.load_agent(&manifest.agent_id)
     }
 
+    /// One-time, fail-closed upgrade for Agent roots created before the Matrix
+    /// companion geometry existed. New private directories are staged,
+    /// fsynced, and renamed; existing paths must be physical directories and
+    /// are only tightened to owner-only permissions.
+    fn migrate_legacy_matrix_roots(&self) -> Result<(), FleetRegistryError> {
+        for entry in std::fs::read_dir(self.layout.agents_root())? {
+            let entry = entry?;
+            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                return Err(FleetRegistryError::Corrupt(
+                    "agent directory name is not UTF-8".to_string(),
+                ));
+            };
+            if name.starts_with(".staging-") {
+                continue;
+            }
+            let agent_id = AgentId::parse(&name)
+                .map_err(|error| FleetRegistryError::Corrupt(error.to_string()))?;
+            let layout = self.layout.agent(&agent_id);
+            validate_physical_directory(layout.agent_root())?;
+            migrate_private_directory(layout.agent_root(), "matrix")?;
+            migrate_private_directory(layout.matrix_root(), "secrets")?;
+            validate_private_directory(layout.matrix_root())?;
+            validate_private_directory(layout.matrix_secrets_root())?;
+        }
+        Ok(())
+    }
+
     pub fn compare_and_transition(
         &self,
         agent_id: &AgentId,
@@ -185,9 +213,21 @@ impl FleetRegistry {
         staging_root: &Path,
         manifest: &AgentManifest,
     ) -> Result<(), FleetRegistryError> {
-        for name in ["home", "run", "logs", "releases", "cognitive", "automation"] {
+        for name in [
+            "home",
+            "run",
+            "logs",
+            "releases",
+            "cognitive",
+            "matrix",
+            "automation",
+        ] {
             std::fs::create_dir(staging_root.join(name))?;
         }
+        let matrix_secrets_root = staging_root.join("matrix/secrets");
+        std::fs::create_dir(&matrix_secrets_root)?;
+        set_private_directory_permissions(&staging_root.join("matrix"))?;
+        set_private_directory_permissions(&matrix_secrets_root)?;
         write_new_file(
             &staging_root.join("agent.toml"),
             toml::to_string(manifest)?.as_bytes(),
@@ -212,10 +252,14 @@ impl FleetRegistry {
             layout.logs_root(),
             layout.releases_root(),
             layout.cognitive_root(),
+            layout.matrix_root(),
+            layout.matrix_secrets_root(),
             layout.automation_root(),
         ] {
             validate_physical_directory(directory)?;
         }
+        validate_private_directory(layout.matrix_root())?;
+        validate_private_directory(layout.matrix_secrets_root())?;
         let manifest: AgentManifest = toml::from_str(&read_regular_file(layout.agent_config())?)
             .map_err(|error| {
                 FleetRegistryError::Corrupt(format!("invalid agent manifest: {error}"))
@@ -423,6 +467,80 @@ fn validate_physical_directory(path: &Path) -> Result<(), FleetRegistryError> {
         )));
     }
     Ok(())
+}
+
+fn migrate_private_directory(parent: &Path, name: &str) -> Result<(), FleetRegistryError> {
+    let final_path = parent.join(name);
+    match std::fs::symlink_metadata(&final_path) {
+        Ok(metadata) => {
+            if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
+                return Err(FleetRegistryError::Corrupt(format!(
+                    "private Matrix path is not a physical directory: {}",
+                    final_path.display()
+                )));
+            }
+            set_private_directory_permissions(&final_path)?;
+            sync_directory(parent)?;
+            return Ok(());
+        }
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+
+    match create_private_directory(&final_path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+            validate_physical_directory(&final_path)?;
+            set_private_directory_permissions(&final_path)?;
+        }
+        Err(error) => return Err(error.into()),
+    }
+    sync_directory(parent)
+}
+
+#[cfg(unix)]
+fn create_private_directory(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+
+    let mut builder = std::fs::DirBuilder::new();
+    builder.mode(0o700).create(path)
+}
+
+#[cfg(not(unix))]
+fn create_private_directory(path: &Path) -> std::io::Result<()> {
+    std::fs::create_dir(path)
+}
+
+#[cfg(unix)]
+fn set_private_directory_permissions(path: &Path) -> Result<(), FleetRegistryError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn set_private_directory_permissions(_path: &Path) -> Result<(), FleetRegistryError> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn validate_private_directory(path: &Path) -> Result<(), FleetRegistryError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mode = std::fs::symlink_metadata(path)?.permissions().mode();
+    if mode & 0o077 != 0 || mode & 0o700 != 0o700 {
+        return Err(FleetRegistryError::Corrupt(format!(
+            "private Matrix directory has unsafe permissions: {}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn validate_private_directory(path: &Path) -> Result<(), FleetRegistryError> {
+    validate_physical_directory(path)
 }
 
 #[cfg(unix)]

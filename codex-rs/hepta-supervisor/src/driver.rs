@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use codex_hepta_contracts::AgentId;
+use codex_hepta_fleet::ReleaseId;
 
 use crate::AgentCommand;
 use crate::ProcessDriverError;
@@ -29,6 +30,31 @@ pub struct AdoptSpec {
     pub workspace: PathBuf,
     pub home_root: PathBuf,
     pub run_root: PathBuf,
+    pub control_socket: PathBuf,
+    pub identity: ProcessIdentity,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MatrixSpawnSpec {
+    pub agent_id: AgentId,
+    pub agent_generation: u64,
+    pub binding_revision: u64,
+    pub release_id: ReleaseId,
+    pub fleet_root: PathBuf,
+    pub workspace: PathBuf,
+    pub matrix_root: PathBuf,
+    pub control_socket: PathBuf,
+    pub agentd_control_socket: PathBuf,
+    pub logs_root: PathBuf,
+    pub command: AgentCommand,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MatrixAdoptSpec {
+    pub agent_id: AgentId,
+    pub agent_generation: u64,
+    pub binding_revision: u64,
+    pub release_id: ReleaseId,
     pub control_socket: PathBuf,
     pub identity: ProcessIdentity,
 }
@@ -79,4 +105,22 @@ pub trait ProcessDriver {
     ) -> Result<SpawnedProcess<Self::Process>, ProcessDriverError>;
 
     fn adopt(&mut self, spec: &AdoptSpec) -> Result<Adoption<Self::Process>, ProcessDriverError>;
+
+    fn spawn_matrixd(
+        &mut self,
+        _spec: &MatrixSpawnSpec,
+    ) -> Result<SpawnedProcess<Self::Process>, ProcessDriverError> {
+        Err(ProcessDriverError::new(
+            "process driver does not support matrixd companions",
+        ))
+    }
+
+    fn adopt_matrixd(
+        &mut self,
+        _spec: &MatrixAdoptSpec,
+    ) -> Result<Adoption<Self::Process>, ProcessDriverError> {
+        Err(ProcessDriverError::new(
+            "process driver does not support matrixd companion adoption",
+        ))
+    }
 }

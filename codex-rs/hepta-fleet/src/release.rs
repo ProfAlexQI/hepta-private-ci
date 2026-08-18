@@ -24,10 +24,11 @@ use sha2::Sha256;
 use crate::FleetRegistry;
 use crate::FleetRegistryError;
 
-pub const RELEASE_METADATA_SCHEMA_VERSION: u32 = 1;
+pub const RELEASE_METADATA_SCHEMA_VERSION: u32 = 2;
 pub const AGENT_RELEASE_STATE_SCHEMA_VERSION: u32 = 1;
 const RELEASE_MANIFEST_FILE: &str = "release.json";
-const RELEASE_PROGRAM: &str = "bin/hepta-agentd";
+const AGENTD_RELEASE_PROGRAM: &str = "bin/hepta-agentd";
+const MATRIXD_RELEASE_PROGRAM: &str = "bin/hepta-matrixd";
 const RELEASE_ALLOW_PREFIX: &str = "allow-";
 const RELEASE_ALLOW_SUFFIX: &str = ".json";
 const RELEASE_STATE_PREFIX: &str = "release-state-";
@@ -99,9 +100,7 @@ impl<'de> Deserialize<'de> for ReleaseId {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct ReleaseMetadata {
-    pub schema_version: u32,
-    pub release_id: ReleaseId,
+pub struct ReleaseProgramMetadata {
     pub program_relative_path: PathBuf,
     pub program_sha256: String,
     pub program_size_bytes: u64,
@@ -109,10 +108,47 @@ pub struct ReleaseMetadata {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RegisteredRelease {
-    pub release_id: ReleaseId,
+pub struct RegisteredProgram {
     pub program: PathBuf,
     pub args: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReleaseMetadata {
+    pub schema_version: u32,
+    pub release_id: ReleaseId,
+    pub agentd: ReleaseProgramMetadata,
+    pub matrixd: Option<ReleaseProgramMetadata>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyReleaseMetadataV1 {
+    schema_version: u32,
+    release_id: ReleaseId,
+    program_relative_path: PathBuf,
+    program_sha256: String,
+    program_size_bytes: u64,
+    args: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum CatalogReleaseMetadata {
+    V2(ReleaseMetadata),
+    V1(LegacyReleaseMetadataV1),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RegisteredRelease {
+    pub release_id: ReleaseId,
+    /// Compatibility view of the required agentd program.
+    pub program: PathBuf,
+    pub args: Vec<String>,
+    /// Optional per-Agent Matrix companion shipped in the exact same
+    /// immutable release bundle.
+    pub matrixd: Option<RegisteredProgram>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -156,8 +192,30 @@ impl FleetRegistry {
         source_program: &Path,
         args: Vec<String>,
     ) -> Result<RegisteredRelease, FleetRegistryError> {
-        validate_arguments(&args)?;
-        let source = validate_source_program(source_program)?;
+        self.install_release_bundle(release_id, source_program, args, None, Vec::new())
+    }
+
+    /// Installs one closed-world release containing the required agentd and,
+    /// when configured, its exact matrixd companion. Control clients still
+    /// select only the opaque [`ReleaseId`]; executable paths never cross the
+    /// supervisor wire.
+    pub fn install_release_bundle(
+        &self,
+        release_id: ReleaseId,
+        source_agentd: &Path,
+        agentd_args: Vec<String>,
+        source_matrixd: Option<&Path>,
+        matrixd_args: Vec<String>,
+    ) -> Result<RegisteredRelease, FleetRegistryError> {
+        validate_arguments(&agentd_args)?;
+        validate_arguments(&matrixd_args)?;
+        if source_matrixd.is_none() && !matrixd_args.is_empty() {
+            return Err(FleetRegistryError::Invalid(
+                "matrixd arguments require a matrixd release program".to_string(),
+            ));
+        }
+        let source_agentd = validate_source_program(source_agentd)?;
+        let source_matrixd = source_matrixd.map(validate_source_program).transpose()?;
         let final_root = self.layout().releases_root().join(release_id.as_str());
         if final_root.exists() {
             return Err(FleetRegistryError::Invalid(format!(
@@ -173,17 +231,37 @@ impl FleetRegistry {
         let result = (|| {
             let bin_root = staging.join("bin");
             std::fs::create_dir(&bin_root)?;
-            let program = staging.join(RELEASE_PROGRAM);
-            std::fs::copy(&source, &program)?;
-            set_mode(&program, 0o555)?;
-            File::open(&program)?.sync_all()?;
+            let agentd_program = staging.join(AGENTD_RELEASE_PROGRAM);
+            std::fs::copy(&source_agentd, &agentd_program)?;
+            set_mode(&agentd_program, 0o555)?;
+            File::open(&agentd_program)?.sync_all()?;
+            let matrixd = source_matrixd
+                .as_ref()
+                .map(
+                    |source| -> Result<ReleaseProgramMetadata, FleetRegistryError> {
+                        let matrixd_program = staging.join(MATRIXD_RELEASE_PROGRAM);
+                        std::fs::copy(source, &matrixd_program)?;
+                        set_mode(&matrixd_program, 0o555)?;
+                        File::open(&matrixd_program)?.sync_all()?;
+                        Ok(ReleaseProgramMetadata {
+                            program_relative_path: PathBuf::from(MATRIXD_RELEASE_PROGRAM),
+                            program_sha256: sha256_file(&matrixd_program)?,
+                            program_size_bytes: std::fs::metadata(&matrixd_program)?.len(),
+                            args: matrixd_args,
+                        })
+                    },
+                )
+                .transpose()?;
             let metadata = ReleaseMetadata {
                 schema_version: RELEASE_METADATA_SCHEMA_VERSION,
                 release_id: release_id.clone(),
-                program_relative_path: PathBuf::from(RELEASE_PROGRAM),
-                program_sha256: sha256_file(&program)?,
-                program_size_bytes: std::fs::metadata(&program)?.len(),
-                args,
+                agentd: ReleaseProgramMetadata {
+                    program_relative_path: PathBuf::from(AGENTD_RELEASE_PROGRAM),
+                    program_sha256: sha256_file(&agentd_program)?,
+                    program_size_bytes: std::fs::metadata(&agentd_program)?.len(),
+                    args: agentd_args,
+                },
+                matrixd,
             };
             let manifest = staging.join(RELEASE_MANIFEST_FILE);
             write_new_json(&manifest, &metadata)?;
@@ -226,7 +304,11 @@ impl FleetRegistry {
         let path = allowance_path(record.layout.releases_root(), release_id);
         if path.exists() {
             let actual: ReleaseAllowance = read_bounded_json(&path, MAX_RELEASE_MANIFEST_BYTES)?;
-            if actual == allowance {
+            if matches!(actual.schema_version, 1 | RELEASE_METADATA_SCHEMA_VERSION)
+                && actual.agent_id == allowance.agent_id
+                && actual.release_id == allowance.release_id
+                && actual.manifest_sha256 == allowance.manifest_sha256
+            {
                 return Ok(());
             }
             return Err(FleetRegistryError::Corrupt(format!(
@@ -258,8 +340,10 @@ impl FleetRegistry {
                 }
                 Err(error) => return Err(error),
             };
-        if allowance.schema_version != RELEASE_METADATA_SCHEMA_VERSION
-            || allowance.agent_id != *agent_id
+        if !matches!(
+            allowance.schema_version,
+            1 | RELEASE_METADATA_SCHEMA_VERSION
+        ) || allowance.agent_id != *agent_id
             || allowance.release_id != *release_id
             || !is_sha256(&allowance.manifest_sha256)
         {
@@ -411,7 +495,6 @@ fn resolve_catalog_release(
     validate_physical_directory(&bin_root, true)?;
     let actual_root_entries = directory_names(&release_root)?;
     if actual_root_entries != BTreeSet::from(["bin".to_string(), RELEASE_MANIFEST_FILE.to_string()])
-        || directory_names(&bin_root)? != BTreeSet::from(["hepta-agentd".to_string()])
     {
         return Err(FleetRegistryError::Corrupt(format!(
             "release {release_id} contains an unexpected closed-world entry"
@@ -419,8 +502,57 @@ fn resolve_catalog_release(
     }
     let manifest_path = release_root.join(RELEASE_MANIFEST_FILE);
     validate_immutable_regular_file(&manifest_path, false)?;
-    let metadata: ReleaseMetadata = read_bounded_json(&manifest_path, MAX_RELEASE_MANIFEST_BYTES)?;
-    validate_metadata(&metadata, release_id)?;
+    let metadata: CatalogReleaseMetadata =
+        read_bounded_json(&manifest_path, MAX_RELEASE_MANIFEST_BYTES)?;
+    let (release_id_from_manifest, agentd, matrixd) = match metadata {
+        CatalogReleaseMetadata::V2(metadata) => {
+            validate_metadata(&metadata, release_id)?;
+            (metadata.release_id, metadata.agentd, metadata.matrixd)
+        }
+        CatalogReleaseMetadata::V1(metadata) => {
+            validate_legacy_metadata(&metadata, release_id)?;
+            (
+                metadata.release_id,
+                ReleaseProgramMetadata {
+                    program_relative_path: metadata.program_relative_path,
+                    program_sha256: metadata.program_sha256,
+                    program_size_bytes: metadata.program_size_bytes,
+                    args: metadata.args,
+                },
+                None,
+            )
+        }
+    };
+    let mut expected_bin_entries = BTreeSet::from(["hepta-agentd".to_string()]);
+    if matrixd.is_some() {
+        expected_bin_entries.insert("hepta-matrixd".to_string());
+    }
+    if directory_names(&bin_root)? != expected_bin_entries {
+        return Err(FleetRegistryError::Corrupt(format!(
+            "release {release_id} contains an unexpected closed-world entry"
+        )));
+    }
+    let program = resolve_program(&release_root, &agentd, release_id)?;
+    let matrixd = match matrixd {
+        Some(metadata) => Some(RegisteredProgram {
+            program: resolve_program(&release_root, &metadata, release_id)?,
+            args: metadata.args,
+        }),
+        None => None,
+    };
+    Ok(RegisteredRelease {
+        release_id: release_id_from_manifest,
+        program,
+        args: agentd.args,
+        matrixd,
+    })
+}
+
+fn resolve_program(
+    release_root: &Path,
+    metadata: &ReleaseProgramMetadata,
+    release_id: &ReleaseId,
+) -> Result<PathBuf, FleetRegistryError> {
     let program = release_root.join(&metadata.program_relative_path);
     validate_immutable_regular_file(&program, true)?;
     if std::fs::metadata(&program)?.len() != metadata.program_size_bytes
@@ -430,11 +562,7 @@ fn resolve_catalog_release(
             "release {release_id} program differs from immutable metadata"
         )));
     }
-    Ok(RegisteredRelease {
-        release_id: metadata.release_id,
-        program,
-        args: metadata.args,
-    })
+    Ok(program)
 }
 
 fn validate_metadata(
@@ -443,15 +571,44 @@ fn validate_metadata(
 ) -> Result<(), FleetRegistryError> {
     if metadata.schema_version != RELEASE_METADATA_SCHEMA_VERSION
         || &metadata.release_id != expected
-        || metadata.program_relative_path != Path::new(RELEASE_PROGRAM)
-        || metadata.program_size_bytes == 0
-        || !is_sha256(&metadata.program_sha256)
+        || !valid_program_metadata(&metadata.agentd, AGENTD_RELEASE_PROGRAM)
+        || metadata
+            .matrixd
+            .as_ref()
+            .is_some_and(|program| !valid_program_metadata(program, MATRIXD_RELEASE_PROGRAM))
     {
         return Err(FleetRegistryError::Corrupt(format!(
             "invalid immutable metadata for release {expected}"
         )));
     }
+    validate_arguments(&metadata.agentd.args)?;
+    if let Some(matrixd) = &metadata.matrixd {
+        validate_arguments(&matrixd.args)?;
+    }
+    Ok(())
+}
+
+fn validate_legacy_metadata(
+    metadata: &LegacyReleaseMetadataV1,
+    expected: &ReleaseId,
+) -> Result<(), FleetRegistryError> {
+    if metadata.schema_version != 1
+        || &metadata.release_id != expected
+        || metadata.program_relative_path != Path::new(AGENTD_RELEASE_PROGRAM)
+        || metadata.program_size_bytes == 0
+        || !is_sha256(&metadata.program_sha256)
+    {
+        return Err(FleetRegistryError::Corrupt(format!(
+            "invalid legacy immutable metadata for release {expected}"
+        )));
+    }
     validate_arguments(&metadata.args)
+}
+
+fn valid_program_metadata(metadata: &ReleaseProgramMetadata, expected_path: &str) -> bool {
+    metadata.program_relative_path == Path::new(expected_path)
+        && metadata.program_size_bytes != 0
+        && is_sha256(&metadata.program_sha256)
 }
 
 fn validate_arguments(args: &[String]) -> Result<(), FleetRegistryError> {
@@ -701,7 +858,8 @@ fn make_tree_removable(path: &Path) {
     if path.exists() {
         let _ = set_mode(path, 0o755);
         let _ = set_mode(&path.join("bin"), 0o755);
-        let _ = set_mode(&path.join(RELEASE_PROGRAM), 0o755);
+        let _ = set_mode(&path.join(AGENTD_RELEASE_PROGRAM), 0o755);
+        let _ = set_mode(&path.join(MATRIXD_RELEASE_PROGRAM), 0o755);
         let _ = set_mode(&path.join(RELEASE_MANIFEST_FILE), 0o644);
     }
 }
@@ -810,6 +968,111 @@ mod tests {
     }
 
     #[test]
+    fn schema_v2_bundle_binds_both_exact_programs_and_closed_world()
+    -> Result<(), FleetRegistryError> {
+        let fixture = Fixture::new()?;
+        let matrix_source = fixture._temp.path().join("hepta-matrixd");
+        std::fs::write(&matrix_source, b"#!/bin/sh\nexit 0\n# matrix\n")?;
+        let release_id = ReleaseId::parse("paired-v2")?;
+        let installed = fixture.registry.install_release_bundle(
+            release_id.clone(),
+            &fixture.source,
+            vec!["--agent".to_string()],
+            Some(&matrix_source),
+            vec!["--matrix".to_string()],
+        )?;
+        assert_eq!(installed.args, vec!["--agent"]);
+        assert_eq!(
+            installed
+                .matrixd
+                .as_ref()
+                .map(|program| program.args.clone()),
+            Some(vec!["--matrix".to_string()])
+        );
+        fixture
+            .registry
+            .allow_release(&fixture.first, &release_id)?;
+        let resolved = fixture
+            .registry
+            .resolve_release(&fixture.first, &release_id)?;
+        assert!(resolved.matrixd.is_some());
+
+        let release_root = fixture
+            .registry
+            .layout()
+            .releases_root()
+            .join(release_id.as_str());
+        set_mode(&release_root, 0o755)?;
+        std::fs::write(release_root.join("unexpected"), b"not allowed")?;
+        set_mode(&release_root, 0o555)?;
+        assert!(matches!(
+            fixture
+                .registry
+                .resolve_release(&fixture.first, &release_id),
+            Err(FleetRegistryError::Corrupt(_))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn strict_schema_v1_catalog_and_allowance_remain_agentd_only_compatible()
+    -> Result<(), FleetRegistryError> {
+        let fixture = Fixture::new()?;
+        let release_id = ReleaseId::parse("legacy-v1")?;
+        let release_root = fixture
+            .registry
+            .layout()
+            .releases_root()
+            .join(release_id.as_str());
+        let bin_root = release_root.join("bin");
+        std::fs::create_dir(&release_root)?;
+        std::fs::create_dir(&bin_root)?;
+        let program = release_root.join(AGENTD_RELEASE_PROGRAM);
+        std::fs::copy(&fixture.source, &program)?;
+        set_mode(&program, 0o555)?;
+        let metadata = LegacyReleaseMetadataV1 {
+            schema_version: 1,
+            release_id: release_id.clone(),
+            program_relative_path: PathBuf::from(AGENTD_RELEASE_PROGRAM),
+            program_sha256: sha256_file(&program)?,
+            program_size_bytes: std::fs::metadata(&program)?.len(),
+            args: vec!["--legacy".to_string()],
+        };
+        let manifest = release_root.join(RELEASE_MANIFEST_FILE);
+        write_new_json(&manifest, &metadata)?;
+        set_mode(&manifest, 0o444)?;
+        set_mode(&bin_root, 0o555)?;
+        set_mode(&release_root, 0o555)?;
+
+        let manifest_sha256 = sha256_file(&manifest)?;
+        let allowance = ReleaseAllowance {
+            schema_version: 1,
+            agent_id: fixture.first.clone(),
+            release_id: release_id.clone(),
+            manifest_sha256,
+        };
+        let agent = fixture
+            .registry
+            .load()?
+            .agent(&fixture.first)
+            .unwrap()
+            .clone();
+        let allowance_path = allowance_path(agent.layout.releases_root(), &release_id);
+        write_new_json(&allowance_path, &allowance)?;
+        set_mode(&allowance_path, 0o444)?;
+
+        let resolved = fixture
+            .registry
+            .resolve_release(&fixture.first, &release_id)?;
+        assert_eq!(resolved.args, vec!["--legacy"]);
+        assert!(resolved.matrixd.is_none());
+        fixture
+            .registry
+            .allow_release(&fixture.first, &release_id)?;
+        Ok(())
+    }
+
+    #[test]
     fn program_mutation_is_detected_and_release_state_survives_reopen()
     -> Result<(), FleetRegistryError> {
         let fixture = Fixture::new()?;
@@ -850,7 +1113,7 @@ mod tests {
             .layout()
             .releases_root()
             .join(v2.as_str())
-            .join(RELEASE_PROGRAM);
+            .join(AGENTD_RELEASE_PROGRAM);
         set_mode(&program, 0o755)?;
         std::fs::write(&program, b"changed")?;
         set_mode(&program, 0o555)?;

@@ -1,5 +1,7 @@
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::Barrier;
 
 use codex_hepta_contracts::AgentId;
 use codex_hepta_paths::HeptaFleetRoot;
@@ -200,6 +202,53 @@ fn overlapping_workspace_bindings_are_rejected() -> Result<(), FleetRegistryErro
         invalid_budget,
     );
     assert!(matches!(invalid, Err(FleetRegistryError::Invalid(_))));
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn concurrent_open_atomically_migrates_legacy_matrix_private_roots()
+-> Result<(), FleetRegistryError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fleet = TestFleet::new()?;
+    let manifest = fleet.manifest(FIRST_AGENT_ID, &fleet.first_workspace)?;
+    let agent_id = manifest.agent_id.clone();
+    let record = fleet.registry.register(manifest)?;
+    fs::remove_dir(record.layout.matrix_secrets_root())?;
+    fs::remove_dir(record.layout.matrix_root())?;
+
+    let barrier = Arc::new(Barrier::new(3));
+    let handles: Vec<_> = (0..2)
+        .map(|_| {
+            let root = fleet.root.clone();
+            let barrier = Arc::clone(&barrier);
+            std::thread::spawn(move || {
+                barrier.wait();
+                FleetRegistry::open_existing(root)
+            })
+        })
+        .collect();
+    barrier.wait();
+    for handle in handles {
+        handle
+            .join()
+            .map_err(|_| FleetRegistryError::Corrupt("migration thread panicked".to_string()))??;
+    }
+
+    let layout = fleet.registry.layout().agent(&agent_id);
+    for private_root in [layout.matrix_root(), layout.matrix_secrets_root()] {
+        let metadata = fs::symlink_metadata(private_root)?;
+        assert!(metadata.file_type().is_dir() && !metadata.file_type().is_symlink());
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o700);
+    }
+    assert!(fs::read_dir(layout.agent_root())?.all(|entry| {
+        !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .contains("staging")
+    }));
     Ok(())
 }
 

@@ -53,14 +53,18 @@ fn agent_layout_uses_safe_id_component_and_disjoint_owned_roots() -> Result<()> 
             home_root: agent_root.join("home"),
             run_root: agent_root.join("run"),
             agentd_control_socket: PathBuf::from(format!("/srv/hepta/fleet/run/a{socket_key}.ctl")),
+            matrixd_control_socket: PathBuf::from(format!("/srv/hepta/fleet/run/a{socket_key}.mx")),
             app_server_socket: PathBuf::from(format!("/srv/hepta/fleet/run/a{socket_key}.app")),
             writer_lock: agent_root.join("run/writer.lock"),
             generation_cursor: agent_root.join("run/generation.json"),
+            matrixd_process_lease: agent_root.join("run/supervisor-matrix-process.json"),
             logs_root: agent_root.join("logs"),
             releases_root: agent_root.join("releases"),
             active_release: agent_root.join("releases/active"),
             cognitive_root: agent_root.join("cognitive"),
             matrix_root: agent_root.join("matrix"),
+            matrix_public_binding: agent_root.join("matrix/binding.json"),
+            matrix_secrets_root: agent_root.join("matrix/secrets"),
             automation_root: agent_root.join("automation"),
         }
     );
@@ -76,6 +80,10 @@ fn agent_layout_uses_safe_id_component_and_disjoint_owned_roots() -> Result<()> 
     ]);
     assert_eq!(owned_roots.len(), 7);
     assert_ne!(layout.agentd_control_socket(), layout.app_server_socket());
+    assert_ne!(
+        layout.agentd_control_socket(),
+        layout.matrixd_control_socket()
+    );
     Ok(())
 }
 
@@ -94,6 +102,10 @@ fn distinct_agent_ids_cannot_alias_one_agent_root() -> Result<()> {
         second.agentd_control_socket()
     );
     assert_ne!(first.app_server_socket(), second.app_server_socket());
+    assert_ne!(
+        first.matrixd_control_socket(),
+        second.matrixd_control_socket()
+    );
     Ok(())
 }
 
@@ -103,7 +115,11 @@ fn production_socket_paths_fit_the_darwin_sun_path_limit() -> Result<()> {
     let agent =
         fleet.agent(&AgentId::parse(FIRST_AGENT_ID).map_err(|error| anyhow::anyhow!("{error}"))?);
 
-    for socket in [agent.agentd_control_socket(), agent.app_server_socket()] {
+    for socket in [
+        agent.agentd_control_socket(),
+        agent.matrixd_control_socket(),
+        agent.app_server_socket(),
+    ] {
         assert!(
             socket.as_os_str().len() < 104,
             "socket path exceeds Darwin sun_path: {}",

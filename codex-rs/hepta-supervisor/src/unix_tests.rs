@@ -4,6 +4,7 @@ use std::io::BufReader;
 use std::io::Write;
 use std::os::unix::net::UnixListener;
 use std::path::Path;
+use std::process::Command;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -13,14 +14,19 @@ use codex_hepta_agent_protocol::AgentdRequest;
 use codex_hepta_agent_protocol::AgentdResponse;
 use codex_hepta_agent_protocol::HealthSnapshot;
 use codex_hepta_contracts::AgentId;
+use codex_hepta_fleet::ReleaseId;
 use pretty_assertions::assert_eq;
 
-use super::HealthProbeIdentity;
+use super::AgentHealthProbeIdentity;
 use super::UnixProcessDriver;
-use super::probe_health_once;
+use super::query_agent_health_once;
+use crate::AdoptSpec;
+use crate::Adoption;
 use crate::AgentCommand;
 use crate::ManagedProcess;
+use crate::MatrixAdoptSpec;
 use crate::ProcessDriver;
+use crate::ProcessIdentity;
 use crate::ProcessState;
 use crate::ProcessStream;
 use crate::SpawnSpec;
@@ -70,12 +76,72 @@ fn unix_wrapper_captures_bounded_stdout_and_stderr() {
 }
 
 #[test]
+fn failed_exact_adoption_never_signals_an_unrelated_live_pid() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let mut unrelated = Command::new("/bin/sleep")
+        .arg("30")
+        .spawn()
+        .expect("spawn unrelated process");
+    let identity = ProcessIdentity::new(
+        u64::from(unrelated.id()),
+        "deliberately-stale-unrelated-process",
+    )
+    .expect("process identity");
+    let agent_id = AgentId::parse("018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12").expect("valid agent id");
+    let socket = temp.path().join("does-not-exist.sock");
+    let mut driver = UnixProcessDriver::new(1).expect("valid driver");
+
+    let agent_adoption = driver
+        .adopt(&AdoptSpec {
+            agent_id: agent_id.clone(),
+            registry_generation: 1,
+            spawn_generation: 1,
+            workspace: temp.path().join("workspace"),
+            home_root: temp.path().join("home"),
+            run_root: temp.path().join("run"),
+            control_socket: socket.clone(),
+            identity: identity.clone(),
+        })
+        .expect("bounded agentd adoption probe");
+    assert!(matches!(agent_adoption, Adoption::Rejected));
+    assert!(
+        unrelated
+            .try_wait()
+            .expect("poll unrelated process")
+            .is_none(),
+        "rejected agentd adoption must not signal the stale PID"
+    );
+
+    let matrix_adoption = driver
+        .adopt_matrixd(&MatrixAdoptSpec {
+            agent_id,
+            agent_generation: 1,
+            binding_revision: 1,
+            release_id: ReleaseId::parse("matrix-stale-pid-test").expect("release id"),
+            control_socket: socket,
+            identity,
+        })
+        .expect("bounded matrixd adoption probe");
+    assert!(matches!(matrix_adoption, Adoption::Rejected));
+    assert!(
+        unrelated
+            .try_wait()
+            .expect("poll unrelated process")
+            .is_none(),
+        "rejected matrixd adoption must not signal the stale PID"
+    );
+
+    unrelated.kill().expect("terminate test-owned process");
+    unrelated.wait().expect("reap test-owned process");
+}
+
+#[test]
 fn health_probe_requires_exact_agent_generation_pid_and_roots() {
     let temp = tempfile::tempdir().expect("temporary directory");
     let expected_agent = AgentId::parse("018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12").expect("agent id");
     let other_agent =
         AgentId::parse("019153a4-3088-7e03-a56a-9b1964f75dd3").expect("other agent id");
-    let identity = HealthProbeIdentity {
+    let identity = AgentHealthProbeIdentity {
         agent_id: expected_agent.clone(),
         spawn_generation: 7,
         process_id: 41,
@@ -103,7 +169,7 @@ fn health_probe_requires_exact_agent_generation_pid_and_roots() {
 }
 
 fn running_health_response(
-    identity: &HealthProbeIdentity,
+    identity: &AgentHealthProbeIdentity,
     spawn_generation: u64,
     current_generation: u64,
     process_id: u32,
@@ -129,7 +195,7 @@ fn running_health_response(
 }
 
 fn health_response(
-    identity: &HealthProbeIdentity,
+    identity: &AgentHealthProbeIdentity,
     agent_id: AgentId,
     spawn_generation: u64,
     current_generation: u64,
@@ -155,7 +221,7 @@ fn health_response(
 }
 
 fn serve_and_probe(
-    identity: &HealthProbeIdentity,
+    identity: &AgentHealthProbeIdentity,
     request_id: u64,
     mut response: AgentdResponse,
 ) -> bool {
@@ -175,7 +241,9 @@ fn serve_and_probe(
         serde_json::to_writer(&mut stream, &response).expect("write response");
         stream.write_all(b"\n").expect("terminate response");
     });
-    let result = probe_health_once(identity, request_id).expect("health probe completes");
+    let result = query_agent_health_once(identity, request_id)
+        .expect("health probe completes")
+        .ready;
     worker.join().expect("probe server joins");
     remove_socket(&identity.control_socket);
     result

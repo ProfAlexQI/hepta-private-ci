@@ -10,6 +10,7 @@ use crate::SupervisorError;
 use crate::SupervisorEventKind;
 use crate::runtime::AgentRuntime;
 use crate::runtime::AgentSlot;
+use crate::runtime::DeferredAgentAction;
 use crate::runtime::RuntimePhase;
 use crate::runtime::deadline;
 use crate::runtime::driver_error;
@@ -21,6 +22,9 @@ impl<D: ProcessDriver> Supervisor<D> {
         slot: &mut AgentSlot<D::Process>,
         now: Instant,
     ) -> Result<(), SupervisorError> {
+        if self.defer_agent_action_for_matrix(agent_id, slot, DeferredAgentAction::Drain, now)? {
+            return Ok(());
+        }
         self.fence_runtime(agent_id, slot)?;
         let lifecycle = self.record(agent_id)?.lifecycle;
         if lifecycle.lifecycle == AgentLifecycle::Running {
@@ -61,6 +65,9 @@ impl<D: ProcessDriver> Supervisor<D> {
         slot: &mut AgentSlot<D::Process>,
         now: Instant,
     ) -> Result<(), SupervisorError> {
+        if self.defer_agent_action_for_matrix(agent_id, slot, DeferredAgentAction::Stop, now)? {
+            return Ok(());
+        }
         self.prepare_termination(agent_id, slot)?;
         let generation = {
             let runtime = active_runtime(agent_id, slot)?;
@@ -82,6 +89,7 @@ impl<D: ProcessDriver> Supervisor<D> {
         agent_id: &AgentId,
         slot: &mut AgentSlot<D::Process>,
     ) -> Result<(), SupervisorError> {
+        self.kill_matrix_now(agent_id, slot)?;
         self.prepare_termination(agent_id, slot)?;
         let generation = {
             let runtime = active_runtime(agent_id, slot)?;
@@ -158,21 +166,26 @@ impl<D: ProcessDriver> Supervisor<D> {
         agent_id: &AgentId,
         slot: &mut AgentSlot<D::Process>,
     ) -> Result<(), SupervisorError> {
+        let runtime_generation = slot
+            .runtime
+            .as_ref()
+            .map(|runtime| runtime.generation)
+            .ok_or_else(|| SupervisorError::Invalid(format!("agent {agent_id} is not active")))?;
+        let registry = self.record(agent_id)?.lifecycle.generation;
+        if registry == runtime_generation {
+            return Ok(());
+        }
+        self.kill_matrix_now(agent_id, slot)?;
         let runtime = slot
             .runtime
             .as_mut()
             .ok_or_else(|| SupervisorError::Invalid(format!("agent {agent_id} is not active")))?;
-        let registry = self.record(agent_id)?.lifecycle.generation;
-        if registry == runtime.generation {
-            return Ok(());
-        }
         runtime
             .process
             .kill()
             .map_err(|error| driver_error(agent_id, error))?;
         runtime.fenced = true;
         runtime.phase = RuntimePhase::Killing;
-        let runtime_generation = runtime.generation;
         slot.event(
             runtime_generation,
             SupervisorEventKind::GenerationFenced {

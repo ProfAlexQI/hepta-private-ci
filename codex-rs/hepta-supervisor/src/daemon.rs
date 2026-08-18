@@ -50,6 +50,7 @@ use crate::daemon_protocol::SupervisorEpoch;
 use crate::daemon_protocol::SupervisordAgentStatus;
 use crate::daemon_protocol::SupervisordControlFence;
 use crate::daemon_protocol::SupervisordHealth;
+use crate::daemon_protocol::SupervisordMatrixStatus;
 use crate::daemon_protocol::SupervisordMethod;
 use crate::daemon_protocol::SupervisordMutation;
 use crate::daemon_protocol::SupervisordPayload;
@@ -565,6 +566,17 @@ fn status_from(
             release_change_pending: snapshot.release_change_pending,
             state_digest: ControlStateDigest::from_bytes([0_u8; 32]),
         },
+        matrix: SupervisordMatrixStatus {
+            configured: snapshot.matrix.configured,
+            active: snapshot.matrix.active,
+            healthy: snapshot.matrix.healthy,
+            degraded: snapshot.matrix.degraded,
+            process_id: snapshot.matrix.process_system_id,
+            attached_agent_generation: snapshot.matrix.attached_agent_generation,
+            binding_revision: snapshot.matrix.binding_revision,
+            restart_attempt: snapshot.matrix.restart_attempt,
+            last_error: snapshot.matrix.last_error.clone(),
+        },
     };
     status.control_fence.state_digest =
         control_state_digest(&status.control_fence, &status, record, &snapshot)?;
@@ -634,6 +646,7 @@ struct HiddenControlState<'a> {
     runtime_fenced: bool,
     release_change: &'a Option<crate::ControlReleaseChange>,
     has_last_command: bool,
+    matrix: &'a SupervisordMatrixStatus,
 }
 
 #[derive(Serialize)]
@@ -665,6 +678,7 @@ fn control_state_digest(
             runtime_fenced: snapshot.runtime_fenced,
             release_change: &snapshot.release_change,
             has_last_command: snapshot.has_last_command,
+            matrix: &status.matrix,
         },
     };
     let encoded = serde_json::to_vec(&material)
@@ -887,9 +901,15 @@ fn set_lock_owner_only(path: &Path) -> Result<(), SupervisorError> {
 mod tests {
     use codex_hepta_contracts::AgentId;
     use codex_hepta_fleet::AgentLifecycle;
+    use codex_hepta_fleet::AgentManifest;
+    use codex_hepta_fleet::FleetRegistry;
     use codex_hepta_fleet::ReleaseId;
+    use codex_hepta_fleet::ResourceBudget;
+    use codex_hepta_fleet::WorkspaceBinding;
+    use codex_hepta_paths::HeptaFleetRoot;
 
     use super::*;
+    use crate::MatrixSupervisorSnapshot;
 
     const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
     const PEER_AGENT_ID: &str = "019153a4-3088-7e03-a56a-9b1964f75dd3";
@@ -957,6 +977,109 @@ mod tests {
                 "accepted {stale:?}"
             );
         }
+    }
+
+    #[test]
+    fn every_matrix_control_field_participates_in_state_digest() {
+        let baseline = MatrixSupervisorSnapshot {
+            configured: true,
+            active: true,
+            healthy: true,
+            degraded: false,
+            process_system_id: Some(4321),
+            attached_agent_generation: Some(7),
+            binding_revision: Some(11),
+            restart_attempt: 2,
+            last_error: Some("bounded fault".to_string()),
+        };
+        let baseline_digest = matrix_control_digest(baseline.clone());
+
+        let mut variants = Vec::new();
+        let mut changed = baseline.clone();
+        changed.configured = false;
+        variants.push(changed);
+        let mut changed = baseline.clone();
+        changed.active = false;
+        variants.push(changed);
+        let mut changed = baseline.clone();
+        changed.healthy = false;
+        variants.push(changed);
+        let mut changed = baseline.clone();
+        changed.degraded = true;
+        variants.push(changed);
+        let mut changed = baseline.clone();
+        changed.process_system_id = Some(4322);
+        variants.push(changed);
+        let mut changed = baseline.clone();
+        changed.attached_agent_generation = Some(8);
+        variants.push(changed);
+        let mut changed = baseline.clone();
+        changed.binding_revision = Some(12);
+        variants.push(changed);
+        let mut changed = baseline.clone();
+        changed.restart_attempt = 3;
+        variants.push(changed);
+        let mut changed = baseline;
+        changed.last_error = Some("different bounded fault".to_string());
+        variants.push(changed);
+
+        for changed in variants {
+            assert_ne!(matrix_control_digest(changed), baseline_digest);
+        }
+    }
+
+    fn matrix_control_digest(matrix: MatrixSupervisorSnapshot) -> ControlStateDigest {
+        let temp = tempfile::tempdir().expect("create temporary fleet");
+        let fleet_root =
+            HeptaFleetRoot::parse(temp.path().join("fleet")).expect("parse temporary fleet root");
+        let registry = FleetRegistry::initialize(fleet_root.clone()).expect("initialize registry");
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir(&workspace).expect("create workspace");
+        let agent_id = AgentId::parse(AGENT_ID).expect("fixed AgentId");
+        let record = registry
+            .register(
+                AgentManifest::new(
+                    agent_id,
+                    WorkspaceBinding::new(
+                        workspace.canonicalize().expect("canonical workspace"),
+                        &fleet_root,
+                    )
+                    .expect("workspace binding"),
+                    ResourceBudget::local_default(),
+                )
+                .expect("agent manifest"),
+            )
+            .expect("register agent");
+        let snapshot = AgentSupervisorSnapshot {
+            active: false,
+            healthy: false,
+            runtime_generation: None,
+            spawn_generation: None,
+            process_system_id: None,
+            active_release: None,
+            previous_release: None,
+            release_change_pending: false,
+            matrix,
+            events: Vec::new(),
+            logs: Vec::new(),
+            control_revision: 0,
+            restart_pending: false,
+            release_state_generation: record.release_state.generation,
+            runtime_phase: None,
+            runtime_release: None,
+            runtime_incarnation: None,
+            runtime_fenced: false,
+            release_change: None,
+            has_last_command: false,
+        };
+        status_from(
+            &SupervisorEpoch::parse(EPOCH).expect("fixed epoch"),
+            &record,
+            Some(snapshot),
+        )
+        .expect("derive status")
+        .control_fence
+        .state_digest
     }
 
     #[test]

@@ -26,35 +26,31 @@ impl<D: ProcessDriver> Supervisor<D> {
         slot: &mut AgentSlot<D::Process>,
         now: Instant,
     ) -> Result<(), SupervisorError> {
-        let Some(mut runtime) = slot.runtime.take() else {
-            return Ok(());
-        };
-        let keep = match self.tick_runtime(agent_id, slot, &mut runtime, now) {
-            Ok(keep) => keep,
-            Err(error) => {
+        if let Some(mut runtime) = slot.runtime.take() {
+            let keep = match self.tick_runtime(agent_id, slot, &mut runtime, now) {
+                Ok(keep) => keep,
+                Err(error) => {
+                    slot.runtime = Some(runtime);
+                    return Err(error);
+                }
+            };
+            if keep {
                 slot.runtime = Some(runtime);
-                return Err(error);
+            } else if !self.continue_release_change_after_exit(agent_id, slot, now)?
+                && slot.restart_pending
+            {
+                slot.restart_pending = false;
+                let release = slot.active_release.clone().or_else(|| {
+                    slot.last_command
+                        .clone()
+                        .and_then(|command| crate::AgentRelease::unversioned(command).ok())
+                });
+                let release =
+                    release.ok_or_else(|| SupervisorError::NoPreviousCommand(agent_id.clone()))?;
+                self.start_release_slot(agent_id, slot, release, now)?;
             }
-        };
-        if keep {
-            slot.runtime = Some(runtime);
-            return Ok(());
         }
-        if self.continue_release_change_after_exit(agent_id, slot, now)? {
-            return Ok(());
-        }
-        if slot.restart_pending {
-            slot.restart_pending = false;
-            let release = slot.active_release.clone().or_else(|| {
-                slot.last_command
-                    .clone()
-                    .and_then(|command| crate::AgentRelease::unversioned(command).ok())
-            });
-            let release =
-                release.ok_or_else(|| SupervisorError::NoPreviousCommand(agent_id.clone()))?;
-            self.start_release_slot(agent_id, slot, release, now)?;
-        }
-        Ok(())
+        self.tick_matrix_companion(agent_id, slot, now)
     }
 
     fn tick_runtime(
@@ -66,6 +62,7 @@ impl<D: ProcessDriver> Supervisor<D> {
     ) -> Result<bool, SupervisorError> {
         let registry_generation = self.record(agent_id)?.lifecycle.generation;
         if registry_generation != runtime.generation && !runtime.fenced {
+            self.kill_matrix_now(agent_id, slot)?;
             runtime
                 .process
                 .kill()

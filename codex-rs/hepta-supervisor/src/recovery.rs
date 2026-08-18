@@ -176,6 +176,7 @@ impl<D: ProcessDriver> Supervisor<D> {
                 )?;
                 slot.event(generation, SupervisorEventKind::OrphanMissing);
             }
+            self.recover_matrix_companion(agent_id, slot, record, now)?;
             return Ok(());
         };
         validate_lease(
@@ -185,14 +186,14 @@ impl<D: ProcessDriver> Supervisor<D> {
             record.lifecycle.lifecycle,
         )?;
         if lease.release_id.as_str() != "unversioned" {
-            let leased = AgentRelease::try_from(
-                self.registry.resolve_release(agent_id, &lease.release_id)?,
-            )?;
-            if slot
+            let needs_resolution = slot
                 .active_release
                 .as_ref()
-                .is_none_or(|active| active.release_id() != &lease.release_id)
-            {
+                .is_none_or(|active| active.release_id() != &lease.release_id);
+            if needs_resolution {
+                let leased = AgentRelease::try_from(
+                    self.registry.resolve_release(agent_id, &lease.release_id)?,
+                )?;
                 slot.previous_release = slot.active_release.take();
                 slot.last_command = Some(leased.command().clone());
                 slot.active_release = Some(leased);
@@ -287,6 +288,7 @@ impl<D: ProcessDriver> Supervisor<D> {
                 slot.event(generation, SupervisorEventKind::OrphanRejected);
             }
         }
+        self.recover_matrix_companion(agent_id, slot, record, now)?;
         Ok(())
     }
 }

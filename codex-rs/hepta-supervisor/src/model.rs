@@ -23,6 +23,7 @@ pub struct AgentCommand {
 pub struct AgentRelease {
     identity: ReleaseId,
     command: AgentCommand,
+    matrixd_command: Option<AgentCommand>,
 }
 
 impl AgentRelease {
@@ -31,7 +32,24 @@ impl AgentRelease {
         command: AgentCommand,
     ) -> Result<Self, SupervisorError> {
         let identity = ReleaseId::parse(identity.into())?;
-        Ok(Self { identity, command })
+        Ok(Self {
+            identity,
+            command,
+            matrixd_command: None,
+        })
+    }
+
+    pub fn with_matrixd(
+        identity: impl Into<String>,
+        command: AgentCommand,
+        matrixd_command: AgentCommand,
+    ) -> Result<Self, SupervisorError> {
+        let identity = ReleaseId::parse(identity.into())?;
+        Ok(Self {
+            identity,
+            command,
+            matrixd_command: Some(matrixd_command),
+        })
     }
 
     pub fn identity(&self) -> &str {
@@ -40,6 +58,10 @@ impl AgentRelease {
 
     pub fn command(&self) -> &AgentCommand {
         &self.command
+    }
+
+    pub fn matrixd_command(&self) -> Option<&AgentCommand> {
+        self.matrixd_command.as_ref()
     }
 
     pub(crate) fn unversioned(command: AgentCommand) -> Result<Self, SupervisorError> {
@@ -59,9 +81,19 @@ impl TryFrom<RegisteredRelease> for AgentRelease {
             release.program,
             release.args.into_iter().map(OsString::from).collect(),
         )?;
+        let matrixd_command = release
+            .matrixd
+            .map(|program| {
+                AgentCommand::new(
+                    program.program,
+                    program.args.into_iter().map(OsString::from).collect(),
+                )
+            })
+            .transpose()?;
         Ok(Self {
             identity: release.release_id,
             command,
+            matrixd_command,
         })
     }
 }
@@ -209,6 +241,15 @@ pub enum SupervisorEventKind {
     OrphanAdopted,
     OrphanMissing,
     OrphanRejected,
+    MatrixSpawned,
+    MatrixHealthy,
+    MatrixStopRequested,
+    MatrixKillRequested,
+    MatrixExited(ProcessExit),
+    MatrixOrphanAdopted,
+    MatrixOrphanMissing,
+    MatrixOrphanRejected,
+    MatrixDegraded(String),
     GenerationFenced { runtime: u64, registry: u64 },
     DriverFault(String),
 }
@@ -240,6 +281,7 @@ pub struct AgentSupervisorSnapshot {
     pub active_release: Option<String>,
     pub previous_release: Option<String>,
     pub release_change_pending: bool,
+    pub matrix: MatrixSupervisorSnapshot,
     pub events: Vec<SupervisorEvent>,
     pub logs: Vec<ProcessLog>,
     pub(crate) control_revision: u64,
@@ -278,4 +320,17 @@ pub(crate) struct ControlReleaseChange {
     pub prior_previous_release: Option<String>,
     pub phase: ControlReleaseChangePhase,
     pub explicit_rollback: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MatrixSupervisorSnapshot {
+    pub configured: bool,
+    pub active: bool,
+    pub healthy: bool,
+    pub degraded: bool,
+    pub process_system_id: Option<u64>,
+    pub attached_agent_generation: Option<u64>,
+    pub binding_revision: Option<u64>,
+    pub restart_attempt: u32,
+    pub last_error: Option<String>,
 }

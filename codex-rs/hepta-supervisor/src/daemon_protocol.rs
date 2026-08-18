@@ -329,6 +329,7 @@ pub struct SupervisordAgentStatus {
     pub previous_release: Option<ReleaseId>,
     pub release_change_pending: bool,
     pub control_fence: SupervisordControlFence,
+    pub matrix: SupervisordMatrixStatus,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -354,6 +355,20 @@ fn hex_value(byte: u8) -> u8 {
         b'a'..=b'f' => byte - b'a' + 10,
         _ => unreachable!("ControlStateDigest validates lowercase hex"),
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SupervisordMatrixStatus {
+    pub configured: bool,
+    pub active: bool,
+    pub healthy: bool,
+    pub degraded: bool,
+    pub process_id: Option<u64>,
+    pub attached_agent_generation: Option<u64>,
+    pub binding_revision: Option<u64>,
+    pub restart_attempt: u32,
+    pub last_error: Option<String>,
 }
 
 #[cfg(test)]
@@ -434,7 +449,7 @@ mod tests {
         assert_eq!(
             encoded,
             format!(
-                r#"{{"schema_version":2,"request_id":43,"payload":{{"type":"mutation_accepted","operation":"restart","accepted_state_digest":"{DIGEST}","agent":{{"agent_id":"{AGENT_ID}","lifecycle":"running","lifecycle_generation":7,"active":true,"healthy":true,"process_id":1234,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"control_fence":{{"agent_id":"{AGENT_ID}","supervisor_epoch":"{EPOCH}","lifecycle":"running","lifecycle_generation":7,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"state_digest":"{DIGEST}"}}}}}}}}"#
+                r#"{{"schema_version":2,"request_id":43,"payload":{{"type":"mutation_accepted","operation":"restart","accepted_state_digest":"{DIGEST}","agent":{{"agent_id":"{AGENT_ID}","lifecycle":"running","lifecycle_generation":7,"active":true,"healthy":true,"process_id":1234,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"control_fence":{{"agent_id":"{AGENT_ID}","supervisor_epoch":"{EPOCH}","lifecycle":"running","lifecycle_generation":7,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"state_digest":"{DIGEST}"}},"matrix":{{"configured":true,"active":true,"healthy":true,"degraded":false,"process_id":4321,"attached_agent_generation":7,"binding_revision":11,"restart_attempt":0,"last_error":null}}}}}}}}"#
             )
         );
         assert!(!encoded.contains("program"));
@@ -457,7 +472,7 @@ mod tests {
         assert_eq!(
             encoded,
             format!(
-                r#"{{"schema_version":2,"request_id":44,"payload":{{"type":"error","code":"stale_control_fence","message":"selected Agent changed; refresh before retry","actual":{{"agent_id":"{AGENT_ID}","lifecycle":"running","lifecycle_generation":7,"active":true,"healthy":true,"process_id":1234,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"control_fence":{{"agent_id":"{AGENT_ID}","supervisor_epoch":"{EPOCH}","lifecycle":"running","lifecycle_generation":7,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"state_digest":"{DIGEST}"}}}}}}}}"#
+                r#"{{"schema_version":2,"request_id":44,"payload":{{"type":"error","code":"stale_control_fence","message":"selected Agent changed; refresh before retry","actual":{{"agent_id":"{AGENT_ID}","lifecycle":"running","lifecycle_generation":7,"active":true,"healthy":true,"process_id":1234,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"control_fence":{{"agent_id":"{AGENT_ID}","supervisor_epoch":"{EPOCH}","lifecycle":"running","lifecycle_generation":7,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"state_digest":"{DIGEST}"}},"matrix":{{"configured":true,"active":true,"healthy":true,"degraded":false,"process_id":4321,"attached_agent_generation":7,"binding_revision":11,"restart_attempt":0,"last_error":null}}}}}}}}"#
             )
         );
         assert!(!encoded.contains("program"));
@@ -553,6 +568,17 @@ mod tests {
             previous_release: None,
             release_change_pending: false,
             control_fence: fence(),
+            matrix: SupervisordMatrixStatus {
+                configured: true,
+                active: true,
+                healthy: true,
+                degraded: false,
+                process_id: Some(4321),
+                attached_agent_generation: Some(7),
+                binding_revision: Some(11),
+                restart_attempt: 0,
+                last_error: None,
+            },
         }
     }
 }
