@@ -1,0 +1,36 @@
+//! Per-agent Matrix SDK transport for the Hepta Cognitive Fleet.
+//!
+//! Matrix is a chat transport only. This crate can persist allowlisted room
+//! messages and deliver durable outbox records, but it intentionally exposes
+//! no tool-approval, turn-cancel, file, or supervisor authority.
+
+#![forbid(unsafe_code)]
+
+mod config;
+mod ingress;
+mod outbound;
+mod sdk;
+
+pub use config::MatrixSdkPaths;
+pub use config::MatrixSidecarConfig;
+pub use config::MatrixSidecarConfigError;
+pub use ingress::IngressDisposition;
+pub use ingress::IngressIgnoredReason;
+pub use ingress::IngressMetrics;
+pub use ingress::MatrixIngress;
+pub use ingress::MatrixIngressError;
+pub use ingress::MatrixTimelineEvent;
+pub use matrix_sdk::SessionMeta;
+pub use matrix_sdk::SessionTokens;
+pub use matrix_sdk::authentication::matrix::MatrixSession;
+pub use outbound::MatrixOutboundTransport;
+pub use outbound::MatrixSendFuture;
+pub use outbound::MatrixTransportError;
+pub use outbound::OutboxDispatchConfig;
+pub use outbound::OutboxDispatchError;
+pub use outbound::OutboxDispatchStats;
+pub use outbound::dispatch_outbox_once;
+pub use outbound::run_outbox_sender;
+pub use sdk::MatrixSdkClient;
+pub use sdk::MatrixSdkError;
+pub use sdk::MatrixSyncExit;

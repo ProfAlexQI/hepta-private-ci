@@ -1,0 +1,31 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-hepta-matrix-sdk"
+version.workspace = true
+publish = false
+
+[lib]
+name = "codex_hepta_matrix_sdk"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-hepta-contracts = { workspace = true }
+codex-hepta-matrix-protocol = { workspace = true }
+codex-hepta-matrix-store = { workspace = true }
+codex-hepta-paths = { workspace = true }
+futures = { workspace = true }
+matrix-sdk = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio-util = { workspace = true, features = ["rt"] }
+url = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+tempfile = { workspace = true }
