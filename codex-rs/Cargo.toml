@@ -47,6 +47,7 @@ members = [
     "hepta-contracts",
     "hepta-evidence",
     "hepta-fleet",
+    "hepta-supervisor",
     "hepta-memory",
     "hepta-native-gateway",
     "hepta-operator-acceptance",
@@ -192,6 +193,7 @@ codex-http-client = { path = "http-client" }
 codex-hepta-contracts = { path = "hepta-contracts" }
 codex-hepta-evidence = { path = "hepta-evidence" }
 codex-hepta-fleet = { path = "hepta-fleet" }
+codex-hepta-supervisor = { path = "hepta-supervisor" }
 codex-hepta-memory = { path = "hepta-memory" }
 codex-hepta-native-gateway = { path = "hepta-native-gateway" }
 codex-hepta-paths = { path = "hepta-paths" }
