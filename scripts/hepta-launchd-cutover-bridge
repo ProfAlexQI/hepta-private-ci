@@ -1339,10 +1339,21 @@ publish_plist_pair() {
 reload_plist_pair() {
   local launch_root="$1" gateway_label="$2" watchdog_label="$3" service_mode="$4"
   [[ "$service_mode" == "launchctl" ]] || return 0
-  local domain
+  local domain attempt loaded
   domain="gui/$(id -u)"
   /bin/launchctl bootout "$domain/$watchdog_label" >/dev/null 2>&1 || true
   /bin/launchctl bootout "$domain/$gateway_label" >/dev/null 2>&1 || true
+  for attempt in {1..50}; do
+    loaded=false
+    /bin/launchctl print "$domain/$gateway_label" >/dev/null 2>&1 && loaded=true
+    /bin/launchctl print "$domain/$watchdog_label" >/dev/null 2>&1 && loaded=true
+    [[ "$loaded" == false ]] && break
+    sleep 0.1
+  done
+  [[ "$loaded" == false ]] || {
+    echo "launchd service pair did not finish bootout before bootstrap" >&2
+    return 1
+  }
   /bin/launchctl bootstrap "$domain" "$launch_root/$gateway_label.plist" \
     && /bin/launchctl bootstrap "$domain" "$launch_root/$watchdog_label.plist" \
     && /bin/launchctl kickstart -k "$domain/$gateway_label"
