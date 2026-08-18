@@ -18,6 +18,17 @@ use codex_hepta_fleet::AgentManifest;
 use codex_hepta_fleet::FleetRegistry;
 use codex_hepta_fleet::ResourceBudget;
 use codex_hepta_fleet::WorkspaceBinding;
+use codex_hepta_memory::CognitiveAccess;
+use codex_hepta_memory::CognitiveScope;
+use codex_hepta_memory::CognitiveStore;
+use codex_hepta_memory::LedgerSourceKind;
+use codex_hepta_memory::MemoryDraft;
+use codex_hepta_memory::MemoryLifecycleState;
+use codex_hepta_memory::MemoryRevisionDraft;
+use codex_hepta_memory::MemoryRevisionRecord;
+use codex_hepta_memory::MemoryVerification;
+use codex_hepta_memory::RetrievalRequest;
+use codex_hepta_memory::SourceDraft;
 use codex_hepta_paths::HeptaFleetRoot;
 use codex_hepta_supervisor::AgentCommand;
 use codex_hepta_supervisor::Supervisor;
@@ -128,6 +139,23 @@ async fn two_supervised_real_agentd_processes_are_fault_isolated() -> Result<()>
         layout_b.home_root().to_string_lossy()
     );
 
+    let (store_a, access_a, memory_a) =
+        remember_agent_fact(&layout_a, &agent_a, "Agent A remembers a red cedar.").await?;
+    let (store_b, access_b, memory_b) =
+        remember_agent_fact(&layout_b, &agent_b, "Agent B remembers a blue ocean.").await?;
+    assert_eq!(store_a.path().parent(), Some(layout_a.cognitive_root()));
+    assert_eq!(store_b.path().parent(), Some(layout_b.cognitive_root()));
+    assert_ne!(store_a.path(), store_b.path());
+    assert_ne!(memory_a.id.memory_id, memory_b.id.memory_id);
+    assert_eq!(
+        retrieved_contents(&store_a, &access_a).await?,
+        vec![memory_a.content.clone()]
+    );
+    assert_eq!(
+        retrieved_contents(&store_b, &access_b).await?,
+        vec![memory_b.content.clone()]
+    );
+
     let b_process_before = health_b.process_id;
     harness.supervisor.kill(&agent_a)?;
     wait_for_stopped(&mut harness, &agent_a).await?;
@@ -137,6 +165,10 @@ async fn two_supervised_real_agentd_processes_are_fault_isolated() -> Result<()>
     assert_eq!(
         initialized_codex_home(&ingress_b.socket_path).await?,
         layout_b.home_root().to_string_lossy()
+    );
+    assert_eq!(
+        retrieved_contents(&store_b, &access_b).await?,
+        vec![memory_b.content.clone()]
     );
 
     harness.supervisor.restart(&agent_a, Instant::now())?;
@@ -165,6 +197,16 @@ async fn two_supervised_real_agentd_processes_are_fault_isolated() -> Result<()>
         initialized_codex_home(layout_a.app_server_socket()).await?,
         layout_a.home_root().to_string_lossy()
     );
+    let reopened_a = CognitiveStore::open(&layout_a).await?;
+    assert_eq!(reopened_a.owner_agent_id(), &agent_a);
+    assert_eq!(
+        retrieved_contents(&reopened_a, &access_a).await?,
+        vec![memory_a.content]
+    );
+    assert_eq!(
+        retrieved_contents(&store_b, &access_b).await?,
+        vec![memory_b.content]
+    );
 
     let events = restarted_a.events(0, 256).await?;
     assert!(!events.events.is_empty());
@@ -183,6 +225,62 @@ async fn two_supervised_real_agentd_processes_are_fault_isolated() -> Result<()>
         AgentLifecycle::Running
     );
     Ok(())
+}
+
+async fn remember_agent_fact(
+    layout: &codex_hepta_paths::HeptaAgentLayout,
+    agent_id: &AgentId,
+    content: &str,
+) -> Result<(CognitiveStore, CognitiveAccess, MemoryRevisionRecord)> {
+    let store = CognitiveStore::open(layout).await?;
+    if store.owner_agent_id() != agent_id {
+        bail!("cognitive store owner does not match its typed agent layout");
+    }
+    let access = CognitiveAccess::agent_private(agent_id.clone());
+    let scope = CognitiveScope::AgentPrivate;
+    let citation = store
+        .append_source(
+            &access,
+            &SourceDraft {
+                scope: scope.clone(),
+                kind: LedgerSourceKind::ExplicitMemoryDirective,
+                event_key: "same-cognitive-source".to_string(),
+                content: content.as_bytes().to_vec(),
+                observed_at_unix_seconds: 100,
+            },
+        )
+        .await?;
+    let memory = store
+        .remember_memory(
+            &access,
+            &MemoryDraft {
+                stable_key: "same-stable-memory".to_string(),
+                revision: MemoryRevisionDraft {
+                    scope,
+                    content: content.to_string(),
+                    verification: MemoryVerification::Verified,
+                    lifecycle: MemoryLifecycleState::Active,
+                    valid_from_unix_seconds: 100,
+                    valid_to_unix_seconds: None,
+                    citations: vec![citation],
+                },
+            },
+        )
+        .await?;
+    Ok((store, access, memory))
+}
+
+async fn retrieved_contents(
+    store: &CognitiveStore,
+    access: &CognitiveAccess,
+) -> Result<Vec<String>> {
+    Ok(store
+        .retrieve_memory_candidates(access, &RetrievalRequest::new("remembers", 200))
+        .await?
+        .candidates
+        .into_iter()
+        .map(|candidate| candidate.memory.content)
+        .collect())
 }
 
 fn create_workspace(root: &Path, name: &str) -> Result<PathBuf> {
