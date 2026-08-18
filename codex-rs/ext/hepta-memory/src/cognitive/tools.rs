@@ -507,7 +507,7 @@ impl CognitiveTool {
                 "citation_items_returned": citations.len(),
                 "kg_projection_generation": explanation
                     .kg_projection_generation
-                    .map(|generation| generation.get()),
+                    .map(codex_hepta_memory::ProjectionGeneration::get),
             }),
             MAX_EXPLAIN_OUTPUT_BYTES,
         )

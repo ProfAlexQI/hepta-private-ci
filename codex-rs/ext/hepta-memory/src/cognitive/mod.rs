@@ -531,8 +531,7 @@ fn capture_directive(input: &[UserInput]) -> DirectiveCapture {
     if !has_text {
         exact = false;
     }
-    let content_sha256 = Sha256Digest::parse(format!("{:x}", hasher.finalize()))
-        .expect("SHA-256 formatter produces one canonical digest");
+    let content_sha256 = Sha256Digest::from_sha256_output(hasher.finalize());
     let query = if query_bounded {
         String::from_utf8(query)
             .ok()

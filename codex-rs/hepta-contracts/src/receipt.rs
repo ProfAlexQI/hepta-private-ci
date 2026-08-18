@@ -18,7 +18,11 @@ impl Sha256Digest {
         Self(format!("{:x}", Sha256::digest(bytes)))
     }
 
-    pub(crate) fn from_sha256_output(output: sha2::digest::Output<Sha256>) -> Self {
+    /// Wraps the exact output of an already-populated SHA-256 hasher.
+    ///
+    /// This avoids formatting and reparsing a digest when callers hash a
+    /// bounded stream instead of retaining all source bytes in memory.
+    pub fn from_sha256_output(output: sha2::digest::Output<Sha256>) -> Self {
         Self(format!("{output:x}"))
     }
 
