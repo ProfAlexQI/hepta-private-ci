@@ -5,10 +5,11 @@ use super::AgentId;
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
 #[test]
-fn canonical_id_is_stable_across_display_parse_and_serde() -> Result<(), String> {
+fn canonical_id_is_stable_across_display_parse_and_serde() -> Result<(), Box<dyn std::error::Error>>
+{
     let parsed = AgentId::parse(AGENT_ID)?;
-    let json = serde_json::to_string(&parsed).map_err(|error| error.to_string())?;
-    let decoded: AgentId = serde_json::from_str(&json).map_err(|error| error.to_string())?;
+    let json = serde_json::to_string(&parsed)?;
+    let decoded: AgentId = serde_json::from_str(&json)?;
 
     assert_eq!(
         (parsed.clone(), parsed.to_string(), json, decoded),
@@ -43,6 +44,6 @@ fn deserialize_revalidates_untrusted_wire_value() {
 
     assert_eq!(
         error.to_string(),
-        "agent id must be a canonical lowercase UUID at line 1 column 38"
+        "agent id must be a canonical lowercase UUID"
     );
 }

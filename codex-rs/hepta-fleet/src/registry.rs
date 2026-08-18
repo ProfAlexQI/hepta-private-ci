@@ -94,7 +94,8 @@ impl FleetRegistry {
             if name.starts_with(".staging-") {
                 continue;
             }
-            let agent_id = AgentId::parse(name).map_err(FleetRegistryError::Corrupt)?;
+            let agent_id = AgentId::parse(name)
+                .map_err(|error| FleetRegistryError::Corrupt(error.to_string()))?;
             validate_physical_directory(&entry.path())?;
             let record = self.load_agent(&agent_id)?;
             if agents.insert(agent_id, record).is_some() {

@@ -48,7 +48,8 @@ impl TestFleet {
         workspace: &Path,
     ) -> Result<AgentManifest, FleetRegistryError> {
         AgentManifest::new(
-            AgentId::parse(agent_id).map_err(FleetRegistryError::Invalid)?,
+            AgentId::parse(agent_id)
+                .map_err(|error| FleetRegistryError::Invalid(error.to_string()))?,
             WorkspaceBinding::new(workspace, &self.root)?,
             ResourceBudget::local_default(),
         )
@@ -63,7 +64,8 @@ fn two_agents_reload_with_isolated_paths_and_generations() -> Result<(), FleetRe
     fleet.registry.register(first)?;
     fleet.registry.register(second)?;
 
-    let first_id = AgentId::parse(FIRST_AGENT_ID).map_err(FleetRegistryError::Invalid)?;
+    let first_id = AgentId::parse(FIRST_AGENT_ID)
+        .map_err(|error| FleetRegistryError::Invalid(error.to_string()))?;
     fleet
         .registry
         .compare_and_transition(&first_id, 0, AgentLifecycle::Starting)?;
@@ -73,7 +75,8 @@ fn two_agents_reload_with_isolated_paths_and_generations() -> Result<(), FleetRe
 
     assert_eq!(actual, expected);
     let first = actual.agent(&first_id).expect("first agent");
-    let second_id = AgentId::parse(SECOND_AGENT_ID).map_err(FleetRegistryError::Invalid)?;
+    let second_id = AgentId::parse(SECOND_AGENT_ID)
+        .map_err(|error| FleetRegistryError::Invalid(error.to_string()))?;
     let second = actual.agent(&second_id).expect("second agent");
     assert_eq!(
         (
@@ -191,7 +194,8 @@ fn overlapping_workspace_bindings_are_rejected() -> Result<(), FleetRegistryErro
     let mut invalid_budget = ResourceBudget::local_default();
     invalid_budget.turn_queue_capacity = 0;
     let invalid = AgentManifest::new(
-        AgentId::parse(SECOND_AGENT_ID).map_err(FleetRegistryError::Invalid)?,
+        AgentId::parse(SECOND_AGENT_ID)
+            .map_err(|error| FleetRegistryError::Invalid(error.to_string()))?,
         WorkspaceBinding::new(&fleet.second_workspace, &fleet.root)?,
         invalid_budget,
     );

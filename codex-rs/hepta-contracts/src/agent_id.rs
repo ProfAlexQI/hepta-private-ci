@@ -19,12 +19,33 @@ const UUID_HYPHEN_OFFSETS: [usize; 4] = [8, 13, 18, 23];
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AgentId(String);
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AgentIdParseError {
+    message: &'static str,
+}
+
+impl AgentIdParseError {
+    fn new(message: &'static str) -> Self {
+        Self { message }
+    }
+}
+
+impl fmt::Display for AgentIdParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.message)
+    }
+}
+
+impl std::error::Error for AgentIdParseError {}
+
 impl AgentId {
-    pub fn parse(value: impl Into<String>) -> Result<Self, String> {
+    pub fn parse(value: impl Into<String>) -> Result<Self, AgentIdParseError> {
         let value = value.into();
         let bytes = value.as_bytes();
         if bytes.len() != AGENT_ID_LENGTH {
-            return Err("agent id must be a canonical 36-byte UUID".to_string());
+            return Err(AgentIdParseError::new(
+                "agent id must be a canonical 36-byte UUID",
+            ));
         }
 
         for (offset, byte) in bytes.iter().copied().enumerate() {
@@ -32,15 +53,21 @@ impl AgentId {
             if (hyphen_expected && byte != b'-')
                 || (!hyphen_expected && !matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
             {
-                return Err("agent id must be a canonical lowercase UUID".to_string());
+                return Err(AgentIdParseError::new(
+                    "agent id must be a canonical lowercase UUID",
+                ));
             }
         }
 
         if !matches!(bytes[14], b'1'..=b'8') {
-            return Err("agent id UUID must declare a supported version".to_string());
+            return Err(AgentIdParseError::new(
+                "agent id UUID must declare a supported version",
+            ));
         }
         if !matches!(bytes[19], b'8'..=b'9' | b'a'..=b'b') {
-            return Err("agent id UUID must use the RFC 9562 variant".to_string());
+            return Err(AgentIdParseError::new(
+                "agent id UUID must use the RFC 9562 variant",
+            ));
         }
 
         Ok(Self(value))
@@ -58,7 +85,7 @@ impl fmt::Display for AgentId {
 }
 
 impl FromStr for AgentId {
-    type Err = String;
+    type Err = AgentIdParseError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         Self::parse(value)

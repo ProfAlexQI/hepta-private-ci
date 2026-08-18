@@ -79,7 +79,8 @@ fn register_agent(
 ) -> Result<AgentId, SupervisorError> {
     let workspace = parent.join(workspace_name);
     std::fs::create_dir(&workspace)?;
-    let agent_id = AgentId::parse(id).map_err(SupervisorError::Invalid)?;
+    let agent_id =
+        AgentId::parse(id).map_err(|error| SupervisorError::Invalid(error.to_string()))?;
     registry.register(AgentManifest::new(
         agent_id.clone(),
         WorkspaceBinding::new(workspace.canonicalize()?, root)?,
