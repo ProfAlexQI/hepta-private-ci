@@ -1,0 +1,28 @@
+[package]
+edition.workspace = true
+license.workspace = true
+name = "codex-hepta-matrixd"
+version.workspace = true
+publish = false
+
+[lib]
+name = "codex_hepta_matrixd"
+path = "src/lib.rs"
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+codex-app-server-client = { workspace = true }
+codex-app-server-protocol = { workspace = true }
+codex-hepta-agentd = { workspace = true }
+codex-hepta-contracts = { workspace = true }
+codex-hepta-matrix-protocol = { workspace = true }
+codex-utils-absolute-path = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

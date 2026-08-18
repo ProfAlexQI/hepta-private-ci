@@ -305,6 +305,20 @@ impl CodexThread {
         request: TurnInputRequest,
         state: PendingUserMessageAdmissionState,
     ) -> Result<(TurnInputSubmission, Option<AdmittedUserMessage>), UserMessageAdmissionError> {
+        self.submit_turn_input_with_mode_and_wait_for_exact_admission(
+            request,
+            state,
+            TurnInputMode::StartOrSteer,
+        )
+        .await
+    }
+
+    async fn submit_turn_input_with_mode_and_wait_for_exact_admission(
+        &self,
+        request: TurnInputRequest,
+        state: PendingUserMessageAdmissionState,
+        mode: TurnInputMode,
+    ) -> Result<(TurnInputSubmission, Option<AdmittedUserMessage>), UserMessageAdmissionError> {
         let client_user_message_id = match &request.input {
             SubmittedTurnInput::UserInput { client_id, .. } => client_id.clone(),
             _ => {
@@ -329,9 +343,31 @@ impl CodexThread {
             .register(submission_id.clone(), client_user_message_id, state);
         let submission = self
             .io
-            .submit_turn_input_with_id(submission_id, request, TurnInputMode::StartOrSteer)
+            .submit_turn_input_with_id(submission_id, request, mode.clone())
             .await
             .map_err(UserMessageAdmissionError::Admission)?;
+
+        let routing_matches_mode = matches!(
+            (&mode, &submission),
+            (
+                TurnInputMode::StartOrSteer,
+                TurnInputSubmission::Started { .. } | TurnInputSubmission::Steered { .. }
+            ) | (
+                TurnInputMode::StartIfIdle,
+                TurnInputSubmission::Started { .. } | TurnInputSubmission::NotSubmitted { .. }
+            ) | (
+                TurnInputMode::Steer { .. },
+                TurnInputSubmission::Steered { .. } | TurnInputSubmission::NotSubmitted { .. }
+            )
+        );
+        if !routing_matches_mode {
+            return Err(UserMessageAdmissionError::Admission(
+                CodexErr::InvalidRequest(
+                    "turn-input routing reply did not match the requested admission mode"
+                        .to_string(),
+                ),
+            ));
+        }
 
         let expected = match &submission {
             TurnInputSubmission::Started { turn_id } => Some((turn_id.as_str(), true)),
@@ -387,6 +423,18 @@ impl CodexThread {
         &self,
         request: TurnInputRequest,
     ) -> Result<UserMessageAdmission, UserMessageAdmissionError> {
+        Self::validate_persisted_user_input(&request)?;
+        self.submit_user_input_and_wait_for_admission_inner(
+            request,
+            PendingUserMessageAdmissionState::WaitingForAdmission,
+        )
+        .await
+        .map(AdmittedUserMessage::into_admission)
+    }
+
+    fn validate_persisted_user_input(
+        request: &TurnInputRequest,
+    ) -> Result<(), UserMessageAdmissionError> {
         match &request.input {
             SubmittedTurnInput::UserInput {
                 content,
@@ -417,12 +465,7 @@ impl CodexThread {
                 ));
             }
         }
-        self.submit_user_input_and_wait_for_admission_inner(
-            request,
-            PendingUserMessageAdmissionState::WaitingForAdmission,
-        )
-        .await
-        .map(AdmittedUserMessage::into_admission)
+        Ok(())
     }
 
     pub(crate) async fn submit_user_input_and_wait_for_admission_inner(
@@ -479,6 +522,50 @@ impl CodexThread {
             TurnInputSubmission::Steered { .. } => {
                 unreachable!("start-if-idle submission cannot steer")
             }
+        }
+    }
+
+    /// Starts an idle turn and returns only after its user message is durable.
+    ///
+    /// `NotSubmitted` is a normal routing result and leaves the caller-owned
+    /// input untouched. A successful `Started` reply means the exact client-id
+    /// user message has been flushed to the rollout before this method returns.
+    pub async fn start_turn_if_idle_and_wait_for_persisted_admission(
+        &self,
+        request: TurnInputRequest,
+    ) -> Result<StartIfIdleSubmission, UserMessageAdmissionError> {
+        Self::validate_persisted_user_input(&request)?;
+        let (submission, admitted) = self
+            .submit_turn_input_with_mode_and_wait_for_exact_admission(
+                request,
+                PendingUserMessageAdmissionState::WaitingForAdmission,
+                TurnInputMode::StartIfIdle,
+            )
+            .await?;
+        match (submission, admitted) {
+            (TurnInputSubmission::Started { turn_id }, Some(admitted)) => {
+                match admitted.into_admission() {
+                    UserMessageAdmission::Started {
+                        turn_id: admitted_turn_id,
+                    } if admitted_turn_id == turn_id => {
+                        Ok(StartIfIdleSubmission::Started { turn_id })
+                    }
+                    _ => Err(UserMessageAdmissionError::Admission(
+                        CodexErr::InvalidRequest(
+                            "persisted start-if-idle admission did not match the started turn"
+                                .to_string(),
+                        ),
+                    )),
+                }
+            }
+            (TurnInputSubmission::NotSubmitted { reason }, None) => {
+                Ok(StartIfIdleSubmission::NotSubmitted { reason })
+            }
+            _ => Err(UserMessageAdmissionError::Admission(
+                CodexErr::InvalidRequest(
+                    "persisted start-if-idle completed without exact admission".to_string(),
+                ),
+            )),
         }
     }
 

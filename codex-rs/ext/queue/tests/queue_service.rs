@@ -3,6 +3,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::sync::Weak;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Context;
@@ -23,7 +25,9 @@ use codex_extension_api::ThreadIdleCause;
 use codex_extension_api::ThreadIdleInput;
 use codex_extension_api::ThreadLifecycleContributor;
 use codex_extension_api::ThreadResumeInput;
+use codex_history::RolloutItem;
 use codex_protocol::ThreadId;
+use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::ImageDetail;
 use codex_protocol::models::ResponseItem;
@@ -38,6 +42,7 @@ use codex_state::StateRuntime;
 use codex_thread_store::LocalQueueStore;
 use codex_thread_store::QueueStore;
 use codex_thread_store::ThreadStoreError;
+use codex_thread_store::ThreadStoreFuture;
 use codex_utils_absolute_path::test_support::PathExt;
 use core_test_support::hooks::trust_discovered_hooks;
 use core_test_support::responses;
@@ -173,6 +178,75 @@ async fn test_queue() -> anyhow::Result<(Arc<dyn QueueStore>, TempDir)> {
     Ok((queue, home))
 }
 
+struct FailDeleteOnceQueueStore {
+    inner: LocalQueueStore,
+    fail_next_delete: AtomicBool,
+}
+
+impl FailDeleteOnceQueueStore {
+    fn new(inner: LocalQueueStore) -> Self {
+        Self {
+            inner,
+            fail_next_delete: AtomicBool::new(true),
+        }
+    }
+}
+
+impl QueueStore for FailDeleteOnceQueueStore {
+    fn change_version(&self) -> ThreadStoreFuture<'_, i64> {
+        self.inner.change_version()
+    }
+
+    fn changes_since<'a>(
+        &'a self,
+        revision: i64,
+        thread_ids: &'a [ThreadId],
+    ) -> ThreadStoreFuture<'a, Vec<(ThreadId, i64)>> {
+        self.inner.changes_since(revision, thread_ids)
+    }
+
+    fn enqueue(
+        &self,
+        thread_id: ThreadId,
+        payload: String,
+    ) -> ThreadStoreFuture<'_, codex_thread_store::QueuedUserSubmissionRecord> {
+        self.inner.enqueue(thread_id, payload)
+    }
+
+    fn list_page(
+        &self,
+        thread_id: ThreadId,
+        offset: usize,
+        limit: usize,
+    ) -> ThreadStoreFuture<'_, Vec<codex_thread_store::QueuedUserSubmissionRecord>> {
+        self.inner.list_page(thread_id, offset, limit)
+    }
+
+    fn update(
+        &self,
+        thread_id: ThreadId,
+        item_id: String,
+        payload: String,
+    ) -> ThreadStoreFuture<'_, Option<codex_thread_store::QueuedUserSubmissionRecord>> {
+        self.inner.update(thread_id, item_id, payload)
+    }
+
+    fn delete(&self, thread_id: ThreadId, item_id: String) -> ThreadStoreFuture<'_, bool> {
+        if self.fail_next_delete.swap(false, Ordering::SeqCst) {
+            return Box::pin(async {
+                Err(ThreadStoreError::Internal {
+                    message: "simulated crash before queue deletion".to_string(),
+                })
+            });
+        }
+        self.inner.delete(thread_id, item_id)
+    }
+
+    fn reorder(&self, thread_id: ThreadId, item_ids: Vec<String>) -> ThreadStoreFuture<'_, ()> {
+        self.inner.reorder(thread_id, item_ids)
+    }
+}
+
 fn loaded_thread_queue(test: &TestCodex) -> anyhow::Result<Arc<dyn QueueStore>> {
     let runtime = test.codex.state_db().context("state runtime unavailable")?;
     Ok(Arc::new(LocalQueueStore::new(runtime)))
@@ -204,6 +278,25 @@ fn user_input_with_media(text: &str, image: UserInput, audio: UserInput) -> Turn
         content.extend([image, audio]);
     }
     input
+}
+
+async fn persisted_client_message_count(
+    thread: &codex_core::CodexThread,
+    client_id: &str,
+) -> anyhow::Result<usize> {
+    Ok(thread
+        .load_history(/*include_archived*/ false)
+        .await?
+        .items
+        .into_iter()
+        .filter(|item| {
+            matches!(
+                item,
+                RolloutItem::EventMsg(EventMsg::UserMessage(event))
+                    if event.client_id.as_deref() == Some(client_id)
+            )
+        })
+        .count())
 }
 
 async fn emit_idle(service: &QueuedItemService, thread_id: ThreadId) {
@@ -348,6 +441,110 @@ async fn starting_a_selected_item_preserves_the_remaining_queue() -> anyhow::Res
             .message_input_texts("user")
             .last()
             .map(String::as_str)
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn persisted_admission_survives_delete_crash_without_model_replay() -> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let response =
+        responses::mount_sse_once(&server, responses::sse_completed("durable-turn")).await;
+    let test = test_codex()
+        .with_config(|config| config.include_environment_context = false)
+        .build_with_auto_env(&server)
+        .await?;
+    let thread_id = test.session_configured.thread_id;
+    let runtime = test.codex.state_db().context("state runtime unavailable")?;
+    let queue: Arc<dyn QueueStore> =
+        Arc::new(FailDeleteOnceQueueStore::new(LocalQueueStore::new(runtime)));
+    let service = QueuedItemService::new(
+        Arc::clone(&queue),
+        Weak::new(),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let queued = service
+        .enqueue(thread_id, structured_user_input("survive delete crash"))
+        .await?;
+
+    let error = service
+        .start(
+            test.codex.as_ref(),
+            Some(queued.id.clone()),
+            /*trace*/ None,
+        )
+        .await
+        .expect_err("simulated delete failure must leave the queue row durable");
+    assert!(
+        matches!(
+            error,
+            QueueServiceError::Storage(ThreadStoreError::Internal { .. })
+        ),
+        "unexpected simulated crash error: {error:?}"
+    );
+    assert_eq!(vec![queued.clone()], service.list(thread_id).await?);
+
+    // A new service instance models restart after Core persisted the message
+    // but the old process died before queue deletion.
+    let restarted = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let replay = restarted
+        .start(test.codex.as_ref(), Some(queued.id), /*trace*/ None)
+        .await?;
+    assert!(matches!(replay, StartIfIdleSubmission::Started { .. }));
+    assert!(restarted.list(thread_id).await?.is_empty());
+
+    wait_for_event_match(test.codex.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_)).then_some(())
+    })
+    .await;
+    assert_eq!(1, response.requests().len());
+    assert_eq!(
+        1,
+        persisted_client_message_count(test.codex.as_ref(), "stable-client-message").await?
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn duplicate_queued_client_ids_dispatch_to_core_once() -> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let response =
+        responses::mount_sse_once(&server, responses::sse_completed("single-turn")).await;
+    let test = test_codex()
+        .with_config(|config| config.include_environment_context = false)
+        .build_with_auto_env(&server)
+        .await?;
+    let thread_id = test.session_configured.thread_id;
+    let queue = loaded_thread_queue(&test)?;
+    let staging = QueuedItemService::new(
+        Arc::clone(&queue),
+        Weak::new(),
+        Arc::new(NoopExtensionEventSink),
+    );
+    staging
+        .enqueue(thread_id, structured_user_input("same Matrix event"))
+        .await?;
+    staging
+        .enqueue(thread_id, structured_user_input("same Matrix event"))
+        .await?;
+
+    let service = QueuedItemService::new(
+        queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
+    emit_idle(&service, thread_id).await;
+    wait_for_event_match(test.codex.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_)).then_some(())
+    })
+    .await;
+    emit_idle(&service, thread_id).await;
+
+    assert!(service.list(thread_id).await?.is_empty());
+    assert_eq!(1, response.requests().len());
+    assert_eq!(
+        1,
+        persisted_client_message_count(test.codex.as_ref(), "stable-client-message").await?
     );
     Ok(())
 }
@@ -640,17 +837,10 @@ async fn externally_changed_queues_dispatch_independently_and_retry_failed_wakes
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn rejected_queue_messages_are_consumed_without_retrying_or_blocking_followups()
--> anyhow::Result<()> {
+async fn rejected_queue_messages_remain_durable_and_block_followups() -> anyhow::Result<()> {
     let server = start_mock_server().await;
-    let responses = responses::mount_sse_sequence(
-        &server,
-        ["initial-turn", "following-turn"]
-            .into_iter()
-            .map(responses::sse_completed)
-            .collect(),
-    )
-    .await;
+    let responses =
+        responses::mount_sse_once(&server, responses::sse_completed("initial-turn")).await;
     let (installed, extensions) = registered_queue_extensions();
     let test = test_codex()
         .with_extensions(extensions)
@@ -665,9 +855,8 @@ async fn rejected_queue_messages_are_consumed_without_retrying_or_blocking_follo
         Weak::new(),
         Arc::new(NoopExtensionEventSink),
     );
-    for prompt in ["blocked", "C"] {
-        staging.enqueue(thread_id, user_input(prompt)).await?;
-    }
+    let blocked = staging.enqueue(thread_id, user_input("blocked")).await?;
+    let following = staging.enqueue(thread_id, user_input("C")).await?;
     let queue = install_registered_queue(&test, installed.as_ref())?;
 
     tokio::time::timeout(Duration::from_secs(10), async {
@@ -692,19 +881,19 @@ async fn rejected_queue_messages_are_consumed_without_retrying_or_blocking_follo
                 .context("model request has no user input")
         })
         .collect::<anyhow::Result<Vec<_>>>()?;
-    assert_eq!(vec!["A", "C"], prompts);
+    assert_eq!(vec!["A"], prompts);
     let hook_log = std::fs::read_to_string(test.codex_home_path().join("queue_prompt_hook.log"))?;
-    assert_eq!(
-        vec!["A", "blocked", "C"],
-        hook_log.lines().collect::<Vec<_>>()
-    );
-    assert!(queue.list(thread_id).await?.is_empty());
-    assert_eq!(2, responses.requests().len());
+    let hook_lines = hook_log.lines().collect::<Vec<_>>();
+    assert_eq!(Some(&"A"), hook_lines.first());
+    assert!(hook_lines[1..].iter().all(|line| *line == "blocked"));
+    assert!(hook_lines.len() >= 2);
+    assert_eq!(vec![blocked, following], queue.list(thread_id).await?);
+    assert_eq!(1, responses.requests().len());
     Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn explicitly_started_rejected_queue_messages_are_consumed() -> anyhow::Result<()> {
+async fn explicitly_started_rejected_queue_messages_remain_durable() -> anyhow::Result<()> {
     let server = start_mock_server().await;
     let responses =
         responses::mount_sse_once(&server, responses::sse_completed("unexpected-turn")).await;
@@ -722,18 +911,29 @@ async fn explicitly_started_rejected_queue_messages_are_consumed() -> anyhow::Re
     );
 
     let rejected = queue.enqueue(thread_id, user_input("blocked")).await?;
-    let submission = tokio::time::timeout(
+    let error = tokio::time::timeout(
         Duration::from_secs(10),
-        queue.start(test.codex.as_ref(), Some(rejected.id), /*trace*/ None),
+        queue.start(
+            test.codex.as_ref(),
+            Some(rejected.id.clone()),
+            /*trace*/ None,
+        ),
     )
     .await?
-    .expect("explicitly started input should be submitted");
-    assert!(matches!(submission, StartIfIdleSubmission::Started { .. }));
+    .expect_err("hook rejection must not consume an unpersisted queue item");
+    let QueueServiceError::CoreSubmissionError(error) = error else {
+        anyhow::bail!("unexpected hook rejection error: {error:?}");
+    };
+    assert!(matches!(
+        error.details(),
+        CodexErrorDetails::InvalidRequest(message)
+            if message == "user message was rejected by a hook"
+    ));
     wait_for_event_match(test.codex.as_ref(), |event| {
         matches!(event, EventMsg::TurnComplete(_)).then_some(())
     })
     .await;
-    assert!(queue.list(thread_id).await?.is_empty());
+    assert_eq!(vec![rejected], queue.list(thread_id).await?);
     let hook_log = std::fs::read_to_string(test.codex_home_path().join("queue_prompt_hook.log"))?;
     assert_eq!(vec!["blocked"], hook_log.lines().collect::<Vec<_>>());
     assert!(responses.requests().is_empty());

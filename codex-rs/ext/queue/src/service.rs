@@ -16,6 +16,7 @@ use codex_extension_api::ThreadIdleCause;
 use codex_extension_api::ThreadIdleInput;
 use codex_extension_api::ThreadLifecycleContributor;
 use codex_extension_api::ThreadResumeInput;
+use codex_history::RolloutItem;
 use codex_protocol::ThreadId;
 use codex_protocol::error::CodexErr;
 use codex_protocol::models::snapshot_local_user_input;
@@ -387,9 +388,17 @@ impl QueuedItemService {
         let input @ TurnInput::UserInput { .. } = item.input else {
             return Err(QueueServiceError::InvalidInput);
         };
+        let client_id = queued_client_id(&input)?;
+        if let Some(turn_id) = persisted_turn_for_client_id(thread, client_id).await? {
+            self.delete_locked(thread_id, queued_item_id).await?;
+            return Ok(StartIfIdleSubmission::Started { turn_id });
+        }
         let submission = thread
-            .start_turn_if_idle(TurnInputRequest::new(input).with_trace(trace))
-            .await?;
+            .start_turn_if_idle_and_wait_for_persisted_admission(
+                TurnInputRequest::new(input).with_trace(trace),
+            )
+            .await
+            .map_err(CodexErr::from)?;
         if matches!(submission, StartIfIdleSubmission::Started { .. }) {
             self.delete_locked(thread_id, queued_item_id).await?;
         }
@@ -430,9 +439,23 @@ impl QueuedItemService {
                 continue;
             }
 
+            let client_id = queued_client_id(&input)?;
+            if let Some(turn_id) = persisted_turn_for_client_id(&thread, client_id).await? {
+                tracing::info!(
+                    %thread_id,
+                    %queued_item_id,
+                    %client_id,
+                    %turn_id,
+                    "discarding queued user input already persisted by Core"
+                );
+                self.delete_locked(thread_id, queued_item_id).await?;
+                continue;
+            }
+
             match thread
-                .start_turn_if_idle(TurnInputRequest::new(input))
+                .start_turn_if_idle_and_wait_for_persisted_admission(TurnInputRequest::new(input))
                 .await
+                .map_err(CodexErr::from)
             {
                 Ok(StartIfIdleSubmission::Started { .. }) => {
                     self.delete_locked(thread_id, queued_item_id).await?;
@@ -564,4 +587,83 @@ fn queued_item_from_record(
         id: record.id,
         input: serde_json::from_str::<TurnInput>(&record.payload)?,
     })
+}
+
+fn queued_client_id(input: &TurnInput) -> Result<&str, QueueServiceError> {
+    let TurnInput::UserInput {
+        client_id: Some(client_id),
+        ..
+    } = input
+    else {
+        return Err(QueueServiceError::InvalidInput);
+    };
+    if client_id.is_empty() {
+        return Err(QueueServiceError::InvalidInput);
+    }
+    Ok(client_id)
+}
+
+/// Returns the first durable turn that already contains this client message.
+///
+/// Queue deletion and rollout persistence are separate stores. A process can
+/// therefore die after the rollout flush and before deleting the queue row.
+/// The durable user-message client id is the recovery join: once observed,
+/// dispatch removes the stale queue row without ever submitting it again.
+async fn persisted_turn_for_client_id(
+    thread: &CodexThread,
+    client_id: &str,
+) -> Result<Option<String>, QueueServiceError> {
+    // Local threads are materialized lazily. Before the first accepted user
+    // message the configured rollout path is intentionally absent, so there
+    // cannot yet be a durable client-id match to reconcile.
+    if let Some(path) = thread.rollout_path() {
+        match tokio::fs::metadata(&path).await {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(ThreadStoreError::Internal {
+                    message: format!(
+                        "failed to inspect rollout path `{}` before queue reconciliation: {error}",
+                        path.display()
+                    ),
+                }
+                .into());
+            }
+        }
+    }
+    let history = thread.load_history(/*include_archived*/ false).await?;
+    let mut current_turn_id = None;
+    let mut found = None;
+    for item in history.items {
+        match item {
+            RolloutItem::EventMsg(EventMsg::TurnStarted(event)) => {
+                current_turn_id = Some(event.turn_id);
+            }
+            RolloutItem::TurnContext(context) => {
+                if context.turn_id.is_some() {
+                    current_turn_id = context.turn_id;
+                }
+            }
+            RolloutItem::EventMsg(EventMsg::UserMessage(event))
+                if event.client_id.as_deref() == Some(client_id) =>
+            {
+                let Some(turn_id) = current_turn_id.clone() else {
+                    return Err(ThreadStoreError::Internal {
+                        message: format!(
+                            "persisted user message {client_id} has no owning turn identity"
+                        ),
+                    }
+                    .into());
+                };
+                found.get_or_insert(turn_id);
+            }
+            RolloutItem::EventMsg(EventMsg::TurnComplete(event)) => {
+                if current_turn_id.as_deref() == Some(event.turn_id.as_str()) {
+                    current_turn_id = None;
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(found)
 }

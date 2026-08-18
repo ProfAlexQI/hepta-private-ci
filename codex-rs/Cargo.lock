@@ -3461,6 +3461,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-matrixd"
+version = "0.0.0"
+dependencies = [
+ "codex-app-server-client",
+ "codex-app-server-protocol",
+ "codex-hepta-agentd",
+ "codex-hepta-contracts",
+ "codex-hepta-matrix-protocol",
+ "codex-utils-absolute-path",
+ "pretty_assertions",
+ "serde",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "codex-hepta-memory"
 version = "0.0.0"
 dependencies = [
@@ -4220,6 +4236,7 @@ dependencies = [
  "anyhow",
  "codex-core",
  "codex-extension-api",
+ "codex-history",
  "codex-protocol",
  "codex-state",
  "codex-thread-store",

@@ -53,6 +53,7 @@ members = [
     "hepta-supervisor",
     "hepta-memory",
     "hepta-matrix-protocol",
+    "hepta-matrixd",
     "hepta-native-gateway",
     "hepta-operator-acceptance",
     "hepta-paths",
@@ -203,6 +204,7 @@ codex-hepta-matrix-store = { path = "hepta-matrix-store" }
 codex-hepta-supervisor = { path = "hepta-supervisor" }
 codex-hepta-memory = { path = "hepta-memory" }
 codex-hepta-matrix-protocol = { path = "hepta-matrix-protocol" }
+codex-hepta-matrixd = { path = "hepta-matrixd" }
 codex-hepta-native-gateway = { path = "hepta-native-gateway" }
 codex-hepta-paths = { path = "hepta-paths" }
 codex-hepta-runtime = { path = "hepta-runtime" }
