@@ -73,10 +73,18 @@ receipt; the canary binds those digests while still exercising a private copy.
 
 `hepta-immutable-release-tree materialize` binds the state root, install root,
 gateway/watchdog labels, and loopback port into one immutable manifest. The
-materializer requires an exact lowercase 40-hex `--source-commit`; it never
-infers provenance from the current directory. It also invokes the candidate
-executable's exact live-shell contract before copying it and again when the
-manifest is verified.
+v2 materializer runs only from its canonical clean Git repository, requires
+`HEAD` to equal the exact lowercase 40-hex `--source-commit`, and binds that
+commit and tree plus the blob OID and working-byte SHA-256 of all eight release
+scripts. Every script must be a tracked executable blob at that commit. It also
+invokes the candidate executable's exact live-shell contract before copying it
+and again when the manifest is verified. The published release is a typed
+closed world containing only directories and single-linked regular files:
+directories are `0500`, the binary and scripts are `0500`, and every other
+file is `0400`. ACLs, xattrs, and BSD flags are forbidden. The typed inventory,
+complete SHA-256 namespace, manifest, and their own closure metadata are all
+recomputed by verification; an extra node or coherent downgrade of the
+declared snapshot profile is rejected.
 The
 labels and port remain compatible with the existing internal production
 service, but state and executable roots are intentionally separate:
@@ -116,40 +124,82 @@ never self-heals by restarting or changing a generation.
 
 The runtime must never attach to the mutable legacy SQLite namespace. After
 the legacy writer has been stopped, create the production vNext snapshot with
-`hepta-state-snapshot --materialize`. New receipts use the full-root v2
+`hepta-state-snapshot --materialize`. New receipts use the full-root v3
 contract: every top-level entry (including archive and release-run data) is
 covered, not only `runtime-v2`. The command independently confirms that the
 legacy launchd label is unloaded and no process has any file under the state
 root open, rejects nonempty WAL files and symlink/special/delimiter paths, and
-preserves WAL/SHM/key bytes plus mode, uid, gid, mtime, BSD flags, ACLs, and
-xattrs. Regular-file hardlinks are bound by a portable alias-group inventory,
+preserves WAL/SHM/key bytes plus mode, uid, gid, mtime, BSD flags, deny-only
+ACLs, and xattrs. The v3 ACL profile rejects every allow ACE on either a file
+or directory, while binding and preserving an admitted deny-only ACL exactly
+through the destination binding, persisted canary, and bridge evidence.
+Regular-file hardlinks are bound by a portable alias-group inventory,
 preserved across materialization, and reverified; an alias whose kernel link
 count extends outside the state root is rejected rather than silently split.
+A separately hashed per-node mode inventory binds every original mode. The v3
+mode profile is an exact allowlist derived from the observed production root:
+regular files may be only `0400`, `0444`, `0500`, or `0600`, and directories
+must be `0700`. Every other mode, including `0644`, special bits, or any
+group/world write or execute permission, is rejected. Copy and verification preserve each admitted mode
+exactly rather than normalizing it.
 A source identity inventory (device/inode/ctime included) detects drift
 during the copy; a separate portable payload inventory is compared across the
 copy boundary. A destination-derived binding prevents replaying a receipt
-against another copied root. Existing runtime-v2-only v1 receipts remain
-verifiable for an old v1 release only. A release whose manifest declares
-`full-state-root-v2` rejects v1 snapshot/canary evidence during both persisted
-canary generation and bridge preparation.
+against another copied root. Existing v1 and v2 receipts remain verifiable for
+their historical release profiles only. A release whose manifest declares the
+exact `full-state-root-v3` receipt schema and mode profile rejects v1 or v2
+snapshot/canary evidence during both persisted canary generation and bridge
+preparation.
 
-The tool does not stop or start either service. The receipt is first reserved
-as `pending`, then sealed only after the destination and binding are published;
+The tool does not stop or start either service. An atomic, destination-derived
+`mkdir` lock serializes same-target attempts. It contains the inspectable
+pending operation and is deliberately retained after abnormal exit. The
+destination directory, binding, and ready receipt are each published
+no-replace and followed by file/directory `fsync`; no ready path overwrites a
+pending path. After destination and binding publication, the tool performs its
+final full source rescan and formally verifies the exact staged ready receipt
+and source before atomically publishing those ready bytes. Only a successful
+post-publication byte/metadata check removes the operation lock.
+
+> **Formal deployment gate:** the shell implementation is currently a WIP and
+> is not production-authorized. Its `mv -n` directory publication does not
+> provide Darwin `RENAME_EXCL`, pathnames are not held through long-lived
+> directory descriptors, and the final quiescence scan is not protected by a
+> writer-admission barrier that remains held through canary and cutover. Until
+> a native publisher plus a credential-separated/root-owned namespace and
+> cross-phase writer barrier close those gaps, self-test receipts are model
+> evidence only and must not authorize a snapshot, aggregate, or transition.
+
 `hepta-state-snapshot verify --receipt` recomputes the destination inventories,
 while `hepta-state-snapshot verify-source --receipt` rechecks that the original
 full root is still quiescent and identity-exact. Bridge preparation and every
 forward cutover or recutover run that source-freshness check. The persisted
-canary v2 receipt binds the snapshot id and all full-root inventory digests. If
+canary v3 receipt binds the snapshot id, profile, mode profile, and all
+full-root inventory digests. If
 the legacy generation is rolled back and writes state, the old snapshot becomes
 stale and recutover is refused until new full-root snapshot/canary/soak evidence
 is created.
+
+A crash between destination, binding, and ready-receipt publication can leave
+a partial namespace plus the retained pending operation lock. A retry for that
+destination is rejected while the lock remains. A crash after the already
+verified ready receipt commit leaves a valid receipt but still requires the
+retained lock to be inspected before manual cleanup. Recovery is deliberately
+manual and fail closed:
+keep the writer stopped, quarantine the orphan destination and derived binding
+for forensics, preserve the pending receipt, and rerun with fresh destination,
+binding, receipt paths, and a new snapshot id. Never promote, overwrite, or
+retrofit a pending attempt into a ready receipt.
 
 The old broad-capability executable is not copied into a vNext release and is
 never relabeled as `authority_all_closed`. Instead,
 `hepta-launchd-cutover-bridge prepare` archives and hashes the exact legacy
 gateway/watchdog plists alongside the exact vNext templates. It also requires
 and copies the reverified snapshot, exact-binary canary, and bounded-soak
-receipts. Its transition commands are dry-run unless `--apply` is present:
+receipts. Every bridge bundle uses the same typed closed-world policy: only
+`0500` directories and single-linked `0400` regular files, with no ACLs,
+xattrs, BSD flags, symlinks, special nodes, or unlisted paths. Its transition
+commands are dry-run unless `--apply` is present:
 
 Post-transition health verification is generation-specific and fail closed.
 The legacy generation is accepted only at `GET /health` with the exact ready
@@ -219,6 +269,14 @@ replayed, wrong-predecessor, or arbitrary rebase fails before receipt or service
 mutation. Rebase and transition pending cursors are recoverable with the same
 `recover-pending` command; recovery restores the reviewed parent/source chain
 and publishes no rebase or transition PASS.
+
+Fresh recutover evidence is cryptographically bound to the exact applied
+rollback predecessor: canonical receipt path, receipt SHA-256, plan SHA-256,
+and sequence. The canary inherits both the snapshot SHA-256 and that complete
+predecessor object, and `prepare-recutover` compares it field-for-field with
+the supplied rollback. `created_at` is informational only; freshness comes
+from the final identity/mode/ACL source rescan and `verify-source`, never from
+wall-clock age.
 
 Rebase finalization is itself a receipt-bound two-stage CAS. The ready cursor
 first records the exact pending receipt path and digest, the pending-cursor

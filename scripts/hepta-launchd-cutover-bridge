@@ -22,6 +22,129 @@ EOF
 
 sha256_file() { shasum -a 256 "$1" | awk '{print $1}'; }
 
+bridge_empty_metadata_sha256() { printf '' | shasum -a 256 | awk '{print $1}'; }
+bridge_acl_sha256() { /bin/ls -lden "$1" | sed '1d' | shasum -a 256 | awk '{print $1}'; }
+bridge_xattr_sha256() {
+  local item="$1" names name value_sha
+  if ! names="$(/usr/bin/xattr "$item" 2>/dev/null)"; then
+    echo "could not enumerate bridge-bundle xattrs: $item" >&2
+    return 1
+  fi
+  {
+    if [[ -n "$names" ]]; then
+      printf '%s\n' "$names" | LC_ALL=C sort | while IFS= read -r name; do
+        [[ "$name" != *$'\n'* && "$name" != *$'\r'* && "$name" != *'|'* ]] || exit 1
+        value_sha="$(/usr/bin/xattr -p "$name" "$item" | shasum -a 256 | awk '{print $1}')" || exit 1
+        printf '%s|%s\n' "$name" "$value_sha" || exit 1
+      done
+    fi
+  } | shasum -a 256 | awk '{print $1}'
+}
+
+bridge_validate_names() {
+  local tree_root="$1" item relative
+  while IFS= read -r -d '' item; do
+    relative="${item#"$tree_root"/}"
+    [[ "$relative" != *$'\n'* && "$relative" != *$'\r'* && "$relative" != *'|'* ]] || return 1
+  done < <(find "$tree_root" -print0)
+}
+
+bridge_typed_inventory() {
+  local tree_root="$1" output="$2" item relative item_type mode nlink size flags acl_sha xattr_sha digest empty_sha
+  [[ -d "$tree_root" && ! -L "$tree_root" ]] || return 1
+  bridge_validate_names "$tree_root" || return 1
+  empty_sha="$(bridge_empty_metadata_sha256)"
+  (
+    cd "$tree_root"
+    find . -print | LC_ALL=C sort | while IFS= read -r item; do
+      [[ "$item" != ./TYPED-INVENTORY.tsv && "$item" != ./SHA256SUMS ]] || continue
+      relative="${item#./}"; [[ "$item" != . ]] || relative=.
+      [[ ! -L "$item" ]] || exit 1
+      if [[ -f "$item" ]]; then item_type='file'
+      elif [[ -d "$item" ]]; then item_type='directory'
+      else exit 1
+      fi
+      mode="$(stat -f '%Lp' "$item")"; nlink="$(stat -f '%l' "$item")"; flags="$(stat -f '%f' "$item")"
+      if [[ "$item_type" == file ]]; then
+        [[ "$mode" == 400 && "$nlink" == 1 ]] || exit 1
+        size="$(stat -f '%z' "$item")"; digest="$(sha256_file "$item")"
+      else
+        [[ "$mode" == 500 ]] || exit 1
+        size=-; digest=-
+      fi
+      acl_sha="$(bridge_acl_sha256 "$item")" || exit 1
+      xattr_sha="$(bridge_xattr_sha256 "$item")" || exit 1
+      [[ "$flags" == 0 && "$acl_sha" == "$empty_sha" && "$xattr_sha" == "$empty_sha" ]] || exit 1
+      printf '%s|%s|%04d|%s|%s|%s|%s|%s|%s\n' "$relative" "$item_type" "$mode" "$nlink" "$size" "$flags" "$acl_sha" "$xattr_sha" "$digest"
+    done
+  ) >"$output"
+}
+
+bridge_clear_metadata() {
+  local tree_root="$1" item
+  chmod -RN "$tree_root" 2>/dev/null || true
+  while IFS= read -r -d '' item; do
+    /usr/bin/xattr -c "$item" 2>/dev/null || true
+    chflags nouchg,noschg,nohidden "$item" 2>/dev/null || true
+  done < <(find "$tree_root" -print0)
+}
+
+bridge_set_closed_modes() {
+  local tree_root="$1"
+  find "$tree_root" -type d -exec chmod 0500 {} +
+  find "$tree_root" -type f -exec chmod 0400 {} +
+}
+
+bridge_build_closure() {
+  local tree_root="$1" temp_root inventory_tmp sums_tmp relative
+  temp_root="${TMPDIR:-/tmp}"
+  inventory_tmp="$(mktemp "${temp_root%/}/hepta-bridge-inventory-build.XXXXXX")"
+  sums_tmp="$(mktemp "${temp_root%/}/hepta-bridge-sums-build.XXXXXX")"
+  trap 'rm -f "${inventory_tmp:-}" "${sums_tmp:-}"; trap - RETURN' RETURN
+  chmod 0700 "$tree_root"; rm -f "$tree_root/TYPED-INVENTORY.tsv" "$tree_root/SHA256SUMS"; chmod 0500 "$tree_root"
+  bridge_typed_inventory "$tree_root" "$inventory_tmp"
+  chmod 0700 "$tree_root"; cp "$inventory_tmp" "$tree_root/TYPED-INVENTORY.tsv"; chmod 0400 "$tree_root/TYPED-INVENTORY.tsv"
+  (cd "$tree_root" && find . -type f ! -name SHA256SUMS -print | sed 's#^./##' | LC_ALL=C sort \
+    | while IFS= read -r relative; do shasum -a 256 "$relative"; done) >"$sums_tmp"
+  cp "$sums_tmp" "$tree_root/SHA256SUMS"; chmod 0400 "$tree_root/SHA256SUMS"; chmod 0500 "$tree_root"
+  bridge_typed_inventory "$tree_root" "$inventory_tmp"
+  chmod 0700 "$tree_root"; chmod 0600 "$tree_root/TYPED-INVENTORY.tsv" "$tree_root/SHA256SUMS"
+  cp "$inventory_tmp" "$tree_root/TYPED-INVENTORY.tsv"; chmod 0400 "$tree_root/TYPED-INVENTORY.tsv"
+  (cd "$tree_root" && find . -type f ! -name SHA256SUMS -print | sed 's#^./##' | LC_ALL=C sort \
+    | while IFS= read -r relative; do shasum -a 256 "$relative"; done) >"$sums_tmp"
+  cp "$sums_tmp" "$tree_root/SHA256SUMS"; chmod 0400 "$tree_root/SHA256SUMS"
+  chmod -N "$tree_root/TYPED-INVENTORY.tsv" "$tree_root/SHA256SUMS" 2>/dev/null || true
+  /usr/bin/xattr -c "$tree_root/TYPED-INVENTORY.tsv" "$tree_root/SHA256SUMS" 2>/dev/null || true
+  chflags nouchg,noschg,nohidden "$tree_root/TYPED-INVENTORY.tsv" "$tree_root/SHA256SUMS" 2>/dev/null || true
+  chmod 0500 "$tree_root"; trap - RETURN; rm -f "$inventory_tmp" "$sums_tmp"
+}
+
+bridge_verify_closure() {
+  local bundle="$1" temp_root actual_inventory actual_paths expected_paths empty_sha closure
+  [[ -f "$bundle/TYPED-INVENTORY.tsv" && ! -L "$bundle/TYPED-INVENTORY.tsv" \
+    && -f "$bundle/SHA256SUMS" && ! -L "$bundle/SHA256SUMS" \
+    && "$(stat -f '%Lp' "$bundle/TYPED-INVENTORY.tsv")" == 400 \
+    && "$(stat -f '%Lp' "$bundle/SHA256SUMS")" == 400 \
+    && "$(stat -f '%l' "$bundle/TYPED-INVENTORY.tsv")" == 1 \
+    && "$(stat -f '%l' "$bundle/SHA256SUMS")" == 1 ]] || return 1
+  empty_sha="$(bridge_empty_metadata_sha256)"
+  for closure in "$bundle/TYPED-INVENTORY.tsv" "$bundle/SHA256SUMS"; do
+    [[ "$(stat -f '%f' "$closure")" == 0 \
+      && "$(bridge_acl_sha256 "$closure")" == "$empty_sha" \
+      && "$(bridge_xattr_sha256 "$closure")" == "$empty_sha" ]] || return 1
+  done
+  temp_root="${TMPDIR:-/tmp}"; actual_inventory="$(mktemp "${temp_root%/}/hepta-bridge-inventory-verify.XXXXXX")"
+  actual_paths="$(mktemp "${temp_root%/}/hepta-bridge-paths-verify.XXXXXX")"; expected_paths="$(mktemp "${temp_root%/}/hepta-bridge-paths-expected.XXXXXX")"
+  trap 'rm -f "${actual_inventory:-}" "${actual_paths:-}" "${expected_paths:-}"; trap - RETURN' RETURN
+  bridge_typed_inventory "$bundle" "$actual_inventory" || return 1
+  diff -u "$bundle/TYPED-INVENTORY.tsv" "$actual_inventory" >/dev/null || return 1
+  (cd "$bundle" && shasum -a 256 -c SHA256SUMS >/dev/null \
+    && find . -type f ! -name SHA256SUMS -print | sed 's#^./##' | LC_ALL=C sort >"$actual_paths" \
+    && awk '{print substr($0,67)}' SHA256SUMS | LC_ALL=C sort >"$expected_paths" \
+    && diff -u "$expected_paths" "$actual_paths" >/dev/null) || return 1
+  trap - RETURN; rm -f "$actual_inventory" "$actual_paths" "$expected_paths"
+}
+
 absolute_non_root() {
   [[ "$1" == /* \
     && "$1" != "/" \
@@ -64,7 +187,8 @@ verify_release_manifest() {
 
 verify_evidence_receipts() {
   local manifest="$1" snapshot_receipt="$2" canary_receipt="$3" soak_receipt="$4"
-  local release state_root binary_sha source_commit soak_sha manifest_sha snapshot_sha snapshot_schema manifest_snapshot_scope
+  local release state_root binary_sha source_commit soak_sha manifest_sha snapshot_sha snapshot_schema snapshot_profile snapshot_mode_profile snapshot_acl_profile
+  local manifest_snapshot_scope manifest_snapshot_schema manifest_snapshot_mode_profile manifest_snapshot_acl_profile
   local canary_manifest canary_manifest_sha canary_state_root canary_samples
   release="$(dirname "$manifest")"
   snapshot_receipt="$(canonical_file "$snapshot_receipt")" || return 1
@@ -77,10 +201,22 @@ verify_evidence_receipts() {
   snapshot_sha="$(sha256_file "$snapshot_receipt")" || return 1
   "$release/scripts/hepta-state-snapshot" verify --receipt "$snapshot_receipt" >/dev/null || return 1
   snapshot_schema="$(jq -r '.schema' "$snapshot_receipt")" || return 1
-  manifest_snapshot_scope="$(jq -r '.runtime.state_snapshot_scope // "runtime-v2-only-v1"' "$manifest")" || return 1
-  if [[ "$manifest_snapshot_scope" == full-state-root-v2 \
-    && "$snapshot_schema" != hepta_vnext_state_snapshot_receipt_v2 ]]; then
-    echo "a full-state-root-v2 release rejects legacy v1 snapshot evidence" >&2
+  snapshot_profile="$(jq -r '.profile // empty' "$snapshot_receipt")" || return 1
+  snapshot_mode_profile="$(jq -r '.mode_profile // empty' "$snapshot_receipt")" || return 1
+  snapshot_acl_profile="$(jq -r '.acl_profile // empty' "$snapshot_receipt")" || return 1
+  manifest_snapshot_scope="$(jq -r '.runtime.state_snapshot_scope // empty' "$manifest")" || return 1
+  manifest_snapshot_schema="$(jq -r '.runtime.state_snapshot_receipt_schema // empty' "$manifest")" || return 1
+  manifest_snapshot_mode_profile="$(jq -r '.runtime.state_snapshot_mode_profile // empty' "$manifest")" || return 1
+  manifest_snapshot_acl_profile="$(jq -r '.runtime.state_snapshot_acl_profile // empty' "$manifest")" || return 1
+  if [[ "$manifest_snapshot_scope" != full-state-root-v3 \
+    || "$manifest_snapshot_schema" != hepta_vnext_state_snapshot_receipt_v3 \
+    || "$manifest_snapshot_mode_profile" != hepta_vnext_state_mode_profile_v3 \
+    || "$manifest_snapshot_acl_profile" != hepta_vnext_state_acl_profile_deny_only_v1 \
+    || "$snapshot_schema" != hepta_vnext_state_snapshot_receipt_v3 \
+    || "$snapshot_profile" != full-state-root-v3 \
+    || "$snapshot_mode_profile" != hepta_vnext_state_mode_profile_v3 \
+    || "$snapshot_acl_profile" != hepta_vnext_state_acl_profile_deny_only_v1 ]]; then
+    echo "cutover requires the exact full-state-root-v3 receipt, mode, and ACL profiles" >&2
     return 1
   fi
   [[ "$(jq -r '.destination_state_root' "$snapshot_receipt")" == "$state_root" ]] || {
@@ -115,7 +251,7 @@ verify_evidence_receipts() {
   jq -e --arg binary_sha "$binary_sha" --arg source_commit "$source_commit" \
     --arg target_manifest "$manifest" --arg target_manifest_sha "$manifest_sha" \
     --arg state_root "$state_root" --arg soak_sha "$soak_sha" --arg snapshot_sha "$snapshot_sha" '
-    (.schema == "hepta_vnext_runtime_canary_e2e_v1" or .schema == "hepta_vnext_runtime_canary_e2e_v2")
+    .schema == "hepta_vnext_runtime_canary_e2e_v3"
     and .status == "ready"
     and .listen_addr == "127.0.0.1:17373"
     and .source_commit == $source_commit
@@ -145,23 +281,34 @@ verify_evidence_receipts() {
     and .non_get_rejected == true
     and .authority_all_closed == true
     and .production_service_changed == false
+    and .deny_only_acls_preserved == true
+    and (.snapshot_acl_inventory_sha256 | test("^[0-9a-f]{64}$"))
+    and .copy_acl_inventory_sha256 == .snapshot_acl_inventory_sha256
   ' "$canary_receipt" >/dev/null || { echo "invalid exact canary receipt" >&2; return 1; }
-  if [[ "$snapshot_schema" == hepta_vnext_state_snapshot_receipt_v2 ]]; then
-    jq -e --arg snapshot_sha "$snapshot_sha" \
+  jq -e --arg snapshot_sha "$snapshot_sha" \
       --arg snapshot_id "$(jq -r '.snapshot_id' "$snapshot_receipt")" \
       --arg identity "$(jq -r '.source_identity_inventory_sha256' "$snapshot_receipt")" \
       --arg portable "$(jq -r '.portable_payload_inventory_sha256' "$snapshot_receipt")" \
+      --arg modes "$(jq -r '.original_mode_inventory_sha256' "$snapshot_receipt")" \
+      --arg acls "$(jq -r '.acl_inventory_sha256' "$snapshot_receipt")" \
       --arg top "$(jq -r '.top_level_inventory_sha256' "$snapshot_receipt")" \
       --arg sidecar "$(jq -r '.sqlite_sidecar_inventory_sha256' "$snapshot_receipt")" \
       --arg key "$(jq -r '.key_inventory_sha256' "$snapshot_receipt")" \
       --arg hardlinks "$(jq -r '.hardlink_topology_inventory_sha256' "$snapshot_receipt")" '
-      .schema == "hepta_vnext_runtime_canary_e2e_v2"
+      .schema == "hepta_vnext_runtime_canary_e2e_v3"
       and .snapshot_receipt_sha256 == $snapshot_sha
-      and .snapshot_schema == "hepta_vnext_state_snapshot_receipt_v2"
+      and .snapshot_schema == "hepta_vnext_state_snapshot_receipt_v3"
+      and .snapshot_profile == "full-state-root-v3"
+      and .snapshot_mode_profile == "hepta_vnext_state_mode_profile_v3"
+      and .snapshot_acl_profile == "hepta_vnext_state_acl_profile_deny_only_v1"
       and .snapshot_id == $snapshot_id
       and .snapshot_source_identity_inventory_sha256 == $identity
       and .snapshot_portable_payload_inventory_sha256 == $portable
+      and .snapshot_original_mode_inventory_sha256 == $modes
+      and .snapshot_acl_inventory_sha256 == $acls
       and .copy_payload_sha256 == $portable
+      and .copy_mode_inventory_sha256 == $modes
+      and .copy_acl_inventory_sha256 == $acls
       and .snapshot_top_level_inventory_sha256 == $top
       and .snapshot_sqlite_sidecar_inventory_sha256 == $sidecar
       and .snapshot_key_inventory_sha256 == $key
@@ -169,16 +316,19 @@ verify_evidence_receipts() {
       and .full_state_source_copied == true
       and .full_snapshot_receipt_bound == true
       and .all_top_level_entries_copied == true
+      and .original_modes_preserved == true
+      and .deny_only_acls_preserved == true
       and .hardlinks_preserved == true
     ' "$canary_receipt" >/dev/null || {
-      echo "full-root snapshot and canary inventories are not exactly bound" >&2
+      echo "full-root v3 snapshot and canary inventories are not exactly bound" >&2
       return 1
     }
-  elif [[ "$snapshot_schema" != hepta_vnext_state_snapshot_receipt_v1 \
-    || "$(jq -r '.schema' "$canary_receipt")" != hepta_vnext_runtime_canary_e2e_v1 ]]; then
-    echo "snapshot and canary receipt schemas are incompatible" >&2
+  jq -e --argjson predecessor "$(jq -c '.recutover_predecessor' "$snapshot_receipt")" '
+    .snapshot_recutover_predecessor == $predecessor
+  ' "$canary_receipt" >/dev/null || {
+    echo "canary did not inherit the snapshot recutover predecessor exactly" >&2
     return 1
-  fi
+  }
 }
 
 verify_snapshot_source_fresh() {
@@ -459,20 +609,13 @@ prepare_bundle_locked() {
     --arg snapshot_sha "$(sha256_file "$snapshot_receipt")" \
     --arg canary_sha "$(sha256_file "$canary_receipt")" \
     --arg soak_sha "$(sha256_file "$soak_receipt")" \
-    '{schema:"hepta_vnext_launchd_bridge_plan_v1",status:"ready",manifest:$manifest,manifest_sha256:$manifest_sha256,launch_agent_root:$launch_root,vnext_install_root:$install_root,chain_cursor:$chain_cursor,operation_lock:$operation_lock,separate_legacy_install_root:true,legacy_program:$legacy_program,legacy_program_canonical:$legacy_program_canonical,legacy_program_sha256:$legacy_program_sha,labels:{gateway:$gateway_label,watchdog:$watchdog_label},legacy:{gateway:{relative_path:"legacy/gateway.plist",sha256:$legacy_gateway_sha},watchdog:{relative_path:"legacy/watchdog.plist",sha256:$legacy_watchdog_sha},authority_not_reclassified:true},vnext:{gateway:{relative_path:"vnext/gateway.plist",sha256:$vnext_gateway_sha},watchdog:{relative_path:"vnext/watchdog.plist",sha256:$vnext_watchdog_sha},authority_all_closed:true},evidence:{snapshot:{relative_path:"evidence/state-snapshot.json",sha256:$snapshot_sha},canary:{relative_path:"evidence/canary.json",sha256:$canary_sha},soak:{relative_path:"evidence/soak.json",sha256:$soak_sha},all_required:true},transitions:["cutover","rollback","recutover"],service_changed:false}' >"$plan" || return 1
+    '{schema:"hepta_vnext_launchd_bridge_plan_v1",status:"ready",manifest:$manifest,manifest_sha256:$manifest_sha256,launch_agent_root:$launch_root,vnext_install_root:$install_root,chain_cursor:$chain_cursor,operation_lock:$operation_lock,bundle_closure:{profile:"bridge-bundle-v1",typed_inventory:"TYPED-INVENTORY.tsv",sha256sums:"SHA256SUMS",directories_mode:"0500",files_mode:"0400",regular_nlink_one:true,acls_rejected:true,xattrs_rejected:true,bsd_flags_rejected:true},separate_legacy_install_root:true,legacy_program:$legacy_program,legacy_program_canonical:$legacy_program_canonical,legacy_program_sha256:$legacy_program_sha,labels:{gateway:$gateway_label,watchdog:$watchdog_label},legacy:{gateway:{relative_path:"legacy/gateway.plist",sha256:$legacy_gateway_sha},watchdog:{relative_path:"legacy/watchdog.plist",sha256:$legacy_watchdog_sha},authority_not_reclassified:true},vnext:{gateway:{relative_path:"vnext/gateway.plist",sha256:$vnext_gateway_sha},watchdog:{relative_path:"vnext/watchdog.plist",sha256:$vnext_watchdog_sha},authority_all_closed:true},evidence:{snapshot:{relative_path:"evidence/state-snapshot.json",sha256:$snapshot_sha},canary:{relative_path:"evidence/canary.json",sha256:$canary_sha},soak:{relative_path:"evidence/soak.json",sha256:$soak_sha},all_required:true},transitions:["cutover","rollback","recutover"],service_changed:false}' >"$plan" || return 1
   chmod 0400 "$plan" || return 1
-  local sums
-  sums="$(
-    cd "$stage"
-    find . -type f ! -name SHA256SUMS -print | sed 's#^./##' | LC_ALL=C sort | while IFS= read -r item; do shasum -a 256 "$item"; done
-  )"
-  (
-    cd "$stage"
-    printf '%s\n' "$sums" >SHA256SUMS
-    chmod 0400 SHA256SUMS
-  )
-  chmod 0500 "$stage" "$stage/legacy" "$stage/vnext" "$stage/evidence" || return 1
-  mv "$stage" "$bundle" || return 1
+  bridge_set_closed_modes "$stage" || return 1
+  bridge_clear_metadata "$stage"
+  bridge_build_closure "$stage"
+  mv -n "$stage" "$bundle" || return 1
+  [[ ! -e "$stage" && -d "$bundle" ]] || return 1
   stage=""
   trap - RETURN
   verify_bundle "$bundle" >/dev/null || return 1
@@ -496,6 +639,14 @@ verify_bundle() {
     echo "bridge bundle is missing or unsafe" >&2
     return 1
   }
+  [[ "$(cd "$bundle" && pwd -P)" == "$bundle" ]] || {
+    echo "bridge bundle must be a physical canonical directory" >&2
+    return 1
+  }
+  bridge_verify_closure "$bundle" || {
+    echo "bridge bundle closed-world verification failed" >&2
+    return 1
+  }
   if find "$bundle" -type l -print -quit | grep -q .; then
     echo "bridge bundle contains a symlink" >&2
     return 1
@@ -504,23 +655,6 @@ verify_bundle() {
     echo "bridge bundle contains a special filesystem entry" >&2
     return 1
   fi
-  while IFS= read -r item; do
-    local mode
-    mode="$(stat -f '%Lp' "$item")"
-    (( (8#$mode & 077) == 0 )) || { echo "bridge bundle exposes group/world permissions: $item" >&2; return 1; }
-  done < <(find "$bundle" -print)
-  (
-    cd "$bundle" || exit 1
-    shasum -a 256 -c SHA256SUMS >/dev/null || exit 1
-    local temp_root actual_inventory manifest_inventory
-    temp_root="${TMPDIR:-/tmp}"
-    actual_inventory="$(mktemp "${temp_root%/}/hepta-bridge-actual.XXXXXX")" || exit 1
-    manifest_inventory="$(mktemp "${temp_root%/}/hepta-bridge-manifest.XXXXXX")" || exit 1
-    trap 'rm -f "$actual_inventory" "$manifest_inventory"' EXIT
-    find . -type f ! -name SHA256SUMS -print | sed 's#^./##' | LC_ALL=C sort >"$actual_inventory" || exit 1
-    awk '{print substr($0, 67)}' SHA256SUMS | LC_ALL=C sort >"$manifest_inventory" || exit 1
-    diff -u "$manifest_inventory" "$actual_inventory" >/dev/null || exit 1
-  ) || { echo "bridge bundle inventory verification failed" >&2; return 1; }
   plan="$bundle/plan.json"
   jq -e '
     (.schema == "hepta_vnext_launchd_bridge_plan_v1" or .schema == "hepta_vnext_launchd_bridge_plan_v2")
@@ -530,6 +664,7 @@ verify_bundle() {
     and .legacy.authority_not_reclassified == true
     and .vnext.authority_all_closed == true
     and .evidence.all_required == true
+    and .bundle_closure == {profile:"bridge-bundle-v1",typed_inventory:"TYPED-INVENTORY.tsv",sha256sums:"SHA256SUMS",directories_mode:"0500",files_mode:"0400",regular_nlink_one:true,acls_rejected:true,xattrs_rejected:true,bsd_flags_rejected:true}
     and .evidence.snapshot.relative_path == "evidence/state-snapshot.json"
     and .evidence.canary.relative_path == "evidence/canary.json"
     and .evidence.soak.relative_path == "evidence/soak.json"
@@ -555,6 +690,7 @@ verify_bundle() {
         .predecessor_rollback.plan_sha256 != .parent_plan_sha256
       else .predecessor_rollback.plan_sha256 == .parent_plan_sha256 end)
       and .fresh_evidence_required == true
+      and .fresh_evidence_predecessor == .predecessor_rollback
       and .chain_rebase_required == true
       and .transitions == ["recutover","rollback"]
     else true end)
@@ -775,7 +911,7 @@ verify_current_rebase_head_provenance() {
 prepare_recutover_bundle_locked() {
   local manifest="$1" launch_root="$2" bundle="$3" snapshot_receipt="$4" canary_receipt="$5" soak_receipt="$6"
   local parent_bundle="$7" predecessor_receipt="$8" parent_plan parent_plan_sha parent_plan_schema parent_epoch epoch chain_cursor predecessor_sha predecessor_sequence predecessor_plan_sha supersedes=false
-  local base_bundle plan_tmp sums
+  local base_bundle plan_tmp
   verify_bundle "$parent_bundle" >/dev/null || return 1
   parent_bundle="$(cd "$parent_bundle" && pwd -P)"
   parent_plan="$parent_bundle/plan.json"
@@ -807,9 +943,28 @@ prepare_recutover_bundle_locked() {
       "$predecessor_receipt" "$predecessor_sha" || return 1
     supersedes=true
   fi
-  [[ "$(jq -r '.schema' "$snapshot_receipt")" == hepta_vnext_state_snapshot_receipt_v2 \
-    && "$(jq -r '.schema' "$canary_receipt")" == hepta_vnext_runtime_canary_e2e_v2 ]] || {
-    echo "recutover preparation requires fresh full-root v2 snapshot and canary evidence" >&2
+  [[ "$(jq -r '.schema' "$snapshot_receipt")" == hepta_vnext_state_snapshot_receipt_v3 \
+    && "$(jq -r '.profile' "$snapshot_receipt")" == full-state-root-v3 \
+    && "$(jq -r '.mode_profile' "$snapshot_receipt")" == hepta_vnext_state_mode_profile_v3 \
+    && "$(jq -r '.acl_profile' "$snapshot_receipt")" == hepta_vnext_state_acl_profile_deny_only_v1 \
+    && "$(jq -r '.schema' "$canary_receipt")" == hepta_vnext_runtime_canary_e2e_v3 ]] || {
+    echo "recutover preparation requires fresh exact full-root v3 snapshot and canary evidence" >&2
+    return 1
+  }
+  jq -e --arg receipt "$predecessor_receipt" --arg sha "$predecessor_sha" \
+    --arg plan "$predecessor_plan_sha" --argjson sequence "$predecessor_sequence" '
+    .recutover_predecessor == {receipt:$receipt,sha256:$sha,plan_sha256:$plan,sequence:$sequence}
+  ' "$snapshot_receipt" >/dev/null || {
+    echo "fresh recutover snapshot is not bound to the supplied rollback predecessor" >&2
+    return 1
+  }
+  jq -e --arg snapshot_sha "$(sha256_file "$snapshot_receipt")" \
+    --arg receipt "$predecessor_receipt" --arg sha "$predecessor_sha" \
+    --arg plan "$predecessor_plan_sha" --argjson sequence "$predecessor_sequence" '
+    .snapshot_receipt_sha256 == $snapshot_sha
+    and .snapshot_recutover_predecessor == {receipt:$receipt,sha256:$sha,plan_sha256:$plan,sequence:$sequence}
+  ' "$canary_receipt" >/dev/null || {
+    echo "fresh recutover canary did not inherit the exact snapshot/predecessor binding" >&2
     return 1
   }
   base_bundle="$(dirname "$bundle")/.hepta-recutover-base.$$.${RANDOM}"
@@ -827,6 +982,7 @@ prepare_recutover_bundle_locked() {
     | .parent_epoch = $parent_epoch
     | .parent_plan_sha256 = $parent_plan_sha256
     | .predecessor_rollback = {receipt:$predecessor_receipt,sha256:$predecessor_sha,plan_sha256:$predecessor_plan_sha,sequence:$predecessor_sequence}
+    | .fresh_evidence_predecessor = {receipt:$predecessor_receipt,sha256:$predecessor_sha,plan_sha256:$predecessor_plan_sha,sequence:$predecessor_sequence}
     | .parent_chain_head = {plan_sha256:$parent_plan_sha256,sequence:$predecessor_sequence,current_generation:"legacy",head_receipt:$predecessor_receipt,head_receipt_sha256:$predecessor_sha}
     | .supersedes_unapplied_epoch = $supersedes
     | .fresh_evidence_required = true
@@ -835,12 +991,12 @@ prepare_recutover_bundle_locked() {
   ' "$base_bundle/plan.json" >"$plan_tmp"
   cp "$plan_tmp" "$base_bundle/plan.json"
   chmod 0400 "$base_bundle/plan.json"
-  sums="$(cd "$base_bundle" && find . -type f ! -name SHA256SUMS -print | sed 's#^./##' | LC_ALL=C sort | while IFS= read -r item; do shasum -a 256 "$item"; done)"
-  printf '%s\n' "$sums" >"$base_bundle/SHA256SUMS"
-  chmod 0400 "$base_bundle/SHA256SUMS"
-  chmod 0500 "$base_bundle" "$base_bundle/legacy" "$base_bundle/vnext" "$base_bundle/evidence"
+  bridge_set_closed_modes "$base_bundle"
+  bridge_clear_metadata "$base_bundle"
+  bridge_build_closure "$base_bundle"
   [[ ! -e "$bundle" && ! -L "$bundle" ]] || { echo "bridge bundle already exists: $bundle" >&2; return 1; }
-  mv "$base_bundle" "$bundle"
+  mv -n "$base_bundle" "$bundle"
+  [[ ! -e "$base_bundle" && -d "$bundle" ]] || return 1
   base_bundle=""
   verify_bundle "$bundle" >/dev/null || return 1
   jq -cn --arg bundle "$bundle" --arg plan_sha256 "$(sha256_file "$bundle/plan.json")" \
@@ -2125,6 +2281,7 @@ self_test_payload_v1() {
 
 self_test_create_v2_evidence() {
   local materializer="$1" fixture_binary="$2" legacy_state="$3" root="$4" suffix="$5"
+  local predecessor_receipt="${6:-}"
   local release install_root state_copy snapshot_receipt soak_receipt canary_receipt
   local binary_sha manifest_sha snapshot_sha source_commit
   release="$root/release-$suffix"
@@ -2133,16 +2290,23 @@ self_test_create_v2_evidence() {
   snapshot_receipt="$root/evidence/state-snapshot-$suffix.json"
   soak_receipt="$root/evidence/soak-$suffix.json"
   canary_receipt="$root/evidence/canary-$suffix.json"
-  source_commit="$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --verify 'HEAD^{commit}')"
+  source_commit="$(git -C "$(dirname "$materializer")/.." rev-parse --verify 'HEAD^{commit}')"
   "$materializer" materialize --binary "$fixture_binary" --destination "$release" \
     --state-root "$state_copy" --install-root "$install_root" \
     --gateway-label ai.hepta.gateway --watchdog-label ai.hepta.installed-live-watchdog \
     --listen-port 17373 --source-commit "$source_commit" >/dev/null
   "$release/scripts/hepta-generation-pointer" initialize \
     --install-root "$install_root" --manifest "$release/manifest.json" >/dev/null
-  "$release/scripts/hepta-state-snapshot" \
-    --source-state-root "$legacy_state" --destination-state-root "$state_copy" \
-    --legacy-label ai.hepta.bridge.selftest --receipt "$snapshot_receipt" --materialize >/dev/null
+  if [[ -n "$predecessor_receipt" ]]; then
+    "$release/scripts/hepta-state-snapshot" \
+      --source-state-root "$legacy_state" --destination-state-root "$state_copy" \
+      --legacy-label ai.hepta.bridge.selftest --receipt "$snapshot_receipt" \
+      --predecessor-rollback-receipt "$predecessor_receipt" --materialize >/dev/null
+  else
+    "$release/scripts/hepta-state-snapshot" \
+      --source-state-root "$legacy_state" --destination-state-root "$state_copy" \
+      --legacy-label ai.hepta.bridge.selftest --receipt "$snapshot_receipt" --materialize >/dev/null
+  fi
   binary_sha="$(jq -r '.artifact.sha256' "$release/manifest.json")"
   manifest_sha="$(sha256_file "$release/manifest.json")"
   snapshot_sha="$(sha256_file "$snapshot_receipt")"
@@ -2156,12 +2320,15 @@ self_test_create_v2_evidence() {
     --arg snapshot_id "$(jq -r '.snapshot_id' "$snapshot_receipt")" \
     --arg snapshot_identity "$(jq -r '.source_identity_inventory_sha256' "$snapshot_receipt")" \
     --arg snapshot_portable "$(jq -r '.portable_payload_inventory_sha256' "$snapshot_receipt")" \
+    --arg snapshot_modes "$(jq -r '.original_mode_inventory_sha256' "$snapshot_receipt")" \
+    --arg snapshot_acls "$(jq -r '.acl_inventory_sha256' "$snapshot_receipt")" \
     --arg snapshot_top "$(jq -r '.top_level_inventory_sha256' "$snapshot_receipt")" \
     --arg snapshot_sidecar "$(jq -r '.sqlite_sidecar_inventory_sha256' "$snapshot_receipt")" \
     --arg snapshot_key "$(jq -r '.key_inventory_sha256' "$snapshot_receipt")" \
     --arg snapshot_hardlinks "$(jq -r '.hardlink_topology_inventory_sha256' "$snapshot_receipt")" \
     --arg canary_state_root "$root/private-copy-$suffix" --arg soak_sha "$(sha256_file "$soak_receipt")" \
-    '{schema:"hepta_vnext_runtime_canary_e2e_v2",status:"ready",listen_addr:"127.0.0.1:17373",source_commit:$source_commit,source_tree_clean:true,binary_sha256:$binary_sha,manifest:$manifest,manifest_sha256:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",canary_state_root:$canary_state_root,target_manifest:$target_manifest,target_manifest_sha256:$target_manifest_sha,snapshot_receipt_sha256:$snapshot_sha,snapshot_schema:"hepta_vnext_state_snapshot_receipt_v2",snapshot_id:$snapshot_id,snapshot_source_identity_inventory_sha256:$snapshot_identity,snapshot_portable_payload_inventory_sha256:$snapshot_portable,snapshot_top_level_inventory_sha256:$snapshot_top,snapshot_sqlite_sidecar_inventory_sha256:$snapshot_sidecar,snapshot_key_inventory_sha256:$snapshot_key,snapshot_hardlink_topology_inventory_sha256:$snapshot_hardlinks,source_state_root:$state_root,source_inventory_sha256:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",copy_payload_sha256:$snapshot_portable,soak_receipt_sha256:$soak_sha,soak_samples:3,production_inventory_sha256:"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",schema_v5_open_existing:true,keyed_integrity_verified:true,immutable_query_only:true,requires_empty_wal:true,source_state_copied:true,full_state_source_copied:true,full_snapshot_receipt_bound:true,all_top_level_entries_copied:true,hardlinks_preserved:true,source_unchanged:true,copy_unchanged:true,metadata_and_hash_checked:true,installer_dry_run:true,protected_routes_absent:true,non_get_rejected:true,authority_all_closed:true,production_service_changed:false}' >"$canary_receipt"
+    --argjson predecessor "$(jq -c '.recutover_predecessor' "$snapshot_receipt")" \
+    '{schema:"hepta_vnext_runtime_canary_e2e_v3",status:"ready",listen_addr:"127.0.0.1:17373",source_commit:$source_commit,source_tree_clean:true,binary_sha256:$binary_sha,manifest:$manifest,manifest_sha256:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",canary_state_root:$canary_state_root,target_manifest:$target_manifest,target_manifest_sha256:$target_manifest_sha,snapshot_receipt_sha256:$snapshot_sha,snapshot_schema:"hepta_vnext_state_snapshot_receipt_v3",snapshot_profile:"full-state-root-v3",snapshot_mode_profile:"hepta_vnext_state_mode_profile_v3",snapshot_acl_profile:"hepta_vnext_state_acl_profile_deny_only_v1",snapshot_id:$snapshot_id,snapshot_source_identity_inventory_sha256:$snapshot_identity,snapshot_portable_payload_inventory_sha256:$snapshot_portable,snapshot_original_mode_inventory_sha256:$snapshot_modes,snapshot_acl_inventory_sha256:$snapshot_acls,snapshot_top_level_inventory_sha256:$snapshot_top,snapshot_sqlite_sidecar_inventory_sha256:$snapshot_sidecar,snapshot_key_inventory_sha256:$snapshot_key,snapshot_hardlink_topology_inventory_sha256:$snapshot_hardlinks,snapshot_recutover_predecessor:$predecessor,source_state_root:$state_root,source_inventory_sha256:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",copy_payload_sha256:$snapshot_portable,copy_mode_inventory_sha256:$snapshot_modes,copy_acl_inventory_sha256:$snapshot_acls,soak_receipt_sha256:$soak_sha,soak_samples:3,production_inventory_sha256:"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",schema_v5_open_existing:true,keyed_integrity_verified:true,immutable_query_only:true,requires_empty_wal:true,source_state_copied:true,full_state_source_copied:true,full_snapshot_receipt_bound:true,all_top_level_entries_copied:true,original_modes_preserved:true,deny_only_acls_preserved:true,hardlinks_preserved:true,source_unchanged:true,copy_unchanged:true,metadata_and_hash_checked:true,installer_dry_run:true,protected_routes_absent:true,non_get_rejected:true,authority_all_closed:true,production_service_changed:false}' >"$canary_receipt"
   printf '%s\t%s\t%s\t%s\n' "$release" "$snapshot_receipt" "$canary_receipt" "$soak_receipt"
 }
 
@@ -2172,6 +2339,7 @@ self_test() {
   local manifest_sha snapshot_sha lock_receipt generation_lock_receipt replay_receipt stale_snapshot_receipt bad_canary bad_bundle
   local transition_pending_copy saved_transition_receipt transition_receipt_sha transition_cursor_sha
   local legacy_v1_snapshot legacy_v1_canary legacy_v1_bundle legacy_v1_source_inventory legacy_v1_payload_inventory
+  local legacy_v2_snapshot legacy_v2_binding legacy_v2_canary legacy_v2_bundle
   local log_symlink_receipt log_child_symlink_receipt
   local release2 install_root2 fresh_snapshot_receipt fresh_canary_receipt fresh_soak_receipt fresh_snapshot_sha
   local recutover_bundle fork_bundle rebase_fault_receipt rebase_receipt v2_pending_receipt v2_recutover_receipt v2_rollback_receipt
@@ -2188,11 +2356,15 @@ self_test() {
   local v2_pending_gateway_sha v2_pending_watchdog_sha tamper_mode tampered_receipt
   local v2_final_missing_health v2_final_swapped_health v2_final_original_sha v2_final_cursor_sha
   local v2_final_gateway_sha v2_final_watchdog_sha
+  local source_repository tooling_repository relative
+  local closure_tamper_bundle external_hardlink_source
+  local old_timestamp_snapshot old_timestamp_canary old_timestamp_bundle
+  local predecessor_field predecessor_tamper_receipt predecessor_tamper_snapshot predecessor_tamper_canary predecessor_tamper_bundle
   temp_root="${TMPDIR:-/tmp}"
   root="$(mktemp -d "${temp_root%/}/hepta-launchd-bridge-self-test.XXXXXX")"
   HEPTA_BRIDGE_SELF_TEST_ROOT="$root"
   HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID=""
-  trap 'if [[ -n "${HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID:-}" ]]; then kill "$HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID" 2>/dev/null || true; wait "$HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID" 2>/dev/null || true; fi; chmod -R u+w "$HEPTA_BRIDGE_SELF_TEST_ROOT" 2>/dev/null || true; rm -rf "$HEPTA_BRIDGE_SELF_TEST_ROOT"' EXIT
+  trap 'if [[ -n "${HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID:-}" ]]; then kill "$HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID" 2>/dev/null || true; wait "$HEPTA_BRIDGE_SELF_TEST_HEALTH_SERVER_PID" 2>/dev/null || true; fi; chflags -R nouchg,noschg "$HEPTA_BRIDGE_SELF_TEST_ROOT" 2>/dev/null || true; chmod -RN "$HEPTA_BRIDGE_SELF_TEST_ROOT" 2>/dev/null || true; chmod -R u+w "$HEPTA_BRIDGE_SELF_TEST_ROOT" 2>/dev/null || true; rm -rf "$HEPTA_BRIDGE_SELF_TEST_ROOT"' EXIT
   health_mode_file="$root/health-mode.txt"
   health_request_log="$root/health-requests.tsv"
   health_port_file="$root/health-port.txt"
@@ -2283,7 +2455,23 @@ PY_HEALTH_SERVER
     exit 1
   }
   : >"$health_request_log"
-  materializer="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/hepta-immutable-release-tree"
+  source_repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+  tooling_repository="$root/tooling-repository"
+  mkdir -p "$tooling_repository/scripts"
+  for relative in \
+    scripts/hepta-immutable-release-tree scripts/hepta-generation-pointer scripts/hepta-install-live-gateway \
+    scripts/hepta-install-live-watchdog scripts/hepta-launchd-cutover-bridge scripts/hepta-live-soak.sh \
+    scripts/hepta-state-snapshot scripts/hepta-watchdog.sh; do
+    cp "$source_repository/$relative" "$tooling_repository/$relative"
+    chmod 0755 "$tooling_repository/$relative"
+  done
+  git -C "$tooling_repository" init -q
+  git -C "$tooling_repository" config user.name hepta-bridge-self-test
+  git -C "$tooling_repository" config user.email hepta-bridge-self-test.invalid
+  git -C "$tooling_repository" add scripts
+  git -C "$tooling_repository" commit -q -m 'bridge self-test tooling'
+  source_commit="$(git -C "$tooling_repository" rev-parse --verify 'HEAD^{commit}')"
+  materializer="$tooling_repository/scripts/hepta-immutable-release-tree"
   release="$root/release"; install_root="$root/vnext-install"; launch_root="$root/LaunchAgents"; bundle="$root/bridge"
   mkdir -p "$launch_root" "$root/legacy-install/bin"
   fixture_binary="$root/hepta-fixture"
@@ -2291,7 +2479,7 @@ PY_HEALTH_SERVER
   "$materializer" materialize --binary "$fixture_binary" --destination "$release" \
     --state-root "$root/state-copy" --install-root "$install_root" \
     --gateway-label ai.hepta.gateway --watchdog-label ai.hepta.installed-live-watchdog \
-    --listen-port 17373 --source-commit "$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --verify 'HEAD^{commit}')" >/dev/null
+    --listen-port 17373 --source-commit "$source_commit" >/dev/null
   "$release/scripts/hepta-generation-pointer" initialize --install-root "$install_root" --manifest "$release/manifest.json" >/dev/null
   cp /usr/bin/true "$root/legacy-install/bin/hepta"
   cp /usr/bin/true "$root/legacy-install/watchdog.sh"
@@ -2329,12 +2517,14 @@ PY_HEALTH_SERVER
     --arg snapshot_id "$(jq -r '.snapshot_id' "$snapshot_receipt")" \
     --arg snapshot_identity "$(jq -r '.source_identity_inventory_sha256' "$snapshot_receipt")" \
     --arg snapshot_portable "$(jq -r '.portable_payload_inventory_sha256' "$snapshot_receipt")" \
+    --arg snapshot_modes "$(jq -r '.original_mode_inventory_sha256' "$snapshot_receipt")" \
+    --arg snapshot_acls "$(jq -r '.acl_inventory_sha256' "$snapshot_receipt")" \
     --arg snapshot_top "$(jq -r '.top_level_inventory_sha256' "$snapshot_receipt")" \
     --arg snapshot_sidecar "$(jq -r '.sqlite_sidecar_inventory_sha256' "$snapshot_receipt")" \
     --arg snapshot_key "$(jq -r '.key_inventory_sha256' "$snapshot_receipt")" \
     --arg snapshot_hardlinks "$(jq -r '.hardlink_topology_inventory_sha256' "$snapshot_receipt")" \
     --arg canary_state_root "$root/private-copy" --arg soak_sha "$(sha256_file "$soak_receipt")" \
-    '{schema:"hepta_vnext_runtime_canary_e2e_v2",status:"ready",listen_addr:"127.0.0.1:17373",source_commit:$source_commit,source_tree_clean:true,binary_sha256:$binary_sha,manifest:$manifest,manifest_sha256:"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",canary_state_root:$canary_state_root,target_manifest:$target_manifest,target_manifest_sha256:$target_manifest_sha,snapshot_receipt_sha256:$snapshot_sha,snapshot_schema:"hepta_vnext_state_snapshot_receipt_v2",snapshot_id:$snapshot_id,snapshot_source_identity_inventory_sha256:$snapshot_identity,snapshot_portable_payload_inventory_sha256:$snapshot_portable,snapshot_top_level_inventory_sha256:$snapshot_top,snapshot_sqlite_sidecar_inventory_sha256:$snapshot_sidecar,snapshot_key_inventory_sha256:$snapshot_key,snapshot_hardlink_topology_inventory_sha256:$snapshot_hardlinks,source_state_root:$state_root,source_inventory_sha256:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",copy_payload_sha256:$snapshot_portable,soak_receipt_sha256:$soak_sha,soak_samples:3,production_inventory_sha256:"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",schema_v5_open_existing:true,keyed_integrity_verified:true,immutable_query_only:true,requires_empty_wal:true,source_state_copied:true,full_state_source_copied:true,full_snapshot_receipt_bound:true,all_top_level_entries_copied:true,hardlinks_preserved:true,source_unchanged:true,copy_unchanged:true,metadata_and_hash_checked:true,installer_dry_run:true,protected_routes_absent:true,non_get_rejected:true,authority_all_closed:true,production_service_changed:false}' >"$canary_receipt"
+    '{schema:"hepta_vnext_runtime_canary_e2e_v3",status:"ready",listen_addr:"127.0.0.1:17373",source_commit:$source_commit,source_tree_clean:true,binary_sha256:$binary_sha,manifest:$manifest,manifest_sha256:"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",canary_state_root:$canary_state_root,target_manifest:$target_manifest,target_manifest_sha256:$target_manifest_sha,snapshot_receipt_sha256:$snapshot_sha,snapshot_schema:"hepta_vnext_state_snapshot_receipt_v3",snapshot_profile:"full-state-root-v3",snapshot_mode_profile:"hepta_vnext_state_mode_profile_v3",snapshot_acl_profile:"hepta_vnext_state_acl_profile_deny_only_v1",snapshot_id:$snapshot_id,snapshot_source_identity_inventory_sha256:$snapshot_identity,snapshot_portable_payload_inventory_sha256:$snapshot_portable,snapshot_original_mode_inventory_sha256:$snapshot_modes,snapshot_acl_inventory_sha256:$snapshot_acls,snapshot_top_level_inventory_sha256:$snapshot_top,snapshot_sqlite_sidecar_inventory_sha256:$snapshot_sidecar,snapshot_key_inventory_sha256:$snapshot_key,snapshot_hardlink_topology_inventory_sha256:$snapshot_hardlinks,snapshot_recutover_predecessor:null,source_state_root:$state_root,source_inventory_sha256:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",copy_payload_sha256:$snapshot_portable,copy_mode_inventory_sha256:$snapshot_modes,copy_acl_inventory_sha256:$snapshot_acls,soak_receipt_sha256:$soak_sha,soak_samples:3,production_inventory_sha256:"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",schema_v5_open_existing:true,keyed_integrity_verified:true,immutable_query_only:true,requires_empty_wal:true,source_state_copied:true,full_state_source_copied:true,full_snapshot_receipt_bound:true,all_top_level_entries_copied:true,original_modes_preserved:true,deny_only_acls_preserved:true,hardlinks_preserved:true,source_unchanged:true,copy_unchanged:true,metadata_and_hash_checked:true,installer_dry_run:true,protected_routes_absent:true,non_get_rejected:true,authority_all_closed:true,production_service_changed:false}' >"$canary_receipt"
   if "$release/scripts/hepta-install-live-gateway" --manifest "$release/manifest.json" \
     --launch-agent-root "$root/direct-install-rejected" --install >/dev/null 2>&1; then
     echo "direct production-label gateway install was accepted" >&2
@@ -2372,16 +2562,107 @@ PY_HEALTH_SERVER
     .schema = "hepta_vnext_runtime_canary_e2e_v1"
     | .snapshot_receipt_sha256 = $snapshot_sha
     | .snapshot_schema = "hepta_vnext_state_snapshot_receipt_v1"
-    | del(.snapshot_id,.snapshot_source_identity_inventory_sha256,.snapshot_portable_payload_inventory_sha256,.snapshot_top_level_inventory_sha256,.snapshot_sqlite_sidecar_inventory_sha256,.snapshot_key_inventory_sha256,.snapshot_hardlink_topology_inventory_sha256,.full_state_source_copied,.full_snapshot_receipt_bound,.all_top_level_entries_copied,.hardlinks_preserved)
+    | del(.snapshot_profile,.snapshot_mode_profile,.snapshot_id,.snapshot_source_identity_inventory_sha256,.snapshot_portable_payload_inventory_sha256,.snapshot_original_mode_inventory_sha256,.snapshot_top_level_inventory_sha256,.snapshot_sqlite_sidecar_inventory_sha256,.snapshot_key_inventory_sha256,.snapshot_hardlink_topology_inventory_sha256,.copy_mode_inventory_sha256,.full_state_source_copied,.full_snapshot_receipt_bound,.all_top_level_entries_copied,.original_modes_preserved,.hardlinks_preserved)
   ' "$canary_receipt" >"$legacy_v1_canary"
   if prepare_bundle "$release/manifest.json" "$launch_root" "$legacy_v1_bundle" \
     "$legacy_v1_snapshot" "$legacy_v1_canary" "$soak_receipt" >/dev/null 2>&1; then
-    echo "full-state-root-v2 release accepted legacy v1 snapshot/canary evidence" >&2
+    echo "full-state-root-v3 release accepted legacy v1 snapshot/canary evidence" >&2
     exit 1
   fi
   [[ ! -e "$legacy_v1_bundle" ]] || { echo "v1 downgrade rejection published a bridge bundle" >&2; exit 1; }
+  legacy_v2_snapshot="$root/evidence/legacy-v2-snapshot.json"
+  legacy_v2_binding="$root/.state-copy.hepta-state-snapshot-v2.binding"
+  legacy_v2_canary="$root/evidence/legacy-v2-canary.json"
+  legacy_v2_bundle="$root/legacy-v2-downgrade-bridge"
+  jq -n --arg snapshot_id "$(jq -r '.snapshot_id' "$snapshot_receipt")" \
+    --arg destination "$root/state-copy" \
+    --arg portable "$(jq -r '.portable_payload_inventory_sha256' "$snapshot_receipt")" \
+    --arg hardlinks "$(jq -r '.hardlink_topology_inventory_sha256' "$snapshot_receipt")" \
+    '{schema:"hepta_vnext_state_snapshot_binding_v2",snapshot_id:$snapshot_id,destination_state_root:$destination,portable_payload_inventory_sha256:$portable,hardlink_topology_inventory_sha256:$hardlinks}' >"$legacy_v2_binding"
+  chmod 0400 "$legacy_v2_binding"
+  jq --arg binding "$legacy_v2_binding" --arg binding_sha "$(sha256_file "$legacy_v2_binding")" '
+    .schema = "hepta_vnext_state_snapshot_receipt_v2"
+    | .destination_binding = $binding
+    | .destination_binding_sha256 = $binding_sha
+    | del(.profile,.mode_profile,.original_mode_inventory_sha256,.mode_policy_validated,.original_modes_preserved)
+  ' "$snapshot_receipt" >"$legacy_v2_snapshot"
+  chmod 0400 "$legacy_v2_snapshot"
+  "$release/scripts/hepta-state-snapshot" verify --receipt "$legacy_v2_snapshot" >/dev/null
+  "$release/scripts/hepta-state-snapshot" verify-source --receipt "$legacy_v2_snapshot" >/dev/null
+  jq --arg snapshot_sha "$(sha256_file "$legacy_v2_snapshot")" '
+    .schema = "hepta_vnext_runtime_canary_e2e_v2"
+    | .snapshot_receipt_sha256 = $snapshot_sha
+    | .snapshot_schema = "hepta_vnext_state_snapshot_receipt_v2"
+    | del(.snapshot_profile,.snapshot_mode_profile,.snapshot_original_mode_inventory_sha256,.copy_mode_inventory_sha256,.original_modes_preserved)
+  ' "$canary_receipt" >"$legacy_v2_canary"
+  if prepare_bundle "$release/manifest.json" "$launch_root" "$legacy_v2_bundle" \
+    "$legacy_v2_snapshot" "$legacy_v2_canary" "$soak_receipt" >/dev/null 2>&1; then
+    echo "full-state-root-v3 release accepted v2 snapshot/canary evidence as v3" >&2
+    exit 1
+  fi
+  [[ ! -e "$legacy_v2_bundle" ]] || { echo "v2 downgrade rejection published a bridge bundle" >&2; exit 1; }
   prepare_bundle "$release/manifest.json" "$launch_root" "$bundle" \
     "$snapshot_receipt" "$canary_receipt" "$soak_receipt" >/dev/null
+
+  closure_tamper_bundle="$root/bridge-extra-directory"
+  cp -pR "$bundle" "$closure_tamper_bundle"; chmod 0700 "$closure_tamper_bundle"
+  mkdir "$closure_tamper_bundle/extra"; chmod 0500 "$closure_tamper_bundle/extra" "$closure_tamper_bundle"
+  if verify_bundle "$closure_tamper_bundle" >/dev/null 2>&1; then
+    echo "bridge closure accepted an extra directory" >&2; exit 1
+  fi
+  closure_tamper_bundle="$root/bridge-fifo"
+  cp -pR "$bundle" "$closure_tamper_bundle"; chmod 0700 "$closure_tamper_bundle"
+  mkfifo "$closure_tamper_bundle/fifo"; chmod 0400 "$closure_tamper_bundle/fifo"; chmod 0500 "$closure_tamper_bundle"
+  if verify_bundle "$closure_tamper_bundle" >/dev/null 2>&1; then
+    echo "bridge closure accepted a FIFO" >&2; exit 1
+  fi
+  external_hardlink_source="$root/bridge-external-hardlink-source"
+  printf 'external\n' >"$external_hardlink_source"; chmod 0400 "$external_hardlink_source"
+  closure_tamper_bundle="$root/bridge-external-hardlink"
+  cp -pR "$bundle" "$closure_tamper_bundle"; chmod 0700 "$closure_tamper_bundle"
+  ln "$external_hardlink_source" "$closure_tamper_bundle/external-hardlink"; chmod 0500 "$closure_tamper_bundle"
+  if verify_bundle "$closure_tamper_bundle" >/dev/null 2>&1; then
+    echo "bridge closure accepted a root-external hardlink" >&2; exit 1
+  fi
+  closure_tamper_bundle="$root/bridge-file-mode"
+  cp -pR "$bundle" "$closure_tamper_bundle"; chmod 0600 "$closure_tamper_bundle/plan.json"
+  if verify_bundle "$closure_tamper_bundle" >/dev/null 2>&1; then
+    echo "bridge closure accepted a non-0400 file" >&2; exit 1
+  fi
+  closure_tamper_bundle="$root/bridge-directory-mode"
+  cp -pR "$bundle" "$closure_tamper_bundle"; chmod 0700 "$closure_tamper_bundle/evidence"
+  if verify_bundle "$closure_tamper_bundle" >/dev/null 2>&1; then
+    echo "bridge closure accepted a non-0500 directory" >&2; exit 1
+  fi
+  closure_tamper_bundle="$root/bridge-file-acl"
+  cp -pR "$bundle" "$closure_tamper_bundle"; chmod +a 'everyone allow read' "$closure_tamper_bundle/plan.json"
+  if verify_bundle "$closure_tamper_bundle" >/dev/null 2>&1; then
+    echo "bridge closure accepted an ACL on a file" >&2; exit 1
+  fi
+  closure_tamper_bundle="$root/bridge-directory-acl"
+  cp -pR "$bundle" "$closure_tamper_bundle"; chmod +a 'everyone allow list' "$closure_tamper_bundle/evidence"
+  if verify_bundle "$closure_tamper_bundle" >/dev/null 2>&1; then
+    echo "bridge closure accepted an ACL on a directory" >&2; exit 1
+  fi
+  closure_tamper_bundle="$root/bridge-xattr"
+  cp -pR "$bundle" "$closure_tamper_bundle"; chmod 0600 "$closure_tamper_bundle/plan.json"
+  /usr/bin/xattr -w com.hepta.bridge.selftest value "$closure_tamper_bundle/plan.json"; chmod 0400 "$closure_tamper_bundle/plan.json"
+  if verify_bundle "$closure_tamper_bundle" >/dev/null 2>&1; then
+    echo "bridge closure accepted an xattr" >&2; exit 1
+  fi
+  unreadable_xattr_bundle="$root/bridge-unreadable-xattr"
+  cp -pR "$bundle" "$unreadable_xattr_bundle"; chmod 0600 "$unreadable_xattr_bundle/plan.json"
+  /usr/bin/xattr -w com.hepta.bridge.selftest value "$unreadable_xattr_bundle/plan.json"
+  chmod +a 'everyone deny readextattr' "$unreadable_xattr_bundle/plan.json"; chmod 0400 "$unreadable_xattr_bundle/plan.json"
+  if bridge_xattr_sha256 "$unreadable_xattr_bundle/plan.json" >/dev/null 2>&1; then
+    echo "bridge xattr helper accepted an unreadable namespace" >&2
+    exit 1
+  fi
+  closure_tamper_bundle="$root/bridge-bsd-flag"
+  cp -pR "$bundle" "$closure_tamper_bundle"; chflags hidden "$closure_tamper_bundle/plan.json"
+  if verify_bundle "$closure_tamper_bundle" >/dev/null 2>&1; then
+    echo "bridge closure accepted a BSD flag" >&2; exit 1
+  fi
 
   transition cutover "$bundle" "" "" false test >/dev/null
   [[ ! -e "$install_root/logs" && ! -L "$install_root/logs" ]] || {
@@ -2640,12 +2921,13 @@ PY_HEALTH_SERVER
   "$materializer" materialize --binary "$fixture_binary" --destination "$release2" \
     --state-root "$root/state-copy-recutover" --install-root "$install_root2" \
     --gateway-label ai.hepta.gateway --watchdog-label ai.hepta.installed-live-watchdog \
-    --listen-port 17373 --source-commit "$(git -C "$(dirname "${BASH_SOURCE[0]}")/.." rev-parse --verify 'HEAD^{commit}')" >/dev/null
+    --listen-port 17373 --source-commit "$source_commit" >/dev/null
   "$release2/scripts/hepta-generation-pointer" initialize --install-root "$install_root2" --manifest "$release2/manifest.json" >/dev/null
   fresh_snapshot_receipt="$root/evidence/state-snapshot-recutover.json"
   "$release2/scripts/hepta-state-snapshot" \
     --source-state-root "$legacy_state" --destination-state-root "$root/state-copy-recutover" \
-    --legacy-label ai.hepta.bridge.selftest --receipt "$fresh_snapshot_receipt" --materialize >/dev/null
+    --legacy-label ai.hepta.bridge.selftest --receipt "$fresh_snapshot_receipt" \
+    --predecessor-rollback-receipt "$second_rollback_receipt" --materialize >/dev/null
   fresh_snapshot_sha="$(sha256_file "$fresh_snapshot_receipt")"
   fresh_soak_receipt="$root/evidence/soak-recutover.json"
   manifest_sha="$(sha256_file "$release2/manifest.json")"
@@ -2660,12 +2942,62 @@ PY_HEALTH_SERVER
     --arg snapshot_id "$(jq -r '.snapshot_id' "$fresh_snapshot_receipt")" \
     --arg snapshot_identity "$(jq -r '.source_identity_inventory_sha256' "$fresh_snapshot_receipt")" \
     --arg snapshot_portable "$(jq -r '.portable_payload_inventory_sha256' "$fresh_snapshot_receipt")" \
+    --arg snapshot_modes "$(jq -r '.original_mode_inventory_sha256' "$fresh_snapshot_receipt")" \
+    --arg snapshot_acls "$(jq -r '.acl_inventory_sha256' "$fresh_snapshot_receipt")" \
     --arg snapshot_top "$(jq -r '.top_level_inventory_sha256' "$fresh_snapshot_receipt")" \
     --arg snapshot_sidecar "$(jq -r '.sqlite_sidecar_inventory_sha256' "$fresh_snapshot_receipt")" \
     --arg snapshot_key "$(jq -r '.key_inventory_sha256' "$fresh_snapshot_receipt")" \
     --arg snapshot_hardlinks "$(jq -r '.hardlink_topology_inventory_sha256' "$fresh_snapshot_receipt")" \
     --arg canary_state_root "$root/private-copy-recutover" --arg soak_sha "$(sha256_file "$fresh_soak_receipt")" \
-    '{schema:"hepta_vnext_runtime_canary_e2e_v2",status:"ready",listen_addr:"127.0.0.1:17373",source_commit:$source_commit,source_tree_clean:true,binary_sha256:$binary_sha,manifest:$manifest,manifest_sha256:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",canary_state_root:$canary_state_root,target_manifest:$target_manifest,target_manifest_sha256:$target_manifest_sha,snapshot_receipt_sha256:$snapshot_sha,snapshot_schema:"hepta_vnext_state_snapshot_receipt_v2",snapshot_id:$snapshot_id,snapshot_source_identity_inventory_sha256:$snapshot_identity,snapshot_portable_payload_inventory_sha256:$snapshot_portable,snapshot_top_level_inventory_sha256:$snapshot_top,snapshot_sqlite_sidecar_inventory_sha256:$snapshot_sidecar,snapshot_key_inventory_sha256:$snapshot_key,snapshot_hardlink_topology_inventory_sha256:$snapshot_hardlinks,source_state_root:$state_root,source_inventory_sha256:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",copy_payload_sha256:$snapshot_portable,soak_receipt_sha256:$soak_sha,soak_samples:3,production_inventory_sha256:"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",schema_v5_open_existing:true,keyed_integrity_verified:true,immutable_query_only:true,requires_empty_wal:true,source_state_copied:true,full_state_source_copied:true,full_snapshot_receipt_bound:true,all_top_level_entries_copied:true,hardlinks_preserved:true,source_unchanged:true,copy_unchanged:true,metadata_and_hash_checked:true,installer_dry_run:true,protected_routes_absent:true,non_get_rejected:true,authority_all_closed:true,production_service_changed:false}' >"$fresh_canary_receipt"
+    --argjson predecessor "$(jq -c '.recutover_predecessor' "$fresh_snapshot_receipt")" \
+    '{schema:"hepta_vnext_runtime_canary_e2e_v3",status:"ready",listen_addr:"127.0.0.1:17373",source_commit:$source_commit,source_tree_clean:true,binary_sha256:$binary_sha,manifest:$manifest,manifest_sha256:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",canary_state_root:$canary_state_root,target_manifest:$target_manifest,target_manifest_sha256:$target_manifest_sha,snapshot_receipt_sha256:$snapshot_sha,snapshot_schema:"hepta_vnext_state_snapshot_receipt_v3",snapshot_profile:"full-state-root-v3",snapshot_mode_profile:"hepta_vnext_state_mode_profile_v3",snapshot_acl_profile:"hepta_vnext_state_acl_profile_deny_only_v1",snapshot_id:$snapshot_id,snapshot_source_identity_inventory_sha256:$snapshot_identity,snapshot_portable_payload_inventory_sha256:$snapshot_portable,snapshot_original_mode_inventory_sha256:$snapshot_modes,snapshot_acl_inventory_sha256:$snapshot_acls,snapshot_top_level_inventory_sha256:$snapshot_top,snapshot_sqlite_sidecar_inventory_sha256:$snapshot_sidecar,snapshot_key_inventory_sha256:$snapshot_key,snapshot_hardlink_topology_inventory_sha256:$snapshot_hardlinks,snapshot_recutover_predecessor:$predecessor,source_state_root:$state_root,source_inventory_sha256:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",copy_payload_sha256:$snapshot_portable,copy_mode_inventory_sha256:$snapshot_modes,copy_acl_inventory_sha256:$snapshot_acls,soak_receipt_sha256:$soak_sha,soak_samples:3,production_inventory_sha256:"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",schema_v5_open_existing:true,keyed_integrity_verified:true,immutable_query_only:true,requires_empty_wal:true,source_state_copied:true,full_state_source_copied:true,full_snapshot_receipt_bound:true,all_top_level_entries_copied:true,original_modes_preserved:true,deny_only_acls_preserved:true,hardlinks_preserved:true,source_unchanged:true,copy_unchanged:true,metadata_and_hash_checked:true,installer_dry_run:true,protected_routes_absent:true,non_get_rejected:true,authority_all_closed:true,production_service_changed:false}' >"$fresh_canary_receipt"
+
+  old_timestamp_snapshot="$root/evidence/state-snapshot-old-created-at.json"
+  jq '.created_at = "1970-01-01T00:00:00Z"' "$fresh_snapshot_receipt" >"$old_timestamp_snapshot"
+  chmod 0400 "$old_timestamp_snapshot"
+  old_timestamp_canary="$root/evidence/canary-old-created-at.json"
+  jq --arg snapshot_sha "$(sha256_file "$old_timestamp_snapshot")" \
+    '.snapshot_receipt_sha256 = $snapshot_sha' "$fresh_canary_receipt" >"$old_timestamp_canary"
+  chmod 0400 "$old_timestamp_canary"
+  old_timestamp_bundle="$root/bridge-recutover-old-created-at"
+  prepare_recutover_bundle "$release2/manifest.json" "$launch_root" "$old_timestamp_bundle" \
+    "$old_timestamp_snapshot" "$old_timestamp_canary" "$fresh_soak_receipt" "$bundle" "$second_rollback_receipt" >/dev/null
+
+  for predecessor_field in receipt sha256 plan_sha256 sequence; do
+    predecessor_tamper_receipt="$root/evidence/predecessor-$predecessor_field.json"
+    case "$predecessor_field" in
+      receipt) cp "$second_rollback_receipt" "$predecessor_tamper_receipt" ;;
+      sha256) jq '.created_at = "1970-01-01T00:00:00Z"' "$second_rollback_receipt" >"$predecessor_tamper_receipt" ;;
+      plan_sha256) jq '.plan_sha256 = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"' "$second_rollback_receipt" >"$predecessor_tamper_receipt" ;;
+      sequence) jq '.sequence += 2' "$second_rollback_receipt" >"$predecessor_tamper_receipt" ;;
+    esac
+    chmod 0400 "$predecessor_tamper_receipt"
+    predecessor_tamper_snapshot="$root/evidence/state-snapshot-predecessor-$predecessor_field.json"
+    jq --arg receipt "$predecessor_tamper_receipt" \
+      --arg sha "$(sha256_file "$predecessor_tamper_receipt")" \
+      --arg plan "$(jq -r '.plan_sha256' "$predecessor_tamper_receipt")" \
+      --argjson sequence "$(jq -r '.sequence' "$predecessor_tamper_receipt")" \
+      '.recutover_predecessor = {receipt:$receipt,sha256:$sha,plan_sha256:$plan,sequence:$sequence}' \
+      "$fresh_snapshot_receipt" >"$predecessor_tamper_snapshot"
+    chmod 0400 "$predecessor_tamper_snapshot"
+    predecessor_tamper_canary="$root/evidence/canary-predecessor-$predecessor_field.json"
+    jq --arg snapshot_sha "$(sha256_file "$predecessor_tamper_snapshot")" \
+      --argjson predecessor "$(jq -c '.recutover_predecessor' "$predecessor_tamper_snapshot")" \
+      '.snapshot_receipt_sha256 = $snapshot_sha | .snapshot_recutover_predecessor = $predecessor' \
+      "$fresh_canary_receipt" >"$predecessor_tamper_canary"
+    chmod 0400 "$predecessor_tamper_canary"
+    predecessor_tamper_bundle="$root/bridge-recutover-predecessor-$predecessor_field"
+    if prepare_recutover_bundle "$release2/manifest.json" "$launch_root" "$predecessor_tamper_bundle" \
+      "$predecessor_tamper_snapshot" "$predecessor_tamper_canary" "$fresh_soak_receipt" \
+      "$bundle" "$second_rollback_receipt" >/dev/null 2>&1; then
+      echo "recutover preparation accepted a mismatched predecessor $predecessor_field" >&2
+      exit 1
+    fi
+    [[ ! -e "$predecessor_tamper_bundle" ]] || {
+      echo "mismatched predecessor $predecessor_field published a bundle" >&2
+      exit 1
+    }
+  done
 
   wrong_predecessor_bundle="$root/wrong-predecessor-bundle"
   if prepare_recutover_bundle "$release2/manifest.json" "$launch_root" "$wrong_predecessor_bundle" \
@@ -2845,7 +3177,7 @@ PY_HEALTH_SERVER
   fi
   [[ ! -e "$stale_after_rebase" ]] || { echo "stale post-rebase evidence reserved a receipt" >&2; exit 1; }
   IFS=$'\t' read -r release3 snapshot3 canary3 soak3 \
-    < <(self_test_create_v2_evidence "$materializer" "$fixture_binary" "$legacy_state" "$root" epoch3)
+    < <(self_test_create_v2_evidence "$materializer" "$fixture_binary" "$legacy_state" "$root" epoch3 "$second_rollback_receipt")
   bundle3="$root/bridge-recutover-epoch3"
   prepare_recutover_bundle "$release3/manifest.json" "$launch_root" "$bundle3" \
     "$snapshot3" "$canary3" "$soak3" "$recutover_bundle" "$second_rollback_receipt" >/dev/null
@@ -2948,7 +3280,7 @@ PY_HEALTH_SERVER
   # supersedable with a new snapshot/canary set and no cursor surgery.
   printf 'post-epoch3-rollback-write\n' >>"$legacy_state/runtime-v2/runtime-state.json"
   IFS=$'\t' read -r release4 snapshot4 canary4 soak4 \
-    < <(self_test_create_v2_evidence "$materializer" "$fixture_binary" "$legacy_state" "$root" epoch4)
+    < <(self_test_create_v2_evidence "$materializer" "$fixture_binary" "$legacy_state" "$root" epoch4 "$rollback3")
   bundle4="$root/bridge-recutover-epoch4"
   prepare_recutover_bundle "$release4/manifest.json" "$launch_root" "$bundle4" \
     "$snapshot4" "$canary4" "$soak4" "$bundle3" "$rollback3" >/dev/null
@@ -3025,7 +3357,7 @@ PY_HEALTH_SERVER
   fi
   [[ ! -e "$stale_after_recovery" ]] || { echo "stale post-recovery evidence reserved a receipt" >&2; exit 1; }
   IFS=$'\t' read -r release5 snapshot5 canary5 soak5 \
-    < <(self_test_create_v2_evidence "$materializer" "$fixture_binary" "$legacy_state" "$root" epoch5)
+    < <(self_test_create_v2_evidence "$materializer" "$fixture_binary" "$legacy_state" "$root" epoch5 "$rollback3")
   bundle5="$root/bridge-recutover-epoch5"
   prepare_recutover_bundle "$release5/manifest.json" "$launch_root" "$bundle5" \
     "$snapshot5" "$canary5" "$soak5" "$bundle4" "$rollback3" >/dev/null
@@ -3092,7 +3424,7 @@ PY_HEALTH_SERVER
     --arg v2_plan_sha256 "$(sha256_file "$bundle5/plan.json")" \
     --arg v2_recutover_receipt_sha256 "$(sha256_file "$v2_recutover_receipt")" \
     --arg v2_rollback_receipt_sha256 "$(sha256_file "$v2_rollback_receipt")" \
-    '{schema:"hepta_vnext_launchd_bridge_self_test_v2",status:"ready",plan_sha256:$plan_sha256,v2_plan_sha256:$v2_plan_sha256,cutover_receipt_sha256:$cutover_receipt_sha256,rollback_receipt_sha256:$rollback_receipt_sha256,recutover_receipt_sha256:$recutover_receipt_sha256,second_rollback_receipt_sha256:$second_rollback_receipt_sha256,v2_recutover_receipt_sha256:$v2_recutover_receipt_sha256,v2_rollback_receipt_sha256:$v2_rollback_receipt_sha256,cutover:true,rollback:true,recutover:true,post_recutover_rollback:true,generation_specific_health_routes:true,legacy_health_route_verified:true,vnext_health_route_verified:true,health_failure_source_restored:true,health_paths_recorded_in_transition_receipts:true,health_paths_recorded_in_recovery_receipts:true,fresh_full_state_snapshot:true,new_epoch_recutover:true,controlled_epoch_supersede:true,supersede_deleted_parent_rebase_rejected:true,supersede_tampered_parent_rebase_rejected:true,supersede_downgraded_cursor_rejected:true,supersede_rejection_cursor_unchanged:true,post_rebase_source_drift_recovered_with_fresh_epoch:true,pending_recovery_shm_drift_recovered_with_fresh_epoch:true,no_manual_cursor_mutation:true,v1_evidence_downgrade_rejected_for_v2_release:true,wrong_predecessor_rejected:true,stale_predecessor_rejected:true,fork_rejected:true,cross_plan_cas_enforced:true,rebase_pending_recovery_sealed:true,rebase_replace_failure_restores_exact_cursor:true,pre_cas_pending_recovery_sealed:true,pre_cas_pending_copy_rejected:true,pre_cas_embedded_cursor_tamper_rejected:true,rebase_finalization_crash_recovered:true,rebase_finalization_recovery_idempotent:true,completed_rebase_stale_pending_rejected:true,completed_rebase_copied_pending_rejected:true,completed_rebase_modified_pending_rejected:true,completed_rebase_cursor_unchanged_on_replay:true,post_rebase_sibling_epoch_rejected:true,transition_pending_recovery_sealed:true,transition_finalization_crash_recovered:true,transition_finalization_recovery_idempotent:true,completed_transition_stale_pending_rejected:true,completed_transition_copied_pending_rejected:true,completed_transition_cursor_unchanged_on_replay:true,v2_recutover_pending_exact_cursor_restored:true,evidence_bound:true,manifest_mismatch_rejected:true,snapshot_source_freshness_enforced:true,mixed_publish_restored:true,pending_receipt_fail_closed:true,pending_recovery_sealed:true,global_operation_lock_enforced:true,shared_generation_lock_enforced:true,dry_run_log_directories_unchanged:true,private_log_directories_ready:true,existing_log_directories_hardened:true,symlink_log_root_rejected:true,symlink_log_child_rejected:true,stale_chain_head_rejected:true,preexisting_receipt_rejected:true,direct_production_install_rejected:true,legacy_authority_reclassified:false,production_changed:false}'
+    '{schema:"hepta_vnext_launchd_bridge_self_test_v2",status:"ready",plan_sha256:$plan_sha256,v2_plan_sha256:$v2_plan_sha256,cutover_receipt_sha256:$cutover_receipt_sha256,rollback_receipt_sha256:$rollback_receipt_sha256,recutover_receipt_sha256:$recutover_receipt_sha256,second_rollback_receipt_sha256:$second_rollback_receipt_sha256,v2_recutover_receipt_sha256:$v2_recutover_receipt_sha256,v2_rollback_receipt_sha256:$v2_rollback_receipt_sha256,cutover:true,rollback:true,recutover:true,post_recutover_rollback:true,generation_specific_health_routes:true,legacy_health_route_verified:true,vnext_health_route_verified:true,health_failure_source_restored:true,health_paths_recorded_in_transition_receipts:true,health_paths_recorded_in_recovery_receipts:true,fresh_full_state_snapshot:true,snapshot_v3_mode_profile_bound:true,snapshot_v3_acl_profile_bound:true,bridge_bundle_typed_closed_world:true,bridge_directories_0500_files_0400:true,bridge_regular_nlink_one:true,bridge_extra_directory_rejected:true,bridge_fifo_rejected:true,bridge_external_hardlink_rejected:true,bridge_file_and_directory_acl_rejected:true,bridge_xattr_rejected:true,bridge_unreadable_xattr_rejected:true,bridge_bsd_flags_rejected:true,v1_evidence_downgrade_rejected_for_v3_release:true,v2_evidence_downgrade_rejected_for_v3_release:true,new_epoch_recutover:true,controlled_epoch_supersede:true,recutover_predecessor_receipt_sha_plan_sequence_exact:true,created_at_informational_not_freshness:true,supersede_deleted_parent_rebase_rejected:true,supersede_tampered_parent_rebase_rejected:true,supersede_downgraded_cursor_rejected:true,supersede_rejection_cursor_unchanged:true,post_rebase_source_drift_recovered_with_fresh_epoch:true,pending_recovery_shm_drift_recovered_with_fresh_epoch:true,no_manual_cursor_mutation:true,wrong_predecessor_rejected:true,stale_predecessor_rejected:true,fork_rejected:true,cross_plan_cas_enforced:true,rebase_pending_recovery_sealed:true,rebase_replace_failure_restores_exact_cursor:true,pre_cas_pending_recovery_sealed:true,pre_cas_pending_copy_rejected:true,pre_cas_embedded_cursor_tamper_rejected:true,rebase_finalization_crash_recovered:true,rebase_finalization_recovery_idempotent:true,completed_rebase_stale_pending_rejected:true,completed_rebase_copied_pending_rejected:true,completed_rebase_modified_pending_rejected:true,completed_rebase_cursor_unchanged_on_replay:true,post_rebase_sibling_epoch_rejected:true,transition_pending_recovery_sealed:true,transition_finalization_crash_recovered:true,transition_finalization_recovery_idempotent:true,completed_transition_stale_pending_rejected:true,completed_transition_copied_pending_rejected:true,completed_transition_cursor_unchanged_on_replay:true,v2_recutover_pending_exact_cursor_restored:true,evidence_bound:true,manifest_mismatch_rejected:true,snapshot_source_freshness_enforced:true,mixed_publish_restored:true,pending_receipt_fail_closed:true,pending_recovery_sealed:true,global_operation_lock_enforced:true,shared_generation_lock_enforced:true,dry_run_log_directories_unchanged:true,private_log_directories_ready:true,existing_log_directories_hardened:true,symlink_log_root_rejected:true,symlink_log_child_rejected:true,stale_chain_head_rejected:true,preexisting_receipt_rejected:true,direct_production_install_rejected:true,legacy_authority_reclassified:false,production_changed:false}'
 }
 
 command="${1:-}"; [[ -n "$command" ]] || usage; shift
