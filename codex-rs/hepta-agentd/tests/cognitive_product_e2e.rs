@@ -292,7 +292,7 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
     let forgotten = tool_output(&forget, FORGET_CALL)?;
     ensure!(forgotten["operation"] == "forgotten");
     ensure!(forgotten["revision"] == 3);
-    ensure!(forgotten["lifecycle"] == "tombstoned");
+    ensure!(forgotten["lifecycle"]["state"] == "tombstoned");
 
     let after_forget =
         responses::mount_sse_sequence(&model, vec![final_sse("after-forget-final")]).await;
