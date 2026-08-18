@@ -14,10 +14,34 @@ use codex_hepta_paths::HeptaFleetRoot;
 
 use super::AgentdIdentity;
 use super::AgentdState;
+use super::CompletedRuntimeTask;
 use super::EVENT_CAPACITY;
+use super::cleanup_runtime_tasks;
 use super::open_cognitive_runtime_after_generation_fence;
 
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
+
+#[tokio::test]
+async fn cleanup_never_polls_the_join_handle_already_consumed_by_select() {
+    let mut control_task = tokio::spawn(async {});
+    (&mut control_task)
+        .await
+        .expect("selected control task should complete");
+    let mut app_server_task = tokio::spawn(std::future::pending::<()>());
+    let mut monitor_task = tokio::spawn(std::future::pending::<()>());
+
+    cleanup_runtime_tasks(
+        Some(CompletedRuntimeTask::Control),
+        &mut control_task,
+        &mut app_server_task,
+        &mut monitor_task,
+    )
+    .await;
+
+    assert!(control_task.is_finished());
+    assert!(app_server_task.is_finished());
+    assert!(monitor_task.is_finished());
+}
 
 struct RuntimeFixture {
     _temp: tempfile::TempDir,

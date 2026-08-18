@@ -24,6 +24,13 @@ const EVENT_CAPACITY: usize = 128;
 const GENERATION_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const APP_SERVER_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompletedRuntimeTask {
+    Control,
+    AppServer,
+    Monitor,
+}
+
 pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<(), AgentdError> {
     let (identity, registry, writer_lock) = config.into_parts();
     let _writer_lock = writer_lock;
@@ -52,20 +59,33 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
     ));
     let mut monitor_task = tokio::spawn(monitor_runtime(Arc::clone(&state)));
 
-    let outcome = tokio::select! {
-        result = &mut control_task => joined("control server", result),
-        result = &mut app_server_task => joined_io("Codex App Server", result),
-        result = &mut monitor_task => joined("generation monitor", result),
+    let (outcome, completed_task) = tokio::select! {
+        result = &mut control_task => (
+            joined("control server", result),
+            Some(CompletedRuntimeTask::Control),
+        ),
+        result = &mut app_server_task => (
+            joined_io("Codex App Server", result),
+            Some(CompletedRuntimeTask::AppServer),
+        ),
+        result = &mut monitor_task => (
+            joined("generation monitor", result),
+            Some(CompletedRuntimeTask::Monitor),
+        ),
         signal = shutdown_signal() => {
             signal?;
             state.mark_draining()?;
-            Ok(())
+            (Ok(()), None)
         }
     };
     cancellation.cancel();
-    abort_and_join(&mut control_task).await;
-    abort_and_join(&mut monitor_task).await;
-    abort_and_join(&mut app_server_task).await;
+    cleanup_runtime_tasks(
+        completed_task,
+        &mut control_task,
+        &mut app_server_task,
+        &mut monitor_task,
+    )
+    .await;
     outcome
 }
 
@@ -173,6 +193,23 @@ async fn abort_and_join<T>(task: &mut JoinHandle<T>) {
         task.abort();
     }
     let _ = task.await;
+}
+
+async fn cleanup_runtime_tasks<ControlOutput, AppServerOutput, MonitorOutput>(
+    completed_task: Option<CompletedRuntimeTask>,
+    control_task: &mut JoinHandle<ControlOutput>,
+    app_server_task: &mut JoinHandle<AppServerOutput>,
+    monitor_task: &mut JoinHandle<MonitorOutput>,
+) {
+    if completed_task != Some(CompletedRuntimeTask::Control) {
+        abort_and_join(control_task).await;
+    }
+    if completed_task != Some(CompletedRuntimeTask::AppServer) {
+        abort_and_join(app_server_task).await;
+    }
+    if completed_task != Some(CompletedRuntimeTask::Monitor) {
+        abort_and_join(monitor_task).await;
+    }
 }
 
 #[cfg(unix)]
