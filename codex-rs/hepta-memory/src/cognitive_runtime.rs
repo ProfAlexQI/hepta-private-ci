@@ -17,6 +17,18 @@ pub enum CognitiveUnavailableReason {
     StorageUnavailable,
 }
 
+impl CognitiveUnavailableReason {
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::InvalidStoreConfiguration => "invalid_store_configuration",
+            Self::AccessDenied => "access_denied",
+            Self::RevisionConflict => "revision_conflict",
+            Self::CorruptStore => "corrupt_store",
+            Self::StorageUnavailable => "storage_unavailable",
+        }
+    }
+}
+
 impl From<&CognitiveStoreError> for CognitiveUnavailableReason {
     fn from(error: &CognitiveStoreError) -> Self {
         match error {

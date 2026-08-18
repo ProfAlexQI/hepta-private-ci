@@ -68,4 +68,8 @@ mod cognitive_kg_store_tests;
 mod cognitive_retrieval_tests;
 
 #[cfg(test)]
+#[path = "cognitive_runtime_tests.rs"]
+mod cognitive_runtime_tests;
+
+#[cfg(test)]
 mod cognitive_test_support;
