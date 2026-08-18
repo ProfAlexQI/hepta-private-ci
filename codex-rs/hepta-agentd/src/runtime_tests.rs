@@ -106,6 +106,46 @@ fn runtime_fixture() -> RuntimeFixture {
 }
 
 #[tokio::test]
+async fn duplicate_automation_attachment_does_not_replace_the_live_store() {
+    let fixture = runtime_fixture();
+    fixture
+        .registry
+        .compare_and_transition(&fixture.identity.agent_id, 1, AgentLifecycle::Running)
+        .expect("running generation");
+    fixture.state.refresh_generation().expect("refresh running");
+    fixture
+        .state
+        .mark_app_server_ready()
+        .expect("mark App Server ready");
+
+    let first = AutomationStore::open(&fixture.identity.layout)
+        .await
+        .expect("first automation store");
+    let replacement = AutomationStore::open(&fixture.identity.layout)
+        .await
+        .expect("replacement automation store");
+    fixture
+        .state
+        .attach_automation_store(first.clone())
+        .expect("attach first automation store");
+    assert!(matches!(
+        fixture.state.attach_automation_store(replacement),
+        Err(crate::AgentdError::Protocol(_))
+    ));
+
+    first.close().await;
+    let response = fixture
+        .state
+        .response(1, 1, AgentdMethod::AutomationList { limit: 1 })
+        .await
+        .expect("closed original store degrades to typed unavailable");
+    assert!(matches!(
+        response.payload,
+        AgentdPayload::Error { ref code, .. } if code == "automation_unavailable"
+    ));
+}
+
+#[tokio::test]
 async fn unavailable_cognitive_store_degrades_without_leaking_open_error() {
     let fixture = runtime_fixture();
     let runtime = open_cognitive_runtime_after_generation_fence(&fixture.state, || async {

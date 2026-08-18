@@ -90,11 +90,12 @@ impl AgentdState {
             ));
         }
         let mut cognitive = self.cognitive.lock().map_err(poisoned_state)?;
-        if cognitive.replace(store).is_some() {
+        if cognitive.is_some() {
             return Err(AgentdError::Protocol(
                 "cognitive store was attached more than once".to_string(),
             ));
         }
+        *cognitive = Some(store);
         Ok(())
     }
 
@@ -108,11 +109,12 @@ impl AgentdState {
             ));
         }
         let mut automation = self.automation.lock().map_err(poisoned_state)?;
-        if automation.replace(store).is_some() {
+        if automation.is_some() {
             return Err(AgentdError::Protocol(
                 "automation store was attached more than once".to_string(),
             ));
         }
+        *automation = Some(store);
         Ok(())
     }
 
