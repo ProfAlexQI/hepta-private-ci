@@ -6,6 +6,7 @@
 
 mod error;
 mod model;
+mod registry;
 
 pub use error::FleetRegistryError;
 pub use model::AGENT_MANIFEST_SCHEMA_VERSION;
@@ -15,3 +16,6 @@ pub use model::AgentLifecycleState;
 pub use model::AgentManifest;
 pub use model::ResourceBudget;
 pub use model::WorkspaceBinding;
+pub use registry::AgentRecord;
+pub use registry::FleetRegistry;
+pub use registry::FleetSnapshot;
