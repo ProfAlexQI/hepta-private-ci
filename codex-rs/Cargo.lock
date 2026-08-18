@@ -3331,6 +3331,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-hepta-agent-protocol"
+version = "0.0.0"
+dependencies = [
+ "codex-hepta-contracts",
+ "codex-hepta-fleet",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "codex-hepta-agentd"
 version = "0.0.0"
 dependencies = [
@@ -3519,6 +3530,7 @@ dependencies = [
 name = "codex-hepta-supervisor"
 version = "0.0.0"
 dependencies = [
+ "codex-hepta-agent-protocol",
  "codex-hepta-contracts",
  "codex-hepta-fleet",
  "codex-hepta-paths",

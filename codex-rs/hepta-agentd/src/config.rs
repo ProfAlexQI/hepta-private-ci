@@ -51,7 +51,7 @@ impl AgentdConfig {
         let current_dir = std::env::current_dir()?;
         Self::load(
             fleet_root,
-            AgentId::parse(agent_id).map_err(AgentdError::Invalid)?,
+            AgentId::parse(agent_id).map_err(|error| AgentdError::Invalid(error.to_string()))?,
             spawn_generation,
             home_root,
             run_root,
