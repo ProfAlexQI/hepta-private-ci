@@ -426,13 +426,67 @@ pub enum PluginStartupTasks {
     Skip,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct AppServerRuntimeOptions {
     pub code_mode_host_transport: CodeModeHostTransport,
     pub plugin_startup_tasks: PluginStartupTasks,
     pub remote_control_startup_mode: RemoteControlStartupMode,
     pub install_shutdown_signal_handler: bool,
+    /// Cognitive Plane capability owned by the embedding runtime.
+    ///
+    /// Plain Codex and the Hepta live shell pass `Absent`. A workspace agent
+    /// hands in `Available` or a sanitized `Unavailable`; extensions must
+    /// never infer store ownership from environment variables.
+    pub hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime,
 }
+
+impl std::fmt::Debug for AppServerRuntimeOptions {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AppServerRuntimeOptions")
+            .field("code_mode_host_transport", &self.code_mode_host_transport)
+            .field("plugin_startup_tasks", &self.plugin_startup_tasks)
+            .field(
+                "remote_control_startup_mode",
+                &self.remote_control_startup_mode,
+            )
+            .field(
+                "install_shutdown_signal_handler",
+                &self.install_shutdown_signal_handler,
+            )
+            .field("hepta_cognitive_runtime", &self.hepta_cognitive_runtime)
+            .finish()
+    }
+}
+
+impl PartialEq for AppServerRuntimeOptions {
+    fn eq(&self, other: &Self) -> bool {
+        self.code_mode_host_transport == other.code_mode_host_transport
+            && self.plugin_startup_tasks == other.plugin_startup_tasks
+            && self.remote_control_startup_mode == other.remote_control_startup_mode
+            && self.install_shutdown_signal_handler == other.install_shutdown_signal_handler
+            && match (
+                &self.hepta_cognitive_runtime,
+                &other.hepta_cognitive_runtime,
+            ) {
+                (
+                    codex_hepta_memory::CognitiveRuntime::Available(left),
+                    codex_hepta_memory::CognitiveRuntime::Available(right),
+                ) => Arc::ptr_eq(left, right),
+                (
+                    codex_hepta_memory::CognitiveRuntime::Unavailable(left),
+                    codex_hepta_memory::CognitiveRuntime::Unavailable(right),
+                ) => left == right,
+                (
+                    codex_hepta_memory::CognitiveRuntime::Absent,
+                    codex_hepta_memory::CognitiveRuntime::Absent,
+                ) => true,
+                _ => false,
+            }
+    }
+}
+
+impl Eq for AppServerRuntimeOptions {}
 
 impl Default for AppServerRuntimeOptions {
     fn default() -> Self {
@@ -441,6 +495,7 @@ impl Default for AppServerRuntimeOptions {
             plugin_startup_tasks: PluginStartupTasks::Start,
             remote_control_startup_mode: RemoteControlStartupMode::ResolvePersisted,
             install_shutdown_signal_handler: true,
+            hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime::Absent,
         }
     }
 }
@@ -913,6 +968,7 @@ pub async fn run_main_with_transport_options(
             rpc_transport: analytics_rpc_transport(&transport),
             remote_control_handle: Some(remote_control_handle.clone()),
             plugin_startup_tasks: runtime_options.plugin_startup_tasks,
+            hepta_cognitive_runtime: runtime_options.hepta_cognitive_runtime.clone(),
         }));
         let mut thread_created_rx = processor.thread_created_receiver();
         let mut running_turn_count_rx = processor.subscribe_running_assistant_turn_count();

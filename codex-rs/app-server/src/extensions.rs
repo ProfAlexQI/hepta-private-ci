@@ -48,6 +48,9 @@ pub(crate) struct ThreadExtensionDependencies {
     pub(crate) http_client_factory: HttpClientFactory,
     /// Process-scoped queue shared by idle dispatch and app-server requests.
     pub(crate) queue_service: Option<Arc<QueuedItemService>>,
+    /// Exact per-agent capability supplied by the owning process. Plain Codex
+    /// uses `Absent`; an owning agent may degrade to sanitized `Unavailable`.
+    pub(crate) hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime,
 }
 
 pub(crate) fn thread_extensions<S>(
@@ -69,6 +72,7 @@ where
         git_attribution_base_url,
         http_client_factory,
         queue_service,
+        hepta_cognitive_runtime,
     } = dependencies;
     let mut builder = ExtensionRegistryBuilder::<Config>::with_event_sink(Arc::clone(&event_sink));
     if let Some(queue_service) = queue_service {
@@ -99,21 +103,26 @@ where
             .features
             .enabled(codex_features::Feature::HeptaGovernance)
     });
-    codex_hepta_memory_extension::install(&mut builder, state_db, |config: &Config| {
-        codex_hepta_memory_extension::HeptaMemoryThreadConfig::for_features(
-            codex_hepta_memory_extension::HeptaMemoryFeatureFlags {
-                governance_enabled: config
-                    .features
-                    .enabled(codex_features::Feature::HeptaGovernance),
-                memory_enabled: config
-                    .features
-                    .enabled(codex_features::Feature::HeptaMemory),
-                read_only_enabled: config
-                    .features
-                    .enabled(codex_features::Feature::HeptaMemoryReadOnly),
-            },
-        )
-    });
+    codex_hepta_memory_extension::install(
+        &mut builder,
+        state_db,
+        hepta_cognitive_runtime,
+        |config: &Config| {
+            codex_hepta_memory_extension::HeptaMemoryThreadConfig::for_features(
+                codex_hepta_memory_extension::HeptaMemoryFeatureFlags {
+                    governance_enabled: config
+                        .features
+                        .enabled(codex_features::Feature::HeptaGovernance),
+                    memory_enabled: config
+                        .features
+                        .enabled(codex_features::Feature::HeptaMemory),
+                    read_only_enabled: config
+                        .features
+                        .enabled(codex_features::Feature::HeptaMemoryReadOnly),
+                },
+            )
+        },
+    );
     codex_guardian::install(&mut builder, guardian_agent_spawner);
     codex_guardian_v2::install(&mut builder, auth_manager.clone(), thread_manager);
     codex_memories_extension::install(&mut builder, codex_otel::global());

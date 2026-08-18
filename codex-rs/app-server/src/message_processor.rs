@@ -278,6 +278,7 @@ pub(crate) struct MessageProcessorArgs {
     pub(crate) rpc_transport: AppServerRpcTransport,
     pub(crate) remote_control_handle: Option<RemoteControlHandle>,
     pub(crate) plugin_startup_tasks: crate::PluginStartupTasks,
+    pub(crate) hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime,
 }
 
 impl MessageProcessor {
@@ -302,6 +303,7 @@ impl MessageProcessor {
             rpc_transport,
             remote_control_handle,
             plugin_startup_tasks,
+            hepta_cognitive_runtime,
         } = args;
         let thread_state_manager = ThreadStateManager::new();
         // The thread store is intentionally process-scoped. Config reloads can
@@ -358,6 +360,7 @@ impl MessageProcessor {
                         git_attribution_base_url: config.chatgpt_base_url.clone(),
                         http_client_factory: config.http_client_factory(),
                         queue_service: queue_service.clone(),
+                        hepta_cognitive_runtime: hepta_cognitive_runtime.clone(),
                     },
                 ),
                 Arc::new(CodexHomeUserInstructionsProvider::new(

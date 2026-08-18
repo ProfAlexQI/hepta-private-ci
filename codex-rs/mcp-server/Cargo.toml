@@ -26,6 +26,7 @@ codex-image-generation-extension = { workspace = true }
 codex-exec-server = { workspace = true }
 codex-extension-api = { workspace = true }
 codex-hepta-governance = { workspace = true }
+codex-hepta-memory = { workspace = true }
 codex-hepta-memory-extension = { workspace = true }
 codex-features = { workspace = true }
 codex-git-attribution = { workspace = true }

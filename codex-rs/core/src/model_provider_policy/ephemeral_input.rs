@@ -18,7 +18,8 @@ use super::lifecycle::ActiveModelProviderPolicies;
 
 const WRAPPER_OPEN: &str = "<hepta_memory_reference schema=\"1\">";
 const WRAPPER_CLOSE: &str = "</hepta_memory_reference>";
-const HEPTA_MEMORY_SOURCE: &str = "hepta_memory_same_thread_v1";
+const HEPTA_MEMORY_SAME_THREAD_SOURCE: &str = "hepta_memory_same_thread_v1";
+const HEPTA_COGNITIVE_PLANE_SOURCE: &str = "hepta_cognitive_plane_v1";
 
 /// Digest-only binding consumed by the final provider-attempt envelope.
 pub(crate) struct EphemeralModelInputBinding {
@@ -143,7 +144,10 @@ pub(super) fn prepare_ephemeral_model_input(
 ) -> Result<PreparedEphemeralModelInput, ModelProviderPolicyError> {
     validate_host_context(context)?;
     if proposal.schema_version() != context.schema_version
-        || proposal.source().as_str() != HEPTA_MEMORY_SOURCE
+        || !matches!(
+            proposal.source().as_str(),
+            HEPTA_MEMORY_SAME_THREAD_SOURCE | HEPTA_COGNITIVE_PLANE_SOURCE
+        )
         || proposal.attempt_id() != context.attempt_id
         || proposal.base_logical_request_sha256() != context.base_logical_request_sha256
         || proposal.thread_id() != context.thread_id
@@ -391,6 +395,37 @@ mod tests {
             binding.authority_sha256().as_str(),
             "d669cee6b7fe804741de414f68db6ef1f98d4cdb6efeab0e9155225d8d2418a6"
         );
+    }
+
+    #[test]
+    fn accepts_the_honest_cognitive_plane_source() {
+        let stores = (
+            ExtensionData::new("session"),
+            ExtensionData::new("thread-1"),
+            ExtensionData::new("turn-1"),
+        );
+        let base_sha256 = bytes_sha256(b"base-logical").expect("base digest");
+        let context = context(
+            (&stores.0, &stores.1, &stores.2),
+            &base_sha256,
+            ModelProviderRequestKind::Turn,
+            true,
+        );
+        let content = "cognitive memory";
+        let proposal = EphemeralModelInputProposal::new(
+            EphemeralModelInputSource::parse(HEPTA_COGNITIVE_PLANE_SOURCE).expect("source"),
+            context.attempt_id,
+            context.base_logical_request_sha256.clone(),
+            context.thread_id,
+            context.turn_id,
+            bytes_sha256(b"cognitive-source-binding").expect("source binding"),
+            bytes_sha256(content.as_bytes()).expect("content digest"),
+            content,
+            16,
+        )
+        .expect("proposal");
+
+        prepare_ephemeral_model_input(&context, proposal).expect("cognitive input is allowlisted");
     }
 
     #[test]

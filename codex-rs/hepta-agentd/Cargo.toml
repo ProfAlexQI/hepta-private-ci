@@ -27,6 +27,7 @@ codex-config = { workspace = true }
 codex-hepta-agent-protocol = { workspace = true }
 codex-hepta-contracts = { workspace = true }
 codex-hepta-fleet = { workspace = true }
+codex-hepta-memory = { workspace = true }
 codex-hepta-paths = { workspace = true }
 codex-protocol = { workspace = true }
 codex-uds = { workspace = true }

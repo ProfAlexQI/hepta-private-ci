@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::FleetRegistry;
+use codex_hepta_paths::HeptaAgentLayout;
 use codex_hepta_paths::HeptaFleetRoot;
 
 use crate::AgentdError;
@@ -19,6 +20,7 @@ pub const HEPTA_AGENT_RUN_ROOT_ENV: &str = "HEPTA_AGENT_RUN_ROOT";
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AgentdIdentity {
     pub agent_id: AgentId,
+    pub layout: HeptaAgentLayout,
     pub spawn_generation: u64,
     pub fleet_root: PathBuf,
     pub workspace: PathBuf,
@@ -116,17 +118,21 @@ impl AgentdConfig {
                 "agent {agent_id} already has a live writer lock: {error}"
             ))
         })?;
+        let layout = record.layout;
+        let control_socket = layout.agentd_control_socket().to_path_buf();
+        let app_server_socket = layout.app_server_socket().to_path_buf();
 
         Ok(Self {
             identity: AgentdIdentity {
                 agent_id,
+                layout,
                 spawn_generation,
                 fleet_root,
                 workspace,
                 home_root,
                 run_root,
-                control_socket: record.layout.agentd_control_socket().to_path_buf(),
-                app_server_socket: record.layout.app_server_socket().to_path_buf(),
+                control_socket,
+                app_server_socket,
             },
             registry,
             _writer_lock: writer_lock,

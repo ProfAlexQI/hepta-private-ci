@@ -43,6 +43,10 @@ fn config_binds_exact_registered_agent_roots_and_workspace() {
     .expect("exact roots must load");
     assert_eq!(config.identity().agent_id, agent_id);
     assert_eq!(config.identity().workspace, workspace);
+    assert_eq!(
+        config.identity().layout.cognitive_root(),
+        record.layout.cognitive_root()
+    );
     drop(config);
 
     assert!(

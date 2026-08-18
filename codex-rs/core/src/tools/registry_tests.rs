@@ -419,7 +419,8 @@ fn install_rewriting_pre_tool_hook(
             ..Default::default()
         },
         session.thread_id(),
-    );
+    )
+    .expect("initialize plugin tool-policy test hooks");
     session.services.hooks.store(Arc::new(hooks));
 }
 

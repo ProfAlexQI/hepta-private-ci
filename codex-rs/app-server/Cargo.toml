@@ -54,6 +54,7 @@ codex-guardian = { workspace = true }
 codex-guardian-v2 = { workspace = true }
 codex-hepta-evidence = { workspace = true }
 codex-hepta-governance = { workspace = true }
+codex-hepta-memory = { workspace = true }
 codex-hepta-memory-extension = { workspace = true }
 codex-git-utils = { workspace = true }
 codex-file-watcher = { workspace = true }

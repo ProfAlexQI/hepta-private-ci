@@ -71,6 +71,7 @@ impl AgentdState {
             })?;
         if record.layout.home_root() != self.identity.home_root
             || record.layout.run_root() != self.identity.run_root
+            || record.layout.cognitive_root() != self.identity.layout.cognitive_root()
             || record.manifest.workspace.as_path() != self.identity.workspace
         {
             return Err(AgentdError::GenerationFenced(

@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -5,6 +6,8 @@ use codex_app_server_client::RemoteAppServerClient;
 use codex_app_server_client::RemoteAppServerConnectArgs;
 use codex_app_server_client::RemoteAppServerEndpoint;
 use codex_arg0::Arg0DispatchPaths;
+use codex_hepta_memory::CognitiveRuntime;
+use codex_hepta_memory::CognitiveStore;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
@@ -29,7 +32,11 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
         registry,
         EVENT_CAPACITY,
     )?);
-    state.refresh_generation()?;
+    let cognitive_layout = identity.layout.clone();
+    let cognitive_runtime = open_cognitive_runtime_after_generation_fence(&state, || async move {
+        CognitiveStore::open(&cognitive_layout).await
+    })
+    .await?;
     let cancellation = CancellationToken::new();
     let control = AgentdControlServer::bind(
         identity.control_socket.clone(),
@@ -38,7 +45,11 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
     )
     .await?;
     let mut control_task = tokio::spawn(control.run());
-    let mut app_server_task = tokio::spawn(run_app_server(identity.clone(), arg0_paths));
+    let mut app_server_task = tokio::spawn(run_app_server(
+        identity.clone(),
+        arg0_paths,
+        cognitive_runtime,
+    ));
     let mut monitor_task = tokio::spawn(monitor_runtime(Arc::clone(&state)));
 
     let outcome = tokio::select! {
@@ -56,6 +67,23 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
     abort_and_join(&mut monitor_task).await;
     abort_and_join(&mut app_server_task).await;
     outcome
+}
+
+async fn open_cognitive_runtime_after_generation_fence<Open, OpenFuture>(
+    state: &AgentdState,
+    open: Open,
+) -> Result<CognitiveRuntime, AgentdError>
+where
+    Open: FnOnce() -> OpenFuture,
+    OpenFuture: Future<Output = Result<CognitiveStore, codex_hepta_memory::CognitiveStoreError>>,
+{
+    state.refresh_generation()?;
+    let cognitive_runtime = CognitiveRuntime::from_open_result(open().await);
+    // Opening and migrating the store is bounded durable work. Fence again
+    // before binding control or starting App Server so a generation change
+    // concurrent with that work cannot reach a serving runtime.
+    state.refresh_generation()?;
+    Ok(cognitive_runtime)
 }
 
 async fn monitor_runtime(state: Arc<AgentdState>) -> Result<(), AgentdError> {
@@ -159,3 +187,7 @@ async fn shutdown_signal() -> Result<(), AgentdError> {
 async fn shutdown_signal() -> Result<(), AgentdError> {
     tokio::signal::ctrl_c().await.map_err(Into::into)
 }
+
+#[cfg(test)]
+#[path = "runtime_tests.rs"]
+mod tests;
