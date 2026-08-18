@@ -6,6 +6,7 @@ use crate::*;
 
 assert_not_impl_any!(InspectedNixClosedRunPlanV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
 assert_not_impl_any!(JoinedNixClosedRunPlanPreparedClaimInspectionV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
+assert_not_impl_any!(InvalidatedNixSandboxContractInspectionV1: Clone, Copy, Serialize, serde::de::DeserializeOwned);
 
 const TEST_SANDBOX_PLAN_BYTE_COUNT: usize = 67_115;
 const TEST_SANDBOX_PLAN_SHA256: &str =
@@ -45,6 +46,252 @@ fn exact_sandbox_plan_is_canonical_closed_and_non_authorizing() {
     assert!(!inspected.launch_grant_available());
     assert!(!inspected.launch_performed());
     assert!(!inspected.wall_clock_verified());
+
+    let requalification =
+        derive_nix_sandbox_requalification_envelope(&inspected).expect("negative model");
+    let requalification_bytes =
+        serde_json::to_vec(&requalification).expect("canonical negative model");
+    let recursively_sorted: serde_json::Value =
+        serde_json::from_slice(&requalification_bytes).expect("negative model value");
+    assert_eq!(
+        requalification_bytes,
+        serde_json::to_vec(&recursively_sorted).expect("recursively sorted negative model")
+    );
+    let invalidated =
+        inspect_canonical_nix_sandbox_requalification_envelope(&inspected, &requalification_bytes)
+            .expect("invalidated sandbox inspection");
+    assert_eq!(invalidated.canonical_bytes(), requalification_bytes);
+    assert_eq!(invalidated.envelope(), &requalification);
+    assert_eq!(
+        invalidated.envelope_sha256(),
+        sha256(&requalification_bytes)
+    );
+    assert!(!invalidated.authorizes_live());
+    assert!(!invalidated.launch_grant_available());
+    assert!(!invalidated.launch_performed());
+    assert!(!invalidated.pass_authorized());
+    assert!(!invalidated.ready_to_plan());
+    assert!(!invalidated.receipt_acceptance_authorized());
+    assert!(!invalidated.receipt_accepted());
+    assert!(!invalidated.replay_publication_available());
+    assert!(!invalidated.replay_publication_authorized());
+    assert!(!invalidated.sandbox_qualified());
+    assert!(!invalidated.sandbox_qualification_observed());
+
+    assert!(requalification.authority.is_fully_closed());
+    assert_eq!(
+        requalification.current_contract_disposition,
+        NixSandboxFeasibilityDispositionV1::CurrentV3ContractInvalidatedNoQualification
+    );
+    assert_eq!(requalification.docker_image, PINNED_IMAGE);
+    assert_eq!(
+        requalification.docker_image_config_id_sha256,
+        plan.binding.docker_platform_config_image_id_sha256
+    );
+    assert_eq!(
+        requalification.docker_image_manifest_sha256,
+        PINNED_IMAGE_SHA256
+    );
+    assert_eq!(
+        requalification.evidence_disposition,
+        NixSandboxEvidenceDispositionV1::NegativeDevelopmentProbeOnlyNoQualification
+    );
+    assert_eq!(
+        requalification.failure_disposition,
+        NixSandboxFailureDispositionV1::RejectContainerUseDedicatedVmOrMicroVm
+    );
+    assert_eq!(
+        requalification.forbidden_fallbacks,
+        [
+            NixSandboxForbiddenFallbackV1::InitialNamespaceCapSysAdmin,
+            NixSandboxForbiddenFallbackV1::PrivilegedContainer,
+            NixSandboxForbiddenFallbackV1::UnconfinedLsm,
+        ]
+    );
+    assert_eq!(
+        requalification.inspected_closed_plan_byte_count,
+        u64::try_from(bytes.len()).expect("plan byte count")
+    );
+    assert_eq!(
+        requalification.inspected_closed_plan_disposition,
+        ClosedRunPlanDispositionV1::FreshSandboxBuildInspectionOnlyNoLaunchAuthority
+    );
+    assert_eq!(
+        requalification.inspected_closed_plan_schema,
+        NIX_CLOSED_RUN_PLAN_SCHEMA
+    );
+    assert_eq!(requalification.inspected_closed_plan_schema_version, 3);
+    assert_eq!(requalification.inspected_closed_plan_sha256, sha256(&bytes));
+    assert!(!requalification.launch_authorized);
+    assert_eq!(requalification.nix_version, NIX_VERSION);
+    assert!(!requalification.pass_authorized);
+    assert!(!requalification.ready_to_plan);
+    assert!(!requalification.receipt_acceptance_authorized);
+    assert!(!requalification.replay_publication_authorized);
+    assert_eq!(
+        requalification.requalification_axes,
+        [
+            NixSandboxRequalificationAxisV1::RunUniqueBoundedExecutableBuildScratchUnqualified,
+            NixSandboxRequalificationAxisV1::BuilderVerifierSecurityProfilesNotSeparated,
+            NixSandboxRequalificationAxisV1::CompleteNixSeedStoreDbProfileBootstrapUnqualified,
+            NixSandboxRequalificationAxisV1::ZeroAddedCapabilityUnprivilegedUserNamespacePrivateMountUnqualified,
+        ]
+    );
+    assert!(!requalification.sandbox_qualification_observed);
+    assert_eq!(requalification.schema, NIX_SANDBOX_REQUALIFICATION_SCHEMA);
+    assert_eq!(
+        requalification.schema_version,
+        NIX_SANDBOX_REQUALIFICATION_SCHEMA_VERSION
+    );
+    let status = production_status();
+    assert!(!status.ready_to_plan);
+    assert!(status.authority.is_fully_closed());
+    assert!(
+        status
+            .blockers
+            .iter()
+            .any(|blocker| blocker == "qualified_nix_sandbox_container_feasibility_missing")
+    );
+
+    let mut changed_models = Vec::new();
+    let mut changed = requalification.clone();
+    changed.authority.container_launch = true;
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.docker_image.push_str("-drift");
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.docker_image_config_id_sha256 = digest('f');
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.docker_image_manifest_sha256 = digest('e');
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.inspected_closed_plan_byte_count += 1;
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.inspected_closed_plan_disposition =
+        ClosedRunPlanDispositionV1::PresealedOfflineArtifactInspectionOnlyNotFreshBuild;
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.inspected_closed_plan_schema.push_str("-drift");
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.inspected_closed_plan_schema_version += 1;
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.inspected_closed_plan_sha256 = digest('d');
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.launch_authorized = true;
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.nix_version.push_str("-drift");
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.pass_authorized = true;
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.ready_to_plan = true;
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.receipt_acceptance_authorized = true;
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.replay_publication_authorized = true;
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.requalification_axes.swap(0, 1);
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.requalification_axes.pop();
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.forbidden_fallbacks.swap(0, 1);
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.forbidden_fallbacks.pop();
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.sandbox_qualification_observed = true;
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.schema.push_str("-drift");
+    changed_models.push(changed);
+    let mut changed = requalification.clone();
+    changed.schema_version += 1;
+    changed_models.push(changed);
+    for changed in changed_models {
+        assert!(
+            inspect_canonical_nix_sandbox_requalification_envelope(
+                &inspected,
+                &serde_json::to_vec(&changed).expect("changed negative model")
+            )
+            .is_err()
+        );
+    }
+
+    assert!(
+        inspect_canonical_nix_sandbox_requalification_envelope(
+            &inspected,
+            &serde_json::to_vec_pretty(&requalification).expect("pretty negative model")
+        )
+        .is_err()
+    );
+    let mut unknown = serde_json::to_value(&requalification).expect("negative model JSON");
+    unknown
+        .as_object_mut()
+        .expect("negative model object")
+        .insert("unknown".to_string(), serde_json::Value::Bool(false));
+    assert!(
+        inspect_canonical_nix_sandbox_requalification_envelope(
+            &inspected,
+            &serde_json::to_vec(&unknown).expect("unknown negative model field")
+        )
+        .is_err()
+    );
+    for field in [
+        "current_contract_disposition",
+        "evidence_disposition",
+        "failure_disposition",
+    ] {
+        let mut invalid_disposition =
+            serde_json::to_value(&requalification).expect("negative model JSON");
+        invalid_disposition
+            .as_object_mut()
+            .expect("negative model object")
+            .insert(
+                field.to_string(),
+                serde_json::Value::String("INVALID_DISPOSITION".to_string()),
+            );
+        assert!(
+            inspect_canonical_nix_sandbox_requalification_envelope(
+                &inspected,
+                &serde_json::to_vec(&invalid_disposition).expect("invalid disposition JSON")
+            )
+            .is_err()
+        );
+    }
+    assert!(inspect_canonical_nix_sandbox_requalification_envelope(&inspected, &[]).is_err());
+    assert!(
+        inspect_canonical_nix_sandbox_requalification_envelope(
+            &inspected,
+            &vec![b'x'; MAX_NIX_SANDBOX_REQUALIFICATION_BYTES + 1]
+        )
+        .is_err()
+    );
+    let mut trailing = requalification_bytes.clone();
+    trailing.push(b'\n');
+    assert!(inspect_canonical_nix_sandbox_requalification_envelope(&inspected, &trailing).is_err());
+    let mut duplicate = format!(
+        "{{\"schema\":{},",
+        serde_json::to_string(NIX_SANDBOX_REQUALIFICATION_SCHEMA).expect("schema JSON")
+    )
+    .into_bytes();
+    duplicate.extend_from_slice(&requalification_bytes[1..]);
+    assert!(
+        inspect_canonical_nix_sandbox_requalification_envelope(&inspected, &duplicate).is_err()
+    );
 
     assert!(plan.authority.is_fully_closed());
     assert_eq!(plan.schema, NIX_CLOSED_RUN_PLAN_SCHEMA);
@@ -1699,6 +1946,20 @@ fn presealed_plan_is_read_only_not_a_fresh_build_and_has_no_fallback() {
     assert_eq!(
         inspected.disposition(),
         ClosedRunPlanDispositionV1::PresealedOfflineArtifactInspectionOnlyNotFreshBuild
+    );
+    assert!(derive_nix_sandbox_requalification_envelope(&inspected).is_err());
+    let sandbox = inspect_canonical_nix_closed_run_plan(
+        &serde_json::to_vec(&sandbox_plan()).expect("canonical sandbox plan"),
+    )
+    .expect("sandbox inspection");
+    let sandbox_requalification =
+        derive_nix_sandbox_requalification_envelope(&sandbox).expect("sandbox negative model");
+    assert!(
+        inspect_canonical_nix_sandbox_requalification_envelope(
+            &inspected,
+            &serde_json::to_vec(&sandbox_requalification).expect("sandbox negative model bytes")
+        )
+        .is_err()
     );
     assert!(plan.builder_container.is_none());
     assert!(plan.verifier_container.named_volume_mounts[0].read_only);

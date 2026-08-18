@@ -8,11 +8,13 @@
 mod final_join;
 mod model;
 mod run_plan;
+mod sandbox_feasibility;
 mod verify;
 
 pub use final_join::*;
 pub use model::*;
 pub use run_plan::*;
+pub use sandbox_feasibility::*;
 pub use verify::*;
 
 use thiserror::Error;
