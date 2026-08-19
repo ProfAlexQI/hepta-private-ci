@@ -106,6 +106,7 @@ async fn task_context_recovers_prior_requests_and_explicit_intent_without_changi
         registry.thread_lifecycle_contributors()[0]
             .on_thread_start(ThreadStartInput {
                 config: &config,
+                installation_id: "test-installation",
                 session_source: &SessionSource::Cli,
                 persistent_thread_state_available: true,
                 environments: &[],
@@ -127,6 +128,7 @@ async fn task_context_recovers_prior_requests_and_explicit_intent_without_changi
                     /*extension_metrics*/ None,
                     &session_store,
                     &thread_store,
+                    &ExtensionData::new(turn_id),
                     &ExtensionData::new(turn_id),
                 )
                 .await;

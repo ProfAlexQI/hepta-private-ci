@@ -99,6 +99,14 @@ implementation is an oracle and evidence source, not a merge target.
 - Codex Extension API exposes one generic two-phase `ToolPolicyContributor`:
   admission sees the original payload, authorization sees the effective payload
   after trusted hook rewrites, and both execute on the only ToolRegistry path.
+- Governed threads currently reject configured `mcp_tool` hooks before MCP
+  runtime lookup or transport. The rejection is an ordinary hook failure, so
+  the outer hook flow keeps its upstream fail-open behavior; it does not invent
+  a ToolPolicy attempt or terminal. Upstream `mcp_tool` hook behavior remains
+  available only when Hepta governance is disabled and no active tool-policy
+  contributor is installed. Trusted command hooks remain a separate host
+  authority boundary; this slice does not claim that their side effects pass
+  through ToolPolicy.
 - Tool identities use a versioned, length-delimited digest. Decisions bind a
   versioned policy stamp and payload digest while preserving direct versus Code
   Mode call identity; raw tool arguments are never written to governance rows.

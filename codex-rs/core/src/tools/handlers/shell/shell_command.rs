@@ -210,7 +210,7 @@ impl ShellCommandHandler {
         let params: ShellCommandToolCallParams = parse_arguments_with_base_path(&arguments, &cwd)?;
         maybe_emit_implicit_skill_invocation(
             session.as_ref(),
-            turn.as_ref(),
+            step_context.as_ref(),
             &params.command,
             &PathUri::from_abs_path(&cwd),
             Some(&cwd),

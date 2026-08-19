@@ -6,6 +6,9 @@ use std::time::Duration;
 use codex_config::DEFAULT_MCP_SERVER_ENVIRONMENT_ID;
 use codex_config::types::McpServerConfig;
 use codex_config::types::McpServerTransportConfig;
+use codex_extension_api::ExtensionRegistryBuilder;
+use codex_extension_api::ToolPolicyContributor;
+use codex_features::Feature;
 use codex_protocol::protocol::Op;
 use core_test_support::process::process_is_alive;
 use core_test_support::process::wait_for_pid_file;
@@ -15,6 +18,94 @@ use core_test_support::skip_if_no_network;
 use core_test_support::stdio_server_bin;
 use core_test_support::test_codex::test_codex;
 use core_test_support::wait_for_mcp_server;
+
+struct ActiveToolPolicy;
+
+impl ToolPolicyContributor for ActiveToolPolicy {}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn active_tool_policy_rejects_direct_mcp_calls_before_transport() -> anyhow::Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let server = responses::start_mock_server().await;
+    let temp_dir = tempfile::tempdir()?;
+    let marker_file = temp_dir.path().join("thread_hint_called");
+    let marker_file_for_config = marker_file.clone();
+    let command = stdio_server_bin()?;
+    let mut extensions = ExtensionRegistryBuilder::new();
+    extensions.tool_policy_contributor(Arc::new(ActiveToolPolicy));
+    let fixture = test_codex()
+        .with_extensions(Arc::new(extensions.build()))
+        .with_config(move |config| {
+            config
+                .features
+                .disable(Feature::HeptaGovernance)
+                .expect("test config should allow Hepta governance to be disabled");
+            let mut servers = config.mcp_servers.get().clone();
+            servers.insert(
+                "direct_policy_guard".to_string(),
+                McpServerConfig {
+                    auth: Default::default(),
+                    transport: McpServerTransportConfig::Stdio {
+                        command,
+                        args: Vec::new(),
+                        env: Some(HashMap::from([(
+                            "MCP_TEST_THREAD_HINT_MARKER_FILE".to_string(),
+                            marker_file_for_config.to_string_lossy().into_owned(),
+                        )])),
+                        env_vars: Vec::new(),
+                        cwd: None,
+                    },
+                    environment_id: DEFAULT_MCP_SERVER_ENVIRONMENT_ID.to_string(),
+                    enabled: true,
+                    required: false,
+                    supports_parallel_tool_calls: false,
+                    omit_tools_from: None,
+                    disabled_reason: None,
+                    startup_timeout_sec: Some(Duration::from_secs(10)),
+                    tool_timeout_sec: None,
+                    default_tools_approval_mode: None,
+                    enabled_tools: None,
+                    disabled_tools: None,
+                    scopes: None,
+                    oauth: None,
+                    oauth_resource: None,
+                    tools: HashMap::new(),
+                },
+            );
+            config
+                .mcp_servers
+                .set(servers)
+                .expect("test MCP servers should accept any configuration");
+        })
+        .build(&server)
+        .await?;
+    wait_for_mcp_server(&fixture.codex, "direct_policy_guard").await?;
+
+    let error = fixture
+        .codex
+        .call_mcp_tool(
+            "direct_policy_guard",
+            "thread_hint",
+            /*arguments*/ None,
+            Some(serde_json::json!({
+                "threadId": fixture.session_configured.thread_id.to_string(),
+            })),
+        )
+        .await
+        .expect_err("an active tool policy must reject direct MCP calls");
+    assert_eq!(
+        error.to_string(),
+        "direct App Server MCP tool calls are disabled while an active tool policy is installed"
+    );
+    assert!(
+        !marker_file.exists(),
+        "direct MCP rejection must happen before tool transport"
+    );
+
+    fixture.codex.shutdown_and_wait().await?;
+    Ok(())
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn refresh_keeps_superseded_mcp_server_alive_for_in_flight_calls() -> anyhow::Result<()> {

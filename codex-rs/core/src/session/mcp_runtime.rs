@@ -184,7 +184,13 @@ impl Session {
         let McpRuntimeProjection {
             mut config,
             plugins_available,
+            mut selected_plugins,
         } = mcp_projection;
+        selected_plugins.plugins.retain(|plugin| {
+            ready_selected_capability_roots
+                .iter()
+                .any(|root| root.id == plugin.selected_root_id)
+        });
         config.approval_policy = desired.config.permissions.approval_policy.clone();
         config.permission_profile = desired.config.permissions.effective_permission_profile();
         config.approvals_reviewer = desired.config.approvals_reviewer;
@@ -220,6 +226,7 @@ impl Session {
             },
             config: mcp_config,
             plugins_available,
+            selected_plugins: Arc::new(selected_plugins),
             ready_selected_capability_roots: ready_selected_capability_roots.to_vec(),
             mcp_servers,
             submit_id: desired.submit_id.clone(),

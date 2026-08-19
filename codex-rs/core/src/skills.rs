@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::session::session::Session;
+use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
 use codex_analytics::InvocationType;
 use codex_analytics::SkillInvocation;
@@ -82,14 +83,16 @@ pub(crate) fn emit_explicit_skill_invocations(
 
 pub(crate) async fn maybe_emit_implicit_skill_invocation(
     sess: &Session,
-    turn_context: &TurnContext,
+    step_context: &StepContext,
     command: &str,
     workdir: &PathUri,
     native_workdir: Option<&AbsolutePathBuf>,
     environment_id: &str,
 ) {
+    let turn_context = step_context.turn.as_ref();
     let Some(invocation) = detect_implicit_skill_invocation(
         turn_context.extension_data.as_ref(),
+        step_context.step_store.as_ref(),
         environment_id,
         command,
         workdir,

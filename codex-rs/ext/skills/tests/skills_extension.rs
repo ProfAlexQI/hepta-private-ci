@@ -125,6 +125,7 @@ async fn skill_world_state_fragments(
             session_store,
             thread_store,
             turn_store: &turn_store,
+            step_store: &turn_store,
         })
         .await;
 
@@ -204,6 +205,7 @@ async fn installed_extension_uses_host_service_snapshot() -> TestResult {
             &session_store,
             &thread_store,
             &turn_store,
+            &turn_store,
         )
         .await;
 
@@ -281,6 +283,7 @@ async fn host_world_state_records_catalog_metrics_on_publish_and_change() -> Tes
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &turn_store,
+            step_store: &turn_store,
         })
         .await;
 
@@ -307,6 +310,7 @@ async fn host_world_state_records_catalog_metrics_on_publish_and_change() -> Tes
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &turn_store,
+            step_store: &turn_store,
         })
         .await;
     assert!(
@@ -343,6 +347,7 @@ async fn host_world_state_records_catalog_metrics_on_publish_and_change() -> Tes
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &turn_store,
+            step_store: &turn_store,
         })
         .await;
     assert!(
@@ -415,6 +420,7 @@ async fn persisted_host_snapshot_deduplicates_warning_after_reinitialization() -
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &turn_store,
+            step_store: &turn_store,
         })
         .await;
     let host_section = world_state_section(&sections, "host_skills");
@@ -457,6 +463,7 @@ async fn persisted_host_snapshot_deduplicates_warning_after_reinitialization() -
             session_store: &session_store,
             thread_store: &resumed_thread_store,
             turn_store: &resumed_turn_store,
+            step_store: &resumed_turn_store,
         })
         .await;
     assert!(
@@ -546,6 +553,7 @@ async fn executor_orchestrator_and_host_share_catalog_world_state_flow() -> Test
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &turn_store,
+            step_store: &turn_store,
         })
         .await;
 
@@ -654,6 +662,7 @@ async fn nonempty_executor_empty_host_records_catalog_metrics() -> TestResult {
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &turn_store,
+            step_store: &turn_store,
         })
         .await;
 
@@ -732,6 +741,7 @@ async fn host_world_state_uses_provider_catalog_with_core_compatible_rendering()
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &turn_store,
+            step_store: &turn_store,
         })
         .await;
     let host_fragment = world_state_section(&sections, "host_skills")
@@ -812,6 +822,7 @@ async fn shadow_selection_uses_host_catalog_when_instructions_are_disabled() -> 
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &turn_store,
+            step_store: &turn_store,
         })
         .await;
     let fragments = registry.turn_input_contributors()[0]
@@ -827,6 +838,7 @@ async fn shadow_selection_uses_host_catalog_when_instructions_are_disabled() -> 
             /*extension_metrics*/ None,
             &session_store,
             &thread_store,
+            &turn_store,
             &turn_store,
         )
         .await;
@@ -926,6 +938,7 @@ async fn shadow_lru_selector_recovers_a_skill_invoked_on_an_earlier_turn() -> Te
                 /*extension_metrics*/ None,
                 &session_store,
                 &thread_store,
+                &turn_store,
                 &turn_store,
             )
             .await;
@@ -1071,6 +1084,7 @@ async fn selected_executor_catalog_follows_step_availability_and_reuses_its_cach
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &turn_store,
+            step_store: &turn_store,
         })
         .await;
     assert_eq!(1, available_sections.len());
@@ -1099,6 +1113,7 @@ async fn selected_executor_catalog_follows_step_availability_and_reuses_its_cach
             &session_store,
             &thread_store,
             &turn_store,
+            &turn_store,
         )
         .await;
 
@@ -1126,6 +1141,7 @@ async fn selected_executor_catalog_follows_step_availability_and_reuses_its_cach
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &unavailable_turn_store,
+            step_store: &unavailable_turn_store,
         })
         .await;
     let unavailable_snapshot = unavailable_sections[0].snapshot().clone();
@@ -1150,6 +1166,7 @@ async fn selected_executor_catalog_follows_step_availability_and_reuses_its_cach
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &restored_turn_store,
+            step_store: &restored_turn_store,
         })
         .await;
     let restored_snapshot = restored_sections[0].snapshot().clone();
@@ -1193,6 +1210,7 @@ async fn selected_executor_catalog_follows_step_availability_and_reuses_its_cach
                 session_store: &session_store,
                 thread_store: &thread_store,
                 turn_store: &ExtensionData::new(turn_id),
+                step_store: &ExtensionData::new(turn_id),
             })
             .await;
         assert_eq!(expected_list_calls, list_calls.load(Ordering::Relaxed));
@@ -1218,6 +1236,7 @@ async fn selected_executor_catalog_follows_step_availability_and_reuses_its_cach
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &listing_disabled_turn_store,
+            step_store: &listing_disabled_turn_store,
         })
         .await;
     let listing_disabled_fragment = listing_disabled_sections[0]
@@ -1703,6 +1722,7 @@ async fn orchestrator_catalog_snapshot_caches_failure() -> TestResult {
                 &session_store,
                 &thread_store,
                 &ExtensionData::new(turn_id),
+                &ExtensionData::new(turn_id),
             )
             .await;
         assert!(fragments.is_empty());
@@ -1794,6 +1814,7 @@ async fn root_qualified_locator_selects_only_the_matching_executor_skill() -> Te
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &turn_store,
+            step_store: &turn_store,
         })
         .await;
     let fragments = registry.turn_input_contributors()[0]
@@ -1809,6 +1830,7 @@ async fn root_qualified_locator_selects_only_the_matching_executor_skill() -> Te
             /*extension_metrics*/ None,
             &session_store,
             &thread_store,
+            &turn_store,
             &turn_store,
         )
         .await;
@@ -1918,6 +1940,7 @@ async fn model_context_window_scales_executor_and_orchestrator_catalogs() -> Tes
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &turn_store,
+            step_store: &turn_store,
         })
         .await;
     // Core rebuilds world state before each sampling step.
@@ -1932,6 +1955,7 @@ async fn model_context_window_scales_executor_and_orchestrator_catalogs() -> Tes
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &turn_store,
+            step_store: &turn_store,
         })
         .await;
     assert!(event_rx.try_recv().is_err());
@@ -2032,6 +2056,7 @@ async fn executor_catalog_emits_at_most_four_warnings() -> TestResult {
             session_store: &session_store,
             thread_store: &thread_store,
             turn_store: &turn_store,
+            step_store: &turn_store,
         })
         .await;
     registry.turn_input_contributors()[0]
@@ -2044,6 +2069,7 @@ async fn executor_catalog_emits_at_most_four_warnings() -> TestResult {
             /*extension_metrics*/ None,
             &session_store,
             &thread_store,
+            &turn_store,
             &turn_store,
         )
         .await;
@@ -2155,6 +2181,7 @@ async fn host_catalog_compacts_shared_paths_under_budget_pressure() -> TestResul
             &session_store,
             &thread_store,
             &turn_store,
+            &turn_store,
         )
         .await;
     let catalog = fragments
@@ -2239,6 +2266,7 @@ async fn prompt_hidden_skill_can_still_be_invoked() -> TestResult {
             &session_store,
             &thread_store,
             &ExtensionData::new("turn-1"),
+            &ExtensionData::new("turn-1"),
         )
         .await;
 
@@ -2315,6 +2343,10 @@ impl RecordingMetrics {
 }
 
 impl ExtensionMetrics for RecordingMetrics {
+    fn counter(&self, name: &str, _inc: i64, _tags: &[(&str, &str)]) {
+        panic!("unexpected counter: {name}");
+    }
+
     fn histogram(&self, name: &str, value: i64, tags: &[(&str, &str)]) {
         self.samples
             .lock()

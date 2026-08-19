@@ -258,6 +258,7 @@ pub async fn list_accessible_connectors_from_mcp_tools_with_mcp_manager(
         startup_policy: McpStartupPolicy::Eager,
         config: Arc::clone(&mcp_config),
         plugins_available: false,
+        selected_plugins: Arc::new(codex_mcp::SelectedPluginSnapshot::default()),
         ready_selected_capability_roots: Vec::new(),
         mcp_servers: mcp_servers.clone(),
         submit_id: INITIAL_SUBMIT_ID.to_owned(),

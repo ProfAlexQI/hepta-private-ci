@@ -8,6 +8,7 @@ use crate::ContextContributor;
 use crate::EphemeralModelInputContributor;
 use crate::ExtensionData;
 use crate::ExtensionEventSink;
+use crate::ExtensionMetrics;
 use crate::McpServerContributor;
 use crate::ModelProviderPolicyContributor;
 use crate::NoopExtensionEventSink;
@@ -228,10 +229,16 @@ impl<C: Sync> ExtensionRegistry<C> {
         session_store: &ExtensionData,
         thread_store: &ExtensionData,
         prompt: &str,
+        extension_metrics: Option<Arc<dyn ExtensionMetrics>>,
     ) -> Option<ReviewDecision> {
         for contributor in &self.approval_review_contributors {
             if let Some(decision) = contributor
-                .contribute(session_store, thread_store, prompt)
+                .contribute(
+                    session_store,
+                    thread_store,
+                    prompt,
+                    extension_metrics.clone(),
+                )
                 .await
             {
                 return Some(decision);

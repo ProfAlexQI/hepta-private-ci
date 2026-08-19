@@ -249,6 +249,7 @@ fn final_event(text: &str) -> AppServerEvent {
                 text: text.to_string(),
                 phase: None,
                 memory_citation: None,
+                delivery: None,
             },
             thread_id: "thread-matrix-room".to_string(),
             turn_id: "turn-1".to_string(),

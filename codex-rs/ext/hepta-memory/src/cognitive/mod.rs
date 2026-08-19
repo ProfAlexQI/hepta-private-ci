@@ -350,6 +350,7 @@ impl TurnInputContributor for CognitiveExtension {
         _session_store: &'a ExtensionData,
         thread_store: &'a ExtensionData,
         turn_store: &'a ExtensionData,
+        _step_store: &'a ExtensionData,
     ) -> ExtensionFuture<'a, Vec<Box<dyn codex_extension_api::ContextualUserFragment + Send>>> {
         Box::pin(async move {
             turn_store.remove::<PreparedCognitiveAttachment>();

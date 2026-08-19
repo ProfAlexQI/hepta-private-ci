@@ -4,6 +4,7 @@ use crate::elicitation::ElicitationRegistration;
 use crate::session::SessionIo;
 use crate::session::SessionSettingsUpdate;
 use crate::session::session::Session;
+use crate::tools::lifecycle::has_active_tool_policy;
 use crate::user_message_admission::AdmittedUserMessage;
 use crate::user_message_admission::PendingUserMessageAdmissionState;
 use crate::user_message_admission::UserMessageAdmission;
@@ -991,6 +992,23 @@ impl CodexThread {
     pub async fn read_mcp_resource(
         &self,
         server: &str,
+        params: ReadResourceRequestParams,
+    ) -> anyhow::Result<serde_json::Value> {
+        self.session.refresh_mcp_if_dirty().await;
+        let result = self
+            .session
+            .services
+            .mcp_runtime
+            .latest_read_resource(server, params)
+            .await?;
+
+        Ok(serde_json::to_value(result)?)
+    }
+
+    /// Reads an app resource using the current authority of its originating tool call.
+    pub async fn read_mcp_resource_for_call(
+        &self,
+        call_id: &str,
         uri: &str,
     ) -> anyhow::Result<serde_json::Value> {
         self.session.refresh_mcp_if_dirty().await;
@@ -998,7 +1016,7 @@ impl CodexThread {
             .session
             .services
             .mcp_runtime
-            .latest_read_resource(server, ReadResourceRequestParams::new(uri))
+            .read_resource_for_call(self.session.thread_id, call_id, uri)
             .await?;
 
         Ok(serde_json::to_value(result)?)
@@ -1011,6 +1029,16 @@ impl CodexThread {
         arguments: Option<serde_json::Value>,
         meta: Option<serde_json::Value>,
     ) -> anyhow::Result<CallToolResult> {
+        if self.enabled(Feature::HeptaGovernance) {
+            anyhow::bail!(
+                "direct App Server MCP tool calls are disabled while Hepta governance is active"
+            );
+        }
+        if has_active_tool_policy(self.session.as_ref()) {
+            anyhow::bail!(
+                "direct App Server MCP tool calls are disabled while an active tool policy is installed"
+            );
+        }
         self.session.refresh_mcp_if_dirty().await;
         self.session
             .services

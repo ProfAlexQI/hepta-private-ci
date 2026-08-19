@@ -16,6 +16,7 @@ use crate::state::ExecutorSkillsStepState;
 /// Identifies the executor-owned or host-owned skill referenced by a command.
 pub fn detect_implicit_skill_invocation(
     turn_store: &ExtensionData,
+    step_store: &ExtensionData,
     environment_id: &str,
     command: &str,
     workdir: &PathUri,
@@ -42,7 +43,7 @@ pub fn detect_implicit_skill_invocation(
         });
     }
 
-    let catalog = turn_store.get::<ExecutorSkillsStepState>()?;
+    let catalog = step_store.get::<ExecutorSkillsStepState>()?;
     for access in implicit_skill_accesses_for_command(command, workdir) {
         for entry in &catalog.0.entries {
             let Some((skill_environment_id, skill_path)) = entry.main_prompt.environment_path()
@@ -71,7 +72,7 @@ pub fn detect_implicit_skill_invocation(
                         skill_id: entry.canonical_skill_id.clone(),
                         scope: entry.analytics_scope,
                     },
-                    plugin_id: None,
+                    plugin_id: entry.plugin_id.clone(),
                     remote_plugin_id: None,
                     invocation_type: InvocationType::Implicit,
                 });

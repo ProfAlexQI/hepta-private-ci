@@ -28,6 +28,8 @@ mod world_state;
 pub use context::TurnContextContributionInput;
 pub use mcp::McpServerContribution;
 pub use mcp::McpServerContributionContext;
+pub use mcp::SelectedPluginIdentity;
+pub use mcp::SelectedPluginSnapshot;
 pub use model_provider_input::EPHEMERAL_MODEL_INPUT_MAX_CONTENT_BYTES;
 pub use model_provider_input::EPHEMERAL_MODEL_INPUT_MAX_CONTENT_TOKENS;
 pub use model_provider_input::EPHEMERAL_MODEL_INPUT_SCHEMA_VERSION;
@@ -242,6 +244,7 @@ pub trait TurnInputContributor: Send + Sync {
         session_store: &'a ExtensionData,
         thread_store: &'a ExtensionData,
         turn_store: &'a ExtensionData,
+        step_store: &'a ExtensionData,
     ) -> ExtensionFuture<'a, Vec<Box<dyn ContextualUserFragment + Send>>>;
 }
 
@@ -406,11 +409,13 @@ pub trait ModelProviderPolicyContributor: Send + Sync {
 
 /// Extension contribution that can claim rendered approval-review prompts.
 pub trait ApprovalReviewContributor: Send + Sync {
+    /// Reviews one action using metrics bound to the active turn's model.
     fn contribute<'a>(
         &'a self,
         session_store: &'a ExtensionData,
         thread_store: &'a ExtensionData,
         prompt: &'a str,
+        extension_metrics: Option<Arc<dyn ExtensionMetrics>>,
     ) -> ExtensionFuture<'a, Option<ReviewDecision>>;
 }
 

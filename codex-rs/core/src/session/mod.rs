@@ -41,6 +41,7 @@ use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnEnvironment;
 use crate::session_prefix::format_inter_agent_completion_message;
 use crate::skills_load_input_from_config;
+use crate::tools::lifecycle::has_active_tool_policy;
 use crate::turn_metadata::TurnMetadataState;
 use crate::turn_timing::now_unix_timestamp_ms;
 use async_channel::Receiver;
@@ -205,7 +206,7 @@ use codex_protocol::exec_output::StreamOutput;
 mod code_mode_warning;
 pub(crate) mod context_window;
 mod environment;
-mod extension_metrics;
+pub(crate) mod extension_metrics;
 mod handlers;
 mod inject;
 mod input_queue;
@@ -2156,6 +2157,7 @@ impl Session {
     }
 
     async fn send_event_raw_with_persistence(&self, event: Event, persist: bool) {
+        self.services.mcp_runtime.observe_event(&event.msg);
         // Persist the event into rollout storage; the store applies its persistence policy.
         if persist {
             let rollout_items = vec![RolloutItem::EventMsg(event.msg.clone())];
@@ -3221,12 +3223,14 @@ impl Session {
             )
             .or_cancel(cancellation_token)
             .await?;
-        let extension_data = codex_extension_api::ExtensionData::new(turn_context.sub_id.clone());
-        extension_data.insert(selected_capability_roots.clone());
+        let step_store = Arc::new(codex_extension_api::ExtensionData::new(
+            turn_context.sub_id.clone(),
+        ));
+        step_store.insert(selected_capability_roots.clone());
         if let Some(discovery) = &executor_capability_discovery {
-            extension_data.insert(discovery.as_ref().clone());
+            step_store.insert(discovery.as_ref().clone());
             if !discovery.sandbox_contexts().is_empty() {
-                extension_data.insert(discovery.sandbox_contexts().clone());
+                step_store.insert(discovery.sandbox_contexts().clone());
             }
         } else if !turn_context
             .config
@@ -3246,7 +3250,7 @@ impl Session {
                     )
                 })
                 .collect::<HashMap<_, _>>();
-            extension_data.insert(sandbox_contexts);
+            step_store.insert(sandbox_contexts);
         }
         let (mcp, prepared_recommendations) = self
             .prepare_step_runtime_future(
@@ -3256,12 +3260,13 @@ impl Session {
             )
             .or_cancel(cancellation_token)
             .await?;
+        step_store.insert(mcp.selected_plugins().as_ref().clone());
         let tool_router = self
             .build_tools_future(
                 turn_context.as_ref(),
                 &environments,
                 &mcp,
-                &extension_data,
+                step_store.as_ref(),
                 prepared_recommendations,
             )
             .or_cancel(cancellation_token)
@@ -3278,6 +3283,7 @@ impl Session {
             environments,
             selected_capability_roots,
             executor_capability_discovery,
+            step_store,
             mcp,
             tool_router,
             loaded_agents_md,
@@ -3397,6 +3403,7 @@ impl Session {
         let compacted_item = CompactedItem {
             message: metadata.message,
             replacement_history: Some(items.clone()),
+            mcp_resource_origins: self.services.mcp_runtime.resource_origin_checkpoint(),
             window_number: Some(metadata.window_number),
             first_window_id: Some(metadata.window_ids.first_window_id.to_string()),
             previous_window_id: metadata
@@ -3633,31 +3640,39 @@ impl Session {
         if turn_context.config.features.enabled(Feature::TokenBudget)
             && turn_context.model_context_window().is_some()
         {
-            let mcp_result = self
-                .services
-                .mcp_runtime
-                .latest_call_tool(
-                    "notes",
-                    "thread_hint",
-                    /*arguments*/ None,
-                    Some(serde_json::json!({
-                        "threadId": self.thread_id().to_string(),
-                    })),
-                )
-                .await
-                .ok()
-                .and_then(|result| {
-                    let text = result
-                        .content
-                        .iter()
-                        .filter_map(|content| {
-                            content.get("text").and_then(serde_json::Value::as_str)
-                        })
-                        .filter(|text| !text.is_empty())
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    (!text.is_empty()).then_some(text)
-                });
+            let mcp_result = if turn_context
+                .config
+                .features
+                .enabled(Feature::HeptaGovernance)
+                || has_active_tool_policy(self)
+            {
+                None
+            } else {
+                self.services
+                    .mcp_runtime
+                    .latest_call_tool(
+                        "notes",
+                        "thread_hint",
+                        /*arguments*/ None,
+                        Some(serde_json::json!({
+                            "threadId": self.thread_id().to_string(),
+                        })),
+                    )
+                    .await
+                    .ok()
+                    .and_then(|result| {
+                        let text = result
+                            .content
+                            .iter()
+                            .filter_map(|content| {
+                                content.get("text").and_then(serde_json::Value::as_str)
+                            })
+                            .filter(|text| !text.is_empty())
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        (!text.is_empty()).then_some(text)
+                    })
+            };
             separate_developer_sections.push(
                 crate::context::TokenBudgetContext::new(
                     session_source
@@ -4268,7 +4283,6 @@ async fn build_hooks_config(
         plugin_hook_load_warnings,
         shell_program: hook_shell_program,
         shell_args: hook_shell_argv,
-        mcp_executor: None,
     }
 }
 

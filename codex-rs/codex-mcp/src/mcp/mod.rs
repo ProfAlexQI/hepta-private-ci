@@ -349,7 +349,7 @@ pub async fn read_mcp_resource(
     codex_apps_tools_cache: ConnectorRuntimeManager<ToolInfo>,
     tool_catalog_cache: crate::McpToolCatalogCache,
     server: &str,
-    uri: &str,
+    params: ReadResourceRequestParams,
 ) -> anyhow::Result<ReadResourceResult> {
     let mut mcp_servers = effective_mcp_servers(config, auth);
     mcp_servers.retain(|name, _| name == server);
@@ -363,6 +363,7 @@ pub async fn read_mcp_resource(
             startup_policy: McpStartupPolicy::Eager,
             config: Arc::new(runtime_config),
             plugins_available: false,
+            selected_plugins: Arc::new(crate::SelectedPluginSnapshot::default()),
             ready_selected_capability_roots: Vec::new(),
             mcp_servers,
             submit_id: String::new(),
@@ -382,9 +383,7 @@ pub async fn read_mcp_resource(
     )
     .await;
 
-    let result = manager
-        .read_resource(server, ReadResourceRequestParams::new(uri))
-        .await;
+    let result = manager.read_resource(server, params).await;
     cancel_token.cancel();
     result
 }
@@ -441,6 +440,7 @@ pub async fn collect_mcp_server_status_snapshot_with_detail(
             startup_policy: McpStartupPolicy::Eager,
             config: Arc::new(runtime_config),
             plugins_available: false,
+            selected_plugins: Arc::new(crate::SelectedPluginSnapshot::default()),
             ready_selected_capability_roots: Vec::new(),
             mcp_servers,
             submit_id,

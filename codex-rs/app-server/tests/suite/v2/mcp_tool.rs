@@ -2,6 +2,8 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -155,6 +157,54 @@ async fn mcp_server_tool_call_returns_tool_result() -> Result<()> {
             "calledBy": "mcp-app",
         }))
     );
+
+    mcp_server_handle.abort();
+    let _ = mcp_server_handle.await;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn hepta_mcp_server_tool_call_is_rejected_before_transport() -> Result<()> {
+    let responses_server = responses::start_mock_server().await;
+    let (mcp_server_url, mcp_server_handle, tool_call_count) = start_counting_mcp_server().await?;
+    let codex_home = TempDir::new()?;
+    mcp_tool_config(&responses_server.uri(), &mcp_server_url, AUTO_COMPACT_LIMIT)
+        .enable_feature(Feature::HeptaGovernance)
+        .write(codex_home.path())?;
+
+    let mut mcp = TestAppServer::builder()
+        .with_codex_home(codex_home.path())
+        .build_initialized_with_timeout(Duration::from_secs(60))
+        .await?;
+    let ThreadStartResponse { thread, .. } = mcp
+        .start_thread(ThreadStartParams {
+            model: Some("mock-model".to_string()),
+            ..Default::default()
+        })
+        .await?;
+    let request_id = mcp
+        .send_mcp_server_tool_call_request(McpServerToolCallParams {
+            thread_id: thread.id,
+            server: TEST_SERVER_NAME.to_string(),
+            tool: TEST_TOOL_NAME.to_string(),
+            arguments: Some(json!({
+                "message": "must not reach the MCP server",
+            })),
+            meta: None,
+        })
+        .await?;
+
+    let error = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_error_message(RequestId::Integer(request_id)),
+    )
+    .await??;
+    assert_eq!(
+        error.error.message,
+        "direct App Server MCP tool calls are disabled while Hepta governance is active"
+    );
+    assert_eq!(tool_call_count.load(Ordering::SeqCst), 0);
 
     mcp_server_handle.abort();
     let _ = mcp_server_handle.await;
@@ -1195,7 +1245,9 @@ async fn mcp_tool_call_hint_survives_mid_call_thread_read_and_resume() -> Result
 }
 
 #[derive(Clone, Default)]
-struct ToolAppsMcpServer;
+struct ToolAppsMcpServer {
+    tool_call_count: Option<Arc<AtomicUsize>>,
+}
 
 impl ServerHandler for ToolAppsMcpServer {
     async fn initialize(
@@ -1242,6 +1294,9 @@ impl ServerHandler for ToolAppsMcpServer {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<rmcp::model::CallToolResponse, rmcp::ErrorData> {
+        if let Some(tool_call_count) = &self.tool_call_count {
+            tool_call_count.fetch_add(1, Ordering::SeqCst);
+        }
         assert_eq!(request.name.as_ref(), TEST_TOOL_NAME);
         let message = request
             .arguments
@@ -1357,10 +1412,25 @@ impl ServerHandler for ToolAppsMcpServer {
 }
 
 pub(super) async fn start_mcp_server() -> Result<(String, JoinHandle<()>)> {
+    start_mcp_server_with_handler(ToolAppsMcpServer::default()).await
+}
+
+async fn start_counting_mcp_server() -> Result<(String, JoinHandle<()>, Arc<AtomicUsize>)> {
+    let tool_call_count = Arc::new(AtomicUsize::new(0));
+    let (url, handle) = start_mcp_server_with_handler(ToolAppsMcpServer {
+        tool_call_count: Some(Arc::clone(&tool_call_count)),
+    })
+    .await?;
+    Ok((url, handle, tool_call_count))
+}
+
+async fn start_mcp_server_with_handler(
+    handler: ToolAppsMcpServer,
+) -> Result<(String, JoinHandle<()>)> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
     let mcp_service = StreamableHttpService::new(
-        || Ok(ToolAppsMcpServer),
+        move || Ok(handler.clone()),
         Arc::new(LocalSessionManager::default()),
         StreamableHttpServerConfig::default(),
     );

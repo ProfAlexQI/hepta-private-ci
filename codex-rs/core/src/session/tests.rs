@@ -11,6 +11,7 @@ use crate::environment_selection::EnvironmentConfigOrigin;
 use crate::environment_selection::ThreadEnvironments;
 use crate::environment_selection::TurnEnvironmentState;
 use crate::function_tool::FunctionCallError;
+use crate::hook_mcp_executor::CoreHookMcpExecutor;
 use crate::plugins::plugins_manager_for_config;
 use crate::session::step_context::StepContext;
 use crate::shell::default_user_shell;
@@ -221,6 +222,7 @@ impl StepContext {
             environments,
             selected_capability_roots: Vec::new(),
             executor_capability_discovery: None,
+            step_store: Arc::new(codex_extension_api::ExtensionData::new(turn.sub_id.clone())),
             mcp: Arc::new(codex_mcp::McpBinding::empty(mcp_config_for_test(
                 &turn.config,
             ))),
@@ -402,8 +404,31 @@ fn extension_metrics_preserve_session_metadata_tags() {
         ],
     );
 
+    extension_metrics.counter(
+        "codex.test.extension.counter",
+        /*inc*/ 2,
+        &[("component", "skills"), ("model", "extension-model")],
+    );
+
     let snapshot = metrics.snapshot().expect("metrics snapshot");
     let attributes = single_histogram_attributes(&snapshot, "codex.test.extension");
+    let counter = find_metric(&snapshot, "codex.test.extension.counter");
+    let AggregatedMetrics::U64(MetricData::Sum(sum)) = counter.data() else {
+        panic!("expected counter");
+    };
+    let points = sum.data_points().collect::<Vec<_>>();
+    assert_eq!(points.len(), 1);
+    assert_eq!(points[0].value(), 2);
+    assert_eq!(
+        points[0]
+            .attributes()
+            .map(|attribute| (
+                attribute.key.as_str().to_string(),
+                attribute.value.as_str().to_string(),
+            ))
+            .collect::<BTreeMap<_, _>>(),
+        attributes,
+    );
     assert_eq!(
         attributes,
         BTreeMap::from([
@@ -482,6 +507,89 @@ async fn world_state_extension_metrics_follow_turn_model_switch() {
     assert_eq!(
         attributes.get("model").map(String::as_str),
         Some(next_model)
+    );
+}
+
+#[tokio::test]
+async fn world_state_contributors_receive_exact_step_store_and_live_turn_store() {
+    #[derive(Clone)]
+    struct StoreScopeMarker(&'static str);
+
+    struct StoreScopeRecorder;
+
+    impl codex_extension_api::ContextContributor for StoreScopeRecorder {
+        fn contribute_world_state<'a>(
+            &'a self,
+            input: codex_extension_api::WorldStateContributionInput<'a>,
+        ) -> codex_extension_api::ExtensionFuture<
+            'a,
+            Vec<codex_extension_api::WorldStateSectionContribution>,
+        > {
+            Box::pin(async move {
+                let turn_marker = input
+                    .turn_store
+                    .get::<StoreScopeMarker>()
+                    .expect("turn marker should be present");
+                let step_marker = input
+                    .step_store
+                    .get::<StoreScopeMarker>()
+                    .expect("step marker should be present");
+                vec![codex_extension_api::WorldStateSectionContribution::new(
+                    "store_scope_probe",
+                    json!({
+                        "turn": turn_marker.0,
+                        "step": step_marker.0,
+                    }),
+                    |_| None,
+                )]
+            })
+        }
+    }
+
+    let (mut session, turn_context) = make_session_and_context().await;
+    let mut builder = codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+    builder.prompt_contributor(Arc::new(StoreScopeRecorder));
+    session.services.extensions = Arc::new(builder.build());
+
+    let turn_context = Arc::new(turn_context);
+    turn_context
+        .extension_data
+        .insert(StoreScopeMarker("turn-current"));
+    let old_step = StepContext::for_test(Arc::clone(&turn_context));
+    old_step
+        .step_store
+        .insert(StoreScopeMarker("step-generation-one"));
+    let new_step = StepContext::for_test(Arc::clone(&turn_context));
+    new_step
+        .step_store
+        .insert(StoreScopeMarker("step-generation-two"));
+
+    let old_snapshot = session
+        .build_world_state_for_step(&old_step)
+        .await
+        .expect("old step world state should build")
+        .snapshot()
+        .into_object();
+    let new_snapshot = session
+        .build_world_state_for_step(&new_step)
+        .await
+        .expect("new step world state should build")
+        .snapshot()
+        .into_object();
+
+    assert_eq!(
+        old_snapshot.get("store_scope_probe"),
+        Some(&json!({
+            "turn": "turn-current",
+            "step": "step-generation-one",
+        }))
+    );
+    assert_eq!(
+        new_snapshot.get("store_scope_probe"),
+        Some(&json!({
+            "turn": "turn-current",
+            "step": "step-generation-two",
+        }))
     );
 }
 
@@ -791,6 +899,11 @@ async fn preview_session_start_hooks(
             ..HooksConfig::default()
         },
         thread_id,
+        Arc::new(CoreHookMcpExecutor {
+            runtime: Arc::new(McpRuntime::empty(config.prefix_mcp_tool_names())),
+            thread_id,
+            session: Arc::new(OnceLock::new()),
+        }),
     )
     .expect("initialize hooks for session-start preview");
 
@@ -2052,6 +2165,7 @@ async fn reconstruct_history_uses_replacement_history_verbatim() {
     let rollout_items = vec![RolloutItem::Compacted(CompactedItem {
         message: String::new(),
         replacement_history: Some(replacement_history.clone()),
+        mcp_resource_origins: None,
         window_number: Some(42),
         first_window_id: Some(first_window_id.to_string()),
         previous_window_id: Some(previous_window_id.to_string()),
@@ -3893,6 +4007,7 @@ async fn thread_rollback_restores_cleared_reference_context_item_after_compactio
                     .map(ResponseItemEnvelope::new)
                     .collect(),
             ),
+            mcp_resource_origins: None,
             window_number: Some(7),
             first_window_id: Some(first_window_id.to_string()),
             previous_window_id: Some(previous_window_id.to_string()),
@@ -5863,6 +5978,11 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
             ..HooksConfig::default()
         },
         thread_id,
+        Arc::new(CoreHookMcpExecutor {
+            runtime: Arc::clone(&mcp_runtime),
+            thread_id,
+            session: Arc::new(OnceLock::new()),
+        }),
     )
     .expect("initialize test hooks");
     let services = SessionServices {
@@ -8069,6 +8189,11 @@ where
             ..HooksConfig::default()
         },
         thread_id,
+        Arc::new(CoreHookMcpExecutor {
+            runtime: Arc::clone(&mcp_runtime),
+            thread_id,
+            session: Arc::new(OnceLock::new()),
+        }),
     )
     .expect("initialize test hooks");
     let services = SessionServices {
@@ -8808,6 +8933,78 @@ async fn step_context_keeps_its_mcp_runtime_for_tools() -> anyhow::Result<()> {
             .iter()
             .any(|name| name.to_string() == "list_mcp_resources")
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn step_context_selected_plugins_come_from_atomic_mcp_binding() -> anyhow::Result<()> {
+    let (session, turn_context) = make_session_and_context().await;
+    let session = Arc::new(session);
+    let turn_context = Arc::new(turn_context);
+
+    let initial_step = session
+        .capture_step_context(Arc::clone(&turn_context), &CancellationToken::new())
+        .await?;
+    assert!(initial_step.mcp.selected_plugins().plugins.is_empty());
+
+    let stale_thread_snapshot = codex_mcp::SelectedPluginSnapshot {
+        plugins: vec![codex_mcp::SelectedPluginIdentity {
+            selected_root_id: "thread-global-root".to_string(),
+            plugin_id: "thread-global-stale".to_string(),
+        }],
+    };
+    session
+        .services
+        .thread_extension_data
+        .insert(stale_thread_snapshot.clone());
+
+    let captured_step = session
+        .capture_step_context(Arc::clone(&turn_context), &CancellationToken::new())
+        .await?;
+    assert!(
+        Arc::ptr_eq(&initial_step.mcp, &captured_step.mcp),
+        "an unchanged runtime should reuse its immutable binding"
+    );
+    let captured_snapshot = captured_step
+        .step_store
+        .get::<codex_mcp::SelectedPluginSnapshot>()
+        .expect("the step must persist its binding-owned plugin snapshot");
+    assert_eq!(
+        captured_snapshot.as_ref(),
+        captured_step.mcp.selected_plugins().as_ref()
+    );
+    assert!(
+        captured_snapshot.plugins.is_empty(),
+        "a stale thread-global snapshot must not override the MCP binding"
+    );
+    assert_eq!(
+        session
+            .services
+            .thread_extension_data
+            .get::<codex_mcp::SelectedPluginSnapshot>()
+            .as_deref(),
+        Some(&stale_thread_snapshot),
+        "step capture must not rewrite shared thread state"
+    );
+
+    session
+        .services
+        .thread_extension_data
+        .insert(codex_mcp::SelectedPluginSnapshot {
+            plugins: vec![codex_mcp::SelectedPluginIdentity {
+                selected_root_id: "newer-root".to_string(),
+                plugin_id: "newer-plugin".to_string(),
+            }],
+        });
+    assert_eq!(
+        captured_step
+            .step_store
+            .get::<codex_mcp::SelectedPluginSnapshot>()
+            .as_deref(),
+        Some(captured_snapshot.as_ref()),
+        "an already-captured step must retain its exact plugin generation"
+    );
+
     Ok(())
 }
 
@@ -11169,6 +11366,7 @@ async fn sample_rollout(
     rollout_items.push(RolloutItem::Compacted(CompactedItem {
         message: summary1.to_string(),
         replacement_history: None,
+        mcp_resource_origins: None,
         window_number: Some(window_number),
         first_window_id: Some(window_ids.first_window_id.to_string()),
         previous_window_id: window_ids.previous_window_id.map(|id| id.to_string()),
@@ -11216,6 +11414,7 @@ async fn sample_rollout(
     rollout_items.push(RolloutItem::Compacted(CompactedItem {
         message: summary2.to_string(),
         replacement_history: None,
+        mcp_resource_origins: None,
         window_number: Some(window_number),
         first_window_id: Some(window_ids.first_window_id.to_string()),
         previous_window_id: window_ids.previous_window_id.map(|id| id.to_string()),

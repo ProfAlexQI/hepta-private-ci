@@ -203,6 +203,7 @@ impl McpConnectionSet {
             startup_policy,
             config,
             plugins_available: _,
+            selected_plugins: _,
             ready_selected_capability_roots: _,
             mcp_servers,
             submit_id,

@@ -1,6 +1,8 @@
 use super::*;
+use crate::hook_mcp_executor::CoreHookMcpExecutor;
 use crate::session::session::Session;
 use crate::session::step_context::StepContext;
+use codex_mcp::McpRuntime;
 use codex_protocol::DEFAULT_FUNCTION_NAMESPACE;
 use futures::future::BoxFuture;
 use pretty_assertions::assert_eq;
@@ -419,6 +421,11 @@ fn install_rewriting_pre_tool_hook(
             ..Default::default()
         },
         session.thread_id(),
+        Arc::new(CoreHookMcpExecutor {
+            runtime: Arc::new(McpRuntime::empty(turn.config.prefix_mcp_tool_names())),
+            thread_id: session.thread_id(),
+            session: Arc::new(std::sync::OnceLock::new()),
+        }),
     )
     .expect("initialize plugin tool-policy test hooks");
     session.services.hooks.store(Arc::new(hooks));

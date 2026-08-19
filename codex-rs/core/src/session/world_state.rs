@@ -261,7 +261,7 @@ impl Session {
             .map(|root| root.selected_root().clone())
             .collect::<Vec<_>>();
         let extension_metrics = super::extension_metrics::from_session_telemetry(
-            turn_context.session_telemetry.clone(),
+            step_context.session_telemetry.clone(),
         );
         for contributor in self.services.extensions.context_contributors() {
             for section in contributor
@@ -277,6 +277,7 @@ impl Session {
                     session_store: &self.services.session_extension_data,
                     thread_store: &self.services.thread_extension_data,
                     turn_store: turn_context.extension_data.as_ref(),
+                    step_store: step_context.step_store.as_ref(),
                 })
                 .await
             {

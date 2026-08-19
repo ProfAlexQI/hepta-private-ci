@@ -22,7 +22,10 @@ pub struct WorldStateContributionInput<'a> {
     pub extension_metrics: Option<Arc<dyn ExtensionMetrics>>,
     pub session_store: &'a ExtensionData,
     pub thread_store: &'a ExtensionData,
+    /// Store scoped to the full turn lifecycle.
     pub turn_store: &'a ExtensionData,
+    /// Store owned exclusively by this sampling step.
+    pub step_store: &'a ExtensionData,
 }
 
 /// What the harness knows about the previous value of one extension-owned section.

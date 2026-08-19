@@ -269,7 +269,8 @@ impl Session {
             input.mcp_servers.contains_key(CODEX_APPS_MCP_SERVER_NAME),
             "unknown MCP server '{CODEX_APPS_MCP_SERVER_NAME}'"
         );
-        self.services.mcp_runtime.replace_fresh(input).await
+        let refreshed = self.services.mcp_runtime.replace_fresh(input).await;
+        refreshed
     }
 
     pub(super) fn mark_mcp_runtime_dirty(&self) {

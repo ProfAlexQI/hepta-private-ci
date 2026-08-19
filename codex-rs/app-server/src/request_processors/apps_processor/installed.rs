@@ -89,6 +89,7 @@ impl AppsRequestProcessor {
                         startup_policy: McpStartupPolicy::Eager,
                         config: Arc::clone(&mcp_config),
                         plugins_available: false,
+                        selected_plugins: Arc::new(codex_mcp::SelectedPluginSnapshot::default()),
                         ready_selected_capability_roots: Vec::new(),
                         mcp_servers,
                         submit_id: APPS_INSTALLED_SUBMIT_ID.to_string(),

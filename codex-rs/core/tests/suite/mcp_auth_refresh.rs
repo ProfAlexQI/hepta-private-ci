@@ -94,6 +94,7 @@ async fn hosted_plugin_runtime_ps_mcp_tool_calls_use_current_auth_manager_token(
         startup_policy: McpStartupPolicy::Eager,
         config: mcp_config,
         plugins_available: false,
+        selected_plugins: Arc::new(codex_mcp::SelectedPluginSnapshot::default()),
         ready_selected_capability_roots: Vec::new(),
         mcp_servers,
         submit_id: "test".to_string(),

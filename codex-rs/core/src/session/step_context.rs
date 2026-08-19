@@ -6,6 +6,7 @@ use crate::session::turn_context::TurnContext;
 use crate::tools::router::ToolRouter;
 use codex_exec_server::ExecutorCapabilityDiscoverySnapshot;
 use codex_exec_server::ResolvedSelectedCapabilityRoot;
+use codex_extension_api::ExtensionData;
 use codex_mcp::McpBinding;
 use codex_otel::SessionTelemetry;
 use codex_protocol::config_types::ApprovalsReviewer;
@@ -38,6 +39,8 @@ pub(crate) struct StepContext {
     pub(crate) selected_capability_roots: Vec<ResolvedSelectedCapabilityRoot>,
     /// Executor-materialized capability files shared by MCP and skills in this exact step.
     pub(crate) executor_capability_discovery: Option<Arc<ExecutorCapabilityDiscoverySnapshot>>,
+    /// Extension state owned exclusively by this sampling step.
+    pub(crate) step_store: Arc<ExtensionData>,
     /// The exact MCP connections, configuration, and catalog captured for this step.
     pub(crate) mcp: Arc<McpBinding>,
     /// The finalized tool plan advertised and executed for this exact sampling request.

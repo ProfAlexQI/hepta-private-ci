@@ -53,6 +53,7 @@ const APP_ONLY_CWD_MARKER_FILE_ENV: &str = "MCP_TEST_APP_ONLY_CWD_MARKER_FILE";
 const DYNAMIC_SERVER_METADATA_ENV: &str = "MCP_TEST_DYNAMIC_SERVER_METADATA";
 const INITIALIZE_BARRIER_FILE_ENV: &str = "MCP_TEST_INITIALIZE_BARRIER_FILE";
 const SERVER_INSTRUCTIONS_ENV: &str = "MCP_TEST_SERVER_INSTRUCTIONS";
+const THREAD_HINT_MARKER_FILE_ENV: &str = "MCP_TEST_THREAD_HINT_MARKER_FILE";
 
 fn dynamic_server_process_label() -> Option<String> {
     std::env::var_os(DYNAMIC_SERVER_METADATA_ENV)
@@ -672,6 +673,10 @@ impl ServerHandler for TestToolServer {
                 Ok(Self::structured_result(json!({ "cwd": cwd })))
             }
             "thread_hint" => {
+                if let Some(marker_file) = std::env::var_os(THREAD_HINT_MARKER_FILE_ENV) {
+                    std::fs::write(marker_file, b"called")
+                        .map_err(|err| McpError::internal_error(err.to_string(), None))?;
+                }
                 let thread_id = context
                     .meta
                     .0

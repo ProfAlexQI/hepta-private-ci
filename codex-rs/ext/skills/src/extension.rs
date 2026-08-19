@@ -18,6 +18,7 @@ use codex_extension_api::ExtensionMetrics;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::ExtensionWarning;
 use codex_extension_api::PromptFragment;
+use codex_extension_api::SelectedPluginSnapshot;
 use codex_extension_api::SkillInvocationContributor;
 use codex_extension_api::SkillInvocationInput;
 use codex_extension_api::SkillInvocationKind;
@@ -276,6 +277,7 @@ where
             session_store,
             thread_store,
             /*executor_query*/ None,
+            /*selected_plugins*/ None,
             /*sandbox_contexts*/ None,
         )
     }
@@ -310,6 +312,7 @@ where
             session_store,
             thread_store,
             executor_query,
+            step_store.get::<SelectedPluginSnapshot>(),
             step_store.get::<HashMap<String, FileSystemSandboxContext>>(),
         )
     }
@@ -352,6 +355,7 @@ where
         session_store: &'a ExtensionData,
         thread_store: &'a ExtensionData,
         turn_store: &'a ExtensionData,
+        step_store: &'a ExtensionData,
     ) -> ExtensionFuture<'a, Vec<Box<dyn ContextualUserFragment + Send>>> {
         Box::pin(async move {
             let Some(thread_state) = thread_store.get::<SkillsThreadState>() else {
@@ -364,8 +368,8 @@ where
                 .and_then(|state| state.mcp_resources.clone());
             let host_snapshot = turn_store.get::<HostSkillsSnapshot>();
             let host_catalog_in_world_state =
-                turn_store.get::<HostSkillsCatalogInWorldState>().is_some();
-            let host_skills = turn_store.get::<HostSkillsStepState>();
+                step_store.get::<HostSkillsCatalogInWorldState>().is_some();
+            let host_skills = step_store.get::<HostSkillsStepState>();
             let query = SkillListQuery {
                 turn_id: input.turn_id.clone(),
                 executor_roots: Vec::new(),
@@ -377,7 +381,7 @@ where
                 mcp_resources: mcp_resources.clone(),
                 executor_capability_discovery: None,
             };
-            let mut catalog = turn_store
+            let mut catalog = step_store
                 .get::<ExecutorSkillsStepState>()
                 .map(|executor_skills| executor_skills.0.clone())
                 .unwrap_or_default();
@@ -550,23 +554,15 @@ impl<C> SkillsExtension<C> {
         session_store: &ExtensionData,
         thread_store: &ExtensionData,
         executor_query: Option<SkillListQuery>,
+        selected_plugins: Option<Arc<SelectedPluginSnapshot>>,
         sandbox_contexts: Option<Arc<HashMap<String, FileSystemSandboxContext>>>,
     ) -> Vec<Arc<dyn ToolExecutor<ToolCall>>> {
-        let Some(thread_state) = thread_store.get::<SkillsThreadState>() else {
-            return Vec::new();
-        };
-        let orchestrator_available = self.providers.has_orchestrator_provider()
-            && thread_state.orchestrator_skills_enabled();
-        if !orchestrator_available && executor_query.is_none() {
-            return Vec::new();
-        }
-
         skill_tools(
             self.providers.clone(),
             session_store,
             thread_store,
-            orchestrator_available,
             executor_query,
+            selected_plugins,
             sandbox_contexts,
             Arc::clone(&self.shadow_selection),
         )

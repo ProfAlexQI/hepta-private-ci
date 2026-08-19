@@ -779,10 +779,9 @@ async fn a_new_turn_preserves_queued_messages_until_it_completes() -> Result<()>
         blocked_turn_response()?,
         blocked_turn_response()?,
         create_final_assistant_message_sse_response("new turn done")?,
-        create_final_assistant_message_sse_response("first queued message done")?,
         create_final_assistant_message_sse_response("second queued message done")?,
     ];
-    let (mut app, _codex_home, _server) = queue_app(responses).await?;
+    let (mut app, _codex_home, server) = queue_app(responses).await?;
     let thread_id = app
         .start_thread(ThreadStartParams::default())
         .await?
@@ -812,7 +811,7 @@ async fn a_new_turn_preserves_queued_messages_until_it_completes() -> Result<()>
             request_id,
             params: TurnInterruptParams {
                 thread_id: thread_id.clone(),
-                turn_id: active_turn_id,
+                turn_id: active_turn_id.clone(),
             },
         })
         .await?;
@@ -820,7 +819,7 @@ async fn a_new_turn_preserves_queued_messages_until_it_completes() -> Result<()>
         timeout(READ_TIMEOUT, app.read_notification("turn/completed")).await??;
     assert_eq!(interrupted.turn.status, TurnStatus::Interrupted);
 
-    let _: TurnStartResponse = app
+    let ordinary_turn: TurnStartResponse = app
         .request(|request_id| ClientRequest::TurnStart {
             request_id,
             params: TurnStartParams {
@@ -845,12 +844,74 @@ async fn a_new_turn_preserves_queued_messages_until_it_completes() -> Result<()>
     );
 
     decline_approval(&mut app, new_approval_id).await?;
-    for _ in 0..3 {
-        let completed: TurnCompletedNotification =
-            timeout(READ_TIMEOUT, app.read_notification("turn/completed")).await??;
-        assert_eq!(completed.turn.status, TurnStatus::Completed);
-    }
+    let ordinary_completed: TurnCompletedNotification =
+        timeout(READ_TIMEOUT, app.read_notification("turn/completed")).await??;
+    assert_eq!(ordinary_completed.turn.id, ordinary_turn.turn.id);
+    assert_eq!(ordinary_completed.turn.status, TurnStatus::Completed);
+
+    let second_completed: TurnCompletedNotification =
+        timeout(READ_TIMEOUT, app.read_notification("turn/completed")).await??;
+    assert_ne!(second_completed.turn.id, ordinary_turn.turn.id);
+    assert_eq!(second_completed.turn.status, TurnStatus::Completed);
     assert!(list_queue(&mut app, &thread_id).await?.data.is_empty());
+
+    let requests = server
+        .received_requests()
+        .await
+        .context("mock request capture unavailable")?;
+    let mut model_requests = Vec::new();
+    for request in requests
+        .iter()
+        .filter(|request| request.url.path().ends_with("/responses"))
+    {
+        let metadata_header = request
+            .headers
+            .get("x-codex-turn-metadata")
+            .context("model request is missing its x-codex-turn-metadata header")?
+            .to_str()
+            .context("model request turn metadata is not valid ASCII")?;
+        let metadata: Value = serde_json::from_str(metadata_header)?;
+        let request_turn_id = metadata["turn_id"]
+            .as_str()
+            .context("model request turn metadata is missing turn_id")?
+            .to_string();
+        model_requests.push((request_turn_id, request.body_json::<Value>()?));
+    }
+    assert_eq!(model_requests.len(), 4);
+
+    let initial_requests = model_requests
+        .iter()
+        .filter(|(turn_id, _)| turn_id == &active_turn_id)
+        .collect::<Vec<_>>();
+    assert_eq!(initial_requests.len(), 1);
+
+    let ordinary_requests = model_requests
+        .iter()
+        .filter(|(turn_id, _)| turn_id == &ordinary_turn.turn.id)
+        .collect::<Vec<_>>();
+    assert_eq!(ordinary_requests.len(), 2);
+    for (_, body) in ordinary_requests {
+        let body = body.to_string();
+        assert!(body.contains("first queued message"));
+        assert!(!body.contains("second queued message"));
+    }
+
+    let second_requests = model_requests
+        .iter()
+        .filter(|(turn_id, _)| turn_id == &second_completed.turn.id)
+        .collect::<Vec<_>>();
+    assert_eq!(second_requests.len(), 1);
+    assert!(
+        second_requests[0]
+            .1
+            .to_string()
+            .contains("second queued message")
+    );
+    assert!(model_requests.iter().all(|(turn_id, _)| {
+        turn_id == &active_turn_id
+            || turn_id == &ordinary_turn.turn.id
+            || turn_id == &second_completed.turn.id
+    }));
 
     Ok(())
 }

@@ -63,6 +63,7 @@ impl TurnInputContributor for RecordingTurnInputContributor {
         _session_store: &'a ExtensionData,
         _thread_store: &'a ExtensionData,
         _turn_store: &'a ExtensionData,
+        _step_store: &'a ExtensionData,
     ) -> ExtensionFuture<'a, Vec<Box<dyn ContextualUserFragment + Send>>> {
         Box::pin(async move {
             self.0

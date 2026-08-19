@@ -915,7 +915,7 @@ async fn build_extension_turn_input_items(
         environments,
     };
     let extension_metrics =
-        super::extension_metrics::from_session_telemetry(turn_context.session_telemetry.clone());
+        super::extension_metrics::from_session_telemetry(step_context.session_telemetry.clone());
 
     let mut items = Vec::new();
     for contributor in contributors {
@@ -926,6 +926,7 @@ async fn build_extension_turn_input_items(
                 &sess.services.session_extension_data,
                 &sess.services.thread_extension_data,
                 turn_context.extension_data.as_ref(),
+                step_context.step_store.as_ref(),
             )
             .or_cancel(cancellation_token)
             .await
@@ -2108,6 +2109,7 @@ async fn emit_agent_message_in_plan_mode(
                     content: Vec::new(),
                     phase: None,
                     memory_citation: None,
+                    delivery: None,
                 })
             });
         sess.emit_turn_item_started(turn_context, &start_item).await;

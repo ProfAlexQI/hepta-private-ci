@@ -3,6 +3,9 @@ use codex_exec_server_protocol::ExecutorCapabilityDiscoverySnapshot;
 use codex_protocol::capabilities::SelectedCapabilityRoot;
 use codex_protocol::protocol::SessionSource;
 
+pub use codex_mcp::SelectedPluginIdentity;
+pub use codex_mcp::SelectedPluginSnapshot;
+
 use crate::ExtensionData;
 use crate::ExtensionDataInit;
 
@@ -130,6 +133,7 @@ pub enum McpServerContribution {
     },
     /// Records a plugin selected for this thread and any connector IDs it declares.
     SelectedPluginPackage {
+        selected_root_id: String,
         plugin_id: String,
         plugin_display_name: String,
         connector_ids: Vec<String>,

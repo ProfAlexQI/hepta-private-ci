@@ -27,10 +27,12 @@ fn detect_executor_skill(command: &str, environments: &[&str]) -> Option<SkillIn
         warnings: Vec::new(),
     };
     let turn_store = ExtensionData::new("test-turn");
-    turn_store.insert(ExecutorSkillsStepState(catalog));
+    let step_store = ExtensionData::new("test-turn");
+    step_store.insert(ExecutorSkillsStepState(catalog));
 
     detect_implicit_skill_invocation(
         &turn_store,
+        &step_store,
         "executor-a",
         command,
         &PathUri::parse("file:///skills").expect("valid workdir URI"),

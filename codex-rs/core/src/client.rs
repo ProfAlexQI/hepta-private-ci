@@ -155,6 +155,7 @@ use codex_login::auth_env_telemetry::AuthEnvTelemetry;
 use codex_login::auth_env_telemetry::collect_auth_env_telemetry;
 use codex_model_provider::AgentIdentitySessionFallback;
 use codex_model_provider::ProviderAuthScope;
+use codex_model_provider::ProviderUnauthorizedRecovery;
 use codex_model_provider::SharedModelProvider;
 use codex_model_provider::create_model_provider;
 #[cfg(test)]
@@ -1707,6 +1708,7 @@ impl ModelClientSession {
         let mut auth_recovery = auth_manager
             .as_ref()
             .map(AuthManager::unauthorized_recovery);
+        let mut provider_auth_recovery_attempted = false;
         let mut pending_retry = PendingUnauthorizedRetry::default();
         let mut memory_retry_index = 0;
         loop {
@@ -1905,20 +1907,33 @@ impl ModelClientSession {
                     );
                     return Ok(stream);
                 }
-                Err(ApiError::Transport(
-                    unauthorized_transport @ TransportError::Http { status, .. },
-                )) if status == StatusCode::UNAUTHORIZED => {
+                Err(ApiError::Transport(unauthorized_transport))
+                    if self
+                        .client
+                        .state
+                        .provider
+                        .is_recoverable_auth_error(&unauthorized_transport) =>
+                {
+                    let http_status = match &unauthorized_transport {
+                        TransportError::Http { status, .. } => Some(status.as_u16()),
+                        _ => None,
+                    };
                     if let Some(attempt) = admitted_provider_attempt.take() {
-                        attempt
-                            .finish_immediate(Some(status.as_u16()), "http")
-                            .await?;
+                        attempt.finish_immediate(http_status, "http").await?;
                     }
                     let response_debug_context = redact_ephemeral_response_debug_context(
                         extract_response_debug_context(&unauthorized_transport),
                         has_ephemeral_input,
                     );
                     let trace_error = if has_ephemeral_input {
-                        format!("ephemeral model-provider request failed with HTTP {status}")
+                        http_status.map_or_else(
+                            || "ephemeral model-provider authentication failed".to_string(),
+                            |status| {
+                                format!(
+                                    "ephemeral model-provider request failed with HTTP {status}"
+                                )
+                            },
+                        )
                     } else {
                         unauthorized_transport.to_string()
                     };
@@ -1931,6 +1946,7 @@ impl ModelClientSession {
                         handle_unauthorized(
                             unauthorized_transport,
                             &mut auth_recovery,
+                            &mut provider_auth_recovery_attempted,
                             session_telemetry,
                             &self.client.state.provider,
                             has_ephemeral_input,
@@ -2051,11 +2067,13 @@ impl ModelClientSession {
         inference_trace: &InferenceTraceContext,
         provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
     ) -> Result<WebsocketStreamOutcome> {
-        let auth_manager = self.client.state.provider.auth_manager();
+        let provider = Arc::clone(&self.client.state.provider);
+        let auth_manager = provider.auth_manager();
 
         let mut auth_recovery = auth_manager
             .as_ref()
             .map(AuthManager::unauthorized_recovery);
+        let mut provider_auth_recovery_attempted = false;
         let mut pending_retry = PendingUnauthorizedRetry::default();
         loop {
             let client_setup = self.client.current_client_setup().await?;
@@ -2110,22 +2128,23 @@ impl ModelClientSession {
                 {
                     return Ok(WebsocketStreamOutcome::FallbackToHttp);
                 }
-                Err(ApiError::Transport(
-                    unauthorized_transport @ TransportError::Http { status, .. },
-                )) if status == StatusCode::UNAUTHORIZED => {
+                Err(ApiError::Transport(unauthorized_transport))
+                    if provider.is_recoverable_auth_error(&unauthorized_transport) =>
+                {
                     pending_retry = PendingUnauthorizedRetry::from_recovery(
                         handle_unauthorized(
                             unauthorized_transport,
                             &mut auth_recovery,
+                            &mut provider_auth_recovery_attempted,
                             session_telemetry,
-                            &self.client.state.provider,
+                            &provider,
                             /*redact_provider_error*/ false,
                         )
                         .await?,
                     );
                     continue;
                 }
-                Err(err) => return Err(self.client.state.provider.map_api_error(err)),
+                Err(err) => return Err(provider.map_api_error(err)),
             }
 
             let provider_policy_active = provider_policy_context.is_some_and(|context| {
@@ -3086,6 +3105,7 @@ struct WebsocketConnectParams<'a> {
 async fn handle_unauthorized(
     transport: TransportError,
     auth_recovery: &mut Option<UnauthorizedRecovery>,
+    provider_auth_recovery_attempted: &mut bool,
     session_telemetry: &SessionTelemetry,
     provider: &SharedModelProvider,
     redact_provider_error: bool,
@@ -3094,6 +3114,37 @@ async fn handle_unauthorized(
         extract_response_debug_context(&transport),
         redact_provider_error,
     );
+    if !*provider_auth_recovery_attempted {
+        *provider_auth_recovery_attempted = true;
+        match provider.recover_from_unauthorized().await {
+            Ok(ProviderUnauthorizedRecovery::Recovered) => {
+                return Ok(UnauthorizedRecoveryExecution {
+                    mode: "provider",
+                    phase: "provider_refresh",
+                });
+            }
+            Ok(ProviderUnauthorizedRecovery::NotConfigured) => {}
+            Err(error) => {
+                let recovery_error_is_retryable = error.is_retryable();
+                let original = redact_ephemeral_provider_error(
+                    provider.map_api_error(ApiError::Transport(transport)),
+                    redact_provider_error,
+                );
+                let error = redact_ephemeral_provider_error(error, redact_provider_error);
+                warn!(
+                    error = %error,
+                    original_error = %original,
+                    "provider authentication recovery failed"
+                );
+                return Err(if recovery_error_is_retryable {
+                    original
+                } else {
+                    error
+                });
+            }
+        }
+    }
+
     if let Some(recovery) = auth_recovery
         && recovery.has_next()
     {
