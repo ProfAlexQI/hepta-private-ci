@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use tokio::sync::Mutex;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
@@ -74,6 +75,15 @@ pub(crate) enum TaskKind {
 pub(crate) struct RunningTask {
     pub(crate) done: Arc<Notify>,
     pub(crate) kind: TaskKind,
+    /// True only for a model turn that may be resumed under the same durable
+    /// turn identity. `TaskKind::Regular` is intentionally insufficient here:
+    /// standalone shell tasks also use that UI kind.
+    pub(crate) recovery_eligible_model_turn: bool,
+    /// Task-owned durable recovery state. The atomic bit is the abort-path
+    /// authority; the mutex serializes persisted Ready/Unready transitions.
+    pub(crate) recovery_authority: Option<Arc<TurnRecoveryAuthority>>,
+    /// Epoch minted while this exact task was attached under `active_turn`.
+    pub(crate) attach_epoch: u64,
     pub(crate) task: Arc<dyn AnySessionTask>,
     pub(crate) cancellation_token: CancellationToken,
     pub(crate) handle: AbortOnDropHandle<()>,
@@ -82,6 +92,69 @@ pub(crate) struct RunningTask {
     pub(crate) _diagnostics_guard: GaugeGuard,
     // Timer recorded when the task drops to capture the full turn duration.
     pub(crate) _timer: Option<codex_otel::Timer>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DurableRecoveryState {
+    Unknown,
+    Ready,
+    Unready,
+    InterruptedConfirmed,
+}
+
+#[derive(Debug)]
+pub(crate) struct RecoveryAuthorityState {
+    pub(crate) generation: u64,
+    pub(crate) durable_state: DurableRecoveryState,
+    /// Exact best-effort persistence failure generation under which the
+    /// current Ready marker became durable. Terminal publication must still
+    /// observe this generation; any later swallowed append/flush failure
+    /// permanently invalidates that Ready authority.
+    pub(crate) ready_persistence_failure_generation: Option<u64>,
+    /// Canonical semantic provider request bound to Ready or
+    /// InterruptedConfirmed for this exact generation.
+    pub(crate) request_fingerprint_sha256: Option<String>,
+    /// Exact replay-critical state used to build the bound provider request.
+    pub(crate) replay: Option<codex_history::TurnRecoveryReplayV1>,
+    pub(crate) poisoned: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct TurnRecoveryAuthority {
+    pub(crate) ready: AtomicBool,
+    pub(crate) state: Mutex<RecoveryAuthorityState>,
+}
+
+impl Default for TurnRecoveryAuthority {
+    fn default() -> Self {
+        Self {
+            ready: AtomicBool::new(false),
+            state: Mutex::new(RecoveryAuthorityState {
+                generation: 0,
+                durable_state: DurableRecoveryState::Unknown,
+                ready_persistence_failure_generation: None,
+                request_fingerprint_sha256: None,
+                replay: None,
+                poisoned: false,
+            }),
+        }
+    }
+}
+
+impl TurnRecoveryAuthority {
+    pub(crate) fn resumed_at_unready_generation(generation: u64) -> Self {
+        Self {
+            ready: AtomicBool::new(false),
+            state: Mutex::new(RecoveryAuthorityState {
+                generation,
+                durable_state: DurableRecoveryState::Unready,
+                ready_persistence_failure_generation: None,
+                request_fingerprint_sha256: None,
+                replay: None,
+                poisoned: false,
+            }),
+        }
+    }
 }
 
 /// Mutable state for a single turn.

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use crate::client::ModelClientSession;
+use crate::client::TurnRecoveryRequestCheckpoint;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::compact::InitialContextInjection;
@@ -40,6 +41,7 @@ use crate::session::session::Session;
 use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
 use crate::skills::emit_explicit_skill_invocations;
+use crate::state::TurnRecoveryAuthority;
 use crate::stream_events_utils::HandleOutputCtx;
 use crate::stream_events_utils::TurnItemContributorPolicy;
 use crate::stream_events_utils::finalize_non_tool_response_item;
@@ -49,6 +51,9 @@ use crate::stream_events_utils::last_assistant_message_from_item;
 use crate::stream_events_utils::mark_thread_memory_mode_polluted_if_external_context;
 use crate::stream_events_utils::raw_assistant_output_text_from_item;
 use crate::stream_events_utils::record_completed_response_item_with_finalized_facts;
+use crate::tasks::RecoveryDispatchArm;
+use crate::tasks::RecoveryProviderOutputGate;
+use crate::tasks::RecoveryReadyForSampling;
 use crate::tasks::emit_compact_metric;
 use crate::tools::ToolRouter;
 use crate::tools::context::SharedTurnDiffTracker;
@@ -97,6 +102,7 @@ use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::AgentMessageContentDeltaEvent;
 use codex_protocol::protocol::AgentReasoningSectionBreakEvent;
 use codex_protocol::protocol::CodexErrorInfo;
+use codex_protocol::protocol::EnvironmentConfigState;
 use codex_protocol::protocol::ErrorEvent;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::PlanDeltaEvent;
@@ -139,6 +145,166 @@ use tracing::warn;
 
 const POST_SAMPLING_TOKEN_ESTIMATE_TARGET: &str = "codex_core::post_sampling_token_estimate";
 
+/// The local rollout gate does not make provider sampling or provider-output
+/// arrival exactly-once. A stable provider idempotency key plus provider-side
+/// deduplication/status acknowledgement is required for that stronger claim.
+///
+/// Core's contract is narrower: after the outer turn executor pulls the first
+/// provider event, durable/cold threads require durable local revocation before
+/// model-visible response persistence, tool dispatch, hooks, commands, or
+/// other product effects may proceed. Ephemeral threads require an in-process
+/// revocation and cannot carry recovery authority across process exit.
+/// Transport-owned provider-policy terminals, tracing, and diagnostic telemetry
+/// can be recorded by the background stream mapper before this outer gate and
+/// are intentionally outside that claim.
+/// Recovery also assumes the rollout store remains healthy across the Ready
+/// interval. Observed persistence failures poison authority and trigger a
+/// best-effort newer Unready marker. An ambiguous/double storage failure or a
+/// crash between separate filesystem syscalls fail-stops the current process;
+/// restart authority is unknown and unqualified rather than a recoverable
+/// exactly-once transaction.
+pub(crate) const TURN_RECOVERY_PROVIDER_OUTPUT_ARRIVAL_EXACTLY_ONCE: bool = false;
+
+/// Identifies why a regular model task is entering the turn loop.
+///
+/// Recovery deliberately preserves pending `SessionStart` hooks. A resumed
+/// turn must continue from its already-materialized context rather than
+/// consuming startup/resume/compact hooks that belong to the next new turn.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TurnRunOrigin {
+    NewTurn,
+    Recovery,
+}
+
+struct SessionTurnRecoveryRequestCheckpoint {
+    session: Arc<Session>,
+    turn_id: String,
+    authority: Arc<TurnRecoveryAuthority>,
+    persistence_failure_baseline: u64,
+    replay: Option<codex_history::TurnRecoveryReplayV1>,
+    arm: Arc<RecoveryDispatchArm>,
+}
+
+impl TurnRecoveryRequestCheckpoint for SessionTurnRecoveryRequestCheckpoint {
+    fn authorize<'a>(&'a self, fingerprint_sha256: &'a str) -> BoxFuture<'a, CodexResult<()>> {
+        async move {
+            if !self.arm.is_open() {
+                return Err(CodexErr::TurnAborted);
+            }
+            if self.arm.recovery_disabled() {
+                return match self
+                    .session
+                    .gate_unrecoverable_provider_dispatch(&self.turn_id, &self.authority)
+                    .await
+                {
+                    RecoveryProviderOutputGate::Attached if self.arm.is_open() => Ok(()),
+                    RecoveryProviderOutputGate::Attached | RecoveryProviderOutputGate::Detached => {
+                        Err(CodexErr::TurnAborted)
+                    }
+                };
+            }
+            let Some(replay) = self.replay.as_ref() else {
+                if self.arm.expected_fingerprint_sha256().is_some() {
+                    self.arm.close();
+                    return Err(CodexErr::Fatal(
+                        "turn recovery replay state is unavailable after restart".to_string(),
+                    ));
+                }
+                self.session
+                    .ensure_turn_recovery_unready(&self.turn_id, self.authority.as_ref())
+                    .await?;
+                self.arm.disable_recovery();
+                return Ok(());
+            };
+            if self
+                .arm
+                .expected_fingerprint_sha256()
+                .is_some_and(|expected| expected != fingerprint_sha256)
+            {
+                self.arm.close();
+                return Err(CodexErr::Fatal(
+                    "turn recovery request fingerprint changed after restart".to_string(),
+                ));
+            }
+            let result = self
+                .session
+                .mark_recovery_ready_for_sampling_with_replay(
+                    &self.turn_id,
+                    &self.authority,
+                    self.persistence_failure_baseline,
+                    fingerprint_sha256,
+                    replay,
+                )
+                .await;
+            match result {
+                Ok(RecoveryReadyForSampling::Ready | RecoveryReadyForSampling::PendingInput) => {
+                    Ok(())
+                }
+                Ok(RecoveryReadyForSampling::Detached) => {
+                    self.arm.close();
+                    Err(CodexErr::TurnAborted)
+                }
+                Err(err) => {
+                    self.arm.close();
+                    Err(err)
+                }
+            }
+        }
+        .boxed()
+    }
+
+    fn unavailable<'a>(
+        &'a self,
+        reason_code: &'a str,
+        detail: &'a str,
+    ) -> BoxFuture<'a, CodexResult<()>> {
+        async move {
+            if !self.arm.is_open() {
+                return Err(CodexErr::TurnAborted);
+            }
+            if self.arm.expected_fingerprint_sha256().is_some() {
+                self.arm.close();
+                return Err(CodexErr::Fatal(format!(
+                    "turn recovery provider selector is unavailable [{reason_code}]: {detail}"
+                )));
+            }
+            if matches!(
+                self.session
+                    .gate_unrecoverable_provider_dispatch(&self.turn_id, &self.authority)
+                    .await,
+                RecoveryProviderOutputGate::Detached
+            ) {
+                self.arm.close();
+                return Err(CodexErr::TurnAborted);
+            }
+
+            // New turns remain usable with custom providers whose deployment
+            // selector cannot be classified safely. They simply cannot mint a
+            // recovery Ready marker for this sampling generation. Revoke any
+            // earlier Ready first in case provider-owned retry changed setup.
+            self.session
+                .ensure_turn_recovery_unready(&self.turn_id, self.authority.as_ref())
+                .await?;
+            if !self.arm.is_open()
+                || matches!(
+                    self.session
+                        .gate_unrecoverable_provider_dispatch(&self.turn_id, &self.authority)
+                        .await,
+                    RecoveryProviderOutputGate::Detached
+                )
+            {
+                self.arm.close();
+                return Err(CodexErr::TurnAborted);
+            }
+            // Keep physical dispatch open for provider-owned auth retry and
+            // HTTP/WS fallback, but never allow this generation to mint Ready.
+            self.arm.disable_recovery();
+            Ok(())
+        }
+        .boxed()
+    }
+}
+
 /// Takes initial turn input and runs a loop where, at each sampling request,
 /// the model replies with either:
 ///
@@ -158,10 +324,28 @@ pub(crate) async fn run_turn(
     turn_context: Arc<TurnContext>,
     input: Vec<TurnInput>,
     prewarmed_client_session: Option<ModelClientSession>,
+    recovery_authority: Arc<TurnRecoveryAuthority>,
+    persistence_failure_baseline: u64,
+    run_origin: TurnRunOrigin,
+    mut expected_recovery_fingerprint_sha256: Option<String>,
     cancellation_token: CancellationToken,
 ) -> CodexResult<Option<String>> {
-    // Record results from hooks that finished after the previous turn before this turn's user prompt.
-    drain_async_hook_results(&sess, &turn_context, /*before_user_prompt*/ true).await;
+    let hepta_turn_recovery_enabled = turn_context
+        .config
+        .features
+        .enabled(Feature::HeptaTurnRecovery);
+    // A second run_turn invocation belongs to a later input generation. Revoke
+    // the previous Ready before draining hooks or adding model-visible state.
+    if hepta_turn_recovery_enabled && recovery_authority.ready.load(Ordering::Acquire) {
+        sess.ensure_turn_recovery_unready(&turn_context.sub_id, recovery_authority.as_ref())
+            .await?;
+    }
+    let mut recovering_first_generation = run_origin == TurnRunOrigin::Recovery;
+    // A cold recovery must reproduce the already-persisted first request. Late
+    // hook results are deferred until after that request produces output.
+    if !recovering_first_generation {
+        drain_async_hook_results(&sess, &turn_context, /*before_user_prompt*/ true).await?;
+    }
 
     let mut client_session =
         prewarmed_client_session.unwrap_or_else(|| sess.services.model_client.new_session());
@@ -169,14 +353,22 @@ pub(crate) async fn run_turn(
     // new user message are recorded. Estimate pending incoming items (context
     // diffs/full reinjection + user input) and trigger compaction preemptively
     // when they would push the thread over the compaction threshold.
-    if let Err(err) = run_pre_sampling_compact(
-        &sess,
-        &turn_context,
-        &mut client_session,
-        &cancellation_token,
-    )
-    .await
-    {
+    let pre_sampling_compact_result =
+        if hepta_turn_recovery_enabled && run_origin == TurnRunOrigin::Recovery {
+            // The original turn already crossed its durable Ready boundary. A
+            // recovery must continue from canonical persisted context and may not
+            // replay a PreCompact command hook or an earlier compaction request.
+            Ok(())
+        } else {
+            run_pre_sampling_compact(
+                &sess,
+                &turn_context,
+                &mut client_session,
+                &cancellation_token,
+            )
+            .await
+        };
+    if let Err(err) = pre_sampling_compact_result {
         if matches!(err.details(), CodexErrorDetails::TurnAborted) {
             run_hooks_and_record_inputs(&sess, &turn_context, &input, PersistContext::Standard)
                 .await;
@@ -223,44 +415,63 @@ pub(crate) async fn run_turn(
         }
         Err(err) => return Err(err),
     };
-    // Keep the exact model-visible state used by this turn and its inline compactions.
-    let (world_state, display_roots) = tokio::join!(
-        sess.record_context_updates_and_set_reference_context_item(first_step_context.as_ref()),
-        turn_diff_display_roots(first_step_context.as_ref()),
-    );
-    let mut world_state = world_state?;
-
-    let Some((injection_items, explicitly_enabled_connectors)) = build_skills_and_plugins(
-        &sess,
-        first_step_context.as_ref(),
-        &user_input,
-        &mentioned_plugins,
-        &cancellation_token,
-    )
-    .await
-    else {
-        return Ok(None);
+    // Keep the exact model-visible state used by this turn and its inline compactions. Recovery
+    // observes the current state for request comparison but must not append fresh context before
+    // the exact-request checkpoint.
+    let (mut world_state, display_roots) = if recovering_first_generation {
+        let (world_state, display_roots) = tokio::join!(
+            sess.build_world_state_for_step(first_step_context.as_ref()),
+            turn_diff_display_roots(first_step_context.as_ref()),
+        );
+        (Arc::new(world_state?), display_roots)
+    } else {
+        let (world_state, display_roots) = tokio::join!(
+            sess.record_context_updates_and_set_reference_context_item(first_step_context.as_ref()),
+            turn_diff_display_roots(first_step_context.as_ref()),
+        );
+        (world_state?, display_roots)
     };
 
-    if run_pending_session_start_hooks(&sess, &turn_context).await {
+    let (injection_items, explicitly_enabled_connectors) = if recovering_first_generation {
+        (Vec::new(), HashSet::new())
+    } else {
+        let Some(injections) = build_skills_and_plugins(
+            &sess,
+            first_step_context.as_ref(),
+            &user_input,
+            &mentioned_plugins,
+            &cancellation_token,
+        )
+        .await
+        else {
+            return Ok(None);
+        };
+        injections
+    };
+
+    if run_origin != TurnRunOrigin::Recovery
+        && run_pending_session_start_hooks(&sess, &turn_context).await
+    {
         return Ok(None);
     }
-    let mut can_drain_pending_input = input.is_empty();
+    let mut can_drain_pending_input = input.is_empty() && !recovering_first_generation;
     if run_hooks_and_record_inputs(&sess, &turn_context, &input, PersistContext::TurnStart).await {
         return Ok(None);
     }
 
-    sess.merge_connector_selection(explicitly_enabled_connectors.clone())
-        .await;
-    sess.set_previous_turn_settings(Some(PreviousTurnSettings {
-        model: turn_context.model_info.slug.clone(),
-        comp_hash: turn_context.model_info.comp_hash.clone(),
-        realtime_active: Some(turn_context.realtime_active),
-    }))
-    .await;
-    for response_item in injection_items {
-        sess.record_conversation_items(&turn_context, std::slice::from_ref(&response_item))
+    if !recovering_first_generation {
+        sess.merge_connector_selection(explicitly_enabled_connectors.clone())
             .await;
+        sess.set_previous_turn_settings(Some(PreviousTurnSettings {
+            model: turn_context.model_info.slug.clone(),
+            comp_hash: turn_context.model_info.comp_hash.clone(),
+            realtime_active: Some(turn_context.realtime_active),
+        }))
+        .await;
+        for response_item in injection_items {
+            sess.record_conversation_items(&turn_context, std::slice::from_ref(&response_item))
+                .await;
+        }
     }
 
     track_turn_resolved_config_analytics(&sess, &turn_context, &input).await;
@@ -294,6 +505,14 @@ pub(crate) async fn run_turn(
             Vec::new()
         };
 
+        if hepta_turn_recovery_enabled
+            && !pending_input.is_empty()
+            && recovery_authority.ready.load(Ordering::Acquire)
+        {
+            sess.ensure_turn_recovery_unready(&turn_context.sub_id, recovery_authority.as_ref())
+                .await?;
+        }
+
         if run_hooks_and_record_inputs(
             &sess,
             &turn_context,
@@ -306,12 +525,14 @@ pub(crate) async fn run_turn(
         }
 
         let window_id = sess.current_window_id().await;
-        super::rollout_budget::maybe_record_reminder(
-            sess.as_ref(),
-            turn_context.as_ref(),
-            &window_id,
-        )
-        .await;
+        if !recovering_first_generation {
+            super::rollout_budget::maybe_record_reminder(
+                sess.as_ref(),
+                turn_context.as_ref(),
+                &window_id,
+            )
+            .await;
+        }
 
         // Capture once so context, advertised tools, and tool calls share one request view.
         let step_context = match next_step_context.take() {
@@ -337,17 +558,24 @@ pub(crate) async fn run_turn(
                 .await?
             }
         };
+        let recovery_dispatch_arm = hepta_turn_recovery_enabled.then(|| {
+            Arc::new(RecoveryDispatchArm::new(
+                expected_recovery_fingerprint_sha256.take(),
+            ))
+        });
         let sampling_request_result: CodexResult<_> = async {
-            super::time_reminder::maybe_record_current_time_reminder(
-                sess.as_ref(),
-                turn_context.as_ref(),
-                &window_id,
-            )
-            .await?;
-
-            world_state = sess
-                .record_step_world_state_if_changed(&world_state, step_context.as_ref())
+            if !recovering_first_generation {
+                super::time_reminder::maybe_record_current_time_reminder(
+                    sess.as_ref(),
+                    turn_context.as_ref(),
+                    &window_id,
+                )
                 .await?;
+
+                world_state = sess
+                    .record_step_world_state_if_changed(&world_state, step_context.as_ref())
+                    .await?;
+            }
 
             // Construct the input that we will send to the model.
             let sampling_request_input: Vec<ResponseItem> =
@@ -363,16 +591,34 @@ pub(crate) async fn run_turn(
                 Arc::clone(&step_context),
                 Arc::clone(&turn_context.extension_data),
                 Arc::clone(&turn_diff_tracker),
+                Arc::clone(&recovery_authority),
+                persistence_failure_baseline,
                 &mut client_session,
                 &responses_metadata,
                 sampling_request_input,
+                recovery_dispatch_arm.clone(),
                 cancellation_token.child_token(),
             )
             .await
         }
         .await;
+        if sampling_request_result.is_err()
+            && let Some(arm) = recovery_dispatch_arm.as_ref()
+        {
+            arm.close();
+        }
         match sampling_request_result {
             Ok((sampling_request_output, sampling_request_input)) => {
+                // Any post-sampling hook/result or follow-up prompt is a new
+                // generation. Revoke before those effects become observable.
+                if hepta_turn_recovery_enabled {
+                    sess.ensure_turn_recovery_unready(
+                        &turn_context.sub_id,
+                        recovery_authority.as_ref(),
+                    )
+                    .await?;
+                }
+                recovering_first_generation = false;
                 let SamplingRequestResult {
                     needs_follow_up: model_needs_follow_up,
                     last_agent_message: sampling_request_last_agent_message,
@@ -387,7 +633,8 @@ pub(crate) async fn run_turn(
                 }
                 can_drain_pending_input = true;
                 // Process async hooks only after sampling and its tools have finished.
-                drain_async_hook_results(&sess, &turn_context, /*before_user_prompt*/ false).await;
+                drain_async_hook_results(&sess, &turn_context, /*before_user_prompt*/ false)
+                    .await?;
                 let (has_pending_input, token_status) = async {
                     let has_pending_input =
                         sess.input_queue.has_pending_input(&sess.active_turn).await;
@@ -470,7 +717,9 @@ pub(crate) async fn run_turn(
                             .await;
                         return Ok(None);
                     }
-                    if run_pending_session_start_hooks(&sess, &turn_context).await {
+                    if run_origin != TurnRunOrigin::Recovery
+                        && run_pending_session_start_hooks(&sess, &turn_context).await
+                    {
                         return Ok(None);
                     }
                     can_drain_pending_input = !model_needs_follow_up;
@@ -539,6 +788,17 @@ pub(crate) async fn run_turn(
                     CodexErrorDetails::InvalidImageRequest()
                 ) =>
             {
+                if hepta_turn_recovery_enabled {
+                    match sess
+                        .gate_first_provider_output(&turn_context.sub_id, &recovery_authority)
+                        .await?
+                    {
+                        RecoveryProviderOutputGate::Attached => {}
+                        RecoveryProviderOutputGate::Detached => {
+                            return Err(CodexErr::TurnAborted);
+                        }
+                    }
+                }
                 sess.track_turn_codex_error(turn_context.as_ref(), &codex_error);
                 let error = CodexErrorInfo::BadRequest;
                 sess.emit_turn_error_lifecycle(turn_context.as_ref(), error.clone())
@@ -552,6 +812,17 @@ pub(crate) async fn run_turn(
                 break;
             }
             Err(e) => {
+                if hepta_turn_recovery_enabled {
+                    match sess
+                        .gate_first_provider_output(&turn_context.sub_id, &recovery_authority)
+                        .await?
+                    {
+                        RecoveryProviderOutputGate::Attached => {}
+                        RecoveryProviderOutputGate::Detached => {
+                            return Err(CodexErr::TurnAborted);
+                        }
+                    }
+                }
                 info!("Turn error: {e:#}");
                 let error = e.to_codex_protocol_error();
                 sess.emit_turn_error_lifecycle(turn_context.as_ref(), error.clone())
@@ -1206,6 +1477,23 @@ fn run_auto_compact<'a>(
     reason: CompactionReason,
     phase: CompactionPhase,
 ) -> BoxFuture<'a, CodexResult<()>> {
+    if hepta_turn_recovery_blocks_auto_compact(
+        step_context
+            .turn
+            .config
+            .features
+            .enabled(Feature::HeptaTurnRecovery),
+        phase,
+    ) {
+        // Pre-turn compaction can invoke a side-effectful command hook before
+        // its own provider request. R2 deliberately refuses that stage instead
+        // of pretending the regular-turn Ready marker makes it replay-safe.
+        return futures::future::ready(Err(CodexErr::InvalidRequest(
+            "Hepta durable turn recovery cannot safely run pre-turn compaction; run manual compact or start a new thread, then retry"
+                .to_string(),
+        )))
+        .boxed();
+    }
     let token_budget_enabled = step_context
         .turn
         .config
@@ -1289,6 +1577,13 @@ fn run_auto_compact<'a>(
     }
 }
 
+fn hepta_turn_recovery_blocks_auto_compact(
+    hepta_turn_recovery_enabled: bool,
+    phase: CompactionPhase,
+) -> bool {
+    hepta_turn_recovery_enabled && matches!(phase, CompactionPhase::PreTurn)
+}
+
 pub(super) fn collect_explicit_app_ids_from_skill_items(
     skill_items: &[ResponseItem],
     connectors: &[connectors::AppInfo],
@@ -1365,9 +1660,8 @@ fn prepare_sampling_request_input_future<'a>(
     step_context: &'a StepContext,
 ) -> BoxFuture<'a, Vec<ResponseItem>> {
     async move {
-        sess.clone_history()
-            .await
-            .for_prompt(&step_context.model_info.input_modalities)
+        let history = sess.clone_history().await;
+        history.for_prompt(&step_context.model_info.input_modalities)
     }
     .instrument(trace_span!("run_turn.prepare_sampling_request_input"))
     .boxed()
@@ -1380,9 +1674,12 @@ fn run_sampling_request_future<'a>(
     step_context: Arc<StepContext>,
     turn_store: Arc<codex_extension_api::ExtensionData>,
     turn_diff_tracker: SharedTurnDiffTracker,
+    recovery_authority: Arc<TurnRecoveryAuthority>,
+    persistence_failure_baseline: u64,
     client_session: &'a mut ModelClientSession,
     responses_metadata: &'a CodexResponsesMetadata,
     input: Vec<ResponseItem>,
+    recovery_dispatch_arm: Option<Arc<RecoveryDispatchArm>>,
     cancellation_token: CancellationToken,
 ) -> BoxFuture<'a, CodexResult<(SamplingRequestResult, Vec<ResponseItem>)>> {
     run_sampling_request(
@@ -1390,9 +1687,12 @@ fn run_sampling_request_future<'a>(
         step_context,
         turn_store,
         turn_diff_tracker,
+        recovery_authority,
+        persistence_failure_baseline,
         client_session,
         responses_metadata,
         input,
+        recovery_dispatch_arm,
         cancellation_token,
     )
     .boxed()
@@ -1413,9 +1713,12 @@ async fn run_sampling_request(
     step_context: Arc<StepContext>,
     turn_store: Arc<codex_extension_api::ExtensionData>,
     turn_diff_tracker: SharedTurnDiffTracker,
+    recovery_authority: Arc<TurnRecoveryAuthority>,
+    persistence_failure_baseline: u64,
     client_session: &mut ModelClientSession,
     responses_metadata: &CodexResponsesMetadata,
     input: Vec<ResponseItem>,
+    recovery_dispatch_arm: Option<Arc<RecoveryDispatchArm>>,
     cancellation_token: CancellationToken,
 ) -> CodexResult<(SamplingRequestResult, Vec<ResponseItem>)> {
     let turn_context = Arc::clone(&step_context.turn);
@@ -1436,6 +1739,22 @@ async fn run_sampling_request(
     let mut initial_input = Some(input);
     let mut original_input = None;
     let mut executed_tool_calls_by_output = HashMap::new();
+    let recovery_checkpoint = match recovery_dispatch_arm.as_ref() {
+        Some(arm) => Some(SessionTurnRecoveryRequestCheckpoint {
+            session: Arc::clone(&sess),
+            turn_id: turn_context.sub_id.clone(),
+            authority: Arc::clone(&recovery_authority),
+            persistence_failure_baseline,
+            replay: turn_recovery_replay_for_checkpoint(
+                turn_context.as_ref(),
+                step_context.as_ref(),
+                responses_metadata,
+                sess.current_recovery_history_boundary().await?,
+            ),
+            arm: Arc::clone(arm),
+        }),
+        None => None,
+    };
     loop {
         let prompt_input = if let Some(input) = initial_input.take() {
             input
@@ -1464,6 +1783,8 @@ async fn run_sampling_request(
             client_session,
             responses_metadata,
             Arc::clone(&turn_diff_tracker),
+            Arc::clone(&recovery_authority),
+            recovery_checkpoint.as_ref(),
             &prompt,
             cancellation_token.child_token(),
         )
@@ -1508,6 +1829,55 @@ async fn run_sampling_request(
         .await?;
         turn_context.turn_timing_state.record_sampling_retry();
     }
+}
+
+fn turn_recovery_replay_for_checkpoint(
+    turn_context: &TurnContext,
+    step_context: &StepContext,
+    responses_metadata: &CodexResponsesMetadata,
+    history_boundary: codex_history::TurnRecoveryHistoryBoundary,
+) -> Option<codex_history::TurnRecoveryReplayV1> {
+    let turn_context_sha256 =
+        crate::model_provider_policy::canonical_sha256(&turn_context.to_turn_context_item())
+            .ok()?
+            .as_str()
+            .to_string();
+    Some(codex_history::TurnRecoveryReplayV1 {
+        history_boundary,
+        turn_context_sha256,
+        start: responses_metadata
+            .turn_recovery_start_state(turn_context.final_output_json_schema.clone()),
+        environments: turn_recovery_environment_selections(&step_context.environments)?,
+    })
+}
+
+pub(crate) fn turn_recovery_environment_selections(
+    environments: &TurnEnvironmentSnapshot,
+) -> Option<Vec<codex_history::TurnRecoveryEnvironmentSelection>> {
+    if environments.starting().next().is_some() {
+        return None;
+    }
+    let selections = environments.to_selections();
+    if selections.is_empty() {
+        return None;
+    }
+    selections
+        .into_iter()
+        .map(|selection| {
+            if !matches!(selection.config, EnvironmentConfigState::FromThread) {
+                return None;
+            }
+            Some(codex_history::TurnRecoveryEnvironmentSelection {
+                environment_id: selection.environment_id,
+                cwd: selection.cwd.to_string(),
+                workspace_roots: selection
+                    .workspace_roots
+                    .into_iter()
+                    .map(|root| root.to_string())
+                    .collect(),
+            })
+        })
+        .collect()
 }
 
 pub(crate) struct PreparedToolRecommendations {
@@ -1893,6 +2263,7 @@ pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<(String, Option<
         | EventMsg::RealtimeConversationListVoicesResponse(_)
         | EventMsg::PlanUpdate(_)
         | EventMsg::TurnAborted(_)
+        | EventMsg::TurnRecoveryCandidate(_)
         | EventMsg::ShutdownComplete
         | EventMsg::EnteredReviewMode(_)
         | EventMsg::ExitedReviewMode(_)
@@ -2249,6 +2620,8 @@ fn try_run_sampling_request_future<'a>(
     client_session: &'a mut ModelClientSession,
     responses_metadata: &'a CodexResponsesMetadata,
     turn_diff_tracker: SharedTurnDiffTracker,
+    recovery_authority: Arc<TurnRecoveryAuthority>,
+    recovery_checkpoint: Option<&'a SessionTurnRecoveryRequestCheckpoint>,
     prompt: &'a Prompt,
     cancellation_token: CancellationToken,
 ) -> BoxFuture<'a, CodexResult<SamplingRequestResult>> {
@@ -2260,6 +2633,8 @@ fn try_run_sampling_request_future<'a>(
         client_session,
         responses_metadata,
         turn_diff_tracker,
+        recovery_authority,
+        recovery_checkpoint,
         prompt,
         cancellation_token,
     )
@@ -2282,6 +2657,8 @@ async fn try_run_sampling_request(
     client_session: &mut ModelClientSession,
     responses_metadata: &CodexResponsesMetadata,
     turn_diff_tracker: SharedTurnDiffTracker,
+    recovery_authority: Arc<TurnRecoveryAuthority>,
+    recovery_checkpoint: Option<&SessionTurnRecoveryRequestCheckpoint>,
     prompt: &Prompt,
     cancellation_token: CancellationToken,
 ) -> CodexResult<SamplingRequestResult> {
@@ -2329,6 +2706,7 @@ async fn try_run_sampling_request(
             responses_metadata,
             &inference_trace,
             Some(&provider_policy_context),
+            recovery_checkpoint.map(|checkpoint| checkpoint as &dyn TurnRecoveryRequestCheckpoint),
         )
         .instrument(trace_span!("stream_request"))
         .or_cancel(&cancellation_token)
@@ -2358,6 +2736,11 @@ async fn try_run_sampling_request(
     let defer_streamed_turn_items_for_contributors =
         !sess.services.extensions.turn_item_contributors().is_empty();
     let mut active_item_is_streaming_to_client = false;
+    debug_assert!(
+        !TURN_RECOVERY_PROVIDER_OUTPUT_ARRIVAL_EXACTLY_ONCE,
+        "provider-output exactly-once requires a provider idempotency/ack protocol"
+    );
+    let mut first_provider_output_pending = true;
     let receiving_span = trace_span!("receiving_stream");
     let outcome: CodexResult<SamplingRequestResult> = loop {
         let handle_responses = trace_span!(
@@ -2396,6 +2779,33 @@ async fn try_run_sampling_request(
                 ));
             }
         };
+
+        // Recovery authority covers only a request attempt whose output has
+        // not crossed into the outer turn executor. Close the local window
+        // before that executor can persist model-visible content, create a
+        // tool future, or cause a product effect. The transport's background
+        // mapper may already have recorded provider-policy evidence, tracing,
+        // or diagnostic telemetry; those are outside this bounded contract.
+        // Do not move this revocation before `stream.next()`: doing so
+        // would discard pre-output crash recovery without solving whether the
+        // provider accepted or produced output for the request. Provider
+        // sampling/output-arrival exactly-once requires provider idempotency
+        // and acknowledgement; this gate deliberately makes no such claim.
+        // Mid-stream and mid-tool host-side crashes therefore fail closed.
+        if first_provider_output_pending {
+            if let Some(checkpoint) = recovery_checkpoint {
+                checkpoint.arm.close();
+            }
+            match sess
+                .gate_first_provider_output(&turn_context.sub_id, &recovery_authority)
+                .await?
+            {
+                RecoveryProviderOutputGate::Attached => {
+                    first_provider_output_pending = false;
+                }
+                RecoveryProviderOutputGate::Detached => break Err(CodexErr::TurnAborted),
+            }
+        }
 
         sess.services
             .session_telemetry

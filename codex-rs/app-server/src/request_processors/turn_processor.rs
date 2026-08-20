@@ -95,6 +95,7 @@ pub(crate) struct TurnRequestProcessor {
     arg0_paths: Arg0DispatchPaths,
     config: Arc<Config>,
     config_manager: ConfigManager,
+    thread_store: Arc<dyn ThreadStore>,
     pending_thread_unloads: Arc<Mutex<HashSet<ThreadId>>>,
     thread_state_manager: ThreadStateManager,
     thread_watch_manager: ThreadWatchManager,
@@ -151,6 +152,7 @@ impl TurnRequestProcessor {
         arg0_paths: Arg0DispatchPaths,
         config: Arc<Config>,
         config_manager: ConfigManager,
+        thread_store: Arc<dyn ThreadStore>,
         pending_thread_unloads: Arc<Mutex<HashSet<ThreadId>>>,
         thread_state_manager: ThreadStateManager,
         thread_watch_manager: ThreadWatchManager,
@@ -168,6 +170,7 @@ impl TurnRequestProcessor {
             arg0_paths,
             config,
             config_manager,
+            thread_store,
             pending_thread_unloads,
             thread_state_manager,
             thread_watch_manager,
@@ -454,6 +457,16 @@ impl TurnRequestProcessor {
         thread
             .submit_with_trace(op, self.request_trace_context(request_id).await)
             .await
+    }
+
+    pub(crate) async fn turn_recover(
+        &self,
+        request_id: &ConnectionRequestId,
+        params: TurnRecoverParams,
+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        self.turn_recover_inner(request_id, params)
+            .await
+            .map(|response| Some(response.into()))
     }
 
     pub(super) fn input_too_large_error(actual_chars: usize) -> JSONRPCErrorError {
@@ -1072,6 +1085,16 @@ impl TurnRequestProcessor {
                         None,
                         None,
                     ),
+                    NotSubmittedReason::RecoveryStateChanged => (
+                        "turn state changed before submission could be accepted".to_string(),
+                        None,
+                        None,
+                    ),
+                    NotSubmittedReason::RecoveryPersistenceFailed => (
+                        "failed to durably revoke turn recovery before accepting input".to_string(),
+                        None,
+                        None,
+                    ),
                     NotSubmittedReason::PendingTriggerTurn | NotSubmittedReason::PlanMode => (
                         "no active turn to steer".to_string(),
                         None,
@@ -1541,6 +1564,199 @@ impl TurnRequestProcessor {
                     "failed to interrupt {interrupt_target}: {err}"
                 )))
             }
+        }
+    }
+
+    async fn turn_recover_inner(
+        &self,
+        request_id: &ConnectionRequestId,
+        params: TurnRecoverParams,
+    ) -> Result<TurnRecoverResponse, JSONRPCErrorError> {
+        let TurnRecoverParams { thread_id, turn_id } = params;
+        if turn_id.is_empty() {
+            return Err(invalid_request("turnId must not be empty"));
+        }
+
+        let (thread_uuid, thread) = self.load_thread(&thread_id).await.inspect_err(|error| {
+            self.track_error_response(request_id, error, /*error_type*/ None);
+        })?;
+        self.ensure_direct_input_allowed(request_id, thread.as_ref())
+            .await?;
+        if !thread.enabled(Feature::HeptaTurnRecovery) {
+            let error = invalid_request("turn/recover requires features.hepta_turn_recovery=true");
+            self.track_error_response(request_id, &error, /*error_type*/ None);
+            return Err(error);
+        }
+
+        // Capture Core's idle/interrupted generation before reading history.
+        // Any intervening real turn changes the epoch, so the final Core
+        // reservation fails closed instead of sampling a stale logical tail.
+        let expected_epoch = thread.recovery_epoch_if_idle(&turn_id).await;
+
+        let active_turn = self
+            .thread_state_manager
+            .thread_state(thread_uuid)
+            .await
+            .lock()
+            .await
+            .active_turn_snapshot();
+        // Core owns the recovery state machine, but the public RPC must first bind
+        // the caller's identity to the exact logical tail. Durable legacy threads
+        // replay their rollout, paginated threads replay the canonical bounded
+        // model-context suffix, and ephemeral threads use their live listener state.
+        let mut turns = self
+            .turn_recovery_history(
+                request_id,
+                thread_uuid,
+                thread.as_ref(),
+                active_turn.clone(),
+            )
+            .await?;
+        let has_live_in_progress_turn = matches!(thread.agent_status().await, AgentStatus::Running)
+            || active_turn
+                .as_ref()
+                .is_some_and(|turn| matches!(turn.status, TurnStatus::InProgress));
+        super::thread_processor::normalize_thread_turns_status(
+            &mut turns,
+            self.thread_watch_manager
+                .loaded_status_for_thread(&thread_id)
+                .await,
+            has_live_in_progress_turn,
+        );
+        let Some(interrupted_tail) = turns.last() else {
+            let error = invalid_request("thread has no interrupted turn to recover");
+            self.track_error_response(request_id, &error, /*error_type*/ None);
+            return Err(error);
+        };
+        if interrupted_tail.id != turn_id {
+            let error = invalid_request(format!(
+                "turn `{turn_id}` is not the interrupted tail of thread `{thread_id}`"
+            ));
+            self.track_error_response(request_id, &error, /*error_type*/ None);
+            return Err(error);
+        }
+        if interrupted_tail.status != TurnStatus::Interrupted {
+            let error = invalid_request(format!("turn `{turn_id}` is not interrupted"));
+            self.track_error_response(request_id, &error, /*error_type*/ None);
+            return Err(error);
+        }
+        let expected_epoch = expected_epoch.ok_or_else(|| {
+            let error = invalid_request("thread is not idle or turn is not interrupted");
+            self.track_error_response(request_id, &error, /*error_type*/ None);
+            error
+        })?;
+
+        self.outgoing
+            .record_request_turn_id(request_id, &turn_id)
+            .await;
+        let submission = thread
+            .recover_turn_if_idle(RecoverTurnRequest {
+                turn_id: turn_id.clone(),
+                expected_epoch,
+                thread_settings: Default::default(),
+                trace: self.request_trace_context(request_id).await,
+            })
+            .await
+            .map_err(|err| {
+                let error = match err.details() {
+                    CodexErrorDetails::InvalidRequest(message) => invalid_request(message.clone()),
+                    _ => internal_error(format!("failed to recover turn: {err}")),
+                };
+                self.track_error_response(request_id, &error, /*error_type*/ None);
+                error
+            })?;
+        match submission {
+            StartIfIdleSubmission::Started {
+                turn_id: recovered_turn_id,
+            } if recovered_turn_id == turn_id => Ok(TurnRecoverResponse {
+                turn: Turn {
+                    id: recovered_turn_id,
+                    items: vec![],
+                    items_view: TurnItemsView::NotLoaded,
+                    error: None,
+                    status: TurnStatus::InProgress,
+                    started_at: None,
+                    completed_at: None,
+                    duration_ms: None,
+                },
+            }),
+            StartIfIdleSubmission::Started {
+                turn_id: recovered_turn_id,
+            } => {
+                let error = internal_error(format!(
+                    "recovered turn id `{recovered_turn_id}` did not match requested turn `{turn_id}`"
+                ));
+                self.track_error_response(request_id, &error, /*error_type*/ None);
+                Err(error)
+            }
+            StartIfIdleSubmission::NotSubmitted { reason } => {
+                let message = match reason {
+                    NotSubmittedReason::NotIdle => {
+                        "thread already has an active or pending turn".to_string()
+                    }
+                    NotSubmittedReason::RecoveryStateChanged => {
+                        "thread recovery candidate is no longer valid; start a new turn".to_string()
+                    }
+                    NotSubmittedReason::RecoveryPersistenceFailed => {
+                        "thread recovery authority could not be durably revoked".to_string()
+                    }
+                    NotSubmittedReason::PendingTriggerTurn => {
+                        "thread has higher-priority pending work".to_string()
+                    }
+                    other => format!("interrupted turn could not be recovered: {other:?}"),
+                };
+                let error = invalid_request(message);
+                self.track_error_response(request_id, &error, /*error_type*/ None);
+                Err(error)
+            }
+        }
+    }
+
+    async fn turn_recovery_history(
+        &self,
+        request_id: &ConnectionRequestId,
+        thread_id: ThreadId,
+        thread: &CodexThread,
+        active_turn: Option<Turn>,
+    ) -> Result<Vec<Turn>, JSONRPCErrorError> {
+        let config_snapshot = thread.config_snapshot().await;
+        if config_snapshot.ephemeral {
+            return Ok(active_turn.into_iter().collect());
+        }
+
+        let history_items = if matches!(
+            config_snapshot.history_mode,
+            codex_protocol::protocol::ThreadHistoryMode::Paginated
+        ) {
+            self.thread_store
+                .load_latest_model_context(StoreLoadThreadHistoryParams {
+                    thread_id,
+                    include_archived: true,
+                })
+                .await
+                .map(|history| history.items)
+        } else {
+            thread
+                .load_history(/*include_archived*/ true)
+                .await
+                .map(|history| history.items)
+        }
+        .map_err(|err| {
+            let error =
+                internal_error(format!("failed to load thread history for recovery: {err}"));
+            self.track_error_response(request_id, &error, /*error_type*/ None);
+            error
+        })?;
+
+        if matches!(
+            config_snapshot.history_mode,
+            codex_protocol::protocol::ThreadHistoryMode::Paginated
+        ) {
+            Ok(codex_app_server_protocol::build_turns_from_rollout_items(
+                &history_items,
+            ))
+        } else {
+            Ok(build_legacy_api_turns_from_rollout_items(&history_items))
         }
     }
 

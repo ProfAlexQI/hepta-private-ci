@@ -5090,6 +5090,24 @@
         }
       ]
     },
+    "TurnRecoverParams": {
+      "description": "Resume an interrupted turn without submitting new user input.",
+      "properties": {
+        "threadId": {
+          "description": "Thread that owns the interrupted turn.",
+          "type": "string"
+        },
+        "turnId": {
+          "description": "Identifier of the interrupted turn to resume.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId",
+        "turnId"
+      ],
+      "type": "object"
+    },
     "TurnStartParams": {
       "properties": {
         "approvalPolicy": {
@@ -6862,6 +6880,30 @@
         "params"
       ],
       "title": "Turn/interruptRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "turn/recover"
+          ],
+          "title": "Turn/recoverRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/TurnRecoverParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Turn/recoverRequest",
       "type": "object"
     },
     {

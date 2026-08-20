@@ -301,7 +301,8 @@ impl CoreTurnHost {
         if text.trim().is_empty() {
             return Ok(());
         }
-        self.exec
+        match self
+            .exec
             .session
             .inject_if_running(vec![ResponseItem::CustomToolCallOutput {
                 id: None,
@@ -311,8 +312,14 @@ impl CoreTurnHost {
                 internal_chat_message_metadata_passthrough: None,
             }])
             .await
-            .map_err(|_| {
-                format!("failed to inject exec notify message for cell {cell_id}: no active turn")
-            })
+        {
+            Ok(()) => Ok(()),
+            Err(crate::codex_thread::InjectIfRunningError::NoActiveTurn(_)) => Err(format!(
+                "failed to inject exec notify message for cell {cell_id}: no active turn"
+            )),
+            Err(crate::codex_thread::InjectIfRunningError::RecoveryRevocation(err)) => Err(
+                format!("failed to inject exec notify message for cell {cell_id}: {err}"),
+            ),
+        }
     }
 }

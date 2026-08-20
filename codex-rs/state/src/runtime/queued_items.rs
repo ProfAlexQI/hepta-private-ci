@@ -5,6 +5,32 @@ use sqlx::Connection;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+/// Capacity boundary that rejected a durable queue insert.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QueueCapacityLimit {
+    Runtime,
+    Thread,
+}
+
+/// Typed rejection returned only after the capacity check held the SQLite
+/// writer lock, so callers can distinguish compatibility-facing thread limits
+/// from embedding-runtime limits without parsing SQLite errors.
+#[derive(Debug)]
+pub struct QueueCapacityExceeded {
+    pub limit: QueueCapacityLimit,
+}
+
+impl std::fmt::Display for QueueCapacityExceeded {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.limit {
+            QueueCapacityLimit::Runtime => formatter.write_str("runtime queue capacity reached"),
+            QueueCapacityLimit::Thread => formatter.write_str("thread queue capacity reached"),
+        }
+    }
+}
+
+impl std::error::Error for QueueCapacityExceeded {}
+
 /// SQLite-backed persistence for durable, thread-scoped user messages.
 #[derive(Clone)]
 pub struct SqliteQueueStore {
@@ -74,6 +100,8 @@ impl SqliteQueueStore {
             .collect()
     }
 
+    /// Enqueue with the historical ordinary-Codex limit of
+    /// [`MAX_QUEUE_ITEMS`] independently for each thread.
     pub async fn enqueue(
         &self,
         thread_id: ThreadId,
@@ -102,6 +130,65 @@ impl SqliteQueueStore {
         .fetch_one(self.pool.as_ref())
         .await?;
         QueuedUserSubmissionRecord::try_from_row(&row)
+    }
+
+    /// Enqueue one item while atomically enforcing both the database-wide
+    /// runtime capacity and the retained per-thread limit.
+    ///
+    /// The queue database is rooted in one Codex home. Hepta gives every
+    /// workspace Agent its own Codex home, so the database-wide limit is also
+    /// the per-Agent limit. `BEGIN IMMEDIATE` acquires the SQLite writer lock
+    /// before either count is observed; competing processes cannot both admit
+    /// against the same stale capacity snapshot.
+    pub async fn enqueue_with_capacity(
+        &self,
+        thread_id: ThreadId,
+        payload_json: &str,
+        capacity: usize,
+    ) -> anyhow::Result<QueuedUserSubmissionRecord> {
+        let now_ms = datetime_to_epoch_millis(Utc::now());
+        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let row = sqlx::query(
+            "INSERT INTO queued_items (
+                id, thread_id, payload_json, queue_order,
+                created_at_ms, updated_at_ms
+             )
+             SELECT ?, ?, ?,
+                    COALESCE((SELECT MAX(queue_order) FROM queued_items WHERE thread_id = ?), -1) + 1,
+                    ?, ?
+             WHERE (SELECT COUNT(*) FROM queued_items) < ?
+               AND (SELECT COUNT(*) FROM queued_items WHERE thread_id = ?) < ?
+             RETURNING id, thread_id, payload_json",
+        )
+        .bind(Uuid::now_v7().to_string())
+        .bind(thread_id.to_string())
+        .bind(payload_json)
+        .bind(thread_id.to_string())
+        .bind(now_ms)
+        .bind(now_ms)
+        .bind(i64::try_from(capacity)?)
+        .bind(thread_id.to_string())
+        .bind(i64::try_from(MAX_QUEUE_ITEMS)?)
+        .fetch_optional(transaction.as_mut())
+        .await?;
+        let Some(row) = row else {
+            let thread_items = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM queued_items WHERE thread_id = ?",
+            )
+            .bind(thread_id.to_string())
+            .fetch_one(transaction.as_mut())
+            .await?;
+            let limit = if thread_items >= i64::try_from(MAX_QUEUE_ITEMS)? {
+                QueueCapacityLimit::Thread
+            } else {
+                QueueCapacityLimit::Runtime
+            };
+            transaction.rollback().await?;
+            return Err(QueueCapacityExceeded { limit }.into());
+        };
+        let record = QueuedUserSubmissionRecord::try_from_row(&row)?;
+        transaction.commit().await?;
+        Ok(record)
     }
 
     pub async fn list_page(

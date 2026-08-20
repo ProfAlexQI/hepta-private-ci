@@ -4634,6 +4634,56 @@ fn turn_start_params_preserve_explicit_null_service_tier() {
 }
 
 #[test]
+fn turn_recover_params_and_response_round_trip() {
+    let params = TurnRecoverParams {
+        thread_id: "thread_123".to_string(),
+        turn_id: "turn_456".to_string(),
+    };
+    let params_json = serde_json::to_value(&params).expect("params should serialize");
+    assert_eq!(
+        params_json,
+        json!({
+            "threadId": "thread_123",
+            "turnId": "turn_456"
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<TurnRecoverParams>(params_json)
+            .expect("params should deserialize"),
+        params
+    );
+    assert!(
+        serde_json::from_value::<TurnRecoverParams>(json!({ "threadId": "thread_123" })).is_err(),
+        "the interrupted turn id is required"
+    );
+    assert!(
+        serde_json::from_value::<TurnRecoverParams>(json!({ "turnId": "turn_456" })).is_err(),
+        "the owning thread id is required"
+    );
+
+    let response = TurnRecoverResponse {
+        turn: Turn {
+            id: "turn_456".to_string(),
+            items: Vec::new(),
+            items_view: TurnItemsView::Full,
+            status: TurnStatus::InProgress,
+            error: None,
+            started_at: Some(1_723_000_000),
+            completed_at: None,
+            duration_ms: None,
+        },
+    };
+    let response_json = serde_json::to_value(&response).expect("response should serialize");
+    assert_eq!(response_json["turn"]["id"], "turn_456");
+    assert_eq!(response_json["turn"]["status"], "inProgress");
+    assert_eq!(
+        serde_json::from_value::<TurnRecoverResponse>(response_json)
+            .expect("response should deserialize"),
+        response
+    );
+}
+
+#[test]
 fn turn_start_params_round_trip_multi_agent_mode() {
     let params: TurnStartParams = serde_json::from_value(json!({
         "threadId": "thread_123",

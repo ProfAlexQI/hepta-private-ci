@@ -284,6 +284,37 @@ impl ContextManager {
         }
     }
 
+    /// Rewinds model-visible history to a provenance-bound provider Ready
+    /// checkpoint. The prefix digest prevents a malformed count from silently
+    /// rewriting unrelated history.
+    pub(crate) fn rewind_to_recovery_boundary(
+        &mut self,
+        boundary: &codex_history::TurnRecoveryHistoryBoundary,
+    ) -> bool {
+        let Ok(item_count) = usize::try_from(boundary.item_count) else {
+            return false;
+        };
+        if item_count > self.items.len() {
+            return false;
+        }
+        let retained = self.items[..item_count].to_vec();
+        let Some(prefix_sha256) = recovery_prefix_sha256(&retained) else {
+            return false;
+        };
+        if prefix_sha256 != boundary.prefix_sha256 {
+            return false;
+        }
+        self.replace_annotated(retained);
+        true
+    }
+
+    pub(crate) fn recovery_boundary(&self) -> Option<codex_history::TurnRecoveryHistoryBoundary> {
+        Some(codex_history::TurnRecoveryHistoryBoundary {
+            item_count: u64::try_from(self.items.len()).ok()?,
+            prefix_sha256: recovery_prefix_sha256(self.items.as_ref())?,
+        })
+    }
+
     #[cfg(test)]
     pub(crate) fn replace(&mut self, items: Vec<ResponseItem>) {
         self.replace_annotated(items.into_iter().map(ResponseItemEnvelope::new).collect());
@@ -548,6 +579,16 @@ impl ContextManager {
         }
         cut_idx
     }
+}
+
+fn recovery_prefix_sha256(items: &[ResponseItemEnvelope]) -> Option<String> {
+    let material = items
+        .iter()
+        .map(|envelope| (&envelope.item, &envelope.metadata))
+        .collect::<Vec<_>>();
+    crate::model_provider_policy::canonical_sha256(&material)
+        .ok()
+        .map(|digest| digest.as_str().to_string())
 }
 
 pub(crate) fn truncate_function_output_payload(

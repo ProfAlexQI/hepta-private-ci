@@ -219,6 +219,9 @@ impl RollbackPlanner {
                     self.pending_turn_records.push(index);
                 }
             }
+            RolloutItem::TurnRecoveryRequestBinding(binding) => {
+                self.assign_targeted_record(index, Some(binding.turn_id.as_str()));
+            }
             RolloutItem::WorldState(_) => {}
             RolloutItem::SecurityRiskScore(_) => self.record_boundaries[index] = None,
         }

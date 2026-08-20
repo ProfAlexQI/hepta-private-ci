@@ -754,6 +754,7 @@ async fn drain_to_completed(
             // are left untraced until the reducer has a first-class local compaction lifecycle.
             &InferenceTraceContext::disabled(),
             Some(&provider_policy_context),
+            None,
         )
         .await?;
     loop {

@@ -1,4 +1,5 @@
 use std::fs;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -35,6 +36,7 @@ use codex_protocol::models::ImageDetail;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
+use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;
 use codex_protocol::user_input::UserInput;
 use codex_queue_extension::QueueServiceError;
@@ -178,6 +180,16 @@ async fn test_queue() -> anyhow::Result<(Arc<dyn QueueStore>, TempDir)> {
     let sqlite = SqliteConfig::new_for_testing(home.path().abs());
     let runtime = StateRuntime::init(sqlite.clone(), "test-provider".to_string()).await?;
     let queue: Arc<dyn QueueStore> = Arc::new(LocalQueueStore::new(runtime));
+    Ok((queue, home))
+}
+
+async fn test_queue_with_capacity(
+    capacity: NonZeroUsize,
+) -> anyhow::Result<(Arc<dyn QueueStore>, TempDir)> {
+    let home = tempfile::tempdir()?;
+    let sqlite = SqliteConfig::new_for_testing(home.path().abs());
+    let runtime = StateRuntime::init(sqlite.clone(), "test-provider".to_string()).await?;
+    let queue: Arc<dyn QueueStore> = Arc::new(LocalQueueStore::with_capacity(runtime, capacity));
     Ok((queue, home))
 }
 
@@ -373,6 +385,28 @@ async fn queued_input_and_unique_event_ids_round_trip() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn capacity_rejection_preserves_the_admitted_client_identity() -> anyhow::Result<()> {
+    let (queue, _home) = test_queue_with_capacity(NonZeroUsize::new(1).expect("non-zero")).await?;
+    let service = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let thread_id = ThreadId::new();
+    let admitted = service
+        .enqueue(thread_id, structured_user_input("admitted"))
+        .await?;
+
+    let error = service
+        .enqueue(thread_id, structured_user_input("rejected"))
+        .await
+        .expect_err("the runtime capacity must reject the second pending item");
+    assert!(matches!(
+        error,
+        QueueServiceError::Storage(ThreadStoreError::InvalidRequest { ref message })
+            if message == "runtime queue cannot contain more than 1 submission"
+    ));
+    assert_eq!(vec![admitted], service.list(thread_id).await?);
+    Ok(())
+}
+
+#[tokio::test]
 async fn editing_reordering_and_deleting_preserve_queue_identity() -> anyhow::Result<()> {
     let (queue, _home) = test_queue().await?;
     let service = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
@@ -525,6 +559,319 @@ async fn persisted_admission_reconciles_compressed_rollout() -> anyhow::Result<(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn persisted_client_id_with_conflicting_payload_fails_closed_from_compressed_rollout()
+-> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let response =
+        responses::mount_sse_once(&server, responses::sse_completed("durable-turn")).await;
+    let test = test_codex()
+        .with_config(|config| config.include_environment_context = false)
+        .build_with_auto_env(&server)
+        .await?;
+    let thread_id = test.session_configured.thread_id;
+    let runtime = test.codex.state_db().context("state runtime unavailable")?;
+    let queue: Arc<dyn QueueStore> =
+        Arc::new(FailDeleteOnceQueueStore::new(LocalQueueStore::new(runtime)));
+    let service = QueuedItemService::new(
+        Arc::clone(&queue),
+        Weak::new(),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let queued = service
+        .enqueue(thread_id, structured_user_input("original Matrix event"))
+        .await?;
+
+    service
+        .start(
+            test.codex.as_ref(),
+            Some(queued.id.clone()),
+            /*trace*/ None,
+        )
+        .await
+        .expect_err("simulated delete failure must retain the admitted queue row");
+    wait_for_event_match(test.codex.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_)).then_some(())
+    })
+    .await;
+    let conflicting = service
+        .update(
+            thread_id,
+            queued.id.clone(),
+            structured_user_input("conflicting Matrix event"),
+        )
+        .await?
+        .context("retained queue row disappeared")?;
+
+    let rollout_path = test
+        .codex
+        .rollout_path()
+        .context("rollout path unavailable")?;
+    test.codex.shutdown_and_wait().await?;
+    let rollout = fs::read(&rollout_path)?;
+    let compressed_path = rollout_path.with_extension("jsonl.zst");
+    fs::write(
+        &compressed_path,
+        zstd::stream::encode_all(rollout.as_slice(), /*level*/ 3)?,
+    )?;
+    fs::remove_file(&rollout_path)?;
+
+    let restarted = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let error = restarted
+        .start(
+            test.codex.as_ref(),
+            Some(conflicting.id.clone()),
+            /*trace*/ None,
+        )
+        .await
+        .expect_err("same client id with different content must not join");
+    assert!(
+        matches!(
+            error,
+            QueueServiceError::ClientIdPayloadConflict { ref client_id, .. }
+                if client_id == "stable-client-message"
+        ),
+        "unexpected conflict error: {error:?}"
+    );
+    assert_eq!(vec![conflicting], restarted.list(thread_id).await?);
+    assert_eq!(1, response.requests().len());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn legacy_client_id_without_payload_digest_is_readable_but_cannot_join() -> anyhow::Result<()>
+{
+    let server = start_mock_server().await;
+    let response =
+        responses::mount_sse_once(&server, responses::sse_completed("durable-turn")).await;
+    let test = test_codex()
+        .with_config(|config| config.include_environment_context = false)
+        .build_with_auto_env(&server)
+        .await?;
+    let thread_id = test.session_configured.thread_id;
+    let runtime = test.codex.state_db().context("state runtime unavailable")?;
+    let queue: Arc<dyn QueueStore> =
+        Arc::new(FailDeleteOnceQueueStore::new(LocalQueueStore::new(runtime)));
+    let service = QueuedItemService::new(
+        Arc::clone(&queue),
+        Weak::new(),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let queued = service
+        .enqueue(thread_id, structured_user_input("legacy Matrix event"))
+        .await?;
+    service
+        .start(
+            test.codex.as_ref(),
+            Some(queued.id.clone()),
+            /*trace*/ None,
+        )
+        .await
+        .expect_err("simulated delete failure must retain the admitted queue row");
+    wait_for_event_match(test.codex.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_)).then_some(())
+    })
+    .await;
+
+    let rollout_path = test
+        .codex
+        .rollout_path()
+        .context("rollout path unavailable")?;
+    test.codex.shutdown_and_wait().await?;
+    let mut saw_binding = false;
+    let mut rewritten = Vec::new();
+    for line in fs::read_to_string(&rollout_path)?.lines() {
+        let mut record = serde_json::from_str::<RolloutLine>(line)?;
+        if let RolloutItem::EventMsg(EventMsg::UserMessage(event)) = &mut record.item
+            && event.client_id.as_deref() == Some("stable-client-message")
+        {
+            saw_binding = event.payload_sha256.take().is_some();
+        }
+        rewritten.push(serde_json::to_string(&record)?);
+    }
+    assert!(
+        saw_binding,
+        "new rollout did not contain its payload digest"
+    );
+    fs::write(&rollout_path, format!("{}\n", rewritten.join("\n")))?;
+
+    let cold_reader = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let error = cold_reader
+        .start(
+            test.codex.as_ref(),
+            Some(queued.id.clone()),
+            /*trace*/ None,
+        )
+        .await
+        .expect_err("legacy client id without an exact digest must fail closed");
+    assert!(
+        matches!(
+            error,
+            QueueServiceError::LegacyClientIdBinding { ref client_id }
+                if client_id == "stable-client-message"
+        ),
+        "unexpected legacy binding error: {error:?}"
+    );
+    assert_eq!(vec![queued], cold_reader.list(thread_id).await?);
+    assert_eq!(1, response.requests().len());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn exact_and_legacy_bindings_for_the_same_turn_join_once() -> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let response =
+        responses::mount_sse_once(&server, responses::sse_completed("durable-turn")).await;
+    let test = test_codex()
+        .with_history_mode(ThreadHistoryMode::Paginated)
+        .with_config(|config| config.include_environment_context = false)
+        .build_with_auto_env(&server)
+        .await?;
+    let thread_id = test.session_configured.thread_id;
+    let runtime = test.codex.state_db().context("state runtime unavailable")?;
+    let queue: Arc<dyn QueueStore> =
+        Arc::new(FailDeleteOnceQueueStore::new(LocalQueueStore::new(runtime)));
+    let service = QueuedItemService::new(
+        Arc::clone(&queue),
+        Weak::new(),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let queued = service
+        .enqueue(thread_id, structured_user_input("paginated Matrix event"))
+        .await?;
+    service
+        .start(
+            test.codex.as_ref(),
+            Some(queued.id.clone()),
+            /*trace*/ None,
+        )
+        .await
+        .expect_err("simulated delete failure must retain the admitted queue row");
+    wait_for_event_match(test.codex.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_)).then_some(())
+    })
+    .await;
+
+    let rollout_path = test
+        .codex
+        .rollout_path()
+        .context("rollout path unavailable")?;
+    test.codex.shutdown_and_wait().await?;
+    let mut exact_turn_id = None;
+    let mut rewritten = Vec::new();
+    for line in fs::read_to_string(&rollout_path)?.lines() {
+        let record = serde_json::from_str::<RolloutLine>(line)?;
+        let legacy = match &record.item {
+            RolloutItem::EventMsg(EventMsg::ItemCompleted(event)) => match &event.item {
+                TurnItem::UserMessage(item)
+                    if item.client_id.as_deref() == Some("stable-client-message") =>
+                {
+                    exact_turn_id = Some(event.turn_id.clone());
+                    Some(RolloutLine {
+                        timestamp: record.timestamp.clone(),
+                        ordinal: None,
+                        item: RolloutItem::EventMsg(EventMsg::UserMessage(
+                            item.as_legacy_user_message_event(),
+                        )),
+                    })
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        rewritten.push(serde_json::to_string(&record)?);
+        if let Some(legacy) = legacy {
+            rewritten.push(serde_json::to_string(&legacy)?);
+        }
+    }
+    let turn_id = exact_turn_id.context("paginated exact user-message binding unavailable")?;
+    fs::write(&rollout_path, format!("{}\n", rewritten.join("\n")))?;
+
+    let cold_reader = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let joined = cold_reader
+        .start(test.codex.as_ref(), Some(queued.id), /*trace*/ None)
+        .await?;
+    assert!(matches!(
+        joined,
+        StartIfIdleSubmission::Started { turn_id: joined } if joined == turn_id
+    ));
+    assert!(cold_reader.list(thread_id).await?.is_empty());
+    assert_eq!(1, response.requests().len());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn same_client_id_bound_to_two_turns_is_ambiguous_and_fails_closed() -> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let response = responses::mount_sse_sequence(
+        &server,
+        vec![
+            responses::sse_completed("first-turn"),
+            responses::sse_completed("second-turn"),
+        ],
+    )
+    .await;
+    let test = test_codex()
+        .with_config(|config| config.include_environment_context = false)
+        .build_with_auto_env(&server)
+        .await?;
+    for _ in 0..2 {
+        let mut attempts = 0;
+        loop {
+            let submission = test
+                .codex
+                .start_turn_if_idle_and_wait_for_persisted_admission(TurnInputRequest::new(
+                    structured_user_input("reused Matrix event"),
+                ))
+                .await
+                .map_err(|error| anyhow::anyhow!("persist duplicate client id: {error:?}"))?;
+            match submission {
+                StartIfIdleSubmission::Started { .. } => break,
+                StartIfIdleSubmission::NotSubmitted {
+                    reason: NotSubmittedReason::NotIdle,
+                } if attempts < 50 => {
+                    attempts += 1;
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+                other => anyhow::bail!("duplicate client-id seed turn was not started: {other:?}"),
+            }
+        }
+        wait_for_event_match(test.codex.as_ref(), |event| {
+            matches!(event, EventMsg::TurnComplete(_)).then_some(())
+        })
+        .await;
+    }
+
+    let thread_id = test.session_configured.thread_id;
+    let service = QueuedItemService::new(
+        loaded_thread_queue(&test)?,
+        Weak::new(),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let queued = service
+        .enqueue(thread_id, structured_user_input("reused Matrix event"))
+        .await?;
+    let error = service
+        .start(
+            test.codex.as_ref(),
+            Some(queued.id.clone()),
+            /*trace*/ None,
+        )
+        .await
+        .expect_err("one client id cannot authorize joins to multiple turns");
+    assert!(
+        matches!(
+            error,
+            QueueServiceError::AmbiguousClientIdBinding { ref client_id }
+                if client_id == "stable-client-message"
+        ),
+        "unexpected ambiguous binding error: {error:?}"
+    );
+    assert_eq!(vec![queued], service.list(thread_id).await?);
+    assert_eq!(2, response.requests().len());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn corrupt_rollout_blocks_queue_replay_and_preserves_the_item() -> anyhow::Result<()> {
     let server = start_mock_server().await;
     let response = responses::mount_sse_once(&server, responses::sse_completed("seed-turn")).await;
@@ -615,6 +962,56 @@ async fn duplicate_queued_client_ids_dispatch_to_core_once() -> anyhow::Result<(
         1,
         persisted_client_message_count(test.codex.as_ref(), "stable-client-message").await?
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn conflicting_queued_client_ids_fail_closed_before_core_submission() -> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let response =
+        responses::mount_sse_once(&server, responses::sse_completed("must-not-run")).await;
+    let test = test_codex()
+        .with_config(|config| config.include_environment_context = false)
+        .build_with_auto_env(&server)
+        .await?;
+    let thread_id = test.session_configured.thread_id;
+    let queue = loaded_thread_queue(&test)?;
+    let staging = QueuedItemService::new(
+        Arc::clone(&queue),
+        Weak::new(),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let first = staging
+        .enqueue(thread_id, structured_user_input("first Matrix payload"))
+        .await?;
+    let second = staging
+        .enqueue(
+            thread_id,
+            structured_user_input("conflicting Matrix payload"),
+        )
+        .await?;
+
+    let error = staging
+        .start(
+            test.codex.as_ref(),
+            Some(first.id.clone()),
+            /*trace*/ None,
+        )
+        .await
+        .expect_err("conflicting durable queue bindings must block manual dispatch");
+    assert!(
+        matches!(error, QueueServiceError::ClientIdPayloadConflict { .. }),
+        "unexpected conflict error: {error:?}"
+    );
+
+    let lifecycle = QueuedItemService::new(
+        queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
+    emit_idle(&lifecycle, thread_id).await;
+    assert_eq!(vec![first, second], lifecycle.list(thread_id).await?);
+    assert_eq!(0, response.requests().len());
     Ok(())
 }
 

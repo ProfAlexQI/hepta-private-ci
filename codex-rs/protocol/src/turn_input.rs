@@ -45,6 +45,9 @@ pub struct TurnInputRequest {
 #[derive(Clone, Debug)]
 pub struct RecoverTurnRequest {
     pub turn_id: String,
+    /// Core-owned idle/interrupted snapshot that must still match when the
+    /// recovery task is reserved.
+    pub expected_epoch: u64,
     pub thread_settings: ThreadSettingsOverrides,
     pub trace: Option<W3cTraceContext>,
 }
@@ -182,6 +185,13 @@ pub enum SteerSubmission {
 pub enum NotSubmittedReason {
     /// `start_turn_if_idle` found an active turn.
     NotIdle,
+
+    /// Recovery's idle/interrupted snapshot changed before Core reserved it.
+    RecoveryStateChanged,
+
+    /// Core could not durably revoke recovery authority before accepting new
+    /// in-flight input, so the input was rejected fail-closed.
+    RecoveryPersistenceFailed,
 
     /// `start_turn_if_idle` yielded to higher-priority trigger-turn mailbox input.
     PendingTriggerTurn,

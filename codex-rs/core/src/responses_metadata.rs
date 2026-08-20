@@ -344,6 +344,53 @@ impl CodexResponsesMetadata {
         headers
     }
 
+    /// Returns the transport-neutral, behavior-affecting compatibility
+    /// projection used to bind a recoverable provider request. Request IDs,
+    /// session/window identity, and wall-clock fields are deliberately absent:
+    /// they may legitimately change after a process restart and do not select
+    /// model behavior. The logical request fingerprint separately binds the
+    /// prompt and advertised tools.
+    pub(crate) fn turn_recovery_compatibility_projection(
+        &self,
+    ) -> TurnRecoveryCompatibilityProjection<'_> {
+        let request_kind = self
+            .request_kind
+            .map(CodexResponsesRequestKind::metadata)
+            .and_then(|(kind, _)| (kind != "turn").then_some(kind));
+        TurnRecoveryCompatibilityProjection {
+            schema: "turn-recovery-compatibility:v1",
+            request_kind,
+            agent_name: self.agent_name.as_deref(),
+            forked_from_thread_id: self.forked_from_thread_id,
+            parent_thread_id: self.parent_thread_id,
+            parent_turn_id: self.parent_turn_id.as_deref(),
+            root_turn_id: self.root_turn_id.as_deref(),
+            subagent_header: self.subagent_header.as_deref(),
+            subagent_kind: self.subagent_kind.as_deref(),
+            thread_source: self.thread_source.as_ref(),
+            sandbox: self.sandbox.as_deref(),
+            sandbox_mode: self.sandbox_mode.as_deref(),
+            auto_review_enabled: self.auto_review_enabled,
+            node_repl_auto_review_required: self.node_repl_auto_review_required,
+            node_repl_disabled: self.node_repl_disabled,
+            workspaces: &self.workspaces,
+            tool_namespaces_info: self.tool_namespaces_info.as_ref(),
+            extra: &self.extra,
+        }
+    }
+
+    pub(crate) fn turn_recovery_start_state(
+        &self,
+        final_output_json_schema: Option<Value>,
+    ) -> codex_history::TurnRecoveryStartState {
+        codex_history::TurnRecoveryStartState {
+            final_output_json_schema,
+            parent_turn_id: self.parent_turn_id.clone(),
+            root_turn_id: self.root_turn_id.clone(),
+            responses_metadata_extra: self.extra.clone(),
+        }
+    }
+
     fn turn_metadata_payload(&self) -> CodexTurnMetadataPayload<'_> {
         let request_kind = self.request_kind;
         let (request_kind_value, compaction) = request_kind.map_or((None, None), |request_kind| {
@@ -387,6 +434,49 @@ impl CodexResponsesMetadata {
             extra: &self.extra,
         }
     }
+}
+
+/// Stable compatibility fields shared by HTTP and WebSocket turn sends.
+///
+/// This is intentionally a typed projection rather than a filtered wire
+/// header map. Transport headers also contain attestation, tracing, timing,
+/// request/session identity, and websocket negotiation values that must not
+/// perturb recovery identity.
+#[derive(Serialize)]
+pub(crate) struct TurnRecoveryCompatibilityProjection<'a> {
+    schema: &'static str,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    request_kind: Option<&'static str>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    agent_name: Option<&'a str>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    forked_from_thread_id: Option<ThreadId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parent_thread_id: Option<ThreadId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parent_turn_id: Option<&'a str>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    root_turn_id: Option<&'a str>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    subagent_header: Option<&'a str>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    subagent_kind: Option<&'a str>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    thread_source: Option<&'a ThreadSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sandbox: Option<&'a str>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    sandbox_mode: Option<&'a str>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    auto_review_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    node_repl_auto_review_required: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    node_repl_disabled: Option<bool>,
+    workspaces: &'a BTreeMap<String, TurnMetadataWorkspace>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tool_namespaces_info: Option<&'a TurnToolNamespacesInfo>,
+    extra: &'a BTreeMap<String, String>,
 }
 
 pub(crate) fn subagent_header_value(session_source: &SessionSource) -> Option<String> {

@@ -5,6 +5,8 @@ mod review;
 mod user_shell;
 
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -12,6 +14,7 @@ use codex_diagnostics::Gauge;
 use codex_extension_api::ThreadIdleCause;
 use futures::future::BoxFuture;
 use tokio::select;
+use tokio::sync::Mutex;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
@@ -27,12 +30,17 @@ use crate::codex_thread::BackgroundTerminalInfo;
 use crate::config::Config;
 use crate::context::ContextualUserFragment;
 use crate::session::TurnInput;
+use crate::session::session::RecoveryCandidate;
 use crate::session::session::Session;
+use crate::session::turn::TurnRunOrigin;
 use crate::session::turn::run_hooks_and_record_inputs;
 use crate::session::turn_context::TurnContext;
 use crate::state::ActiveTurn;
+use crate::state::DurableRecoveryState;
 use crate::state::RunningTask;
 use crate::state::TaskKind;
+use crate::state::TurnRecoveryAuthority;
+use crate::state::TurnState;
 use codex_analytics::TurnProfileFact;
 use codex_analytics::TurnTokenUsageFact;
 use codex_otel::SessionTelemetry;
@@ -53,6 +61,7 @@ use codex_protocol::protocol::WarningEvent;
 use codex_thread_store::PersistContext;
 
 use codex_features::Feature;
+use codex_protocol::error::CodexErr;
 use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::models::ContentItem;
@@ -72,6 +81,88 @@ pub(crate) type SessionTaskResult = CodexResult<Option<String>>;
 pub(crate) enum MailboxParentProvenance {
     Ignore,
     Attribute,
+}
+
+/// Snapshot of one exact task's recovery authority before it is detached.
+///
+/// The authority itself remains attached so the terminal publication path can
+/// prove that no Ready -> Unready/Ready transition raced with cancellation.
+struct RecoverySeed {
+    turn_id: String,
+    authority: Arc<TurnRecoveryAuthority>,
+    generation: u64,
+    request_fingerprint_sha256: String,
+    replay: codex_history::TurnRecoveryReplayV1,
+    persistence_failure_generation: u64,
+    attach_epoch: u64,
+    confirmation_generation: Option<u64>,
+}
+
+#[derive(Default)]
+struct TaskAbortOutcome {
+    task_quiesced: bool,
+    terminal_persistence_generation: Option<u64>,
+    recovery_seed: Option<RecoverySeed>,
+}
+
+struct DetachedTaskForAbort {
+    task: RunningTask,
+    turn_state: Arc<Mutex<TurnState>>,
+    recovery_seed: Option<RecoverySeed>,
+    recovery_authority: Option<Arc<TurnRecoveryAuthority>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RecoveryReadyForSampling {
+    Ready,
+    PendingInput,
+    Detached,
+}
+
+/// One outer sampling generation may authorize the same pre-output physical
+/// request across auth retry or HTTP/WS fallback. Once any provider output or
+/// terminal error closes the arm, an internal retry can never mint Ready
+/// again from the same logical sampling generation.
+pub(crate) struct RecoveryDispatchArm {
+    closed: AtomicBool,
+    recovery_disabled: AtomicBool,
+    expected_fingerprint_sha256: Option<String>,
+}
+
+impl RecoveryDispatchArm {
+    pub(crate) fn new(expected_fingerprint_sha256: Option<String>) -> Self {
+        Self {
+            closed: AtomicBool::new(false),
+            recovery_disabled: AtomicBool::new(false),
+            expected_fingerprint_sha256,
+        }
+    }
+
+    pub(crate) fn close(&self) {
+        self.closed.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn is_open(&self) -> bool {
+        !self.closed.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn disable_recovery(&self) {
+        self.recovery_disabled.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn recovery_disabled(&self) -> bool {
+        self.recovery_disabled.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn expected_fingerprint_sha256(&self) -> Option<&str> {
+        self.expected_fingerprint_sha256.as_deref()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RecoveryProviderOutputGate {
+    Attached,
+    Detached,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,6 +280,19 @@ pub(crate) trait SessionTask: Send + Sync + 'static {
     /// surface it in telemetry and UI.
     fn kind(&self) -> TaskKind;
 
+    /// Whether an interrupted instance can resume as the same model turn.
+    /// Auxiliary tasks must leave this false even when their UI kind is
+    /// `Regular`.
+    fn recovery_eligible_model_turn(&self) -> bool {
+        false
+    }
+
+    /// Shared task-owned authority that becomes Ready only at a strict
+    /// provider-dispatch checkpoint.
+    fn recovery_authority(&self) -> Option<Arc<TurnRecoveryAuthority>> {
+        None
+    }
+
     /// Returns the tracing name for a spawned task span.
     fn span_name(&self) -> &'static str;
 
@@ -229,6 +333,10 @@ pub(crate) trait SessionTask: Send + Sync + 'static {
 pub(crate) trait AnySessionTask: Send + Sync + 'static {
     fn kind(&self) -> TaskKind;
 
+    fn recovery_eligible_model_turn(&self) -> bool;
+
+    fn recovery_authority(&self) -> Option<Arc<TurnRecoveryAuthority>>;
+
     fn span_name(&self) -> &'static str;
 
     fn run(
@@ -248,6 +356,14 @@ where
 {
     fn kind(&self) -> TaskKind {
         SessionTask::kind(self)
+    }
+
+    fn recovery_eligible_model_turn(&self) -> bool {
+        SessionTask::recovery_eligible_model_turn(self)
+    }
+
+    fn recovery_authority(&self) -> Option<Arc<TurnRecoveryAuthority>> {
+        SessionTask::recovery_authority(self)
     }
 
     fn span_name(&self) -> &'static str {
@@ -276,16 +392,371 @@ where
 }
 
 impl Session {
+    fn recovery_seed_for_task(
+        task: &RunningTask,
+        abort_reason: Option<&TurnAbortReason>,
+    ) -> Option<RecoverySeed> {
+        if !task.recovery_eligible_model_turn
+            || !matches!(
+                abort_reason,
+                Some(TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited)
+            )
+        {
+            return None;
+        }
+        let authority = task.recovery_authority.as_ref()?.clone();
+        // A transition in flight is intentionally not recoverable. Waiting on
+        // this mutex could delay cancellation behind a blocked rollout flush;
+        // fail closed instead and let the abort path quiesce the task.
+        let state = authority.state.try_lock().ok()?;
+        if state.poisoned
+            || state.durable_state != DurableRecoveryState::Ready
+            || !authority.ready.load(Ordering::Acquire)
+        {
+            return None;
+        }
+        let generation = state.generation;
+        let request_fingerprint_sha256 = state.request_fingerprint_sha256.clone()?;
+        let replay = state.replay.clone()?;
+        let persistence_failure_generation = state.ready_persistence_failure_generation?;
+        drop(state);
+        Some(RecoverySeed {
+            turn_id: task.turn_context.sub_id.clone(),
+            authority,
+            generation,
+            request_fingerprint_sha256,
+            replay,
+            persistence_failure_generation,
+            attach_epoch: task.attach_epoch,
+            confirmation_generation: None,
+        })
+    }
+
+    /// Emits one terminal event exactly once and proves that both its append
+    /// and the following durability barrier completed without any swallowed
+    /// persistence failure. The returned generation is later matched against
+    /// the exact generation bound into the task's durable Ready authority.
+    async fn send_terminal_event_and_flush(
+        &self,
+        turn_context: &TurnContext,
+        event: EventMsg,
+    ) -> Option<u64> {
+        let before = self.rollout_persistence_failure_generation();
+        self.send_event(turn_context, event).await;
+        let after_append = self.rollout_persistence_failure_generation();
+        let flush_succeeded = match self.flush_rollout().await {
+            Ok(()) => true,
+            Err(err) => {
+                warn!("failed to flush rollout after emitting terminal turn event: {err}");
+                false
+            }
+        };
+        let after_flush = self.rollout_persistence_failure_generation();
+        (flush_succeeded && before == after_append && after_append == after_flush)
+            .then_some(after_flush)
+    }
+
+    /// Revokes any task-owned Ready marker before controlled detach. Only an
+    /// exact, quiescent, failure-free seed survives to the post-terminal
+    /// InterruptedConfirmed phase; every other path remains durably Unready.
+    async fn prepare_recovery_seed_for_controlled_detach(
+        &self,
+        turn_id: &str,
+        authority: Option<&Arc<TurnRecoveryAuthority>>,
+        mut recovery_seed: Option<RecoverySeed>,
+    ) -> Option<RecoverySeed> {
+        let Some(authority) = authority else {
+            return None;
+        };
+        let seed_interval_is_valid = recovery_seed.as_ref().is_some_and(|seed| {
+            seed.persistence_failure_generation == self.rollout_persistence_failure_generation()
+        });
+        let confirmation_generation = match self
+            .prepare_turn_recovery_for_controlled_detach(turn_id, authority.as_ref())
+            .await
+        {
+            Ok(generation) => generation,
+            Err(err) => {
+                warn!("failed to revoke turn recovery before controlled detach: {err}");
+                if !self
+                    .persist_turn_recovery_failure_tombstone(turn_id, authority.as_ref())
+                    .await
+                {
+                    warn!(
+                        "failed to persist the recovery tombstone after a revoke failure; \
+                         recovery provenance is fail-stop/unknown"
+                    );
+                }
+                return None;
+            }
+        };
+        let seed = recovery_seed.as_mut()?;
+        if !seed_interval_is_valid
+            || confirmation_generation != seed.generation.saturating_add(1)
+            || self.rollout_persistence_failure_generation() != seed.persistence_failure_generation
+        {
+            let mut state = authority.state.lock().await;
+            authority.ready.store(false, Ordering::Release);
+            state.ready_persistence_failure_generation = None;
+            state.poisoned = true;
+            return None;
+        }
+        seed.confirmation_generation = Some(confirmation_generation);
+        recovery_seed
+    }
+
+    /// Publishes one live recovery candidate only after the task is quiescent
+    /// and its terminal event is durable. All detach paths converge here so a
+    /// stale atomic Ready bit can never outlive a generation/state transition.
+    async fn publish_recovery_seed_after_terminal(
+        &self,
+        recovery_seed: Option<RecoverySeed>,
+        task_quiesced: bool,
+        terminal_persistence_generation: Option<u64>,
+    ) -> bool {
+        let Some(seed) = recovery_seed else {
+            return false;
+        };
+        let Some(confirmation_generation) = seed.confirmation_generation else {
+            return false;
+        };
+        let persistence_proven = terminal_persistence_generation.is_some_and(|generation| {
+            generation == seed.persistence_failure_generation
+                && self.rollout_persistence_failure_generation()
+                    == seed.persistence_failure_generation
+        });
+        if !task_quiesced || !persistence_proven {
+            self.persist_turn_recovery_failure_tombstone(&seed.turn_id, seed.authority.as_ref())
+                .await;
+            return false;
+        }
+
+        // Keep the same lock order as provider-boundary publication: active
+        // turn first, then recovery authority state.
+        let active_turn = self.active_turn.lock().await;
+        if active_turn.is_some() || self.turn_epoch.load(Ordering::Acquire) != seed.attach_epoch {
+            drop(active_turn);
+            self.persist_turn_recovery_failure_tombstone(&seed.turn_id, seed.authority.as_ref())
+                .await;
+            return false;
+        }
+        if let Err(err) = self
+            .confirm_interrupted_turn_recovery(
+                &seed.turn_id,
+                seed.authority.as_ref(),
+                confirmation_generation,
+                seed.persistence_failure_generation,
+                &seed.request_fingerprint_sha256,
+                &seed.replay,
+            )
+            .await
+        {
+            warn!("failed to confirm interrupted turn recovery: {err}");
+            drop(active_turn);
+            self.persist_turn_recovery_failure_tombstone(&seed.turn_id, seed.authority.as_ref())
+                .await;
+            return false;
+        }
+        let state = seed.authority.state.lock().await;
+        let authority_invalid = state.poisoned
+            || state.durable_state != DurableRecoveryState::InterruptedConfirmed
+            || state.generation != confirmation_generation
+            || state.ready_persistence_failure_generation.is_some()
+            || state.request_fingerprint_sha256.as_deref()
+                != Some(seed.request_fingerprint_sha256.as_str())
+            || state.replay.as_ref() != Some(&seed.replay)
+            || seed.authority.ready.load(Ordering::Acquire)
+            || self.rollout_persistence_failure_generation() != seed.persistence_failure_generation;
+        if authority_invalid {
+            drop(state);
+            drop(active_turn);
+            self.persist_turn_recovery_failure_tombstone(&seed.turn_id, seed.authority.as_ref())
+                .await;
+            return false;
+        }
+        *self
+            .recovery_candidate
+            .lock()
+            .expect("recovery candidate mutex poisoned") = Some(RecoveryCandidate {
+            turn_id: seed.turn_id,
+            marker_generation: confirmation_generation,
+            request_fingerprint_sha256: seed.request_fingerprint_sha256,
+            replay: seed.replay,
+            epoch: seed.attach_epoch,
+            persistence_failure_generation: seed.persistence_failure_generation,
+        });
+        drop(state);
+        drop(active_turn);
+        true
+    }
+
+    /// Serializes the provider Ready boundary with active-turn steer
+    /// acceptance. If a steer is already pending, sampling may continue but
+    /// recovery remains fail-closed until that input is consumed and durable.
+    #[cfg(test)]
+    pub(crate) async fn mark_recovery_ready_for_sampling(
+        &self,
+        turn_id: &str,
+        authority: &Arc<TurnRecoveryAuthority>,
+        persistence_failure_baseline: u64,
+        request_fingerprint_sha256: &str,
+    ) -> CodexResult<RecoveryReadyForSampling> {
+        let replay = codex_history::TurnRecoveryReplayV1 {
+            history_boundary: self.current_recovery_history_boundary().await?,
+            turn_context_sha256: "test-turn-context".to_string(),
+            start: codex_history::TurnRecoveryStartState {
+                final_output_json_schema: None,
+                parent_turn_id: None,
+                root_turn_id: Some(turn_id.to_string()),
+                responses_metadata_extra: Default::default(),
+            },
+            environments: Vec::new(),
+        };
+        self.mark_recovery_ready_for_sampling_with_replay(
+            turn_id,
+            authority,
+            persistence_failure_baseline,
+            request_fingerprint_sha256,
+            &replay,
+        )
+        .await
+    }
+
+    pub(crate) async fn mark_recovery_ready_for_sampling_with_replay(
+        &self,
+        turn_id: &str,
+        authority: &Arc<TurnRecoveryAuthority>,
+        persistence_failure_baseline: u64,
+        request_fingerprint_sha256: &str,
+        replay: &codex_history::TurnRecoveryReplayV1,
+    ) -> CodexResult<RecoveryReadyForSampling> {
+        if !self.enabled(Feature::HeptaTurnRecovery) {
+            return Ok(RecoveryReadyForSampling::Ready);
+        }
+        let active = self.active_turn.lock().await;
+        let Some(active_turn) = active.as_ref() else {
+            return Ok(RecoveryReadyForSampling::Detached);
+        };
+        let Some(task) = active_turn.task.as_ref() else {
+            return Ok(RecoveryReadyForSampling::Detached);
+        };
+        if task.turn_context.sub_id != turn_id
+            || !task
+                .recovery_authority
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, authority))
+        {
+            return Ok(RecoveryReadyForSampling::Detached);
+        }
+        let has_pending_steer = {
+            let turn_state = active_turn.turn_state.lock().await;
+            !turn_state.pending_input.is_empty()
+        };
+        // Mailbox input is session-scoped rather than turn-state scoped. It is
+        // still accepted model-visible input, so it must suppress Ready when
+        // it arrives after the run loop's last drain but before dispatch.
+        let has_pending_mailbox = self.input_queue.has_pending_mailbox_items().await;
+        if has_pending_steer || has_pending_mailbox {
+            return Ok(RecoveryReadyForSampling::PendingInput);
+        }
+        self.mark_turn_recovery_ready(
+            turn_id,
+            authority.as_ref(),
+            persistence_failure_baseline,
+            request_fingerprint_sha256,
+            replay,
+        )
+        .await?;
+        Ok(RecoveryReadyForSampling::Ready)
+    }
+
+    /// Revalidates attachment for a sampling generation whose provider setup
+    /// is intentionally not recoverable. This path must not mint Ready, but it
+    /// still must not authorize provider retry/fallback after the owning task
+    /// has detached.
+    pub(crate) async fn gate_unrecoverable_provider_dispatch(
+        &self,
+        turn_id: &str,
+        authority: &Arc<TurnRecoveryAuthority>,
+    ) -> RecoveryProviderOutputGate {
+        if !self.enabled(Feature::HeptaTurnRecovery) {
+            return RecoveryProviderOutputGate::Attached;
+        }
+        let active = self.active_turn.lock().await;
+        let Some(task) = active
+            .as_ref()
+            .and_then(|active_turn| active_turn.task.as_ref())
+        else {
+            return RecoveryProviderOutputGate::Detached;
+        };
+        if task.turn_context.sub_id != turn_id
+            || !task
+                .recovery_authority
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, authority))
+        {
+            return RecoveryProviderOutputGate::Detached;
+        }
+        RecoveryProviderOutputGate::Attached
+    }
+
+    /// Serializes the first provider event consumed by the outer turn executor
+    /// with controlled detach. The event may close the recovery window only
+    /// while the exact task and authority are still attached; an event that
+    /// lost the race to abort must not reach model-visible output persistence,
+    /// tool dispatch, hooks, commands, or other product effects. Provider-policy
+    /// evidence, tracing, and diagnostic telemetry belong to the transport
+    /// mapper and are explicitly outside this bounded gate.
+    pub(crate) async fn gate_first_provider_output(
+        &self,
+        turn_id: &str,
+        authority: &Arc<TurnRecoveryAuthority>,
+    ) -> CodexResult<RecoveryProviderOutputGate> {
+        if !self.enabled(Feature::HeptaTurnRecovery) {
+            return Ok(RecoveryProviderOutputGate::Attached);
+        }
+        let active = self.active_turn.lock().await;
+        let Some(task) = active
+            .as_ref()
+            .and_then(|active_turn| active_turn.task.as_ref())
+        else {
+            return Ok(RecoveryProviderOutputGate::Detached);
+        };
+        if task.turn_context.sub_id != turn_id
+            || !task
+                .recovery_authority
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, authority))
+        {
+            return Ok(RecoveryProviderOutputGate::Detached);
+        }
+        self.ensure_turn_recovery_unready(turn_id, authority.as_ref())
+            .await?;
+        Ok(RecoveryProviderOutputGate::Attached)
+    }
+
     pub async fn spawn_task<T: SessionTask>(
         self: &Arc<Self>,
         turn_context: Arc<TurnContext>,
         input: Vec<TurnInput>,
         task: T,
-    ) {
+    ) -> CodexResult<()> {
         self.abort_all_tasks(TurnAbortReason::Replaced).await;
+        {
+            let mut active_turn = self.active_turn.lock().await;
+            if active_turn.is_some() {
+                return Err(CodexErr::InvalidRequest(
+                    "cannot start replacement task while the previous turn is transitioning"
+                        .to_string(),
+                ));
+            }
+            self.consume_recovery_candidate_for_mutation().await?;
+            *active_turn = Some(ActiveTurn::default());
+        }
         self.clear_connector_selection().await;
         self.start_task(turn_context, input, task, MailboxParentProvenance::Ignore)
             .await;
+        Ok(())
     }
 
     pub(crate) async fn start_task<T: SessionTask>(
@@ -297,6 +768,15 @@ impl Session {
     ) {
         let task: Arc<dyn AnySessionTask> = Arc::new(task);
         let task_kind = task.kind();
+        let hepta_turn_recovery_enabled = turn_context
+            .config
+            .features
+            .enabled(Feature::HeptaTurnRecovery);
+        let recovery_eligible_model_turn =
+            hepta_turn_recovery_enabled && task.recovery_eligible_model_turn();
+        let recovery_authority = hepta_turn_recovery_enabled
+            .then(|| task.recovery_authority())
+            .flatten();
         let span_name = task.span_name();
         let started_at = Instant::now();
         let turn_started_at_unix_ms = turn_context
@@ -392,18 +872,6 @@ impl Session {
                     .instrument(trace_span!("session_task.run"))
                     .await;
                 let sess = Arc::clone(&session);
-                if let Err(err) = sess.flush_rollout().await {
-                    warn!("failed to flush rollout before completing turn: {err}");
-                    sess.send_event(
-                        ctx_for_finish.as_ref(),
-                        EventMsg::Warning(WarningEvent {
-                            message: format!(
-                                "Failed to save the conversation transcript; Codex will continue retrying. Error: {err}"
-                            ),
-                        }),
-                    )
-                    .await;
-                }
                 if !task_cancellation_token.is_cancelled() {
                     // Finish uniformly from the spawn site so all tasks share the same lifecycle.
                     sess.on_task_finished(Arc::clone(&ctx_for_finish), task_result)
@@ -417,10 +885,20 @@ impl Session {
             .session_telemetry
             .start_timer(TURN_E2E_DURATION_METRIC, &[])
             .ok();
+        // Attaching any task invalidates an older recovery token and mints the
+        // epoch while the active-turn critical section is still held.
+        *self
+            .recovery_candidate
+            .lock()
+            .expect("recovery candidate mutex poisoned") = None;
+        let attach_epoch = self.turn_epoch.fetch_add(1, Ordering::AcqRel) + 1;
         let running_task = RunningTask {
             done,
             handle: AbortOnDropHandle::new(handle),
             kind: task_kind,
+            recovery_eligible_model_turn,
+            recovery_authority,
+            attach_epoch,
             task,
             cancellation_token,
             turn_context: Arc::clone(&turn_context),
@@ -476,6 +954,17 @@ impl Session {
             if active_turn.is_some() {
                 return;
             }
+            if self.enabled(Feature::HeptaTurnRecovery)
+                && self
+                    .recovery_candidate
+                    .lock()
+                    .expect("recovery candidate mutex poisoned")
+                    .is_some()
+            {
+                // Durable queued work must wait for explicit recovery or an
+                // explicit user action that consumes the interrupted tail.
+                return;
+            }
             *active_turn = Some(ActiveTurn::default());
         }
 
@@ -485,7 +974,7 @@ impl Session {
         self.start_task(
             turn_context,
             Vec::new(),
-            RegularTask::new(),
+            RegularTask::new(TurnRunOrigin::NewTurn),
             MailboxParentProvenance::Attribute,
         )
         .await;
@@ -493,29 +982,44 @@ impl Session {
 
     pub async fn abort_all_tasks(self: &Arc<Self>, reason: TurnAbortReason) {
         let mut aborted_turn = false;
-        let mut active_turn_to_clear = None;
+        let mut reserved_turn_state = None;
         let mut turn_context = None;
-        if let Some(mut active_turn) = self.take_active_turn(&reason).await {
-            let task = active_turn.task.take();
-            aborted_turn = task.is_some();
-            turn_context = task.as_ref().map(|task| Arc::clone(&task.turn_context));
-            if let Some(task) = task {
-                self.handle_task_abort(task, reason.clone()).await;
-            }
-            if aborted_turn {
-                active_turn_to_clear = Some(active_turn);
-            }
+        let mut abort_outcome = TaskAbortOutcome::default();
+        if let Some(detached) = self
+            .detach_active_task_for_abort(&reason, /*expected_turn_id*/ None)
+            .await
+        {
+            aborted_turn = true;
+            turn_context = Some(Arc::clone(&detached.task.turn_context));
+            reserved_turn_state = Some(Arc::clone(&detached.turn_state));
+            abort_outcome = self
+                .handle_task_abort(
+                    detached.task,
+                    reason.clone(),
+                    detached.recovery_seed,
+                    detached.recovery_authority,
+                )
+                .await;
         }
 
         if let Some(turn_context) = turn_context.as_deref() {
             self.emit_turn_abort_lifecycle(reason.clone(), turn_context.extension_data.as_ref())
                 .await;
         }
-        if let Some(active_turn) = active_turn_to_clear {
+        if let Some(turn_state) = reserved_turn_state.as_ref() {
             // Let interrupted tasks observe cancellation before dropping pending approvals, or an
             // in-flight approval wait can surface as a model-visible rejection before TurnAborted.
-            self.input_queue.clear_pending(&active_turn).await;
+            self.input_queue
+                .clear_pending_for_turn_state(turn_state.as_ref())
+                .await;
+            self.clear_reserved_idle_turn(turn_state).await;
         }
+        self.publish_recovery_seed_after_terminal(
+            abort_outcome.recovery_seed,
+            abort_outcome.task_quiesced,
+            abort_outcome.terminal_persistence_generation,
+        )
+        .await;
         if reason == TurnAbortReason::Interrupted && aborted_turn {
             self.maybe_start_turn_for_pending_work().await;
         }
@@ -526,40 +1030,38 @@ impl Session {
         turn_id: &str,
         reason: TurnAbortReason,
     ) -> bool {
-        let active_turn = {
-            let mut active = self.active_turn.lock().await;
-            if active
-                .as_ref()
-                .and_then(|active_turn| active_turn.task.as_ref())
-                .is_some_and(|task| task.turn_context.sub_id == turn_id)
-            {
-                if matches!(
-                    reason,
-                    TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
-                ) {
-                    self.mark_interrupted();
-                }
-                active.take()
-            } else {
-                None
-            }
-        };
-        let Some(mut active_turn) = active_turn else {
+        let Some(detached) = self
+            .detach_active_task_for_abort(&reason, Some(turn_id))
+            .await
+        else {
             return false;
         };
 
-        let task = active_turn.task.take();
-        let turn_context = task.as_ref().map(|task| Arc::clone(&task.turn_context));
-        if let Some(task) = task {
-            self.handle_task_abort(task, reason.clone()).await;
-        }
-        if let Some(turn_context) = turn_context.as_deref() {
-            self.emit_turn_abort_lifecycle(reason.clone(), turn_context.extension_data.as_ref())
-                .await;
-        }
+        let turn_context = Arc::clone(&detached.task.turn_context);
+        let reserved_turn_state = Arc::clone(&detached.turn_state);
+        let abort_outcome = self
+            .handle_task_abort(
+                detached.task,
+                reason.clone(),
+                detached.recovery_seed,
+                detached.recovery_authority,
+            )
+            .await;
+        self.emit_turn_abort_lifecycle(reason.clone(), turn_context.extension_data.as_ref())
+            .await;
         // Let interrupted tasks observe cancellation before dropping pending approvals, or an
         // in-flight approval wait can surface as a model-visible rejection before TurnAborted.
-        self.input_queue.clear_pending(&active_turn).await;
+        self.input_queue
+            .clear_pending_for_turn_state(reserved_turn_state.as_ref())
+            .await;
+        self.clear_reserved_idle_turn(&reserved_turn_state).await;
+
+        self.publish_recovery_seed_after_terminal(
+            abort_outcome.recovery_seed,
+            abort_outcome.task_quiesced,
+            abort_outcome.terminal_persistence_generation,
+        )
+        .await;
 
         if reason == TurnAbortReason::Interrupted {
             self.maybe_start_turn_for_pending_work().await;
@@ -573,6 +1075,61 @@ impl Session {
         turn_context: Arc<TurnContext>,
         task_result: SessionTaskResult,
     ) {
+        let abort_reason_hint = match &task_result {
+            Err(err) if matches!(err.details(), CodexErrorDetails::TurnAborted) => {
+                Some(TurnAbortReason::Interrupted)
+            }
+            Ok(_) | Err(_) => None,
+        };
+        let task_state = {
+            let mut active = self.active_turn.lock().await;
+            let Some(active_turn) = active.as_mut() else {
+                return;
+            };
+            let Some(task) = active_turn.task.as_ref() else {
+                return;
+            };
+            if !Arc::ptr_eq(&task.turn_context, &turn_context) {
+                return;
+            }
+            // Keep active -> authority/rollout ordering while revoking Ready,
+            // then remove the task. No flush, warning, error lifecycle, or
+            // protocol event may become observable while a first-event Ready
+            // marker still authorizes cold recovery.
+            let recovery_seed = Self::recovery_seed_for_task(task, abort_reason_hint.as_ref());
+            let recovery_authority = task.recovery_authority.clone();
+            let recovery_seed = self
+                .prepare_recovery_seed_for_controlled_detach(
+                    &turn_context.sub_id,
+                    recovery_authority.as_ref(),
+                    recovery_seed,
+                )
+                .await;
+            let task = active_turn
+                .task
+                .take()
+                .expect("task remained attached while recovery authority was revoked");
+            Some((Arc::clone(&active_turn.turn_state), task, recovery_seed))
+        };
+        let Some((turn_state, task, recovery_seed)) = task_state else {
+            return;
+        };
+        turn_context
+            .turn_metadata_state
+            .cancel_git_enrichment_task();
+        task.handle.detach();
+        if let Err(err) = self.flush_rollout().await {
+            warn!("failed to flush rollout before completing turn: {err}");
+            self.send_event(
+                turn_context.as_ref(),
+                EventMsg::Warning(WarningEvent {
+                    message: format!(
+                        "Failed to save the conversation transcript; Codex will continue retrying. Error: {err}"
+                    ),
+                }),
+            )
+            .await;
+        }
         let (last_agent_message, abort_reason) = match task_result {
             Ok(last_agent_message) => (last_agent_message, None),
             Err(err) if matches!(err.details(), CodexErrorDetails::TurnAborted) => {
@@ -593,21 +1150,6 @@ impl Session {
                 .await;
                 (None, None)
             }
-        };
-        turn_context
-            .turn_metadata_state
-            .cancel_git_enrichment_task();
-
-        let turn_state = {
-            let mut active = self.active_turn.lock().await;
-            active.as_mut().and_then(|active_turn| {
-                let task = active_turn.task.take()?;
-                task.handle.detach();
-                Some(Arc::clone(&active_turn.turn_state))
-            })
-        };
-        let Some(turn_state) = turn_state else {
-            return;
         };
         let pending_input = self
             .input_queue
@@ -818,7 +1360,9 @@ impl Session {
                 time_to_first_token_ms,
             })
         };
-        self.send_event(turn_context.as_ref(), event).await;
+        let terminal_persistence_generation = self
+            .send_terminal_event_and_flush(turn_context.as_ref(), event)
+            .await;
         self.services
             .guardian_rejection_circuit_breaker
             .lock()
@@ -840,28 +1384,62 @@ impl Session {
         if cleared_active_turn {
             self.emit_thread_idle_lifecycle_if_idle(idle_cause).await;
         }
-        // Regular items were flushed before this terminal event was appended; buffering
-        // thread writers may not flush it without another explicit barrier.
-        if let Err(err) = self.flush_rollout().await {
-            warn!("failed to flush rollout after emitting terminal turn event: {err}");
-        }
+        self.publish_recovery_seed_after_terminal(
+            recovery_seed,
+            /*task_quiesced*/ true,
+            terminal_persistence_generation,
+        )
+        .await;
         if cleared_active_turn {
             self.maybe_start_turn_for_pending_work().await;
         }
     }
 
-    async fn take_active_turn(&self, reason: &TurnAbortReason) -> Option<ActiveTurn> {
+    /// Revokes task-owned recovery authority while the active slot is locked,
+    /// then detaches only the task and leaves its turn state as an abort
+    /// reservation. Starts and injections therefore cannot observe an idle
+    /// session until the old task is quiescent and its terminal is durable.
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "active -> recovery authority/rollout ordering is the serialization boundary"
+    )]
+    async fn detach_active_task_for_abort(
+        &self,
+        reason: &TurnAbortReason,
+        expected_turn_id: Option<&str>,
+    ) -> Option<DetachedTaskForAbort> {
         let mut active = self.active_turn.lock().await;
+        let active_turn = active.as_mut()?;
+        let task = active_turn.task.as_ref()?;
+        if expected_turn_id.is_some_and(|expected| task.turn_context.sub_id != expected) {
+            return None;
+        }
         if matches!(
             reason,
             TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
-        ) && active
-            .as_ref()
-            .is_some_and(|active_turn| active_turn.task.is_some())
-        {
+        ) {
             self.mark_interrupted();
         }
-        active.take()
+        let recovery_seed = Self::recovery_seed_for_task(task, Some(reason));
+        let recovery_authority = task.recovery_authority.clone();
+        let turn_id = task.turn_context.sub_id.clone();
+        let recovery_seed = self
+            .prepare_recovery_seed_for_controlled_detach(
+                &turn_id,
+                recovery_authority.as_ref(),
+                recovery_seed,
+            )
+            .await;
+        let task = active_turn
+            .task
+            .take()
+            .expect("task remained attached while recovery authority was revoked");
+        Some(DetachedTaskForAbort {
+            task,
+            turn_state: Arc::clone(&active_turn.turn_state),
+            recovery_seed,
+            recovery_authority,
+        })
     }
 
     pub(crate) async fn close_unified_exec_processes(&self) {
@@ -882,10 +1460,26 @@ impl Session {
             .await
     }
 
-    async fn handle_task_abort(self: &Arc<Self>, task: RunningTask, reason: TurnAbortReason) {
+    async fn handle_task_abort(
+        self: &Arc<Self>,
+        task: RunningTask,
+        reason: TurnAbortReason,
+        recovery_seed: Option<RecoverySeed>,
+        recovery_authority: Option<Arc<TurnRecoveryAuthority>>,
+    ) -> TaskAbortOutcome {
         let sub_id = task.turn_context.sub_id.clone();
+        // The caller already persisted Unready while holding the active-turn
+        // lock and left a reservation installed. Every controlled side effect
+        // below therefore happens after durable revocation and before the
+        // session can be observed as idle.
         if task.cancellation_token.is_cancelled() {
-            return;
+            if let Some(authority) = recovery_authority.as_ref() {
+                let mut state = authority.state.lock().await;
+                authority.ready.store(false, Ordering::Release);
+                state.ready_persistence_failure_generation = None;
+                state.poisoned = true;
+            }
+            return TaskAbortOutcome::default();
         }
 
         self.pending_user_message_admissions
@@ -909,15 +1503,29 @@ impl Session {
             .cancel_git_enrichment_task();
         let session_task = task.task;
 
-        select! {
+        let mut task_quiesced = select! {
             _ = task.done.notified() => {
+                true
             },
             _ = tokio::time::sleep(Duration::from_millis(GRACEFULL_INTERRUPTION_TIMEOUT_MS)) => {
                 warn!("task {sub_id} didn't complete gracefully after {}ms", GRACEFULL_INTERRUPTION_TIMEOUT_MS);
+                false
             }
-        }
+        };
 
         task.handle.abort();
+        if !task_quiesced {
+            task_quiesced = tokio::time::timeout(
+                Duration::from_millis(GRACEFULL_INTERRUPTION_TIMEOUT_MS),
+                async {
+                    while !task.handle.is_finished() {
+                        tokio::task::yield_now().await;
+                    }
+                },
+            )
+            .await
+            .is_ok();
+        }
 
         session_task
             .abort(Arc::clone(self), Arc::clone(&task.turn_context))
@@ -966,16 +1574,18 @@ impl Session {
             completed_at,
             duration_ms,
         });
-        self.send_event(task.turn_context.as_ref(), event).await;
+        let terminal_persistence_generation = self
+            .send_terminal_event_and_flush(task.turn_context.as_ref(), event)
+            .await;
         self.services
             .guardian_rejection_circuit_breaker
             .lock()
             .await
             .clear_turn(&task.turn_context.sub_id);
-        // Regular items were flushed before this terminal event was appended; buffering
-        // thread writers may not flush it without another explicit barrier.
-        if let Err(err) = self.flush_rollout().await {
-            warn!("failed to flush rollout after emitting terminal turn event: {err}");
+        TaskAbortOutcome {
+            task_quiesced,
+            terminal_persistence_generation,
+            recovery_seed,
         }
     }
 }

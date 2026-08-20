@@ -21,6 +21,15 @@ fn cwd() -> AbsolutePathBuf {
         .expect("absolute current directory")
 }
 
+fn workspace_root(name: &str) -> AbsolutePathBuf {
+    AbsolutePathBuf::try_from(
+        std::env::current_dir()
+            .expect("current directory")
+            .join(name),
+    )
+    .expect("absolute workspace root")
+}
+
 fn settings_item(
     approval_policy: AskForApproval,
     approvals_reviewer: ApprovalsReviewer,
@@ -58,11 +67,12 @@ fn turn_context_item(
     approval_policy: AskForApproval,
     approvals_reviewer: Option<ApprovalsReviewer>,
     active_permission_profile: Option<ActivePermissionProfile>,
+    workspace_roots: Option<Vec<AbsolutePathBuf>>,
 ) -> RolloutItem {
     RolloutItem::TurnContext(TurnContextItem {
         turn_id: Some(turn_id.to_string()),
         cwd: cwd(),
-        workspace_roots: Some(vec![cwd()]),
+        workspace_roots,
         current_date: None,
         timezone: None,
         approval_policy,
@@ -90,6 +100,8 @@ fn latest_settings_snapshot_wins() {
         approval_policy: AskForApproval::OnRequest,
         approvals_reviewer: Some(ApprovalsReviewer::AutoReview),
         active_permission_profile: Some(ActivePermissionProfile::new("dev")),
+        runtime_cwd: None,
+        runtime_workspace_roots: None,
     };
     let history = vec![
         settings_item(
@@ -113,6 +125,8 @@ fn latest_turn_context_wins_over_earlier_settings_update() {
         approval_policy: AskForApproval::UnlessTrusted,
         approvals_reviewer: Some(ApprovalsReviewer::User),
         active_permission_profile: Some(ActivePermissionProfile::read_only()),
+        runtime_cwd: Some(cwd()),
+        runtime_workspace_roots: Some(vec![workspace_root("turn-2-root")]),
     };
     let history = vec![
         settings_item(
@@ -125,6 +139,7 @@ fn latest_turn_context_wins_over_earlier_settings_update() {
             AskForApproval::UnlessTrusted,
             Some(ApprovalsReviewer::User),
             Some(ActivePermissionProfile::read_only()),
+            Some(vec![workspace_root("turn-2-root")]),
         ),
     ];
 
@@ -139,12 +154,14 @@ fn older_reviewer_is_used_when_latest_turn_context_omits_it() {
             AskForApproval::Never,
             Some(ApprovalsReviewer::AutoReview),
             /*active_permission_profile*/ None,
+            Some(vec![workspace_root("turn-1-root")]),
         ),
         turn_context_item(
             "turn-2",
             AskForApproval::OnRequest,
             /*approvals_reviewer*/ None,
             /*active_permission_profile*/ None,
+            Some(vec![workspace_root("turn-2-root")]),
         ),
     ];
 
@@ -154,6 +171,89 @@ fn older_reviewer_is_used_when_latest_turn_context_omits_it() {
             approval_policy: AskForApproval::OnRequest,
             approvals_reviewer: Some(ApprovalsReviewer::AutoReview),
             active_permission_profile: None,
+            runtime_cwd: Some(cwd()),
+            runtime_workspace_roots: Some(vec![workspace_root("turn-2-root")]),
         })
+    );
+}
+
+#[test]
+fn later_settings_snapshot_does_not_erase_turn_context_workspace_roots() {
+    let persisted_root = workspace_root("persisted-root");
+    let history = vec![
+        turn_context_item(
+            "turn-1",
+            AskForApproval::Never,
+            Some(ApprovalsReviewer::User),
+            /*active_permission_profile*/ None,
+            Some(vec![persisted_root.clone()]),
+        ),
+        settings_item(
+            AskForApproval::OnRequest,
+            ApprovalsReviewer::AutoReview,
+            Some(ActivePermissionProfile::new("dev")),
+        ),
+    ];
+
+    assert_eq!(
+        latest_persisted_resume_settings(&history),
+        Some(PersistedResumeSettings {
+            approval_policy: AskForApproval::OnRequest,
+            approvals_reviewer: Some(ApprovalsReviewer::AutoReview),
+            active_permission_profile: Some(ActivePermissionProfile::new("dev")),
+            runtime_cwd: Some(cwd()),
+            runtime_workspace_roots: Some(vec![persisted_root]),
+        })
+    );
+}
+
+#[test]
+fn latest_turn_context_workspace_roots_win() {
+    let latest_root = workspace_root("latest-root");
+    let history = vec![
+        turn_context_item(
+            "turn-1",
+            AskForApproval::Never,
+            Some(ApprovalsReviewer::User),
+            /*active_permission_profile*/ None,
+            Some(vec![workspace_root("older-root")]),
+        ),
+        settings_item(
+            AskForApproval::UnlessTrusted,
+            ApprovalsReviewer::AutoReview,
+            /*active_permission_profile*/ None,
+        ),
+        turn_context_item(
+            "turn-2",
+            AskForApproval::OnRequest,
+            Some(ApprovalsReviewer::User),
+            /*active_permission_profile*/ None,
+            Some(vec![latest_root.clone()]),
+        ),
+    ];
+
+    assert_eq!(
+        latest_persisted_resume_settings(&history)
+            .expect("persisted settings")
+            .runtime_workspace_roots,
+        Some(vec![latest_root])
+    );
+}
+
+#[test]
+fn turn_context_without_workspace_roots_restores_explicit_empty_list() {
+    let history = vec![turn_context_item(
+        "turn-1",
+        AskForApproval::Never,
+        Some(ApprovalsReviewer::User),
+        /*active_permission_profile*/ None,
+        /*workspace_roots*/ None,
+    )];
+
+    assert_eq!(
+        latest_persisted_resume_settings(&history)
+            .expect("persisted settings")
+            .runtime_workspace_roots,
+        Some(Vec::new())
     );
 }

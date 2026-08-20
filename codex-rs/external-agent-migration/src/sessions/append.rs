@@ -242,6 +242,7 @@ fn source_model_items(items: &[RolloutItem]) -> Option<Vec<SourceModelItem<'_>>>
             | RolloutItem::Compacted(_)
             | RolloutItem::TurnContext(_)
             | RolloutItem::SecurityRiskScore(_)
+            | RolloutItem::TurnRecoveryRequestBinding(_)
             | RolloutItem::WorldState(_) => return None,
             RolloutItem::EventMsg(_) => {}
         }
@@ -255,7 +256,8 @@ fn history_model_items(items: &[RolloutItem]) -> Option<Vec<&ResponseItem>> {
         match item {
             RolloutItem::SessionMeta(_)
             | RolloutItem::InterAgentCommunicationMetadata { .. }
-            | RolloutItem::SecurityRiskScore(_) => {}
+            | RolloutItem::SecurityRiskScore(_)
+            | RolloutItem::TurnRecoveryRequestBinding(_) => {}
             RolloutItem::ResponseItem(response_item) => model_items.push(&response_item.item),
             RolloutItem::EventMsg(
                 EventMsg::ContextCompacted(_) | EventMsg::ThreadRolledBack(_),

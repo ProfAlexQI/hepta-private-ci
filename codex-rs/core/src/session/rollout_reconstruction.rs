@@ -3,6 +3,7 @@ use crate::context::world_state::WorldStateSnapshot;
 use crate::context_manager::is_user_turn_boundary;
 use codex_history::ResponseItemEnvelope;
 use codex_protocol::protocol::SessionContextWindow;
+use std::collections::HashSet;
 use uuid::Uuid;
 
 // Return value of `Session::reconstruct_history_from_rollout`, bundling the rebuilt history with
@@ -57,6 +58,43 @@ struct ActiveReplaySegment<'a> {
 fn turn_ids_are_compatible(active_turn_id: Option<&str>, item_turn_id: Option<&str>) -> bool {
     active_turn_id
         .is_none_or(|turn_id| item_turn_id.is_none_or(|item_turn_id| item_turn_id == turn_id))
+}
+
+fn validated_replay_applied_boundary(
+    binding: &codex_history::TurnRecoveryRequestBinding,
+) -> Option<&codex_history::TurnRecoveryHistoryBoundary> {
+    let source_generation = binding.replay_applied_from_generation?;
+    if source_generation.checked_add(1) != Some(binding.generation)
+        || binding.turn_id.is_empty()
+        || binding.fingerprint_sha256.is_empty()
+    {
+        return None;
+    }
+
+    let replay = binding.replay.as_ref()?;
+    if replay.turn_context_sha256.is_empty()
+        || replay.history_boundary.prefix_sha256.is_empty()
+        || binding.history_boundary.as_ref() != Some(&replay.history_boundary)
+        || replay.environments.is_empty()
+    {
+        return None;
+    }
+
+    let mut environment_ids = HashSet::with_capacity(replay.environments.len());
+    for environment in &replay.environments {
+        if environment.environment_id.is_empty()
+            || !environment_ids.insert(environment.environment_id.as_str())
+            || codex_utils_path_uri::PathUri::parse(&environment.cwd).is_err()
+            || environment
+                .workspace_roots
+                .iter()
+                .any(|root| codex_utils_path_uri::PathUri::parse(root).is_err())
+        {
+            return None;
+        }
+    }
+
+    Some(&replay.history_boundary)
 }
 
 fn finalize_active_segment<'a>(
@@ -283,6 +321,7 @@ impl Session {
                 RolloutItem::EventMsg(_)
                 | RolloutItem::SessionMeta(_)
                 | RolloutItem::SecurityRiskScore(_)
+                | RolloutItem::TurnRecoveryRequestBinding(_)
                 | RolloutItem::InterAgentCommunicationMetadata { .. } => {}
             }
 
@@ -322,10 +361,58 @@ impl Session {
         if let Some(base_replacement_history) = base_replacement_history {
             history.replace_annotated(base_replacement_history.to_vec());
         }
+        // A replay-applied binding is history-mutation authority, not merely a
+        // self-describing payload. It must extend the exact durable Unready
+        // marker that consumed the cold recovery candidate. Keep this as a
+        // narrow forward state machine: only authority-free warnings may occur
+        // between Unready -> binding -> same-ID TurnStarted.
+        let mut pending_recovery_unready = None;
+        let mut pending_recovery_replay = None;
         // Materialize exact history semantics from the replay-derived suffix. The eventual lazy
         // design should keep this same replay shape, but drive it from a resumable reverse source
         // instead of an eagerly loaded `&[RolloutItem]`.
         for item in rollout_suffix {
+            match item {
+                RolloutItem::EventMsg(EventMsg::Warning(_)) => {
+                    // Warnings do not carry execution authority or change model
+                    // history, so they may cross either hand-off boundary.
+                }
+                RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(marker))
+                    if marker.state == TurnRecoveryCandidateState::Unready =>
+                {
+                    pending_recovery_replay = None;
+                    pending_recovery_unready = Some((marker.turn_id.clone(), marker.generation));
+                }
+                RolloutItem::TurnRecoveryRequestBinding(binding) => {
+                    let consumed_unready = pending_recovery_unready.take();
+                    pending_recovery_replay = None;
+                    if consumed_unready
+                        .as_ref()
+                        .is_some_and(|(turn_id, generation)| {
+                            turn_id == &binding.turn_id && *generation == binding.generation
+                        })
+                        && let Some(boundary) = validated_replay_applied_boundary(binding)
+                    {
+                        pending_recovery_replay = Some((binding.turn_id.clone(), boundary.clone()));
+                    }
+                }
+                RolloutItem::EventMsg(EventMsg::TurnStarted(event)) => {
+                    pending_recovery_unready = None;
+                    if let Some((turn_id, boundary)) = pending_recovery_replay.take()
+                        && turn_id == event.turn_id
+                        && !history.rewind_to_recovery_boundary(&boundary)
+                    {
+                        tracing::warn!(
+                            turn_id = %event.turn_id,
+                            "ignored invalid durable turn-recovery history boundary"
+                        );
+                    }
+                }
+                _ => {
+                    pending_recovery_unready = None;
+                    pending_recovery_replay = None;
+                }
+            }
             match item {
                 RolloutItem::ResponseItem(response_item) => {
                     history.record_annotated_items(
@@ -369,6 +456,8 @@ impl Session {
                 RolloutItem::EventMsg(EventMsg::ThreadRolledBack(rollback)) => {
                     history.drop_last_n_user_turns(rollback.num_turns);
                 }
+                RolloutItem::TurnRecoveryRequestBinding(_)
+                | RolloutItem::EventMsg(EventMsg::TurnStarted(_)) => {}
                 RolloutItem::EventMsg(_)
                 | RolloutItem::TurnContext(_)
                 | RolloutItem::WorldState(_)
@@ -412,6 +501,7 @@ impl Session {
                 | RolloutItem::InterAgentCommunicationMetadata { .. }
                 | RolloutItem::TurnContext(_)
                 | RolloutItem::SecurityRiskScore(_)
+                | RolloutItem::TurnRecoveryRequestBinding(_)
                 | RolloutItem::EventMsg(_) => {
                     unreachable!("only world-state replay items are collected")
                 }

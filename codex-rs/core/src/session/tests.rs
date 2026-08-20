@@ -184,6 +184,7 @@ use opentelemetry_sdk::metrics::data::MetricData;
 use opentelemetry_sdk::metrics::data::ResourceMetrics;
 use std::path::Path;
 use std::time::Duration;
+use tokio::sync::Notify;
 use tokio::sync::Semaphore;
 use tokio::time::sleep;
 use tokio::time::timeout;
@@ -261,6 +262,22 @@ fn user_message(text: &str) -> ResponseItem {
         }],
         phase: None,
         internal_chat_message_metadata_passthrough: None,
+    }
+}
+
+fn recovery_test_replay(
+    history_boundary: codex_history::TurnRecoveryHistoryBoundary,
+) -> codex_history::TurnRecoveryReplayV1 {
+    codex_history::TurnRecoveryReplayV1 {
+        history_boundary,
+        turn_context_sha256: "test-turn-context".to_string(),
+        start: codex_history::TurnRecoveryStartState {
+            final_output_json_schema: None,
+            parent_turn_id: None,
+            root_turn_id: Some("test-root".to_string()),
+            responses_metadata_extra: Default::default(),
+        },
+        environments: Vec::new(),
     }
 }
 
@@ -641,9 +658,10 @@ async fn regular_turn_emits_turn_started_with_trace_id_without_waiting_for_start
     sess.spawn_task(
         Arc::clone(&tc),
         Vec::new(),
-        crate::tasks::RegularTask::new(),
+        crate::tasks::RegularTask::new(crate::session::turn::TurnRunOrigin::NewTurn),
     )
-    .await;
+    .await
+    .expect("regular turn should start");
 
     let first = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv())
         .await
@@ -714,9 +732,10 @@ async fn interrupting_regular_turn_waiting_on_startup_prewarm_emits_turn_aborted
     sess.spawn_task(
         Arc::clone(&tc),
         Vec::new(),
-        crate::tasks::RegularTask::new(),
+        crate::tasks::RegularTask::new(crate::session::turn::TurnRunOrigin::NewTurn),
     )
-    .await;
+    .await
+    .expect("regular turn should start");
 
     let first = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv())
         .await
@@ -2194,10 +2213,429 @@ async fn record_initial_history_reconstructs_resumed_transcript() {
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("resumed transcript should be reconstructed");
 
     let history = session.state.lock().await.clone_history();
     assert_eq!(expected, raw_history_items(&history));
+}
+
+#[tokio::test]
+async fn record_initial_history_rejects_stale_running_tail_without_ready_marker() {
+    let (session, _turn_context) = make_session_and_context().await;
+    let turn_id = "stale-running-turn".to_string();
+
+    session
+        .record_initial_history(InitialHistory::Resumed(ResumedHistory {
+            conversation_id: ThreadId::default(),
+            history: Arc::new(vec![RolloutItem::EventMsg(EventMsg::TurnStarted(
+                TurnStartedEvent {
+                    turn_id,
+                    trace_id: None,
+                    started_at: None,
+                    model_context_window: Some(128_000),
+                    collaboration_mode_kind: ModeKind::Default,
+                },
+            ))]),
+            rollout_path: Some(PathBuf::from("/tmp/stale-running-resume.jsonl")),
+        }))
+        .await
+        .expect("stale running history should be processed");
+
+    assert_ne!(*session.agent_status.borrow(), AgentStatus::Interrupted);
+    assert!(!session.is_interrupted());
+}
+
+#[tokio::test]
+async fn feature_off_resume_persists_reset_for_latent_recovery_authority() {
+    let (mut session, _turn_context) = make_session_and_context().await;
+    attach_in_memory_thread_store(&mut session).await;
+    let turn_id = "feature-off-ready-tail".to_string();
+    let source_items = vec![
+        RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+            turn_id: turn_id.clone(),
+            trace_id: None,
+            started_at: None,
+            model_context_window: Some(128_000),
+            collaboration_mode_kind: ModeKind::Default,
+        })),
+        RolloutItem::TurnRecoveryRequestBinding(TurnRecoveryRequestBinding {
+            turn_id: turn_id.clone(),
+            generation: 0,
+            fingerprint_sha256: "feature-off-ready-tail-request-fingerprint".to_string(),
+            history_boundary: Some(codex_history::TurnRecoveryHistoryBoundary {
+                item_count: 0,
+                prefix_sha256: "feature-off-history-prefix".to_string(),
+            }),
+            replay: Some(recovery_test_replay(
+                codex_history::TurnRecoveryHistoryBoundary {
+                    item_count: 0,
+                    prefix_sha256: "feature-off-history-prefix".to_string(),
+                },
+            )),
+            replay_applied_from_generation: None,
+        }),
+        RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(
+            TurnRecoveryCandidateEvent {
+                turn_id: turn_id.clone(),
+                generation: 0,
+                state: TurnRecoveryCandidateState::Ready,
+            },
+        )),
+    ];
+
+    session
+        .record_initial_history(InitialHistory::Resumed(ResumedHistory {
+            conversation_id: ThreadId::default(),
+            history: Arc::new(source_items.clone()),
+            rollout_path: Some(PathBuf::from("/tmp/feature-off-ready-tail.jsonl")),
+        }))
+        .await
+        .expect("feature-off resume should persist a recovery reset");
+
+    assert_ne!(*session.agent_status.borrow(), AgentStatus::Interrupted);
+    assert!(!session.is_interrupted());
+    assert_eq!(session.recovery_epoch_if_idle(&turn_id).await, None);
+    assert!(
+        session
+            .recovery_candidate
+            .lock()
+            .expect("recovery candidate mutex poisoned")
+            .is_none()
+    );
+
+    let persisted = session
+        .live_thread()
+        .expect("test session has persistence")
+        .load_history(/*include_archived*/ true)
+        .await
+        .expect("load feature-off recovery reset");
+    assert!(persisted.items.iter().any(|item| {
+        matches!(
+            item,
+            RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(marker))
+                if marker.turn_id == turn_id
+                    && marker.generation == 1
+                    && marker.state == TurnRecoveryCandidateState::Unready
+        )
+    }));
+
+    let mut combined_items = source_items;
+    combined_items.extend(persisted.items);
+    let mut combined_builder = ThreadHistoryBuilder::new();
+    for item in &combined_items {
+        combined_builder.handle_rollout_item(item);
+    }
+    assert_eq!(combined_builder.recovery_candidate(), None);
+
+    let (mut enabled_resume, _turn_context) = make_session_and_context().await;
+    enabled_resume
+        .features
+        .enable(Feature::HeptaTurnRecovery)
+        .expect("enable recovery after feature-off reset");
+    enabled_resume
+        .record_initial_history(InitialHistory::Resumed(ResumedHistory {
+            conversation_id: ThreadId::default(),
+            history: Arc::new(combined_items),
+            rollout_path: Some(PathBuf::from("/tmp/feature-off-reset-enabled-resume.jsonl")),
+        }))
+        .await
+        .expect("enabled resume should accept tombstoned history");
+    assert!(!enabled_resume.is_interrupted());
+    assert_eq!(enabled_resume.recovery_epoch_if_idle(&turn_id).await, None);
+}
+
+#[tokio::test]
+async fn record_initial_history_accepts_ready_in_progress_tail_when_recovery_is_enabled() {
+    let (mut session, _turn_context) = make_session_and_context().await;
+    session
+        .features
+        .enable(Feature::HeptaTurnRecovery)
+        .expect("enable Hepta turn recovery");
+    let turn_id = "feature-on-ready-tail".to_string();
+
+    session
+        .record_initial_history(InitialHistory::Resumed(ResumedHistory {
+            conversation_id: ThreadId::default(),
+            history: Arc::new(vec![
+                RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+                    turn_id: turn_id.clone(),
+                    trace_id: None,
+                    started_at: None,
+                    model_context_window: Some(128_000),
+                    collaboration_mode_kind: ModeKind::Default,
+                })),
+                RolloutItem::TurnRecoveryRequestBinding(TurnRecoveryRequestBinding {
+                    turn_id: turn_id.clone(),
+                    generation: 0,
+                    fingerprint_sha256: "feature-on-ready-tail-request-fingerprint".to_string(),
+                    history_boundary: Some(codex_history::TurnRecoveryHistoryBoundary {
+                        item_count: 0,
+                        prefix_sha256: "feature-on-history-prefix".to_string(),
+                    }),
+                    replay: Some(recovery_test_replay(
+                        codex_history::TurnRecoveryHistoryBoundary {
+                            item_count: 0,
+                            prefix_sha256: "feature-on-history-prefix".to_string(),
+                        },
+                    )),
+                    replay_applied_from_generation: None,
+                }),
+                RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(
+                    TurnRecoveryCandidateEvent {
+                        turn_id: turn_id.clone(),
+                        generation: 0,
+                        state: TurnRecoveryCandidateState::Ready,
+                    },
+                )),
+            ]),
+            rollout_path: Some(PathBuf::from("/tmp/feature-on-ready-tail.jsonl")),
+        }))
+        .await
+        .expect("ready recovery history should be reconstructed");
+
+    assert!(session.is_interrupted());
+    assert_eq!(session.recovery_epoch_if_idle(&turn_id).await, Some(0));
+}
+
+#[tokio::test]
+async fn fork_persists_child_local_reset_for_confirmed_recovery_authority() {
+    let (mut child, _turn_context) = make_session_and_context().await;
+    attach_in_memory_thread_store(&mut child).await;
+    let turn_id = "confirmed-source-turn".to_string();
+    let source_items = vec![
+        RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+            turn_id: turn_id.clone(),
+            trace_id: None,
+            started_at: None,
+            model_context_window: Some(128_000),
+            collaboration_mode_kind: ModeKind::Default,
+        })),
+        RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(
+            TurnRecoveryCandidateEvent {
+                turn_id: turn_id.clone(),
+                generation: 0,
+                state: TurnRecoveryCandidateState::Ready,
+            },
+        )),
+        RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(
+            TurnRecoveryCandidateEvent {
+                turn_id: turn_id.clone(),
+                generation: 1,
+                state: TurnRecoveryCandidateState::Unready,
+            },
+        )),
+        RolloutItem::EventMsg(EventMsg::TurnAborted(TurnAbortedEvent {
+            turn_id: Some(turn_id.clone()),
+            started_at: None,
+            reason: TurnAbortReason::Interrupted,
+            completed_at: None,
+            duration_ms: None,
+        })),
+        RolloutItem::TurnRecoveryRequestBinding(TurnRecoveryRequestBinding {
+            turn_id: turn_id.clone(),
+            generation: 1,
+            fingerprint_sha256: "fork-test-request-fingerprint".to_string(),
+            history_boundary: Some(codex_history::TurnRecoveryHistoryBoundary {
+                item_count: 0,
+                prefix_sha256: "fork-test-history-prefix".to_string(),
+            }),
+            replay: Some(recovery_test_replay(
+                codex_history::TurnRecoveryHistoryBoundary {
+                    item_count: 0,
+                    prefix_sha256: "fork-test-history-prefix".to_string(),
+                },
+            )),
+            replay_applied_from_generation: None,
+        }),
+        RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(
+            TurnRecoveryCandidateEvent {
+                turn_id: turn_id.clone(),
+                generation: 1,
+                state: TurnRecoveryCandidateState::InterruptedConfirmed,
+            },
+        )),
+    ];
+    let mut source_builder = ThreadHistoryBuilder::new();
+    for item in &source_items {
+        source_builder.handle_rollout_item(item);
+    }
+    let (candidate_turn_id, candidate_generation, candidate_fingerprint, candidate_replay) =
+        source_builder
+            .recovery_candidate()
+            .expect("confirmed recovery marker should retain replay authority");
+    assert_eq!(candidate_turn_id, turn_id);
+    assert_eq!(candidate_generation, 1);
+    assert_eq!(candidate_fingerprint, "fork-test-request-fingerprint");
+    assert_eq!(
+        candidate_replay.history_boundary,
+        codex_history::TurnRecoveryHistoryBoundary {
+            item_count: 0,
+            prefix_sha256: "fork-test-history-prefix".to_string(),
+        }
+    );
+
+    // The child intentionally keeps recovery disabled while it forks. The
+    // boundary must still be written so a later feature enable cannot revive
+    // the source thread's execution authority.
+    child
+        .record_initial_history(InitialHistory::Forked(source_items))
+        .await
+        .expect("fork recovery boundary should persist");
+    let persisted = child
+        .live_thread()
+        .expect("test child has persistence")
+        .load_history(/*include_archived*/ true)
+        .await
+        .expect("load child history");
+    assert!(persisted.items.iter().any(|item| {
+        matches!(
+            item,
+            RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(marker))
+                if marker.turn_id == turn_id
+                    && marker.generation == 2
+                    && marker.state == TurnRecoveryCandidateState::Unready
+        )
+    }));
+    let mut child_builder = ThreadHistoryBuilder::new();
+    for item in &persisted.items {
+        child_builder.handle_rollout_item(item);
+    }
+    assert_eq!(child_builder.recovery_candidate(), None);
+
+    let (mut resumed_child, _turn_context) = make_session_and_context().await;
+    resumed_child
+        .features
+        .enable(Feature::HeptaTurnRecovery)
+        .expect("enable recovery after fork");
+    resumed_child
+        .record_initial_history(InitialHistory::Resumed(ResumedHistory {
+            conversation_id: ThreadId::default(),
+            history: Arc::new(persisted.items),
+            rollout_path: Some(PathBuf::from("/tmp/fork-reset-resume.jsonl")),
+        }))
+        .await
+        .expect("resume child history");
+    assert!(!resumed_child.is_interrupted());
+    assert_eq!(resumed_child.recovery_epoch_if_idle(&turn_id).await, None);
+}
+
+#[tokio::test]
+async fn record_initial_history_keeps_completed_tail_available_for_idle_followup() {
+    let (session, _turn_context) = make_session_and_context().await;
+    let turn_id = "completed-turn".to_string();
+
+    session
+        .record_initial_history(InitialHistory::Resumed(ResumedHistory {
+            conversation_id: ThreadId::default(),
+            history: Arc::new(vec![
+                RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+                    turn_id: turn_id.clone(),
+                    trace_id: None,
+                    started_at: None,
+                    model_context_window: Some(128_000),
+                    collaboration_mode_kind: ModeKind::Default,
+                })),
+                RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+                    turn_id,
+                    last_agent_message: None,
+                    error: None,
+                    started_at: None,
+                    completed_at: None,
+                    duration_ms: None,
+                    time_to_first_token_ms: None,
+                })),
+            ]),
+            rollout_path: Some(PathBuf::from("/tmp/completed-resume.jsonl")),
+        }))
+        .await
+        .expect("completed history should be reconstructed");
+
+    assert_ne!(*session.agent_status.borrow(), AgentStatus::Interrupted);
+    assert!(!session.is_interrupted());
+}
+
+#[tokio::test]
+async fn record_initial_history_keeps_rolled_back_running_tail_idle() {
+    let (session, _turn_context) = make_session_and_context().await;
+
+    session
+        .record_initial_history(InitialHistory::Resumed(ResumedHistory {
+            conversation_id: ThreadId::default(),
+            history: Arc::new(vec![
+                RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+                    turn_id: "rolled-back-running-turn".to_string(),
+                    trace_id: None,
+                    started_at: None,
+                    model_context_window: Some(128_000),
+                    collaboration_mode_kind: ModeKind::Default,
+                })),
+                RolloutItem::EventMsg(EventMsg::ThreadRolledBack(ThreadRolledBackEvent {
+                    num_turns: 1,
+                })),
+            ]),
+            rollout_path: Some(PathBuf::from("/tmp/rolled-back-running-resume.jsonl")),
+        }))
+        .await
+        .expect("rolled-back history should be reconstructed");
+
+    assert_ne!(*session.agent_status.borrow(), AgentStatus::Interrupted);
+    assert!(!session.is_interrupted());
+}
+
+#[tokio::test]
+async fn record_initial_history_rejects_interrupted_tail_exposed_by_rollback() {
+    let (session, _turn_context) = make_session_and_context().await;
+    let interrupted_turn_id = "interrupted-before-rollback".to_string();
+    let rolled_back_turn_id = "completed-then-rolled-back".to_string();
+
+    session
+        .record_initial_history(InitialHistory::Resumed(ResumedHistory {
+            conversation_id: ThreadId::default(),
+            history: Arc::new(vec![
+                RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+                    turn_id: interrupted_turn_id.clone(),
+                    trace_id: None,
+                    started_at: None,
+                    model_context_window: Some(128_000),
+                    collaboration_mode_kind: ModeKind::Default,
+                })),
+                RolloutItem::EventMsg(EventMsg::TurnAborted(TurnAbortedEvent {
+                    turn_id: Some(interrupted_turn_id),
+                    started_at: None,
+                    reason: TurnAbortReason::Interrupted,
+                    completed_at: None,
+                    duration_ms: None,
+                })),
+                RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+                    turn_id: rolled_back_turn_id.clone(),
+                    trace_id: None,
+                    started_at: None,
+                    model_context_window: Some(128_000),
+                    collaboration_mode_kind: ModeKind::Default,
+                })),
+                RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+                    turn_id: rolled_back_turn_id,
+                    last_agent_message: None,
+                    error: None,
+                    started_at: None,
+                    completed_at: None,
+                    duration_ms: None,
+                    time_to_first_token_ms: None,
+                })),
+                RolloutItem::EventMsg(EventMsg::ThreadRolledBack(ThreadRolledBackEvent {
+                    num_turns: 1,
+                })),
+            ]),
+            rollout_path: Some(PathBuf::from(
+                "/tmp/interrupted-tail-exposed-by-rollback.jsonl",
+            )),
+        }))
+        .await
+        .expect("rollback-exposed history should be processed");
+
+    assert_ne!(*session.agent_status.borrow(), AgentStatus::Interrupted);
+    assert!(!session.is_interrupted());
 }
 
 #[tokio::test]
@@ -2377,7 +2815,8 @@ async fn record_inter_agent_communication_sets_turn_id_in_rollout_and_resume() {
     let (resumed_session, _resumed_turn_context) = make_session_and_context().await;
     resumed_session
         .record_initial_history(InitialHistory::Resumed(resumed))
-        .await;
+        .await
+        .expect("inter-agent history should be resumed");
     assert_eq!(
         strip_response_item_ids(&raw_history_items(&resumed_session.clone_history().await)),
         strip_response_item_ids(std::slice::from_ref(&expected_item))
@@ -2446,7 +2885,8 @@ async fn record_inter_agent_communication_preserves_item_id_in_rollout_and_resum
         .await;
     resumed_session
         .record_initial_history(InitialHistory::Resumed(resumed))
-        .await;
+        .await
+        .expect("inter-agent item history should be resumed");
     let resumed_history = resumed_session.clone_history().await;
     let resumed_items = raw_history_items(&resumed_history);
     let [resumed_item] = resumed_items.as_slice() else {
@@ -2562,7 +3002,8 @@ async fn prepares_resumed_history_before_installing_it() {
             })]),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("prepared history should be resumed");
 
     let history = session.state.lock().await.clone_history();
     assert_eq!(
@@ -2662,7 +3103,10 @@ fn resolve_multi_agent_version_handles_unset_and_legacy_history() {
 async fn record_initial_history_new_defers_initial_context_until_first_turn() {
     let (session, _turn_context) = make_session_and_context().await;
 
-    session.record_initial_history(InitialHistory::New).await;
+    session
+        .record_initial_history(InitialHistory::New)
+        .await
+        .expect("new history should be initialized");
 
     let history = session.clone_history().await;
     assert_eq!(raw_history_items(&history), Vec::<ResponseItem>::new());
@@ -2697,7 +3141,8 @@ async fn resumed_history_injects_initial_context_on_first_context_update_only() 
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("resumed history should be reconstructed");
 
     let history_before_seed = session.state.lock().await.clone_history();
     assert_eq!(expected, raw_history_items(&history_before_seed));
@@ -2807,7 +3252,8 @@ async fn record_initial_history_seeds_token_info_from_rollout() {
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("token history should be reconstructed");
 
     let actual = session.state.lock().await.token_info();
     assert_eq!(actual, Some(info2));
@@ -3096,7 +3542,8 @@ async fn turn_start_lifecycle_exposes_turn_metadata_and_token_baseline() {
             listen_to_cancellation_token: true,
         },
     )
-    .await;
+    .await
+    .expect("lifecycle test task should start");
     sess.abort_all_tasks(TurnAbortReason::Interrupted).await;
 
     let actual = records
@@ -3327,7 +3774,8 @@ async fn record_initial_history_reconstructs_forked_transcript() {
 
     session
         .record_initial_history(InitialHistory::Forked(rollout_items))
-        .await;
+        .await
+        .expect("forked transcript should be reconstructed");
 
     let history = session.state.lock().await.clone_history();
     assert_eq!(
@@ -3381,6 +3829,7 @@ async fn start_new_context_window_assigns_and_persists_item_ids() {
         | RolloutItem::TurnContext(_)
         | RolloutItem::WorldState(_)
         | RolloutItem::SecurityRiskScore(_)
+        | RolloutItem::TurnRecoveryRequestBinding(_)
         | RolloutItem::EventMsg(_) => None,
     });
     assert_eq!(
@@ -3413,7 +3862,8 @@ async fn record_initial_history_assigns_and_persists_id_for_forked_response_item
         .record_initial_history(InitialHistory::Forked(vec![RolloutItem::ResponseItem(
             response_item,
         )]))
-        .await;
+        .await
+        .expect("forked response history should be reconstructed");
 
     let live_history = session.clone_history().await;
     let live_items = raw_history_items(&live_history);
@@ -3448,6 +3898,7 @@ async fn record_initial_history_assigns_and_persists_id_for_forked_response_item
         | RolloutItem::TurnContext(_)
         | RolloutItem::WorldState(_)
         | RolloutItem::SecurityRiskScore(_)
+        | RolloutItem::TurnRecoveryRequestBinding(_)
         | RolloutItem::EventMsg(_) => None,
     });
     let persisted_item = persisted_item.expect("forked response item should be persisted");
@@ -3664,7 +4115,8 @@ async fn record_initial_history_forked_hydrates_previous_turn_settings() {
 
     session
         .record_initial_history(InitialHistory::Forked(rollout_items))
-        .await;
+        .await
+        .expect("forked settings history should be reconstructed");
 
     let history = session.clone_history().await;
     assert_eq!(
@@ -3724,6 +4176,23 @@ async fn thread_rollback_drops_last_turn_from_history() {
         state.set_reference_context_item(Some(tc.to_turn_context_item()));
     }
 
+    let recovery_epoch = sess.turn_epoch.load(Ordering::Acquire);
+    let history_boundary = sess
+        .current_recovery_history_boundary()
+        .await
+        .expect("history boundary");
+    *sess
+        .recovery_candidate
+        .lock()
+        .expect("recovery candidate mutex poisoned") = Some(super::session::RecoveryCandidate {
+        turn_id: "pre-rollback-candidate".to_string(),
+        marker_generation: 0,
+        epoch: recovery_epoch,
+        persistence_failure_generation: sess.rollout_persistence_failure_generation(),
+        request_fingerprint_sha256: "rollback-test-request-fingerprint".to_string(),
+        replay: recovery_test_replay(history_boundary),
+    });
+
     handlers::thread_rollback(&sess, "sub-1".to_string(), /*num_turns*/ 1).await;
 
     let rollback_event = wait_for_thread_rolled_back(&rx).await;
@@ -3737,6 +4206,11 @@ async fn thread_rollback_drops_last_turn_from_history() {
     assert_eq!(expected, raw_history_items(&history));
     assert_eq!(sess.previous_turn_settings().await, None);
     assert!(sess.reference_context_item().await.is_none());
+    assert_eq!(
+        sess.recovery_epoch_if_idle("pre-rollback-candidate").await,
+        None
+    );
+    assert!(sess.turn_epoch.load(Ordering::Acquire) > recovery_epoch);
 
     let InitialHistory::Resumed(resumed) = RolloutRecorder::get_rollout_history(&rollout_path)
         .await
@@ -6086,6 +6560,10 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         mcp_prewarm_task: std::sync::Mutex::new(None),
         conversation: Arc::new(RealtimeConversationManager::new()),
         active_turn: Mutex::new(None),
+        turn_epoch: AtomicU64::new(0),
+        recovery_candidate: std::sync::Mutex::new(None),
+        rollout_persistence_failure_generation: AtomicU64::new(0),
+        rollout_persistence_faults: Mutex::new(std::collections::VecDeque::new()),
         async_hook_results,
         input_queue: super::input_queue::InputQueue::new(),
         pending_user_message_admissions: Default::default(),
@@ -7537,7 +8015,8 @@ async fn spawn_task_turn_span_inherits_dispatch_trace_context() {
                 captured_trace: Arc::clone(&captured_trace),
             },
         )
-        .await;
+        .await
+        .expect("trace capture task should start");
     }
     .instrument(dispatch_span)
     .await;
@@ -7819,7 +8298,8 @@ async fn submission_loop_channel_close_aborts_active_turn_before_thread_stop_lif
                 listen_to_cancellation_token: true,
             },
         )
-        .await;
+        .await
+        .expect("active lifecycle task should start");
 
     let (tx_sub, rx_sub) = async_channel::bounded(1);
     drop(tx_sub);
@@ -8297,6 +8777,10 @@ where
         mcp_prewarm_task: std::sync::Mutex::new(None),
         conversation: Arc::new(RealtimeConversationManager::new()),
         active_turn: Mutex::new(None),
+        turn_epoch: AtomicU64::new(0),
+        recovery_candidate: std::sync::Mutex::new(None),
+        rollout_persistence_failure_generation: AtomicU64::new(0),
+        rollout_persistence_faults: Mutex::new(std::collections::VecDeque::new()),
         async_hook_results,
         input_queue: super::input_queue::InputQueue::new(),
         pending_user_message_admissions: Default::default(),
@@ -8546,7 +9030,8 @@ async fn mcp_elicitation_reviewer_uses_latest_runtime_authority() {
                 listen_to_cancellation_token: true,
             },
         )
-        .await;
+        .await
+        .expect("old-runtime task should start");
 
     session
         .update_settings(SessionSettingsUpdate {
@@ -9029,7 +9514,8 @@ async fn spawn_task_does_not_update_previous_turn_settings_for_non_run_turn_task
             listen_to_cancellation_token: true,
         },
     )
-    .await;
+    .await
+    .expect("non-run turn task should start");
 
     sess.abort_all_tasks(TurnAbortReason::Interrupted).await;
     assert_eq!(sess.previous_turn_settings().await, None);
@@ -10186,7 +10672,7 @@ enum TerminalEventKind {
     TurnAborted,
 }
 
-async fn attach_in_memory_thread_store(
+pub(crate) async fn attach_in_memory_thread_store(
     session: &mut Session,
 ) -> Arc<codex_thread_store::InMemoryThreadStore> {
     let store = Arc::new(codex_thread_store::InMemoryThreadStore::default());
@@ -10308,6 +10794,39 @@ struct NeverEndingTask {
     listen_to_cancellation_token: bool,
 }
 
+struct BlockingAbortCleanupTask {
+    abort_entered: async_channel::Sender<()>,
+    release_abort: Arc<Notify>,
+}
+
+impl SessionTask for BlockingAbortCleanupTask {
+    fn kind(&self) -> TaskKind {
+        TaskKind::Regular
+    }
+
+    fn span_name(&self) -> &'static str {
+        "session_task.blocking_abort_cleanup"
+    }
+
+    async fn run(
+        self: Arc<Self>,
+        _session: Arc<Session>,
+        _ctx: Arc<TurnContext>,
+        _input: Vec<TurnInput>,
+        _cancellation_token: CancellationToken,
+    ) -> SessionTaskResult {
+        std::future::pending().await
+    }
+
+    async fn abort(&self, _session: Arc<Session>, _ctx: Arc<TurnContext>) {
+        self.abort_entered
+            .send(())
+            .await
+            .expect("abort test receiver should remain open");
+        self.release_abort.notified().await;
+    }
+}
+
 impl SessionTask for NeverEndingTask {
     fn kind(&self) -> TaskKind {
         self.kind
@@ -10389,7 +10908,8 @@ async fn guardian_auto_review_emits_thread_idle_after_interrupt() {
             Vec::new(),
             GuardianDeniedApprovalTask,
         )
-        .await;
+        .await
+        .expect("guardian task should start");
 
     timeout(StdDuration::from_secs(5), idle_rx.recv())
         .await
@@ -10415,7 +10935,8 @@ async fn guardian_helper_review_interrupts_after_three_consecutive_denials() {
             listen_to_cancellation_token: true,
         },
     )
-    .await;
+    .await
+    .expect("guardian review task should start");
 
     let session_for_review = Arc::clone(&sess);
     let turn_for_review = Arc::clone(&tc);
@@ -10475,7 +10996,8 @@ async fn turn_complete_flushes_terminal_event_after_delivery() {
         client_id: None,
     }];
     sess.spawn_task(Arc::clone(&tc), input, CompletingTask)
-        .await;
+        .await
+        .expect("completing task should start");
 
     let event = recv_terminal_event(&rx, TerminalEventKind::TurnComplete).await;
     assert!(matches!(event.msg, EventMsg::TurnComplete(_)));
@@ -10509,7 +11031,8 @@ async fn turn_aborted_flushes_terminal_event_after_delivery() {
             listen_to_cancellation_token: true,
         },
     )
-    .await;
+    .await
+    .expect("interruptible task should start");
 
     let abort_task = tokio::spawn({
         let sess = Arc::clone(&sess);
@@ -10551,7 +11074,8 @@ async fn abort_regular_task_emits_marker_before_turn_aborted() {
             listen_to_cancellation_token: false,
         },
     )
-    .await;
+    .await
+    .expect("regular task should start");
 
     sess.abort_all_tasks(TurnAbortReason::Interrupted).await;
 
@@ -10592,7 +11116,8 @@ async fn abort_gracefully_emits_marker_before_turn_aborted() {
             listen_to_cancellation_token: true,
         },
     )
-    .await;
+    .await
+    .expect("gracefully cancellable task should start");
 
     sess.abort_all_tasks(TurnAbortReason::Interrupted).await;
 
@@ -10653,7 +11178,8 @@ async fn task_finish_emits_turn_item_lifecycle_for_leftover_pending_user_input()
             listen_to_cancellation_token: false,
         },
     )
-    .await;
+    .await
+    .expect("pending-input task should start");
 
     while rx.try_recv().is_ok() {}
 
@@ -10790,7 +11316,8 @@ async fn task_finish_emits_thread_idle_lifecycle_after_active_turn_clears() {
     let session = Arc::new(session);
     session
         .spawn_task(Arc::new(turn_context), Vec::new(), CompletingTask)
-        .await;
+        .await
+        .expect("completing task should start");
 
     timeout(StdDuration::from_secs(2), idle_rx.recv())
         .await
@@ -10847,7 +11374,7 @@ async fn thread_idle_lifecycle_waits_for_trigger_turn_mailbox_work() {
 }
 
 #[tokio::test]
-async fn abort_empty_active_turn_preserves_pending_input() {
+async fn abort_empty_active_turn_preserves_reservation_and_pending_input() {
     let (sess, _tc, _rx) = make_session_and_context_with_rx().await;
     let pending_item = ResponseItem::Message {
         id: None,
@@ -10872,13 +11399,117 @@ async fn abort_empty_active_turn_preserves_pending_input() {
 
     sess.abort_all_tasks(TurnAbortReason::Replaced).await;
 
-    assert!(sess.active_turn.lock().await.is_none());
+    assert!(
+        sess.active_turn
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|active_turn| active_turn.task.is_none()),
+        "an abort must not tear down a reservation owned by another transition"
+    );
     assert_eq!(
         sess.input_queue
             .take_pending_input_for_turn_state(turn_state.as_ref())
             .await,
         vec![TurnInput::ResponseItem(pending_item.into())]
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn abort_reservation_rejects_injection_mailbox_start_and_replacement() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    let (abort_entered_tx, abort_entered_rx) = async_channel::bounded(1);
+    let release_abort = Arc::new(Notify::new());
+    session
+        .spawn_task(
+            Arc::clone(&turn_context),
+            Vec::new(),
+            BlockingAbortCleanupTask {
+                abort_entered: abort_entered_tx,
+                release_abort: Arc::clone(&release_abort),
+            },
+        )
+        .await
+        .expect("initial task should start");
+
+    let abort_task = tokio::spawn({
+        let session = Arc::clone(&session);
+        async move {
+            session.abort_all_tasks(TurnAbortReason::Replaced).await;
+        }
+    });
+    timeout(Duration::from_secs(2), abort_entered_rx.recv())
+        .await
+        .expect("abort cleanup should begin")
+        .expect("abort signal channel should remain open");
+    {
+        let active = session.active_turn.lock().await;
+        assert!(
+            active
+                .as_ref()
+                .is_some_and(|active_turn| active_turn.task.is_none()),
+            "detaching task must leave a visible reservation"
+        );
+    }
+
+    assert!(matches!(
+        session
+            .inject_if_running(vec![user_message("raw injection")])
+            .await,
+        Err(crate::codex_thread::InjectIfRunningError::NoActiveTurn(_))
+    ));
+    assert!(
+        session
+            .inject_client_response_items(
+                vec![user_message("client injection")],
+                turn_context.as_ref(),
+            )
+            .await
+            .is_err(),
+        "client injection must not be accepted by a detach reservation"
+    );
+
+    session
+        .input_queue
+        .enqueue_mailbox_communication(
+            InterAgentCommunication::new(
+                AgentPath::root(),
+                AgentPath::root(),
+                Vec::new(),
+                "trigger during abort".to_string(),
+                /*trigger_turn*/ true,
+            ),
+            /*parent_turn_id*/ None,
+            /*root_turn_id*/ None,
+        )
+        .await;
+    session
+        .maybe_start_turn_for_pending_work_with_sub_id("mailbox-race-turn".to_string())
+        .await;
+    assert!(
+        session
+            .active_turn
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|active_turn| active_turn.task.is_none()),
+        "mailbox wakeup must not replace an abort reservation"
+    );
+
+    let replacement_context = session
+        .new_default_turn_with_sub_id("replacement-race-turn".to_string())
+        .await;
+    assert!(
+        session
+            .spawn_task(replacement_context, Vec::new(), CompletingTask)
+            .await
+            .is_err(),
+        "replacement start must report that the abort reservation is busy"
+    );
+
+    release_abort.notify_waiters();
+    abort_task.await.expect("abort task should finish");
+    assert!(session.active_turn.lock().await.is_none());
 }
 
 async fn set_total_token_usage(sess: &Session, total_token_usage: TokenUsage) {
@@ -10908,7 +11539,8 @@ async fn queue_only_mailbox_mail_waits_for_next_turn_after_answer_boundary() {
             listen_to_cancellation_token: true,
         },
     )
-    .await;
+    .await
+    .expect("queue-only mailbox task should start");
 
     sess.input_queue
         .defer_mailbox_delivery_to_next_turn(&sess.active_turn, &tc.sub_id)
@@ -10949,7 +11581,8 @@ async fn trigger_turn_mailbox_mail_waits_for_next_turn_after_answer_boundary() {
             listen_to_cancellation_token: true,
         },
     )
-    .await;
+    .await
+    .expect("trigger mailbox task should start");
 
     sess.input_queue
         .defer_mailbox_delivery_to_next_turn(&sess.active_turn, &tc.sub_id)
@@ -10996,7 +11629,8 @@ async fn steered_input_reopens_mailbox_delivery_for_current_turn() {
             listen_to_cancellation_token: true,
         },
     )
-    .await;
+    .await
+    .expect("steered mailbox task should start");
 
     sess.input_queue
         .defer_mailbox_delivery_to_next_turn(&sess.active_turn, &tc.sub_id)
@@ -11052,7 +11686,8 @@ async fn stale_defer_mailbox_delivery_does_not_override_steered_input() {
             listen_to_cancellation_token: true,
         },
     )
-    .await;
+    .await
+    .expect("stale-defer mailbox task should start");
 
     sess.input_queue
         .defer_mailbox_delivery_to_next_turn(&sess.active_turn, &tc.sub_id)
@@ -11112,7 +11747,8 @@ async fn tool_calls_reopen_mailbox_delivery_for_current_turn() {
             listen_to_cancellation_token: true,
         },
     )
-    .await;
+    .await
+    .expect("tool-call mailbox task should start");
 
     sess.input_queue
         .defer_mailbox_delivery_to_next_turn(&sess.active_turn, &tc.sub_id)
@@ -11165,7 +11801,8 @@ async fn abort_review_task_emits_exited_then_aborted_and_records_history() {
         client_id: None,
     }];
     sess.spawn_task(Arc::clone(&tc), input, ReviewTask::new())
-        .await;
+        .await
+        .expect("review task should start");
 
     sess.abort_all_tasks(TurnAbortReason::Interrupted).await;
 

@@ -8,15 +8,16 @@ use codex_code_mode::WebSocketCodeModeSessionProvider;
 use codex_config::LoaderOverrides;
 use codex_config::NoopThreadConfigLoader;
 use codex_core::config::Config;
+pub use codex_core::config::ThreadStoreConfig;
 use codex_core::resolve_installation_id;
 use codex_login::AuthManager;
-#[cfg(debug_assertions)]
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_cli::CliConfigOverrides;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::io::Result as IoResult;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -432,6 +433,24 @@ pub struct AppServerRuntimeOptions {
     pub plugin_startup_tasks: PluginStartupTasks,
     pub remote_control_startup_mode: RemoteControlStartupMode,
     pub install_shutdown_signal_handler: bool,
+    /// Optional maximum pending turn rows in this runtime's queue database.
+    ///
+    /// Ordinary Codex leaves this unset and retains only its historical
+    /// per-thread limit. An embedding runtime may opt into a database-wide
+    /// limit; Hepta agentd binds that database to one Agent-private home.
+    pub turn_queue_capacity: Option<NonZeroUsize>,
+    /// Optional exact SQLite root required by the embedding runtime.
+    ///
+    /// Ordinary Codex leaves this unset. Embedders that rely on a private
+    /// state boundary can pin the fully resolved SQLite root so user, managed,
+    /// or environment configuration cannot redirect durable state elsewhere.
+    pub required_sqlite_home: Option<AbsolutePathBuf>,
+    /// Optional exact thread-store mode required by the embedding runtime.
+    ///
+    /// Ordinary Codex leaves this unset. Embedders whose durable queue is part
+    /// of their isolation contract can reject configuration that substitutes
+    /// an in-memory or otherwise incompatible store.
+    pub required_thread_store_mode: Option<ThreadStoreConfig>,
     /// Cognitive Plane capability owned by the embedding runtime.
     ///
     /// Plain Codex and the Hepta live shell pass `Absent`. A workspace agent
@@ -454,6 +473,12 @@ impl std::fmt::Debug for AppServerRuntimeOptions {
                 "install_shutdown_signal_handler",
                 &self.install_shutdown_signal_handler,
             )
+            .field("turn_queue_capacity", &self.turn_queue_capacity)
+            .field("required_sqlite_home", &self.required_sqlite_home)
+            .field(
+                "required_thread_store_mode",
+                &self.required_thread_store_mode,
+            )
             .field("hepta_cognitive_runtime", &self.hepta_cognitive_runtime)
             .finish()
     }
@@ -465,6 +490,9 @@ impl PartialEq for AppServerRuntimeOptions {
             && self.plugin_startup_tasks == other.plugin_startup_tasks
             && self.remote_control_startup_mode == other.remote_control_startup_mode
             && self.install_shutdown_signal_handler == other.install_shutdown_signal_handler
+            && self.turn_queue_capacity == other.turn_queue_capacity
+            && self.required_sqlite_home == other.required_sqlite_home
+            && self.required_thread_store_mode == other.required_thread_store_mode
             && match (
                 &self.hepta_cognitive_runtime,
                 &other.hepta_cognitive_runtime,
@@ -508,6 +536,9 @@ impl Default for AppServerRuntimeOptions {
             plugin_startup_tasks: PluginStartupTasks::Start,
             remote_control_startup_mode: RemoteControlStartupMode::ResolvePersisted,
             install_shutdown_signal_handler: true,
+            turn_queue_capacity: None,
+            required_sqlite_home: None,
+            required_thread_store_mode: None,
             hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime::Absent,
         }
     }
@@ -602,6 +633,14 @@ pub async fn run_main_with_transport_options(
         }
     };
     config.auth_config().validate()?;
+    enforce_required_sqlite_home(
+        runtime_options.required_sqlite_home.as_ref(),
+        config.sqlite_config().home(),
+    )?;
+    enforce_required_thread_store_mode(
+        runtime_options.required_thread_store_mode.as_ref(),
+        &config.experimental_thread_store,
+    )?;
     let code_mode_session_provider: Option<Arc<dyn CodeModeSessionProvider>> =
         match &runtime_options.code_mode_host_transport {
             CodeModeHostTransport::Local => None,
@@ -981,6 +1020,7 @@ pub async fn run_main_with_transport_options(
             rpc_transport: analytics_rpc_transport(&transport),
             remote_control_handle: Some(remote_control_handle.clone()),
             plugin_startup_tasks: runtime_options.plugin_startup_tasks,
+            turn_queue_capacity: runtime_options.turn_queue_capacity,
             hepta_cognitive_runtime: runtime_options.hepta_cognitive_runtime.clone(),
         }));
         let mut thread_created_rx = processor.thread_created_receiver();
@@ -1437,16 +1477,110 @@ fn analytics_rpc_transport(transport: &AppServerTransport) -> AppServerRpcTransp
     }
 }
 
+fn enforce_required_sqlite_home(
+    required_sqlite_home: Option<&AbsolutePathBuf>,
+    resolved_sqlite_home: &Path,
+) -> IoResult<()> {
+    let Some(required_sqlite_home) = required_sqlite_home else {
+        return Ok(());
+    };
+    if resolved_sqlite_home != required_sqlite_home.as_path() {
+        return Err(std::io::Error::new(
+            ErrorKind::InvalidInput,
+            format!(
+                "embedding runtime requires SQLite home {}, but configuration resolved {}",
+                required_sqlite_home.as_path().display(),
+                resolved_sqlite_home.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn enforce_required_thread_store_mode(
+    required_mode: Option<&ThreadStoreConfig>,
+    resolved_mode: &ThreadStoreConfig,
+) -> IoResult<()> {
+    let Some(required_mode) = required_mode else {
+        return Ok(());
+    };
+    if resolved_mode != required_mode {
+        return Err(std::io::Error::new(
+            ErrorKind::InvalidInput,
+            format!(
+                "embedding runtime requires thread store {required_mode:?}, but configuration resolved {resolved_mode:?}"
+            ),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    use super::AppServerRuntimeOptions;
     use super::LogFormat;
+    use super::enforce_required_sqlite_home;
+    use super::enforce_required_thread_store_mode;
     #[cfg(debug_assertions)]
     use super::loader_overrides_with_test_user_config_file;
     #[cfg(debug_assertions)]
     use codex_config::LoaderOverrides;
-    #[cfg(debug_assertions)]
+    use codex_core::config::ThreadStoreConfig;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use pretty_assertions::assert_eq;
+    use std::io::ErrorKind;
+    use std::path::Path;
+
+    #[test]
+    fn ordinary_codex_runtime_does_not_enable_a_database_wide_queue_capacity() {
+        assert_eq!(100, codex_thread_store::MAX_QUEUE_ITEMS);
+        assert_eq!(None, AppServerRuntimeOptions::default().turn_queue_capacity);
+        assert_eq!(
+            None,
+            AppServerRuntimeOptions::default().required_sqlite_home
+        );
+        assert_eq!(
+            None,
+            AppServerRuntimeOptions::default().required_thread_store_mode
+        );
+    }
+
+    #[test]
+    fn embedding_runtime_thread_store_constraint_is_exact() {
+        let required = ThreadStoreConfig::Local;
+        enforce_required_thread_store_mode(Some(&required), &ThreadStoreConfig::Local)
+            .expect("the required local thread store must be accepted");
+
+        let error = enforce_required_thread_store_mode(
+            Some(&required),
+            &ThreadStoreConfig::InMemory {
+                id: "redirected".to_string(),
+            },
+        )
+        .expect_err("an in-memory replacement must fail closed");
+        assert_eq!(ErrorKind::InvalidInput, error.kind());
+        assert_eq!(
+            "embedding runtime requires thread store Local, but configuration resolved InMemory { id: \"redirected\" }",
+            error.to_string()
+        );
+    }
+
+    #[test]
+    fn embedding_runtime_sqlite_home_constraint_is_exact() {
+        let required = AbsolutePathBuf::from_absolute_path("/tmp/hepta-private-sqlite")
+            .expect("absolute required SQLite home");
+        enforce_required_sqlite_home(Some(&required), required.as_path())
+            .expect("the exact private SQLite root must be accepted");
+
+        let error =
+            enforce_required_sqlite_home(Some(&required), Path::new("/tmp/hepta-shared-sqlite"))
+                .expect_err("a redirected SQLite root must fail closed");
+        assert_eq!(ErrorKind::InvalidInput, error.kind());
+        assert_eq!(
+            "embedding runtime requires SQLite home /tmp/hepta-private-sqlite, but configuration resolved /tmp/hepta-shared-sqlite",
+            error.to_string()
+        );
+    }
 
     #[test]
     fn log_format_from_env_value_matches_json_values_case_insensitively() {

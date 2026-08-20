@@ -74,10 +74,20 @@ impl FleetHarness {
         })
     }
 
+    #[allow(dead_code)]
     pub(crate) fn register(
         &mut self,
         agent_id: &str,
         workspace_name: &str,
+    ) -> Result<AgentFixture> {
+        self.register_with_resources(agent_id, workspace_name, ResourceBudget::local_default())
+    }
+
+    pub(crate) fn register_with_resources(
+        &mut self,
+        agent_id: &str,
+        workspace_name: &str,
+        resources: ResourceBudget,
     ) -> Result<AgentFixture> {
         ensure!(
             !self.started,
@@ -88,8 +98,7 @@ impl FleetHarness {
         let workspace = workspace.canonicalize()?;
         let agent_id = AgentId::parse(agent_id).map_err(anyhow::Error::msg)?;
         let binding = WorkspaceBinding::new(&workspace, &self.fleet_root)?;
-        let manifest =
-            AgentManifest::new(agent_id.clone(), binding, ResourceBudget::local_default())?;
+        let manifest = AgentManifest::new(agent_id.clone(), binding, resources)?;
         let record = self.registry.register(manifest)?;
         self.agent_ids.push(agent_id.clone());
         let driver = UnixProcessDriver::new(256)?;
@@ -216,17 +225,33 @@ impl Drop for FleetHarness {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) async fn connect_app_server(
     socket_path: &Path,
     client_name: &str,
     channel_capacity: usize,
+) -> Result<RemoteAppServerClient> {
+    connect_app_server_with_experimental(
+        socket_path,
+        client_name,
+        channel_capacity,
+        /*experimental_api*/ false,
+    )
+    .await
+}
+
+pub(crate) async fn connect_app_server_with_experimental(
+    socket_path: &Path,
+    client_name: &str,
+    channel_capacity: usize,
+    experimental_api: bool,
 ) -> Result<RemoteAppServerClient> {
     let socket_path = AbsolutePathBuf::from_absolute_path(socket_path)?;
     Ok(RemoteAppServerClient::connect(RemoteAppServerConnectArgs {
         endpoint: RemoteAppServerEndpoint::UnixSocket { socket_path },
         client_name: client_name.to_string(),
         client_version: env!("CARGO_PKG_VERSION").to_string(),
-        experimental_api: false,
+        experimental_api,
         mcp_server_openai_form_elicitation: false,
         opt_out_notification_methods: Vec::new(),
         channel_capacity,

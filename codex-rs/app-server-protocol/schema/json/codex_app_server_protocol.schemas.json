@@ -1628,6 +1628,30 @@
             },
             "method": {
               "enum": [
+                "turn/recover"
+              ],
+              "title": "Turn/recoverRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/TurnRecoverParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Turn/recoverRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
                 "review/start"
               ],
               "title": "Review/startRequestMethod",
@@ -22843,6 +22867,40 @@
           "turnId"
         ],
         "title": "TurnPlanUpdatedNotification",
+        "type": "object"
+      },
+      "TurnRecoverParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "Resume an interrupted turn without submitting new user input.",
+        "properties": {
+          "threadId": {
+            "description": "Thread that owns the interrupted turn.",
+            "type": "string"
+          },
+          "turnId": {
+            "description": "Identifier of the interrupted turn to resume.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "threadId",
+          "turnId"
+        ],
+        "title": "TurnRecoverParams",
+        "type": "object"
+      },
+      "TurnRecoverResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "The recovered turn, preserving the original turn identity and current status.",
+        "properties": {
+          "turn": {
+            "$ref": "#/definitions/v2/Turn"
+          }
+        },
+        "required": [
+          "turn"
+        ],
+        "title": "TurnRecoverResponse",
         "type": "object"
       },
       "TurnStartParams": {

@@ -995,6 +995,31 @@ impl ThreadManager {
         parent_trace: Option<W3cTraceContext>,
         client_mcp_extensions: ClientMcpExtensions,
     ) -> CodexResult<NewThread> {
+        Box::pin(self.resume_thread_with_history_and_environments(
+            config,
+            initial_history,
+            auth_manager,
+            parent_trace,
+            client_mcp_extensions,
+            /*environments*/ None,
+        ))
+        .await
+    }
+
+    /// Resumes a thread with an explicitly reconstructed thread-owned
+    /// environment selection. Callers must only supply this when no resume
+    /// request override selected a different cwd or workspace-root set; Core's
+    /// recovery binding still verifies the exact environment IDs and paths.
+    #[instrument(level = "trace", skip_all)]
+    pub async fn resume_thread_with_history_and_environments(
+        &self,
+        config: Config,
+        initial_history: InitialHistory,
+        auth_manager: Arc<AuthManager>,
+        parent_trace: Option<W3cTraceContext>,
+        client_mcp_extensions: ClientMcpExtensions,
+        environments: Option<Vec<TurnEnvironmentSelection>>,
+    ) -> CodexResult<NewThread> {
         let agent_control = self.agent_control_for_config(&config);
         let (session_source, thread_source) = initial_history
             .get_resumed_session_sources()
@@ -1013,6 +1038,7 @@ impl ThreadManager {
             thread_source,
             parent_trace,
             client_mcp_extensions,
+            environments,
             ..StartThreadOptions::new(config)
         };
         Box::pin(self.state.spawn_thread(ThreadSpawnRequest::new(

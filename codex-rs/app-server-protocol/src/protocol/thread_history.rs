@@ -52,6 +52,8 @@ use codex_protocol::protocol::PatchApplyEndEvent;
 use codex_protocol::protocol::ThreadRolledBackEvent;
 use codex_protocol::protocol::TurnAbortedEvent;
 use codex_protocol::protocol::TurnCompleteEvent;
+use codex_protocol::protocol::TurnRecoveryCandidateEvent;
+use codex_protocol::protocol::TurnRecoveryCandidateState;
 use codex_protocol::protocol::TurnStartedEvent;
 use codex_protocol::protocol::UserMessageEvent;
 use codex_protocol::protocol::ViewImageToolCallEvent;
@@ -240,6 +242,17 @@ pub struct ThreadHistoryBuilder {
     current_rollout_index: usize,
     next_rollout_index: usize,
     active_change_set: Option<ThreadHistoryChangeSet>,
+    recovery_candidate_states: HashMap<String, RecoveryCandidateState>,
+    recovery_request_bindings: HashMap<String, (u64, String, codex_history::TurnRecoveryReplayV1)>,
+    turn_abort_reasons: HashMap<String, codex_protocol::protocol::TurnAbortReason>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RecoveryCandidateState {
+    generation: u64,
+    state: TurnRecoveryCandidateState,
+    request_fingerprint_sha256: Option<String>,
+    replay: Option<codex_history::TurnRecoveryReplayV1>,
 }
 
 impl Default for ThreadHistoryBuilder {
@@ -257,6 +270,9 @@ impl ThreadHistoryBuilder {
             current_rollout_index: 0,
             next_rollout_index: 0,
             active_change_set: None,
+            recovery_candidate_states: HashMap::new(),
+            recovery_request_bindings: HashMap::new(),
+            turn_abort_reasons: HashMap::new(),
         }
     }
 
@@ -274,6 +290,68 @@ impl ThreadHistoryBuilder {
             .as_ref()
             .map(Turn::from)
             .or_else(|| self.turns.last().cloned())
+    }
+
+    /// Returns the exact logical tail that is eligible for recovery.
+    ///
+    /// A stale in-progress turn must carry Core's explicit durable model-turn
+    /// marker. An aborted turn additionally requires a recoverable abort reason;
+    /// UI projection intentionally renders every abort as `Interrupted`, but
+    /// that lossy presentation state is never execution authority.
+    pub fn recovery_candidate_turn_id(&self) -> Option<&str> {
+        self.recovery_candidate()
+            .map(|(turn_id, _generation, _fingerprint, _boundary)| turn_id)
+    }
+
+    /// Returns the durable recovery marker generation together with the exact
+    /// logical tail. Consumers must persist a newer Unready marker before a
+    /// different task, rollback, or fork may supersede this authority.
+    pub fn recovery_candidate(
+        &self,
+    ) -> Option<(&str, u64, &str, &codex_history::TurnRecoveryReplayV1)> {
+        let (turn_id, status) = self
+            .current_turn
+            .as_ref()
+            .map(|turn| (turn.id.as_str(), &turn.status))
+            .or_else(|| {
+                self.turns
+                    .last()
+                    .map(|turn| (turn.id.as_str(), &turn.status))
+            })?;
+        let recovery_candidate = self.recovery_candidate_states.get(turn_id)?;
+        // Recovery consumes authority by writing a strictly newer Unready
+        // generation. A maximum-generation marker can never have that durable
+        // successor and therefore must not become cold execution authority.
+        let _ = recovery_candidate.generation.checked_add(1)?;
+        let recovery_state = recovery_candidate.state;
+        match status {
+            TurnStatus::InProgress if recovery_state == TurnRecoveryCandidateState::Ready => {
+                Some((
+                    turn_id,
+                    recovery_candidate.generation,
+                    recovery_candidate.request_fingerprint_sha256.as_deref()?,
+                    recovery_candidate.replay.as_ref()?,
+                ))
+            }
+            TurnStatus::Interrupted
+                if recovery_state == TurnRecoveryCandidateState::InterruptedConfirmed
+                    && self.turn_abort_reasons.get(turn_id).is_some_and(|reason| {
+                        matches!(
+                            reason,
+                            codex_protocol::protocol::TurnAbortReason::Interrupted
+                                | codex_protocol::protocol::TurnAbortReason::BudgetLimited
+                        )
+                    }) =>
+            {
+                Some((
+                    turn_id,
+                    recovery_candidate.generation,
+                    recovery_candidate.request_fingerprint_sha256.as_deref()?,
+                    recovery_candidate.replay.as_ref()?,
+                ))
+            }
+            _ => None,
+        }
     }
 
     /// Returns the id of the active turn without materializing its items.
@@ -384,6 +462,9 @@ impl ThreadHistoryBuilder {
             EventMsg::TokenCount(_) => {}
             EventMsg::ThreadRolledBack(payload) => self.handle_thread_rollback(payload),
             EventMsg::TurnAborted(payload) => self.handle_turn_aborted(payload),
+            EventMsg::TurnRecoveryCandidate(payload) => {
+                self.handle_turn_recovery_candidate(payload)
+            }
             EventMsg::TurnStarted(payload) => self.handle_turn_started(payload),
             EventMsg::TurnComplete(payload) => self.handle_turn_complete(payload),
             _ => {}
@@ -395,6 +476,9 @@ impl ThreadHistoryBuilder {
         self.next_rollout_index += 1;
         match item {
             RolloutItem::EventMsg(event) => self.handle_event(event),
+            RolloutItem::TurnRecoveryRequestBinding(payload) => {
+                self.handle_turn_recovery_request_binding(payload)
+            }
             RolloutItem::Compacted(payload) => self.handle_compacted(payload),
             RolloutItem::ResponseItem(item) => self.handle_response_item(&item.item),
             RolloutItem::InterAgentCommunication(_)
@@ -403,6 +487,39 @@ impl ThreadHistoryBuilder {
             | RolloutItem::WorldState(_)
             | RolloutItem::SecurityRiskScore(_)
             | RolloutItem::SessionMeta(_) => {}
+        }
+    }
+
+    fn handle_turn_recovery_request_binding(
+        &mut self,
+        payload: &codex_history::TurnRecoveryRequestBinding,
+    ) {
+        if payload.replay_applied_from_generation.is_some() {
+            return;
+        }
+        let Some(replay) = payload.replay.as_ref() else {
+            return;
+        };
+        if payload.fingerprint_sha256.is_empty()
+            || replay.history_boundary.prefix_sha256.is_empty()
+            || replay.turn_context_sha256.is_empty()
+            || payload.history_boundary.as_ref() != Some(&replay.history_boundary)
+        {
+            return;
+        }
+        let should_replace = self
+            .recovery_request_bindings
+            .get(&payload.turn_id)
+            .is_none_or(|(generation, _, _)| *generation <= payload.generation);
+        if should_replace {
+            self.recovery_request_bindings.insert(
+                payload.turn_id.clone(),
+                (
+                    payload.generation,
+                    payload.fingerprint_sha256.clone(),
+                    replay.clone(),
+                ),
+            );
         }
     }
 
@@ -1210,14 +1327,26 @@ impl ThreadHistoryBuilder {
             ThreadHistoryTurnChange::from_pending_turn(turn)
         };
         if let Some(turn_id) = payload.turn_id.as_deref() {
+            if !matches!(
+                payload.reason,
+                codex_protocol::protocol::TurnAbortReason::Interrupted
+                    | codex_protocol::protocol::TurnAbortReason::BudgetLimited
+            ) {
+                self.recovery_candidate_states.remove(turn_id);
+                self.recovery_request_bindings.remove(turn_id);
+            }
             // Prefer an exact ID match so we interrupt the turn explicitly targeted by the event.
             if let Some(turn) = self.current_turn.as_mut().filter(|turn| turn.id == turn_id) {
+                self.turn_abort_reasons
+                    .insert(turn_id.to_string(), payload.reason.clone());
                 let changed_turn = apply_abort(turn);
                 self.record_changed_turn(changed_turn);
                 return;
             }
 
             if let Some(turn) = self.turns.iter_mut().find(|turn| turn.id == turn_id) {
+                self.turn_abort_reasons
+                    .insert(turn_id.to_string(), payload.reason.clone());
                 turn.status = TurnStatus::Interrupted;
                 turn.completed_at = payload.completed_at;
                 turn.duration_ms = payload.duration_ms;
@@ -1229,13 +1358,193 @@ impl ThreadHistoryBuilder {
 
         // If the event has no ID (or refers to an unknown turn), fall back to the active turn.
         if let Some(turn) = self.current_turn.as_mut() {
+            if !matches!(
+                payload.reason,
+                codex_protocol::protocol::TurnAbortReason::Interrupted
+                    | codex_protocol::protocol::TurnAbortReason::BudgetLimited
+            ) {
+                self.recovery_candidate_states.remove(&turn.id);
+                self.recovery_request_bindings.remove(&turn.id);
+            }
+            self.turn_abort_reasons
+                .insert(turn.id.clone(), payload.reason.clone());
             let changed_turn = apply_abort(turn);
             self.record_changed_turn(changed_turn);
         }
     }
 
+    fn handle_turn_recovery_candidate(&mut self, payload: &TurnRecoveryCandidateEvent) {
+        let is_current_in_progress = self.current_turn.as_ref().is_some_and(|turn| {
+            turn.id == payload.turn_id && turn.status == TurnStatus::InProgress
+        });
+        let turn_is_known = self
+            .current_turn
+            .as_ref()
+            .is_some_and(|turn| turn.id == payload.turn_id)
+            || self.turns.iter().any(|turn| turn.id == payload.turn_id);
+        let is_tail = self
+            .current_turn
+            .as_ref()
+            .is_some_and(|turn| turn.id == payload.turn_id)
+            || self
+                .turns
+                .last()
+                .is_some_and(|turn| turn.id == payload.turn_id);
+        let is_recoverable_interrupted_tail = is_tail
+            && (self.current_turn.as_ref().is_some_and(|turn| {
+                turn.id == payload.turn_id && turn.status == TurnStatus::Interrupted
+            }) || self.turns.last().is_some_and(|turn| {
+                turn.id == payload.turn_id && turn.status == TurnStatus::Interrupted
+            }))
+            && self
+                .turn_abort_reasons
+                .get(&payload.turn_id)
+                .is_some_and(|reason| {
+                    matches!(
+                        reason,
+                        codex_protocol::protocol::TurnAbortReason::Interrupted
+                            | codex_protocol::protocol::TurnAbortReason::BudgetLimited
+                    )
+                });
+        // Ready is accepted only for an in-progress tail. Unready is a
+        // fail-closed tombstone and is honored after terminal events too.
+        // InterruptedConfirmed is a separate post-terminal commit: an old
+        // Ready followed by TurnAborted is not recovery authority.
+        if !turn_is_known
+            || match payload.state {
+                TurnRecoveryCandidateState::Ready => !is_current_in_progress,
+                TurnRecoveryCandidateState::Unready => false,
+                TurnRecoveryCandidateState::InterruptedConfirmed => {
+                    !is_recoverable_interrupted_tail
+                }
+            }
+        {
+            return;
+        }
+
+        let binding = self
+            .recovery_request_bindings
+            .get(&payload.turn_id)
+            .filter(|(generation, _, _)| *generation == payload.generation)
+            .map(|(_, fingerprint, replay)| (fingerprint.clone(), replay.clone()));
+        let existing = self
+            .recovery_candidate_states
+            .get(&payload.turn_id)
+            .cloned();
+        let state = self
+            .recovery_candidate_states
+            .entry(payload.turn_id.clone())
+            .or_insert(RecoveryCandidateState {
+                generation: 0,
+                state: TurnRecoveryCandidateState::Unready,
+                request_fingerprint_sha256: None,
+                replay: None,
+            });
+        match payload.state {
+            TurnRecoveryCandidateState::Ready
+                if payload.generation == state.generation && binding.is_some() =>
+            {
+                state.state = TurnRecoveryCandidateState::Ready;
+                let (fingerprint, replay) = binding.expect("binding checked above");
+                state.request_fingerprint_sha256 = Some(fingerprint);
+                state.replay = Some(replay);
+            }
+            TurnRecoveryCandidateState::Unready
+                if payload.generation == state.generation
+                    || payload.generation == state.generation.saturating_add(1) =>
+            {
+                state.generation = payload.generation;
+                state.state = TurnRecoveryCandidateState::Unready;
+                state.request_fingerprint_sha256 = None;
+                state.replay = None;
+                self.recovery_request_bindings.remove(&payload.turn_id);
+            }
+            TurnRecoveryCandidateState::InterruptedConfirmed
+                if existing.is_some_and(|existing| {
+                    existing.generation == payload.generation
+                        && existing.state == TurnRecoveryCandidateState::Unready
+                }) && binding.is_some() =>
+            {
+                state.state = TurnRecoveryCandidateState::InterruptedConfirmed;
+                let (fingerprint, replay) = binding.expect("binding checked above");
+                state.request_fingerprint_sha256 = Some(fingerprint);
+                state.replay = Some(replay);
+            }
+            _ if payload.generation >= state.generation => {
+                // Malformed or skipped generation transitions fail closed.
+                state.generation = payload.generation;
+                state.state = TurnRecoveryCandidateState::Unready;
+                state.request_fingerprint_sha256 = None;
+                state.replay = None;
+                self.recovery_request_bindings.remove(&payload.turn_id);
+            }
+            _ => {
+                // Ignore a stale state record from an older generation.
+            }
+        }
+    }
+
     fn handle_turn_started(&mut self, payload: &TurnStartedEvent) {
+        // A same-ID attempt must earn fresh provenance after its own start;
+        // neither an old marker nor an old terminal reason may authorize it.
+        // Keep the consumed generation as a floor so the restarted attempt can
+        // publish Ready at that generation without allowing an older marker to
+        // regain authority.
+        if let Some(state) = self.recovery_candidate_states.get_mut(&payload.turn_id) {
+            state.state = TurnRecoveryCandidateState::Unready;
+            state.request_fingerprint_sha256 = None;
+            state.replay = None;
+        }
+        self.recovery_request_bindings.remove(&payload.turn_id);
+        self.turn_abort_reasons.remove(&payload.turn_id);
+        let reopened_turn = self
+            .current_turn
+            .as_mut()
+            .filter(|turn| {
+                turn.id == payload.turn_id
+                    && matches!(
+                        turn.status,
+                        TurnStatus::Interrupted | TurnStatus::InProgress
+                    )
+            })
+            .map(|turn| {
+                // Recovery reuses the durable turn identity. Keep its existing
+                // items and original start time while clearing terminal state
+                // from the interrupted attempt.
+                turn.status = TurnStatus::InProgress;
+                turn.error = None;
+                turn.completed_at = None;
+                turn.duration_ms = None;
+                turn.opened_explicitly = true;
+                if turn.started_at.is_none() {
+                    turn.started_at = payload.started_at;
+                }
+                ThreadHistoryTurnChange::from_pending_turn(turn)
+            });
+        if let Some(reopened_turn) = reopened_turn {
+            self.record_changed_turn(reopened_turn);
+            return;
+        }
+
         self.finish_current_turn();
+        let reopen_logical_tail = self.turns.last().is_some_and(|turn| {
+            turn.id == payload.turn_id
+                && matches!(
+                    turn.status,
+                    TurnStatus::Interrupted | TurnStatus::InProgress
+                )
+        });
+        if reopen_logical_tail {
+            let turn = self
+                .turns
+                .pop()
+                .expect("logical tail must exist after strict last-turn check");
+            let turn = PendingTurn::reopen(turn, payload.started_at, self.current_rollout_index);
+            self.record_changed_pending_turn(&turn);
+            self.current_turn = Some(turn);
+            return;
+        }
+
         let turn = self
             .new_turn(Some(payload.turn_id.clone()))
             .with_status(TurnStatus::InProgress)
@@ -1246,6 +1555,9 @@ impl ThreadHistoryBuilder {
     }
 
     fn handle_turn_complete(&mut self, payload: &TurnCompleteEvent) {
+        self.recovery_candidate_states.remove(&payload.turn_id);
+        self.recovery_request_bindings.remove(&payload.turn_id);
+        self.turn_abort_reasons.remove(&payload.turn_id);
         let terminal_error = payload.error.as_ref().map(|error| V2TurnError {
             message: error.message.clone(),
             codex_error_info: error.codex_error_info.clone().map(Into::into),
@@ -1324,6 +1636,12 @@ impl ThreadHistoryBuilder {
                 .map(|turn| turn.id.clone())
                 .collect()
         };
+        // Rollback is a history-generation change. Even when it exposes an
+        // older interrupted turn, a recovery token minted for the pre-rollback
+        // history must not survive into the new logical tail.
+        self.recovery_candidate_states.clear();
+        self.recovery_request_bindings.clear();
+        self.turn_abort_reasons.clear();
         self.record_removed_turn_ids(removed_turn_ids);
 
         if n >= self.turns.len() {
@@ -1571,6 +1889,21 @@ struct PendingTurn {
 }
 
 impl PendingTurn {
+    fn reopen(turn: Turn, recovery_started_at: Option<i64>, rollout_start_index: usize) -> Self {
+        Self {
+            id: turn.id,
+            items: turn.items,
+            error: None,
+            status: TurnStatus::InProgress,
+            started_at: turn.started_at.or(recovery_started_at),
+            completed_at: None,
+            duration_ms: None,
+            opened_explicitly: true,
+            saw_compaction: false,
+            rollout_start_index,
+        }
+    }
+
     fn opened_explicitly(mut self) -> Self {
         self.opened_explicitly = true;
         self
@@ -1901,6 +2234,7 @@ mod tests {
         let events = vec![RolloutItem::EventMsg(EventMsg::UserMessage(
             UserMessageEvent {
                 client_id: None,
+                payload_sha256: None,
                 message: "inspect these".into(),
                 images: Some(vec!["https://example.com/image.png".into()]),
                 image_details: vec![Some(ImageDetail::Original)],
@@ -3991,6 +4325,200 @@ mod tests {
     }
 
     #[test]
+    fn recovered_interrupted_turn_reopens_one_identity_and_keeps_user_item() {
+        let turn_id = "recovered-turn";
+        let client_id = "stable-client-id";
+        let events = vec![
+            EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: turn_id.into(),
+                trace_id: None,
+                started_at: Some(10),
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            }),
+            EventMsg::UserMessage(UserMessageEvent {
+                client_id: Some(client_id.into()),
+                message: "persist this once".into(),
+                images: None,
+                text_elements: Vec::new(),
+                local_images: Vec::new(),
+                ..Default::default()
+            }),
+            EventMsg::TurnAborted(TurnAbortedEvent {
+                turn_id: Some(turn_id.into()),
+                started_at: Some(10),
+                reason: TurnAbortReason::Interrupted,
+                completed_at: Some(20),
+                duration_ms: Some(10),
+            }),
+            EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: turn_id.into(),
+                trace_id: None,
+                started_at: Some(30),
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            }),
+            EventMsg::TurnComplete(TurnCompleteEvent {
+                turn_id: turn_id.into(),
+                started_at: Some(30),
+                last_agent_message: None,
+                error: None,
+                completed_at: Some(40),
+                duration_ms: Some(10),
+                time_to_first_token_ms: None,
+            }),
+        ];
+
+        let turns = build_turns_from_rollout_items(
+            &events
+                .into_iter()
+                .map(RolloutItem::EventMsg)
+                .collect::<Vec<_>>(),
+        );
+        assert_eq!(turns.len(), 1);
+        let turn = &turns[0];
+        assert_eq!(turn.id, turn_id);
+        assert_eq!(turn.status, TurnStatus::Completed);
+        assert_eq!(turn.started_at, Some(10));
+        assert_eq!(turn.completed_at, Some(40));
+        assert_eq!(turn.duration_ms, Some(10));
+        assert_eq!(turn.items.len(), 1);
+        assert!(matches!(
+            &turn.items[0],
+            ThreadItem::UserMessage {
+                client_id: Some(actual_client_id),
+                ..
+            } if actual_client_id == client_id
+        ));
+    }
+
+    #[test]
+    fn recovery_reopens_interrupted_logical_tail_exposed_by_rollback() {
+        let interrupted_turn_id = "rollback-recovered-turn";
+        let rolled_back_turn_id = "rolled-back-completed-turn";
+        let client_id = "rollback-stable-client-id";
+        let events = vec![
+            EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: interrupted_turn_id.into(),
+                trace_id: None,
+                started_at: Some(10),
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            }),
+            EventMsg::UserMessage(UserMessageEvent {
+                client_id: Some(client_id.into()),
+                message: "persist the original item once".into(),
+                images: None,
+                text_elements: Vec::new(),
+                local_images: Vec::new(),
+                ..Default::default()
+            }),
+            EventMsg::TurnAborted(TurnAbortedEvent {
+                turn_id: Some(interrupted_turn_id.into()),
+                started_at: Some(10),
+                reason: TurnAbortReason::Interrupted,
+                completed_at: Some(20),
+                duration_ms: Some(10),
+            }),
+            EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: rolled_back_turn_id.into(),
+                trace_id: None,
+                started_at: Some(30),
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            }),
+            EventMsg::TurnComplete(TurnCompleteEvent {
+                turn_id: rolled_back_turn_id.into(),
+                started_at: Some(30),
+                last_agent_message: None,
+                error: None,
+                completed_at: Some(40),
+                duration_ms: Some(10),
+                time_to_first_token_ms: None,
+            }),
+            EventMsg::ThreadRolledBack(ThreadRolledBackEvent { num_turns: 1 }),
+            EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: interrupted_turn_id.into(),
+                trace_id: None,
+                started_at: Some(50),
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            }),
+            EventMsg::TurnComplete(TurnCompleteEvent {
+                turn_id: interrupted_turn_id.into(),
+                started_at: Some(50),
+                last_agent_message: None,
+                error: None,
+                completed_at: Some(60),
+                duration_ms: Some(10),
+                time_to_first_token_ms: None,
+            }),
+        ];
+
+        let turns = build_turns_from_rollout_items(
+            &events
+                .into_iter()
+                .map(RolloutItem::EventMsg)
+                .collect::<Vec<_>>(),
+        );
+        assert_eq!(turns.len(), 1);
+        let turn = &turns[0];
+        assert_eq!(turn.id, interrupted_turn_id);
+        assert_eq!(turn.status, TurnStatus::Completed);
+        assert_eq!(turn.started_at, Some(10));
+        assert_eq!(turn.completed_at, Some(60));
+        assert_eq!(turn.items.len(), 1);
+        assert!(matches!(
+            &turn.items[0],
+            ThreadItem::UserMessage {
+                client_id: Some(actual_client_id),
+                ..
+            } if actual_client_id == client_id
+        ));
+    }
+
+    #[test]
+    fn repeated_start_reopens_stale_in_progress_turn_without_duplication() {
+        let turn_id = "stale-recovered-turn";
+        let events = vec![
+            EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: turn_id.into(),
+                trace_id: None,
+                started_at: Some(10),
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            }),
+            EventMsg::UserMessage(UserMessageEvent {
+                client_id: Some("stale-client-id".into()),
+                message: "persist this once".into(),
+                images: None,
+                text_elements: Vec::new(),
+                local_images: Vec::new(),
+                ..Default::default()
+            }),
+            EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: turn_id.into(),
+                trace_id: None,
+                started_at: Some(30),
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            }),
+        ];
+
+        let turns = build_turns_from_rollout_items(
+            &events
+                .into_iter()
+                .map(RolloutItem::EventMsg)
+                .collect::<Vec<_>>(),
+        );
+        assert_eq!(turns.len(), 1);
+        assert_eq!(turns[0].id, turn_id);
+        assert_eq!(turns[0].status, TurnStatus::InProgress);
+        assert_eq!(turns[0].started_at, Some(10));
+        assert_eq!(turns[0].items.len(), 1);
+    }
+
+    #[test]
     fn reconstructs_collab_resume_end_item() {
         let events = vec![
             EventMsg::UserMessage(UserMessageEvent {
@@ -4823,5 +5351,361 @@ mod tests {
                 removed_turn_ids: vec!["turn-a".into()],
             }
         );
+    }
+
+    fn recovery_test_replay(
+        history_boundary: codex_history::TurnRecoveryHistoryBoundary,
+    ) -> codex_history::TurnRecoveryReplayV1 {
+        codex_history::TurnRecoveryReplayV1 {
+            history_boundary,
+            turn_context_sha256: "test-turn-context".to_string(),
+            start: codex_history::TurnRecoveryStartState {
+                final_output_json_schema: None,
+                parent_turn_id: None,
+                root_turn_id: Some("test-root".to_string()),
+                responses_metadata_extra: Default::default(),
+            },
+            environments: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn legacy_or_replay_applied_binding_never_grants_recovery_authority() {
+        let turn_id = "non-authoritative-binding";
+        let start = || {
+            EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: turn_id.to_string(),
+                trace_id: None,
+                started_at: None,
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            })
+        };
+        let ready = |generation| {
+            EventMsg::TurnRecoveryCandidate(TurnRecoveryCandidateEvent {
+                turn_id: turn_id.to_string(),
+                generation,
+                state: TurnRecoveryCandidateState::Ready,
+            })
+        };
+        let history_boundary = codex_history::TurnRecoveryHistoryBoundary {
+            item_count: 0,
+            prefix_sha256: "history-prefix".to_string(),
+        };
+
+        let mut legacy = ThreadHistoryBuilder::new();
+        legacy.handle_event(&start());
+        legacy.handle_rollout_item(&RolloutItem::TurnRecoveryRequestBinding(
+            codex_history::TurnRecoveryRequestBinding {
+                turn_id: turn_id.to_string(),
+                generation: 0,
+                fingerprint_sha256: "legacy-fingerprint".to_string(),
+                history_boundary: Some(history_boundary.clone()),
+                replay: None,
+                replay_applied_from_generation: None,
+            },
+        ));
+        legacy.handle_event(&ready(0));
+        assert_eq!(legacy.recovery_candidate(), None);
+
+        let mut replay_applied = ThreadHistoryBuilder::new();
+        replay_applied.handle_event(&start());
+        replay_applied.handle_rollout_item(&RolloutItem::TurnRecoveryRequestBinding(
+            codex_history::TurnRecoveryRequestBinding {
+                turn_id: turn_id.to_string(),
+                generation: 1,
+                fingerprint_sha256: "replay-applied-fingerprint".to_string(),
+                history_boundary: Some(history_boundary.clone()),
+                replay: Some(recovery_test_replay(history_boundary)),
+                replay_applied_from_generation: Some(0),
+            },
+        ));
+        replay_applied.handle_event(&ready(1));
+        assert_eq!(replay_applied.recovery_candidate(), None);
+    }
+
+    #[test]
+    fn recovery_candidate_requires_fresh_model_marker_and_recoverable_terminal() {
+        fn start(turn_id: &str) -> EventMsg {
+            EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: turn_id.to_string(),
+                trace_id: None,
+                started_at: None,
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            })
+        }
+        fn marker(turn_id: &str) -> EventMsg {
+            marker_state(turn_id, 0, TurnRecoveryCandidateState::Ready)
+        }
+        fn marker_state(
+            turn_id: &str,
+            generation: u64,
+            state: TurnRecoveryCandidateState,
+        ) -> EventMsg {
+            EventMsg::TurnRecoveryCandidate(TurnRecoveryCandidateEvent {
+                turn_id: turn_id.to_string(),
+                generation,
+                state,
+            })
+        }
+        fn bound_marker(
+            builder: &mut ThreadHistoryBuilder,
+            turn_id: &str,
+            generation: u64,
+            state: TurnRecoveryCandidateState,
+        ) {
+            let history_boundary = codex_history::TurnRecoveryHistoryBoundary {
+                item_count: 0,
+                prefix_sha256: format!("{:064x}", generation.saturating_add(1)),
+            };
+            builder.handle_rollout_item(&RolloutItem::TurnRecoveryRequestBinding(
+                codex_history::TurnRecoveryRequestBinding {
+                    turn_id: turn_id.to_string(),
+                    generation,
+                    fingerprint_sha256: format!("{generation:064x}"),
+                    history_boundary: Some(history_boundary.clone()),
+                    replay: Some(recovery_test_replay(history_boundary)),
+                    replay_applied_from_generation: None,
+                },
+            ));
+            builder.handle_event(&marker_state(turn_id, generation, state));
+        }
+        fn abort(turn_id: &str, reason: codex_protocol::protocol::TurnAbortReason) -> EventMsg {
+            EventMsg::TurnAborted(TurnAbortedEvent {
+                turn_id: Some(turn_id.to_string()),
+                reason,
+                started_at: None,
+                completed_at: None,
+                duration_ms: None,
+            })
+        }
+
+        let mut no_marker = ThreadHistoryBuilder::new();
+        no_marker.handle_event(&start("no-marker"));
+        assert_eq!(no_marker.recovery_candidate_turn_id(), None);
+
+        let mut stale_same_id = ThreadHistoryBuilder::new();
+        stale_same_id.handle_event(&start("same-id"));
+        bound_marker(
+            &mut stale_same_id,
+            "same-id",
+            0,
+            TurnRecoveryCandidateState::Ready,
+        );
+        assert_eq!(stale_same_id.recovery_candidate_turn_id(), Some("same-id"));
+
+        stale_same_id.handle_event(&marker_state(
+            "same-id",
+            1,
+            TurnRecoveryCandidateState::Unready,
+        ));
+        assert_eq!(stale_same_id.recovery_candidate_turn_id(), None);
+        // A delayed Ready from generation zero cannot resurrect authority.
+        stale_same_id.handle_event(&marker("same-id"));
+        assert_eq!(stale_same_id.recovery_candidate_turn_id(), None);
+        bound_marker(
+            &mut stale_same_id,
+            "same-id",
+            1,
+            TurnRecoveryCandidateState::Ready,
+        );
+        assert_eq!(stale_same_id.recovery_candidate_turn_id(), Some("same-id"));
+        stale_same_id.handle_event(&start("same-id"));
+        assert_eq!(stale_same_id.recovery_candidate_turn_id(), None);
+        bound_marker(
+            &mut stale_same_id,
+            "same-id",
+            0,
+            TurnRecoveryCandidateState::Ready,
+        );
+        assert_eq!(stale_same_id.recovery_candidate_turn_id(), None);
+        bound_marker(
+            &mut stale_same_id,
+            "same-id",
+            1,
+            TurnRecoveryCandidateState::Ready,
+        );
+        assert_eq!(stale_same_id.recovery_candidate_turn_id(), Some("same-id"));
+
+        for reason in [
+            codex_protocol::protocol::TurnAbortReason::Interrupted,
+            codex_protocol::protocol::TurnAbortReason::BudgetLimited,
+        ] {
+            let mut builder = ThreadHistoryBuilder::new();
+            builder.handle_event(&start("recoverable"));
+            bound_marker(
+                &mut builder,
+                "recoverable",
+                0,
+                TurnRecoveryCandidateState::Ready,
+            );
+            builder.handle_event(&abort("recoverable", reason.clone()));
+            assert_eq!(
+                builder.recovery_candidate_turn_id(),
+                None,
+                "Ready plus a controlled terminal is not cold recovery authority"
+            );
+            builder.handle_event(&marker_state(
+                "recoverable",
+                0,
+                TurnRecoveryCandidateState::InterruptedConfirmed,
+            ));
+            assert_eq!(
+                builder.recovery_candidate_turn_id(),
+                None,
+                "confirmation without the pre-terminal Unready transition must fail closed"
+            );
+
+            let mut builder = ThreadHistoryBuilder::new();
+            builder.handle_event(&start("recoverable"));
+            bound_marker(
+                &mut builder,
+                "recoverable",
+                0,
+                TurnRecoveryCandidateState::Ready,
+            );
+            builder.handle_event(&marker_state(
+                "recoverable",
+                1,
+                TurnRecoveryCandidateState::Unready,
+            ));
+            builder.handle_event(&abort("recoverable", reason));
+            bound_marker(
+                &mut builder,
+                "recoverable",
+                1,
+                TurnRecoveryCandidateState::InterruptedConfirmed,
+            );
+            assert_eq!(builder.recovery_candidate_turn_id(), Some("recoverable"));
+            builder.handle_event(&marker_state(
+                "recoverable",
+                2,
+                TurnRecoveryCandidateState::Unready,
+            ));
+            assert_eq!(builder.recovery_candidate_turn_id(), None);
+        }
+
+        for reason in [
+            codex_protocol::protocol::TurnAbortReason::Replaced,
+            codex_protocol::protocol::TurnAbortReason::ReviewEnded,
+        ] {
+            let mut builder = ThreadHistoryBuilder::new();
+            builder.handle_event(&start("terminal"));
+            bound_marker(
+                &mut builder,
+                "terminal",
+                0,
+                TurnRecoveryCandidateState::Ready,
+            );
+            builder.handle_event(&abort("terminal", reason));
+            assert_eq!(builder.recovery_candidate_turn_id(), None);
+        }
+
+        let mut rolled_back = ThreadHistoryBuilder::new();
+        rolled_back.handle_event(&start("rollback"));
+        bound_marker(
+            &mut rolled_back,
+            "rollback",
+            0,
+            TurnRecoveryCandidateState::Ready,
+        );
+        rolled_back.handle_event(&EventMsg::ThreadRolledBack(ThreadRolledBackEvent {
+            num_turns: 1,
+        }));
+        assert_eq!(rolled_back.recovery_candidate_turn_id(), None);
+
+        let mut exhausted = ThreadHistoryBuilder::new();
+        exhausted.handle_event(&start("generation-exhausted"));
+        exhausted.handle_event(&marker_state(
+            "generation-exhausted",
+            u64::MAX,
+            TurnRecoveryCandidateState::Unready,
+        ));
+        bound_marker(
+            &mut exhausted,
+            "generation-exhausted",
+            u64::MAX,
+            TurnRecoveryCandidateState::Ready,
+        );
+        assert_eq!(
+            exhausted.recovery_candidate_turn_id(),
+            None,
+            "a cold marker without a strictly newer consume generation must fail closed"
+        );
+    }
+
+    #[test]
+    fn recovery_generation_floor_survives_same_id_restart() {
+        let turn_id = "same-id-recovery";
+        let start = || {
+            EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: turn_id.to_string(),
+                trace_id: None,
+                started_at: None,
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            })
+        };
+        let marker = |generation, state| {
+            EventMsg::TurnRecoveryCandidate(TurnRecoveryCandidateEvent {
+                turn_id: turn_id.to_string(),
+                generation,
+                state,
+            })
+        };
+        let bind = |builder: &mut ThreadHistoryBuilder, generation, fingerprint: &str| {
+            let history_boundary = codex_history::TurnRecoveryHistoryBoundary {
+                item_count: 0,
+                prefix_sha256: "history-prefix".to_string(),
+            };
+            builder.handle_rollout_item(&RolloutItem::TurnRecoveryRequestBinding(
+                codex_history::TurnRecoveryRequestBinding {
+                    turn_id: turn_id.to_string(),
+                    generation,
+                    fingerprint_sha256: fingerprint.to_string(),
+                    history_boundary: Some(history_boundary.clone()),
+                    replay: Some(recovery_test_replay(history_boundary)),
+                    replay_applied_from_generation: None,
+                },
+            ));
+        };
+
+        let mut builder = ThreadHistoryBuilder::new();
+        builder.handle_event(&start());
+        bind(&mut builder, 0, "ready-generation-zero");
+        builder.handle_event(&marker(0, TurnRecoveryCandidateState::Ready));
+        builder.handle_event(&marker(1, TurnRecoveryCandidateState::Unready));
+        builder.handle_event(&EventMsg::TurnAborted(TurnAbortedEvent {
+            turn_id: Some(turn_id.to_string()),
+            reason: codex_protocol::protocol::TurnAbortReason::Interrupted,
+            started_at: None,
+            completed_at: None,
+            duration_ms: None,
+        }));
+        bind(&mut builder, 1, "interrupted-generation-one");
+        builder.handle_event(&marker(1, TurnRecoveryCandidateState::InterruptedConfirmed));
+        let (candidate_turn_id, generation, fingerprint, replay) = builder
+            .recovery_candidate()
+            .expect("generation one should be recoverable");
+        assert_eq!(candidate_turn_id, turn_id);
+        assert_eq!(generation, 1);
+        assert_eq!(fingerprint, "interrupted-generation-one");
+        assert_eq!(replay.history_boundary.prefix_sha256, "history-prefix");
+
+        builder.handle_event(&marker(2, TurnRecoveryCandidateState::Unready));
+        builder.handle_event(&start());
+        bind(&mut builder, 2, "ready-generation-two");
+        builder.handle_event(&marker(2, TurnRecoveryCandidateState::Ready));
+        let (candidate_turn_id, generation, fingerprint, replay) = builder
+            .recovery_candidate()
+            .expect("generation two should be recoverable");
+        assert_eq!(candidate_turn_id, turn_id);
+        assert_eq!(generation, 2);
+        assert_eq!(fingerprint, "ready-generation-two");
+        assert_eq!(replay.history_boundary.prefix_sha256, "history-prefix");
+
+        builder.handle_event(&marker(3, TurnRecoveryCandidateState::Unready));
+        assert_eq!(builder.recovery_candidate(), None);
     }
 }

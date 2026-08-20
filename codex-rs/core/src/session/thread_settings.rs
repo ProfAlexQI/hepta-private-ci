@@ -4,6 +4,7 @@
 use super::session::Session;
 use super::session::SessionSettingsUpdate;
 use crate::config::ConstraintResult;
+use codex_features::Feature;
 use codex_protocol::protocol::CodexErrorInfo;
 use codex_protocol::protocol::ErrorEvent;
 use codex_protocol::protocol::Event;
@@ -20,17 +21,82 @@ pub(super) async fn update(
     overrides: ThreadSettingsOverrides,
 ) {
     let updates = prepare_update(session, overrides).await;
-    if let Err(error) = apply_update(session, submission_id.clone(), updates).await {
+    if let Err(error) = apply_standalone_update(session, submission_id.clone(), updates).await {
         session
             .send_event_raw(Event {
                 id: submission_id,
                 msg: EventMsg::Error(ErrorEvent {
-                    message: format!("invalid thread settings override: {error}"),
+                    message: format!("failed to apply thread settings override: {error}"),
                     codex_error_info: Some(CodexErrorInfo::BadRequest),
                 }),
             })
             .await;
     }
+}
+
+/// Serializes a standalone settings mutation with recovery publication. A
+/// cold resume rebuilds its turn context from the current thread settings, so
+/// changing those settings must first invalidate any Ready/Confirmed request
+/// that was built under the previous authority snapshot.
+#[expect(
+    clippy::await_holding_invalid_type,
+    reason = "active turn, recovery revoke, and settings mutation must remain atomic"
+)]
+async fn apply_standalone_update(
+    session: &Session,
+    submission_id: String,
+    updates: SessionSettingsUpdate,
+) -> Result<(), String> {
+    if !session.enabled(Feature::HeptaTurnRecovery) {
+        return apply_update(session, submission_id, updates)
+            .await
+            .map_err(|error| error.to_string());
+    }
+
+    session
+        .preview_settings(&updates)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let active = session.active_turn.lock().await;
+    if active
+        .as_ref()
+        .is_some_and(|active_turn| active_turn.task.is_none())
+    {
+        return Err(
+            "turn is transitioning and cannot accept a standalone settings update".to_string(),
+        );
+    }
+    let consumed_recovery = if let Some(task) = active
+        .as_ref()
+        .and_then(|active_turn| active_turn.task.as_ref())
+        && let Some(authority) = task.recovery_authority.as_ref()
+    {
+        session
+            .ensure_turn_recovery_unready(&task.turn_context.sub_id, authority.as_ref())
+            .await
+            .map_err(|error| error.to_string())?;
+        false
+    } else if active.is_none() {
+        session
+            .consume_recovery_candidate_for_mutation()
+            .await
+            .map_err(|error| error.to_string())?
+    } else {
+        false
+    };
+
+    let result = session
+        .update_settings(updates)
+        .await
+        .map_err(|error| error.to_string());
+    if consumed_recovery {
+        session.settle_consumed_recovery_status();
+    }
+    drop(active);
+    result?;
+    emit_applied(session, submission_id).await;
+    Ok(())
 }
 
 /// Converts protocol overrides into the internal settings update shape.
@@ -112,4 +178,137 @@ pub(super) async fn applied_event(session: &Session) -> EventMsg {
     EventMsg::ThreadSettingsApplied(ThreadSettingsAppliedEvent {
         thread_settings: snapshot.into_thread_settings_snapshot(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session::session::RecoveryCandidate;
+    use crate::session::tests::attach_in_memory_thread_store;
+    use crate::session::tests::make_session_and_context_with_rx;
+    use crate::state::ActiveTurn;
+    use codex_history::RolloutItem;
+    use codex_protocol::protocol::AgentStatus;
+    use codex_protocol::protocol::TurnRecoveryCandidateState;
+    use std::sync::Arc;
+    use std::sync::atomic::Ordering;
+    use tokio::time::Duration;
+    use tokio::time::timeout;
+
+    #[tokio::test]
+    async fn standalone_update_rejects_taskless_transition_reservation() {
+        let (mut session, _turn_context, rx) = make_session_and_context_with_rx().await;
+        Arc::get_mut(&mut session)
+            .expect("fresh session should be uniquely owned")
+            .features
+            .enable(Feature::HeptaTurnRecovery)
+            .expect("enable recovery for settings test");
+        *session.active_turn.lock().await = Some(ActiveTurn::default());
+        let model_before = session.thread_config_snapshot().await.model;
+
+        update(
+            &session,
+            "settings-during-transition".to_string(),
+            ThreadSettingsOverrides {
+                model: Some("gpt-5.5".to_string()),
+                ..Default::default()
+            },
+        )
+        .await;
+
+        assert_eq!(session.thread_config_snapshot().await.model, model_before);
+        let event = timeout(Duration::from_secs(2), async {
+            loop {
+                let event = rx.recv().await.expect("settings result event");
+                if event.id == "settings-during-transition" {
+                    return event;
+                }
+            }
+        })
+        .await
+        .expect("settings rejection should be observable");
+        assert!(matches!(
+            event.msg,
+            EventMsg::Error(ErrorEvent { message, .. })
+                if message.contains("turn is transitioning")
+        ));
+    }
+
+    #[tokio::test]
+    async fn standalone_update_consumes_idle_recovery_before_apply() {
+        let (mut session, _turn_context, _rx) = make_session_and_context_with_rx().await;
+        let session_mut = Arc::get_mut(&mut session).expect("fresh session should be unique");
+        session_mut
+            .features
+            .enable(Feature::HeptaTurnRecovery)
+            .expect("enable recovery for settings test");
+        attach_in_memory_thread_store(session_mut).await;
+        let turn_id = "interrupted-settings-candidate".to_string();
+        let marker_generation = 7;
+        let epoch = session.turn_epoch.load(Ordering::Acquire);
+        let history_boundary = session
+            .current_recovery_history_boundary()
+            .await
+            .expect("history boundary");
+        *session
+            .recovery_candidate
+            .lock()
+            .expect("recovery candidate mutex poisoned") = Some(RecoveryCandidate {
+            turn_id: turn_id.clone(),
+            marker_generation,
+            epoch,
+            persistence_failure_generation: session.rollout_persistence_failure_generation(),
+            request_fingerprint_sha256: "thread-settings-test-request-fingerprint".to_string(),
+            replay: codex_history::TurnRecoveryReplayV1 {
+                history_boundary,
+                turn_context_sha256: "thread-settings-test-context".to_string(),
+                start: codex_history::TurnRecoveryStartState {
+                    final_output_json_schema: None,
+                    parent_turn_id: None,
+                    root_turn_id: Some(turn_id.clone()),
+                    responses_metadata_extra: Default::default(),
+                },
+                environments: Vec::new(),
+            },
+        });
+        session.agent_status.send_replace(AgentStatus::Interrupted);
+
+        update(
+            &session,
+            "settings-after-interrupt".to_string(),
+            ThreadSettingsOverrides {
+                model: Some("gpt-5.5".to_string()),
+                ..Default::default()
+            },
+        )
+        .await;
+
+        assert_eq!(session.thread_config_snapshot().await.model, "gpt-5.5");
+        assert!(
+            session
+                .recovery_candidate
+                .lock()
+                .expect("recovery candidate mutex poisoned")
+                .is_none()
+        );
+        assert_eq!(
+            *session.agent_status.borrow(),
+            AgentStatus::Completed(/*last_agent_message*/ None)
+        );
+        let persisted = session
+            .live_thread()
+            .expect("test session has persistence")
+            .load_history(/*include_archived*/ true)
+            .await
+            .expect("load settings recovery reset");
+        assert!(persisted.items.iter().any(|item| {
+            matches!(
+                item,
+                RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(marker))
+                    if marker.turn_id == turn_id
+                        && marker.generation == marker_generation + 1
+                        && marker.state == TurnRecoveryCandidateState::Unready
+            )
+        }));
+    }
 }

@@ -3,17 +3,35 @@ use codex_protocol::models::ActivePermissionProfile;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
 use codex_rollout::RolloutItem;
+use codex_utils_absolute_path::AbsolutePathBuf;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct PersistedResumeSettings {
     pub(super) approval_policy: AskForApproval,
     pub(super) approvals_reviewer: Option<ApprovalsReviewer>,
     pub(super) active_permission_profile: Option<ActivePermissionProfile>,
+    pub(super) runtime_cwd: Option<AbsolutePathBuf>,
+    pub(super) runtime_workspace_roots: Option<Vec<AbsolutePathBuf>>,
 }
 
 pub(super) fn latest_persisted_resume_settings(
     history: &[RolloutItem],
 ) -> Option<PersistedResumeSettings> {
+    // ThreadSettingsApplied snapshots do not carry the primary runtime cwd or
+    // workspace roots. Fold both from the same latest turn context so a later
+    // settings-only update cannot erase or mix the environment that produced
+    // the persisted model request. `None` roots on TurnContextItem means the
+    // effective list was empty, which remains distinct from no turn context.
+    let runtime_environment = history.iter().rev().find_map(|item| match item {
+        RolloutItem::TurnContext(turn_context) => Some((
+            turn_context.cwd.clone(),
+            turn_context.workspace_roots.clone().unwrap_or_default(),
+        )),
+        _ => None,
+    });
+    let runtime_cwd = runtime_environment.as_ref().map(|(cwd, _)| cwd.clone());
+    let runtime_workspace_roots = runtime_environment.map(|(_, roots)| roots);
+
     history
         .iter()
         .enumerate()
@@ -31,6 +49,8 @@ pub(super) fn latest_persisted_resume_settings(
                     })
                 }),
                 active_permission_profile: turn_context.active_permission_profile.clone(),
+                runtime_cwd: runtime_cwd.clone(),
+                runtime_workspace_roots: runtime_workspace_roots.clone(),
             }),
             RolloutItem::EventMsg(EventMsg::ThreadSettingsApplied(event)) => {
                 Some(PersistedResumeSettings {
@@ -40,6 +60,8 @@ pub(super) fn latest_persisted_resume_settings(
                         .thread_settings
                         .active_permission_profile
                         .clone(),
+                    runtime_cwd: runtime_cwd.clone(),
+                    runtime_workspace_roots: runtime_workspace_roots.clone(),
                 })
             }
             _ => None,

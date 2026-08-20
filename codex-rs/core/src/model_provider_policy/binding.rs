@@ -7,6 +7,7 @@ use codex_extension_api::ModelProviderPolicyError;
 use codex_extension_api::ModelProviderRequestKind;
 use codex_extension_api::ModelProviderSha256Digest;
 use codex_extension_api::ModelProviderTransport;
+use http::HeaderMap;
 use serde::Serialize;
 use serde_json::Value;
 use sha2::Digest as _;
@@ -16,6 +17,7 @@ use uuid::Uuid;
 use crate::config::Config;
 
 use super::ephemeral_input::EphemeralModelInputBinding;
+use super::transport::ProviderRoutingHint;
 
 /// Extension scopes and host identities required to bind one provider send.
 ///
@@ -48,6 +50,7 @@ pub(crate) struct ModelProviderAttemptEnvelope {
     model: String,
     transport: ModelProviderTransport,
     endpoint_sha256: ModelProviderSha256Digest,
+    turn_recovery_endpoint_sha256: Result<ModelProviderSha256Digest, ModelProviderPolicyError>,
     base_logical_request_sha256: ModelProviderSha256Digest,
     previous_response_id_sha256: Option<ModelProviderSha256Digest>,
     generate: bool,
@@ -135,6 +138,7 @@ impl ModelProviderAttemptEnvelope {
             model: self.model,
             transport: self.transport,
             endpoint_sha256: self.endpoint_sha256,
+            turn_recovery_endpoint_sha256: self.turn_recovery_endpoint_sha256,
             logical_request_sha256,
             wire_semantic_sha256,
             ephemeral_input_sha256,
@@ -163,6 +167,7 @@ pub(crate) struct PreparedModelProviderPolicy {
     model: String,
     transport: ModelProviderTransport,
     endpoint_sha256: ModelProviderSha256Digest,
+    turn_recovery_endpoint_sha256: Result<ModelProviderSha256Digest, ModelProviderPolicyError>,
     logical_request_sha256: ModelProviderSha256Digest,
     wire_semantic_sha256: ModelProviderSha256Digest,
     ephemeral_input_sha256: Option<ModelProviderSha256Digest>,
@@ -172,6 +177,56 @@ pub(crate) struct PreparedModelProviderPolicy {
 }
 
 impl PreparedModelProviderPolicy {
+    /// Retry- and transport-stable semantic identity used to authorize cold
+    /// turn recovery. This deliberately excludes attempt IDs, auth material,
+    /// trace/timing metadata, endpoint selection, and incremental transport
+    /// framing while retaining the finalized effective logical request (which
+    /// includes any ephemeral Cognitive/Federation attachment). The provider
+    /// deployment identity normalizes HTTP/WebSocket schemes while binding the
+    /// secret-free origin/path/query/header selectors that can change the
+    /// physical model deployment.
+    pub(crate) fn turn_recovery_fingerprint<C: Serialize>(
+        &self,
+        provider_headers: &HeaderMap,
+        beta_features_header: Option<&str>,
+        compatibility_projection: &C,
+        routing_hint: Option<&ProviderRoutingHint>,
+        responses_lite: bool,
+    ) -> Result<ModelProviderSha256Digest, ModelProviderPolicyError> {
+        let endpoint_sha256 = self
+            .turn_recovery_endpoint_sha256
+            .as_ref()
+            .map_err(Clone::clone)?;
+        let headers_sha256 = canonical_turn_recovery_headers_sha256(provider_headers)?;
+        let compatibility_sha256 = canonical_sha256(compatibility_projection)?;
+        digest_parts_sha256([
+            "turn-recovery-request:v3",
+            self.thread_id.as_str(),
+            self.turn_id.as_str(),
+            request_kind_name(self.request_kind),
+            self.provider_id.as_str(),
+            endpoint_sha256.as_str(),
+            headers_sha256.as_str(),
+            beta_features_header.map_or("beta-absent", |_| "beta-present"),
+            beta_features_header.unwrap_or_default(),
+            compatibility_sha256.as_str(),
+            routing_hint.map_or("routing-absent", |_| "routing-present"),
+            routing_hint.map_or("", ProviderRoutingHint::as_str),
+            if responses_lite {
+                "responses-lite"
+            } else {
+                "responses-standard"
+            },
+            self.model.as_str(),
+            self.logical_request_sha256.as_str(),
+            if self.generate {
+                "generate"
+            } else {
+                "no-generate"
+            },
+        ])
+    }
+
     pub(crate) fn invocation_input<'a>(
         &'a self,
         context: &'a ModelProviderPolicyContext<'a>,
@@ -250,6 +305,7 @@ pub(crate) fn prepare_model_provider_attempt<L: Serialize>(
     let provider_config_sha256 =
         digest_parts_sha256(["model-provider-logical-selector:v1", provider_id])?;
     let endpoint_sha256 = canonical_endpoint_sha256(endpoint)?;
+    let turn_recovery_endpoint_sha256 = canonical_turn_recovery_endpoint_sha256(endpoint);
     let base_logical_request_sha256 = canonical_sha256(base_logical_request)?;
     let previous_response_id_sha256 = previous_response_id
         .map(|value| bytes_sha256(value.as_bytes()))
@@ -279,6 +335,7 @@ pub(crate) fn prepare_model_provider_attempt<L: Serialize>(
         model: model.to_string(),
         transport,
         endpoint_sha256,
+        turn_recovery_endpoint_sha256,
         base_logical_request_sha256,
         previous_response_id_sha256,
         generate,
@@ -413,6 +470,211 @@ fn canonical_endpoint_sha256(
         path: parsed.path(),
         query_names,
     })
+}
+
+/// Builds the deployment portion of a cold-recovery fingerprint.
+///
+/// HTTP and WebSocket schemes are normalized because they are alternate
+/// transports to the same deployment. Query values are admitted only for a
+/// small, explicit set of behavior selectors; credential values are replaced
+/// by a presence marker, and unknown query parameters fail cold recovery
+/// rather than hashing material that could be secret.
+fn canonical_turn_recovery_endpoint_sha256(
+    endpoint: &str,
+) -> Result<ModelProviderSha256Digest, ModelProviderPolicyError> {
+    #[derive(Serialize)]
+    struct CanonicalRecoveryEndpoint {
+        schema: &'static str,
+        scheme_family: &'static str,
+        host: Option<String>,
+        port: Option<u16>,
+        path: String,
+        query: Vec<(String, String)>,
+    }
+
+    let parsed = url::Url::parse(endpoint).map_err(|error| {
+        ModelProviderPolicyError::new(
+            "turn_recovery_invalid_provider_endpoint",
+            format!("failed to parse provider endpoint URL: {error}"),
+        )
+    })?;
+    let scheme_family = match parsed.scheme() {
+        "http" | "ws" => "http",
+        "https" | "wss" => "https",
+        scheme => {
+            return Err(ModelProviderPolicyError::new(
+                "turn_recovery_unsupported_provider_scheme",
+                format!("provider endpoint scheme `{scheme}` has no stable recovery identity"),
+            ));
+        }
+    };
+    let mut query = Vec::new();
+    for (name, value) in parsed.query_pairs() {
+        let name = name.to_ascii_lowercase();
+        let value = if is_provider_credential_selector(name.as_str()) {
+            "credential-present".to_string()
+        } else if is_provider_query_behavior_selector(name.as_str()) {
+            value.into_owned()
+        } else {
+            return Err(ModelProviderPolicyError::new(
+                "turn_recovery_ambiguous_provider_query",
+                format!(
+                    "provider query parameter `{name}` is not classified as a secret-free deployment selector"
+                ),
+            ));
+        };
+        query.push((name, value));
+    }
+    query.sort();
+
+    canonical_sha256(&CanonicalRecoveryEndpoint {
+        schema: "turn-recovery-provider-endpoint:v1",
+        scheme_family,
+        host: parsed.host_str().map(|host| host.to_ascii_lowercase()),
+        port: parsed.port_or_known_default(),
+        path: parsed.path().to_string(),
+        query,
+    })
+}
+
+/// Binds resolved, behavior-selecting provider headers without digesting
+/// credentials. Unknown configured headers fail cold recovery because their
+/// values could be either secrets or deployment selectors.
+fn canonical_turn_recovery_headers_sha256(
+    headers: &HeaderMap,
+) -> Result<ModelProviderSha256Digest, ModelProviderPolicyError> {
+    #[derive(Serialize)]
+    struct CanonicalRecoveryHeaders {
+        schema: &'static str,
+        selectors: Vec<(String, String)>,
+    }
+
+    let mut selectors = Vec::new();
+    for (name, value) in headers {
+        let name = name.as_str().to_ascii_lowercase();
+        if is_provider_routine_header(name.as_str()) {
+            continue;
+        }
+        let value = if is_provider_credential_selector(name.as_str()) {
+            "credential-present".to_string()
+        } else if is_provider_header_behavior_selector(name.as_str()) {
+            value
+                .to_str()
+                .map_err(|error| {
+                    ModelProviderPolicyError::new(
+                        "turn_recovery_invalid_provider_header",
+                        format!("provider header `{name}` is not valid text: {error}"),
+                    )
+                })?
+                .to_string()
+        } else {
+            return Err(ModelProviderPolicyError::new(
+                "turn_recovery_ambiguous_provider_header",
+                format!(
+                    "provider header `{name}` is not classified as a secret-free deployment selector"
+                ),
+            ));
+        };
+        selectors.push((name, value));
+    }
+    selectors.sort();
+    canonical_sha256(&CanonicalRecoveryHeaders {
+        schema: "turn-recovery-provider-headers:v1",
+        selectors,
+    })
+}
+
+fn is_provider_credential_selector(name: &str) -> bool {
+    let normalized = name.replace(['-', '_'], "");
+    matches!(
+        normalized.as_str(),
+        "authorization"
+            | "proxyauthorization"
+            | "apikey"
+            | "xapikey"
+            | "key"
+            | "token"
+            | "accesstoken"
+            | "securitytoken"
+            | "xamzsecuritytoken"
+            | "credential"
+            | "password"
+            | "secret"
+            | "sig"
+            | "signature"
+            | "xamzsignature"
+            | "cookie"
+            | "setcookie"
+    ) || normalized.contains("bearertoken")
+        || normalized.contains("clientsecret")
+}
+
+fn is_provider_query_behavior_selector(name: &str) -> bool {
+    matches!(
+        name,
+        "api-version"
+            | "api_version"
+            | "version"
+            | "deployment"
+            | "deployment-id"
+            | "deployment_id"
+            | "model"
+            | "region"
+            | "location"
+            | "resource"
+            | "resource-name"
+            | "resource_name"
+            | "tenant"
+            | "tenant-id"
+            | "tenant_id"
+            | "project"
+            | "organization"
+    )
+}
+
+fn is_provider_header_behavior_selector(name: &str) -> bool {
+    matches!(
+        name,
+        "openai-organization"
+            | "openai-project"
+            | "x-openai-organization"
+            | "x-openai-project"
+            | "azure-openai-deployment"
+            | "x-azure-openai-deployment"
+            | "x-goog-user-project"
+            | "x-openai-region"
+            | "x-region"
+            | "x-tenant-id"
+            | "x-deployment-id"
+            | "openai-beta"
+            | "x-openai-beta"
+            | "version"
+            | "anthropic-version"
+            | "anthropic-beta"
+            | "x-amzn-bedrock-guardrailidentifier"
+            | "x-amzn-bedrock-guardrailversion"
+            | "x-amzn-bedrock-performanceconfig-latency"
+            | "x-amzn-bedrock-trace"
+            | "x-amzn-bedrock-guardrailtrace"
+    )
+}
+
+fn is_provider_routine_header(name: &str) -> bool {
+    matches!(
+        name,
+        "user-agent"
+            | "accept"
+            | "accept-encoding"
+            | "content-type"
+            | "content-length"
+            | "connection"
+            | "host"
+            | "cache-control"
+            | "pragma"
+            | "traceparent"
+            | "tracestate"
+            | "x-amz-bedrock-mantle-client-agent"
+    ) || name.starts_with("x-stainless-")
 }
 
 const fn request_kind_name(kind: ModelProviderRequestKind) -> &'static str {

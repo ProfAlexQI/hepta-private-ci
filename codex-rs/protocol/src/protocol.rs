@@ -576,6 +576,7 @@ pub enum Op {
 
     /// Resume an interrupted regular turn.
     RecoverTurn {
+        expected_epoch: u64,
         thread_settings: ThreadSettingsOverrides,
         reply: oneshot::Sender<CodexResult<TurnInputSubmission>>,
     },
@@ -1332,6 +1333,14 @@ pub enum EventMsg {
     #[serde(rename = "task_started", alias = "turn_started")]
     TurnStarted(TurnStartedEvent),
 
+    /// Durable provenance that identifies a turn as a recoverable model turn.
+    ///
+    /// Core persists this marker directly to the rollout before a regular model
+    /// turn can sample. Auxiliary tasks such as review, compaction, and
+    /// standalone shell commands must not emit it. Older rollouts without the
+    /// marker fail closed for cold recovery.
+    TurnRecoveryCandidate(TurnRecoveryCandidateEvent),
+
     /// Persistent thread-settings overrides from the correlated submission have
     /// been applied to the session configuration.
     ThreadSettingsApplied(ThreadSettingsAppliedEvent),
@@ -2042,6 +2051,24 @@ pub struct TurnStartedEvent {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+pub struct TurnRecoveryCandidateEvent {
+    pub turn_id: String,
+    #[serde(default)]
+    pub generation: u64,
+    #[serde(default)]
+    pub state: TurnRecoveryCandidateState,
+}
+
+#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnRecoveryCandidateState {
+    #[default]
+    Ready,
+    Unready,
+    InterruptedConfirmed,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
 pub struct ThreadSettingsAppliedEvent {
     pub thread_settings: ThreadSettingsSnapshot,
 }
@@ -2346,6 +2373,13 @@ pub struct AgentMessageEvent {
 pub struct UserMessageEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_id: Option<String>,
+    /// Versioned canonical digest of the complete ordered `UserInput` payload.
+    ///
+    /// Older rollout records omit this field and remain readable, but their
+    /// lossy legacy projection cannot authorize an exactly-once queue join.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub payload_sha256: Option<String>,
     pub message: String,
     /// Image URLs sourced from `UserInput::Image`. These are safe
     /// to replay in legacy UI history events and correspond to images sent to

@@ -307,6 +307,24 @@ impl TurnMetadataState {
             filter_extra_metadata(responsesapi_client_metadata);
     }
 
+    pub(crate) fn apply_recovery_start_state(&self, start: &codex_history::TurnRecoveryStartState) {
+        if let Some(parent_turn_id) = start.parent_turn_id.clone() {
+            self.set_parent_turn_id(parent_turn_id);
+        }
+        if let Some(root_turn_id) = start.root_turn_id.clone() {
+            self.set_root_turn_id(root_turn_id);
+        }
+        *self
+            .responsesapi_client_metadata
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            start.responses_metadata_extra.clone();
+        self.responses_api_metadata
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear();
+    }
+
     pub(crate) fn set_responses_api_metadata(
         &self,
         responses_api_metadata: BTreeMap<String, String>,

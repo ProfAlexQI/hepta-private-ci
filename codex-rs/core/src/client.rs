@@ -23,6 +23,7 @@
 //! WebSocket prewarm is treated as the first websocket connection attempt for a turn. If it
 //! fails, normal stream retry/fallback logic handles recovery on the same turn.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
@@ -173,6 +174,22 @@ use codex_response_debug_context::extract_response_debug_context;
 use codex_response_debug_context::extract_response_debug_context_from_api_error;
 use codex_response_debug_context::telemetry_api_error_message;
 use codex_response_debug_context::telemetry_transport_error_message;
+
+/// Host-owned gate invoked after the effective provider request is finalized
+/// and immediately before a physical turn send may be attempted.
+pub(crate) trait TurnRecoveryRequestCheckpoint: Send + Sync {
+    fn authorize<'a>(&'a self, fingerprint_sha256: &'a str) -> BoxFuture<'a, Result<()>>;
+
+    /// Called when the provider configuration cannot be reduced to a
+    /// secret-free, exact recovery selector. A live request may still be sent
+    /// after recovery is durably disabled for this generation; a cold recovery
+    /// must reject the send.
+    fn unavailable<'a>(
+        &'a self,
+        reason_code: &'a str,
+        detail: &'a str,
+    ) -> BoxFuture<'a, Result<()>>;
+}
 
 pub const OPENAI_BETA_HEADER: &str = "OpenAI-Beta";
 pub const X_CODEX_INSTALLATION_ID_HEADER: &str = "x-codex-installation-id";
@@ -343,6 +360,64 @@ struct ConnectedWebsocket {
     /// Routing hint actually used for this connection's opening handshake.
     /// This remains sticky even if a later request desires a different hint.
     actual_routing_hint: Option<ProviderRoutingHint>,
+    /// Exact provider setup used to open this socket. Secret-bearing values
+    /// stay in memory and are never rendered by Debug/logging.
+    identity: WebsocketConnectionIdentity,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct WebsocketConnectionIdentity {
+    provider_name: String,
+    base_url: String,
+    query_params: BTreeMap<String, String>,
+    headers: ApiHeaderMap,
+    beta_features_header: Option<String>,
+    compatibility_projection_json: Vec<u8>,
+}
+
+impl WebsocketConnectionIdentity {
+    fn from_provider(
+        provider: &ApiProvider,
+        beta_features_header: Option<&str>,
+        responses_metadata: &CodexResponsesMetadata,
+    ) -> std::result::Result<Self, ApiError> {
+        let compatibility_projection_json =
+            serde_json::to_vec(&responses_metadata.turn_recovery_compatibility_projection())
+                .map_err(|error| {
+                    ApiError::Stream(format!(
+                        "failed to bind websocket compatibility identity: {error}"
+                    ))
+                })?;
+        Ok(Self {
+            provider_name: provider.name.clone(),
+            base_url: provider.base_url.clone(),
+            query_params: provider
+                .query_params
+                .clone()
+                .unwrap_or_default()
+                .into_iter()
+                .collect(),
+            headers: provider.headers.clone(),
+            beta_features_header: beta_features_header.map(str::to_string),
+            compatibility_projection_json,
+        })
+    }
+}
+
+impl std::fmt::Debug for WebsocketConnectionIdentity {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("WebsocketConnectionIdentity")
+            .field("provider_name", &self.provider_name)
+            .field("base_url", &"[redacted]")
+            .field("query_param_count", &self.query_params.len())
+            .field("header_count", &self.headers.len())
+            .field(
+                "beta_features_present",
+                &self.beta_features_header.is_some(),
+            )
+            .finish()
+    }
 }
 
 struct AdmittedProviderAttempt {
@@ -657,8 +732,17 @@ impl ModelClient {
             return Ok(Vec::new());
         }
         let client_setup = self.current_client_setup().await?;
-        let transport =
-            self.build_api_transport(&client_setup.api_provider, RESPONSES_COMPACT_ENDPOINT)?;
+        let active_provider_policy_context = provider_policy_context.filter(|context| {
+            has_active_model_provider_policy(context.registry, context.thread_store)
+        });
+        let transport = if active_provider_policy_context.is_some() {
+            self.build_sensitive_api_transport(
+                &client_setup.api_provider,
+                RESPONSES_COMPACT_ENDPOINT,
+            )?
+        } else {
+            self.build_api_transport(&client_setup.api_provider, RESPONSES_COMPACT_ENDPOINT)?
+        };
         let request_telemetry = Self::build_request_telemetry(
             session_telemetry,
             AuthRequestTelemetryContext::new(
@@ -732,9 +816,6 @@ impl ModelClient {
             .api_provider
             .stream_idle_timeout
             .saturating_mul(COMPACT_REQUEST_TIMEOUT_IDLE_MULTIPLIER);
-        let active_provider_policy_context = provider_policy_context.filter(|context| {
-            has_active_model_provider_policy(context.registry, context.thread_store)
-        });
         let retry_config = client_setup.api_provider.retry.clone();
         let provider_id = client_setup.api_provider.name.clone();
         let endpoint = client_setup
@@ -1286,6 +1367,11 @@ impl ModelClient {
         auth_context: AuthRequestTelemetryContext,
         request_route_telemetry: RequestRouteTelemetry,
     ) -> std::result::Result<ConnectedWebsocket, ApiError> {
+        let identity = WebsocketConnectionIdentity::from_provider(
+            &api_provider,
+            self.state.beta_features_header.as_deref(),
+            responses_metadata,
+        )?;
         let headers = self.build_websocket_headers(responses_metadata).await;
         let websocket_telemetry = ModelClientSession::build_websocket_telemetry(
             session_telemetry,
@@ -1370,6 +1456,7 @@ impl ModelClient {
             Ok(ConnectedWebsocket {
                 connection,
                 actual_routing_hint,
+                identity,
             })
         })
     }
@@ -1619,8 +1706,13 @@ impl ModelClientSession {
             auth_context,
             request_route_telemetry,
         } = params;
+        let desired_identity = WebsocketConnectionIdentity::from_provider(
+            &api_provider,
+            self.client.state.beta_features_header.as_deref(),
+            responses_metadata,
+        )?;
         let needs_new = match self.websocket_session.connection.as_ref() {
-            Some(conn) => conn.connection.is_closed().await,
+            Some(conn) => conn.identity != desired_identity || conn.connection.is_closed().await,
             None => true,
         };
 
@@ -1703,6 +1795,7 @@ impl ModelClientSession {
         responses_metadata: &CodexResponsesMetadata,
         inference_trace: &InferenceTraceContext,
         provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
+        turn_recovery_checkpoint: Option<&dyn TurnRecoveryRequestCheckpoint>,
     ) -> Result<ResponseStream> {
         let auth_manager = self.client.state.provider.auth_manager();
         let mut auth_recovery = auth_manager
@@ -1714,9 +1807,24 @@ impl ModelClientSession {
         loop {
             let client_setup = self.client.current_client_setup().await?;
             let retry_config = client_setup.api_provider.retry.clone();
-            let mut transport = self
-                .client
-                .build_api_transport(&client_setup.api_provider, RESPONSES_ENDPOINT)?;
+            let active_provider_policies = provider_policy_context.map(|context| {
+                active_model_provider_policies(context.registry, context.thread_store)
+            });
+            let exact_physical_endpoint_required = turn_recovery_checkpoint.is_some()
+                || active_provider_policies
+                    .as_ref()
+                    .is_some_and(|active| !active.is_empty());
+            // A redirect is a second physical endpoint and therefore needs a
+            // fresh deployment fingerprint/policy lease. Until host-owned
+            // redirect re-authorization exists, governed and recoverable sends
+            // use the no-redirect transport and fail closed on 3xx.
+            let mut transport = if exact_physical_endpoint_required {
+                self.client
+                    .build_sensitive_api_transport(&client_setup.api_provider, RESPONSES_ENDPOINT)?
+            } else {
+                self.client
+                    .build_api_transport(&client_setup.api_provider, RESPONSES_ENDPOINT)?
+            };
             let request_auth_context = AuthRequestTelemetryContext::new(
                 client_setup.auth.as_ref().map(CodexAuth::auth_mode),
                 client_setup.api_auth.as_ref(),
@@ -1755,14 +1863,10 @@ impl ModelClientSession {
                 session_telemetry_for_request(session_telemetry, &request);
             let mut effective_request = None;
             let mut has_ephemeral_input = false;
+            let mut recovery_checkpoint_authorized = false;
             let mut admitted_provider_attempt = if let Some((context, active_policies)) =
                 provider_policy_context
-                    .map(|context| {
-                        (
-                            context,
-                            active_model_provider_policies(context.registry, context.thread_store),
-                        )
-                    })
+                    .zip(active_provider_policies)
                     .filter(|(_, active)| !active.is_empty())
             {
                 let routing_hint = ProviderRoutingHint::from_header(
@@ -1828,6 +1932,24 @@ impl ModelClientSession {
                         ephemeral_binding,
                     )
                     .map_err(model_provider_policy_error)?;
+                if let Some(checkpoint) = turn_recovery_checkpoint {
+                    let compatibility = responses_metadata.turn_recovery_compatibility_projection();
+                    match prepared.turn_recovery_fingerprint(
+                        &client_setup.api_provider.headers,
+                        self.client.state.beta_features_header.as_deref(),
+                        &compatibility,
+                        routing_hint.as_ref(),
+                        responses_lite,
+                    ) {
+                        Ok(fingerprint) => checkpoint.authorize(fingerprint.as_str()).await?,
+                        Err(error) => {
+                            checkpoint
+                                .unavailable(error.reason_code(), error.detail())
+                                .await?
+                        }
+                    }
+                    recovery_checkpoint_authorized = true;
+                }
                 match begin_active_model_provider_policy(
                     active_policies,
                     prepared.invocation_input(context),
@@ -1854,6 +1976,52 @@ impl ModelClientSession {
             } else {
                 None
             };
+            if !recovery_checkpoint_authorized
+                && let (Some(context), Some(checkpoint)) =
+                    (provider_policy_context, turn_recovery_checkpoint)
+            {
+                let routing_hint = ProviderRoutingHint::from_header(
+                    options.extra_headers.get(X_CODEX_ROUTING_HINT_HEADER),
+                )
+                .map_err(model_provider_policy_error)?;
+                let responses_lite = responses_lite_from_http_header(
+                    options
+                        .extra_headers
+                        .get(X_OPENAI_INTERNAL_CODEX_RESPONSES_LITE_HEADER),
+                )
+                .map_err(model_provider_policy_error)?;
+                let logical_request = logical_responses_request(&request);
+                let wire_semantic =
+                    ProviderWireSemantic::new(&request, routing_hint.as_ref(), responses_lite);
+                let endpoint = client_setup.api_provider.url_for_path(RESPONSES_ENDPOINT);
+                let prepared = prepare_model_provider_policy(
+                    context,
+                    client_setup.api_provider.name.as_str(),
+                    request.model.as_str(),
+                    ModelProviderTransport::Http,
+                    endpoint.as_str(),
+                    &logical_request,
+                    &wire_semantic,
+                    /*previous_response_id*/ None,
+                    /*generate*/ true,
+                )
+                .map_err(model_provider_policy_error)?;
+                let compatibility = responses_metadata.turn_recovery_compatibility_projection();
+                match prepared.turn_recovery_fingerprint(
+                    &client_setup.api_provider.headers,
+                    self.client.state.beta_features_header.as_deref(),
+                    &compatibility,
+                    routing_hint.as_ref(),
+                    responses_lite,
+                ) {
+                    Ok(fingerprint) => checkpoint.authorize(fingerprint.as_str()).await?,
+                    Err(error) => {
+                        checkpoint
+                            .unavailable(error.reason_code(), error.detail())
+                            .await?
+                    }
+                }
+            }
             let inference_trace_attempt = inference_trace.start_attempt();
             inference_trace_attempt.add_request_headers(&mut options.extra_headers);
             inference_trace_attempt.record_started(&request);
@@ -2021,6 +2189,7 @@ impl ModelClientSession {
         request_trace: Option<W3cTraceContext>,
         inference_trace: &'a InferenceTraceContext,
         provider_policy_context: Option<&'a ModelProviderPolicyContext<'a>>,
+        turn_recovery_checkpoint: Option<&'a dyn TurnRecoveryRequestCheckpoint>,
     ) -> BoxFuture<'a, Result<WebsocketStreamOutcome>> {
         self.stream_responses_websocket(
             prompt,
@@ -2034,6 +2203,7 @@ impl ModelClientSession {
             request_trace,
             inference_trace,
             provider_policy_context,
+            turn_recovery_checkpoint,
         )
         .boxed()
     }
@@ -2066,6 +2236,7 @@ impl ModelClientSession {
         request_trace: Option<W3cTraceContext>,
         inference_trace: &InferenceTraceContext,
         provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
+        turn_recovery_checkpoint: Option<&dyn TurnRecoveryRequestCheckpoint>,
     ) -> Result<WebsocketStreamOutcome> {
         let provider = Arc::clone(&self.client.state.provider);
         let auth_manager = provider.auth_manager();
@@ -2077,6 +2248,9 @@ impl ModelClientSession {
         let mut pending_retry = PendingUnauthorizedRetry::default();
         loop {
             let client_setup = self.client.current_client_setup().await?;
+            let active_provider_policies = provider_policy_context.map(|context| {
+                active_model_provider_policies(context.registry, context.thread_store)
+            });
             let request_auth_context = AuthRequestTelemetryContext::new(
                 client_setup.auth.as_ref().map(CodexAuth::auth_mode),
                 client_setup.api_auth.as_ref(),
@@ -2147,10 +2321,12 @@ impl ModelClientSession {
                 Err(err) => return Err(provider.map_api_error(err)),
             }
 
-            let provider_policy_active = provider_policy_context.is_some_and(|context| {
-                has_active_model_provider_policy(context.registry, context.thread_store)
-            });
-            let policy_logical_request = if provider_policy_active {
+            let provider_policy_active = active_provider_policies
+                .as_ref()
+                .is_some_and(|active| !active.is_empty());
+            let provider_binding_required =
+                provider_policy_active || turn_recovery_checkpoint.is_some();
+            let policy_logical_request = if provider_binding_required {
                 let mut logical_request = request.clone();
                 self.client
                     .prepare_response_items_for_request(&mut logical_request.input);
@@ -2204,72 +2380,93 @@ impl ModelClientSession {
                 ),
                 ..ResponseCreateWsRequest::from(&request)
             };
-            let mut admitted_provider_attempt = if let (Some(context), Some(logical_request)) =
-                (provider_policy_context, policy_logical_request.as_ref())
-            {
-                let responses_lite = responses_lite_from_ws_metadata(
-                    ws_payload.client_metadata.as_ref(),
-                    WS_REQUEST_HEADER_RESPONSES_LITE_CLIENT_METADATA_KEY,
-                )
-                .map_err(model_provider_policy_error)?;
-                let semantic_payload = provider_websocket_wire_payload(&ws_payload)
+            let mut admitted_provider_attempt =
+                if let (Some(context), Some(active_policies), Some(logical_request)) = (
+                    provider_policy_context,
+                    active_provider_policies,
+                    policy_logical_request.as_ref(),
+                ) {
+                    let responses_lite = responses_lite_from_ws_metadata(
+                        ws_payload.client_metadata.as_ref(),
+                        WS_REQUEST_HEADER_RESPONSES_LITE_CLIENT_METADATA_KEY,
+                    )
                     .map_err(model_provider_policy_error)?;
-                let actual_routing_hint = self
-                    .websocket_session
-                    .connection
-                    .as_ref()
-                    .ok_or_else(|| {
-                        self.client.state.provider.map_api_error(ApiError::Stream(
-                            "websocket connection is unavailable".to_string(),
-                        ))
-                    })?
-                    .actual_routing_hint
-                    .clone();
-                let wire_semantic = ProviderWireSemantic::new(
-                    &semantic_payload,
-                    actual_routing_hint.as_ref(),
-                    responses_lite,
-                );
-                let endpoint = client_setup
-                    .api_provider
-                    .websocket_url_for_path("responses")
-                    .map_err(|error| {
-                        model_provider_policy_error(ModelProviderPolicyError::new(
-                            "model_provider_policy_invalid_websocket_endpoint",
-                            format!("failed to build provider WebSocket endpoint: {error}"),
-                        ))
-                    })?;
-                let prepared = prepare_model_provider_policy(
-                    context,
-                    client_setup.api_provider.name.as_str(),
-                    request.model.as_str(),
-                    ModelProviderTransport::WebSocket,
-                    endpoint.as_str(),
-                    logical_request,
-                    &wire_semantic,
-                    previous_response_id_for_policy.as_deref(),
-                    !warmup,
-                )
-                .map_err(model_provider_policy_error)?;
-                match begin_model_provider_policy(
-                    context.registry,
-                    prepared.invocation_input(context),
-                )
-                .await
-                .map_err(model_provider_policy_error)?
-                {
-                    ModelProviderPolicyBegin::NoPolicy => None,
-                    ModelProviderPolicyBegin::Allow { lease } => Some(
-                        AdmittedProviderAttempt::new(lease, RequestDispatchMetadata::new()),
-                    ),
-                    ModelProviderPolicyBegin::Block {
-                        reason_code,
-                        message,
-                    } => return Err(model_provider_policy_blocked(reason_code, message)),
-                }
-            } else {
-                None
-            };
+                    let semantic_payload = provider_websocket_wire_payload(&ws_payload)
+                        .map_err(model_provider_policy_error)?;
+                    let actual_routing_hint = self
+                        .websocket_session
+                        .connection
+                        .as_ref()
+                        .ok_or_else(|| {
+                            self.client.state.provider.map_api_error(ApiError::Stream(
+                                "websocket connection is unavailable".to_string(),
+                            ))
+                        })?
+                        .actual_routing_hint
+                        .clone();
+                    let wire_semantic = ProviderWireSemantic::new(
+                        &semantic_payload,
+                        actual_routing_hint.as_ref(),
+                        responses_lite,
+                    );
+                    let endpoint = client_setup
+                        .api_provider
+                        .websocket_url_for_path("responses")
+                        .map_err(|error| {
+                            model_provider_policy_error(ModelProviderPolicyError::new(
+                                "model_provider_policy_invalid_websocket_endpoint",
+                                format!("failed to build provider WebSocket endpoint: {error}"),
+                            ))
+                        })?;
+                    let prepared = prepare_model_provider_policy(
+                        context,
+                        client_setup.api_provider.name.as_str(),
+                        request.model.as_str(),
+                        ModelProviderTransport::WebSocket,
+                        endpoint.as_str(),
+                        logical_request,
+                        &wire_semantic,
+                        previous_response_id_for_policy.as_deref(),
+                        !warmup,
+                    )
+                    .map_err(model_provider_policy_error)?;
+                    if let Some(checkpoint) = turn_recovery_checkpoint {
+                        let compatibility =
+                            responses_metadata.turn_recovery_compatibility_projection();
+                        match prepared.turn_recovery_fingerprint(
+                            &client_setup.api_provider.headers,
+                            self.client.state.beta_features_header.as_deref(),
+                            &compatibility,
+                            actual_routing_hint.as_ref(),
+                            responses_lite,
+                        ) {
+                            Ok(fingerprint) => checkpoint.authorize(fingerprint.as_str()).await?,
+                            Err(error) => {
+                                checkpoint
+                                    .unavailable(error.reason_code(), error.detail())
+                                    .await?
+                            }
+                        }
+                    }
+                    match begin_active_model_provider_policy(
+                        active_policies,
+                        prepared.invocation_input(context),
+                    )
+                    .await
+                    .map_err(model_provider_policy_error)?
+                    {
+                        ModelProviderPolicyBegin::NoPolicy => None,
+                        ModelProviderPolicyBegin::Allow { lease } => Some(
+                            AdmittedProviderAttempt::new(lease, RequestDispatchMetadata::new()),
+                        ),
+                        ModelProviderPolicyBegin::Block {
+                            reason_code,
+                            message,
+                        } => return Err(model_provider_policy_blocked(reason_code, message)),
+                    }
+                } else {
+                    None
+                };
             if previous_response_id_from_untraced_warmup && provider_policy_active {
                 inference_trace_attempt.record_started(&request);
             }
@@ -2448,6 +2645,7 @@ impl ModelClientSession {
                 current_span_w3c_trace_context(),
                 &disabled_trace,
                 provider_policy_context,
+                /*turn_recovery_checkpoint*/ None,
             )
             .await
         {
@@ -2496,6 +2694,7 @@ impl ModelClientSession {
             responses_metadata,
             inference_trace,
             /*provider_policy_context*/ None,
+            /*turn_recovery_checkpoint*/ None,
         )
         .await
     }
@@ -2548,6 +2747,7 @@ impl ModelClientSession {
             responses_metadata,
             inference_trace,
             Some(&provider_policy_context),
+            /*turn_recovery_checkpoint*/ None,
         )
         .await
     }
@@ -2565,6 +2765,7 @@ impl ModelClientSession {
         responses_metadata: &'a CodexResponsesMetadata,
         inference_trace: &'a InferenceTraceContext,
         provider_policy_context: Option<&'a ModelProviderPolicyContext<'a>>,
+        turn_recovery_checkpoint: Option<&'a dyn TurnRecoveryRequestCheckpoint>,
     ) -> BoxFuture<'a, Result<ResponseStream>> {
         self.stream_with_policy(
             prompt,
@@ -2576,6 +2777,7 @@ impl ModelClientSession {
             responses_metadata,
             inference_trace,
             provider_policy_context,
+            turn_recovery_checkpoint,
         )
         .boxed()
     }
@@ -2592,7 +2794,13 @@ impl ModelClientSession {
         responses_metadata: &CodexResponsesMetadata,
         inference_trace: &InferenceTraceContext,
         provider_policy_context: Option<&ModelProviderPolicyContext<'_>>,
+        turn_recovery_checkpoint: Option<&dyn TurnRecoveryRequestCheckpoint>,
     ) -> Result<ResponseStream> {
+        if turn_recovery_checkpoint.is_some() && provider_policy_context.is_none() {
+            return Err(CodexErr::Fatal(
+                "turn recovery checkpoint requires an exact provider policy context".to_string(),
+            ));
+        }
         let wire_api = self.client.state.provider.info().wire_api;
         match wire_api {
             WireApi::Responses => {
@@ -2611,6 +2819,7 @@ impl ModelClientSession {
                             request_trace,
                             inference_trace,
                             provider_policy_context,
+                            turn_recovery_checkpoint,
                         )
                         .await?
                     {
@@ -2631,6 +2840,7 @@ impl ModelClientSession {
                     responses_metadata,
                     inference_trace,
                     provider_policy_context,
+                    turn_recovery_checkpoint,
                 )
                 .await
             }

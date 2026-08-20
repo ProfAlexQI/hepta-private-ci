@@ -129,6 +129,12 @@ pub enum ClientRequestSerializationScope {
     McpOauth { server_name: String },
 }
 
+fn canonical_thread_serialization_key(thread_id: &str) -> String {
+    codex_protocol::ThreadId::from_string(thread_id)
+        .map(|thread_id| thread_id.to_string())
+        .unwrap_or_else(|_| thread_id.to_string())
+}
+
 macro_rules! serialization_scope_expr {
     ($actual_params:ident, None) => {
         None
@@ -141,19 +147,21 @@ macro_rules! serialization_scope_expr {
     };
     ($actual_params:ident, thread_id($params:ident . $field:ident)) => {
         Some(ClientRequestSerializationScope::Thread {
-            thread_id: $actual_params.$field.clone(),
+            thread_id: canonical_thread_serialization_key(&$actual_params.$field),
         })
     };
     ($actual_params:ident, optional_thread_id($params:ident . $field:ident)) => {
         $actual_params
             .$field
             .clone()
-            .map(|thread_id| ClientRequestSerializationScope::Thread { thread_id })
+            .map(|thread_id| ClientRequestSerializationScope::Thread {
+                thread_id: canonical_thread_serialization_key(&thread_id),
+            })
     };
     ($actual_params:ident, thread_or_path($params:ident . $thread_field:ident, $params2:ident . $path_field:ident)) => {
         if !$actual_params.$thread_field.is_empty() {
             Some(ClientRequestSerializationScope::Thread {
-                thread_id: $actual_params.$thread_field.clone(),
+                thread_id: canonical_thread_serialization_key(&$actual_params.$thread_field),
             })
         } else if let Some(path) = $actual_params.$path_field.clone() {
             Some(ClientRequestSerializationScope::ThreadPath { path })
@@ -974,6 +982,11 @@ client_request_definitions! {
         params: v2::TurnInterruptParams,
         serialization: thread_id(params.thread_id),
         response: v2::TurnInterruptResponse,
+    },
+    TurnRecover => "turn/recover" {
+        params: v2::TurnRecoverParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::TurnRecoverResponse,
     },
     #[experimental("thread/realtime/start")]
     ThreadRealtimeStart => "thread/realtime/start" {
@@ -2146,6 +2159,81 @@ mod tests {
             .is_err()
         );
         Ok(())
+    }
+
+    #[test]
+    fn turn_recover_is_stable_and_serializes_by_thread() -> Result<()> {
+        let request = ClientRequest::TurnRecover {
+            request_id: request_id(),
+            params: v2::TurnRecoverParams {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+            },
+        };
+
+        assert_eq!(request.method_name(), "turn/recover");
+        assert_eq!(
+            request.serialization_scope(),
+            Some(ClientRequestSerializationScope::Thread {
+                thread_id: "thread-1".to_string()
+            })
+        );
+        assert_eq!(
+            crate::experimental_api::ExperimentalApi::experimental_reason(&request),
+            None
+        );
+        assert_eq!(
+            serde_json::to_value(&request)?,
+            json!({
+                "method": "turn/recover",
+                "id": 1,
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1"
+                }
+            })
+        );
+
+        let decoded = ClientRequest::try_from(JSONRPCRequest {
+            id: request_id(),
+            method: "turn/recover".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turnId": "turn-1"
+            })),
+            trace: None,
+        })?;
+        assert_eq!(decoded, request);
+        Ok(())
+    }
+
+    #[test]
+    fn equivalent_uuid_thread_ids_share_one_serialization_scope() {
+        let canonical = "67e55044-10b1-426f-9247-bb680e5fe0c8";
+        let uppercase = canonical.to_uppercase();
+        let simple = canonical.replace('-', "");
+        let expected = Some(ClientRequestSerializationScope::Thread {
+            thread_id: canonical.to_string(),
+        });
+
+        for thread_id in [canonical.to_string(), uppercase, simple] {
+            let recover = ClientRequest::TurnRecover {
+                request_id: request_id(),
+                params: v2::TurnRecoverParams {
+                    thread_id: thread_id.clone(),
+                    turn_id: "turn-1".to_string(),
+                },
+            };
+            let rollback = ClientRequest::ThreadRollback {
+                request_id: request_id(),
+                params: v2::ThreadRollbackParams {
+                    thread_id,
+                    num_turns: 1,
+                },
+            };
+            assert_eq!(recover.serialization_scope(), expected);
+            assert_eq!(rollback.serialization_scope(), expected);
+        }
     }
 
     #[test]

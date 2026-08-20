@@ -216,6 +216,25 @@ pub struct TurnInterruptParams {
 #[ts(export_to = "v2/")]
 pub struct TurnInterruptResponse {}
 
+/// Resume an interrupted turn without submitting new user input.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TurnRecoverParams {
+    /// Thread that owns the interrupted turn.
+    pub thread_id: String,
+    /// Identifier of the interrupted turn to resume.
+    pub turn_id: String,
+}
+
+/// The recovered turn, preserving the original turn identity and current status.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct TurnRecoverResponse {
+    pub turn: Turn,
+}
+
 // User input types
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]

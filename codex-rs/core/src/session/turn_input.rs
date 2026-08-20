@@ -12,11 +12,13 @@ use super::TurnInput;
 use super::session::Session;
 use super::session::SessionSettingsUpdate;
 use super::thread_settings;
+use super::turn::TurnRunOrigin;
 use super::turn_context::TurnContext;
 use crate::state::ActiveTurn;
 use crate::state::TurnState;
 use crate::tasks::MailboxParentProvenance;
 use crate::tasks::RegularTask;
+use codex_features::Feature;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
@@ -28,6 +30,7 @@ use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::NonSteerableTurnKind;
 use codex_protocol::protocol::ThreadSettingsOverrides;
+use codex_protocol::protocol::TurnContextItem;
 use codex_protocol::turn_input::NotSubmittedReason;
 use codex_protocol::turn_input::TurnInput as SubmittedTurnInput;
 use codex_protocol::turn_input::TurnInputMode;
@@ -39,6 +42,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use uuid::Uuid;
 
 #[cfg(test)]
@@ -155,7 +159,8 @@ pub(super) async fn handle(
                 session,
                 request,
                 submission_id,
-                /*is_recovery*/ false,
+                /*recovery_epoch*/ None,
+                TurnRunOrigin::NewTurn,
             ))
             .await
         }
@@ -167,11 +172,19 @@ pub(super) async fn handle(
 
 pub(super) async fn handle_recovery(
     session: &Arc<Session>,
+    expected_epoch: u64,
     thread_settings: ThreadSettingsOverrides,
     submission_id: String,
 ) -> CodexResult<TurnInputSubmission> {
     let request = TurnInputRequest::user_input(Vec::new()).with_thread_settings(thread_settings);
-    start_if_idle(session, request, submission_id, /*is_recovery*/ true).await
+    start_if_idle(
+        session,
+        request,
+        submission_id,
+        Some(expected_epoch),
+        TurnRunOrigin::Recovery,
+    )
+    .await
 }
 
 async fn start_or_steer(
@@ -225,9 +238,34 @@ async fn start_or_steer(
             Ok(TurnInputSubmission::Steered { turn_id })
         }
         Err(NotSubmittedReason::NoActiveTurn) => {
-            let turn_context = settings
-                .apply_started(session, submission_id.clone())
-                .await?;
+            let turn_state = {
+                let mut active_turn = session.active_turn.lock().await;
+                if active_turn.is_some() {
+                    return Ok(TurnInputSubmission::NotSubmitted {
+                        reason: NotSubmittedReason::NotIdle,
+                    });
+                }
+                if session
+                    .consume_recovery_candidate_for_mutation()
+                    .await
+                    .is_err()
+                {
+                    return Ok(TurnInputSubmission::NotSubmitted {
+                        reason: NotSubmittedReason::RecoveryPersistenceFailed,
+                    });
+                }
+                let active_turn = active_turn.get_or_insert_with(ActiveTurn::default);
+                Arc::clone(&active_turn.turn_state)
+            };
+            let turn_context = match settings.apply_started(session, submission_id.clone()).await {
+                Ok(turn_context) => turn_context,
+                Err(error) => {
+                    session
+                        .settle_and_clear_reserved_idle_turn(&turn_state)
+                        .await;
+                    return Err(error);
+                }
+            };
             if can_start_root_turn
                 && !items.is_empty()
                 && turn_context
@@ -255,7 +293,12 @@ async fn start_or_steer(
                 });
             }
             session
-                .spawn_task(Arc::clone(&turn_context), task_input, RegularTask::new())
+                .start_task(
+                    Arc::clone(&turn_context),
+                    task_input,
+                    RegularTask::new(TurnRunOrigin::NewTurn),
+                    MailboxParentProvenance::Ignore,
+                )
                 .await;
             session
                 .pending_user_message_admissions
@@ -272,8 +315,14 @@ async fn start_if_idle(
     session: &Arc<Session>,
     request: TurnInputRequest,
     submission_id: String,
-    is_recovery: bool,
+    recovery_epoch: Option<u64>,
+    run_origin: TurnRunOrigin,
 ) -> CodexResult<TurnInputSubmission> {
+    if run_origin == TurnRunOrigin::Recovery && !session.enabled(Feature::HeptaTurnRecovery) {
+        return Err(CodexErr::InvalidRequest(
+            "turn recovery requires features.hepta_turn_recovery=true".to_string(),
+        ));
+    }
     let TurnInputRequest {
         input,
         thread_settings,
@@ -283,6 +332,8 @@ async fn start_if_idle(
         ..
     } = request;
     let has_user_input = has_nonempty_user_input(&input);
+    let is_recovery = run_origin == TurnRunOrigin::Recovery;
+    debug_assert_eq!(is_recovery, recovery_epoch.is_some());
     let is_automatic_idle_work = !has_user_input && !is_recovery;
     let can_start_root_turn = start.parent_turn_id.is_none() && start.root_turn_id.is_none();
     if session.input_queue.has_trigger_turn_mailbox_items().await {
@@ -298,6 +349,9 @@ async fn start_if_idle(
         });
     }
 
+    let mut recovery_restart = None;
+    let mut recovery_history_snapshot = None;
+    let mut recovery_expected_context = None;
     let turn_state = {
         let mut active_turn = session.active_turn.lock().await;
         if active_turn.is_some() {
@@ -305,12 +359,109 @@ async fn start_if_idle(
                 reason: NotSubmittedReason::NotIdle,
             });
         }
+        if let Some(expected_epoch) = recovery_epoch
+            && (session.turn_epoch.load(Ordering::Acquire) != expected_epoch
+                || !session
+                    .recovery_candidate
+                    .lock()
+                    .expect("recovery candidate mutex poisoned")
+                    .as_ref()
+                    .is_some_and(|candidate| {
+                        candidate.turn_id == submission_id
+                            && candidate.epoch == expected_epoch
+                            && candidate.persistence_failure_generation
+                                == session.rollout_persistence_failure_generation()
+                    }))
+        {
+            return Ok(TurnInputSubmission::NotSubmitted {
+                reason: NotSubmittedReason::RecoveryStateChanged,
+            });
+        }
+        if is_recovery && thread_settings != ThreadSettingsOverrides::default() {
+            return Err(CodexErr::InvalidRequest(
+                "turn recovery cannot override the interrupted turn settings".to_string(),
+            ));
+        }
+        if is_recovery {
+            let candidate = session
+                .recovery_candidate
+                .lock()
+                .expect("recovery candidate mutex poisoned")
+                .clone()
+                .ok_or_else(|| {
+                    CodexErr::Fatal(
+                        "turn recovery candidate disappeared before consumption".to_string(),
+                    )
+                })?;
+            let consumed_generation =
+                candidate.marker_generation.checked_add(1).ok_or_else(|| {
+                    CodexErr::Fatal("turn recovery generation exhausted before restart".to_string())
+                })?;
+            recovery_restart = Some((
+                candidate.request_fingerprint_sha256,
+                consumed_generation,
+                candidate.marker_generation,
+                candidate.replay,
+            ));
+        }
+        if let Some((_, _, _, replay)) = recovery_restart.as_ref() {
+            let Some(expected_context) =
+                recovery_reference_context(session, &submission_id, replay).await
+            else {
+                if session
+                    .consume_recovery_candidate_for_mutation()
+                    .await
+                    .is_err()
+                {
+                    return Ok(TurnInputSubmission::NotSubmitted {
+                        reason: NotSubmittedReason::RecoveryPersistenceFailed,
+                    });
+                }
+                session.settle_consumed_recovery_status();
+                return Ok(TurnInputSubmission::NotSubmitted {
+                    reason: NotSubmittedReason::RecoveryStateChanged,
+                });
+            };
+            recovery_history_snapshot = match session
+                .validated_recovery_history_snapshot(&replay.history_boundary)
+                .await
+            {
+                Ok(history) => Some(history),
+                Err(_) => {
+                    if session
+                        .consume_recovery_candidate_for_mutation()
+                        .await
+                        .is_err()
+                    {
+                        return Ok(TurnInputSubmission::NotSubmitted {
+                            reason: NotSubmittedReason::RecoveryPersistenceFailed,
+                        });
+                    }
+                    session.settle_consumed_recovery_status();
+                    return Ok(TurnInputSubmission::NotSubmitted {
+                        reason: NotSubmittedReason::RecoveryStateChanged,
+                    });
+                }
+            };
+            recovery_expected_context = Some(expected_context);
+        }
+        if session
+            .consume_recovery_candidate_for_mutation()
+            .await
+            .is_err()
+        {
+            return Ok(TurnInputSubmission::NotSubmitted {
+                reason: NotSubmittedReason::RecoveryPersistenceFailed,
+            });
+        }
         let active_turn = active_turn.get_or_insert_with(ActiveTurn::default);
         Arc::clone(&active_turn.turn_state)
     };
 
     if session.input_queue.has_trigger_turn_mailbox_items().await {
-        session.clear_reserved_idle_turn(&turn_state).await;
+        session
+            .settle_and_clear_reserved_idle_turn(&turn_state)
+            .await;
         session.maybe_start_turn_for_pending_work().await;
         return Ok(TurnInputSubmission::NotSubmitted {
             reason: NotSubmittedReason::PendingTriggerTurn,
@@ -320,23 +471,29 @@ async fn start_if_idle(
     let settings = match PreparedTurnInputSettings::prepare(session, thread_settings, start).await {
         Ok(settings) => settings,
         Err(error) => {
-            session.clear_reserved_idle_turn(&turn_state).await;
+            session
+                .settle_and_clear_reserved_idle_turn(&turn_state)
+                .await;
             return Err(error);
         }
     };
     // Automatic work must not use persistent settings to start a turn
     // whose effective collaboration mode is Plan.
     if is_automatic_idle_work && settings.would_enter_plan_mode() {
-        session.clear_reserved_idle_turn(&turn_state).await;
+        session
+            .settle_and_clear_reserved_idle_turn(&turn_state)
+            .await;
         return Ok(TurnInputSubmission::NotSubmitted {
             reason: NotSubmittedReason::PlanMode,
         });
     }
 
-    let turn_context = match settings.apply_started(session, submission_id.clone()).await {
+    let mut turn_context = match settings.apply_started(session, submission_id.clone()).await {
         Ok(turn_context) => turn_context,
         Err(error) => {
-            session.clear_reserved_idle_turn(&turn_state).await;
+            session
+                .settle_and_clear_reserved_idle_turn(&turn_state)
+                .await;
             return Err(error);
         }
     };
@@ -344,6 +501,71 @@ async fn start_if_idle(
         turn_context
             .turn_metadata_state
             .set_responsesapi_client_metadata(responsesapi_client_metadata);
+    }
+    if let Some((_, _, _, replay)) = recovery_restart.as_ref() {
+        let expected_context = recovery_expected_context
+            .as_ref()
+            .expect("validated recovery context captured before candidate consumption");
+        let Some(turn_context) = Arc::get_mut(&mut turn_context) else {
+            session
+                .settle_and_clear_reserved_idle_turn(&turn_state)
+                .await;
+            return Err(CodexErr::Fatal(
+                "turn recovery context became shared before replay was applied".to_string(),
+            ));
+        };
+        // Date and timezone are model-visible request inputs. A cold recovery
+        // may happen after the local clock crosses a date boundary, so replay
+        // the values persisted with the interrupted request before comparing.
+        turn_context.current_date = expected_context.current_date.clone();
+        turn_context.timezone = expected_context.timezone.clone();
+        turn_context.final_output_json_schema = replay.start.final_output_json_schema.clone();
+        turn_context
+            .turn_metadata_state
+            .apply_recovery_start_state(&replay.start);
+        if turn_context.to_turn_context_item() != *expected_context
+            || super::turn::turn_recovery_environment_selections(&turn_context.environments)
+                .as_ref()
+                != Some(&replay.environments)
+        {
+            session
+                .settle_and_clear_reserved_idle_turn(&turn_state)
+                .await;
+            session.settle_consumed_recovery_status();
+            return Ok(TurnInputSubmission::NotSubmitted {
+                reason: NotSubmittedReason::RecoveryStateChanged,
+            });
+        }
+    }
+    if let Some((request_fingerprint_sha256, consumed_generation, source_generation, replay)) =
+        recovery_restart.as_ref()
+    {
+        if let Err(error) = session
+            .persist_recovery_replay_applied(
+                &submission_id,
+                *consumed_generation,
+                *source_generation,
+                request_fingerprint_sha256,
+                replay,
+            )
+            .await
+        {
+            session
+                .settle_and_clear_reserved_idle_turn(&turn_state)
+                .await;
+            session.settle_consumed_recovery_status();
+            return Err(error);
+        }
+        let Some(history) = recovery_history_snapshot.take() else {
+            session
+                .settle_and_clear_reserved_idle_turn(&turn_state)
+                .await;
+            session.settle_consumed_recovery_status();
+            return Err(CodexErr::Fatal(
+                "turn recovery history snapshot disappeared before installation".to_string(),
+            ));
+        };
+        session.install_recovery_history_snapshot(history).await;
     }
     if has_user_input
         && can_start_root_turn
@@ -377,11 +599,17 @@ async fn start_if_idle(
             )
             .await;
     }
+    let regular_task = match recovery_restart {
+        Some((request_fingerprint_sha256, consumed_generation, _source_generation, _replay)) => {
+            RegularTask::for_recovery(request_fingerprint_sha256, consumed_generation)
+        }
+        None => RegularTask::new(run_origin),
+    };
     session
         .start_task(
             Arc::clone(&turn_context),
             task_input,
-            RegularTask::new(),
+            regular_task,
             MailboxParentProvenance::Ignore,
         )
         .await;
@@ -393,6 +621,45 @@ async fn start_if_idle(
     Ok(TurnInputSubmission::Started {
         turn_id: submission_id,
     })
+}
+
+/// Proves that a resumed request will rebuild the exact execution/model
+/// context recorded before its durable Ready boundary. The active-turn lock is
+/// held by the caller, serializing this comparison with settings mutation.
+async fn recovery_reference_context(
+    session: &Session,
+    turn_id: &str,
+    replay: &codex_history::TurnRecoveryReplayV1,
+) -> Option<TurnContextItem> {
+    let Some(expected) = session.reference_context_item().await else {
+        return None;
+    };
+    if expected.turn_id.as_deref() != Some(turn_id) {
+        return None;
+    }
+    let mut current = session
+        .new_default_turn_with_sub_id(turn_id.to_string())
+        .await;
+    let current_mut = Arc::get_mut(&mut current)?;
+    // These values are model-visible but intentionally replayable across a
+    // local date boundary. All configuration- and environment-derived fields
+    // below remain strict comparisons against the resumed session.
+    current_mut.current_date = expected.current_date.clone();
+    current_mut.timezone = expected.timezone.clone();
+    let current_item = current.to_turn_context_item();
+    if expected != current_item {
+        return None;
+    }
+    let expected_context_sha256 = crate::model_provider_policy::canonical_sha256(&expected)
+        .ok()
+        .map(|digest| digest.as_str().to_string());
+    if expected_context_sha256.as_deref() != Some(replay.turn_context_sha256.as_str())
+        || super::turn::turn_recovery_environment_selections(&current.environments).as_ref()
+            != Some(&replay.environments)
+    {
+        return None;
+    }
+    Some(expected)
 }
 
 async fn steer(
@@ -484,12 +751,33 @@ impl Session {
         }
     }
 
-    async fn clear_reserved_idle_turn(&self, turn_state: &Arc<tokio::sync::Mutex<TurnState>>) {
+    pub(crate) async fn clear_reserved_idle_turn(
+        &self,
+        turn_state: &Arc<tokio::sync::Mutex<TurnState>>,
+    ) {
         let mut active_turn_guard = self.active_turn.lock().await;
         if let Some(active_turn) = active_turn_guard.as_ref()
             && active_turn.task.is_none()
             && Arc::ptr_eq(&active_turn.turn_state, turn_state)
         {
+            *active_turn_guard = None;
+        }
+    }
+
+    /// Clears a start/history reservation after no task was attached. If the
+    /// reservation consumed the only interrupted recovery candidate, publish a
+    /// final idle status so subagent completion waiters cannot remain stuck on
+    /// an unrecoverable `Interrupted` state.
+    pub(crate) async fn settle_and_clear_reserved_idle_turn(
+        &self,
+        turn_state: &Arc<tokio::sync::Mutex<TurnState>>,
+    ) {
+        let mut active_turn_guard = self.active_turn.lock().await;
+        if let Some(active_turn) = active_turn_guard.as_ref()
+            && active_turn.task.is_none()
+            && Arc::ptr_eq(&active_turn.turn_state, turn_state)
+        {
+            self.settle_consumed_recovery_status();
             *active_turn_guard = None;
         }
     }
@@ -558,6 +846,14 @@ impl Session {
             && active_task.turn_context.final_output_json_schema.as_ref() != Some(required_schema)
         {
             return Err(NotSubmittedReason::ActiveTurnOutputSchemaMismatch);
+        }
+        if let Some(authority) = active_task.recovery_authority.as_ref()
+            && self
+                .ensure_turn_recovery_unready(active_turn_id, authority.as_ref())
+                .await
+                .is_err()
+        {
+            return Err(NotSubmittedReason::RecoveryPersistenceFailed);
         }
         active_task
             .turn_context

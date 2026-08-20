@@ -1,8 +1,11 @@
 use std::fmt::Display;
 use std::future::Future;
+use std::num::NonZeroUsize;
 
 use codex_protocol::ThreadId;
 use codex_rollout::StateDbHandle;
+use codex_state::QueueCapacityExceeded;
+use codex_state::QueueCapacityLimit;
 use codex_state::QueuedUserSubmissionRecord;
 use codex_state::SqliteQueueStore;
 
@@ -55,11 +58,28 @@ pub trait QueueStore: Send + Sync {
 #[derive(Clone)]
 pub struct LocalQueueStore {
     state_db: StateDbHandle,
+    runtime_capacity: Option<NonZeroUsize>,
 }
 
 impl LocalQueueStore {
+    /// Create the ordinary Codex adapter with only the historical per-thread
+    /// capacity enforced by the storage layer.
     pub fn new(state_db: StateDbHandle) -> Self {
-        Self { state_db }
+        Self {
+            state_db,
+            runtime_capacity: None,
+        }
+    }
+
+    /// Bind this adapter to the capacity of its owning runtime.
+    ///
+    /// The capacity applies to all pending rows in this state database. The
+    /// storage layer separately retains the built-in per-thread limit.
+    pub fn with_capacity(state_db: StateDbHandle, capacity: NonZeroUsize) -> Self {
+        Self {
+            state_db,
+            runtime_capacity: Some(capacity),
+        }
     }
 
     fn queue(&self) -> &SqliteQueueStore {
@@ -100,10 +120,38 @@ impl QueueStore for LocalQueueStore {
         payload: String,
     ) -> ThreadStoreFuture<'_, QueuedUserSubmissionRecord> {
         Box::pin(async move {
-            self.queue()
-                .enqueue(thread_id, &payload)
-                .await
-                .map_err(|error| match error.downcast_ref::<sqlx::Error>() {
+            let result = match self.runtime_capacity {
+                Some(capacity) => {
+                    self.queue()
+                        .enqueue_with_capacity(thread_id, &payload, capacity.get())
+                        .await
+                }
+                None => self.queue().enqueue(thread_id, &payload).await,
+            };
+            result.map_err(|error| {
+                if let Some(capacity_error) = error.downcast_ref::<QueueCapacityExceeded>() {
+                    return match capacity_error.limit {
+                        QueueCapacityLimit::Thread => ThreadStoreError::InvalidRequest {
+                            message: format!(
+                                "queue cannot contain more than {MAX_QUEUE_ITEMS} submissions"
+                            ),
+                        },
+                        QueueCapacityLimit::Runtime => match self.runtime_capacity {
+                            Some(capacity) => ThreadStoreError::InvalidRequest {
+                                message: format!(
+                                    "runtime queue cannot contain more than {capacity} submission{}",
+                                    if capacity.get() == 1 { "" } else { "s" },
+                                ),
+                            },
+                            None => ThreadStoreError::Internal {
+                                message: format!(
+                                    "queue storage returned a runtime capacity error without a configured runtime capacity: {error}"
+                                ),
+                            },
+                        },
+                    };
+                }
+                match error.downcast_ref::<sqlx::Error>() {
                     Some(sqlx::Error::RowNotFound) => ThreadStoreError::InvalidRequest {
                         message: format!(
                             "queue cannot contain more than {MAX_QUEUE_ITEMS} submissions"
@@ -112,7 +160,8 @@ impl QueueStore for LocalQueueStore {
                     _ => ThreadStoreError::Internal {
                         message: format!("queue storage failed: {error}"),
                     },
-                })
+                }
+            })
         })
     }
 

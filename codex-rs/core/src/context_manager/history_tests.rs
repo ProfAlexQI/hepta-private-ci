@@ -543,6 +543,93 @@ fn annotated_history_apis_preserve_envelopes() {
 }
 
 #[test]
+fn rewind_to_recovery_boundary_restores_exact_annotated_prefix() {
+    let user_authored_abort = ResponseItemEnvelope {
+        item: user_input_text_msg(
+            "<turn_aborted>this is user-authored text, not a recovery marker</turn_aborted>",
+        ),
+        metadata: Some(CodexHarnessMetadata {
+            client_authored: true,
+        }),
+    };
+    let prefix = vec![
+        ResponseItemEnvelope::new(assistant_msg("provider-ready prefix")),
+        user_authored_abort,
+    ];
+    let mut history = ContextManager::new();
+    history.replace_annotated(prefix.clone());
+    let boundary = history.recovery_boundary().expect("recovery boundary");
+
+    let real_abort_marker = crate::context::ContextualUserFragment::into(
+        crate::context::TurnAborted::new(crate::context::TurnAborted::INTERRUPTED_GUIDANCE),
+    );
+    history.record_annotated_items(
+        &[
+            ResponseItemEnvelope::new(real_abort_marker),
+            ResponseItemEnvelope::new(user_input_text_msg(
+                "Warning: recovery must exclude this post-boundary item",
+            )),
+            ResponseItemEnvelope::new(assistant_msg("post-interrupt tail")),
+        ],
+        TruncationPolicy::Tokens(10_000),
+    );
+    assert!(history.annotated_items().len() > prefix.len());
+
+    assert!(history.rewind_to_recovery_boundary(&boundary));
+    assert_eq!(history.annotated_items(), prefix);
+}
+
+fn assert_recovery_boundary_rejected_without_mutation(
+    mut history: ContextManager,
+    boundary: codex_history::TurnRecoveryHistoryBoundary,
+) {
+    let reference_context = reference_context_item();
+    history.set_reference_context_item(Some(reference_context.clone()));
+    history.set_world_state_baseline(WorldStateSnapshot::default());
+    let original_items = history.annotated_items().to_vec();
+    let original_items_ptr = history.annotated_items().as_ptr();
+    let original_history_version = history.history_version();
+    let original_world_state = history.world_state_baseline.clone();
+
+    assert!(!history.rewind_to_recovery_boundary(&boundary));
+    assert_eq!(history.annotated_items(), original_items);
+    assert_eq!(history.annotated_items().as_ptr(), original_items_ptr);
+    assert_eq!(history.history_version(), original_history_version);
+    assert_eq!(history.reference_context_item(), Some(reference_context));
+    assert_eq!(history.world_state_baseline, original_world_state);
+}
+
+#[test]
+fn rewind_to_recovery_boundary_rejects_malformed_boundary_without_mutation() {
+    let prefix = vec![
+        ResponseItemEnvelope::new(assistant_msg("stable prefix")),
+        ResponseItemEnvelope {
+            item: user_input_text_msg("metadata-bound item"),
+            metadata: Some(CodexHarnessMetadata {
+                client_authored: true,
+            }),
+        },
+    ];
+    let mut original = ContextManager::new();
+    original.replace_annotated(prefix.clone());
+    let boundary = original.recovery_boundary().expect("recovery boundary");
+
+    let mut out_of_range = boundary.clone();
+    out_of_range.item_count = out_of_range.item_count.saturating_add(1);
+    assert_recovery_boundary_rejected_without_mutation(original.clone(), out_of_range);
+
+    let mut wrong_digest = boundary.clone();
+    wrong_digest.prefix_sha256 = "0".repeat(64);
+    assert_recovery_boundary_rejected_without_mutation(original, wrong_digest);
+
+    let mut metadata_changed = ContextManager::new();
+    let mut changed_prefix = prefix;
+    changed_prefix[1].metadata = Some(CodexHarnessMetadata::default());
+    metadata_changed.replace_annotated(changed_prefix);
+    assert_recovery_boundary_rejected_without_mutation(metadata_changed, boundary);
+}
+
+#[test]
 fn record_annotated_items_preserves_metadata_while_processing_item() {
     let envelope = ResponseItemEnvelope {
         item: ResponseItem::FunctionCallOutput {

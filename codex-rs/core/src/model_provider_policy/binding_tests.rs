@@ -2,10 +2,13 @@ use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::ModelProviderRequestKind;
 use codex_extension_api::ModelProviderTransport;
+use http::HeaderMap;
+use http::HeaderValue;
 use serde_json::Value;
 
 use super::EphemeralModelInputBinding;
 use super::ModelProviderPolicyContext;
+use super::ProviderRoutingHint;
 use super::bytes_sha256;
 use super::canonical_endpoint_sha256;
 use super::canonical_sha256;
@@ -164,6 +167,217 @@ fn endpoint_digest_sorts_query_names_and_excludes_secrets() {
     assert_eq!(left, right);
     assert_ne!(left, different_path);
     assert_ne!(left, websocket);
+}
+
+#[test]
+fn recovery_fingerprint_binds_deployment_and_typed_routing_without_binding_credentials() {
+    let registry = ExtensionRegistryBuilder::<crate::config::Config>::new().build();
+    let (session_store, thread_store, turn_store) = stores();
+    let context = ModelProviderPolicyContext {
+        registry: &registry,
+        session_store: &session_store,
+        thread_store: &thread_store,
+        turn_store: &turn_store,
+        thread_id: "thread-1".to_string(),
+        turn_id: "turn-1".to_string(),
+        request_kind: ModelProviderRequestKind::Turn,
+        ephemeral_input_cwd: None,
+    };
+    let logical = serde_json::json!({"input": ["hello"], "model": "model-1"});
+    let prepare = |endpoint: &str, transport| {
+        prepare_model_provider_policy(
+            &context,
+            "provider-1",
+            "model-1",
+            transport,
+            endpoint,
+            &logical,
+            &serde_json::json!({"request": logical.clone()}),
+            None,
+            true,
+        )
+        .expect("prepared recovery request")
+    };
+    let http = prepare(
+        "https://tenant.example.test/openai/responses?api-version=2026-08-01&api_key=secret-one",
+        ModelProviderTransport::Http,
+    );
+    let websocket = prepare(
+        "wss://tenant.example.test/openai/responses?api_key=secret-two&api-version=2026-08-01",
+        ModelProviderTransport::WebSocket,
+    );
+    let changed_host = prepare(
+        "https://other.example.test/openai/responses?api-version=2026-08-01&api_key=secret-one",
+        ModelProviderTransport::Http,
+    );
+    let changed_version = prepare(
+        "https://tenant.example.test/openai/responses?api-version=2026-09-01&api_key=secret-one",
+        ModelProviderTransport::Http,
+    );
+
+    let mut headers = HeaderMap::new();
+    headers.insert("openai-organization", HeaderValue::from_static("org-a"));
+    headers.insert(
+        "authorization",
+        HeaderValue::from_static("Bearer secret-one"),
+    );
+    let routing_header = HeaderValue::from_static("model=model-1;tier=fast");
+    let routing = ProviderRoutingHint::from_header(Some(&routing_header))
+        .expect("routing hint")
+        .expect("routing hint present");
+    let fingerprint = |prepared: &super::PreparedModelProviderPolicy,
+                       headers: &HeaderMap,
+                       beta_features_header: Option<&str>,
+                       compatibility: &serde_json::Value,
+                       routing: Option<&ProviderRoutingHint>,
+                       responses_lite| {
+        prepared
+            .turn_recovery_fingerprint(
+                headers,
+                beta_features_header,
+                compatibility,
+                routing,
+                responses_lite,
+            )
+            .expect("recovery fingerprint")
+    };
+    let compatibility = serde_json::json!({"sandbox_mode": "workspace-write"});
+
+    let baseline = fingerprint(
+        &http,
+        &headers,
+        Some("feature-a"),
+        &compatibility,
+        Some(&routing),
+        false,
+    );
+    assert_eq!(
+        baseline,
+        fingerprint(
+            &websocket,
+            &headers,
+            Some("feature-a"),
+            &compatibility,
+            Some(&routing),
+            false,
+        ),
+        "HTTP/WebSocket fallback and credential rotation must be stable"
+    );
+    assert_ne!(
+        baseline,
+        fingerprint(
+            &changed_host,
+            &headers,
+            Some("feature-a"),
+            &compatibility,
+            Some(&routing),
+            false,
+        )
+    );
+    assert_ne!(
+        baseline,
+        fingerprint(
+            &changed_version,
+            &headers,
+            Some("feature-a"),
+            &compatibility,
+            Some(&routing),
+            false,
+        )
+    );
+
+    let mut rotated_auth = headers.clone();
+    rotated_auth.insert(
+        "authorization",
+        HeaderValue::from_static("Bearer secret-two"),
+    );
+    assert_eq!(
+        baseline,
+        fingerprint(
+            &http,
+            &rotated_auth,
+            Some("feature-a"),
+            &compatibility,
+            Some(&routing),
+            false,
+        )
+    );
+    let mut changed_tenant = headers.clone();
+    changed_tenant.insert("openai-organization", HeaderValue::from_static("org-b"));
+    assert_ne!(
+        baseline,
+        fingerprint(
+            &http,
+            &changed_tenant,
+            Some("feature-a"),
+            &compatibility,
+            Some(&routing),
+            false,
+        )
+    );
+
+    let mut changed_version_header = headers.clone();
+    changed_version_header.insert("version", HeaderValue::from_static("2026-09-01"));
+    assert_ne!(
+        baseline,
+        fingerprint(
+            &http,
+            &changed_version_header,
+            Some("feature-a"),
+            &compatibility,
+            Some(&routing),
+            false,
+        )
+    );
+
+    let changed_routing_header = HeaderValue::from_static("model=model-1;tier=standard");
+    let changed_routing = ProviderRoutingHint::from_header(Some(&changed_routing_header))
+        .expect("changed routing hint")
+        .expect("changed routing hint present");
+    assert_ne!(
+        baseline,
+        fingerprint(
+            &http,
+            &headers,
+            Some("feature-a"),
+            &compatibility,
+            Some(&changed_routing),
+            false,
+        )
+    );
+    assert_ne!(
+        baseline,
+        fingerprint(
+            &http,
+            &headers,
+            Some("feature-a"),
+            &compatibility,
+            Some(&routing),
+            true,
+        )
+    );
+    assert_ne!(
+        baseline,
+        fingerprint(
+            &http,
+            &headers,
+            Some("feature-b"),
+            &compatibility,
+            Some(&routing),
+            false,
+        )
+    );
+    assert_ne!(
+        baseline,
+        fingerprint(
+            &http,
+            &headers,
+            Some("feature-a"),
+            &serde_json::json!({"sandbox_mode": "danger-full-access"}),
+            Some(&routing),
+            false,
+        )
+    );
 }
 
 #[test]

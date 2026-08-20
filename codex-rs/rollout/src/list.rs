@@ -1176,6 +1176,9 @@ async fn read_head_summary(path: &Path, head_limit: usize) -> io::Result<HeadTai
             RolloutItem::WorldState(_) | RolloutItem::SecurityRiskScore(_) => {
                 // Not included in `head`; skip.
             }
+            RolloutItem::TurnRecoveryRequestBinding(_) => {
+                // Internal recovery authority metadata is not part of the summary.
+            }
             RolloutItem::Compacted(_) => {
                 // Not included in `head`; skip.
             }
@@ -1247,6 +1250,7 @@ pub async fn read_head_for_summary(path: &Path) -> io::Result<Vec<serde_json::Va
                 | RolloutItem::TurnContext(_)
                 | RolloutItem::WorldState(_)
                 | RolloutItem::SecurityRiskScore(_)
+                | RolloutItem::TurnRecoveryRequestBinding(_)
                 | RolloutItem::EventMsg(_) => {}
             }
         }
@@ -1300,6 +1304,7 @@ pub async fn read_session_meta_line(path: &Path) -> io::Result<SessionMetaLine> 
             | RolloutItem::TurnContext(_)
             | RolloutItem::WorldState(_)
             | RolloutItem::SecurityRiskScore(_)
+            | RolloutItem::TurnRecoveryRequestBinding(_)
             | RolloutItem::EventMsg(_) => {}
         }
     }

@@ -24,8 +24,10 @@ fn config_binds_exact_registered_agent_roots_and_workspace() {
     std::fs::create_dir(&workspace).expect("create workspace");
     let agent_id = AgentId::parse(AGENT_ID).expect("valid agent id");
     let binding = WorkspaceBinding::new(workspace.clone(), &fleet_root).expect("bind workspace");
-    let manifest = AgentManifest::new(agent_id.clone(), binding, ResourceBudget::local_default())
-        .expect("valid manifest");
+    let mut resources = ResourceBudget::local_default();
+    resources.turn_queue_capacity = 37;
+    let manifest =
+        AgentManifest::new(agent_id.clone(), binding, resources.clone()).expect("valid manifest");
     let record = registry.register(manifest).expect("register agent");
     registry
         .compare_and_transition(&agent_id, 0, AgentLifecycle::Starting)
@@ -43,6 +45,18 @@ fn config_binds_exact_registered_agent_roots_and_workspace() {
     .expect("exact roots must load");
     assert_eq!(config.identity().agent_id, agent_id);
     assert_eq!(config.identity().workspace, workspace);
+    assert_eq!(config.identity().resources, resources);
+    let runtime_options = crate::app_runtime::app_server_runtime_options(
+        config.identity(),
+        codex_hepta_memory::CognitiveRuntime::Absent,
+    )
+    .expect("manifest resources must become App Server runtime options");
+    assert_eq!(
+        Some(37),
+        runtime_options
+            .turn_queue_capacity
+            .map(std::num::NonZeroUsize::get)
+    );
     assert_eq!(
         config.identity().layout.cognitive_root(),
         record.layout.cognitive_root()

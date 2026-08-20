@@ -364,6 +364,18 @@ fn rollout_item_variants_preserve_existing_payload_shapes() -> Result<()> {
             },
         }),
         json!({
+            "type": "turn_recovery_request_binding",
+            "payload": {
+                "turn_id": "legacy-recovery-turn",
+                "generation": 7,
+                "fingerprint_sha256": "legacy-fingerprint",
+                "history_boundary": {
+                    "item_count": 3,
+                    "prefix_sha256": "legacy-prefix",
+                },
+            },
+        }),
+        json!({
             "type": "event_msg",
             "payload": { "type": "warning", "message": "heads up" },
         }),
@@ -381,7 +393,7 @@ fn rollout_item_variants_preserve_existing_payload_shapes() -> Result<()> {
 fn rollout_item_schema_matches_tagged_payload_and_sibling_metadata() -> Result<()> {
     let schema = serde_json::to_value(schemars::schema_for!(RolloutItem))?;
     let variants = schema["oneOf"].as_array().expect("rollout variants");
-    assert_eq!(variants.len(), 9);
+    assert_eq!(variants.len(), 10);
 
     for variant in variants {
         let required = variant["required"].as_array().expect("required fields");
@@ -411,6 +423,34 @@ fn rollout_item_schema_matches_tagged_payload_and_sibling_metadata() -> Result<(
     let required = compacted["required"].as_array().expect("required fields");
     assert!(!required.contains(&json!("replacement_history")));
     assert!(!required.contains(&json!("replacement_history_metadata")));
+    Ok(())
+}
+
+#[test]
+/// Keeps pre-replay recovery bindings readable without manufacturing authority fields.
+fn legacy_turn_recovery_binding_without_replay_remains_readable() -> Result<()> {
+    let legacy_item = json!({
+        "type": "turn_recovery_request_binding",
+        "payload": {
+            "turn_id": "legacy-recovery-turn",
+            "generation": 7,
+            "fingerprint_sha256": "legacy-fingerprint",
+            "history_boundary": {
+                "item_count": 3,
+                "prefix_sha256": "legacy-prefix",
+            },
+        },
+    });
+
+    let item = serde_json::from_value::<RolloutItem>(legacy_item.clone())?;
+    let RolloutItem::TurnRecoveryRequestBinding(binding) = &item else {
+        panic!("expected recovery request binding");
+    };
+    assert_eq!(binding.turn_id, "legacy-recovery-turn");
+    assert_eq!(binding.generation, 7);
+    assert_eq!(binding.replay, None);
+    assert_eq!(binding.replay_applied_from_generation, None);
+    assert_eq!(serde_json::to_value(item)?, legacy_item);
     Ok(())
 }
 

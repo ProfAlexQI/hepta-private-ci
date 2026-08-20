@@ -23,6 +23,7 @@ use codex_hooks::hook_execution_mode_label;
 use codex_hooks::hook_handler_type_label;
 use codex_otel::HOOK_RUN_DURATION_METRIC;
 use codex_otel::HOOK_RUN_METRIC;
+use codex_protocol::error::Result as CodexResult;
 use codex_protocol::items::TurnItem;
 use codex_protocol::items::UserMessageItem;
 use codex_protocol::models::ResponseItem;
@@ -47,6 +48,7 @@ use codex_thread_store::ReadThreadParams;
 use serde_json::Value;
 use tracing::instrument;
 
+use crate::codex_thread::InjectIfRunningError;
 use crate::context::ContextualUserFragment;
 use crate::context::HookAdditionalContext;
 use crate::event_mapping::parse_turn_item;
@@ -666,7 +668,7 @@ pub(crate) async fn drain_async_hook_results(
     sess: &Arc<Session>,
     turn_context: &Arc<TurnContext>,
     before_user_prompt: bool,
-) {
+) -> CodexResult<()> {
     while let Ok(result) = sess.async_hook_results.try_recv() {
         let additional_contexts = result
             .run
@@ -679,9 +681,18 @@ pub(crate) async fn drain_async_hook_results(
         if before_user_prompt {
             record_additional_contexts(sess, turn_context, additional_contexts).await;
         } else if !additional_contexts.is_empty() {
-            let _ = sess
+            match sess
                 .inject_if_running(additional_context_messages(additional_contexts))
-                .await;
+                .await
+            {
+                Ok(()) => {}
+                Err(InjectIfRunningError::NoActiveTurn(_)) => {
+                    // The owning turn ended between draining the hook result
+                    // and acquiring the active-turn lock. There is no current
+                    // model request to extend, so leave the stale result out.
+                }
+                Err(InjectIfRunningError::RecoveryRevocation(err)) => return Err(err),
+            }
         }
 
         for entry in &result.run.entries {
@@ -698,6 +709,7 @@ pub(crate) async fn drain_async_hook_results(
 
         emit_hook_completed_events(sess, turn_context, vec![result]).await;
     }
+    Ok(())
 }
 
 async fn run_context_injecting_hook<Fut, Outcome>(

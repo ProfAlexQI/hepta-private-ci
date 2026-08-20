@@ -270,6 +270,7 @@ async fn build_test_processor(
         rpc_transport: AppServerRpcTransport::Stdio,
         remote_control_handle: None,
         plugin_startup_tasks: crate::PluginStartupTasks::Start,
+        turn_queue_capacity: None,
         hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime::Absent,
     }));
     (processor, outgoing_rx)

@@ -73,6 +73,8 @@ pub use runtime::GoalAccountingOutcome;
 pub use runtime::GoalStore;
 pub use runtime::GoalUpdate;
 pub use runtime::MemoryStore;
+pub use runtime::QueueCapacityExceeded;
+pub use runtime::QueueCapacityLimit;
 pub use runtime::RemoteControlEnrollmentRecord;
 pub use runtime::RuntimeDbBackup;
 pub use runtime::SqliteQueueStore;

@@ -197,6 +197,15 @@ impl TestAppServer {
         self.process.wait().await
     }
 
+    /// Kills the child without closing its input stream or running App Server teardown.
+    ///
+    /// Recovery tests use this to leave an in-progress persisted turn without a
+    /// terminal event, matching an abrupt process failure rather than an EOF shutdown.
+    pub async fn kill_ungracefully(&mut self) -> std::io::Result<ExitStatus> {
+        self.process.start_kill()?;
+        self.process.wait().await
+    }
+
     /// Returns the automatically selected test environment retained by this server.
     ///
     /// Tests can use the environment to arrange target-native filesystem fixtures before starting

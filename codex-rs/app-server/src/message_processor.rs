@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -278,6 +279,7 @@ pub(crate) struct MessageProcessorArgs {
     pub(crate) rpc_transport: AppServerRpcTransport,
     pub(crate) remote_control_handle: Option<RemoteControlHandle>,
     pub(crate) plugin_startup_tasks: crate::PluginStartupTasks,
+    pub(crate) turn_queue_capacity: Option<NonZeroUsize>,
     pub(crate) hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime,
 }
 
@@ -303,6 +305,7 @@ impl MessageProcessor {
             rpc_transport,
             remote_control_handle,
             plugin_startup_tasks,
+            turn_queue_capacity,
             hepta_cognitive_runtime,
         } = args;
         let thread_state_manager = ThreadStateManager::new();
@@ -314,7 +317,13 @@ impl MessageProcessor {
         // app servers without a state database do not have a queue backend.
         let queue_store: Option<Arc<dyn QueueStore>> = match &config.experimental_thread_store {
             ThreadStoreConfig::Local => state_db.as_ref().map(|state_db| {
-                Arc::new(LocalQueueStore::new(Arc::clone(state_db))) as Arc<dyn QueueStore>
+                let queue_store = match turn_queue_capacity {
+                    Some(capacity) => {
+                        LocalQueueStore::with_capacity(Arc::clone(state_db), capacity)
+                    }
+                    None => LocalQueueStore::new(Arc::clone(state_db)),
+                };
+                Arc::new(queue_store) as Arc<dyn QueueStore>
             }),
             ThreadStoreConfig::InMemory { .. } => None,
         };
@@ -539,6 +548,7 @@ impl MessageProcessor {
             arg0_paths.clone(),
             Arc::clone(&config),
             config_manager.clone(),
+            Arc::clone(&thread_store),
             pending_thread_unloads,
             thread_state_manager,
             thread_watch_manager,
@@ -1522,6 +1532,11 @@ impl MessageProcessor {
             ClientRequest::TurnInterrupt { params, .. } => {
                 processor.turn_processor
                     .turn_interrupt(&request_id, params)
+                    .await
+            },
+            ClientRequest::TurnRecover { params, .. } => {
+                processor.turn_processor
+                    .turn_recover(&request_id, params)
                     .await
             },
             ClientRequest::ThreadRealtimeStart { params, .. } => {

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::FleetRegistry;
+use codex_hepta_fleet::ResourceBudget;
 use codex_hepta_paths::HeptaAgentLayout;
 use codex_hepta_paths::HeptaFleetRoot;
 
@@ -24,6 +25,7 @@ pub struct AgentdIdentity {
     pub spawn_generation: u64,
     pub fleet_root: PathBuf,
     pub workspace: PathBuf,
+    pub resources: ResourceBudget,
     pub home_root: PathBuf,
     pub run_root: PathBuf,
     pub control_socket: PathBuf,
@@ -129,6 +131,7 @@ impl AgentdConfig {
                 spawn_generation,
                 fleet_root,
                 workspace,
+                resources: record.manifest.resources,
                 home_root,
                 run_root,
                 control_socket,

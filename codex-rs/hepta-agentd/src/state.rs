@@ -148,9 +148,11 @@ impl AgentdState {
             || record.layout.cognitive_root() != self.identity.layout.cognitive_root()
             || record.layout.automation_root() != self.identity.layout.automation_root()
             || record.manifest.workspace.as_path() != self.identity.workspace
+            || record.manifest.resources != self.identity.resources
         {
             return Err(AgentdError::GenerationFenced(
-                "registered agent roots changed while agentd was running".to_string(),
+                "registered agent roots or resource budget changed while agentd was running"
+                    .to_string(),
             ));
         }
         let distance = record

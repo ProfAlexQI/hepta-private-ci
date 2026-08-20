@@ -59,6 +59,20 @@ pub(crate) struct Session {
     pub(super) mcp_prewarm_task: std::sync::Mutex<Option<JoinHandle<()>>>,
     pub(crate) conversation: Arc<RealtimeConversationManager>,
     pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
+    /// Monotonically changes whenever a real task is attached to the active turn.
+    pub(crate) turn_epoch: AtomicU64,
+    /// Exact idle model turn that may be resumed at `epoch`.
+    ///
+    /// This is separate from `AgentStatus` because status is presentation state
+    /// and cannot preserve task provenance or abort reason.
+    pub(crate) recovery_candidate: std::sync::Mutex<Option<RecoveryCandidate>>,
+    /// Changes whenever an ordinary best-effort rollout append/flush fails.
+    /// Recovery Ready checkpoints freeze and compare this generation so a
+    /// swallowed prerequisite write can never authorize provider dispatch.
+    pub(crate) rollout_persistence_failure_generation: AtomicU64,
+    #[cfg(test)]
+    pub(crate) rollout_persistence_faults:
+        Mutex<std::collections::VecDeque<RolloutPersistenceFault>>,
     pub(crate) async_hook_results: async_channel::Receiver<HookCompletedEvent>,
     pub(crate) input_queue: InputQueue,
     pub(crate) pending_user_message_admissions:
@@ -68,6 +82,29 @@ pub(crate) struct Session {
     pub(super) git_enrichment_policy: GitEnrichmentPolicy,
     pub(super) fork_persistence: ForkPersistence,
     pub(super) next_internal_sub_id: AtomicU64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RecoveryCandidate {
+    pub(crate) turn_id: String,
+    pub(crate) marker_generation: u64,
+    pub(crate) request_fingerprint_sha256: String,
+    pub(crate) replay: codex_history::TurnRecoveryReplayV1,
+    pub(crate) epoch: u64,
+    pub(crate) persistence_failure_generation: u64,
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum RolloutPersistenceFault {
+    TurnAbortedAppend,
+    InterruptedMarkerAppend,
+    WarningAppend,
+    TurnRecoveryReadyAppend,
+    TurnRecoveryReadyFlush,
+    TurnRecoveryInterruptedConfirmedAppend,
+    TurnRecoveryInterruptedConfirmedFlush,
+    TurnRecoveryUnreadyAppend,
 }
 
 #[derive(Clone)]
@@ -1254,7 +1291,8 @@ impl Session {
                     | RolloutItem::InterAgentCommunicationMetadata { .. }
                     | RolloutItem::TurnContext(_)
                     | RolloutItem::WorldState(_)
-                    | RolloutItem::SecurityRiskScore(_) => {}
+                    | RolloutItem::SecurityRiskScore(_)
+                    | RolloutItem::TurnRecoveryRequestBinding(_) => {}
                 }
             }
             let session_extension_data =
@@ -1384,6 +1422,11 @@ impl Session {
                 mcp_prewarm_task: std::sync::Mutex::new(None),
                 conversation: Arc::new(RealtimeConversationManager::new()),
                 active_turn: Mutex::new(None),
+                turn_epoch: AtomicU64::new(0),
+                recovery_candidate: std::sync::Mutex::new(None),
+                rollout_persistence_failure_generation: AtomicU64::new(0),
+                #[cfg(test)]
+                rollout_persistence_faults: Mutex::new(std::collections::VecDeque::new()),
                 async_hook_results,
                 input_queue: InputQueue::new(),
                 pending_user_message_admissions: Default::default(),
@@ -1484,7 +1527,7 @@ impl Session {
             };
 
             // record_initial_history can emit events. We record only after the SessionConfiguredEvent is emitted.
-            sess.record_initial_history(initial_history).await;
+            sess.record_initial_history(initial_history).await?;
             if restore_child_window {
                 sess.state.lock().await.restore_auto_compact_window(
                     /*window_number*/ 0,

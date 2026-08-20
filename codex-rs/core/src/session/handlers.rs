@@ -87,13 +87,25 @@ pub async fn inter_agent_communication(
     root_turn_id: Option<String>,
 ) {
     let trigger_turn = communication.trigger_turn;
-    sess.input_queue
+    if let Err(err) = sess
         .enqueue_mailbox_communication(
             communication,
             parent_turn_id.filter(|_| trigger_turn),
             root_turn_id.filter(|_| trigger_turn),
         )
+        .await
+    {
+        warn!(%err, "failed to accept inter-agent communication");
+        sess.send_event_raw(Event {
+            id: sub_id,
+            msg: EventMsg::Error(ErrorEvent {
+                message: format!("failed to accept inter-agent communication: {err}"),
+                codex_error_info: None,
+            }),
+        })
         .await;
+        return;
+    }
     crate::agent_communication::emit_agent_communication_receive(&sub_id);
     if trigger_turn || sess.has_outstanding_durable_sleep() {
         sess.maybe_start_turn_for_pending_work_with_sub_id(sub_id)
@@ -120,12 +132,23 @@ pub async fn run_user_shell_command(sess: &Arc<Session>, sub_id: String, command
     }
 
     let turn_context = sess.new_default_turn_with_sub_id(sub_id).await;
-    sess.spawn_task(
-        Arc::clone(&turn_context),
-        Vec::new(),
-        UserShellCommandTask::new(command),
-    )
-    .await;
+    if let Err(err) = sess
+        .spawn_task(
+            Arc::clone(&turn_context),
+            Vec::new(),
+            UserShellCommandTask::new(command),
+        )
+        .await
+    {
+        sess.send_event_raw(Event {
+            id: turn_context.sub_id.clone(),
+            msg: EventMsg::Error(ErrorEvent {
+                message: format!("failed to start shell command: {err}"),
+                codex_error_info: Some(CodexErrorInfo::Other),
+            }),
+        })
+        .await;
+    }
 }
 
 pub async fn resolve_elicitation(
@@ -244,8 +267,19 @@ pub async fn reload_user_config(sess: &Arc<Session>) {
 pub async fn compact(sess: &Arc<Session>, sub_id: String) {
     let turn_context = sess.new_default_turn_with_sub_id(sub_id).await;
 
-    sess.spawn_task(Arc::clone(&turn_context), Vec::new(), CompactTask)
+    if let Err(err) = sess
+        .spawn_task(Arc::clone(&turn_context), Vec::new(), CompactTask)
+        .await
+    {
+        sess.send_event_raw(Event {
+            id: turn_context.sub_id.clone(),
+            msg: EventMsg::Error(ErrorEvent {
+                message: format!("failed to start compaction: {err}"),
+                codex_error_info: Some(CodexErrorInfo::Other),
+            }),
+        })
         .await;
+    }
 }
 
 pub async fn thread_rollback(sess: &Arc<Session>, sub_id: String, num_turns: u32) {
@@ -261,18 +295,33 @@ pub async fn thread_rollback(sess: &Arc<Session>, sub_id: String, num_turns: u32
         return;
     }
 
-    let has_active_turn = { sess.active_turn.lock().await.is_some() };
-    if has_active_turn {
-        sess.send_event_raw(Event {
-            id: sub_id,
-            msg: EventMsg::Error(ErrorEvent {
-                message: "Cannot rollback while a turn is in progress.".to_string(),
-                codex_error_info: Some(CodexErrorInfo::ThreadRollbackFailed),
-            }),
-        })
-        .await;
-        return;
-    }
+    let rollback_reservation = match sess.reserve_history_mutation_if_idle().await {
+        Ok(Some(reservation)) => reservation,
+        Ok(None) => {
+            sess.send_event_raw(Event {
+                id: sub_id,
+                msg: EventMsg::Error(ErrorEvent {
+                    message: "Cannot rollback while a turn is in progress.".to_string(),
+                    codex_error_info: Some(CodexErrorInfo::ThreadRollbackFailed),
+                }),
+            })
+            .await;
+            return;
+        }
+        Err(err) => {
+            sess.send_event_raw(Event {
+                id: sub_id,
+                msg: EventMsg::Error(ErrorEvent {
+                    message: format!(
+                        "failed to durably revoke turn recovery before rollback: {err}"
+                    ),
+                    codex_error_info: Some(CodexErrorInfo::ThreadRollbackFailed),
+                }),
+            })
+            .await;
+            return;
+        }
+    };
 
     let turn_context = sess.new_default_turn_with_sub_id(sub_id).await;
     let live_thread = match sess.live_thread_for_persistence("rollback thread") {
@@ -286,10 +335,12 @@ pub async fn thread_rollback(sess: &Arc<Session>, sub_id: String, num_turns: u32
                 }),
             })
             .await;
+            sess.settle_and_clear_reserved_idle_turn(&rollback_reservation)
+                .await;
             return;
         }
     };
-    if let Err(err) = live_thread.flush().await {
+    if let Err(err) = sess.flush_rollout().await {
         sess.send_event_raw(Event {
             id: turn_context.sub_id.clone(),
             msg: EventMsg::Error(ErrorEvent {
@@ -298,6 +349,8 @@ pub async fn thread_rollback(sess: &Arc<Session>, sub_id: String, num_turns: u32
             }),
         })
         .await;
+        sess.settle_and_clear_reserved_idle_turn(&rollback_reservation)
+            .await;
         return;
     }
 
@@ -312,16 +365,35 @@ pub async fn thread_rollback(sess: &Arc<Session>, sub_id: String, num_turns: u32
                 }),
             })
             .await;
+            sess.settle_and_clear_reserved_idle_turn(&rollback_reservation)
+                .await;
             return;
         }
     };
 
     let rollback_event = ThreadRolledBackEvent { num_turns };
     let rollback_msg = EventMsg::ThreadRolledBack(rollback_event.clone());
+    let rollback_item = RolloutItem::EventMsg(rollback_msg.clone());
+    if let Err(err) = sess
+        .persist_rollout_items_strict(std::slice::from_ref(&rollback_item))
+        .await
+    {
+        sess.send_event_raw(Event {
+            id: turn_context.sub_id.clone(),
+            msg: EventMsg::Error(ErrorEvent {
+                message: format!("failed to persist thread rollback marker: {err}"),
+                codex_error_info: Some(CodexErrorInfo::ThreadRollbackFailed),
+            }),
+        })
+        .await;
+        sess.settle_and_clear_reserved_idle_turn(&rollback_reservation)
+            .await;
+        return;
+    }
     let replay_items = stored_history
         .items
         .into_iter()
-        .chain(std::iter::once(RolloutItem::EventMsg(rollback_msg.clone())))
+        .chain(std::iter::once(rollback_item))
         .collect::<Vec<_>>();
     sess.apply_rollout_reconstruction(turn_context.as_ref(), replay_items.as_slice())
         .await;
@@ -340,20 +412,8 @@ pub async fn thread_rollback(sess: &Arc<Session>, sub_id: String, num_turns: u32
         .rollout_budget()
         .rearm_reminder(sess.thread_id());
     sess.recompute_token_usage(turn_context.as_ref()).await;
-
-    sess.persist_rollout_items(&[RolloutItem::EventMsg(rollback_msg.clone())])
+    sess.settle_and_clear_reserved_idle_turn(&rollback_reservation)
         .await;
-    if let Err(err) = sess.flush_rollout().await {
-        sess.send_event(
-            turn_context.as_ref(),
-            EventMsg::Warning(WarningEvent {
-                message: format!(
-                    "Rolled the thread back, but failed to save the rollback marker. Codex will continue retrying. Error: {err}"
-                ),
-            }),
-        )
-        .await;
-    }
 
     sess.deliver_event_raw(Event {
         id: turn_context.sub_id.clone(),
@@ -490,14 +550,24 @@ pub async fn review(
     #[allow(deprecated)]
     match resolve_review_request(review_request, &turn_context.cwd) {
         Ok(resolved) => {
-            spawn_review_thread(
+            if let Err(err) = spawn_review_thread(
                 Arc::clone(sess),
                 Arc::clone(config),
                 turn_context.clone(),
                 sub_id,
                 resolved,
             )
-            .await;
+            .await
+            {
+                sess.send_event(
+                    &turn_context,
+                    EventMsg::Error(ErrorEvent {
+                        message: format!("failed to start review: {err}"),
+                        codex_error_info: Some(CodexErrorInfo::Other),
+                    }),
+                )
+                .await;
+            }
         }
         Err(err) => {
             let event = Event {
@@ -580,11 +650,17 @@ pub(super) async fn submission_loop(
                     false
                 }
                 Op::RecoverTurn {
+                    expected_epoch,
                     thread_settings,
                     reply,
                 } => {
-                    let result =
-                        turn_input::handle_recovery(&sess, thread_settings, sub.id.clone()).await;
+                    let result = turn_input::handle_recovery(
+                        &sess,
+                        expected_epoch,
+                        thread_settings,
+                        sub.id.clone(),
+                    )
+                    .await;
                     let _ = reply.send(result);
                     false
                 }

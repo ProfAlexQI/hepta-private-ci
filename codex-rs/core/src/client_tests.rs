@@ -4,6 +4,7 @@ use super::ModelClient;
 use super::PendingUnauthorizedRetry;
 use super::Prompt;
 use super::UnauthorizedRecoveryExecution;
+use super::WebsocketConnectionIdentity;
 use super::X_CODEX_INSTALLATION_ID_HEADER;
 use super::X_CODEX_PARENT_THREAD_ID_HEADER;
 use super::X_CODEX_TURN_METADATA_HEADER;
@@ -18,6 +19,7 @@ use crate::test_support::responses_metadata as test_responses_metadata;
 use codex_api::AgentIdentityTelemetry;
 use codex_api::ApiError;
 use codex_api::ResponseEvent;
+use codex_api::RetryConfig;
 use codex_api::TransportError;
 use codex_http_client::HttpClientFactory;
 use codex_http_client::OutboundProxyPolicy;
@@ -64,6 +66,7 @@ use futures::StreamExt;
 use pretty_assertions::assert_eq;
 use serde_json::json;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -117,6 +120,81 @@ fn test_model_client_with_thread_id(
         /*attestation_provider*/ None,
         HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
     )
+}
+
+#[test]
+fn websocket_connection_identity_binds_provider_and_stable_handshake_semantics() {
+    let provider = codex_api::Provider {
+        name: "provider-a".to_string(),
+        base_url: "https://deployment.example.test/v1".to_string(),
+        query_params: Some(HashMap::from([(
+            "api-version".to_string(),
+            "2026-08-01".to_string(),
+        )])),
+        headers: http::HeaderMap::new(),
+        retry: RetryConfig {
+            max_attempts: 1,
+            base_delay: Duration::from_millis(1),
+            retry_429: false,
+            retry_5xx: false,
+            retry_transport: false,
+        },
+        stream_idle_timeout: Duration::from_secs(5),
+    };
+    let mut metadata_a = CodexResponsesMetadata::new(
+        "installation-a".to_string(),
+        "session-a".to_string(),
+        "thread-a".to_string(),
+        "window-a".to_string(),
+    );
+    metadata_a.sandbox_mode = Some("workspace-write".to_string());
+    metadata_a.turn_started_at_unix_ms = Some(1);
+    let identity_a =
+        WebsocketConnectionIdentity::from_provider(&provider, Some("feature-a"), &metadata_a)
+            .expect("identity a");
+
+    let mut volatile_metadata = metadata_a.clone();
+    volatile_metadata.session_id = "session-after-restart".to_string();
+    volatile_metadata.window_id = "window-after-restart".to_string();
+    volatile_metadata.turn_started_at_unix_ms = Some(2);
+    assert_eq!(
+        identity_a,
+        WebsocketConnectionIdentity::from_provider(
+            &provider,
+            Some("feature-a"),
+            &volatile_metadata,
+        )
+        .expect("volatile identity")
+    );
+
+    let mut changed_metadata = metadata_a.clone();
+    changed_metadata.sandbox_mode = Some("danger-full-access".to_string());
+    assert_ne!(
+        identity_a,
+        WebsocketConnectionIdentity::from_provider(
+            &provider,
+            Some("feature-a"),
+            &changed_metadata,
+        )
+        .expect("changed compatibility identity")
+    );
+    assert_ne!(
+        identity_a,
+        WebsocketConnectionIdentity::from_provider(&provider, Some("feature-b"), &metadata_a,)
+            .expect("changed beta identity")
+    );
+
+    let mut changed_provider = provider.clone();
+    changed_provider.base_url = "https://other.example.test/v1".to_string();
+    assert_ne!(
+        identity_a,
+        WebsocketConnectionIdentity::from_provider(
+            &changed_provider,
+            Some("feature-a"),
+            &metadata_a,
+        )
+        .expect("changed provider identity")
+    );
 }
 
 #[tokio::test]

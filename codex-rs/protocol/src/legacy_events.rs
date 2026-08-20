@@ -61,6 +61,7 @@ use crate::protocol::UserMessageEvent;
 use crate::protocol::ViewImageToolCallEvent;
 use crate::protocol::WebSearchBeginEvent;
 use crate::protocol::WebSearchEndEvent;
+use crate::user_input::user_input_payload_sha256;
 
 /// Converts canonical item lifecycle events back into the legacy raw event stream used by
 /// compatibility consumers that have not migrated to `TurnItem`.
@@ -80,6 +81,7 @@ impl UserMessageItem {
         // rebase text element ranges onto that concatenated text.
         UserMessageEvent {
             client_id: self.client_id.clone(),
+            payload_sha256: user_input_payload_sha256(&self.content).ok(),
             message: self.message(),
             images: Some(self.image_urls()),
             image_details: self.image_details(),

@@ -11,6 +11,7 @@ use super::RolloutItem;
 use super::SecurityRiskScore;
 use super::SessionMetaLine;
 use super::TurnContextItem;
+use super::TurnRecoveryRequestBinding;
 use super::WorldStateItem;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -45,6 +46,9 @@ pub(super) enum RolloutItemWire<'a> {
     },
     SecurityRiskScore {
         payload: Cow<'a, SecurityRiskScore>,
+    },
+    TurnRecoveryRequestBinding {
+        payload: Cow<'a, TurnRecoveryRequestBinding>,
     },
     EventMsg {
         payload: Cow<'a, EventMsg>,
@@ -83,6 +87,9 @@ impl<'a> From<&'a RolloutItem> for RolloutItemWire<'a> {
             RolloutItem::SecurityRiskScore(payload) => Self::SecurityRiskScore {
                 payload: Cow::Borrowed(payload),
             },
+            RolloutItem::TurnRecoveryRequestBinding(payload) => Self::TurnRecoveryRequestBinding {
+                payload: Cow::Borrowed(payload),
+            },
             RolloutItem::EventMsg(payload) => Self::EventMsg {
                 payload: Cow::Borrowed(payload),
             },
@@ -113,6 +120,9 @@ impl From<RolloutItemWire<'_>> for RolloutItem {
             RolloutItemWire::WorldState { payload } => Self::WorldState(payload.into_owned()),
             RolloutItemWire::SecurityRiskScore { payload } => {
                 Self::SecurityRiskScore(payload.into_owned())
+            }
+            RolloutItemWire::TurnRecoveryRequestBinding { payload } => {
+                Self::TurnRecoveryRequestBinding(payload.into_owned())
             }
             RolloutItemWire::EventMsg { payload } => Self::EventMsg(payload.into_owned()),
         }

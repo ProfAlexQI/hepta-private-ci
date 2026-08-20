@@ -3635,7 +3635,7 @@ impl ThreadRequestProcessor {
         }
         let has_explicit_model_resume_override =
             has_model_resume_override(request_overrides.as_ref(), &typesafe_overrides);
-        let persisted_metadata = self
+        let (persisted_metadata, persisted_runtime_environment) = self
             .load_and_apply_persisted_resume_metadata(
                 &thread_history,
                 &mut request_overrides,
@@ -3665,15 +3665,20 @@ impl ThreadRequestProcessor {
         }
 
         let response_history = thread_history.clone();
+        let resume_environments = persisted_runtime_environment.map(|(cwd, workspace_roots)| {
+            self.thread_manager
+                .default_environment_selections(&cwd, &workspace_roots)
+        });
 
         match self
             .thread_manager
-            .resume_thread_with_history(
+            .resume_thread_with_history_and_environments(
                 config,
                 thread_history,
                 self.auth_manager.clone(),
                 self.request_trace_context(&request_id).await,
                 client_mcp_extensions,
+                resume_environments,
             )
             .await
         {
@@ -3904,12 +3909,36 @@ impl ThreadRequestProcessor {
         thread_history: &InitialHistory,
         request_overrides: &mut Option<HashMap<String, serde_json::Value>>,
         typesafe_overrides: &mut ConfigOverrides,
-    ) -> Option<ThreadMetadata> {
+    ) -> (
+        Option<ThreadMetadata>,
+        Option<(AbsolutePathBuf, Vec<AbsolutePathBuf>)>,
+    ) {
         let InitialHistory::Resumed(resumed_history) = thread_history else {
-            return None;
+            return (None, None);
         };
+        let mut persisted_runtime_environment = None;
         if let Some(persisted_settings) = latest_persisted_resume_settings(&resumed_history.history)
         {
+            let has_raw_cwd_override = request_overrides
+                .as_ref()
+                .is_some_and(|overrides| overrides.contains_key("cwd"));
+            let has_raw_workspace_roots_override = request_overrides
+                .as_ref()
+                .is_some_and(|overrides| overrides.contains_key("workspace_roots"));
+            if typesafe_overrides.cwd.is_none()
+                && typesafe_overrides.workspace_roots.is_none()
+                && !has_raw_cwd_override
+                && !has_raw_workspace_roots_override
+            {
+                persisted_runtime_environment = persisted_settings
+                    .runtime_cwd
+                    .clone()
+                    .zip(persisted_settings.runtime_workspace_roots.clone());
+            }
+            if typesafe_overrides.workspace_roots.is_none() && !has_raw_workspace_roots_override {
+                typesafe_overrides.workspace_roots =
+                    persisted_settings.runtime_workspace_roots.clone();
+            }
             if typesafe_overrides.approval_policy.is_none() {
                 typesafe_overrides.approval_policy = Some(persisted_settings.approval_policy);
             }
@@ -3926,14 +3955,23 @@ impl ThreadRequestProcessor {
                     .map(|profile| profile.id);
             }
         }
-        let state_db_ctx = self.state_db.clone()?;
-        let persisted_metadata = state_db_ctx
-            .get_thread(resumed_history.conversation_id)
-            .await
-            .ok()
-            .flatten()?;
-        merge_persisted_resume_metadata(request_overrides, typesafe_overrides, &persisted_metadata);
-        Some(persisted_metadata)
+        let persisted_metadata = if let Some(state_db_ctx) = self.state_db.clone() {
+            state_db_ctx
+                .get_thread(resumed_history.conversation_id)
+                .await
+                .ok()
+                .flatten()
+        } else {
+            None
+        };
+        if let Some(persisted_metadata) = persisted_metadata.as_ref() {
+            merge_persisted_resume_metadata(
+                request_overrides,
+                typesafe_overrides,
+                persisted_metadata,
+            );
+        }
+        (persisted_metadata, persisted_runtime_environment)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -4667,6 +4705,8 @@ impl ThreadRequestProcessor {
                     approval_policy: snapshot.approval_policy,
                     approvals_reviewer: Some(snapshot.approvals_reviewer),
                     active_permission_profile: snapshot.active_permission_profile,
+                    runtime_cwd: Some(snapshot.environments.legacy_fallback_cwd),
+                    runtime_workspace_roots: Some(snapshot.workspace_roots),
                 })
             } else {
                 None

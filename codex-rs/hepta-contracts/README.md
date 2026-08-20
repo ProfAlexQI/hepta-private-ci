@@ -160,10 +160,42 @@ implementation is an oracle and evidence source, not a merge target.
   compact, prewarm, detached-memory, and physical-send paths now use the shared
   provider attempt/terminal lifecycle. This does not prove exactly-once external
   delivery.
-- The promoted stack governs ToolRegistry dispatch and the listed provider send
-  paths. Memory recall, memory mutation writers, external channel transport,
-  outbound delivery, effect ACK, retirement, and automatic reconciliation stay
-  outside this candidate. `HandlerCompleted` is handler-reported status, not
+- The R2 execution-substrate candidate adds feature-gated, explicit
+  `turn/recover` on the existing App Server/Core turn spine. A cold candidate
+  requires one exact durable turn identity, generation, provider-request
+  fingerprint, annotated-history boundary, turn context, lineage, and
+  nonempty thread-owned environment selection. Recovery consumes that
+  authority once, persists a newer `Unready` plus a bounded replay-applied
+  hand-off, reopens the same logical turn, and rejects context, environment,
+  epoch, generation, or payload drift before another provider send. Agentd
+  enables the feature on each Agent's private App Server UDS and binds the
+  manifest queue capacity to that Agent's private SQLite queue. Within the
+  queue service's serialized, observed queue set, reconciliation binds a stable
+  client message ID to a versioned canonical payload digest: equal replays join
+  once and observed conflicting payloads fail closed before Core submission.
+  A raw cross-process `QueueStore` insert after that preflight is not covered;
+  stronger cross-process guarantees require a transactional SQLite binding.
+- R2 does not claim provider sampling or provider-output arrival exactly-once.
+  The background transport mapper may record provider-policy evidence, tracing,
+  or diagnostic telemetry before the outer turn gate. For durable and cold
+  threads, model-visible response persistence, tool dispatch, hooks, commands,
+  and other product effects require a durable local recovery revocation first.
+  Ephemeral threads require an in-process revocation instead and cannot carry
+  recovery authority across process exit. In the current process, observed
+  persistence failures poison authority and attempt a newer `Unready`. If a
+  positive marker may already be durable while its successor `Unready` fails,
+  or a crash separates the append-only filesystem syscalls, the current process
+  fail-stops; restart authority is unknown and unqualified rather than
+  exactly-once.
+  The current `turn/recover` invocation callers are qualification harnesses, not
+  product callers, so this slice remains ineligible for promotion until a later
+  ordered product stage names its caller and refreshes exact-head/operator
+  receipts.
+- The current candidate stack governs ToolRegistry dispatch and the listed
+  provider send paths. Memory recall, memory mutation writers, external channel
+  transport, outbound delivery, effect ACK, retirement, and automatic
+  reconciliation stay outside this candidate. `HandlerCompleted` is
+  handler-reported status, not
   proof of an external effect or exactly-once execution.
 - The Hepta product resolves its process home as
   `HEPTA_HOME > CODEX_HOME > ~/.hepta` before the shared Codex loader starts.

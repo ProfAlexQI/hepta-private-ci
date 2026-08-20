@@ -28,7 +28,6 @@ pub(crate) use attempt_owner::ProviderAttemptOwner;
 pub(crate) use binding::ModelProviderPolicyContext;
 #[cfg(test)]
 pub(crate) use binding::bytes_sha256;
-#[cfg(test)]
 pub(crate) use binding::canonical_sha256;
 pub(crate) use binding::prepare_model_provider_attempt;
 pub(crate) use binding::prepare_model_provider_policy;

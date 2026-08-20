@@ -305,6 +305,7 @@ impl ThreadMetadataSync {
                 | RolloutItem::InterAgentCommunicationMetadata { .. }
                 | RolloutItem::Compacted(_)
                 | RolloutItem::SecurityRiskScore(_)
+                | RolloutItem::TurnRecoveryRequestBinding(_)
                 | RolloutItem::WorldState(_) => {}
             }
         }

@@ -1001,7 +1001,7 @@ async fn run_review_on_session(
                     review_session
                         .session
                         .inject_client_response_items(vec![item], turn_context.as_ref())
-                        .await;
+                        .await?;
                 }
             }
 

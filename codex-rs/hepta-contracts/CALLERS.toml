@@ -128,3 +128,29 @@ observed_live_effect_ack_rows = 0
 observed_live_preference_rows = 0
 recovery_source = "frozen_oracle_and_verified_complete_history_bundle"
 promotion_eligible = false
+
+[[qualification]]
+slice = "R2_codex_execution_substrate"
+composition = "feature_gated_same_turn_recovery_and_agent_local_durable_queue_composed"
+api_owner = "Codex App Server + Codex Core"
+public_api = "turn/recover"
+qualification_callers = [
+  "codex-rs/app-server/tests/suite/v2/turn_recover.rs",
+  "codex-rs/hepta-agentd/tests/queue_capacity_product.rs",
+]
+product_caller_named = false
+explicit_recovery_only = true
+same_turn_identity = true
+structured_replay_required = true
+provider_physical_sampling_exactly_once = false
+durable_thread_product_effects_require_durable_revoke = true
+ephemeral_thread_product_effects_require_in_process_revoke = true
+transport_diagnostics_may_precede_product_effect_gate = true
+persistence_fault_model = "in-process observed failures poison authority and attempt a newer Unready marker; the current process fail-stops, but if a positive marker may be durable while successor Unready fails, restart authority is unknown and unqualified"
+ephemeral_recovery_authority = "same_process_only_and_not_restart_durable"
+queue_capacity_manifest_bound = true
+queue_client_id_payload_digest_bound = true
+queue_payload_binding_scope = "QueuedItemService serialized observed queue set; raw cross-process QueueStore insertion after preflight requires a transactional SQLite binding"
+matrix_or_robrix_authority = false
+fleet_or_automation_authority = false
+promotion_eligible = false

@@ -276,6 +276,8 @@ pub enum Feature {
     GuardianV2,
     /// Enable the Hepta typed governance extension plane.
     HeptaGovernance,
+    /// Enable Hepta's fail-closed durable regular-turn recovery protocol.
+    HeptaTurnRecovery,
     /// Enable same-thread digest-only Hepta Memory shadow recall.
     HeptaMemory,
     /// Allow bounded read-only Hepta Memory input on governed provider sends.
@@ -1403,6 +1405,12 @@ pub const FEATURES: &[FeatureSpec] = &[
     FeatureSpec {
         id: Feature::HeptaGovernance,
         key: "hepta_governance",
+        stage: Stage::UnderDevelopment,
+        default_enabled: false,
+    },
+    FeatureSpec {
+        id: Feature::HeptaTurnRecovery,
+        key: "hepta_turn_recovery",
         stage: Stage::UnderDevelopment,
         default_enabled: false,
     },

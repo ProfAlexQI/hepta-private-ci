@@ -384,6 +384,7 @@ async fn run_remote_compaction_request_v2(
                 responses_metadata,
                 &InferenceTraceContext::disabled(),
                 Some(&provider_policy_context),
+                None,
             )
             .await
         {

@@ -418,6 +418,7 @@ mod job {
                 | RolloutItem::TurnContext(_)
                 | RolloutItem::WorldState(_)
                 | RolloutItem::SecurityRiskScore(_)
+                | RolloutItem::TurnRecoveryRequestBinding(_)
                 | RolloutItem::EventMsg(_) => None,
             })
             .collect::<Vec<_>>();

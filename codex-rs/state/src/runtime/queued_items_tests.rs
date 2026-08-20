@@ -44,6 +44,44 @@ async fn competing_runtimes_preserve_fifo_queue_order() {
 }
 
 #[tokio::test]
+async fn ordinary_queue_limit_remains_per_thread_not_database_wide() {
+    let (runtime, first_thread_id) = runtime_with_thread().await;
+    let second_thread_id = ThreadId::new();
+    for index in 0..MAX_QUEUE_ITEMS {
+        runtime
+            .thread_queue()
+            .enqueue(first_thread_id, &format!(r#"{{"index":{index}}}"#))
+            .await
+            .unwrap();
+    }
+
+    runtime
+        .thread_queue()
+        .enqueue(second_thread_id, r#"{"second_thread":true}"#)
+        .await
+        .expect("a second thread must not share the first thread's capacity");
+
+    assert_eq!(
+        MAX_QUEUE_ITEMS,
+        runtime
+            .thread_queue()
+            .list_page(first_thread_id, /*offset*/ 0, MAX_QUEUE_ITEMS + 1)
+            .await
+            .unwrap()
+            .len()
+    );
+    assert_eq!(
+        1,
+        runtime
+            .thread_queue()
+            .list_page(second_thread_id, /*offset*/ 0, /*limit*/ 2)
+            .await
+            .unwrap()
+            .len()
+    );
+}
+
+#[tokio::test]
 async fn migrating_existing_queue_backfills_thread_revisions() {
     let home = unique_temp_dir();
     tokio::fs::create_dir_all(&home).await.unwrap();
@@ -274,5 +312,134 @@ async fn concurrent_inserts_enforce_the_queue_limit() {
             .await
             .unwrap()
             .len()
+    );
+}
+
+#[tokio::test]
+async fn database_capacity_retains_the_per_thread_limit() {
+    let (runtime, first_thread_id) = runtime_with_thread().await;
+    let second_thread_id = ThreadId::new();
+    let capacity = MAX_QUEUE_ITEMS + 1;
+    for index in 0..MAX_QUEUE_ITEMS {
+        runtime
+            .thread_queue()
+            .enqueue_with_capacity(
+                first_thread_id,
+                &format!(r#"{{"index":{index}}}"#),
+                capacity,
+            )
+            .await
+            .unwrap();
+    }
+
+    let rejected = runtime
+        .thread_queue()
+        .enqueue_with_capacity(first_thread_id, r#"{"overflow":true}"#, capacity)
+        .await
+        .expect_err("the per-thread limit must remain active");
+    assert_eq!(
+        QueueCapacityLimit::Thread,
+        rejected
+            .downcast_ref::<QueueCapacityExceeded>()
+            .expect("typed queue-capacity rejection")
+            .limit
+    );
+    runtime
+        .thread_queue()
+        .enqueue_with_capacity(second_thread_id, r#"{"other_thread":true}"#, capacity)
+        .await
+        .expect("another thread can use the final database-wide slot");
+}
+
+#[tokio::test]
+async fn concurrent_writers_never_exceed_database_capacity_across_threads() {
+    const CAPACITY: usize = 3;
+
+    let (runtime, first_thread_id) = runtime_with_thread().await;
+    let other = StateRuntime::init(runtime.sqlite().clone(), "test-provider".to_string())
+        .await
+        .unwrap();
+    let second_thread_id = ThreadId::new();
+    runtime
+        .thread_queue()
+        .enqueue_with_capacity(first_thread_id, r#"{"n":1}"#, CAPACITY)
+        .await
+        .unwrap();
+    runtime
+        .thread_queue()
+        .enqueue_with_capacity(second_thread_id, r#"{"n":2}"#, CAPACITY)
+        .await
+        .unwrap();
+
+    let (first, second) = tokio::join!(
+        runtime
+            .thread_queue()
+            .enqueue_with_capacity(first_thread_id, r#"{"n":3}"#, CAPACITY,),
+        other
+            .thread_queue()
+            .enqueue_with_capacity(second_thread_id, r#"{"n":4}"#, CAPACITY,),
+    );
+    assert_ne!(first.is_ok(), second.is_ok());
+    let rejected = first.err().or_else(|| second.err()).unwrap();
+    assert_eq!(
+        QueueCapacityLimit::Runtime,
+        rejected
+            .downcast_ref::<QueueCapacityExceeded>()
+            .expect("typed queue-capacity rejection")
+            .limit
+    );
+
+    let (first_items, second_items) = tokio::join!(
+        runtime.thread_queue().list_page(
+            first_thread_id,
+            /*offset*/ 0,
+            /*limit*/ CAPACITY
+        ),
+        runtime.thread_queue().list_page(
+            second_thread_id,
+            /*offset*/ 0,
+            /*limit*/ CAPACITY
+        ),
+    );
+    assert_eq!(
+        CAPACITY,
+        first_items.unwrap().len() + second_items.unwrap().len()
+    );
+}
+
+#[tokio::test]
+async fn isolated_queue_databases_have_independent_capacities() {
+    const CAPACITY: usize = 1;
+
+    let (first_runtime, first_thread_id) = runtime_with_thread().await;
+    let (second_runtime, second_thread_id) = runtime_with_thread().await;
+    let (first, second) = tokio::join!(
+        first_runtime.thread_queue().enqueue_with_capacity(
+            first_thread_id,
+            r#"{"agent":"first"}"#,
+            CAPACITY,
+        ),
+        second_runtime.thread_queue().enqueue_with_capacity(
+            second_thread_id,
+            r#"{"agent":"second"}"#,
+            CAPACITY,
+        ),
+    );
+    assert!(first.is_ok());
+    assert!(second.is_ok());
+
+    assert!(
+        first_runtime
+            .thread_queue()
+            .enqueue_with_capacity(first_thread_id, r#"{"overflow":true}"#, CAPACITY)
+            .await
+            .is_err()
+    );
+    assert!(
+        second_runtime
+            .thread_queue()
+            .enqueue_with_capacity(second_thread_id, r#"{"overflow":true}"#, CAPACITY)
+            .await
+            .is_err()
     );
 }

@@ -2075,6 +2075,7 @@ async fn resume_candidate_matches_cwd(
             | RolloutItem::Compacted(_)
             | RolloutItem::WorldState(_)
             | RolloutItem::SecurityRiskScore(_)
+            | RolloutItem::TurnRecoveryRequestBinding(_)
             | RolloutItem::EventMsg(_) => None,
         })
     {

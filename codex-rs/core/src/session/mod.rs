@@ -6,6 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -53,6 +54,7 @@ use codex_analytics::ImagePreparationFact;
 use codex_analytics::ImagePreparationMetadata;
 use codex_analytics::SubAgentThreadStartedInput;
 use codex_analytics::TurnCodexErrorFact;
+use codex_app_server_protocol::ThreadHistoryBuilder;
 use codex_async_utils::OrCancelExt;
 use codex_connectors::connector_runtime_context_key;
 use codex_exec_server::Environment;
@@ -69,6 +71,7 @@ use codex_features::FEATURES;
 use codex_features::Feature;
 use codex_features::unstable_features_warning_event;
 use codex_history::RolloutItem;
+use codex_history::TurnRecoveryRequestBinding;
 use codex_hooks::Hooks;
 use codex_hooks::HooksConfig;
 use codex_login::AuthManager;
@@ -237,6 +240,9 @@ pub(crate) use self::input_queue::TurnInput;
 pub(crate) use self::input_queue::TurnInputQueue;
 use self::review::spawn_review_thread;
 use self::session::AppServerClientMetadata;
+use self::session::RecoveryCandidate;
+#[cfg(test)]
+use self::session::RolloutPersistenceFault;
 use self::session::Session;
 use self::session::SessionConfiguration;
 pub(crate) use self::session::SessionSettingsUpdate;
@@ -272,11 +278,15 @@ use crate::network_policy_decision::execpolicy_network_rule_amendment;
 use crate::rollout::map_session_init_error;
 use crate::session_startup_prewarm::SessionStartupPrewarmHandle;
 use crate::shell;
+use crate::state::ActiveTurn;
 use crate::state::AutoCompactWindowIds;
 use crate::state::AutoCompactWindowSnapshot;
+use crate::state::DurableRecoveryState;
 use crate::state::PendingRequestPermissions;
 use crate::state::SessionServices;
 use crate::state::SessionState;
+use crate::state::TurnRecoveryAuthority;
+use crate::state::TurnState;
 #[cfg(test)]
 use crate::stream_events_utils::HandleOutputCtx;
 #[cfg(test)]
@@ -344,6 +354,8 @@ use codex_protocol::protocol::TokenCountEvent;
 use codex_protocol::protocol::TokenUsage;
 use codex_protocol::protocol::TokenUsageInfo;
 use codex_protocol::protocol::TurnModerationMetadataEvent;
+use codex_protocol::protocol::TurnRecoveryCandidateEvent;
+use codex_protocol::protocol::TurnRecoveryCandidateState;
 use codex_protocol::protocol::WarningEvent;
 use codex_protocol::turn_input::TurnInputMode;
 use codex_protocol::turn_input::TurnInputRequest;
@@ -882,6 +894,7 @@ impl SessionIo {
 
     pub(crate) async fn submit_recover_turn(
         &self,
+        expected_epoch: u64,
         thread_settings: ThreadSettingsOverrides,
         trace: Option<W3cTraceContext>,
         turn_id: String,
@@ -890,6 +903,7 @@ impl SessionIo {
         self.submit_with_id(Submission {
             id: turn_id,
             op: Op::RecoverTurn {
+                expected_epoch,
                 thread_settings,
                 reply: reply_tx,
             },
@@ -1202,8 +1216,106 @@ impl Session {
         self.agent_status.send_replace(AgentStatus::Interrupted);
     }
 
+    /// Captures a recovery token only for the exact idle model-turn candidate.
+    pub(crate) async fn recovery_epoch_if_idle(&self, turn_id: &str) -> Option<u64> {
+        if !self.enabled(Feature::HeptaTurnRecovery) {
+            return None;
+        }
+        let active_turn = self.active_turn.lock().await;
+        if active_turn.is_some() {
+            return None;
+        }
+        let epoch = self.turn_epoch.load(Ordering::Acquire);
+        let persistence_failure_generation = self.rollout_persistence_failure_generation();
+        self.recovery_candidate
+            .lock()
+            .expect("recovery candidate mutex poisoned")
+            .as_ref()
+            .filter(|candidate| {
+                candidate.turn_id == turn_id
+                    && candidate.epoch == epoch
+                    && candidate.persistence_failure_generation == persistence_failure_generation
+            })
+            .map(|candidate| candidate.epoch)
+    }
+
+    /// Durably consumes recovery authority before a different task, rollback,
+    /// or fork may change the logical tail. The caller must hold the active
+    /// turn lock across this transition so no publisher or competing start can
+    /// install a new candidate between the strict tombstone and live clear.
+    pub(crate) async fn consume_recovery_candidate_for_mutation(&self) -> CodexResult<bool> {
+        let candidate = self
+            .recovery_candidate
+            .lock()
+            .expect("recovery candidate mutex poisoned")
+            .clone();
+        let Some(candidate) = candidate else {
+            self.turn_epoch.fetch_add(1, Ordering::AcqRel);
+            return Ok(false);
+        };
+        let consumed_generation = candidate.marker_generation.checked_add(1).ok_or_else(|| {
+            CodexErr::Fatal(
+                "turn recovery generation exhausted before consuming authority".to_string(),
+            )
+        })?;
+        let persistence_failure_generation = self.rollout_persistence_failure_generation();
+        self.persist_turn_recovery_state(
+            &candidate.turn_id,
+            consumed_generation,
+            TurnRecoveryCandidateState::Unready,
+            /*request_fingerprint_sha256*/ None,
+            /*history_boundary*/ None,
+        )
+        .await?;
+        if self.rollout_persistence_failure_generation() != persistence_failure_generation {
+            return Err(CodexErr::Fatal(
+                "turn recovery persistence changed while consuming authority".to_string(),
+            ));
+        }
+        let mut current = self
+            .recovery_candidate
+            .lock()
+            .expect("recovery candidate mutex poisoned");
+        if current.as_ref() != Some(&candidate) {
+            return Err(CodexErr::Fatal(
+                "turn recovery candidate changed while consuming authority".to_string(),
+            ));
+        }
+        *current = None;
+        self.turn_epoch.fetch_add(1, Ordering::AcqRel);
+        Ok(true)
+    }
+
+    /// Reserves the idle session for a history mutation and durably consumes
+    /// recovery authority before releasing the active-turn lock. The returned
+    /// turn state must be passed to `clear_reserved_idle_turn` on every exit.
+    pub(crate) async fn reserve_history_mutation_if_idle(
+        &self,
+    ) -> CodexResult<Option<Arc<Mutex<TurnState>>>> {
+        let mut active_turn = self.active_turn.lock().await;
+        if active_turn.is_some() {
+            return Ok(None);
+        }
+        self.consume_recovery_candidate_for_mutation().await?;
+        let reserved = active_turn.get_or_insert_with(ActiveTurn::default);
+        Ok(Some(Arc::clone(&reserved.turn_state)))
+    }
+
     pub(crate) fn is_interrupted(&self) -> bool {
         matches!(*self.agent_status.borrow(), AgentStatus::Interrupted)
+    }
+
+    pub(crate) fn settle_consumed_recovery_status(&self) {
+        if self.is_interrupted()
+            && self
+                .recovery_candidate
+                .lock()
+                .expect("recovery candidate mutex poisoned")
+                .is_none()
+        {
+            self.agent_status
+                .send_replace(AgentStatus::Completed(/*last_agent_message*/ None));
+        }
     }
 
     pub(crate) fn get_tx_event(&self) -> Sender<Event> {
@@ -1236,24 +1348,34 @@ impl Session {
     /// Flush rollout writes and return the final durability-barrier result.
     #[instrument(name = "session.flush_rollout", level = "trace", skip_all)]
     pub(crate) async fn flush_rollout(&self) -> std::io::Result<()> {
-        if let Some(live_thread) = self.live_thread() {
+        let result = if let Some(live_thread) = self.live_thread() {
             live_thread.flush().await.map_err(std::io::Error::other)
         } else {
             Ok(())
+        };
+        if result.is_err() {
+            self.rollout_persistence_failure_generation
+                .fetch_add(1, Ordering::AcqRel);
         }
+        result
     }
 
     pub(crate) async fn try_ensure_rollout_materialized(
         &self,
         context: PersistContext,
     ) -> std::io::Result<()> {
-        if let Some(live_thread) = self.live_thread() {
+        let result = if let Some(live_thread) = self.live_thread() {
             live_thread
                 .persist(context)
                 .await
-                .map_err(std::io::Error::other)?;
+                .map_err(std::io::Error::other)
+        } else {
+            Ok(())
+        };
+        if result.is_err() {
+            self.mark_rollout_persistence_failure();
         }
-        Ok(())
+        result
     }
 
     pub(crate) async fn ensure_rollout_materialized(&self, context: PersistContext) {
@@ -1345,12 +1467,18 @@ impl Session {
     }
 
     #[inline(never)]
-    fn record_initial_history(&self, conversation_history: InitialHistory) -> BoxFuture<'_, ()> {
+    fn record_initial_history(
+        &self,
+        conversation_history: InitialHistory,
+    ) -> BoxFuture<'_, CodexResult<()>> {
         self.record_initial_history_inner(conversation_history)
             .boxed()
     }
 
-    async fn record_initial_history_inner(&self, conversation_history: InitialHistory) {
+    async fn record_initial_history_inner(
+        &self,
+        conversation_history: InitialHistory,
+    ) -> CodexResult<()> {
         let (is_subagent, is_paginated_subagent) = {
             let state = self.state.lock().await;
             let session_configuration = &state.session_configuration;
@@ -1380,14 +1508,65 @@ impl Session {
             InitialHistory::Resumed(resumed_history) => {
                 let turn_context = self.new_default_turn().await;
                 let rollout_items = resumed_history.history;
-                if matches!(
-                    rollout_items.iter().rev().find_map(|item| match item {
-                        RolloutItem::EventMsg(event) => agent_status_from_event(event),
-                        _ => None,
-                    }),
-                    Some(AgentStatus::Interrupted)
-                ) {
-                    self.agent_status.send_replace(AgentStatus::Interrupted);
+                // Materialize the canonical turn history so rollback and other
+                // lifecycle events are applied before deciding whether the
+                // cold session has a recoverable tail. A persisted in-progress
+                // turn cannot still be live in this newly constructed session.
+                let mut history_builder = ThreadHistoryBuilder::new();
+                for item in rollout_items.iter() {
+                    history_builder.handle_rollout_item(item);
+                }
+                let recovery_candidate = history_builder.recovery_candidate().map(
+                    |(turn_id, generation, fingerprint, replay)| {
+                        (
+                            turn_id.to_owned(),
+                            generation,
+                            fingerprint.to_owned(),
+                            replay.clone(),
+                        )
+                    },
+                );
+                if let Some((turn_id, marker_generation, request_fingerprint_sha256, replay)) =
+                    recovery_candidate
+                {
+                    let consumed_generation =
+                        marker_generation.checked_add(1).ok_or_else(|| {
+                            CodexErr::Fatal(
+                                "turn recovery generation exhausted before cold resume".to_string(),
+                            )
+                        })?;
+                    if self.enabled(Feature::HeptaTurnRecovery) {
+                        let epoch = self.turn_epoch.load(Ordering::Acquire);
+                        let persistence_failure_generation =
+                            self.rollout_persistence_failure_generation();
+                        *self
+                            .recovery_candidate
+                            .lock()
+                            .expect("recovery candidate mutex poisoned") =
+                            Some(RecoveryCandidate {
+                                turn_id,
+                                marker_generation,
+                                request_fingerprint_sha256,
+                                replay,
+                                epoch,
+                                persistence_failure_generation,
+                            });
+                        self.agent_status.send_replace(AgentStatus::Interrupted);
+                    } else {
+                        // A feature-off resume may still append history or
+                        // settings before a later feature-on resume. Persist a
+                        // local tombstone now so temporarily disabling recovery
+                        // cannot preserve latent execution authority.
+                        let reset = RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(
+                            TurnRecoveryCandidateEvent {
+                                turn_id,
+                                generation: consumed_generation,
+                                state: TurnRecoveryCandidateState::Unready,
+                            },
+                        ));
+                        self.persist_rollout_items_strict(std::slice::from_ref(&reset))
+                            .await?;
+                    }
                 }
                 let previous_turn_settings = self
                     .apply_rollout_reconstruction(&turn_context, &rollout_items)
@@ -1429,6 +1608,31 @@ impl Session {
             InitialHistory::Forked(mut rollout_items) => {
                 let turn_context = self.new_default_turn().await;
                 Self::assign_missing_rollout_response_item_ids(&mut rollout_items);
+                // Forking transfers conversation context, never execution
+                // authority. Detect markers independent of the child's current
+                // feature flag so temporarily disabling recovery cannot leave a
+                // latent inherited candidate that revives when later enabled.
+                let mut history_builder = ThreadHistoryBuilder::new();
+                for item in &rollout_items {
+                    history_builder.handle_rollout_item(item);
+                }
+                let recovery_reset = match history_builder.recovery_candidate() {
+                    Some((turn_id, generation, _fingerprint, _replay)) => {
+                        let reset_generation = generation.checked_add(1).ok_or_else(|| {
+                            CodexErr::Fatal(
+                                "turn recovery generation exhausted before fork reset".to_string(),
+                            )
+                        })?;
+                        Some(RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(
+                            TurnRecoveryCandidateEvent {
+                                turn_id: turn_id.to_string(),
+                                generation: reset_generation,
+                                state: TurnRecoveryCandidateState::Unready,
+                            },
+                        )))
+                    }
+                    None => None,
+                };
                 self.apply_rollout_reconstruction(&turn_context, &rollout_items)
                     .await;
 
@@ -1463,7 +1667,18 @@ impl Session {
                         rollout_items.push(thread_settings_applied);
                     }
                 }
-                self.persist_rollout_items(&rollout_items).await;
+                if let Some(recovery_reset) = recovery_reset {
+                    // A fork receives context, never the source thread's right
+                    // to resume an interrupted execution. Persist the inherited
+                    // history and child-local reset in one ordered append, then
+                    // flush before construction succeeds. This also covers
+                    // referenced and paginated histories where the inherited
+                    // prefix lives behind the child's local rollout.
+                    rollout_items.push(recovery_reset);
+                    self.persist_rollout_items_strict(&rollout_items).await?;
+                } else {
+                    self.persist_rollout_items(&rollout_items).await;
+                }
 
                 // Forked threads should remain file-backed immediately after startup.
                 self.ensure_rollout_materialized(PersistContext::Standard)
@@ -1475,6 +1690,7 @@ impl Session {
                 }
             }
         }
+        Ok(())
     }
 
     #[instrument(
@@ -3761,9 +3977,18 @@ impl Session {
         items: &'a [RolloutItem],
     ) -> BoxFuture<'a, ()> {
         async move {
+            #[cfg(test)]
+            if self.take_rollout_persistence_fault(items).await {
+                self.rollout_persistence_failure_generation
+                    .fetch_add(1, Ordering::AcqRel);
+                error!("injected rollout append failure");
+                return;
+            }
             if let Some(live_thread) = self.live_thread()
                 && let Err(e) = append_rollout_items_future(live_thread, items).await
             {
+                self.rollout_persistence_failure_generation
+                    .fetch_add(1, Ordering::AcqRel);
                 error!("failed to record rollout items: {e:#}");
             }
         }
@@ -3774,9 +3999,685 @@ impl Session {
         .boxed()
     }
 
+    pub(crate) async fn persist_rollout_items_strict(
+        &self,
+        items: &[RolloutItem],
+    ) -> CodexResult<()> {
+        #[cfg(test)]
+        if self.take_rollout_persistence_fault(items).await {
+            self.rollout_persistence_failure_generation
+                .fetch_add(1, Ordering::AcqRel);
+            return Err(CodexErr::Fatal(
+                "injected strict rollout append failure".to_string(),
+            ));
+        }
+        let Some(live_thread) = self.live_thread() else {
+            return Err(CodexErr::Fatal(
+                "strict rollout persistence requires persisted thread history".to_string(),
+            ));
+        };
+        if let Err(err) = append_rollout_items_future(live_thread, items).await {
+            self.rollout_persistence_failure_generation
+                .fetch_add(1, Ordering::AcqRel);
+            return Err(CodexErr::Fatal(format!(
+                "failed to append strict rollout items: {err}"
+            )));
+        }
+        if let Err(err) = live_thread.flush().await {
+            self.rollout_persistence_failure_generation
+                .fetch_add(1, Ordering::AcqRel);
+            return Err(CodexErr::Fatal(format!(
+                "failed to flush strict rollout items: {err}"
+            )));
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn inject_rollout_persistence_fault(&self, fault: RolloutPersistenceFault) {
+        self.rollout_persistence_faults
+            .lock()
+            .await
+            .push_back(fault);
+    }
+
+    #[cfg(test)]
+    async fn take_rollout_persistence_fault(&self, items: &[RolloutItem]) -> bool {
+        let mut faults = self.rollout_persistence_faults.lock().await;
+        let Some(fault) = faults.front().copied() else {
+            return false;
+        };
+        let matches = match fault {
+            RolloutPersistenceFault::TurnAbortedAppend => items
+                .iter()
+                .any(|item| matches!(item, RolloutItem::EventMsg(EventMsg::TurnAborted(_)))),
+            RolloutPersistenceFault::InterruptedMarkerAppend => items.iter().any(|item| {
+                let RolloutItem::ResponseItem(envelope) = item else {
+                    return false;
+                };
+                let ResponseItem::Message { content, .. } = &envelope.item else {
+                    return false;
+                };
+                content.iter().any(|content| {
+                    matches!(
+                        content,
+                        codex_protocol::models::ContentItem::InputText { text }
+                            if crate::context::TurnAborted::matches_text(text)
+                    )
+                })
+            }),
+            RolloutPersistenceFault::WarningAppend => items
+                .iter()
+                .any(|item| matches!(item, RolloutItem::EventMsg(EventMsg::Warning(_)))),
+            RolloutPersistenceFault::TurnRecoveryReadyAppend
+            | RolloutPersistenceFault::TurnRecoveryReadyFlush
+            | RolloutPersistenceFault::TurnRecoveryInterruptedConfirmedAppend
+            | RolloutPersistenceFault::TurnRecoveryInterruptedConfirmedFlush
+            | RolloutPersistenceFault::TurnRecoveryUnreadyAppend => false,
+        };
+        if matches {
+            faults.pop_front();
+        }
+        matches
+    }
+
+    #[cfg(test)]
+    async fn take_turn_recovery_persistence_fault(
+        &self,
+        state: TurnRecoveryCandidateState,
+        flush: bool,
+    ) -> bool {
+        let mut faults = self.rollout_persistence_faults.lock().await;
+        let Some(fault) = faults.front().copied() else {
+            return false;
+        };
+        let matches = matches!(
+            (fault, state, flush),
+            (
+                RolloutPersistenceFault::TurnRecoveryReadyAppend,
+                TurnRecoveryCandidateState::Ready,
+                false
+            ) | (
+                RolloutPersistenceFault::TurnRecoveryReadyFlush,
+                TurnRecoveryCandidateState::Ready,
+                true
+            ) | (
+                RolloutPersistenceFault::TurnRecoveryInterruptedConfirmedAppend,
+                TurnRecoveryCandidateState::InterruptedConfirmed,
+                false
+            ) | (
+                RolloutPersistenceFault::TurnRecoveryInterruptedConfirmedFlush,
+                TurnRecoveryCandidateState::InterruptedConfirmed,
+                true
+            ) | (
+                RolloutPersistenceFault::TurnRecoveryUnreadyAppend,
+                TurnRecoveryCandidateState::Unready,
+                false
+            )
+        );
+        if matches {
+            faults.pop_front();
+        }
+        matches
+    }
+
+    pub(crate) fn rollout_persistence_failure_generation(&self) -> u64 {
+        self.rollout_persistence_failure_generation
+            .load(Ordering::Acquire)
+    }
+
+    pub(crate) fn mark_rollout_persistence_failure(&self) {
+        self.rollout_persistence_failure_generation
+            .fetch_add(1, Ordering::AcqRel);
+    }
+
+    async fn persist_turn_recovery_state(
+        &self,
+        turn_id: &str,
+        generation: u64,
+        state: TurnRecoveryCandidateState,
+        request_fingerprint_sha256: Option<&str>,
+        replay: Option<&codex_history::TurnRecoveryReplayV1>,
+    ) -> CodexResult<()> {
+        let Some(live_thread) = self.live_thread() else {
+            return Ok(());
+        };
+        if matches!(
+            state,
+            TurnRecoveryCandidateState::Ready | TurnRecoveryCandidateState::InterruptedConfirmed
+        ) && (request_fingerprint_sha256.is_none() || replay.is_none())
+        {
+            return Err(CodexErr::Fatal(
+                "recoverable turn marker requires an exact request fingerprint and history boundary"
+                    .to_string(),
+            ));
+        }
+        #[cfg(test)]
+        if self
+            .take_turn_recovery_persistence_fault(state, /*flush*/ false)
+            .await
+        {
+            self.rollout_persistence_failure_generation
+                .fetch_add(1, Ordering::AcqRel);
+            return Err(CodexErr::Fatal(format!(
+                "injected {state:?} recovery provenance append failure"
+            )));
+        }
+        let marker = RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(
+            TurnRecoveryCandidateEvent {
+                turn_id: turn_id.to_string(),
+                generation,
+                state,
+            },
+        ));
+        let mut items = Vec::with_capacity(2);
+        if let Some(fingerprint_sha256) = request_fingerprint_sha256 {
+            items.push(RolloutItem::TurnRecoveryRequestBinding(
+                TurnRecoveryRequestBinding {
+                    turn_id: turn_id.to_string(),
+                    generation,
+                    fingerprint_sha256: fingerprint_sha256.to_string(),
+                    history_boundary: replay.map(|replay| replay.history_boundary.clone()),
+                    replay: replay.cloned(),
+                    replay_applied_from_generation: None,
+                },
+            ));
+        }
+        items.push(marker);
+        if let Err(err) = append_rollout_items_future(live_thread, &items).await {
+            self.rollout_persistence_failure_generation
+                .fetch_add(1, Ordering::AcqRel);
+            return Err(CodexErr::Fatal(format!(
+                "failed to persist turn recovery provenance: {err}"
+            )));
+        }
+        #[cfg(test)]
+        if self
+            .take_turn_recovery_persistence_fault(state, /*flush*/ true)
+            .await
+        {
+            self.rollout_persistence_failure_generation
+                .fetch_add(1, Ordering::AcqRel);
+            return Err(CodexErr::Fatal(format!(
+                "injected {state:?} recovery provenance flush failure"
+            )));
+        }
+        if let Err(err) = live_thread.flush().await {
+            self.rollout_persistence_failure_generation
+                .fetch_add(1, Ordering::AcqRel);
+            return Err(CodexErr::Fatal(format!(
+                "failed to flush turn recovery provenance: {err}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Revokes live and cold recovery authority before accepting or processing
+    /// any new model-visible input or side-effectful hook generation.
+    pub(crate) async fn ensure_turn_recovery_unready(
+        &self,
+        turn_id: &str,
+        authority: &TurnRecoveryAuthority,
+    ) -> CodexResult<()> {
+        if !self.enabled(Feature::HeptaTurnRecovery) {
+            authority.ready.store(false, Ordering::Release);
+            return Ok(());
+        }
+        let mut state = authority.state.lock().await;
+        if state.poisoned {
+            return Err(CodexErr::Fatal(
+                "turn recovery provenance is poisoned".to_string(),
+            ));
+        }
+        if state.durable_state == DurableRecoveryState::Unready {
+            state.ready_persistence_failure_generation = None;
+            state.request_fingerprint_sha256 = None;
+            state.replay = None;
+            return Ok(());
+        }
+
+        authority.ready.store(false, Ordering::Release);
+        state.ready_persistence_failure_generation = None;
+        state.request_fingerprint_sha256 = None;
+        state.replay = None;
+        if state.durable_state == DurableRecoveryState::Ready {
+            state.generation = state.generation.saturating_add(1);
+        }
+        if let Err(err) = self
+            .persist_turn_recovery_state(
+                turn_id,
+                state.generation,
+                TurnRecoveryCandidateState::Unready,
+                /*request_fingerprint_sha256*/ None,
+                /*replay*/ None,
+            )
+            .await
+        {
+            state.poisoned = true;
+            return Err(err);
+        }
+        state.durable_state = DurableRecoveryState::Unready;
+        Ok(())
+    }
+
+    /// Establishes recovery authority at the exact provider-dispatch boundary.
+    /// The failure-generation comparison makes every earlier best-effort append
+    /// a strict prerequisite for this Ready marker. A non-zero generation is
+    /// session-lifetime sticky: after any transcript gap, only a fresh session
+    /// rebuilt from durable history may establish recovery authority again.
+    pub(crate) async fn mark_turn_recovery_ready(
+        &self,
+        turn_id: &str,
+        authority: &TurnRecoveryAuthority,
+        persistence_failure_baseline: u64,
+        request_fingerprint_sha256: &str,
+        replay: &codex_history::TurnRecoveryReplayV1,
+    ) -> CodexResult<()> {
+        if !self.enabled(Feature::HeptaTurnRecovery) {
+            authority.ready.store(false, Ordering::Release);
+            return Ok(());
+        }
+        let mut state = authority.state.lock().await;
+        if state.poisoned {
+            return Err(CodexErr::Fatal(
+                "turn recovery provenance is poisoned".to_string(),
+            ));
+        }
+        if state.generation == u64::MAX {
+            authority.ready.store(false, Ordering::Release);
+            state.ready_persistence_failure_generation = None;
+            state.request_fingerprint_sha256 = None;
+            state.replay = None;
+            state.poisoned = true;
+            return Err(CodexErr::Fatal(
+                "turn recovery generation exhausted before publishing Ready".to_string(),
+            ));
+        }
+        if state.durable_state == DurableRecoveryState::Ready
+            && (state.request_fingerprint_sha256.as_deref() != Some(request_fingerprint_sha256)
+                || state.replay.as_ref() != Some(replay))
+        {
+            let attempted_generation = state.generation;
+            self.poison_turn_recovery_with_successor_unready(
+                turn_id,
+                authority,
+                &mut state,
+                attempted_generation,
+            )
+            .await;
+            return Err(CodexErr::Fatal(
+                "turn recovery request fingerprint changed before provider output".to_string(),
+            ));
+        }
+        if persistence_failure_baseline != 0
+            || self.rollout_persistence_failure_generation() != persistence_failure_baseline
+        {
+            if state.durable_state == DurableRecoveryState::Ready {
+                let attempted_generation = state.generation;
+                self.poison_turn_recovery_with_successor_unready(
+                    turn_id,
+                    authority,
+                    &mut state,
+                    attempted_generation,
+                )
+                .await;
+            } else {
+                authority.ready.store(false, Ordering::Release);
+                state.ready_persistence_failure_generation = None;
+                state.request_fingerprint_sha256 = None;
+                state.replay = None;
+                state.poisoned = true;
+            }
+            return Err(CodexErr::Fatal(
+                "turn recovery prerequisite persistence failed".to_string(),
+            ));
+        }
+        if state.durable_state != DurableRecoveryState::Ready {
+            let attempted_generation = state.generation;
+            if let Err(err) = self
+                .persist_turn_recovery_state(
+                    turn_id,
+                    attempted_generation,
+                    TurnRecoveryCandidateState::Ready,
+                    Some(request_fingerprint_sha256),
+                    Some(replay),
+                )
+                .await
+            {
+                // Append/flush failures are ambiguous: the positive marker may
+                // already be readable after restart. Write a strictly newer
+                // Unready marker before returning to the outer cleanup path.
+                self.poison_turn_recovery_with_successor_unready(
+                    turn_id,
+                    authority,
+                    &mut state,
+                    attempted_generation,
+                )
+                .await;
+                return Err(err);
+            }
+            state.durable_state = DurableRecoveryState::Ready;
+            state.request_fingerprint_sha256 = Some(request_fingerprint_sha256.to_string());
+            state.replay = Some(replay.clone());
+        }
+        #[cfg(test)]
+        tokio::task::yield_now().await;
+        // The Ready marker's append+flush is only authoritative if no
+        // best-effort persistence failure raced the strict transition. Bind
+        // the live authority to this exact failure generation so detach-time
+        // terminal publication can revalidate the whole Ready -> terminal
+        // interval.
+        if self.rollout_persistence_failure_generation() != persistence_failure_baseline {
+            let attempted_generation = state.generation;
+            self.poison_turn_recovery_with_successor_unready(
+                turn_id,
+                authority,
+                &mut state,
+                attempted_generation,
+            )
+            .await;
+            return Err(CodexErr::Fatal(
+                "turn recovery persistence changed while publishing Ready".to_string(),
+            ));
+        }
+        state.ready_persistence_failure_generation = Some(persistence_failure_baseline);
+        state.request_fingerprint_sha256 = Some(request_fingerprint_sha256.to_string());
+        state.replay = Some(replay.clone());
+        authority.ready.store(true, Ordering::Release);
+        Ok(())
+    }
+
+    /// Revokes a provider Ready checkpoint before any controlled task detach.
+    ///
+    /// A clean interrupt is not authorized by the old Ready marker. It first
+    /// commits Unready, then emits its terminal event, and only then may commit
+    /// InterruptedConfirmed. This keeps a failed terminal write from looking
+    /// like an unclean process death during cold replay.
+    pub(crate) async fn prepare_turn_recovery_for_controlled_detach(
+        &self,
+        turn_id: &str,
+        authority: &TurnRecoveryAuthority,
+    ) -> CodexResult<u64> {
+        if !self.enabled(Feature::HeptaTurnRecovery) {
+            authority.ready.store(false, Ordering::Release);
+            return Ok(0);
+        }
+        let mut state = authority.state.lock().await;
+        authority.ready.store(false, Ordering::Release);
+        state.ready_persistence_failure_generation = None;
+
+        if matches!(
+            state.durable_state,
+            DurableRecoveryState::Unknown | DurableRecoveryState::Unready
+        ) && !state.poisoned
+        {
+            return Ok(state.generation);
+        }
+
+        let revoke_generation = state.generation.saturating_add(1);
+        if let Err(err) = self
+            .persist_turn_recovery_state(
+                turn_id,
+                revoke_generation,
+                TurnRecoveryCandidateState::Unready,
+                /*request_fingerprint_sha256*/ None,
+                /*replay*/ None,
+            )
+            .await
+        {
+            state.poisoned = true;
+            return Err(err);
+        }
+        state.generation = revoke_generation;
+        state.durable_state = DurableRecoveryState::Unready;
+        state.request_fingerprint_sha256 = None;
+        state.replay = None;
+        Ok(revoke_generation)
+    }
+
+    /// Commits the post-terminal proof required for a controlled interrupted
+    /// turn to become recoverable. The marker must extend the exact Unready
+    /// generation created before detach and the Ready-to-terminal interval
+    /// must have observed no best-effort persistence failure.
+    pub(crate) async fn confirm_interrupted_turn_recovery(
+        &self,
+        turn_id: &str,
+        authority: &TurnRecoveryAuthority,
+        generation: u64,
+        persistence_failure_generation: u64,
+        request_fingerprint_sha256: &str,
+        replay: &codex_history::TurnRecoveryReplayV1,
+    ) -> CodexResult<()> {
+        if !self.enabled(Feature::HeptaTurnRecovery) {
+            return Err(CodexErr::InvalidRequest(
+                "turn recovery requires features.hepta_turn_recovery=true".to_string(),
+            ));
+        }
+        let mut state = authority.state.lock().await;
+        if state.poisoned
+            || state.durable_state != DurableRecoveryState::Unready
+            || state.generation != generation
+            || self.rollout_persistence_failure_generation() != persistence_failure_generation
+        {
+            return Err(CodexErr::Fatal(
+                "turn recovery confirmation precondition changed".to_string(),
+            ));
+        }
+        if generation == u64::MAX {
+            authority.ready.store(false, Ordering::Release);
+            state.ready_persistence_failure_generation = None;
+            state.request_fingerprint_sha256 = None;
+            state.replay = None;
+            state.poisoned = true;
+            return Err(CodexErr::Fatal(
+                "turn recovery generation exhausted before confirming interruption".to_string(),
+            ));
+        }
+        if let Err(err) = self
+            .persist_turn_recovery_state(
+                turn_id,
+                generation,
+                TurnRecoveryCandidateState::InterruptedConfirmed,
+                Some(request_fingerprint_sha256),
+                Some(replay),
+            )
+            .await
+        {
+            // A failed append/flush may still have exposed the confirmation.
+            // Revoke it at a strictly greater generation before returning.
+            self.poison_turn_recovery_with_successor_unready(
+                turn_id, authority, &mut state, generation,
+            )
+            .await;
+            return Err(err);
+        }
+        #[cfg(test)]
+        tokio::task::yield_now().await;
+        if self.rollout_persistence_failure_generation() != persistence_failure_generation {
+            self.poison_turn_recovery_with_successor_unready(
+                turn_id, authority, &mut state, generation,
+            )
+            .await;
+            return Err(CodexErr::Fatal(
+                "turn recovery persistence changed while confirming interruption".to_string(),
+            ));
+        }
+        state.durable_state = DurableRecoveryState::InterruptedConfirmed;
+        state.request_fingerprint_sha256 = Some(request_fingerprint_sha256.to_string());
+        state.replay = Some(replay.clone());
+        Ok(())
+    }
+
+    /// Best-effort successor for an authority marker whose append/flush result
+    /// or post-flush prerequisites became ambiguous.
+    ///
+    /// The successor is always strictly newer than the attempted positive
+    /// generation, even when the in-memory state never advanced. This closes
+    /// normal error paths before the caller's second-layer tombstone runs.
+    /// It cannot make a repeated storage failure or SIGKILL between syscalls
+    /// atomic; those cases remain fail-stop without transactional storage.
+    async fn poison_turn_recovery_with_successor_unready(
+        &self,
+        turn_id: &str,
+        authority: &TurnRecoveryAuthority,
+        state: &mut crate::state::RecoveryAuthorityState,
+        attempted_generation: u64,
+    ) -> bool {
+        authority.ready.store(false, Ordering::Release);
+        state.ready_persistence_failure_generation = None;
+        state.request_fingerprint_sha256 = None;
+        state.replay = None;
+        state.poisoned = true;
+
+        let Some(successor_generation) = attempted_generation.max(state.generation).checked_add(1)
+        else {
+            warn!(
+                turn_id,
+                attempted_generation,
+                current_generation = state.generation,
+                "cannot persist a strictly newer recovery authority successor; generation exhausted"
+            );
+            return false;
+        };
+        let persisted = self
+            .persist_turn_recovery_state(
+                turn_id,
+                successor_generation,
+                TurnRecoveryCandidateState::Unready,
+                /*request_fingerprint_sha256*/ None,
+                /*replay*/ None,
+            )
+            .await
+            .is_ok();
+        if persisted {
+            state.generation = successor_generation;
+            state.durable_state = DurableRecoveryState::Unready;
+        } else {
+            warn!(
+                turn_id,
+                attempted_generation,
+                successor_generation,
+                "failed to persist immediate recovery authority successor; provenance remains fail-stop/unknown"
+            );
+        }
+        persisted
+    }
+
+    /// Writes a newer Unready tombstone after a terminal/confirmation failure.
+    /// This always advances generation, even when the in-memory state already
+    /// says Unready, because a failed flush may have exposed a confirmation
+    /// marker to cold replay. A second persistent write failure is fail-stop
+    /// and cannot be distinguished from power loss using an append-only log.
+    pub(crate) async fn persist_turn_recovery_failure_tombstone(
+        &self,
+        turn_id: &str,
+        authority: &TurnRecoveryAuthority,
+    ) -> bool {
+        if !self.enabled(Feature::HeptaTurnRecovery) {
+            authority.ready.store(false, Ordering::Release);
+            return true;
+        }
+        let mut state = authority.state.lock().await;
+        authority.ready.store(false, Ordering::Release);
+        state.ready_persistence_failure_generation = None;
+        state.request_fingerprint_sha256 = None;
+        state.replay = None;
+        let generation = state.generation.saturating_add(1);
+        let persisted = self
+            .persist_turn_recovery_state(
+                turn_id,
+                generation,
+                TurnRecoveryCandidateState::Unready,
+                /*request_fingerprint_sha256*/ None,
+                /*replay*/ None,
+            )
+            .await
+            .is_ok();
+        if persisted {
+            state.generation = generation;
+            state.durable_state = DurableRecoveryState::Unready;
+        }
+        state.poisoned = true;
+        persisted
+    }
+
     pub(crate) async fn clone_history(&self) -> ContextManager {
         let state = self.state.lock().await;
         state.clone_history()
+    }
+
+    pub(crate) async fn current_recovery_history_boundary(
+        &self,
+    ) -> CodexResult<codex_history::TurnRecoveryHistoryBoundary> {
+        let state = self.state.lock().await;
+        state.history.recovery_boundary().ok_or_else(|| {
+            CodexErr::Fatal("failed to bind model history for turn recovery".to_string())
+        })
+    }
+
+    pub(crate) async fn validated_recovery_history_snapshot(
+        &self,
+        boundary: &codex_history::TurnRecoveryHistoryBoundary,
+    ) -> CodexResult<ContextManager> {
+        let state = self.state.lock().await;
+        let mut history = state.clone_history();
+        if !history.rewind_to_recovery_boundary(boundary) {
+            return Err(CodexErr::Fatal(
+                "turn recovery history boundary no longer matches the logical tail".to_string(),
+            ));
+        }
+        Ok(history)
+    }
+
+    pub(crate) async fn install_recovery_history_snapshot(&self, history: ContextManager) {
+        let mut state = self.state.lock().await;
+        state.history = history;
+    }
+
+    pub(crate) async fn persist_recovery_replay_applied(
+        &self,
+        turn_id: &str,
+        consumed_generation: u64,
+        source_generation: u64,
+        request_fingerprint_sha256: &str,
+        replay: &codex_history::TurnRecoveryReplayV1,
+    ) -> CodexResult<()> {
+        let expected_consumed_generation = source_generation.checked_add(1).ok_or_else(|| {
+            CodexErr::Fatal("turn recovery generation exhausted before replay hand-off".to_string())
+        })?;
+        if consumed_generation != expected_consumed_generation {
+            return Err(CodexErr::Fatal(
+                "turn recovery replay generation is not the consumed successor".to_string(),
+            ));
+        }
+        let Some(live_thread) = self.live_thread() else {
+            return Ok(());
+        };
+        let item = RolloutItem::TurnRecoveryRequestBinding(TurnRecoveryRequestBinding {
+            turn_id: turn_id.to_string(),
+            generation: consumed_generation,
+            fingerprint_sha256: request_fingerprint_sha256.to_string(),
+            history_boundary: Some(replay.history_boundary.clone()),
+            replay: Some(replay.clone()),
+            replay_applied_from_generation: Some(source_generation),
+        });
+        if let Err(err) =
+            append_rollout_items_future(live_thread, std::slice::from_ref(&item)).await
+        {
+            self.rollout_persistence_failure_generation
+                .fetch_add(1, Ordering::AcqRel);
+            return Err(CodexErr::Fatal(format!(
+                "failed to persist turn recovery replay hand-off: {err}"
+            )));
+        }
+        if let Err(err) = live_thread.flush().await {
+            self.rollout_persistence_failure_generation
+                .fetch_add(1, Ordering::AcqRel);
+            return Err(CodexErr::Fatal(format!(
+                "failed to flush turn recovery replay hand-off: {err}"
+            )));
+        }
+        Ok(())
     }
 
     pub(crate) async fn conversation_history_snapshot(

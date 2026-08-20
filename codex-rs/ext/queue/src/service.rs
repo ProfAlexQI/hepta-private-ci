@@ -20,6 +20,7 @@ use codex_history::RolloutItem;
 use codex_history::RolloutLine;
 use codex_protocol::ThreadId;
 use codex_protocol::error::CodexErr;
+use codex_protocol::items::TurnItem;
 use codex_protocol::models::snapshot_local_user_input;
 use codex_protocol::protocol::AgentStatus;
 use codex_protocol::protocol::Event;
@@ -28,6 +29,7 @@ use codex_protocol::protocol::ThreadQueueChangedEvent;
 use codex_protocol::protocol::W3cTraceContext;
 use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;
 use codex_protocol::user_input::UserInput;
+use codex_protocol::user_input::user_input_payload_sha256;
 use codex_rollout::open_rollout_line_reader;
 use codex_thread_store::MAX_QUEUE_ITEMS;
 use codex_thread_store::QueueStore;
@@ -58,6 +60,20 @@ pub enum QueueServiceError {
     CoreSubmissionError(#[from] CodexErr),
     #[error("only user input can be added to the user-message queue")]
     InvalidInput,
+    #[error(
+        "queued client id `{client_id}` is already bound to a different payload ({expected_sha256} != {actual_sha256})"
+    )]
+    ClientIdPayloadConflict {
+        client_id: String,
+        expected_sha256: String,
+        actual_sha256: String,
+    },
+    #[error(
+        "persisted client id `{client_id}` has only a legacy payload projection and cannot authorize an exactly-once join"
+    )]
+    LegacyClientIdBinding { client_id: String },
+    #[error("persisted client id `{client_id}` is bound to multiple turns")]
+    AmbiguousClientIdBinding { client_id: String },
     #[error(
         "queued user input exceeds the maximum length of {MAX_USER_INPUT_TEXT_CHARS} characters ({actual_chars} provided)"
     )]
@@ -391,7 +407,12 @@ impl QueuedItemService {
             return Err(QueueServiceError::InvalidInput);
         };
         let client_id = queued_client_id(&input)?;
-        if let Some(turn_id) = persisted_turn_for_client_id(thread, client_id).await? {
+        let payload_sha256 = queued_payload_sha256(&input)?;
+        self.ensure_queue_payload_binding(thread_id, &queued_item_id, client_id, &payload_sha256)
+            .await?;
+        if let Some(turn_id) =
+            persisted_turn_for_client_id(thread, client_id, &payload_sha256).await?
+        {
             self.delete_locked(thread_id, queued_item_id).await?;
             return Ok(StartIfIdleSubmission::Started { turn_id });
         }
@@ -442,7 +463,17 @@ impl QueuedItemService {
             }
 
             let client_id = queued_client_id(&input)?;
-            if let Some(turn_id) = persisted_turn_for_client_id(&thread, client_id).await? {
+            let payload_sha256 = queued_payload_sha256(&input)?;
+            self.ensure_queue_payload_binding(
+                thread_id,
+                &queued_item_id,
+                client_id,
+                &payload_sha256,
+            )
+            .await?;
+            if let Some(turn_id) =
+                persisted_turn_for_client_id(&thread, client_id, &payload_sha256).await?
+            {
                 tracing::info!(
                     %thread_id,
                     %queued_item_id,
@@ -496,6 +527,44 @@ impl QueuedItemService {
                 .emit_thread_idle_lifecycle_if_idle(ThreadIdleCause::Completed)
                 .await;
         }
+    }
+
+    /// Reject a client id that is concurrently queued with different content.
+    ///
+    /// The rollout join below protects the crash boundary after Core admission.
+    /// This preflight protects the earlier boundary where two durable queue rows
+    /// already disagree before either one is submitted to Core.
+    async fn ensure_queue_payload_binding(
+        &self,
+        thread_id: ThreadId,
+        selected_item_id: &str,
+        client_id: &str,
+        expected_sha256: &str,
+    ) -> Result<(), QueueServiceError> {
+        for record in self
+            .queue
+            .list_page(thread_id, /*offset*/ 0, MAX_QUEUE_ITEMS)
+            .await?
+        {
+            if record.id == selected_item_id {
+                continue;
+            }
+            let Ok(input) = serde_json::from_str::<TurnInput>(&record.payload) else {
+                // An unreadable row has no trustworthy client identity. It is
+                // handled when it reaches the head and must not be interpreted
+                // as evidence for an exactly-once join.
+                continue;
+            };
+            let Ok(other_client_id) = queued_client_id(&input) else {
+                continue;
+            };
+            if other_client_id != client_id {
+                continue;
+            }
+            let actual_sha256 = queued_payload_sha256(&input)?;
+            ensure_payload_digest_matches(client_id, expected_sha256, actual_sha256.as_str())?;
+        }
+        Ok(())
     }
 
     fn emit_changed(&self, thread_id: ThreadId) {
@@ -605,6 +674,28 @@ fn queued_client_id(input: &TurnInput) -> Result<&str, QueueServiceError> {
     Ok(client_id)
 }
 
+fn queued_payload_sha256(input: &TurnInput) -> Result<String, QueueServiceError> {
+    let TurnInput::UserInput { content, .. } = input else {
+        return Err(QueueServiceError::InvalidInput);
+    };
+    user_input_payload_sha256(content).map_err(QueueServiceError::InvalidPayload)
+}
+
+fn ensure_payload_digest_matches(
+    client_id: &str,
+    expected_sha256: &str,
+    actual_sha256: &str,
+) -> Result<(), QueueServiceError> {
+    if expected_sha256 == actual_sha256 {
+        return Ok(());
+    }
+    Err(QueueServiceError::ClientIdPayloadConflict {
+        client_id: client_id.to_string(),
+        expected_sha256: expected_sha256.to_string(),
+        actual_sha256: actual_sha256.to_string(),
+    })
+}
+
 /// Returns the first durable turn that already contains this client message.
 ///
 /// Queue deletion and rollout persistence are separate stores. A process can
@@ -614,6 +705,7 @@ fn queued_client_id(input: &TurnInput) -> Result<&str, QueueServiceError> {
 async fn persisted_turn_for_client_id(
     thread: &CodexThread,
     client_id: &str,
+    expected_sha256: &str,
 ) -> Result<Option<String>, QueueServiceError> {
     // Local threads are materialized lazily. Before the first accepted user
     // message the configured rollout path is intentionally absent, so there
@@ -628,6 +720,7 @@ async fn persisted_turn_for_client_id(
     };
     let mut current_turn_id = None;
     let mut found = None;
+    let mut legacy_turn_ids = HashSet::new();
     while let Some(line) = reader
         .next_line()
         .await
@@ -644,7 +737,22 @@ async fn persisted_turn_for_client_id(
                 ),
             })
         })?;
-        scan_persisted_client_line(record.item, client_id, &mut current_turn_id, &mut found)?;
+        scan_persisted_client_line(
+            record.item,
+            client_id,
+            expected_sha256,
+            &mut current_turn_id,
+            &mut found,
+            &mut legacy_turn_ids,
+        )?;
+    }
+    if legacy_turn_ids
+        .iter()
+        .any(|turn_id| found.as_deref() != Some(turn_id.as_str()))
+    {
+        return Err(QueueServiceError::LegacyClientIdBinding {
+            client_id: client_id.to_string(),
+        });
     }
     Ok(found)
 }
@@ -652,8 +760,10 @@ async fn persisted_turn_for_client_id(
 fn scan_persisted_client_line(
     item: RolloutItem,
     client_id: &str,
+    expected_sha256: &str,
     current_turn_id: &mut Option<String>,
     found: &mut Option<String>,
+    legacy_turn_ids: &mut HashSet<String>,
 ) -> Result<(), QueueServiceError> {
     match item {
         RolloutItem::EventMsg(EventMsg::TurnStarted(event)) => {
@@ -661,6 +771,24 @@ fn scan_persisted_client_line(
         }
         RolloutItem::TurnContext(context) if context.turn_id.is_some() => {
             *current_turn_id = context.turn_id;
+        }
+        RolloutItem::EventMsg(EventMsg::ItemStarted(event)) => {
+            scan_exact_user_message_item(
+                event.turn_id,
+                event.item,
+                client_id,
+                expected_sha256,
+                found,
+            )?;
+        }
+        RolloutItem::EventMsg(EventMsg::ItemCompleted(event)) => {
+            scan_exact_user_message_item(
+                event.turn_id,
+                event.item,
+                client_id,
+                expected_sha256,
+                found,
+            )?;
         }
         RolloutItem::EventMsg(EventMsg::UserMessage(event))
             if event.client_id.as_deref() == Some(client_id) =>
@@ -673,7 +801,15 @@ fn scan_persisted_client_line(
                 }
                 .into());
             };
-            found.get_or_insert(turn_id);
+            match event.payload_sha256 {
+                Some(actual_sha256) => {
+                    ensure_payload_digest_matches(client_id, expected_sha256, &actual_sha256)?;
+                    record_persisted_client_turn(client_id, turn_id, found)?;
+                }
+                None => {
+                    legacy_turn_ids.insert(turn_id);
+                }
+            }
         }
         RolloutItem::EventMsg(EventMsg::TurnComplete(event))
             if current_turn_id.as_deref() == Some(event.turn_id.as_str()) =>
@@ -682,6 +818,41 @@ fn scan_persisted_client_line(
         }
         _ => {}
     }
+    Ok(())
+}
+
+fn scan_exact_user_message_item(
+    turn_id: String,
+    item: TurnItem,
+    client_id: &str,
+    expected_sha256: &str,
+    found: &mut Option<String>,
+) -> Result<(), QueueServiceError> {
+    let TurnItem::UserMessage(item) = item else {
+        return Ok(());
+    };
+    if item.client_id.as_deref() != Some(client_id) {
+        return Ok(());
+    }
+    let actual_sha256 = queued_payload_sha256(&TurnInput::UserInput {
+        content: item.content,
+        client_id: item.client_id,
+    })?;
+    ensure_payload_digest_matches(client_id, expected_sha256, &actual_sha256)?;
+    record_persisted_client_turn(client_id, turn_id, found)
+}
+
+fn record_persisted_client_turn(
+    client_id: &str,
+    turn_id: String,
+    found: &mut Option<String>,
+) -> Result<(), QueueServiceError> {
+    if found.as_deref().is_some_and(|found| found != turn_id) {
+        return Err(QueueServiceError::AmbiguousClientIdBinding {
+            client_id: client_id.to_string(),
+        });
+    }
+    found.get_or_insert(turn_id);
     Ok(())
 }
 

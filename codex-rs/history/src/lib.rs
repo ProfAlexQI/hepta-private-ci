@@ -1,6 +1,7 @@
 //! Model-history and persisted-rollout domain types.
 
 use std::borrow::Borrow;
+use std::collections::BTreeMap;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::path::PathBuf;
@@ -96,12 +97,76 @@ pub enum RolloutItem {
     SessionMeta(SessionMetaLine),
     ResponseItem(ResponseItemEnvelope),
     InterAgentCommunication(InterAgentCommunication),
-    InterAgentCommunicationMetadata { trigger_turn: bool },
+    InterAgentCommunicationMetadata {
+        trigger_turn: bool,
+    },
     Compacted(CompactedItem),
     TurnContext(TurnContextItem),
     WorldState(WorldStateItem),
     SecurityRiskScore(SecurityRiskScore),
+    /// Durable, non-model metadata binding one recovery generation to the
+    /// retry-stable semantic provider request authorized by its following
+    /// Ready or InterruptedConfirmed marker.
+    TurnRecoveryRequestBinding(TurnRecoveryRequestBinding),
     EventMsg(EventMsg),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
+pub struct TurnRecoveryRequestBinding {
+    pub turn_id: String,
+    #[serde(default)]
+    pub generation: u64,
+    pub fingerprint_sha256: String,
+    /// Exact model-history prefix that produced `fingerprint_sha256`.
+    ///
+    /// This is optional only so rollouts written by an earlier experimental
+    /// implementation remain readable. A missing boundary never grants
+    /// recovery authority.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_boundary: Option<TurnRecoveryHistoryBoundary>,
+    /// Replay-critical values that are not derivable from canonical model
+    /// history after a process restart. Missing replay data is readable for
+    /// compatibility but never grants recovery authority.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay: Option<TurnRecoveryReplayV1>,
+    /// Present only on the durable hand-off that applies this boundary to a
+    /// restarted attempt. It names the recoverable generation that was
+    /// consumed immediately before this binding was written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay_applied_from_generation: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
+pub struct TurnRecoveryHistoryBoundary {
+    pub item_count: u64,
+    pub prefix_sha256: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
+pub struct TurnRecoveryReplayV1 {
+    pub history_boundary: TurnRecoveryHistoryBoundary,
+    pub turn_context_sha256: String,
+    pub start: TurnRecoveryStartState,
+    pub environments: Vec<TurnRecoveryEnvironmentSelection>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
+pub struct TurnRecoveryStartState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub final_output_json_schema: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub responses_metadata_extra: BTreeMap<String, String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema)]
+pub struct TurnRecoveryEnvironmentSelection {
+    pub environment_id: String,
+    pub cwd: String,
+    pub workspace_roots: Vec<String>,
 }
 
 impl Serialize for RolloutItem {
@@ -415,6 +480,7 @@ fn multi_agent_version_from_items(
             | RolloutItem::Compacted(_)
             | RolloutItem::WorldState(_)
             | RolloutItem::SecurityRiskScore(_)
+            | RolloutItem::TurnRecoveryRequestBinding(_)
             | RolloutItem::EventMsg(_) => None,
         })
     })

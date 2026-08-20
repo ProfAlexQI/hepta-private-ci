@@ -7,6 +7,11 @@ use codex_history::CompactedItem;
 use codex_history::InitialHistory;
 use codex_history::ResponseItemEnvelope;
 use codex_history::ResumedHistory;
+use codex_history::TurnRecoveryEnvironmentSelection;
+use codex_history::TurnRecoveryHistoryBoundary;
+use codex_history::TurnRecoveryReplayV1;
+use codex_history::TurnRecoveryRequestBinding;
+use codex_history::TurnRecoveryStartState;
 use codex_protocol::AgentPath;
 use codex_protocol::ThreadId;
 use codex_protocol::models::ContentItem;
@@ -121,6 +126,543 @@ fn completed_user_turn_rollout(
     rollout_items
 }
 
+fn recovery_boundary_for(prefix: &[ResponseItemEnvelope]) -> TurnRecoveryHistoryBoundary {
+    let mut history = ContextManager::new();
+    history.replace_annotated(prefix.to_vec());
+    history
+        .recovery_boundary()
+        .expect("test recovery prefix should be serializable")
+}
+
+fn replay_applied_binding(
+    turn_id: &str,
+    source_generation: u64,
+    history_boundary: TurnRecoveryHistoryBoundary,
+) -> TurnRecoveryRequestBinding {
+    let cwd = codex_utils_path_uri::PathUri::from_abs_path(
+        &codex_utils_absolute_path::AbsolutePathBuf::try_from(
+            std::env::current_dir().expect("test current directory"),
+        )
+        .expect("test current directory should be absolute"),
+    )
+    .to_string();
+    TurnRecoveryRequestBinding {
+        turn_id: turn_id.to_string(),
+        generation: source_generation.saturating_add(1),
+        fingerprint_sha256: "recovered-request-fingerprint".to_string(),
+        history_boundary: Some(history_boundary.clone()),
+        replay: Some(TurnRecoveryReplayV1 {
+            history_boundary,
+            turn_context_sha256: "recovered-turn-context".to_string(),
+            start: TurnRecoveryStartState {
+                final_output_json_schema: None,
+                parent_turn_id: None,
+                root_turn_id: Some(turn_id.to_string()),
+                responses_metadata_extra: BTreeMap::new(),
+            },
+            environments: vec![TurnRecoveryEnvironmentSelection {
+                environment_id: "recovery-test-environment".to_string(),
+                cwd: cwd.clone(),
+                workspace_roots: vec![cwd],
+            }],
+        }),
+        replay_applied_from_generation: Some(source_generation),
+    }
+}
+
+fn recovery_turn_started(turn_id: &str) -> RolloutItem {
+    RolloutItem::EventMsg(EventMsg::TurnStarted(
+        codex_protocol::protocol::TurnStartedEvent {
+            turn_id: turn_id.to_string(),
+            trace_id: None,
+            started_at: None,
+            model_context_window: Some(128_000),
+            collaboration_mode_kind: ModeKind::Default,
+        },
+    ))
+}
+
+fn recovery_unready(turn_id: &str, generation: u64) -> RolloutItem {
+    RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(
+        codex_protocol::protocol::TurnRecoveryCandidateEvent {
+            turn_id: turn_id.to_string(),
+            generation,
+            state: codex_protocol::protocol::TurnRecoveryCandidateState::Unready,
+        },
+    ))
+}
+
+#[tokio::test]
+async fn reconstruct_history_applies_replay_only_at_matching_recovery_turn_start() {
+    let (session, turn_context) = make_session_and_context().await;
+    let turn_id = "durable-recovery-turn";
+    let prefix = annotated(vec![
+        user_message("original request"),
+        assistant_message("original prefix response"),
+    ]);
+    let interrupted_tail = annotated(vec![
+        user_message("<turn_aborted>"),
+        assistant_message("interrupted attempt warning"),
+    ]);
+    let recovered_attempt = annotated(vec![
+        user_message("recovered request"),
+        assistant_message("recovered response"),
+    ]);
+    let boundary = recovery_boundary_for(&prefix);
+
+    let mut rollout_items = prefix
+        .iter()
+        .cloned()
+        .map(RolloutItem::ResponseItem)
+        .collect::<Vec<_>>();
+    rollout_items.extend(
+        interrupted_tail
+            .iter()
+            .cloned()
+            .map(RolloutItem::ResponseItem),
+    );
+    rollout_items.push(recovery_unready(turn_id, 8));
+    rollout_items.push(RolloutItem::TurnRecoveryRequestBinding(
+        replay_applied_binding(turn_id, 7, boundary),
+    ));
+    rollout_items.push(recovery_turn_started(turn_id));
+    rollout_items.extend(
+        recovered_attempt
+            .iter()
+            .cloned()
+            .map(RolloutItem::ResponseItem),
+    );
+
+    let first = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+    let second = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+
+    let expected = prefix
+        .into_iter()
+        .chain(recovered_attempt)
+        .collect::<Vec<_>>();
+    assert_eq!(first.history, expected);
+    assert_eq!(second.history, first.history);
+}
+
+#[tokio::test]
+async fn reconstruct_history_ignores_unpaired_or_invalid_replay_applied_marker() {
+    let (session, turn_context) = make_session_and_context().await;
+    let turn_id = "durable-recovery-turn";
+    let prefix = annotated(vec![user_message("original request")]);
+    let interrupted_tail = annotated(vec![assistant_message("interrupted attempt tail")]);
+    let recovered_attempt = annotated(vec![assistant_message("later visible response")]);
+    let boundary = recovery_boundary_for(&prefix);
+    let visible_history = prefix
+        .iter()
+        .chain(&interrupted_tail)
+        .chain(&recovered_attempt)
+        .cloned()
+        .collect::<Vec<_>>();
+    let rollout_for = |binding: TurnRecoveryRequestBinding, started_turn_id: Option<&str>| {
+        let mut rollout_items = prefix
+            .iter()
+            .cloned()
+            .map(RolloutItem::ResponseItem)
+            .collect::<Vec<_>>();
+        rollout_items.extend(
+            interrupted_tail
+                .iter()
+                .cloned()
+                .map(RolloutItem::ResponseItem),
+        );
+        rollout_items.push(recovery_unready(&binding.turn_id, binding.generation));
+        rollout_items.push(RolloutItem::TurnRecoveryRequestBinding(binding));
+        if let Some(started_turn_id) = started_turn_id {
+            rollout_items.push(recovery_turn_started(started_turn_id));
+        }
+        rollout_items.extend(
+            recovered_attempt
+                .iter()
+                .cloned()
+                .map(RolloutItem::ResponseItem),
+        );
+        rollout_items
+    };
+
+    let unpaired = replay_applied_binding(turn_id, 7, boundary.clone());
+    let wrong_turn_id = replay_applied_binding(turn_id, 7, boundary.clone());
+
+    let mut wrong_generation = replay_applied_binding(turn_id, 7, boundary.clone());
+    wrong_generation.generation = 10;
+
+    let mut overflow_generation = replay_applied_binding(turn_id, u64::MAX, boundary.clone());
+    overflow_generation.generation = u64::MAX;
+
+    let mut empty_fingerprint = replay_applied_binding(turn_id, 7, boundary.clone());
+    empty_fingerprint.fingerprint_sha256.clear();
+
+    let mut missing_top_level_boundary = replay_applied_binding(turn_id, 7, boundary.clone());
+    missing_top_level_boundary.history_boundary = None;
+
+    let mut mismatched_top_level_boundary = replay_applied_binding(turn_id, 7, boundary.clone());
+    mismatched_top_level_boundary
+        .history_boundary
+        .as_mut()
+        .expect("test binding has top-level boundary")
+        .prefix_sha256 = "different-top-level-prefix".to_string();
+
+    let mut wrong_digest = replay_applied_binding(turn_id, 7, boundary.clone());
+    wrong_digest
+        .replay
+        .as_mut()
+        .expect("test binding has replay")
+        .history_boundary
+        .prefix_sha256 = "not-the-prefix-digest".to_string();
+
+    let mut empty_digest = replay_applied_binding(turn_id, 7, boundary.clone());
+    empty_digest
+        .replay
+        .as_mut()
+        .expect("test binding has replay")
+        .history_boundary
+        .prefix_sha256
+        .clear();
+
+    let mut empty_context_digest = replay_applied_binding(turn_id, 7, boundary.clone());
+    empty_context_digest
+        .replay
+        .as_mut()
+        .expect("test binding has replay")
+        .turn_context_sha256
+        .clear();
+
+    let mut empty_environments = replay_applied_binding(turn_id, 7, boundary.clone());
+    empty_environments
+        .replay
+        .as_mut()
+        .expect("test binding has replay")
+        .environments
+        .clear();
+
+    let mut empty_environment_id = replay_applied_binding(turn_id, 7, boundary.clone());
+    empty_environment_id
+        .replay
+        .as_mut()
+        .expect("test binding has replay")
+        .environments[0]
+        .environment_id
+        .clear();
+
+    let mut duplicate_environment_id = replay_applied_binding(turn_id, 7, boundary.clone());
+    let duplicate_environment = duplicate_environment_id
+        .replay
+        .as_ref()
+        .expect("test binding has replay")
+        .environments[0]
+        .clone();
+    duplicate_environment_id
+        .replay
+        .as_mut()
+        .expect("test binding has replay")
+        .environments
+        .push(duplicate_environment);
+
+    let mut invalid_environment_cwd = replay_applied_binding(turn_id, 7, boundary.clone());
+    invalid_environment_cwd
+        .replay
+        .as_mut()
+        .expect("test binding has replay")
+        .environments[0]
+        .cwd = "relative/path".to_string();
+
+    let mut invalid_workspace_root = replay_applied_binding(turn_id, 7, boundary.clone());
+    invalid_workspace_root
+        .replay
+        .as_mut()
+        .expect("test binding has replay")
+        .environments[0]
+        .workspace_roots[0] = "not-a-file-uri".to_string();
+
+    let mut missing_replay = replay_applied_binding(turn_id, 7, boundary);
+    missing_replay.replay = None;
+
+    let cases = [
+        ("unpaired", rollout_for(unpaired, None)),
+        (
+            "wrong turn id",
+            rollout_for(wrong_turn_id, Some("different-turn")),
+        ),
+        (
+            "generation is not source plus one",
+            rollout_for(wrong_generation, Some(turn_id)),
+        ),
+        (
+            "source generation cannot overflow",
+            rollout_for(overflow_generation, Some(turn_id)),
+        ),
+        (
+            "empty request fingerprint",
+            rollout_for(empty_fingerprint, Some(turn_id)),
+        ),
+        (
+            "missing top-level boundary",
+            rollout_for(missing_top_level_boundary, Some(turn_id)),
+        ),
+        (
+            "mismatched top-level boundary",
+            rollout_for(mismatched_top_level_boundary, Some(turn_id)),
+        ),
+        (
+            "wrong prefix digest",
+            rollout_for(wrong_digest, Some(turn_id)),
+        ),
+        (
+            "empty prefix digest",
+            rollout_for(empty_digest, Some(turn_id)),
+        ),
+        (
+            "empty turn-context digest",
+            rollout_for(empty_context_digest, Some(turn_id)),
+        ),
+        (
+            "empty environments",
+            rollout_for(empty_environments, Some(turn_id)),
+        ),
+        (
+            "empty environment ID",
+            rollout_for(empty_environment_id, Some(turn_id)),
+        ),
+        (
+            "duplicate environment ID",
+            rollout_for(duplicate_environment_id, Some(turn_id)),
+        ),
+        (
+            "invalid environment cwd",
+            rollout_for(invalid_environment_cwd, Some(turn_id)),
+        ),
+        (
+            "invalid workspace root",
+            rollout_for(invalid_workspace_root, Some(turn_id)),
+        ),
+        ("missing replay", rollout_for(missing_replay, Some(turn_id))),
+    ];
+
+    for (case, rollout_items) in cases {
+        let reconstructed = session
+            .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+            .await;
+        assert_eq!(reconstructed.history, visible_history, "case: {case}");
+    }
+}
+
+#[tokio::test]
+async fn reconstruct_history_limits_replay_applied_pairing_to_next_lifecycle_start() {
+    let (session, turn_context) = make_session_and_context().await;
+    let turn_id = "durable-recovery-turn";
+    let prefix = annotated(vec![user_message("original request")]);
+    let interrupted_tail = annotated(vec![assistant_message("interrupted attempt tail")]);
+    let recovered_attempt = annotated(vec![assistant_message("recovered attempt")]);
+    let intervening_history = ResponseItemEnvelope::new(assistant_message("intervening history"));
+    let boundary = recovery_boundary_for(&prefix);
+    let rollout_prefix = prefix
+        .iter()
+        .chain(&interrupted_tail)
+        .cloned()
+        .map(RolloutItem::ResponseItem)
+        .collect::<Vec<_>>();
+
+    let mut warning_then_matching_start = rollout_prefix.clone();
+    warning_then_matching_start.push(recovery_unready(turn_id, 8));
+    warning_then_matching_start.push(RolloutItem::EventMsg(EventMsg::Warning(
+        codex_protocol::protocol::WarningEvent {
+            message: "pre-binding capability warning".to_string(),
+        },
+    )));
+    warning_then_matching_start.push(RolloutItem::TurnRecoveryRequestBinding(
+        replay_applied_binding(turn_id, 7, boundary.clone()),
+    ));
+    warning_then_matching_start.push(RolloutItem::EventMsg(EventMsg::Warning(
+        codex_protocol::protocol::WarningEvent {
+            message: "model capability warning".to_string(),
+        },
+    )));
+    warning_then_matching_start.push(recovery_turn_started(turn_id));
+    warning_then_matching_start.extend(
+        recovered_attempt
+            .iter()
+            .cloned()
+            .map(RolloutItem::ResponseItem),
+    );
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &warning_then_matching_start)
+        .await;
+    assert_eq!(
+        reconstructed.history,
+        prefix
+            .iter()
+            .chain(&recovered_attempt)
+            .cloned()
+            .collect::<Vec<_>>()
+    );
+
+    let mut wrong_start_then_matching_start = rollout_prefix.clone();
+    wrong_start_then_matching_start.push(recovery_unready(turn_id, 8));
+    wrong_start_then_matching_start.push(RolloutItem::TurnRecoveryRequestBinding(
+        replay_applied_binding(turn_id, 7, boundary.clone()),
+    ));
+    wrong_start_then_matching_start.push(recovery_turn_started("different-turn"));
+    wrong_start_then_matching_start.push(recovery_turn_started(turn_id));
+    wrong_start_then_matching_start.extend(
+        recovered_attempt
+            .iter()
+            .cloned()
+            .map(RolloutItem::ResponseItem),
+    );
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &wrong_start_then_matching_start)
+        .await;
+    assert_eq!(
+        reconstructed.history,
+        prefix
+            .iter()
+            .chain(&interrupted_tail)
+            .chain(&recovered_attempt)
+            .cloned()
+            .collect::<Vec<_>>()
+    );
+
+    let mut history_then_matching_start = rollout_prefix.clone();
+    history_then_matching_start.push(recovery_unready(turn_id, 8));
+    history_then_matching_start.push(RolloutItem::TurnRecoveryRequestBinding(
+        replay_applied_binding(turn_id, 7, boundary.clone()),
+    ));
+    history_then_matching_start.push(RolloutItem::ResponseItem(intervening_history.clone()));
+    history_then_matching_start.push(recovery_turn_started(turn_id));
+    history_then_matching_start.extend(
+        recovered_attempt
+            .iter()
+            .cloned()
+            .map(RolloutItem::ResponseItem),
+    );
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &history_then_matching_start)
+        .await;
+    assert_eq!(
+        reconstructed.history,
+        prefix
+            .iter()
+            .chain(&interrupted_tail)
+            .cloned()
+            .chain(std::iter::once(intervening_history))
+            .chain(recovered_attempt.iter().cloned())
+            .collect::<Vec<_>>()
+    );
+
+    let mut invalid_binding_then_matching_start = rollout_prefix;
+    invalid_binding_then_matching_start.push(recovery_unready(turn_id, 8));
+    invalid_binding_then_matching_start.push(RolloutItem::TurnRecoveryRequestBinding(
+        replay_applied_binding(turn_id, 7, boundary.clone()),
+    ));
+    let mut invalid_successor = replay_applied_binding(turn_id, 7, boundary);
+    invalid_successor.replay = None;
+    invalid_binding_then_matching_start
+        .push(RolloutItem::TurnRecoveryRequestBinding(invalid_successor));
+    invalid_binding_then_matching_start.push(recovery_turn_started(turn_id));
+    invalid_binding_then_matching_start.extend(
+        recovered_attempt
+            .iter()
+            .cloned()
+            .map(RolloutItem::ResponseItem),
+    );
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &invalid_binding_then_matching_start)
+        .await;
+    assert_eq!(
+        reconstructed.history,
+        prefix
+            .into_iter()
+            .chain(interrupted_tail)
+            .chain(recovered_attempt)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn reconstruct_history_requires_matching_consumed_unready_for_replay_applied_binding() {
+    let (session, turn_context) = make_session_and_context().await;
+    let turn_id = "durable-recovery-turn";
+    let prefix = annotated(vec![user_message("original request")]);
+    let interrupted_tail = annotated(vec![assistant_message("interrupted attempt tail")]);
+    let recovered_attempt = annotated(vec![assistant_message("recovered attempt")]);
+    let intervening_history = ResponseItemEnvelope::new(assistant_message("intervening history"));
+    let boundary = recovery_boundary_for(&prefix);
+    let rollout_prefix = prefix
+        .iter()
+        .chain(&interrupted_tail)
+        .cloned()
+        .map(RolloutItem::ResponseItem)
+        .collect::<Vec<_>>();
+    let append_binding_start_and_attempt = |rollout: &mut Vec<RolloutItem>| {
+        rollout.push(RolloutItem::TurnRecoveryRequestBinding(
+            replay_applied_binding(turn_id, 7, boundary.clone()),
+        ));
+        rollout.push(recovery_turn_started(turn_id));
+        rollout.extend(
+            recovered_attempt
+                .iter()
+                .cloned()
+                .map(RolloutItem::ResponseItem),
+        );
+    };
+
+    let mut orphan_binding = rollout_prefix.clone();
+    append_binding_start_and_attempt(&mut orphan_binding);
+
+    let mut wrong_turn_unready = rollout_prefix.clone();
+    wrong_turn_unready.push(recovery_unready("different-turn", 8));
+    append_binding_start_and_attempt(&mut wrong_turn_unready);
+
+    let mut wrong_generation_unready = rollout_prefix.clone();
+    wrong_generation_unready.push(recovery_unready(turn_id, 9));
+    append_binding_start_and_attempt(&mut wrong_generation_unready);
+
+    let expected_without_rewind = prefix
+        .iter()
+        .chain(&interrupted_tail)
+        .chain(&recovered_attempt)
+        .cloned()
+        .collect::<Vec<_>>();
+    for (case, rollout) in [
+        ("orphan binding", orphan_binding),
+        ("wrong-turn Unready", wrong_turn_unready),
+        ("wrong-generation Unready", wrong_generation_unready),
+    ] {
+        let reconstructed = session
+            .reconstruct_history_from_rollout(&turn_context, &rollout)
+            .await;
+        assert_eq!(
+            reconstructed.history, expected_without_rewind,
+            "case: {case}"
+        );
+    }
+
+    let mut interrupted_handoff = rollout_prefix;
+    interrupted_handoff.push(recovery_unready(turn_id, 8));
+    interrupted_handoff.push(RolloutItem::ResponseItem(intervening_history.clone()));
+    append_binding_start_and_attempt(&mut interrupted_handoff);
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &interrupted_handoff)
+        .await;
+    assert_eq!(
+        reconstructed.history,
+        prefix
+            .into_iter()
+            .chain(interrupted_tail)
+            .chain(std::iter::once(intervening_history))
+            .chain(recovered_attempt)
+            .collect::<Vec<_>>()
+    );
+}
+
 #[tokio::test]
 async fn record_initial_history_reconstructs_typed_inter_agent_message() {
     let (session, _turn_context) = make_session_and_context().await;
@@ -140,7 +682,8 @@ async fn record_initial_history_reconstructs_typed_inter_agent_message() {
             )]),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("inter-agent history should be reconstructed");
 
     assert_eq!(
         raw_history_items(&session.state.lock().await.clone_history()),
@@ -166,7 +709,8 @@ async fn record_initial_history_ignores_security_risk_scores() {
             ]),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("history with security scores should be reconstructed");
 
     assert_eq!(
         raw_history_items(&session.state.lock().await.clone_history()),
@@ -202,7 +746,8 @@ async fn record_initial_history_restores_world_state_baseline() {
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("world-state history should be reconstructed");
     let step_context = StepContext::for_test(Arc::clone(&turn_context));
     session
         .record_context_updates_and_set_reference_context_item(&step_context)
@@ -257,7 +802,8 @@ async fn record_initial_history_resumed_bare_turn_context_does_not_hydrate_previ
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("bare turn-context history should be reconstructed");
 
     assert_eq!(session.previous_turn_settings().await, None);
     assert!(session.reference_context_item().await.is_none());
@@ -338,7 +884,8 @@ async fn record_initial_history_resumed_hydrates_previous_turn_settings_from_lif
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("lifecycle turn history should be reconstructed");
 
     assert_eq!(
         session.previous_turn_settings().await,
@@ -939,7 +1486,8 @@ async fn record_initial_history_resumed_rollback_skips_only_user_turns() {
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("rolled-back history should be reconstructed");
 
     assert_eq!(session.previous_turn_settings().await, None);
     assert!(session.reference_context_item().await.is_none());
@@ -1026,7 +1574,8 @@ async fn record_initial_history_resumed_rollback_drops_incomplete_user_turn_comp
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("compacted rollback history should be reconstructed");
 
     assert_eq!(
         session.previous_turn_settings().await,
@@ -1056,7 +1605,8 @@ async fn record_initial_history_resumed_bare_turn_context_does_not_seed_referenc
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("bare turn-context history should be reconstructed");
 
     assert!(session.reference_context_item().await.is_none());
 }
@@ -1084,7 +1634,8 @@ async fn record_initial_history_resumed_does_not_seed_reference_context_item_aft
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("compacted history should be reconstructed");
 
     assert_eq!(session.previous_turn_settings().await, None);
     assert!(session.reference_context_item().await.is_none());
@@ -1417,7 +1968,8 @@ async fn record_initial_history_resumed_turn_context_after_compaction_reestablis
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("post-compaction history should be reconstructed");
 
     assert_eq!(
         session.previous_turn_settings().await,
@@ -1570,7 +2122,8 @@ async fn record_initial_history_resumed_aborted_turn_without_id_clears_active_tu
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("aborted turn history should be reconstructed");
 
     assert_eq!(
         session.previous_turn_settings().await,
@@ -1700,7 +2253,8 @@ async fn record_initial_history_resumed_unmatched_abort_preserves_active_turn_fo
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("unmatched-abort history should be reconstructed");
 
     assert_eq!(
         session.previous_turn_settings().await,
@@ -1821,7 +2375,8 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_compaction_clea
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("incomplete compacted history should be reconstructed");
 
     assert_eq!(
         session.previous_turn_settings().await,
@@ -1872,7 +2427,8 @@ async fn record_initial_history_resumed_trailing_incomplete_turn_preserves_turn_
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("incomplete turn history should be reconstructed");
 
     assert_eq!(
         session.previous_turn_settings().await,
@@ -2005,7 +2561,8 @@ async fn record_initial_history_resumed_replaced_incomplete_compacted_turn_clear
             history: Arc::new(rollout_items),
             rollout_path: Some(PathBuf::from("/tmp/resume.jsonl")),
         }))
-        .await;
+        .await
+        .expect("replaced compacted history should be reconstructed");
 
     assert_eq!(
         session.previous_turn_settings().await,

@@ -89,6 +89,7 @@ fn runtime_fixture() -> RuntimeFixture {
         spawn_generation: 1,
         fleet_root: fleet_path,
         workspace,
+        resources: record.manifest.resources.clone(),
         home_root: record.layout.home_root().to_path_buf(),
         run_root: record.layout.run_root().to_path_buf(),
         control_socket: record.layout.agentd_control_socket().to_path_buf(),

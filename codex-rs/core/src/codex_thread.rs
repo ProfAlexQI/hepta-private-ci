@@ -74,6 +74,17 @@ use codex_rollout::state_db::StateDbHandle;
 
 static LIVE_THREADS: Gauge = Gauge::new("core.threads.live");
 
+/// Why model-visible items could not be injected into a running turn.
+#[derive(Debug)]
+pub enum InjectIfRunningError {
+    /// The thread became idle before the items could be accepted. The original
+    /// items are returned so callers may choose an idle-thread fallback.
+    NoActiveTurn(Vec<ResponseItem>),
+    /// Durable recovery authority could not be revoked. The items were not
+    /// enqueued and callers must surface the fatal persistence error.
+    RecoveryRevocation(CodexErr),
+}
+
 #[derive(Clone, Debug)]
 pub struct ThreadConfigSnapshot {
     pub model: String,
@@ -570,6 +581,14 @@ impl CodexThread {
         }
     }
 
+    /// Captures Core's current idle/interrupted recovery epoch.
+    ///
+    /// The returned epoch must be passed back in [`RecoverTurnRequest`]. Core
+    /// revalidates it atomically when reserving the recovery task.
+    pub async fn recovery_epoch_if_idle(&self, turn_id: &str) -> Option<u64> {
+        self.session.recovery_epoch_if_idle(turn_id).await
+    }
+
     /// Resumes an interrupted regular turn only when the thread is idle.
     ///
     /// Recovery starts no new user input and preserves the turn ID that was
@@ -578,6 +597,11 @@ impl CodexThread {
         &self,
         request: RecoverTurnRequest,
     ) -> CodexResult<StartIfIdleSubmission> {
+        if !self.enabled(Feature::HeptaTurnRecovery) {
+            return Err(CodexErr::InvalidRequest(
+                "turn recovery requires features.hepta_turn_recovery=true".to_string(),
+            ));
+        }
         self.session
             .services
             .agent_control
@@ -585,12 +609,13 @@ impl CodexThread {
             .await?;
         let RecoverTurnRequest {
             turn_id,
+            expected_epoch,
             thread_settings,
             trace,
         } = request;
         match self
             .io
-            .submit_recover_turn(thread_settings, trace, turn_id)
+            .submit_recover_turn(expected_epoch, thread_settings, trace, turn_id)
             .await?
         {
             TurnInputSubmission::Started { turn_id } => {
@@ -653,7 +678,7 @@ impl CodexThread {
     pub async fn inject_if_running(
         &self,
         items: Vec<ResponseItem>,
-    ) -> Result<(), Vec<ResponseItem>> {
+    ) -> Result<(), InjectIfRunningError> {
         self.session.inject_if_running(items).await
     }
 
@@ -821,7 +846,7 @@ impl CodexThread {
         }
         self.session
             .inject_client_response_items(items, turn_context.as_ref())
-            .await;
+            .await?;
         Ok(())
     }
 
@@ -895,7 +920,11 @@ impl CodexThread {
             .map_err(|err| ThreadStoreError::Internal {
                 message: err.to_string(),
             })?;
-        live_thread.append_items(items).await
+        let result = live_thread.append_items(items).await;
+        if result.is_err() {
+            self.session.mark_rollout_persistence_failure();
+        }
+        result
     }
 
     pub fn state_db(&self) -> Option<StateDbHandle> {
