@@ -6,12 +6,14 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
+use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::anyhow;
+use anyhow::bail;
 use anyhow::ensure;
 use app_test_support::MockResponsesConfig;
 use codex_app_server_client::AppServerEvent;
@@ -30,6 +32,8 @@ use codex_hepta_agentd::MemoryFederationCapabilityState;
 use codex_hepta_agentd::MemoryFederationScopeKind;
 use codex_hepta_automation::AutomationSchedule;
 use codex_hepta_automation::AutomationTaskDraft;
+use codex_hepta_contracts::AgentId;
+use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_memory::CognitiveAccess;
 use codex_hepta_memory::CognitiveScope;
 use codex_hepta_memory::CognitiveStore;
@@ -48,6 +52,7 @@ use serde_json::Value;
 use serde_json::json;
 use tokio::time::timeout;
 use wiremock::Mock;
+use wiremock::MockServer;
 use wiremock::Request;
 use wiremock::Respond;
 use wiremock::ResponseTemplate;
@@ -69,6 +74,7 @@ const COGNITIVE_NAMESPACE: &str = "hepta_cognitive";
 const COGNITIVE_REFERENCE_OPEN: &str = "<hepta_memory_reference schema=\"1\">";
 const COGNITIVE_REFERENCE_CLOSE: &str = "</hepta_memory_reference>";
 const TURN_TIMEOUT: Duration = Duration::from_secs(20);
+const STABLE_REQUEST_WINDOW: Duration = Duration::from_millis(500);
 
 struct ProductClient {
     inner: RemoteAppServerClient,
@@ -184,6 +190,9 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
     const ORIGINAL: &str = "Project Aurora deadline is Friday.";
     const CORRECTED: &str = "Project Aurora deadline is Monday.";
     const FORGET_REASON: &str = "Project Aurora deadline memory should be forgotten.";
+    const ORIGINAL_ALIAS: &str = "Luminous Initiative";
+    const CORRECTED_ALIAS: &str = "Radiant Initiative";
+    const SUPERSEDED_ALIAS_QUERY: &str = "Luminous";
     const REMEMBER_CALL: &str = "remember-aurora";
     const CORRECT_CALL: &str = "correct-aurora";
     const FORGET_CALL: &str = "forget-aurora";
@@ -193,7 +202,7 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
     let model = responses::start_mock_server().await;
     MockResponsesConfig::new(&model.uri()).write(agent.layout.home_root())?;
     fleet.start(&agent)?;
-    let (control, _) = fleet.wait_ready(&agent, 1).await?;
+    let (control, initial_health) = fleet.wait_ready(&agent, 1).await?;
     let mut product = ProductClient::connect(&agent, &control).await?;
 
     let thread_a = product.start_thread(&agent.workspace).await?;
@@ -207,7 +216,8 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
                 json!({
                     "stable_key": "project-aurora-deadline",
                     "content": ORIGINAL,
-                    "scope": "workspace_private"
+                    "scope": "workspace_private",
+                    "kg": project_deadline_facts(ORIGINAL_ALIAS, "Friday")
                 }),
             ),
             final_sse("remember-final"),
@@ -215,34 +225,92 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
     )
     .await;
     product.run_turn(&thread_a, ORIGINAL).await?;
+    assert_physical_request_count_stable(&remember, 2, "remember").await?;
     let remember_requests = remember.requests();
+    let remember_tool = remember_requests[0]
+        .tool_by_name(COGNITIVE_NAMESPACE, "remember")
+        .context("the real ToolRegistry did not advertise cognitive remember")?;
     ensure!(
-        remember_requests.len() == 2,
-        "remember must perform two physical sends"
-    );
-    ensure!(
-        remember_requests[0]
-            .tool_by_name(COGNITIVE_NAMESPACE, "remember")
-            .is_some(),
-        "the real ToolRegistry did not advertise cognitive remember"
+        remember_tool["parameters"]["properties"]["kg"]["properties"]["entities"]["type"]
+            == "array"
+            && remember_tool["parameters"]["properties"]["kg"]["properties"]["relations"]["type"]
+                == "array",
+        "the physical ToolRegistry schema omitted structured cognitive KG facts"
     );
     assert_no_cognitive_reference(&remember_requests[0])?;
+    assert_no_cognitive_reference(&remember_requests[1])?;
     let remembered = tool_output(&remember, REMEMBER_CALL)?;
+    ensure!(remembered["schema_version"] == 2);
     ensure!(remembered["operation"] == "remembered");
-    ensure!(remembered["revision"] == 1);
-    ensure!(remembered["verification"] == "verified");
-    let memory_id = remembered["memory_id"]
+    ensure!(remembered["memory"]["revision"] == 1);
+    ensure!(remembered["memory"]["verification"] == "verified");
+    ensure!(remembered["memory"]["lifecycle"]["state"] == "active");
+    let memory_id = remembered["memory"]["memory_id"]
         .as_str()
         .context("remember output omitted memory_id")?
         .to_string();
+    let remember_source_id = remembered["source"]["source_id"]
+        .as_str()
+        .context("remember output omitted source_id")?
+        .to_string();
+    ensure!(remembered["source"]["revision"] == 1);
+    let remember_projection = assert_projection_receipt(&remembered, 1, 3, 2, 1, 2, 1)?;
 
-    let thread_b = product.start_thread(&agent.workspace).await?;
-    let recall = responses::mount_sse_sequence(&model, vec![final_sse("recall-final")]).await;
-    product
-        .run_turn(&thread_b, "What is the Project Aurora deadline?")
+    product.shutdown().await?;
+    fleet.supervisor.kill(&agent.agent_id)?;
+    wait_inactive(&mut fleet, &agent.agent_id).await?;
+    let before_restart =
+        read_kg_sqlite_evidence(&agent, &memory_id, 1, &remember_source_id).await?;
+    ensure!(before_restart.generation == 1);
+    ensure!(before_restart.fact_count == 3);
+    ensure!(before_restart.entity_count == 2);
+    ensure!(before_restart.relation_count == 1);
+    ensure!(before_restart.node_count == 2);
+    ensure!(before_restart.edge_count == 1);
+    ensure!(
+        before_restart.fact_set_sha256 == remember_projection.fact_set_sha256
+            && before_restart.input_heads_sha256 == remember_projection.input_heads_sha256
+            && before_restart.output_sha256 == remember_projection.output_sha256,
+        "physical remember output did not bind the persisted KG receipt digests"
+    );
+
+    fleet.supervisor.restart(&agent.agent_id, Instant::now())?;
+    let restarted_generation = agent_generation(&fleet, &agent.agent_id)?;
+    ensure!(restarted_generation > 1, "Agent generation did not advance");
+    let restarted_control = fleet.control_client(&agent, restarted_generation)?;
+    let restarted_health = fleet
+        .wait_until_ready(&agent.agent_id, &restarted_control)
         .await?;
-    let recall_request = recall.single_request();
-    assert_single_memory_reference(&recall_request, &memory_id, 1, ORIGINAL)?;
+    ensure!(
+        restarted_health.process_id != initial_health.process_id,
+        "Agentd restart reused the original process"
+    );
+    let after_restart = read_kg_sqlite_evidence(&agent, &memory_id, 1, &remember_source_id).await?;
+    ensure!(
+        after_restart == before_restart,
+        "immutable facts or the current KG receipt drifted across Agentd restart"
+    );
+
+    let mut product = ProductClient::connect(&agent, &restarted_control).await?;
+    let thread_b = product.start_thread(&agent.workspace).await?;
+    ensure!(
+        !ORIGINAL.contains(ORIGINAL_ALIAS),
+        "KG alias accidentally appeared in memory content"
+    );
+    let after_restart_recall =
+        responses::mount_sse_sequence(&model, vec![final_sse("after-restart-recall-final")]).await;
+    product.run_turn(&thread_b, ORIGINAL_ALIAS).await?;
+    assert_physical_request_count_stable(&after_restart_recall, 1, "post-restart KG recall")
+        .await?;
+    let after_restart_request = after_restart_recall.single_request();
+    assert_single_memory_reference_with_channels(
+        &after_restart_request,
+        &memory_id,
+        1,
+        ORIGINAL,
+        &["entity_fts", "graph_one_hop", "recency"],
+    )?;
+    assert_memory_source(&after_restart_request, &memory_id, &remember_source_id)?;
 
     let correct = responses::mount_sse_sequence(
         &model,
@@ -254,7 +322,8 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
                 json!({
                     "memory_id": memory_id,
                     "expected_revision": 1,
-                    "content": CORRECTED
+                    "content": CORRECTED,
+                    "kg": project_deadline_facts(CORRECTED_ALIAS, "Monday")
                 }),
             ),
             final_sse("correct-final"),
@@ -262,27 +331,57 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
     )
     .await;
     product.run_turn(&thread_b, CORRECTED).await?;
+    assert_physical_request_count_stable(&correct, 2, "correct").await?;
     let correct_requests = correct.requests();
-    ensure!(
-        correct_requests.len() == 2,
-        "correct must perform two physical sends"
-    );
     assert_single_memory_reference(&correct_requests[0], &memory_id, 1, ORIGINAL)?;
     assert_no_cognitive_reference(&correct_requests[1])?;
     let corrected = tool_output(&correct, CORRECT_CALL)?;
     ensure!(corrected["operation"] == "corrected");
-    ensure!(corrected["revision"] == 2);
-
-    let rerecall = responses::mount_sse_sequence(&model, vec![final_sse("rerecall-final")]).await;
-    product
-        .run_turn(&thread_b, "Repeat the Project Aurora deadline.")
-        .await?;
-    let rerecall_request = rerecall.single_request();
-    assert_single_memory_reference(&rerecall_request, &memory_id, 2, CORRECTED)?;
+    ensure!(corrected["memory"]["revision"] == 2);
+    let corrected_source_id = corrected["source"]["source_id"]
+        .as_str()
+        .context("correct output omitted source_id")?
+        .to_string();
+    ensure!(corrected["source"]["revision"] == 1);
+    let corrected_projection = assert_projection_receipt(&corrected, 2, 3, 2, 1, 2, 1)?;
     ensure!(
-        !attachment_text(&rerecall_request)?.contains(ORIGINAL),
+        read_kg_sqlite_evidence(&agent, &memory_id, 2, &corrected_source_id).await?
+            == corrected_projection,
+        "correction tool output did not match the current persisted KG receipt"
+    );
+
+    let old_alias = responses::mount_sse_sequence(&model, vec![final_sse("old-alias-final")]).await;
+    product.run_turn(&thread_b, SUPERSEDED_ALIAS_QUERY).await?;
+    assert_physical_request_count_stable(&old_alias, 1, "superseded alias lookup").await?;
+    let old_alias_request = old_alias.single_request();
+    assert_single_memory_reference_with_channels(
+        &old_alias_request,
+        &memory_id,
+        2,
+        CORRECTED,
+        &["recency"],
+    )?;
+    ensure!(
+        !attachment_text(&old_alias_request)?.contains(ORIGINAL),
         "superseded content reached a later physical send"
     );
+
+    ensure!(
+        !CORRECTED.contains(CORRECTED_ALIAS),
+        "corrected KG alias accidentally appeared in memory content"
+    );
+    let new_alias = responses::mount_sse_sequence(&model, vec![final_sse("new-alias-final")]).await;
+    product.run_turn(&thread_b, CORRECTED_ALIAS).await?;
+    assert_physical_request_count_stable(&new_alias, 1, "corrected alias lookup").await?;
+    let new_alias_request = new_alias.single_request();
+    assert_single_memory_reference_with_channels(
+        &new_alias_request,
+        &memory_id,
+        2,
+        CORRECTED,
+        &["entity_fts", "graph_one_hop", "recency"],
+    )?;
+    assert_memory_source(&new_alias_request, &memory_id, &corrected_source_id)?;
 
     let forget = responses::mount_sse_sequence(
         &model,
@@ -302,23 +401,29 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
     )
     .await;
     product.run_turn(&thread_b, FORGET_REASON).await?;
+    assert_physical_request_count_stable(&forget, 2, "forget").await?;
     let forget_requests = forget.requests();
-    ensure!(
-        forget_requests.len() == 2,
-        "forget must perform two physical sends"
-    );
     assert_single_memory_reference(&forget_requests[0], &memory_id, 2, CORRECTED)?;
     assert_no_cognitive_reference(&forget_requests[1])?;
     let forgotten = tool_output(&forget, FORGET_CALL)?;
     ensure!(forgotten["operation"] == "forgotten");
-    ensure!(forgotten["revision"] == 3);
-    ensure!(forgotten["lifecycle"]["state"] == "tombstoned");
+    ensure!(forgotten["memory"]["revision"] == 3);
+    ensure!(forgotten["memory"]["lifecycle"]["state"] == "tombstoned");
+    let forgotten_source_id = forgotten["source"]["source_id"]
+        .as_str()
+        .context("forget output omitted source_id")?;
+    ensure!(forgotten["source"]["revision"] == 1);
+    let forgotten_projection = assert_projection_receipt(&forgotten, 3, 0, 0, 0, 0, 0)?;
+    ensure!(
+        read_kg_sqlite_evidence(&agent, &memory_id, 3, forgotten_source_id).await?
+            == forgotten_projection,
+        "forget tool output did not match the current persisted empty KG projection"
+    );
 
     let after_forget =
         responses::mount_sse_sequence(&model, vec![final_sse("after-forget-final")]).await;
-    product
-        .run_turn(&thread_b, "What is the Project Aurora deadline?")
-        .await?;
+    product.run_turn(&thread_b, CORRECTED_ALIAS).await?;
+    assert_physical_request_count_stable(&after_forget, 1, "post-forget lookup").await?;
     assert_no_cognitive_reference(&after_forget.single_request())?;
 
     product.shutdown().await?;
@@ -327,8 +432,14 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn two_real_agentd_app_servers_never_cross_recall() -> Result<()> {
-    const MEMORY_A: &str = "Agent Alpha keeps the unique crimson cedar marker.";
-    const MEMORY_B: &str = "Agent Beta keeps the unique cobalt ocean marker.";
+    const MEMORY_A: &str = "Agent Alpha project milestone is Tuesday.";
+    const MEMORY_B: &str = "Agent Beta project milestone is Thursday.";
+    const ALIAS_A: &str = "Crimson Cedar Initiative";
+    const ALIAS_B: &str = "Cobalt Ocean Initiative";
+    const CROSS_ALIAS_A_QUERY: &str = "Crimson Cedar";
+    const CROSS_ALIAS_B_QUERY: &str = "Cobalt Ocean";
+    const REMEMBER_A_CALL: &str = "remember-agent-alpha";
+    const REMEMBER_B_CALL: &str = "remember-agent-beta";
 
     let mut fleet = FleetHarness::new()?;
     let agent_a = fleet.register(AGENT_A, "workspace-a")?;
@@ -337,8 +448,6 @@ async fn two_real_agentd_app_servers_never_cross_recall() -> Result<()> {
     let model_b = responses::start_mock_server().await;
     MockResponsesConfig::new(&model_a.uri()).write(agent_a.layout.home_root())?;
     MockResponsesConfig::new(&model_b.uri()).write(agent_b.layout.home_root())?;
-    seed_verified_agent_memory(&agent_a, "agent-alpha-marker", MEMORY_A).await?;
-    seed_verified_agent_memory(&agent_b, "agent-beta-marker", MEMORY_B).await?;
 
     fleet.start(&agent_a)?;
     fleet.start(&agent_b)?;
@@ -349,35 +458,127 @@ async fn two_real_agentd_app_servers_never_cross_recall() -> Result<()> {
     let thread_a = product_a.start_thread(&agent_a.workspace).await?;
     let thread_b = product_b.start_thread(&agent_b.workspace).await?;
 
+    let remember_a = responses::mount_sse_sequence(
+        &model_a,
+        vec![
+            tool_sse(
+                "remember-agent-a-response",
+                REMEMBER_A_CALL,
+                "remember",
+                json!({
+                    "stable_key": "agent-alpha-project",
+                    "content": MEMORY_A,
+                    "scope": "workspace_private",
+                    "kg": project_deadline_facts(ALIAS_A, "Tuesday")
+                }),
+            ),
+            final_sse("remember-agent-a-final"),
+        ],
+    )
+    .await;
+    product_a.run_turn(&thread_a, MEMORY_A).await?;
+    assert_physical_request_count_stable(&remember_a, 2, "Agent A remember").await?;
+    let remembered_a = tool_output(&remember_a, REMEMBER_A_CALL)?;
+    let memory_id_a = remembered_a["memory"]["memory_id"]
+        .as_str()
+        .context("Agent A remember output omitted memory_id")?
+        .to_string();
+    assert_projection_receipt(&remembered_a, 1, 3, 2, 1, 2, 1)?;
+
+    let remember_b = responses::mount_sse_sequence(
+        &model_b,
+        vec![
+            tool_sse(
+                "remember-agent-b-response",
+                REMEMBER_B_CALL,
+                "remember",
+                json!({
+                    "stable_key": "agent-beta-project",
+                    "content": MEMORY_B,
+                    "scope": "workspace_private",
+                    "kg": project_deadline_facts(ALIAS_B, "Thursday")
+                }),
+            ),
+            final_sse("remember-agent-b-final"),
+        ],
+    )
+    .await;
+    product_b.run_turn(&thread_b, MEMORY_B).await?;
+    assert_physical_request_count_stable(&remember_b, 2, "Agent B remember").await?;
+    let remembered_b = tool_output(&remember_b, REMEMBER_B_CALL)?;
+    let memory_id_b = remembered_b["memory"]["memory_id"]
+        .as_str()
+        .context("Agent B remember output omitted memory_id")?
+        .to_string();
+    assert_projection_receipt(&remembered_b, 1, 3, 2, 1, 2, 1)?;
+
     let recall_a = responses::mount_sse_sequence(&model_a, vec![final_sse("agent-a-final")]).await;
-    product_a
-        .run_turn(&thread_a, "Recall the unique crimson cedar marker.")
-        .await?;
+    product_a.run_turn(&thread_a, ALIAS_A).await?;
+    assert_physical_request_count_stable(&recall_a, 1, "Agent A own KG recall").await?;
     let request_a = recall_a.single_request();
-    let text_a = attachment_text(&request_a)?;
-    ensure!(
-        text_a.contains(MEMORY_A),
-        "agent A did not recall its own memory"
-    );
-    ensure!(
-        !text_a.contains(MEMORY_B),
-        "agent A crossed into agent B memory"
-    );
+    assert_single_memory_reference_with_channels(
+        &request_a,
+        &memory_id_a,
+        1,
+        MEMORY_A,
+        &["entity_fts", "graph_one_hop", "recency"],
+    )?;
+    assert_memory_absent(&request_a, &memory_id_b)?;
 
     let recall_b = responses::mount_sse_sequence(&model_b, vec![final_sse("agent-b-final")]).await;
-    product_b
-        .run_turn(&thread_b, "Recall the unique cobalt ocean marker.")
-        .await?;
+    product_b.run_turn(&thread_b, ALIAS_B).await?;
+    assert_physical_request_count_stable(&recall_b, 1, "Agent B own KG recall").await?;
     let request_b = recall_b.single_request();
-    let text_b = attachment_text(&request_b)?;
-    ensure!(
-        text_b.contains(MEMORY_B),
-        "agent B did not recall its own memory"
-    );
-    ensure!(
-        !text_b.contains(MEMORY_A),
-        "agent B crossed into agent A memory"
-    );
+    assert_single_memory_reference_with_channels(
+        &request_b,
+        &memory_id_b,
+        1,
+        MEMORY_B,
+        &["entity_fts", "graph_one_hop", "recency"],
+    )?;
+    assert_memory_absent(&request_b, &memory_id_a)?;
+
+    let model_b_before_a_probe = model_b.received_requests().await.unwrap_or_default().len();
+    let cross_alias_a =
+        responses::mount_sse_sequence(&model_a, vec![final_sse("agent-a-cross-alias-final")]).await;
+    product_a.run_turn(&thread_a, CROSS_ALIAS_B_QUERY).await?;
+    assert_physical_request_count_stable(&cross_alias_a, 1, "Agent A cross-Agent KG probe").await?;
+    let cross_alias_a_request = cross_alias_a.single_request();
+    assert_single_memory_reference_with_channels(
+        &cross_alias_a_request,
+        &memory_id_a,
+        1,
+        MEMORY_A,
+        &["recency"],
+    )?;
+    assert_memory_absent(&cross_alias_a_request, &memory_id_b)?;
+    assert_server_request_count_stable(
+        &model_b,
+        model_b_before_a_probe,
+        "Agent B provider during Agent A KG probe",
+    )
+    .await?;
+
+    let model_a_before_b_probe = model_a.received_requests().await.unwrap_or_default().len();
+    let cross_alias_b =
+        responses::mount_sse_sequence(&model_b, vec![final_sse("agent-b-cross-alias-final")]).await;
+    product_b.run_turn(&thread_b, CROSS_ALIAS_A_QUERY).await?;
+    assert_physical_request_count_stable(&cross_alias_b, 1, "Agent B cross-Agent KG probe").await?;
+    let cross_alias_b_request = cross_alias_b.single_request();
+    assert_single_memory_reference_with_channels(
+        &cross_alias_b_request,
+        &memory_id_b,
+        1,
+        MEMORY_B,
+        &["recency"],
+    )?;
+    assert_memory_absent(&cross_alias_b_request, &memory_id_a)?;
+    assert_server_request_count_stable(
+        &model_a,
+        model_a_before_b_probe,
+        "Agent A provider during Agent B KG probe",
+    )
+    .await?;
 
     product_a.shutdown().await?;
     product_b.shutdown().await?;
@@ -628,9 +829,9 @@ async fn five_running_agents_share_only_with_the_explicit_consumer() -> Result<(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn unavailable_cognitive_store_starts_and_fails_open_with_typed_tools() -> Result<()> {
-    const UNAVAILABLE_CALL: &str = "unavailable-remember";
-    const DIRECTIVE: &str = "Remember the unavailable runtime probe.";
+async fn unavailable_cognitive_store_keeps_read_tools_and_omits_write_tools() -> Result<()> {
+    const UNAVAILABLE_CALL: &str = "unavailable-recall";
+    const QUERY: &str = "unavailable runtime probe";
 
     let mut fleet = FleetHarness::new()?;
     let agent = fleet.register(AGENT_A, "workspace-a")?;
@@ -650,36 +851,31 @@ async fn unavailable_cognitive_store_starts_and_fails_open_with_typed_tools() ->
             tool_sse(
                 "unavailable-response",
                 UNAVAILABLE_CALL,
-                "remember",
-                json!({
-                    "stable_key": "unavailable-probe",
-                    "content": DIRECTIVE,
-                    "scope": "workspace_private"
-                }),
+                "recall",
+                json!({ "query": QUERY }),
             ),
             final_sse("unavailable-final"),
         ],
     )
     .await;
-    product.run_turn(&thread, DIRECTIVE).await?;
+    product.run_turn(&thread, QUERY).await?;
+    assert_physical_request_count_stable(&unavailable, 2, "unavailable cognitive read").await?;
     let requests = unavailable.requests();
-    ensure!(
-        requests.len() == 2,
-        "typed unavailable tool must reach a follow-up send"
-    );
     assert_no_cognitive_reference(&requests[0])?;
-    ensure!(
-        requests[0]
-            .tool_by_name(COGNITIVE_NAMESPACE, "remember")
-            .is_some(),
-        "Unavailable incorrectly removed explicit cognitive tools"
-    );
-    for operation in ["recall", "correct", "forget", "explain"] {
+    for operation in ["remember", "correct", "forget"] {
+        ensure!(
+            requests[0]
+                .tool_by_name(COGNITIVE_NAMESPACE, operation)
+                .is_none(),
+            "unavailable runtime incorrectly advertised write tool {operation}"
+        );
+    }
+    for operation in ["recall", "explain"] {
         ensure!(
             requests[0]
                 .tool_by_name(COGNITIVE_NAMESPACE, operation)
                 .is_some(),
-            "Unavailable incorrectly removed {operation}"
+            "unavailable runtime incorrectly removed read tool {operation}"
         );
     }
     assert_no_cognitive_reference(&requests[1])?;
@@ -899,6 +1095,44 @@ fn raw_requests_contain(mock: &ResponseMock, needle: &str) -> bool {
         .any(|request| request.body_contains_text(needle))
 }
 
+async fn assert_physical_request_count_stable(
+    mock: &ResponseMock,
+    expected: usize,
+    label: &str,
+) -> Result<()> {
+    let deadline = Instant::now() + STABLE_REQUEST_WINDOW;
+    loop {
+        let observed = mock.requests().len();
+        ensure!(
+            observed == expected,
+            "{label} physical request count changed during the stable window: expected {expected}, found {observed}"
+        );
+        if Instant::now() >= deadline {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+async fn assert_server_request_count_stable(
+    server: &MockServer,
+    expected: usize,
+    label: &str,
+) -> Result<()> {
+    let deadline = Instant::now() + STABLE_REQUEST_WINDOW;
+    loop {
+        let observed = server.received_requests().await.unwrap_or_default().len();
+        ensure!(
+            observed == expected,
+            "{label} request count changed during the stable window: expected {expected}, found {observed}"
+        );
+        if Instant::now() >= deadline {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
 fn tool_output(mock: &ResponseMock, call_id: &str) -> Result<Value> {
     let output = mock
         .function_call_output_text(call_id)
@@ -910,8 +1144,12 @@ fn cognitive_attachments(request: &ResponsesRequest) -> Result<Vec<Value>> {
     request
         .message_input_texts("user")
         .into_iter()
-        .filter(|text| text.starts_with(COGNITIVE_REFERENCE_OPEN))
+        .filter(|text| text.contains("<hepta_memory_reference"))
         .map(|text| {
+            ensure!(
+                text.starts_with(COGNITIVE_REFERENCE_OPEN),
+                "cognitive reference outer wrapper drifted from schema 1"
+            );
             let envelope = text
                 .strip_prefix(COGNITIVE_REFERENCE_OPEN)
                 .and_then(|text| text.strip_suffix(COGNITIVE_REFERENCE_CLOSE))
@@ -923,7 +1161,7 @@ fn cognitive_attachments(request: &ResponsesRequest) -> Result<Vec<Value>> {
                 .as_str()
                 .context("cognitive reference omitted its quoted summary")?;
             let attachment: Value = serde_json::from_str(summary)?;
-            ensure!(attachment["schema_version"] == 1);
+            ensure!(attachment["schema_version"] == 2);
             ensure!(attachment["source"] == "verified_versioned_memory");
             Ok(attachment)
         })
@@ -948,6 +1186,103 @@ fn assert_single_memory_reference(
     ensure!(memories[0]["memory_id"] == memory_id);
     ensure!(memories[0]["revision"] == revision);
     ensure!(memories[0]["content"] == content);
+    let content_sha256 = json_sha256(&memories[0], "content_sha256")?;
+    let citations = memories[0]["citations"]
+        .as_array()
+        .context("cognitive attachment omitted citations")?;
+    ensure!(
+        citations.len() == 1,
+        "expected exactly one attached source citation"
+    );
+    ensure!(
+        citations[0]["source_id"]
+            .as_str()
+            .is_some_and(|source_id| source_id.starts_with("source:v1:")),
+        "cognitive attachment omitted its canonical source ID"
+    );
+    ensure!(citations[0]["revision"] == 1);
+    ensure!(
+        json_sha256(&citations[0], "content_sha256")? == content_sha256,
+        "memory and exact source citation hashes diverged in the physical attachment"
+    );
+    Ok(())
+}
+
+fn assert_single_memory_reference_with_channels(
+    request: &ResponsesRequest,
+    memory_id: &str,
+    revision: u64,
+    content: &str,
+    expected_channels: &[&str],
+) -> Result<()> {
+    assert_single_memory_reference(request, memory_id, revision, content)?;
+    let memory = attached_memory(request, memory_id)?;
+    let channels = memory["channels"]
+        .as_array()
+        .context("schema-2 cognitive attachment omitted channels")?
+        .iter()
+        .map(|channel| {
+            channel
+                .as_str()
+                .context("cognitive retrieval channel was not a string")
+        })
+        .collect::<Result<Vec<_>>>()?;
+    ensure!(
+        channels == expected_channels,
+        "physical cognitive attachment carried unexpected retrieval channels: expected {expected_channels:?}, found {channels:?}"
+    );
+    Ok(())
+}
+
+fn attached_memory(request: &ResponsesRequest, memory_id: &str) -> Result<Value> {
+    let matching = cognitive_attachments(request)?
+        .into_iter()
+        .flat_map(|attachment| {
+            attachment["memories"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+        })
+        .filter(|memory| memory["memory_id"] == memory_id)
+        .collect::<Vec<_>>();
+    ensure!(
+        matching.len() == 1,
+        "expected one attached occurrence of memory {memory_id}, found {}",
+        matching.len()
+    );
+    Ok(matching.into_iter().next().expect("length checked"))
+}
+
+fn assert_memory_absent(request: &ResponsesRequest, memory_id: &str) -> Result<()> {
+    let found = cognitive_attachments(request)?
+        .into_iter()
+        .any(|attachment| {
+            attachment["memories"].as_array().is_some_and(|memories| {
+                memories
+                    .iter()
+                    .any(|memory| memory["memory_id"] == memory_id)
+            })
+        });
+    ensure!(
+        !found,
+        "memory {memory_id} crossed an Agent/workspace boundary"
+    );
+    Ok(())
+}
+
+fn assert_memory_source(
+    request: &ResponsesRequest,
+    memory_id: &str,
+    expected_source_id: &str,
+) -> Result<()> {
+    let memory = attached_memory(request, memory_id)?;
+    let citations = memory["citations"]
+        .as_array()
+        .context("cognitive attachment omitted citations")?;
+    ensure!(
+        citations.len() == 1 && citations[0]["source_id"] == expected_source_id,
+        "physical cognitive attachment did not preserve the tool receipt source citation"
+    );
     Ok(())
 }
 
@@ -966,6 +1301,251 @@ fn attachment_text(request: &ResponsesRequest) -> Result<String> {
         "physical request contained no cognitive attachment"
     );
     Ok(serde_json::to_string(&attachments)?)
+}
+
+fn project_deadline_facts(alias: &str, weekday: &str) -> Value {
+    let weekday_key = weekday.to_ascii_lowercase();
+    json!({
+        "entities": [
+            {
+                "key": "project-aurora",
+                "entity_type": "project",
+                "label": alias
+            },
+            {
+                "key": weekday_key,
+                "entity_type": "weekday",
+                "label": weekday
+            }
+        ],
+        "relations": [
+            {
+                "key": "project-deadline",
+                "from_entity_key": "project-aurora",
+                "to_entity_key": weekday_key,
+                "relation": "deadline_is"
+            }
+        ]
+    })
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct KgProjectionEvidence {
+    generation: u64,
+    fact_count: u64,
+    entity_count: u64,
+    relation_count: u64,
+    node_count: u64,
+    edge_count: u64,
+    fact_set_sha256: String,
+    input_heads_sha256: String,
+    output_sha256: String,
+}
+
+fn assert_projection_receipt(
+    tool_output: &Value,
+    generation: u64,
+    fact_count: u64,
+    entity_count: u64,
+    relation_count: u64,
+    node_count: u64,
+    edge_count: u64,
+) -> Result<KgProjectionEvidence> {
+    let projection = &tool_output["projection"];
+    let evidence = KgProjectionEvidence {
+        generation: json_u64(projection, "generation")?,
+        fact_count: json_u64(projection, "fact_count")?,
+        entity_count: json_u64(projection, "entity_count")?,
+        relation_count: json_u64(projection, "relation_count")?,
+        node_count: json_u64(projection, "node_count")?,
+        edge_count: json_u64(projection, "edge_count")?,
+        fact_set_sha256: json_sha256(projection, "fact_set_sha256")?,
+        input_heads_sha256: json_sha256(projection, "input_heads_sha256")?,
+        output_sha256: json_sha256(projection, "output_sha256")?,
+    };
+    ensure!(
+        evidence.generation == generation
+            && evidence.fact_count == fact_count
+            && evidence.entity_count == entity_count
+            && evidence.relation_count == relation_count
+            && evidence.node_count == node_count
+            && evidence.edge_count == edge_count,
+        "unexpected cognitive KG projection receipt: {evidence:?}"
+    );
+    Ok(evidence)
+}
+
+fn json_u64(value: &Value, field: &str) -> Result<u64> {
+    value[field]
+        .as_u64()
+        .with_context(|| format!("cognitive projection omitted integer {field}"))
+}
+
+fn json_sha256(value: &Value, field: &str) -> Result<String> {
+    let digest = value[field]
+        .as_str()
+        .with_context(|| format!("cognitive projection omitted {field}"))?;
+    ensure!(
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
+        "cognitive projection returned a non-canonical {field}"
+    );
+    Ok(digest.to_string())
+}
+
+async fn read_kg_sqlite_evidence(
+    agent: &AgentFixture,
+    memory_id: &str,
+    memory_revision: u64,
+    expected_source_id: &str,
+) -> Result<KgProjectionEvidence> {
+    let database_path = agent.layout.cognitive_root().join("cognitive_1.sqlite3");
+    let sqlite_home = AbsolutePathBuf::from_absolute_path(agent.layout.cognitive_root())?;
+    let pool = SqliteConfig::from_sqlite_home(sqlite_home)
+        .open_read_only_pool(&database_path)
+        .await?;
+    let memory_revision = i64::try_from(memory_revision)?;
+    let (
+        fact_set_sha256,
+        fact_source_id,
+        fact_source_revision,
+        immutable_entity_count,
+        immutable_relation_count,
+    ): (String, String, i64, i64, i64) = sqlx::query_as(
+        "SELECT fact_set_sha256, source_id, source_revision, entity_count, relation_count
+             FROM kg_revision_fact_sets
+             WHERE memory_id = ? AND memory_revision = ?",
+    )
+    .bind(memory_id)
+    .bind(memory_revision)
+    .fetch_one(&pool)
+    .await?;
+    ensure!(
+        fact_source_id == expected_source_id && fact_source_revision == 1,
+        "immutable KG fact set did not preserve the tool receipt source citation"
+    );
+    let immutable_entities: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM kg_revision_entities
+         WHERE memory_id = ? AND memory_revision = ?
+           AND source_id = ? AND source_revision = 1",
+    )
+    .bind(memory_id)
+    .bind(memory_revision)
+    .bind(expected_source_id)
+    .fetch_one(&pool)
+    .await?;
+    let immutable_relations: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM kg_revision_relations
+         WHERE memory_id = ? AND memory_revision = ?
+           AND source_id = ? AND source_revision = 1",
+    )
+    .bind(memory_id)
+    .bind(memory_revision)
+    .bind(expected_source_id)
+    .fetch_one(&pool)
+    .await?;
+    ensure!(
+        immutable_entity_count == immutable_entities
+            && immutable_relation_count == immutable_relations,
+        "immutable KG fact rows did not match their fact-set receipt"
+    );
+    let (
+        generation,
+        receipt_fact_set_sha256,
+        input_heads_sha256,
+        output_sha256,
+        entity_count,
+        relation_count,
+        node_count,
+        edge_count,
+        actual_node_count,
+        actual_edge_count,
+    ): (i64, String, String, String, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT r.generation, r.fact_set_sha256, r.input_heads_sha256, r.output_sha256,
+                r.entity_count, r.relation_count, r.node_count, r.edge_count,
+                (SELECT COUNT(*) FROM kg_nodes AS n
+                 WHERE n.projection_scope = r.projection_scope
+                   AND n.generation = r.generation
+                   AND n.memory_id = r.trigger_memory_id
+                   AND n.memory_revision = r.trigger_memory_revision
+                   AND n.source_id = ? AND n.source_revision = 1),
+                (SELECT COUNT(*) FROM kg_edges AS e
+                 WHERE e.projection_scope = r.projection_scope
+                   AND e.generation = r.generation
+                   AND e.memory_id = r.trigger_memory_id
+                   AND e.memory_revision = r.trigger_memory_revision
+                   AND e.source_id = ? AND e.source_revision = 1)
+         FROM kg_projection_generation_receipts AS r
+         JOIN kg_projection AS p
+           ON p.projection_scope = r.projection_scope AND p.generation = r.generation
+         WHERE r.trigger_memory_id = ? AND r.trigger_memory_revision = ?",
+    )
+    .bind(expected_source_id)
+    .bind(expected_source_id)
+    .bind(memory_id)
+    .bind(memory_revision)
+    .fetch_one(&pool)
+    .await?;
+    pool.close().await;
+    ensure!(
+        receipt_fact_set_sha256 == fact_set_sha256,
+        "current projection receipt did not bind the immutable fact set"
+    );
+    ensure!(
+        node_count == actual_node_count && edge_count == actual_edge_count,
+        "current projection rows did not match their generation receipt"
+    );
+    Ok(KgProjectionEvidence {
+        generation: u64::try_from(generation)?,
+        fact_count: u64::try_from(immutable_entity_count + immutable_relation_count)?,
+        entity_count: u64::try_from(entity_count)?,
+        relation_count: u64::try_from(relation_count)?,
+        node_count: u64::try_from(node_count)?,
+        edge_count: u64::try_from(edge_count)?,
+        fact_set_sha256,
+        input_heads_sha256,
+        output_sha256,
+    })
+}
+
+async fn wait_inactive(fleet: &mut FleetHarness, agent_id: &AgentId) -> Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let report = fleet.supervisor.tick(Instant::now());
+        ensure!(
+            report.faults.is_empty(),
+            "supervisor faults while killing {agent_id}: {:?}",
+            report.faults
+        );
+        let inactive = fleet
+            .supervisor
+            .snapshot(agent_id)
+            .is_some_and(|snapshot| !snapshot.active);
+        let stopped = fleet
+            .registry
+            .load()?
+            .agent(agent_id)
+            .is_some_and(|record| record.lifecycle.lifecycle == AgentLifecycle::Stopped);
+        if inactive && stopped {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            bail!("timed out waiting for Agent {agent_id} to stop");
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+fn agent_generation(fleet: &FleetHarness, agent_id: &AgentId) -> Result<u64> {
+    Ok(fleet
+        .registry
+        .load()?
+        .agent(agent_id)
+        .with_context(|| format!("Agent {agent_id} missing from registry"))?
+        .lifecycle
+        .generation)
 }
 
 async fn seed_verified_agent_memory(

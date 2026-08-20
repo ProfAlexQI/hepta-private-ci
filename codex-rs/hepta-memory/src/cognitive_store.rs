@@ -9,9 +9,25 @@ use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_paths::HeptaAgentLayout;
 use codex_state::SqliteConfig;
 use codex_utils_absolute_path::AbsolutePathBuf;
+use sha2::Digest;
+use sha2::Sha256;
 use sqlx::Row;
+use sqlx::Sqlite;
 use sqlx::SqlitePool;
+use sqlx::Transaction;
 
+use crate::cognitive_intelligence_writer::occurrence_edge_id;
+use crate::cognitive_intelligence_writer::occurrence_node_id;
+use crate::cognitive_intelligence_writer::verify_revision_fact_digests;
+use crate::cognitive_kg_store::MAX_PROJECTION_SCOPES;
+use crate::cognitive_kg_store::MAX_SCOPE_EDGES;
+use crate::cognitive_kg_store::MAX_SCOPE_HEADS;
+use crate::cognitive_kg_store::MAX_SCOPE_NODES;
+use crate::cognitive_kg_store::ProjectionEdge;
+use crate::cognitive_kg_store::ProjectionHead;
+use crate::cognitive_kg_store::ProjectionNode;
+use crate::cognitive_kg_store::input_heads_digest;
+use crate::cognitive_kg_store::output_digest;
 use crate::cognitive_model::COGNITIVE_SCHEMA_VERSION;
 use crate::cognitive_model::CognitiveAccess;
 use crate::cognitive_model::CognitiveScope;
@@ -19,9 +35,77 @@ use crate::cognitive_model::MAX_SOURCE_BYTES;
 use crate::cognitive_model::SourceDraft;
 use crate::cognitive_model::SourceEventId;
 use crate::cognitive_model::SourceRevisionId;
+use crate::framing::frame_part;
 
 const COGNITIVE_DB_FILENAME: &str = "cognitive_1.sqlite3";
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+
+const REQUIRED_SCHEMA_OBJECTS: &[(&str, &str)] = &[
+    ("cognitive_meta", "table"),
+    ("cognitive_meta_no_update", "trigger"),
+    ("cognitive_meta_no_delete", "trigger"),
+    ("source_ledger", "table"),
+    ("source_ledger_no_update", "trigger"),
+    ("source_ledger_no_delete", "trigger"),
+    ("memory_revisions", "table"),
+    ("memory_revisions_no_update", "trigger"),
+    ("memory_revisions_no_delete", "trigger"),
+    ("memory_citations", "table"),
+    ("memory_citations_no_update", "trigger"),
+    ("memory_citations_no_delete", "trigger"),
+    ("memory_heads", "table"),
+    ("memory_fts", "table"),
+    ("kg_projection", "table"),
+    ("kg_nodes", "table"),
+    ("kg_edges", "table"),
+    ("kg_entity_fts", "table"),
+    ("memory_federation_events", "table"),
+    ("memory_federation_events_no_update", "trigger"),
+    ("memory_federation_events_no_delete", "trigger"),
+    ("memory_federation_heads", "table"),
+    ("memory_federation_consumer_heads", "index"),
+    ("kg_revision_fact_sets", "table"),
+    ("kg_revision_fact_sets_no_update", "trigger"),
+    ("kg_revision_fact_sets_no_delete", "trigger"),
+    ("kg_revision_entities", "table"),
+    ("kg_revision_entities_declared_count", "trigger"),
+    ("kg_revision_entities_no_update", "trigger"),
+    ("kg_revision_entities_no_delete", "trigger"),
+    ("kg_revision_entities_canonical_lookup", "index"),
+    ("kg_revision_entities_citation_lookup", "index"),
+    ("kg_revision_relations", "table"),
+    ("kg_revision_relations_declared_count", "trigger"),
+    ("kg_revision_relations_no_update", "trigger"),
+    ("kg_revision_relations_no_delete", "trigger"),
+    ("kg_revision_relations_from_entity_lookup", "index"),
+    ("kg_revision_relations_to_entity_lookup", "index"),
+    ("kg_revision_relations_canonical_lookup", "index"),
+    ("kg_revision_relations_citation_lookup", "index"),
+    ("kg_projection_generation_receipts", "table"),
+    ("kg_projection_generation_receipts_scope_match", "trigger"),
+    (
+        "kg_projection_generation_receipts_fact_counts_match",
+        "trigger",
+    ),
+    ("kg_projection_generation_receipts_no_update", "trigger"),
+    ("kg_projection_generation_receipts_no_delete", "trigger"),
+    ("kg_projection_generation_receipts_trigger_lookup", "index"),
+    ("kg_projection_node_entities", "table"),
+    ("kg_projection_node_entities_no_update", "trigger"),
+    ("kg_projection_node_entities_no_delete", "trigger"),
+    ("kg_projection_node_entities_canonical_lookup", "index"),
+    ("kg_nodes_no_update", "trigger"),
+    ("kg_nodes_no_delete", "trigger"),
+    ("kg_edges_no_update", "trigger"),
+    ("kg_edges_no_delete", "trigger"),
+    ("kg_projection_no_delete", "trigger"),
+    ("kg_projection_scope_no_update", "trigger"),
+    ("kg_projection_generation_monotonic", "trigger"),
+    ("kg_projection_current_receipt_on_insert", "trigger"),
+    ("kg_projection_current_receipt_on_update", "trigger"),
+];
+const REQUIRED_SCHEMA_ORACLE_SHA256: &str =
+    "db82acf4d44c51285f5063b263d64aeefacadac05543bc4c9f6207e86cf3cc5c";
 
 #[derive(Debug, thiserror::Error)]
 pub enum CognitiveStoreError {
@@ -35,15 +119,6 @@ pub enum CognitiveStoreError {
     Corrupt(String),
     #[error("cognitive store is unavailable: {0}")]
     Unavailable(String),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
-pub struct ProjectionGeneration(pub(crate) u64);
-
-impl ProjectionGeneration {
-    pub fn get(self) -> u64 {
-        self.0
-    }
 }
 
 #[derive(Clone)]
@@ -111,6 +186,24 @@ impl CognitiveStore {
         access: &CognitiveAccess,
         draft: &SourceDraft,
     ) -> Result<SourceRevisionId, CognitiveStoreError> {
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(unavailable)?;
+        let source = self
+            .append_source_tx(&mut transaction, access, draft)
+            .await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(source)
+    }
+
+    pub(crate) async fn append_source_tx(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+        access: &CognitiveAccess,
+        draft: &SourceDraft,
+    ) -> Result<SourceRevisionId, CognitiveStoreError> {
         self.authorize(access, &draft.scope)?;
         validate_key(&draft.event_key, "source event key")?;
         if draft.content.is_empty() || draft.content.len() > MAX_SOURCE_BYTES {
@@ -127,7 +220,6 @@ impl CognitiveStore {
         let content_sha256 = Sha256Digest::for_bytes(&draft.content);
         let (scope_kind, workspace_sha256) = draft.scope.database_parts();
         let recorded_at = now_unix_seconds()?;
-        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
         let insert = sqlx::query(
             "INSERT INTO source_ledger (
                 source_id, source_revision, owner_agent_id, scope_kind, workspace_sha256,
@@ -145,7 +237,7 @@ impl CognitiveStore {
         .bind(content_sha256.as_str())
         .bind(draft.observed_at_unix_seconds)
         .bind(recorded_at)
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await
         .map_err(unavailable)?;
         if insert.rows_affected() == 0 {
@@ -163,7 +255,7 @@ impl CognitiveStore {
             .bind(&draft.content)
             .bind(content_sha256.as_str())
             .bind(draft.observed_at_unix_seconds)
-            .fetch_one(&mut *transaction)
+            .fetch_one(&mut **transaction)
             .await
             .map_err(unavailable)?;
             if exact != 1 {
@@ -173,7 +265,6 @@ impl CognitiveStore {
                 )));
             }
         }
-        transaction.commit().await.map_err(unavailable)?;
         Ok(SourceRevisionId::new(source_id))
     }
 
@@ -217,6 +308,36 @@ pub(crate) fn decode_scope(
     .map_err(CognitiveStoreError::Corrupt)
 }
 
+#[cfg(test)]
+pub(crate) async fn open_v2_test_pool(
+    layout: &HeptaAgentLayout,
+) -> Result<SqlitePool, CognitiveStoreError> {
+    let root = layout.cognitive_root();
+    create_private_directory(root)?;
+    let path = root.join(COGNITIVE_DB_FILENAME);
+    let sqlite_home = AbsolutePathBuf::try_from(root.to_path_buf())
+        .map_err(|error| CognitiveStoreError::Invalid(error.to_string()))?;
+    let pool = SqliteConfig::from_sqlite_home(sqlite_home)
+        .open_durable_evidence_pool(&path)
+        .await
+        .map_err(unavailable)?;
+    MIGRATOR
+        .run_to(2, &pool)
+        .await
+        .map_err(|error| CognitiveStoreError::Unavailable(error.to_string()))?;
+    protect_database_file(&path)?;
+    sqlx::query(
+        "INSERT INTO cognitive_meta (singleton, schema_version, owner_agent_id)
+         VALUES (1, ?, ?)",
+    )
+    .bind(i64::from(COGNITIVE_SCHEMA_VERSION))
+    .bind(layout.agent_id().as_str())
+    .execute(&pool)
+    .await
+    .map_err(unavailable)?;
+    Ok(pool)
+}
+
 pub(crate) fn unavailable(error: impl std::fmt::Display) -> CognitiveStoreError {
     CognitiveStoreError::Unavailable(error.to_string())
 }
@@ -249,21 +370,74 @@ async fn verify_store(pool: &SqlitePool, owner: &AgentId) -> Result<(), Cognitiv
             "SQLite foreign_key_check rejected the cognitive store".to_string(),
         ));
     }
-    let required_schema_objects: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM sqlite_schema WHERE name IN (
-            'source_ledger_no_update', 'source_ledger_no_delete',
-            'memory_revisions_no_update', 'memory_revisions_no_delete',
-            'memory_citations_no_update', 'memory_citations_no_delete',
-            'memory_fts', 'kg_entity_fts'
-         )",
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(unavailable)?;
-    if required_schema_objects != 8 {
-        return Err(CognitiveStoreError::Corrupt(
-            "required immutable-storage or FTS5 schema objects are missing".to_string(),
-        ));
+    let migration_rows =
+        sqlx::query("SELECT version, success FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(pool)
+            .await
+            .map_err(unavailable)?;
+    let migrations = migration_rows
+        .iter()
+        .map(|row| {
+            Ok((
+                row.try_get::<i64, _>("version").map_err(unavailable)?,
+                row.try_get::<bool, _>("success").map_err(unavailable)?,
+            ))
+        })
+        .collect::<Result<Vec<_>, CognitiveStoreError>>()?;
+    if migrations != [(1, true), (2, true), (3, true)] {
+        return Err(CognitiveStoreError::Corrupt(format!(
+            "cognitive migration ledger is not the exact successful 0001/0002/0003 set: {migrations:?}"
+        )));
+    }
+    let mut schema_oracle_parts = Vec::with_capacity(REQUIRED_SCHEMA_OBJECTS.len());
+    for (name, expected_type) in REQUIRED_SCHEMA_OBJECTS {
+        let object = sqlx::query("SELECT type, sql FROM sqlite_schema WHERE name = ?")
+            .bind(name)
+            .fetch_optional(pool)
+            .await
+            .map_err(unavailable)?
+            .ok_or_else(|| {
+                CognitiveStoreError::Corrupt(format!(
+                    "required cognitive schema object `{name}` is missing"
+                ))
+            })?;
+        let object_type: String = object.try_get("type").map_err(unavailable)?;
+        let sql: Option<String> = object.try_get("sql").map_err(unavailable)?;
+        let Some(sql) = sql.filter(|value| !value.is_empty()) else {
+            return Err(CognitiveStoreError::Corrupt(format!(
+                "required cognitive schema object `{name}` has the wrong definition class"
+            )));
+        };
+        if object_type != *expected_type {
+            return Err(CognitiveStoreError::Corrupt(format!(
+                "required cognitive schema object `{name}` has the wrong definition class"
+            )));
+        }
+        schema_oracle_parts.push(((*name).to_string(), object_type, sql));
+    }
+    schema_oracle_parts.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut schema_hasher = Sha256::new();
+    frame_part(
+        &mut schema_hasher,
+        b"hepta:cognitive:required-schema-oracle:v1",
+    );
+    frame_part(
+        &mut schema_hasher,
+        &u64::try_from(schema_oracle_parts.len())
+            .unwrap_or(u64::MAX)
+            .to_be_bytes(),
+    );
+    for (name, object_type, sql) in &schema_oracle_parts {
+        frame_part(&mut schema_hasher, name.as_bytes());
+        frame_part(&mut schema_hasher, object_type.as_bytes());
+        frame_part(&mut schema_hasher, sql.as_bytes());
+    }
+    let schema_oracle = Sha256Digest::from_sha256_output(schema_hasher.finalize());
+    if schema_oracle.as_str() != REQUIRED_SCHEMA_ORACLE_SHA256 {
+        return Err(CognitiveStoreError::Corrupt(format!(
+            "required cognitive schema definition oracle mismatch: {}",
+            schema_oracle.as_str()
+        )));
     }
     let row = sqlx::query(
         "SELECT schema_version, owner_agent_id FROM cognitive_meta WHERE singleton = 1",
@@ -283,7 +457,549 @@ async fn verify_store(pool: &SqlitePool, owner: &AgentId) -> Result<(), Cognitiv
             "cognitive database belongs to agent {stored_owner}, not {owner}"
         )));
     }
+    let foreign_owned_rows: i64 = sqlx::query_scalar(
+        "SELECT (
+             SELECT COUNT(*) FROM source_ledger WHERE owner_agent_id != ?
+         ) + (
+             SELECT COUNT(*) FROM memory_revisions WHERE owner_agent_id != ?
+         )",
+    )
+    .bind(owner.as_str())
+    .bind(owner.as_str())
+    .fetch_one(pool)
+    .await
+    .map_err(unavailable)?;
+    if foreign_owned_rows != 0 {
+        return Err(CognitiveStoreError::Corrupt(
+            "agent-local cognitive store contains foreign-owned source or memory rows".to_string(),
+        ));
+    }
+    let projection_scope_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM kg_projection")
+        .fetch_one(pool)
+        .await
+        .map_err(unavailable)?;
+    if projection_scope_count >= bounded_limit(MAX_PROJECTION_SCOPES)? {
+        return Err(CognitiveStoreError::Corrupt(format!(
+            "cognitive store exceeds the {MAX_PROJECTION_SCOPES}-projection-scope limit"
+        )));
+    }
+
+    let incomplete_fact_sets: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM kg_revision_fact_sets s
+         WHERE s.entity_count != (
+             SELECT COUNT(*) FROM kg_revision_entities e
+             WHERE e.memory_id = s.memory_id
+               AND e.memory_revision = s.memory_revision
+         ) OR s.relation_count != (
+             SELECT COUNT(*) FROM kg_revision_relations r
+             WHERE r.memory_id = s.memory_id
+               AND r.memory_revision = s.memory_revision
+         )",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(unavailable)?;
+    if incomplete_fact_sets != 0 {
+        return Err(CognitiveStoreError::Corrupt(
+            "immutable KG fact-set receipts do not match their stored facts".to_string(),
+        ));
+    }
+    let unbound_heads: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM memory_heads h
+         LEFT JOIN kg_revision_fact_sets s
+           ON s.memory_id = h.memory_id AND s.memory_revision = h.revision
+         WHERE s.memory_id IS NULL",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(unavailable)?;
+    if unbound_heads != 0 {
+        return Err(CognitiveStoreError::Corrupt(
+            "current memory head is missing its explicit KG fact-set receipt".to_string(),
+        ));
+    }
+    let invalid_fact_validity: i64 = sqlx::query_scalar(
+        "SELECT (
+             SELECT COUNT(*) FROM kg_revision_entities e
+             JOIN memory_revisions m
+               ON m.memory_id = e.memory_id AND m.revision = e.memory_revision
+             WHERE e.valid_from_unix_seconds < m.valid_from_unix_seconds
+                OR (m.valid_to_unix_seconds IS NOT NULL AND
+                    (e.valid_to_unix_seconds IS NULL OR
+                     e.valid_to_unix_seconds > m.valid_to_unix_seconds))
+         ) + (
+             SELECT COUNT(*) FROM kg_revision_relations r
+             JOIN memory_revisions m
+               ON m.memory_id = r.memory_id AND m.revision = r.memory_revision
+             WHERE r.valid_from_unix_seconds < m.valid_from_unix_seconds
+                OR (m.valid_to_unix_seconds IS NOT NULL AND
+                    (r.valid_to_unix_seconds IS NULL OR
+                     r.valid_to_unix_seconds > m.valid_to_unix_seconds))
+         )",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(unavailable)?;
+    if invalid_fact_validity != 0 {
+        return Err(CognitiveStoreError::Corrupt(
+            "KG fact validity escapes its immutable memory revision".to_string(),
+        ));
+    }
+    let mismatched_citation_scope: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM memory_citations c
+         JOIN memory_revisions m
+           ON m.memory_id = c.memory_id AND m.revision = c.memory_revision
+         JOIN source_ledger s
+           ON s.source_id = c.source_id AND s.source_revision = c.source_revision
+         WHERE m.owner_agent_id != s.owner_agent_id
+            OR m.scope_kind != s.scope_kind
+            OR m.workspace_sha256 IS NOT s.workspace_sha256",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(unavailable)?;
+    if mismatched_citation_scope != 0 {
+        return Err(CognitiveStoreError::Corrupt(
+            "memory citation does not match the exact owner and scope".to_string(),
+        ));
+    }
+    let incomplete_projection_receipts: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM kg_projection_generation_receipts r
+         WHERE r.node_count != (
+             SELECT COUNT(*) FROM kg_nodes n
+             WHERE n.projection_scope = r.projection_scope
+               AND n.generation = r.generation
+         ) OR r.edge_count != (
+             SELECT COUNT(*) FROM kg_edges e
+             WHERE e.projection_scope = r.projection_scope
+               AND e.generation = r.generation
+         ) OR r.node_count != (
+             SELECT COUNT(*) FROM kg_projection_node_entities i
+             WHERE i.projection_scope = r.projection_scope
+               AND i.generation = r.generation
+         ) OR r.node_count != (
+             SELECT COUNT(*) FROM kg_entity_fts f
+             WHERE f.projection_scope = r.projection_scope
+               AND f.generation = r.generation
+         )",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(unavailable)?;
+    if incomplete_projection_receipts != 0 {
+        return Err(CognitiveStoreError::Corrupt(
+            "KG projection receipt does not match its nodes, edges, identities, and FTS rows"
+                .to_string(),
+        ));
+    }
+    let invalid_current_pointers: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM kg_projection p
+         LEFT JOIN kg_projection_generation_receipts r
+           ON r.projection_scope = p.projection_scope
+          AND r.generation = p.generation
+         WHERE p.generation <= 0 OR r.projection_scope IS NULL",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(unavailable)?;
+    if invalid_current_pointers != 0 {
+        return Err(CognitiveStoreError::Corrupt(
+            "KG current projection pointer has no complete immutable receipt".to_string(),
+        ));
+    }
+    verify_revision_fact_digests(pool, owner).await?;
+    verify_current_projection_contents(pool, owner).await?;
     Ok(())
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct StoredProjectionEdge {
+    edge_id: String,
+    from_node_id: String,
+    to_node_id: String,
+    relation: String,
+    valid_from: i64,
+    valid_to: Option<i64>,
+    memory_id: String,
+    memory_revision: i64,
+    source_id: String,
+    source_revision: i64,
+}
+
+impl From<&ProjectionEdge> for StoredProjectionEdge {
+    fn from(edge: &ProjectionEdge) -> Self {
+        Self {
+            edge_id: edge.edge_id.clone(),
+            from_node_id: edge.from_node_id.clone(),
+            to_node_id: edge.to_node_id.clone(),
+            relation: edge.relation.clone(),
+            valid_from: edge.valid_from,
+            valid_to: edge.valid_to,
+            memory_id: edge.memory_id.clone(),
+            memory_revision: edge.memory_revision,
+            source_id: edge.source_id.clone(),
+            source_revision: edge.source_revision,
+        }
+    }
+}
+
+async fn verify_current_projection_contents(
+    pool: &SqlitePool,
+    owner: &AgentId,
+) -> Result<(), CognitiveStoreError> {
+    let mut transaction = pool.begin().await.map_err(unavailable)?;
+    let current_rows = sqlx::query(
+        "SELECT p.projection_scope, p.generation,
+                r.input_heads_sha256, r.output_sha256
+         FROM kg_projection p
+         JOIN kg_projection_generation_receipts r
+           ON r.projection_scope = p.projection_scope
+          AND r.generation = p.generation
+         ORDER BY p.projection_scope LIMIT ?",
+    )
+    .bind(bounded_limit(MAX_PROJECTION_SCOPES)?)
+    .fetch_all(&mut *transaction)
+    .await
+    .map_err(unavailable)?;
+    if current_rows.len() > MAX_PROJECTION_SCOPES {
+        return Err(CognitiveStoreError::Corrupt(format!(
+            "cognitive store exceeds the {MAX_PROJECTION_SCOPES}-projection-scope limit"
+        )));
+    }
+
+    for current in current_rows {
+        let projection_scope: String = current.try_get("projection_scope").map_err(unavailable)?;
+        let generation: i64 = current.try_get("generation").map_err(unavailable)?;
+        let (scope_kind, workspace_sha256) = projection_scope_database_parts(&projection_scope)?;
+
+        let head_rows = sqlx::query(
+            "SELECT r.memory_id, r.revision, r.content_sha256,
+                    r.verification, r.lifecycle, s.fact_set_sha256
+             FROM memory_heads h
+             JOIN memory_revisions r
+               ON r.memory_id = h.memory_id AND r.revision = h.revision
+             JOIN kg_revision_fact_sets s
+               ON s.memory_id = r.memory_id AND s.memory_revision = r.revision
+             WHERE r.owner_agent_id = ? AND r.scope_kind = ?
+               AND r.workspace_sha256 IS ?
+             ORDER BY r.memory_id LIMIT ?",
+        )
+        .bind(owner.as_str())
+        .bind(scope_kind)
+        .bind(workspace_sha256.as_deref())
+        .bind(bounded_limit(MAX_SCOPE_HEADS)?)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if head_rows.len() > MAX_SCOPE_HEADS {
+            return Err(CognitiveStoreError::Corrupt(format!(
+                "KG projection input exceeds the {MAX_SCOPE_HEADS}-head reopen verification limit"
+            )));
+        }
+        let heads = head_rows
+            .into_iter()
+            .map(|row| {
+                Ok(ProjectionHead {
+                    memory_id: row.try_get("memory_id").map_err(unavailable)?,
+                    revision: row.try_get("revision").map_err(unavailable)?,
+                    content_sha256: row.try_get("content_sha256").map_err(unavailable)?,
+                    verification: row.try_get("verification").map_err(unavailable)?,
+                    lifecycle: row.try_get("lifecycle").map_err(unavailable)?,
+                    fact_set_sha256: row.try_get("fact_set_sha256").map_err(unavailable)?,
+                })
+            })
+            .collect::<Result<Vec<_>, CognitiveStoreError>>()?;
+        let expected_input = input_heads_digest(&projection_scope, &heads);
+        let stored_input: String = current.try_get("input_heads_sha256").map_err(unavailable)?;
+        if expected_input.as_str() != stored_input {
+            return Err(CognitiveStoreError::Corrupt(format!(
+                "KG current projection `{projection_scope}` input-head digest failed canonical recomputation"
+            )));
+        }
+
+        let entity_rows = sqlx::query(
+            "SELECT e.memory_id, e.memory_revision, e.entity_key,
+                    e.canonical_entity_id, e.entity_type, e.label,
+                    e.valid_from_unix_seconds, e.valid_to_unix_seconds,
+                    e.source_id, e.source_revision
+             FROM memory_heads h
+             JOIN memory_revisions r
+               ON r.memory_id = h.memory_id AND r.revision = h.revision
+             JOIN kg_revision_entities e
+               ON e.memory_id = r.memory_id AND e.memory_revision = r.revision
+             WHERE r.owner_agent_id = ? AND r.scope_kind = ?
+               AND r.workspace_sha256 IS ?
+               AND r.verification = 'verified' AND r.lifecycle = 'active'
+             ORDER BY e.memory_id, e.memory_revision, e.entity_key LIMIT ?",
+        )
+        .bind(owner.as_str())
+        .bind(scope_kind)
+        .bind(workspace_sha256.as_deref())
+        .bind(bounded_limit(MAX_SCOPE_NODES)?)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if entity_rows.len() > MAX_SCOPE_NODES {
+            return Err(CognitiveStoreError::Corrupt(format!(
+                "KG projection output exceeds the {MAX_SCOPE_NODES}-node reopen verification limit"
+            )));
+        }
+        let mut expected_nodes = Vec::with_capacity(entity_rows.len());
+        for row in entity_rows {
+            let memory_id: String = row.try_get("memory_id").map_err(unavailable)?;
+            let memory_revision: i64 = row.try_get("memory_revision").map_err(unavailable)?;
+            let entity_key: String = row.try_get("entity_key").map_err(unavailable)?;
+            expected_nodes.push(ProjectionNode {
+                node_id: occurrence_node_id(&memory_id, memory_revision, &entity_key),
+                canonical_entity_id: row.try_get("canonical_entity_id").map_err(unavailable)?,
+                entity_type: row.try_get("entity_type").map_err(unavailable)?,
+                label: row.try_get("label").map_err(unavailable)?,
+                valid_from: row
+                    .try_get("valid_from_unix_seconds")
+                    .map_err(unavailable)?,
+                valid_to: row.try_get("valid_to_unix_seconds").map_err(unavailable)?,
+                memory_id,
+                memory_revision,
+                source_id: row.try_get("source_id").map_err(unavailable)?,
+                source_revision: row.try_get("source_revision").map_err(unavailable)?,
+            });
+        }
+
+        let relation_rows = sqlx::query(
+            "SELECT q.memory_id, q.memory_revision, q.relation_key,
+                    q.canonical_relation_id, q.from_entity_key,
+                    q.to_entity_key, q.relation, q.valid_from_unix_seconds,
+                    q.valid_to_unix_seconds, q.source_id, q.source_revision
+             FROM memory_heads h
+             JOIN memory_revisions r
+               ON r.memory_id = h.memory_id AND r.revision = h.revision
+             JOIN kg_revision_relations q
+               ON q.memory_id = r.memory_id AND q.memory_revision = r.revision
+             WHERE r.owner_agent_id = ? AND r.scope_kind = ?
+               AND r.workspace_sha256 IS ?
+               AND r.verification = 'verified' AND r.lifecycle = 'active'
+             ORDER BY q.memory_id, q.memory_revision, q.relation_key LIMIT ?",
+        )
+        .bind(owner.as_str())
+        .bind(scope_kind)
+        .bind(workspace_sha256.as_deref())
+        .bind(bounded_limit(MAX_SCOPE_EDGES)?)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if relation_rows.len() > MAX_SCOPE_EDGES {
+            return Err(CognitiveStoreError::Corrupt(format!(
+                "KG projection output exceeds the {MAX_SCOPE_EDGES}-edge reopen verification limit"
+            )));
+        }
+        let mut expected_edges = Vec::with_capacity(relation_rows.len());
+        for row in relation_rows {
+            let memory_id: String = row.try_get("memory_id").map_err(unavailable)?;
+            let memory_revision: i64 = row.try_get("memory_revision").map_err(unavailable)?;
+            let relation_key: String = row.try_get("relation_key").map_err(unavailable)?;
+            let from_entity_key: String = row.try_get("from_entity_key").map_err(unavailable)?;
+            let to_entity_key: String = row.try_get("to_entity_key").map_err(unavailable)?;
+            expected_edges.push(ProjectionEdge {
+                edge_id: occurrence_edge_id(&memory_id, memory_revision, &relation_key),
+                canonical_relation_id: row.try_get("canonical_relation_id").map_err(unavailable)?,
+                from_node_id: occurrence_node_id(&memory_id, memory_revision, &from_entity_key),
+                to_node_id: occurrence_node_id(&memory_id, memory_revision, &to_entity_key),
+                relation: row.try_get("relation").map_err(unavailable)?,
+                valid_from: row
+                    .try_get("valid_from_unix_seconds")
+                    .map_err(unavailable)?,
+                valid_to: row.try_get("valid_to_unix_seconds").map_err(unavailable)?,
+                memory_id,
+                memory_revision,
+                source_id: row.try_get("source_id").map_err(unavailable)?,
+                source_revision: row.try_get("source_revision").map_err(unavailable)?,
+            });
+        }
+
+        let stored_node_rows = sqlx::query(
+            "SELECT n.node_id, i.canonical_entity_id, n.entity_type, n.label,
+                    n.valid_from_unix_seconds, n.valid_to_unix_seconds,
+                    n.memory_id, n.memory_revision, n.source_id, n.source_revision
+             FROM kg_nodes n
+             JOIN kg_projection_node_entities i
+               ON i.projection_scope = n.projection_scope
+              AND i.generation = n.generation AND i.node_id = n.node_id
+             WHERE n.projection_scope = ? AND n.generation = ?
+             ORDER BY n.node_id LIMIT ?",
+        )
+        .bind(&projection_scope)
+        .bind(generation)
+        .bind(bounded_limit(MAX_SCOPE_NODES)?)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if stored_node_rows.len() > MAX_SCOPE_NODES {
+            return Err(CognitiveStoreError::Corrupt(
+                "stored KG projection exceeds the node reopen verification limit".to_string(),
+            ));
+        }
+        let mut stored_nodes = stored_node_rows
+            .into_iter()
+            .map(|row| {
+                Ok(ProjectionNode {
+                    node_id: row.try_get("node_id").map_err(unavailable)?,
+                    canonical_entity_id: row.try_get("canonical_entity_id").map_err(unavailable)?,
+                    entity_type: row.try_get("entity_type").map_err(unavailable)?,
+                    label: row.try_get("label").map_err(unavailable)?,
+                    valid_from: row
+                        .try_get("valid_from_unix_seconds")
+                        .map_err(unavailable)?,
+                    valid_to: row.try_get("valid_to_unix_seconds").map_err(unavailable)?,
+                    memory_id: row.try_get("memory_id").map_err(unavailable)?,
+                    memory_revision: row.try_get("memory_revision").map_err(unavailable)?,
+                    source_id: row.try_get("source_id").map_err(unavailable)?,
+                    source_revision: row.try_get("source_revision").map_err(unavailable)?,
+                })
+            })
+            .collect::<Result<Vec<_>, CognitiveStoreError>>()?;
+        let mut expected_nodes_by_id = expected_nodes.clone();
+        expected_nodes_by_id.sort_by(|left, right| left.node_id.cmp(&right.node_id));
+        stored_nodes.sort_by(|left, right| left.node_id.cmp(&right.node_id));
+        if stored_nodes != expected_nodes_by_id {
+            return Err(CognitiveStoreError::Corrupt(format!(
+                "KG current projection `{projection_scope}` nodes do not match current immutable fact supports"
+            )));
+        }
+
+        let stored_edge_rows = sqlx::query(
+            "SELECT edge_id, from_node_id, to_node_id, relation,
+                    valid_from_unix_seconds, valid_to_unix_seconds,
+                    memory_id, memory_revision, source_id, source_revision
+             FROM kg_edges
+             WHERE projection_scope = ? AND generation = ?
+             ORDER BY edge_id LIMIT ?",
+        )
+        .bind(&projection_scope)
+        .bind(generation)
+        .bind(bounded_limit(MAX_SCOPE_EDGES)?)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if stored_edge_rows.len() > MAX_SCOPE_EDGES {
+            return Err(CognitiveStoreError::Corrupt(
+                "stored KG projection exceeds the edge reopen verification limit".to_string(),
+            ));
+        }
+        let mut stored_edges = stored_edge_rows
+            .into_iter()
+            .map(|row| {
+                Ok(StoredProjectionEdge {
+                    edge_id: row.try_get("edge_id").map_err(unavailable)?,
+                    from_node_id: row.try_get("from_node_id").map_err(unavailable)?,
+                    to_node_id: row.try_get("to_node_id").map_err(unavailable)?,
+                    relation: row.try_get("relation").map_err(unavailable)?,
+                    valid_from: row
+                        .try_get("valid_from_unix_seconds")
+                        .map_err(unavailable)?,
+                    valid_to: row.try_get("valid_to_unix_seconds").map_err(unavailable)?,
+                    memory_id: row.try_get("memory_id").map_err(unavailable)?,
+                    memory_revision: row.try_get("memory_revision").map_err(unavailable)?,
+                    source_id: row.try_get("source_id").map_err(unavailable)?,
+                    source_revision: row.try_get("source_revision").map_err(unavailable)?,
+                })
+            })
+            .collect::<Result<Vec<_>, CognitiveStoreError>>()?;
+        let mut expected_stored_edges = expected_edges
+            .iter()
+            .map(StoredProjectionEdge::from)
+            .collect::<Vec<_>>();
+        stored_edges.sort();
+        expected_stored_edges.sort();
+        if stored_edges != expected_stored_edges {
+            return Err(CognitiveStoreError::Corrupt(format!(
+                "KG current projection `{projection_scope}` edges do not match current immutable fact supports"
+            )));
+        }
+
+        let fts_rows = sqlx::query(
+            "SELECT projection_scope, generation, node_id, entity_type, label
+             FROM kg_entity_fts
+             WHERE projection_scope = ? AND generation = ?
+             ORDER BY node_id, entity_type, label LIMIT ?",
+        )
+        .bind(&projection_scope)
+        .bind(generation)
+        .bind(bounded_limit(MAX_SCOPE_NODES)?)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if fts_rows.len() > MAX_SCOPE_NODES {
+            return Err(CognitiveStoreError::Corrupt(
+                "stored KG entity FTS exceeds the reopen verification limit".to_string(),
+            ));
+        }
+        let mut stored_fts = fts_rows
+            .into_iter()
+            .map(|row| {
+                Ok((
+                    row.try_get::<String, _>("projection_scope")
+                        .map_err(unavailable)?,
+                    row.try_get::<i64, _>("generation").map_err(unavailable)?,
+                    row.try_get::<String, _>("node_id").map_err(unavailable)?,
+                    row.try_get::<String, _>("entity_type")
+                        .map_err(unavailable)?,
+                    row.try_get::<String, _>("label").map_err(unavailable)?,
+                ))
+            })
+            .collect::<Result<Vec<_>, CognitiveStoreError>>()?;
+        let mut expected_fts = expected_nodes
+            .iter()
+            .map(|node| {
+                (
+                    projection_scope.clone(),
+                    generation,
+                    node.node_id.clone(),
+                    node.entity_type.clone(),
+                    node.label.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        stored_fts.sort();
+        expected_fts.sort();
+        if stored_fts != expected_fts {
+            return Err(CognitiveStoreError::Corrupt(format!(
+                "KG current projection `{projection_scope}` FTS rows do not exactly match its nodes"
+            )));
+        }
+
+        let expected_output = output_digest(&projection_scope, &expected_nodes, &expected_edges);
+        let stored_output: String = current.try_get("output_sha256").map_err(unavailable)?;
+        if expected_output.as_str() != stored_output {
+            return Err(CognitiveStoreError::Corrupt(format!(
+                "KG current projection `{projection_scope}` output digest failed canonical recomputation"
+            )));
+        }
+    }
+    transaction.commit().await.map_err(unavailable)?;
+    Ok(())
+}
+
+fn projection_scope_database_parts(
+    projection_scope: &str,
+) -> Result<(&'static str, Option<String>), CognitiveStoreError> {
+    if projection_scope == "agent_private" {
+        return Ok(("agent_private", None));
+    }
+    let workspace = projection_scope
+        .strip_prefix("workspace_private:")
+        .ok_or_else(|| CognitiveStoreError::Corrupt("invalid KG projection scope".to_string()))?;
+    let workspace =
+        Sha256Digest::parse(workspace.to_string()).map_err(CognitiveStoreError::Corrupt)?;
+    Ok(("workspace_private", Some(workspace.as_str().to_string())))
+}
+
+fn bounded_limit(maximum: usize) -> Result<i64, CognitiveStoreError> {
+    maximum
+        .checked_add(1)
+        .and_then(|value| i64::try_from(value).ok())
+        .ok_or_else(|| {
+            CognitiveStoreError::Corrupt("KG reopen verification limit exceeds i64".to_string())
+        })
 }
 
 fn create_private_directory(path: &Path) -> Result<(), CognitiveStoreError> {

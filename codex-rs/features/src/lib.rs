@@ -282,6 +282,8 @@ pub enum Feature {
     HeptaMemory,
     /// Allow bounded read-only Hepta Memory input on governed provider sends.
     HeptaMemoryReadOnly,
+    /// Allow explicit structured writes to the Hepta Cognitive Plane.
+    HeptaCognitiveWrite,
     /// Enable persisted thread goals and automatic goal continuation.
     Goals,
     /// Add current context-window metadata to model-visible context.
@@ -1423,6 +1425,12 @@ pub const FEATURES: &[FeatureSpec] = &[
     FeatureSpec {
         id: Feature::HeptaMemoryReadOnly,
         key: "hepta_memory_read_only",
+        stage: Stage::UnderDevelopment,
+        default_enabled: false,
+    },
+    FeatureSpec {
+        id: Feature::HeptaCognitiveWrite,
+        key: "hepta_cognitive_write",
         stage: Stage::UnderDevelopment,
         default_enabled: false,
     },

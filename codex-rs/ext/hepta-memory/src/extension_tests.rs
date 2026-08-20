@@ -99,6 +99,7 @@ impl Stage1RecallBackend for FakeBackend {
 struct TestConfig {
     enabled: bool,
     read_only: bool,
+    write_enabled: bool,
     limits: RecallLimits,
 }
 
@@ -108,6 +109,7 @@ fn resolve_test_config(config: &TestConfig) -> Option<HeptaMemoryThreadConfig> {
     config.enabled.then(|| HeptaMemoryThreadConfig {
         limits: config.limits.clone(),
         attachment_proposal_enabled: config.read_only,
+        write_enabled: config.write_enabled,
     })
 }
 
@@ -115,6 +117,7 @@ fn config(read_only: bool) -> TestConfig {
     TestConfig {
         enabled: true,
         read_only,
+        write_enabled: false,
         limits: RecallLimits::new(64, 8, 4, 4, 128, 256, 100_000).expect("valid limits"),
     }
 }
@@ -196,13 +199,16 @@ async fn observe(
     thread_store: &ExtensionData,
     turn_store: &ExtensionData,
 ) {
+    let session_store = ExtensionData::new("session-1");
+    let step_store = ExtensionData::new(turn_store.level_id());
     let fragments = TurnInputContributor::contribute(
         extension,
         input,
         None,
-        &ExtensionData::new("session-1"),
+        &session_store,
         thread_store,
         turn_store,
+        &step_store,
     )
     .await;
     assert!(fragments.is_empty());
@@ -278,6 +284,7 @@ fn feature_resolution_defaults_to_shadow_and_requires_full_read_only_conjunction
             governance_enabled: true,
             memory_enabled: false,
             read_only_enabled: true,
+            write_enabled: true,
         })
         .is_none()
     );
@@ -286,16 +293,19 @@ fn feature_resolution_defaults_to_shadow_and_requires_full_read_only_conjunction
             governance_enabled: false,
             memory_enabled: true,
             read_only_enabled: false,
+            write_enabled: false,
         },
         HeptaMemoryFeatureFlags {
             governance_enabled: true,
             memory_enabled: true,
             read_only_enabled: false,
+            write_enabled: false,
         },
         HeptaMemoryFeatureFlags {
             governance_enabled: false,
             memory_enabled: true,
             read_only_enabled: true,
+            write_enabled: false,
         },
     ] {
         assert!(
@@ -309,10 +319,47 @@ fn feature_resolution_defaults_to_shadow_and_requires_full_read_only_conjunction
             governance_enabled: true,
             memory_enabled: true,
             read_only_enabled: true,
+            write_enabled: false,
         })
         .expect("read-only mode")
         .attachment_proposal_enabled
     );
+
+    let write_without_governance = HeptaMemoryThreadConfig::for_features(HeptaMemoryFeatureFlags {
+        governance_enabled: false,
+        memory_enabled: true,
+        read_only_enabled: false,
+        write_enabled: true,
+    })
+    .expect("memory shadow mode");
+    assert!(!write_without_governance.write_enabled);
+
+    let governed_write = HeptaMemoryThreadConfig::for_features(HeptaMemoryFeatureFlags {
+        governance_enabled: true,
+        memory_enabled: true,
+        read_only_enabled: false,
+        write_enabled: true,
+    })
+    .expect("governed write mode");
+    assert!(governed_write.write_enabled);
+    assert!(!governed_write.attachment_proposal_enabled);
+}
+
+#[tokio::test]
+async fn resolved_write_authority_is_frozen_into_thread_state() {
+    let backend = Arc::new(FakeBackend::new(FakeBackendResponse::Candidate(None)));
+    let extension = extension(backend);
+    let thread_store = seeded_thread_store();
+    let mut writable = config(true);
+    writable.write_enabled = true;
+
+    start_thread(&extension, &writable, &thread_store).await;
+
+    let state = thread_store
+        .get::<HeptaMemoryThreadState>()
+        .expect("thread state");
+    assert!(state.attachment_proposal_enabled);
+    assert!(state.write_enabled);
 }
 
 #[tokio::test]

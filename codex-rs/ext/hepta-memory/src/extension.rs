@@ -108,6 +108,7 @@ impl Stage1RecallBackend for StateRecallBackend {
 pub struct HeptaMemoryThreadConfig {
     limits: RecallLimits,
     attachment_proposal_enabled: bool,
+    write_enabled: bool,
 }
 
 /// Trusted product feature state used to resolve the Memory extension mode.
@@ -116,6 +117,7 @@ pub struct HeptaMemoryFeatureFlags {
     pub governance_enabled: bool,
     pub memory_enabled: bool,
     pub read_only_enabled: bool,
+    pub write_enabled: bool,
 }
 
 impl HeptaMemoryThreadConfig {
@@ -124,6 +126,7 @@ impl HeptaMemoryThreadConfig {
         Ok(Self {
             limits,
             attachment_proposal_enabled: false,
+            write_enabled: false,
         })
     }
 
@@ -132,6 +135,7 @@ impl HeptaMemoryThreadConfig {
         Self {
             limits: RecallLimits::conservative_default(),
             attachment_proposal_enabled: false,
+            write_enabled: false,
         }
     }
 
@@ -140,6 +144,7 @@ impl HeptaMemoryThreadConfig {
         Self {
             limits: RecallLimits::conservative_default(),
             attachment_proposal_enabled: true,
+            write_enabled: false,
         }
     }
 
@@ -149,10 +154,13 @@ impl HeptaMemoryThreadConfig {
         if !flags.memory_enabled {
             return None;
         }
-        if flags.governance_enabled && flags.read_only_enabled {
-            return Some(Self::conservative_read_only_proposal());
-        }
-        Some(Self::conservative_shadow())
+        let mut config = if flags.governance_enabled && flags.read_only_enabled {
+            Self::conservative_read_only_proposal()
+        } else {
+            Self::conservative_shadow()
+        };
+        config.write_enabled = flags.governance_enabled && flags.write_enabled;
+        Some(config)
     }
 }
 
@@ -164,6 +172,7 @@ pub(crate) struct HeptaMemoryThreadState {
     originator_sha256: Sha256Digest,
     pub(crate) limits: RecallLimits,
     pub(crate) attachment_proposal_enabled: bool,
+    pub(crate) write_enabled: bool,
 }
 
 impl HeptaMemoryThreadState {
@@ -178,11 +187,20 @@ impl HeptaMemoryThreadState {
 
     #[cfg(test)]
     pub(crate) fn for_cognitive_test(attachment_proposal_enabled: bool) -> Self {
+        Self::for_cognitive_test_with_write(attachment_proposal_enabled, true)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_cognitive_test_with_write(
+        attachment_proposal_enabled: bool,
+        write_enabled: bool,
+    ) -> Self {
         Self {
             installation_sha256: domain_digest(b"hepta-memory:test-installation:v1", b"test"),
             originator_sha256: domain_digest(b"hepta-memory:test-originator:v1", b"test"),
             limits: RecallLimits::conservative_default(),
             attachment_proposal_enabled,
+            write_enabled,
         }
     }
 }
@@ -264,6 +282,7 @@ where
                 ),
                 limits: config.limits,
                 attachment_proposal_enabled: config.attachment_proposal_enabled,
+                write_enabled: config.write_enabled,
             });
         })
     }

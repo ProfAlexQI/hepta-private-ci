@@ -38,8 +38,10 @@ implementation is an oracle and evidence source, not a merge target.
    product configuration, and upstream-compatible release targets.
 2. Governance: typed admission, authorization, effect acknowledgement,
    terminal receipt, and reconciliation hooks around the Codex lifecycle.
-3. Memory: Memory, Intelligence, and KG become context/state contributors;
-   mutations remain shadow-only until oracle coverage is complete.
+3. Memory: Memory, Intelligence, and KG become context/state contributors.
+   Mutation authority is a separate, explicitly feature-gated product slice;
+   exact-head qualification and operator acceptance remain mandatory before
+   any promotion claim.
 4. Channels: Telegram, Matrix, and native clients become app-server/thread
    adapters and never enter the governance kernel.
 5. Evidence: persist typed receipts and project stable historical selectors
@@ -206,10 +208,70 @@ implementation is an oracle and evidence source, not a merge target.
   product authority. G2 does not enable Intelligence/KG, cross-Agent memory
   federation, Matrix/Robrix, automation, promotion, deployment, or provider
   physical exactly-once semantics.
-- The current candidate stack governs ToolRegistry dispatch and the listed
-  provider send paths. Memory recall, memory mutation writers, external channel
-  transport, outbound delivery, effect ACK, retirement, and automatic
-  reconciliation stay outside this candidate. `HandlerCompleted` is
+- R2 G3 names the Agent-local Cognitive product caller. `agentd` explicitly
+  enables `hepta_cognitive_write` for its private App Server; ordinary Codex
+  keeps the feature off. Governance, Memory, and the dedicated write feature
+  must all be enabled before remember, correct, or forget tools are registered.
+  The read-only attachment feature alone grants no mutation authority.
+- A G3 mutation validates bounded structured entity/relation facts and uses one
+  SQLite `BEGIN IMMEDIATE` transaction for the exact source ledger revision,
+  versioned Memory revision/citation/head CAS, immutable KG fact-set header and
+  facts, a complete bounded projection of the scope's current verified active
+  heads, an immutable generation receipt, and publication of the new current
+  generation. Empty extraction still has a fact-set header. Any validation,
+  citation, CAS, projection, or persistence failure rolls the whole mutation
+  back; stale correction cannot leave an orphan source, and a tombstoned Memory
+  identity cannot be resurrected.
+- Projection nodes remain revision-local occurrences and retain every exact
+  Memory/source provenance. A stable canonical entity identity links matching
+  occurrences for one-hop traversal without selecting a representative
+  provenance. Correction and forget retain historical immutable facts while
+  excluding superseded or tombstoned heads and advancing the projection
+  generation.
+- Automatic retrieval performs Memory FTS, entity FTS, graph one-hop, recency,
+  explanation, and revalidation binding reads in one SQLite snapshot. The
+  provider attachment's internal schema binds each selected Memory to its exact
+  retrieval channels; every physical send revalidates the Memory head,
+  citations, scope, validity, and KG generation before optional context is
+  attached. Retrieval/storage failure removes optional context rather than
+  widening authority.
+- The Responses WebSocket path does not yet implement exact ephemeral-input
+  conformance. A turn with an active ephemeral contributor therefore skips
+  WebSocket prewarm/dispatch and uses the existing sensitive HTTP path that
+  resolves and binds the attachment for that physical attempt. Turns without
+  an active contributor retain ordinary WebSocket eligibility; G3 makes no
+  claim of WebSocket ephemeral-input conformance.
+- The final SQLite revalidation snapshot ends before the provider network
+  dispatch. G3 therefore does not claim that provider send is linearizable
+  with a concurrent Cognitive mutation in that final local-check-to-network
+  window. A drift detected during revalidation removes the attachment; closing
+  the remaining window would require a provider-visible transactional binding
+  or equivalent acknowledgement protocol.
+- Migration `0003` preserves prior Memory and citation rows but revokes the
+  unqualified, test-only pre-G3 projection. Pre-G3 revisions receive an
+  explicit legacy zero-fact header; this is not a claim of legacy persistent-KG
+  compatibility. A G2 binary is not qualified to reopen the migrated database.
+  Rollback therefore requires restoring both the old binary and a consistent
+  pre-migration database snapshot. Reopen integrity verification currently
+  scans all historical fact sets; G3 qualifies correctness for the bounded
+  product tests, not large historical-archive reopen performance. That scale
+  qualification remains a later fleet/operations gate.
+- The G3-qualified product path remains Agent/workspace local. G3 neither
+  qualifies nor adds authority for cross-Agent Memory federation,
+  Matrix/Robrix, fleet lifecycle mutation, automation, deployment, or provider
+  physical exactly-once semantics. The exact head still contains pre-existing
+  later-stage candidate implementations, including federation and automation;
+  their callers and tests are explicitly excluded from the three named G3
+  qualification tests. Their presence is not G3 qualification, activation,
+  operator acceptance, or promotion authority. The G3 receipt is only the
+  sequence gate for G4.
+- The G3-qualified subset of the current candidate stack governs ToolRegistry
+  dispatch and the listed provider send paths and composes the bounded
+  Agent-local Cognitive writer and revalidated retrieval path described above.
+  Cross-Agent federation, external channel transport, outbound delivery,
+  effect ACK, retirement, and automatic reconciliation stay outside the G3
+  qualification scope; this is not a claim that their pre-existing candidate
+  code is absent from the exact-head tree. `HandlerCompleted` is
   handler-reported status, not
   proof of an external effect or exactly-once execution.
 - The Hepta product resolves its process home as

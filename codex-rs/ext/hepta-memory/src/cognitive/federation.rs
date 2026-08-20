@@ -1004,6 +1004,7 @@ mod tests {
         let thread_store = ExtensionData::new(THREAD_ID);
         thread_store.insert(HeptaMemoryThreadState::for_cognitive_test(true));
         let turn_store = ExtensionData::new("turn-federation-revoke");
+        let step_store = ExtensionData::new(turn_store.level_id());
         let fragments = TurnInputContributor::contribute(
             &extension,
             codex_extension_api::TurnInputContext {
@@ -1022,6 +1023,7 @@ mod tests {
             &session_store,
             &thread_store,
             &turn_store,
+            &step_store,
         )
         .await;
         assert!(fragments.is_empty());

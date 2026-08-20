@@ -14,12 +14,12 @@ use codex_hepta_memory::CognitiveRuntime;
 use codex_hepta_memory::CognitiveScope;
 use codex_hepta_memory::CognitiveStore;
 use codex_hepta_memory::CognitiveStoreError;
+use codex_hepta_memory::CognitiveWriteReceipt;
 use codex_hepta_memory::ForgetMemoryDraft;
 use codex_hepta_memory::LedgerSourceKind;
 use codex_hepta_memory::MemoryDraft;
 use codex_hepta_memory::MemoryLifecycleState;
 use codex_hepta_memory::MemoryRevisionDraft;
-use codex_hepta_memory::MemoryRevisionRecord;
 use codex_hepta_memory::MemoryVerification;
 use codex_hepta_memory::RetrievalRequest;
 use codex_hepta_memory::SourceDraft;
@@ -32,13 +32,22 @@ use serde_json::json;
 
 use super::CognitiveTurnWitnesses;
 use super::ExactDirectiveWitness;
+use super::kg_extractor::MAX_STRUCTURED_KG_ENTITIES;
+use super::kg_extractor::MAX_STRUCTURED_KG_KEY_BYTES;
+use super::kg_extractor::MAX_STRUCTURED_KG_LABEL_BYTES;
+use super::kg_extractor::MAX_STRUCTURED_KG_RELATION_BYTES;
+use super::kg_extractor::MAX_STRUCTURED_KG_RELATIONS;
+use super::kg_extractor::MAX_STRUCTURED_KG_TYPE_BYTES;
+use super::kg_extractor::StructuredCognitiveKgExtractor;
+use super::kg_extractor::StructuredKgError;
+use super::kg_extractor::StructuredKgInput;
 use super::now_unix_seconds;
 use super::secret_like;
 use crate::framing::digest_many;
 use crate::framing::path_identity_bytes;
 
 const COGNITIVE_NAMESPACE: &str = "hepta_cognitive";
-const TOOL_OUTPUT_SCHEMA_VERSION: u32 = 1;
+const TOOL_OUTPUT_SCHEMA_VERSION: u32 = 2;
 const MAX_RECALL_RESULTS: usize = 4;
 const MAX_RECALL_CONTENT_BYTES: usize = 2 * 1024;
 const MAX_RECALL_OUTPUT_BYTES: usize = 12 * 1024;
@@ -70,13 +79,13 @@ impl CognitiveToolOperation {
     fn description(self) -> &'static str {
         match self {
             Self::Remember => {
-                "Create a versioned Hepta memory. Content is verified only when it is byte-exactly the complete current user text; otherwise it is stored as provisional and is never auto-attached."
+                "Create structured cognitive facts together with versioned Hepta memory. Content is verified only when it is byte-exactly the complete current user text; provisional memory cannot carry structured facts and is never auto-attached."
             }
             Self::Recall => {
                 "Search eligible verified Hepta memories in the current Agent/workspace scope."
             }
             Self::Correct => {
-                "Append a compare-and-swap correction to one memory. The new content is verified only when byte-exactly witnessed from the complete current user text."
+                "Atomically replace structured cognitive facts together with a compare-and-swap versioned memory correction. The new content must be byte-exactly witnessed from the complete current user text."
             }
             Self::Forget => {
                 "Append a compare-and-swap tombstone to one memory without erasing its provenance chain."
@@ -114,6 +123,7 @@ pub(super) fn deferred_cognitive_tools(
     thread_id: String,
     expected_turn_id: String,
     witnesses: Arc<CognitiveTurnWitnesses>,
+    write_enabled: bool,
 ) -> Vec<Arc<dyn ToolExecutor<ToolCall>>> {
     [
         CognitiveToolOperation::Remember,
@@ -123,6 +133,13 @@ pub(super) fn deferred_cognitive_tools(
         CognitiveToolOperation::Explain,
     ]
     .into_iter()
+    .filter(|operation| {
+        write_enabled
+            || matches!(
+                operation,
+                CognitiveToolOperation::Recall | CognitiveToolOperation::Explain
+            )
+    })
     .map(|operation| {
         Arc::new(DeferredCognitiveTool {
             runtime: runtime.clone(),
@@ -266,24 +283,21 @@ impl CognitiveTool {
         let now = tool_now()?;
         let (access, scope) = self.access_and_scope(store, args.scope);
         let verification = self.verification_for(args.content.as_str());
+        let facts = StructuredCognitiveKgExtractor
+            .extract(args.kg, verification)
+            .map_err(structured_kg_error)?;
         let source_kind = if verification == MemoryVerification::Verified {
             LedgerSourceKind::ExplicitMemoryDirective
         } else {
             LedgerSourceKind::AssistantConclusion
         };
-        let citation = store
-            .append_source(
-                &access,
-                &SourceDraft {
-                    scope: scope.clone(),
-                    kind: source_kind,
-                    event_key: self.event_key(call, CognitiveToolOperation::Remember),
-                    content: args.content.as_bytes().to_vec(),
-                    observed_at_unix_seconds: now,
-                },
-            )
-            .await
-            .map_err(store_error)?;
+        let source = SourceDraft {
+            scope: scope.clone(),
+            kind: source_kind,
+            event_key: self.event_key(call, CognitiveToolOperation::Remember),
+            content: args.content.as_bytes().to_vec(),
+            observed_at_unix_seconds: now,
+        };
         let draft = MemoryDraft {
             stable_key: args.stable_key,
             revision: MemoryRevisionDraft {
@@ -293,16 +307,14 @@ impl CognitiveTool {
                 lifecycle: MemoryLifecycleState::Active,
                 valid_from_unix_seconds: now,
                 valid_to_unix_seconds: args.valid_to_unix_seconds,
-                citations: vec![citation],
+                citations: Vec::new(),
             },
         };
-        let record = if verification == MemoryVerification::Verified {
-            store.remember_memory(&access, &draft).await
-        } else {
-            store.create_memory(&access, &draft).await
-        }
-        .map_err(store_error)?;
-        memory_output("remembered", &record)
+        let receipt = store
+            .remember_with_kg(&access, &source, &draft, &facts)
+            .await
+            .map_err(store_error)?;
+        write_receipt_output("remembered", &receipt)
     }
 
     async fn recall(
@@ -370,19 +382,16 @@ impl CognitiveTool {
             .await
             .map_err(store_error)?;
         let now = tool_now()?;
-        let citation = store
-            .append_source(
-                &access,
-                &SourceDraft {
-                    scope: current.scope.clone(),
-                    kind: LedgerSourceKind::ExplicitMemoryDirective,
-                    event_key: self.event_key(call, CognitiveToolOperation::Correct),
-                    content: args.content.as_bytes().to_vec(),
-                    observed_at_unix_seconds: now,
-                },
-            )
-            .await
-            .map_err(store_error)?;
+        let facts = StructuredCognitiveKgExtractor
+            .extract(args.kg, MemoryVerification::Verified)
+            .map_err(structured_kg_error)?;
+        let source = SourceDraft {
+            scope: current.scope.clone(),
+            kind: LedgerSourceKind::ExplicitMemoryDirective,
+            event_key: self.event_key(call, CognitiveToolOperation::Correct),
+            content: args.content.as_bytes().to_vec(),
+            observed_at_unix_seconds: now,
+        };
         let revision = MemoryRevisionDraft {
             scope: current.scope,
             content: args.content,
@@ -390,13 +399,20 @@ impl CognitiveTool {
             lifecycle: MemoryLifecycleState::Active,
             valid_from_unix_seconds: now,
             valid_to_unix_seconds: args.valid_to_unix_seconds,
-            citations: vec![citation],
+            citations: Vec::new(),
         };
-        let record = store
-            .correct_memory(&access, &memory_id, args.expected_revision, &revision)
+        let receipt = store
+            .correct_with_kg(
+                &access,
+                &memory_id,
+                args.expected_revision,
+                &source,
+                &revision,
+                &facts,
+            )
             .await
             .map_err(store_error)?;
-        memory_output("corrected", &record)
+        write_receipt_output("corrected", &receipt)
     }
 
     async fn forget(
@@ -417,34 +433,29 @@ impl CognitiveTool {
             .await
             .map_err(store_error)?;
         let now = tool_now()?;
-        let citation = store
-            .append_source(
-                &access,
-                &SourceDraft {
-                    scope: current.scope.clone(),
-                    kind: LedgerSourceKind::ExplicitMemoryDirective,
-                    event_key: self.event_key(call, CognitiveToolOperation::Forget),
-                    content: args.reason.as_bytes().to_vec(),
-                    observed_at_unix_seconds: now,
-                },
-            )
-            .await
-            .map_err(store_error)?;
-        let record = store
-            .forget_memory(
+        let source = SourceDraft {
+            scope: current.scope.clone(),
+            kind: LedgerSourceKind::ExplicitMemoryDirective,
+            event_key: self.event_key(call, CognitiveToolOperation::Forget),
+            content: args.reason.as_bytes().to_vec(),
+            observed_at_unix_seconds: now,
+        };
+        let receipt = store
+            .forget_with_kg(
                 &access,
                 &memory_id,
                 args.expected_revision,
+                &source,
                 &ForgetMemoryDraft {
                     scope: current.scope,
                     reason: args.reason,
                     valid_from_unix_seconds: now,
-                    citations: vec![citation],
+                    citations: Vec::new(),
                 },
             )
             .await
             .map_err(store_error)?;
-        memory_output("forgotten", &record)
+        write_receipt_output("forgotten", &receipt)
     }
 
     async fn explain(
@@ -575,6 +586,8 @@ struct RememberArgs {
     scope: ScopeSelection,
     #[serde(default)]
     valid_to_unix_seconds: Option<i64>,
+    #[serde(default)]
+    kg: StructuredKgInput,
 }
 
 #[derive(Deserialize)]
@@ -591,6 +604,8 @@ struct CorrectArgs {
     content: String,
     #[serde(default)]
     valid_to_unix_seconds: Option<i64>,
+    #[serde(default)]
+    kg: StructuredKgInput,
 }
 
 #[derive(Deserialize)]
@@ -612,7 +627,7 @@ fn cognitive_tool_spec(operation: CognitiveToolOperation) -> ToolSpec {
         .unwrap_or_else(|error| panic!("cognitive tool schema must parse: {error}"));
     ToolSpec::Namespace(ResponsesApiNamespace {
         name: COGNITIVE_NAMESPACE.to_string(),
-        description: "Versioned, scoped Hepta Memory and explainable retrieval tools.".to_string(),
+        description: "Structured cognitive facts, versioned scoped Hepta Memory, and explainable retrieval tools.".to_string(),
         tools: vec![ResponsesApiNamespaceTool::Function(ResponsesApiTool {
             name: operation.name().to_string(),
             description: operation.description().to_string(),
@@ -640,7 +655,8 @@ fn input_schema(operation: CognitiveToolOperation) -> Value {
                 "stable_key": { "type": "string", "minLength": 1, "maxLength": 512 },
                 "content": { "type": "string", "minLength": 1, "maxLength": 65536 },
                 "scope": scope(),
-                "valid_to_unix_seconds": { "type": ["integer", "null"] }
+                "valid_to_unix_seconds": { "type": ["integer", "null"] },
+                "kg": structured_kg_schema()
             }),
             json!(["stable_key", "content"]),
         ),
@@ -655,7 +671,8 @@ fn input_schema(operation: CognitiveToolOperation) -> Value {
                 "memory_id": string(),
                 "expected_revision": revision(),
                 "content": { "type": "string", "minLength": 1, "maxLength": 65536 },
-                "valid_to_unix_seconds": { "type": ["integer", "null"] }
+                "valid_to_unix_seconds": { "type": ["integer", "null"] },
+                "kg": structured_kg_schema()
             }),
             json!(["memory_id", "expected_revision", "content"]),
         ),
@@ -674,6 +691,45 @@ fn input_schema(operation: CognitiveToolOperation) -> Value {
         "properties": properties,
         "required": required,
         "additionalProperties": false
+    })
+}
+
+fn structured_kg_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "entities": {
+                "type": "array",
+                "maxItems": MAX_STRUCTURED_KG_ENTITIES,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "key": { "type": "string", "minLength": 1, "maxLength": MAX_STRUCTURED_KG_KEY_BYTES },
+                        "entity_type": { "type": "string", "minLength": 1, "maxLength": MAX_STRUCTURED_KG_TYPE_BYTES },
+                        "label": { "type": "string", "minLength": 1, "maxLength": MAX_STRUCTURED_KG_LABEL_BYTES }
+                    },
+                    "required": ["key", "entity_type", "label"],
+                    "additionalProperties": false
+                }
+            },
+            "relations": {
+                "type": "array",
+                "maxItems": MAX_STRUCTURED_KG_RELATIONS,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "key": { "type": "string", "minLength": 1, "maxLength": MAX_STRUCTURED_KG_KEY_BYTES },
+                        "from_entity_key": { "type": "string", "minLength": 1, "maxLength": MAX_STRUCTURED_KG_KEY_BYTES },
+                        "to_entity_key": { "type": "string", "minLength": 1, "maxLength": MAX_STRUCTURED_KG_KEY_BYTES },
+                        "relation": { "type": "string", "minLength": 1, "maxLength": MAX_STRUCTURED_KG_RELATION_BYTES }
+                    },
+                    "required": ["key", "from_entity_key", "to_entity_key", "relation"],
+                    "additionalProperties": false
+                }
+            }
+        },
+        "additionalProperties": false,
+        "default": { "entities": [], "relations": [] }
     })
 }
 
@@ -750,6 +806,10 @@ fn store_error(error: CognitiveStoreError) -> FunctionCallError {
     }
 }
 
+fn structured_kg_error(error: StructuredKgError) -> FunctionCallError {
+    typed_error(error.code(), error.message())
+}
+
 fn typed_error(code: &str, message: impl Into<String>) -> FunctionCallError {
     FunctionCallError::RespondToModel(
         json!({
@@ -762,22 +822,50 @@ fn typed_error(code: &str, message: impl Into<String>) -> FunctionCallError {
     )
 }
 
-fn memory_output(
+fn write_receipt_output(
     operation: &str,
-    memory: &MemoryRevisionRecord,
+    receipt: &CognitiveWriteReceipt,
 ) -> Result<Box<dyn ToolOutput>, FunctionCallError> {
+    let memory = &receipt.memory;
+    let fact_count = receipt
+        .projection
+        .entity_count
+        .checked_add(receipt.projection.relation_count)
+        .ok_or_else(|| {
+            typed_error(
+                "hepta_cognitive_output_error",
+                "projection fact count overflowed the bounded tool output",
+            )
+        })?;
     json_output(
         json!({
             "schema_version": TOOL_OUTPUT_SCHEMA_VERSION,
             "operation": operation,
-            "memory_id": memory.id.memory_id.as_str(),
-            "revision": memory.id.revision,
-            "scope": memory.scope,
-            "content_sha256": memory.content_sha256.as_str(),
-            "verification": memory.verification,
-            "lifecycle": memory.lifecycle,
-            "valid_from_unix_seconds": memory.valid_from_unix_seconds,
-            "valid_to_unix_seconds": memory.valid_to_unix_seconds,
+            "memory": {
+                "memory_id": memory.id.memory_id.as_str(),
+                "revision": memory.id.revision,
+                "scope": memory.scope,
+                "content_sha256": memory.content_sha256.as_str(),
+                "verification": memory.verification,
+                "lifecycle": memory.lifecycle,
+                "valid_from_unix_seconds": memory.valid_from_unix_seconds,
+                "valid_to_unix_seconds": memory.valid_to_unix_seconds,
+            },
+            "source": {
+                "source_id": receipt.source.source_id.as_str(),
+                "revision": receipt.source.revision,
+            },
+            "projection": {
+                "generation": receipt.projection.generation.get(),
+                "fact_set_sha256": receipt.projection.fact_set_sha256.as_str(),
+                "input_heads_sha256": receipt.projection.input_heads_sha256.as_str(),
+                "output_sha256": receipt.projection.output_sha256.as_str(),
+                "entity_count": receipt.projection.entity_count,
+                "relation_count": receipt.projection.relation_count,
+                "fact_count": fact_count,
+                "node_count": receipt.projection.node_count,
+                "edge_count": receipt.projection.edge_count,
+            },
         }),
         MAX_RECALL_OUTPUT_BYTES,
     )

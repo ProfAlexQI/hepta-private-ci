@@ -7,6 +7,7 @@ use codex_extension_api::EphemeralModelInputSource;
 use codex_extension_api::ExtensionRegistryBuilder;
 use codex_extension_api::ModelProviderPolicyFuture;
 use codex_extension_api::ModelProviderSha256Digest;
+use codex_extension_api::ModelProviderTransport;
 use core_test_support::responses::ev_completed;
 use core_test_support::responses::ev_response_created;
 use core_test_support::responses::mount_response_once;
@@ -23,6 +24,7 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use wiremock::ResponseTemplate;
+use wiremock::http::Method;
 
 use super::model_provider_policy::ProviderPolicyState;
 use super::model_provider_policy::TestDecision;
@@ -172,6 +174,68 @@ fn attached_http_send_changes_only_the_physical_request() -> Result<()> {
         let rollout = std::fs::read_to_string(test.codex.rollout_path().expect("rollout path"))?;
         assert!(!rollout.contains(MARKER_PREFIX));
         assert!(!rollout.contains("hepta_memory_reference"));
+        Ok(())
+    })
+}
+
+#[test]
+fn active_ephemeral_input_forces_sensitive_http_when_websockets_are_enabled() -> Result<()> {
+    run_http_policy_test(async {
+        let server = start_mock_server().await;
+        let response = mount_sse_once(
+            &server,
+            sse(vec![ev_response_created("resp-1"), ev_completed("resp-1")]),
+        )
+        .await;
+        let policy = ProviderPolicyState::new(true, TestDecision::Allow);
+        policy.terminal_release.add_permits(4);
+        let input = TestEphemeralInput::new(Arc::clone(&policy), false);
+        let test = test_codex()
+            .with_config(|config| {
+                config.model_provider.supports_websockets = true;
+                config.model_provider.request_max_retries = Some(0);
+                config.model_provider.stream_max_retries = Some(0);
+            })
+            .with_extensions(extensions(Arc::clone(&policy), &[Arc::clone(&input)]))
+            .build(&server)
+            .await?;
+
+        test.submit_turn("ephemeral input must use the resolved HTTP path")
+            .await?;
+
+        let request = response.single_request();
+        assert!(request.body_json().to_string().contains(MARKER_PREFIX));
+        assert_eq!(input.calls(), 1);
+        let attempts = policy
+            .attempts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        assert_eq!(
+            attempts
+                .iter()
+                .filter(|attempt| attempt.transport == ModelProviderTransport::WebSocket)
+                .count(),
+            0,
+            "active ephemeral input must not dispatch a WebSocket provider attempt"
+        );
+        assert_eq!(
+            attempts
+                .iter()
+                .filter(|attempt| attempt.transport == ModelProviderTransport::Http)
+                .count(),
+            1
+        );
+        let physical_requests = server.received_requests().await.unwrap_or_default();
+        assert_eq!(
+            physical_requests
+                .iter()
+                .filter(|request| {
+                    request.method == Method::POST && request.url.path().ends_with("/responses")
+                })
+                .count(),
+            1
+        );
         Ok(())
     })
 }

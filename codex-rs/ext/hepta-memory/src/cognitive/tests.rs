@@ -14,12 +14,16 @@ use codex_extension_api::ExtensionData;
 use codex_extension_api::ModelProviderRequestKind;
 use codex_extension_api::ModelProviderSha256Digest;
 use codex_extension_api::ModelProviderTransport;
+use codex_extension_api::ToolContributor;
 use codex_extension_api::TurnInputContext;
 use codex_extension_api::TurnInputContributor;
 use codex_extension_api::TurnInputEnvironment;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_memory::CognitiveScope;
 use codex_hepta_memory::ForgetMemoryDraft;
+use codex_hepta_memory::KgEntityFactDraft;
+use codex_hepta_memory::KgFactSetDraft;
+use codex_hepta_memory::KgRelationFactDraft;
 use codex_hepta_memory::LedgerSourceKind;
 use codex_hepta_memory::MemoryDraft;
 use codex_hepta_memory::MemoryRevisionDraft;
@@ -48,6 +52,15 @@ struct CountingRecallBackend {
     revalidate_calls: AtomicUsize,
 }
 
+struct GenerationDriftRecallBackend {
+    store: Arc<CognitiveStore>,
+}
+
+struct PartialBatchDriftRecallBackend {
+    store: Arc<CognitiveStore>,
+    batch_calls: AtomicUsize,
+}
+
 impl CountingRecallBackend {
     fn new(store: Arc<CognitiveStore>) -> Self {
         Self {
@@ -68,17 +81,76 @@ impl CognitiveRecallBackend for CountingRecallBackend {
         Box::pin(self.store.retrieve_memory_candidates(access, request))
     }
 
-    fn revalidate<'a>(
+    fn revalidate_batch<'a>(
         &'a self,
         access: &'a CognitiveAccess,
-        binding: &'a MemoryRevalidationBinding,
+        bindings: &'a [MemoryRevalidationBinding],
         now_unix_seconds: i64,
     ) -> RevalidationFuture<'a> {
         self.revalidate_calls.fetch_add(1, Ordering::SeqCst);
         Box::pin(
             self.store
-                .revalidate_memory_candidate(access, binding, now_unix_seconds),
+                .revalidate_memory_candidates(access, bindings, now_unix_seconds),
         )
+    }
+}
+
+impl CognitiveRecallBackend for GenerationDriftRecallBackend {
+    fn retrieve<'a>(
+        &'a self,
+        access: &'a CognitiveAccess,
+        request: &'a RetrievalRequest,
+    ) -> RetrievalFuture<'a> {
+        Box::pin(self.store.retrieve_memory_candidates(access, request))
+    }
+
+    fn revalidate_batch<'a>(
+        &'a self,
+        _access: &'a CognitiveAccess,
+        bindings: &'a [MemoryRevalidationBinding],
+        _now_unix_seconds: i64,
+    ) -> RevalidationFuture<'a> {
+        Box::pin(async move {
+            Ok(bindings
+                .iter()
+                .map(|_| {
+                    RevalidationStatus::Stale(
+                        codex_hepta_memory::RevalidationDrift::KgProjectionGeneration,
+                    )
+                })
+                .collect())
+        })
+    }
+}
+
+impl CognitiveRecallBackend for PartialBatchDriftRecallBackend {
+    fn retrieve<'a>(
+        &'a self,
+        access: &'a CognitiveAccess,
+        request: &'a RetrievalRequest,
+    ) -> RetrievalFuture<'a> {
+        Box::pin(self.store.retrieve_memory_candidates(access, request))
+    }
+
+    fn revalidate_batch<'a>(
+        &'a self,
+        access: &'a CognitiveAccess,
+        bindings: &'a [MemoryRevalidationBinding],
+        now_unix_seconds: i64,
+    ) -> RevalidationFuture<'a> {
+        self.batch_calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async move {
+            let mut statuses = self
+                .store
+                .revalidate_memory_candidates(access, bindings, now_unix_seconds)
+                .await?;
+            if statuses.len() > 1 {
+                statuses[1] = RevalidationStatus::Stale(
+                    codex_hepta_memory::RevalidationDrift::KgProjectionGeneration,
+                );
+            }
+            Ok(statuses)
+        })
     }
 }
 
@@ -156,6 +228,21 @@ fn cognitive_thread_store() -> ExtensionData {
     store
 }
 
+fn tool_names(
+    extension: &CognitiveExtension,
+    thread_store: &ExtensionData,
+) -> Vec<(Option<String>, String)> {
+    let session_store = ExtensionData::new("session-tool-gating");
+    let step_store = ExtensionData::new("turn-tool-gating");
+    ToolContributor::tools_for_step(extension, &session_store, thread_store, &step_store)
+        .into_iter()
+        .map(|tool| {
+            let name = tool.tool_name();
+            (name.namespace, name.name)
+        })
+        .collect()
+}
+
 async fn prepare(
     extension: &CognitiveExtension,
     thread_store: &ExtensionData,
@@ -164,6 +251,7 @@ async fn prepare(
     query: &str,
 ) {
     let session_store = ExtensionData::new("session-cognitive");
+    let step_store = ExtensionData::new(turn_store.level_id());
     let fragments = TurnInputContributor::contribute(
         extension,
         TurnInputContext {
@@ -179,6 +267,7 @@ async fn prepare(
         &session_store,
         thread_store,
         turn_store,
+        &step_store,
     )
     .await;
     assert!(fragments.is_empty());
@@ -252,6 +341,41 @@ fn secret_detector_covers_common_key_shapes() {
     assert!(!secret_like(b"remember that API keys must never be stored"));
 }
 
+#[tokio::test]
+async fn mutation_tools_require_both_explicit_write_and_available_runtime() {
+    let fixture = cognitive_fixture().await;
+    let available = CognitiveExtension::new(CognitiveRuntime::Available(fixture.store));
+
+    let read_only = ExtensionData::new(THREAD_ID);
+    read_only.insert(HeptaMemoryThreadState::for_cognitive_test_with_write(
+        true, false,
+    ));
+    assert_eq!(
+        tool_names(&available, &read_only),
+        vec![
+            (Some("hepta_cognitive".to_string()), "recall".to_string()),
+            (Some("hepta_cognitive".to_string()), "explain".to_string()),
+        ]
+    );
+
+    let writable = ExtensionData::new(THREAD_ID);
+    writable.insert(HeptaMemoryThreadState::for_cognitive_test_with_write(
+        true, true,
+    ));
+    assert_eq!(tool_names(&available, &writable).len(), 5);
+
+    let unavailable = CognitiveExtension::new(CognitiveRuntime::Unavailable(
+        codex_hepta_memory::CognitiveUnavailableReason::StorageUnavailable,
+    ));
+    assert_eq!(
+        tool_names(&unavailable, &writable),
+        vec![
+            (Some("hepta_cognitive".to_string()), "recall".to_string()),
+            (Some("hepta_cognitive".to_string()), "explain".to_string()),
+        ]
+    );
+}
+
 #[test]
 fn query_larger_than_two_kib_is_not_prepared_but_witness_remains() {
     let text = "x".repeat(MAX_RETRIEVAL_QUERY_BYTES + 1);
@@ -291,6 +415,13 @@ async fn every_physical_attempt_revalidates_with_stable_source_content_and_bindi
     let first_binding = first.source_binding_sha256().as_str().to_string();
     let first_content_sha = first.content_sha256().as_str().to_string();
     let first_content = first.into_content();
+    let attachment: serde_json::Value =
+        serde_json::from_str(&first_content).expect("structured cognitive attachment");
+    assert_eq!(attachment["schema_version"], 2);
+    assert_eq!(
+        attachment["memories"][0]["channels"],
+        serde_json::json!(["memory_fts", "recency"])
+    );
 
     let retry = propose(
         &extension,
@@ -311,6 +442,278 @@ async fn every_physical_attempt_revalidates_with_stable_source_content_and_bindi
     assert_eq!(retry.into_content(), first_content);
     assert_eq!(backend.retrieve_calls.load(Ordering::SeqCst), 1);
     assert_eq!(backend.revalidate_calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn entity_and_graph_channels_survive_initial_compile_and_physical_revalidation() {
+    let fixture = cognitive_fixture().await;
+    let mut batch = fixture
+        .store
+        .retrieve_memory_candidates(
+            &fixture.access,
+            &RetrievalRequest::new("rust durability", now_unix_seconds().expect("time")),
+        )
+        .await
+        .expect("retrieval batch");
+    assert_eq!(batch.candidates.len(), 1);
+    batch.candidates[0].channels = vec![
+        RetrievalChannel::GraphOneHop,
+        RetrievalChannel::EntityFts,
+        RetrievalChannel::EntityFts,
+    ];
+
+    let (prepared, initial) =
+        compile_retrieval_batch(&batch, 16 * 1024, 8 * 1024).expect("prepared attachment");
+    assert_eq!(prepared.len(), 1);
+    assert_eq!(
+        prepared[0].channels,
+        vec![RetrievalChannel::EntityFts, RetrievalChannel::GraphOneHop]
+    );
+    let initial: serde_json::Value = serde_json::from_str(&initial).expect("initial attachment");
+    assert_eq!(
+        initial["memories"][0]["channels"],
+        serde_json::json!(["entity_fts", "graph_one_hop"])
+    );
+
+    let explanation = fixture
+        .store
+        .explain_memory_head(&fixture.access, &fixture.memory.id.memory_id)
+        .await
+        .expect("current explanation");
+    let physical = compile_explanations(&[RevalidatedAttachmentMemory {
+        explanation,
+        channels: prepared[0].channels.clone(),
+    }])
+    .expect("physical attachment");
+    let physical: serde_json::Value =
+        serde_json::from_str(&physical).expect("physical attachment json");
+    assert_eq!(physical["schema_version"], 2);
+    assert_eq!(
+        physical["memories"][0]["channels"],
+        initial["memories"][0]["channels"]
+    );
+}
+
+#[tokio::test]
+async fn structured_kg_retrieval_channels_reach_the_physical_attachment() {
+    let fixture = cognitive_fixture().await;
+    let now = now_unix_seconds().expect("time");
+    let content = "The project launch is scheduled for Friday.";
+    let written = fixture
+        .store
+        .remember_with_kg(
+            &fixture.access,
+            &SourceDraft {
+                scope: fixture.scope.clone(),
+                kind: LedgerSourceKind::ExplicitMemoryDirective,
+                event_key: "luminous-project".to_string(),
+                content: content.as_bytes().to_vec(),
+                observed_at_unix_seconds: now,
+            },
+            &MemoryDraft {
+                stable_key: "luminous-project".to_string(),
+                revision: MemoryRevisionDraft {
+                    scope: fixture.scope.clone(),
+                    content: content.to_string(),
+                    verification: MemoryVerification::Verified,
+                    lifecycle: MemoryLifecycleState::Active,
+                    valid_from_unix_seconds: now,
+                    valid_to_unix_seconds: None,
+                    citations: Vec::new(),
+                },
+            },
+            &KgFactSetDraft {
+                entities: vec![
+                    KgEntityFactDraft {
+                        key: "luminous-initiative".to_string(),
+                        entity_type: "project".to_string(),
+                        label: "Luminous Initiative".to_string(),
+                    },
+                    KgEntityFactDraft {
+                        key: "friday".to_string(),
+                        entity_type: "weekday".to_string(),
+                        label: "Friday".to_string(),
+                    },
+                ],
+                relations: vec![KgRelationFactDraft {
+                    key: "launch-day".to_string(),
+                    from_entity_key: "luminous-initiative".to_string(),
+                    to_entity_key: "friday".to_string(),
+                    relation: "launches_on".to_string(),
+                }],
+            },
+        )
+        .await
+        .expect("structured KG write");
+    let extension = CognitiveExtension::new(CognitiveRuntime::Available(fixture.store));
+    let thread_store = cognitive_thread_store();
+    let turn_store = ExtensionData::new("turn-structured-kg-physical-channels");
+    prepare(
+        &extension,
+        &thread_store,
+        &turn_store,
+        &fixture.workspace,
+        "Luminous Initiative",
+    )
+    .await;
+    let proposal = propose(
+        &extension,
+        &thread_store,
+        &turn_store,
+        &fixture.workspace,
+        "model-provider-attempt:v1:structured-kg-channels",
+    )
+    .await
+    .expect("physical attachment");
+    let attachment: serde_json::Value =
+        serde_json::from_str(&proposal.into_content()).expect("attachment JSON");
+    let memory = attachment["memories"]
+        .as_array()
+        .expect("memories")
+        .iter()
+        .find(|memory| {
+            memory["memory_id"] == written.memory.id.memory_id.as_str()
+                && memory["revision"] == written.memory.id.revision
+        })
+        .expect("KG memory in physical attachment");
+    assert_eq!(
+        memory["channels"],
+        serde_json::json!(["entity_fts", "graph_one_hop", "recency"])
+    );
+}
+
+#[tokio::test]
+async fn kg_generation_drift_fails_open_without_a_physical_attachment() {
+    let fixture = cognitive_fixture().await;
+    let recall = Arc::new(GenerationDriftRecallBackend {
+        store: fixture.store.clone(),
+    });
+    let extension = CognitiveExtension::with_recall(fixture.store, recall);
+    let thread_store = cognitive_thread_store();
+    let turn_store = ExtensionData::new("turn-generation-drift");
+    prepare(
+        &extension,
+        &thread_store,
+        &turn_store,
+        &fixture.workspace,
+        "rust durability",
+    )
+    .await;
+
+    assert!(
+        propose(
+            &extension,
+            &thread_store,
+            &turn_store,
+            &fixture.workspace,
+            "model-provider-attempt:v1:generation-drift",
+        )
+        .await
+        .is_none()
+    );
+}
+
+#[tokio::test]
+async fn one_stale_memory_drops_the_entire_two_memory_physical_attachment() {
+    let fixture = cognitive_fixture().await;
+    let now = now_unix_seconds().expect("time");
+    let second_citation = fixture
+        .store
+        .append_source(
+            &fixture.access,
+            &SourceDraft {
+                scope: fixture.scope.clone(),
+                kind: LedgerSourceKind::ExplicitMemoryDirective,
+                event_key: "seed-rust-second".to_string(),
+                content: b"rust".to_vec(),
+                observed_at_unix_seconds: now,
+            },
+        )
+        .await
+        .expect("second source");
+    fixture
+        .store
+        .remember_memory(
+            &fixture.access,
+            &MemoryDraft {
+                stable_key: "rust-durability-snapshot".to_string(),
+                revision: MemoryRevisionDraft {
+                    scope: fixture.scope.clone(),
+                    content: "rust".to_string(),
+                    verification: MemoryVerification::Verified,
+                    lifecycle: MemoryLifecycleState::Active,
+                    valid_from_unix_seconds: now,
+                    valid_to_unix_seconds: None,
+                    citations: vec![second_citation],
+                },
+            },
+        )
+        .await
+        .expect("second memory");
+    let backend = Arc::new(PartialBatchDriftRecallBackend {
+        store: Arc::clone(&fixture.store),
+        batch_calls: AtomicUsize::new(0),
+    });
+    let extension = CognitiveExtension::with_recall(fixture.store, backend.clone());
+    let thread_store = cognitive_thread_store();
+    let turn_store = ExtensionData::new("turn-partial-batch-drift");
+    prepare(
+        &extension,
+        &thread_store,
+        &turn_store,
+        &fixture.workspace,
+        "rust durability",
+    )
+    .await;
+    assert_eq!(
+        turn_store
+            .get::<PreparedCognitiveAttachment>()
+            .expect("prepared attachment")
+            .bindings
+            .len(),
+        2
+    );
+
+    assert!(
+        propose(
+            &extension,
+            &thread_store,
+            &turn_store,
+            &fixture.workspace,
+            "model-provider-attempt:v1:partial-batch-drift",
+        )
+        .await
+        .is_none()
+    );
+
+    let session_store = ExtensionData::new("session-combined-cognitive");
+    let base = ModelProviderSha256Digest::parse("2".repeat(64)).expect("digest");
+    let input = EphemeralModelInputContext {
+        schema_version: EPHEMERAL_MODEL_INPUT_SCHEMA_VERSION,
+        session_store: &session_store,
+        thread_store: &thread_store,
+        turn_store: &turn_store,
+        attempt_id: "model-provider-attempt:v1:combined-partial-batch-drift",
+        base_logical_request_sha256: &base,
+        thread_id: THREAD_ID,
+        turn_id: turn_store.level_id(),
+        cwd: &fixture.workspace,
+        request_kind: ModelProviderRequestKind::Turn,
+        provider_id: "provider-cognitive",
+        model: "model-cognitive",
+        transport: ModelProviderTransport::Http,
+        generate: true,
+        model_context_window: Some(128_000),
+        max_content_bytes: EPHEMERAL_MODEL_INPUT_MAX_CONTENT_BYTES,
+        max_content_tokens: EPHEMERAL_MODEL_INPUT_MAX_CONTENT_TOKENS,
+    };
+    assert!(
+        extension
+            .revalidate_prepared_attachment(&input)
+            .await
+            .is_none()
+    );
+    assert_eq!(backend.batch_calls.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]

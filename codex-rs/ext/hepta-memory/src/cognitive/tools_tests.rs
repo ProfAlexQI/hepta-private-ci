@@ -5,6 +5,7 @@ use codex_extension_api::NoopTurnItemEmitter;
 use codex_extension_api::ToolPayload;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_memory::CognitiveUnavailableReason;
+use codex_hepta_memory::MemoryRevisionRecord;
 use codex_hepta_paths::HeptaFleetRoot;
 use codex_utils_output_truncation::TruncationPolicy;
 use tempfile::TempDir;
@@ -132,6 +133,7 @@ async fn assert_source_event_was_not_written(
     cognitive_tool: &CognitiveTool,
     rejected_call: &ToolCall,
     operation: CognitiveToolOperation,
+    source_kind: LedgerSourceKind,
 ) {
     let access = workspace_access(store, witness);
     store
@@ -139,7 +141,7 @@ async fn assert_source_event_was_not_written(
             &access,
             &SourceDraft {
                 scope: workspace_scope(witness),
-                kind: LedgerSourceKind::ExplicitMemoryDirective,
+                kind: source_kind,
                 event_key: cognitive_tool.event_key(rejected_call, operation),
                 content: b"probe proves the rejected call wrote no source".to_vec(),
                 observed_at_unix_seconds: tool_now().expect("time"),
@@ -196,6 +198,7 @@ async fn non_exact_correct_and_forget_do_not_write_source_or_advance_verified_he
         &correct_tool,
         &correct_call,
         CognitiveToolOperation::Correct,
+        LedgerSourceKind::ExplicitMemoryDirective,
     )
     .await;
 
@@ -223,6 +226,7 @@ async fn non_exact_correct_and_forget_do_not_write_source_or_advance_verified_he
         &forget_tool,
         &forget_call,
         CognitiveToolOperation::Forget,
+        LedgerSourceKind::ExplicitMemoryDirective,
     )
     .await;
 
@@ -257,10 +261,15 @@ async fn non_exact_remember_is_provisional_uses_honest_source_and_never_retrieve
         .await
         .expect("provisional remember");
     let value = output.code_mode_result(&remember_call.payload);
-    assert_eq!(value["verification"], "provisional");
-    let memory_id =
-        StableMemoryId::parse(value["memory_id"].as_str().expect("memory id").to_string())
-            .expect("stable memory id");
+    assert_eq!(value["schema_version"], 2);
+    assert_eq!(value["memory"]["verification"], "provisional");
+    let memory_id = StableMemoryId::parse(
+        value["memory"]["memory_id"]
+            .as_str()
+            .expect("memory id")
+            .to_string(),
+    )
+    .expect("stable memory id");
     let access = workspace_access(&store, &witness);
     let explanation = store
         .explain_memory_head(&access, &memory_id)
@@ -298,7 +307,21 @@ async fn exact_remember_and_correct_are_verified_and_forget_is_cas_tombstone() {
         "call-exact-remember",
         json!({
             "stable_key": "exact-fact",
-            "content": "exact remembered fact"
+            "content": "exact remembered fact",
+            "kg": {
+                "entities": [
+                    { "key": "Hepta", "entity_type": "project", "label": "Hepta Project" },
+                    { "key": "Rust", "entity_type": "language", "label": "Rust" }
+                ],
+                "relations": [
+                    {
+                        "key": "uses-rust",
+                        "from_entity_key": "Hepta",
+                        "to_entity_key": "Rust",
+                        "relation": "uses"
+                    }
+                ]
+            }
         }),
     );
     let output = remember_tool
@@ -306,9 +329,24 @@ async fn exact_remember_and_correct_are_verified_and_forget_is_cas_tombstone() {
         .await
         .expect("verified remember");
     let value = output.code_mode_result(&remember_call.payload);
-    assert_eq!(value["verification"], "verified");
-    let memory_id =
-        StableMemoryId::parse(value["memory_id"].as_str().expect("id")).expect("memory id");
+    assert_eq!(value["schema_version"], 2);
+    assert_eq!(value["memory"]["verification"], "verified");
+    assert_eq!(value["projection"]["entity_count"], 2);
+    assert_eq!(value["projection"]["relation_count"], 1);
+    assert_eq!(value["projection"]["fact_count"], 3);
+    assert!(!value.to_string().contains("Hepta Project"));
+    assert!(value["projection"]["generation"].as_u64().is_some());
+    for digest in ["fact_set_sha256", "input_heads_sha256", "output_sha256"] {
+        assert_eq!(
+            value["projection"][digest]
+                .as_str()
+                .expect("projection digest")
+                .len(),
+            64
+        );
+    }
+    let memory_id = StableMemoryId::parse(value["memory"]["memory_id"].as_str().expect("id"))
+        .expect("memory id");
 
     let correction = "exact corrected fact";
     let correct_witness = ExactDirectiveWitness {
@@ -335,8 +373,8 @@ async fn exact_remember_and_correct_are_verified_and_forget_is_cas_tombstone() {
         .await
         .expect("verified correction");
     let value = output.code_mode_result(&correct_call.payload);
-    assert_eq!(value["revision"], 2);
-    assert_eq!(value["verification"], "verified");
+    assert_eq!(value["memory"]["revision"], 2);
+    assert_eq!(value["memory"]["verification"], "verified");
 
     let reason = "exact user-directed forget";
     let forget_witness = ExactDirectiveWitness {
@@ -363,8 +401,11 @@ async fn exact_remember_and_correct_are_verified_and_forget_is_cas_tombstone() {
         .await
         .expect("tombstone");
     let value = output.code_mode_result(&forget_call.payload);
-    assert_eq!(value["revision"], 3);
-    assert_eq!(value["lifecycle"]["state"], "tombstoned");
+    assert_eq!(value["memory"]["revision"], 3);
+    assert_eq!(value["memory"]["lifecycle"]["state"], "tombstoned");
+    assert_eq!(value["projection"]["entity_count"], 0);
+    assert_eq!(value["projection"]["relation_count"], 0);
+    assert_eq!(value["projection"]["fact_count"], 0);
 }
 
 #[tokio::test]
@@ -397,6 +438,115 @@ async fn secret_like_remember_is_rejected_before_source_persistence() {
         &remember_tool,
         &remember_call,
         CognitiveToolOperation::Remember,
+        LedgerSourceKind::AssistantConclusion,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn provisional_structured_facts_fail_closed_before_source_persistence() {
+    let (_temp, store, witness) = test_runtime("different exact user directive").await;
+    let remember_tool = tool(
+        store.clone(),
+        witness.clone(),
+        CognitiveToolOperation::Remember,
+    );
+    let remember_call = call(
+        CognitiveToolOperation::Remember,
+        "call-provisional-kg",
+        json!({
+            "stable_key": "inferred-project",
+            "content": "model inferred project",
+            "kg": {
+                "entities": [
+                    { "key": "hepta", "entity_type": "project", "label": "Hepta" }
+                ]
+            }
+        }),
+    );
+    let FunctionCallError::RespondToModel(error) = tool_error(
+        remember_tool.remember(&store, &remember_call).await,
+        "provisional structured facts must be rejected",
+    ) else {
+        panic!("typed model error");
+    };
+    assert!(error.contains("hepta_cognitive_kg_provisional_facts"));
+    assert_source_event_was_not_written(
+        &store,
+        &witness,
+        &remember_tool,
+        &remember_call,
+        CognitiveToolOperation::Remember,
+        LedgerSourceKind::AssistantConclusion,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn stale_correction_cas_leaves_no_source_event() {
+    let directive = "exact corrected fact";
+    let (_temp, store, witness) = test_runtime(directive).await;
+    let original = seed_verified_memory(&store, &witness, "cas-fact", "original fact").await;
+    let correct_tool = tool(
+        store.clone(),
+        witness.clone(),
+        CognitiveToolOperation::Correct,
+    );
+    let correct_call = call(
+        CognitiveToolOperation::Correct,
+        "call-stale-correct",
+        json!({
+            "memory_id": original.id.memory_id.as_str(),
+            "expected_revision": 99,
+            "content": directive
+        }),
+    );
+
+    let FunctionCallError::RespondToModel(error) = tool_error(
+        correct_tool.correct(&store, &correct_call).await,
+        "stale correction must fail",
+    ) else {
+        panic!("typed model error");
+    };
+    assert!(error.contains("hepta_cognitive_conflict"));
+    assert_source_event_was_not_written(
+        &store,
+        &witness,
+        &correct_tool,
+        &correct_call,
+        CognitiveToolOperation::Correct,
+        LedgerSourceKind::ExplicitMemoryDirective,
+    )
+    .await;
+
+    let forget_tool = tool(
+        store.clone(),
+        witness.clone(),
+        CognitiveToolOperation::Forget,
+    );
+    let forget_call = call(
+        CognitiveToolOperation::Forget,
+        "call-stale-forget",
+        json!({
+            "memory_id": original.id.memory_id.as_str(),
+            "expected_revision": 99,
+            "reason": directive
+        }),
+    );
+    let FunctionCallError::RespondToModel(error) = tool_error(
+        forget_tool.forget(&store, &forget_call).await,
+        "stale forget must fail",
+    ) else {
+        panic!("typed model error");
+    };
+    assert!(error.contains("hepta_cognitive_conflict"));
+    assert_source_event_was_not_written(
+        &store,
+        &witness,
+        &forget_tool,
+        &forget_call,
+        CognitiveToolOperation::Forget,
+        LedgerSourceKind::ExplicitMemoryDirective,
     )
     .await;
 }
@@ -410,6 +560,7 @@ async fn deferred_tools_are_visible_before_turn_input_and_fail_closed_without_ex
         THREAD_ID.to_string(),
         TURN_ID.to_string(),
         witnesses.clone(),
+        true,
     );
     assert_eq!(tools.len(), 5);
 
@@ -482,15 +633,16 @@ async fn conflicting_same_turn_witness_replay_is_permanently_poisoned() {
 }
 
 #[tokio::test]
-async fn unavailable_deferred_runtime_keeps_all_five_tools_visible_without_a_witness() {
+async fn unavailable_deferred_runtime_keeps_only_read_tools_visible_without_a_witness() {
     let (_temp, _store, _witness) = test_runtime("directive").await;
     let tools = deferred_cognitive_tools(
         CognitiveRuntime::Unavailable(CognitiveUnavailableReason::StorageUnavailable),
         THREAD_ID.to_string(),
         TURN_ID.to_string(),
         Arc::new(CognitiveTurnWitnesses::default()),
+        false,
     );
-    assert_eq!(tools.len(), 5);
+    assert_eq!(tools.len(), 2);
     assert_eq!(
         tools
             .iter()
@@ -500,17 +652,14 @@ async fn unavailable_deferred_runtime_keeps_all_five_tools_visible_without_a_wit
             })
             .collect::<Vec<_>>(),
         vec![
-            (Some("hepta_cognitive".to_string()), "remember".to_string()),
             (Some("hepta_cognitive".to_string()), "recall".to_string()),
-            (Some("hepta_cognitive".to_string()), "correct".to_string()),
-            (Some("hepta_cognitive".to_string()), "forget".to_string()),
             (Some("hepta_cognitive".to_string()), "explain".to_string()),
         ]
     );
     let error = tool_error(
         tools[0]
             .handle(call(
-                CognitiveToolOperation::Remember,
+                CognitiveToolOperation::Recall,
                 "call-unavailable",
                 json!({}),
             ))
@@ -542,6 +691,34 @@ fn all_tool_specs_share_the_namespace_and_have_strict_object_shapes() {
         let serialized = serde_json::to_value(namespace).expect("serialize namespace");
         assert_eq!(
             serialized["tools"][0]["parameters"]["additionalProperties"],
+            false
+        );
+    }
+}
+
+#[test]
+fn structured_kg_tool_schema_is_bounded_and_denies_unknown_nested_fields() {
+    for operation in [
+        CognitiveToolOperation::Remember,
+        CognitiveToolOperation::Correct,
+    ] {
+        let schema = input_schema(operation);
+        let kg = &schema["properties"]["kg"];
+        assert_eq!(kg["additionalProperties"], false);
+        assert_eq!(
+            kg["properties"]["entities"]["maxItems"],
+            MAX_STRUCTURED_KG_ENTITIES
+        );
+        assert_eq!(
+            kg["properties"]["relations"]["maxItems"],
+            MAX_STRUCTURED_KG_RELATIONS
+        );
+        assert_eq!(
+            kg["properties"]["entities"]["items"]["additionalProperties"],
+            false
+        );
+        assert_eq!(
+            kg["properties"]["relations"]["items"]["additionalProperties"],
             false
         );
     }

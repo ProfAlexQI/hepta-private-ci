@@ -1,9 +1,12 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::future::Future;
 
 use codex_hepta_contracts::Sha256Digest;
 use serde::Serialize;
 use sqlx::Row;
+use sqlx::Sqlite;
+use sqlx::Transaction;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::CognitiveAccess;
@@ -148,7 +151,7 @@ struct AggregatedRank {
 struct EntitySeed {
     projection_scope: String,
     generation: i64,
-    node_id: String,
+    canonical_entity_id: String,
     memory: MemoryKey,
 }
 
@@ -166,11 +169,25 @@ impl CognitiveStore {
         access: &CognitiveAccess,
         citation: &SourceRevisionId,
     ) -> Result<SourceCitationRecord, CognitiveStoreError> {
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let citation = self
+            .read_citation_tx(&mut transaction, access, citation)
+            .await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(citation)
+    }
+
+    async fn read_citation_tx(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+        access: &CognitiveAccess,
+        citation: &SourceRevisionId,
+    ) -> Result<SourceCitationRecord, CognitiveStoreError> {
         let row =
             sqlx::query("SELECT * FROM source_ledger WHERE source_id = ? AND source_revision = ?")
                 .bind(citation.source_id.as_str())
                 .bind(to_i64(citation.revision, "source revision")?)
-                .fetch_optional(&self.pool)
+                .fetch_optional(&mut **transaction)
                 .await
                 .map_err(unavailable)?
                 .ok_or_else(|| {
@@ -213,10 +230,26 @@ impl CognitiveStore {
         access: &CognitiveAccess,
         memory_id: &StableMemoryId,
     ) -> Result<MemoryExplanation, CognitiveStoreError> {
-        let memory = self.read_memory_head(access, memory_id).await?;
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let explanation = self
+            .explain_memory_head_tx(&mut transaction, access, memory_id)
+            .await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(explanation)
+    }
+
+    async fn explain_memory_head_tx(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+        access: &CognitiveAccess,
+        memory_id: &StableMemoryId,
+    ) -> Result<MemoryExplanation, CognitiveStoreError> {
+        let memory = self
+            .latest_memory_tx(transaction, access, memory_id)
+            .await?;
         let mut citations = Vec::with_capacity(memory.citations.len());
         for citation in &memory.citations {
-            let source = self.read_citation(access, citation).await?;
+            let source = self.read_citation_tx(transaction, access, citation).await?;
             if source.scope != memory.scope {
                 return Err(CognitiveStoreError::Corrupt(
                     "memory head and citation scope diverged".to_string(),
@@ -224,11 +257,13 @@ impl CognitiveStore {
             }
             citations.push(source);
         }
-        let kg_projection_generation = self.projection_generation_for_scope(&memory.scope).await?;
+        let kg_projection_generation = self
+            .projection_generation_for_scope_tx(transaction, &memory.scope)
+            .await?;
         let current_head: i64 =
             sqlx::query_scalar("SELECT revision FROM memory_heads WHERE memory_id = ?")
                 .bind(memory.id.memory_id.as_str())
-                .fetch_one(&self.pool)
+                .fetch_one(&mut **transaction)
                 .await
                 .map_err(unavailable)?;
         if current_head != to_i64(memory.id.revision, "memory revision")? {
@@ -258,22 +293,37 @@ impl CognitiveStore {
         let fts_query = bounded_fts_query(&request.query).ok_or_else(|| {
             CognitiveStoreError::Invalid("retrieval query contains no searchable terms".to_string())
         })?;
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let batch = self
+            .retrieve_memory_candidates_tx(&mut transaction, access, request, &fts_query)
+            .await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(batch)
+    }
+
+    async fn retrieve_memory_candidates_tx(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+        access: &CognitiveAccess,
+        request: &RetrievalRequest,
+        fts_query: &str,
+    ) -> Result<RetrievalBatch, CognitiveStoreError> {
         let workspace = access.workspace_sha256().map(Sha256Digest::as_str);
         let memory_fts = self
-            .memory_fts_channel(access, &fts_query, request.now_unix_seconds)
+            .memory_fts_channel_tx(transaction, access, fts_query, request.now_unix_seconds)
             .await?;
         let entity_seeds = self
-            .entity_fts_channel(access, &fts_query, request.now_unix_seconds)
+            .entity_fts_channel_tx(transaction, access, fts_query, request.now_unix_seconds)
             .await?;
         let entity = entity_seeds
             .iter()
             .map(|seed| seed.memory.clone())
             .collect::<Vec<_>>();
         let graph = self
-            .graph_channel(&entity_seeds, request.now_unix_seconds)
+            .graph_channel_tx(transaction, &entity_seeds, request.now_unix_seconds)
             .await?;
         let recency = self
-            .recency_channel(workspace, request.now_unix_seconds)
+            .recency_channel_tx(transaction, workspace, request.now_unix_seconds)
             .await?;
         let mut ranked = BTreeMap::new();
         add_rrf_channel(&mut ranked, &memory_fts, RetrievalChannel::MemoryFts);
@@ -295,7 +345,9 @@ impl CognitiveStore {
             }
             let memory_id =
                 StableMemoryId::parse(key.memory_id).map_err(CognitiveStoreError::Corrupt)?;
-            let explanation = self.explain_memory_head(access, &memory_id).await?;
+            let explanation = self
+                .explain_memory_head_tx(transaction, access, &memory_id)
+                .await?;
             if explanation.memory.id.revision != key.revision
                 || !eligible(&explanation.memory, request.now_unix_seconds)
             {
@@ -320,18 +372,108 @@ impl CognitiveStore {
         binding: &MemoryRevalidationBinding,
         now_unix_seconds: i64,
     ) -> Result<RevalidationStatus, CognitiveStoreError> {
-        self.authorize(access, &binding.scope)?;
+        self.revalidate_memory_candidates(access, std::slice::from_ref(binding), now_unix_seconds)
+            .await?
+            .pop()
+            .ok_or_else(|| {
+                CognitiveStoreError::Corrupt(
+                    "single-memory revalidation returned no status".to_string(),
+                )
+            })
+    }
+
+    /// Revalidates an ordered attachment set against one SQLite read snapshot.
+    ///
+    /// Physical-send callers must use this batch API rather than opening one
+    /// transaction per memory: a projection mutation between two independent
+    /// reads could otherwise produce an attachment assembled from different KG
+    /// generations.
+    pub async fn revalidate_memory_candidates(
+        &self,
+        access: &CognitiveAccess,
+        bindings: &[MemoryRevalidationBinding],
+        now_unix_seconds: i64,
+    ) -> Result<Vec<RevalidationStatus>, CognitiveStoreError> {
+        self.revalidate_memory_candidates_with_after_each(
+            access,
+            bindings,
+            now_unix_seconds,
+            |_| async {},
+        )
+        .await
+    }
+
+    async fn revalidate_memory_candidates_with_after_each<F, Fut>(
+        &self,
+        access: &CognitiveAccess,
+        bindings: &[MemoryRevalidationBinding],
+        now_unix_seconds: i64,
+        mut after_each: F,
+    ) -> Result<Vec<RevalidationStatus>, CognitiveStoreError>
+    where
+        F: FnMut(usize) -> Fut,
+        Fut: Future<Output = ()>,
+    {
+        for binding in bindings {
+            self.authorize(access, &binding.scope)?;
+        }
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let mut statuses = Vec::with_capacity(bindings.len());
+        for (index, binding) in bindings.iter().enumerate() {
+            statuses.push(
+                self.revalidate_memory_candidate_tx(
+                    &mut transaction,
+                    access,
+                    binding,
+                    now_unix_seconds,
+                )
+                .await?,
+            );
+            after_each(index).await;
+        }
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(statuses)
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn revalidate_memory_candidates_with_test_hook<F, Fut>(
+        &self,
+        access: &CognitiveAccess,
+        bindings: &[MemoryRevalidationBinding],
+        now_unix_seconds: i64,
+        after_each: F,
+    ) -> Result<Vec<RevalidationStatus>, CognitiveStoreError>
+    where
+        F: FnMut(usize) -> Fut,
+        Fut: Future<Output = ()>,
+    {
+        self.revalidate_memory_candidates_with_after_each(
+            access,
+            bindings,
+            now_unix_seconds,
+            after_each,
+        )
+        .await
+    }
+
+    async fn revalidate_memory_candidate_tx(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+        access: &CognitiveAccess,
+        binding: &MemoryRevalidationBinding,
+        now_unix_seconds: i64,
+    ) -> Result<RevalidationStatus, CognitiveStoreError> {
         let head =
             sqlx::query_scalar::<_, i64>("SELECT revision FROM memory_heads WHERE memory_id = ?")
                 .bind(binding.memory.memory_id.as_str())
-                .fetch_optional(&self.pool)
+                .fetch_optional(&mut **transaction)
                 .await
                 .map_err(unavailable)?;
         if head != Some(to_i64(binding.memory.revision, "memory revision")?) {
             return Ok(RevalidationStatus::Stale(RevalidationDrift::HeadRevision));
         }
         let explanation = self
-            .explain_memory_head(access, &binding.memory.memory_id)
+            .explain_memory_head_tx(transaction, access, &binding.memory.memory_id)
             .await?;
         let memory = &explanation.memory;
         if memory.scope != binding.scope {
@@ -386,15 +528,16 @@ impl CognitiveStore {
         Ok(RevalidationStatus::Current(Box::new(explanation)))
     }
 
-    async fn projection_generation_for_scope(
+    async fn projection_generation_for_scope_tx(
         &self,
+        transaction: &mut Transaction<'_, Sqlite>,
         scope: &CognitiveScope,
     ) -> Result<Option<ProjectionGeneration>, CognitiveStoreError> {
         let generation = sqlx::query_scalar::<_, i64>(
             "SELECT generation FROM kg_projection WHERE projection_scope = ?",
         )
         .bind(scope.projection_key())
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut **transaction)
         .await
         .map_err(unavailable)?;
         generation
@@ -406,8 +549,9 @@ impl CognitiveStore {
             .transpose()
     }
 
-    async fn memory_fts_channel(
+    async fn memory_fts_channel_tx(
         &self,
+        transaction: &mut Transaction<'_, Sqlite>,
         access: &CognitiveAccess,
         fts_query: &str,
         now: i64,
@@ -430,14 +574,15 @@ impl CognitiveStore {
         .bind(now)
         .bind(now)
         .bind(channel_limit())
-        .fetch_all(&self.pool)
+        .fetch_all(&mut **transaction)
         .await
         .map_err(unavailable)?;
         decode_memory_keys(rows)
     }
 
-    async fn entity_fts_channel(
+    async fn entity_fts_channel_tx(
         &self,
+        transaction: &mut Transaction<'_, Sqlite>,
         access: &CognitiveAccess,
         fts_query: &str,
         now: i64,
@@ -450,12 +595,18 @@ impl CognitiveStore {
             .map(|scope| scope.projection_key());
         let rows = sqlx::query(
             "SELECT f.projection_scope, f.generation, f.node_id,
-                    n.memory_id, n.memory_revision
+                    i.canonical_entity_id, n.memory_id, n.memory_revision
              FROM kg_entity_fts f
              JOIN kg_projection p ON p.projection_scope = f.projection_scope
                                   AND p.generation = f.generation
              JOIN kg_nodes n ON n.projection_scope = f.projection_scope
                             AND n.generation = f.generation AND n.node_id = f.node_id
+             JOIN kg_projection_node_entities i
+               ON i.projection_scope = n.projection_scope
+              AND i.generation = n.generation AND i.node_id = n.node_id
+             JOIN kg_revision_entities k
+               ON k.memory_id = n.memory_id AND k.memory_revision = n.memory_revision
+              AND k.canonical_entity_id = i.canonical_entity_id
              JOIN memory_heads h ON h.memory_id = n.memory_id
                                 AND h.revision = n.memory_revision
              JOIN memory_revisions r ON r.memory_id = n.memory_id
@@ -477,7 +628,7 @@ impl CognitiveStore {
         .bind(now)
         .bind(now)
         .bind(channel_limit())
-        .fetch_all(&self.pool)
+        .fetch_all(&mut **transaction)
         .await
         .map_err(unavailable)?;
         let mut seen = BTreeSet::new();
@@ -485,13 +636,23 @@ impl CognitiveStore {
             .filter_map(|row| {
                 let result = (|| {
                     let memory = decode_memory_key(&row, "memory_id", "memory_revision")?;
-                    if !seen.insert(memory.clone()) {
+                    let projection_scope: String =
+                        row.try_get("projection_scope").map_err(unavailable)?;
+                    let generation: i64 = row.try_get("generation").map_err(unavailable)?;
+                    let canonical_entity_id: String =
+                        row.try_get("canonical_entity_id").map_err(unavailable)?;
+                    if !seen.insert((
+                        projection_scope.clone(),
+                        generation,
+                        canonical_entity_id.clone(),
+                        memory.clone(),
+                    )) {
                         return Ok(None);
                     }
                     Ok(Some(EntitySeed {
-                        projection_scope: row.try_get("projection_scope").map_err(unavailable)?,
-                        generation: row.try_get("generation").map_err(unavailable)?,
-                        node_id: row.try_get("node_id").map_err(unavailable)?,
+                        projection_scope,
+                        generation,
+                        canonical_entity_id,
                         memory,
                     }))
                 })();
@@ -500,25 +661,45 @@ impl CognitiveStore {
             .collect()
     }
 
-    async fn graph_channel(
+    async fn graph_channel_tx(
         &self,
+        transaction: &mut Transaction<'_, Sqlite>,
         seeds: &[EntitySeed],
         now: i64,
     ) -> Result<Vec<MemoryKey>, CognitiveStoreError> {
+        let mut queried_canonical_entities = BTreeSet::new();
         let mut seen = BTreeSet::new();
         let mut result = Vec::new();
-        for seed in seeds {
-            if result.len() == MAX_RETRIEVAL_CHANNEL_CANDIDATES {
+        'seeds: for seed in seeds {
+            if result.len() >= MAX_RETRIEVAL_CHANNEL_CANDIDATES {
                 break;
             }
+            if !queried_canonical_entities.insert((
+                seed.projection_scope.clone(),
+                seed.generation,
+                seed.canonical_entity_id.clone(),
+            )) {
+                continue;
+            }
+            let remaining = MAX_RETRIEVAL_CHANNEL_CANDIDATES - result.len();
             let rows = sqlx::query(
-                "SELECT e.edge_id, e.memory_id AS edge_memory_id,
+                "WITH canonical_support_nodes AS (
+                     SELECT node_id
+                     FROM kg_projection_node_entities
+                     WHERE projection_scope = ? AND generation = ?
+                       AND canonical_entity_id = ?
+                 )
+                 SELECT DISTINCT e.edge_id, e.memory_id AS edge_memory_id,
                         e.memory_revision AS edge_memory_revision,
                         n.node_id, n.memory_id AS node_memory_id,
                         n.memory_revision AS node_memory_revision
-                 FROM kg_edges e JOIN kg_nodes n
+                 FROM canonical_support_nodes s
+                 JOIN kg_edges e
+                   ON e.projection_scope = ? AND e.generation = ?
+                  AND (e.from_node_id = s.node_id OR e.to_node_id = s.node_id)
+                 JOIN kg_nodes n
                    ON n.projection_scope = e.projection_scope AND n.generation = e.generation
-                  AND n.node_id = CASE WHEN e.from_node_id = ?
+                  AND n.node_id = CASE WHEN e.from_node_id = s.node_id
                                        THEN e.to_node_id ELSE e.from_node_id END
                  JOIN memory_heads eh ON eh.memory_id = e.memory_id
                                      AND eh.revision = e.memory_revision
@@ -528,9 +709,7 @@ impl CognitiveStore {
                                          AND er.revision = e.memory_revision
                  JOIN memory_revisions nr ON nr.memory_id = n.memory_id
                                          AND nr.revision = n.memory_revision
-                 WHERE e.projection_scope = ? AND e.generation = ?
-                   AND (e.from_node_id = ? OR e.to_node_id = ?)
-                   AND e.valid_from_unix_seconds <= ?
+                 WHERE e.valid_from_unix_seconds <= ?
                    AND (e.valid_to_unix_seconds IS NULL OR ? < e.valid_to_unix_seconds)
                    AND n.valid_from_unix_seconds <= ?
                    AND (n.valid_to_unix_seconds IS NULL OR ? < n.valid_to_unix_seconds)
@@ -540,13 +719,14 @@ impl CognitiveStore {
                    AND (er.valid_to_unix_seconds IS NULL OR ? < er.valid_to_unix_seconds)
                    AND nr.valid_from_unix_seconds <= ?
                    AND (nr.valid_to_unix_seconds IS NULL OR ? < nr.valid_to_unix_seconds)
-                 ORDER BY e.edge_id, n.node_id",
+                 ORDER BY e.edge_id, n.node_id
+                 LIMIT ?",
             )
-            .bind(&seed.node_id)
             .bind(&seed.projection_scope)
             .bind(seed.generation)
-            .bind(&seed.node_id)
-            .bind(&seed.node_id)
+            .bind(&seed.canonical_entity_id)
+            .bind(&seed.projection_scope)
+            .bind(seed.generation)
             .bind(now)
             .bind(now)
             .bind(now)
@@ -555,7 +735,10 @@ impl CognitiveStore {
             .bind(now)
             .bind(now)
             .bind(now)
-            .fetch_all(&self.pool)
+            .bind(i64::try_from(remaining).map_err(|_| {
+                CognitiveStoreError::Invalid("graph retrieval limit exceeds i64".to_string())
+            })?)
+            .fetch_all(&mut **transaction)
             .await
             .map_err(unavailable)?;
             for row in rows {
@@ -566,8 +749,8 @@ impl CognitiveStore {
                     if seen.insert(key.clone()) {
                         result.push(key);
                     }
-                    if result.len() == MAX_RETRIEVAL_CHANNEL_CANDIDATES {
-                        break;
+                    if result.len() >= MAX_RETRIEVAL_CHANNEL_CANDIDATES {
+                        break 'seeds;
                     }
                 }
             }
@@ -575,8 +758,50 @@ impl CognitiveStore {
         Ok(result)
     }
 
-    async fn recency_channel(
+    #[cfg(test)]
+    pub(crate) async fn graph_channel_for_test(
         &self,
+        seeds: &[(
+            CognitiveScope,
+            ProjectionGeneration,
+            String,
+            MemoryRevisionId,
+        )],
+        now: i64,
+    ) -> Result<Vec<MemoryRevisionId>, CognitiveStoreError> {
+        let seeds = seeds
+            .iter()
+            .map(
+                |(scope, generation, canonical_entity_id, memory)| -> Result<_, CognitiveStoreError> {
+                    Ok(EntitySeed {
+                        projection_scope: scope.projection_key(),
+                        generation: to_i64(generation.get(), "projection generation")?,
+                        canonical_entity_id: canonical_entity_id.clone(),
+                        memory: MemoryKey {
+                            memory_id: memory.memory_id.as_str().to_string(),
+                            revision: memory.revision,
+                        },
+                    })
+                },
+            )
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let keys = self.graph_channel_tx(&mut transaction, &seeds, now).await?;
+        transaction.commit().await.map_err(unavailable)?;
+        keys.into_iter()
+            .map(|key| {
+                Ok(MemoryRevisionId {
+                    memory_id: StableMemoryId::parse(key.memory_id)
+                        .map_err(CognitiveStoreError::Corrupt)?,
+                    revision: key.revision,
+                })
+            })
+            .collect()
+    }
+
+    async fn recency_channel_tx(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
         workspace: Option<&str>,
         now: i64,
     ) -> Result<Vec<MemoryKey>, CognitiveStoreError> {
@@ -596,7 +821,7 @@ impl CognitiveStore {
         .bind(now)
         .bind(now)
         .bind(channel_limit())
-        .fetch_all(&self.pool)
+        .fetch_all(&mut **transaction)
         .await
         .map_err(unavailable)?;
         decode_memory_keys(rows)

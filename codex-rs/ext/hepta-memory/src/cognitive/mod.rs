@@ -40,6 +40,7 @@ use codex_hepta_memory::MemoryRevalidationBinding;
 use codex_hepta_memory::MemoryRevisionRecord;
 use codex_hepta_memory::MemoryVerification;
 use codex_hepta_memory::RetrievalBatch;
+use codex_hepta_memory::RetrievalChannel;
 use codex_hepta_memory::RetrievalRequest;
 use codex_hepta_memory::RevalidationStatus;
 use codex_hepta_memory::SourceRevalidationBinding;
@@ -54,20 +55,21 @@ use crate::framing::path_identity_bytes;
 use crate::framing::workspace_digest;
 
 mod federation;
+mod kg_extractor;
 mod tools;
 
 pub(crate) use federation::CombinedCognitiveEphemeralContributor;
 pub(crate) use federation::FederatedCognitiveExtension;
 
 const COGNITIVE_SOURCE: &str = "hepta_cognitive_plane_v1";
-const COGNITIVE_ATTACHMENT_SCHEMA_VERSION: u32 = 1;
+const COGNITIVE_ATTACHMENT_SCHEMA_VERSION: u32 = 2;
 const MAX_WITNESSES_PER_THREAD: usize = 16;
 const MAX_AUTO_CITATIONS_PER_MEMORY: usize = 8;
 
 type RetrievalFuture<'a> =
     Pin<Box<dyn Future<Output = Result<RetrievalBatch, CognitiveStoreError>> + Send + 'a>>;
 type RevalidationFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<RevalidationStatus, CognitiveStoreError>> + Send + 'a>>;
+    Pin<Box<dyn Future<Output = Result<Vec<RevalidationStatus>, CognitiveStoreError>> + Send + 'a>>;
 
 trait CognitiveRecallBackend: Send + Sync {
     fn retrieve<'a>(
@@ -76,10 +78,10 @@ trait CognitiveRecallBackend: Send + Sync {
         request: &'a RetrievalRequest,
     ) -> RetrievalFuture<'a>;
 
-    fn revalidate<'a>(
+    fn revalidate_batch<'a>(
         &'a self,
         access: &'a CognitiveAccess,
-        binding: &'a MemoryRevalidationBinding,
+        bindings: &'a [MemoryRevalidationBinding],
         now_unix_seconds: i64,
     ) -> RevalidationFuture<'a>;
 }
@@ -93,13 +95,13 @@ impl CognitiveRecallBackend for CognitiveStore {
         Box::pin(self.retrieve_memory_candidates(access, request))
     }
 
-    fn revalidate<'a>(
+    fn revalidate_batch<'a>(
         &'a self,
         access: &'a CognitiveAccess,
-        binding: &'a MemoryRevalidationBinding,
+        bindings: &'a [MemoryRevalidationBinding],
         now_unix_seconds: i64,
     ) -> RevalidationFuture<'a> {
-        Box::pin(self.revalidate_memory_candidate(access, binding, now_unix_seconds))
+        Box::pin(self.revalidate_memory_candidates(access, bindings, now_unix_seconds))
     }
 }
 
@@ -182,10 +184,21 @@ struct PreparedCognitiveAttachment {
     turn_id: String,
     workspace: PathBuf,
     query_sha256: Sha256Digest,
-    bindings: Vec<MemoryRevalidationBinding>,
+    bindings: Vec<PreparedCognitiveBinding>,
     source_binding_sha256: Sha256Digest,
     content_sha256: Sha256Digest,
     claimed_token_count: u32,
+}
+
+#[derive(Clone, Serialize)]
+struct PreparedCognitiveBinding {
+    binding: MemoryRevalidationBinding,
+    channels: Vec<RetrievalChannel>,
+}
+
+struct RevalidatedAttachmentMemory {
+    explanation: MemoryExplanation,
+    channels: Vec<RetrievalChannel>,
 }
 
 pub(super) struct CognitiveProposalMaterial {
@@ -240,6 +253,47 @@ impl CognitiveExtension {
         self.runtime.available_store()
     }
 
+    async fn revalidate_bindings(
+        &self,
+        access: &CognitiveAccess,
+        prepared_bindings: &[PreparedCognitiveBinding],
+        now_unix_seconds: i64,
+    ) -> Option<Vec<RevalidatedAttachmentMemory>> {
+        let recall = self.recall.as_ref()?;
+        let bindings = prepared_bindings
+            .iter()
+            .map(|prepared| prepared.binding.clone())
+            .collect::<Vec<_>>();
+        let statuses = recall
+            .revalidate_batch(access, &bindings, now_unix_seconds)
+            .await
+            .ok()?;
+        if statuses.len() != prepared_bindings.len() {
+            return None;
+        }
+        let mut explanations = Vec::with_capacity(prepared_bindings.len());
+        for (status, prepared_binding) in statuses.into_iter().zip(prepared_bindings) {
+            let RevalidationStatus::Current(explanation) = status else {
+                return None;
+            };
+            if explanation.memory.verification != MemoryVerification::Verified
+                || explanation.memory.lifecycle != MemoryLifecycleState::Active
+                || secret_like(explanation.memory.content.as_bytes())
+                || explanation
+                    .citations
+                    .iter()
+                    .any(|citation| secret_like(&citation.content))
+            {
+                return None;
+            }
+            explanations.push(RevalidatedAttachmentMemory {
+                explanation: *explanation,
+                channels: prepared_binding.channels.clone(),
+            });
+        }
+        Some(explanations)
+    }
+
     pub(super) fn has_prepared_attachment(
         &self,
         thread_store: &ExtensionData,
@@ -285,33 +339,14 @@ impl CognitiveExtension {
             return None;
         }
         let now = now_unix_seconds()?;
-        let (Some(store), Some(recall)) = (self.store(), self.recall.as_ref()) else {
-            return None;
-        };
+        let store = self.store()?;
         let access = CognitiveAccess::workspace_private(
             store.owner_agent_id().clone(),
             workspace_digest(input.cwd),
         );
-        let mut explanations = Vec::with_capacity(prepared.bindings.len());
-        for binding in &prepared.bindings {
-            let Ok(status) = recall.revalidate(&access, binding, now).await else {
-                return None;
-            };
-            let RevalidationStatus::Current(explanation) = status else {
-                return None;
-            };
-            if explanation.memory.verification != MemoryVerification::Verified
-                || explanation.memory.lifecycle != MemoryLifecycleState::Active
-                || secret_like(explanation.memory.content.as_bytes())
-                || explanation
-                    .citations
-                    .iter()
-                    .any(|citation| secret_like(&citation.content))
-            {
-                return None;
-            }
-            explanations.push(*explanation);
-        }
+        let explanations = self
+            .revalidate_bindings(&access, &prepared.bindings, now)
+            .await?;
         let content = compile_explanations(&explanations)?;
         let content_sha256 = Sha256Digest::for_bytes(content.as_bytes());
         let source_binding_sha256 = cognitive_source_binding(
@@ -507,33 +542,19 @@ impl EphemeralModelInputContributor for CognitiveExtension {
             let Some(now) = now_unix_seconds() else {
                 return Ok(None);
             };
-            let (Some(store), Some(recall)) = (self.store(), self.recall.as_ref()) else {
+            let Some(store) = self.store() else {
                 return Ok(None);
             };
             let access = CognitiveAccess::workspace_private(
                 store.owner_agent_id().clone(),
                 workspace_digest(input.cwd),
             );
-            let mut explanations = Vec::with_capacity(prepared.bindings.len());
-            for binding in &prepared.bindings {
-                let Ok(status) = recall.revalidate(&access, binding, now).await else {
-                    return Ok(None);
-                };
-                let RevalidationStatus::Current(explanation) = status else {
-                    return Ok(None);
-                };
-                if explanation.memory.verification != MemoryVerification::Verified
-                    || explanation.memory.lifecycle != MemoryLifecycleState::Active
-                    || secret_like(explanation.memory.content.as_bytes())
-                    || explanation
-                        .citations
-                        .iter()
-                        .any(|citation| secret_like(&citation.content))
-                {
-                    return Ok(None);
-                }
-                explanations.push(*explanation);
-            }
+            let Some(explanations) = self
+                .revalidate_bindings(&access, &prepared.bindings, now)
+                .await
+            else {
+                return Ok(None);
+            };
             let Some(content) = compile_explanations(&explanations) else {
                 return Ok(None);
             };
@@ -588,15 +609,16 @@ impl ToolContributor for CognitiveExtension {
         thread_store: &ExtensionData,
         step_store: &ExtensionData,
     ) -> Vec<Arc<dyn ToolExecutor<ToolCall>>> {
-        if thread_store.get::<HeptaMemoryThreadState>().is_none() {
+        let Some(thread_state) = thread_store.get::<HeptaMemoryThreadState>() else {
             return Vec::new();
-        }
+        };
         let witnesses = thread_store.get_or_init(CognitiveTurnWitnesses::default);
         tools::deferred_cognitive_tools(
             self.runtime.clone(),
             thread_store.level_id().to_string(),
             step_store.level_id().to_string(),
             witnesses,
+            thread_state.write_enabled && self.store().is_some(),
         )
     }
 }
@@ -687,6 +709,7 @@ struct AttachmentMemory {
     revision: u64,
     content: String,
     content_sha256: String,
+    channels: Vec<RetrievalChannel>,
     citations: Vec<AttachmentCitation>,
 }
 
@@ -701,7 +724,7 @@ fn compile_retrieval_batch(
     batch: &RetrievalBatch,
     max_bytes: usize,
     max_item_bytes: usize,
-) -> Option<(Vec<MemoryRevalidationBinding>, String)> {
+) -> Option<(Vec<PreparedCognitiveBinding>, String)> {
     let max_bytes = max_bytes
         .min(EPHEMERAL_MODEL_INPUT_MAX_CONTENT_BYTES as usize)
         .min(EPHEMERAL_MODEL_INPUT_MAX_CONTENT_TOKENS as usize);
@@ -715,7 +738,12 @@ fn compile_retrieval_batch(
         {
             continue;
         }
-        let record = attachment_record(&candidate.memory, &candidate.revalidation.citations);
+        let channels = canonical_channels(&candidate.channels);
+        let record = attachment_record(
+            &candidate.memory,
+            &candidate.revalidation.citations,
+            &channels,
+        );
         let mut proposed = selected_memories.clone();
         proposed.push(record);
         let Ok(content) = serialize_attachment(&proposed) else {
@@ -725,7 +753,10 @@ fn compile_retrieval_batch(
             continue;
         }
         selected_memories = proposed;
-        selected_bindings.push(candidate.revalidation.clone());
+        selected_bindings.push(PreparedCognitiveBinding {
+            binding: candidate.revalidation.clone(),
+            channels,
+        });
     }
     if selected_bindings.is_empty() {
         return None;
@@ -734,10 +765,11 @@ fn compile_retrieval_batch(
     Some((selected_bindings, content))
 }
 
-fn compile_explanations(explanations: &[MemoryExplanation]) -> Option<String> {
+fn compile_explanations(explanations: &[RevalidatedAttachmentMemory]) -> Option<String> {
     let memories = explanations
         .iter()
-        .map(|explanation| {
+        .map(|revalidated| {
+            let explanation = &revalidated.explanation;
             let citations = explanation
                 .citations
                 .iter()
@@ -747,7 +779,7 @@ fn compile_explanations(explanations: &[MemoryExplanation]) -> Option<String> {
                     content_sha256: citation.content_sha256.clone(),
                 })
                 .collect::<Vec<_>>();
-            attachment_record(&explanation.memory, &citations)
+            attachment_record(&explanation.memory, &citations, &revalidated.channels)
         })
         .collect::<Vec<_>>();
     serialize_attachment(&memories).ok()
@@ -764,12 +796,14 @@ fn serialize_attachment(memories: &[AttachmentMemory]) -> Result<String, serde_j
 fn attachment_record(
     memory: &MemoryRevisionRecord,
     citations: &[SourceRevalidationBinding],
+    channels: &[RetrievalChannel],
 ) -> AttachmentMemory {
     AttachmentMemory {
         memory_id: memory.id.memory_id.as_str().to_string(),
         revision: memory.id.revision,
         content: memory.content.clone(),
         content_sha256: memory.content_sha256.as_str().to_string(),
+        channels: channels.to_vec(),
         citations: citations
             .iter()
             .take(MAX_AUTO_CITATIONS_PER_MEMORY)
@@ -782,17 +816,24 @@ fn attachment_record(
     }
 }
 
+fn canonical_channels(channels: &[RetrievalChannel]) -> Vec<RetrievalChannel> {
+    let mut channels = channels.to_vec();
+    channels.sort_unstable();
+    channels.dedup();
+    channels
+}
+
 fn cognitive_source_binding(
     thread_id: &str,
     turn_id: &str,
     workspace: &Path,
     query_sha256: &Sha256Digest,
-    bindings: &[MemoryRevalidationBinding],
+    bindings: &[PreparedCognitiveBinding],
     content_sha256: &Sha256Digest,
 ) -> Sha256Digest {
     let serialized = serde_json::to_vec(bindings).unwrap_or_default();
     digest_many(
-        b"hepta:cognitive:ephemeral-source-binding:v1",
+        b"hepta:cognitive:ephemeral-source-binding:v2",
         &[
             thread_id.as_bytes(),
             turn_id.as_bytes(),

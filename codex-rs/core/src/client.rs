@@ -564,6 +564,15 @@ enum WebsocketStreamOutcome {
     FallbackToHttp,
 }
 
+fn has_active_ephemeral_model_input_contributor(context: &ModelProviderPolicyContext<'_>) -> bool {
+    context.request_kind == ModelProviderRequestKind::Turn
+        && context
+            .registry
+            .ephemeral_model_input_contributors()
+            .iter()
+            .any(|contributor| contributor.is_active(context.thread_store, context.turn_store))
+}
+
 /// Result of opening a WebRTC Realtime call.
 ///
 /// The SDP answer goes back to the client. The call id and auth headers stay on the server so the
@@ -2627,6 +2636,14 @@ impl ModelClientSession {
         if !self.client.responses_websocket_enabled() {
             return Ok(());
         }
+        // Turn-input contributors finish preparing their turn-local state before this
+        // context is handed to the provider client. Freeze the same active-contributor
+        // predicate used by the physical-send resolver: an active ephemeral input may
+        // only travel through the HTTP path that resolves and binds it. A WebSocket
+        // prewarm would otherwise establish transport state that bypasses that path.
+        if provider_policy_context.is_some_and(has_active_ephemeral_model_input_contributor) {
+            return Ok(());
+        }
         if self.websocket_session.last_request.is_some() {
             return Ok(());
         }
@@ -2801,10 +2818,17 @@ impl ModelClientSession {
                 "turn recovery checkpoint requires an exact provider policy context".to_string(),
             ));
         }
+        // This synchronous check freezes the exact turn-local contributor state after
+        // turn-input preparation and before any transport await. WebSocket sends do not
+        // run `resolve_ephemeral_model_input`, so an active contributor must use the
+        // existing sensitive HTTP path instead of silently losing attempt-local input.
+        let ephemeral_model_input_requires_http =
+            provider_policy_context.is_some_and(has_active_ephemeral_model_input_contributor);
         let wire_api = self.client.state.provider.info().wire_api;
         match wire_api {
             WireApi::Responses => {
-                if self.client.responses_websocket_enabled() {
+                if self.client.responses_websocket_enabled() && !ephemeral_model_input_requires_http
+                {
                     let request_trace = current_span_w3c_trace_context();
                     match self
                         .stream_responses_websocket_future(

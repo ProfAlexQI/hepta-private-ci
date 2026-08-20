@@ -3,10 +3,13 @@ use std::collections::BTreeSet;
 use codex_hepta_contracts::Sha256Digest;
 use sqlx::Row;
 use sqlx::Sqlite;
+use sqlx::SqliteConnection;
 use sqlx::Transaction;
 
+use crate::cognitive_intelligence_writer::LEGACY_ZERO_FACT_CONTRACT;
 use crate::cognitive_model::CognitiveAccess;
 use crate::cognitive_model::CognitiveScope;
+use crate::cognitive_model::KgFactSetDraft;
 use crate::cognitive_model::MAX_MEMORY_BYTES;
 use crate::cognitive_model::MemoryDraft;
 use crate::cognitive_model::MemoryLifecycleState;
@@ -76,6 +79,26 @@ impl CognitiveStore {
         access: &CognitiveAccess,
         draft: &MemoryDraft,
     ) -> Result<MemoryRevisionRecord, CognitiveStoreError> {
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(unavailable)?;
+        let record = self
+            .create_memory_revision_tx(&mut transaction, access, draft)
+            .await?;
+        self.publish_legacy_zero_fact_projection_tx(&mut transaction, &record)
+            .await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(record)
+    }
+
+    pub(crate) async fn create_memory_revision_tx(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+        access: &CognitiveAccess,
+        draft: &MemoryDraft,
+    ) -> Result<MemoryRevisionRecord, CognitiveStoreError> {
         self.authorize(access, &draft.revision.scope)?;
         validate_key(&draft.stable_key, "stable memory key")?;
         validate_revision_draft(&draft.revision)?;
@@ -84,10 +107,9 @@ impl CognitiveStore {
             &draft.revision.scope,
             &draft.stable_key,
         );
-        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
         if sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM memory_heads WHERE memory_id = ?")
             .bind(memory_id.as_str())
-            .fetch_one(&mut *transaction)
+            .fetch_one(&mut **transaction)
             .await
             .map_err(unavailable)?
             != 0
@@ -98,7 +120,7 @@ impl CognitiveStore {
             )));
         }
         insert_revision(
-            &mut transaction,
+            transaction,
             &self.owner_agent_id,
             &memory_id,
             1,
@@ -108,11 +130,10 @@ impl CognitiveStore {
         .await?;
         sqlx::query("INSERT INTO memory_heads (memory_id, revision) VALUES (?, 1)")
             .bind(memory_id.as_str())
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await
             .map_err(unavailable)?;
-        transaction.commit().await.map_err(unavailable)?;
-        self.latest_memory(access, &memory_id).await
+        self.latest_memory_tx(transaction, access, &memory_id).await
     }
 
     pub async fn revise_memory(
@@ -122,21 +143,49 @@ impl CognitiveStore {
         expected_revision: u64,
         draft: &MemoryRevisionDraft,
     ) -> Result<MemoryRevisionRecord, CognitiveStoreError> {
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(unavailable)?;
+        let record = self
+            .revise_memory_revision_tx(
+                &mut transaction,
+                access,
+                memory_id,
+                expected_revision,
+                draft,
+            )
+            .await?;
+        self.publish_legacy_zero_fact_projection_tx(&mut transaction, &record)
+            .await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(record)
+    }
+
+    pub(crate) async fn revise_memory_revision_tx(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+        access: &CognitiveAccess,
+        memory_id: &StableMemoryId,
+        expected_revision: u64,
+        draft: &MemoryRevisionDraft,
+    ) -> Result<MemoryRevisionRecord, CognitiveStoreError> {
         validate_revision_draft(draft)?;
-        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
         let row = sqlx::query(
-            "SELECT h.revision, r.scope_kind, r.workspace_sha256
+            "SELECT h.revision, r.scope_kind, r.workspace_sha256, r.lifecycle
              FROM memory_heads h JOIN memory_revisions r
                ON r.memory_id = h.memory_id AND r.revision = h.revision
              WHERE h.memory_id = ?",
         )
         .bind(memory_id.as_str())
-        .fetch_optional(&mut *transaction)
+        .fetch_optional(&mut **transaction)
         .await
         .map_err(unavailable)?
         .ok_or_else(|| CognitiveStoreError::Invalid("memory does not exist".to_string()))?;
         let current_revision: i64 = row.try_get("revision").map_err(unavailable)?;
         let current_scope = decode_scope(&row)?;
+        let current_lifecycle: String = row.try_get("lifecycle").map_err(unavailable)?;
         self.authorize(access, &current_scope)?;
         if &current_scope != draft.scope_ref() {
             return Err(CognitiveStoreError::AccessDenied(
@@ -150,11 +199,16 @@ impl CognitiveStore {
                 "expected memory revision {expected_revision}, found {current_revision}"
             )));
         }
+        if current_lifecycle == "tombstoned" && draft.lifecycle == MemoryLifecycleState::Active {
+            return Err(CognitiveStoreError::Conflict(
+                "a tombstoned memory cannot be resurrected by correction".to_string(),
+            ));
+        }
         let next_revision = current_revision
             .checked_add(1)
             .ok_or_else(|| CognitiveStoreError::Corrupt("memory revision overflow".to_string()))?;
         insert_revision(
-            &mut transaction,
+            transaction,
             &self.owner_agent_id,
             memory_id,
             next_revision,
@@ -168,7 +222,7 @@ impl CognitiveStore {
         .bind(next_revision)
         .bind(memory_id.as_str())
         .bind(current_revision)
-        .execute(&mut *transaction)
+        .execute(&mut **transaction)
         .await
         .map_err(unavailable)?;
         if updated.rows_affected() != 1 {
@@ -176,12 +230,25 @@ impl CognitiveStore {
                 "memory head changed during revision".to_string(),
             ));
         }
-        transaction.commit().await.map_err(unavailable)?;
-        self.latest_memory(access, memory_id).await
+        self.latest_memory_tx(transaction, access, memory_id).await
     }
 
     pub async fn latest_memory(
         &self,
+        access: &CognitiveAccess,
+        memory_id: &StableMemoryId,
+    ) -> Result<MemoryRevisionRecord, CognitiveStoreError> {
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let record = self
+            .latest_memory_tx(&mut transaction, access, memory_id)
+            .await?;
+        transaction.commit().await.map_err(unavailable)?;
+        Ok(record)
+    }
+
+    pub(crate) async fn latest_memory_tx(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
         access: &CognitiveAccess,
         memory_id: &StableMemoryId,
     ) -> Result<MemoryRevisionRecord, CognitiveStoreError> {
@@ -191,13 +258,36 @@ impl CognitiveStore {
              WHERE h.memory_id = ?",
         )
         .bind(memory_id.as_str())
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut **transaction)
         .await
         .map_err(unavailable)?
         .ok_or_else(|| CognitiveStoreError::Invalid("memory does not exist".to_string()))?;
         let scope = decode_scope(&row)?;
         self.authorize(access, &scope)?;
-        decode_revision(&self.pool, row, scope).await
+        decode_revision(transaction, row, scope).await
+    }
+
+    async fn publish_legacy_zero_fact_projection_tx(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+        memory: &MemoryRevisionRecord,
+    ) -> Result<(), CognitiveStoreError> {
+        let citation = memory.citations.first().ok_or_else(|| {
+            CognitiveStoreError::Corrupt(
+                "memory revision has no citation for its zero-fact receipt".to_string(),
+            )
+        })?;
+        let facts = self.canonicalize_fact_set(
+            memory,
+            citation,
+            &KgFactSetDraft::default(),
+            LEGACY_ZERO_FACT_CONTRACT,
+        )?;
+        self.insert_revision_facts_tx(transaction, memory, citation, &facts)
+            .await?;
+        self.refresh_scope_projection_tx(transaction, &memory.scope, memory, citation, &facts)
+            .await?;
+        Ok(())
     }
 }
 
@@ -207,7 +297,7 @@ impl MemoryRevisionDraft {
     }
 }
 
-async fn insert_revision(
+pub(crate) async fn insert_revision(
     transaction: &mut Transaction<'_, Sqlite>,
     owner_agent_id: &codex_hepta_contracts::AgentId,
     memory_id: &StableMemoryId,
@@ -313,7 +403,9 @@ async fn verify_citations(
     Ok(())
 }
 
-fn validate_revision_draft(draft: &MemoryRevisionDraft) -> Result<(), CognitiveStoreError> {
+pub(crate) fn validate_revision_draft(
+    draft: &MemoryRevisionDraft,
+) -> Result<(), CognitiveStoreError> {
     if draft.content.is_empty() || draft.content.len() > MAX_MEMORY_BYTES {
         return Err(CognitiveStoreError::Invalid(format!(
             "memory content must contain 1..={MAX_MEMORY_BYTES} bytes"
@@ -338,7 +430,7 @@ fn validate_revision_draft(draft: &MemoryRevisionDraft) -> Result<(), CognitiveS
 }
 
 pub(crate) async fn decode_revision(
-    pool: &sqlx::SqlitePool,
+    connection: &mut SqliteConnection,
     row: sqlx::sqlite::SqliteRow,
     scope: CognitiveScope,
 ) -> Result<MemoryRevisionRecord, CognitiveStoreError> {
@@ -352,7 +444,7 @@ pub(crate) async fn decode_revision(
     )
     .bind(memory_id.as_str())
     .bind(revision)
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(unavailable)?
     .into_iter()

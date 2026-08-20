@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod cognitive_federation;
+mod cognitive_intelligence_writer;
 mod cognitive_kg_store;
 mod cognitive_memory_store;
 mod cognitive_model;
@@ -32,9 +33,14 @@ pub use cognitive_federation::MAX_FEDERATION_GRANT_LIFETIME_SECONDS;
 pub use cognitive_federation::MAX_FEDERATION_SOURCES_PER_AGENT;
 pub use cognitive_memory_store::ForgetMemoryDraft;
 pub use cognitive_model::CognitiveAccess;
+pub use cognitive_model::CognitiveProjectionReceipt;
 pub use cognitive_model::CognitiveScope;
+pub use cognitive_model::CognitiveWriteReceipt;
 pub use cognitive_model::KgEdge;
+pub use cognitive_model::KgEntityFactDraft;
+pub use cognitive_model::KgFactSetDraft;
 pub use cognitive_model::KgNode;
+pub use cognitive_model::KgRelationFactDraft;
 pub use cognitive_model::LedgerSourceKind;
 pub use cognitive_model::MemoryDraft;
 pub use cognitive_model::MemoryLifecycleState;
@@ -42,6 +48,7 @@ pub use cognitive_model::MemoryRevisionDraft;
 pub use cognitive_model::MemoryRevisionId;
 pub use cognitive_model::MemoryRevisionRecord;
 pub use cognitive_model::MemoryVerification;
+pub use cognitive_model::ProjectionGeneration;
 pub use cognitive_model::SourceDraft;
 pub use cognitive_model::SourceEventId;
 pub use cognitive_model::SourceRevisionId;
@@ -63,7 +70,6 @@ pub use cognitive_runtime::CognitiveRuntime;
 pub use cognitive_runtime::CognitiveUnavailableReason;
 pub use cognitive_store::CognitiveStore;
 pub use cognitive_store::CognitiveStoreError;
-pub use cognitive_store::ProjectionGeneration;
 pub use framing::workspace_binding_digest;
 pub use recall::RECALL_OBSERVATION_SCHEMA_VERSION;
 pub use recall::RecallCandidate;
@@ -88,6 +94,10 @@ mod cognitive_memory_store_tests;
 #[cfg(test)]
 #[path = "cognitive_kg_store_tests.rs"]
 mod cognitive_kg_store_tests;
+
+#[cfg(test)]
+#[path = "cognitive_intelligence_writer_tests.rs"]
+mod cognitive_intelligence_writer_tests;
 
 #[cfg(test)]
 #[path = "cognitive_retrieval_tests.rs"]

@@ -43,9 +43,22 @@ reason = "Permanently retired from the vNext product: the live deployment has no
 
 [[surface]]
 crate = "codex-hepta-memory"
-role = "pure_same_thread_recall"
-public_items = ["shadow_recall", "RecallObservation", "RecallObservationReason"]
-product_callers = ["codex-rs/ext/hepta-memory/src/extension.rs"]
+role = "agent_local_versioned_memory_intelligence_and_kg"
+public_items = [
+  "CognitiveRuntime",
+  "CognitiveStore",
+  "CognitiveWriteReceipt",
+  "KgFactSetDraft",
+  "RetrievalBatch",
+  "shadow_recall",
+]
+product_callers = [
+  "codex-rs/ext/hepta-memory/src/extension.rs",
+  "codex-rs/ext/hepta-memory/src/cognitive/mod.rs",
+  "codex-rs/ext/hepta-memory/src/cognitive/tools.rs",
+  "codex-rs/hepta-agentd/src/runtime.rs",
+  "codex-rs/hepta-agentd/src/app_runtime.rs",
+]
 
 [[surface]]
 crate = "codex-hepta-memory-extension"
@@ -182,4 +195,64 @@ intelligence_or_kg_authority = false
 matrix_or_robrix_authority = false
 automation_authority = false
 provider_physical_sampling_exactly_once = false
+promotion_eligible = false
+
+[[qualification]]
+slice = "R2_intelligence_kg_closed_loop"
+requires = ["R2_codex_execution_substrate", "R2_independent_dual_agent"]
+qualification_base_sha = "aafa375e925dfb1a67eba375585490883a11207c"
+composition = "named_agentd_cognitive_tool_writer_and_revalidated_provider_attachment_composed"
+product_callers = [
+  "codex-rs/hepta-agentd/src/runtime.rs",
+  "codex-rs/hepta-agentd/src/app_runtime.rs",
+  "codex-rs/app-server/src/extensions.rs",
+  "codex-rs/ext/hepta-memory/src/cognitive/tools.rs",
+  "codex-rs/ext/hepta-memory/src/cognitive/mod.rs",
+]
+qualification_callers = [
+  "codex-rs/hepta-agentd/tests/cognitive_product_e2e.rs",
+]
+qualification_tests = [
+  "real_agentd_remember_recall_correct_and_forget_revalidate_physical_sends",
+  "two_real_agentd_app_servers_never_cross_recall",
+  "unavailable_cognitive_store_keeps_read_tools_and_omits_write_tools",
+]
+qualification_lifecycle_actions = ["kill", "restart"]
+product_caller_named = true
+write_feature = "hepta_cognitive_write"
+write_feature_default_enabled = false
+governance_required_for_write = true
+mutation_writer_composed = true
+source_memory_revision_and_kg_projection_one_transaction = true
+immutable_revision_fact_header_required_even_when_empty = true
+exact_memory_citation_bound = true
+current_verified_active_heads_only = true
+correction_and_forget_advance_projection_generation = true
+tombstone_resurrection_rejected = true
+multi_provenance_entity_occurrences_preserved = true
+retrieval_channels = ["memory_fts", "entity_fts", "graph_one_hop", "recency"]
+retrieval_single_sqlite_snapshot = true
+physical_provider_attachment_revalidated = true
+attachment_channels_bound_to_physical_send = true
+active_ephemeral_input_forces_sensitive_http = true
+websocket_ephemeral_input_exact_conformance = false
+provider_send_linearizable_with_cognitive_mutation = false
+agent_and_workspace_scope_isolation = true
+unavailable_runtime_mutation_tools_exposed = false
+preexisting_later_stage_candidate_surfaces_present = true
+cross_agent_memory_federation_qualified_in_g3 = false
+matrix_or_robrix_qualified_in_g3 = false
+fleet_lifecycle_qualified_in_g3 = false
+automation_qualified_in_g3 = false
+new_cross_agent_memory_federation_authority_added = false
+new_matrix_or_robrix_authority_added = false
+new_fleet_lifecycle_surface_added = false
+new_product_fleet_lifecycle_authority_added = false
+new_automation_authority_added = false
+provider_physical_sampling_exactly_once = false
+legacy_persistent_kg_database_compatibility = false
+old_binary_reopen_after_migration_supported = false
+rollback_requires_pre_migration_database_snapshot = true
+whole_store_historical_reopen_scale_qualified = false
+operator_acceptance_recorded = false
 promotion_eligible = false

@@ -11,6 +11,15 @@ pub const SOURCE_REVISION: u64 = 1;
 pub(crate) const MAX_MEMORY_BYTES: usize = 64 * 1024;
 pub(crate) const MAX_SOURCE_BYTES: usize = 1024 * 1024;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub struct ProjectionGeneration(pub(crate) u64);
+
+impl ProjectionGeneration {
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CognitiveAccess {
     agent_id: AgentId,
@@ -315,6 +324,54 @@ pub struct MemoryRevisionRecord {
     pub valid_to_unix_seconds: Option<i64>,
     pub supersedes_revision: Option<u64>,
     pub citations: Vec<SourceRevisionId>,
+}
+
+/// A model-proposed entity occurrence for one immutable memory revision.
+///
+/// `key` is canonicalized by the store before it is hashed. The resulting
+/// canonical entity identity is stable for the owning agent and scope, while
+/// the materialized projection node remains revision-local so provenance is
+/// never collapsed to a representative memory.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct KgEntityFactDraft {
+    pub key: String,
+    pub entity_type: String,
+    pub label: String,
+}
+
+/// A model-proposed relation whose endpoints must both be declared by the
+/// same revision's [`KgEntityFactDraft`] set.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct KgRelationFactDraft {
+    pub key: String,
+    pub from_entity_key: String,
+    pub to_entity_key: String,
+    pub relation: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct KgFactSetDraft {
+    pub entities: Vec<KgEntityFactDraft>,
+    pub relations: Vec<KgRelationFactDraft>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct CognitiveProjectionReceipt {
+    pub generation: ProjectionGeneration,
+    pub fact_set_sha256: Sha256Digest,
+    pub input_heads_sha256: Sha256Digest,
+    pub output_sha256: Sha256Digest,
+    pub entity_count: u64,
+    pub relation_count: u64,
+    pub node_count: u64,
+    pub edge_count: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct CognitiveWriteReceipt {
+    pub memory: MemoryRevisionRecord,
+    pub source: SourceRevisionId,
+    pub projection: CognitiveProjectionReceipt,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -311,6 +311,7 @@ async fn run_codex_tool_session_inner(
                     }
                     EventMsg::AgentReasoningRawContent(_)
                     | EventMsg::TurnStarted(_)
+                    | EventMsg::TurnRecoveryCandidate(_)
                     | EventMsg::ThreadSettingsApplied(_)
                     | EventMsg::EnvironmentConnected(_)
                     | EventMsg::EnvironmentDisconnected(_)

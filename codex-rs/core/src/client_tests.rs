@@ -10,9 +10,12 @@ use super::X_CODEX_PARENT_THREAD_ID_HEADER;
 use super::X_CODEX_TURN_METADATA_HEADER;
 use super::X_CODEX_WINDOW_ID_HEADER;
 use super::X_OPENAI_SUBAGENT_HEADER;
+use super::has_active_ephemeral_model_input_contributor;
 use crate::AttestationContext;
 use crate::AttestationProvider;
 use crate::GenerateAttestationFuture;
+use crate::config::Config;
+use crate::model_provider_policy::ModelProviderPolicyContext;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::test_support::TestCodexResponsesRequestKind;
 use crate::test_support::responses_metadata as test_responses_metadata;
@@ -21,6 +24,11 @@ use codex_api::ApiError;
 use codex_api::ResponseEvent;
 use codex_api::RetryConfig;
 use codex_api::TransportError;
+use codex_extension_api::EphemeralModelInputContributor;
+use codex_extension_api::ExtensionData;
+use codex_extension_api::ExtensionRegistry;
+use codex_extension_api::ExtensionRegistryBuilder;
+use codex_extension_api::ModelProviderRequestKind;
 use codex_http_client::HttpClientFactory;
 use codex_http_client::OutboundProxyPolicy;
 use codex_login::AuthCredentialsStoreMode;
@@ -120,6 +128,84 @@ fn test_model_client_with_thread_id(
         /*attestation_provider*/ None,
         HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
     )
+}
+
+struct TransportSelectionEphemeralContributor {
+    active: bool,
+}
+
+impl EphemeralModelInputContributor for TransportSelectionEphemeralContributor {
+    fn is_active(&self, _thread_store: &ExtensionData, _turn_store: &ExtensionData) -> bool {
+        self.active
+    }
+}
+
+fn transport_selection_registry(active: Option<bool>) -> ExtensionRegistry<Config> {
+    let mut builder = ExtensionRegistryBuilder::<Config>::new();
+    if let Some(active) = active {
+        builder.ephemeral_model_input_contributor(Arc::new(
+            TransportSelectionEphemeralContributor { active },
+        ));
+    }
+    builder.build()
+}
+
+fn transport_selection_context<'a>(
+    registry: &'a ExtensionRegistry<Config>,
+    stores: (&'a ExtensionData, &'a ExtensionData, &'a ExtensionData),
+    request_kind: ModelProviderRequestKind,
+) -> ModelProviderPolicyContext<'a> {
+    ModelProviderPolicyContext {
+        registry,
+        session_store: stores.0,
+        thread_store: stores.1,
+        turn_store: stores.2,
+        thread_id: "thread-1".to_string(),
+        turn_id: "turn-1".to_string(),
+        request_kind,
+        ephemeral_input_cwd: None,
+    }
+}
+
+#[test]
+fn websocket_transport_gate_uses_exact_active_turn_contributors() {
+    let stores = (
+        ExtensionData::new("session-1"),
+        ExtensionData::new("thread-1"),
+        ExtensionData::new("turn-1"),
+    );
+    let active = transport_selection_registry(Some(true));
+    let inactive = transport_selection_registry(Some(false));
+    let empty = transport_selection_registry(None);
+
+    assert!(has_active_ephemeral_model_input_contributor(
+        &transport_selection_context(
+            &active,
+            (&stores.0, &stores.1, &stores.2),
+            ModelProviderRequestKind::Turn,
+        )
+    ));
+    assert!(!has_active_ephemeral_model_input_contributor(
+        &transport_selection_context(
+            &inactive,
+            (&stores.0, &stores.1, &stores.2),
+            ModelProviderRequestKind::Turn,
+        )
+    ));
+    assert!(!has_active_ephemeral_model_input_contributor(
+        &transport_selection_context(
+            &empty,
+            (&stores.0, &stores.1, &stores.2),
+            ModelProviderRequestKind::Turn,
+        )
+    ));
+    assert!(!has_active_ephemeral_model_input_contributor(
+        &transport_selection_context(
+            &active,
+            (&stores.0, &stores.1, &stores.2),
+            ModelProviderRequestKind::Memory,
+        )
+    ));
 }
 
 #[test]

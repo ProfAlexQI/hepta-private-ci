@@ -46,6 +46,26 @@ async fn memory_identity_survives_verified_revisions_and_tombstone() {
     assert_eq!(first.id.revision, 1);
     assert_eq!(first.supersedes_revision, None);
     assert_eq!(first.verification, MemoryVerification::Verified);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT generation FROM kg_projection WHERE projection_scope = 'agent_private'",
+        )
+        .fetch_one(&store.pool)
+        .await
+        .expect("legacy create generation"),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>(
+            "SELECT extractor_contract FROM kg_revision_fact_sets
+             WHERE memory_id = ? AND memory_revision = 1",
+        )
+        .bind(first.id.memory_id.as_str())
+        .fetch_one(&store.pool)
+        .await
+        .expect("legacy zero-fact receipt"),
+        "legacy_memory_api_zero_v1"
+    );
 
     let mut corrected = memory_revision(
         CognitiveScope::AgentPrivate,
@@ -61,6 +81,15 @@ async fn memory_identity_survives_verified_revisions_and_tombstone() {
     assert_eq!(second.id.revision, 2);
     assert_eq!(second.supersedes_revision, Some(1));
     assert_eq!(second.verification, MemoryVerification::Verified);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT generation FROM kg_projection WHERE projection_scope = 'agent_private'",
+        )
+        .fetch_one(&store.pool)
+        .await
+        .expect("legacy correction generation"),
+        2
+    );
 
     let tombstone = ForgetMemoryDraft {
         scope: CognitiveScope::AgentPrivate,
@@ -80,6 +109,15 @@ async fn memory_identity_survives_verified_revisions_and_tombstone() {
         MemoryLifecycleState::Tombstoned {
             reason: tombstone.reason,
         }
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT generation FROM kg_projection WHERE projection_scope = 'agent_private'",
+        )
+        .fetch_one(&store.pool)
+        .await
+        .expect("legacy forget generation"),
+        3
     );
 
     let stale = store

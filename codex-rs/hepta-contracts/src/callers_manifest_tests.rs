@@ -223,3 +223,120 @@ fn legacy_caller_zero_surfaces_are_explicitly_retired() {
         );
     }
 }
+
+#[test]
+fn g3_intelligence_kg_truth_bounds_qualification_without_hiding_later_candidates() {
+    let manifest = manifest();
+    let memory = surface(&manifest, "codex-hepta-memory");
+    assert_eq!(
+        memory.role,
+        "agent_local_versioned_memory_intelligence_and_kg"
+    );
+    assert!(
+        memory
+            .product_callers
+            .iter()
+            .any(|caller| caller.ends_with("/cognitive/tools.rs"))
+    );
+
+    let g3 = manifest
+        .qualification
+        .iter()
+        .find(|entry| {
+            entry.get("slice").and_then(toml::Value::as_str)
+                == Some("R2_intelligence_kg_closed_loop")
+        })
+        .expect("missing G3 Intelligence/KG qualification truth");
+    for field in [
+        "product_caller_named",
+        "governance_required_for_write",
+        "mutation_writer_composed",
+        "source_memory_revision_and_kg_projection_one_transaction",
+        "immutable_revision_fact_header_required_even_when_empty",
+        "exact_memory_citation_bound",
+        "correction_and_forget_advance_projection_generation",
+        "multi_provenance_entity_occurrences_preserved",
+        "retrieval_single_sqlite_snapshot",
+        "physical_provider_attachment_revalidated",
+        "attachment_channels_bound_to_physical_send",
+        "active_ephemeral_input_forces_sensitive_http",
+        "preexisting_later_stage_candidate_surfaces_present",
+    ] {
+        assert_eq!(
+            g3.get(field).and_then(toml::Value::as_bool),
+            Some(true),
+            "{field} must describe the composed G3 product path",
+        );
+    }
+    let product_callers = g3
+        .get("product_callers")
+        .and_then(toml::Value::as_array)
+        .expect("G3 product callers must be explicit");
+    assert!(
+        product_callers
+            .iter()
+            .any(|caller| { caller.as_str() == Some("codex-rs/hepta-agentd/src/runtime.rs") })
+    );
+    let qualification_callers = g3
+        .get("qualification_callers")
+        .and_then(toml::Value::as_array)
+        .expect("G3 qualification callers must be explicit");
+    assert_eq!(
+        qualification_callers
+            .iter()
+            .filter_map(toml::Value::as_str)
+            .collect::<Vec<_>>(),
+        ["codex-rs/hepta-agentd/tests/cognitive_product_e2e.rs"]
+    );
+    let qualification_tests = g3
+        .get("qualification_tests")
+        .and_then(toml::Value::as_array)
+        .expect("G3 qualification tests must be exact");
+    assert_eq!(
+        qualification_tests
+            .iter()
+            .filter_map(toml::Value::as_str)
+            .collect::<Vec<_>>(),
+        [
+            "real_agentd_remember_recall_correct_and_forget_revalidate_physical_sends",
+            "two_real_agentd_app_servers_never_cross_recall",
+            "unavailable_cognitive_store_keeps_read_tools_and_omits_write_tools",
+        ]
+    );
+    assert_eq!(
+        g3.get("qualification_lifecycle_actions")
+            .and_then(toml::Value::as_array)
+            .expect("G3 qualification lifecycle actions must be explicit")
+            .iter()
+            .filter_map(toml::Value::as_str)
+            .collect::<Vec<_>>(),
+        ["kill", "restart"]
+    );
+    for field in [
+        "write_feature_default_enabled",
+        "unavailable_runtime_mutation_tools_exposed",
+        "cross_agent_memory_federation_qualified_in_g3",
+        "matrix_or_robrix_qualified_in_g3",
+        "fleet_lifecycle_qualified_in_g3",
+        "automation_qualified_in_g3",
+        "new_cross_agent_memory_federation_authority_added",
+        "new_matrix_or_robrix_authority_added",
+        "new_fleet_lifecycle_surface_added",
+        "new_product_fleet_lifecycle_authority_added",
+        "new_automation_authority_added",
+        "provider_physical_sampling_exactly_once",
+        "websocket_ephemeral_input_exact_conformance",
+        "provider_send_linearizable_with_cognitive_mutation",
+        "legacy_persistent_kg_database_compatibility",
+        "old_binary_reopen_after_migration_supported",
+        "whole_store_historical_reopen_scale_qualified",
+        "operator_acceptance_recorded",
+        "promotion_eligible",
+    ] {
+        assert_eq!(
+            g3.get(field).and_then(toml::Value::as_bool),
+            Some(false),
+            "{field} must remain false in the bounded G3 qualification truth",
+        );
+    }
+}

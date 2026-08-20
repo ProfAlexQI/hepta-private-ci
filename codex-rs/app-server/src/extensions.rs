@@ -109,17 +109,7 @@ where
         hepta_cognitive_runtime,
         |config: &Config| {
             codex_hepta_memory_extension::HeptaMemoryThreadConfig::for_features(
-                codex_hepta_memory_extension::HeptaMemoryFeatureFlags {
-                    governance_enabled: config
-                        .features
-                        .enabled(codex_features::Feature::HeptaGovernance),
-                    memory_enabled: config
-                        .features
-                        .enabled(codex_features::Feature::HeptaMemory),
-                    read_only_enabled: config
-                        .features
-                        .enabled(codex_features::Feature::HeptaMemoryReadOnly),
-                },
+                hepta_memory_feature_flags(&config.features),
             )
         },
     );
@@ -153,6 +143,17 @@ where
         },
     );
     Arc::new(builder.build())
+}
+
+fn hepta_memory_feature_flags(
+    features: &codex_features::Features,
+) -> codex_hepta_memory_extension::HeptaMemoryFeatureFlags {
+    codex_hepta_memory_extension::HeptaMemoryFeatureFlags {
+        governance_enabled: features.enabled(codex_features::Feature::HeptaGovernance),
+        memory_enabled: features.enabled(codex_features::Feature::HeptaMemory),
+        read_only_enabled: features.enabled(codex_features::Feature::HeptaMemoryReadOnly),
+        write_enabled: features.enabled(codex_features::Feature::HeptaCognitiveWrite),
+    }
 }
 
 pub(crate) fn app_server_extension_event_sink(
@@ -360,6 +361,34 @@ mod tests {
     use crate::thread_state::ConnectionCapabilities;
 
     use super::*;
+
+    #[test]
+    fn cognitive_write_feature_is_explicit_and_independent_from_read_only() {
+        assert_eq!(
+            codex_features::Feature::HeptaCognitiveWrite.key(),
+            "hepta_cognitive_write"
+        );
+        assert_eq!(
+            codex_features::Feature::HeptaCognitiveWrite.stage(),
+            codex_features::Stage::UnderDevelopment
+        );
+        assert!(!codex_features::Feature::HeptaCognitiveWrite.default_enabled());
+
+        let mut features = codex_features::Features::with_defaults();
+        features
+            .enable(codex_features::Feature::HeptaGovernance)
+            .enable(codex_features::Feature::HeptaMemory)
+            .enable(codex_features::Feature::HeptaMemoryReadOnly);
+
+        let read_only = hepta_memory_feature_flags(&features);
+        assert!(read_only.governance_enabled);
+        assert!(read_only.memory_enabled);
+        assert!(read_only.read_only_enabled);
+        assert!(!read_only.write_enabled);
+
+        features.enable(codex_features::Feature::HeptaCognitiveWrite);
+        assert!(hepta_memory_feature_flags(&features).write_enabled);
+    }
 
     #[tokio::test]
     async fn app_server_event_sink_uses_listener_fifo_for_goal_updates_warnings_and_clears() {

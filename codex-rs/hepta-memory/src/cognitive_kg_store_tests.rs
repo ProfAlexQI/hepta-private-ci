@@ -5,17 +5,32 @@ use crate::CognitiveAccess;
 use crate::CognitiveScope;
 use crate::CognitiveStore;
 use crate::CognitiveStoreError;
-use crate::KgEdge;
-use crate::KgNode;
+use crate::KgEntityFactDraft;
+use crate::KgFactSetDraft;
+use crate::KgRelationFactDraft;
 use crate::MemoryDraft;
+use crate::MemoryLifecycleState;
+use crate::MemoryRevisionDraft;
+use crate::MemoryVerification;
 use crate::cognitive_test_support::agent_id;
 use crate::cognitive_test_support::layout;
-use crate::cognitive_test_support::memory_revision;
 use crate::cognitive_test_support::source;
 use crate::cognitive_test_support::workspace;
 
+fn revision(scope: CognitiveScope, content: &str) -> MemoryRevisionDraft {
+    MemoryRevisionDraft {
+        scope,
+        content: content.to_string(),
+        verification: MemoryVerification::Verified,
+        lifecycle: MemoryLifecycleState::Active,
+        valid_from_unix_seconds: 100,
+        valid_to_unix_seconds: None,
+        citations: Vec::new(),
+    }
+}
+
 #[tokio::test]
-async fn temporal_kg_rebuild_is_scoped_cited_and_fts_backed() {
+async fn product_projection_is_scoped_cited_append_only_and_fts_backed() {
     let temp = TempDir::new().expect("temp dir");
     let agent_id = agent_id(4);
     let store = CognitiveStore::open(&layout(&temp, &agent_id))
@@ -26,107 +41,118 @@ async fn temporal_kg_rebuild_is_scoped_cited_and_fts_backed() {
         workspace_sha256: workspace_sha256.clone(),
     };
     let access = CognitiveAccess::workspace_private(agent_id, workspace_sha256);
-    let citation = store
-        .append_source(
+    let content = "Ada collaborated with Charles.";
+    let first = store
+        .remember_with_kg(
             &access,
-            &source(scope.clone(), "kg-source", "Ada collaborated with Charles"),
-        )
-        .await
-        .expect("source");
-    let memory = store
-        .create_memory(
-            &access,
+            &source(scope.clone(), "kg-source", content),
             &MemoryDraft {
                 stable_key: "ada-collaboration".to_string(),
-                revision: memory_revision(
-                    scope.clone(),
-                    "Ada collaborated with Charles.",
-                    citation.clone(),
-                ),
+                revision: revision(scope.clone(), content),
+            },
+            &KgFactSetDraft {
+                entities: vec![
+                    KgEntityFactDraft {
+                        key: "ada".to_string(),
+                        entity_type: "person".to_string(),
+                        label: "Ada Lovelace".to_string(),
+                    },
+                    KgEntityFactDraft {
+                        key: "charles".to_string(),
+                        entity_type: "person".to_string(),
+                        label: "Charles Babbage".to_string(),
+                    },
+                ],
+                relations: vec![KgRelationFactDraft {
+                    key: "collaborated".to_string(),
+                    from_entity_key: "ada".to_string(),
+                    to_entity_key: "charles".to_string(),
+                    relation: "collaborated_with".to_string(),
+                }],
             },
         )
         .await
-        .expect("memory");
-    let ada = KgNode {
-        node_id: "person:ada".to_string(),
-        entity_type: "person".to_string(),
-        label: "Ada Lovelace".to_string(),
-        valid_from_unix_seconds: 100,
-        valid_to_unix_seconds: None,
-        memory: memory.id.clone(),
-        source: citation.clone(),
-    };
-    let charles = KgNode {
-        node_id: "person:charles".to_string(),
-        entity_type: "person".to_string(),
-        label: "Charles Babbage".to_string(),
-        valid_from_unix_seconds: 100,
-        valid_to_unix_seconds: None,
-        memory: memory.id.clone(),
-        source: citation.clone(),
-    };
-    let edge = KgEdge {
-        edge_id: "relation:collaborated".to_string(),
-        from_node_id: ada.node_id.clone(),
-        to_node_id: charles.node_id.clone(),
-        relation: "collaborated_with".to_string(),
-        valid_from_unix_seconds: 100,
-        valid_to_unix_seconds: None,
-        memory: memory.id.clone(),
-        source: citation.clone(),
-    };
-    assert_eq!(
-        store
-            .rebuild_kg_projection(&access, &scope, &[ada.clone(), charles], &[edge])
-            .await
-            .expect("first projection")
-            .get(),
-        1
-    );
+        .expect("first projection");
+    assert_eq!(first.projection.generation.get(), 1);
     assert_eq!(
         sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM kg_entity_fts WHERE kg_entity_fts MATCH 'Ada'"
+            "SELECT COUNT(*) FROM kg_entity_fts WHERE kg_entity_fts MATCH 'Ada'",
         )
         .fetch_one(&store.pool)
         .await
         .expect("FTS5 query"),
         1
     );
-    assert_eq!(
-        store
-            .rebuild_kg_projection(&access, &scope, &[ada], &[])
-            .await
-            .expect("second projection")
-            .get(),
-        2
-    );
+
+    let corrected_content = "Ada documented the engine.";
+    let second = store
+        .correct_with_kg(
+            &access,
+            &first.memory.id.memory_id,
+            1,
+            &source(scope.clone(), "kg-correction", corrected_content),
+            &revision(scope.clone(), corrected_content),
+            &KgFactSetDraft {
+                entities: vec![KgEntityFactDraft {
+                    key: "ada".to_string(),
+                    entity_type: "person".to_string(),
+                    label: "Ada Lovelace".to_string(),
+                }],
+                relations: Vec::new(),
+            },
+        )
+        .await
+        .expect("replacement projection");
+    assert_eq!(second.projection.generation.get(), 2);
+    assert_eq!(second.projection.edge_count, 0);
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM kg_edges")
             .fetch_one(&store.pool)
             .await
-            .expect("edge count"),
-        0
+            .expect("historical edge count"),
+        1
+    );
+    let immutable = sqlx::query("DELETE FROM kg_nodes")
+        .execute(&store.pool)
+        .await
+        .expect_err("projection nodes are append-only");
+    assert!(
+        immutable
+            .to_string()
+            .contains("projection nodes are immutable")
     );
 
-    let uncited_source = store
-        .append_source(
+    let sources_before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM source_ledger")
+        .fetch_one(&store.pool)
+        .await
+        .expect("source count");
+    let bad_content = "A dangling relation.";
+    let error = store
+        .remember_with_kg(
             &access,
-            &source(scope.clone(), "uncited", "unrelated source"),
+            &source(scope.clone(), "dangling", bad_content),
+            &MemoryDraft {
+                stable_key: "dangling".to_string(),
+                revision: revision(scope, bad_content),
+            },
+            &KgFactSetDraft {
+                entities: Vec::new(),
+                relations: vec![KgRelationFactDraft {
+                    key: "bad".to_string(),
+                    from_entity_key: "missing".to_string(),
+                    to_entity_key: "missing".to_string(),
+                    relation: "references".to_string(),
+                }],
+            },
         )
         .await
-        .expect("uncited source");
-    let bad_node = KgNode {
-        node_id: "person:bad".to_string(),
-        entity_type: "person".to_string(),
-        label: "Uncited projection".to_string(),
-        valid_from_unix_seconds: 100,
-        valid_to_unix_seconds: None,
-        memory: memory.id,
-        source: uncited_source,
-    };
-    let error = store
-        .rebuild_kg_projection(&access, &scope, &[bad_node], &[])
-        .await
-        .expect_err("uncited KG provenance must fail");
+        .expect_err("dangling relation must roll back");
     assert!(matches!(error, CognitiveStoreError::Invalid(_)));
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM source_ledger")
+            .fetch_one(&store.pool)
+            .await
+            .expect("rolled-back source count"),
+        sources_before
+    );
 }

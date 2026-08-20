@@ -96,6 +96,9 @@ impl MessageProcessor {
                         read_only_enabled: config
                             .features
                             .enabled(codex_features::Feature::HeptaMemoryReadOnly),
+                        write_enabled: config
+                            .features
+                            .enabled(codex_features::Feature::HeptaCognitiveWrite),
                     },
                 )
             },
