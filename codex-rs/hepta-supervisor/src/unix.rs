@@ -154,6 +154,7 @@ impl ProcessDriver for UnixProcessDriver {
             .args(&spec.command.args)
             .current_dir(&spec.workspace)
             .env("CODEX_HOME", &spec.home_root)
+            .env("CODEX_SQLITE_HOME", &spec.home_root)
             .env("HEPTA_AGENT_ID", spec.agent_id.to_string())
             .env("HEPTA_AGENT_GENERATION", spec.generation.to_string())
             .env("HEPTA_FLEET_ROOT", &spec.fleet_root)

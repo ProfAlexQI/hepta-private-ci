@@ -32,6 +32,9 @@ use crate::ProcessState;
 use crate::ProcessStream;
 use crate::SpawnSpec;
 
+const SQLITE_HOME_POLLUTION_CHILD_ENV: &str = "HEPTA_SUPERVISOR_SQLITE_HOME_POLLUTION_CHILD";
+const POLLUTED_SQLITE_HOME: &str = "/tmp/hepta-polluted-shared-sqlite-home";
+
 #[test]
 fn unix_wrapper_captures_bounded_stdout_and_stderr() {
     let temp = tempfile::tempdir().expect("temporary directory");
@@ -74,6 +77,91 @@ fn unix_wrapper_captures_bounded_stdout_and_stderr() {
     assert_eq!(streams.len(), 2);
     assert!(streams.contains(&ProcessStream::Stdout));
     assert!(streams.contains(&ProcessStream::Stderr));
+}
+
+#[test]
+fn unix_spawn_overrides_polluted_sqlite_home_for_two_agents() {
+    if std::env::var_os(SQLITE_HOME_POLLUTION_CHILD_ENV).is_none() {
+        let output = Command::new(std::env::current_exe().expect("current test executable"))
+            .arg("unix_spawn_overrides_polluted_sqlite_home_for_two_agents")
+            .arg("--nocapture")
+            .env(SQLITE_HOME_POLLUTION_CHILD_ENV, "1")
+            .env("CODEX_SQLITE_HOME", POLLUTED_SQLITE_HOME)
+            .output()
+            .expect("run isolated polluted-environment child test");
+        assert!(
+            output.status.success(),
+            "polluted-environment child test failed; stdout={}; stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+
+    assert_eq!(
+        std::env::var("CODEX_SQLITE_HOME").expect("polluted SQLite environment"),
+        POLLUTED_SQLITE_HOME
+    );
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let first_home =
+        spawn_sqlite_home_probe(temp.path(), "first", "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12");
+    let second_home = spawn_sqlite_home_probe(
+        temp.path(),
+        "second",
+        "019153a4-3088-7e03-a56a-9b1964f75dd3",
+    );
+
+    assert_eq!(temp.path().join("first/home"), first_home);
+    assert_eq!(temp.path().join("second/home"), second_home);
+    assert_ne!(first_home, second_home);
+}
+
+fn spawn_sqlite_home_probe(root: &Path, name: &str, agent_id: &str) -> std::path::PathBuf {
+    let agent_root = root.join(name);
+    let workspace = agent_root.join("workspace");
+    let home_root = agent_root.join("home");
+    let run_root = agent_root.join("run");
+    let logs_root = agent_root.join("logs");
+    for directory in [&workspace, &home_root, &run_root, &logs_root] {
+        std::fs::create_dir_all(directory).expect("create probe directory");
+    }
+    let observed_path = workspace.join("observed-sqlite-home");
+    let command = AgentCommand::new(
+        "/bin/sh",
+        vec![
+            OsString::from("-c"),
+            OsString::from("printf '%s' \"$CODEX_SQLITE_HOME\" > observed-sqlite-home"),
+        ],
+    )
+    .expect("valid probe command");
+    let spec = SpawnSpec {
+        agent_id: AgentId::parse(agent_id).expect("valid agent id"),
+        generation: 1,
+        fleet_root: root.join("fleet"),
+        workspace,
+        home_root: home_root.clone(),
+        run_root: run_root.clone(),
+        control_socket: run_root.join("agentd-control.sock"),
+        logs_root,
+        command,
+    };
+    let mut process = UnixProcessDriver::new(8)
+        .expect("valid driver")
+        .spawn(&spec)
+        .expect("spawn SQLite home probe")
+        .process;
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        let observation = process.poll(8).expect("poll SQLite home probe");
+        if matches!(observation.state, ProcessState::Exited(_)) {
+            break;
+        }
+        assert!(Instant::now() < deadline, "SQLite home probe did not exit");
+        std::thread::yield_now();
+    }
+    std::path::PathBuf::from(
+        std::fs::read_to_string(observed_path).expect("read observed SQLite home"),
+    )
 }
 
 #[test]

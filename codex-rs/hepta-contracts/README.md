@@ -191,6 +191,21 @@ implementation is an oracle and evidence source, not a merge target.
   product callers, so this slice remains ineligible for promotion until a later
   ordered product stage names its caller and refreshes exact-head/operator
   receipts.
+- R2 G2 independent-dual-Agent qualification composes two real `agentd`
+  processes under the existing Unix supervisor in an isolated test fleet.
+  Supervisor spawn overrides inherited `CODEX_SQLITE_HOME` with each Agent's
+  `SpawnSpec.home_root`. Each Agent connects through its own App Server UDS and
+  retains its own durable thread and queue state. The qualification rejects
+  Agent B attempts to resume or recover Agent A's private thread, kills and
+  restarts Agent A while Agent B remains ready at the same PID and generation
+  with its in-progress turn and queued payload unchanged, then cold-resumes and
+  explicitly recovers Agent A's same interrupted turn. Each Agent dispatches
+  its local queued item only after its preceding turn reaches terminal state.
+- G2 is a qualification topology, not a named product invocation path. Its
+  lifecycle operations are test-harness actions and add no fleet lifecycle
+  product authority. G2 does not enable Intelligence/KG, cross-Agent memory
+  federation, Matrix/Robrix, automation, promotion, deployment, or provider
+  physical exactly-once semantics.
 - The current candidate stack governs ToolRegistry dispatch and the listed
   provider send paths. Memory recall, memory mutation writers, external channel
   transport, outbound delivery, effect ACK, retirement, and automatic

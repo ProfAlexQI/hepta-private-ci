@@ -154,3 +154,32 @@ queue_payload_binding_scope = "QueuedItemService serialized observed queue set; 
 matrix_or_robrix_authority = false
 fleet_or_automation_authority = false
 promotion_eligible = false
+
+[[qualification]]
+slice = "R2_independent_dual_agent"
+requires = ["R2_codex_execution_substrate"]
+composition = "two_real_agentd_processes_with_agent_local_execution_state_composed"
+qualification_callers = [
+  "codex-rs/hepta-agentd/tests/two_agent_turn_recovery.rs",
+  "codex-rs/hepta-supervisor/src/unix_tests.rs",
+]
+product_caller_named = false
+real_agentd_process_count = 2
+agent_local_app_server_uds = true
+agent_local_codex_home = true
+agent_local_sqlite_home = true
+agent_local_durable_queue = true
+cross_agent_thread_resume_or_recovery_rejected = true
+peer_pid_and_generation_stable_during_other_agent_restart = true
+peer_in_progress_turn_and_queue_stable_during_other_agent_restart = true
+same_turn_recovery_remains_agent_local = true
+queued_dispatch_requires_recovery_terminal = true
+qualification_lifecycle_actions = ["register", "start", "kill", "restart"]
+new_fleet_lifecycle_surface_added = false
+new_product_fleet_lifecycle_authority_added = false
+cross_agent_memory_federation_authority = false
+intelligence_or_kg_authority = false
+matrix_or_robrix_authority = false
+automation_authority = false
+provider_physical_sampling_exactly_once = false
+promotion_eligible = false
