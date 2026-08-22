@@ -41,6 +41,11 @@ use crate::MatrixTransportError;
 
 const MATRIX_ROOM_MESSAGE_EVENT_TYPE: &str = "m.room.message";
 const MATRIX_ROOM_ENCRYPTED_EVENT_TYPE: &str = "m.room.encrypted";
+// A Matrix companion must either reach its homeserver quickly or return to
+// Supervisor for its bounded, generation-fenced retry schedule. Matrix SDK
+// startup paths may otherwise consume several transport attempts and their
+// individual timeouts before matrixd can bind its control socket.
+const MATRIX_STARTUP_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 pub struct MatrixSdkClient {
     client: Client,
@@ -56,7 +61,12 @@ impl MatrixSdkClient {
         store_passphrase: Option<&str>,
     ) -> Result<Self, MatrixSdkError> {
         verify_session_identity(&config, &session)?;
-        let sidecar = Self::build(layout, config, store_passphrase).await?;
+        let sidecar = tokio::time::timeout(
+            MATRIX_STARTUP_REQUEST_TIMEOUT,
+            Self::build(layout, config, store_passphrase),
+        )
+        .await
+        .map_err(|_| MatrixSdkError::Initialization)??;
         sidecar
             .client
             .restore_session(session)
@@ -74,7 +84,12 @@ impl MatrixSdkClient {
         store_passphrase: Option<&str>,
         device_display_name: Option<&str>,
     ) -> Result<(Self, MatrixSession), MatrixSdkError> {
-        let sidecar = Self::build(layout, config, store_passphrase).await?;
+        let sidecar = tokio::time::timeout(
+            MATRIX_STARTUP_REQUEST_TIMEOUT,
+            Self::build(layout, config, store_passphrase),
+        )
+        .await
+        .map_err(|_| MatrixSdkError::Initialization)??;
         let mut login = sidecar
             .client
             .matrix_auth()
@@ -84,9 +99,13 @@ impl MatrixSdkClient {
         if let Some(display_name) = device_display_name {
             login = login.initial_device_display_name(display_name);
         }
-        let response = login
-            .send()
+        // `LoginBuilder::send` replaces the client's request config with the
+        // SDK's own three-attempt policy (whose individual timeout defaults
+        // to 30s).  Bound the whole startup login so an offline replacement
+        // returns to Supervisor instead of occupying the health window.
+        let response = tokio::time::timeout(MATRIX_STARTUP_REQUEST_TIMEOUT, login.send())
             .await
+            .map_err(|_| MatrixSdkError::Authentication)?
             .map_err(|_| MatrixSdkError::Authentication)?;
         let session = MatrixSession::from(&response);
         verify_session_identity(&sidecar.config, &session)?;
