@@ -1310,15 +1310,23 @@ async fn verify_post_send_pre_mark_proof(
     );
 
     let store = MatrixDurableStore::open(layout, MatrixDurableConfig::default()).await?;
-    let record = store
-        .outbox_for_txn(&stable_txn_id)
-        .await?
-        .context("post-send failpoint outbox row disappeared")?;
-    ensure!(record.state == OutboxState::Sent);
-    ensure!(
-        record.attempts == 2,
-        "post-send response loss did not produce exactly one retry"
-    );
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let record = loop {
+        let record = store
+            .outbox_for_txn(&stable_txn_id)
+            .await?
+            .context("post-send failpoint outbox row disappeared")?;
+        if record.state == OutboxState::Sent && record.attempts == 2 {
+            break record;
+        }
+        if Instant::now() >= deadline {
+            store.close().await;
+            bail!(
+                "post-send response-loss retry did not reach Sent/attempts=2: {record:?}"
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    };
     ensure!(record.payload == expected_body.as_bytes());
     ensure!(
         record.sent_event_id.as_ref() == Some(&first_synapse_event_id),
