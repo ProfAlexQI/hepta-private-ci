@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -14,6 +15,7 @@ use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ServerRequest;
 use codex_hepta_agentd::AgentdClient;
 use codex_hepta_contracts::Sha256Digest;
+use codex_hepta_matrix_protocol::MatrixRoomId;
 use codex_hepta_matrix_sdk::MatrixIngress;
 use codex_hepta_matrix_sdk::MatrixSdkClient;
 use codex_hepta_matrix_sdk::MatrixSidecarConfig;
@@ -22,6 +24,7 @@ use codex_hepta_matrix_sdk::OutboxDispatchConfig;
 use codex_hepta_matrix_sdk::run_outbox_sender;
 use codex_hepta_matrix_store::MatrixDurableConfig;
 use codex_hepta_matrix_store::MatrixDurableStore;
+use codex_hepta_matrix_store::MatrixSnapshot;
 use codex_hepta_matrix_store::PendingApprovalDraft;
 use codex_hepta_matrix_store::PendingApprovalKind;
 use codex_hepta_matrix_store::RoomBindingDraft;
@@ -104,6 +107,28 @@ pub async fn run(config: MatrixdConfig) -> Result<(), MatrixdRunError> {
     .await?;
     let sidecar = Arc::new(sidecar);
     let ingress = MatrixIngress::new(sidecar_config, store.clone());
+
+    // App Server thread subscriptions belong to the individual transport
+    // connection.  Reattach every exact current Matrix room thread before
+    // recovering durable inbox work; otherwise recovery can admit and finish
+    // a turn while the new connection has no listener for its notifications.
+    let snapshot = store
+        .snapshot(system_time_ms()?, INBOX_RECOVERY_LIMIT)
+        .await?;
+    for thread_id in current_room_thread_ids(
+        &snapshot,
+        &config.binding.allowed_rooms,
+        config.binding.revision,
+        matrix_plane_generation(config.spawn_generation),
+    ) {
+        let resumed = transport.resume_thread(&thread_id).await?;
+        if resumed.thread.id != thread_id {
+            return Err(MatrixdRunError::Invalid(format!(
+                "App Server resumed Matrix thread {} instead of {thread_id}",
+                resumed.thread.id
+            )));
+        }
+    }
 
     // Reconcile durable work before accepting a new sync cycle.  Failure is
     // fatal: advancing the Matrix cursor while local admission is corrupt
@@ -238,6 +263,34 @@ pub async fn run(config: MatrixdConfig) -> Result<(), MatrixdRunError> {
     tasks.abort_all();
     store.close().await;
     first_result
+}
+
+fn current_room_thread_ids(
+    snapshot: &MatrixSnapshot,
+    allowed_rooms: &[MatrixRoomId],
+    binding_revision: u64,
+    generation: u64,
+) -> Vec<String> {
+    let mut thread_ids = BTreeSet::new();
+    for room_thread in &snapshot.room_threads {
+        let is_current_binding = snapshot.bindings.iter().any(|binding| {
+            binding.owner_agent_id == snapshot.owner_agent_id
+                && binding.revision == binding_revision
+                && binding.generation == generation
+                && allowed_rooms
+                    .iter()
+                    .any(|allowed_room| allowed_room == &binding.room_id)
+                && binding.room_id == room_thread.room_id
+                && room_thread.binding_revision == binding_revision
+                && room_thread.generation == generation
+        });
+        if is_current_binding {
+            if let Some(thread_id) = room_thread.thread_id.as_deref() {
+                thread_ids.insert(thread_id.to_string());
+            }
+        }
+    }
+    thread_ids.into_iter().collect()
 }
 
 fn prepare_matrix_root(config: &MatrixdConfig) -> Result<(), MatrixdRunError> {

@@ -49,6 +49,8 @@ use codex_app_server_protocol::ThreadQueueReconcileMode;
 use codex_app_server_protocol::ThreadQueueReconcileOutcome;
 use codex_app_server_protocol::ThreadQueueReconcileParams;
 use codex_app_server_protocol::ThreadQueueReconcileResponse;
+use codex_app_server_protocol::ThreadResumeParams;
+use codex_app_server_protocol::ThreadResumeResponse;
 use codex_app_server_protocol::ThreadSortKey;
 use codex_app_server_protocol::ThreadSource;
 use codex_app_server_protocol::ThreadStartParams;
@@ -799,6 +801,27 @@ impl RemoteMatrixAppServerTransport {
             }
             Err(error) => Err(MatrixBridgeError::AppServer(error.to_string())),
         }
+    }
+
+    /// Reattach this connection to an existing Core thread.
+    ///
+    /// App Server subscriptions are connection-scoped. A matrixd reconnect
+    /// therefore has to resume each durable room thread before it can recover
+    /// queued Matrix work; otherwise Core may complete a turn while no
+    /// connection is subscribed to the thread notifications.
+    pub(crate) async fn resume_thread(
+        &self,
+        thread_id: &str,
+    ) -> Result<ThreadResumeResponse, MatrixBridgeError> {
+        self.request(ClientRequest::ThreadResume {
+            request_id: self.request_id(),
+            params: ThreadResumeParams {
+                thread_id: thread_id.to_string(),
+                exclude_turns: true,
+                ..ThreadResumeParams::default()
+            },
+        })
+        .await
     }
 
     async fn resolve_approval(
