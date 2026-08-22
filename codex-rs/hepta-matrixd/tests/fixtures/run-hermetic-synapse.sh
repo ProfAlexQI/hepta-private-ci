@@ -2176,7 +2176,7 @@ assert_internal_synapse_transport() {
       and .[0].Name == $network_name
       and .[0].Driver == "bridge"
       and .[0].Internal == true
-      and ([.[0].Containers[].Name] | sort) == [$container_name]' \
+      and ([.[0].Containers[].Name] | sort_by(.)) == [$container_name]' \
     <("$docker_bin" network inspect "$network_name") >/dev/null || {
       echo 'Synapse Docker network is not the expected internal bridge' >&2
       return 65
