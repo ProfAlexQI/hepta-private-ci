@@ -277,6 +277,13 @@ fixture_tmp_base=${TMPDIR:-/tmp}
   echo 'temporary directory base does not exist' >&2
   exit 73
 }
+# hepta-ssd-run may expose TMPDIR with a trailing separator. Canonicalize the
+# base before composing private fixture paths so the recorded bounded PATH and
+# Rust-side canonical-path checks have one stable spelling.
+fixture_tmp_base=$(
+  cd "$fixture_tmp_base"
+  pwd -P
+)
 umask 077
 fixture_root=$("$mktemp_bin" -d "$fixture_tmp_base/hepta-r4-synapse.XXXXXX")
 fixture_manifest="$fixture_root/fixture-manifest.json"
