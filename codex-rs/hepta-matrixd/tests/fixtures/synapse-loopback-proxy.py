@@ -228,9 +228,16 @@ class Proxy:
                     ]
                     for session in stale:
                         self.sessions.discard(session)
+                    # ``difference_update`` mutates ``self.threads`` while
+                    # consuming its iterable.  Iterating the set itself is
+                    # therefore unsafe (and raises ``RuntimeError: Set
+                    # changed size during iteration`` on current Python).
+                    # Take a stable snapshot while holding the same lock as
+                    # every other thread-set access.
+                    stale_threads = tuple(self.threads)
                     self.threads.difference_update(
                         thread
-                        for thread in self.threads
+                        for thread in stale_threads
                         if not thread.is_alive()
                     )
 
