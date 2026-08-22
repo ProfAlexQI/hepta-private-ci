@@ -441,6 +441,11 @@ async fn run_real_synapse_qualification_inner(
     let ack_loss_timeline_event = encrypted_matrix_a
         .wait_for_body(AGENT_A_MXID, OUTBOUND_ACK_LOSS_BODY)
         .await?;
+    // The encrypted reply can be visible in the timeline before the SDK has
+    // written the deliberately cut first-PUT receipt.  Wait for that exact
+    // qualification marker rather than using a global queue-idle heuristic;
+    // unrelated durable rows must not hide the proof we are measuring.
+    wait_for_post_send_pre_mark_receipt(&agent_a.layout, &ack_loss_receipt_path).await?;
     let ack_loss_proof = verify_post_send_pre_mark_proof(
         &agent_a.layout,
         &ack_loss_receipt_path,
@@ -448,10 +453,6 @@ async fn run_real_synapse_qualification_inner(
         &ack_loss_timeline_event,
     )
     .await?;
-    // The proof above waits for the failpoint's exact retry to be marked
-    // sent.  Only after that per-transaction proof is complete do we require
-    // every other durable queue row to be drained; otherwise a legitimate
-    // retry backoff can make this checkpoint race the receipt itself.
     wait_matrix_store_drained(&agent_a.layout).await?;
     let expected_ack_loss_put_target =
         matrix_encrypted_send_target(&room_a, &ack_loss_proof.stable_txn_id);
@@ -1193,6 +1194,34 @@ async fn wait_matrix_store_drained(layout: &HeptaAgentLayout) -> Result<()> {
             store.close().await;
             bail!(
                 "Matrix durable queues did not drain before the fault step: {:?}",
+                snapshot
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+async fn wait_for_post_send_pre_mark_receipt(
+    layout: &HeptaAgentLayout,
+    receipt_path: &std::path::Path,
+) -> Result<()> {
+    let root = receipt_path
+        .parent()
+        .context("post-send receipt has no qualification root")?;
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        if receipt_path.is_file() {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            let store = MatrixDurableStore::open(layout, MatrixDurableConfig::default()).await?;
+            let snapshot = store.snapshot(now_ms()?, 64).await?;
+            store.close().await;
+            bail!(
+                "post-send failpoint receipt did not appear: arm={} claimed={} receipt={} snapshot={:?}",
+                root.join("armed.once").is_file(),
+                root.join("claimed.once").is_file(),
+                receipt_path.is_file(),
                 snapshot
             );
         }
