@@ -421,6 +421,11 @@ async fn run_real_synapse_qualification_inner(
     let first_reply_event = encrypted_matrix_a
         .wait_for_body(AGENT_A_MXID, "agent-a-first")
         .await?;
+    // A decrypted final can reach the human client slightly before the
+    // product sidecar has published the terminal turn and drained its first
+    // Matrix dispatch.  Do not admit the ACK-loss probe into that transition
+    // window: it must exercise a fresh, idle turn.
+    wait_for_matrix_idle(&agent_a).await?;
     eprintln!("R4_STAGE first_encrypted_turn:done");
 
     // Arm a non-default, exact-payload qualification cut in the product
@@ -1021,6 +1026,29 @@ async fn wait_for_pending_approval(agent: &AgentFixture) -> Result<MatrixdRespon
             "real pending Matrix approval did not become observable"
         );
         tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+async fn wait_for_matrix_idle(agent: &AgentFixture) -> Result<()> {
+    let deadline = Instant::now() + MATRIX_REPLY_TIMEOUT;
+    loop {
+        let response = matrixd_snapshot(agent, 100).await?;
+        if let MatrixdPayload::Snapshot(snapshot) = &response.payload {
+            if snapshot.lifecycle == MatrixdLifecycle::Ready
+                && snapshot.active_turn_id.is_none()
+                && snapshot.pending_approvals.is_empty()
+                && snapshot.inbox_depth == 0
+                && snapshot.outbox_depth == 0
+            {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                bail!("Matrix sidecar did not reach an idle turn: {snapshot:?}");
+            }
+        } else {
+            bail!("Matrix idle probe returned a non-snapshot payload: {:?}", response.payload);
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
 
