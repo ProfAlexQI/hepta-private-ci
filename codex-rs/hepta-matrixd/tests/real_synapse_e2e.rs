@@ -4344,7 +4344,7 @@ impl FleetHarness {
             "process identity ledger was not initialized fail closed"
         );
         let temp = tempfile::Builder::new()
-            .prefix("hepta-r4-runtime-")
+            .prefix("r-")
             .tempdir_in(runtime_tmp_root)?;
         let root = temp.path().canonicalize()?;
         let fleet_root = HeptaFleetRoot::parse(root.join("fleet"))?;

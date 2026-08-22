@@ -285,7 +285,7 @@ fixture_tmp_base=$(
   pwd -P
 )
 umask 077
-fixture_root=$("$mktemp_bin" -d "$fixture_tmp_base/hepta-r4-synapse.XXXXXX")
+fixture_root=$("$mktemp_bin" -d "$fixture_tmp_base/r4.XXXXXX")
 fixture_manifest="$fixture_root/fixture-manifest.json"
 credentials_directory="$fixture_root/qualification-capabilities"
 runtime_tmp_root="$fixture_root/runtime-tmp"
@@ -492,7 +492,7 @@ cleanup_fixture_root_early() {
   local fixture_rc=$1
   trap - EXIT INT TERM
   case "$fixture_root" in
-    "$fixture_tmp_base"/hepta-r4-synapse.*)
+    "$fixture_tmp_base"/r4.*)
       make_runtime_tree_removable "$runtime_tmp_root" || true
       "$rm_bin" -rf -- "$fixture_root"
       ;;
@@ -2139,7 +2139,7 @@ cleanup_fixture() {
   fi
 
   case "$fixture_root" in
-    "$fixture_tmp_base"/hepta-r4-synapse.*)
+    "$fixture_tmp_base"/r4.*)
       if ! make_runtime_tree_removable "$runtime_tmp_root"; then
         echo 'failed to make the private runtime tree removable' >&2
         cleanup_error=1
