@@ -250,9 +250,12 @@ async fn run_real_synapse_qualification_inner(
 
     let mut model_a = QualificationMockServer::new(responses::start_mock_server().await);
     let mut model_b = QualificationMockServer::new(responses::start_mock_server().await);
-    MockResponsesConfig::new(&model_a.uri()).write(agent_a.layout.home_root())?;
+    MockResponsesConfig::new(&model_a.uri())
+        .with_root_config("include_environment_context = false")
+        .write(agent_a.layout.home_root())?;
     MockResponsesConfig::new(&model_b.uri())
         .with_approval_policy("on-request")
+        .with_root_config("include_environment_context = false")
         .write(agent_b.layout.home_root())?;
     let model_a_mock = responses::mount_sse_sequence(
         &model_a,
