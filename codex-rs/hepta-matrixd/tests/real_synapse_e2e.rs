@@ -3947,7 +3947,11 @@ fn prove_two_identical_puts(
             attempt.method == b"PUT",
             "stable transaction request was not an HTTP PUT"
         );
-        ensure!(attempt.target == expected_target.as_bytes());
+        ensure!(
+            attempt.target == expected_target.as_bytes(),
+            "stable transaction request target differed from the expected Ruma path: actual={:?} expected={expected_target:?}",
+            String::from_utf8_lossy(&attempt.target)
+        );
     }
     ensure!(
         attempts[0].target == attempts[1].target,
@@ -4053,7 +4057,13 @@ fn percent_encode_path_segment(value: &str) -> String {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let mut encoded = String::with_capacity(value.len());
     for byte in value.bytes() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+        // Match ruma-common's PATH_PERCENT_ENCODE_SET: path arguments keep
+        // Matrix sigils such as `!` and `:` verbatim, while controls, spaces,
+        // the WHATWG path delimiters, and non-ASCII UTF-8 bytes are escaped.
+        if byte.is_ascii() && !byte.is_ascii_control() && !matches!(
+            byte,
+            b' ' | b'"' | b'#' | b'<' | b'>' | b'?' | b'`' | b'{' | b'}' | b'/'
+        ) {
             encoded.push(char::from(byte));
         } else {
             encoded.push('%');
@@ -4062,6 +4072,19 @@ fn percent_encode_path_segment(value: &str) -> String {
         }
     }
     encoded
+}
+
+#[test]
+fn matrix_path_encoding_matches_ruma_path_set() {
+    assert_eq!(
+        percent_encode_path_segment("!room:localhost"),
+        "!room:localhost"
+    );
+    assert_eq!(
+        percent_encode_path_segment("a/b?c d"),
+        "a%2Fb%3Fc%20d"
+    );
+    assert_eq!(percent_encode_path_segment("é"), "%C3%A9");
 }
 
 #[test]
