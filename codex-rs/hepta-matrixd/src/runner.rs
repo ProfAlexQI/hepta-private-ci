@@ -94,7 +94,7 @@ pub async fn run(config: MatrixdConfig) -> Result<(), MatrixdRunError> {
         sync_timeout: config.sync_timeout,
     };
     sidecar_config.validate(&config.layout)?;
-    let (sidecar, _session) = MatrixSdkClient::login_password(
+    let (sidecar, _session) = MatrixSdkClient::login_or_restore(
         &config.layout,
         sidecar_config.clone(),
         config.credentials().password(),

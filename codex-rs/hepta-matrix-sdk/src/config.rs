@@ -48,6 +48,7 @@ pub struct MatrixSdkPaths {
     root: PathBuf,
     state: PathBuf,
     cache: PathBuf,
+    session: PathBuf,
 }
 
 impl MatrixSdkPaths {
@@ -59,10 +60,16 @@ impl MatrixSdkPaths {
         let root = layout.matrix_root().join("matrix-sdk-0.18");
         let state = root.join("state");
         let cache = root.join("cache");
+        let session = root.join("session.json");
         create_private_directory(&root)?;
         create_private_directory(&state)?;
         create_private_directory(&cache)?;
-        Ok(Self { root, state, cache })
+        Ok(Self {
+            root,
+            state,
+            cache,
+            session,
+        })
     }
 
     pub fn root(&self) -> &Path {
@@ -75,6 +82,12 @@ impl MatrixSdkPaths {
 
     pub fn cache(&self) -> &Path {
         &self.cache
+    }
+
+    /// The per-Agent authentication session, written with owner-only
+    /// permissions and atomically replaced after a successful login.
+    pub fn session(&self) -> &Path {
+        &self.session
     }
 }
 

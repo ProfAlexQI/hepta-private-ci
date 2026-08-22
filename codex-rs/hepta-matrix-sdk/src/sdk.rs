@@ -1,3 +1,5 @@
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -46,6 +48,7 @@ const MATRIX_ROOM_ENCRYPTED_EVENT_TYPE: &str = "m.room.encrypted";
 // startup paths may otherwise consume several transport attempts and their
 // individual timeouts before matrixd can bind its control socket.
 const MATRIX_STARTUP_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const MATRIX_SESSION_MAX_BYTES: u64 = 16 * 1024;
 
 pub struct MatrixSdkClient {
     client: Client,
@@ -69,9 +72,10 @@ impl MatrixSdkClient {
         .map_err(|_| MatrixSdkError::Initialization)??;
         sidecar
             .client
-            .restore_session(session)
+            .restore_session(session.clone())
             .await
             .map_err(|_| MatrixSdkError::Authentication)?;
+        persist_session(sidecar.paths.session(), &session)?;
         sidecar.verify_authenticated_identity()?;
         sidecar.enable_event_cache()?;
         Ok(sidecar)
@@ -109,9 +113,54 @@ impl MatrixSdkClient {
             .map_err(|_| MatrixSdkError::Authentication)?;
         let session = MatrixSession::from(&response);
         verify_session_identity(&sidecar.config, &session)?;
+        persist_session(sidecar.paths.session(), &session)?;
         sidecar.verify_authenticated_identity()?;
         sidecar.enable_event_cache()?;
         Ok((sidecar, session))
+    }
+
+    /// Restore the exact per-Agent Matrix session without contacting the
+    /// homeserver when a previous login has already succeeded.  A failed
+    /// local restore is isolated to that client instance; the fallback login
+    /// builds a fresh client so a partially activated SDK session can never be
+    /// reused after an error.
+    pub async fn login_or_restore(
+        layout: &HeptaAgentLayout,
+        config: MatrixSidecarConfig,
+        password: &str,
+        store_passphrase: Option<&str>,
+        device_display_name: Option<&str>,
+    ) -> Result<(Self, MatrixSession), MatrixSdkError> {
+        let sidecar = tokio::time::timeout(
+            MATRIX_STARTUP_REQUEST_TIMEOUT,
+            Self::build(layout, config.clone(), store_passphrase),
+        )
+        .await
+        .map_err(|_| MatrixSdkError::Initialization)??;
+
+        if let Some(session) = load_session(sidecar.paths.session())? {
+            verify_session_identity(&sidecar.config, &session)?;
+            let restore = tokio::time::timeout(
+                MATRIX_STARTUP_REQUEST_TIMEOUT,
+                sidecar.client.restore_session(session.clone()),
+            )
+            .await;
+            if matches!(restore, Ok(Ok(()))) {
+                sidecar.verify_authenticated_identity()?;
+                sidecar.enable_event_cache()?;
+                return Ok((sidecar, session));
+            }
+        }
+
+        drop(sidecar);
+        Self::login_password(
+            layout,
+            config,
+            password,
+            store_passphrase,
+            device_display_name,
+        )
+        .await
     }
 
     async fn build(
@@ -126,6 +175,32 @@ impl MatrixSdkClient {
             .handle_refresh_tokens()
             .build()
             .await
+            .map_err(|_| MatrixSdkError::Initialization)?;
+        let save_session_path = paths.session().to_path_buf();
+        let reload_session_path = paths.session().to_path_buf();
+        client
+            .set_session_callbacks(
+                Box::new(move |_client| {
+                    let session = load_session(&reload_session_path)
+                        .map_err(|error| {
+                            Box::new(error) as Box<dyn std::error::Error + Send + Sync>
+                        })?
+                        .ok_or_else(|| {
+                            Box::new(MatrixSdkError::Authentication)
+                                as Box<dyn std::error::Error + Send + Sync>
+                        })?;
+                    Ok(session.tokens)
+                }),
+                Box::new(move |client| {
+                    let session = client.matrix_auth().session().ok_or_else(|| {
+                        Box::new(MatrixSdkError::Authentication)
+                            as Box<dyn std::error::Error + Send + Sync>
+                    })?;
+                    persist_session(&save_session_path, &session).map_err(|error| {
+                        Box::new(error) as Box<dyn std::error::Error + Send + Sync>
+                    })
+                }),
+            )
             .map_err(|_| MatrixSdkError::Initialization)?;
         verify_homeserver(&config, &client)?;
         Ok(Self {
@@ -375,6 +450,109 @@ fn verify_homeserver(config: &MatrixSidecarConfig, client: &Client) -> Result<()
         return Err(MatrixSdkError::IdentityMismatch);
     }
     Ok(())
+}
+
+fn load_session(path: &std::path::Path) -> Result<Option<MatrixSession>, MatrixSdkError> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(MatrixSdkError::Initialization),
+    };
+    if !metadata.file_type().is_file()
+        || !session_file_is_single_link(&metadata)
+        || metadata.len() == 0
+        || metadata.len() > MATRIX_SESSION_MAX_BYTES
+        || !session_file_mode_is_private(&metadata)
+    {
+        return Err(MatrixSdkError::Initialization);
+    }
+    serde_json::from_slice(&std::fs::read(path).map_err(|_| MatrixSdkError::Initialization)?)
+        .map(Some)
+        .map_err(|_| MatrixSdkError::Initialization)
+}
+
+fn persist_session(path: &std::path::Path, session: &MatrixSession) -> Result<(), MatrixSdkError> {
+    let parent = path.parent().ok_or(MatrixSdkError::Initialization)?;
+    let parent_metadata =
+        std::fs::symlink_metadata(parent).map_err(|_| MatrixSdkError::Initialization)?;
+    if !parent_metadata.file_type().is_dir() {
+        return Err(MatrixSdkError::Initialization);
+    }
+    if let Ok(metadata) = std::fs::symlink_metadata(path) {
+        if !metadata.file_type().is_file()
+            || !session_file_is_single_link(&metadata)
+            || !session_file_mode_is_private(&metadata)
+        {
+            return Err(MatrixSdkError::Initialization);
+        }
+    } else if path.exists() {
+        return Err(MatrixSdkError::Initialization);
+    }
+    let bytes = serde_json::to_vec(session).map_err(|_| MatrixSdkError::Initialization)?;
+    if bytes.is_empty() || bytes.len() as u64 > MATRIX_SESSION_MAX_BYTES {
+        return Err(MatrixSdkError::Initialization);
+    }
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or(MatrixSdkError::Initialization)?;
+    let temporary = parent.join(format!(
+        ".{file_name}.{}-{}.tmp",
+        std::process::id(),
+        system_time_ms().map_err(|_| MatrixSdkError::Initialization)?
+    ));
+    let result = (|| -> Result<(), MatrixSdkError> {
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut output = options
+            .open(&temporary)
+            .map_err(|_| MatrixSdkError::Initialization)?;
+        output
+            .write_all(&bytes)
+            .map_err(|_| MatrixSdkError::Initialization)?;
+        output
+            .sync_all()
+            .map_err(|_| MatrixSdkError::Initialization)?;
+        drop(output);
+        std::fs::rename(&temporary, path).map_err(|_| MatrixSdkError::Initialization)?;
+        std::fs::File::open(parent)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|_| MatrixSdkError::Initialization)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result
+}
+
+#[cfg(unix)]
+fn session_file_mode_is_private(metadata: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    metadata.permissions().mode() & 0o777 == 0o600
+}
+
+#[cfg(unix)]
+fn session_file_is_single_link(metadata: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    metadata.nlink() == 1
+}
+
+#[cfg(not(unix))]
+fn session_file_is_single_link(_metadata: &std::fs::Metadata) -> bool {
+    true
+}
+
+#[cfg(not(unix))]
+fn session_file_mode_is_private(_metadata: &std::fs::Metadata) -> bool {
+    true
 }
 
 fn bounded_sync_settings(config: &MatrixSidecarConfig) -> Result<SyncSettings, MatrixSdkError> {
