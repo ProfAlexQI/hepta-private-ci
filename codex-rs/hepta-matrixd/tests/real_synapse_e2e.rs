@@ -24,6 +24,17 @@ use anyhow::Result;
 use anyhow::bail;
 use anyhow::ensure;
 use app_test_support::MockResponsesConfig;
+use codex_app_server_client::RemoteAppServerClient;
+use codex_app_server_client::RemoteAppServerConnectArgs;
+use codex_app_server_client::RemoteAppServerEndpoint;
+use codex_app_server_protocol::ClientRequest;
+use codex_app_server_protocol::RequestId;
+use codex_app_server_protocol::ThreadQueueListParams;
+use codex_app_server_protocol::ThreadQueueListResponse;
+use codex_app_server_protocol::ThreadQueueStartParams;
+use codex_app_server_protocol::ThreadQueueStartResponse;
+use codex_app_server_protocol::ThreadResumeParams;
+use codex_app_server_protocol::ThreadResumeResponse;
 use codex_hepta_agentd::AgentdClient;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_contracts::Sha256Digest;
@@ -50,6 +61,7 @@ use codex_hepta_matrix_protocol::MatrixdMethod;
 use codex_hepta_matrix_protocol::MatrixdPayload;
 use codex_hepta_matrix_protocol::MatrixdRequest;
 use codex_hepta_matrix_protocol::MatrixdResponse;
+use codex_hepta_matrix_protocol::client_user_message_id;
 use codex_hepta_matrix_protocol::matrix_binding_digest;
 use codex_hepta_matrix_sdk::arm_post_send_pre_mark_ack_drop_once;
 use codex_hepta_matrix_store::MatrixDurableConfig;
@@ -62,6 +74,7 @@ use codex_hepta_supervisor::Supervisor;
 use codex_hepta_supervisor::SupervisorConfig;
 use codex_hepta_supervisor::TickReport;
 use codex_hepta_supervisor::UnixProcessDriver;
+use codex_utils_absolute_path::AbsolutePathBuf;
 use core_test_support::responses;
 use core_test_support::responses::ResponseMock;
 use matrix_sdk::Client as MatrixE2eSdkClient;
@@ -154,7 +167,9 @@ impl Deref for QualificationMockServer {
 
 impl Drop for QualificationMockServer {
     fn drop(&mut self) {
-        if !self.verify_on_drop && let Some(server) = self.server.take() {
+        if !self.verify_on_drop
+            && let Some(server) = self.server.take()
+        {
             std::mem::forget(server);
         }
     }
@@ -547,6 +562,33 @@ async fn run_real_synapse_qualification_inner(
         "owner-local approval cancel returned an unexpected Matrixd payload: {:?}",
         cancelled.payload
     );
+    let MatrixdPayload::Snapshot(pending_snapshot) = &pending_before.payload else {
+        bail!("pending approval response was not a snapshot");
+    };
+    let authority_thread_id = pending_snapshot
+        .active_thread_id
+        .clone()
+        .context("pending approval snapshot omitted its active thread")?;
+    wait_for_cancelled_turn(&agent_b).await?;
+    eprintln!("R4_STAGE authority_probe:cancelled");
+    // Core deliberately does not auto-dispatch durable queue rows on an
+    // Interrupted idle lifecycle. Resume the exact owner-local thread through
+    // its generation-bound App Server socket; this is the normal recovery
+    // boundary after an explicit Cancel and keeps Matrix content from gaining
+    // control authority.
+    let authority_event_id = MatrixEventId::parse(&authority_event)?;
+    let authority_room_id = MatrixRoomId::parse(&room_b)?;
+    let authority_client_id =
+        client_user_message_id(&agent_b.agent_id, &authority_room_id, &authority_event_id);
+    eprintln!("R4_STAGE authority_probe:resume_and_queue_start:start");
+    resume_and_start_authority_queue(
+        &agent_b,
+        agent_b_generation,
+        &authority_thread_id,
+        &authority_client_id,
+    )
+    .await?;
+    eprintln!("R4_STAGE authority_probe:resume_and_queue_start:done");
     let authority_reply_event = encrypted_matrix_b
         .wait_for_body(AGENT_B_MXID, "agent-b-authority-probe")
         .await?;
@@ -743,8 +785,8 @@ async fn run_real_synapse_qualification_inner(
             "Agent A provider count changed in freeze window {window}"
         );
         ensure!(
-        model_b_mock.requests().len() == 3,
-        "Agent B provider count changed in freeze window {window}"
+            model_b_mock.requests().len() == 3,
+            "Agent B provider count changed in freeze window {window}"
         );
         ensure!(
             encrypted_matrix_a.seen.len() == frozen_human_a_events,
@@ -1018,6 +1060,134 @@ async fn wait_for_pending_approval(agent: &AgentFixture) -> Result<MatrixdRespon
     }
 }
 
+async fn wait_for_cancelled_turn(agent: &AgentFixture) -> Result<()> {
+    let deadline = Instant::now() + MATRIX_REPLY_TIMEOUT;
+    loop {
+        let response = matrixd_snapshot(agent, 104).await?;
+        if let MatrixdPayload::Snapshot(snapshot) = &response.payload {
+            if snapshot.active_turn_id.is_none() && snapshot.pending_approvals.is_empty() {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                bail!(
+                    "owner-local approval cancel did not reach an interrupted idle boundary: {snapshot:?}"
+                );
+            }
+        } else {
+            bail!(
+                "cancelled-turn probe returned a non-snapshot payload: {:?}",
+                response.payload
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+async fn resume_and_start_authority_queue(
+    agent: &AgentFixture,
+    generation: u64,
+    thread_id: &str,
+    expected_client_user_message_id: &str,
+) -> Result<ThreadQueueStartResponse> {
+    let control = AgentdClient::new(
+        agent.layout.agentd_control_socket().to_path_buf(),
+        agent.agent_id.clone(),
+        generation,
+    )?;
+    let ingress = control.session_ingress().await?;
+    ensure!(
+        ingress.socket_path == agent.layout.app_server_socket(),
+        "owner-local resume returned the wrong App Server socket"
+    );
+    let socket_path = AbsolutePathBuf::from_absolute_path(&ingress.socket_path)?;
+    let client = RemoteAppServerClient::connect(RemoteAppServerConnectArgs {
+        endpoint: RemoteAppServerEndpoint::UnixSocket { socket_path },
+        client_name: "hepta-r4-authority-resume".to_string(),
+        client_version: env!("CARGO_PKG_VERSION").to_string(),
+        // The queue list/start methods are experimental App Server methods,
+        // but this remains the owner-local, generation-bound socket returned
+        // by agentd.  Enabling the capability here does not grant Matrix any
+        // authority; it only lets the fixture exercise the documented
+        // Interrupted-queue recovery boundary explicitly.
+        experimental_api: true,
+        mcp_server_openai_form_elicitation: false,
+        opt_out_notification_methods: Vec::new(),
+        channel_capacity: 64,
+    })
+    .await?;
+    let resumed: ThreadResumeResponse = client
+        .request_typed::<ThreadResumeResponse>(ClientRequest::ThreadResume {
+            request_id: RequestId::Integer(1),
+            params: ThreadResumeParams {
+                thread_id: thread_id.to_string(),
+                ..ThreadResumeParams::default()
+            },
+        })
+        .await?;
+    ensure!(
+        resumed.thread.id == thread_id,
+        "owner-local resume returned the wrong thread: expected={thread_id} actual={}",
+        resumed.thread.id
+    );
+
+    let deadline = Instant::now() + MATRIX_REPLY_TIMEOUT;
+    let mut request_id = 2_i64;
+    let queued_submission_id = loop {
+        let mut cursor = None;
+        let mut matches = Vec::new();
+        loop {
+            let page: ThreadQueueListResponse = client
+                .request_typed::<ThreadQueueListResponse>(ClientRequest::ThreadQueueList {
+                    request_id: RequestId::Integer(request_id),
+                    params: ThreadQueueListParams {
+                        thread_id: thread_id.to_string(),
+                        cursor,
+                        limit: None,
+                    },
+                })
+                .await?;
+            request_id += 1;
+            matches.extend(
+                page.data.into_iter().filter(|queued| {
+                    queued.client_user_message_id == expected_client_user_message_id
+                }),
+            );
+            cursor = page.next_cursor;
+            if cursor.is_none() {
+                break;
+            }
+        }
+        match matches.as_slice() {
+            [queued] => break queued.id.clone(),
+            [] if Instant::now() < deadline => {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            [] => {
+                bail!(
+                    "authority Matrix event was not present in the resumed thread queue: client_user_message_id={expected_client_user_message_id}"
+                );
+            }
+            _ => {
+                bail!(
+                    "authority Matrix client_user_message_id appeared more than once in the queue: {expected_client_user_message_id}"
+                );
+            }
+        }
+    };
+
+    let started: ThreadQueueStartResponse = client
+        .request_typed::<ThreadQueueStartResponse>(ClientRequest::ThreadQueueStart {
+            request_id: RequestId::Integer(request_id),
+            params: ThreadQueueStartParams {
+                thread_id: thread_id.to_string(),
+                queued_submission_id: Some(queued_submission_id),
+            },
+        })
+        .await?;
+    client.shutdown().await?;
+    Ok(started)
+}
+
 async fn wait_for_matrix_idle(agent: &AgentFixture) -> Result<()> {
     let deadline = Instant::now() + MATRIX_REPLY_TIMEOUT;
     loop {
@@ -1035,7 +1205,10 @@ async fn wait_for_matrix_idle(agent: &AgentFixture) -> Result<()> {
                 bail!("Matrix sidecar did not reach an idle turn: {snapshot:?}");
             }
         } else {
-            bail!("Matrix idle probe returned a non-snapshot payload: {:?}", response.payload);
+            bail!(
+                "Matrix idle probe returned a non-snapshot payload: {:?}",
+                response.payload
+            );
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
@@ -1152,7 +1325,10 @@ fn make_private_runtime_tree_removable(path: &Path) -> Result<()> {
     } else if metadata.is_file() {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     } else {
-        bail!("runtime cleanup encountered a non-regular path: {}", path.display());
+        bail!(
+            "runtime cleanup encountered a non-regular path: {}",
+            path.display()
+        );
     }
     Ok(())
 }
@@ -1310,9 +1486,7 @@ async fn verify_post_send_pre_mark_proof(
         }
         if Instant::now() >= deadline {
             store.close().await;
-            bail!(
-                "post-send response-loss retry did not reach Sent/attempts=2: {record:?}"
-            );
+            bail!("post-send response-loss retry did not reach Sent/attempts=2: {record:?}");
         }
         tokio::time::sleep(Duration::from_millis(25)).await;
     };
@@ -4133,10 +4307,13 @@ fn percent_encode_path_segment(value: &str) -> String {
         // Match ruma-common's PATH_PERCENT_ENCODE_SET: path arguments keep
         // Matrix sigils such as `!` and `:` verbatim, while controls, spaces,
         // the WHATWG path delimiters, and non-ASCII UTF-8 bytes are escaped.
-        if byte.is_ascii() && !byte.is_ascii_control() && !matches!(
-            byte,
-            b' ' | b'"' | b'#' | b'<' | b'>' | b'?' | b'`' | b'{' | b'}' | b'/'
-        ) {
+        if byte.is_ascii()
+            && !byte.is_ascii_control()
+            && !matches!(
+                byte,
+                b' ' | b'"' | b'#' | b'<' | b'>' | b'?' | b'`' | b'{' | b'}' | b'/'
+            )
+        {
             encoded.push(char::from(byte));
         } else {
             encoded.push('%');
@@ -4153,10 +4330,7 @@ fn matrix_path_encoding_matches_ruma_path_set() {
         percent_encode_path_segment("!room:localhost"),
         "!room:localhost"
     );
-    assert_eq!(
-        percent_encode_path_segment("a/b?c d"),
-        "a%2Fb%3Fc%20d"
-    );
+    assert_eq!(percent_encode_path_segment("a/b?c d"), "a%2Fb%3Fc%20d");
     assert_eq!(percent_encode_path_segment("é"), "%C3%A9");
 }
 
