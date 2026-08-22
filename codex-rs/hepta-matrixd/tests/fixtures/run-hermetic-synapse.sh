@@ -263,9 +263,15 @@ expected_runner="$source_root/codex-rs/hepta-matrixd/tests/fixtures/run-hermetic
   echo 'fixture runner must be the checked-in runner under --source-root' >&2
   exit 65
 }
+proxy_source_path="$source_root/codex-rs/hepta-matrixd/tests/fixtures/synapse-loopback-proxy.py"
+[[ -f "$proxy_source_path" && ! -L "$proxy_source_path" && -x "$proxy_source_path" ]] || {
+  echo 'loopback proxy source must be a checked-in executable regular file' >&2
+  exit 65
+}
 sha256_file() {
   "$openssl_bin" dgst -sha256 -r "$1" | "$awk_bin" '{print $1}'
 }
+proxy_source_sha256=$(sha256_file "$proxy_source_path")
 fixture_tmp_base=${TMPDIR:-/tmp}
 [[ -d "$fixture_tmp_base" ]] || {
   echo 'temporary directory base does not exist' >&2
@@ -1345,13 +1351,14 @@ for fixture_digest in \
   "$agentd_sha256" \
   "$matrixd_sha256" \
   "$test_binary_sha256" \
-  "$runner_sha256"; do
+  "$runner_sha256" \
+  "$proxy_source_sha256"; do
   [[ "$fixture_digest" =~ ^[0-9a-f]{64}$ ]] || {
     echo 'candidate build artifact or provenance digest is invalid' >&2
     exit 65
   }
 done
-echo "R4_BUILD_BOUND agentd_sha256=$agentd_sha256 matrixd_sha256=$matrixd_sha256 test_sha256=$test_binary_sha256 runner_sha256=$runner_sha256"
+echo "R4_BUILD_BOUND agentd_sha256=$agentd_sha256 matrixd_sha256=$matrixd_sha256 test_sha256=$test_binary_sha256 runner_sha256=$runner_sha256 proxy_source_sha256=$proxy_source_sha256"
 
 container_name="hepta-r4-synapse-$$-$RANDOM"
 generate_container_name="$container_name-generate"
@@ -1359,6 +1366,13 @@ config_container_name="$container_name-config"
 digest_container_name="$container_name-digest"
 network_name="hepta-r4-internal-$$-$RANDOM"
 volume_name="hepta-r4-data-$$-$RANDOM"
+proxy_script="$fixture_root/synapse-loopback-proxy.py"
+proxy_ready_file="$fixture_root/synapse-loopback-proxy-ready.json"
+proxy_log="$fixture_root/synapse-loopback-proxy.log"
+proxy_pid_file="$fixture_root/synapse-loopback-proxy.pid"
+proxy_pid=''
+proxy_port=''
+proxy_ready_sha256=''
 artifacts_dir=''
 artifacts_final_dir=''
 artifacts_parent_dir=''
@@ -1411,6 +1425,18 @@ PY
   [[ -f "$destination_path" ]] || return 74
   [[ "$("$stat_bin" -f '%Lp' "$destination_path")" == "$expected_mode" ]] || return 74
   [[ "$(sha256_file "$source_path")" == "$(sha256_file "$destination_path")" ]] || return 74
+}
+
+install_loopback_proxy_source() {
+  [[ "$(sha256_file "$proxy_source_path")" == "$proxy_source_sha256" ]] || {
+    echo 'loopback proxy source changed before launch' >&2
+    return 65
+  }
+  durable_install_file "$proxy_source_path" "$proxy_script" 600 || return 74
+  [[ "$(sha256_file "$proxy_script")" == "$proxy_source_sha256" ]] || {
+    echo 'installed loopback proxy source digest disagreed with candidate' >&2
+    return 65
+  }
 }
 
 initialize_artifact_staging() {
@@ -1587,6 +1613,10 @@ root = pathlib.Path(sys.argv[1])
 output_path = pathlib.Path(sys.argv[2])
 names = [
     "synapse.log",
+    "synapse-loopback-proxy.py",
+    "synapse-loopback-proxy-ready.json",
+    "synapse-loopback-proxy.log",
+    "synapse-loopback-proxy.pid",
     "fixture-manifest.json",
     "test.log",
     "completion.json",
@@ -1656,6 +1686,81 @@ docker_resource_exists() {
   return 1
 }
 
+stop_loopback_proxy() {
+  local stop_error=0
+  local proxy_identity=''
+  local proxy_wait_rc=0
+  local wait_attempt=1
+  local stopped_proxy_pid="$proxy_pid"
+  if [[ -n "$proxy_pid" ]]; then
+    [[ "$proxy_pid" =~ ^[0-9]+$ && "$proxy_pid" -gt 0 ]] || {
+      echo 'loopback proxy PID is invalid' >&2
+      stop_error=1
+    }
+    if ((stop_error == 0)); then
+      proxy_identity=$("$ps_bin" -p "$proxy_pid" -o command= 2>/dev/null || true)
+      if [[ -n "$proxy_identity" && "$proxy_identity" != *"$proxy_script"* ]]; then
+        echo 'loopback proxy PID identity changed before shutdown' >&2
+        stop_error=1
+      fi
+    fi
+    if ((stop_error == 0)); then
+      set +e
+      "$kill_bin" -TERM "$proxy_pid" >/dev/null 2>&1
+      set -e
+      while ((wait_attempt <= 120)); do
+        set +e
+        "$kill_bin" -0 "$proxy_pid" >/dev/null 2>&1
+        local kill_rc=$?
+        set -e
+        ((kill_rc != 0)) && break
+        "$sleep_bin" 0.1
+        ((wait_attempt += 1))
+      done
+      set +e
+      "$kill_bin" -0 "$proxy_pid" >/dev/null 2>&1
+      kill_rc=$?
+      set -e
+      if ((kill_rc == 0)); then
+        echo 'loopback proxy survived graceful shutdown; forcing termination' >&2
+        set +e
+        "$kill_bin" -KILL "$proxy_pid" >/dev/null 2>&1
+        wait "$proxy_pid"
+        proxy_wait_rc=$?
+        set -e
+        stop_error=1
+      else
+        set +e
+        wait "$proxy_pid"
+        proxy_wait_rc=$?
+        set -e
+        if ((proxy_wait_rc != 0)); then
+          echo "loopback proxy exited with status $proxy_wait_rc" >&2
+          stop_error=1
+        fi
+      fi
+      proxy_identity=$("$ps_bin" -p "$proxy_pid" -o pid= 2>/dev/null || true)
+      if [[ -n "${proxy_identity//[[:space:]]/}" ]]; then
+        echo 'loopback proxy PID remained visible after shutdown' >&2
+        stop_error=1
+      fi
+    fi
+    proxy_pid=''
+  fi
+  if [[ -f "$proxy_pid_file" ]]; then
+    [[ "$("$stat_bin" -f '%Lp' "$proxy_pid_file")" == 600 ]] || {
+      echo 'loopback proxy PID evidence has unsafe mode' >&2
+      stop_error=1
+    }
+    if [[ -n "$stopped_proxy_pid" ]] \
+      && [[ "$("$tr_bin" -d '\r\n' <"$proxy_pid_file")" != "$stopped_proxy_pid" ]]; then
+      echo 'loopback proxy PID evidence changed before shutdown' >&2
+      stop_error=1
+    fi
+  fi
+  return "$stop_error"
+}
+
 cleanup_fixture() {
   local fixture_rc=$1
   local cleanup_error=0
@@ -1663,6 +1768,11 @@ cleanup_fixture() {
   local synapse_log="$fixture_root/synapse.log"
   local artifact_set_source="$fixture_root/artifact-set.generated.json"
   trap - EXIT INT TERM
+
+  if ! stop_loopback_proxy; then
+    echo 'failed to prove loopback proxy shutdown' >&2
+    cleanup_error=1
+  fi
 
   if docker_resource_exists container "$container_name"; then
     if [[ -n "$artifacts_dir" ]]; then
@@ -1768,6 +1878,23 @@ cleanup_fixture() {
       cleanup_error=1
     fi
   fi
+  if [[ -n "$artifacts_dir" && $fixture_rc -eq 0 && $cleanup_error -eq 0 ]]; then
+    for proxy_artifact in \
+      synapse-loopback-proxy.py \
+      synapse-loopback-proxy-ready.json \
+      synapse-loopback-proxy.log \
+      synapse-loopback-proxy.pid; do
+      if [[ ! -f "$fixture_root/$proxy_artifact" ]] \
+        || [[ "$("$stat_bin" -f '%Lp' "$fixture_root/$proxy_artifact")" != 600 ]]; then
+        echo "successful qualification omitted or weakened proxy evidence: $proxy_artifact" >&2
+        cleanup_error=1
+      elif ! durable_install_file \
+        "$fixture_root/$proxy_artifact" "$artifacts_dir/$proxy_artifact" 600; then
+        echo "failed to persist proxy evidence $proxy_artifact durably" >&2
+        cleanup_error=1
+      fi
+    done
+  fi
 
   if [[ -n "$artifacts_dir" && $fixture_rc -eq 0 && $cleanup_error -eq 0 \
     && -f "$fixture_manifest" ]]; then
@@ -1843,6 +1970,10 @@ cleanup_fixture() {
   if [[ -n "$artifacts_dir" && $fixture_rc -eq 0 && $cleanup_error -eq 0 ]]; then
     for required_artifact in \
       synapse.log \
+      synapse-loopback-proxy.py \
+      synapse-loopback-proxy-ready.json \
+      synapse-loopback-proxy.log \
+      synapse-loopback-proxy.pid \
       fixture-manifest.json \
       test.log \
       completion.json \
@@ -1892,6 +2023,9 @@ cleanup_fixture() {
       --arg completion_sha256 "$(sha256_file "$artifacts_dir/completion.json")" \
       --arg test_log_sha256 "$(sha256_file "$artifacts_dir/test.log")" \
       --arg synapse_log_sha256 "$(sha256_file "$artifacts_dir/synapse.log")" \
+      --arg synapse_transport "docker-exec-loopback-proxy-v1" \
+      --arg synapse_proxy_source_sha256 "$proxy_source_sha256" \
+      --arg synapse_proxy_ready_sha256 "$proxy_ready_sha256" \
       --arg agentd_sha256 "$agentd_sha256" \
       --arg matrixd_sha256 "$matrixd_sha256" \
       --arg test_binary_sha256 "$test_binary_sha256" \
@@ -1918,6 +2052,9 @@ cleanup_fixture() {
         completion_sha256: $completion_sha256,
         test_log_sha256: $test_log_sha256,
         synapse_log_sha256: $synapse_log_sha256,
+        synapse_transport: $synapse_transport,
+        synapse_proxy_source_sha256: $synapse_proxy_source_sha256,
+        synapse_proxy_ready_sha256: $synapse_proxy_ready_sha256,
         agentd_sha256: $agentd_sha256,
         matrixd_sha256: $matrixd_sha256,
         test_binary_sha256: $test_binary_sha256,
@@ -1932,6 +2069,8 @@ cleanup_fixture() {
         process_identity_ledger_sha256: $process_identity_ledger_sha256,
         explicit_process_shutdown_completed: true,
         all_historical_product_pids_absent: true,
+        loopback_proxy_shutdown_completed: true,
+        loopback_proxy_pid_absent: true,
         runner_control_static_scan_passed: true,
         apple_build_input_ledger_sha256: $apple_build_input_ledger_sha256,
         release_copy_observation_count: $release_copy_observation_count,
@@ -2029,6 +2168,107 @@ docker_wait_success() {
   return 70
 }
 
+assert_internal_synapse_transport() {
+  "$jq_bin" -e \
+    --arg network_name "$network_name" \
+    --arg container_name "$container_name" \
+    'length == 1
+      and .[0].Name == $network_name
+      and .[0].Driver == "bridge"
+      and .[0].Internal == true
+      and ([.[0].Containers[].Name] | sort) == [$container_name]' \
+    <("$docker_bin" network inspect "$network_name") >/dev/null || {
+      echo 'Synapse Docker network is not the expected internal bridge' >&2
+      return 65
+    }
+  "$jq_bin" -e \
+    --arg network_name "$network_name" \
+    '(.[0]
+      | (.HostConfig.NetworkMode == $network_name)
+      and ((.HostConfig.PortBindings // {}) == {})
+      and all((.NetworkSettings.Ports // {})[]?;
+        . == null or (type == "array" and length == 0))
+      and ((.NetworkSettings.Networks | keys) == [$network_name]))' \
+    <("$docker_bin" container inspect "$container_name") >/dev/null || {
+      echo 'Synapse container has an unexpected network or published port' >&2
+      return 65
+    }
+}
+
+start_loopback_proxy() {
+  install_loopback_proxy_source || return $?
+  "$rm_bin" -f -- "$proxy_ready_file" "$proxy_pid_file" "$proxy_log"
+  "$python_bin" "$proxy_script" \
+    --docker "$docker_bin" \
+    --container "$container_name" \
+    --ready "$proxy_ready_file" \
+    >"$proxy_log" 2>&1 &
+  proxy_pid=$!
+  printf '%s\n' "$proxy_pid" >"$proxy_pid_file"
+  "$chmod_bin" 600 "$proxy_pid_file"
+  [[ "$proxy_pid" =~ ^[0-9]+$ && "$proxy_pid" -gt 0 ]] || {
+    echo 'loopback proxy did not produce a valid PID' >&2
+    return 70
+  }
+  [[ "$("$tr_bin" -d '\r\n' <"$proxy_pid_file")" == "$proxy_pid" ]] || {
+    echo 'loopback proxy PID evidence did not bind to the launched process' >&2
+    return 65
+  }
+  local proxy_identity=''
+  proxy_identity=$("$ps_bin" -p "$proxy_pid" -o command= 2>/dev/null || true)
+  [[ "$proxy_identity" == *"$proxy_script"* ]] || {
+    echo 'loopback proxy PID identity did not bind to the checked-in source' >&2
+    return 65
+  }
+  local wait_attempt=1
+  while ((wait_attempt <= 120)); do
+    if [[ -f "$proxy_ready_file" ]]; then
+      break
+    fi
+    set +e
+    "$kill_bin" -0 "$proxy_pid" >/dev/null 2>&1
+    local kill_rc=$?
+    set -e
+    ((kill_rc != 0)) && {
+      echo 'loopback proxy exited before publishing its ready file' >&2
+      return 70
+    }
+    "$sleep_bin" 0.1
+    ((wait_attempt += 1))
+  done
+  [[ -f "$proxy_ready_file" ]] || {
+    echo 'loopback proxy did not publish its ready file before the bounded deadline' >&2
+    return 70
+  }
+  "$jq_bin" -e \
+    --arg transport 'docker-exec-loopback-proxy-v1' \
+    --arg container_name "$container_name" \
+    --argjson proxy_pid "$proxy_pid" \
+    '.schema_version == 1
+      and .transport == $transport
+      and .host == "127.0.0.1"
+      and .container == $container_name
+      and .target == "127.0.0.1:8008"
+      and .pid == $proxy_pid
+      and (.port | type == "number" and . >= 1024 and . <= 65535)' \
+    "$proxy_ready_file" >/dev/null || {
+      echo 'loopback proxy ready evidence failed closed validation' >&2
+      return 65
+    }
+  proxy_port=$("$jq_bin" -er '.port | select(type == "number" and . >= 1024 and . <= 65535)' "$proxy_ready_file") || return 65
+  proxy_ready_sha256=$(sha256_file "$proxy_ready_file")
+  [[ "$("$stat_bin" -f '%Lp' "$proxy_ready_file")" == 600 \
+    && "$("$stat_bin" -f '%Lp' "$proxy_log")" == 600 \
+    && "$("$stat_bin" -f '%Lp' "$proxy_pid_file")" == 600 ]] || {
+    echo 'loopback proxy evidence file mode is not 0600' >&2
+    return 65
+  }
+  [[ "$proxy_source_sha256" == "$(sha256_file "$proxy_script")" ]] || {
+    echo 'loopback proxy source digest changed after launch' >&2
+    return 65
+  }
+}
+
 "$docker_bin" version >/dev/null
 image_id=$("$docker_bin" image inspect --format '{{.Id}}' "$PINNED_SYNAPSE_IMAGE") || {
   echo 'pinned Synapse image is not materialized locally; qualification forbids pull' >&2
@@ -2112,33 +2352,24 @@ config_sha256=$("$docker_bin" logs "$digest_container_name" 2>/dev/null | "$tr_b
   --name "$container_name" \
   --network "$network_name" \
   --security-opt no-new-privileges \
-  -p 127.0.0.1::8008 \
   -v "$volume_name:/data" \
   "$PINNED_SYNAPSE_IMAGE" >/dev/null
 docker_start_container "$container_name"
-
-published_endpoint=''
+assert_internal_synapse_transport
+start_loopback_proxy
+fixture_port=$proxy_port
 _attempt=1
 while ((_attempt <= 120)); do
-  published_endpoint=$("$docker_bin" port "$container_name" 8008/tcp 2>/dev/null | "$head_bin" -n 1 || true)
-  if [[ "$published_endpoint" == 127.0.0.1:* ]]; then
-    fixture_port=${published_endpoint##*:}
-    if "$curl_bin" --fail --silent --show-error \
-      "http://127.0.0.1:$fixture_port/_matrix/client/versions" >/dev/null 2>&1; then
-      break
-    fi
+  if "$curl_bin" --fail --silent --show-error \
+    "http://127.0.0.1:$fixture_port/_matrix/client/versions" >/dev/null 2>&1; then
+    break
   fi
   "$sleep_bin" 0.25
   ((_attempt += 1))
 done
-[[ "$published_endpoint" == 127.0.0.1:* ]] || {
-  echo 'Docker did not publish Synapse on loopback' >&2
-  exit 70
-}
-fixture_port=${published_endpoint##*:}
 "$curl_bin" --fail --silent --show-error \
   "http://127.0.0.1:$fixture_port/_matrix/client/versions" >/dev/null || {
-  echo 'Synapse did not become ready before the bounded deadline' >&2
+  echo 'Synapse did not become ready through the loopback proxy before the bounded deadline' >&2
   exit 70
 }
 
@@ -2271,6 +2502,16 @@ generated_manifest="$fixture_root/fixture-manifest.generated.json"
   --arg apple_build_input_ledger_sha256 "$apple_build_input_ledger_sha256" \
   --argjson apple_build_input_entry_count "$apple_build_input_entry_count" \
   --arg homeserver "http://127.0.0.1:$fixture_port" \
+  --arg synapse_transport "docker-exec-loopback-proxy-v1" \
+  --arg synapse_network_mode "internal" \
+  --argjson synapse_network_internal true \
+  --argjson synapse_docker_port_published false \
+  --arg synapse_proxy_source "$proxy_script" \
+  --arg synapse_proxy_source_sha256 "$proxy_source_sha256" \
+  --arg synapse_proxy_ready "$proxy_ready_file" \
+  --arg synapse_proxy_ready_sha256 "$proxy_ready_sha256" \
+  --argjson synapse_proxy_port "$proxy_port" \
+  --argjson synapse_proxy_pid "$proxy_pid" \
   --arg agentd_binary "$agentd_bin" \
   --arg matrixd_binary "$matrixd_bin" \
   --arg test_binary "$test_bin" \
@@ -2294,7 +2535,7 @@ generated_manifest="$fixture_root/fixture-manifest.generated.json"
   --arg homeserver_config_sha256 "$config_sha256" \
   --argjson source_clean "$source_clean" \
   '{
-    schema_version: 7,
+    schema_version: 8,
     qualification_mode: $qualification_mode,
     source_root: $source_root,
     candidate_sha: $candidate_sha,
@@ -2400,6 +2641,16 @@ generated_manifest="$fixture_root/fixture-manifest.generated.json"
     matrix_sdk_features: ["qualification-failpoints"],
     test_features: ["real-synapse-e2e"],
     homeserver: $homeserver,
+    synapse_transport: $synapse_transport,
+    synapse_network_mode: $synapse_network_mode,
+    synapse_network_internal: $synapse_network_internal,
+    synapse_docker_port_published: $synapse_docker_port_published,
+    synapse_proxy_source: $synapse_proxy_source,
+    synapse_proxy_source_sha256: $synapse_proxy_source_sha256,
+    synapse_proxy_ready: $synapse_proxy_ready,
+    synapse_proxy_ready_sha256: $synapse_proxy_ready_sha256,
+    synapse_proxy_port: $synapse_proxy_port,
+    synapse_proxy_pid: $synapse_proxy_pid,
     agentd_binary: $agentd_binary,
     matrixd_binary: $matrixd_binary,
     test_binary: $test_binary,
@@ -2474,7 +2725,10 @@ verify_provenance_snapshot() {
     && "$(sha256_file "$matrixd_bin")" == "$matrixd_sha256" \
     && "$(sha256_file "$test_bin")" == "$test_binary_sha256" \
     && "$(sha256_file "$runner_path")" == "$runner_sha256" \
-    && "$(sha256_file "$fixture_manifest")" == "$fixture_manifest_sha256" ]] || {
+    && "$(sha256_file "$fixture_manifest")" == "$fixture_manifest_sha256" \
+    && "$(sha256_file "$proxy_source_path")" == "$proxy_source_sha256" \
+    && "$(sha256_file "$proxy_script")" == "$proxy_source_sha256" \
+    && "$(sha256_file "$proxy_ready_file")" == "$proxy_ready_sha256" ]] || {
     echo 'candidate build artifact/provenance changed during qualification' >&2
     return 65
   }
@@ -2613,7 +2867,7 @@ verify_publication_provenance() {
   "$rm_bin" -f -- "$publication_status" "$publication_rustc"
 }
 
-echo "R4_FIXTURE homeserver=http://127.0.0.1:$fixture_port config_sha256=$config_sha256 manifest_mode=0600"
+echo "R4_FIXTURE homeserver=http://127.0.0.1:$fixture_port transport=docker-exec-loopback-proxy-v1 network=internal docker_port_published=false proxy_port=$proxy_port proxy_pid=$proxy_pid config_sha256=$config_sha256 manifest_mode=0600"
 completion_directory="$fixture_root/completion"
 "$mkdir_bin" "$completion_directory"
 "$chmod_bin" 700 "$completion_directory"

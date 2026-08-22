@@ -1463,6 +1463,16 @@ struct E2eFixtureManifest {
     matrix_sdk_features: Vec<String>,
     test_features: Vec<String>,
     homeserver: String,
+    synapse_transport: String,
+    synapse_network_mode: String,
+    synapse_network_internal: bool,
+    synapse_docker_port_published: bool,
+    synapse_proxy_source: PathBuf,
+    synapse_proxy_source_sha256: String,
+    synapse_proxy_ready: PathBuf,
+    synapse_proxy_ready_sha256: String,
+    synapse_proxy_port: u16,
+    synapse_proxy_pid: u32,
     agentd_binary: PathBuf,
     matrixd_binary: PathBuf,
     test_binary: PathBuf,
@@ -1534,6 +1544,18 @@ struct RunnerControlStaticScan {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct SynapseLoopbackProxyReady {
+    schema_version: u32,
+    transport: String,
+    host: String,
+    port: u16,
+    pid: u32,
+    container: String,
+    target: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AppleBuildInputLedger {
     schema_version: u32,
     developer_dir: PathBuf,
@@ -1590,7 +1612,7 @@ impl E2eEnvironment {
         }
         let manifest: E2eFixtureManifest = serde_json::from_slice(&std::fs::read(&manifest_path)?)?;
         ensure!(
-            manifest.schema_version == 7,
+            manifest.schema_version == 8,
             "unsupported R4 fixture manifest"
         );
         let source_root = manifest.source_root.canonicalize()?;
@@ -2193,6 +2215,61 @@ impl E2eEnvironment {
             &manifest.homeserver_config_sha256,
             "Synapse configuration digest",
         )?;
+        ensure!(
+            manifest.synapse_transport == "docker-exec-loopback-proxy-v1"
+                && manifest.synapse_network_mode == "internal"
+                && manifest.synapse_network_internal
+                && !manifest.synapse_docker_port_published,
+            "R4 fixture did not bind the internal-network loopback proxy transport"
+        );
+        let candidate_proxy_source =
+            source_root.join("codex-rs/hepta-matrixd/tests/fixtures/synapse-loopback-proxy.py");
+        validate_file_sha256(
+            &candidate_proxy_source,
+            &manifest.synapse_proxy_source_sha256,
+            "checked-in Synapse loopback proxy source",
+        )?;
+        let proxy_source = manifest.synapse_proxy_source.canonicalize()?;
+        ensure!(
+            proxy_source
+                == fixture_root
+                    .join("synapse-loopback-proxy.py")
+                    .canonicalize()?,
+            "Synapse loopback proxy source escaped the private fixture root"
+        );
+        validate_mode_0600_regular_file(&proxy_source, "Synapse loopback proxy source")?;
+        validate_file_sha256(
+            &proxy_source,
+            &manifest.synapse_proxy_source_sha256,
+            "installed Synapse loopback proxy source",
+        )?;
+        let proxy_ready = manifest.synapse_proxy_ready.canonicalize()?;
+        ensure!(
+            proxy_ready
+                == fixture_root
+                    .join("synapse-loopback-proxy-ready.json")
+                    .canonicalize()?,
+            "Synapse loopback proxy ready evidence escaped the private fixture root"
+        );
+        validate_mode_0600_regular_file(&proxy_ready, "Synapse loopback proxy ready evidence")?;
+        validate_file_sha256(
+            &proxy_ready,
+            &manifest.synapse_proxy_ready_sha256,
+            "Synapse loopback proxy ready evidence",
+        )?;
+        let proxy_ready_payload: SynapseLoopbackProxyReady =
+            serde_json::from_slice(&std::fs::read(&proxy_ready)?)?;
+        ensure!(
+            proxy_ready_payload.schema_version == 1
+                && proxy_ready_payload.transport == manifest.synapse_transport
+                && proxy_ready_payload.host == "127.0.0.1"
+                && proxy_ready_payload.target == "127.0.0.1:8008"
+                && !proxy_ready_payload.container.is_empty()
+                && proxy_ready_payload.port == manifest.synapse_proxy_port
+                && proxy_ready_payload.pid == manifest.synapse_proxy_pid
+                && proxy_ready_payload.pid > 0,
+            "Synapse loopback proxy ready evidence failed closed validation"
+        );
         validate_sha256(&manifest.agentd_sha256, "agentd binary digest")?;
         validate_sha256(&manifest.matrixd_sha256, "matrixd binary digest")?;
         validate_sha256(&manifest.test_binary_sha256, "test binary digest")?;
@@ -2281,6 +2358,10 @@ impl E2eEnvironment {
         ensure!(
             homeserver.port().is_some(),
             "fixture Synapse must use an explicit port"
+        );
+        ensure!(
+            homeserver.port() == Some(manifest.synapse_proxy_port),
+            "fixture Synapse URL did not bind the attested loopback proxy port"
         );
         let agentd_binary = manifest.agentd_binary.canonicalize()?;
         let matrixd_binary = manifest.matrixd_binary.canonicalize()?;
