@@ -2028,8 +2028,9 @@ impl E2eEnvironment {
             .find(|entry| entry.name == "python3")
             .context("runner control ledger omitted fixed bootstrap Python")?;
         ensure!(
-            runner_python.target.canonicalize()? == Path::new("/usr/bin/python3").canonicalize()?,
-            "runner control ledger Python disagreed with /usr/bin/python3 bootstrap authority"
+            runner_python.target.canonicalize()?
+                == Path::new("/opt/homebrew/bin/python3").canonicalize()?,
+            "runner control ledger Python disagreed with /opt/homebrew/bin/python3 bootstrap authority"
         );
 
         let expected_target_linker_key = format!(
