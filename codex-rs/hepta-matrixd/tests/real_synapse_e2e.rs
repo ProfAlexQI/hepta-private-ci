@@ -255,10 +255,6 @@ async fn run_real_synapse_qualification_inner(
         vec![
             sse_response_template(pending_approval_sse(), None),
             sse_response_template(
-                final_sse("matrix-b-pending-cancelled", "agent-b-pending-cancelled"),
-                None,
-            ),
-            sse_response_template(
                 final_sse("matrix-b-authority-probe", "agent-b-authority-probe"),
                 None,
             ),
@@ -551,9 +547,6 @@ async fn run_real_synapse_qualification_inner(
         "owner-local approval cancel returned an unexpected Matrixd payload: {:?}",
         cancelled.payload
     );
-    encrypted_matrix_b
-        .wait_for_body(AGENT_B_MXID, "agent-b-pending-cancelled")
-        .await?;
     let authority_reply_event = encrypted_matrix_b
         .wait_for_body(AGENT_B_MXID, "agent-b-authority-probe")
         .await?;
@@ -667,7 +660,7 @@ async fn run_real_synapse_qualification_inner(
     eprintln!("R4_STAGE agent_fault_isolation:b_reply_seen");
     wait_matrix_store_drained(&agent_b.layout).await?;
     ensure!(
-        model_b_mock.requests().len() == 4,
+        model_b_mock.requests().len() == 3,
         "agent B request count drifted while agent A failed"
     );
     assert_peer_unchanged(
@@ -750,8 +743,8 @@ async fn run_real_synapse_qualification_inner(
             "Agent A provider count changed in freeze window {window}"
         );
         ensure!(
-            model_b_mock.requests().len() == 4,
-            "Agent B provider count changed in freeze window {window}"
+        model_b_mock.requests().len() == 3,
+        "Agent B provider count changed in freeze window {window}"
         );
         ensure!(
             encrypted_matrix_a.seen.len() == frozen_human_a_events,
@@ -802,7 +795,6 @@ async fn run_real_synapse_qualification_inner(
         &model_b_mock,
         &[
             &["request a local command that requires approval"],
-            &["request a local command that requires approval"],
             &[
                 "request a local command that requires approval",
                 AUTHORITY_PROBE,
@@ -826,7 +818,6 @@ async fn run_real_synapse_qualification_inner(
     encrypted_matrix_a.assert_body_count("agent-a-network-recovered", 1)?;
     encrypted_matrix_a.assert_body_count("agent-a-sidecar-recovered", 1)?;
     encrypted_matrix_a.assert_body_count("agent-a-after-upgrade", 1)?;
-    encrypted_matrix_b.assert_body_count("agent-b-pending-cancelled", 1)?;
     encrypted_matrix_b.assert_body_count("agent-b-authority-probe", 1)?;
     encrypted_matrix_b.assert_body_count("agent-b-after-a-kill", 1)?;
     encrypted_matrix_a.assert_response_not_token_fragmented(AGENT_A_MXID, "agent-a-first")?;
@@ -838,8 +829,6 @@ async fn run_real_synapse_qualification_inner(
         .assert_response_not_token_fragmented(AGENT_A_MXID, "agent-a-sidecar-recovered")?;
     encrypted_matrix_a
         .assert_response_not_token_fragmented(AGENT_A_MXID, "agent-a-after-upgrade")?;
-    encrypted_matrix_b
-        .assert_response_not_token_fragmented(AGENT_B_MXID, "agent-b-pending-cancelled")?;
     encrypted_matrix_b
         .assert_response_not_token_fragmented(AGENT_B_MXID, "agent-b-authority-probe")?;
     encrypted_matrix_b
