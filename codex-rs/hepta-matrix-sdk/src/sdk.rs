@@ -26,6 +26,7 @@ use matrix_sdk::ruma::events::SyncMessageLikeEvent;
 use matrix_sdk::ruma::events::room::message::MessageType;
 use matrix_sdk::ruma::events::room::message::OriginalSyncRoomMessageEvent;
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
+use matrix_sdk::store::StateStoreDataKey;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 use url::Url;
@@ -174,6 +175,17 @@ impl MatrixSdkClient {
             .sqlite_store_with_cache_path(paths.state(), paths.cache(), store_passphrase)
             .handle_refresh_tokens()
             .build()
+            .await
+            .map_err(|_| MatrixSdkError::Initialization)?;
+        // The SDK's own sync token is only an optimization for its normal
+        // sync loop.  Hepta persists the authoritative cursor in its durable
+        // inbox store and always supplies that cursor explicitly.  Clear a
+        // stale SDK token before session activation so a process restart
+        // cannot discard a replay whose `next_batch` happens to equal the
+        // SDK token that was persisted before the prior inbox commit.
+        client
+            .state_store()
+            .remove_kv_data(StateStoreDataKey::SyncToken)
             .await
             .map_err(|_| MatrixSdkError::Initialization)?;
         let save_session_path = paths.session().to_path_buf();
