@@ -147,6 +147,10 @@ class Proxy:
         self.threads: set[threading.Thread] = set()
 
     def _signal(self, _signum: int, _frame: object) -> None:
+        # Signal handlers run on the main thread and may interrupt code while
+        # it owns ``sessions_lock``.  Do not acquire that non-reentrant lock
+        # here; the run-loop performs the authoritative session snapshot and
+        # termination immediately after the listener is closed.
         self.stop_event.set()
         listener = self.listener
         if listener is not None:
@@ -154,21 +158,10 @@ class Proxy:
                 listener.close()
             except OSError:
                 pass
-        with self.sessions_lock:
-            sessions = list(self.sessions)
-        for session in sessions:
-            try:
-                session.client.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-            try:
-                session.client.close()
-            except OSError:
-                pass
-            session.process.terminate()
 
     def _start_session(self, client: socket.socket) -> None:
         process: subprocess.Popen[bytes] | None = None
+        started_threads: list[threading.Thread] = []
         try:
             process = subprocess.Popen(
                 [self.docker, "exec", "-i", self.container, "python3", "-c", BRIDGE_SOURCE],
@@ -194,9 +187,14 @@ class Proxy:
                 daemon=True,
             )
             with self.sessions_lock:
-                self.threads.update((to_process, from_process))
-            to_process.start()
-            from_process.start()
+                # Start while holding the same lock used by shutdown
+                # snapshots, so no snapshot can contain an unstarted thread.
+                to_process.start()
+                started_threads.append(to_process)
+                self.threads.add(to_process)
+                from_process.start()
+                started_threads.append(from_process)
+                self.threads.add(from_process)
             process.wait()
             try:
                 client.shutdown(socket.SHUT_RDWR)
@@ -218,6 +216,8 @@ class Proxy:
                 client.close()
             except OSError:
                 pass
+            for thread in started_threads:
+                thread.join(timeout=5.0)
         finally:
             if process is not None:
                 with self.sessions_lock:
@@ -308,9 +308,11 @@ class Proxy:
                 name="proxy-client",
                 daemon=True,
             )
+            # Keep the thread-set invariant across shutdown: once the thread
+            # is visible to the cleanup snapshot it has already been started.
             with self.sessions_lock:
+                thread.start()
                 self.threads.add(thread)
-            thread.start()
         try:
             listener.close()
         except OSError:
@@ -326,15 +328,19 @@ class Proxy:
                 pass
         for thread in threads:
             thread.join(timeout=10.0)
-        survivors = []
         with self.sessions_lock:
-            for session in self.sessions:
-                if session.process.poll() is None:
-                    survivors.append(session.process.pid)
-        if survivors:
-            for session in list(self.sessions):
+            survivor_sessions = [
+                session
+                for session in self.sessions
+                if session.process.poll() is None
+            ]
+        if survivor_sessions:
+            for session in survivor_sessions:
                 session.process.kill()
-            raise RuntimeError(f"proxy child survived graceful shutdown: {survivors}")
+            raise RuntimeError(
+                "proxy child survived graceful shutdown: "
+                f"{[session.process.pid for session in survivor_sessions]}"
+            )
         return 0
 
 
