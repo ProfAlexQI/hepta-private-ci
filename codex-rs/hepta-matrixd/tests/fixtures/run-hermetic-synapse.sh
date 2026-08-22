@@ -461,11 +461,41 @@ with os.fdopen(fd, "wb") as destination:
     destination.flush()
     os.fsync(destination.fileno())
 PY
+make_runtime_tree_removable() {
+  local removable_root=$1
+  [[ -n "$removable_root" && -e "$removable_root" ]] || return 0
+  "$python_bin" - "$removable_root" "$fixture_root" <<'PY'
+import os
+import pathlib
+import stat
+import sys
+
+root = pathlib.Path(sys.argv[1])
+fixture_root = pathlib.Path(sys.argv[2]).resolve(strict=True)
+if root.is_symlink():
+    raise SystemExit("runtime cleanup root must not be a symlink")
+resolved = root.resolve(strict=True)
+if resolved != fixture_root / "runtime-tmp":
+    raise SystemExit("runtime cleanup root escaped the private fixture root")
+for current, directories, files in os.walk(resolved, topdown=True, followlinks=False):
+    current_path = pathlib.Path(current)
+    os.chmod(current_path, stat.S_IRWXU)
+    directories[:] = [name for name in directories
+                      if not (current_path / name).is_symlink()]
+    for name in files:
+        path = current_path / name
+        if not path.is_symlink():
+            os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+}
 cleanup_fixture_root_early() {
   local fixture_rc=$1
   trap - EXIT INT TERM
   case "$fixture_root" in
-    "$fixture_tmp_base"/hepta-r4-synapse.*) "$rm_bin" -rf -- "$fixture_root" ;;
+    "$fixture_tmp_base"/hepta-r4-synapse.*)
+      make_runtime_tree_removable "$runtime_tmp_root" || true
+      "$rm_bin" -rf -- "$fixture_root"
+      ;;
     *) echo 'refusing to remove unexpected fixture directory' >&2 ;;
   esac
   exit "$fixture_rc"
@@ -2102,6 +2132,10 @@ cleanup_fixture() {
 
   case "$fixture_root" in
     "$fixture_tmp_base"/hepta-r4-synapse.*)
+      if ! make_runtime_tree_removable "$runtime_tmp_root"; then
+        echo 'failed to make the private runtime tree removable' >&2
+        cleanup_error=1
+      fi
       if ! "$rm_bin" -rf -- "$fixture_root" || [[ -e "$fixture_root" ]]; then
         echo 'failed to remove the qualification fixture root' >&2
         cleanup_error=1

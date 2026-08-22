@@ -6,6 +6,7 @@ use std::fs::OpenOptions;
 use std::io::Read;
 use std::io::Write;
 use std::net::SocketAddr;
+use std::ops::Deref;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::fs::PermissionsExt;
@@ -93,6 +94,7 @@ use tokio::task::JoinHandle;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 use url::Url;
+use wiremock::MockServer;
 use wiremock::ResponseTemplate;
 
 const AGENT_A: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
@@ -116,6 +118,47 @@ const MATRIX_MEMBERSHIP_TIMEOUT: Duration = Duration::from_secs(45);
 const PAIRED_RELEASE_ID: &str = "r2-g4-synapse-paired-v1";
 const OUTBOUND_ACK_LOSS_INPUT: &str = "prove Matrix outbound response-loss exactly once";
 const OUTBOUND_ACK_LOSS_BODY: &str = "agent-a-outbound-ack-loss";
+
+/// Keeps exact wiremock verification on successful qualification runs while
+/// preventing an early-return verification panic from masking the primary
+/// anyhow error. A failed test process exits immediately, so intentionally
+/// forgetting the two diagnostic servers on that path cannot outlive the
+/// qualification process.
+struct QualificationMockServer {
+    server: Option<MockServer>,
+    verify_on_drop: bool,
+}
+
+impl QualificationMockServer {
+    fn new(server: MockServer) -> Self {
+        Self {
+            server: Some(server),
+            verify_on_drop: false,
+        }
+    }
+
+    fn enable_verification(&mut self) {
+        self.verify_on_drop = true;
+    }
+}
+
+impl Deref for QualificationMockServer {
+    type Target = MockServer;
+
+    fn deref(&self) -> &Self::Target {
+        self.server
+            .as_ref()
+            .expect("qualification mock server remained present")
+    }
+}
+
+impl Drop for QualificationMockServer {
+    fn drop(&mut self) {
+        if !self.verify_on_drop && let Some(server) = self.server.take() {
+            std::mem::forget(server);
+        }
+    }
+}
 
 /// This qualification test has no runtime skip path. The checked-in fixture
 /// runner must supply a mode-0600 manifest for the exact pinned local Synapse
@@ -190,8 +233,8 @@ async fn run_real_synapse_qualification_inner(
     let agent_a = fleet.register(AGENT_A, "workspace-a")?;
     let agent_b = fleet.register(AGENT_B, "workspace-b")?;
 
-    let model_a = responses::start_mock_server().await;
-    let model_b = responses::start_mock_server().await;
+    let mut model_a = QualificationMockServer::new(responses::start_mock_server().await);
+    let mut model_b = QualificationMockServer::new(responses::start_mock_server().await);
     MockResponsesConfig::new(&model_a.uri()).write(agent_a.layout.home_root())?;
     MockResponsesConfig::new(&model_b.uri())
         .with_approval_policy("on-request")
@@ -297,11 +340,16 @@ async fn run_real_synapse_qualification_inner(
         environment.homeserver.clone(),
         encrypted_matrix_a.access_token().to_string(),
     )?;
+    eprintln!("R4_STAGE raw_sync_cursor:start");
     timeout(MATRIX_SETUP_STEP_TIMEOUT, matrix.prime_sync_cursor())
         .await
         .context("raw Matrix sync cursor priming exceeded its bounded deadline")??;
+    eprintln!("R4_STAGE raw_sync_cursor:done");
 
+    eprintln!("R4_STAGE fault_proxy:start");
     let mut network_proxy_a = LoopbackFaultProxy::start(&environment.homeserver).await?;
+    eprintln!("R4_STAGE fault_proxy:done");
+    eprintln!("R4_STAGE matrix_config:start");
     fleet.configure_matrix(
         &agent_a,
         MatrixIdentity {
@@ -322,15 +370,22 @@ async fn run_real_synapse_qualification_inner(
             room_id: &room_b,
         },
     )?;
+    eprintln!("R4_STAGE matrix_config:done");
+    eprintln!("R4_STAGE paired_release_install:start");
     fleet.install_paired_release(
         &environment.matrixd_binary,
         &environment.agentd_sha256,
         &environment.matrixd_sha256,
     )?;
+    eprintln!("R4_STAGE paired_release_install:done");
+    eprintln!("R4_STAGE agent_pair_start:start");
     let agent_a_generation = fleet.start(&agent_a)?;
     let agent_b_generation = fleet.start(&agent_b)?;
+    eprintln!("R4_STAGE agent_pair_start:done");
+    eprintln!("R4_STAGE agent_pair_ready:start");
     let mut pair_a = fleet.wait_ready(&agent_a, agent_a_generation).await?;
     let peer_b = fleet.wait_ready(&agent_b, agent_b_generation).await?;
+    eprintln!("R4_STAGE agent_pair_ready:done");
     fleet.record_release_copy_identity(&agent_a, "initial_pair_ready", Some(&pair_a))?;
     fleet.record_release_copy_identity(&agent_b, "initial_pair_ready", Some(&peer_b))?;
     // Refresh both human crypto clients only after the two distinct product
@@ -789,6 +844,8 @@ async fn run_real_synapse_qualification_inner(
     eprintln!(
         "R4_E2E room_b_inbound_event_id={authority_event} room_b_reply_event_id={authority_reply_event}"
     );
+    model_a.enable_verification();
+    model_b.enable_verification();
     Ok(QualificationRunSuccess {
         stable_txn_id: ack_loss_proof.stable_txn_id,
         synapse_event_id: ack_loss_proof.synapse_event_id,
@@ -1042,6 +1099,27 @@ fn assert_pair_sockets_absent(agent: &AgentFixture) -> Result<()> {
         "matrixd UDS survived final stop for {}",
         agent.agent_id
     );
+    Ok(())
+}
+
+fn make_private_runtime_tree_removable(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let metadata = std::fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() {
+        return Ok(());
+    }
+    if metadata.is_dir() {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+        for entry in std::fs::read_dir(path)? {
+            make_private_runtime_tree_removable(&entry?.path())?;
+        }
+    } else if metadata.is_file() {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    } else {
+        bail!("runtime cleanup encountered a non-regular path: {}", path.display());
+    }
     Ok(())
 }
 
@@ -4605,6 +4683,7 @@ impl FleetHarness {
             .temp
             .take()
             .context("runtime root cleanup authority was already consumed")?;
+        make_private_runtime_tree_removable(&runtime_root)?;
         temp.close()
             .context("failed to remove the exact runtime root")?;
         ensure!(
