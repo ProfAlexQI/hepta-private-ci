@@ -146,8 +146,9 @@ jq_bin=''
 openssl_bin=''
 curl_bin=''
 git_bin=''
-rustc_bin=''
 cargo_bootstrap_bin=''
+rustup_bin=''
+rustc_bin=''
 awk_bin=''
 basename_bin=''
 dirname_bin=''
@@ -219,7 +220,6 @@ bind_runner_control_tool jq jq_bin
 bind_runner_control_tool openssl openssl_bin
 bind_runner_control_tool curl curl_bin
 bind_runner_control_tool git git_bin
-bind_runner_control_tool rustc rustc_bin
 bind_runner_control_tool cargo cargo_bootstrap_bin
 bind_runner_control_tool awk awk_bin
 bind_runner_control_tool basename basename_bin
@@ -242,6 +242,13 @@ bind_runner_control_tool ln ln_bin
 bind_runner_control_tool env env_bin
 bind_absolute_runner_control_tool kill /bin/kill kill_bin
 bind_absolute_runner_control_tool ps /bin/ps ps_bin
+rustup_bin=/opt/homebrew/opt/rustup/bin/rustup
+[[ -L "$rustup_bin" && -x "$rustup_bin" ]] || {
+  echo 'fixed rustup shim is absent or not executable' >&2
+  exit 69
+}
+rustc_toolchain_bin=$("$rustup_bin" which rustc)
+bind_absolute_runner_control_tool rustc "$rustc_toolchain_bin" rustc_bin
 [[ -n "$cargo_bootstrap_bin" ]] || {
   echo 'Cargo runner control binding unexpectedly disappeared' >&2
   exit 69
