@@ -1145,6 +1145,14 @@ reject_external_git_database_authority() {
   local config_file
   local config_name
   local config_names_file
+  if [[ -e "$database/shallow" || -L "$database/shallow" ]]; then
+    echo "Cargo git database is shallow and cannot be used as an exact seed: $database/shallow" >&2
+    return 65
+  fi
+  if [[ -n "$("$find_bin" "$database/objects/pack" -type f -name '*.promisor' -print -quit 2>/dev/null)" ]]; then
+    echo "Cargo git database contains a promisor pack marker: $database" >&2
+    return 65
+  fi
   for alternate in \
     "$database/objects/info/alternates" \
     "$database/objects/info/http-alternates"; do
@@ -1175,7 +1183,7 @@ reject_external_git_database_authority() {
     fi
     while IFS= read -r config_name; do
       case "${config_name,,}" in
-        include.*|includeif.*|core.alternaterefscommand|extensions.partialclone|remote.*.promisor)
+        include.*|includeif.*|core.alternaterefscommand|extensions.partialclone|remote.*.promisor|remote.*.partialclonefilter)
           echo "Cargo git database config contains external authority $config_name: $config_file" >&2
           return 65
           ;;
