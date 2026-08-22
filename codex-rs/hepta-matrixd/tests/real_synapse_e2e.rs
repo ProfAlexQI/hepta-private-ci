@@ -528,7 +528,11 @@ async fn run_real_synapse_qualification_inner(
         },
     )
     .await?;
-    ensure!(matches!(declined.payload, MatrixdPayload::Accepted));
+    ensure!(
+        matches!(declined.payload, MatrixdPayload::Accepted),
+        "owner-local approval decline returned an unexpected Matrixd payload: {:?}",
+        declined.payload
+    );
     encrypted_matrix_b
         .wait_for_body(AGENT_B_MXID, "agent-b-pending-cancelled")
         .await?;
