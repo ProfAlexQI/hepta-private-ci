@@ -272,18 +272,31 @@ sha256_file() {
   "$openssl_bin" dgst -sha256 -r "$1" | "$awk_bin" '{print $1}'
 }
 proxy_source_sha256=$(sha256_file "$proxy_source_path")
-fixture_tmp_base=${TMPDIR:-/tmp}
-[[ -d "$fixture_tmp_base" ]] || {
+build_tmp_base=${TMPDIR:-/tmp}
+[[ -d "$build_tmp_base" ]] || {
   echo 'temporary directory base does not exist' >&2
   exit 73
 }
 # hepta-ssd-run may expose TMPDIR with a trailing separator. Canonicalize the
-# base before composing private fixture paths so the recorded bounded PATH and
-# Rust-side canonical-path checks have one stable spelling.
-fixture_tmp_base=$(
-  cd "$fixture_tmp_base"
+# build base before composing private fixture paths so the recorded bounded
+# PATH and Rust-side canonical-path checks have one stable spelling.
+build_tmp_base=$(
+  cd "$build_tmp_base"
   pwd -P
 )
+# Keep build scratch lane-scoped, but place the private qualification root at
+# the short SSD temp parent. Darwin's SUN_LEN applies to the textual socket
+# path; retaining the lane hash here would make the otherwise bounded agent
+# control sockets unbindable. The parent is fixed by hepta-ssd-run and each
+# r4.* root remains mode-0700 and uniquely generated below.
+fixture_tmp_base=/Volumes/T5/hepta-vnext/tmp
+if [[ "$build_tmp_base" != /Volumes/T5/hepta-vnext/tmp/l-* ]]; then
+  fixture_tmp_base="$build_tmp_base"
+fi
+[[ -d "$fixture_tmp_base" && ! -L "$fixture_tmp_base" ]] || {
+  echo 'qualification fixture temporary base is not a physical directory' >&2
+  exit 73
+}
 umask 077
 fixture_root=$("$mktemp_bin" -d "$fixture_tmp_base/r4.XXXXXX")
 fixture_manifest="$fixture_root/fixture-manifest.json"
@@ -1261,7 +1274,7 @@ build_environment=(
   "$env_bin" -i
   "PATH=$build_path"
   "HOME=$build_home"
-  "TMPDIR=$fixture_tmp_base"
+  "TMPDIR=$build_tmp_base"
   'LANG=C'
   'LC_ALL=C'
   'CARGO_NET_OFFLINE=true'
