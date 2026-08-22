@@ -888,6 +888,57 @@ pub struct ThreadQueueAddResponse {
     pub queued_submission: QueuedSubmission,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum ThreadQueueReconcileMode {
+    AllowIfAbsent,
+    ReconcileOnly,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadQueueReconcileParams {
+    pub thread_id: String,
+    pub input: Vec<UserInput>,
+    pub client_user_message_id: String,
+    /// Lowercase SHA-256 of the complete ordered user input supplied by the
+    /// caller. The App Server recomputes and verifies this value before the
+    /// SQLite reservation can authorize an admission.
+    pub expected_payload_sha256: String,
+    pub mode: ThreadQueueReconcileMode,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS, ExperimentalApi)]
+#[serde(tag = "type", rename_all = "camelCase")]
+#[ts(tag = "type", rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub enum ThreadQueueReconcileOutcome {
+    #[serde(rename_all = "camelCase")]
+    #[ts(rename_all = "camelCase")]
+    Queued {
+        queued_submission: QueuedSubmission,
+        created: bool,
+    },
+    #[serde(rename_all = "camelCase")]
+    #[ts(rename_all = "camelCase")]
+    Persisted {
+        turn_id: String,
+    },
+    Missing,
+    Cancelled,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS, ExperimentalApi)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "v2/")]
+pub struct ThreadQueueReconcileResponse {
+    pub client_user_message_id: String,
+    pub payload_sha256: String,
+    pub outcome: ThreadQueueReconcileOutcome,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]

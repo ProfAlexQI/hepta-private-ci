@@ -25,6 +25,7 @@ use chrono::DateTime;
 use chrono::Utc;
 use codex_history::RolloutItem;
 use codex_protocol::ThreadId;
+use codex_utils_absolute_path::AbsolutePathBuf;
 use serde_json::Value;
 use sqlx::QueryBuilder;
 use sqlx::Row;
@@ -66,6 +67,7 @@ pub use goals::GoalUpdate;
 pub use memories::MemoryStore;
 pub use queued_items::QueueCapacityExceeded;
 pub use queued_items::QueueCapacityLimit;
+pub use queued_items::QueuedClientDispatchLock;
 pub use queued_items::SqliteQueueStore;
 pub use recovery::RuntimeDbBackup;
 pub(super) use recovery::RuntimeDbInitError;
@@ -125,6 +127,12 @@ impl StateRuntime {
         telemetry_override: Option<&dyn DbTelemetry>,
     ) -> anyhow::Result<Arc<Self>> {
         tokio::fs::create_dir_all(sqlite.home()).await?;
+        // Resolve the configured home exactly once, before opening any
+        // database, then retain directory fds for dispatch locking. A later
+        // parent-symlink retarget cannot split the queue DB from its locks.
+        let canonical_home = tokio::fs::canonicalize(sqlite.home()).await?;
+        let sqlite = SqliteConfig::from_sqlite_home(AbsolutePathBuf::try_from(canonical_home)?);
+        let dispatch_lock_directory = queued_items::DispatchLockDirectory::open(sqlite.home())?;
         let state_migrator = runtime_state_migrator();
         let logs_migrator = runtime_logs_migrator();
         let goals_migrator = runtime_goals_migrator();
@@ -250,10 +258,22 @@ impl StateRuntime {
             };
         let thread_updated_at_millis = thread_updated_at_millis.unwrap_or(0);
         let thread_recency_at_millis = thread_recency_at_millis.unwrap_or(0);
+        let thread_queue = SqliteQueueStore::new(Arc::clone(&queue_pool), dispatch_lock_directory);
+        if let Err(err) = thread_queue.bind_dispatch_lock_root().await {
+            close_sqlite_pools(&[
+                pool.as_ref(),
+                logs_pool.as_ref(),
+                goals_pool.as_ref(),
+                memories_pool.as_ref(),
+                queue_pool.as_ref(),
+            ])
+            .await;
+            return Err(err);
+        }
         let runtime = Arc::new(Self {
             thread_goals: GoalStore::new(Arc::clone(&goals_pool)),
             memories: MemoryStore::new(Arc::clone(&memories_pool), Arc::clone(&pool)),
-            thread_queue: SqliteQueueStore::new(queue_pool),
+            thread_queue,
             pool,
             logs_pool,
             sqlite,

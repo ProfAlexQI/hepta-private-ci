@@ -119,6 +119,128 @@ zero_event_interpretation = "shadow_observations_are_turn_local_and_not_persiste
 promotion_eligible = false
 
 [[qualification]]
+slice = "R2_matrix_robrix_closed_loop"
+requires = [
+  "R2_codex_execution_substrate",
+  "R2_independent_dual_agent",
+  "R2_intelligence_kg_closed_loop",
+]
+qualification_base_sha = "e0c4b0bbf403af99143ad9691385aea1d4992fa0"
+composition = "dual_agent_matrix_transport_and_owner_local_robrix_control_composed"
+development_status = "in_progress"
+product_callers = [
+  "codex-rs/app-server/src/request_processors/thread_queue_processor.rs",
+  "codex-rs/app-server/src/request_processors/thread_delete.rs",
+  "codex-rs/core/src/thread_manager.rs",
+  "codex-rs/ext/queue/src/service.rs",
+  "codex-rs/state/src/runtime/queued_items.rs",
+  "codex-rs/thread-store/src/store.rs",
+  "codex-rs/hepta-agentd/src/config.rs",
+  "codex-rs/hepta-matrixd/src/main.rs",
+  "codex-rs/hepta-matrixd/src/runtime.rs",
+  "codex-rs/hepta-matrixd/src/lib.rs",
+  "codex-rs/hepta-matrixd/src/control.rs",
+  "codex-rs/hepta-supervisor/src/matrix.rs",
+  "codex-rs/hepta-supervisor/src/unix.rs",
+]
+robrix_product_callers = [
+  "apps/hepta-native/src/fleet_control/protocol.rs",
+  "apps/hepta-native/src/fleet_control/transport.rs",
+  "apps/hepta-native/src/fleet_control/matrixd_protocol.rs",
+  "apps/hepta-native/src/fleet_control/matrixd_transport.rs",
+  "apps/hepta-native/src/fleet_control/matrixd_view.rs",
+]
+qualification_callers = [
+  "codex-rs/app-server/tests/suite/v2/thread_queue.rs",
+  "codex-rs/app-server/tests/suite/v2/thread_delete.rs",
+  "codex-rs/core/src/thread_manager_tests.rs",
+  "codex-rs/ext/queue/tests/queue_service.rs",
+  "codex-rs/state/src/runtime/queued_items_tests.rs",
+  "codex-rs/hepta-agentd/src/config_tests.rs",
+  "codex-rs/hepta-matrixd/src/tests.rs",
+  "codex-rs/hepta-matrixd/tests/real_synapse_e2e.rs",
+  "codex-rs/hepta-supervisor/examples/write_robrix_control_projection.rs",
+  "codex-rs/hepta-supervisor/tests/robrix_control_projection.rs",
+]
+qualification_tests = [
+  "real_synapse_dual_agentd_dual_matrixd_restart_and_isolation",
+  "matrix_bridge_payload_binding_suite",
+  "caller_abort_after_core_started_keeps_exact_authority_until_persistence",
+  "parent_delete_drains_prefinalize_fork_and_exposes_child_for_store_cleanup",
+  "same_id_resume_claims_runtime_before_original_delivery_is_cancelled",
+  "cancelled_unclaimed_new_startup_removes_runtime_and_materialized_store",
+  "permanent_hard_delete_fence_survives_overlapping_unclaimed_cleanup",
+  "durable_delete_operation_recovers_exact_closure_across_presealed_overlap",
+  "thread_delete_fresh_process_retries_from_durable_completed_operation",
+  "config_binds_exact_registered_agent_roots_and_workspace",
+  "robrix_control_v2_generated_projection_and_cross_parser_corpus",
+]
+qualification_lifecycle_actions = [
+  "network_disconnect",
+  "matrix_sidecar_sigkill",
+  "agent_process_sigkill",
+  "supervisor_managed_agent_restart_generation_rollover",
+  "paired_stop",
+]
+product_caller_named = true
+matrix_bridge_payload_sha256_bound = true
+required_matrix_bridge_atomic_reconcile_and_add = true
+required_matrix_bridge_durable_client_binding = true
+required_matrix_bridge_durable_dispatch_owner_fence = true
+required_thread_hard_delete_durable_operation_journal = true
+required_thread_hard_delete_managed_agentd_single_writer_topology = true
+matrix_bridge_atomic_reconcile_and_add_qualified = false
+matrix_bridge_durable_client_binding_qualified = false
+matrix_bridge_durable_dispatch_owner_fence_qualified = false
+thread_hard_delete_durable_operation_journal_qualified = false
+thread_hard_delete_managed_agentd_single_writer_topology_qualified = false
+generic_multi_app_server_hard_delete_qualified = false
+thread_hard_delete_qualification_scope = "agentd_managed_one_embedded_app_server_per_canonical_agent_home"
+matrix_bridge_client_side_queue_turn_scan_authoritative = false
+matrix_bridge_queue_and_turn_all_pages_scanned = false
+matrix_bridge_conflicting_client_id_fails_before_atomic_admission = false
+matrix_bridge_reconcile_response_revalidated = true
+matrix_bridge_exact_bound_input_scope = "text_only"
+matrix_bridge_dispatch_scope = "same_exact_head_same_host_shared_sqlite_home_exact_bindings"
+old_binary_parallel_queue_dispatch_supported = false
+stop_the_world_queue_dispatch_cutover_required = true
+unbound_queue_exact_dispatch_qualified = false
+real_synapse_feature = "real-synapse-e2e"
+real_synapse_runtime_skip_allowed = false
+real_synapse_oci_image_ref = "matrixdotorg/synapse@sha256:467a587a5052dadd5d0bf1f8d89f043cc652d5201bca510307340f8dddb6b312"
+real_synapse_version = "1.159.0"
+dual_agent_e2ee_inbound_and_outbound = false
+matrix_transaction_id_deduplicated = false
+loopback_network_disconnect_recovery = false
+matrix_sidecar_restart_recovery = false
+agent_generation_rollover = false
+dual_agent_matrix_store_and_provider_isolation = false
+final_provider_and_room_counts_frozen_after_sidecar_stop = false
+matrix_timeline_control_authority = false
+owner_local_matrixd_control_authority = true
+matrixd_control_schema_version = 2
+matrixd_control_requires_same_uid_and_exact_fence = true
+required_robrix_matrixd_control_second_local_confirmation = true
+robrix_matrixd_control_requires_second_local_confirmation = false
+robrix_supervisord_schema_version = 2
+robrix_supervisord_allowed_methods = ["health", "roster", "snapshot"]
+robrix_supervisord_lifecycle_mutation_constructors = false
+required_generated_backend_protocol_projection = true
+generated_backend_protocol_projection = false
+backend_ui_histories_unrelated = true
+bounded_ui_patch_ledger_required = true
+whole_tree_ui_merge_allowed = false
+matrix_companion_lifecycle_qualified_in_g4 = false
+general_fleet_lifecycle_qualified_in_g4 = false
+cross_agent_memory_federation_qualified_in_g4 = false
+automation_qualified_in_g4 = false
+new_general_fleet_lifecycle_surface_added = false
+new_automation_authority_added = false
+provider_physical_sampling_exactly_once = false
+operator_acceptance_recorded = false
+promotion_eligible = false
+
+[[qualification]]
 slice = "S5_evidence_summary"
 composition = "app_server_read_only_summary_and_historical_reader_composed"
 product_callers = [

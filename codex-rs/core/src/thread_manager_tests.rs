@@ -10,6 +10,7 @@ use crate::session::tests::build_world_state_from_turn_context;
 use crate::session::tests::make_session_and_context;
 use crate::tasks::InterruptedTurnHistoryMarker;
 use crate::tasks::interrupted_turn_history_marker;
+use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::empty_extension_registry;
 use codex_history::InitialHistory;
 use codex_history::ResumedHistory;
@@ -41,11 +42,32 @@ use core_test_support::PathExt;
 use core_test_support::responses::mount_models_once;
 use core_test_support::responses::strip_response_item_ids_from_json;
 use pretty_assertions::assert_eq;
+use std::sync::atomic::AtomicUsize;
 use std::time::Duration;
 use tempfile::tempdir;
 use wiremock::MockServer;
 
 const TEST_INSTALLATION_ID: &str = "11111111-1111-4111-8111-111111111111";
+
+fn hard_delete_test_manager(config: &Config, state_db: Option<StateDbHandle>) -> ThreadManager {
+    let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("dummy"));
+    ThreadManager::new(
+        config,
+        auth_manager.clone(),
+        build_models_manager(config, auth_manager),
+        crate::CodexAppsToolsCache::default(),
+        SessionSource::Exec,
+        Arc::new(codex_exec_server::EnvironmentManager::default_for_tests()),
+        empty_extension_registry(),
+        Arc::new(crate::test_support::EmptyUserInstructionsProvider),
+        /*analytics_events_client*/ None,
+        thread_store_from_config(config, state_db.clone()),
+        local_agent_graph_store_from_state_db(state_db.as_ref()),
+        TEST_INSTALLATION_ID.to_string(),
+        /*attestation_provider*/ None,
+        /*external_time_provider*/ None,
+    )
+}
 
 /// Controls without a custom allocation policy still produce distinct thread identifiers.
 #[test]
@@ -112,6 +134,586 @@ async fn reserved_thread_id_is_used_without_changing_normal_id_generation() {
             if message == "reserved thread ID cannot be used when resuming a thread"
     ));
     assert_eq!(generated.thread_id, generated_ids[2]);
+}
+
+#[tokio::test]
+async fn hard_delete_fence_rejects_same_id_resume_until_pre_seal_abort() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let manager = hard_delete_test_manager(&config, /*state_db*/ None);
+
+    let source = manager
+        .start_thread(StartThreadOptions::new(config.clone()))
+        .await
+        .expect("start source thread");
+    source.thread.ensure_rollout_materialized().await;
+    source.thread.flush_rollout().await.expect("flush rollout");
+    let rollout_path = source.thread.rollout_path().expect("rollout path");
+    let authority = manager
+        .begin_thread_hard_delete(source.thread_id)
+        .await
+        .expect("acquire hard-delete fence");
+    let removed = authority
+        .removed_thread()
+        .expect("remove live source atomically");
+    assert!(Arc::ptr_eq(&removed, &source.thread));
+
+    let duplicate_begin = manager
+        .begin_thread_hard_delete(source.thread_id)
+        .await
+        .expect("duplicate begin remains retryable");
+    assert!(duplicate_begin.removed_thread().is_none());
+
+    removed.shutdown_and_wait().await.expect("shutdown source");
+    let resumed_history = InitialHistory::Resumed(ResumedHistory {
+        conversation_id: source.thread_id,
+        history: Arc::new(Vec::new()),
+        rollout_path: Some(rollout_path),
+    });
+    let mut fenced_options = StartThreadOptions::new(config.clone());
+    fenced_options.initial_history = resumed_history.clone();
+    let fenced_error = manager
+        .start_thread(fenced_options)
+        .await
+        .err()
+        .expect("same-id resume must remain fenced");
+    assert!(matches!(
+        fenced_error.details(),
+        codex_protocol::error::CodexErrorDetails::InvalidRequest(message)
+            if message.contains("fenced for hard deletion")
+    ));
+
+    assert!(manager.abort_thread_hard_delete(source.thread_id).await);
+    assert!(!manager.abort_thread_hard_delete(source.thread_id).await);
+    let mut resumed_options = StartThreadOptions::new(config);
+    resumed_options.initial_history = resumed_history;
+    let resumed = manager
+        .start_thread(resumed_options)
+        .await
+        .expect("pre-seal abort restores ordinary resume");
+    resumed
+        .thread
+        .shutdown_and_wait()
+        .await
+        .expect("shutdown resumed thread");
+}
+
+#[tokio::test]
+async fn hard_delete_fence_rejects_new_child_of_immediate_parent() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let manager = hard_delete_test_manager(&config, /*state_db*/ None);
+    let parent = manager
+        .start_thread(StartThreadOptions::new(config.clone()))
+        .await
+        .expect("start parent");
+    let parent_authority = manager
+        .begin_thread_hard_delete(parent.thread_id)
+        .await
+        .expect("fence parent");
+    let removed_parent = parent_authority.removed_thread().expect("remove parent");
+
+    let child_error = manager
+        .state
+        .spawn_new_thread_with_source(
+            config,
+            AgentControl::default(),
+            SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                parent_thread_id: parent.thread_id,
+                depth: 1,
+                agent_path: None,
+                agent_nickname: None,
+                agent_role: None,
+            }),
+            /*history_mode*/ None,
+            Some(parent.thread_id),
+            /*forked_from_thread_id*/ None,
+            /*thread_source*/ None,
+            /*metrics_service_name*/ None,
+            /*inherited_environments*/ None,
+            /*inherited_exec_policy*/ None,
+            /*environments*/ None,
+        )
+        .await
+        .err()
+        .expect("child creation must honor immediate-parent fence");
+    assert!(matches!(
+        child_error.details(),
+        codex_protocol::error::CodexErrorDetails::InvalidRequest(message)
+            if message.contains("immediate parent thread")
+                && message.contains("fenced for hard deletion")
+    ));
+    removed_parent
+        .shutdown_and_wait()
+        .await
+        .expect("shutdown parent");
+}
+
+#[tokio::test]
+async fn parent_delete_drains_prefinalize_fork_and_exposes_child_for_store_cleanup() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let parent_id = ThreadId::from_u128(0x018f_0000_0000_7000_8000_0000_0000_0008);
+    let child_id = ThreadId::from_u128(0x018f_0000_0000_7000_8000_0000_0000_0009);
+    let next_id = AtomicUsize::new(0);
+    let manager = Arc::new(
+        hard_delete_test_manager(&config, /*state_db*/ None).with_thread_id_generator(move || {
+            [parent_id, child_id][next_id.fetch_add(1, Ordering::Relaxed)]
+        }),
+    );
+    let parent = manager
+        .start_thread(StartThreadOptions::new(config.clone()))
+        .await
+        .expect("start parent");
+    assert_eq!(parent.thread_id, parent_id);
+    let finalize_hook = manager.pause_next_startup_before_finalize();
+    let child_state = Arc::clone(&manager.state);
+    let child_task = tokio::spawn(async move {
+        child_state
+            .fork_thread_with_source(
+                config,
+                InitialHistory::Forked(Vec::new()),
+                /*history_mode*/ None,
+                AgentControl::default(),
+                SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                    parent_thread_id: parent_id,
+                    depth: 1,
+                    agent_path: None,
+                    agent_nickname: None,
+                    agent_role: None,
+                }),
+                /*thread_source*/ None,
+                Some(parent_id),
+                Some(parent_id),
+                /*inherited_environments*/ None,
+                /*inherited_exec_policy*/ None,
+                /*environments*/ None,
+                ExtensionDataInit::default(),
+            )
+            .await
+    });
+
+    finalize_hook.wait_until_entered().await;
+    let authority = manager
+        .begin_thread_hard_delete(parent_id)
+        .await
+        .expect("fence parent and snapshot child startup");
+    assert!(Arc::ptr_eq(
+        &authority.removed_thread().expect("remove parent"),
+        &parent.thread
+    ));
+    assert_eq!(authority.startup_thread_ids(), vec![child_id]);
+    assert_eq!(authority.startup_count(), 1);
+    let drain_done = Arc::new(AtomicBool::new(false));
+    let drain_task = tokio::spawn({
+        let authority = authority.clone();
+        let drain_done = Arc::clone(&drain_done);
+        async move {
+            authority.drain_startups().await;
+            drain_done.store(true, Ordering::Release);
+        }
+    });
+    tokio::task::yield_now().await;
+    assert!(!drain_done.load(Ordering::Acquire));
+
+    finalize_hook.release();
+    let child_error = child_task
+        .await
+        .expect("child startup owner")
+        .err()
+        .expect("parent fence rejects pre-finalize child");
+    assert!(matches!(
+        child_error.details(),
+        codex_protocol::error::CodexErrorDetails::InvalidRequest(message)
+            if message.contains("immediate parent thread")
+                && message.contains("fenced for hard deletion")
+    ));
+    tokio::time::timeout(Duration::from_secs(5), drain_task)
+        .await
+        .expect("startup ticket drains after rejected child cleanup")
+        .expect("drain task");
+    assert!(manager.get_thread(child_id).await.is_err());
+    let stored_child = manager
+        .state
+        .thread_store
+        .read_thread(ReadThreadParams {
+            thread_id: child_id,
+            include_archived: true,
+            include_history: false,
+        })
+        .await;
+    let stored_child_absent = match &stored_child {
+        Err(ThreadStoreError::ThreadNotFound { .. }) => true,
+        Err(ThreadStoreError::InvalidRequest { message }) => message.contains("no rollout found"),
+        _ => false,
+    };
+    assert!(
+        stored_child_absent,
+        "rejected fork store cleanup returned {stored_child:?}"
+    );
+    parent
+        .thread
+        .shutdown_and_wait()
+        .await
+        .expect("shutdown removed parent");
+}
+
+#[tokio::test]
+async fn mismatched_explicit_and_session_source_parents_fail_before_startup_side_effects() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let manager = hard_delete_test_manager(&config, /*state_db*/ None);
+    let explicit_parent = ThreadId::from_u128(0x018f_0000_0000_7000_8000_0000_0000_0011);
+    let source_parent = ThreadId::from_u128(0x018f_0000_0000_7000_8000_0000_0000_0012);
+    let finalize_hook = manager.pause_next_startup_before_finalize();
+
+    let error = manager
+        .state
+        .spawn_new_thread_with_source(
+            config,
+            AgentControl::default(),
+            SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+                parent_thread_id: source_parent,
+                depth: 1,
+                agent_path: None,
+                agent_nickname: None,
+                agent_role: None,
+            }),
+            /*history_mode*/ None,
+            Some(explicit_parent),
+            /*forked_from_thread_id*/ None,
+            /*thread_source*/ None,
+            /*metrics_service_name*/ None,
+            /*inherited_environments*/ None,
+            /*inherited_exec_policy*/ None,
+            /*environments*/ None,
+        )
+        .await
+        .err()
+        .expect("mismatched immediate-parent authorities must fail closed");
+
+    assert!(matches!(
+        error.details(),
+        codex_protocol::error::CodexErrorDetails::InvalidRequest(message)
+            if message.contains("does not match session-source parent")
+    ));
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(50),
+            finalize_hook.wait_until_entered()
+        )
+        .await
+        .is_err(),
+        "Session::spawn must not be reached"
+    );
+    finalize_hook.release();
+}
+
+#[tokio::test]
+async fn cancelled_running_resume_waiter_does_not_remove_existing_runtime() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let manager = Arc::new(hard_delete_test_manager(&config, /*state_db*/ None));
+    let source = manager
+        .start_thread(StartThreadOptions::new(config.clone()))
+        .await
+        .expect("start source");
+    let delivery_hook = manager.pause_next_startup_before_delivery();
+    let mut resume_options = StartThreadOptions::new(config);
+    resume_options.initial_history = InitialHistory::Resumed(ResumedHistory {
+        conversation_id: source.thread_id,
+        history: Arc::new(Vec::new()),
+        rollout_path: source.thread.rollout_path(),
+    });
+    let resume_manager = Arc::clone(&manager);
+    let resume_task =
+        tokio::spawn(async move { resume_manager.start_thread(resume_options).await });
+
+    delivery_hook.wait_until_entered().await;
+    resume_task.abort();
+    assert!(matches!(resume_task.await, Err(error) if error.is_cancelled()));
+    delivery_hook.release();
+    tokio::task::yield_now().await;
+
+    let still_registered = manager
+        .get_thread(source.thread_id)
+        .await
+        .expect("existing runtime remains registered");
+    assert!(Arc::ptr_eq(&still_registered, &source.thread));
+    assert!(still_registered.is_running());
+    still_registered
+        .submit(Op::Interrupt)
+        .await
+        .expect("existing runtime still accepts input");
+    still_registered
+        .shutdown_and_wait()
+        .await
+        .expect("shutdown source");
+}
+
+#[tokio::test]
+async fn same_id_resume_claims_runtime_before_original_delivery_is_cancelled() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let thread_id = ThreadId::from_u128(0x018f_0000_0000_7000_8000_0000_0000_0020);
+    let manager = Arc::new(
+        hard_delete_test_manager(&config, /*state_db*/ None)
+            .with_thread_id_generator(move || thread_id),
+    );
+    let delivery_hook = manager.pause_next_startup_before_delivery();
+    let original_manager = Arc::clone(&manager);
+    let original_config = config.clone();
+    let original_task = tokio::spawn(async move {
+        original_manager
+            .start_thread(StartThreadOptions::new(original_config))
+            .await
+    });
+
+    delivery_hook.wait_until_entered().await;
+    let published = manager
+        .get_thread(thread_id)
+        .await
+        .expect("original owner published runtime");
+    let mut resume_options = StartThreadOptions::new(config);
+    resume_options.initial_history = InitialHistory::Resumed(ResumedHistory {
+        conversation_id: thread_id,
+        history: Arc::new(Vec::new()),
+        rollout_path: published.rollout_path(),
+    });
+    let resumed = manager
+        .start_thread(resume_options)
+        .await
+        .expect("same-ID resume claims pending delivery");
+    assert!(Arc::ptr_eq(&resumed.thread, &published));
+
+    original_task.abort();
+    assert!(matches!(original_task.await, Err(error) if error.is_cancelled()));
+    delivery_hook.release();
+    tokio::task::yield_now().await;
+
+    let still_registered = manager
+        .get_thread(thread_id)
+        .await
+        .expect("claimed runtime remains registered");
+    assert!(Arc::ptr_eq(&still_registered, &resumed.thread));
+    assert!(still_registered.is_running());
+    still_registered
+        .submit(Op::Interrupt)
+        .await
+        .expect("claimed runtime still accepts input");
+    still_registered
+        .shutdown_and_wait()
+        .await
+        .expect("shutdown claimed runtime");
+}
+
+#[tokio::test]
+async fn cancelled_unclaimed_new_startup_removes_runtime_and_materialized_store() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let thread_id = ThreadId::from_u128(0x018f_0000_0000_7000_8000_0000_0000_0021);
+    let manager = Arc::new(
+        hard_delete_test_manager(&config, /*state_db*/ None)
+            .with_thread_id_generator(move || thread_id),
+    );
+    let delivery_hook = manager.pause_next_startup_before_delivery();
+    let startup_manager = Arc::clone(&manager);
+    let startup_task = tokio::spawn(async move {
+        startup_manager
+            .start_thread(StartThreadOptions::new(config))
+            .await
+    });
+
+    delivery_hook.wait_until_entered().await;
+    let published = manager
+        .get_thread(thread_id)
+        .await
+        .expect("owner published runtime before delivery");
+    published.ensure_rollout_materialized().await;
+    published.flush_rollout().await.expect("flush rollout");
+    manager
+        .state
+        .thread_store
+        .read_thread(ReadThreadParams {
+            thread_id,
+            include_archived: true,
+            include_history: false,
+        })
+        .await
+        .expect("materialized store exists before cancellation");
+
+    startup_task.abort();
+    assert!(matches!(startup_task.await, Err(error) if error.is_cancelled()));
+    delivery_hook.release();
+
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let runtime_absent = manager.get_thread(thread_id).await.is_err();
+            let store_result = manager
+                .state
+                .thread_store
+                .read_thread(ReadThreadParams {
+                    thread_id,
+                    include_archived: true,
+                    include_history: false,
+                })
+                .await;
+            let store_absent = match &store_result {
+                Err(ThreadStoreError::ThreadNotFound { .. }) => true,
+                Err(ThreadStoreError::InvalidRequest { message }) => {
+                    message.contains("no rollout found")
+                }
+                _ => false,
+            };
+            if runtime_absent && store_absent {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("detached owner cleans runtime and materialized store");
+}
+
+#[tokio::test]
+async fn permanent_hard_delete_fence_survives_overlapping_unclaimed_cleanup() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let thread_id = ThreadId::from_u128(0x018f_0000_0000_7000_8000_0000_0000_0022);
+    let manager = Arc::new(
+        hard_delete_test_manager(&config, /*state_db*/ None)
+            .with_thread_id_generator(move || thread_id),
+    );
+    let delivery_hook = manager.pause_next_startup_before_delivery();
+    let cleanup_hook = manager.pause_next_startup_cleanup_after_fence();
+    let startup_manager = Arc::clone(&manager);
+    let startup_config = config.clone();
+    let startup_task = tokio::spawn(async move {
+        startup_manager
+            .start_thread(StartThreadOptions::new(startup_config))
+            .await
+    });
+
+    delivery_hook.wait_until_entered().await;
+    startup_task.abort();
+    assert!(matches!(startup_task.await, Err(error) if error.is_cancelled()));
+    delivery_hook.release();
+    cleanup_hook.wait_until_entered().await;
+
+    let hard_delete = manager
+        .begin_thread_hard_delete(thread_id)
+        .await
+        .expect("install permanent fence during cleanup");
+    assert_eq!(hard_delete.startup_count(), 1);
+    cleanup_hook.release();
+    tokio::time::timeout(Duration::from_secs(5), hard_delete.drain_startups())
+        .await
+        .expect("cleanup completes and releases startup ticket");
+
+    {
+        let registry = manager.state.thread_registry.read().await;
+        assert!(!registry.startup_cleanup_closing.contains(&thread_id));
+        assert!(registry.hard_delete_closing.contains(&thread_id));
+    }
+    let mut replacement_options = StartThreadOptions::new(config);
+    replacement_options.reserved_thread_id = Some(thread_id);
+    let replacement_error = manager
+        .start_thread(replacement_options)
+        .await
+        .err()
+        .expect("permanent fence must outlive temporary cleanup fence");
+    assert!(matches!(
+        replacement_error.details(),
+        codex_protocol::error::CodexErrorDetails::InvalidRequest(message)
+            if message.contains("fenced for hard deletion")
+    ));
+    assert!(manager.abort_thread_hard_delete(thread_id).await);
+}
+
+#[tokio::test]
+async fn durable_hard_delete_tombstone_rejects_read_and_manual_resume_in_fresh_manager() {
+    let temp_dir = tempdir().expect("tempdir");
+    let mut config = test_config().await;
+    config.codex_home = temp_dir.path().join("codex-home").abs();
+    config.cwd = config.codex_home.abs();
+    std::fs::create_dir_all(&config.codex_home).expect("create codex home");
+    let state_db = init_state_db(&config).await.expect("state db");
+    let source_manager = hard_delete_test_manager(&config, Some(state_db.clone()));
+    let source = source_manager
+        .start_thread(StartThreadOptions::new(config.clone()))
+        .await
+        .expect("start source");
+    source.thread.ensure_rollout_materialized().await;
+    source.thread.flush_rollout().await.expect("flush rollout");
+    let rollout_path = source.thread.rollout_path().expect("rollout path");
+    source
+        .thread
+        .shutdown_and_wait()
+        .await
+        .expect("shutdown source");
+    let _ = source_manager.remove_thread(&source.thread_id).await;
+    state_db
+        .thread_queue()
+        .seal_thread_queues_for_deletion(&[source.thread_id])
+        .await
+        .expect("seal durable tombstone");
+
+    let fresh_manager = hard_delete_test_manager(&config, Some(state_db));
+    let read_error = fresh_manager
+        .state
+        .read_stored_thread(ReadThreadParams {
+            thread_id: source.thread_id,
+            include_archived: true,
+            include_history: true,
+        })
+        .await
+        .expect_err("fresh read must fail before loading rollout");
+    assert!(matches!(
+        read_error.details(),
+        codex_protocol::error::CodexErrorDetails::InvalidRequest(message)
+            if message.contains("fenced for hard deletion")
+    ));
+
+    let mut options = StartThreadOptions::new(config);
+    options.initial_history = InitialHistory::Resumed(ResumedHistory {
+        conversation_id: source.thread_id,
+        history: Arc::new(Vec::new()),
+        rollout_path: Some(rollout_path),
+    });
+    let resume_error = fresh_manager
+        .start_thread(options)
+        .await
+        .err()
+        .expect("manual resumed history cannot bypass durable tombstone");
+    assert!(matches!(
+        resume_error.details(),
+        codex_protocol::error::CodexErrorDetails::InvalidRequest(message)
+            if message.contains("fenced for hard deletion")
+    ));
 }
 
 /// One custom ID factory supplies identifiers for roots, actual child agents, and forks.

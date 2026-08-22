@@ -235,8 +235,22 @@ impl MatrixOutboundTransport for MatrixSdkClient {
                 .with_transaction_id(&txn_id)
                 .await
                 .map_err(|error| classify_sdk_send_error(&error))?;
-            MatrixEventId::parse(response.response.event_id.as_str())
-                .map_err(|_| MatrixTransportError::Permanent)
+            let event_id = MatrixEventId::parse(response.response.event_id.as_str())
+                .map_err(|_| MatrixTransportError::Permanent)?;
+            #[cfg(feature = "qualification-failpoints")]
+            if crate::qualification::consume_post_send_pre_mark_ack_drop(
+                self.paths.root(),
+                record,
+                &event_id,
+            )
+            .map_err(|_| MatrixTransportError::Retryable)?
+            {
+                // Synapse has accepted the PUT and returned `event_id`, but
+                // deliberately hide that acknowledgement from the durable
+                // dispatcher. The next claim must reuse `stable_txn_id`.
+                return Err(MatrixTransportError::Retryable);
+            }
+            Ok(event_id)
         })
     }
 }

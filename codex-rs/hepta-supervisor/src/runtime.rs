@@ -63,9 +63,15 @@ pub(crate) struct MatrixRuntime<P> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum DeferredAgentAction {
+pub(crate) enum DeferredAgentActionKind {
     Drain,
     Stop,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DeferredAgentAction {
+    pub kind: DeferredAgentActionKind,
+    pub spawn_generation: u64,
 }
 
 pub(crate) struct MatrixCompanionSlot<P> {

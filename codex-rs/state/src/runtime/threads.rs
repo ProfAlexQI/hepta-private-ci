@@ -1118,6 +1118,13 @@ ON CONFLICT(id) DO UPDATE SET
             return Ok(0);
         }
 
+        // Direct StateRuntime callers receive the same terminal queue fence as
+        // App Server. App Server establishes it earlier, before deleting the
+        // external thread store; this second call is intentionally idempotent.
+        self.thread_queue
+            .seal_thread_queues_for_deletion(thread_ids)
+            .await?;
+
         let thread_id_strings = thread_ids
             .iter()
             .map(ThreadId::to_string)

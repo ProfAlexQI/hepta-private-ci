@@ -29,6 +29,7 @@ use crate::lease::remove_matrix_lease;
 use crate::lease::write_matrix_lease;
 use crate::runtime::AgentSlot;
 use crate::runtime::DeferredAgentAction;
+use crate::runtime::DeferredAgentActionKind;
 use crate::runtime::MatrixRuntime;
 use crate::runtime::MatrixRuntimePhase;
 use crate::runtime::bounded_message;
@@ -69,7 +70,10 @@ impl<D: ProcessDriver> Supervisor<D> {
         {
             return;
         }
-        let attached_agent_generation = agent_runtime.generation;
+        // Matrixd connects to agentd with the generation used to spawn that
+        // process. The registry's Running lifecycle generation is the next
+        // value and must not be passed as the agentd protocol fence.
+        let attached_agent_generation = agent_runtime.spawn_generation;
         let record = match self.record(agent_id) {
             Ok(record) => record,
             Err(error) => {
@@ -242,7 +246,8 @@ impl<D: ProcessDriver> Supervisor<D> {
             ));
         }
         let agent_is_exact = slot.runtime.as_ref().is_some_and(|runtime| {
-            runtime.generation == lease.attached_agent_generation
+            runtime.spawn_generation == lease.attached_agent_generation
+                && runtime.generation == record.lifecycle.generation
                 && record.lifecycle.lifecycle == AgentLifecycle::Running
         });
         let spec = MatrixAdoptSpec {
@@ -334,17 +339,31 @@ impl<D: ProcessDriver> Supervisor<D> {
         &mut self,
         agent_id: &AgentId,
         slot: &mut AgentSlot<D::Process>,
-        action: DeferredAgentAction,
+        action: DeferredAgentActionKind,
         now: Instant,
     ) -> Result<bool, SupervisorError> {
+        let spawn_generation = slot
+            .runtime
+            .as_ref()
+            .map(|runtime| runtime.spawn_generation)
+            .ok_or_else(|| SupervisorError::Invalid(format!("agent {agent_id} is not active")))?;
         let Some(runtime) = slot.matrix.runtime.as_mut() else {
             return Ok(false);
         };
-        slot.deferred_agent_action = Some(match (slot.deferred_agent_action, action) {
-            (Some(DeferredAgentAction::Stop), _) | (_, DeferredAgentAction::Stop) => {
-                DeferredAgentAction::Stop
+        let kind = match (slot.deferred_agent_action, action) {
+            (Some(existing), next) if existing.spawn_generation == spawn_generation => {
+                match (existing.kind, next) {
+                    (DeferredAgentActionKind::Stop, _) | (_, DeferredAgentActionKind::Stop) => {
+                        DeferredAgentActionKind::Stop
+                    }
+                    _ => DeferredAgentActionKind::Drain,
+                }
             }
-            _ => DeferredAgentAction::Drain,
+            (_, next) => next,
+        };
+        slot.deferred_agent_action = Some(DeferredAgentAction {
+            kind,
+            spawn_generation,
         });
         let mut event_generation = None;
         if !matches!(
@@ -400,7 +419,7 @@ impl<D: ProcessDriver> Supervisor<D> {
             let exact_agent = slot.runtime.as_ref().is_some_and(|agent| {
                 agent.healthy
                     && matches!(agent.phase, crate::runtime::RuntimePhase::Running)
-                    && agent.generation == runtime.attached_agent_generation
+                    && agent.spawn_generation == runtime.attached_agent_generation
             });
             if !exact_agent && !runtime.fenced {
                 runtime
@@ -552,11 +571,24 @@ impl<D: ProcessDriver> Supervisor<D> {
 
         if slot.matrix.runtime.is_none() {
             if let Some(action) = slot.deferred_agent_action.take() {
-                match action {
-                    DeferredAgentAction::Drain => self.drain_slot(agent_id, slot, now)?,
-                    DeferredAgentAction::Stop => self.stop_slot(agent_id, slot, now)?,
+                let applies_to_runtime = slot
+                    .runtime
+                    .as_ref()
+                    .is_some_and(|runtime| runtime.spawn_generation == action.spawn_generation);
+                let lifecycle_allows_action = match action.kind {
+                    DeferredAgentActionKind::Drain => matches!(
+                        self.record(agent_id)?.lifecycle.lifecycle,
+                        AgentLifecycle::Running | AgentLifecycle::Draining
+                    ),
+                    DeferredAgentActionKind::Stop => true,
+                };
+                if applies_to_runtime && lifecycle_allows_action {
+                    match action.kind {
+                        DeferredAgentActionKind::Drain => self.drain_slot(agent_id, slot, now)?,
+                        DeferredAgentActionKind::Stop => self.stop_slot(agent_id, slot, now)?,
+                    }
+                    return Ok(());
                 }
-                return Ok(());
             }
             let retry_due = slot.matrix.retry_at.is_none_or(|retry_at| now >= retry_at);
             if retry_due {

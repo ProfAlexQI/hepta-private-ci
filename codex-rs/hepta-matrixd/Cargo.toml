@@ -5,6 +5,10 @@ name = "codex-hepta-matrixd"
 version.workspace = true
 publish = false
 
+[features]
+default = []
+real-synapse-e2e = ["codex-hepta-matrix-sdk/qualification-failpoints"]
+
 [lib]
 name = "codex_hepta_matrixd"
 path = "src/lib.rs"
@@ -14,6 +18,11 @@ doctest = false
 name = "codex-hepta-matrixd"
 path = "src/main.rs"
 test = false
+
+[[test]]
+name = "real_synapse_e2e"
+path = "tests/real_synapse_e2e.rs"
+required-features = ["real-synapse-e2e"]
 
 [lints]
 workspace = true
@@ -29,6 +38,7 @@ codex-hepta-matrix-protocol = { workspace = true }
 codex-hepta-matrix-sdk = { workspace = true }
 codex-hepta-matrix-store = { workspace = true }
 codex-hepta-paths = { workspace = true }
+codex-protocol = { workspace = true }
 codex-uds = { workspace = true }
 codex-utils-absolute-path = { workspace = true }
 serde = { workspace = true }
@@ -64,3 +74,4 @@ tokio = { workspace = true, features = [
     "time",
 ] }
 url = { workspace = true }
+wiremock = { workspace = true }

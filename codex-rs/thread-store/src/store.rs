@@ -108,6 +108,19 @@ pub trait ThreadStore: Any + Send + Sync {
     /// Reopens an existing thread for live appends.
     fn resume_thread(&self, params: ResumeThreadParams) -> ThreadStoreFuture<'_, ()>;
 
+    /// Returns whether durable authority has permanently fenced this thread for hard deletion.
+    ///
+    /// This capability is deliberately required rather than defaulted: stores that participate in
+    /// resume must make an explicit decision instead of silently bypassing deletion authority.
+    fn is_thread_hard_delete_fenced(&self, thread_id: ThreadId) -> ThreadStoreFuture<'_, bool>;
+
+    /// Whether this store binds resume admission to the same durable hard-delete authority used
+    /// by App Server. Hard deletion must fail closed when this capability is absent even if App
+    /// Server happens to have a separate StateDb handle.
+    fn supports_durable_hard_delete_fencing(&self) -> bool {
+        false
+    }
+
     /// Appends raw rollout items to a live thread.
     ///
     /// Implementations should apply the shared rollout persistence policy before writing durable

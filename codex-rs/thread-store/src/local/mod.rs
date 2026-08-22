@@ -451,6 +451,27 @@ impl ThreadStore for LocalThreadStore {
         Box::pin(async move { live_writer::resume_thread(self, params).await })
     }
 
+    fn is_thread_hard_delete_fenced(&self, thread_id: ThreadId) -> ThreadStoreFuture<'_, bool> {
+        Box::pin(async move {
+            let Some(state_db) = self.state_db.as_ref() else {
+                return Ok(false);
+            };
+            state_db
+                .thread_queue()
+                .thread_queue_is_sealed_for_deletion(thread_id)
+                .await
+                .map_err(|err| ThreadStoreError::Internal {
+                    message: format!(
+                        "failed to query hard-delete tombstone for thread {thread_id}: {err}"
+                    ),
+                })
+        })
+    }
+
+    fn supports_durable_hard_delete_fencing(&self) -> bool {
+        self.state_db.is_some()
+    }
+
     fn append_items(&self, params: AppendThreadItemsParams) -> ThreadStoreFuture<'_, ()> {
         Box::pin(async move { live_writer::append_items(self, params).await })
     }
@@ -695,6 +716,19 @@ mod tests {
     use crate::local::test_support::write_archived_session_file;
     use crate::local::test_support::write_session_file;
     use crate::local::test_support::write_session_file_with_history_mode;
+
+    #[tokio::test]
+    async fn no_state_local_store_explicitly_reports_no_hard_delete_fence() {
+        let home = TempDir::new().expect("temp dir");
+        let store = LocalThreadStore::new(test_config(home.path()), /*state_db*/ None);
+
+        assert!(
+            !store
+                .is_thread_hard_delete_fenced(ThreadId::default())
+                .await
+                .expect("no-state local fence query")
+        );
+    }
 
     #[tokio::test]
     async fn live_writer_lifecycle_writes_and_closes() {

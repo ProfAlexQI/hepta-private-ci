@@ -6,6 +6,7 @@ use std::io::Write;
 use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -33,6 +34,7 @@ use codex_hepta_matrix_protocol::MatrixdRequest;
 use codex_hepta_matrix_protocol::MatrixdResponse;
 use codex_hepta_paths::HeptaFleetRoot;
 use codex_hepta_supervisor::AgentRelease;
+use codex_hepta_supervisor::AgentSupervisorSnapshot;
 use codex_hepta_supervisor::Supervisor;
 use codex_hepta_supervisor::SupervisorConfig;
 use codex_hepta_supervisor::UnixProcessDriver;
@@ -45,20 +47,81 @@ const IDS: [&str; 5] = [
     "019153a4-3088-7e03-a56a-9b1964f75dd6",
 ];
 
+// Both product tests spawn real agentd+matrixd pairs. Running them in parallel
+// can make one test's bounded shutdown compete with the other's ten-child
+// adoption workload, which turns a lifecycle assertion into host-load timing.
+// Keep the product scenarios isolated while leaving their child processes and
+// all supervisor behavior unchanged.
+static PAIR_PRODUCT_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PairRuntimeFence {
+    agent_pid: u64,
+    matrix_pid: u64,
+    spawn_generation: u64,
+    runtime_generation: u64,
+    matrix_attached_agent_generation: u64,
+}
+
+impl PairRuntimeFence {
+    fn from_ready_snapshot(snapshot: &AgentSupervisorSnapshot) -> Option<Self> {
+        if !snapshot.active
+            || !snapshot.healthy
+            || !snapshot.matrix.active
+            || !snapshot.matrix.healthy
+        {
+            return None;
+        }
+        let fence = Self {
+            agent_pid: snapshot.process_system_id?,
+            matrix_pid: snapshot.matrix.process_system_id?,
+            spawn_generation: snapshot.spawn_generation?,
+            runtime_generation: snapshot.runtime_generation?,
+            matrix_attached_agent_generation: snapshot.matrix.attached_agent_generation?,
+        };
+        (fence.matrix_attached_agent_generation == fence.spawn_generation).then_some(fence)
+    }
+}
+
 #[test]
 fn two_real_pairs_restart_one_without_peer_pid_churn() -> Result<()> {
+    let _pair_product_test_guard = PAIR_PRODUCT_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut fixture = PairFleet::new(2)?;
     fixture.start_all()?;
     fixture.wait_ready(Duration::from_secs(60))?;
-    let peer_before = fixture.pids(&fixture.agents[1])?;
+    let target = fixture.agents[0].clone();
+    let peer = fixture.agents[1].clone();
+    let target_before = fixture.pair_runtime_fence(&target)?;
+    let peer_before = fixture.pair_runtime_fence(&peer)?;
+    let expected_spawn_generation = target_before
+        .runtime_generation
+        .checked_add(3)
+        .context("expected restart spawn generation")?;
+    let expected_runtime_generation = expected_spawn_generation
+        .checked_add(1)
+        .context("expected restart runtime generation")?;
 
     fixture
         .supervisor
         .as_mut()
         .context("supervisor")?
-        .restart(&fixture.agents[0], Instant::now())?;
-    fixture.wait_ready(Duration::from_secs(60))?;
-    let peer_after = fixture.pids(&fixture.agents[1])?;
+        .restart(&target, Instant::now())?;
+    let target_after = fixture.wait_restarted(
+        &target,
+        target_before,
+        expected_spawn_generation,
+        expected_runtime_generation,
+        Duration::from_secs(60),
+    )?;
+    assert_ne!(target_after.agent_pid, target_before.agent_pid);
+    assert_ne!(target_after.matrix_pid, target_before.matrix_pid);
+    assert_eq!(
+        target_after.matrix_attached_agent_generation, target_after.spawn_generation,
+        "Matrix generation fence must bind to the replacement agentd spawn"
+    );
+    let peer_after = fixture.pair_runtime_fence(&peer)?;
     assert_eq!(peer_after, peer_before, "peer pair must not restart");
     fixture.shutdown()?;
     Ok(())
@@ -66,6 +129,9 @@ fn two_real_pairs_restart_one_without_peer_pid_churn() -> Result<()> {
 
 #[test]
 fn five_real_pairs_adopt_all_ten_children_and_isolate_one_matrix_crash() -> Result<()> {
+    let _pair_product_test_guard = PAIR_PRODUCT_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut fixture = PairFleet::new(5)?;
     let started = Instant::now();
     fixture.warm_first_pair()?;
@@ -302,6 +368,53 @@ impl PairFleet {
         }
     }
 
+    fn wait_restarted(
+        &mut self,
+        agent_id: &AgentId,
+        previous: PairRuntimeFence,
+        expected_spawn_generation: u64,
+        expected_runtime_generation: u64,
+        timeout: Duration,
+    ) -> Result<PairRuntimeFence> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let supervisor = self.supervisor.as_mut().context("supervisor")?;
+            let report = supervisor.tick(Instant::now());
+            anyhow::ensure!(report.faults.is_empty(), "tick faults: {:?}", report.faults);
+            if let Some(restarted) = supervisor
+                .snapshot(agent_id)
+                .as_ref()
+                .and_then(PairRuntimeFence::from_ready_snapshot)
+                .filter(|fence| {
+                    fence.agent_pid != previous.agent_pid
+                        && fence.matrix_pid != previous.matrix_pid
+                        && fence.spawn_generation == expected_spawn_generation
+                        && fence.runtime_generation == expected_runtime_generation
+                })
+            {
+                return Ok(restarted);
+            }
+            if Instant::now() >= deadline {
+                anyhow::bail!(
+                    "pair did not complete the expected restart fence: {:?}",
+                    supervisor.snapshot(agent_id)
+                );
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    fn pair_runtime_fence(&self, agent_id: &AgentId) -> Result<PairRuntimeFence> {
+        let snapshot = self
+            .supervisor
+            .as_ref()
+            .context("supervisor")?
+            .snapshot(agent_id)
+            .context("agent snapshot")?;
+        PairRuntimeFence::from_ready_snapshot(&snapshot)
+            .context("pair is not ready or its Matrix generation fence is stale")
+    }
+
     fn pids(&self, agent_id: &AgentId) -> Result<(u64, u64)> {
         let snapshot = self
             .supervisor
@@ -321,16 +434,31 @@ impl PairFleet {
             supervisor.kill(agent_id)?;
         }
         let deadline = Instant::now() + Duration::from_secs(5);
-        while self.agents.iter().any(|agent_id| {
-            supervisor
-                .snapshot(agent_id)
-                .is_some_and(|snapshot| snapshot.active || snapshot.matrix.active)
-        }) {
-            let _ = supervisor.tick(Instant::now());
-            anyhow::ensure!(Instant::now() < deadline, "fixture children did not exit");
+        loop {
+            let active = self.agents.iter().any(|agent_id| {
+                supervisor
+                    .snapshot(agent_id)
+                    .is_some_and(|snapshot| snapshot.active || snapshot.matrix.active)
+            });
+            if !active {
+                return Ok(());
+            }
+            let report = supervisor.tick(Instant::now());
+            anyhow::ensure!(
+                report.faults.is_empty(),
+                "shutdown tick faults: {:?}",
+                report.faults
+            );
+            if Instant::now() >= deadline {
+                let snapshots: Vec<_> = self
+                    .agents
+                    .iter()
+                    .map(|agent_id| (agent_id.clone(), supervisor.snapshot(agent_id)))
+                    .collect();
+                anyhow::bail!("fixture children did not exit: {snapshots:?}");
+            }
             std::thread::sleep(Duration::from_millis(10));
         }
-        Ok(())
     }
 }
 

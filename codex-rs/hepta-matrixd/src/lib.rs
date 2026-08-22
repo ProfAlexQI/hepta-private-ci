@@ -42,23 +42,19 @@ use codex_app_server_protocol::QueuedSubmission;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::SortDirection;
 use codex_app_server_protocol::ThreadHistoryMode;
-use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::ThreadListCwdFilter;
 use codex_app_server_protocol::ThreadListParams;
 use codex_app_server_protocol::ThreadListResponse;
-use codex_app_server_protocol::ThreadQueueAddParams;
-use codex_app_server_protocol::ThreadQueueAddResponse;
-use codex_app_server_protocol::ThreadQueueListParams;
-use codex_app_server_protocol::ThreadQueueListResponse;
+use codex_app_server_protocol::ThreadQueueReconcileMode;
+use codex_app_server_protocol::ThreadQueueReconcileOutcome;
+use codex_app_server_protocol::ThreadQueueReconcileParams;
+use codex_app_server_protocol::ThreadQueueReconcileResponse;
 use codex_app_server_protocol::ThreadSortKey;
 use codex_app_server_protocol::ThreadSource;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
-use codex_app_server_protocol::ThreadTurnsListParams;
-use codex_app_server_protocol::ThreadTurnsListResponse;
 use codex_app_server_protocol::TurnInterruptParams;
 use codex_app_server_protocol::TurnInterruptResponse;
-use codex_app_server_protocol::TurnItemsView;
 use codex_app_server_protocol::UserInput;
 use codex_hepta_agentd::AgentdClient;
 use codex_hepta_agentd::SessionTransport;
@@ -69,6 +65,7 @@ use codex_hepta_matrix_protocol::MatrixRoomId;
 use codex_hepta_matrix_protocol::client_user_message_id;
 use codex_hepta_matrix_protocol::room_project_idempotency_key;
 use codex_hepta_matrix_store::PendingApprovalKind;
+use codex_protocol::user_input::user_input_payload_sha256;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use tokio::sync::Semaphore;
 
@@ -118,7 +115,9 @@ const JSON_RPC_INVALID_REQUEST_CODE: i64 = -32_600;
 /// This covers model-turn admission for one stable Matrix client message id,
 /// not Matrix delivery or arbitrary external tool effects. Queue dispatch
 /// waits for rollout persistence before deleting a row and, after a crash,
-/// removes any stale duplicate row by matching the durable client id.
+/// removes any stale duplicate row only when the durable client id and the
+/// canonical digest of the complete ordered user input both match. Reusing a
+/// client id for different content fails closed before a new queue admission.
 pub const DELIVERY_GUARANTEE: DeliveryGuarantee =
     DeliveryGuarantee::ExactlyOncePersistedCoreAdmissionPerClientMessageId;
 
@@ -134,7 +133,8 @@ pub type BridgeFuture<'a, T> =
 ///
 /// A durable Matrix store can use [`MatrixAppServerBridge`] with this trait
 /// without depending on the remote socket implementation or on Matrix SDK
-/// types.  Implementations must preserve opaque pagination cursors exactly.
+/// types. Thread discovery preserves opaque pagination cursors; exact message
+/// admission is deliberately exposed only as one atomic reconcile RPC.
 pub trait MatrixAppServerTransport: Send + Sync {
     fn create_project(&self, request: BridgeProjectCreate) -> BridgeFuture<'_, BridgeProject>;
 
@@ -143,17 +143,12 @@ pub trait MatrixAppServerTransport: Send + Sync {
 
     fn start_thread(&self, request: BridgeThreadStart) -> BridgeFuture<'_, BridgeThread>;
 
-    fn list_queue(
+    /// Single App Server correctness RPC. Implementations must not decompose
+    /// this into queue/history scans followed by queue/add.
+    fn reconcile_queue(
         &self,
-        request: BridgeQueueList,
-    ) -> BridgeFuture<'_, BridgePage<BridgeQueuedSubmission>>;
-
-    fn list_turn_client_messages(
-        &self,
-        request: BridgeTurnList,
-    ) -> BridgeFuture<'_, BridgePage<BridgeTurnClientMessage>>;
-
-    fn add_queue(&self, request: BridgeQueueAdd) -> BridgeFuture<'_, BridgeQueuedSubmission>;
+        request: BridgeQueueReconcile,
+    ) -> BridgeFuture<'_, BridgeQueueReconcileResponse>;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -194,37 +189,42 @@ pub struct BridgeThread {
     pub thread_source: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BridgeQueueList {
-    pub thread_id: String,
-    pub cursor: Option<String>,
-    pub limit: u32,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BridgeTurnList {
-    pub thread_id: String,
-    pub cursor: Option<String>,
-    pub limit: u32,
-}
-
 #[derive(Clone, Debug, PartialEq)]
-pub struct BridgeQueueAdd {
+pub struct BridgeQueueReconcile {
     pub thread_id: String,
     pub input: Vec<UserInput>,
     pub client_user_message_id: String,
+    pub expected_payload_sha256: String,
+    pub mode: MatrixAdmissionMode,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BridgeQueueReconcileOutcome {
+    Queued {
+        queued_submission: BridgeQueuedSubmission,
+        created: bool,
+    },
+    Persisted {
+        turn_id: String,
+    },
+    Missing,
+    Cancelled,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BridgeQueueReconcileResponse {
+    pub client_user_message_id: String,
+    pub payload_sha256: Option<String>,
+    pub outcome: BridgeQueueReconcileOutcome,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BridgeQueuedSubmission {
     pub id: String,
     pub client_user_message_id: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BridgeTurnClientMessage {
-    pub turn_id: String,
-    pub client_user_message_id: String,
+    /// Canonical digest of the complete ordered user input. A missing digest
+    /// is readable for compatibility but cannot authorize reconciliation.
+    pub payload_sha256: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -418,52 +418,83 @@ where
                 "Matrix event cannot submit empty user input".to_string(),
             ));
         }
+        if !input
+            .iter()
+            .all(|item| matches!(item, UserInput::Text { .. }))
+        {
+            return Err(MatrixBridgeError::Invalid(
+                "G4 Matrix admission accepts text input only".to_string(),
+            ));
+        }
         if binding.project_id.is_empty() || binding.thread_id.is_empty() {
             return Err(MatrixBridgeError::Protocol(
                 "Matrix submission binding has an empty project or thread identity".to_string(),
             ));
         }
         let client_id = client_user_message_id(&self.config.agent_id, room_id, event_id);
-        let queue_match = self
-            .find_queued_client_id(&binding.thread_id, &client_id)
+        let payload_sha256 = bridge_user_input_payload_sha256(&input)?;
+        let response = self
+            .transport
+            .reconcile_queue(BridgeQueueReconcile {
+                thread_id: binding.thread_id.clone(),
+                input,
+                client_user_message_id: client_id.clone(),
+                expected_payload_sha256: payload_sha256.clone(),
+                mode: admission_mode,
+            })
             .await?;
-        let turn_match = self
-            .find_turn_client_id(&binding.thread_id, &client_id)
-            .await?;
-        let state = match (queue_match, turn_match) {
-            (Some(queued), None) => MatrixSubmissionState::ReconciledQueued {
-                queued_submission_id: queued.id,
-            },
-            (None, Some(turn)) => MatrixSubmissionState::ReconciledTurn {
-                turn_id: turn.turn_id,
-            },
-            (Some(_), Some(_)) => {
-                return Err(MatrixBridgeError::Protocol(format!(
-                    "client message id {client_id} exists in both queue and turn history"
-                )));
-            }
-            (None, None) if admission_mode == MatrixAdmissionMode::AllowIfAbsent => {
-                let queued = self
-                    .transport
-                    .add_queue(BridgeQueueAdd {
-                        thread_id: binding.thread_id.clone(),
-                        input,
-                        client_user_message_id: client_id.clone(),
-                    })
-                    .await?;
-                if queued.client_user_message_id != client_id || queued.id.is_empty() {
+        if response.client_user_message_id != client_id {
+            return Err(MatrixBridgeError::Protocol(
+                "thread/queue/reconcile returned a mismatched client message identity".to_string(),
+            ));
+        }
+        ensure_bridge_payload_digest(
+            "thread/queue/reconcile response",
+            &client_id,
+            &payload_sha256,
+            response.payload_sha256.as_deref(),
+        )?;
+        let state = match response.outcome {
+            BridgeQueueReconcileOutcome::Queued {
+                queued_submission,
+                created,
+            } => {
+                if queued_submission.client_user_message_id != client_id
+                    || queued_submission.id.is_empty()
+                {
                     return Err(MatrixBridgeError::Protocol(
-                        "thread/queue/add returned a mismatched or empty submission identity"
+                        "thread/queue/reconcile returned a mismatched or empty queue identity"
                             .to_string(),
                     ));
                 }
-                MatrixSubmissionState::Queued {
-                    queued_submission_id: queued.id,
+                ensure_bridge_payload_digest(
+                    "thread/queue/reconcile queued submission",
+                    &client_id,
+                    &payload_sha256,
+                    queued_submission.payload_sha256.as_deref(),
+                )?;
+                if created {
+                    MatrixSubmissionState::Queued {
+                        queued_submission_id: queued_submission.id,
+                    }
+                } else {
+                    MatrixSubmissionState::ReconciledQueued {
+                        queued_submission_id: queued_submission.id,
+                    }
                 }
             }
-            (None, None) => {
+            BridgeQueueReconcileOutcome::Persisted { turn_id } => {
+                if turn_id.is_empty() {
+                    return Err(MatrixBridgeError::Protocol(
+                        "thread/queue/reconcile returned an empty persisted turn identity"
+                            .to_string(),
+                    ));
+                }
+                MatrixSubmissionState::ReconciledTurn { turn_id }
+            }
+            BridgeQueueReconcileOutcome::Missing | BridgeQueueReconcileOutcome::Cancelled => {
                 return Err(MatrixBridgeError::Protocol(format!(
-                    "durable client message id {client_id} is missing from both Core queue and turn history"
+                    "durable client message id {client_id} is missing or cancelled in Core reconciliation authority"
                 )));
             }
         };
@@ -588,85 +619,6 @@ where
             ]),
             idempotency_key: key,
         }
-    }
-
-    async fn find_queued_client_id(
-        &self,
-        thread_id: &str,
-        client_id: &str,
-    ) -> Result<Option<BridgeQueuedSubmission>, MatrixBridgeError> {
-        let mut cursor = None;
-        let mut cursors = HashSet::new();
-        let mut found = None;
-        for _ in 0..MAX_RECONCILIATION_PAGES {
-            let page = self
-                .transport
-                .list_queue(BridgeQueueList {
-                    thread_id: thread_id.to_string(),
-                    cursor: cursor.clone(),
-                    limit: self.config.page_size,
-                })
-                .await?;
-            for queued in page.data {
-                if queued.client_user_message_id == client_id && found.is_none() {
-                    // Concurrent/retried queue/add calls can leave more than
-                    // one row with the same client id. Core's durable dispatch
-                    // join collapses them before a second turn can start.
-                    found = Some(queued);
-                }
-            }
-            let Some(next) = page.next_cursor else {
-                return Ok(found);
-            };
-            if !cursors.insert(next.clone()) {
-                return Err(MatrixBridgeError::Protocol(
-                    "thread/queue/list repeated a pagination cursor".to_string(),
-                ));
-            }
-            cursor = Some(next);
-        }
-        Err(MatrixBridgeError::Protocol(
-            "thread/queue/list exceeded the reconciliation page bound".to_string(),
-        ))
-    }
-
-    async fn find_turn_client_id(
-        &self,
-        thread_id: &str,
-        client_id: &str,
-    ) -> Result<Option<BridgeTurnClientMessage>, MatrixBridgeError> {
-        let mut cursor = None;
-        let mut cursors = HashSet::new();
-        let mut found = None;
-        for _ in 0..MAX_RECONCILIATION_PAGES {
-            let page = self
-                .transport
-                .list_turn_client_messages(BridgeTurnList {
-                    thread_id: thread_id.to_string(),
-                    cursor: cursor.clone(),
-                    limit: self.config.page_size,
-                })
-                .await?;
-            for message in page.data {
-                if message.client_user_message_id == client_id && found.replace(message).is_some() {
-                    return Err(MatrixBridgeError::Protocol(format!(
-                        "client message id {client_id} appears in multiple persisted turns"
-                    )));
-                }
-            }
-            let Some(next) = page.next_cursor else {
-                return Ok(found);
-            };
-            if !cursors.insert(next.clone()) {
-                return Err(MatrixBridgeError::Protocol(
-                    "thread/turns/list repeated a pagination cursor".to_string(),
-                ));
-            }
-            cursor = Some(next);
-        }
-        Err(MatrixBridgeError::Protocol(
-            "thread/turns/list exceeded the reconciliation page bound".to_string(),
-        ))
     }
 }
 
@@ -1025,131 +977,57 @@ impl MatrixAppServerTransport for RemoteMatrixAppServerTransport {
         })
     }
 
-    fn list_queue(
+    fn reconcile_queue(
         &self,
-        request: BridgeQueueList,
-    ) -> BridgeFuture<'_, BridgePage<BridgeQueuedSubmission>> {
+        request: BridgeQueueReconcile,
+    ) -> BridgeFuture<'_, BridgeQueueReconcileResponse> {
         Box::pin(async move {
-            let response: ThreadQueueListResponse = self
-                .request(ClientRequest::ThreadQueueList {
+            let response: ThreadQueueReconcileResponse = self
+                .request(ClientRequest::ThreadQueueReconcile {
                     request_id: self.request_id(),
-                    params: ThreadQueueListParams {
-                        thread_id: request.thread_id,
-                        cursor: request.cursor,
-                        limit: Some(request.limit),
-                    },
+                    params: bridge_queue_reconcile_params(request),
                 })
                 .await?;
-            Ok(BridgePage {
-                data: response
-                    .data
-                    .into_iter()
-                    .map(bridge_queued_submission)
-                    .collect(),
-                next_cursor: response.next_cursor,
-            })
-        })
-    }
-
-    fn list_turn_client_messages(
-        &self,
-        request: BridgeTurnList,
-    ) -> BridgeFuture<'_, BridgePage<BridgeTurnClientMessage>> {
-        Box::pin(async move {
-            let thread_id = request.thread_id;
-            let cursor = request.cursor;
-            let response: ThreadTurnsListResponse = match self
-                .request_handle
-                .request_typed(ClientRequest::ThreadTurnsList {
-                    request_id: self.request_id(),
-                    params: ThreadTurnsListParams {
-                        thread_id: thread_id.clone(),
-                        cursor: cursor.clone(),
-                        limit: Some(request.limit),
-                        sort_direction: Some(SortDirection::Asc),
-                        items_view: Some(TurnItemsView::Full),
-                    },
-                })
-                .await
-            {
-                Ok(response) => response,
-                Err(error)
-                    if is_unmaterialized_thread_turns_list_error(
-                        &error,
-                        &thread_id,
-                        cursor.as_deref(),
-                    ) =>
-                {
-                    return Ok(BridgePage {
-                        data: Vec::new(),
-                        next_cursor: None,
-                    });
-                }
-                Err(error) => return Err(MatrixBridgeError::AppServer(error.to_string())),
-            };
-            let mut data = Vec::new();
-            for turn in response.data {
-                if turn.items_view != TurnItemsView::Full {
-                    return Err(MatrixBridgeError::Protocol(
-                        "thread/turns/list did not return the requested full item view".to_string(),
-                    ));
-                }
-                for item in turn.items {
-                    if let ThreadItem::UserMessage {
-                        client_id: Some(client_user_message_id),
-                        ..
-                    } = item
-                    {
-                        data.push(BridgeTurnClientMessage {
-                            turn_id: turn.id.clone(),
-                            client_user_message_id,
-                        });
-                    }
-                }
-            }
-            Ok(BridgePage {
-                data,
-                next_cursor: response.next_cursor,
-            })
-        })
-    }
-
-    fn add_queue(&self, request: BridgeQueueAdd) -> BridgeFuture<'_, BridgeQueuedSubmission> {
-        Box::pin(async move {
-            let response: ThreadQueueAddResponse = self
-                .request(ClientRequest::ThreadQueueAdd {
-                    request_id: self.request_id(),
-                    params: ThreadQueueAddParams {
-                        thread_id: request.thread_id,
-                        input: request.input,
-                        client_user_message_id: request.client_user_message_id,
-                    },
-                })
-                .await?;
-            Ok(bridge_queued_submission(response.queued_submission))
+            bridge_queue_reconcile_response(response)
         })
     }
 }
 
-fn is_unmaterialized_thread_turns_list_error(
-    error: &TypedRequestError,
-    thread_id: &str,
-    cursor: Option<&str>,
-) -> bool {
-    if cursor.is_some() {
-        return false;
+fn bridge_queue_reconcile_params(request: BridgeQueueReconcile) -> ThreadQueueReconcileParams {
+    ThreadQueueReconcileParams {
+        thread_id: request.thread_id,
+        input: request.input,
+        client_user_message_id: request.client_user_message_id,
+        expected_payload_sha256: request.expected_payload_sha256,
+        mode: match request.mode {
+            MatrixAdmissionMode::AllowIfAbsent => ThreadQueueReconcileMode::AllowIfAbsent,
+            MatrixAdmissionMode::ReconcileOnly => ThreadQueueReconcileMode::ReconcileOnly,
+        },
     }
-    let expected_message = format!(
-        "thread {thread_id} is not materialized yet; thread/turns/list is unavailable before first user message"
-    );
-    matches!(
-        error,
-        TypedRequestError::Server { method, source }
-            if method == "thread/turns/list"
-                && source.code == JSON_RPC_INVALID_REQUEST_CODE
-                && source.data.is_none()
-                && source.message == expected_message
-    )
+}
+
+fn bridge_queue_reconcile_response(
+    response: ThreadQueueReconcileResponse,
+) -> Result<BridgeQueueReconcileResponse, MatrixBridgeError> {
+    let outcome = match response.outcome {
+        ThreadQueueReconcileOutcome::Queued {
+            queued_submission,
+            created,
+        } => BridgeQueueReconcileOutcome::Queued {
+            queued_submission: bridge_queued_submission(queued_submission)?,
+            created,
+        },
+        ThreadQueueReconcileOutcome::Persisted { turn_id } => {
+            BridgeQueueReconcileOutcome::Persisted { turn_id }
+        }
+        ThreadQueueReconcileOutcome::Missing => BridgeQueueReconcileOutcome::Missing,
+        ThreadQueueReconcileOutcome::Cancelled => BridgeQueueReconcileOutcome::Cancelled,
+    };
+    Ok(BridgeQueueReconcileResponse {
+        client_user_message_id: response.client_user_message_id,
+        payload_sha256: Some(response.payload_sha256),
+        outcome,
+    })
 }
 
 fn bridge_thread(thread: codex_app_server_protocol::Thread) -> BridgeThread {
@@ -1165,11 +1043,48 @@ fn bridge_thread(thread: codex_app_server_protocol::Thread) -> BridgeThread {
     }
 }
 
-fn bridge_queued_submission(queued: QueuedSubmission) -> BridgeQueuedSubmission {
-    BridgeQueuedSubmission {
+fn bridge_queued_submission(
+    queued: QueuedSubmission,
+) -> Result<BridgeQueuedSubmission, MatrixBridgeError> {
+    let payload_sha256 = bridge_user_input_payload_sha256(&queued.input)?;
+    Ok(BridgeQueuedSubmission {
         id: queued.id,
         client_user_message_id: queued.client_user_message_id,
+        payload_sha256: Some(payload_sha256),
+    })
+}
+
+fn bridge_user_input_payload_sha256(input: &[UserInput]) -> Result<String, MatrixBridgeError> {
+    let core_input = input
+        .iter()
+        .cloned()
+        .map(UserInput::into_core)
+        .collect::<Vec<_>>();
+    user_input_payload_sha256(&core_input).map_err(|error| {
+        MatrixBridgeError::Protocol(format!(
+            "failed to canonicalize user input payload for reconciliation: {error}"
+        ))
+    })
+}
+
+fn ensure_bridge_payload_digest(
+    source: &str,
+    client_id: &str,
+    expected_payload_sha256: &str,
+    actual_payload_sha256: Option<&str>,
+) -> Result<(), MatrixBridgeError> {
+    let Some(actual_payload_sha256) = actual_payload_sha256.filter(|digest| !digest.is_empty())
+    else {
+        return Err(MatrixBridgeError::Protocol(format!(
+            "{source} for client message id {client_id} has no canonical payload digest"
+        )));
+    };
+    if actual_payload_sha256 != expected_payload_sha256 {
+        return Err(MatrixBridgeError::Protocol(format!(
+            "{source} for client message id {client_id} has payload digest {actual_payload_sha256}, expected {expected_payload_sha256}"
+        )));
     }
+    Ok(())
 }
 
 #[derive(Debug, thiserror::Error)]

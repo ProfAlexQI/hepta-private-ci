@@ -1277,6 +1277,11 @@ impl MessageProcessor {
                 .add(params)
                 .await
                 .map(|response| Some(response.into())),
+            ClientRequest::ThreadQueueReconcile { params, .. } => processor
+                .thread_queue_processor
+                .reconcile(params)
+                .await
+                .map(|response| Some(response.into())),
             ClientRequest::ThreadQueueList { params, .. } => processor
                 .thread_queue_processor
                 .list(params)

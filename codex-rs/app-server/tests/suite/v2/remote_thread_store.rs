@@ -32,7 +32,6 @@ use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ThreadDeleteParams;
-use codex_app_server_protocol::ThreadDeleteResponse;
 use codex_app_server_protocol::ThreadHistoryMode;
 use codex_app_server_protocol::ThreadListParams;
 use codex_app_server_protocol::ThreadListResponse;
@@ -295,7 +294,7 @@ async fn thread_delete_with_non_local_thread_store_does_not_create_local_persist
     assert_eq!(data[0].id, thread.id);
     assert_eq!(data[0].path, None);
 
-    delete_thread(&client, /*request_id*/ 4, thread.id.clone()).await?;
+    delete_thread_expect_unsupported(&client, /*request_id*/ 4, thread.id.clone()).await?;
     let unloaded_thread_id = ThreadId::from_string(&Uuid::new_v4().to_string())?;
     thread_store
         .create_thread(StoreCreateThreadParams {
@@ -322,7 +321,7 @@ async fn thread_delete_with_non_local_thread_store_does_not_create_local_persist
             },
         })
         .await?;
-    delete_thread(
+    delete_thread_expect_unsupported(
         &client,
         /*request_id*/ 5,
         unloaded_thread_id.to_string(),
@@ -334,7 +333,7 @@ async fn thread_delete_with_non_local_thread_store_does_not_create_local_persist
     let calls = thread_store.calls().await;
     assert_eq!(calls.create_thread, 2);
     assert_eq!(calls.list_threads, 1);
-    assert_eq!(calls.delete_thread, 2);
+    assert_eq!(calls.delete_thread, 0);
     assert!(
         calls.append_items > 0,
         "turn/start should append rollout items through the injected store"
@@ -478,7 +477,7 @@ async fn start_in_process_client(
     .await
 }
 
-async fn delete_thread(
+async fn delete_thread_expect_unsupported(
     client: &InProcessClientHandle,
     request_id: i64,
     thread_id: String,
@@ -488,9 +487,13 @@ async fn delete_thread(
             request_id: RequestId::Integer(request_id),
             params: ThreadDeleteParams { thread_id },
         })
-        .await?
-        .map_err(|error| anyhow::anyhow!("thread/delete failed: {}", error.message))?;
-    let _: ThreadDeleteResponse = serde_json::from_value(response)?;
+        .await?;
+    let error = response.expect_err("non-local delete must fail closed");
+    assert_eq!(error.code, -32601);
+    assert_eq!(
+        error.message,
+        "thread/delete durable hard-delete fencing is not supported yet"
+    );
     Ok(())
 }
 

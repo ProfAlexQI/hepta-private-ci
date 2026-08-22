@@ -26,6 +26,10 @@ use codex_app_server_protocol::ThreadQueueDeleteParams;
 use codex_app_server_protocol::ThreadQueueDeleteResponse;
 use codex_app_server_protocol::ThreadQueueListParams;
 use codex_app_server_protocol::ThreadQueueListResponse;
+use codex_app_server_protocol::ThreadQueueReconcileMode;
+use codex_app_server_protocol::ThreadQueueReconcileOutcome;
+use codex_app_server_protocol::ThreadQueueReconcileParams;
+use codex_app_server_protocol::ThreadQueueReconcileResponse;
 use codex_app_server_protocol::ThreadQueueReorderParams;
 use codex_app_server_protocol::ThreadQueueReorderResponse;
 use codex_app_server_protocol::ThreadQueueStartParams;
@@ -36,13 +40,17 @@ use codex_app_server_protocol::ThreadResumeParams;
 use codex_app_server_protocol::ThreadResumeResponse;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
+use codex_app_server_protocol::ThreadTurnsListParams;
+use codex_app_server_protocol::ThreadTurnsListResponse;
 use codex_app_server_protocol::TurnCompletedNotification;
 use codex_app_server_protocol::TurnInterruptParams;
 use codex_app_server_protocol::TurnInterruptResponse;
+use codex_app_server_protocol::TurnItemsView;
 use codex_app_server_protocol::TurnStartParams;
 use codex_app_server_protocol::TurnStartResponse;
 use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::UserInput;
+use codex_protocol::user_input::user_input_payload_sha256;
 use core_test_support::skip_if_remote;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
@@ -415,6 +423,130 @@ async fn idle_queue_dispatch_preserves_client_id() -> Result<()> {
     Ok(())
 }
 
+/// Cross-layer Matrix admission authority: real App Server request processor,
+/// LocalQueueStore, dispatcher, rollout persistence, and model transport.
+#[tokio::test]
+async fn matrix_bridge_payload_binding_suite() -> Result<()> {
+    let responses = vec![create_final_assistant_message_sse_response("matrix done")?];
+    let (mut app, _codex_home, server) = queue_app(responses).await?;
+    let thread_id = app
+        .start_thread(ThreadStartParams::default())
+        .await?
+        .thread
+        .id;
+    let input = vec![text("durable Matrix event")];
+    let core_input = input
+        .iter()
+        .cloned()
+        .map(UserInput::into_core)
+        .collect::<Vec<_>>();
+    let payload_sha256 = user_input_payload_sha256(&core_input)?;
+    let client_id = "matrix-agent-room-event".to_string();
+
+    let first: ThreadQueueReconcileResponse = app
+        .request(|request_id| ClientRequest::ThreadQueueReconcile {
+            request_id,
+            params: ThreadQueueReconcileParams {
+                thread_id: thread_id.clone(),
+                input: input.clone(),
+                client_user_message_id: client_id.clone(),
+                expected_payload_sha256: payload_sha256.clone(),
+                mode: ThreadQueueReconcileMode::AllowIfAbsent,
+            },
+        })
+        .await?;
+    assert_eq!(first.client_user_message_id, client_id);
+    assert_eq!(first.payload_sha256, payload_sha256);
+    let ThreadQueueReconcileOutcome::Queued {
+        queued_submission,
+        created: true,
+    } = first.outcome
+    else {
+        anyhow::bail!("first Matrix reconciliation did not create one queue row");
+    };
+    assert_eq!(queued_submission.client_user_message_id, client_id);
+    assert_eq!(queued_submission.input, input);
+
+    let started: ItemStartedNotification =
+        timeout(READ_TIMEOUT, app.read_notification("item/started")).await??;
+    let ThreadItem::UserMessage {
+        client_id: persisted_client_id,
+        content,
+        ..
+    } = started.item
+    else {
+        anyhow::bail!("Matrix queue dispatch did not persist a user message");
+    };
+    assert_eq!(persisted_client_id.as_deref(), Some(client_id.as_str()));
+    assert_eq!(content, input);
+    let completed: TurnCompletedNotification =
+        timeout(READ_TIMEOUT, app.read_notification("turn/completed")).await??;
+    assert_eq!(completed.turn.status, TurnStatus::Completed);
+    assert!(list_queue(&mut app, &thread_id).await?.data.is_empty());
+
+    let replay: ThreadQueueReconcileResponse = app
+        .request(|request_id| ClientRequest::ThreadQueueReconcile {
+            request_id,
+            params: ThreadQueueReconcileParams {
+                thread_id: thread_id.clone(),
+                input: input.clone(),
+                client_user_message_id: client_id.clone(),
+                expected_payload_sha256: payload_sha256.clone(),
+                mode: ThreadQueueReconcileMode::ReconcileOnly,
+            },
+        })
+        .await?;
+    assert_eq!(replay.client_user_message_id, client_id);
+    assert_eq!(replay.payload_sha256, payload_sha256);
+    assert_eq!(
+        replay.outcome,
+        ThreadQueueReconcileOutcome::Persisted {
+            turn_id: completed.turn.id.clone(),
+        }
+    );
+
+    let turns: ThreadTurnsListResponse = app
+        .request(|request_id| ClientRequest::ThreadTurnsList {
+            request_id,
+            params: ThreadTurnsListParams {
+                thread_id: thread_id.clone(),
+                cursor: None,
+                limit: None,
+                sort_direction: None,
+                items_view: Some(TurnItemsView::Full),
+            },
+        })
+        .await?;
+    let persisted_messages = turns
+        .data
+        .iter()
+        .flat_map(|turn| turn.items.iter())
+        .filter(|item| {
+            matches!(
+                item,
+                ThreadItem::UserMessage {
+                    client_id: Some(found),
+                    ..
+                } if found == &client_id
+            )
+        })
+        .count();
+    assert_eq!(persisted_messages, 1);
+
+    let requests = server
+        .received_requests()
+        .await
+        .context("mock request capture unavailable")?;
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|request| request.url.path().ends_with("/responses"))
+            .count(),
+        1
+    );
+    Ok(())
+}
+
 #[tokio::test]
 async fn cold_thread_resume_dispatches_a_persisted_queued_submission() -> Result<()> {
     let responses = vec![
@@ -490,6 +622,9 @@ async fn cold_thread_resume_dispatches_a_persisted_queued_submission() -> Result
 
 #[tokio::test]
 async fn interrupt_preserves_queue_and_queue_start_can_resume_a_non_head_item() -> Result<()> {
+    // Keep this as a warm interrupted-thread contract. A cold feature-off
+    // resume is ordinary idle authority and intentionally auto-dispatches its
+    // persisted queue; the preceding cold-resume test locks that behavior.
     skip_if_remote!(
         Ok(()),
         "uses a host-local command and cwd fixture unavailable to remote executors"
@@ -497,12 +632,11 @@ async fn interrupt_preserves_queue_and_queue_start_can_resume_a_non_head_item() 
 
     let responses = vec![
         blocked_turn_response()?,
-        create_final_assistant_message_sse_response("first queued message done")?,
         create_final_assistant_message_sse_response("second queued message done")?,
+        create_final_assistant_message_sse_response("first queued message done")?,
         create_final_assistant_message_sse_response("message added after interruption done")?,
-        create_final_assistant_message_sse_response("message added after cold resume done")?,
     ];
-    let (mut app, codex_home, _server) = queue_app(responses).await?;
+    let (mut app, _codex_home, _server) = queue_app(responses).await?;
     let thread_id = app
         .start_thread(ThreadStartParams::default())
         .await?
@@ -576,37 +710,6 @@ async fn interrupt_preserves_queue_and_queue_start_can_resume_a_non_head_item() 
         list_queue(&mut app, &thread_id).await?.data
     );
 
-    drop(app);
-    let mut app = TestAppServer::builder()
-        .with_codex_home(codex_home.path())
-        .without_managed_config()
-        .build_initialized()
-        .await?;
-    let cold_resume_request_id = app
-        .send_thread_resume_request(ThreadResumeParams {
-            thread_id: thread_id.clone(),
-            ..Default::default()
-        })
-        .await?;
-    let cold_resumed: ThreadResumeResponse =
-        timeout(READ_TIMEOUT, app.read_response(cold_resume_request_id)).await??;
-    assert_eq!(cold_resumed.thread.id, thread_id);
-
-    let added_after_cold_resume = queue_item(
-        &mut app,
-        submission(&thread_id, "message added after cold resume"),
-    )
-    .await?;
-    assert_eq!(
-        vec![
-            first,
-            second.clone(),
-            added_after_interrupt,
-            added_after_cold_resume
-        ],
-        list_queue(&mut app, &thread_id).await?.data
-    );
-
     let started: ThreadQueueStartResponse = app
         .request(|request_id| ClientRequest::ThreadQueueStart {
             request_id,
@@ -616,7 +719,7 @@ async fn interrupt_preserves_queue_and_queue_start_can_resume_a_non_head_item() 
             },
         })
         .await?;
-    for index in 0..4 {
+    for index in 0..3 {
         let completed: TurnCompletedNotification =
             timeout(READ_TIMEOUT, app.read_notification("turn/completed")).await??;
         if index == 0 {

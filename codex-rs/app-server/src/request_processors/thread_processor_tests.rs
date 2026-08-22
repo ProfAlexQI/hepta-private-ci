@@ -140,7 +140,147 @@ mod thread_processor_behavior_tests {
     use std::collections::BTreeMap;
     use std::path::PathBuf;
     use std::sync::Arc;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
     use tempfile::TempDir;
+    use tokio::sync::Notify;
+    use tokio::time::Duration;
+    use tokio::time::timeout;
+
+    struct FakeRemovalCore {
+        shutdown_complete: Notify,
+    }
+
+    #[tokio::test]
+    async fn timed_out_thread_removal_retry_reuses_authority_until_shutdown_completes() -> Result<()>
+    {
+        let thread_id = ThreadId::from_string("ec80df25-a58e-4ef0-a9c3-fd624981f70c")?;
+        let authorities = Arc::new(ThreadRemovalAuthorities::<FakeRemovalCore>::default());
+        let core = Arc::new(FakeRemovalCore {
+            shutdown_complete: Notify::new(),
+        });
+        let manager_remove_calls = Arc::new(AtomicUsize::new(0));
+        let queue_seals = Arc::new(AtomicUsize::new(0));
+
+        manager_remove_calls.fetch_add(1, Ordering::SeqCst);
+        let first_authority = authorities.insert_if_absent(
+            thread_id,
+            ThreadRemovalAuthority::Live {
+                authority: Arc::clone(&core),
+                startup_thread_ids: Vec::<ThreadId>::new().into(),
+            },
+        );
+        let ThreadRemovalAuthority::Live {
+            authority: first_authority,
+            ..
+        } = first_authority
+        else {
+            panic!("first removal must retain the live Core authority");
+        };
+
+        assert!(
+            timeout(
+                Duration::from_millis(1),
+                first_authority.shutdown_complete.notified()
+            )
+            .await
+            .is_err(),
+            "first delete should refuse removal when shutdown is incomplete"
+        );
+        assert!(authorities.contains(thread_id));
+        assert!(!authorities.is_safe_to_abort(thread_id));
+        assert_eq!(queue_seals.load(Ordering::SeqCst), 0);
+
+        let retry_authority = authorities
+            .get(thread_id)
+            .expect("retry should recover the pending shutdown authority");
+        let ThreadRemovalAuthority::Live {
+            authority: retry_authority,
+            ..
+        } = retry_authority
+        else {
+            panic!("timed-out removal must remain live");
+        };
+        assert!(Arc::ptr_eq(&first_authority, &retry_authority));
+        assert_eq!(manager_remove_calls.load(Ordering::SeqCst), 1);
+
+        let retry_waiter = tokio::spawn({
+            let retry_authority = Arc::clone(&retry_authority);
+            async move { retry_authority.shutdown_complete.notified().await }
+        });
+        tokio::task::yield_now().await;
+        assert!(!retry_waiter.is_finished());
+        assert_eq!(queue_seals.load(Ordering::SeqCst), 0);
+
+        core.shutdown_complete.notify_waiters();
+        retry_waiter.await.expect("retry shutdown waiter");
+        assert!(authorities.mark_stopped_if_matches(thread_id, &retry_authority));
+        assert!(matches!(
+            authorities.get(thread_id),
+            Some(ThreadRemovalAuthority::Stopped { .. })
+        ));
+        assert!(authorities.is_safe_to_abort(thread_id));
+        queue_seals.fetch_add(1, Ordering::SeqCst);
+
+        // The stopped authority spans queue sealing and the remaining cross-store transaction.
+        assert!(authorities.contains(thread_id));
+        let _ = authorities.remove(thread_id);
+        assert!(!authorities.contains(thread_id));
+        assert_eq!(manager_remove_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(queue_seals.load(Ordering::SeqCst), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn cold_thread_removal_is_retained_as_a_retry_authority() -> Result<()> {
+        let thread_id = ThreadId::from_string("107ec7ad-e238-4ab6-a1ea-da940ee90252")?;
+        let authorities = ThreadRemovalAuthorities::<FakeRemovalCore>::default();
+
+        assert!(matches!(
+            authorities.insert_if_absent(
+                thread_id,
+                ThreadRemovalAuthority::Cold {
+                    startup_thread_ids: Vec::<ThreadId>::new().into(),
+                },
+            ),
+            ThreadRemovalAuthority::Cold { .. }
+        ));
+        assert!(matches!(
+            authorities.get(thread_id),
+            Some(ThreadRemovalAuthority::Cold { .. })
+        ));
+        assert!(authorities.contains(thread_id));
+        assert!(authorities.is_safe_to_abort(thread_id));
+
+        Ok(())
+    }
+
+    #[test]
+    fn cold_authority_with_startup_lineage_is_retained_across_preseal_retry() -> Result<()> {
+        let thread_id = ThreadId::from_string("107ec7ad-e238-4ab6-a1ea-da940ee90253")?;
+        let child_id = ThreadId::from_string("107ec7ad-e238-4ab6-a1ea-da940ee90254")?;
+        let authorities = ThreadRemovalAuthorities::<FakeRemovalCore>::default();
+
+        authorities.insert_if_absent(
+            thread_id,
+            ThreadRemovalAuthority::Cold {
+                startup_thread_ids: vec![child_id].into(),
+            },
+        );
+
+        assert!(
+            !authorities.is_safe_to_abort(thread_id),
+            "startup lineage must remain available to the next delete retry"
+        );
+        let ThreadRemovalAuthority::Cold { startup_thread_ids } = authorities
+            .get(thread_id)
+            .expect("retry authority remains published")
+        else {
+            panic!("expected cold authority");
+        };
+        assert_eq!(startup_thread_ids.as_ref(), &[child_id]);
+        Ok(())
+    }
 
     fn dynamic_tool(
         namespace: Option<&str>,

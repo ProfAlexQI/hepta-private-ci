@@ -16,11 +16,14 @@ use codex_hepta_agent_protocol::HealthSnapshot;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_fleet::ReleaseId;
+use codex_hepta_matrix_protocol::MAX_MATRIXD_CONTROL_FRAME_BYTES;
 use pretty_assertions::assert_eq;
 
 use super::AgentHealthProbeIdentity;
+use super::MatrixHealthProbeIdentity;
 use super::UnixProcessDriver;
 use super::query_agent_health_once;
+use super::query_matrix_health_once;
 use crate::AdoptSpec;
 use crate::Adoption;
 use crate::AgentCommand;
@@ -139,7 +142,7 @@ fn spawn_sqlite_home_probe(root: &Path, name: &str, agent_id: &str) -> std::path
         generation: 1,
         fleet_root: root.join("fleet"),
         workspace,
-        home_root: home_root.clone(),
+        home_root,
         run_root: run_root.clone(),
         control_socket: run_root.join("agentd-control.sock"),
         logs_root,
@@ -258,6 +261,45 @@ fn health_probe_requires_exact_agent_generation_pid_and_roots() {
     let running = running_health_response(&identity, 7, 8, 41);
     assert!(serve_and_probe(&identity, 5, running.clone()));
     assert!(serve_and_probe(&identity, 6, running));
+}
+
+#[test]
+fn matrix_health_transport_rejects_response_larger_than_one_mib() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let socket = temp.path().join("matrix-probe.sock");
+    let identity = MatrixHealthProbeIdentity {
+        agent_id: AgentId::parse("018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12").expect("valid agent id"),
+        agent_generation: 7,
+        binding_revision: 11,
+        binding_digest: Sha256Digest::for_bytes(b"binding"),
+        release_id: "matrixd-v1".to_string(),
+        process_incarnation: "matrixd-incarnation-1".to_string(),
+        plane_epoch: 13,
+        process_id: 41,
+        control_socket: socket.clone(),
+    };
+    let listener = UnixListener::bind(&socket).expect("bind Matrix probe socket");
+    let worker = std::thread::spawn(move || {
+        let (stream, _) = listener.accept().expect("accept Matrix probe");
+        let mut reader = BufReader::new(stream);
+        let mut request = Vec::new();
+        reader
+            .read_until(b'\n', &mut request)
+            .expect("read Matrix health request");
+        let mut oversized = vec![
+            b'x';
+            usize::try_from(MAX_MATRIXD_CONTROL_FRAME_BYTES + 1)
+                .expect("frame bound fits usize")
+        ];
+        *oversized.last_mut().expect("oversized frame") = b'\n';
+        let _ = reader.into_inner().write_all(&oversized);
+    });
+
+    let observation = query_matrix_health_once(&identity, 1).expect("Matrix health probe");
+    assert!(!observation.exact_identity);
+    assert!(!observation.ready);
+    worker.join().expect("Matrix probe server joins");
+    remove_socket(&socket);
 }
 
 fn running_health_response(

@@ -135,7 +135,7 @@ mod tests {
             options
                 .required_sqlite_home
                 .as_ref()
-                .map(|path| path.as_path())
+                .map(codex_utils_absolute_path::AbsolutePathBuf::as_path)
         );
         assert_eq!(
             Some(&codex_app_server::ThreadStoreConfig::Local),

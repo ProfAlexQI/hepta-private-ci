@@ -1,7 +1,7 @@
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 
-use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::UserInput;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_matrix_protocol::MatrixEventId;
@@ -21,10 +21,9 @@ struct FakeState {
     project_request: Option<BridgeProjectCreate>,
     project: Option<BridgeProject>,
     threads: Vec<BridgeThread>,
-    queue: Vec<BridgeQueuedSubmission>,
-    history: Vec<BridgeTurnClientMessage>,
     thread_start_calls: usize,
-    queue_add_calls: usize,
+    reconcile_requests: Vec<BridgeQueueReconcile>,
+    reconcile_responses: VecDeque<Result<BridgeQueueReconcileResponse, MatrixBridgeError>>,
     hide_threads_from_list: bool,
 }
 
@@ -36,41 +35,16 @@ impl FakeTransport {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         FakeSnapshot {
             thread_start_calls: state.thread_start_calls,
-            queue_add_calls: state.queue_add_calls,
-            queue: state.queue.clone(),
-            history: state.history.clone(),
+            reconcile_requests: state.reconcile_requests.clone(),
         }
     }
 
-    fn complete_queued_message(&self, client_id: &str, turn_id: &str) {
-        let mut state = self
-            .state
+    fn script_reconcile(&self, response: BridgeQueueReconcileResponse) {
+        self.state
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state
-            .queue
-            .retain(|queued| queued.client_user_message_id != client_id);
-        state.history.push(BridgeTurnClientMessage {
-            turn_id: turn_id.to_string(),
-            client_user_message_id: client_id.to_string(),
-        });
-    }
-
-    fn duplicate_queued_message(&self, client_id: &str) {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let existing = state
-            .queue
-            .iter()
-            .find(|queued| queued.client_user_message_id == client_id)
-            .expect("queued message")
-            .clone();
-        state.queue.push(BridgeQueuedSubmission {
-            id: format!("{}-duplicate", existing.id),
-            client_user_message_id: existing.client_user_message_id,
-        });
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .reconcile_responses
+            .push_back(Ok(response));
     }
 
     fn hide_threads_from_list(&self, hide: bool) {
@@ -83,9 +57,7 @@ impl FakeTransport {
 
 struct FakeSnapshot {
     thread_start_calls: usize,
-    queue_add_calls: usize,
-    queue: Vec<BridgeQueuedSubmission>,
-    history: Vec<BridgeTurnClientMessage>,
+    reconcile_requests: Vec<BridgeQueueReconcile>,
 }
 
 impl MatrixAppServerTransport for FakeTransport {
@@ -163,60 +135,22 @@ impl MatrixAppServerTransport for FakeTransport {
         })
     }
 
-    fn list_queue(
+    fn reconcile_queue(
         &self,
-        request: BridgeQueueList,
-    ) -> BridgeFuture<'_, BridgePage<BridgeQueuedSubmission>> {
-        Box::pin(async move {
-            let state = self
-                .state
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            Ok(page(&state.queue, request.cursor, request.limit))
-        })
-    }
-
-    fn list_turn_client_messages(
-        &self,
-        request: BridgeTurnList,
-    ) -> BridgeFuture<'_, BridgePage<BridgeTurnClientMessage>> {
-        Box::pin(async move {
-            let state = self
-                .state
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            Ok(page(&state.history, request.cursor, request.limit))
-        })
-    }
-
-    fn add_queue(&self, request: BridgeQueueAdd) -> BridgeFuture<'_, BridgeQueuedSubmission> {
+        request: BridgeQueueReconcile,
+    ) -> BridgeFuture<'_, BridgeQueueReconcileResponse> {
         Box::pin(async move {
             let mut state = self
                 .state
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            state.queue_add_calls += 1;
-            let queued = BridgeQueuedSubmission {
-                id: format!("queue-{}", state.queue_add_calls),
-                client_user_message_id: request.client_user_message_id,
-            };
-            state.queue.push(queued.clone());
-            Ok(queued)
+            state.reconcile_requests.push(request);
+            state.reconcile_responses.pop_front().unwrap_or_else(|| {
+                Err(MatrixBridgeError::Protocol(
+                    "fake reconcile response was not scripted".to_string(),
+                ))
+            })
         })
-    }
-}
-
-fn page<T: Clone>(values: &[T], cursor: Option<String>, limit: u32) -> BridgePage<T> {
-    let offset = cursor
-        .as_deref()
-        .unwrap_or("0")
-        .parse::<usize>()
-        .expect("fake cursor should be numeric");
-    let limit = usize::try_from(limit).expect("page limit should fit usize");
-    let end = offset.saturating_add(limit).min(values.len());
-    BridgePage {
-        data: values[offset..end].to_vec(),
-        next_cursor: (end < values.len()).then(|| end.to_string()),
     }
 }
 
@@ -247,83 +181,46 @@ fn input() -> Vec<UserInput> {
     }]
 }
 
-fn turns_list_server_error(
-    method: &str,
-    code: i64,
-    message: String,
-    data: Option<serde_json::Value>,
-) -> TypedRequestError {
-    TypedRequestError::Server {
-        method: method.to_string(),
-        source: JSONRPCErrorError {
-            code,
-            data,
-            message,
+fn different_input() -> Vec<UserInput> {
+    vec![UserInput::Text {
+        text: "different Matrix payload".to_string(),
+        text_elements: Vec::new(),
+    }]
+}
+
+fn input_payload_sha256(input: &[UserInput]) -> String {
+    bridge_user_input_payload_sha256(input).expect("canonical user-input digest")
+}
+
+fn matrix_client_id() -> String {
+    client_user_message_id(&agent_id(), &room_id(), &event_id())
+}
+
+fn queued_reconcile_response(created: bool) -> BridgeQueueReconcileResponse {
+    let client_id = matrix_client_id();
+    let payload_sha256 = input_payload_sha256(&input());
+    BridgeQueueReconcileResponse {
+        client_user_message_id: client_id.clone(),
+        payload_sha256: Some(payload_sha256.clone()),
+        outcome: BridgeQueueReconcileOutcome::Queued {
+            queued_submission: BridgeQueuedSubmission {
+                id: "queue-1".to_string(),
+                client_user_message_id: client_id,
+                payload_sha256: Some(payload_sha256),
+            },
+            created,
         },
     }
 }
 
-#[test]
-fn only_exact_first_page_unmaterialized_turns_error_falls_back_to_empty_history() {
-    let thread_id = "thread-before-first-message";
-    let expected_message = format!(
-        "thread {thread_id} is not materialized yet; thread/turns/list is unavailable before first user message"
-    );
-    let exact = turns_list_server_error(
-        "thread/turns/list",
-        JSON_RPC_INVALID_REQUEST_CODE,
-        expected_message.clone(),
-        None,
-    );
-    assert!(is_unmaterialized_thread_turns_list_error(
-        &exact, thread_id, None
-    ));
-    assert!(!is_unmaterialized_thread_turns_list_error(
-        &exact,
-        thread_id,
-        Some("cursor-1")
-    ));
-
-    let wrong_method = turns_list_server_error(
-        "thread/read",
-        JSON_RPC_INVALID_REQUEST_CODE,
-        expected_message.clone(),
-        None,
-    );
-    assert!(!is_unmaterialized_thread_turns_list_error(
-        &wrong_method,
-        thread_id,
-        None
-    ));
-    let wrong_code =
-        turns_list_server_error("thread/turns/list", -32_603, expected_message.clone(), None);
-    assert!(!is_unmaterialized_thread_turns_list_error(
-        &wrong_code,
-        thread_id,
-        None
-    ));
-    let wrong_thread = turns_list_server_error(
-        "thread/turns/list",
-        JSON_RPC_INVALID_REQUEST_CODE,
-        expected_message.replace(thread_id, "another-thread"),
-        None,
-    );
-    assert!(!is_unmaterialized_thread_turns_list_error(
-        &wrong_thread,
-        thread_id,
-        None
-    ));
-    let unexpected_data = turns_list_server_error(
-        "thread/turns/list",
-        JSON_RPC_INVALID_REQUEST_CODE,
-        expected_message,
-        Some(serde_json::json!({"unexpected": true})),
-    );
-    assert!(!is_unmaterialized_thread_turns_list_error(
-        &unexpected_data,
-        thread_id,
-        None
-    ));
+fn persisted_reconcile_response(turn_id: &str) -> BridgeQueueReconcileResponse {
+    BridgeQueueReconcileResponse {
+        client_user_message_id: matrix_client_id(),
+        payload_sha256: Some(input_payload_sha256(&input())),
+        outcome: BridgeQueueReconcileOutcome::Persisted {
+            turn_id: turn_id.to_string(),
+        },
+    }
 }
 
 #[tokio::test]
@@ -340,6 +237,7 @@ async fn first_message_recovers_thread_after_crash_without_second_thread_start()
 
     let restarted_process =
         MatrixAppServerBridge::new(config(), fake.clone()).expect("restarted bridge process");
+    fake.script_reconcile(queued_reconcile_response(true));
     let submitted = restarted_process
         .submit_matrix_event(&room_id(), &event_id(), input())
         .await
@@ -353,7 +251,7 @@ async fn first_message_recovers_thread_after_crash_without_second_thread_start()
     ));
     let snapshot = fake.snapshot();
     assert_eq!(snapshot.thread_start_calls, 1);
-    assert_eq!(snapshot.queue_add_calls, 1);
+    assert_eq!(snapshot.reconcile_requests.len(), 1);
 }
 
 #[tokio::test]
@@ -403,62 +301,194 @@ async fn durable_thread_identity_rejects_a_different_materialized_thread() {
 }
 
 #[tokio::test]
-async fn duplicate_client_id_reconciles_from_queue_then_full_turn_history() {
+async fn submission_uses_one_atomic_reconcile_rpc_and_revalidates_the_response() {
     let fake = FakeTransport::default();
+    fake.script_reconcile(queued_reconcile_response(true));
     let bridge = MatrixAppServerBridge::new(config(), fake.clone()).expect("bridge");
-    let first = bridge
-        .submit_matrix_event(&room_id(), &event_id(), input())
-        .await
-        .expect("first submission");
-    let second = bridge
-        .submit_matrix_event(&room_id(), &event_id(), input())
-        .await
-        .expect("queue reconciliation");
-    assert!(matches!(
-        second.state,
-        MatrixSubmissionState::ReconciledQueued { .. }
-    ));
-    assert_eq!(fake.snapshot().queue_add_calls, 1);
 
-    fake.complete_queued_message(&first.client_user_message_id, "turn-1");
-    let third = bridge
+    let submitted = bridge
         .submit_matrix_event(&room_id(), &event_id(), input())
         .await
-        .expect("full-history reconciliation");
+        .expect("atomic admission");
+
     assert_eq!(
-        third.state,
+        submitted.state,
+        MatrixSubmissionState::Queued {
+            queued_submission_id: "queue-1".to_string(),
+        }
+    );
+    let snapshot = fake.snapshot();
+    assert_eq!(snapshot.reconcile_requests.len(), 1);
+    let request = &snapshot.reconcile_requests[0];
+    assert_eq!(request.client_user_message_id, matrix_client_id());
+    assert_eq!(
+        request.expected_payload_sha256,
+        input_payload_sha256(&input())
+    );
+    assert_eq!(request.input, input());
+    assert_eq!(request.mode, MatrixAdmissionMode::AllowIfAbsent);
+}
+
+#[tokio::test]
+async fn queued_and_persisted_reconcile_outcomes_map_without_client_side_scans() {
+    let fake = FakeTransport::default();
+    fake.script_reconcile(queued_reconcile_response(false));
+    fake.script_reconcile(persisted_reconcile_response("turn-1"));
+    let bridge = MatrixAppServerBridge::new(config(), fake.clone()).expect("bridge");
+
+    let queued = bridge
+        .submit_matrix_event(&room_id(), &event_id(), input())
+        .await
+        .expect("existing queue binding");
+    assert_eq!(
+        queued.state,
+        MatrixSubmissionState::ReconciledQueued {
+            queued_submission_id: "queue-1".to_string(),
+        }
+    );
+    let persisted = bridge
+        .submit_matrix_event(&room_id(), &event_id(), input())
+        .await
+        .expect("persisted binding");
+    assert_eq!(
+        persisted.state,
         MatrixSubmissionState::ReconciledTurn {
             turn_id: "turn-1".to_string(),
         }
     );
-    let snapshot = fake.snapshot();
-    assert_eq!(snapshot.queue_add_calls, 1);
-    assert!(snapshot.queue.is_empty());
-    assert_eq!(snapshot.history.len(), 1);
+    assert_eq!(fake.snapshot().reconcile_requests.len(), 2);
 }
 
 #[tokio::test]
-async fn duplicate_queue_rows_reconcile_without_a_third_admission() {
+async fn reconcile_only_is_forwarded_and_missing_or_cancelled_never_resurrects() {
     let fake = FakeTransport::default();
     let bridge = MatrixAppServerBridge::new(config(), fake.clone()).expect("bridge");
-    let first = bridge
-        .submit_matrix_event(&room_id(), &event_id(), input())
+    let binding = bridge
+        .ensure_room_thread(&room_id())
         .await
-        .expect("first submission");
-
-    fake.duplicate_queued_message(&first.client_user_message_id);
-    let replay = bridge
-        .submit_matrix_event(&room_id(), &event_id(), input())
-        .await
-        .expect("duplicate queue rows reconcile");
-
-    assert_eq!(
-        DELIVERY_GUARANTEE,
-        DeliveryGuarantee::ExactlyOncePersistedCoreAdmissionPerClientMessageId
+        .expect("binding");
+    for outcome in [
+        BridgeQueueReconcileOutcome::Missing,
+        BridgeQueueReconcileOutcome::Cancelled,
+    ] {
+        fake.script_reconcile(BridgeQueueReconcileResponse {
+            client_user_message_id: matrix_client_id(),
+            payload_sha256: Some(input_payload_sha256(&input())),
+            outcome,
+        });
+        let error = bridge
+            .submit_matrix_event_on_binding(
+                &room_id(),
+                &event_id(),
+                input(),
+                &binding,
+                MatrixAdmissionMode::ReconcileOnly,
+            )
+            .await
+            .expect_err("durable absence must fail closed");
+        assert!(error.to_string().contains("missing or cancelled"));
+    }
+    let snapshot = fake.snapshot();
+    assert_eq!(snapshot.reconcile_requests.len(), 2);
+    assert!(
+        snapshot
+            .reconcile_requests
+            .iter()
+            .all(|request| request.mode == MatrixAdmissionMode::ReconcileOnly)
     );
+}
+
+#[tokio::test]
+async fn reconcile_response_identity_and_payload_drift_fail_closed() {
+    let fake = FakeTransport::default();
+    let bridge = MatrixAppServerBridge::new(config(), fake.clone()).expect("bridge");
+    let mut wrong_client = queued_reconcile_response(true);
+    wrong_client.client_user_message_id = "different-client".to_string();
+    fake.script_reconcile(wrong_client);
+    let error = bridge
+        .submit_matrix_event(&room_id(), &event_id(), input())
+        .await
+        .expect_err("client identity drift");
+    assert!(
+        error
+            .to_string()
+            .contains("mismatched client message identity")
+    );
+
+    let mut wrong_digest = queued_reconcile_response(true);
+    wrong_digest.payload_sha256 = Some(input_payload_sha256(&different_input()));
+    fake.script_reconcile(wrong_digest);
+    let error = bridge
+        .submit_matrix_event(&room_id(), &event_id(), input())
+        .await
+        .expect_err("payload drift");
+    assert!(error.to_string().contains("payload digest"));
+
+    let mut missing_digest = queued_reconcile_response(true);
+    missing_digest.payload_sha256 = None;
+    fake.script_reconcile(missing_digest);
+    let error = bridge
+        .submit_matrix_event(&room_id(), &event_id(), input())
+        .await
+        .expect_err("missing payload digest");
+    assert!(error.to_string().contains("no canonical payload digest"));
+}
+
+#[test]
+fn remote_reconcile_mapping_preserves_all_typed_outcomes() {
+    let payload_sha256 = input_payload_sha256(&input());
+    for (mode, expected) in [
+        (
+            MatrixAdmissionMode::AllowIfAbsent,
+            ThreadQueueReconcileMode::AllowIfAbsent,
+        ),
+        (
+            MatrixAdmissionMode::ReconcileOnly,
+            ThreadQueueReconcileMode::ReconcileOnly,
+        ),
+    ] {
+        let params = bridge_queue_reconcile_params(BridgeQueueReconcile {
+            thread_id: "thread-1".to_string(),
+            input: input(),
+            client_user_message_id: matrix_client_id(),
+            expected_payload_sha256: payload_sha256.clone(),
+            mode,
+        });
+        assert_eq!(params.mode, expected);
+        assert_eq!(params.thread_id, "thread-1");
+        assert_eq!(params.client_user_message_id, matrix_client_id());
+        assert_eq!(params.expected_payload_sha256, payload_sha256);
+    }
+    let queued = bridge_queue_reconcile_response(ThreadQueueReconcileResponse {
+        client_user_message_id: matrix_client_id(),
+        payload_sha256: payload_sha256.clone(),
+        outcome: ThreadQueueReconcileOutcome::Queued {
+            queued_submission: QueuedSubmission {
+                id: "queue-1".to_string(),
+                input: input(),
+                client_user_message_id: matrix_client_id(),
+            },
+            created: true,
+        },
+    })
+    .expect("queued mapping");
     assert!(matches!(
-        replay.state,
-        MatrixSubmissionState::ReconciledQueued { .. }
+        queued.outcome,
+        BridgeQueueReconcileOutcome::Queued { created: true, .. }
     ));
-    assert_eq!(fake.snapshot().queue_add_calls, 1);
+
+    for outcome in [
+        ThreadQueueReconcileOutcome::Persisted {
+            turn_id: "turn-1".to_string(),
+        },
+        ThreadQueueReconcileOutcome::Missing,
+        ThreadQueueReconcileOutcome::Cancelled,
+    ] {
+        bridge_queue_reconcile_response(ThreadQueueReconcileResponse {
+            client_user_message_id: matrix_client_id(),
+            payload_sha256: payload_sha256.clone(),
+            outcome,
+        })
+        .expect("typed response mapping");
+    }
 }

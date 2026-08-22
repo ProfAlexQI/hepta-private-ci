@@ -7,6 +7,7 @@ use codex_hepta_fleet::WorkspaceBinding;
 use codex_hepta_paths::HeptaFleetRoot;
 
 use super::AgentdConfig;
+use crate::AgentdError;
 
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
@@ -61,6 +62,22 @@ fn config_binds_exact_registered_agent_roots_and_workspace() {
         config.identity().layout.cognitive_root(),
         record.layout.cognitive_root()
     );
+
+    let duplicate_writer_error = AgentdConfig::load(
+        fleet_path.clone(),
+        agent_id,
+        1,
+        record.layout.home_root().to_path_buf(),
+        record.layout.run_root().to_path_buf(),
+        record.layout.home_root().to_path_buf(),
+        workspace.clone(),
+    )
+    .err()
+    .expect("a second agentd writer for the same registered home must be rejected");
+    assert!(matches!(
+        duplicate_writer_error,
+        AgentdError::Invalid(message) if message.contains("already has a live writer lock")
+    ));
     drop(config);
 
     assert!(

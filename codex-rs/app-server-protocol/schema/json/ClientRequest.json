@@ -4411,6 +4411,13 @@
       ],
       "type": "object"
     },
+    "ThreadQueueReconcileMode": {
+      "enum": [
+        "allowIfAbsent",
+        "reconcileOnly"
+      ],
+      "type": "string"
+    },
     "ThreadReadParams": {
       "properties": {
         "includeTurns": {

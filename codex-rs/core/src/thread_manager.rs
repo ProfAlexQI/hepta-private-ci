@@ -68,6 +68,7 @@ use codex_protocol::protocol::TurnEnvironmentSelection;
 use codex_protocol::protocol::W3cTraceContext;
 use codex_rollout::state_db::StateDbHandle;
 use codex_skills_extension::HostSkillsService;
+use codex_thread_store::DeleteThreadsParams;
 use codex_thread_store::InMemoryThreadStore;
 use codex_thread_store::LoadThreadHistoryParams;
 use codex_thread_store::LocalThreadStore;
@@ -92,8 +93,10 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
+use tokio::sync::Notify;
 use tokio::sync::RwLock;
 use tokio::sync::broadcast;
+use tracing::Instrument;
 use tracing::instrument;
 use tracing::warn;
 
@@ -269,6 +272,240 @@ struct ThreadSpawnRequest {
     user_shell_override: Option<crate::shell::Shell>,
 }
 
+/// Result retained by the detached startup owner until the requesting future acknowledges it.
+///
+/// `unclaimed_cleanup` is present only when this owner published a new runtime into the registry.
+/// In particular, the already-running resume fast path must never grant cleanup authority over
+/// the pre-existing runtime.
+struct OwnedThreadSpawn {
+    new_thread: NewThread,
+    unclaimed_cleanup: Option<UnclaimedThreadCleanup>,
+}
+
+struct UnclaimedThreadCleanup {
+    thread_id: ThreadId,
+    thread: Arc<CodexThread>,
+    delete_materialized_thread: bool,
+    delivery_claim: Arc<StartupDeliveryClaim>,
+}
+
+#[derive(Default)]
+struct StartupDeliveryClaim {
+    claimed: AtomicBool,
+}
+
+struct FinalizedThreadSpawn {
+    new_thread: NewThread,
+    delivery_claim: Arc<StartupDeliveryClaim>,
+}
+
+fn hard_delete_fenced_error(thread_id: ThreadId) -> CodexErr {
+    CodexErr::InvalidRequest(format!("thread {thread_id} is fenced for hard deletion"))
+}
+
+fn immediate_parent_thread_id(
+    explicit_parent_thread_id: Option<ThreadId>,
+    session_source: &SessionSource,
+) -> CodexResult<Option<ThreadId>> {
+    let source_parent_thread_id = match session_source {
+        SessionSource::SubAgent(SubAgentSource::ThreadSpawn {
+            parent_thread_id, ..
+        }) => Some(*parent_thread_id),
+        _ => None,
+    };
+    if let (Some(explicit), Some(source)) = (explicit_parent_thread_id, source_parent_thread_id)
+        && explicit != source
+    {
+        return Err(CodexErr::InvalidRequest(format!(
+            "explicit immediate parent thread {explicit} does not match session-source parent thread {source}"
+        )));
+    }
+    Ok(explicit_parent_thread_id.or(source_parent_thread_id))
+}
+
+fn ensure_registry_allows_spawn(
+    registry: &ThreadRegistryState,
+    thread_id: ThreadId,
+    immediate_parent_thread_id: Option<ThreadId>,
+) -> CodexResult<()> {
+    if registry.hard_delete_closing.contains(&thread_id) {
+        return Err(hard_delete_fenced_error(thread_id));
+    }
+    if registry.startup_cleanup_closing.contains(&thread_id) {
+        return Err(CodexErr::InvalidRequest(format!(
+            "thread {thread_id} is completing canceled startup cleanup"
+        )));
+    }
+    if let Some(parent_thread_id) = immediate_parent_thread_id
+        && (registry.hard_delete_closing.contains(&parent_thread_id)
+            || registry.startup_cleanup_closing.contains(&parent_thread_id))
+    {
+        return Err(CodexErr::InvalidRequest(format!(
+            "immediate parent thread {parent_thread_id} is fenced for hard deletion"
+        )));
+    }
+    Ok(())
+}
+
+fn admit_thread_spawn(
+    registry: &mut ThreadRegistryState,
+    thread_id: ThreadId,
+    immediate_parent_thread_id: Option<ThreadId>,
+) -> CodexResult<StartingThreadSpawnGuard> {
+    ensure_registry_allows_spawn(registry, thread_id, immediate_parent_thread_id)?;
+    registry
+        .starting_spawns
+        .retain(|starting| starting.strong_count() != 0);
+    let spawn = Arc::new(StartingThreadSpawn::new(
+        thread_id,
+        immediate_parent_thread_id,
+    ));
+    registry.starting_spawns.push(Arc::downgrade(&spawn));
+    Ok(StartingThreadSpawnGuard { spawn })
+}
+
+struct StartingThreadSpawn {
+    thread_id: ThreadId,
+    immediate_parent_thread_id: Option<ThreadId>,
+    complete: AtomicBool,
+    completed: Notify,
+}
+
+impl StartingThreadSpawn {
+    fn new(thread_id: ThreadId, immediate_parent_thread_id: Option<ThreadId>) -> Self {
+        Self {
+            thread_id,
+            immediate_parent_thread_id,
+            complete: AtomicBool::new(false),
+            completed: Notify::new(),
+        }
+    }
+
+    fn matches_hard_delete(&self, thread_id: ThreadId) -> bool {
+        self.thread_id == thread_id || self.immediate_parent_thread_id == Some(thread_id)
+    }
+
+    fn mark_complete(&self) {
+        if !self.complete.swap(true, Ordering::AcqRel) {
+            self.completed.notify_waiters();
+        }
+    }
+
+    async fn wait(&self) {
+        loop {
+            if self.complete.load(Ordering::Acquire) {
+                return;
+            }
+            let completed = self.completed.notified();
+            if self.complete.load(Ordering::Acquire) {
+                return;
+            }
+            completed.await;
+        }
+    }
+}
+
+struct StartingThreadSpawnGuard {
+    spawn: Arc<StartingThreadSpawn>,
+}
+
+impl Drop for StartingThreadSpawnGuard {
+    fn drop(&mut self) {
+        self.spawn.mark_complete();
+    }
+}
+
+#[cfg(test)]
+#[derive(Default)]
+pub(crate) struct ThreadStartupTestHook {
+    entered: AtomicBool,
+    entered_notify: Notify,
+    released: AtomicBool,
+    released_notify: Notify,
+}
+
+#[cfg(test)]
+impl ThreadStartupTestHook {
+    async fn pause(&self) {
+        self.entered.store(true, Ordering::Release);
+        self.entered_notify.notify_waiters();
+        loop {
+            if self.released.load(Ordering::Acquire) {
+                return;
+            }
+            let released = self.released_notify.notified();
+            if self.released.load(Ordering::Acquire) {
+                return;
+            }
+            released.await;
+        }
+    }
+
+    pub(crate) async fn wait_until_entered(&self) {
+        loop {
+            if self.entered.load(Ordering::Acquire) {
+                return;
+            }
+            let entered = self.entered_notify.notified();
+            if self.entered.load(Ordering::Acquire) {
+                return;
+            }
+            entered.await;
+        }
+    }
+
+    pub(crate) fn release(&self) {
+        self.released.store(true, Ordering::Release);
+        self.released_notify.notify_waiters();
+    }
+}
+
+struct ThreadHardDeleteBeginAuthorityInner {
+    removed_thread: Option<Arc<CodexThread>>,
+    starting_spawns: Vec<Arc<StartingThreadSpawn>>,
+}
+
+/// Cancellation-safe authority returned by [`ThreadManager::begin_thread_hard_delete`].
+///
+/// The live runtime and every startup that was admitted before the hard-delete fence are
+/// snapshotted under one registry write lock. Callers must publish this authority in recoverable
+/// state before awaiting either startup drain or runtime shutdown.
+#[derive(Clone)]
+pub struct ThreadHardDeleteBeginAuthority {
+    inner: Arc<ThreadHardDeleteBeginAuthorityInner>,
+}
+
+impl ThreadHardDeleteBeginAuthority {
+    pub fn removed_thread(&self) -> Option<Arc<CodexThread>> {
+        self.inner.removed_thread.clone()
+    }
+
+    pub async fn drain_startups(&self) {
+        for startup in &self.inner.starting_spawns {
+            startup.wait().await;
+        }
+    }
+
+    /// IDs materialized by startups admitted before the fence. App Server must include these in
+    /// the durable deletion closure even when AgentGraph/final registry publication never occurs.
+    pub fn startup_thread_ids(&self) -> Vec<ThreadId> {
+        self.inner
+            .starting_spawns
+            .iter()
+            .map(|startup| startup.thread_id)
+            .collect()
+    }
+
+    pub fn same_authority(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner)
+    }
+
+    #[cfg(test)]
+    fn startup_count(&self) -> usize {
+        self.inner.starting_spawns.len()
+    }
+}
+
 impl ThreadSpawnRequest {
     fn new(
         options: StartThreadOptions,
@@ -333,7 +570,7 @@ pub(crate) struct ResumeThreadWithHistoryOptions {
 /// `Arc` reference that can be downgraded to by `AgentControl` while preventing every single
 /// function to require an `Arc<&Self>`.
 pub(crate) struct ThreadManagerState {
-    threads: Arc<RwLock<HashMap<ThreadId, Arc<CodexThread>>>>,
+    thread_registry: Arc<RwLock<ThreadRegistryState>>,
     thread_created_tx: broadcast::Sender<ThreadId>,
     thread_id_generator: ThreadIdGenerator,
     auth_manager: Arc<AuthManager>,
@@ -355,6 +592,21 @@ pub(crate) struct ThreadManagerState {
     analytics_events_client: Option<AnalyticsEventsClient>,
     // Captures submitted ops for testing purpose when test mode is enabled.
     ops_log: Option<SharedCapturedOps>,
+    #[cfg(test)]
+    startup_before_finalize_hook: std::sync::Mutex<Option<Arc<ThreadStartupTestHook>>>,
+    #[cfg(test)]
+    startup_before_delivery_hook: std::sync::Mutex<Option<Arc<ThreadStartupTestHook>>>,
+    #[cfg(test)]
+    startup_cleanup_after_fence_hook: std::sync::Mutex<Option<Arc<ThreadStartupTestHook>>>,
+}
+
+#[derive(Default)]
+struct ThreadRegistryState {
+    threads: HashMap<ThreadId, Arc<CodexThread>>,
+    hard_delete_closing: HashSet<ThreadId>,
+    startup_cleanup_closing: HashSet<ThreadId>,
+    startup_delivery_claims: HashMap<ThreadId, Arc<StartupDeliveryClaim>>,
+    starting_spawns: Vec<std::sync::Weak<StartingThreadSpawn>>,
 }
 
 pub fn build_models_manager(
@@ -461,7 +713,7 @@ impl ThreadManager {
             };
         Self {
             state: Arc::new(ThreadManagerState {
-                threads: Arc::new(RwLock::new(HashMap::new())),
+                thread_registry: Arc::new(RwLock::new(ThreadRegistryState::default())),
                 thread_created_tx,
                 thread_id_generator: default_thread_id_generator(),
                 models_manager,
@@ -483,6 +735,12 @@ impl ThreadManager {
                 analytics_events_client,
                 ops_log: should_use_test_thread_manager_behavior()
                     .then(|| Arc::new(std::sync::Mutex::new(Vec::new()))),
+                #[cfg(test)]
+                startup_before_finalize_hook: std::sync::Mutex::new(None),
+                #[cfg(test)]
+                startup_before_delivery_hook: std::sync::Mutex::new(None),
+                #[cfg(test)]
+                startup_cleanup_after_fence_hook: std::sync::Mutex::new(None),
             }),
             _test_codex_home_guard: None,
         }
@@ -607,7 +865,7 @@ impl ThreadManager {
         let agent_graph_store = local_agent_graph_store_from_state_db(state_db.as_ref());
         Self {
             state: Arc::new(ThreadManagerState {
-                threads: Arc::new(RwLock::new(HashMap::new())),
+                thread_registry: Arc::new(RwLock::new(ThreadRegistryState::default())),
                 thread_created_tx,
                 thread_id_generator: default_thread_id_generator(),
                 models_manager: create_model_provider(provider, Some(auth_manager.clone()))
@@ -632,6 +890,12 @@ impl ThreadManager {
                 analytics_events_client: None,
                 ops_log: should_use_test_thread_manager_behavior()
                     .then(|| Arc::new(std::sync::Mutex::new(Vec::new()))),
+                #[cfg(test)]
+                startup_before_finalize_hook: std::sync::Mutex::new(None),
+                #[cfg(test)]
+                startup_before_delivery_hook: std::sync::Mutex::new(None),
+                #[cfg(test)]
+                startup_cleanup_after_fence_hook: std::sync::Mutex::new(None),
             }),
             _test_codex_home_guard: None,
         }
@@ -666,9 +930,10 @@ impl ThreadManager {
         self.invalidate_starting_mcp_runtimes();
         let threads = self
             .state
-            .threads
+            .thread_registry
             .read()
             .await
+            .threads
             .values()
             .cloned()
             .collect::<Vec<_>>();
@@ -681,9 +946,10 @@ impl ThreadManager {
     pub async fn refresh_hook_runtimes(&self) {
         let threads = self
             .state
-            .threads
+            .thread_registry
             .read()
             .await
+            .threads
             .values()
             .cloned()
             .collect::<Vec<_>>();
@@ -1095,7 +1361,59 @@ impl ThreadManager {
     /// as `Arc<CodexThread>`, it is possible that other references to it exist elsewhere.
     /// Returns the thread if the thread was found and removed.
     pub async fn remove_thread(&self, thread_id: &ThreadId) -> Option<Arc<CodexThread>> {
-        self.state.threads.write().await.remove(thread_id)
+        self.state
+            .thread_registry
+            .write()
+            .await
+            .threads
+            .remove(thread_id)
+    }
+
+    /// Permanently fences a live thread against creation or resume in this manager and removes
+    /// its currently registered runtime, if any.
+    ///
+    /// The fence insertion and runtime removal share one registry write lock, so a concurrent
+    /// spawn finalization cannot slip between those operations. Callers must either make the
+    /// durable delete seal authoritative or call [`ThreadManager::abort_thread_hard_delete`]
+    /// before returning an error. The returned authority also snapshots every startup admitted
+    /// for this thread or one of its immediate children before the fence. It returns immediately:
+    /// callers must publish the authority before awaiting its startup drain.
+    pub async fn begin_thread_hard_delete(
+        &self,
+        thread_id: ThreadId,
+    ) -> CodexResult<ThreadHardDeleteBeginAuthority> {
+        let mut registry = self.state.thread_registry.write().await;
+        registry.hard_delete_closing.insert(thread_id);
+        registry
+            .starting_spawns
+            .retain(|starting| starting.strong_count() != 0);
+        let starting_spawns = registry
+            .starting_spawns
+            .iter()
+            .filter_map(std::sync::Weak::upgrade)
+            .filter(|starting| starting.matches_hard_delete(thread_id))
+            .collect();
+        let removed_thread = registry.threads.remove(&thread_id);
+        Ok(ThreadHardDeleteBeginAuthority {
+            inner: Arc::new(ThreadHardDeleteBeginAuthorityInner {
+                removed_thread,
+                starting_spawns,
+            }),
+        })
+    }
+
+    /// Releases an in-memory hard-delete fence when deletion failed before the durable seal.
+    ///
+    /// Once the durable seal succeeds, callers must leave this fence in place for the lifetime of
+    /// the manager. A fresh manager will independently reject the durable tombstone through the
+    /// thread-store capability.
+    pub async fn abort_thread_hard_delete(&self, thread_id: ThreadId) -> bool {
+        self.state
+            .thread_registry
+            .write()
+            .await
+            .hard_delete_closing
+            .remove(&thread_id)
     }
 
     /// Removes a thread only if `thread_id` still maps to `expected`.
@@ -1107,12 +1425,13 @@ impl ThreadManager {
         thread_id: &ThreadId,
         expected: &Arc<CodexThread>,
     ) -> Option<Arc<CodexThread>> {
-        let mut threads = self.state.threads.write().await;
-        if threads
+        let mut registry = self.state.thread_registry.write().await;
+        if registry
+            .threads
             .get(thread_id)
             .is_some_and(|thread| Arc::ptr_eq(thread, expected))
         {
-            threads.remove(thread_id)
+            registry.threads.remove(thread_id)
         } else {
             None
         }
@@ -1123,8 +1442,9 @@ impl ThreadManager {
     /// remain tracked so callers can retry or inspect them later.
     pub async fn shutdown_all_threads_bounded(&self, timeout: Duration) -> ThreadShutdownReport {
         let threads = {
-            let threads = self.state.threads.read().await;
-            threads
+            let registry = self.state.thread_registry.read().await;
+            registry
+                .threads
                 .iter()
                 .map(|(thread_id, thread)| (*thread_id, Arc::clone(thread)))
                 .collect::<Vec<_>>()
@@ -1152,9 +1472,9 @@ impl ThreadManager {
             }
         }
 
-        let mut tracked_threads = self.state.threads.write().await;
+        let mut registry = self.state.thread_registry.write().await;
         for thread_id in &report.completed {
-            tracked_threads.remove(thread_id);
+            registry.threads.remove(thread_id);
         }
 
         report
@@ -1365,17 +1685,87 @@ impl ThreadManager {
             })
             .unwrap_or_default()
     }
+
+    #[cfg(test)]
+    pub(crate) fn pause_next_startup_before_finalize(&self) -> Arc<ThreadStartupTestHook> {
+        let hook = Arc::new(ThreadStartupTestHook::default());
+        *self
+            .state
+            .startup_before_finalize_hook
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::clone(&hook));
+        hook
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pause_next_startup_before_delivery(&self) -> Arc<ThreadStartupTestHook> {
+        let hook = Arc::new(ThreadStartupTestHook::default());
+        *self
+            .state
+            .startup_before_delivery_hook
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::clone(&hook));
+        hook
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pause_next_startup_cleanup_after_fence(&self) -> Arc<ThreadStartupTestHook> {
+        let hook = Arc::new(ThreadStartupTestHook::default());
+        *self
+            .state
+            .startup_cleanup_after_fence_hook
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::clone(&hook));
+        hook
+    }
 }
 
 impl ThreadManagerState {
+    #[cfg(test)]
+    async fn pause_startup_before_finalize_for_tests(&self) {
+        let hook = self
+            .startup_before_finalize_hook
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(hook) = hook {
+            hook.pause().await;
+        }
+    }
+
+    #[cfg(test)]
+    async fn pause_startup_before_delivery_for_tests(&self) {
+        let hook = self
+            .startup_before_delivery_hook
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(hook) = hook {
+            hook.pause().await;
+        }
+    }
+
+    #[cfg(test)]
+    async fn pause_startup_cleanup_after_fence_for_tests(&self) {
+        let hook = self
+            .startup_cleanup_after_fence_hook
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(hook) = hook {
+            hook.pause().await;
+        }
+    }
+
     pub(crate) fn agent_graph_store(&self) -> Option<Arc<dyn AgentGraphStore>> {
         self.agent_graph_store.clone()
     }
 
     pub(crate) async fn list_thread_ids(&self) -> Vec<ThreadId> {
-        self.threads
+        self.thread_registry
             .read()
             .await
+            .threads
             .iter()
             .filter_map(|(thread_id, thread)| {
                 (!thread.session_source.is_internal()).then_some(*thread_id)
@@ -1385,9 +1775,10 @@ impl ThreadManagerState {
 
     /// List parent-child edges for currently loaded thread-spawn agents.
     pub(crate) async fn list_live_thread_spawn_edges(&self) -> Vec<(ThreadId, ThreadId)> {
-        self.threads
+        self.thread_registry
             .read()
             .await
+            .threads
             .iter()
             .filter_map(|(thread_id, thread)| {
                 if thread.session_source.is_internal() {
@@ -1406,10 +1797,24 @@ impl ThreadManagerState {
 
     /// Fetch a thread by ID or return ThreadNotFound.
     pub(crate) async fn get_thread(&self, thread_id: ThreadId) -> CodexResult<Arc<CodexThread>> {
-        let threads = self.threads.read().await;
-        match threads.get(&thread_id) {
+        let registry = self.thread_registry.read().await;
+        match registry.threads.get(&thread_id) {
             Some(thread) if !thread.session_source.is_internal() => Ok(thread.clone()),
             Some(_) | None => Err(CodexErr::ThreadNotFound(thread_id)),
+        }
+    }
+
+    async fn ensure_thread_not_hard_delete_fenced(&self, thread_id: ThreadId) -> CodexResult<()> {
+        match self
+            .thread_store
+            .is_thread_hard_delete_fenced(thread_id)
+            .await
+        {
+            Ok(false) => Ok(()),
+            Ok(true) => Err(hard_delete_fenced_error(thread_id)),
+            Err(err) => Err(CodexErr::Fatal(format!(
+                "failed to verify hard-delete fence for thread {thread_id}: {err}"
+            ))),
         }
     }
 
@@ -1418,6 +1823,7 @@ impl ThreadManagerState {
         params: ReadThreadParams,
     ) -> CodexResult<StoredThread> {
         let thread_id = params.thread_id;
+        self.ensure_thread_not_hard_delete_fenced(thread_id).await?;
         self.thread_store
             .read_thread(params)
             .await
@@ -1443,6 +1849,7 @@ impl ThreadManagerState {
         params: LoadThreadHistoryParams,
     ) -> CodexResult<StoredModelContext> {
         let thread_id = params.thread_id;
+        self.ensure_thread_not_hard_delete_fenced(thread_id).await?;
         self.thread_store
             .load_latest_model_context(params)
             .await
@@ -1479,7 +1886,139 @@ impl ThreadManagerState {
 
     /// Remove a thread from the manager by ID, returning it when present.
     pub(crate) async fn remove_thread(&self, thread_id: &ThreadId) -> Option<Arc<CodexThread>> {
-        self.threads.write().await.remove(thread_id)
+        self.thread_registry.write().await.threads.remove(thread_id)
+    }
+
+    async fn claim_published_thread(&self, cleanup: &UnclaimedThreadCleanup) {
+        let mut registry = self.thread_registry.write().await;
+        cleanup
+            .delivery_claim
+            .claimed
+            .store(true, Ordering::Release);
+        if registry
+            .startup_delivery_claims
+            .get(&cleanup.thread_id)
+            .is_some_and(|claim| Arc::ptr_eq(claim, &cleanup.delivery_claim))
+        {
+            registry.startup_delivery_claims.remove(&cleanup.thread_id);
+        }
+    }
+
+    /// Reclaim a runtime that this startup owner published but whose caller never acknowledged.
+    ///
+    /// A temporary registry fence prevents a same-ID replacement from entering between exact
+    /// removal and persisted-artifact cleanup. If a replacement already won before this owner
+    /// acquired the lock, its store is now intentionally claimed and must not be deleted. New and
+    /// forked startups otherwise delete their materialized store idempotently; resumed startups
+    /// only unload their runtime and preserve existing history. The startup admission guard is
+    /// held by the caller until this method completes.
+    async fn cleanup_unclaimed_thread(&self, cleanup: UnclaimedThreadCleanup) {
+        let UnclaimedThreadCleanup {
+            thread_id,
+            thread,
+            delete_materialized_thread,
+            delivery_claim,
+        } = cleanup;
+        let Some(replacement_present) = ({
+            let mut registry = self.thread_registry.write().await;
+            let owns_pending_delivery = registry
+                .startup_delivery_claims
+                .get(&thread_id)
+                .is_some_and(|claim| Arc::ptr_eq(claim, &delivery_claim));
+            if !owns_pending_delivery || delivery_claim.claimed.swap(true, Ordering::AcqRel) {
+                None
+            } else {
+                registry.startup_delivery_claims.remove(&thread_id);
+                let replacement_present = registry
+                    .threads
+                    .get(&thread_id)
+                    .is_some_and(|current| !Arc::ptr_eq(current, &thread));
+                registry.startup_cleanup_closing.insert(thread_id);
+                if registry
+                    .threads
+                    .get(&thread_id)
+                    .is_some_and(|current| Arc::ptr_eq(current, &thread))
+                {
+                    registry.threads.remove(&thread_id);
+                }
+                Some(replacement_present)
+            }
+        }) else {
+            return;
+        };
+        #[cfg(test)]
+        self.pause_startup_cleanup_after_fence_for_tests().await;
+
+        loop {
+            match thread.shutdown_and_wait().await {
+                Ok(()) => break,
+                Err(error) => {
+                    warn!("failed to shut down unclaimed startup {thread_id}; retrying: {error}");
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            }
+        }
+
+        if delete_materialized_thread && !replacement_present {
+            loop {
+                match self
+                    .thread_store
+                    .delete_threads(DeleteThreadsParams {
+                        thread_ids: vec![thread_id],
+                    })
+                    .await
+                {
+                    Ok(()) => break,
+                    Err(error) => {
+                        warn!(
+                            "failed to delete materialized unclaimed startup {thread_id}; retrying: {error}"
+                        );
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    }
+                }
+            }
+        }
+
+        self.thread_registry
+            .write()
+            .await
+            .startup_cleanup_closing
+            .remove(&thread_id);
+    }
+
+    /// Remove New/Forked materialization when Session startup was rejected before registry
+    /// publication. A same-ID replacement that already registered intentionally claims the
+    /// materialization and is left untouched.
+    async fn cleanup_unpublished_materialized_thread(&self, thread_id: ThreadId) {
+        let replacement_present = {
+            let mut registry = self.thread_registry.write().await;
+            registry.startup_cleanup_closing.insert(thread_id);
+            registry.threads.contains_key(&thread_id)
+        };
+        if !replacement_present {
+            loop {
+                match self
+                    .thread_store
+                    .delete_threads(DeleteThreadsParams {
+                        thread_ids: vec![thread_id],
+                    })
+                    .await
+                {
+                    Ok(()) => break,
+                    Err(error) => {
+                        warn!(
+                            "failed to delete materialized rejected startup {thread_id}; retrying: {error}"
+                        );
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    }
+                }
+            }
+        }
+        self.thread_registry
+            .write()
+            .await
+            .startup_cleanup_closing
+            .remove(&thread_id);
     }
 
     pub(crate) async fn effective_multi_agent_version_for_spawn(
@@ -1641,7 +2180,7 @@ impl ThreadManagerState {
 
     /// Spawn a new thread with no history using a provided config.
     pub(crate) async fn spawn_new_thread(
-        &self,
+        self: &Arc<Self>,
         config: Config,
         agent_control: AgentControl,
     ) -> CodexResult<NewThread> {
@@ -1663,7 +2202,7 @@ impl ThreadManagerState {
 
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn spawn_new_thread_with_source(
-        &self,
+        self: &Arc<Self>,
         config: Config,
         agent_control: AgentControl,
         session_source: SessionSource,
@@ -1696,7 +2235,7 @@ impl ThreadManagerState {
     }
 
     pub(crate) async fn resume_thread_with_history_with_source(
-        &self,
+        self: &Arc<Self>,
         options: ResumeThreadWithHistoryOptions,
     ) -> CodexResult<NewThread> {
         let ResumeThreadWithHistoryOptions {
@@ -1732,7 +2271,7 @@ impl ThreadManagerState {
 
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn fork_thread_with_source(
-        &self,
+        self: &Arc<Self>,
         config: Config,
         initial_history: InitialHistory,
         history_mode: Option<ThreadHistoryMode>,
@@ -1779,8 +2318,58 @@ impl ThreadManagerState {
             .unwrap_or_default()
     }
 
+    /// Keep startup ownership independent of the requesting future. Dropping a caller while
+    /// Session::spawn is materializing history must not release its hard-delete admission before
+    /// the owner has either registered the runtime or completed rejected-startup cleanup.
+    async fn spawn_thread(self: &Arc<Self>, request: ThreadSpawnRequest) -> CodexResult<NewThread> {
+        let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+        let state = Arc::clone(self);
+        // Tokio tasks do not inherit the caller's tracing span. Preserve it explicitly so the
+        // cancellation-safe owner remains part of the request's startup trace after detaching.
+        tokio::spawn(
+            async move {
+                let admission = Arc::new(std::sync::Mutex::new(None));
+                let owned_result = state
+                    .spawn_thread_owned(request, Arc::clone(&admission))
+                    .await;
+                #[cfg(test)]
+                state.pause_startup_before_delivery_for_tests().await;
+                let (result, cleanup) = match owned_result {
+                    Ok(owned) => (Ok(owned.new_thread), owned.unclaimed_cleanup),
+                    Err(error) => (Err(error), None),
+                };
+                let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
+                let caller_received =
+                    result_tx.send((result, ack_tx)).is_ok() && ack_rx.await.is_ok();
+                if let Some(cleanup) = cleanup {
+                    if caller_received {
+                        state.claim_published_thread(&cleanup).await;
+                    } else {
+                        state.cleanup_unclaimed_thread(cleanup).await;
+                    }
+                }
+                // The admission spans delivery acknowledgement or exact unclaimed-runtime
+                // cleanup. Dropping it is the hard-delete barrier's completion signal.
+                let _ = admission
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .take();
+            }
+            .in_current_span(),
+        );
+        let (result, ack_tx) = result_rx.await.map_err(|_| {
+            CodexErr::Fatal("thread startup owner exited before returning a result".to_string())
+        })?;
+        let _ = ack_tx.send(());
+        result
+    }
+
     /// Spawn a new thread with optional history and register it with the manager.
-    async fn spawn_thread(&self, request: ThreadSpawnRequest) -> CodexResult<NewThread> {
+    async fn spawn_thread_owned(
+        &self,
+        request: ThreadSpawnRequest,
+        admission: Arc<std::sync::Mutex<Option<StartingThreadSpawnGuard>>>,
+    ) -> CodexResult<OwnedThreadSpawn> {
         let ThreadSpawnRequest {
             options,
             auth_manager,
@@ -1808,6 +2397,8 @@ impl ThreadManagerState {
             reserved_thread_id,
         } = options;
         let session_source = session_source.unwrap_or_else(|| self.session_source.clone());
+        let immediate_parent_thread_id =
+            immediate_parent_thread_id(parent_thread_id, &session_source)?;
         let environments = environments.unwrap_or_else(|| {
             default_thread_environment_selections(
                 self.environment_manager.as_ref(),
@@ -1821,27 +2412,63 @@ impl ThreadManagerState {
                 "reserved thread ID cannot be used when resuming a thread".to_string(),
             ));
         }
-        if let InitialHistory::Resumed(resumed) = &initial_history {
-            let mut threads = self.threads.write().await;
-            if let Some(thread) = threads.get(&resumed.conversation_id).cloned() {
+        // Determine every startup's self ID before any Session/ThreadStore side effect. New and
+        // forked sessions consume the same manager generator that Session would otherwise use,
+        // then pass the result as a reserved ID.
+        let thread_id = match &initial_history {
+            InitialHistory::Resumed(resumed) => resumed.conversation_id,
+            InitialHistory::New | InitialHistory::Cleared | InitialHistory::Forked(_) => {
+                reserved_thread_id.unwrap_or_else(|| self.thread_id_generator.as_ref()())
+            }
+        };
+        let session_reserved_thread_id = (!is_resumed_thread).then_some(thread_id);
+        if let Some(parent_thread_id) = immediate_parent_thread_id {
+            self.ensure_thread_not_hard_delete_fenced(parent_thread_id)
+                .await?;
+        }
+        self.ensure_thread_not_hard_delete_fenced(thread_id).await?;
+
+        // Admission shares the registry write lock with hard-delete begin. If startup wins, begin
+        // snapshots this ticket and deletion cannot seal until it drains. If delete wins, startup
+        // fails before Session::spawn can materialize rollout/store state.
+        let spawn_admission = {
+            let mut registry = self.thread_registry.write().await;
+            ensure_registry_allows_spawn(&registry, thread_id, immediate_parent_thread_id)?;
+            if let InitialHistory::Resumed(resumed) = &initial_history
+                && let Some(thread) = registry.threads.get(&thread_id).cloned()
+            {
                 if thread.is_running() {
                     if let Some(requested_rollout_path) = resumed.rollout_path.as_deref()
                         && thread.rollout_path().as_deref() != Some(requested_rollout_path)
                     {
                         return Err(CodexErr::InvalidRequest(format!(
-                            "thread {} is already running with a different rollout path",
-                            resumed.conversation_id
+                            "thread {thread_id} is already running with a different rollout path"
                         )));
                     }
-                    return Ok(NewThread {
-                        thread_id: resumed.conversation_id,
-                        session_configured: thread.session_configured(),
-                        thread,
+                    if let Some(delivery_claim) =
+                        registry.startup_delivery_claims.remove(&thread_id)
+                    {
+                        // A concurrent same-ID resume has now claimed this exact runtime. The
+                        // original detached startup owner must not reclaim it if its own waiter
+                        // is canceled before delivery acknowledgement.
+                        delivery_claim.claimed.store(true, Ordering::Release);
+                    }
+                    return Ok(OwnedThreadSpawn {
+                        new_thread: NewThread {
+                            thread_id,
+                            session_configured: thread.session_configured(),
+                            thread,
+                        },
+                        unclaimed_cleanup: None,
                     });
                 }
-                threads.remove(&resumed.conversation_id);
+                registry.threads.remove(&thread_id);
             }
-        }
+            admit_thread_spawn(&mut registry, thread_id, immediate_parent_thread_id)?
+        };
+        *admission
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(spawn_admission);
         let user_instructions = self
             .user_instructions_for_spawn(&session_source, parent_thread_id, forked_from_thread_id)
             .await;
@@ -1875,7 +2502,7 @@ impl ThreadManagerState {
             starting.retain(|runtime| runtime.strong_count() != 0);
             starting.push(Arc::downgrade(&source_changed_during_startup));
         }
-        let (session, io) = Session::spawn(SessionSpawnArgs {
+        let session_spawn = Session::spawn(SessionSpawnArgs {
             config,
             allow_provider_model_fallback,
             user_instructions,
@@ -1907,7 +2534,7 @@ impl ThreadManagerState {
             environment_selections: environments,
             thread_extension_init,
             client_mcp_extensions,
-            reserved_thread_id,
+            reserved_thread_id: session_reserved_thread_id,
             analytics_events_client: self.analytics_events_client.clone(),
             thread_store: Arc::clone(&self.thread_store),
             attestation_provider: self.attestation_provider.clone(),
@@ -1917,7 +2544,19 @@ impl ThreadManagerState {
             windows_sandbox_proxy_settings_mode:
                 codex_sandboxing::WindowsSandboxProxySettingsMode::Reconcile,
         })
-        .await?;
+        .await;
+        let (session, io) = match session_spawn {
+            Ok(spawned) => spawned,
+            Err(error) => {
+                if !is_resumed_thread {
+                    self.cleanup_unpublished_materialized_thread(thread_id)
+                        .await;
+                }
+                return Err(error);
+            }
+        };
+        #[cfg(test)]
+        self.pause_startup_before_finalize_for_tests().await;
         // Enable Full Access form input only after session startup so a required MCP server cannot
         // block startup while waiting for form input.
         if session
@@ -1929,16 +2568,41 @@ impl ThreadManagerState {
         {
             session.services.mcp_runtime.enable_full_access_form_input();
         }
-        let new_thread = self
-            .finalize_thread_spawn(session, io, tracked_session_source)
-            .await?;
+        let finalized = match self
+            .finalize_thread_spawn(
+                session,
+                io,
+                tracked_session_source,
+                immediate_parent_thread_id,
+            )
+            .await
+        {
+            Ok(finalized) => finalized,
+            Err(error) => {
+                if !is_resumed_thread {
+                    self.cleanup_unpublished_materialized_thread(thread_id)
+                        .await;
+                }
+                return Err(error);
+            }
+        };
+        let new_thread = finalized.new_thread;
         if source_changed_during_startup.load(Ordering::Acquire) {
             new_thread.thread.session.request_mcp_runtime_refresh();
         }
         if is_resumed_thread {
             new_thread.thread.emit_thread_resume_lifecycle().await;
         }
-        Ok(new_thread)
+        let unclaimed_cleanup = UnclaimedThreadCleanup {
+            thread_id: new_thread.thread_id,
+            thread: Arc::clone(&new_thread.thread),
+            delete_materialized_thread: !is_resumed_thread,
+            delivery_claim: finalized.delivery_claim,
+        };
+        Ok(OwnedThreadSpawn {
+            new_thread,
+            unclaimed_cleanup: Some(unclaimed_cleanup),
+        })
     }
 
     async fn finalize_thread_spawn(
@@ -1946,44 +2610,92 @@ impl ThreadManagerState {
         session: Arc<Session>,
         io: SessionIo,
         session_source: SessionSource,
-    ) -> CodexResult<NewThread> {
+        immediate_parent_thread_id: Option<ThreadId>,
+    ) -> CodexResult<FinalizedThreadSpawn> {
         let thread_id = session.thread_id();
-        let event = io.next_event().await?;
+        let event = match io.next_event().await {
+            Ok(event) => event,
+            Err(error) => {
+                if let Err(shutdown_error) = io.shutdown_and_wait().await {
+                    warn!(
+                        "failed to shut down thread {thread_id} after startup event error: {shutdown_error}"
+                    );
+                }
+                return Err(error);
+            }
+        };
         let session_configured = match event {
             Event {
                 id,
                 msg: EventMsg::SessionConfigured(session_configured),
             } if id == INITIAL_SUBMIT_ID => session_configured,
             _ => {
+                if let Err(shutdown_error) = io.shutdown_and_wait().await {
+                    warn!(
+                        "failed to shut down thread {thread_id} after invalid startup event: {shutdown_error}"
+                    );
+                }
                 return Err(CodexErr::SessionConfiguredNotFirstEvent);
             }
         };
 
-        {
-            let mut threads = self.threads.write().await;
-            if let std::collections::hash_map::Entry::Vacant(e) = threads.entry(thread_id) {
-                let thread = Arc::new(CodexThread::new(
-                    session,
-                    io,
-                    session_configured.clone(),
-                    session_configured.rollout_path.clone(),
-                    session_source,
-                ));
-                e.insert(thread.clone());
-                return Ok(NewThread {
-                    thread_id,
-                    thread,
-                    session_configured,
-                });
+        let durable_check = async {
+            self.ensure_thread_not_hard_delete_fenced(thread_id).await?;
+            if let Some(parent_thread_id) = immediate_parent_thread_id {
+                self.ensure_thread_not_hard_delete_fenced(parent_thread_id)
+                    .await?;
             }
+            Ok::<(), CodexErr>(())
+        }
+        .await;
+        if let Err(err) = durable_check {
+            if let Err(shutdown_err) = io.shutdown_and_wait().await {
+                warn!("failed to shut down hard-delete-fenced thread {thread_id}: {shutdown_err}");
+            }
+            return Err(err);
         }
 
+        let spawn_error = {
+            let mut registry = self.thread_registry.write().await;
+            if let Err(err) =
+                ensure_registry_allows_spawn(&registry, thread_id, immediate_parent_thread_id)
+            {
+                err
+            } else {
+                match registry.threads.entry(thread_id) {
+                    std::collections::hash_map::Entry::Vacant(e) => {
+                        let thread = Arc::new(CodexThread::new(
+                            session,
+                            io,
+                            session_configured.clone(),
+                            session_configured.rollout_path.clone(),
+                            session_source,
+                        ));
+                        e.insert(thread.clone());
+                        let delivery_claim = Arc::new(StartupDeliveryClaim::default());
+                        registry
+                            .startup_delivery_claims
+                            .insert(thread_id, Arc::clone(&delivery_claim));
+                        return Ok(FinalizedThreadSpawn {
+                            new_thread: NewThread {
+                                thread_id,
+                                thread,
+                                session_configured,
+                            },
+                            delivery_claim,
+                        });
+                    }
+                    std::collections::hash_map::Entry::Occupied(_) => {
+                        CodexErr::InvalidRequest(format!("thread {thread_id} is already running"))
+                    }
+                }
+            }
+        };
+
         if let Err(err) = io.shutdown_and_wait().await {
-            warn!("failed to shut down duplicate thread {thread_id}: {err}");
+            warn!("failed to shut down rejected thread {thread_id}: {err}");
         }
-        Err(CodexErr::InvalidRequest(format!(
-            "thread {thread_id} is already running"
-        )))
+        Err(spawn_error)
     }
 
     pub(crate) fn notify_thread_created(&self, thread_id: ThreadId) {

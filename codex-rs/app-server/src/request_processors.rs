@@ -345,6 +345,7 @@ use codex_core::StartIfIdleSubmission;
 use codex_core::StartThreadOptions;
 use codex_core::SteerSubmission;
 use codex_core::ThreadConfigSnapshot;
+use codex_core::ThreadHardDeleteBeginAuthority;
 use codex_core::ThreadManager;
 use codex_core::TurnInput;
 use codex_core::TurnInputRequest;

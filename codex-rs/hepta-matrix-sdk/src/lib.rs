@@ -9,6 +9,8 @@
 mod config;
 mod ingress;
 mod outbound;
+#[cfg(feature = "qualification-failpoints")]
+mod qualification;
 mod sdk;
 
 pub use config::MatrixSdkPaths;
@@ -31,6 +33,10 @@ pub use outbound::OutboxDispatchError;
 pub use outbound::OutboxDispatchStats;
 pub use outbound::dispatch_outbox_once;
 pub use outbound::run_outbox_sender;
+#[cfg(feature = "qualification-failpoints")]
+pub use qualification::arm_post_send_pre_mark_ack_drop_once;
+#[cfg(feature = "qualification-failpoints")]
+pub use qualification::post_send_pre_mark_ack_drop_receipt_path;
 pub use sdk::MatrixSdkClient;
 pub use sdk::MatrixSdkError;
 pub use sdk::MatrixSyncExit;

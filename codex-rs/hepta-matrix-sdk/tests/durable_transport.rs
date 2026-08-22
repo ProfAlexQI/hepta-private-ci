@@ -157,6 +157,50 @@ struct FakeTransport {
     txn_ids: Mutex<Vec<MatrixTransactionId>>,
 }
 
+/// Models the exact response-loss window qualified against real Synapse: the
+/// first PUT is accepted under the stable transaction ID, but its successful
+/// response is hidden from the dispatcher before `mark_outbox_sent`.
+struct PostSendAckLossTransport {
+    accepted_event_id: MatrixEventId,
+    txn_ids: Mutex<Vec<MatrixTransactionId>>,
+}
+
+impl PostSendAckLossTransport {
+    fn new(accepted_event_id: MatrixEventId) -> Self {
+        Self {
+            accepted_event_id,
+            txn_ids: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn txn_ids(&self) -> TestResult<Vec<MatrixTransactionId>> {
+        Ok(self
+            .txn_ids
+            .lock()
+            .map_err(|_| "post-send transaction log lock poisoned")?
+            .clone())
+    }
+}
+
+impl MatrixOutboundTransport for PostSendAckLossTransport {
+    fn send<'a>(&'a self, record: &'a OutboxRecord) -> MatrixSendFuture<'a> {
+        Box::pin(async move {
+            let mut txn_ids = self
+                .txn_ids
+                .lock()
+                .map_err(|_| MatrixTransportError::Permanent)?;
+            txn_ids.push(record.stable_txn_id.clone());
+            if txn_ids.len() == 1 {
+                // The fake Synapse accepted `accepted_event_id`; only its
+                // response is lost before the caller can mark the row sent.
+                Err(MatrixTransportError::Retryable)
+            } else {
+                Ok(self.accepted_event_id.clone())
+            }
+        })
+    }
+}
+
 impl FakeTransport {
     fn new(results: impl IntoIterator<Item = Result<MatrixEventId, MatrixTransportError>>) -> Self {
         Self {
@@ -384,6 +428,54 @@ async fn retry_preserves_stable_transaction_and_shutdown_is_bounded() -> TestRes
         run_outbox_sender(&store, &transport, &config, &cancel),
     )
     .await??;
+    store.close().await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn post_send_ack_loss_reuses_txn_and_commits_same_synapse_event_id() -> TestResult {
+    let temp = TempDir::new()?;
+    let agent_id = agent(FIRST_AGENT)?;
+    let layout = layout(&temp, &agent_id)?;
+    let store = prepared_store(&layout).await?;
+    let original = enqueue_final(&store, &agent_id, 10).await?;
+    let accepted_event_id = event("$synapse-accepted-before-ack-loss")?;
+    let transport = PostSendAckLossTransport::new(accepted_event_id.clone());
+    let config = OutboxDispatchConfig {
+        lease_ms: 20,
+        retry_delay_ms: 10,
+        max_retry_delay_ms: 40,
+        max_attempts: 3,
+        claim_limit: 1,
+        idle_poll: Duration::from_millis(10),
+    };
+    let cancel = CancellationToken::new();
+
+    let first = dispatch_outbox_once(&store, &transport, &config, &cancel, 10).await?;
+    assert_eq!(first.retry_scheduled, 1);
+    let after_response_loss = store
+        .outbox_for_txn(&original.stable_txn_id)
+        .await?
+        .ok_or("response-loss outbox row disappeared")?;
+    assert_eq!(after_response_loss.state, OutboxState::RetryScheduled);
+    assert_eq!(after_response_loss.sent_event_id, None);
+
+    let second = dispatch_outbox_once(&store, &transport, &config, &cancel, 20).await?;
+    assert_eq!(second.sent, 1);
+    assert_eq!(
+        transport.txn_ids()?,
+        vec![
+            original.stable_txn_id.clone(),
+            original.stable_txn_id.clone(),
+        ]
+    );
+    let committed = store
+        .outbox_for_txn(&original.stable_txn_id)
+        .await?
+        .ok_or("sent outbox row disappeared")?;
+    assert_eq!(committed.state, OutboxState::Sent);
+    assert_eq!(committed.attempts, 2);
+    assert_eq!(committed.sent_event_id, Some(accepted_event_id));
     store.close().await;
     Ok(())
 }

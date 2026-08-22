@@ -16,6 +16,14 @@ mod thread_sections;
 mod types;
 
 pub use codex_state::MAX_QUEUE_ITEMS;
+pub use codex_state::QueuedClientBindingFinalizeMode;
+pub use codex_state::QueuedClientBindingFinalizeOutcome;
+pub use codex_state::QueuedClientBindingLease;
+pub use codex_state::QueuedClientBindingReserveOutcome;
+pub use codex_state::QueuedClientDispatchClaimOutcome;
+pub use codex_state::QueuedClientDispatchLease;
+pub use codex_state::QueuedClientDispatchLock;
+pub use codex_state::QueuedClientExpiredDispatch;
 pub use codex_state::QueuedUserSubmissionRecord;
 pub use error::ThreadStoreError;
 pub use error::ThreadStoreResult;

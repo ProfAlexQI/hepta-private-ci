@@ -188,11 +188,12 @@ Example with notification opt-out:
 - `thread/goal/updated` — notification emitted whenever a thread goal changes; includes the full current goal.
 - `thread/goal/cleared` — notification emitted whenever a thread goal is removed.
 - `thread/queue/add` — experimental; persist a user turn for automatic FIFO submission when the thread next becomes idle.
+- `thread/queue/reconcile` — experimental; atomically reconcile or admit one text-only user turn against a durable `(threadId, clientUserMessageId, payload SHA-256)` binding. `allowIfAbsent` may create one queue row; `reconcileOnly` never creates one.
 - `thread/queue/list` — experimental; return one page of a thread's queued turns.
 - `thread/queue/update` — experimental; edit a queued turn while preserving its stable submission ID, client message ID, and position.
 - `thread/queue/delete` — experimental; remove a queued turn by submission ID.
 - `thread/queue/reorder` — experimental; replace the order of a thread's queued turns.
-- `thread/queue/start` — experimental; start the queue head or a selected queued submission when the thread is idle. Within the queue service's serialized, observed queue set, a stable client message ID is bound to a versioned canonical digest of the complete ordered input: the same ID and payload reconcile as one Core admission, while an observed same ID with different content fails closed before Core submission. Legacy rollout projections without an exact payload binding remain readable but cannot authorize this service-level idempotent join. Raw cross-process `QueueStore` insertion after preflight is outside this guarantee and requires a transactional store constraint for stronger coverage.
+- `thread/queue/start` — experimental; start the queue head or a selected queued submission when the thread is idle. Exact reconciled rows are immutable, dispatch records the persisted Core turn and removes the row in one SQLite transaction, and raw enqueue/update/delete paths honor the binding ledger. Legacy rollout projections without an exact payload binding remain readable but cannot authorize an exactly-once join.
 - `thread/queue/changed` — experimental notification emitted with the changed `threadId`.
 - `thread/settings/updated` — experimental notification emitted to subscribed clients when a loaded thread’s effective next-turn settings change; includes `threadId` and the full `threadSettings`.
 - `thread/status/changed` — notification emitted when a loaded thread’s status changes (`threadId` + new `status`).
@@ -804,6 +805,31 @@ A queued submission contains its user input and a required, client-provided `cli
     "clientUserMessageId": "019faba0-0000-7000-8000-000000000003"
 } } }
 { "method": "thread/queue/changed", "params": { "threadId": "thr_123" } }
+```
+
+Use `thread/queue/reconcile` when a transport needs one correctness operation instead of a paginated `queue/list` → `turns/list` → `queue/add` sequence. The request is limited to text input and includes the caller's canonical digest; the server normalizes the input, recomputes that digest, and returns the authoritative value. Reusing a client message ID with different content fails closed before admission. A queued outcome includes `created: true` only for the transaction that inserted the row; retries return the same row with `created: false`. Persisted, missing, and cancelled are separate outcomes.
+
+```json
+{ "method": "thread/queue/reconcile", "id": 41, "params": {
+    "threadId": "thr_123",
+    "input": [{ "type": "text", "text": "Now fix the failing tests." }],
+    "clientUserMessageId": "matrix-event-019faba0",
+    "expectedPayloadSha256": "183042f7e0edbafd3915d359fafa4085d00e9a5fafd0f3614ab0c807df9aba60",
+    "mode": "allowIfAbsent"
+} }
+{ "id": 41, "result": {
+    "clientUserMessageId": "matrix-event-019faba0",
+    "payloadSha256": "183042f7e0edbafd3915d359fafa4085d00e9a5fafd0f3614ab0c807df9aba60",
+    "outcome": {
+        "type": "queued",
+        "queuedSubmission": {
+            "id": "019faba0-0000-7000-8000-000000000001",
+            "input": [{ "type": "text", "text": "Now fix the failing tests." }],
+            "clientUserMessageId": "matrix-event-019faba0"
+        },
+        "created": true
+    }
+} }
 ```
 
 Use `thread/queue/list` to read the ordered queue. Pass optional `cursor` and `limit` values to request a page, and continue with the returned `nextCursor` until it is `null`. Each `thread/queue/changed` notification contains the changed `threadId`; fetch the current pages to refresh the queue. Update a queued turn by passing its `queuedSubmissionId` and replacement `input` to `thread/queue/update`; the submission keeps its IDs and position. Pass that ID to `thread/queue/delete` to remove it, or pass every queued ID in its new order as `queuedSubmissionIds` to `thread/queue/reorder`.

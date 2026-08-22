@@ -21010,6 +21010,93 @@
         "title": "ThreadQueueChangedNotification",
         "type": "object"
       },
+      "ThreadQueueReconcileMode": {
+        "enum": [
+          "allowIfAbsent",
+          "reconcileOnly"
+        ],
+        "type": "string"
+      },
+      "ThreadQueueReconcileOutcome": {
+        "oneOf": [
+          {
+            "properties": {
+              "created": {
+                "type": "boolean"
+              },
+              "queuedSubmission": {
+                "$ref": "#/definitions/v2/QueuedSubmission"
+              },
+              "type": {
+                "enum": [
+                  "queued"
+                ],
+                "title": "QueuedThreadQueueReconcileOutcomeType",
+                "type": "string"
+              }
+            },
+            "required": [
+              "created",
+              "queuedSubmission",
+              "type"
+            ],
+            "title": "QueuedThreadQueueReconcileOutcome",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "turnId": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "persisted"
+                ],
+                "title": "PersistedThreadQueueReconcileOutcomeType",
+                "type": "string"
+              }
+            },
+            "required": [
+              "turnId",
+              "type"
+            ],
+            "title": "PersistedThreadQueueReconcileOutcome",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "type": {
+                "enum": [
+                  "missing"
+                ],
+                "title": "MissingThreadQueueReconcileOutcomeType",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "title": "MissingThreadQueueReconcileOutcome",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "type": {
+                "enum": [
+                  "cancelled"
+                ],
+                "title": "CancelledThreadQueueReconcileOutcomeType",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "title": "CancelledThreadQueueReconcileOutcome",
+            "type": "object"
+          }
+        ]
+      },
       "ThreadReadParams": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {

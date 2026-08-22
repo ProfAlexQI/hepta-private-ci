@@ -340,3 +340,157 @@ fn g3_intelligence_kg_truth_bounds_qualification_without_hiding_later_candidates
         );
     }
 }
+
+#[test]
+fn g4_matrix_robrix_truth_stays_fail_closed_until_exact_head_qualification() {
+    let manifest = manifest();
+    let g4 = manifest
+        .qualification
+        .iter()
+        .find(|entry| {
+            entry.get("slice").and_then(toml::Value::as_str) == Some("R2_matrix_robrix_closed_loop")
+        })
+        .expect("missing G4 Matrix/Robrix qualification truth");
+
+    assert_eq!(
+        g4.get("qualification_base_sha")
+            .and_then(toml::Value::as_str),
+        Some("e0c4b0bbf403af99143ad9691385aea1d4992fa0")
+    );
+    assert_eq!(
+        g4.get("development_status").and_then(toml::Value::as_str),
+        Some("in_progress")
+    );
+    assert_eq!(
+        g4.get("real_synapse_runtime_skip_allowed")
+            .and_then(toml::Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(
+        g4.get("real_synapse_oci_image_ref")
+            .and_then(toml::Value::as_str),
+        Some(
+            "matrixdotorg/synapse@sha256:467a587a5052dadd5d0bf1f8d89f043cc652d5201bca510307340f8dddb6b312"
+        )
+    );
+    assert_eq!(
+        g4.get("robrix_supervisord_allowed_methods")
+            .and_then(toml::Value::as_array)
+            .expect("G4 Robrix methods must be explicit")
+            .iter()
+            .filter_map(toml::Value::as_str)
+            .collect::<Vec<_>>(),
+        ["health", "roster", "snapshot"]
+    );
+    assert_eq!(
+        g4.get("qualification_lifecycle_actions")
+            .and_then(toml::Value::as_array)
+            .expect("G4 lifecycle actions must be explicit")
+            .iter()
+            .filter_map(toml::Value::as_str)
+            .collect::<Vec<_>>(),
+        [
+            "network_disconnect",
+            "matrix_sidecar_sigkill",
+            "agent_process_sigkill",
+            "supervisor_managed_agent_restart_generation_rollover",
+            "paired_stop",
+        ]
+    );
+
+    for field in [
+        "required_matrix_bridge_atomic_reconcile_and_add",
+        "required_matrix_bridge_durable_client_binding",
+        "required_matrix_bridge_durable_dispatch_owner_fence",
+        "required_thread_hard_delete_durable_operation_journal",
+        "required_thread_hard_delete_managed_agentd_single_writer_topology",
+        "required_robrix_matrixd_control_second_local_confirmation",
+        "required_generated_backend_protocol_projection",
+        "bounded_ui_patch_ledger_required",
+        "matrix_bridge_reconcile_response_revalidated",
+        "stop_the_world_queue_dispatch_cutover_required",
+    ] {
+        assert_eq!(
+            g4.get(field).and_then(toml::Value::as_bool),
+            Some(true),
+            "{field} must remain a hard G4 requirement",
+        );
+    }
+    for field in [
+        "matrix_bridge_atomic_reconcile_and_add_qualified",
+        "matrix_bridge_durable_client_binding_qualified",
+        "matrix_bridge_durable_dispatch_owner_fence_qualified",
+        "thread_hard_delete_durable_operation_journal_qualified",
+        "thread_hard_delete_managed_agentd_single_writer_topology_qualified",
+        "generic_multi_app_server_hard_delete_qualified",
+        "matrix_bridge_client_side_queue_turn_scan_authoritative",
+        "matrix_bridge_queue_and_turn_all_pages_scanned",
+        "matrix_bridge_conflicting_client_id_fails_before_atomic_admission",
+        "old_binary_parallel_queue_dispatch_supported",
+        "unbound_queue_exact_dispatch_qualified",
+        "dual_agent_e2ee_inbound_and_outbound",
+        "matrix_transaction_id_deduplicated",
+        "loopback_network_disconnect_recovery",
+        "matrix_sidecar_restart_recovery",
+        "agent_generation_rollover",
+        "dual_agent_matrix_store_and_provider_isolation",
+        "final_provider_and_room_counts_frozen_after_sidecar_stop",
+        "matrix_timeline_control_authority",
+        "robrix_matrixd_control_requires_second_local_confirmation",
+        "generated_backend_protocol_projection",
+        "whole_tree_ui_merge_allowed",
+        "matrix_companion_lifecycle_qualified_in_g4",
+        "general_fleet_lifecycle_qualified_in_g4",
+        "cross_agent_memory_federation_qualified_in_g4",
+        "automation_qualified_in_g4",
+        "new_general_fleet_lifecycle_surface_added",
+        "new_automation_authority_added",
+        "provider_physical_sampling_exactly_once",
+        "operator_acceptance_recorded",
+        "promotion_eligible",
+    ] {
+        assert_eq!(
+            g4.get(field).and_then(toml::Value::as_bool),
+            Some(false),
+            "{field} must stay false until its exact-head G4 gate passes",
+        );
+    }
+
+    assert_eq!(
+        g4.get("matrix_bridge_exact_bound_input_scope")
+            .and_then(toml::Value::as_str),
+        Some("text_only")
+    );
+    assert_eq!(
+        g4.get("matrix_bridge_dispatch_scope")
+            .and_then(toml::Value::as_str),
+        Some("same_exact_head_same_host_shared_sqlite_home_exact_bindings")
+    );
+    assert_eq!(
+        g4.get("thread_hard_delete_qualification_scope")
+            .and_then(toml::Value::as_str),
+        Some("agentd_managed_one_embedded_app_server_per_canonical_agent_home")
+    );
+    let worktree_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("hepta-contracts must live under codex-rs");
+    for callers_field in ["product_callers", "qualification_callers"] {
+        for caller in g4
+            .get(callers_field)
+            .and_then(toml::Value::as_array)
+            .unwrap_or_else(|| panic!("G4 {callers_field} must be explicit"))
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .unwrap_or_else(|| panic!("G4 {callers_field} contains a non-string"))
+            })
+        {
+            assert!(
+                worktree_root.join(caller).is_file(),
+                "G4 {callers_field} path does not exist: {caller}"
+            );
+        }
+    }
+}

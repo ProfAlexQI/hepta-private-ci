@@ -10,7 +10,7 @@ use crate::SupervisorError;
 use crate::SupervisorEventKind;
 use crate::runtime::AgentRuntime;
 use crate::runtime::AgentSlot;
-use crate::runtime::DeferredAgentAction;
+use crate::runtime::DeferredAgentActionKind;
 use crate::runtime::RuntimePhase;
 use crate::runtime::deadline;
 use crate::runtime::driver_error;
@@ -22,7 +22,12 @@ impl<D: ProcessDriver> Supervisor<D> {
         slot: &mut AgentSlot<D::Process>,
         now: Instant,
     ) -> Result<(), SupervisorError> {
-        if self.defer_agent_action_for_matrix(agent_id, slot, DeferredAgentAction::Drain, now)? {
+        if self.defer_agent_action_for_matrix(
+            agent_id,
+            slot,
+            DeferredAgentActionKind::Drain,
+            now,
+        )? {
             return Ok(());
         }
         self.fence_runtime(agent_id, slot)?;
@@ -65,9 +70,11 @@ impl<D: ProcessDriver> Supervisor<D> {
         slot: &mut AgentSlot<D::Process>,
         now: Instant,
     ) -> Result<(), SupervisorError> {
-        if self.defer_agent_action_for_matrix(agent_id, slot, DeferredAgentAction::Stop, now)? {
+        slot.restart_pending = false;
+        if self.defer_agent_action_for_matrix(agent_id, slot, DeferredAgentActionKind::Stop, now)? {
             return Ok(());
         }
+        slot.deferred_agent_action = None;
         self.prepare_termination(agent_id, slot)?;
         let generation = {
             let runtime = active_runtime(agent_id, slot)?;
@@ -89,6 +96,8 @@ impl<D: ProcessDriver> Supervisor<D> {
         agent_id: &AgentId,
         slot: &mut AgentSlot<D::Process>,
     ) -> Result<(), SupervisorError> {
+        slot.restart_pending = false;
+        slot.deferred_agent_action = None;
         self.kill_matrix_now(agent_id, slot)?;
         self.prepare_termination(agent_id, slot)?;
         let generation = {

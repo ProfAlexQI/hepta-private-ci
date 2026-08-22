@@ -24,8 +24,148 @@ use codex_thread_store::PersistContext;
 pub(super) const THREAD_LIST_DEFAULT_LIMIT: usize = 25;
 pub(super) const THREAD_LIST_MAX_LIMIT: usize = 100;
 const CODEX_TUI_CLIENT_NAME: &str = "codex-tui";
+const THREAD_HARD_DELETE_STARTUP_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 const THREAD_ROLLBACK_DEPRECATION_SUMMARY: &str =
     "thread/rollback is deprecated and will be removed soon";
+
+enum ThreadRemovalAuthority<T> {
+    /// Core has fenced the ID and returned all pre-fence startup barriers. The complete
+    /// authority is retained before any barrier wait so cancellation remains retryable.
+    Preparing(ThreadHardDeleteBeginAuthority),
+    /// No runtime was registered when the Core hard-delete fence was installed.
+    Cold { startup_thread_ids: Arc<[ThreadId]> },
+    /// The exact runtime removed by the Core hard-delete fence is still shutting down.
+    Live {
+        authority: Arc<T>,
+        startup_thread_ids: Arc<[ThreadId]>,
+    },
+    /// The removed runtime reached the authoritative shutdown acknowledgement.
+    Stopped { startup_thread_ids: Arc<[ThreadId]> },
+}
+
+impl<T> Clone for ThreadRemovalAuthority<T> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Preparing(authority) => Self::Preparing(authority.clone()),
+            Self::Cold { startup_thread_ids } => Self::Cold {
+                startup_thread_ids: Arc::clone(startup_thread_ids),
+            },
+            Self::Live {
+                authority,
+                startup_thread_ids,
+            } => Self::Live {
+                authority: Arc::clone(authority),
+                startup_thread_ids: Arc::clone(startup_thread_ids),
+            },
+            Self::Stopped { startup_thread_ids } => Self::Stopped {
+                startup_thread_ids: Arc::clone(startup_thread_ids),
+            },
+        }
+    }
+}
+
+struct ThreadRemovalAuthorities<T> {
+    // This lock is deliberately synchronous. Once Core atomically removes a live runtime and
+    // returns its Arc, publishing that Arc here must not introduce a cancellation point.
+    entries: std::sync::Mutex<HashMap<ThreadId, ThreadRemovalAuthority<T>>>,
+}
+
+impl<T> Default for ThreadRemovalAuthorities<T> {
+    fn default() -> Self {
+        Self {
+            entries: std::sync::Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+impl<T> ThreadRemovalAuthorities<T> {
+    fn entries(&self) -> std::sync::MutexGuard<'_, HashMap<ThreadId, ThreadRemovalAuthority<T>>> {
+        self.entries
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn get(&self, thread_id: ThreadId) -> Option<ThreadRemovalAuthority<T>> {
+        self.entries().get(&thread_id).cloned()
+    }
+
+    fn insert_if_absent(
+        &self,
+        thread_id: ThreadId,
+        authority: ThreadRemovalAuthority<T>,
+    ) -> ThreadRemovalAuthority<T> {
+        self.entries().entry(thread_id).or_insert(authority).clone()
+    }
+
+    fn mark_stopped_if_matches(&self, thread_id: ThreadId, authority: &Arc<T>) -> bool {
+        let mut entries = self.entries();
+        let startup_thread_ids = match entries.get(&thread_id) {
+            Some(ThreadRemovalAuthority::Live {
+                authority: pending,
+                startup_thread_ids,
+            }) if Arc::ptr_eq(pending, authority) => Arc::clone(startup_thread_ids),
+            Some(ThreadRemovalAuthority::Stopped { .. }) => return true,
+            Some(
+                ThreadRemovalAuthority::Preparing(_)
+                | ThreadRemovalAuthority::Cold { .. }
+                | ThreadRemovalAuthority::Live { .. },
+            )
+            | None => return false,
+        };
+        entries.insert(
+            thread_id,
+            ThreadRemovalAuthority::Stopped { startup_thread_ids },
+        );
+        true
+    }
+
+    fn is_safe_to_abort(&self, thread_id: ThreadId) -> bool {
+        match self.entries().get(&thread_id) {
+            Some(ThreadRemovalAuthority::Cold { startup_thread_ids })
+            | Some(ThreadRemovalAuthority::Stopped { startup_thread_ids }) => {
+                startup_thread_ids.is_empty()
+            }
+            Some(ThreadRemovalAuthority::Preparing(_) | ThreadRemovalAuthority::Live { .. })
+            | None => false,
+        }
+    }
+
+    fn contains(&self, thread_id: ThreadId) -> bool {
+        self.entries().contains_key(&thread_id)
+    }
+
+    fn remove(&self, thread_id: ThreadId) -> Option<ThreadRemovalAuthority<T>> {
+        self.entries().remove(&thread_id)
+    }
+}
+
+impl ThreadRemovalAuthorities<CodexThread> {
+    fn mark_startups_drained_if_matches(
+        &self,
+        thread_id: ThreadId,
+        authority: &ThreadHardDeleteBeginAuthority,
+    ) -> Option<ThreadRemovalAuthority<CodexThread>> {
+        let mut entries = self.entries();
+        let matches_authority = matches!(
+            entries.get(&thread_id),
+            Some(ThreadRemovalAuthority::Preparing(pending))
+                if pending.same_authority(authority)
+        );
+        if !matches_authority {
+            return None;
+        }
+        let startup_thread_ids: Arc<[ThreadId]> = authority.startup_thread_ids().into();
+        let next = match authority.removed_thread() {
+            Some(thread) => ThreadRemovalAuthority::Live {
+                authority: thread,
+                startup_thread_ids,
+            },
+            None => ThreadRemovalAuthority::Cold { startup_thread_ids },
+        };
+        entries.insert(thread_id, next.clone());
+        Some(next)
+    }
+}
 
 async fn stage_pending_project_metadata(
     thread_manager: &ThreadManager,
@@ -431,6 +571,9 @@ pub(crate) struct ThreadRequestProcessor {
     pub(super) config_manager: ConfigManager,
     pub(super) thread_store: Arc<dyn ThreadStore>,
     pub(super) pending_thread_unloads: Arc<Mutex<HashSet<ThreadId>>>,
+    pending_thread_removals: Arc<ThreadRemovalAuthorities<CodexThread>>,
+    pub(super) pending_thread_delete_subtrees:
+        Arc<std::sync::Mutex<HashMap<ThreadId, Arc<[ThreadId]>>>>,
     pub(super) thread_state_manager: ThreadStateManager,
     pub(super) thread_watch_manager: ThreadWatchManager,
     pub(super) thread_list_state_permit: Arc<Semaphore>,
@@ -484,6 +627,8 @@ impl ThreadRequestProcessor {
             config_manager,
             thread_store,
             pending_thread_unloads,
+            pending_thread_removals: Arc::default(),
+            pending_thread_delete_subtrees: Arc::new(std::sync::Mutex::new(HashMap::new())),
             thread_state_manager,
             thread_watch_manager,
             thread_list_state_permit,
@@ -945,7 +1090,9 @@ impl ThreadRequestProcessor {
     }
 
     async fn finalize_thread_teardown(&self, thread_id: ThreadId) {
-        self.pending_thread_unloads.lock().await.remove(&thread_id);
+        if !self.pending_thread_removals.contains(thread_id) {
+            self.pending_thread_unloads.lock().await.remove(&thread_id);
+        }
         self.outgoing
             .cancel_requests_for_thread(thread_id, /*error*/ None)
             .await;
@@ -986,26 +1133,183 @@ impl ThreadRequestProcessor {
     }
 
     async fn prepare_thread_for_archive(&self, thread_id: ThreadId) {
-        self.prepare_thread_for_removal(thread_id, "archive").await;
-    }
-
-    pub(super) async fn prepare_thread_for_removal(&self, thread_id: ThreadId, operation: &str) {
-        let removed_conversation = self.thread_manager.remove_thread(&thread_id).await;
-        if let Some(conversation) = removed_conversation {
-            info!("thread {thread_id} was active; shutting down");
+        // Archive deliberately preserves its historical best-effort semantics. It does not
+        // install Core's permanent hard-delete fence and therefore cannot leave an orphaned
+        // closing authority after a bounded shutdown failure.
+        self.pending_thread_unloads.lock().await.insert(thread_id);
+        let conversation = self.thread_manager.remove_thread(&thread_id).await;
+        if let Some(conversation) = conversation {
             match wait_for_thread_shutdown(&conversation).await {
-                ThreadShutdownResult::Complete => {}
+                ThreadShutdownResult::Complete => {
+                    info!("thread {thread_id} was active; shutting down before archive");
+                }
                 ThreadShutdownResult::SubmitFailed => {
-                    error!(
-                        "failed to submit Shutdown to thread {thread_id}; proceeding with {operation}"
-                    );
+                    error!("failed to submit Shutdown to thread {thread_id} before archive");
                 }
                 ThreadShutdownResult::TimedOut => {
-                    warn!("thread {thread_id} shutdown timed out; proceeding with {operation}");
+                    warn!("thread {thread_id} shutdown timed out before archive");
                 }
             }
         }
         self.finalize_thread_teardown(thread_id).await;
+    }
+
+    /// Install Core's atomic hard-delete fence and stop the exact runtime it removed, if any.
+    ///
+    /// `Live` authorities survive timeout, caller cancellation, and request retry. `Cold` and
+    /// `Stopped` authorities remain published until either the queue deletion seal commits or a
+    /// proven-safe pre-seal failure explicitly aborts them.
+    pub(super) async fn prepare_thread_for_hard_delete(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<ThreadId>, JSONRPCErrorError> {
+        let authority = match self.pending_thread_removals.get(thread_id) {
+            Some(authority) => authority,
+            None => {
+                // Publish the app-server closing marker before Core atomically installs its
+                // registry fence and removes the current runtime. Publishing the returned Arc in
+                // the synchronous registry below introduces no cancellation point.
+                self.pending_thread_unloads.lock().await.insert(thread_id);
+                let removed = match self
+                    .thread_manager
+                    .begin_thread_hard_delete(thread_id)
+                    .await
+                {
+                    Ok(authority) => authority,
+                    Err(error) => {
+                        // Core may already have installed a fail-closed fence before surfacing an
+                        // error. Retain the app-server closing marker; a retry can re-enter begin.
+                        return Err(match error.details() {
+                            CodexErrorDetails::InvalidRequest(message) => {
+                                invalid_request(message.clone())
+                            }
+                            _ => internal_error(format!(
+                                "failed to install hard-delete fence for thread {thread_id}: {error}"
+                            )),
+                        });
+                    }
+                };
+                self.pending_thread_removals
+                    .insert_if_absent(thread_id, ThreadRemovalAuthority::Preparing(removed))
+            }
+        };
+
+        let authority = match authority {
+            ThreadRemovalAuthority::Preparing(startup_authority) => {
+                if tokio::time::timeout(
+                    THREAD_HARD_DELETE_STARTUP_DRAIN_TIMEOUT,
+                    startup_authority.drain_startups(),
+                )
+                .await
+                .is_err()
+                {
+                    return Err(invalid_request(format!(
+                        "thread {thread_id} startup drain timed out; refusing hard deletion"
+                    )));
+                }
+                self.pending_thread_removals
+                    .mark_startups_drained_if_matches(thread_id, &startup_authority)
+                    .ok_or_else(|| {
+                        internal_error(format!(
+                            "thread {thread_id} startup-drain authority changed before hard deletion"
+                        ))
+                    })?
+            }
+            authority => authority,
+        };
+
+        let startup_thread_ids = match &authority {
+            ThreadRemovalAuthority::Cold { startup_thread_ids }
+            | ThreadRemovalAuthority::Live {
+                startup_thread_ids, ..
+            }
+            | ThreadRemovalAuthority::Stopped { startup_thread_ids } => startup_thread_ids.to_vec(),
+            ThreadRemovalAuthority::Preparing(_) => {
+                return Err(internal_error(format!(
+                    "thread {thread_id} remained in startup-drain state after drain completed"
+                )));
+            }
+        };
+
+        let ThreadRemovalAuthority::Live {
+            authority: conversation,
+            ..
+        } = authority
+        else {
+            return Ok(startup_thread_ids);
+        };
+
+        match wait_for_thread_shutdown(&conversation).await {
+            ThreadShutdownResult::Complete => {
+                if !self
+                    .pending_thread_removals
+                    .mark_stopped_if_matches(thread_id, &conversation)
+                {
+                    return Err(internal_error(format!(
+                        "thread {thread_id} shutdown authority changed before hard deletion"
+                    )));
+                }
+                info!("thread {thread_id} was active; shut down before hard deletion");
+                Ok(startup_thread_ids)
+            }
+            ThreadShutdownResult::SubmitFailed => {
+                error!("failed to submit Shutdown to thread {thread_id} before hard deletion");
+                Err(invalid_request(format!(
+                    "thread {thread_id} did not accept shutdown; refusing hard deletion"
+                )))
+            }
+            ThreadShutdownResult::TimedOut => {
+                warn!("thread {thread_id} shutdown timed out before hard deletion");
+                Err(invalid_request(format!(
+                    "thread {thread_id} did not shut down completely; refusing hard deletion"
+                )))
+            }
+        }
+    }
+
+    /// Release only hard-delete authorities that are proven cold or fully stopped.
+    ///
+    /// This is valid only before the durable queue deletion seal commits. A live/ambiguous
+    /// authority is intentionally retained for retry.
+    pub(super) async fn abort_safe_hard_deletes_before_seal(&self, thread_ids: &[ThreadId]) {
+        for &thread_id in thread_ids {
+            if !self.pending_thread_removals.is_safe_to_abort(thread_id)
+                || !self.thread_hard_delete_is_proven_unsealed(thread_id).await
+            {
+                continue;
+            }
+            // Remove only the old authority, then finish its app-server state/watch teardown while
+            // Core's fence still prevents a replacement runtime from registering. Clearing the
+            // Core fence is the final step and has no following await that could misdirect old
+            // teardown at a replacement generation.
+            if self.pending_thread_removals.remove(thread_id).is_some() {
+                self.finalize_thread_teardown(thread_id).await;
+                let _ = self
+                    .thread_manager
+                    .abort_thread_hard_delete(thread_id)
+                    .await;
+            }
+        }
+    }
+
+    async fn thread_hard_delete_is_proven_unsealed(&self, thread_id: ThreadId) -> bool {
+        let Some(state_db) = self.state_db.as_ref() else {
+            return false;
+        };
+        matches!(
+            state_db
+                .thread_queue()
+                .thread_queue_is_sealed_for_deletion(thread_id)
+                .await,
+            Ok(false)
+        )
+    }
+
+    pub(super) async fn finalize_hard_deleted_threads(&self, thread_ids: &[ThreadId]) {
+        for &thread_id in thread_ids {
+            let _ = self.pending_thread_removals.remove(thread_id);
+            self.finalize_thread_teardown(thread_id).await;
+        }
     }
 
     fn listener_task_context(&self) -> ListenerTaskContext {
@@ -3476,6 +3780,41 @@ impl ThreadRequestProcessor {
         }
     }
 
+    async fn thread_resume_fence_error(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<JSONRPCErrorError>, JSONRPCErrorError> {
+        if let Some(state_db) = self.state_db.as_ref() {
+            let sealed = state_db
+                .thread_queue()
+                .thread_queue_is_sealed_for_deletion(thread_id)
+                .await
+                .map_err(|error| {
+                    internal_error(format!(
+                        "failed to verify hard-delete fence for thread {thread_id}: {error}"
+                    ))
+                })?;
+            if sealed {
+                return Ok(Some(invalid_request(format!(
+                    "thread {thread_id} is sealed for hard deletion and cannot be resumed"
+                ))));
+            }
+        }
+
+        let pending_unload = self
+            .pending_thread_unloads
+            .lock()
+            .await
+            .contains(&thread_id);
+        Ok(
+            (pending_unload || self.pending_thread_removals.contains(thread_id)).then(|| {
+                invalid_request(format!(
+                    "thread {thread_id} is closing; retry thread/resume after the thread is closed"
+                ))
+            }),
+        )
+    }
+
     async fn thread_resume_inner(
         &self,
         request_id: ConnectionRequestId,
@@ -3484,21 +3823,11 @@ impl ThreadRequestProcessor {
         app_server_client_version: Option<String>,
         client_mcp_extensions: ClientMcpExtensions,
     ) -> Result<(), JSONRPCErrorError> {
-        if let Ok(thread_id) = ThreadId::from_string(&params.thread_id)
-            && self
-                .pending_thread_unloads
-                .lock()
-                .await
-                .contains(&thread_id)
+        let parsed_thread_id = ThreadId::from_string(&params.thread_id).ok();
+        if let Some(thread_id) = parsed_thread_id
+            && let Some(error) = self.thread_resume_fence_error(thread_id).await?
         {
-            self.outgoing
-                .send_error(
-                    request_id,
-                    invalid_request(format!(
-                        "thread {thread_id} is closing; retry thread/resume after the thread is closed"
-                    )),
-                )
-                .await;
+            self.outgoing.send_error(request_id, error).await;
             return Ok(());
         }
 
@@ -3521,6 +3850,18 @@ impl ThreadRequestProcessor {
                 return Ok(());
             }
         };
+
+        // The optimistic precheck above avoids waiting behind a long lifecycle
+        // mutation, but it is not an authority boundary. Revalidate after the
+        // shared permit is acquired so delete cannot publish its closing fence
+        // between this request's precheck and cold Core creation.
+        if let Some(thread_id) = parsed_thread_id
+            && let Some(error) = self.thread_resume_fence_error(thread_id).await?
+        {
+            self.outgoing.send_error(request_id, error).await;
+            return Ok(());
+        }
+
         let stored_thread_from_running_probe = match self
             .resume_running_thread(
                 &request_id,

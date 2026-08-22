@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 use std::num::NonZeroUsize;
 use std::path::Path;
@@ -6,6 +7,7 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::sync::Weak;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -39,6 +41,9 @@ use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::ThreadHistoryMode;
 use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;
 use codex_protocol::user_input::UserInput;
+use codex_protocol::user_input::user_input_payload_sha256;
+use codex_queue_extension::QueueReconcileMode;
+use codex_queue_extension::QueueReconcileOutcome;
 use codex_queue_extension::QueueServiceError;
 use codex_queue_extension::QueuedItemService;
 use codex_rollout::open_rollout_line_reader;
@@ -46,6 +51,11 @@ use codex_state::SqliteConfig;
 use codex_state::StateRuntime;
 use codex_thread_store::LocalQueueStore;
 use codex_thread_store::QueueStore;
+use codex_thread_store::QueuedClientBindingReserveOutcome;
+use codex_thread_store::QueuedClientDispatchClaimOutcome;
+use codex_thread_store::QueuedClientDispatchLease;
+use codex_thread_store::QueuedClientDispatchLock;
+use codex_thread_store::QueuedClientExpiredDispatch;
 use codex_thread_store::ThreadStoreError;
 use codex_thread_store::ThreadStoreFuture;
 use codex_utils_absolute_path::test_support::PathExt;
@@ -175,6 +185,60 @@ if payload["prompt"] == "blocked":
         .unwrap_or_else(|error| panic!("write queue hooks: {error}"));
 }
 
+fn write_blocking_prompt_hook(home: &Path) {
+    let script_path = home.join("queue_blocking_prompt_hook.py");
+    let entered_path = home.join("queue_blocking_prompt_hook.entered");
+    let release_path = home.join("queue_blocking_prompt_hook.release");
+    let script = format!(
+        r#"import json
+from pathlib import Path
+import sys
+import time
+
+payload = json.load(sys.stdin)
+if payload["prompt"] in ["delay exact persistence", "delay exact rejection"]:
+    Path(r"{entered_path}").write_text("entered", encoding="utf-8")
+    deadline = time.monotonic() + 20
+    while not Path(r"{release_path}").exists():
+        if time.monotonic() >= deadline:
+            raise RuntimeError("timed out waiting to release queue persistence hook")
+        time.sleep(0.01)
+    if payload["prompt"] == "delay exact rejection":
+        print(json.dumps({{"decision": "block", "reason": "delayed queue rejection"}}))
+"#,
+        entered_path = entered_path.display(),
+        release_path = release_path.display(),
+    );
+    std::fs::write(&script_path, script)
+        .unwrap_or_else(|error| panic!("write blocking queue hook script: {error}"));
+    let hooks = serde_json::json!({
+        "hooks": {
+            "UserPromptSubmit": [{
+                "hooks": [{
+                    "type": "command",
+                    "command": format!("python3 {}", script_path.display()),
+                }]
+            }]
+        }
+    });
+    std::fs::write(home.join("hooks.json"), hooks.to_string())
+        .unwrap_or_else(|error| panic!("write blocking queue hooks: {error}"));
+}
+
+async fn wait_for_path(path: &Path) -> anyhow::Result<()> {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if path.exists() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .with_context(|| format!("timed out waiting for `{}`", path.display()))?;
+    Ok(())
+}
+
 async fn test_queue() -> anyhow::Result<(Arc<dyn QueueStore>, TempDir)> {
     let home = tempfile::tempdir()?;
     let sqlite = SqliteConfig::new_for_testing(home.path().abs());
@@ -196,6 +260,13 @@ async fn test_queue_with_capacity(
 struct FailDeleteOnceQueueStore {
     inner: LocalQueueStore,
     fail_next_delete: AtomicBool,
+    fail_next_complete: AtomicBool,
+    panic_next_complete: AtomicBool,
+    block_complete_after_panic: AtomicBool,
+    allow_blocked_complete: AtomicBool,
+    complete_attempts: AtomicUsize,
+    short_dispatch_lease: bool,
+    release_count: AtomicUsize,
 }
 
 impl FailDeleteOnceQueueStore {
@@ -203,6 +274,55 @@ impl FailDeleteOnceQueueStore {
         Self {
             inner,
             fail_next_delete: AtomicBool::new(true),
+            fail_next_complete: AtomicBool::new(false),
+            panic_next_complete: AtomicBool::new(false),
+            block_complete_after_panic: AtomicBool::new(false),
+            allow_blocked_complete: AtomicBool::new(true),
+            complete_attempts: AtomicUsize::new(0),
+            short_dispatch_lease: false,
+            release_count: AtomicUsize::new(0),
+        }
+    }
+
+    fn crash_after_rollout_flush(inner: LocalQueueStore) -> Self {
+        Self {
+            inner,
+            fail_next_delete: AtomicBool::new(false),
+            fail_next_complete: AtomicBool::new(true),
+            panic_next_complete: AtomicBool::new(false),
+            block_complete_after_panic: AtomicBool::new(false),
+            allow_blocked_complete: AtomicBool::new(true),
+            complete_attempts: AtomicUsize::new(0),
+            short_dispatch_lease: true,
+            release_count: AtomicUsize::new(0),
+        }
+    }
+
+    fn with_short_dispatch_lease(inner: LocalQueueStore) -> Self {
+        Self {
+            inner,
+            fail_next_delete: AtomicBool::new(false),
+            fail_next_complete: AtomicBool::new(false),
+            panic_next_complete: AtomicBool::new(false),
+            block_complete_after_panic: AtomicBool::new(false),
+            allow_blocked_complete: AtomicBool::new(true),
+            complete_attempts: AtomicUsize::new(0),
+            short_dispatch_lease: true,
+            release_count: AtomicUsize::new(0),
+        }
+    }
+
+    fn panic_then_block_completion(inner: LocalQueueStore) -> Self {
+        Self {
+            inner,
+            fail_next_delete: AtomicBool::new(false),
+            fail_next_complete: AtomicBool::new(false),
+            panic_next_complete: AtomicBool::new(true),
+            block_complete_after_panic: AtomicBool::new(true),
+            allow_blocked_complete: AtomicBool::new(false),
+            complete_attempts: AtomicUsize::new(0),
+            short_dispatch_lease: true,
+            release_count: AtomicUsize::new(0),
         }
     }
 }
@@ -226,6 +346,180 @@ impl QueueStore for FailDeleteOnceQueueStore {
         payload: String,
     ) -> ThreadStoreFuture<'_, codex_thread_store::QueuedUserSubmissionRecord> {
         self.inner.enqueue(thread_id, payload)
+    }
+
+    fn enqueue_guarded(
+        &self,
+        thread_id: ThreadId,
+        payload: String,
+        client_id: String,
+        payload_sha256: String,
+    ) -> ThreadStoreFuture<'_, codex_thread_store::QueuedUserSubmissionRecord> {
+        self.inner
+            .enqueue_guarded(thread_id, payload, client_id, payload_sha256)
+    }
+
+    fn reserve_client_binding(
+        &self,
+        thread_id: ThreadId,
+        client_id: String,
+        payload_sha256: String,
+        payload: String,
+    ) -> ThreadStoreFuture<'_, QueuedClientBindingReserveOutcome> {
+        self.inner
+            .reserve_client_binding(thread_id, client_id, payload_sha256, payload)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn finalize_client_binding(
+        &self,
+        thread_id: ThreadId,
+        client_id: String,
+        payload_sha256: String,
+        payload: String,
+        lease: codex_thread_store::QueuedClientBindingLease,
+        mode: codex_thread_store::QueuedClientBindingFinalizeMode,
+        observed_turn_id: Option<String>,
+    ) -> ThreadStoreFuture<'_, codex_thread_store::QueuedClientBindingFinalizeOutcome> {
+        self.inner.finalize_client_binding(
+            thread_id,
+            client_id,
+            payload_sha256,
+            payload,
+            lease,
+            mode,
+            observed_turn_id,
+        )
+    }
+
+    fn mark_client_binding_persisted(
+        &self,
+        thread_id: ThreadId,
+        client_id: String,
+        payload_sha256: String,
+        queued_item_id: String,
+        turn_id: String,
+    ) -> ThreadStoreFuture<'_, bool> {
+        self.inner.mark_client_binding_persisted(
+            thread_id,
+            client_id,
+            payload_sha256,
+            queued_item_id,
+            turn_id,
+        )
+    }
+
+    fn try_acquire_client_dispatch_lock(
+        &self,
+        thread_id: ThreadId,
+        client_id: String,
+        payload_sha256: String,
+    ) -> Result<Option<QueuedClientDispatchLock>, ThreadStoreError> {
+        self.inner
+            .try_acquire_client_dispatch_lock(thread_id, client_id, payload_sha256)
+    }
+
+    fn claim_client_binding_dispatch<'a>(
+        &'a self,
+        process_lock: &'a QueuedClientDispatchLock,
+        queued_item_id: String,
+        owner_id: String,
+        now_ms: i64,
+        lease_expires_at_ms: i64,
+    ) -> ThreadStoreFuture<'a, QueuedClientDispatchClaimOutcome> {
+        let lease_expires_at_ms = if self.short_dispatch_lease {
+            now_ms + 250
+        } else {
+            lease_expires_at_ms
+        };
+        self.inner.claim_client_binding_dispatch(
+            process_lock,
+            queued_item_id,
+            owner_id,
+            now_ms,
+            lease_expires_at_ms,
+        )
+    }
+
+    fn authorize_client_binding_dispatch<'a>(
+        &'a self,
+        process_lock: &'a QueuedClientDispatchLock,
+        lease: QueuedClientDispatchLease,
+        now_ms: i64,
+        lease_expires_at_ms: i64,
+    ) -> ThreadStoreFuture<'a, QueuedClientDispatchLease> {
+        let lease_expires_at_ms = if self.short_dispatch_lease {
+            now_ms + 250
+        } else {
+            lease_expires_at_ms
+        };
+        self.inner.authorize_client_binding_dispatch(
+            process_lock,
+            lease,
+            now_ms,
+            lease_expires_at_ms,
+        )
+    }
+
+    fn recover_expired_client_dispatch<'a>(
+        &'a self,
+        process_lock: &'a QueuedClientDispatchLock,
+        expired: QueuedClientExpiredDispatch,
+        new_owner_id: String,
+        observed_turn_id: Option<String>,
+        now_ms: i64,
+        lease_expires_at_ms: i64,
+    ) -> ThreadStoreFuture<'a, QueuedClientDispatchClaimOutcome> {
+        self.inner.recover_expired_client_dispatch(
+            process_lock,
+            expired,
+            new_owner_id,
+            observed_turn_id,
+            now_ms,
+            lease_expires_at_ms,
+        )
+    }
+
+    fn complete_client_binding_dispatch<'a>(
+        &'a self,
+        process_lock: &'a QueuedClientDispatchLock,
+        lease: &'a QueuedClientDispatchLease,
+        turn_id: String,
+    ) -> ThreadStoreFuture<'a, ()> {
+        self.complete_attempts.fetch_add(1, Ordering::SeqCst);
+        if self.panic_next_complete.swap(false, Ordering::SeqCst) {
+            panic!("simulated panic after durable Core admission before dispatch DB completion");
+        }
+        if self.fail_next_complete.swap(false, Ordering::SeqCst) {
+            return Box::pin(async {
+                Err(ThreadStoreError::Internal {
+                    message: "simulated crash after rollout flush before dispatch DB completion"
+                        .to_string(),
+                })
+            });
+        }
+        if self.block_complete_after_panic.load(Ordering::SeqCst) {
+            return Box::pin(async move {
+                while !self.allow_blocked_complete.load(Ordering::SeqCst) {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+                self.inner
+                    .complete_client_binding_dispatch(process_lock, lease, turn_id)
+                    .await
+            });
+        }
+        self.inner
+            .complete_client_binding_dispatch(process_lock, lease, turn_id)
+    }
+
+    fn release_client_binding_dispatch<'a>(
+        &'a self,
+        process_lock: &'a QueuedClientDispatchLock,
+        lease: QueuedClientDispatchLease,
+    ) -> ThreadStoreFuture<'a, ()> {
+        self.release_count.fetch_add(1, Ordering::SeqCst);
+        self.inner
+            .release_client_binding_dispatch(process_lock, lease)
     }
 
     fn list_page(
@@ -301,20 +595,43 @@ async fn persisted_client_message_count(
 ) -> anyhow::Result<usize> {
     let path = thread.rollout_path().context("rollout path unavailable")?;
     let mut reader = open_rollout_line_reader(&path).await?;
-    let mut count = 0;
+    let mut current_turn_id = None;
+    let mut observed_turn_ids = HashSet::new();
+    let mut anonymous_legacy_count = 0;
     while let Some(line) = reader.next_line().await? {
         let Ok(record) = serde_json::from_str::<RolloutLine>(&line) else {
             continue;
         };
-        if matches!(
-            record.item,
+        match record.item {
+            RolloutItem::EventMsg(EventMsg::TurnStarted(event)) => {
+                current_turn_id = Some(event.turn_id);
+            }
+            RolloutItem::TurnContext(context) if context.turn_id.is_some() => {
+                current_turn_id = context.turn_id;
+            }
+            RolloutItem::EventMsg(EventMsg::ItemCompleted(event))
+                if matches!(
+                    &event.item,
+                    TurnItem::UserMessage(item)
+                        if item.client_id.as_deref() == Some(client_id)
+                ) =>
+            {
+                observed_turn_ids.insert(event.turn_id);
+            }
             RolloutItem::EventMsg(EventMsg::UserMessage(event))
-                if event.client_id.as_deref() == Some(client_id)
-        ) {
-            count += 1;
+                if event.client_id.as_deref() == Some(client_id) =>
+            {
+                if let Some(turn_id) = current_turn_id.as_ref() {
+                    observed_turn_ids.insert(turn_id.clone());
+                } else {
+                    anonymous_legacy_count += 1;
+                }
+            }
+            RolloutItem::EventMsg(EventMsg::TurnComplete(_)) => current_turn_id = None,
+            _ => {}
         }
     }
-    Ok(count)
+    Ok(observed_turn_ids.len() + anonymous_legacy_count)
 }
 
 async fn emit_idle(service: &QueuedItemService, thread_id: ThreadId) {
@@ -385,6 +702,697 @@ async fn queued_input_and_unique_event_ids_round_trip() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn exact_reconcile_is_one_idempotent_queue_admission() -> anyhow::Result<()> {
+    let (queue, _home) = test_queue().await?;
+    let service = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let thread_id = ThreadId::new();
+    let input = structured_user_input("Matrix event");
+    let TurnInput::UserInput { content, .. } = &input else {
+        unreachable!("test input is user input");
+    };
+    let digest = user_input_payload_sha256(content)?;
+
+    let first = service
+        .reconcile(
+            thread_id,
+            None,
+            input.clone(),
+            digest.clone(),
+            QueueReconcileMode::AllowIfAbsent,
+        )
+        .await?;
+    assert_eq!("stable-client-message", first.client_user_message_id);
+    assert_eq!(digest, first.payload_sha256);
+    let QueueReconcileOutcome::Queued {
+        item: first_item,
+        created: true,
+    } = first.outcome
+    else {
+        anyhow::bail!("first exact reconciliation did not create a row");
+    };
+
+    let second = service
+        .reconcile(
+            thread_id,
+            None,
+            input,
+            digest,
+            QueueReconcileMode::ReconcileOnly,
+        )
+        .await?;
+    let QueueReconcileOutcome::Queued {
+        item: second_item,
+        created: false,
+    } = second.outcome
+    else {
+        anyhow::bail!("same-payload retry did not join the durable row");
+    };
+    assert_eq!(first_item, second_item);
+    assert_eq!(vec![first_item], service.list(thread_id).await?);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn two_queue_services_across_state_runtimes_submit_one_exact_binding() -> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let response = responses::mount_sse_once(&server, responses::sse_completed("one-owner")).await;
+    let test = test_codex()
+        .with_config(|config| config.include_environment_context = false)
+        .build_with_auto_env(&server)
+        .await?;
+    let thread_id = test.session_configured.thread_id;
+    let primary_runtime = test.codex.state_db().context("state runtime unavailable")?;
+    let other_runtime = StateRuntime::init(
+        primary_runtime.sqlite().clone(),
+        "test-provider".to_string(),
+    )
+    .await?;
+    let primary_queue: Arc<dyn QueueStore> =
+        Arc::new(LocalQueueStore::new(Arc::clone(&primary_runtime)));
+    let other_queue: Arc<dyn QueueStore> = Arc::new(LocalQueueStore::new(other_runtime));
+    let input = structured_user_input("one exact Matrix dispatch");
+    let TurnInput::UserInput { content, .. } = &input else {
+        unreachable!("test input is user input");
+    };
+    let digest = user_input_payload_sha256(content)?;
+    let staging = QueuedItemService::new(
+        Arc::clone(&primary_queue),
+        Weak::new(),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let admitted = staging
+        .reconcile(
+            thread_id,
+            test.codex.rollout_path(),
+            input,
+            digest,
+            QueueReconcileMode::AllowIfAbsent,
+        )
+        .await?;
+    let QueueReconcileOutcome::Queued { item, .. } = admitted.outcome else {
+        anyhow::bail!("exact Matrix input was not queued");
+    };
+
+    let first = QueuedItemService::new(
+        primary_queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let second = QueuedItemService::new(
+        other_queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let (first_result, second_result) = tokio::join!(
+        first.start(test.codex.as_ref(), Some(item.id.clone()), None),
+        second.start(test.codex.as_ref(), Some(item.id), None),
+    );
+    let results = [first_result, second_result];
+    assert!(results.iter().any(Result::is_ok));
+    for result in results {
+        match result {
+            Ok(StartIfIdleSubmission::Started { .. })
+            | Err(QueueServiceError::DispatchInProgress { .. })
+            | Err(QueueServiceError::Storage(ThreadStoreError::InvalidRequest { .. })) => {}
+            outcome => anyhow::bail!("unexpected competing QueueService outcome: {outcome:?}"),
+        }
+    }
+    wait_for_event_match(test.codex.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_)).then_some(())
+    })
+    .await;
+    assert_eq!(1, response.requests().len());
+    assert_eq!(
+        1,
+        persisted_client_message_count(test.codex.as_ref(), "stable-client-message").await?
+    );
+    assert!(first.list(thread_id).await?.is_empty());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn caller_abort_after_core_started_keeps_exact_authority_until_persistence()
+-> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let response =
+        responses::mount_sse_once(&server, responses::sse_completed("one-cancel-safe-owner")).await;
+    let test = test_codex()
+        .with_pre_build_hook(write_blocking_prompt_hook)
+        .with_config(trust_discovered_hooks)
+        .with_config(|config| config.include_environment_context = false)
+        .build_with_auto_env(&server)
+        .await?;
+    let thread_id = test.session_configured.thread_id;
+    let primary_runtime = test.codex.state_db().context("state runtime unavailable")?;
+    let competing_runtime = StateRuntime::init(
+        primary_runtime.sqlite().clone(),
+        "test-provider".to_string(),
+    )
+    .await?;
+    let owner_queue: Arc<dyn QueueStore> =
+        Arc::new(FailDeleteOnceQueueStore::with_short_dispatch_lease(
+            LocalQueueStore::new(Arc::clone(&primary_runtime)),
+        ));
+    let competing_queue: Arc<dyn QueueStore> = Arc::new(LocalQueueStore::new(competing_runtime));
+    let owner = Arc::new(QueuedItemService::new(
+        Arc::clone(&owner_queue),
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    ));
+    let competitor = QueuedItemService::new(
+        competing_queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let input = structured_user_input("delay exact persistence");
+    let TurnInput::UserInput { content, .. } = &input else {
+        unreachable!("test input is user input");
+    };
+    let digest = user_input_payload_sha256(content)?;
+    let admitted = owner
+        .reconcile(
+            thread_id,
+            test.codex.rollout_path(),
+            input,
+            digest,
+            QueueReconcileMode::AllowIfAbsent,
+        )
+        .await?;
+    let QueueReconcileOutcome::Queued { item, .. } = admitted.outcome else {
+        anyhow::bail!("exact Matrix input was not queued");
+    };
+
+    let owner_start = tokio::spawn({
+        let owner = Arc::clone(&owner);
+        let codex = Arc::clone(&test.codex);
+        let queued_item_id = item.id.clone();
+        async move {
+            owner
+                .start(codex.as_ref(), Some(queued_item_id), None)
+                .await
+        }
+    });
+    let entered = test
+        .codex_home_path()
+        .join("queue_blocking_prompt_hook.entered");
+    let release = test
+        .codex_home_path()
+        .join("queue_blocking_prompt_hook.release");
+    wait_for_path(&entered).await?;
+    owner_start.abort();
+    let aborted = owner_start
+        .await
+        .expect_err("caller task must be cancelled");
+    assert!(aborted.is_cancelled());
+
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    let competing = competitor
+        .start(test.codex.as_ref(), Some(item.id.clone()), None)
+        .await
+        .expect_err("expired SQLite time alone must not bypass the owned process lock");
+    assert!(matches!(
+        competing,
+        QueueServiceError::DispatchInProgress { .. }
+    ));
+    assert_eq!(0, response.requests().len());
+
+    fs::write(&release, b"release")?;
+    wait_for_event_match(test.codex.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_)).then_some(())
+    })
+    .await;
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if competitor
+                .list(thread_id)
+                .await
+                .is_ok_and(|items| items.is_empty())
+            {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await?;
+    assert_eq!(1, response.requests().len());
+    assert_eq!(
+        1,
+        persisted_client_message_count(test.codex.as_ref(), "stable-client-message").await?
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn core_error_after_started_never_releases_ambiguous_dispatch() -> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let response =
+        responses::mount_sse_once(&server, responses::sse_completed("must-not-run")).await;
+    let test = test_codex()
+        .with_pre_build_hook(write_blocking_prompt_hook)
+        .with_config(trust_discovered_hooks)
+        .with_config(|config| config.include_environment_context = false)
+        .build_with_auto_env(&server)
+        .await?;
+    let thread_id = test.session_configured.thread_id;
+    let primary_runtime = test.codex.state_db().context("state runtime unavailable")?;
+    let competing_runtime = StateRuntime::init(
+        primary_runtime.sqlite().clone(),
+        "test-provider".to_string(),
+    )
+    .await?;
+    let owner_store = Arc::new(FailDeleteOnceQueueStore::with_short_dispatch_lease(
+        LocalQueueStore::new(Arc::clone(&primary_runtime)),
+    ));
+    let owner_queue: Arc<dyn QueueStore> = owner_store.clone();
+    let competing_queue: Arc<dyn QueueStore> = Arc::new(LocalQueueStore::new(competing_runtime));
+    let owner = Arc::new(QueuedItemService::new(
+        owner_queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    ));
+    let competitor = QueuedItemService::new(
+        competing_queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let input = structured_user_input("delay exact rejection");
+    let TurnInput::UserInput { content, .. } = &input else {
+        unreachable!("test input is user input");
+    };
+    let digest = user_input_payload_sha256(content)?;
+    let admitted = owner
+        .reconcile(
+            thread_id,
+            test.codex.rollout_path(),
+            input,
+            digest,
+            QueueReconcileMode::AllowIfAbsent,
+        )
+        .await?;
+    let QueueReconcileOutcome::Queued { item, .. } = admitted.outcome else {
+        anyhow::bail!("exact Matrix input was not queued");
+    };
+
+    let owner_start = tokio::spawn({
+        let owner = Arc::clone(&owner);
+        let codex = Arc::clone(&test.codex);
+        let queued_item_id = item.id.clone();
+        async move {
+            owner
+                .start(codex.as_ref(), Some(queued_item_id), None)
+                .await
+        }
+    });
+    let entered = test
+        .codex_home_path()
+        .join("queue_blocking_prompt_hook.entered");
+    let release = test
+        .codex_home_path()
+        .join("queue_blocking_prompt_hook.release");
+    wait_for_path(&entered).await?;
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    let competing = competitor
+        .start(test.codex.as_ref(), Some(item.id.clone()), None)
+        .await
+        .expect_err("expired SQLite lease must not bypass active Core ownership");
+    assert!(matches!(
+        competing,
+        QueueServiceError::DispatchInProgress { .. }
+    ));
+
+    fs::write(&release, b"release")?;
+    let error = tokio::time::timeout(Duration::from_secs(10), owner_start)
+        .await??
+        .expect_err("the delayed hook must reject the started Core task");
+    assert!(matches!(error, QueueServiceError::CoreSubmissionError(_)));
+    assert_eq!(
+        0,
+        owner_store.release_count.load(Ordering::SeqCst),
+        "an ambiguous Core error must leave the binding dispatching"
+    );
+    assert_eq!(vec![item.clone()], owner.list(thread_id).await?);
+    assert!(response.requests().is_empty());
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    let competing = competitor
+        .start(test.codex.as_ref(), Some(item.id.clone()), None)
+        .await
+        .expect_err("an ambiguous Core error must retain the process fence beyond lease expiry");
+    assert!(matches!(
+        competing,
+        QueueServiceError::DispatchInProgress { .. }
+    ));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn completion_panic_retains_exact_authority_in_settlement_guardian() -> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let response =
+        responses::mount_sse_once(&server, responses::sse_completed("panic-safe-owner")).await;
+    let test = test_codex()
+        .with_history_mode(ThreadHistoryMode::Paginated)
+        .with_config(|config| config.include_environment_context = false)
+        .build_with_auto_env(&server)
+        .await?;
+    let thread_id = test.session_configured.thread_id;
+    let primary_runtime = test.codex.state_db().context("state runtime unavailable")?;
+    let competing_runtime = StateRuntime::init(
+        primary_runtime.sqlite().clone(),
+        "test-provider".to_string(),
+    )
+    .await?;
+    let owner_store = Arc::new(FailDeleteOnceQueueStore::panic_then_block_completion(
+        LocalQueueStore::new(Arc::clone(&primary_runtime)),
+    ));
+    let owner_queue: Arc<dyn QueueStore> = owner_store.clone();
+    let competing_queue: Arc<dyn QueueStore> = Arc::new(LocalQueueStore::new(competing_runtime));
+    let owner = QueuedItemService::new(
+        owner_queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let competitor = QueuedItemService::new(
+        competing_queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let input = structured_user_input("panic after exact admission");
+    let TurnInput::UserInput { content, .. } = &input else {
+        unreachable!("test input is user input");
+    };
+    let digest = user_input_payload_sha256(content)?;
+    let admitted = owner
+        .reconcile(
+            thread_id,
+            test.codex.rollout_path(),
+            input,
+            digest,
+            QueueReconcileMode::AllowIfAbsent,
+        )
+        .await?;
+    let QueueReconcileOutcome::Queued { item, .. } = admitted.outcome else {
+        anyhow::bail!("exact Matrix input was not queued");
+    };
+
+    let error = owner
+        .start(test.codex.as_ref(), Some(item.id.clone()), None)
+        .await
+        .expect_err("completion panic must be surfaced without dropping authority");
+    assert!(
+        matches!(
+            error,
+            QueueServiceError::Storage(ThreadStoreError::Internal { ref message })
+                if message.contains("completion task failed ambiguously")
+        ),
+        "unexpected completion panic error: {error:?}"
+    );
+
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while owner_store.complete_attempts.load(Ordering::SeqCst) < 2 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await?;
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    let competing = competitor
+        .start(test.codex.as_ref(), Some(item.id.clone()), None)
+        .await
+        .expect_err("lease expiry must not bypass the panic guardian's process lock");
+    assert!(matches!(
+        competing,
+        QueueServiceError::DispatchInProgress { .. }
+    ));
+    assert_eq!(
+        0,
+        owner_store.release_count.load(Ordering::SeqCst),
+        "panic settlement must never release ambiguous authority"
+    );
+
+    owner_store
+        .allow_blocked_complete
+        .store(true, Ordering::SeqCst);
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if owner
+                .list(thread_id)
+                .await
+                .is_ok_and(|items| items.is_empty())
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await?;
+    wait_for_event_match(test.codex.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_)).then_some(())
+    })
+    .await;
+    assert_eq!(1, response.requests().len());
+    assert_eq!(
+        1,
+        persisted_client_message_count(test.codex.as_ref(), "stable-client-message").await?
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reserved_to_persisted_legacy_row_deletion_emits_queue_changed() -> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let response =
+        responses::mount_sse_once(&server, responses::sse_completed("already-persisted")).await;
+    let test = test_codex()
+        .with_history_mode(ThreadHistoryMode::Paginated)
+        .with_config(|config| config.include_environment_context = false)
+        .build_with_auto_env(&server)
+        .await?;
+    let thread_id = test.session_configured.thread_id;
+    let input = structured_user_input("persist before legacy row adoption");
+    let TurnInput::UserInput { content, .. } = &input else {
+        unreachable!("test input is user input");
+    };
+    let digest = user_input_payload_sha256(content)?;
+    let submission = test
+        .codex
+        .start_or_steer_turn(TurnInputRequest::new(input.clone()))
+        .await?;
+    assert!(matches!(submission, TurnInputSubmission::Started { .. }));
+    wait_for_event_match(test.codex.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_)).then_some(())
+    })
+    .await;
+
+    let queue = loaded_thread_queue(&test)?;
+    queue
+        .enqueue(thread_id, serde_json::to_string(&input)?)
+        .await?;
+    let sink = Arc::new(RecordingEventSink::default());
+    let event_sink: Arc<dyn ExtensionEventSink> = sink.clone();
+    let service = QueuedItemService::new(queue, Arc::downgrade(&test.thread_manager), event_sink);
+    let reconciled = service
+        .reconcile(
+            thread_id,
+            test.codex.rollout_path(),
+            input,
+            digest,
+            QueueReconcileMode::ReconcileOnly,
+        )
+        .await?;
+    assert!(matches!(
+        reconciled.outcome,
+        QueueReconcileOutcome::Persisted { .. }
+    ));
+    assert!(service.list(thread_id).await?.is_empty());
+    let events = sink
+        .events
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    assert_eq!(1, events.len());
+    assert!(matches!(
+        &events[0].msg,
+        EventMsg::ThreadQueueChanged(change) if change.thread_id == thread_id
+    ));
+    assert_eq!(1, response.requests().len());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rollout_flush_before_dispatch_db_completion_recovers_without_resubmit()
+-> anyhow::Result<()> {
+    let server = start_mock_server().await;
+    let response =
+        responses::mount_sse_once(&server, responses::sse_completed("persisted-before-crash"))
+            .await;
+    let test = test_codex()
+        .with_history_mode(ThreadHistoryMode::Paginated)
+        .with_config(|config| config.include_environment_context = false)
+        .build_with_auto_env(&server)
+        .await?;
+    let thread_id = test.session_configured.thread_id;
+    let runtime = test.codex.state_db().context("state runtime unavailable")?;
+    let crash_queue: Arc<dyn QueueStore> =
+        Arc::new(FailDeleteOnceQueueStore::crash_after_rollout_flush(
+            LocalQueueStore::new(Arc::clone(&runtime)),
+        ));
+    let crashing = QueuedItemService::new(
+        crash_queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let input = structured_user_input("rollout durable before DB CAS");
+    let TurnInput::UserInput { content, .. } = &input else {
+        unreachable!("test input is user input");
+    };
+    let digest = user_input_payload_sha256(content)?;
+    let admitted = crashing
+        .reconcile(
+            thread_id,
+            test.codex.rollout_path(),
+            input,
+            digest,
+            QueueReconcileMode::AllowIfAbsent,
+        )
+        .await?;
+    let QueueReconcileOutcome::Queued { item, .. } = admitted.outcome else {
+        anyhow::bail!("exact Matrix input was not queued");
+    };
+
+    let error = crashing
+        .start(test.codex.as_ref(), Some(item.id.clone()), None)
+        .await
+        .expect_err("fault must interrupt after Core persisted admission");
+    assert!(
+        matches!(
+            error,
+            QueueServiceError::Storage(ThreadStoreError::Internal { .. })
+        ),
+        "unexpected crash-window error: {error:?}"
+    );
+    wait_for_event_match(test.codex.as_ref(), |event| {
+        matches!(event, EventMsg::TurnComplete(_)).then_some(())
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let restarted_runtime =
+        StateRuntime::init(runtime.sqlite().clone(), "test-provider".to_string()).await?;
+    let restarted = QueuedItemService::new(
+        Arc::new(LocalQueueStore::new(restarted_runtime)),
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
+    let recovered = restarted
+        .start(test.codex.as_ref(), Some(item.id), None)
+        .await?;
+    assert!(matches!(recovered, StartIfIdleSubmission::Started { .. }));
+    assert!(restarted.list(thread_id).await?.is_empty());
+    assert_eq!(1, response.requests().len());
+    assert_eq!(
+        1,
+        persisted_client_message_count(test.codex.as_ref(), "stable-client-message").await?
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn exact_reconcile_rejects_expected_digest_drift_without_a_row() -> anyhow::Result<()> {
+    let (queue, _home) = test_queue().await?;
+    let service = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let thread_id = ThreadId::new();
+
+    let error = service
+        .reconcile(
+            thread_id,
+            None,
+            structured_user_input("Matrix event"),
+            "0".repeat(64),
+            QueueReconcileMode::AllowIfAbsent,
+        )
+        .await
+        .expect_err("caller digest drift must fail before reservation");
+    assert!(matches!(
+        error,
+        QueueServiceError::ClientIdPayloadConflict { .. }
+    ));
+    assert!(service.list(thread_id).await?.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn raw_queue_store_enqueue_cannot_bypass_reconcile_reservation() -> anyhow::Result<()> {
+    let (queue, _home) = test_queue().await?;
+    let thread_id = ThreadId::new();
+    let input = structured_user_input("Matrix event");
+    let TurnInput::UserInput { content, .. } = &input else {
+        unreachable!("test input is user input");
+    };
+    let digest = user_input_payload_sha256(content)?;
+    let payload = serde_json::to_string(&input)?;
+    assert!(matches!(
+        queue
+            .reserve_client_binding(
+                thread_id,
+                "stable-client-message".to_string(),
+                digest,
+                payload.clone(),
+            )
+            .await?,
+        QueuedClientBindingReserveOutcome::Reserved(_)
+    ));
+
+    let error = queue
+        .enqueue(thread_id, payload)
+        .await
+        .expect_err("raw trait enqueue must observe the reservation");
+    assert!(matches!(error, ThreadStoreError::Conflict { .. }));
+    assert!(queue.list_page(thread_id, 0, 1).await?.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn exact_reconcile_conflicting_payload_fails_before_second_admission() -> anyhow::Result<()> {
+    let (queue, _home) = test_queue().await?;
+    let service = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let thread_id = ThreadId::new();
+    let first = structured_user_input("first Matrix payload");
+    let TurnInput::UserInput { content, .. } = &first else {
+        unreachable!("test input is user input");
+    };
+    let first_digest = user_input_payload_sha256(content)?;
+    service
+        .reconcile(
+            thread_id,
+            None,
+            first,
+            first_digest,
+            QueueReconcileMode::AllowIfAbsent,
+        )
+        .await?;
+
+    let conflicting = structured_user_input("different Matrix payload");
+    let TurnInput::UserInput { content, .. } = &conflicting else {
+        unreachable!("test input is user input");
+    };
+    let conflicting_digest = user_input_payload_sha256(content)?;
+    let error = service
+        .reconcile(
+            thread_id,
+            None,
+            conflicting,
+            conflicting_digest,
+            QueueReconcileMode::AllowIfAbsent,
+        )
+        .await
+        .expect_err("same client id cannot bind different content");
+    assert!(matches!(
+        error,
+        QueueServiceError::Storage(ThreadStoreError::Conflict { .. })
+    ));
+    assert_eq!(1, service.list(thread_id).await?.len());
+    Ok(())
+}
+
+#[tokio::test]
 async fn capacity_rejection_preserves_the_admitted_client_identity() -> anyhow::Result<()> {
     let (queue, _home) = test_queue_with_capacity(NonZeroUsize::new(1).expect("non-zero")).await?;
     let service = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
@@ -450,7 +1458,11 @@ async fn starting_a_selected_item_preserves_the_remaining_queue() -> anyhow::Res
     let test = test_codex().build_with_auto_env(&server).await?;
     let thread_id = test.session_configured.thread_id;
     let queue = loaded_thread_queue(&test)?;
-    let service = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let service = QueuedItemService::new(
+        queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
     let first = service.enqueue(thread_id, user_input("first")).await?;
     let second = service
         .enqueue(thread_id, structured_user_input("second"))
@@ -491,6 +1503,7 @@ async fn persisted_admission_reconciles_compressed_rollout() -> anyhow::Result<(
     let response =
         responses::mount_sse_once(&server, responses::sse_completed("durable-turn")).await;
     let test = test_codex()
+        .with_history_mode(ThreadHistoryMode::Paginated)
         .with_config(|config| config.include_environment_context = false)
         .build_with_auto_env(&server)
         .await?;
@@ -500,7 +1513,7 @@ async fn persisted_admission_reconciles_compressed_rollout() -> anyhow::Result<(
         Arc::new(FailDeleteOnceQueueStore::new(LocalQueueStore::new(runtime)));
     let service = QueuedItemService::new(
         Arc::clone(&queue),
-        Weak::new(),
+        Arc::downgrade(&test.thread_manager),
         Arc::new(NoopExtensionEventSink),
     );
     let queued = service
@@ -544,7 +1557,11 @@ async fn persisted_admission_reconciles_compressed_rollout() -> anyhow::Result<(
     // A new service instance models restart after Core persisted the message
     // but the old process died before queue deletion. Reconciliation must use
     // the compressed representation without loading the whole rollout.
-    let restarted = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let restarted = QueuedItemService::new(
+        queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
     let replay = restarted
         .start(test.codex.as_ref(), Some(queued.id), /*trace*/ None)
         .await?;
@@ -574,7 +1591,7 @@ async fn persisted_client_id_with_conflicting_payload_fails_closed_from_compress
         Arc::new(FailDeleteOnceQueueStore::new(LocalQueueStore::new(runtime)));
     let service = QueuedItemService::new(
         Arc::clone(&queue),
-        Weak::new(),
+        Arc::downgrade(&test.thread_manager),
         Arc::new(NoopExtensionEventSink),
     );
     let queued = service
@@ -615,7 +1632,11 @@ async fn persisted_client_id_with_conflicting_payload_fails_closed_from_compress
     )?;
     fs::remove_file(&rollout_path)?;
 
-    let restarted = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let restarted = QueuedItemService::new(
+        queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
     let error = restarted
         .start(
             test.codex.as_ref(),
@@ -653,7 +1674,7 @@ async fn legacy_client_id_without_payload_digest_is_readable_but_cannot_join() -
         Arc::new(FailDeleteOnceQueueStore::new(LocalQueueStore::new(runtime)));
     let service = QueuedItemService::new(
         Arc::clone(&queue),
-        Weak::new(),
+        Arc::downgrade(&test.thread_manager),
         Arc::new(NoopExtensionEventSink),
     );
     let queued = service
@@ -694,7 +1715,11 @@ async fn legacy_client_id_without_payload_digest_is_readable_but_cannot_join() -
     );
     fs::write(&rollout_path, format!("{}\n", rewritten.join("\n")))?;
 
-    let cold_reader = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let cold_reader = QueuedItemService::new(
+        queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
     let error = cold_reader
         .start(
             test.codex.as_ref(),
@@ -732,7 +1757,7 @@ async fn exact_and_legacy_bindings_for_the_same_turn_join_once() -> anyhow::Resu
         Arc::new(FailDeleteOnceQueueStore::new(LocalQueueStore::new(runtime)));
     let service = QueuedItemService::new(
         Arc::clone(&queue),
-        Weak::new(),
+        Arc::downgrade(&test.thread_manager),
         Arc::new(NoopExtensionEventSink),
     );
     let queued = service
@@ -786,7 +1811,11 @@ async fn exact_and_legacy_bindings_for_the_same_turn_join_once() -> anyhow::Resu
     let turn_id = exact_turn_id.context("paginated exact user-message binding unavailable")?;
     fs::write(&rollout_path, format!("{}\n", rewritten.join("\n")))?;
 
-    let cold_reader = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let cold_reader = QueuedItemService::new(
+        queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
     let joined = cold_reader
         .start(test.codex.as_ref(), Some(queued.id), /*trace*/ None)
         .await?;
@@ -811,6 +1840,7 @@ async fn same_client_id_bound_to_two_turns_is_ambiguous_and_fails_closed() -> an
     )
     .await;
     let test = test_codex()
+        .with_history_mode(ThreadHistoryMode::Paginated)
         .with_config(|config| config.include_environment_context = false)
         .build_with_auto_env(&server)
         .await?;
@@ -844,7 +1874,7 @@ async fn same_client_id_bound_to_two_turns_is_ambiguous_and_fails_closed() -> an
     let thread_id = test.session_configured.thread_id;
     let service = QueuedItemService::new(
         loaded_thread_queue(&test)?,
-        Weak::new(),
+        Arc::downgrade(&test.thread_manager),
         Arc::new(NoopExtensionEventSink),
     );
     let queued = service
@@ -890,7 +1920,11 @@ async fn corrupt_rollout_blocks_queue_replay_and_preserves_the_item() -> anyhow:
     fs::write(&rollout_path, rollout)?;
 
     let queue = loaded_thread_queue(&test)?;
-    let service = QueuedItemService::new(queue, Weak::new(), Arc::new(NoopExtensionEventSink));
+    let service = QueuedItemService::new(
+        queue,
+        Arc::downgrade(&test.thread_manager),
+        Arc::new(NoopExtensionEventSink),
+    );
     let queued = service
         .enqueue(
             test.session_configured.thread_id,
@@ -927,6 +1961,7 @@ async fn duplicate_queued_client_ids_dispatch_to_core_once() -> anyhow::Result<(
     let response =
         responses::mount_sse_once(&server, responses::sse_completed("single-turn")).await;
     let test = test_codex()
+        .with_history_mode(ThreadHistoryMode::Paginated)
         .with_config(|config| config.include_environment_context = false)
         .build_with_auto_env(&server)
         .await?;
@@ -934,7 +1969,7 @@ async fn duplicate_queued_client_ids_dispatch_to_core_once() -> anyhow::Result<(
     let queue = loaded_thread_queue(&test)?;
     let staging = QueuedItemService::new(
         Arc::clone(&queue),
-        Weak::new(),
+        Arc::downgrade(&test.thread_manager),
         Arc::new(NoopExtensionEventSink),
     );
     staging
@@ -978,7 +2013,7 @@ async fn conflicting_queued_client_ids_fail_closed_before_core_submission() -> a
     let queue = loaded_thread_queue(&test)?;
     let staging = QueuedItemService::new(
         Arc::clone(&queue),
-        Weak::new(),
+        Arc::downgrade(&test.thread_manager),
         Arc::new(NoopExtensionEventSink),
     );
     let first = staging
@@ -1033,7 +2068,7 @@ async fn starting_a_selected_item_while_active_leaves_it_queued() -> anyhow::Res
     let thread_id = test.session_configured.thread_id;
     let service = QueuedItemService::new(
         loaded_thread_queue(&test)?,
-        Weak::new(),
+        Arc::downgrade(&test.thread_manager),
         Arc::new(NoopExtensionEventSink),
     );
     let queued = service
@@ -1372,7 +2407,7 @@ async fn explicitly_started_rejected_queue_messages_remain_durable() -> anyhow::
     let thread_id = test.session_configured.thread_id;
     let queue = QueuedItemService::new(
         loaded_thread_queue(&test)?,
-        Weak::new(),
+        Arc::downgrade(&test.thread_manager),
         Arc::new(NoopExtensionEventSink),
     );
 

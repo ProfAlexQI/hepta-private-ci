@@ -63,10 +63,10 @@ pub enum SupervisordRequestValidationError {
     InvalidRequest,
 }
 
-/// The owner-local socket retains administrator lifecycle controls, while the
-/// Robrix surface exposes only drain/restart/upgrade/rollback. Every mutation,
-/// including administrator-only start/stop/kill, carries the same atomic CAS
-/// fence.
+/// The owner-local administrator socket retains lifecycle controls. Robrix
+/// uses the separate read-only projection in `robrix_protocol`, which exposes
+/// only health, roster, and snapshot requests. Every administrator mutation
+/// carries the same atomic CAS fence.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SupervisordMethod {
@@ -449,7 +449,7 @@ mod tests {
         assert_eq!(
             encoded,
             format!(
-                r#"{{"schema_version":2,"request_id":43,"payload":{{"type":"mutation_accepted","operation":"restart","accepted_state_digest":"{DIGEST}","agent":{{"agent_id":"{AGENT_ID}","lifecycle":"running","lifecycle_generation":7,"active":true,"healthy":true,"process_id":1234,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"control_fence":{{"agent_id":"{AGENT_ID}","supervisor_epoch":"{EPOCH}","lifecycle":"running","lifecycle_generation":7,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"state_digest":"{DIGEST}"}},"matrix":{{"configured":true,"active":true,"healthy":true,"degraded":false,"process_id":4321,"attached_agent_generation":7,"binding_revision":11,"restart_attempt":0,"last_error":null}}}}}}}}"#
+                r#"{{"schema_version":2,"request_id":43,"payload":{{"type":"mutation_accepted","operation":"restart","accepted_state_digest":"{DIGEST}","agent":{{"agent_id":"{AGENT_ID}","lifecycle":"running","lifecycle_generation":7,"active":true,"healthy":true,"process_id":1234,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"control_fence":{{"agent_id":"{AGENT_ID}","supervisor_epoch":"{EPOCH}","lifecycle":"running","lifecycle_generation":7,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"state_digest":"{DIGEST}"}},"matrix":{{"configured":true,"active":true,"healthy":true,"degraded":false,"process_id":4321,"attached_agent_generation":5,"binding_revision":11,"restart_attempt":0,"last_error":null}}}}}}}}"#
             )
         );
         assert!(!encoded.contains("program"));
@@ -472,7 +472,7 @@ mod tests {
         assert_eq!(
             encoded,
             format!(
-                r#"{{"schema_version":2,"request_id":44,"payload":{{"type":"error","code":"stale_control_fence","message":"selected Agent changed; refresh before retry","actual":{{"agent_id":"{AGENT_ID}","lifecycle":"running","lifecycle_generation":7,"active":true,"healthy":true,"process_id":1234,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"control_fence":{{"agent_id":"{AGENT_ID}","supervisor_epoch":"{EPOCH}","lifecycle":"running","lifecycle_generation":7,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"state_digest":"{DIGEST}"}},"matrix":{{"configured":true,"active":true,"healthy":true,"degraded":false,"process_id":4321,"attached_agent_generation":7,"binding_revision":11,"restart_attempt":0,"last_error":null}}}}}}}}"#
+                r#"{{"schema_version":2,"request_id":44,"payload":{{"type":"error","code":"stale_control_fence","message":"selected Agent changed; refresh before retry","actual":{{"agent_id":"{AGENT_ID}","lifecycle":"running","lifecycle_generation":7,"active":true,"healthy":true,"process_id":1234,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"control_fence":{{"agent_id":"{AGENT_ID}","supervisor_epoch":"{EPOCH}","lifecycle":"running","lifecycle_generation":7,"spawn_generation":5,"runtime_generation":7,"current_release":"agentd-v1","previous_release":null,"release_change_pending":false,"state_digest":"{DIGEST}"}},"matrix":{{"configured":true,"active":true,"healthy":true,"degraded":false,"process_id":4321,"attached_agent_generation":5,"binding_revision":11,"restart_attempt":0,"last_error":null}}}}}}}}"#
             )
         );
         assert!(!encoded.contains("program"));
@@ -574,7 +574,7 @@ mod tests {
                 healthy: true,
                 degraded: false,
                 process_id: Some(4321),
-                attached_agent_generation: Some(7),
+                attached_agent_generation: Some(5),
                 binding_revision: Some(11),
                 restart_attempt: 0,
                 last_error: None,

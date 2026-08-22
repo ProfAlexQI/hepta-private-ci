@@ -27,6 +27,8 @@ pub const MAX_MATRIXD_EVENT_BATCH: u16 = 256;
 pub const MAX_PENDING_APPROVALS: usize = 256;
 pub const MAX_PENDING_APPROVAL_SUMMARY_BYTES: usize = 1_024;
 pub const MAX_RUNTIME_IDENTIFIER_BYTES: usize = 512;
+pub const MAX_MATRIXD_ERROR_CODE_BYTES: usize = 64;
+pub const MAX_MATRIXD_ERROR_MESSAGE_BYTES: usize = 1_024;
 const MAX_MATRIX_IDENTIFIER_BYTES: usize = 255;
 const MAX_MATRIX_BINDING_ENTRIES: usize = 256;
 const CLIENT_MESSAGE_ID_DOMAIN: &[u8] = b"hepta.matrix.client-user-message.v1";
@@ -373,6 +375,9 @@ impl MatrixdFence {
                 "Matrix fence generations, revision, and epoch must be non-zero".to_string(),
             ));
         }
+        Sha256Digest::parse(self.binding_digest.as_str().to_string()).map_err(|error| {
+            MatrixProtocolError::Invalid(format!("Matrix binding digest is invalid: {error}"))
+        })?;
         validate_runtime_identifier(&self.process_incarnation, "Matrix process incarnation")?;
         Ok(())
     }
@@ -548,9 +553,11 @@ impl MatrixdResponse {
         validate_runtime_identifier(&self.release_id, "Matrix release ID")?;
         self.fence().validate()?;
         match &self.payload {
+            MatrixdPayload::Health(health) => health.validate(),
             MatrixdPayload::Snapshot(snapshot) => snapshot.validate(),
             MatrixdPayload::Events(events) => events.validate_shape(),
-            _ => Ok(()),
+            MatrixdPayload::Error { code, message } => validate_error(code, message),
+            MatrixdPayload::Accepted => Ok(()),
         }
     }
 }
@@ -584,6 +591,17 @@ pub struct MatrixdHealth {
     pub agentd_connected: bool,
     pub matrix_sync_connected: bool,
     pub fenced: bool,
+}
+
+impl MatrixdHealth {
+    pub fn validate(&self) -> Result<(), MatrixProtocolError> {
+        if self.process_id == 0 || self.fenced != (self.lifecycle == MatrixdLifecycle::Fenced) {
+            return Err(MatrixProtocolError::Invalid(
+                "Matrix health lifecycle and fence state are inconsistent".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -705,6 +723,11 @@ impl MatrixdEventBatch {
             ));
         }
         for event in &self.events {
+            if event.cursor == 0 {
+                return Err(MatrixProtocolError::Invalid(
+                    "Matrix event cursor must be non-zero".to_string(),
+                ));
+            }
             match &event.kind {
                 MatrixdEventKind::TurnStarted { thread_id, turn_id }
                 | MatrixdEventKind::TurnCompleted { thread_id, turn_id } => {
@@ -716,7 +739,12 @@ impl MatrixdEventBatch {
                     validate_runtime_identifier(approval_key, "Matrix approval key")?;
                 }
                 MatrixdEventKind::ResyncRequired { reason_code } => {
-                    validate_runtime_identifier(reason_code, "Matrix resync reason code")?;
+                    validate_error_code(reason_code, "Matrix resync reason code")?;
+                }
+                MatrixdEventKind::AgentConnection { generation, .. } if *generation == 0 => {
+                    return Err(MatrixProtocolError::Invalid(
+                        "Matrix Agent connection generation must be non-zero".to_string(),
+                    ));
                 }
                 MatrixdEventKind::Lifecycle { .. }
                 | MatrixdEventKind::AgentConnection { .. }
@@ -771,6 +799,7 @@ fn validate_runtime_identifier(value: &str, label: &str) -> Result<(), MatrixPro
         || value.len() > MAX_RUNTIME_IDENTIFIER_BYTES
         || value.chars().any(char::is_control)
         || value.chars().any(char::is_whitespace)
+        || value.chars().any(is_forbidden_directional_character)
     {
         return Err(MatrixProtocolError::Invalid(format!(
             "{label} must contain 1..={MAX_RUNTIME_IDENTIFIER_BYTES} non-control, non-whitespace bytes"
@@ -780,14 +809,44 @@ fn validate_runtime_identifier(value: &str, label: &str) -> Result<(), MatrixPro
 }
 
 fn is_forbidden_summary_character(character: char) -> bool {
-    character.is_control()
-        || matches!(
-            character,
-            '\u{061c}'
-                | '\u{200e}'..='\u{200f}'
-                | '\u{202a}'..='\u{202e}'
-                | '\u{2066}'..='\u{2069}'
-        )
+    character.is_control() || is_forbidden_directional_character(character)
+}
+
+fn is_forbidden_directional_character(character: char) -> bool {
+    matches!(
+        character,
+        '\u{061c}'
+            | '\u{200e}'..='\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2066}'..='\u{2069}'
+    )
+}
+
+fn validate_error(code: &str, message: &str) -> Result<(), MatrixProtocolError> {
+    validate_error_code(code, "Matrix error code")?;
+    if message.is_empty()
+        || message.len() > MAX_MATRIXD_ERROR_MESSAGE_BYTES
+        || message.chars().any(is_forbidden_summary_character)
+    {
+        return Err(MatrixProtocolError::Invalid(
+            "Matrix error message must be bounded safe UTF-8".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_error_code(value: &str, label: &str) -> Result<(), MatrixProtocolError> {
+    if value.is_empty()
+        || value.len() > MAX_MATRIXD_ERROR_CODE_BYTES
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+    {
+        return Err(MatrixProtocolError::Invalid(format!(
+            "{label} must contain 1..={MAX_MATRIXD_ERROR_CODE_BYTES} lowercase ASCII letters, digits, or underscores"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_unique_bounded<T: Ord + Clone>(
@@ -856,6 +915,22 @@ mod tests {
         }
     }
 
+    fn response(payload: MatrixdPayload) -> MatrixdResponse {
+        let fence = fence();
+        MatrixdResponse {
+            schema_version: MATRIXD_CONTROL_SCHEMA_VERSION,
+            request_id: 1,
+            agent_id: agent_id(),
+            release_id: "release-7".to_string(),
+            binding_revision: fence.binding_revision,
+            binding_digest: fence.binding_digest,
+            attached_agent_generation: fence.attached_agent_generation,
+            process_incarnation: fence.process_incarnation,
+            plane_epoch: fence.plane_epoch,
+            payload,
+        }
+    }
+
     #[test]
     fn binding_is_exact_unique_and_secret_free() {
         let binding = MatrixBindingV1 {
@@ -913,6 +988,12 @@ mod tests {
             serde_json::from_slice::<MatrixdRequest>(&bytes).expect("parse request"),
             request
         );
+
+        let mut malformed = serde_json::to_value(&request).expect("request value");
+        malformed["fence"]["binding_digest"] = serde_json::json!("bad");
+        let malformed =
+            serde_json::from_value::<MatrixdRequest>(malformed).expect("transparent digest parses");
+        assert!(malformed.validate().is_err());
     }
 
     #[test]
@@ -957,6 +1038,72 @@ mod tests {
         validate_runtime_identifier(&long_runtime_id, "runtime").expect("runtime ID");
         assert!(MatrixDeviceId::parse(long_runtime_id).is_err());
         assert!(validate_runtime_identifier(&"x".repeat(513), "runtime").is_err());
+        assert!(validate_runtime_identifier("spoof\u{202e}txt", "runtime").is_err());
+        assert!(validate_runtime_identifier("spoof\u{2066}txt", "runtime").is_err());
+    }
+
+    #[test]
+    fn response_payload_semantics_are_fail_closed() {
+        let mut health = MatrixdHealth {
+            lifecycle: MatrixdLifecycle::Ready,
+            process_id: 7,
+            agentd_connected: true,
+            matrix_sync_connected: true,
+            fenced: false,
+        };
+        response(MatrixdPayload::Health(health.clone()))
+            .validate()
+            .expect("coherent health");
+        health.process_id = 0;
+        assert!(
+            response(MatrixdPayload::Health(health.clone()))
+                .validate()
+                .is_err()
+        );
+        health.process_id = 7;
+        health.fenced = true;
+        assert!(response(MatrixdPayload::Health(health)).validate().is_err());
+
+        assert!(
+            response(MatrixdPayload::Error {
+                code: "Stale-Fence".to_string(),
+                message: "safe message".to_string(),
+            })
+            .validate()
+            .is_err()
+        );
+        assert!(
+            response(MatrixdPayload::Error {
+                code: "stale_fence".to_string(),
+                message: "spoof\u{202e}txt".to_string(),
+            })
+            .validate()
+            .is_err()
+        );
+
+        let events = |kind| {
+            MatrixdPayload::Events(MatrixdEventBatch {
+                events: vec![MatrixdEvent { cursor: 1, kind }],
+                gap: false,
+                next_cursor: 1,
+                latest_cursor: 1,
+            })
+        };
+        assert!(
+            response(events(MatrixdEventKind::AgentConnection {
+                connected: true,
+                generation: 0,
+            }))
+            .validate()
+            .is_err()
+        );
+        assert!(
+            response(events(MatrixdEventKind::ResyncRequired {
+                reason_code: "Unsafe-Reason".to_string(),
+            }))
+            .validate()
+            .is_err()
+        );
     }
 
     #[test]

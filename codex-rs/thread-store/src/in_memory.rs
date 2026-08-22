@@ -858,6 +858,10 @@ impl ThreadStore for InMemoryThreadStore {
         Box::pin(InMemoryThreadStore::resume_thread(self, params))
     }
 
+    fn is_thread_hard_delete_fenced(&self, _thread_id: ThreadId) -> ThreadStoreFuture<'_, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
     fn append_items(&self, params: AppendThreadItemsParams) -> ThreadStoreFuture<'_, ()> {
         Box::pin(InMemoryThreadStore::append_items(self, params))
     }

@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
 use std::sync::Weak;
 use std::time::Duration;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use codex_core::CodexThread;
 use codex_core::StartIfIdleSubmission;
@@ -33,6 +37,12 @@ use codex_protocol::user_input::user_input_payload_sha256;
 use codex_rollout::open_rollout_line_reader;
 use codex_thread_store::MAX_QUEUE_ITEMS;
 use codex_thread_store::QueueStore;
+use codex_thread_store::QueuedClientBindingFinalizeMode;
+use codex_thread_store::QueuedClientBindingFinalizeOutcome;
+use codex_thread_store::QueuedClientBindingReserveOutcome;
+use codex_thread_store::QueuedClientDispatchClaimOutcome;
+use codex_thread_store::QueuedClientDispatchLease;
+use codex_thread_store::QueuedClientDispatchLock;
 use codex_thread_store::QueuedUserSubmissionRecord;
 use codex_thread_store::ThreadStoreError;
 use thiserror::Error;
@@ -41,11 +51,39 @@ use tokio::sync::OwnedMutexGuard;
 use tokio::sync::broadcast::error::TryRecvError;
 use uuid::Uuid;
 
+const DISPATCH_LEASE_DURATION_MS: i64 = 30_000;
+const UNCERTAIN_DISPATCH_POLL_MS: u64 = 20;
+
 /// One user message waiting to start on its thread.
 #[derive(Clone, Debug, PartialEq)]
 pub struct QueuedItem {
     pub id: String,
     pub input: TurnInput,
+}
+
+/// Whether an exact reconciliation may create a row when neither the durable
+/// queue nor the rollout contains the client-message identity.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QueueReconcileMode {
+    AllowIfAbsent,
+    ReconcileOnly,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+#[allow(clippy::large_enum_variant)]
+pub enum QueueReconcileOutcome {
+    Queued { item: QueuedItem, created: bool },
+    Persisted { turn_id: String },
+    Missing,
+    Cancelled,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct QueueReconcileResponse {
+    pub client_user_message_id: String,
+    /// Authoritative digest recomputed from the normalized server-side input.
+    pub payload_sha256: String,
+    pub outcome: QueueReconcileOutcome,
 }
 
 #[derive(Debug, Error)]
@@ -60,6 +98,10 @@ pub enum QueueServiceError {
     CoreSubmissionError(#[from] CodexErr),
     #[error("only user input can be added to the user-message queue")]
     InvalidInput,
+    #[error("thread/queue/reconcile accepts Matrix text input only")]
+    ReconcileRequiresTextInput,
+    #[error("exact client message `{client_id}` already has a live dispatch owner")]
+    DispatchInProgress { client_id: String },
     #[error(
         "queued client id `{client_id}` is already bound to a different payload ({expected_sha256} != {actual_sha256})"
     )]
@@ -87,6 +129,23 @@ pub struct QueuedItemService {
     event_sink: Arc<dyn ExtensionEventSink>,
     dispatch_locks: Arc<StdMutex<HashMap<ThreadId, Weak<Mutex<()>>>>>,
     resumed_threads: Arc<StdMutex<HashSet<ThreadId>>>,
+    dispatch_owner_id: String,
+}
+
+struct OwnedDispatchRequest {
+    input: TurnInput,
+    trace: Option<W3cTraceContext>,
+    client_id: String,
+    payload_sha256: String,
+}
+
+/// Process-local authority that must outlive every potentially-routed Core
+/// admission attempt. Potentially panicking work runs in monitored child
+/// tasks; this value stays in their owner task and is transferred to the
+/// settlement guardian if a child unwinds.
+struct OwnedDispatchAuthority {
+    process_lock: QueuedClientDispatchLock,
+    lease: QueuedClientDispatchLease,
 }
 
 impl QueuedItemService {
@@ -101,6 +160,7 @@ impl QueuedItemService {
             event_sink,
             dispatch_locks: Arc::new(StdMutex::new(HashMap::new())),
             resumed_threads: Arc::new(StdMutex::new(HashSet::new())),
+            dispatch_owner_id: Uuid::now_v7().to_string(),
         }
     }
 
@@ -286,15 +346,198 @@ impl QueuedItemService {
         input: TurnInput,
     ) -> Result<QueuedItem, QueueServiceError> {
         let input = prepare_queued_user_input(input).await?;
+        let client_id = queued_client_id(&input)?.to_string();
+        let payload_sha256 = queued_payload_sha256(&input)?;
         let payload = serde_json::to_string(&input)?;
         let item = {
             let _dispatch_guard = self.dispatch_guard(thread_id).await;
-            let item = queued_item_from_record(self.queue.enqueue(thread_id, payload).await?)?;
+            let item = queued_item_from_record(
+                self.queue
+                    .enqueue_guarded(thread_id, payload, client_id, payload_sha256)
+                    .await?,
+            )?;
             self.emit_changed(thread_id);
             item
         };
         self.wake_if_loaded(thread_id).await;
         Ok(item)
+    }
+
+    /// Atomically reconcile or admit one exact client-message binding.
+    ///
+    /// SQLite reservation is the cross-process serialization point. The exact
+    /// rollout is scanned outside the writer lock, then a CAS finalization
+    /// either records the persisted turn or creates/adopts one queue row.
+    pub async fn reconcile(
+        &self,
+        thread_id: ThreadId,
+        rollout_path: Option<PathBuf>,
+        input: TurnInput,
+        expected_payload_sha256: String,
+        mode: QueueReconcileMode,
+    ) -> Result<QueueReconcileResponse, QueueServiceError> {
+        let TurnInput::UserInput { content, .. } = &input else {
+            return Err(QueueServiceError::InvalidInput);
+        };
+        if content.is_empty()
+            || !content
+                .iter()
+                .all(|item| matches!(item, UserInput::Text { .. }))
+        {
+            return Err(QueueServiceError::ReconcileRequiresTextInput);
+        }
+        let input = prepare_queued_user_input(input).await?;
+        let client_id = queued_client_id(&input)?.to_string();
+        let payload_sha256 = queued_payload_sha256(&input)?;
+        ensure_payload_digest_matches(&client_id, &expected_payload_sha256, &payload_sha256)?;
+        let payload = serde_json::to_string(&input)?;
+        let response_client_id = client_id.clone();
+        let response_payload_sha256 = payload_sha256.clone();
+        let dispatch_guard = self.dispatch_guard(thread_id).await;
+
+        let reservation = self
+            .queue
+            .reserve_client_binding(
+                thread_id,
+                client_id.clone(),
+                payload_sha256.clone(),
+                payload.clone(),
+            )
+            .await?;
+        let outcome = match reservation {
+            QueuedClientBindingReserveOutcome::Persisted { turn_id } => {
+                QueueReconcileOutcome::Persisted { turn_id }
+            }
+            QueuedClientBindingReserveOutcome::Cancelled => {
+                if let Some(turn_id) = persisted_turn_for_client_id_path(
+                    rollout_path.as_deref(),
+                    &client_id,
+                    &payload_sha256,
+                )
+                .await?
+                {
+                    let bound = self
+                        .queue
+                        .mark_client_binding_persisted(
+                            thread_id,
+                            client_id,
+                            payload_sha256,
+                            String::new(),
+                            turn_id.clone(),
+                        )
+                        .await?;
+                    if !bound {
+                        return Err(ThreadStoreError::Internal {
+                            message:
+                                "cancelled exact binding disappeared during rollout reconciliation"
+                                    .to_string(),
+                        }
+                        .into());
+                    }
+                    self.emit_changed(thread_id);
+                    QueueReconcileOutcome::Persisted { turn_id }
+                } else {
+                    QueueReconcileOutcome::Cancelled
+                }
+            }
+            QueuedClientBindingReserveOutcome::Queued(record) => {
+                if let Some(turn_id) = persisted_turn_for_client_id_path(
+                    rollout_path.as_deref(),
+                    &client_id,
+                    &payload_sha256,
+                )
+                .await?
+                {
+                    let bound = self
+                        .queue
+                        .mark_client_binding_persisted(
+                            thread_id,
+                            client_id,
+                            payload_sha256,
+                            record.id,
+                            turn_id.clone(),
+                        )
+                        .await?;
+                    if !bound {
+                        return Err(ThreadStoreError::Internal {
+                            message: "exact queue binding disappeared during reconciliation"
+                                .to_string(),
+                        }
+                        .into());
+                    }
+                    self.emit_changed(thread_id);
+                    QueueReconcileOutcome::Persisted { turn_id }
+                } else {
+                    QueueReconcileOutcome::Queued {
+                        item: queued_item_from_record(record)?,
+                        created: false,
+                    }
+                }
+            }
+            QueuedClientBindingReserveOutcome::Dispatching(record) => {
+                QueueReconcileOutcome::Queued {
+                    item: queued_item_from_record(record)?,
+                    created: false,
+                }
+            }
+            QueuedClientBindingReserveOutcome::Reserved(lease) => {
+                let observed_turn_id = persisted_turn_for_client_id_path(
+                    rollout_path.as_deref(),
+                    &client_id,
+                    &payload_sha256,
+                )
+                .await?;
+                let finalize_mode = match mode {
+                    QueueReconcileMode::AllowIfAbsent => {
+                        QueuedClientBindingFinalizeMode::AllowIfAbsent
+                    }
+                    QueueReconcileMode::ReconcileOnly => {
+                        QueuedClientBindingFinalizeMode::ReconcileOnly
+                    }
+                };
+                match self
+                    .queue
+                    .finalize_client_binding(
+                        thread_id,
+                        client_id,
+                        payload_sha256,
+                        payload,
+                        lease,
+                        finalize_mode,
+                        observed_turn_id,
+                    )
+                    .await?
+                {
+                    QueuedClientBindingFinalizeOutcome::Queued { record, created } => {
+                        self.emit_changed(thread_id);
+                        QueueReconcileOutcome::Queued {
+                            item: queued_item_from_record(record)?,
+                            created,
+                        }
+                    }
+                    QueuedClientBindingFinalizeOutcome::Persisted { turn_id } => {
+                        // Finalization may have adopted and deleted a legacy
+                        // queue row in the same transaction. Conservatively
+                        // publish the durable queue revision for subscribers.
+                        self.emit_changed(thread_id);
+                        QueueReconcileOutcome::Persisted { turn_id }
+                    }
+                    QueuedClientBindingFinalizeOutcome::Missing => QueueReconcileOutcome::Missing,
+                    QueuedClientBindingFinalizeOutcome::Cancelled => {
+                        QueueReconcileOutcome::Cancelled
+                    }
+                }
+            }
+        };
+        drop(dispatch_guard);
+        if matches!(outcome, QueueReconcileOutcome::Queued { .. }) {
+            self.wake_if_loaded(thread_id).await;
+        }
+        Ok(QueueReconcileResponse {
+            client_user_message_id: response_client_id,
+            payload_sha256: response_payload_sha256,
+            outcome,
+        })
     }
 
     pub async fn list(&self, thread_id: ThreadId) -> Result<Vec<QueuedItem>, QueueServiceError> {
@@ -406,14 +649,400 @@ impl QueuedItemService {
         let input @ TurnInput::UserInput { .. } = item.input else {
             return Err(QueueServiceError::InvalidInput);
         };
-        let client_id = queued_client_id(&input)?;
+        let manager = self.thread_manager.upgrade().ok_or_else(|| {
+            QueueServiceError::Storage(ThreadStoreError::Internal {
+                message: "queue dispatch lost its loaded-thread manager".to_string(),
+            })
+        })?;
+        let owned_thread = manager.get_thread(thread_id).await?;
+        self.dispatch_one(owned_thread, queued_item_id, input, trace)
+            .await
+    }
+
+    async fn dispatch_one(
+        &self,
+        thread: Arc<CodexThread>,
+        queued_item_id: String,
+        input: TurnInput,
+        trace: Option<W3cTraceContext>,
+    ) -> Result<StartIfIdleSubmission, QueueServiceError> {
+        let thread_id = thread.session_configured().thread_id;
+        let client_id = queued_client_id(&input)?.to_string();
         let payload_sha256 = queued_payload_sha256(&input)?;
-        self.ensure_queue_payload_binding(thread_id, &queued_item_id, client_id, &payload_sha256)
+        self.ensure_queue_payload_binding(thread_id, &queued_item_id, &client_id, &payload_sha256)
             .await?;
+
+        let process_lock = self
+            .queue
+            .try_acquire_client_dispatch_lock(thread_id, client_id.clone(), payload_sha256.clone())?
+            .ok_or_else(|| QueueServiceError::DispatchInProgress {
+                client_id: client_id.clone(),
+            })?;
+        let (now_ms, lease_expires_at_ms) = dispatch_window()?;
+        let claim = self
+            .queue
+            .claim_client_binding_dispatch(
+                &process_lock,
+                queued_item_id.clone(),
+                self.dispatch_owner_id.clone(),
+                now_ms,
+                lease_expires_at_ms,
+            )
+            .await?;
+
+        let lease = match claim {
+            QueuedClientDispatchClaimOutcome::Unbound => {
+                return self
+                    .dispatch_unbound(
+                        thread.as_ref(),
+                        queued_item_id,
+                        input,
+                        trace,
+                        &client_id,
+                        &payload_sha256,
+                    )
+                    .await;
+            }
+            QueuedClientDispatchClaimOutcome::Acquired(lease) => {
+                match persisted_turn_for_client_id(thread.as_ref(), &client_id, &payload_sha256)
+                    .await
+                {
+                    Ok(Some(turn_id)) => {
+                        self.complete_owned_dispatch(&process_lock, &lease, &turn_id)
+                            .await?;
+                        return Ok(StartIfIdleSubmission::Started { turn_id });
+                    }
+                    Ok(None) => lease,
+                    Err(error) => {
+                        self.queue
+                            .release_client_binding_dispatch(&process_lock, lease)
+                            .await?;
+                        return Err(error);
+                    }
+                }
+            }
+            QueuedClientDispatchClaimOutcome::Expired(expired) => {
+                // The OS lock is positive owner-death/release evidence. Only
+                // after acquiring it do we inspect the exact rollout. Expiry
+                // by itself never grants a resubmission.
+                let observed_turn_id =
+                    persisted_turn_for_client_id(thread.as_ref(), &client_id, &payload_sha256)
+                        .await?;
+                let (now_ms, lease_expires_at_ms) = dispatch_window()?;
+                match self
+                    .queue
+                    .recover_expired_client_dispatch(
+                        &process_lock,
+                        expired,
+                        self.dispatch_owner_id.clone(),
+                        observed_turn_id,
+                        now_ms,
+                        lease_expires_at_ms,
+                    )
+                    .await?
+                {
+                    QueuedClientDispatchClaimOutcome::Acquired(lease) => lease,
+                    QueuedClientDispatchClaimOutcome::Persisted { turn_id } => {
+                        self.emit_changed(thread_id);
+                        return Ok(StartIfIdleSubmission::Started { turn_id });
+                    }
+                    outcome => {
+                        return Err(unexpected_dispatch_outcome(
+                            &client_id,
+                            "expired recovery",
+                            outcome,
+                        ));
+                    }
+                }
+            }
+            QueuedClientDispatchClaimOutcome::Persisted { turn_id } => {
+                return Ok(StartIfIdleSubmission::Started { turn_id });
+            }
+            QueuedClientDispatchClaimOutcome::InFlight { .. } => {
+                return Err(QueueServiceError::DispatchInProgress { client_id });
+            }
+            QueuedClientDispatchClaimOutcome::Cancelled => {
+                return Err(ThreadStoreError::Conflict {
+                    message: format!(
+                        "exact client message `{client_id}` was cancelled before dispatch"
+                    ),
+                }
+                .into());
+            }
+            QueuedClientDispatchClaimOutcome::Missing => {
+                return Err(ThreadStoreError::InvalidRequest {
+                    message: format!("queued submission not found: {queued_item_id}"),
+                }
+                .into());
+            }
+        };
+
+        // Re-CAS immediately before the Core call. The process lock remains
+        // held through persisted admission and SQLite completion, so another
+        // process cannot turn lease expiry into a concurrent submit.
+        let (now_ms, lease_expires_at_ms) = dispatch_window()?;
+        let lease = self
+            .queue
+            .authorize_client_binding_dispatch(&process_lock, lease, now_ms, lease_expires_at_ms)
+            .await?;
+        // From this point forward, the exact authority is owned by a detached
+        // service task. Dropping or aborting the caller only drops its
+        // JoinHandle; it cannot drop the process lock or pending Core
+        // admission after Core has accepted the turn.
+        let service = self.clone();
+        let dispatch = tokio::spawn(async move {
+            service
+                .run_owned_dispatch(
+                    thread,
+                    process_lock,
+                    lease,
+                    OwnedDispatchRequest {
+                        input,
+                        trace,
+                        client_id,
+                        payload_sha256,
+                    },
+                )
+                .await
+        });
+        dispatch.await.map_err(|error| {
+            QueueServiceError::Storage(ThreadStoreError::Internal {
+                message: format!("owned exact queue dispatch task failed: {error}"),
+            })
+        })?
+    }
+
+    async fn run_owned_dispatch(
+        &self,
+        thread: Arc<CodexThread>,
+        process_lock: QueuedClientDispatchLock,
+        lease: QueuedClientDispatchLease,
+        request: OwnedDispatchRequest,
+    ) -> Result<StartIfIdleSubmission, QueueServiceError> {
+        let OwnedDispatchRequest {
+            input,
+            trace,
+            client_id,
+            payload_sha256,
+        } = request;
+        // Keep the exact authority in this owner task while Core admission
+        // runs in a monitored child. A panic in Core may happen after the
+        // message was routed to a detached session task, so the JoinError is
+        // ambiguous and must never release the process fence.
+        let admission_thread = Arc::clone(&thread);
+        let admission = tokio::spawn(async move {
+            admission_thread
+                .start_turn_if_idle_and_wait_for_persisted_admission(
+                    TurnInputRequest::new(input).with_trace(trace),
+                )
+                .await
+        })
+        .await;
+        let submission = match admission {
+            Ok(Ok(submission)) => submission,
+            Ok(Err(error)) => {
+                self.spawn_uncertain_owned_dispatch(
+                    thread,
+                    OwnedDispatchAuthority {
+                        process_lock,
+                        lease,
+                    },
+                    client_id,
+                    payload_sha256,
+                );
+                return Err(CodexErr::from(error).into());
+            }
+            Err(error) => {
+                self.spawn_uncertain_owned_dispatch(
+                    thread,
+                    OwnedDispatchAuthority {
+                        process_lock,
+                        lease,
+                    },
+                    client_id,
+                    payload_sha256,
+                );
+                return Err(QueueServiceError::Storage(ThreadStoreError::Internal {
+                    message: format!("owned exact Core admission task failed ambiguously: {error}"),
+                }));
+            }
+        };
+        match &submission {
+            StartIfIdleSubmission::Started { turn_id } => {
+                // Completion is also monitored because an adapter panic after
+                // durable Core admission must not unwind through and drop the
+                // authority. The owner retains its Arc while the child only
+                // borrows the lock and lease.
+                let authority = Arc::new(OwnedDispatchAuthority {
+                    process_lock,
+                    lease,
+                });
+                let completion_service = self.clone();
+                let completion_authority = Arc::clone(&authority);
+                let completion_turn_id = turn_id.clone();
+                let completion = tokio::spawn(async move {
+                    completion_service
+                        .complete_owned_dispatch(
+                            &completion_authority.process_lock,
+                            &completion_authority.lease,
+                            &completion_turn_id,
+                        )
+                        .await
+                })
+                .await;
+                match completion {
+                    Ok(Ok(())) => {}
+                    // Core already returned a durable turn id, so a typed DB
+                    // completion error can safely fall back to the existing
+                    // owner-death + exact-rollout recovery path. Unlike a
+                    // panic, it is not evidence that control flow escaped the
+                    // adapter at an unknown point.
+                    Ok(Err(error)) => return Err(error),
+                    Err(error) => {
+                        self.spawn_shared_uncertain_owned_dispatch(
+                            thread,
+                            authority,
+                            client_id,
+                            payload_sha256,
+                        );
+                        return Err(QueueServiceError::Storage(ThreadStoreError::Internal {
+                            message: format!(
+                                "owned exact dispatch completion task failed ambiguously: {error}"
+                            ),
+                        }));
+                    }
+                }
+            }
+            StartIfIdleSubmission::NotSubmitted { .. } => {
+                self.queue
+                    .release_client_binding_dispatch(&process_lock, lease)
+                    .await?;
+            }
+        }
+        Ok(submission)
+    }
+
+    fn spawn_uncertain_owned_dispatch(
+        &self,
+        thread: Arc<CodexThread>,
+        authority: OwnedDispatchAuthority,
+        client_id: String,
+        payload_sha256: String,
+    ) {
+        self.spawn_shared_uncertain_owned_dispatch(
+            thread,
+            Arc::new(authority),
+            client_id,
+            payload_sha256,
+        );
+    }
+
+    fn spawn_shared_uncertain_owned_dispatch(
+        &self,
+        thread: Arc<CodexThread>,
+        authority: Arc<OwnedDispatchAuthority>,
+        client_id: String,
+        payload_sha256: String,
+    ) {
+        let service = self.clone();
+        tokio::spawn(async move {
+            if let Err(settlement_error) = service
+                .settle_uncertain_owned_dispatch(thread, authority, client_id, payload_sha256)
+                .await
+            {
+                tracing::warn!(
+                    %settlement_error,
+                    "failed to settle uncertain exact queue dispatch"
+                );
+            }
+        });
+    }
+
+    async fn settle_uncertain_owned_dispatch(
+        &self,
+        thread: Arc<CodexThread>,
+        authority: Arc<OwnedDispatchAuthority>,
+        client_id: String,
+        payload_sha256: String,
+    ) -> Result<(), QueueServiceError> {
+        loop {
+            // The guardian retains one Arc while each scan/completion probe
+            // runs in a monitored child. A second panic in an adapter or
+            // rollout reader therefore cannot unwind the guardian and release
+            // the original authority.
+            let probe_service = self.clone();
+            let probe_thread = Arc::clone(&thread);
+            let probe_authority = Arc::clone(&authority);
+            let probe_client_id = client_id.clone();
+            let probe_payload_sha256 = payload_sha256.clone();
+            let probe = tokio::spawn(async move {
+                let Some(turn_id) = persisted_turn_for_client_id(
+                    probe_thread.as_ref(),
+                    &probe_client_id,
+                    &probe_payload_sha256,
+                )
+                .await?
+                else {
+                    return Ok::<bool, QueueServiceError>(false);
+                };
+                probe_service
+                    .complete_owned_dispatch(
+                        &probe_authority.process_lock,
+                        &probe_authority.lease,
+                        &turn_id,
+                    )
+                    .await?;
+                Ok(true)
+            })
+            .await;
+            match probe {
+                Ok(Ok(true)) => return Ok(()),
+                Ok(Ok(false)) => {}
+                Ok(Err(error)) => {
+                    tracing::warn!(
+                        %client_id,
+                        %error,
+                        "failed to settle uncertain exact queue dispatch; retaining the process fence"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        %client_id,
+                        %error,
+                        "uncertain exact queue dispatch settlement probe panicked; retaining the process fence"
+                    );
+                }
+            }
+            // Agent lifecycle status is not a persistence barrier: terminal
+            // status is published before the final rollout flush, and failed
+            // recorder items may be retried later. Once Core returned an
+            // ambiguous error after routing, retain the kernel owner fence
+            // until the exact durable join succeeds or this runtime exits.
+            tokio::time::sleep(Duration::from_millis(UNCERTAIN_DISPATCH_POLL_MS)).await;
+        }
+    }
+
+    async fn dispatch_unbound(
+        &self,
+        thread: &CodexThread,
+        queued_item_id: String,
+        input: TurnInput,
+        trace: Option<W3cTraceContext>,
+        client_id: &str,
+        payload_sha256: &str,
+    ) -> Result<StartIfIdleSubmission, QueueServiceError> {
+        let thread_id = thread.session_configured().thread_id;
         if let Some(turn_id) =
-            persisted_turn_for_client_id(thread, client_id, &payload_sha256).await?
+            persisted_turn_for_unbound_client_id(thread, client_id, payload_sha256).await?
         {
-            self.delete_locked(thread_id, queued_item_id).await?;
+            self.finish_persisted_queue_item(
+                thread_id,
+                queued_item_id,
+                client_id,
+                payload_sha256,
+                &turn_id,
+            )
+            .await?;
             return Ok(StartIfIdleSubmission::Started { turn_id });
         }
         let submission = thread
@@ -422,10 +1051,31 @@ impl QueuedItemService {
             )
             .await
             .map_err(CodexErr::from)?;
-        if matches!(submission, StartIfIdleSubmission::Started { .. }) {
-            self.delete_locked(thread_id, queued_item_id).await?;
+        if let StartIfIdleSubmission::Started { turn_id } = &submission {
+            self.finish_persisted_queue_item(
+                thread_id,
+                queued_item_id,
+                client_id,
+                payload_sha256,
+                turn_id,
+            )
+            .await?;
         }
         Ok(submission)
+    }
+
+    async fn complete_owned_dispatch(
+        &self,
+        process_lock: &QueuedClientDispatchLock,
+        lease: &QueuedClientDispatchLease,
+        turn_id: &str,
+    ) -> Result<(), QueueServiceError> {
+        let thread_id = lease.thread_id();
+        self.queue
+            .complete_client_binding_dispatch(process_lock, lease, turn_id.to_string())
+            .await?;
+        self.emit_changed(thread_id);
+        Ok(())
     }
 
     async fn dispatch_if_idle(&self, thread_id: ThreadId) -> Result<(), QueueServiceError> {
@@ -462,37 +1112,32 @@ impl QueuedItemService {
                 continue;
             }
 
-            let client_id = queued_client_id(&input)?;
-            let payload_sha256 = queued_payload_sha256(&input)?;
-            self.ensure_queue_payload_binding(
-                thread_id,
-                &queued_item_id,
-                client_id,
-                &payload_sha256,
-            )
-            .await?;
-            if let Some(turn_id) =
-                persisted_turn_for_client_id(&thread, client_id, &payload_sha256).await?
-            {
-                tracing::info!(
-                    %thread_id,
-                    %queued_item_id,
-                    %client_id,
-                    %turn_id,
-                    "discarding queued user input already persisted by Core"
-                );
-                self.delete_locked(thread_id, queued_item_id).await?;
-                continue;
-            }
-
-            match thread
-                .start_turn_if_idle_and_wait_for_persisted_admission(TurnInputRequest::new(input))
+            match self
+                .dispatch_one(
+                    thread.clone(),
+                    queued_item_id.clone(),
+                    input,
+                    /*trace*/ None,
+                )
                 .await
-                .map_err(CodexErr::from)
             {
-                Ok(StartIfIdleSubmission::Started { .. }) => {
-                    self.delete_locked(thread_id, queued_item_id).await?;
-                    return Ok(());
+                Ok(StartIfIdleSubmission::Started { turn_id }) => {
+                    tracing::info!(
+                        %thread_id,
+                        %queued_item_id,
+                        %turn_id,
+                        "dispatched or reconciled queued user input"
+                    );
+                    if matches!(
+                        thread.agent_status().await,
+                        AgentStatus::Running
+                            | AgentStatus::Interrupted
+                            | AgentStatus::Shutdown
+                            | AgentStatus::NotFound
+                    ) {
+                        return Ok(());
+                    }
+                    continue;
                 }
                 Ok(StartIfIdleSubmission::NotSubmitted { reason }) => {
                     tracing::warn!(
@@ -503,6 +1148,7 @@ impl QueuedItemService {
                     );
                     return Ok(());
                 }
+                Err(QueueServiceError::DispatchInProgress { .. }) => return Ok(()),
                 Err(error) => {
                     tracing::warn!(
                         %thread_id,
@@ -567,12 +1213,69 @@ impl QueuedItemService {
         Ok(())
     }
 
+    async fn finish_persisted_queue_item(
+        &self,
+        thread_id: ThreadId,
+        queued_item_id: String,
+        client_id: &str,
+        payload_sha256: &str,
+        turn_id: &str,
+    ) -> Result<(), QueueServiceError> {
+        if self
+            .queue
+            .mark_client_binding_persisted(
+                thread_id,
+                client_id.to_string(),
+                payload_sha256.to_string(),
+                queued_item_id.clone(),
+                turn_id.to_string(),
+            )
+            .await?
+        {
+            self.emit_changed(thread_id);
+            return Ok(());
+        }
+        self.delete_locked(thread_id, queued_item_id).await?;
+        Ok(())
+    }
+
     fn emit_changed(&self, thread_id: ThreadId) {
         self.event_sink.emit(Event {
             id: Uuid::now_v7().to_string(),
             msg: EventMsg::ThreadQueueChanged(ThreadQueueChangedEvent { thread_id }),
         });
     }
+}
+
+fn dispatch_window() -> Result<(i64, i64), QueueServiceError> {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| ThreadStoreError::Internal {
+            message: format!("system clock cannot authorize queue dispatch: {error}"),
+        })?;
+    let now_ms =
+        i64::try_from(elapsed.as_millis()).map_err(|error| ThreadStoreError::Internal {
+            message: format!("system clock cannot fit queue dispatch timestamp: {error}"),
+        })?;
+    let lease_expires_at_ms = now_ms
+        .checked_add(DISPATCH_LEASE_DURATION_MS)
+        .ok_or_else(|| ThreadStoreError::Internal {
+            message: "queue dispatch lease timestamp overflowed".to_string(),
+        })?;
+    Ok((now_ms, lease_expires_at_ms))
+}
+
+fn unexpected_dispatch_outcome(
+    client_id: &str,
+    operation: &str,
+    outcome: QueuedClientDispatchClaimOutcome,
+) -> QueueServiceError {
+    ThreadStoreError::Internal {
+        message: format!(
+            "client message id `{client_id}` returned unexpected {operation} outcome: {outcome:?}"
+        ),
+    }
+    .into()
 }
 
 async fn prepare_queued_user_input(mut input: TurnInput) -> Result<TurnInput, QueueServiceError> {
@@ -710,21 +1413,71 @@ async fn persisted_turn_for_client_id(
     // Local threads are materialized lazily. Before the first accepted user
     // message the configured rollout path is intentionally absent, so there
     // cannot yet be a durable client-id match to reconcile.
-    let Some(path) = thread.rollout_path() else {
+    persisted_turn_for_client_id_path(thread.rollout_path().as_deref(), client_id, expected_sha256)
+        .await
+}
+
+async fn persisted_turn_for_client_id_path(
+    rollout_path: Option<&Path>,
+    client_id: &str,
+    expected_sha256: &str,
+) -> Result<Option<String>, QueueServiceError> {
+    persisted_turn_for_client_id_path_with_mode(
+        rollout_path,
+        client_id,
+        expected_sha256,
+        PersistedClientJoinMode::Exact,
+    )
+    .await
+}
+
+/// Compatibility queue/add does not claim exact dispatch authority. Legacy
+/// rollouts therefore may use their turn-delimited UserMessage projection as
+/// a best-effort crash join, but only when its canonical payload digest is
+/// present and unique. Exact reconcile/dispatch always uses the stricter path
+/// above and requires an explicit ItemStarted/ItemCompleted turn identity.
+async fn persisted_turn_for_unbound_client_id(
+    thread: &CodexThread,
+    client_id: &str,
+    expected_sha256: &str,
+) -> Result<Option<String>, QueueServiceError> {
+    persisted_turn_for_client_id_path_with_mode(
+        thread.rollout_path().as_deref(),
+        client_id,
+        expected_sha256,
+        PersistedClientJoinMode::LegacyCompatibility,
+    )
+    .await
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PersistedClientJoinMode {
+    Exact,
+    LegacyCompatibility,
+}
+
+async fn persisted_turn_for_client_id_path_with_mode(
+    rollout_path: Option<&Path>,
+    client_id: &str,
+    expected_sha256: &str,
+    mode: PersistedClientJoinMode,
+) -> Result<Option<String>, QueueServiceError> {
+    let Some(path) = rollout_path else {
         return Ok(None);
     };
-    let mut reader = match open_rollout_line_reader(&path).await {
+    let mut reader = match open_rollout_line_reader(path).await {
         Ok(reader) => reader,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(queue_rollout_error(&path, "open", error)),
+        Err(error) => return Err(queue_rollout_error(path, "open", error)),
     };
     let mut current_turn_id = None;
     let mut found = None;
     let mut legacy_turn_ids = HashSet::new();
+    let mut legacy_without_digest = false;
     while let Some(line) = reader
         .next_line()
         .await
-        .map_err(|error| queue_rollout_error(&path, "read", error))?
+        .map_err(|error| queue_rollout_error(path, "read", error))?
     {
         if line.trim().is_empty() {
             continue;
@@ -744,12 +1497,20 @@ async fn persisted_turn_for_client_id(
             &mut current_turn_id,
             &mut found,
             &mut legacy_turn_ids,
+            &mut legacy_without_digest,
         )?;
     }
     if legacy_turn_ids
         .iter()
         .any(|turn_id| found.as_deref() != Some(turn_id.as_str()))
     {
+        if mode == PersistedClientJoinMode::LegacyCompatibility
+            && found.is_none()
+            && legacy_turn_ids.len() == 1
+            && !legacy_without_digest
+        {
+            return Ok(legacy_turn_ids.into_iter().next());
+        }
         return Err(QueueServiceError::LegacyClientIdBinding {
             client_id: client_id.to_string(),
         });
@@ -764,15 +1525,30 @@ fn scan_persisted_client_line(
     current_turn_id: &mut Option<String>,
     found: &mut Option<String>,
     legacy_turn_ids: &mut HashSet<String>,
+    legacy_without_digest: &mut bool,
 ) -> Result<(), QueueServiceError> {
     match item {
         RolloutItem::EventMsg(EventMsg::TurnStarted(event)) => {
+            if let Some(active_turn_id) = current_turn_id.as_deref() {
+                return Err(malformed_rollout_turn_boundary(format!(
+                    "turn `{}` started while turn `{active_turn_id}` was still active",
+                    event.turn_id
+                )));
+            }
             *current_turn_id = Some(event.turn_id);
         }
-        RolloutItem::TurnContext(context) if context.turn_id.is_some() => {
-            *current_turn_id = context.turn_id;
+        RolloutItem::TurnContext(context) => {
+            if let Some(turn_id) = context.turn_id {
+                ensure_explicit_rollout_turn(current_turn_id.as_deref(), &turn_id, "turn context")?;
+                *current_turn_id = Some(turn_id);
+            }
         }
         RolloutItem::EventMsg(EventMsg::ItemStarted(event)) => {
+            ensure_explicit_rollout_turn(
+                current_turn_id.as_deref(),
+                &event.turn_id,
+                "item-started event",
+            )?;
             scan_exact_user_message_item(
                 event.turn_id,
                 event.item,
@@ -782,6 +1558,11 @@ fn scan_persisted_client_line(
             )?;
         }
         RolloutItem::EventMsg(EventMsg::ItemCompleted(event)) => {
+            ensure_explicit_rollout_turn(
+                current_turn_id.as_deref(),
+                &event.turn_id,
+                "item-completed event",
+            )?;
             scan_exact_user_message_item(
                 event.turn_id,
                 event.item,
@@ -804,21 +1585,71 @@ fn scan_persisted_client_line(
             match event.payload_sha256 {
                 Some(actual_sha256) => {
                     ensure_payload_digest_matches(client_id, expected_sha256, &actual_sha256)?;
-                    record_persisted_client_turn(client_id, turn_id, found)?;
                 }
-                None => {
-                    legacy_turn_ids.insert(turn_id);
-                }
+                None => *legacy_without_digest = true,
             }
+            // This legacy projection has no explicit turn id of its own. It
+            // may corroborate an exact ItemStarted/ItemCompleted binding for
+            // the same turn, but can never authorize dispatch recovery alone.
+            legacy_turn_ids.insert(turn_id);
         }
-        RolloutItem::EventMsg(EventMsg::TurnComplete(event))
-            if current_turn_id.as_deref() == Some(event.turn_id.as_str()) =>
-        {
+        RolloutItem::EventMsg(EventMsg::TurnComplete(event)) => {
+            ensure_explicit_rollout_turn(
+                current_turn_id.as_deref(),
+                &event.turn_id,
+                "turn-complete event",
+            )?;
+            *current_turn_id = None;
+        }
+        RolloutItem::EventMsg(EventMsg::TurnAborted(event)) => {
+            let Some(turn_id) = event.turn_id else {
+                return Err(malformed_rollout_turn_boundary(
+                    "turn-aborted event omitted its turn identity".to_string(),
+                ));
+            };
+            ensure_explicit_rollout_turn(
+                current_turn_id.as_deref(),
+                &turn_id,
+                "turn-aborted event",
+            )?;
+            if current_turn_id.is_none() {
+                return Err(malformed_rollout_turn_boundary(format!(
+                    "turn-aborted event names turn `{turn_id}` without an active turn"
+                )));
+            }
             *current_turn_id = None;
         }
         _ => {}
     }
     Ok(())
+}
+
+fn ensure_explicit_rollout_turn(
+    current_turn_id: Option<&str>,
+    explicit_turn_id: &str,
+    item_kind: &str,
+) -> Result<(), QueueServiceError> {
+    if let Some(current_turn_id) = current_turn_id
+        && current_turn_id != explicit_turn_id
+    {
+        return Err(malformed_rollout_turn_boundary(format!(
+            "{item_kind} names turn `{explicit_turn_id}` while turn `{current_turn_id}` is active"
+        )));
+    }
+    if current_turn_id.is_none() && item_kind == "turn-complete event" {
+        return Err(malformed_rollout_turn_boundary(format!(
+            "{item_kind} names turn `{explicit_turn_id}` without an active turn"
+        )));
+    }
+    Ok(())
+}
+
+fn malformed_rollout_turn_boundary(message: String) -> QueueServiceError {
+    QueueServiceError::Storage(ThreadStoreError::Internal {
+        message: format!(
+            "malformed rollout turn boundary during exact queue reconciliation: {message}"
+        ),
+    })
 }
 
 fn scan_exact_user_message_item(
