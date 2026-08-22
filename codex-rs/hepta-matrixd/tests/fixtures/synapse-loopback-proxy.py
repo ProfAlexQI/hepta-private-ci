@@ -146,6 +146,20 @@ class Proxy:
         self.sessions_lock = threading.Lock()
         self.threads: set[threading.Thread] = set()
 
+    @staticmethod
+    def _terminate_process(process: subprocess.Popen[bytes]) -> None:
+        if process.poll() is not None:
+            return
+        try:
+            process.terminate()
+        except ProcessLookupError:
+            return
+        try:
+            process.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
     def _signal(self, _signum: int, _frame: object) -> None:
         # Signal handlers run on the main thread and may interrupt code while
         # it owns ``sessions_lock``.  Do not acquire that non-reentrant lock
@@ -173,7 +187,13 @@ class Proxy:
             assert process.stdin is not None and process.stdout is not None
             session = Session(client=client, process=process)
             with self.sessions_lock:
-                self.sessions.add(session)
+                stopping = self.stop_event.is_set()
+                if not stopping:
+                    self.sessions.add(session)
+            if stopping:
+                self._terminate_process(process)
+                client.close()
+                return
             to_process = threading.Thread(
                 target=self._copy_client_to_process,
                 args=(session,),
@@ -195,7 +215,18 @@ class Proxy:
                 from_process.start()
                 started_threads.append(from_process)
                 self.threads.add(from_process)
-            process.wait()
+            # A shutdown signal can arrive after the run-loop's first session
+            # snapshot but before this worker registers its child.  Poll with
+            # a bounded wait so that late registrations still converge during
+            # the same shutdown instead of leaving a child behind.
+            while process.poll() is None:
+                if self.stop_event.is_set():
+                    self._terminate_process(process)
+                    break
+                try:
+                    process.wait(timeout=0.1)
+                except subprocess.TimeoutExpired:
+                    pass
             try:
                 client.shutdown(socket.SHUT_RDWR)
             except OSError:
@@ -206,12 +237,7 @@ class Proxy:
         except (OSError, RuntimeError) as error:
             print(f"proxy session failed: {error}", file=sys.stderr, flush=True)
             if process is not None:
-                process.terminate()
-                try:
-                    process.wait(timeout=5.0)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
+                self._terminate_process(process)
             try:
                 client.close()
             except OSError:
@@ -322,6 +348,10 @@ class Proxy:
             threads = list(self.threads)
         for session in sessions:
             session.process.terminate()
+            try:
+                session.client.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
             try:
                 session.client.close()
             except OSError:
