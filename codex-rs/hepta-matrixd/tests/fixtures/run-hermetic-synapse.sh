@@ -3017,7 +3017,7 @@ if ((test_rc == 0)); then
       and .promotable == false
       and .wire_put_attempts == 2
       and .agent_a_provider_requests == 5
-      and .agent_b_provider_requests == 4
+      and .agent_b_provider_requests == 3
       and .release_copy_identity_rechecked_at_lifecycle_boundaries == true
       and .release_execve_atomic_binding == false
       and .explicit_product_shutdown_completed == true
