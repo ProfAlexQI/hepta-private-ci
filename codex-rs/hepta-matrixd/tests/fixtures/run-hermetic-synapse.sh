@@ -2743,6 +2743,22 @@ durable_install_file "$generated_manifest" "$fixture_manifest" 600
 fixture_manifest_sha256=$(sha256_file "$fixture_manifest")
 unset human_password agent_a_password agent_b_password
 
+resolve_host_tool_path() {
+  local raw_path=$1
+  "$python_bin" - "$raw_path" <<'PY'
+import os
+import pathlib
+import stat
+import sys
+
+resolved = pathlib.Path(sys.argv[1]).resolve(strict=True)
+metadata = resolved.stat()
+if not stat.S_ISREG(metadata.st_mode) or not os.access(resolved, os.X_OK):
+    raise SystemExit("xcrun tool did not resolve to a regular executable")
+print(resolved)
+PY
+}
+
 verify_provenance_snapshot() {
   local final_status_file=$1
   local final_rustc_file=$2
@@ -2859,6 +2875,18 @@ verify_provenance_snapshot() {
     return 65
   fi
   "$rm_bin" -f -- "$final_bash_version_file"
+  local final_xcodebuild_command
+  local final_clang_command
+  local final_clangxx_command
+  local final_linker_command
+  local final_ar_command
+  local final_ranlib_command
+  final_xcodebuild_command=$(resolve_host_tool_path "$("$xcrun_command" --find xcodebuild)") || return 65
+  final_clang_command=$(resolve_host_tool_path "$("$xcrun_command" --sdk macosx --find clang)") || return 65
+  final_clangxx_command=$(resolve_host_tool_path "$("$xcrun_command" --sdk macosx --find clang++)") || return 65
+  final_linker_command=$(resolve_host_tool_path "$("$xcrun_command" --sdk macosx --find ld)") || return 65
+  final_ar_command=$(resolve_host_tool_path "$("$xcrun_command" --sdk macosx --find ar)") || return 65
+  final_ranlib_command=$(resolve_host_tool_path "$("$xcrun_command" --sdk macosx --find ranlib)") || return 65
   [[ "$(sha256_file "$cargo_seed_ledger")" == "$cargo_seed_manifest_sha256" \
     && "$(sha256_file "$host_tool_ledger")" == "$host_tool_ledger_sha256" \
     && "$(sha256_file "$rust_tool_ledger")" == "$rust_tool_ledger_sha256" \
@@ -2879,12 +2907,12 @@ verify_provenance_snapshot() {
     && "$(sha256_file "$macos_sdk_settings")" == "$macos_sdk_settings_sha256" \
     && "$("$xcrun_command" --sdk macosx --show-sdk-version)" == "$macos_sdk_version" \
     && "$("$xcrun_command" --sdk macosx --show-sdk-build-version)" == "$macos_sdk_build_version" \
-    && "$("$xcrun_command" --find xcodebuild)" == "$xcodebuild_command" \
-    && "$("$xcrun_command" --sdk macosx --find clang)" == "$clang_command" \
-    && "$("$xcrun_command" --sdk macosx --find clang++)" == "$clangxx_command" \
-    && "$("$xcrun_command" --sdk macosx --find ld)" == "$linker_command" \
-    && "$("$xcrun_command" --sdk macosx --find ar)" == "$ar_command" \
-    && "$("$xcrun_command" --sdk macosx --find ranlib)" == "$ranlib_command" \
+    && "$final_xcodebuild_command" == "$xcodebuild_command" \
+    && "$final_clang_command" == "$clang_command" \
+    && "$final_clangxx_command" == "$clangxx_command" \
+    && "$final_linker_command" == "$linker_command" \
+    && "$final_ar_command" == "$ar_command" \
+    && "$final_ranlib_command" == "$ranlib_command" \
     && "$("$clang_command" -print-resource-dir)" == "$clang_resource_dir" ]] || {
     echo 'bounded Mac host toolchain or SDK identity changed during qualification' >&2
     return 65
