@@ -77,6 +77,13 @@ def main() -> int:
     head = run_git(candidate, "rev-parse", "HEAD")
     tree = run_git(candidate, "rev-parse", "HEAD^{tree}")
     parent = run_git(candidate, "rev-parse", "HEAD^")
+    delta_paths = [
+        path
+        for path in run_git(candidate, "diff", "--name-only", parent, head).splitlines()
+        if path
+    ]
+    if any(not (path.startswith("docs/") or path.startswith("scripts/")) for path in delta_paths):
+        raise SystemExit("local profile commit must be docs/scripts-only")
     evidence = []
     for path in args.evidence:
         resolved = path.resolve()
@@ -101,6 +108,8 @@ def main() -> int:
             "parent": parent,
             "worktree": str(candidate),
             "clean": True,
+            "delta_paths": delta_paths,
+            "product_paths_unchanged_from_parent": True,
         },
         "local_acknowledgement": {
             "operator": args.operator,
