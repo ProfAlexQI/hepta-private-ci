@@ -144,6 +144,8 @@ def main() -> int:
             }
         )
 
+    generator_path = Path(__file__).resolve()
+
     output.mkdir(parents=True, exist_ok=False)
     profile = {
         "schema": SCHEMA,
@@ -183,7 +185,8 @@ def main() -> int:
             "kind": "python_stdlib",
             "python_version": platform.python_version(),
             "script": "scripts/hepta-g5-local-profile.py",
-            "dependency_digest": "python-standard-library-only",
+            "script_sha256": sha256_file(generator_path),
+            "dependency_basis": "python-standard-library-only",
         },
         "provider_effect_policy": {
             "mode": "at_least_once_indeterminate_reconcile",
@@ -193,7 +196,7 @@ def main() -> int:
             "physical_exactly_once": False,
         },
         "authority": {
-            "g5_local_complete": True,
+            "g5_local_complete": bool(evidence),
             "local_operator_acceptance": True,
             "local_fleet_shadow_allowed": True,
             "production_activation": False,
@@ -219,14 +222,23 @@ def main() -> int:
                 "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v5-20260824/",
                 "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v6-20260824/",
                 "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v7-20260824/",
+                "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v8-20260824/",
             ],
         },
         "input_scope": {
             "fixed_local_artifacts_only": True,
+            "scope": "evidence/provider/signer inputs; not process identity or runtime configuration",
             "external_signer_required": False,
             "external_provider_required": False,
         },
         "external_inputs_required_for_this_profile": [],
+        "evidence_scope": {
+            "supplied": bool(evidence),
+            "local_evidence_complete": bool(evidence),
+            "required_for_declaration": False,
+            "hash_only": True,
+            "runtime_execution_performed": False,
+        },
         "external_inputs_deferred_to_production_profile": [
             "provider-owned occurrence dedupe/status/effect acknowledgement contract",
             "independent signer/trust policy for production promotion",
@@ -234,7 +246,7 @@ def main() -> int:
         "evidence": evidence,
         "claims": [
             "local development may proceed without external ceremony",
-            "provider uncertainty remains quarantined and reconciled",
+            "provider uncertainty policy requires quarantine and reconcile",
             "this profile cannot authorize production effects or promotion",
         ],
     }
