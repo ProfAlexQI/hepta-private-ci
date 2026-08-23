@@ -46,7 +46,8 @@ the actual entrypoint/configuration must still enforce that boundary.
 
 This is a profile-specific, declaration-only manifest; it is not a production
 runtime switch.  The generator accepts only the fixed local worktree,
-the exact candidate head/tree/parent and the two profile files as the delta.
+the exact candidate head/tree/parent and the two profile files as the complete
+delta from the unified candidate ancestor.
 Evidence is read only from the T5 artifact root selected by the SSD wrapper and
 is rejected if it is a symlink or changes while being hashed.  The manifest records
 `authority_status=not_granted`, `promotion_status=not_eligible`, and
@@ -62,7 +63,7 @@ PARENT=$(git -C /Volumes/T5/hepta-vnext/worktrees/r2-g5-local-dev-profile-202608
 /Volumes/T5/hepta-vnext/bin/hepta-ssd-run r2-g5-local-dev-profile-20260824 -- \
 python3 scripts/hepta-g5-local-profile.py \
   --candidate /Volumes/T5/hepta-vnext/worktrees/r2-g5-local-dev-profile-20260824 \
-  --output /Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v7-20260824 \
+  --output /Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v8-20260824 \
   --operator local-development-user --ack \
   --expected-head "$HEAD" --expected-tree "$TREE" --expected-parent "$PARENT" \
   --evidence /Volumes/T5/hepta-vnext/artifacts/r2-g5-unified-candidate-v1-20260823/candidate-binding.json \

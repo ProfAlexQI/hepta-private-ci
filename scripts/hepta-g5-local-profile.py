@@ -114,9 +114,14 @@ def main() -> int:
         for path in run_git(candidate, "diff", "--name-only", parent, head).splitlines()
         if path
     ]
-    if set(delta_paths) != ALLOWED_DELTA_PATHS:
+    full_delta_paths = [
+        path
+        for path in run_git(candidate, "diff", "--name-only", f"{EXPECTED_ANCESTOR}..{head}").splitlines()
+        if path
+    ]
+    if set(delta_paths) != ALLOWED_DELTA_PATHS or set(full_delta_paths) != ALLOWED_DELTA_PATHS:
         raise SystemExit(
-            "local profile commit has an unexpected delta; expected exactly: "
+            "local profile history has an unexpected delta; expected exactly: "
             + ", ".join(sorted(ALLOWED_DELTA_PATHS))
         )
     evidence = []
@@ -152,7 +157,9 @@ def main() -> int:
             "clean": True,
             "delta_paths": delta_paths,
             "delta_allowlist_verified": True,
-            "non_profile_product_paths_unchanged_from_parent": True,
+            "full_delta_paths": full_delta_paths,
+            "full_delta_allowlist_verified": True,
+            "non_profile_product_paths_unchanged_from_ancestor": True,
         },
         "local_acknowledgement": {
             "operator": args.operator,
@@ -211,6 +218,7 @@ def main() -> int:
                 "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v4-20260824/",
                 "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v5-20260824/",
                 "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v6-20260824/",
+                "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v7-20260824/",
             ],
         },
         "input_scope": {
