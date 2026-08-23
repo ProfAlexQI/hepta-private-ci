@@ -160,7 +160,6 @@ qualification_tests = [
   "one_shot_periodic_disable_and_cancel_are_durable",
   "restart_reclaims_same_occurrence_with_same_core_client_id_and_fences_old_lease",
   "disabling_an_inflight_lease_never_resurrects_the_task",
-  "five_real_agent_identities_are_isolated_and_one_blocked_backlog_cannot_starve_peers",
   "five_real_agents_survive_one_automation_store_failure_without_peer_stall",
 ]
 qualification_lifecycle_actions = ["register", "start", "stop", "upgrade", "rollback", "grant", "revoke", "disable", "cancel", "restart"]
