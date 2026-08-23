@@ -8,6 +8,7 @@
 //! receipt and no scheduler, router, KG writer, or production caller is wired
 //! here.
 
+use std::collections::BTreeSet;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -248,13 +249,14 @@ impl LocalLeaseOutbox {
                             previous.generation + 1
                         )));
                     }
-                    if previous.state == LocalLeaseState::Active
-                        && previous.owner_agent_id == *store.owner_agent_id()
-                        && previous.fencing_token == fencing_token
-                    {
+                    if previous.state == LocalLeaseState::Active {
                         return Err(LocalLeaseOutboxError::CasConflict(
-                            "active lease cannot reuse its fencing token for a new generation"
-                                .to_string(),
+                            "cannot advance an active lease before release or rollback".to_string(),
+                        ));
+                    }
+                    if fencing_token_seen(&mut transaction, &lease_id, &fencing_token).await? {
+                        return Err(LocalLeaseOutboxError::CasConflict(
+                            "fencing token was already used by this lease".to_string(),
                         ));
                     }
                     let lease = append_lease(
@@ -322,12 +324,14 @@ impl LocalLeaseOutbox {
                 previous.generation
             )));
         }
-        if previous.state == LocalLeaseState::Active
-            && previous.owner_agent_id == *store.owner_agent_id()
-            && previous.fencing_token == fencing_token
-        {
+        if previous.state == LocalLeaseState::Active {
             return Err(LocalLeaseOutboxError::CasConflict(
-                "active lease cannot reuse its fencing token for a new generation".to_string(),
+                "cannot advance an active lease before release or rollback".to_string(),
+            ));
+        }
+        if fencing_token_seen(&mut transaction, &lease_id, &fencing_token).await? {
+            return Err(LocalLeaseOutboxError::CasConflict(
+                "fencing token was already used by this lease".to_string(),
             ));
         }
         let lease = append_lease(
@@ -1128,6 +1132,23 @@ async fn append_lease(
     })
 }
 
+async fn fencing_token_seen(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+    fencing_token: &str,
+) -> Result<bool, LocalLeaseOutboxError> {
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cognitive_local_leases
+         WHERE lease_id = ? AND fencing_token = ?",
+    )
+    .bind(lease_id)
+    .bind(fencing_token)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    Ok(count != 0)
+}
+
 async fn load_lease_chain(
     transaction: &mut Transaction<'_, Sqlite>,
     lease_id: &str,
@@ -1150,6 +1171,7 @@ async fn load_lease_chain(
         )));
     }
     let mut previous = Sha256Digest::for_bytes(GENESIS_LEASE_SHA256);
+    let mut active_fencing_tokens = BTreeSet::new();
     let mut latest: Option<LocalLease> = None;
     for (index, row) in rows.iter().enumerate() {
         let sequence = read_u64(row, "lease_sequence")?;
@@ -1171,6 +1193,11 @@ async fn load_lease_chain(
                 .map_err(crate::cognitive_store::unavailable)?
                 .as_str(),
         )?;
+        if index == 0 && (state != LocalLeaseState::Active || generation != 1) {
+            return Err(corrupt(
+                "lease journal must begin at generation one in active state",
+            ));
+        }
         let previous_sha256 = digest_from_row(row, "previous_sha256")?;
         let lease_sha256 = digest_from_row(row, "lease_sha256")?;
         if previous_sha256 != previous {
@@ -1193,9 +1220,26 @@ async fn load_lease_chain(
             if generation < prior.generation {
                 return Err(corrupt("lease generation regressed"));
             }
-            if state == LocalLeaseState::Active && prior.state == LocalLeaseState::Active {
-                return Err(corrupt("lease journal has two active rows"));
+            if state == LocalLeaseState::Active {
+                if prior.state == LocalLeaseState::Active {
+                    return Err(corrupt("lease journal has two active rows"));
+                }
+                if generation != prior.generation.saturating_add(1) {
+                    return Err(corrupt("active lease generation did not advance by one"));
+                }
+                if !active_fencing_tokens.insert(fencing_token.clone()) {
+                    return Err(corrupt("active lease fencing token was reused"));
+                }
+            } else if prior.state != LocalLeaseState::Active
+                || generation != prior.generation
+                || fencing_token != prior.fencing_token
+            {
+                return Err(corrupt(
+                    "lease terminal row changed generation or fencing token",
+                ));
             }
+        } else if state == LocalLeaseState::Active {
+            active_fencing_tokens.insert(fencing_token.clone());
         }
         let lease = LocalLease {
             lease_id: lease_id.to_string(),

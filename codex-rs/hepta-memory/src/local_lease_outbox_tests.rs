@@ -67,7 +67,19 @@ async fn generation_cas_release_and_stale_handle_fail_closed() {
             .await
             .expect("acquire"),
     );
+    assert!(
+        store
+            .acquire_local_lease_after("lease:generation", 1, 2, "fence:2")
+            .await
+            .is_err()
+    );
     old.release().await.expect("release");
+    assert!(
+        store
+            .acquire_local_lease_after("lease:generation", 1, 2, "fence:1")
+            .await
+            .is_err()
+    );
     let next = acquired(
         store
             .acquire_local_lease_after("lease:generation", 1, 2, "fence:2")
