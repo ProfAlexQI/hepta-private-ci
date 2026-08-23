@@ -9,6 +9,7 @@ mod cognitive_model;
 mod cognitive_retrieval;
 mod cognitive_runtime;
 mod cognitive_store;
+mod compact_persistence;
 mod framing;
 mod intuition_shadow;
 mod memory_admission;
@@ -89,6 +90,19 @@ pub use cognitive_runtime::CognitiveRuntime;
 pub use cognitive_runtime::CognitiveUnavailableReason;
 pub use cognitive_store::CognitiveStore;
 pub use cognitive_store::CognitiveStoreError;
+pub use compact_persistence::COMPACT_PERSISTENCE_EXTERNAL_EFFECTS;
+pub use compact_persistence::COMPACT_PERSISTENCE_KG_WRITE_AUTHORITY;
+pub use compact_persistence::COMPACT_PERSISTENCE_NAMESPACE;
+pub use compact_persistence::COMPACT_PERSISTENCE_SCHEMA_VERSION;
+pub use compact_persistence::CompactPersistenceAppend;
+pub use compact_persistence::CompactPersistenceError;
+pub use compact_persistence::CompactPersistenceEvent;
+pub use compact_persistence::CompactPersistenceEventKind;
+pub use compact_persistence::CompactPersistenceJournal;
+pub use compact_persistence::CompactPersistenceSnapshot;
+pub use compact_persistence::CompactPersistenceState;
+pub use compact_persistence::CompactReconcileOutcome;
+pub use compact_persistence::checkpoint_digest;
 pub use framing::workspace_binding_digest;
 pub use intuition_shadow::H6_INTUITION_SHADOW_NAMESPACE;
 pub use intuition_shadow::H6_INTUITION_SHADOW_SCHEMA_VERSION;
@@ -164,6 +178,10 @@ mod cognitive_runtime_tests;
 #[cfg(test)]
 #[path = "cognitive_compact_tests.rs"]
 mod cognitive_compact_tests;
+
+#[cfg(test)]
+#[path = "compact_persistence_tests.rs"]
+mod compact_persistence_tests;
 
 #[cfg(test)]
 mod cognitive_test_support;

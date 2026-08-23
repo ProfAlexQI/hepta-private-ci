@@ -1,0 +1,605 @@
+//! Contract-only compact persistence seam for local development.
+//!
+//! This is a replayable append-only model of the Agent-local SQLite/WAL
+//! transaction. It performs no file I/O, KG write, scheduler operation, or
+//! external effect. A future authoritative writer may persist this exact
+//! event shape after its own migration and caller review.
+
+use std::collections::BTreeMap;
+
+use codex_hepta_contracts::Sha256Digest;
+use serde::Deserialize;
+use serde::Serialize;
+use sha2::Digest;
+use sha2::Sha256;
+use thiserror::Error;
+
+use crate::CompactCheckpoint;
+use crate::CompactCommitDecision;
+use crate::CompactFence;
+use crate::CompactParentSnapshot;
+use crate::framing::frame_part;
+
+pub const COMPACT_PERSISTENCE_SCHEMA_VERSION: u32 = 1;
+pub const COMPACT_PERSISTENCE_NAMESPACE: &str = "local_development_only";
+pub const COMPACT_PERSISTENCE_EXTERNAL_EFFECTS: bool = false;
+pub const COMPACT_PERSISTENCE_KG_WRITE_AUTHORITY: bool = false;
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactPersistenceState {
+    Pending,
+    Indeterminate,
+    Committed,
+    Rejected,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompactReconcileOutcome {
+    Committed,
+    Rejected,
+    StillIndeterminate,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CompactPersistenceEventKind {
+    Intent {
+        checkpoint_id: String,
+        checkpoint_revision: u64,
+        checkpoint_sha256: Sha256Digest,
+        parent_sha256: Sha256Digest,
+    },
+    CheckpointCommitted {
+        checkpoint_sha256: Sha256Digest,
+    },
+    Indeterminate {
+        reason_code: String,
+    },
+    Reconciled {
+        outcome: CompactReconcileOutcome,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CompactPersistenceEvent {
+    pub schema_version: u32,
+    pub namespace: String,
+    pub sequence: u64,
+    pub operation_id: String,
+    pub generation: u64,
+    pub fencing_token: String,
+    pub kind: CompactPersistenceEventKind,
+    pub previous_sha256: Sha256Digest,
+    pub event_sha256: Sha256Digest,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CompactPersistenceSnapshot {
+    pub schema_version: u32,
+    pub namespace: String,
+    pub fence: CompactFence,
+    pub entries: Vec<CompactPersistenceEvent>,
+    pub head_sha256: Sha256Digest,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CompactPersistenceAppend {
+    Appended { sequence: u64 },
+    Replay { sequence: u64 },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
+pub enum CompactPersistenceError {
+    #[error("invalid compact persistence contract: {0}")]
+    Invalid(String),
+    #[error("compact persistence CAS conflict: {0}")]
+    CasConflict(String),
+    #[error("compact persistence stale generation or fence")]
+    StaleFence,
+    #[error("compact persistence illegal transition for {operation_id}: {message}")]
+    IllegalTransition {
+        operation_id: String,
+        message: String,
+    },
+    #[error("compact persistence journal is corrupt: {0}")]
+    Corrupt(String),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Binding {
+    sequence: u64,
+    checkpoint_id: String,
+    checkpoint_revision: u64,
+    checkpoint_sha256: Sha256Digest,
+    parent_sha256: Sha256Digest,
+}
+
+#[derive(Clone, Debug)]
+pub struct CompactPersistenceJournal {
+    fence: CompactFence,
+    entries: Vec<CompactPersistenceEvent>,
+    head_sha256: Sha256Digest,
+    bindings: BTreeMap<String, Binding>,
+    states: BTreeMap<String, CompactPersistenceState>,
+}
+
+impl CompactPersistenceJournal {
+    pub fn new(fence: CompactFence) -> Result<Self, CompactPersistenceError> {
+        if fence.generation == 0 || fence.authority_epoch == 0 || fence.owner_epoch == 0 {
+            return Err(invalid("fence epochs must be non-zero"));
+        }
+        validate_text(&fence.fencing_token, "fencing token", 256)?;
+        Ok(Self {
+            fence,
+            entries: Vec::new(),
+            head_sha256: empty_digest(),
+            bindings: BTreeMap::new(),
+            states: BTreeMap::new(),
+        })
+    }
+
+    pub fn fence(&self) -> &CompactFence {
+        &self.fence
+    }
+
+    pub fn entries(&self) -> &[CompactPersistenceEvent] {
+        &self.entries
+    }
+
+    pub fn state(&self, operation_id: &str) -> Option<CompactPersistenceState> {
+        self.states.get(operation_id).copied()
+    }
+
+    pub fn snapshot(&self) -> CompactPersistenceSnapshot {
+        CompactPersistenceSnapshot {
+            schema_version: COMPACT_PERSISTENCE_SCHEMA_VERSION,
+            namespace: COMPACT_PERSISTENCE_NAMESPACE.to_string(),
+            fence: self.fence.clone(),
+            entries: self.entries.clone(),
+            head_sha256: self.head_sha256.clone(),
+        }
+    }
+
+    pub fn reopen(snapshot: CompactPersistenceSnapshot) -> Result<Self, CompactPersistenceError> {
+        if snapshot.schema_version != COMPACT_PERSISTENCE_SCHEMA_VERSION
+            || snapshot.namespace != COMPACT_PERSISTENCE_NAMESPACE
+        {
+            return Err(corrupt("snapshot schema or namespace mismatch"));
+        }
+        let mut journal = Self::new(snapshot.fence)?;
+        for entry in snapshot.entries {
+            journal.replay(entry)?;
+        }
+        if journal.head_sha256 != snapshot.head_sha256 {
+            return Err(corrupt("snapshot head digest mismatch"));
+        }
+        Ok(journal)
+    }
+
+    pub fn append_intent(
+        &mut self,
+        operation_id: impl Into<String>,
+        checkpoint: &CompactCheckpoint,
+        current: &CompactParentSnapshot,
+    ) -> Result<CompactPersistenceAppend, CompactPersistenceError> {
+        let operation_id = operation_id.into();
+        validate_text(&operation_id, "operation id", 512)?;
+        if current.fence != self.fence {
+            return Err(CompactPersistenceError::StaleFence);
+        }
+        match checkpoint.validate_against(current) {
+            CompactCommitDecision::Accepted { .. } => {}
+            CompactCommitDecision::Conflict { .. } => {
+                return Err(CompactPersistenceError::CasConflict(
+                    "parent snapshot changed".to_string(),
+                ));
+            }
+            CompactCommitDecision::StaleGeneration => {
+                return Err(CompactPersistenceError::StaleFence);
+            }
+            CompactCommitDecision::Rejected { .. } => {
+                return Err(invalid("checkpoint payload rejected"));
+            }
+        }
+        let checkpoint_sha256 = checkpoint_digest(checkpoint)?;
+        let parent_sha256 = parent_digest(current);
+        if let Some(binding) = self.bindings.get(&operation_id) {
+            if binding.checkpoint_id == checkpoint.checkpoint_id
+                && binding.checkpoint_revision == checkpoint.checkpoint_revision
+                && binding.checkpoint_sha256 == checkpoint_sha256
+                && binding.parent_sha256 == parent_sha256
+            {
+                return Ok(CompactPersistenceAppend::Replay {
+                    sequence: binding.sequence,
+                });
+            }
+            return Err(CompactPersistenceError::CasConflict(
+                "operation replay changed its payload".to_string(),
+            ));
+        }
+        let entry = self.make_entry(
+            &operation_id,
+            CompactPersistenceEventKind::Intent {
+                checkpoint_id: checkpoint.checkpoint_id.clone(),
+                checkpoint_revision: checkpoint.checkpoint_revision,
+                checkpoint_sha256: checkpoint_sha256.clone(),
+                parent_sha256: parent_sha256.clone(),
+            },
+        );
+        let sequence = entry.sequence;
+        self.head_sha256 = entry.event_sha256.clone();
+        self.entries.push(entry);
+        self.bindings.insert(
+            operation_id.clone(),
+            Binding {
+                sequence,
+                checkpoint_id: checkpoint.checkpoint_id.clone(),
+                checkpoint_revision: checkpoint.checkpoint_revision,
+                checkpoint_sha256,
+                parent_sha256,
+            },
+        );
+        self.states
+            .insert(operation_id, CompactPersistenceState::Pending);
+        Ok(CompactPersistenceAppend::Appended { sequence })
+    }
+
+    pub fn commit_checkpoint(
+        &mut self,
+        operation_id: &str,
+        checkpoint_sha256: &Sha256Digest,
+    ) -> Result<CompactPersistenceAppend, CompactPersistenceError> {
+        let binding = self.binding(operation_id)?.clone();
+        if binding.checkpoint_sha256 != *checkpoint_sha256 {
+            return Err(CompactPersistenceError::CasConflict(
+                "checkpoint digest differs from intent".to_string(),
+            ));
+        }
+        match self.states.get(operation_id).copied() {
+            Some(CompactPersistenceState::Pending) => {}
+            Some(CompactPersistenceState::Committed) => {
+                return Ok(CompactPersistenceAppend::Replay {
+                    sequence: self.latest_sequence(operation_id),
+                });
+            }
+            Some(state) => {
+                return Err(illegal(
+                    operation_id,
+                    format!("cannot commit from {state:?}"),
+                ));
+            }
+            None => return Err(corrupt("intent has no state")),
+        }
+        let entry = self.make_entry(
+            operation_id,
+            CompactPersistenceEventKind::CheckpointCommitted {
+                checkpoint_sha256: checkpoint_sha256.clone(),
+            },
+        );
+        let sequence = entry.sequence;
+        self.head_sha256 = entry.event_sha256.clone();
+        self.entries.push(entry);
+        self.states
+            .insert(operation_id.to_string(), CompactPersistenceState::Committed);
+        Ok(CompactPersistenceAppend::Appended { sequence })
+    }
+
+    pub fn mark_indeterminate(
+        &mut self,
+        operation_id: &str,
+        reason_code: impl Into<String>,
+    ) -> Result<CompactPersistenceAppend, CompactPersistenceError> {
+        let _ = self.binding(operation_id)?;
+        let reason_code = reason_code.into();
+        validate_text(&reason_code, "reason code", 256)?;
+        match self.states.get(operation_id).copied() {
+            Some(CompactPersistenceState::Pending)
+            | Some(CompactPersistenceState::Indeterminate) => {}
+            Some(state) => {
+                return Err(illegal(
+                    operation_id,
+                    format!("cannot mark {state:?} indeterminate"),
+                ));
+            }
+            None => return Err(corrupt("intent has no state")),
+        }
+        let entry = self.make_entry(
+            operation_id,
+            CompactPersistenceEventKind::Indeterminate { reason_code },
+        );
+        let sequence = entry.sequence;
+        self.head_sha256 = entry.event_sha256.clone();
+        self.entries.push(entry);
+        self.states.insert(
+            operation_id.to_string(),
+            CompactPersistenceState::Indeterminate,
+        );
+        Ok(CompactPersistenceAppend::Appended { sequence })
+    }
+
+    pub fn reconcile(
+        &mut self,
+        operation_id: &str,
+        outcome: CompactReconcileOutcome,
+    ) -> Result<CompactPersistenceAppend, CompactPersistenceError> {
+        let _ = self.binding(operation_id)?;
+        if self.states.get(operation_id) != Some(&CompactPersistenceState::Indeterminate) {
+            return Err(illegal(
+                operation_id,
+                "reconcile requires indeterminate state".to_string(),
+            ));
+        }
+        let entry = self.make_entry(
+            operation_id,
+            CompactPersistenceEventKind::Reconciled { outcome },
+        );
+        let sequence = entry.sequence;
+        self.head_sha256 = entry.event_sha256.clone();
+        self.entries.push(entry);
+        let state = match outcome {
+            CompactReconcileOutcome::Committed => CompactPersistenceState::Committed,
+            CompactReconcileOutcome::Rejected => CompactPersistenceState::Rejected,
+            CompactReconcileOutcome::StillIndeterminate => CompactPersistenceState::Indeterminate,
+        };
+        self.states.insert(operation_id.to_string(), state);
+        Ok(CompactPersistenceAppend::Appended { sequence })
+    }
+
+    fn make_entry(
+        &self,
+        operation_id: &str,
+        kind: CompactPersistenceEventKind,
+    ) -> CompactPersistenceEvent {
+        let sequence = self.entries.len() as u64 + 1;
+        let mut entry = CompactPersistenceEvent {
+            schema_version: COMPACT_PERSISTENCE_SCHEMA_VERSION,
+            namespace: COMPACT_PERSISTENCE_NAMESPACE.to_string(),
+            sequence,
+            operation_id: operation_id.to_string(),
+            generation: self.fence.generation,
+            fencing_token: self.fence.fencing_token.clone(),
+            kind,
+            previous_sha256: self.head_sha256.clone(),
+            event_sha256: empty_digest(),
+        };
+        entry.event_sha256 = event_digest(&entry);
+        entry
+    }
+
+    fn replay(&mut self, entry: CompactPersistenceEvent) -> Result<(), CompactPersistenceError> {
+        let expected = self.entries.len() as u64 + 1;
+        if entry.sequence != expected {
+            return Err(corrupt("journal sequence is not contiguous"));
+        }
+        if entry.schema_version != COMPACT_PERSISTENCE_SCHEMA_VERSION
+            || entry.namespace != COMPACT_PERSISTENCE_NAMESPACE
+            || entry.generation != self.fence.generation
+            || entry.fencing_token != self.fence.fencing_token
+            || entry.previous_sha256 != self.head_sha256
+            || entry.event_sha256 != event_digest(&entry)
+        {
+            return Err(corrupt("event binding or digest mismatch"));
+        }
+        match &entry.kind {
+            CompactPersistenceEventKind::Intent {
+                checkpoint_id,
+                checkpoint_revision,
+                checkpoint_sha256,
+                parent_sha256,
+            } => {
+                if self.bindings.contains_key(&entry.operation_id) {
+                    return Err(corrupt("duplicate intent"));
+                }
+                validate_text(checkpoint_id, "checkpoint id", 512)
+                    .map_err(|e| corrupt(e.to_string()))?;
+                self.bindings.insert(
+                    entry.operation_id.clone(),
+                    Binding {
+                        sequence: entry.sequence,
+                        checkpoint_id: checkpoint_id.clone(),
+                        checkpoint_revision: *checkpoint_revision,
+                        checkpoint_sha256: checkpoint_sha256.clone(),
+                        parent_sha256: parent_sha256.clone(),
+                    },
+                );
+                self.states
+                    .insert(entry.operation_id.clone(), CompactPersistenceState::Pending);
+            }
+            CompactPersistenceEventKind::CheckpointCommitted { checkpoint_sha256 } => {
+                let binding = self.binding(&entry.operation_id)?;
+                if binding.checkpoint_sha256 != *checkpoint_sha256
+                    || self.states.get(&entry.operation_id)
+                        != Some(&CompactPersistenceState::Pending)
+                {
+                    return Err(corrupt("commit transition is invalid"));
+                }
+                self.states.insert(
+                    entry.operation_id.clone(),
+                    CompactPersistenceState::Committed,
+                );
+            }
+            CompactPersistenceEventKind::Indeterminate { reason_code } => {
+                let _ = self.binding(&entry.operation_id)?;
+                validate_text(reason_code, "reason code", 256)
+                    .map_err(|e| corrupt(e.to_string()))?;
+                if !matches!(
+                    self.states.get(&entry.operation_id),
+                    Some(CompactPersistenceState::Pending)
+                        | Some(CompactPersistenceState::Indeterminate)
+                ) {
+                    return Err(corrupt("indeterminate transition is invalid"));
+                }
+                self.states.insert(
+                    entry.operation_id.clone(),
+                    CompactPersistenceState::Indeterminate,
+                );
+            }
+            CompactPersistenceEventKind::Reconciled { outcome } => {
+                let _ = self.binding(&entry.operation_id)?;
+                if self.states.get(&entry.operation_id)
+                    != Some(&CompactPersistenceState::Indeterminate)
+                {
+                    return Err(corrupt("reconcile transition is invalid"));
+                }
+                let state = match outcome {
+                    CompactReconcileOutcome::Committed => CompactPersistenceState::Committed,
+                    CompactReconcileOutcome::Rejected => CompactPersistenceState::Rejected,
+                    CompactReconcileOutcome::StillIndeterminate => {
+                        CompactPersistenceState::Indeterminate
+                    }
+                };
+                self.states.insert(entry.operation_id.clone(), state);
+            }
+        }
+        self.head_sha256 = entry.event_sha256.clone();
+        self.entries.push(entry);
+        Ok(())
+    }
+
+    fn binding(&self, operation_id: &str) -> Result<&Binding, CompactPersistenceError> {
+        self.bindings
+            .get(operation_id)
+            .ok_or_else(|| illegal(operation_id, "intent does not exist".to_string()))
+    }
+
+    fn latest_sequence(&self, operation_id: &str) -> u64 {
+        self.entries
+            .iter()
+            .rev()
+            .find(|entry| entry.operation_id == operation_id)
+            .map(|entry| entry.sequence)
+            .unwrap_or(0)
+    }
+}
+
+pub fn checkpoint_digest(
+    checkpoint: &CompactCheckpoint,
+) -> Result<Sha256Digest, CompactPersistenceError> {
+    checkpoint
+        .rehydration_plan(checkpoint.checkpoint_revision)
+        .map_err(|e| invalid(e.to_string()))?;
+    let mut hasher = Sha256::new();
+    frame_part(
+        &mut hasher,
+        b"hepta-memory:compact-persistence:checkpoint:v1",
+    );
+    frame_part(&mut hasher, checkpoint.checkpoint_id.as_bytes());
+    frame_part(
+        &mut hasher,
+        checkpoint.lease.lease_sha256.as_str().as_bytes(),
+    );
+    frame_part(
+        &mut hasher,
+        checkpoint.summary.summary_sha256.as_str().as_bytes(),
+    );
+    frame_part(
+        &mut hasher,
+        checkpoint.loss_report.report_sha256.as_str().as_bytes(),
+    );
+    frame_part(&mut hasher, &checkpoint.checkpoint_revision.to_be_bytes());
+    Sha256Digest::from_sha256_output(hasher.finalize()).pipe(Ok)
+}
+
+fn parent_digest(snapshot: &CompactParentSnapshot) -> Sha256Digest {
+    let mut hasher = Sha256::new();
+    frame_part(&mut hasher, b"hepta-memory:compact-persistence:parent:v1");
+    frame_part(&mut hasher, snapshot.context_id.as_bytes());
+    frame_part(&mut hasher, &snapshot.parent_event_start.to_be_bytes());
+    frame_part(&mut hasher, &snapshot.parent_event_end.to_be_bytes());
+    frame_part(
+        &mut hasher,
+        &snapshot.expected_parent_revision.to_be_bytes(),
+    );
+    frame_part(
+        &mut hasher,
+        snapshot.expected_state_sha256.as_str().as_bytes(),
+    );
+    frame_part(&mut hasher, &snapshot.fence.generation.to_be_bytes());
+    frame_part(&mut hasher, snapshot.fence.fencing_token.as_bytes());
+    Sha256Digest::from_sha256_output(hasher.finalize())
+}
+
+fn event_digest(entry: &CompactPersistenceEvent) -> Sha256Digest {
+    let mut hasher = Sha256::new();
+    frame_part(&mut hasher, b"hepta-memory:compact-persistence:event:v1");
+    frame_part(&mut hasher, &entry.sequence.to_be_bytes());
+    frame_part(&mut hasher, entry.operation_id.as_bytes());
+    frame_part(&mut hasher, &entry.generation.to_be_bytes());
+    frame_part(&mut hasher, entry.fencing_token.as_bytes());
+    frame_part(&mut hasher, entry.previous_sha256.as_str().as_bytes());
+    match &entry.kind {
+        CompactPersistenceEventKind::Intent {
+            checkpoint_id,
+            checkpoint_revision,
+            checkpoint_sha256,
+            parent_sha256,
+        } => {
+            frame_part(&mut hasher, b"intent");
+            frame_part(&mut hasher, checkpoint_id.as_bytes());
+            frame_part(&mut hasher, &checkpoint_revision.to_be_bytes());
+            frame_part(&mut hasher, checkpoint_sha256.as_str().as_bytes());
+            frame_part(&mut hasher, parent_sha256.as_str().as_bytes());
+        }
+        CompactPersistenceEventKind::CheckpointCommitted { checkpoint_sha256 } => {
+            frame_part(&mut hasher, b"checkpoint-committed");
+            frame_part(&mut hasher, checkpoint_sha256.as_str().as_bytes());
+        }
+        CompactPersistenceEventKind::Indeterminate { reason_code } => {
+            frame_part(&mut hasher, b"indeterminate");
+            frame_part(&mut hasher, reason_code.as_bytes());
+        }
+        CompactPersistenceEventKind::Reconciled { outcome } => {
+            frame_part(&mut hasher, b"reconciled");
+            frame_part(
+                &mut hasher,
+                match outcome {
+                    CompactReconcileOutcome::Committed => b"committed",
+                    CompactReconcileOutcome::Rejected => b"rejected",
+                    CompactReconcileOutcome::StillIndeterminate => b"still-indeterminate",
+                },
+            );
+        }
+    }
+    Sha256Digest::from_sha256_output(hasher.finalize())
+}
+
+fn empty_digest() -> Sha256Digest {
+    Sha256Digest::for_bytes(b"hepta-memory:compact-persistence:empty:v1")
+}
+
+fn validate_text(
+    value: &str,
+    label: &str,
+    max_bytes: usize,
+) -> Result<(), CompactPersistenceError> {
+    if value.trim().is_empty() || value.len() > max_bytes || value.as_bytes().contains(&0) {
+        return Err(invalid(format!(
+            "{label} must contain 1..={max_bytes} non-NUL bytes"
+        )));
+    }
+    Ok(())
+}
+
+fn invalid(message: impl Into<String>) -> CompactPersistenceError {
+    CompactPersistenceError::Invalid(message.into())
+}
+
+fn corrupt(message: impl Into<String>) -> CompactPersistenceError {
+    CompactPersistenceError::Corrupt(message.into())
+}
+
+fn illegal(operation_id: &str, message: String) -> CompactPersistenceError {
+    CompactPersistenceError::IllegalTransition {
+        operation_id: operation_id.to_string(),
+        message,
+    }
+}
+
+trait Pipe: Sized {
+    fn pipe<T>(self, f: impl FnOnce(Self) -> T) -> T {
+        f(self)
+    }
+}
+impl<T> Pipe for T {}
