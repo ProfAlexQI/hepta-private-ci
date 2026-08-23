@@ -28,6 +28,14 @@ ALLOWED_DELTA_PATHS = frozenset(
     }
 )
 ARTIFACT_ROOT = Path("/Volumes/T5/hepta-vnext/artifacts")
+REQUIRED_EVIDENCE_BASENAMES = frozenset(
+    {
+        "candidate-binding.json",
+        "G5-TRUTH-LINEAGE-RECEIPT.json",
+        "G5-PROVIDER-QUALIFICATION-RECEIPT.json",
+        "G5-FLEET-SOAK-SUPPLEMENTAL-RECEIPT.json",
+    }
+)
 
 
 def run_git(candidate: Path, *args: str) -> str:
@@ -143,6 +151,12 @@ def main() -> int:
                 "size_bytes": after.st_size,
             }
         )
+    evidence_names = {Path(item["path"]).name for item in evidence}
+    if evidence_names != REQUIRED_EVIDENCE_BASENAMES:
+        raise SystemExit(
+            "local profile requires the four bounded evidence receipts: "
+            + ", ".join(sorted(REQUIRED_EVIDENCE_BASENAMES))
+        )
 
     generator_path = Path(__file__).resolve()
 
@@ -196,9 +210,16 @@ def main() -> int:
             "physical_exactly_once": False,
         },
         "authority": {
-            "g5_local_complete": bool(evidence),
+            "namespace": "local_development_only",
+            "g5_local_complete": len(evidence) == len(REQUIRED_EVIDENCE_BASENAMES),
             "local_operator_acceptance": True,
             "local_fleet_shadow_allowed": True,
+            "g5_complete": False,
+            "operator_acceptance": False,
+            "callers_promoted": False,
+            "production_caller": False,
+            "production_writer": False,
+            "effect_authority": False,
             "production_activation": False,
             "promotion": False,
             "g5_allowed": False,
@@ -223,6 +244,8 @@ def main() -> int:
                 "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v6-20260824/",
                 "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v7-20260824/",
                 "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v8-20260824/",
+                "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v9-20260824/",
+                "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v10-20260824/",
             ],
         },
         "input_scope": {
@@ -234,8 +257,9 @@ def main() -> int:
         "external_inputs_required_for_this_profile": [],
         "evidence_scope": {
             "supplied": bool(evidence),
-            "local_evidence_complete": bool(evidence),
-            "required_for_declaration": False,
+            "local_evidence_complete": len(evidence) == len(REQUIRED_EVIDENCE_BASENAMES),
+            "required_for_declaration": True,
+            "required_receipt_basenames": sorted(REQUIRED_EVIDENCE_BASENAMES),
             "hash_only": True,
             "runtime_execution_performed": False,
         },

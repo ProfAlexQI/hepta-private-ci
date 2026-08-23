@@ -66,7 +66,7 @@ PARENT=$(git -C /Volumes/T5/hepta-vnext/worktrees/r2-g5-local-dev-profile-202608
 /Volumes/T5/hepta-vnext/bin/hepta-ssd-run r2-g5-local-dev-profile-20260824 -- \
 python3 scripts/hepta-g5-local-profile.py \
   --candidate /Volumes/T5/hepta-vnext/worktrees/r2-g5-local-dev-profile-20260824 \
-  --output /Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v9-20260824 \
+  --output /Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v11-20260824 \
   --operator local-development-user --ack \
   --expected-head "$HEAD" --expected-tree "$TREE" --expected-parent "$PARENT" \
   --evidence /Volumes/T5/hepta-vnext/artifacts/r2-g5-unified-candidate-v1-20260823/candidate-binding.json \
