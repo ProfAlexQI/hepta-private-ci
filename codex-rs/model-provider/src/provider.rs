@@ -9,6 +9,7 @@ use codex_api::Provider;
 use codex_api::SharedAuthProvider;
 use codex_api::TransportError;
 use codex_api::is_azure_responses_provider;
+use codex_hepta_contracts::ProviderEffectIdempotencyCapability;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
 use codex_model_provider_info::ModelProviderInfo;
@@ -51,6 +52,9 @@ pub struct ProviderCapabilities {
     pub web_search: bool,
     pub external_web_access: bool,
     pub remote_compaction: RemoteCompactionSupport,
+    /// Provider-visible idempotency/status lookup is opt-in and remains
+    /// unsupported until a concrete provider contract is qualified.
+    pub provider_effect_idempotency: ProviderEffectIdempotencyCapability,
 }
 
 impl Default for ProviderCapabilities {
@@ -61,6 +65,7 @@ impl Default for ProviderCapabilities {
             web_search: true,
             external_web_access: true,
             remote_compaction: RemoteCompactionSupport::V2,
+            provider_effect_idempotency: ProviderEffectIdempotencyCapability::Unsupported,
         }
     }
 }

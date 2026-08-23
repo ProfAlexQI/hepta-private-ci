@@ -11,6 +11,7 @@ use std::sync::Arc;
 use codex_api::ApiError;
 use codex_api::Provider;
 use codex_api::SharedAuthProvider;
+use codex_hepta_contracts::ProviderEffectIdempotencyCapability;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
 use codex_login::auth::BedrockApiKeyAuth;
@@ -161,6 +162,7 @@ impl ModelProvider for AmazonBedrockModelProvider {
             web_search: self.endpoint == BedrockEndpoint::Mantle,
             external_web_access: false,
             remote_compaction: RemoteCompactionSupport::V1,
+            provider_effect_idempotency: ProviderEffectIdempotencyCapability::Unsupported,
         }
     }
 
@@ -415,6 +417,7 @@ mod tests {
                 web_search: true,
                 external_web_access: false,
                 remote_compaction: RemoteCompactionSupport::V1,
+                provider_effect_idempotency: ProviderEffectIdempotencyCapability::Unsupported,
             }
         );
     }
@@ -434,6 +437,7 @@ mod tests {
                 web_search: false,
                 external_web_access: false,
                 remote_compaction: RemoteCompactionSupport::V1,
+                provider_effect_idempotency: ProviderEffectIdempotencyCapability::Unsupported,
             }
         );
     }

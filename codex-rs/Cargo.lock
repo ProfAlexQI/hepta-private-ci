@@ -4196,6 +4196,7 @@ dependencies = [
  "codex-api",
  "codex-aws-auth",
  "codex-feedback",
+ "codex-hepta-contracts",
  "codex-http-client",
  "codex-login",
  "codex-model-provider-info",
