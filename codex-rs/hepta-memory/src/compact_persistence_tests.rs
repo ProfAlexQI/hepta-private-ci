@@ -74,6 +74,65 @@ fn append_only_intent_is_cas_bound_and_idempotent() {
 }
 
 #[test]
+fn rehydration_witness_is_append_only_idempotent_and_replayable() {
+    let mut journal = CompactPersistenceJournal::new(fence()).expect("journal");
+    let cp = checkpoint();
+    journal
+        .append_intent("op:rehydrate", &cp, &snapshot())
+        .expect("intent");
+    let digest = checkpoint_digest(&cp).expect("digest");
+    journal
+        .commit_checkpoint("op:rehydrate", &digest)
+        .expect("commit");
+    assert_eq!(
+        journal.record_rehydration("op:rehydrate", &digest, 0),
+        Ok(CompactPersistenceAppend::Appended { sequence: 3 })
+    );
+    assert_eq!(
+        journal.record_rehydration("op:rehydrate", &digest, 0),
+        Ok(CompactPersistenceAppend::Replay { sequence: 3 })
+    );
+    assert_eq!(
+        journal
+            .rehydration("op:rehydrate")
+            .expect("rehydration witness")
+            .expected_revision,
+        0
+    );
+
+    let mut reopened = CompactPersistenceJournal::reopen(journal.snapshot()).expect("reopen");
+    assert_eq!(
+        reopened.record_rehydration("op:rehydrate", &digest, 0),
+        Ok(CompactPersistenceAppend::Replay { sequence: 3 })
+    );
+    assert!(matches!(
+        reopened.record_rehydration("op:rehydrate", &Sha256Digest::for_bytes(b"changed"), 0),
+        Err(CompactPersistenceError::CasConflict(_))
+    ));
+}
+
+#[test]
+fn rehydration_requires_committed_intent_and_exact_revision() {
+    let mut journal = CompactPersistenceJournal::new(fence()).expect("journal");
+    let cp = checkpoint();
+    let digest = checkpoint_digest(&cp).expect("digest");
+    journal
+        .append_intent("op:pending", &cp, &snapshot())
+        .expect("intent");
+    assert!(matches!(
+        journal.record_rehydration("op:pending", &digest, 0),
+        Err(CompactPersistenceError::IllegalTransition { .. })
+    ));
+    journal
+        .commit_checkpoint("op:pending", &digest)
+        .expect("commit");
+    assert!(matches!(
+        journal.record_rehydration("op:pending", &digest, 1),
+        Err(CompactPersistenceError::CasConflict(_))
+    ));
+}
+
+#[test]
 fn stale_parent_and_fence_are_rejected_before_append() {
     let mut journal = CompactPersistenceJournal::new(fence()).expect("journal");
     let cp = checkpoint();

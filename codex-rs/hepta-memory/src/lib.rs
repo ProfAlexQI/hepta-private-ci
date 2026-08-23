@@ -105,6 +105,7 @@ pub use compact_persistence::CompactPersistenceJournal;
 pub use compact_persistence::CompactPersistenceSnapshot;
 pub use compact_persistence::CompactPersistenceState;
 pub use compact_persistence::CompactReconcileOutcome;
+pub use compact_persistence::CompactRehydrationRecord;
 pub use compact_persistence::checkpoint_digest;
 pub use framing::workspace_binding_digest;
 pub use intuition_shadow::H6_INTUITION_SHADOW_NAMESPACE;

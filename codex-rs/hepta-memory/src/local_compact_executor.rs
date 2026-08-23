@@ -28,6 +28,7 @@ use crate::CompactPersistenceJournal;
 use crate::CompactPersistenceSnapshot;
 use crate::CompactPersistenceState;
 use crate::CompactReconcileOutcome;
+use crate::CompactRehydrationRecord;
 use crate::RehydrationPlan;
 use crate::RehydrationStatus;
 use crate::checkpoint_digest;
@@ -176,10 +177,11 @@ impl LocalCompactExecutor {
         Ok(journal.state(operation_id))
     }
 
-    /// Executes the local read-only rehydration step for a committed
-    /// checkpoint.  The checkpoint commit is durable; this method verifies the
-    /// operation binding after reopen and returns a Complete plan without
-    /// writing KG/projection rows or claiming an external effect.
+    /// Executes the local rehydration step for a committed checkpoint.  The
+    /// plan remains read-only, while an append-only local witness is persisted
+    /// so restart/reopen can replay the acknowledgement without duplicating
+    /// metadata.  No KG/projection row or external effect is written or
+    /// claimed.
     pub async fn rehydrate(
         &self,
         operation_id: &str,
@@ -213,10 +215,27 @@ impl LocalCompactExecutor {
                 "operation {operation_id} is committed with a different checkpoint"
             )));
         }
+        let _ = self
+            .mutate(|journal| {
+                journal.record_rehydration(operation_id, &expected_digest, expected_revision)
+            })
+            .await?;
         Ok(RehydrationPlan {
             status: RehydrationStatus::Complete,
             ..plan
         })
+    }
+
+    /// Returns the durable local rehydration witness after reopening and
+    /// verifying the complete hash chain.
+    pub async fn rehydration(
+        &self,
+        operation_id: &str,
+    ) -> Result<Option<CompactRehydrationRecord>, LocalCompactExecutorError> {
+        validate_text(operation_id, "operation id", 512)?;
+        let snapshot = self.snapshot().await?;
+        let journal = CompactPersistenceJournal::reopen(snapshot)?;
+        Ok(journal.rehydration(operation_id).cloned())
     }
 
     async fn mutate<F>(

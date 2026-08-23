@@ -60,6 +60,13 @@ pub enum CompactPersistenceEventKind {
     Reconciled {
         outcome: CompactReconcileOutcome,
     },
+    /// Durable local acknowledgement that the committed checkpoint's
+    /// rehydration plan was replayed.  This is metadata only: it does not
+    /// reconstruct KG state or claim an external effect.
+    Rehydrated {
+        checkpoint_sha256: Sha256Digest,
+        expected_revision: u64,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -82,6 +89,14 @@ pub struct CompactPersistenceSnapshot {
     pub fence: CompactFence,
     pub entries: Vec<CompactPersistenceEvent>,
     pub head_sha256: Sha256Digest,
+}
+
+/// The append-only witness retained for a completed local rehydration replay.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CompactRehydrationRecord {
+    pub sequence: u64,
+    pub checkpoint_sha256: Sha256Digest,
+    pub expected_revision: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -123,6 +138,7 @@ pub struct CompactPersistenceJournal {
     head_sha256: Sha256Digest,
     bindings: BTreeMap<String, Binding>,
     states: BTreeMap<String, CompactPersistenceState>,
+    rehydrations: BTreeMap<String, CompactRehydrationRecord>,
 }
 
 impl CompactPersistenceJournal {
@@ -137,6 +153,7 @@ impl CompactPersistenceJournal {
             head_sha256: empty_digest(),
             bindings: BTreeMap::new(),
             states: BTreeMap::new(),
+            rehydrations: BTreeMap::new(),
         })
     }
 
@@ -150,6 +167,10 @@ impl CompactPersistenceJournal {
 
     pub fn state(&self, operation_id: &str) -> Option<CompactPersistenceState> {
         self.states.get(operation_id).copied()
+    }
+
+    pub fn rehydration(&self, operation_id: &str) -> Option<&CompactRehydrationRecord> {
+        self.rehydrations.get(operation_id)
     }
 
     pub fn snapshot(&self) -> CompactPersistenceSnapshot {
@@ -347,6 +368,66 @@ impl CompactPersistenceJournal {
         Ok(CompactPersistenceAppend::Appended { sequence })
     }
 
+    /// Append an idempotent local rehydration witness for a committed
+    /// checkpoint.  The witness is deliberately bounded to the exact intent
+    /// digest and revision, so a restarted executor cannot acknowledge a
+    /// different checkpoint under the same operation id.
+    pub fn record_rehydration(
+        &mut self,
+        operation_id: &str,
+        checkpoint_sha256: &Sha256Digest,
+        expected_revision: u64,
+    ) -> Result<CompactPersistenceAppend, CompactPersistenceError> {
+        let binding = self.binding(operation_id)?.clone();
+        if binding.checkpoint_sha256 != *checkpoint_sha256 {
+            return Err(CompactPersistenceError::CasConflict(
+                "rehydration digest differs from intent".to_string(),
+            ));
+        }
+        if binding.checkpoint_revision != expected_revision {
+            return Err(CompactPersistenceError::CasConflict(
+                "rehydration revision differs from intent".to_string(),
+            ));
+        }
+        if self.states.get(operation_id) != Some(&CompactPersistenceState::Committed) {
+            return Err(illegal(
+                operation_id,
+                "rehydration requires committed state".to_string(),
+            ));
+        }
+        if let Some(existing) = self.rehydrations.get(operation_id) {
+            if existing.checkpoint_sha256 == *checkpoint_sha256
+                && existing.expected_revision == expected_revision
+            {
+                return Ok(CompactPersistenceAppend::Replay {
+                    sequence: existing.sequence,
+                });
+            }
+            return Err(CompactPersistenceError::CasConflict(
+                "operation rehydration replay changed its payload".to_string(),
+            ));
+        }
+        let entry = self.make_entry(
+            operation_id,
+            CompactPersistenceEventKind::Rehydrated {
+                checkpoint_sha256: checkpoint_sha256.clone(),
+                expected_revision,
+            },
+        );
+        let sequence = entry.sequence;
+        self.head_sha256 = entry.event_sha256.clone();
+        self.entries.push(entry);
+        self.rehydrations.insert(
+            operation_id.to_string(),
+            CompactRehydrationRecord {
+                sequence,
+                checkpoint_sha256: checkpoint_sha256.clone(),
+                expected_revision,
+            },
+        );
+        Ok(CompactPersistenceAppend::Appended { sequence })
+    }
+
     fn make_entry(
         &self,
         operation_id: &str,
@@ -451,6 +532,30 @@ impl CompactPersistenceJournal {
                     }
                 };
                 self.states.insert(entry.operation_id.clone(), state);
+            }
+            CompactPersistenceEventKind::Rehydrated {
+                checkpoint_sha256,
+                expected_revision,
+            } => {
+                let binding = self.binding(&entry.operation_id)?;
+                if binding.checkpoint_sha256 != *checkpoint_sha256
+                    || binding.checkpoint_revision != *expected_revision
+                    || self.states.get(&entry.operation_id)
+                        != Some(&CompactPersistenceState::Committed)
+                {
+                    return Err(corrupt("rehydration transition is invalid"));
+                }
+                if self.rehydrations.contains_key(&entry.operation_id) {
+                    return Err(corrupt("duplicate rehydration witness"));
+                }
+                self.rehydrations.insert(
+                    entry.operation_id.clone(),
+                    CompactRehydrationRecord {
+                        sequence: entry.sequence,
+                        checkpoint_sha256: checkpoint_sha256.clone(),
+                        expected_revision: *expected_revision,
+                    },
+                );
             }
         }
         self.head_sha256 = entry.event_sha256.clone();
@@ -624,6 +729,14 @@ fn event_digest(entry: &CompactPersistenceEvent) -> Sha256Digest {
                     CompactReconcileOutcome::StillIndeterminate => b"still-indeterminate",
                 },
             );
+        }
+        CompactPersistenceEventKind::Rehydrated {
+            checkpoint_sha256,
+            expected_revision,
+        } => {
+            frame_part(&mut hasher, b"rehydrated");
+            frame_part(&mut hasher, checkpoint_sha256.as_str().as_bytes());
+            frame_part(&mut hasher, &expected_revision.to_be_bytes());
         }
     }
     Sha256Digest::from_sha256_output(hasher.finalize())

@@ -53,7 +53,7 @@ fn checkpoint(fence: CompactFence) -> CompactCheckpoint {
 }
 
 #[tokio::test]
-async fn sqlite_checkpoint_commit_reopen_and_read_only_rehydrate() {
+async fn sqlite_checkpoint_commit_reopen_and_rehydrate_replay() {
     let temp = TempDir::new().expect("temp dir");
     let owner = agent_id(91);
     let store = CognitiveStore::open(&layout(&temp, &owner))
@@ -102,6 +102,76 @@ async fn sqlite_checkpoint_commit_reopen_and_read_only_rehydrate() {
         .expect("rehydration");
     assert_eq!(plan.status, crate::RehydrationStatus::Complete);
     assert_eq!(plan.checkpoint_id, checkpoint.checkpoint_id);
+    let first_snapshot = reopened.snapshot().await.expect("snapshot after rehydrate");
+    assert_eq!(first_snapshot.entries.len(), 3);
+    assert!(matches!(
+        first_snapshot.entries.last().map(|entry| &entry.kind),
+        Some(crate::CompactPersistenceEventKind::Rehydrated {
+            checkpoint_sha256: _,
+            expected_revision: 0,
+        })
+    ));
+    assert_eq!(
+        reopened
+            .rehydration("op:commit")
+            .await
+            .expect("rehydration witness")
+            .expect("witness")
+            .sequence,
+        3
+    );
+    let replay_plan = reopened
+        .rehydrate("op:commit", &checkpoint, 0)
+        .await
+        .expect("idempotent rehydration replay");
+    assert_eq!(replay_plan.status, crate::RehydrationStatus::Complete);
+    assert_eq!(
+        reopened
+            .snapshot()
+            .await
+            .expect("replay snapshot")
+            .entries
+            .len(),
+        3
+    );
+    let replay_row_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_compact_events WHERE journal_id = ?")
+            .bind("journal:local-authoritative")
+            .fetch_one(&reopened_store.pool)
+            .await
+            .expect("replay row count");
+    assert_eq!(replay_row_count, 3);
+
+    reopened_store.pool.close().await;
+    drop(reopened);
+    drop(reopened_store);
+    let restarted_store = CognitiveStore::open(&layout(&temp, &owner))
+        .await
+        .expect("restart store");
+    let restarted = restarted_store
+        .open_local_compact_executor("journal:local-authoritative", fence(19, "fence:19"))
+        .await
+        .expect("restart executor");
+    restarted
+        .rehydrate("op:commit", &checkpoint, 0)
+        .await
+        .expect("restart rehydration replay");
+    assert_eq!(
+        restarted
+            .snapshot()
+            .await
+            .expect("restart snapshot")
+            .entries
+            .len(),
+        3
+    );
+    let restart_row_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_compact_events WHERE journal_id = ?")
+            .bind("journal:local-authoritative")
+            .fetch_one(&restarted_store.pool)
+            .await
+            .expect("restart row count");
+    assert_eq!(restart_row_count, 3);
 }
 
 #[tokio::test]
@@ -208,6 +278,69 @@ async fn stale_fence_and_sqlite_tamper_fail_closed() {
     .expect("tamper event");
     let corrupt = store
         .open_local_compact_executor("journal:tamper", old_fence)
+        .await;
+    assert!(matches!(
+        corrupt,
+        Err(crate::LocalCompactExecutorError::Persistence(_))
+            | Err(crate::LocalCompactExecutorError::Corrupt(_))
+            | Err(crate::LocalCompactExecutorError::Serialization(_))
+    ));
+}
+
+#[tokio::test]
+async fn rehydration_marker_tamper_fails_closed_on_restart() {
+    let temp = TempDir::new().expect("temp dir");
+    let owner = agent_id(94);
+    let store = CognitiveStore::open(&layout(&temp, &owner))
+        .await
+        .expect("store");
+    let current_fence = fence(33, "fence:33");
+    let current = snapshot(current_fence.clone());
+    let checkpoint = checkpoint(current_fence.clone());
+    let executor = store
+        .open_local_compact_executor("journal:rehydration-tamper", current_fence.clone())
+        .await
+        .expect("executor");
+    executor
+        .append_intent("op:rehydration-tamper", &checkpoint, &current)
+        .await
+        .expect("intent");
+    let digest = checkpoint_digest(&checkpoint).expect("digest");
+    executor
+        .commit_checkpoint("op:rehydration-tamper", &digest)
+        .await
+        .expect("commit");
+    executor
+        .rehydrate("op:rehydration-tamper", &checkpoint, 0)
+        .await
+        .expect("rehydrate");
+
+    let event_json: String = sqlx::query_scalar(
+        "SELECT event_json FROM cognitive_compact_events
+         WHERE journal_id = ? AND sequence = 3",
+    )
+    .bind("journal:rehydration-tamper")
+    .fetch_one(&store.pool)
+    .await
+    .expect("rehydration event");
+    let mut event: serde_json::Value = serde_json::from_str(&event_json).expect("event json");
+    event["kind"]["expected_revision"] = serde_json::Value::from(1_u64);
+    sqlx::query("DROP TRIGGER cognitive_compact_events_no_update")
+        .execute(&store.pool)
+        .await
+        .expect("drop test trigger");
+    sqlx::query(
+        "UPDATE cognitive_compact_events SET event_json = ?
+         WHERE journal_id = ? AND sequence = 3",
+    )
+    .bind(serde_json::to_string(&event).expect("tampered event json"))
+    .bind("journal:rehydration-tamper")
+    .execute(&store.pool)
+    .await
+    .expect("tamper event");
+
+    let corrupt = store
+        .open_local_compact_executor("journal:rehydration-tamper", current_fence)
         .await;
     assert!(matches!(
         corrupt,
