@@ -316,6 +316,9 @@ impl IntuitionShadowReceipt {
         {
             return Err(IntuitionShadowError::BindingMismatch);
         }
+        if self.decision != deterministic_decision(input) {
+            return Err(IntuitionShadowError::BindingMismatch);
+        }
         Ok(())
     }
 
@@ -352,6 +355,32 @@ pub fn shadow_intuition_decide(
 ) -> Result<IntuitionShadowReceipt, IntuitionShadowError> {
     input.validate()?;
     let input_digest = input.digest()?;
+    let decision = deterministic_decision(input);
+    let mut receipt = IntuitionShadowReceipt {
+        schema_version: H6_INTUITION_SHADOW_SCHEMA_VERSION,
+        namespace: H6_INTUITION_SHADOW_NAMESPACE.to_string(),
+        receipt_digest: Sha256Digest::for_bytes(b"pending"),
+        input_digest,
+        snapshot_digest: input.snapshot_digest.clone(),
+        schema_digest: input.schema_digest.clone(),
+        policy_digest: input.policy_digest.clone(),
+        authority_epoch: input.authority_epoch,
+        mode: input.mode,
+        decision,
+        phase: IntuitionShadowPhase::Shadow,
+        authority: IntuitionShadowAuthority::SuggestOnly,
+        production_effects: false,
+        execute_allowed: false,
+        kg_write_allowed: false,
+        online_routing: false,
+        runtime_consumer: false,
+    };
+    receipt.receipt_digest = receipt_digest(&receipt);
+    receipt.validate_against(input)?;
+    Ok(receipt)
+}
+
+fn deterministic_decision(input: &IntuitionShadowInput) -> IntuitionDecision {
     let mut eligible = input
         .candidates
         .iter()
@@ -381,28 +410,7 @@ pub fn shadow_intuition_decide(
             confidence_bps: candidate.score_bps,
         },
     };
-    let mut receipt = IntuitionShadowReceipt {
-        schema_version: H6_INTUITION_SHADOW_SCHEMA_VERSION,
-        namespace: H6_INTUITION_SHADOW_NAMESPACE.to_string(),
-        receipt_digest: Sha256Digest::for_bytes(b"pending"),
-        input_digest,
-        snapshot_digest: input.snapshot_digest.clone(),
-        schema_digest: input.schema_digest.clone(),
-        policy_digest: input.policy_digest.clone(),
-        authority_epoch: input.authority_epoch,
-        mode: input.mode,
-        decision,
-        phase: IntuitionShadowPhase::Shadow,
-        authority: IntuitionShadowAuthority::SuggestOnly,
-        production_effects: false,
-        execute_allowed: false,
-        kg_write_allowed: false,
-        online_routing: false,
-        runtime_consumer: false,
-    };
-    receipt.receipt_digest = receipt_digest(&receipt);
-    receipt.validate_against(input)?;
-    Ok(receipt)
+    decision
 }
 
 fn receipt_digest(receipt: &IntuitionShadowReceipt) -> Sha256Digest {
@@ -562,6 +570,21 @@ mod tests {
         assert_eq!(
             shadow_intuition_decide(&bad_schema),
             Err(IntuitionShadowError::SchemaMismatch)
+        );
+    }
+
+    #[test]
+    fn recomputation_rejects_a_self_consistent_but_wrong_decision() {
+        let input = input(vec![candidate("alpha", 8_000, 1_000, true)]);
+        let mut receipt = shadow_intuition_decide(&input).expect("decision");
+        receipt.decision = IntuitionDecision::Suggested {
+            candidate_id: "not-a-candidate".to_string(),
+            confidence_bps: 8_000,
+        };
+        receipt.receipt_digest = super::receipt_digest(&receipt);
+        assert_eq!(
+            receipt.validate_against(&input),
+            Err(IntuitionShadowError::BindingMismatch)
         );
     }
 
