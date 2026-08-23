@@ -201,6 +201,99 @@ g5_allowed = false
 fleet_and_automation_unfrozen = false
 
 [[qualification]]
+slice = "R2_fleet_automation_bounded_expansion_20260823"
+requires = ["R2_fleet_automation_bounded"]
+qualification_base_sha = "2f7e71b34498a4f6547b3c72070cdcdc257539ec"
+qualification_base_tree = "225e4de1e2ef60dc6495c9370105453ec5551c58"
+combined_evidence_head = "2f7e71b34498a4f6547b3c72070cdcdc257539ec"
+combined_evidence_tree = "225e4de1e2ef60dc6495c9370105453ec5551c58"
+fleet_candidate_head = "1fb2730b4884811924b1cfa77c8c89a6ef78eb84"
+fleet_candidate_tree = "d3e39d27b83c9aad47fddddc84d30932a24138dd"
+automation_candidate_head = "0ae14b5e3b7eb4c3574ef05f6870048088afb0b5"
+automation_candidate_tree = "0c2c18c152281bca31899588c4d0bd067c4f65e4"
+fleet_receipt_sha256 = "80024a0b32cf2327f17a009bf8ad8bcf7fbb37b79b3679c7baa7b00ca6a43f11"
+automation_receipt_sha256 = "6d1087dc22874ba7c30cd2106183400c4007e5b7323c89b5008e83073566fd4b"
+composition = "six_agent_target_lifecycle_plus_durable_unknown_dispatch_recovery"
+development_status = "qualified_bounded_expansion"
+qualification_manifest_test = "codex-rs/hepta-contracts/src/callers_manifest_tests.rs"
+qualification_callers = [
+  "codex-rs/hepta-agentd/tests/five_agent_rolling_upgrade.rs",
+  "codex-rs/hepta-agentd/src/automation.rs",
+  "codex-rs/hepta-automation/src/store.rs",
+  "codex-rs/hepta-automation/src/scheduler.rs",
+  "codex-rs/hepta-automation/tests/automation.rs",
+]
+qualification_tests = [
+  "six_agent_fleet_lifecycle_keeps_peers_fair_and_isolated",
+  "five_real_agentd_processes_roll_one_agent_without_stopping_peers",
+  "unknown_provider_outcome_is_quarantined_across_store_recovery_until_reconciled",
+  "v1_store_migrates_atomically_to_dispatch_outcome_schema",
+  "queue_failures_after_admission_seam_are_never_dispatch_retries",
+  "dispatch_uncertain_tick_fail_stops_scheduler_until_cancelled",
+]
+evidence_only = true
+product_caller_named = false
+general_fleet_lifecycle_bounded = true
+automation_dispatch_recovery_bounded = true
+local_client_id_duplicate_fence = true
+provider_physical_sampling_exactly_once = false
+fleet_or_automation_authority = false
+automation_authority = false
+new_general_fleet_lifecycle_surface_added = false
+new_product_fleet_lifecycle_authority_added = false
+new_automation_authority_added = false
+operator_acceptance_recorded = false
+promotion_eligible = false
+g5_complete = false
+g5_allowed = false
+fleet_and_automation_unfrozen = false
+
+[[qualification]]
+slice = "R2_fleet_automation_crash_recovery_bounded_20260823"
+requires = ["R2_fleet_automation_bounded_expansion_20260823"]
+qualification_base_sha = "7c74c67df4dbc6d977d8cf7dbfbe6c6aa3ef210c"
+qualification_base_tree = "74a271b889a09b0c1ed5463cae7b668c760547e5"
+qualification_parent_sha = "2f7e71b34498a4f6547b3c72070cdcdc257539ec"
+qualification_parent_tree = "225e4de1e2ef60dc6495c9370105453ec5551c58"
+parent_to_head_diff_sha256 = "73d8038e240a850d8d4619309291aa9c49972abb34389ba134a059b2748176b7"
+crash_recovery_receipt_sha256 = "76b4bfeab8b1dbbe626b000e5172c73be6a3ee7cd90864b14234915ecba8123e"
+previous_bounded_aggregate_sha256 = "95f63aad96942eebb4ccccdabba177a487d727424182ec1c62f2a677ad59eded"
+previous_bounded_manifest_sha256 = "f096da046ad20336d7a647e77ee193d0cad6497e2f7718fff430d787dda589cb"
+composition = "durable_dispatch_intent_before_queue_seam_plus_bounded_five_and_six_agent_lifecycle"
+development_status = "qualified_exact_bounded_crash_recovery"
+qualification_manifest_test = "codex-rs/hepta-contracts/src/callers_manifest_tests.rs"
+qualification_callers = [
+  "codex-rs/hepta-automation/src/scheduler.rs",
+  "codex-rs/hepta-automation/src/store.rs",
+  "codex-rs/hepta-automation/tests/automation.rs",
+  "codex-rs/hepta-agentd/tests/five_agent_rolling_upgrade.rs",
+]
+qualification_tests = [
+  "pre_admission_dispatch_error_clears_intent_and_allows_next_generation_retry",
+  "successful_dispatch_upgrades_pre_admission_intent_atomically",
+  "crash_after_external_acceptance_keeps_unknown_intent_across_reopen",
+  "in_flight_unknown_intent_fences_stale_generation_and_second_claim",
+  "five_real_agentd_processes_roll_one_agent_without_stopping_peers",
+  "six_agent_fleet_lifecycle_keeps_peers_fair_and_isolated",
+]
+evidence_only = true
+dispatch_intent_persisted_before_queue_seam = true
+pre_admission_abort_transactional = true
+pre_admission_retry_same_occurrence_and_client_id = true
+successful_dispatch_upgrades_uncertain_intent_atomically = true
+crash_after_external_acceptance_quarantined_across_reopen = true
+in_flight_unknown_fences_generation_and_second_claim = true
+five_and_six_agent_lifecycle_requalified_on_exact_head = true
+provider_physical_sampling_exactly_once = false
+fleet_or_automation_authority = false
+automation_authority = false
+operator_acceptance_recorded = false
+promotion_eligible = false
+g5_complete = false
+g5_allowed = false
+fleet_and_automation_unfrozen = false
+
+[[qualification]]
 slice = "R2_matrix_robrix_closed_loop"
 requires = [
   "R2_codex_execution_substrate",

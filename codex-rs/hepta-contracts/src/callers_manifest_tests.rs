@@ -510,8 +510,7 @@ fn g5_fleet_automation_truth_matches_bounded_candidate_and_stays_fail_closed() {
         .qualification
         .iter()
         .find(|entry| {
-            entry.get("slice").and_then(toml::Value::as_str)
-                == Some("R2_fleet_automation_bounded")
+            entry.get("slice").and_then(toml::Value::as_str) == Some("R2_fleet_automation_bounded")
         })
         .expect("missing G5 fleet/automation bounded qualification truth");
 
@@ -525,8 +524,14 @@ fn g5_fleet_automation_truth_matches_bounded_candidate_and_stays_fail_closed() {
         ["R2_matrix_robrix_closed_loop"]
     );
     for (field, expected) in [
-        ("qualification_base_sha", "445d1cdc50c9e86d09041b17888245b8c5937bda"),
-        ("qualification_base_tree", "2ba0062706e4bc652ee0433ef6b3b90696e3f1e3"),
+        (
+            "qualification_base_sha",
+            "445d1cdc50c9e86d09041b17888245b8c5937bda",
+        ),
+        (
+            "qualification_base_tree",
+            "2ba0062706e4bc652ee0433ef6b3b90696e3f1e3",
+        ),
         ("evidence_head", "73ff3b438a25d88201169aed7c7c79cf5d9644a8"),
         ("evidence_tree", "4070f421a63311c66a77d08491c4a9ab1fd52c65"),
         (
@@ -565,7 +570,8 @@ fn g5_fleet_automation_truth_matches_bounded_candidate_and_stays_fail_closed() {
         Some("qualified_exact_bounded_candidate")
     );
     assert_eq!(
-        g5.get("product_caller_named").and_then(toml::Value::as_bool),
+        g5.get("product_caller_named")
+            .and_then(toml::Value::as_bool),
         Some(false)
     );
     for field in [
@@ -642,4 +648,180 @@ fn g5_fleet_automation_truth_matches_bounded_candidate_and_stays_fail_closed() {
             .and_then(toml::Value::as_str),
         Some("codex-rs/hepta-contracts/src/callers_manifest_tests.rs")
     );
+}
+
+#[test]
+fn g5_bounded_expansion_binds_exact_combined_head_and_stays_evidence_only() {
+    let manifest = manifest();
+    let expansion = manifest
+        .qualification
+        .iter()
+        .find(|entry| {
+            entry.get("slice").and_then(toml::Value::as_str)
+                == Some("R2_fleet_automation_bounded_expansion_20260823")
+        })
+        .expect("missing G5 bounded expansion evidence entry");
+    for (field, expected) in [
+        (
+            "combined_evidence_head",
+            "2f7e71b34498a4f6547b3c72070cdcdc257539ec",
+        ),
+        (
+            "combined_evidence_tree",
+            "225e4de1e2ef60dc6495c9370105453ec5551c58",
+        ),
+        (
+            "fleet_candidate_head",
+            "1fb2730b4884811924b1cfa77c8c89a6ef78eb84",
+        ),
+        (
+            "automation_candidate_head",
+            "0ae14b5e3b7eb4c3574ef05f6870048088afb0b5",
+        ),
+        (
+            "fleet_receipt_sha256",
+            "80024a0b32cf2327f17a009bf8ad8bcf7fbb37b79b3679c7baa7b00ca6a43f11",
+        ),
+        (
+            "automation_receipt_sha256",
+            "6d1087dc22874ba7c30cd2106183400c4007e5b7323c89b5008e83073566fd4b",
+        ),
+    ] {
+        assert_eq!(
+            expansion.get(field).and_then(toml::Value::as_str),
+            Some(expected),
+            "G5 bounded expansion {field} drifted",
+        );
+    }
+    for field in [
+        "evidence_only",
+        "general_fleet_lifecycle_bounded",
+        "automation_dispatch_recovery_bounded",
+        "local_client_id_duplicate_fence",
+    ] {
+        assert_eq!(
+            expansion.get(field).and_then(toml::Value::as_bool),
+            Some(true),
+            "G5 bounded expansion {field} must be true",
+        );
+    }
+    for field in [
+        "provider_physical_sampling_exactly_once",
+        "fleet_or_automation_authority",
+        "automation_authority",
+        "operator_acceptance_recorded",
+        "promotion_eligible",
+        "g5_complete",
+        "g5_allowed",
+        "fleet_and_automation_unfrozen",
+    ] {
+        assert_eq!(
+            expansion.get(field).and_then(toml::Value::as_bool),
+            Some(false),
+            "G5 bounded expansion {field} must remain false",
+        );
+    }
+}
+
+#[test]
+fn g5_crash_recovery_ratchet_binds_exact_head_and_stays_fail_closed() {
+    let manifest = manifest();
+    let recovery = manifest
+        .qualification
+        .iter()
+        .find(|entry| {
+            entry.get("slice").and_then(toml::Value::as_str)
+                == Some("R2_fleet_automation_crash_recovery_bounded_20260823")
+        })
+        .expect("missing G5 crash-recovery evidence entry");
+    for (field, expected) in [
+        (
+            "qualification_base_sha",
+            "7c74c67df4dbc6d977d8cf7dbfbe6c6aa3ef210c",
+        ),
+        (
+            "qualification_base_tree",
+            "74a271b889a09b0c1ed5463cae7b668c760547e5",
+        ),
+        (
+            "qualification_parent_sha",
+            "2f7e71b34498a4f6547b3c72070cdcdc257539ec",
+        ),
+        (
+            "qualification_parent_tree",
+            "225e4de1e2ef60dc6495c9370105453ec5551c58",
+        ),
+        (
+            "parent_to_head_diff_sha256",
+            "73d8038e240a850d8d4619309291aa9c49972abb34389ba134a059b2748176b7",
+        ),
+        (
+            "crash_recovery_receipt_sha256",
+            "76b4bfeab8b1dbbe626b000e5172c73be6a3ee7cd90864b14234915ecba8123e",
+        ),
+        (
+            "previous_bounded_aggregate_sha256",
+            "95f63aad96942eebb4ccccdabba177a487d727424182ec1c62f2a677ad59eded",
+        ),
+        (
+            "previous_bounded_manifest_sha256",
+            "f096da046ad20336d7a647e77ee193d0cad6497e2f7718fff430d787dda589cb",
+        ),
+    ] {
+        assert_eq!(
+            recovery.get(field).and_then(toml::Value::as_str),
+            Some(expected),
+            "G5 crash-recovery {field} drifted",
+        );
+    }
+    for field in [
+        "evidence_only",
+        "dispatch_intent_persisted_before_queue_seam",
+        "pre_admission_abort_transactional",
+        "pre_admission_retry_same_occurrence_and_client_id",
+        "successful_dispatch_upgrades_uncertain_intent_atomically",
+        "crash_after_external_acceptance_quarantined_across_reopen",
+        "in_flight_unknown_fences_generation_and_second_claim",
+        "five_and_six_agent_lifecycle_requalified_on_exact_head",
+    ] {
+        assert_eq!(
+            recovery.get(field).and_then(toml::Value::as_bool),
+            Some(true),
+            "G5 crash-recovery {field} must be true",
+        );
+    }
+    for field in [
+        "provider_physical_sampling_exactly_once",
+        "fleet_or_automation_authority",
+        "automation_authority",
+        "operator_acceptance_recorded",
+        "promotion_eligible",
+        "g5_complete",
+        "g5_allowed",
+        "fleet_and_automation_unfrozen",
+    ] {
+        assert_eq!(
+            recovery.get(field).and_then(toml::Value::as_bool),
+            Some(false),
+            "G5 crash-recovery {field} must remain false",
+        );
+    }
+    let worktree_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("hepta-contracts must live under codex-rs");
+    let callers = recovery
+        .get("qualification_callers")
+        .and_then(toml::Value::as_array)
+        .expect("G5 crash-recovery qualification callers must be explicit");
+    assert_eq!(callers.len(), 4);
+    for caller in callers {
+        let path = caller
+            .as_str()
+            .expect("G5 crash-recovery caller must be a string");
+        assert!(
+            worktree_root.join(path).is_file(),
+            "G5 crash-recovery caller path does not exist: {path}"
+        );
+    }
 }
