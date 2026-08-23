@@ -1,9 +1,15 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::CognitiveCompactError;
 use crate::CognitiveStore;
 use crate::CognitiveStoreError;
+use crate::CompactCheckpoint;
+use crate::CompactCommitDecision;
+use crate::CompactLease;
+use crate::CompactParentSnapshot;
 use crate::FederatedRecallSet;
+use crate::RehydrationPlan;
 
 /// Sanitized reason why an owning runtime could not open its Cognitive Plane.
 ///
@@ -104,6 +110,54 @@ impl CognitiveRuntime {
         match self {
             Self::Unavailable(reason) => Some(*reason),
             Self::Absent | Self::Available(_) | Self::AvailableFederated { .. } => None,
+        }
+    }
+
+    /// Captures a typed, local-development-only pre-compact lease envelope.
+    ///
+    /// This is a read-only contract seam: it does not acquire a lease, append
+    /// an event, mutate SQLite, or authorize compaction. The Agent-local
+    /// authoritative writer must perform the real CAS transaction.
+    pub fn pre_compact(
+        &self,
+        snapshot: CompactParentSnapshot,
+    ) -> Result<CompactLease, CognitiveCompactError> {
+        self.require_compact_runtime()?;
+        Ok(CompactLease::from_snapshot(snapshot))
+    }
+
+    /// Builds a typed post-compact rehydration plan without writing state.
+    ///
+    /// A plan starts as NotStarted; callers must execute and acknowledge
+    /// rehydration through the owning event store before treating it as
+    /// complete.
+    pub fn post_compact(
+        &self,
+        checkpoint: &CompactCheckpoint,
+        expected_revision: u64,
+    ) -> Result<RehydrationPlan, CognitiveCompactError> {
+        self.require_compact_runtime()?;
+        checkpoint.rehydration_plan(expected_revision)
+    }
+
+    /// Performs read-only parent CAS and generation/fence validation for a
+    /// checkpoint. No commit or projection write occurs here.
+    pub fn validate_compact_commit(
+        &self,
+        checkpoint: &CompactCheckpoint,
+        current: &CompactParentSnapshot,
+    ) -> Result<CompactCommitDecision, CognitiveCompactError> {
+        self.require_compact_runtime()?;
+        Ok(checkpoint.validate_against(current))
+    }
+
+    fn require_compact_runtime(&self) -> Result<(), CognitiveCompactError> {
+        match self {
+            Self::Absent => Err(CognitiveCompactError::RuntimeAbsent),
+            Self::Unavailable(reason) => {
+                Err(CognitiveCompactError::RuntimeUnavailable { reason: *reason })
+            }
+            Self::Available(_) | Self::AvailableFederated { .. } => Ok(()),
         }
     }
 }

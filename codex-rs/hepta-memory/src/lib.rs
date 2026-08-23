@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+mod cognitive_compact;
 mod cognitive_federation;
 mod cognitive_intelligence_writer;
 mod cognitive_kg_store;
@@ -12,6 +13,21 @@ mod framing;
 mod memory_admission;
 mod recall;
 
+pub use cognitive_compact::COGNITIVE_COMPACT_HOOK_NAMESPACE;
+pub use cognitive_compact::COGNITIVE_COMPACT_HOOK_SCHEMA_VERSION;
+pub use cognitive_compact::CognitiveCompactError;
+pub use cognitive_compact::CompactCheckpoint;
+pub use cognitive_compact::CompactCommitDecision;
+pub use cognitive_compact::CompactConflictReason;
+pub use cognitive_compact::CompactFence;
+pub use cognitive_compact::CompactLease;
+pub use cognitive_compact::CompactLossReport;
+pub use cognitive_compact::CompactParentSnapshot;
+pub use cognitive_compact::CompactProtectedRef;
+pub use cognitive_compact::CompactRejectReason;
+pub use cognitive_compact::CompactSummaryReceipt;
+pub use cognitive_compact::RehydrationPlan;
+pub use cognitive_compact::RehydrationStatus;
 pub use cognitive_federation::FederatedMemoryExplanation;
 pub use cognitive_federation::FederatedMemoryReader;
 pub use cognitive_federation::FederatedMemoryRevalidationBinding;
@@ -112,6 +128,10 @@ mod cognitive_retrieval_tests;
 #[cfg(test)]
 #[path = "cognitive_runtime_tests.rs"]
 mod cognitive_runtime_tests;
+
+#[cfg(test)]
+#[path = "cognitive_compact_tests.rs"]
+mod cognitive_compact_tests;
 
 #[cfg(test)]
 mod cognitive_test_support;
