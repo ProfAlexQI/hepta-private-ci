@@ -348,6 +348,88 @@ async fn stale_fence_and_sqlite_tamper_fail_closed() {
 }
 
 #[tokio::test]
+async fn compact_reopen_binds_authority_and_owner_epochs_and_rejects_legacy_nulls() {
+    let temp = TempDir::new().expect("temp dir");
+    let owner = agent_id(96);
+    let store = CognitiveStore::open(&layout(&temp, &owner))
+        .await
+        .expect("store");
+    let current_fence = fence(41, "fence:41");
+    let current = snapshot(current_fence.clone());
+    let checkpoint = checkpoint(current_fence.clone());
+    let executor = store
+        .open_local_compact_executor("journal:fence-epochs", current_fence.clone())
+        .await
+        .expect("executor");
+    executor
+        .append_intent("op:fence-epochs", &checkpoint, &current)
+        .await
+        .expect("intent");
+
+    let stored_authority: i64 = sqlx::query_scalar(
+        "SELECT authority_epoch FROM cognitive_compact_events
+         WHERE journal_id = ? AND sequence = 1",
+    )
+    .bind("journal:fence-epochs")
+    .fetch_one(&store.pool)
+    .await
+    .expect("authority epoch");
+    let stored_owner: i64 = sqlx::query_scalar(
+        "SELECT owner_epoch FROM cognitive_compact_events
+         WHERE journal_id = ? AND sequence = 1",
+    )
+    .bind("journal:fence-epochs")
+    .fetch_one(&store.pool)
+    .await
+    .expect("owner epoch");
+    assert_eq!(stored_authority, 3);
+    assert_eq!(stored_owner, 8);
+
+    let authority_changed = store
+        .open_local_compact_executor(
+            "journal:fence-epochs",
+            CompactFence::new(4, 8, 41, "fence:41").expect("authority-changed fence"),
+        )
+        .await;
+    assert!(matches!(
+        authority_changed,
+        Err(crate::LocalCompactExecutorError::Corrupt(_))
+    ));
+    let owner_changed = store
+        .open_local_compact_executor(
+            "journal:fence-epochs",
+            CompactFence::new(3, 9, 41, "fence:41").expect("owner-changed fence"),
+        )
+        .await;
+    assert!(matches!(
+        owner_changed,
+        Err(crate::LocalCompactExecutorError::Corrupt(_))
+    ));
+
+    // A v1 row migrated through 0006 has NULL epoch columns.  It must not be
+    // guessed or silently adopted by a v2 executor.
+    sqlx::query("DROP TRIGGER cognitive_compact_events_no_update")
+        .execute(&store.pool)
+        .await
+        .expect("drop test trigger");
+    sqlx::query(
+        "UPDATE cognitive_compact_events
+         SET authority_epoch = NULL
+         WHERE journal_id = 'journal:fence-epochs' AND sequence = 1",
+    )
+    .execute(&store.pool)
+    .await
+    .expect("null legacy epoch");
+    let legacy_null = store
+        .open_local_compact_executor("journal:fence-epochs", current_fence)
+        .await;
+    assert!(matches!(
+        legacy_null,
+        Err(crate::LocalCompactExecutorError::Corrupt(_))
+    ));
+}
+
+#[tokio::test]
 async fn rehydration_marker_tamper_fails_closed_on_restart() {
     let temp = TempDir::new().expect("temp dir");
     let owner = agent_id(94);

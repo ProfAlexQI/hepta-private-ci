@@ -20,7 +20,12 @@ use crate::CompactFence;
 use crate::CompactParentSnapshot;
 use crate::framing::frame_part;
 
-pub const COMPACT_PERSISTENCE_SCHEMA_VERSION: u32 = 1;
+// Version 2 binds every persisted event to the complete compact fence.  The
+// previous v1 event shape only carried generation/token, which allowed a
+// journal to be reopened under a different authority or owner epoch.  v1
+// journals are intentionally not upgraded as trusted history; the SQLite
+// migration leaves their epoch columns NULL and the loader rejects them.
+pub const COMPACT_PERSISTENCE_SCHEMA_VERSION: u32 = 2;
 pub const COMPACT_PERSISTENCE_NAMESPACE: &str = "local_development_only";
 pub const COMPACT_PERSISTENCE_EXTERNAL_EFFECTS: bool = false;
 pub const COMPACT_PERSISTENCE_KG_WRITE_AUTHORITY: bool = false;
@@ -75,6 +80,8 @@ pub struct CompactPersistenceEvent {
     pub namespace: String,
     pub sequence: u64,
     pub operation_id: String,
+    pub authority_epoch: u64,
+    pub owner_epoch: u64,
     pub generation: u64,
     pub fencing_token: String,
     pub kind: CompactPersistenceEventKind,
@@ -439,6 +446,8 @@ impl CompactPersistenceJournal {
             namespace: COMPACT_PERSISTENCE_NAMESPACE.to_string(),
             sequence,
             operation_id: operation_id.to_string(),
+            authority_epoch: self.fence.authority_epoch,
+            owner_epoch: self.fence.owner_epoch,
             generation: self.fence.generation,
             fencing_token: self.fence.fencing_token.clone(),
             kind,
@@ -456,6 +465,8 @@ impl CompactPersistenceJournal {
         }
         if entry.schema_version != COMPACT_PERSISTENCE_SCHEMA_VERSION
             || entry.namespace != COMPACT_PERSISTENCE_NAMESPACE
+            || entry.authority_epoch != self.fence.authority_epoch
+            || entry.owner_epoch != self.fence.owner_epoch
             || entry.generation != self.fence.generation
             || entry.fencing_token != self.fence.fencing_token
             || entry.previous_sha256 != self.head_sha256
@@ -695,6 +706,8 @@ fn event_digest(entry: &CompactPersistenceEvent) -> Sha256Digest {
     frame_part(&mut hasher, b"hepta-memory:compact-persistence:event:v1");
     frame_part(&mut hasher, &entry.sequence.to_be_bytes());
     frame_part(&mut hasher, entry.operation_id.as_bytes());
+    frame_part(&mut hasher, &entry.authority_epoch.to_be_bytes());
+    frame_part(&mut hasher, &entry.owner_epoch.to_be_bytes());
     frame_part(&mut hasher, &entry.generation.to_be_bytes());
     frame_part(&mut hasher, entry.fencing_token.as_bytes());
     frame_part(&mut hasher, entry.previous_sha256.as_str().as_bytes());

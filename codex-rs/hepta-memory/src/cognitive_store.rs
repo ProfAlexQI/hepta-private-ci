@@ -125,7 +125,7 @@ const REQUIRED_SCHEMA_OBJECTS: &[(&str, &str)] = &[
     ("cognitive_local_outbox_occurrence_lookup", "index"),
 ];
 const REQUIRED_SCHEMA_ORACLE_SHA256: &str =
-    "84cee271f930df5bcec5f39093d1a2cfa78da5ba594b5e8838e327df7be29231";
+    "c1386d9a3762451291287c7e154658af63977836fce6524edb3b4cdb1f686184";
 
 #[derive(Debug, thiserror::Error)]
 pub enum CognitiveStoreError {
@@ -404,9 +404,18 @@ async fn verify_store(pool: &SqlitePool, owner: &AgentId) -> Result<(), Cognitiv
             ))
         })
         .collect::<Result<Vec<_>, CognitiveStoreError>>()?;
-    if migrations != [(1, true), (2, true), (3, true), (4, true), (5, true)] {
+    if migrations
+        != [
+            (1, true),
+            (2, true),
+            (3, true),
+            (4, true),
+            (5, true),
+            (6, true),
+        ]
+    {
         return Err(CognitiveStoreError::Corrupt(format!(
-            "cognitive migration ledger is not the exact successful 0001/0002/0003/0004/0005 set: {migrations:?}"
+            "cognitive migration ledger is not the exact successful 0001/0002/0003/0004/0005/0006 set: {migrations:?}"
         )));
     }
     let mut schema_oracle_parts = Vec::with_capacity(REQUIRED_SCHEMA_OBJECTS.len());

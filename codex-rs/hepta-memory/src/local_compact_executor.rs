@@ -311,7 +311,8 @@ impl LocalCompactExecutor {
         transaction: &mut Transaction<'_, Sqlite>,
     ) -> Result<CompactPersistenceJournal, LocalCompactExecutorError> {
         let rows = sqlx::query(
-            "SELECT sequence, owner_agent_id, generation, fencing_token,
+            "SELECT sequence, owner_agent_id, authority_epoch, owner_epoch,
+                    generation, fencing_token,
                     event_json, previous_sha256, event_sha256
              FROM cognitive_compact_events
              WHERE journal_id = ?
@@ -336,6 +337,12 @@ impl LocalCompactExecutor {
             let owner_agent_id: String = row
                 .try_get("owner_agent_id")
                 .map_err(crate::cognitive_store::unavailable)?;
+            let authority_epoch: Option<i64> = row
+                .try_get("authority_epoch")
+                .map_err(crate::cognitive_store::unavailable)?;
+            let owner_epoch: Option<i64> = row
+                .try_get("owner_epoch")
+                .map_err(crate::cognitive_store::unavailable)?;
             let generation: i64 = row
                 .try_get("generation")
                 .map_err(crate::cognitive_store::unavailable)?;
@@ -351,7 +358,23 @@ impl LocalCompactExecutor {
             let event_sha256: String = row
                 .try_get("event_sha256")
                 .map_err(crate::cognitive_store::unavailable)?;
+            let authority_epoch = authority_epoch
+                .and_then(|value| u64::try_from(value).ok())
+                .ok_or_else(|| {
+                    LocalCompactExecutorError::Corrupt(
+                        "event row is missing a valid authority epoch".to_string(),
+                    )
+                })?;
+            let owner_epoch = owner_epoch
+                .and_then(|value| u64::try_from(value).ok())
+                .ok_or_else(|| {
+                    LocalCompactExecutorError::Corrupt(
+                        "event row is missing a valid owner epoch".to_string(),
+                    )
+                })?;
             if owner_agent_id != self.store.owner_agent_id().as_str()
+                || authority_epoch != self.fence.authority_epoch
+                || owner_epoch != self.fence.owner_epoch
                 || generation != i64::try_from(self.fence.generation).unwrap_or(i64::MAX)
                 || fencing_token != self.fence.fencing_token
             {
@@ -362,6 +385,8 @@ impl LocalCompactExecutor {
             let entry: CompactPersistenceEvent = serde_json::from_str(&event_json)
                 .map_err(|error| LocalCompactExecutorError::Serialization(error.to_string()))?;
             if sequence != i64::try_from(entry.sequence).unwrap_or(i64::MAX)
+                || authority_epoch != entry.authority_epoch
+                || owner_epoch != entry.owner_epoch
                 || previous_sha256 != entry.previous_sha256.as_str()
                 || event_sha256 != entry.event_sha256.as_str()
             {
@@ -404,12 +429,21 @@ impl LocalCompactExecutor {
             .map_err(|_| LocalCompactExecutorError::Clock("timestamp overflow".to_string()))?;
         sqlx::query(
             "INSERT INTO cognitive_compact_events (
-                journal_id, owner_agent_id, sequence, generation, fencing_token,
+                journal_id, owner_agent_id, authority_epoch, owner_epoch,
+                sequence, generation, fencing_token,
                 event_json, previous_sha256, event_sha256, recorded_at_unix_seconds
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&self.journal_id)
         .bind(self.store.owner_agent_id().as_str())
+        .bind(i64::try_from(self.fence.authority_epoch).map_err(|_| {
+            LocalCompactExecutorError::Invalid("authority epoch overflow".to_string())
+        })?)
+        .bind(
+            i64::try_from(self.fence.owner_epoch).map_err(|_| {
+                LocalCompactExecutorError::Invalid("owner epoch overflow".to_string())
+            })?,
+        )
         .bind(i64::try_from(entry.sequence).map_err(|_| {
             LocalCompactExecutorError::Invalid("event sequence overflow".to_string())
         })?)
