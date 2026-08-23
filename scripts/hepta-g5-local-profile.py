@@ -21,9 +21,6 @@ SCHEMA = "hepta_g5_local_development_profile_v1"
 PROFILE_NAME = "local_development"
 EXPECTED_WORKTREE = Path("/Volumes/T5/hepta-vnext/worktrees/r2-g5-local-dev-profile-20260824")
 EXPECTED_ANCESTOR = "2dae1ae2b09111dad94aebd6788df2d1234217cd"
-EXPECTED_HEAD = "c3562438b94a7984ccfa9cdcd0db8abda36a9717"
-EXPECTED_TREE = "3e0cdf5c47f98ce0c096e3f4286b31803092349e"
-EXPECTED_PARENT = "ee9475c062af5c3dd39936add98257cd9dd1e9b3"
 ALLOWED_DELTA_PATHS = frozenset(
     {
         "docs/hepta-vnext/G5_LOCAL_DEVELOPMENT_PROFILE_V1.md",
@@ -74,6 +71,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--operator", default="local-development-user")
+    parser.add_argument("--expected-head", required=True)
+    parser.add_argument("--expected-tree", required=True)
+    parser.add_argument("--expected-parent", required=True)
     parser.add_argument(
         "--ack",
         action="store_true",
@@ -102,10 +102,10 @@ def main() -> int:
     head = run_git(candidate, "rev-parse", "HEAD")
     tree = run_git(candidate, "rev-parse", "HEAD^{tree}")
     parent = run_git(candidate, "rev-parse", "HEAD^")
-    if (head, tree, parent) != (EXPECTED_HEAD, EXPECTED_TREE, EXPECTED_PARENT):
+    if (head, tree, parent) != (args.expected_head, args.expected_tree, args.expected_parent):
         raise SystemExit(
             "candidate identity mismatch; expected exact head/tree/parent "
-            f"{EXPECTED_HEAD}/{EXPECTED_TREE}/{EXPECTED_PARENT}"
+            f"{args.expected_head}/{args.expected_tree}/{args.expected_parent}"
         )
     if not git_is_ancestor(candidate, EXPECTED_ANCESTOR, head):
         raise SystemExit(f"candidate is not descended from the unified candidate: {EXPECTED_ANCESTOR}")

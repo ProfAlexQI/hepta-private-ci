@@ -54,8 +54,12 @@ mistaken for a production operator decision.
 Generate a profile with:
 
 ```sh
+HEAD=$(git -C /Volumes/T5/hepta-vnext/worktrees/r2-g5-local-dev-profile-20260824 rev-parse HEAD)
+TREE=$(git -C /Volumes/T5/hepta-vnext/worktrees/r2-g5-local-dev-profile-20260824 rev-parse HEAD^{tree})
+PARENT=$(git -C /Volumes/T5/hepta-vnext/worktrees/r2-g5-local-dev-profile-20260824 rev-parse HEAD^)
 python3 scripts/hepta-g5-local-profile.py \
   --candidate /Volumes/T5/hepta-vnext/worktrees/r2-g5-local-dev-profile-20260824 \
   --output /Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-20260824 \
-  --operator local-development-user --ack
+  --operator local-development-user --ack \
+  --expected-head "$HEAD" --expected-tree "$TREE" --expected-parent "$PARENT"
 ```
