@@ -36,6 +36,12 @@ profile, if ever requested, is a separate opt-in profile and may reintroduce
 provider and trust requirements at that time; those requirements do not block
 the local development plan.
 
+The profile also records hard negative controls: `planning_only=true`,
+`production_caller=false`, `production_writer=false`, `provider_effects=false`,
+`kg_write_authority=false`, `governance_bypass=false`, and
+`required_governance_mode=Shadow`.  A local profile cannot disable governance
+or turn a local/sandbox receipt into production authority.
+
 Generate a profile with:
 
 ```sh

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import platform
 import subprocess
 from pathlib import Path
 
@@ -117,6 +118,21 @@ def main() -> int:
             "cryptographic_signature": False,
             "independent_trust_root": False,
             "scope": "development_and_sandbox_only",
+        },
+        "execution_scope": {
+            "planning_only": True,
+            "production_caller": False,
+            "production_writer": False,
+            "provider_effects": False,
+            "kg_write_authority": False,
+            "governance_bypass": False,
+            "required_governance_mode": "Shadow",
+        },
+        "runner": {
+            "kind": "python_stdlib",
+            "python_version": platform.python_version(),
+            "script": "scripts/hepta-g5-local-profile.py",
+            "dependency_digest": "python-standard-library-only",
         },
         "provider_effect_policy": {
             "mode": "at_least_once_indeterminate_reconcile",
