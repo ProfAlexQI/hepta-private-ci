@@ -462,6 +462,6 @@ async fn v2_fixture_migrates_forward_preserving_memory_and_revoking_legacy_proje
         .fetch_one(&migrated.pool)
         .await
         .expect("migration ledger"),
-        "1,2,3"
+        "1,2,3,4"
     );
 }

@@ -103,9 +103,13 @@ const REQUIRED_SCHEMA_OBJECTS: &[(&str, &str)] = &[
     ("kg_projection_generation_monotonic", "trigger"),
     ("kg_projection_current_receipt_on_insert", "trigger"),
     ("kg_projection_current_receipt_on_update", "trigger"),
+    ("cognitive_compact_events", "table"),
+    ("cognitive_compact_events_no_update", "trigger"),
+    ("cognitive_compact_events_no_delete", "trigger"),
+    ("cognitive_compact_events_owner_lookup", "index"),
 ];
 const REQUIRED_SCHEMA_ORACLE_SHA256: &str =
-    "db82acf4d44c51285f5063b263d64aeefacadac05543bc4c9f6207e86cf3cc5c";
+    "928d47dab352b1ce114f6b6daf8aaffb3a8079646983182f6ceb2cfe6aea3394";
 
 #[derive(Debug, thiserror::Error)]
 pub enum CognitiveStoreError {
@@ -384,9 +388,9 @@ async fn verify_store(pool: &SqlitePool, owner: &AgentId) -> Result<(), Cognitiv
             ))
         })
         .collect::<Result<Vec<_>, CognitiveStoreError>>()?;
-    if migrations != [(1, true), (2, true), (3, true)] {
+    if migrations != [(1, true), (2, true), (3, true), (4, true)] {
         return Err(CognitiveStoreError::Corrupt(format!(
-            "cognitive migration ledger is not the exact successful 0001/0002/0003 set: {migrations:?}"
+            "cognitive migration ledger is not the exact successful 0001/0002/0003/0004 set: {migrations:?}"
         )));
     }
     let mut schema_oracle_parts = Vec::with_capacity(REQUIRED_SCHEMA_OBJECTS.len());

@@ -12,6 +12,7 @@ mod cognitive_store;
 mod compact_persistence;
 mod framing;
 mod intuition_shadow;
+mod local_compact_executor;
 mod memory_admission;
 mod neuron_proposal;
 mod recall;
@@ -120,6 +121,12 @@ pub use intuition_shadow::MAX_INTUITION_CANDIDATE_ID_BYTES;
 pub use intuition_shadow::MAX_INTUITION_CANDIDATES;
 pub use intuition_shadow::intuition_schema_digest;
 pub use intuition_shadow::shadow_intuition_decide;
+pub use local_compact_executor::LOCAL_COMPACT_EXECUTOR_EXTERNAL_EFFECTS;
+pub use local_compact_executor::LOCAL_COMPACT_EXECUTOR_KG_WRITE_AUTHORITY;
+pub use local_compact_executor::LOCAL_COMPACT_EXECUTOR_NAMESPACE;
+pub use local_compact_executor::LOCAL_COMPACT_EXECUTOR_SCHEMA_VERSION;
+pub use local_compact_executor::LocalCompactExecutor;
+pub use local_compact_executor::LocalCompactExecutorError;
 pub use memory_admission::MemoryAdmissionEvidence;
 pub use memory_admission::MemoryAdmissionReceipt;
 pub use memory_admission::MemoryCandidateDraft;
@@ -189,6 +196,10 @@ mod cognitive_compact_tests;
 #[cfg(test)]
 #[path = "compact_persistence_tests.rs"]
 mod compact_persistence_tests;
+
+#[cfg(test)]
+#[path = "local_compact_executor_tests.rs"]
+mod local_compact_executor_tests;
 
 #[cfg(test)]
 mod cognitive_test_support;
