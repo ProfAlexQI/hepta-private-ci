@@ -53,6 +53,7 @@ use crate::framing::digest_many;
 use crate::framing::domain_digest;
 use crate::framing::path_identity_bytes;
 use crate::framing::workspace_digest;
+use crate::local_lifecycle::LocalTurnLifecycleContributor;
 use crate::observation::ShadowRecallTurnObservation;
 use crate::observation::ShadowRecallTurnReason;
 use crate::observation::commit_turn_observation;
@@ -667,12 +668,16 @@ pub fn install<C, F>(
     builder: &mut ExtensionRegistryBuilder<C>,
     state_db: Option<Arc<StateRuntime>>,
     cognitive_runtime: CognitiveRuntime,
+    local_turn_lifecycle_enabled: bool,
     resolve_thread: F,
 ) -> Arc<HeptaMemoryExtension<F>>
 where
     C: Sync,
     F: Fn(&C) -> Option<HeptaMemoryThreadConfig> + Send + Sync + 'static,
 {
+    let local_lifecycle_store = local_turn_lifecycle_enabled
+        .then(|| cognitive_runtime.available_store().cloned())
+        .flatten();
     let legacy_attachment_enabled = matches!(&cognitive_runtime, CognitiveRuntime::Absent);
     let extension = Arc::new(HeptaMemoryExtension::new(
         resolve_thread,
@@ -696,6 +701,13 @@ where
         } else {
             builder.ephemeral_model_input_contributor(cognitive);
         }
+    }
+    // This is an explicit embedding capability, never inferred from an
+    // environment variable or from a non-absent CognitiveRuntime.  The
+    // contributor only records local-development journal rows and has no
+    // dispatch, KG, routing, or production authority.
+    if let Some(store) = local_lifecycle_store {
+        builder.turn_lifecycle_contributor(Arc::new(LocalTurnLifecycleContributor::new(store)));
     }
     extension
 }

@@ -272,6 +272,7 @@ async fn build_test_processor(
         plugin_startup_tasks: crate::PluginStartupTasks::Start,
         turn_queue_capacity: None,
         hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime::Absent,
+        hepta_local_turn_lifecycle_enabled: false,
     }));
     (processor, outgoing_rx)
 }

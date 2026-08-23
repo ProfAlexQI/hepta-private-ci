@@ -452,6 +452,20 @@ impl LocalLeaseOutbox {
         &self.fencing_token
     }
 
+    /// Re-verify the active lease and both append-only journal chains before
+    /// a caller performs a terminal transition.  In particular, callers
+    /// must not use `release` as a way to hide a corrupt event/outbox chain.
+    pub async fn verify_current(&self) -> Result<(), LocalLeaseOutboxError> {
+        Self::reopen(
+            &self.store,
+            self.lease_id.clone(),
+            self.generation,
+            self.fencing_token.clone(),
+        )
+        .await
+        .map(|_| ())
+    }
+
     /// Reopens an already acquired active lease and verifies every journal
     /// chain before returning a writable handle.
     pub(crate) async fn reopen(

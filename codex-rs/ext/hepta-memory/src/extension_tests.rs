@@ -855,12 +855,34 @@ fn install_registers_only_the_three_owned_contributor_seams() {
         &mut builder,
         None,
         codex_hepta_memory::CognitiveRuntime::Absent,
+        false,
         resolve_test_config as fn(&TestConfig) -> Option<HeptaMemoryThreadConfig>,
     );
     let registry = builder.build();
 
     assert_eq!(registry.thread_lifecycle_contributors().len(), 1);
+    assert!(registry.turn_lifecycle_contributors().is_empty());
     assert_eq!(registry.turn_input_contributors().len(), 1);
     assert_eq!(registry.ephemeral_model_input_contributors().len(), 1);
     assert!(Arc::strong_count(&extension) >= 4);
+}
+
+#[test]
+fn local_turn_lifecycle_requires_explicit_enable_and_available_store() {
+    for runtime in [
+        codex_hepta_memory::CognitiveRuntime::Absent,
+        codex_hepta_memory::CognitiveRuntime::Unavailable(
+            codex_hepta_memory::CognitiveUnavailableReason::StorageUnavailable,
+        ),
+    ] {
+        let mut builder = ExtensionRegistryBuilder::<TestConfig>::new();
+        let _extension = install(
+            &mut builder,
+            None,
+            runtime,
+            true,
+            resolve_test_config as fn(&TestConfig) -> Option<HeptaMemoryThreadConfig>,
+        );
+        assert!(builder.build().turn_lifecycle_contributors().is_empty());
+    }
 }

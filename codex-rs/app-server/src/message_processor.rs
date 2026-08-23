@@ -281,6 +281,7 @@ pub(crate) struct MessageProcessorArgs {
     pub(crate) plugin_startup_tasks: crate::PluginStartupTasks,
     pub(crate) turn_queue_capacity: Option<NonZeroUsize>,
     pub(crate) hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime,
+    pub(crate) hepta_local_turn_lifecycle_enabled: bool,
 }
 
 impl MessageProcessor {
@@ -307,6 +308,7 @@ impl MessageProcessor {
             plugin_startup_tasks,
             turn_queue_capacity,
             hepta_cognitive_runtime,
+            hepta_local_turn_lifecycle_enabled,
         } = args;
         let thread_state_manager = ThreadStateManager::new();
         // The thread store is intentionally process-scoped. Config reloads can
@@ -370,6 +372,7 @@ impl MessageProcessor {
                         http_client_factory: config.http_client_factory(),
                         queue_service: queue_service.clone(),
                         hepta_cognitive_runtime: hepta_cognitive_runtime.clone(),
+                        hepta_local_turn_lifecycle_enabled,
                     },
                 ),
                 Arc::new(CodexHomeUserInstructionsProvider::new(

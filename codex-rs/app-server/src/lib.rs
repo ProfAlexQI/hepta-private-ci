@@ -457,6 +457,10 @@ pub struct AppServerRuntimeOptions {
     /// hands in `Available` or a sanitized `Unavailable`; extensions must
     /// never infer store ownership from environment variables.
     pub hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime,
+    /// Explicit local-development-only turn lifecycle journal capability.
+    /// This is false by default and is never inferred from environment or
+    /// feature flags.
+    pub hepta_local_turn_lifecycle_enabled: bool,
 }
 
 impl std::fmt::Debug for AppServerRuntimeOptions {
@@ -480,6 +484,10 @@ impl std::fmt::Debug for AppServerRuntimeOptions {
                 &self.required_thread_store_mode,
             )
             .field("hepta_cognitive_runtime", &self.hepta_cognitive_runtime)
+            .field(
+                "hepta_local_turn_lifecycle_enabled",
+                &self.hepta_local_turn_lifecycle_enabled,
+            )
             .finish()
     }
 }
@@ -524,6 +532,7 @@ impl PartialEq for AppServerRuntimeOptions {
                 ) => true,
                 _ => false,
             }
+            && self.hepta_local_turn_lifecycle_enabled == other.hepta_local_turn_lifecycle_enabled
     }
 }
 
@@ -540,6 +549,7 @@ impl Default for AppServerRuntimeOptions {
             required_sqlite_home: None,
             required_thread_store_mode: None,
             hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime::Absent,
+            hepta_local_turn_lifecycle_enabled: false,
         }
     }
 }
@@ -1022,6 +1032,7 @@ pub async fn run_main_with_transport_options(
             plugin_startup_tasks: runtime_options.plugin_startup_tasks,
             turn_queue_capacity: runtime_options.turn_queue_capacity,
             hepta_cognitive_runtime: runtime_options.hepta_cognitive_runtime.clone(),
+            hepta_local_turn_lifecycle_enabled: runtime_options.hepta_local_turn_lifecycle_enabled,
         }));
         let mut thread_created_rx = processor.thread_created_receiver();
         let mut running_turn_count_rx = processor.subscribe_running_assistant_turn_count();

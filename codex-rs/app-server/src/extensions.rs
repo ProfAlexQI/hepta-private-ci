@@ -51,6 +51,9 @@ pub(crate) struct ThreadExtensionDependencies {
     /// Exact per-agent capability supplied by the owning process. Plain Codex
     /// uses `Absent`; an owning agent may degrade to sanitized `Unavailable`.
     pub(crate) hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime,
+    /// Explicit local-development-only lifecycle journal capability. Plain
+    /// Codex and production-facing embeddings keep this false.
+    pub(crate) hepta_local_turn_lifecycle_enabled: bool,
 }
 
 pub(crate) fn thread_extensions<S>(
@@ -73,6 +76,7 @@ where
         http_client_factory,
         queue_service,
         hepta_cognitive_runtime,
+        hepta_local_turn_lifecycle_enabled,
     } = dependencies;
     let mut builder = ExtensionRegistryBuilder::<Config>::with_event_sink(Arc::clone(&event_sink));
     if let Some(queue_service) = queue_service {
@@ -107,6 +111,7 @@ where
         &mut builder,
         state_db,
         hepta_cognitive_runtime,
+        hepta_local_turn_lifecycle_enabled,
         |config: &Config| {
             codex_hepta_memory_extension::HeptaMemoryThreadConfig::for_features(
                 hepta_memory_feature_flags(&config.features),

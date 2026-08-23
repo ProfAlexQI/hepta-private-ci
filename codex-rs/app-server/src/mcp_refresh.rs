@@ -347,6 +347,7 @@ enabled = false
                         http_client_factory: good_config.http_client_factory(),
                         queue_service: None,
                         hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime::Absent,
+                        hepta_local_turn_lifecycle_enabled: false,
                     },
                 ),
                 Arc::new(CodexHomeUserInstructionsProvider::new(

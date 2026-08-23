@@ -3,6 +3,7 @@
 mod cognitive;
 mod extension;
 mod framing;
+mod local_lifecycle;
 mod observation;
 
 pub use extension::HeptaMemoryExtension;

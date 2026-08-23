@@ -64,6 +64,10 @@ pub(crate) fn app_server_runtime_options(
         required_sqlite_home: Some(AbsolutePathBuf::from_absolute_path(&identity.home_root)?),
         required_thread_store_mode: Some(ThreadStoreConfig::Local),
         hepta_cognitive_runtime: cognitive_runtime,
+        // The owning agent is the only detached local-development embedding
+        // that explicitly opts into lifecycle journal admission.  This is a
+        // local queue/lease capability, not production effect authority.
+        hepta_local_turn_lifecycle_enabled: true,
         ..Default::default()
     })
 }

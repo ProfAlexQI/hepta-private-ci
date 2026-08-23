@@ -84,6 +84,7 @@ impl MessageProcessor {
             &mut extensions,
             state_db.clone(),
             codex_hepta_memory::CognitiveRuntime::Absent,
+            false,
             |config: &Config| {
                 codex_hepta_memory_extension::HeptaMemoryThreadConfig::for_features(
                     codex_hepta_memory_extension::HeptaMemoryFeatureFlags {
