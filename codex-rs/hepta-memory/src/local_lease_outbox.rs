@@ -285,9 +285,14 @@ impl LocalLeaseOutbox {
         })
     }
 
-    /// Acquire an explicitly CAS-bound next generation.  This is useful when
-    /// a recovery owner has a separately read lease head; passing a stale
-    /// expected generation fails before any row is appended.
+    /// Compatibility shim for the pre-head-CAS API.
+    ///
+    /// A generation number cannot distinguish an active head from a later
+    /// release/rollback row with the same generation.  Advancing through this
+    /// API is therefore permanently fail-closed; callers must provide the
+    /// exact append-only witness through [`Self::acquire_after_head`].  The
+    /// method remains so older callers fail safely at runtime instead of
+    /// silently bypassing the head CAS.
     pub(crate) async fn acquire_after(
         store: &CognitiveStore,
         lease_id: impl Into<String>,
@@ -297,7 +302,13 @@ impl LocalLeaseOutbox {
     ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
         validate_generation(expected_generation)?;
         validate_generation(generation)?;
-        if generation != expected_generation + 1 {
+        if generation
+            != expected_generation.checked_add(1).ok_or_else(|| {
+                LocalLeaseOutboxError::Invalid(
+                    "expected lease generation overflows next generation".to_string(),
+                )
+            })?
+        {
             return Err(LocalLeaseOutboxError::CasConflict(
                 "new lease generation must be expected generation + 1".to_string(),
             ));
@@ -306,6 +317,54 @@ impl LocalLeaseOutbox {
         let fencing_token = fencing_token.into();
         validate_text(&lease_id, "lease id", 512)?;
         validate_text(&fencing_token, "fencing token", 256)?;
+        let _ = store;
+        Err(LocalLeaseOutboxError::CasConflict(
+            "exact lease head required; use acquire_local_lease_after_head".to_string(),
+        ))
+    }
+
+    /// Acquire a next generation using the exact append-only lease head as a
+    /// compare-and-swap witness.
+    ///
+    /// A generation number alone cannot distinguish an active head from a
+    /// later release/rollback row with the same generation.  The witness
+    /// therefore binds the lease id, owner, sequence, state, generation,
+    /// fencing token, previous digest, and head digest.  Any intervening
+    /// terminal transition fails closed before a new row is appended.
+    pub(crate) async fn acquire_after_head(
+        store: &CognitiveStore,
+        lease_id: impl Into<String>,
+        expected_head: LocalLease,
+        generation: u64,
+        fencing_token: impl Into<String>,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        let lease_id = lease_id.into();
+        let fencing_token = fencing_token.into();
+        validate_text(&lease_id, "lease id", 512)?;
+        validate_generation(generation)?;
+        validate_text(&fencing_token, "fencing token", 256)?;
+        validate_generation(expected_head.generation)?;
+        if expected_head.lease_id != lease_id {
+            return Err(LocalLeaseOutboxError::CasConflict(
+                "expected lease head belongs to a different lease".to_string(),
+            ));
+        }
+        if expected_head.owner_agent_id != *store.owner_agent_id() {
+            return Err(LocalLeaseOutboxError::AccessDenied(
+                "expected lease head owner does not match the Agent-local store".to_string(),
+            ));
+        }
+        if expected_head.state == LocalLeaseState::Active {
+            return Err(LocalLeaseOutboxError::CasConflict(
+                "expected lease head must be terminal before generation advance".to_string(),
+            ));
+        }
+        if generation != expected_head.generation.saturating_add(1) {
+            return Err(LocalLeaseOutboxError::CasConflict(
+                "new lease generation must be expected head generation + 1".to_string(),
+            ));
+        }
+
         let mut transaction = store
             .pool
             .begin_with("BEGIN IMMEDIATE")
@@ -318,15 +377,16 @@ impl LocalLeaseOutbox {
                 "cannot advance a missing lease".to_string(),
             ));
         };
-        if previous.generation != expected_generation {
-            return Err(LocalLeaseOutboxError::CasConflict(format!(
-                "expected lease generation {expected_generation}, found {}",
-                previous.generation
-            )));
-        }
-        if previous.state == LocalLeaseState::Active {
+        if previous.lease_sequence != expected_head.lease_sequence
+            || previous.owner_agent_id != expected_head.owner_agent_id
+            || previous.generation != expected_head.generation
+            || previous.fencing_token != expected_head.fencing_token
+            || previous.state != expected_head.state
+            || previous.previous_sha256 != expected_head.previous_sha256
+            || previous.lease_sha256 != expected_head.lease_sha256
+        {
             return Err(LocalLeaseOutboxError::CasConflict(
-                "cannot advance an active lease before release or rollback".to_string(),
+                "expected lease head no longer matches the current append-only head".to_string(),
             ));
         }
         if fencing_token_seen(&mut transaction, &lease_id, &fencing_token).await? {
@@ -558,6 +618,38 @@ impl LocalLeaseOutbox {
                     "occurrence replay changed its payload or topic".to_string(),
                 ));
             }
+            // An occurrence is fenced to the generation that admitted it.
+            // A newer generation must never turn a historical admission into
+            // a queued replay: doing so would permit a stale occurrence to be
+            // dispatched again and used to look like journal corruption when
+            // `queued_receipt` compared the old fence with the new handle.
+            if existing.generation != self.generation
+                || existing.fencing_token != self.fencing_token
+                || outbox.generation != self.generation
+                || outbox.fencing_token != self.fencing_token
+            {
+                return Err(LocalLeaseOutboxError::StaleFence(format!(
+                    "occurrence was admitted under generation {} and cannot be retried by generation {}",
+                    existing.generation, self.generation
+                )));
+            }
+            let outcome = current_outcome(
+                &mut transaction,
+                &self.lease_id,
+                &occurrence_key,
+                &self.owner_agent_id,
+            )
+            .await?;
+            if outcome != LocalOutcomeState::Queued {
+                // Indeterminate is intentionally fail-closed as well as the
+                // terminal states.  The caller must reconcile (or explicitly
+                // roll back) before this occurrence can leave quarantine;
+                // `admit` must never hand back a dispatchable queued receipt.
+                return Err(LocalLeaseOutboxError::IllegalTransition(format!(
+                    "occurrence is already in {} state; admission cannot replay",
+                    outcome.as_str()
+                )));
+            }
             let receipt = queued_receipt(self, &existing, &outbox)?;
             transaction
                 .commit()
@@ -568,7 +660,7 @@ impl LocalLeaseOutbox {
 
         let event_sequence = next_event_sequence(&mut transaction, &self.lease_id).await?;
         let event_previous = event_head(&mut transaction, &self.lease_id).await?;
-        let event_id = format!("event:{}:{event_sequence}", self.lease_id);
+        let event_id = journal_row_id("event", &self.lease_id, event_sequence);
         let event_sha256 = event_digest(
             &self.lease_id,
             event_sequence,
@@ -607,7 +699,7 @@ impl LocalLeaseOutbox {
 
         let outbox_sequence = next_outbox_sequence(&mut transaction, &self.lease_id).await?;
         let outbox_previous = outbox_head(&mut transaction, &self.lease_id).await?;
-        let outbox_id = format!("outbox:{}:{outbox_sequence}", self.lease_id);
+        let outbox_id = journal_row_id("outbox", &self.lease_id, outbox_sequence);
         let outbox_sha256 = outbox_digest(
             &self.lease_id,
             outbox_sequence,
@@ -833,7 +925,7 @@ impl LocalLeaseOutbox {
         }
         let sequence = next_event_sequence(&mut transaction, &self.lease_id).await?;
         let previous = event_head(&mut transaction, &self.lease_id).await?;
-        let event_id = format!("event:{}:{sequence}", self.lease_id);
+        let event_id = journal_row_id("event", &self.lease_id, sequence);
         let digest = event_digest(
             &self.lease_id,
             sequence,
@@ -1001,6 +1093,30 @@ impl CognitiveStore {
             self,
             lease_id,
             expected_generation,
+            generation,
+            fencing_token,
+        )
+        .await
+    }
+
+    /// Acquire a generation after an exact append-only lease-head CAS.
+    ///
+    /// Prefer this method whenever the caller may race with another owner or
+    /// with a release/rollback transition.  The expected head returned by
+    /// [`LocalLeaseOutbox::release`] or
+    /// [`LocalLeaseOutbox::rollback_lease`] carries the sequence, state,
+    /// generation, fencing token, and digest witness required by the CAS.
+    pub async fn acquire_local_lease_after_head(
+        &self,
+        lease_id: impl Into<String>,
+        expected_head: LocalLease,
+        generation: u64,
+        fencing_token: impl Into<String>,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        LocalLeaseOutbox::acquire_after_head(
+            self,
+            lease_id,
+            expected_head,
             generation,
             fencing_token,
         )
@@ -1257,6 +1373,42 @@ async fn load_lease_chain(
     Ok((latest, rows.len()))
 }
 
+/// Return every fence tuple that was actually active in the lease history.
+/// Event/outbox rows are append-only and may outlive the active lease row, so
+/// checking membership in this history (rather than only comparing with the
+/// current head) preserves valid historical rows while rejecting forged rows
+/// that carry a generation/fence never granted by the lease journal.
+async fn active_lease_fences(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+    expected_owner: &AgentId,
+) -> Result<BTreeSet<(u64, String)>, LocalLeaseOutboxError> {
+    let rows = sqlx::query(
+        "SELECT owner_agent_id, generation, fencing_token
+         FROM cognitive_local_leases
+         WHERE lease_id = ? AND state = 'active'",
+    )
+    .bind(lease_id)
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    let mut fences = BTreeSet::new();
+    for row in rows {
+        let owner = parse_agent(&row, "owner_agent_id")?;
+        if owner != *expected_owner {
+            return Err(corrupt("lease fence history contains a foreign owner"));
+        }
+        let generation = read_u64(&row, "generation")?;
+        validate_generation(generation)?;
+        let fencing_token: String = row
+            .try_get("fencing_token")
+            .map_err(crate::cognitive_store::unavailable)?;
+        validate_text(&fencing_token, "fencing token", 256)?;
+        fences.insert((generation, fencing_token));
+    }
+    Ok(fences)
+}
+
 async fn insert_event(
     transaction: &mut Transaction<'_, Sqlite>,
     event: EventInsert<'_>,
@@ -1326,6 +1478,7 @@ async fn verify_event_chain(
     lease_id: &str,
     expected_owner: &AgentId,
 ) -> Result<Vec<EventRow>, LocalLeaseOutboxError> {
+    let lease_fences = active_lease_fences(transaction, lease_id, expected_owner).await?;
     let rows = sqlx::query(
         "SELECT event_sequence, event_id, occurrence_key, owner_agent_id,
                 generation, fencing_token, event_kind, payload_json,
@@ -1364,6 +1517,12 @@ async fn verify_event_chain(
         let fencing_token: String = row
             .try_get("fencing_token")
             .map_err(crate::cognitive_store::unavailable)?;
+        validate_text(&fencing_token, "event fencing token", 256)?;
+        if !lease_fences.contains(&(generation, fencing_token.clone())) {
+            return Err(corrupt(
+                "event row references a generation/fencing token never active in the lease history",
+            ));
+        }
         let kind: String = row
             .try_get("event_kind")
             .map_err(crate::cognitive_store::unavailable)?;
@@ -1418,6 +1577,7 @@ async fn verify_outbox_chain(
     lease_id: &str,
     expected_owner: &AgentId,
 ) -> Result<Vec<OutboxRow>, LocalLeaseOutboxError> {
+    let lease_fences = active_lease_fences(transaction, lease_id, expected_owner).await?;
     let rows = sqlx::query(
         "SELECT outbox_sequence, outbox_id, event_id, occurrence_key,
                 owner_agent_id, generation, fencing_token, topic, payload_json,
@@ -1457,6 +1617,12 @@ async fn verify_outbox_chain(
         let fencing_token: String = row
             .try_get("fencing_token")
             .map_err(crate::cognitive_store::unavailable)?;
+        validate_text(&fencing_token, "outbox fencing token", 256)?;
+        if !lease_fences.contains(&(generation, fencing_token.clone())) {
+            return Err(corrupt(
+                "outbox row references a generation/fencing token never active in the lease history",
+            ));
+        }
         let topic: String = row
             .try_get("topic")
             .map_err(crate::cognitive_store::unavailable)?;
@@ -1774,6 +1940,20 @@ fn outbox_digest(
             previous.as_str().as_bytes(),
         ],
     )
+}
+
+/// Build a stable journal row id without allowing a maximum-length lease id
+/// to overflow the SQLite `event_id`/`outbox_id` CHECK (512 bytes).  Keep the
+/// historical human-readable form whenever it fits; very long lease ids use
+/// a collision-resistant digest of the complete id instead of truncating it.
+fn journal_row_id(kind: &str, lease_id: &str, sequence: u64) -> String {
+    let readable = format!("{kind}:{lease_id}:{sequence}");
+    if readable.len() <= 512 {
+        readable
+    } else {
+        let lease_digest = Sha256Digest::for_bytes(lease_id.as_bytes());
+        format!("{kind}:lease-sha256:{}:{sequence}", lease_digest.as_str())
+    }
 }
 
 fn digest_parts(domain: &[u8], parts: &[&[u8]]) -> Sha256Digest {

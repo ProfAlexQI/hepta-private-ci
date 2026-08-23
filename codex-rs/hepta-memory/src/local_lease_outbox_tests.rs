@@ -8,10 +8,12 @@ use crate::LOCAL_LEASE_OUTBOX_PRODUCTION_CALLER;
 use crate::LocalAdmission;
 use crate::LocalAdmissionFault;
 use crate::LocalLeaseAcquire;
+use crate::LocalLeaseOutboxError;
 use crate::LocalOutcomeState;
 use crate::LocalReconcileOutcome;
 use crate::cognitive_test_support::agent_id;
 use crate::cognitive_test_support::layout;
+use codex_hepta_contracts::Sha256Digest;
 
 async fn opened_store(temp: &TempDir, number: u8) -> CognitiveStore {
     let owner = agent_id(number);
@@ -67,22 +69,30 @@ async fn generation_cas_release_and_stale_handle_fail_closed() {
             .await
             .expect("acquire"),
     );
-    assert!(
+    assert!(matches!(
         store
             .acquire_local_lease_after("lease:generation", 1, 2, "fence:2")
-            .await
-            .is_err()
-    );
-    old.release().await.expect("release");
+            .await,
+        Err(LocalLeaseOutboxError::CasConflict(message))
+            if message.contains("exact lease head")
+    ));
+    let released = old.release().await.expect("release");
     assert!(
         store
             .acquire_local_lease_after("lease:generation", 1, 2, "fence:1")
             .await
             .is_err()
     );
-    let next = acquired(
+    assert!(matches!(
         store
             .acquire_local_lease_after("lease:generation", 1, 2, "fence:2")
+            .await,
+        Err(LocalLeaseOutboxError::CasConflict(message))
+            if message.contains("exact lease head")
+    ));
+    let next = acquired(
+        store
+            .acquire_local_lease_after_head("lease:generation", released, 2, "fence:2")
             .await
             .expect("next generation"),
     );
@@ -102,6 +112,157 @@ async fn generation_cas_release_and_stale_handle_fail_closed() {
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn terminal_or_indeterminate_occurrence_never_replays_as_queued() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 106).await;
+    let handle = acquired(
+        store
+            .acquire_local_lease("lease:terminal-replay", 1, "fence:1")
+            .await
+            .expect("acquire"),
+    );
+
+    for (occurrence, outcome) in [
+        ("occurrence:committed", LocalReconcileOutcome::Committed),
+        ("occurrence:rejected", LocalReconcileOutcome::Rejected),
+    ] {
+        handle
+            .admit(occurrence, "topic", "payload")
+            .await
+            .expect("admit");
+        handle
+            .mark_indeterminate(occurrence, "lost local ack")
+            .await
+            .expect("mark indeterminate");
+        handle
+            .reconcile(occurrence, outcome)
+            .await
+            .expect("reconcile");
+        assert!(matches!(
+            handle.admit(occurrence, "topic", "payload").await,
+            Err(LocalLeaseOutboxError::IllegalTransition(_))
+        ));
+    }
+
+    handle
+        .admit("occurrence:rolled-back", "topic", "payload")
+        .await
+        .expect("admit");
+    handle
+        .rollback_occurrence("occurrence:rolled-back", "operator rollback")
+        .await
+        .expect("rollback");
+    assert!(matches!(
+        handle
+            .admit("occurrence:rolled-back", "topic", "payload")
+            .await,
+        Err(LocalLeaseOutboxError::IllegalTransition(_))
+    ));
+
+    handle
+        .admit("occurrence:indeterminate", "topic", "payload")
+        .await
+        .expect("admit");
+    handle
+        .mark_indeterminate("occurrence:indeterminate", "lost local ack")
+        .await
+        .expect("mark indeterminate");
+    assert!(matches!(
+        handle
+            .admit("occurrence:indeterminate", "topic", "payload")
+            .await,
+        Err(LocalLeaseOutboxError::IllegalTransition(_))
+    ));
+}
+
+#[tokio::test]
+async fn new_generation_retry_of_old_occurrence_is_stale_not_corrupt() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 107).await;
+    let old = acquired(
+        store
+            .acquire_local_lease("lease:cross-generation", 1, "fence:1")
+            .await
+            .expect("acquire"),
+    );
+    old.admit("occurrence:old", "topic", "payload")
+        .await
+        .expect("old admission");
+    let released = old.release().await.expect("release");
+    let next = acquired(
+        store
+            .acquire_local_lease_after_head("lease:cross-generation", released, 2, "fence:2")
+            .await
+            .expect("next generation"),
+    );
+    assert!(matches!(
+        next.admit("occurrence:old", "topic", "payload").await,
+        Err(LocalLeaseOutboxError::StaleFence(_))
+    ));
+}
+
+#[tokio::test]
+async fn lease_head_cas_rejects_stale_terminal_head_and_digest_mismatch() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 108).await;
+    let first = acquired(
+        store
+            .acquire_local_lease("lease:head-cas", 1, "fence:1")
+            .await
+            .expect("acquire"),
+    );
+    let first_terminal = first.release().await.expect("release first");
+    let second = acquired(
+        store
+            .acquire_local_lease_after_head("lease:head-cas", first_terminal.clone(), 2, "fence:2")
+            .await
+            .expect("acquire second"),
+    );
+    let second_terminal = second.release().await.expect("release second");
+
+    // The old generation-1 terminal head cannot cross the generation-2
+    // terminal transition, even though its generation would otherwise imply
+    // the requested next generation.
+    assert!(matches!(
+        store
+            .acquire_local_lease_after_head("lease:head-cas", first_terminal.clone(), 2, "fence:3",)
+            .await,
+        Err(LocalLeaseOutboxError::CasConflict(_))
+    ));
+
+    let mut forged = second_terminal;
+    forged.lease_sha256 = Sha256Digest::for_bytes(b"forged head");
+    assert!(matches!(
+        store
+            .acquire_local_lease_after_head("lease:head-cas", forged, 3, "fence:3")
+            .await,
+        Err(LocalLeaseOutboxError::CasConflict(_))
+    ));
+}
+
+#[tokio::test]
+async fn maximum_length_lease_id_keeps_generated_row_ids_bounded() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 109).await;
+    let lease_id = "l".repeat(512);
+    let handle = acquired(
+        store
+            .acquire_local_lease(&lease_id, 1, "fence:1")
+            .await
+            .expect("acquire"),
+    );
+    let LocalAdmission::Queued(receipt) = handle
+        .admit("occurrence:max-lease-id", "topic", "payload")
+        .await
+        .expect("admit")
+    else {
+        panic!("first admission must append");
+    };
+    assert!(receipt.event_id.len() <= 512);
+    assert!(receipt.outbox_id.len() <= 512);
 }
 
 #[tokio::test]
@@ -127,6 +288,28 @@ async fn event_and_outbox_faults_leave_no_partial_rows() {
     );
     assert_eq!(
         handle.snapshot_counts().await.expect("counts after fault"),
+        crate::LocalLeaseOutboxCounts {
+            lease_rows: 1,
+            event_rows: 0,
+            outbox_rows: 0,
+        }
+    );
+    assert!(
+        handle
+            .admit_with_fault(
+                "occurrence:fault-after-outbox",
+                "topic",
+                "payload",
+                LocalAdmissionFault::AfterOutboxBeforeCommit,
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        handle
+            .snapshot_counts()
+            .await
+            .expect("counts after outbox fault"),
         crate::LocalLeaseOutboxCounts {
             lease_rows: 1,
             event_rows: 0,
