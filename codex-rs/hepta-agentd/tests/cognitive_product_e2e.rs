@@ -1029,6 +1029,146 @@ async fn runtime_automation_store_failure_does_not_end_real_agentd_or_normal_tur
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn five_real_agents_survive_one_automation_store_failure_without_peer_stall() -> Result<()> {
+    let mut fleet = FleetHarness::new()?;
+    let agent_a = fleet.register(AGENT_A, "workspace-a-store-failure-five")?;
+    let agent_b = fleet.register(AGENT_B, "workspace-b-store-failure-five")?;
+    let agent_c = fleet.register(AGENT_C, "workspace-c-store-failure-five")?;
+    let agent_d = fleet.register(AGENT_D, "workspace-d-store-failure-five")?;
+    let agent_e = fleet.register(AGENT_E, "workspace-e-store-failure-five")?;
+    let fixtures = [&agent_a, &agent_b, &agent_c, &agent_d, &agent_e];
+
+    let mut models = Vec::new();
+    for fixture in fixtures {
+        let model = responses::start_mock_server().await;
+        MockResponsesConfig::new(&model.uri()).write(fixture.layout.home_root())?;
+        models.push(model);
+    }
+
+    let mut controls = Vec::new();
+    let mut before = Vec::new();
+    for fixture in fixtures {
+        fleet.start(fixture)?;
+        let (control, health) = fleet.wait_ready(fixture, 1).await?;
+        controls.push(control);
+        before.push(health);
+    }
+
+    // Materialize Agent A's automation store before sabotaging only that Agent.
+    let mut owner_product = ProductClient::connect(&agent_a, &controls[0]).await?;
+    let owner_thread = owner_product.start_thread(&agent_a.workspace).await?;
+    let created_at_ms = u64::try_from(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())?;
+    controls[0]
+        .automation_create(AutomationTaskDraft::new(
+            owner_thread,
+            "five-agent peer store failure probe",
+            AutomationSchedule::Once,
+            created_at_ms + 60_000,
+            created_at_ms,
+        ))
+        .await?;
+    owner_product.shutdown().await?;
+
+    let database_path = agent_a
+        .layout
+        .automation_root()
+        .join("automation_1.sqlite3");
+    let sqlite_home = AbsolutePathBuf::from_absolute_path(agent_a.layout.automation_root())?;
+    let sabotage = SqliteConfig::from_sqlite_home(sqlite_home)
+        .open_durable_evidence_pool(&database_path)
+        .await?;
+    sqlx::query("DROP TABLE automation_tasks")
+        .execute(&sabotage)
+        .await?;
+    sabotage.close().await;
+
+    let unavailable = timeout(Duration::from_secs(5), async {
+        loop {
+            match controls[0].automation_list(1).await {
+                Ok(_) => tokio::time::sleep(Duration::from_millis(25)).await,
+                Err(error) => {
+                    let rendered = error.to_string();
+                    if rendered.contains("automation_unavailable") {
+                        return Ok::<String, anyhow::Error>(rendered);
+                    }
+                    return Err(anyhow!(
+                        "unexpected Agent A automation failure after sabotage: {rendered}"
+                    ));
+                }
+            }
+        }
+    })
+    .await
+    .context("Agent A automation store failure was not quarantined")??;
+    ensure!(
+        !unavailable.contains(database_path.to_string_lossy().as_ref())
+            && !unavailable.to_ascii_lowercase().contains("sqlite"),
+        "Agent A typed automation error leaked storage details"
+    );
+    ensure!(
+        controls[0].health().await?.ready,
+        "Agent A automation failure incorrectly stopped agentd"
+    );
+
+    // While Agent A is quarantined, every peer must retain its exact process and
+    // complete an ordinary App Server turn through its own model/socket.
+    for index in 1..fixtures.len() {
+        let health_before = &before[index];
+        let health = controls[index].health().await?;
+        ensure!(
+            health.ready,
+            "peer {index} lost readiness after Agent A failure"
+        );
+        ensure!(
+            health.process_id == health_before.process_id,
+            "peer {index} was restarted after Agent A store failure"
+        );
+        let mut product = ProductClient::connect(fixtures[index], &controls[index]).await?;
+        let thread = product.start_thread(&fixtures[index].workspace).await?;
+        let created_at_ms =
+            u64::try_from(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())?;
+        let peer_task = controls[index]
+            .automation_create(AutomationTaskDraft::new(
+                thread.clone(),
+                format!("peer {index} automation store probe"),
+                AutomationSchedule::Once,
+                created_at_ms + 60_000,
+                created_at_ms,
+            ))
+            .await?;
+        let listed = controls[index].automation_list(8).await?;
+        ensure!(
+            listed.iter().any(|task| task.task_id == peer_task.task_id),
+            "peer {index} automation store became unavailable"
+        );
+        controls[index].automation_cancel(peer_task.task_id).await?;
+        let response = responses::mount_sse_once(
+            &models[index],
+            final_sse(&format!("peer-store-failure-{index}")),
+        )
+        .await;
+        product
+            .run_turn(
+                &thread,
+                "Continue normal work while Agent A storage is unavailable.",
+            )
+            .await?;
+        ensure!(
+            response.requests().len() == 1,
+            "peer {index} did not complete a normal model turn"
+        );
+        let health_after = controls[index].health().await?;
+        ensure!(
+            health_after.ready && health_after.process_id == health_before.process_id,
+            "peer {index} changed process/readiness during Agent A store failure"
+        );
+        product.shutdown().await?;
+    }
+
+    Ok(())
+}
+
 fn tool_sse(response_id: &str, call_id: &str, operation: &str, arguments: Value) -> String {
     responses::sse(vec![
         responses::ev_response_created(response_id),
