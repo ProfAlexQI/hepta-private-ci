@@ -39,8 +39,17 @@ the local development plan.
 The profile also records hard negative controls: `planning_only=true`,
 `production_caller=false`, `production_writer=false`, `provider_effects=false`,
 `kg_write_authority=false`, `governance_bypass=false`, and
-`required_governance_mode=Shadow`.  A local profile cannot disable governance
+`required_governance_mode=shadow`.  A local profile cannot disable governance
 or turn a local/sandbox receipt into production authority.
+
+This is a profile-specific, declaration-only manifest; it is not a production
+runtime switch.  The sealed generator accepts only the fixed local worktree,
+the exact candidate head/tree/parent and the two profile files as the delta.
+Evidence is read only from the sealed T5 artifact root and is rejected if it is
+a symlink or changes while being hashed.  The manifest records
+`authority_status=not_granted`, `promotion_status=not_eligible`, and
+`production_operator_acceptance=false` so a local acknowledgement cannot be
+mistaken for a production operator decision.
 
 Generate a profile with:
 

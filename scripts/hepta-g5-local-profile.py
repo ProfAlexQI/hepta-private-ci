@@ -19,6 +19,18 @@ from pathlib import Path
 
 SCHEMA = "hepta_g5_local_development_profile_v1"
 PROFILE_NAME = "local_development"
+EXPECTED_WORKTREE = Path("/Volumes/T5/hepta-vnext/worktrees/r2-g5-local-dev-profile-20260824")
+EXPECTED_ANCESTOR = "2dae1ae2b09111dad94aebd6788df2d1234217cd"
+EXPECTED_HEAD = "c3562438b94a7984ccfa9cdcd0db8abda36a9717"
+EXPECTED_TREE = "3e0cdf5c47f98ce0c096e3f4286b31803092349e"
+EXPECTED_PARENT = "ee9475c062af5c3dd39936add98257cd9dd1e9b3"
+ALLOWED_DELTA_PATHS = frozenset(
+    {
+        "docs/hepta-vnext/G5_LOCAL_DEVELOPMENT_PROFILE_V1.md",
+        "scripts/hepta-g5-local-profile.py",
+    }
+)
+ARTIFACT_ROOT = Path("/Volumes/T5/hepta-vnext/artifacts")
 
 
 def run_git(candidate: Path, *args: str) -> str:
@@ -29,6 +41,14 @@ def run_git(candidate: Path, *args: str) -> str:
         text=True,
     )
     return result.stdout.strip()
+
+
+def git_is_ancestor(candidate: Path, ancestor: str, descendant: str) -> bool:
+    result = subprocess.run(
+        ["git", "-C", str(candidate), "merge-base", "--is-ancestor", ancestor, descendant],
+        check=False,
+    )
+    return result.returncode == 0
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -71,6 +91,10 @@ def main() -> int:
         raise SystemExit("refusing to create a local profile without --ack")
     if not candidate.is_dir():
         raise SystemExit(f"candidate is not a directory: {candidate}")
+    if candidate != EXPECTED_WORKTREE:
+        raise SystemExit(f"candidate must be the sealed local profile worktree: {EXPECTED_WORKTREE}")
+    if not output.is_relative_to(ARTIFACT_ROOT):
+        raise SystemExit(f"output must be under the sealed artifact root: {ARTIFACT_ROOT}")
 
     dirty = run_git(candidate, "status", "--porcelain")
     if dirty:
@@ -78,23 +102,40 @@ def main() -> int:
     head = run_git(candidate, "rev-parse", "HEAD")
     tree = run_git(candidate, "rev-parse", "HEAD^{tree}")
     parent = run_git(candidate, "rev-parse", "HEAD^")
+    if (head, tree, parent) != (EXPECTED_HEAD, EXPECTED_TREE, EXPECTED_PARENT):
+        raise SystemExit(
+            "candidate identity mismatch; expected exact head/tree/parent "
+            f"{EXPECTED_HEAD}/{EXPECTED_TREE}/{EXPECTED_PARENT}"
+        )
+    if not git_is_ancestor(candidate, EXPECTED_ANCESTOR, head):
+        raise SystemExit(f"candidate is not descended from the unified candidate: {EXPECTED_ANCESTOR}")
     delta_paths = [
         path
         for path in run_git(candidate, "diff", "--name-only", parent, head).splitlines()
         if path
     ]
-    if any(not (path.startswith("docs/") or path.startswith("scripts/")) for path in delta_paths):
-        raise SystemExit("local profile commit must be docs/scripts-only")
+    if set(delta_paths) != ALLOWED_DELTA_PATHS:
+        raise SystemExit(
+            "local profile commit has an unexpected delta; expected exactly: "
+            + ", ".join(sorted(ALLOWED_DELTA_PATHS))
+        )
     evidence = []
     for path in args.evidence:
+        if path.is_symlink():
+            raise SystemExit(f"evidence symlink is not accepted: {path}")
         resolved = path.resolve()
-        if not resolved.is_file():
+        if not resolved.is_relative_to(ARTIFACT_ROOT) or not resolved.is_file():
             raise SystemExit(f"evidence file does not exist: {resolved}")
+        before = resolved.stat()
+        digest = sha256_file(resolved)
+        after = resolved.stat()
+        if before.st_size != after.st_size or before.st_mtime_ns != after.st_mtime_ns:
+            raise SystemExit(f"evidence changed while hashing: {resolved}")
         evidence.append(
             {
                 "path": str(resolved),
-                "sha256": sha256_file(resolved),
-                "size_bytes": resolved.stat().st_size,
+                "sha256": digest,
+                "size_bytes": after.st_size,
             }
         )
 
@@ -114,19 +155,21 @@ def main() -> int:
         },
         "local_acknowledgement": {
             "operator": args.operator,
-            "basis": "interactive_user_authorization",
+            "basis": "local_untrusted_acknowledgement",
+            "identity_asserted_by_cli": False,
             "cryptographic_signature": False,
             "independent_trust_root": False,
             "scope": "development_and_sandbox_only",
         },
         "execution_scope": {
+            "declaration_only": True,
             "planning_only": True,
             "production_caller": False,
             "production_writer": False,
             "provider_effects": False,
             "kg_write_authority": False,
             "governance_bypass": False,
-            "required_governance_mode": "Shadow",
+            "required_governance_mode": "shadow",
         },
         "runner": {
             "kind": "python_stdlib",
@@ -150,6 +193,17 @@ def main() -> int:
             "g5_allowed": False,
             "fleet_and_automation_unfrozen": False,
             "provider_physical_exactly_once": False,
+        },
+        "status_axes": {
+            "authority_status": "not_granted",
+            "operator_status": "local_ack_only",
+            "promotion_status": "not_eligible",
+            "production_operator_acceptance": False,
+        },
+        "input_scope": {
+            "fixed_local_artifacts_only": True,
+            "external_signer_required": False,
+            "external_provider_required": False,
         },
         "external_inputs_required_for_this_profile": [],
         "external_inputs_deferred_to_production_profile": [
