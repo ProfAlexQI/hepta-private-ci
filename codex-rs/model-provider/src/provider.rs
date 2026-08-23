@@ -9,6 +9,7 @@ use codex_api::Provider;
 use codex_api::SharedAuthProvider;
 use codex_api::TransportError;
 use codex_api::is_azure_responses_provider;
+use codex_hepta_contracts::ProviderEffectAdapter;
 use codex_hepta_contracts::ProviderEffectIdempotencyCapability;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
@@ -28,6 +29,7 @@ use crate::auth::auth_manager_for_provider;
 use crate::auth::resolve_provider_auth;
 use crate::auth::resolve_provider_auth_for_scope;
 use crate::models_endpoint::OpenAiModelsEndpoint;
+use crate::provider_effect::FailClosedProviderEffectAdapter;
 
 /// Remote context-compaction protocols supported by a model provider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -139,6 +141,15 @@ pub trait ModelProvider: fmt::Debug + Send + Sync {
     /// Returns the provider-owned capability upper bounds.
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities::default()
+    }
+
+    /// Returns the provider-effect adapter used by automation callers.
+    ///
+    /// The default adapter is deliberately no-network and reports
+    /// `Unsupported`; a concrete provider must be independently qualified
+    /// before replacing it with an effect-capable implementation.
+    fn provider_effect_adapter(&self) -> Arc<dyn ProviderEffectAdapter> {
+        Arc::new(FailClosedProviderEffectAdapter)
     }
 
     /// Returns the preferred model used for automatic approval review.
@@ -623,6 +634,23 @@ mod tests {
         );
 
         assert_eq!(provider.capabilities(), ProviderCapabilities::default());
+    }
+
+    #[test]
+    fn configured_provider_exposes_fail_closed_effect_adapter() {
+        let provider = create_model_provider(
+            ModelProviderInfo::create_openai_provider(/*base_url*/ None),
+            /*auth_manager*/ None,
+        );
+
+        assert_eq!(
+            provider.provider_effect_adapter().capability(),
+            ProviderEffectIdempotencyCapability::Unsupported
+        );
+        assert_eq!(
+            provider.capabilities().provider_effect_idempotency,
+            ProviderEffectIdempotencyCapability::Unsupported
+        );
     }
 
     #[test]

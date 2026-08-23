@@ -6,6 +6,7 @@
 //! capability.  The existing Codex HTTP and WebSocket adapters do not
 //! implement this seam.
 
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -118,6 +119,39 @@ pub enum ProviderEffectAckStatus {
     Rejected,
 }
 
+/// Monotonic local state for one effect occurrence.
+///
+/// This is intentionally a *local* state machine.  `Accepted` means only that
+/// the provider says it durably admitted the operation; it is not an external
+/// effect receipt.  `Indeterminate` is represented by the absence of a
+/// terminal acknowledgement and must quarantine the occurrence until a later
+/// status lookup (or an operator decision) closes it.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderEffectState {
+    /// An intent exists locally, but no provider acknowledgement is durable.
+    #[default]
+    Pending,
+    /// The provider durably admitted the operation; completion is unknown.
+    Accepted,
+    /// The provider supplied a key/payload-bound completion acknowledgement.
+    Completed,
+    /// The provider supplied a key/payload-bound rejection acknowledgement.
+    Rejected,
+    /// The physical outcome cannot currently be established.
+    Indeterminate,
+}
+
+impl ProviderEffectState {
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Completed | Self::Rejected)
+    }
+
+    pub const fn is_retry_blocked(self) -> bool {
+        !matches!(self, Self::Rejected)
+    }
+}
+
 /// Provider acknowledgement bound to one logical key and exact payload digest.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ProviderEffectAck {
@@ -126,6 +160,56 @@ pub struct ProviderEffectAck {
     pub payload_sha256: Sha256Digest,
     pub provider_operation_id_sha256: Sha256Digest,
     pub status: ProviderEffectAckStatus,
+}
+
+/// Durable local observation that a provider outcome cannot currently be
+/// established.
+///
+/// An uncertainty is not an acknowledgement and cannot prove either success
+/// or rejection.  Persisting it gives callers a crash-safe quarantine marker
+/// so they do not turn a lost response into a blind retry.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ProviderEffectUncertainty {
+    pub schema_version: u32,
+    pub key: ProviderEffectKey,
+    pub payload_sha256: Sha256Digest,
+    pub reason_code: String,
+}
+
+impl ProviderEffectUncertainty {
+    pub fn new(
+        key: ProviderEffectKey,
+        payload_sha256: Sha256Digest,
+        reason_code: impl Into<String>,
+    ) -> Self {
+        Self {
+            schema_version: PROVIDER_EFFECT_SCHEMA_VERSION,
+            key,
+            payload_sha256,
+            reason_code: reason_code.into(),
+        }
+    }
+
+    pub fn validate_for(
+        &self,
+        intent: &ProviderEffectIntent,
+    ) -> Result<(), ProviderEffectBindingError> {
+        intent.validate()?;
+        if self.schema_version != PROVIDER_EFFECT_SCHEMA_VERSION {
+            return Err(ProviderEffectBindingError::SchemaVersion);
+        }
+        ProviderEffectKey::parse(self.key.as_str().to_string())?;
+        Sha256Digest::parse(self.payload_sha256.as_str().to_string())
+            .map_err(ProviderEffectBindingError::InvalidDigest)?;
+        validate_reason_code(&self.reason_code)?;
+        if self.key != intent.key {
+            return Err(ProviderEffectBindingError::KeyMismatch);
+        }
+        if self.payload_sha256 != intent.payload_sha256 {
+            return Err(ProviderEffectBindingError::PayloadMismatch);
+        }
+        Ok(())
+    }
 }
 
 impl ProviderEffectAck {
@@ -166,6 +250,15 @@ impl ProviderEffectAck {
             return Err(ProviderEffectBindingError::PayloadMismatch);
         }
         Ok(())
+    }
+
+    /// Returns the local state represented by this acknowledgement.
+    pub const fn state(&self) -> ProviderEffectState {
+        match self.status {
+            ProviderEffectAckStatus::Accepted => ProviderEffectState::Accepted,
+            ProviderEffectAckStatus::Completed => ProviderEffectState::Completed,
+            ProviderEffectAckStatus::Rejected => ProviderEffectState::Rejected,
+        }
     }
 
     /// Only a provider `Completed` acknowledgement can establish the
@@ -214,6 +307,217 @@ pub enum ProviderEffectBindingError {
     NotFound,
     Unknown,
     Conflict,
+    AckConflict,
+    InvalidReasonCode,
+}
+
+/// Append-only disposition used by local effect journals and durable stores.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderEffectAppendDisposition {
+    Inserted,
+    AlreadyPresent,
+}
+
+/// A small serializable journal for one Agent's provider-effect intents and
+/// acknowledgements.
+///
+/// The journal is deliberately storage-agnostic.  It is useful for adapters
+/// that need to validate and bind an ACK before handing it to a durable store;
+/// [`codex_hepta_evidence::HeptaEvidenceStore`] provides the production SQLite
+/// persistence layer.  A journal never turns an unknown result into a retry.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ProviderEffectJournal {
+    intents: BTreeMap<String, ProviderEffectIntent>,
+    acknowledgements: BTreeMap<String, Vec<ProviderEffectAck>>,
+    uncertainties: BTreeMap<String, Vec<ProviderEffectUncertainty>>,
+    quarantined: BTreeMap<String, bool>,
+}
+
+impl ProviderEffectJournal {
+    pub fn record_intent(
+        &mut self,
+        intent: ProviderEffectIntent,
+    ) -> Result<ProviderEffectAppendDisposition, ProviderEffectBindingError> {
+        intent.validate()?;
+        let key = intent.key.as_str().to_string();
+        if let Some(existing) = self.intents.get(&key) {
+            if existing == &intent {
+                return Ok(ProviderEffectAppendDisposition::AlreadyPresent);
+            }
+            return Err(ProviderEffectBindingError::AckConflict);
+        }
+        self.intents.insert(key, intent);
+        Ok(ProviderEffectAppendDisposition::Inserted)
+    }
+
+    pub fn record_ack(
+        &mut self,
+        ack: ProviderEffectAck,
+    ) -> Result<ProviderEffectAppendDisposition, ProviderEffectBindingError> {
+        let key = ack.key.as_str().to_string();
+        let intent = self
+            .intents
+            .get(&key)
+            .ok_or(ProviderEffectBindingError::NotFound)?;
+        ack.validate_for(intent)?;
+        let observations = self.acknowledgements.entry(key.clone()).or_default();
+
+        if observations.iter().any(|existing| existing == &ack) {
+            return Ok(ProviderEffectAppendDisposition::AlreadyPresent);
+        }
+        let was_quarantined = self
+            .quarantined
+            .get(ack.key.as_str())
+            .copied()
+            .unwrap_or(false);
+        validate_ack_transition(observations, &ack, was_quarantined)?;
+        observations.push(ack);
+        self.quarantined.insert(key, false);
+        Ok(ProviderEffectAppendDisposition::Inserted)
+    }
+
+    /// Records an explicit fail-closed quarantine marker.
+    ///
+    /// The marker is idempotent for an unchanged reason.  A later validated
+    /// provider acknowledgement may reconcile it; a terminal acknowledgement
+    /// can never be replaced by uncertainty.
+    pub fn mark_indeterminate(
+        &mut self,
+        key: &ProviderEffectKey,
+        reason_code: impl Into<String>,
+    ) -> Result<ProviderEffectAppendDisposition, ProviderEffectBindingError> {
+        let reason_code = reason_code.into();
+        validate_reason_code(&reason_code)?;
+        let intent = self
+            .intents
+            .get(key.as_str())
+            .ok_or(ProviderEffectBindingError::NotFound)?;
+        if self
+            .acknowledgements
+            .get(key.as_str())
+            .and_then(|items| items.last())
+            .is_some_and(|ack| ack.state().is_terminal())
+        {
+            return Err(ProviderEffectBindingError::AckConflict);
+        }
+        let uncertainty =
+            ProviderEffectUncertainty::new(key.clone(), intent.payload_sha256.clone(), reason_code);
+        uncertainty.validate_for(intent)?;
+        let observations = self
+            .uncertainties
+            .entry(key.as_str().to_string())
+            .or_default();
+        if observations.iter().any(|existing| existing == &uncertainty) {
+            self.quarantined.insert(key.as_str().to_string(), true);
+            return Ok(ProviderEffectAppendDisposition::AlreadyPresent);
+        }
+        observations.push(uncertainty);
+        self.quarantined.insert(key.as_str().to_string(), true);
+        Ok(ProviderEffectAppendDisposition::Inserted)
+    }
+
+    pub fn state(&self, key: &ProviderEffectKey) -> Option<ProviderEffectState> {
+        let intent = self.intents.get(key.as_str())?;
+        if self.quarantined.get(key.as_str()).copied().unwrap_or(false) {
+            return Some(ProviderEffectState::Indeterminate);
+        }
+        let observations = self.acknowledgements.get(key.as_str());
+        Some(
+            observations
+                .and_then(|items| items.last())
+                .map_or(ProviderEffectState::Pending, ProviderEffectAck::state),
+        )
+        .filter(|_| intent.key == *key)
+    }
+
+    pub fn intent(&self, key: &ProviderEffectKey) -> Option<&ProviderEffectIntent> {
+        self.intents.get(key.as_str())
+    }
+
+    pub fn acknowledgements(&self, key: &ProviderEffectKey) -> &[ProviderEffectAck] {
+        self.acknowledgements
+            .get(key.as_str())
+            .map_or(&[], Vec::as_slice)
+    }
+
+    pub fn uncertainties(&self, key: &ProviderEffectKey) -> &[ProviderEffectUncertainty] {
+        self.uncertainties
+            .get(key.as_str())
+            .map_or(&[], Vec::as_slice)
+    }
+
+    pub fn reconcile(
+        &mut self,
+        capability: ProviderEffectIdempotencyCapability,
+        key: &ProviderEffectKey,
+        lookup: ProviderEffectLookup,
+    ) -> Result<ProviderEffectState, ProviderEffectBindingError> {
+        let intent = self
+            .intents
+            .get(key.as_str())
+            .ok_or(ProviderEffectBindingError::NotFound)?
+            .clone();
+        if capability == ProviderEffectIdempotencyCapability::Unsupported {
+            self.mark_indeterminate(key, "provider_capability_unsupported")?;
+            return Err(ProviderEffectBindingError::UnsupportedCapability);
+        }
+        match lookup {
+            ProviderEffectLookup::Ack(ack) => {
+                ack.validate_for(&intent)?;
+                self.record_ack(ack)?;
+                Ok(self
+                    .state(key)
+                    .unwrap_or(ProviderEffectState::Indeterminate))
+            }
+            ProviderEffectLookup::NotFound => {
+                self.mark_indeterminate(key, "provider_status_not_found")?;
+                Ok(ProviderEffectState::Indeterminate)
+            }
+            ProviderEffectLookup::Conflict { .. } => {
+                self.mark_indeterminate(key, "provider_payload_conflict")?;
+                Ok(ProviderEffectState::Indeterminate)
+            }
+            ProviderEffectLookup::Unknown => {
+                self.mark_indeterminate(key, "provider_lookup_unknown")?;
+                Ok(ProviderEffectState::Indeterminate)
+            }
+        }
+    }
+}
+
+fn validate_ack_transition(
+    observations: &[ProviderEffectAck],
+    next: &ProviderEffectAck,
+    was_quarantined: bool,
+) -> Result<(), ProviderEffectBindingError> {
+    let Some(previous) = observations.last() else {
+        return Ok(());
+    };
+    if previous.state().is_terminal() {
+        return Err(ProviderEffectBindingError::AckConflict);
+    }
+    // A status lookup after an explicit unknown observation is allowed to
+    // bind the provider's authoritative operation identity.  Without that
+    // quarantine marker, changing operation identity is an ACK conflict.
+    if was_quarantined {
+        return Ok(());
+    }
+    if previous.provider_operation_id_sha256 != next.provider_operation_id_sha256 {
+        return Err(ProviderEffectBindingError::AckConflict);
+    }
+    match (previous.status, next.status) {
+        (ProviderEffectAckStatus::Accepted, ProviderEffectAckStatus::Completed) => Ok(()),
+        (ProviderEffectAckStatus::Accepted, ProviderEffectAckStatus::Accepted) => Ok(()),
+        (ProviderEffectAckStatus::Completed, ProviderEffectAckStatus::Completed)
+        | (ProviderEffectAckStatus::Rejected, ProviderEffectAckStatus::Rejected) => {
+            Err(ProviderEffectBindingError::AckConflict)
+        }
+        // A terminal result must never be replaced by another result.  In
+        // particular, `accepted -> rejected` is unsafe because the provider
+        // may already have applied the operation.
+        _ if previous.status != next.status => Err(ProviderEffectBindingError::AckConflict),
+        _ => Err(ProviderEffectBindingError::AckConflict),
+    }
 }
 
 /// Reconciles one provider lookup without ever retrying the physical send.
@@ -266,6 +570,18 @@ pub trait ProviderEffectAdapter: Send + Sync {
 fn validate_non_empty(label: &'static str, value: &str) -> Result<(), ProviderEffectBindingError> {
     if value.trim().is_empty() {
         return Err(ProviderEffectBindingError::EmptyField(label));
+    }
+    Ok(())
+}
+
+fn validate_reason_code(value: &str) -> Result<(), ProviderEffectBindingError> {
+    if value.is_empty()
+        || value.len() > 128
+        || !value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-' | b'.')
+        })
+    {
+        return Err(ProviderEffectBindingError::InvalidReasonCode);
     }
     Ok(())
 }
@@ -450,5 +766,147 @@ mod tests {
             ProviderEffectIdempotencyCapability::default(),
             ProviderEffectIdempotencyCapability::Unsupported
         );
+    }
+
+    #[test]
+    fn journal_persists_intent_and_monotonic_ack_observations() {
+        let intent = intent(b"payload-a");
+        let key = intent.key.clone();
+        let accepted = ProviderEffectAck::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            Sha256Digest::for_bytes(b"operation-1"),
+            ProviderEffectAckStatus::Accepted,
+        );
+        let completed = ProviderEffectAck::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            Sha256Digest::for_bytes(b"operation-1"),
+            ProviderEffectAckStatus::Completed,
+        );
+        let mut journal = ProviderEffectJournal::default();
+        assert_eq!(
+            journal.record_intent(intent.clone()),
+            Ok(ProviderEffectAppendDisposition::Inserted)
+        );
+        assert_eq!(
+            journal.record_intent(intent),
+            Ok(ProviderEffectAppendDisposition::AlreadyPresent)
+        );
+        assert_eq!(
+            journal.record_ack(accepted.clone()),
+            Ok(ProviderEffectAppendDisposition::Inserted)
+        );
+        assert_eq!(journal.state(&key), Some(ProviderEffectState::Accepted));
+        assert_eq!(
+            journal.record_ack(completed.clone()),
+            Ok(ProviderEffectAppendDisposition::Inserted)
+        );
+        assert_eq!(journal.state(&key), Some(ProviderEffectState::Completed));
+        assert!(journal.state(&key).expect("state").is_terminal());
+        assert_eq!(
+            journal.record_ack(accepted),
+            Ok(ProviderEffectAppendDisposition::AlreadyPresent)
+        );
+        let conflicting_accepted = ProviderEffectAck::new(
+            key.clone(),
+            Sha256Digest::for_bytes(b"payload-a"),
+            Sha256Digest::for_bytes(b"operation-2"),
+            ProviderEffectAckStatus::Accepted,
+        );
+        assert_eq!(
+            journal.record_ack(conflicting_accepted),
+            Err(ProviderEffectBindingError::AckConflict)
+        );
+        assert_eq!(
+            journal.record_ack(completed),
+            Ok(ProviderEffectAppendDisposition::AlreadyPresent)
+        );
+    }
+
+    #[test]
+    fn journal_rejects_terminal_ack_replacement_and_unknown_lookup() {
+        let intent = intent(b"payload-a");
+        let key = intent.key.clone();
+        let completed = ack(&intent, b"payload-a");
+        let rejected = ProviderEffectAck::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            completed.provider_operation_id_sha256.clone(),
+            ProviderEffectAckStatus::Rejected,
+        );
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent).expect("intent");
+        journal.record_ack(completed).expect("completed");
+        assert_eq!(
+            journal.record_ack(rejected),
+            Err(ProviderEffectBindingError::AckConflict)
+        );
+        assert_eq!(
+            journal.reconcile(
+                ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+                &key,
+                ProviderEffectLookup::Unknown,
+            ),
+            Err(ProviderEffectBindingError::AckConflict)
+        );
+        assert_eq!(journal.state(&key), Some(ProviderEffectState::Completed));
+    }
+
+    #[test]
+    fn journal_unknown_lookup_persists_quarantine_until_reconciled() {
+        let intent = intent(b"payload-a");
+        let key = intent.key.clone();
+        let accepted = ProviderEffectAck::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            Sha256Digest::for_bytes(b"operation-1"),
+            ProviderEffectAckStatus::Accepted,
+        );
+        let completed = ProviderEffectAck::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            Sha256Digest::for_bytes(b"operation-2"),
+            ProviderEffectAckStatus::Completed,
+        );
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent).expect("intent");
+        journal.record_ack(accepted).expect("accepted");
+        assert_eq!(
+            journal.reconcile(
+                ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+                &key,
+                ProviderEffectLookup::Unknown,
+            ),
+            Ok(ProviderEffectState::Indeterminate)
+        );
+        assert!(
+            journal
+                .state(&key)
+                .is_some_and(|state| state.is_retry_blocked())
+        );
+        assert_eq!(journal.uncertainties(&key).len(), 1);
+        assert_eq!(
+            journal.record_ack(completed),
+            Ok(ProviderEffectAppendDisposition::Inserted)
+        );
+        assert_eq!(journal.state(&key), Some(ProviderEffectState::Completed));
+    }
+
+    #[test]
+    fn journal_round_trip_is_serializable_without_plain_payloads() {
+        let intent = intent(b"secret-payload");
+        let key = intent.key.clone();
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent.clone()).expect("intent");
+        journal
+            .record_ack(ack(&intent, b"secret-payload"))
+            .expect("ack");
+        let encoded = serde_json::to_vec(&journal).expect("serialize journal");
+        assert!(!String::from_utf8_lossy(&encoded).contains("secret-payload"));
+        let decoded: ProviderEffectJournal =
+            serde_json::from_slice(&encoded).expect("deserialize journal");
+        assert_eq!(decoded.state(&key), Some(ProviderEffectState::Completed));
+        assert_eq!(decoded, journal);
     }
 }

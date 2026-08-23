@@ -5,6 +5,7 @@ mod governance_store;
 mod governance_validation;
 mod historical;
 mod provider_claim;
+mod provider_effect_store;
 mod provider_insert;
 mod provider_record;
 mod provider_store;
@@ -20,6 +21,10 @@ pub use historical::HistoricalEvidenceState;
 pub use historical::historical_record_sha256;
 pub use provider_claim::ProviderBindingState;
 pub use provider_claim::ProviderIntentClaimDisposition;
+pub use provider_effect_store::StoredProviderEffect;
+pub use provider_effect_store::StoredProviderEffectAck;
+pub use provider_effect_store::StoredProviderEffectIntent;
+pub use provider_effect_store::StoredProviderEffectUncertainty;
 pub use provider_store::StoredProviderAttemptEvidence;
 pub use provider_store::StoredProviderIntent;
 pub use provider_store::StoredProviderReceipt;
@@ -56,6 +61,10 @@ mod provider_tests;
 #[cfg(test)]
 #[path = "provider_claim_tests.rs"]
 mod provider_claim_tests;
+
+#[cfg(test)]
+#[path = "provider_effect_tests.rs"]
+mod provider_effect_tests;
 
 #[cfg(test)]
 #[path = "summary_tests.rs"]
