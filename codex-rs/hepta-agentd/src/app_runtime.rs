@@ -43,7 +43,10 @@ fn app_server_config_overrides() -> CliConfigOverrides {
             "features.hepta_turn_recovery=true".to_string(),
             "features.hepta_memory=true".to_string(),
             "features.hepta_memory_read_only=true".to_string(),
-            "features.hepta_cognitive_write=true".to_string(),
+            // Local-development agentd may use the cognitive store for the
+            // lease/lifecycle journal, but it must not enable KG/cognitive
+            // writes.  Production write authority is a separate future gate.
+            "features.hepta_cognitive_write=false".to_string(),
         ],
     }
 }
@@ -96,13 +99,13 @@ mod tests {
     }
 
     #[test]
-    fn agentd_forces_explicit_hepta_cognitive_write_on() {
+    fn agentd_forces_explicit_hepta_cognitive_write_off() {
         let overrides = app_server_config_overrides();
         assert!(
             overrides
                 .raw_overrides
                 .iter()
-                .any(|value| value == "features.hepta_cognitive_write=true")
+                .any(|value| value == "features.hepta_cognitive_write=false")
         );
     }
 
