@@ -39,3 +39,15 @@ rust_binary(
         "@crates//:serde_json",
     ],
 )
+
+rust_binary(
+    name = "hepta-g5-trust-assessor",
+    srcs = ["src/g5_main.rs"],
+    crate_root = "src/g5_main.rs",
+    edition = "2024",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":hepta-operator-acceptance-lib",
+        "@crates//:serde_json",
+    ],
+)

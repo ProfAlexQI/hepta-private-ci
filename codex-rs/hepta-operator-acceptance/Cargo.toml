@@ -15,6 +15,11 @@ name = "hepta-operator-acceptance"
 path = "src/main.rs"
 test = false
 
+[[bin]]
+name = "hepta-g5-trust-assessor"
+path = "src/g5_main.rs"
+test = false
+
 [lints]
 workspace = true
 
