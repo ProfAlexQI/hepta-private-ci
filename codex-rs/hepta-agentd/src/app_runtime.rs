@@ -145,5 +145,6 @@ mod tests {
             Some(&codex_app_server::ThreadStoreConfig::Local),
             options.required_thread_store_mode.as_ref()
         );
+        assert!(options.hepta_local_turn_lifecycle_enabled);
     }
 }
