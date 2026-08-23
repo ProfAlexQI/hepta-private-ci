@@ -500,10 +500,17 @@ fn validate_ack_transition(
         return Err(ProviderEffectBindingError::AckConflict);
     }
     // A status lookup after an explicit unknown observation is allowed to
-    // bind the provider's authoritative operation identity.  Without that
-    // quarantine marker, changing operation identity is an ACK conflict.
+    // bind the provider's authoritative operation identity.  It does not,
+    // however, relax the state machine: an already accepted operation may
+    // only remain accepted or advance to completed.  In particular,
+    // accepted -> rejected must stay fail-closed because the earlier
+    // admission proves that the provider may already have applied it.
     if was_quarantined {
-        return Ok(());
+        return match (previous.status, next.status) {
+            (ProviderEffectAckStatus::Accepted, ProviderEffectAckStatus::Accepted)
+            | (ProviderEffectAckStatus::Accepted, ProviderEffectAckStatus::Completed) => Ok(()),
+            _ => Err(ProviderEffectBindingError::AckConflict),
+        };
     }
     if previous.provider_operation_id_sha256 != next.provider_operation_id_sha256 {
         return Err(ProviderEffectBindingError::AckConflict);
@@ -894,6 +901,42 @@ mod tests {
             Ok(ProviderEffectAppendDisposition::Inserted)
         );
         assert_eq!(journal.state(&key), Some(ProviderEffectState::Completed));
+    }
+
+    #[test]
+    fn journal_unknown_lookup_cannot_turn_accepted_into_rejected() {
+        let intent = intent(b"payload-a");
+        let key = intent.key.clone();
+        let accepted = ProviderEffectAck::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            Sha256Digest::for_bytes(b"operation-accepted"),
+            ProviderEffectAckStatus::Accepted,
+        );
+        let rejected = ProviderEffectAck::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            Sha256Digest::for_bytes(b"operation-authoritative"),
+            ProviderEffectAckStatus::Rejected,
+        );
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent).expect("intent");
+        journal.record_ack(accepted).expect("accepted");
+        journal
+            .reconcile(
+                ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+                &key,
+                ProviderEffectLookup::Unknown,
+            )
+            .expect("unknown is quarantined");
+        assert_eq!(
+            journal.record_ack(rejected),
+            Err(ProviderEffectBindingError::AckConflict)
+        );
+        assert_eq!(
+            journal.state(&key),
+            Some(ProviderEffectState::Indeterminate)
+        );
     }
 
     #[test]

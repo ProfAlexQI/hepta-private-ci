@@ -133,6 +133,60 @@ async fn effect_journal_quarantines_unknown_and_reconciles_after_restart() {
 }
 
 #[tokio::test]
+async fn accepted_effect_stays_indeterminate_when_reconcile_reports_rejected() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"accepted-then-rejected");
+    let key = intent.key.clone();
+    store
+        .append_provider_effect_intent(&intent)
+        .await
+        .expect("intent");
+    let accepted = ProviderEffectAck::new(
+        key.clone(),
+        intent.payload_sha256.clone(),
+        Sha256Digest::for_bytes(b"operation-accepted"),
+        ProviderEffectAckStatus::Accepted,
+    );
+    store
+        .append_provider_effect_ack(&accepted)
+        .await
+        .expect("accepted");
+    assert_eq!(
+        store
+            .reconcile_provider_effect_lookup(
+                ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+                &key,
+                ProviderEffectLookup::Unknown,
+            )
+            .await
+            .expect("unknown quarantine"),
+        ProviderEffectState::Indeterminate
+    );
+    let rejected = ProviderEffectAck::new(
+        key.clone(),
+        intent.payload_sha256.clone(),
+        Sha256Digest::for_bytes(b"operation-authoritative"),
+        ProviderEffectAckStatus::Rejected,
+    );
+    let error = store
+        .append_provider_effect_ack(&rejected)
+        .await
+        .expect_err("accepted -> rejected must remain fail-closed");
+    assert!(matches!(error, EvidenceError::IdempotencyConflict { .. }));
+    let effect = store
+        .get_provider_effect(&key)
+        .await
+        .expect("read effect")
+        .expect("effect");
+    assert_eq!(effect.state(), ProviderEffectState::Indeterminate);
+    assert_eq!(effect.acknowledgements.len(), 1);
+    assert_eq!(effect.uncertainties.len(), 1);
+}
+
+#[tokio::test]
 async fn unsupported_provider_capability_is_durable_indeterminate() {
     let temp = TempDir::new().expect("temp dir");
     let store = HeptaEvidenceStore::open(&sqlite_config(&temp))

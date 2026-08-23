@@ -380,20 +380,26 @@ pub(crate) async fn verify_provider_effect_rows(pool: &SqlitePool) -> Result<(),
                         "provider effect terminal ACK has a later ACK".to_string(),
                     ));
                 }
-                if !uncertainty_between
-                    && (previous.ack.provider_operation_id_sha256
-                        != ack.ack.provider_operation_id_sha256
-                        || !matches!(
-                            (previous.ack.status, ack.ack.status),
-                            (
-                                ProviderEffectAckStatus::Accepted,
-                                ProviderEffectAckStatus::Accepted
-                            ) | (
-                                ProviderEffectAckStatus::Accepted,
-                                ProviderEffectAckStatus::Completed
-                            )
-                        ))
-                {
+                let legal_status_transition = matches!(
+                    (previous.ack.status, ack.ack.status),
+                    (
+                        ProviderEffectAckStatus::Accepted,
+                        ProviderEffectAckStatus::Accepted
+                    ) | (
+                        ProviderEffectAckStatus::Accepted,
+                        ProviderEffectAckStatus::Completed
+                    )
+                );
+                let operation_rebound = previous.ack.provider_operation_id_sha256
+                    != ack.ack.provider_operation_id_sha256;
+                let legal = if uncertainty_between {
+                    // An uncertainty can justify rebinding the provider
+                    // operation id, but never permits Accepted -> Rejected.
+                    legal_status_transition
+                } else {
+                    legal_status_transition && !operation_rebound
+                };
+                if !legal {
                     return Err(EvidenceError::Corrupt(
                         "provider effect ACK transition is not monotonic".to_string(),
                     ));
@@ -673,7 +679,29 @@ async fn validate_ack_transition_in_transaction(
                 record_id: next.key.as_str().to_string(),
             });
         }
-        return Ok(());
+        // An uncertainty marker permits a later status lookup to bind the
+        // provider's authoritative operation id, but it must not weaken the
+        // local monotonic state machine.  Once an operation was accepted,
+        // only another Accepted observation or a Completed receipt can close
+        // it.  Accepted -> Rejected remains fail-closed because the earlier
+        // admission leaves open the possibility that the provider applied the
+        // effect before the response was lost.
+        let legal_after_uncertainty = matches!(
+            (previous.ack.status, next.status),
+            (
+                ProviderEffectAckStatus::Accepted,
+                ProviderEffectAckStatus::Accepted
+            ) | (
+                ProviderEffectAckStatus::Accepted,
+                ProviderEffectAckStatus::Completed
+            )
+        );
+        if legal_after_uncertainty {
+            return Ok(());
+        }
+        return Err(EvidenceError::IdempotencyConflict {
+            record_id: next.key.as_str().to_string(),
+        });
     }
     if previous.ack.provider_operation_id_sha256 != next.provider_operation_id_sha256 {
         return Err(EvidenceError::IdempotencyConflict {
