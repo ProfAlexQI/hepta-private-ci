@@ -5819,18 +5819,27 @@ impl EncryptedMatrixClient {
     }
 
     fn assert_response_not_token_fragmented(&self, sender: &str, final_body: &str) -> Result<()> {
-        let fragments = self
+        let fragments: Vec<_> = self
             .seen
             .iter()
             .filter(|event| {
                 event.sender == sender
+                    && !event.body.is_empty()
                     && final_body.starts_with(&event.body)
                     && event.body != final_body
             })
-            .count();
+            .map(|event| format!("event_id={} body={:?}", event.event_id, event.body))
+            .collect();
+        if !fragments.is_empty() {
+            eprintln!(
+                "R4_TOKEN_FRAGMENT sender={} final={:?} matches={:?}",
+                sender, final_body, fragments
+            );
+        }
         ensure!(
-            fragments == 0,
-            "encrypted response {final_body:?} leaked {fragments} token fragments"
+            fragments.is_empty(),
+            "encrypted response {final_body:?} leaked {} token fragments",
+            fragments.len()
         );
         Ok(())
     }

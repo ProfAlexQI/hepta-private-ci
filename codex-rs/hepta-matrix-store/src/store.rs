@@ -1156,7 +1156,15 @@ impl MatrixDurableStore {
         {
             return Err(MatrixDurableError::Invalid);
         }
-        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        // Read/modify/write outbox operations must reserve the SQLite writer
+        // before reading. Otherwise a concurrent claim can leave this
+        // transaction on a stale WAL snapshot and make the later coalesce or
+        // insert fail with SQLITE_BUSY_SNAPSHOT.
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(unavailable)?;
         if let Some((existing, fragment)) =
             outbox_by_logical_txn_tx(&mut transaction, &draft.txn_id).await?
         {
@@ -1506,7 +1514,11 @@ impl MatrixDurableStore {
         let lease_until_ms = now_ms
             .checked_add(lease_ms)
             .ok_or(MatrixDurableError::Invalid)?;
-        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(unavailable)?;
         let rows = sqlx::query(
             "SELECT outbox_id, stable_txn_id, room_id, kind,
                     payload, payload_sha256, logical_txn_count,
@@ -1670,7 +1682,11 @@ impl MatrixDurableStore {
         now_ms: u64,
         transition: OutboxTransition,
     ) -> Result<OutboxRecord, MatrixDurableError> {
-        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(unavailable)?;
         let (existing, _) = outbox_by_logical_txn_tx(&mut transaction, txn_id)
             .await?
             .ok_or(MatrixDurableError::Conflict)?;
@@ -1870,7 +1886,11 @@ impl MatrixDurableStore {
         if attached_agent_generation == 0 || resolving_at_ms == 0 {
             return Err(MatrixDurableError::Invalid);
         }
-        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(unavailable)?;
         let existing = pending_approval_tx(&mut transaction, approval_key)
             .await?
             .ok_or(MatrixDurableError::Conflict)?;
@@ -1926,7 +1946,11 @@ impl MatrixDurableStore {
         if attached_agent_generation == 0 || resolved_at_ms == 0 {
             return Err(MatrixDurableError::Invalid);
         }
-        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(unavailable)?;
         let existing = pending_approval_tx(&mut transaction, approval_key)
             .await?
             .ok_or(MatrixDurableError::Conflict)?;
@@ -1990,7 +2014,11 @@ impl MatrixDurableStore {
         {
             return Err(MatrixDurableError::Invalid);
         }
-        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(unavailable)?;
         let row = sqlx::query(
             "SELECT approval_key, pending_json, request_id_json, request_kind,
                     attached_agent_generation, process_incarnation, created_at_ms,
