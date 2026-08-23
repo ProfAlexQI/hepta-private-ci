@@ -607,9 +607,22 @@ async fn run_real_synapse_qualification_inner(
     )
     .await?;
     eprintln!("R4_STAGE authority_probe:resume_and_queue_start:done");
-    let authority_reply_event = encrypted_matrix_b
+    let authority_reply_event = match encrypted_matrix_b
         .wait_for_body(AGENT_B_MXID, "agent-b-authority-probe")
-        .await?;
+        .await
+    {
+        Ok(event) => event,
+        Err(error) => {
+            // The qualification wait intentionally does not drive the
+            // Supervisor: doing so would turn a transient sidecar exit into
+            // an implicit restart before we can identify the original
+            // failure.  Poll once here and retain the exact Matrix exit,
+            // bounded child logs, and any Supervisor fault alongside the
+            // primary encrypted-delivery error.
+            fleet.dump_process_failure_diagnostics("authority_probe_wait_for_body");
+            return Err(error);
+        }
+    };
     assert_authority_probe_was_only_model_input(&model_b_mock, AUTHORITY_PROBE)?;
     eprintln!("R4_STAGE authority_probe:done");
 
@@ -4835,6 +4848,48 @@ impl FleetHarness {
         self.process_identity_ledger.explicit_shutdown_completed = false;
         self.process_identity_ledger.all_historical_pids_absent = false;
         self.write_process_identity_ledger()
+    }
+
+    /// Drain one Supervisor poll after a qualification failure and print the
+    /// bounded evidence retained by the process driver.  The dynamic E2E
+    /// client deliberately does not tick while waiting for a Matrix event;
+    /// without this explicit failure-path poll a dead matrixd leaves only a
+    /// missing control socket and loses its exit status/stderr diagnosis.
+    fn dump_process_failure_diagnostics(&mut self, stage: &str) {
+        let report = self.supervisor.tick(Instant::now());
+        eprintln!(
+            "R4_DIAGNOSTIC stage={stage} supervisor_tick_faults={:?}",
+            report.faults
+        );
+        for agent_id in self.agent_ids.clone() {
+            let Some(snapshot) = self.supervisor.snapshot(&agent_id) else {
+                eprintln!("R4_DIAGNOSTIC agent={agent_id} snapshot=missing");
+                continue;
+            };
+            eprintln!(
+                "R4_DIAGNOSTIC agent={agent_id} active={} healthy={} matrix_active={} matrix_healthy={} matrix_degraded={} matrix_last_error={:?}",
+                snapshot.active,
+                snapshot.healthy,
+                snapshot.matrix.active,
+                snapshot.matrix.healthy,
+                snapshot.matrix.degraded,
+                snapshot.matrix.last_error,
+            );
+            for event in snapshot.events.iter().rev().take(24).rev() {
+                eprintln!("R4_DIAGNOSTIC agent={agent_id} event={event:?}");
+            }
+            for log in snapshot.logs.iter().rev().take(32).rev() {
+                let mut text = String::from_utf8_lossy(&log.bytes).into_owned();
+                if text.len() > 8_192 {
+                    text.truncate(8_192);
+                    text.push_str("...[truncated]");
+                }
+                eprintln!(
+                    "R4_DIAGNOSTIC agent={agent_id} stream={:?} log={text}",
+                    log.stream
+                );
+            }
+        }
     }
 
     fn process_shutdown_evidence(&self) -> Result<ProcessShutdownEvidence> {
