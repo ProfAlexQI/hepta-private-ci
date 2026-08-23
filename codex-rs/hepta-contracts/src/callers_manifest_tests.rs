@@ -502,3 +502,144 @@ fn g4_matrix_robrix_truth_matches_paired_exact_candidate_qualification() {
         }
     }
 }
+
+#[test]
+fn g5_fleet_automation_truth_matches_bounded_candidate_and_stays_fail_closed() {
+    let manifest = manifest();
+    let g5 = manifest
+        .qualification
+        .iter()
+        .find(|entry| {
+            entry.get("slice").and_then(toml::Value::as_str)
+                == Some("R2_fleet_automation_bounded")
+        })
+        .expect("missing G5 fleet/automation bounded qualification truth");
+
+    assert_eq!(
+        g5.get("requires")
+            .and_then(toml::Value::as_array)
+            .expect("G5 predecessor requirement must be explicit")
+            .iter()
+            .filter_map(toml::Value::as_str)
+            .collect::<Vec<_>>(),
+        ["R2_matrix_robrix_closed_loop"]
+    );
+    for (field, expected) in [
+        ("qualification_base_sha", "445d1cdc50c9e86d09041b17888245b8c5937bda"),
+        ("qualification_base_tree", "2ba0062706e4bc652ee0433ef6b3b90696e3f1e3"),
+        ("evidence_head", "73ff3b438a25d88201169aed7c7c79cf5d9644a8"),
+        ("evidence_tree", "4070f421a63311c66a77d08491c4a9ab1fd52c65"),
+        (
+            "evidence_status_sha256",
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        ),
+        (
+            "evidence_aggregate_sha256",
+            "57688579a2fe4bca6494cca8dcbc051d53f911086835be34618aafd5fda05cd7",
+        ),
+        (
+            "evidence_authority_review_sha256",
+            "12130e8c31fd0e2014782136ce9ff7a35024b0c3e265eb622c67a5173123221c",
+        ),
+        (
+            "g4_pair_receipt_sha256",
+            "f36ce3f41cc8734f4392070a01ac53cbdf753dee5a1bb8b352feb1bc886e8064",
+        ),
+        (
+            "g4_pair_binding_sha256",
+            "8d439937b36b60e573f3887c14e99801550c0a0c995da9646ec7690222ddee5f",
+        ),
+        (
+            "g4_pair_verification_sha256",
+            "206a62c39c664259792a39f98572df6f56eb3155a67d6d83caabb50249d3b7b5",
+        ),
+    ] {
+        assert_eq!(
+            g5.get(field).and_then(toml::Value::as_str),
+            Some(expected),
+            "G5 {field} must bind the immutable evidence packet",
+        );
+    }
+    assert_eq!(
+        g5.get("development_status").and_then(toml::Value::as_str),
+        Some("qualified_exact_bounded_candidate")
+    );
+    assert_eq!(
+        g5.get("product_caller_named").and_then(toml::Value::as_bool),
+        Some(false)
+    );
+    for field in [
+        "g5_minimum_six_bounded_gates_complete",
+        "five_agent_process_isolation",
+        "generation_cas_stale_fence_qualified",
+        "explicit_memory_grant_revoke_qualified",
+        "automation_occurrence_client_id_idempotency_qualified",
+        "stale_lease_no_resurrection_qualified",
+        "store_failure_peer_liveness_qualified",
+        "target_agent_only_upgrade_and_explicit_rollback_qualified",
+        "target_agent_only_automatic_rollback_qualified",
+        "same_fence_concurrency_has_one_winner",
+        "five_agent_daemon_restart_preserves_peer_runtime",
+        "owner_written_consumer_read_only_and_scope_exact",
+        "revoke_revalidated_before_physical_send",
+        "five_agent_private_store_and_explicit_consumer_isolation",
+        "target_agent_typed_storage_quarantine",
+        "four_peer_process_ids_and_readiness_unchanged",
+        "four_peer_automation_store_create_list_cancel_available",
+        "four_peer_normal_app_server_turns_completed",
+        "source_delta_test_only",
+    ] {
+        assert_eq!(
+            g5.get(field).and_then(toml::Value::as_bool),
+            Some(true),
+            "G5 {field} must be explicitly bounded and receipt-backed",
+        );
+    }
+    for field in [
+        "general_fleet_lifecycle_qualified_in_g5",
+        "cross_agent_memory_federation_qualified_in_g5",
+        "fleet_or_automation_authority",
+        "automation_authority",
+        "new_general_fleet_lifecycle_surface_added",
+        "new_product_fleet_lifecycle_authority_added",
+        "new_automation_authority_added",
+        "whole_tree_fleet_merge_allowed",
+        "whole_tree_automation_merge_allowed",
+        "provider_physical_sampling_exactly_once",
+        "operator_acceptance_recorded",
+        "promotion_eligible",
+        "g5_complete",
+        "g5_allowed",
+        "fleet_and_automation_unfrozen",
+    ] {
+        assert_eq!(
+            g5.get(field).and_then(toml::Value::as_bool),
+            Some(false),
+            "G5 {field} must remain false in the bounded evidence entry",
+        );
+    }
+
+    let worktree_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("hepta-contracts must live under codex-rs");
+    let callers = g5
+        .get("qualification_callers")
+        .and_then(toml::Value::as_array)
+        .expect("G5 qualification callers must be explicit");
+    assert_eq!(callers.len(), 7);
+    for caller in callers {
+        let path = caller
+            .as_str()
+            .expect("G5 qualification caller must be a string");
+        assert!(
+            worktree_root.join(path).is_file(),
+            "G5 qualification caller path does not exist: {path}"
+        );
+    }
+    assert_eq!(
+        g5.get("qualification_manifest_test")
+            .and_then(toml::Value::as_str),
+        Some("codex-rs/hepta-contracts/src/callers_manifest_tests.rs")
+    );
+}

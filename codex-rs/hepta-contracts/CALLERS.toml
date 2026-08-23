@@ -119,6 +119,89 @@ zero_event_interpretation = "shadow_observations_are_turn_local_and_not_persiste
 promotion_eligible = false
 
 [[qualification]]
+slice = "R2_fleet_automation_bounded"
+requires = ["R2_matrix_robrix_closed_loop"]
+qualification_base_sha = "445d1cdc50c9e86d09041b17888245b8c5937bda"
+qualification_base_tree = "2ba0062706e4bc652ee0433ef6b3b90696e3f1e3"
+evidence_head = "73ff3b438a25d88201169aed7c7c79cf5d9644a8"
+evidence_tree = "4070f421a63311c66a77d08491c4a9ab1fd52c65"
+evidence_status_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+evidence_aggregate_sha256 = "57688579a2fe4bca6494cca8dcbc051d53f911086835be34618aafd5fda05cd7"
+evidence_authority_review_sha256 = "12130e8c31fd0e2014782136ce9ff7a35024b0c3e265eb622c67a5173123221c"
+g4_pair_receipt_sha256 = "f36ce3f41cc8734f4392070a01ac53cbdf753dee5a1bb8b352feb1bc886e8064"
+g4_pair_binding_sha256 = "8d439937b36b60e573f3887c14e99801550c0a0c995da9646ec7690222ddee5f"
+g4_pair_verification_sha256 = "206a62c39c664259792a39f98572df6f56eb3155a67d6d83caabb50249d3b7b5"
+composition = "five_agent_isolation_generation_cas_memory_grant_revoke_automation_fences_composed"
+development_status = "qualified_exact_bounded_candidate"
+qualification_manifest_test = "codex-rs/hepta-contracts/src/callers_manifest_tests.rs"
+qualification_callers = [
+  "codex-rs/hepta-agentd/tests/five_agent_rolling_upgrade.rs",
+  "codex-rs/hepta-agentd/tests/supervisord_product_e2e.rs",
+  "codex-rs/hepta-supervisor/src/supervisor_tests.rs",
+  "codex-rs/hepta-agentd/src/runtime_tests.rs",
+  "codex-rs/hepta-memory/src/cognitive_federation_tests.rs",
+  "codex-rs/hepta-agentd/tests/cognitive_product_e2e.rs",
+  "codex-rs/hepta-automation/tests/automation.rs",
+]
+qualification_tests = [
+  "five_real_agentd_processes_roll_one_agent_without_stopping_peers",
+  "five_real_agents_survive_daemon_restart_and_isolate_one_agent_release_changes",
+  "stale_runtime_is_fenced_without_touching_peer",
+  "stale_deferred_drain_is_generation_fenced_from_replacement_starting",
+  "successful_upgrade_and_explicit_rollback_change_only_target_agent",
+  "failed_spawn_and_failed_health_each_auto_rollback_once",
+  "recovery_closes_running_release_state_crash_window",
+  "stale_generation_is_fenced_before_cognitive_store_open",
+  "generation_change_during_open_is_fenced_before_serving",
+  "automation_generation_change_during_open_remains_fail_closed",
+  "explicit_grant_is_owner_written_consumer_read_only_and_scope_exact",
+  "revoke_is_observed_by_the_next_physical_send_revalidation",
+  "five_agents_keep_private_stores_and_only_explicit_consumers_federate",
+  "one_shot_periodic_disable_and_cancel_are_durable",
+  "restart_reclaims_same_occurrence_with_same_core_client_id_and_fences_old_lease",
+  "disabling_an_inflight_lease_never_resurrects_the_task",
+  "five_real_agent_identities_are_isolated_and_one_blocked_backlog_cannot_starve_peers",
+  "five_real_agents_survive_one_automation_store_failure_without_peer_stall",
+]
+qualification_lifecycle_actions = ["register", "start", "stop", "upgrade", "rollback", "grant", "revoke", "disable", "cancel", "restart"]
+product_caller_named = false
+real_agentd_process_count = 5
+source_delta_test_only = true
+g5_minimum_six_bounded_gates_complete = true
+five_agent_process_isolation = true
+generation_cas_stale_fence_qualified = true
+explicit_memory_grant_revoke_qualified = true
+automation_occurrence_client_id_idempotency_qualified = true
+stale_lease_no_resurrection_qualified = true
+store_failure_peer_liveness_qualified = true
+target_agent_only_upgrade_and_explicit_rollback_qualified = true
+target_agent_only_automatic_rollback_qualified = true
+same_fence_concurrency_has_one_winner = true
+five_agent_daemon_restart_preserves_peer_runtime = true
+owner_written_consumer_read_only_and_scope_exact = true
+revoke_revalidated_before_physical_send = true
+five_agent_private_store_and_explicit_consumer_isolation = true
+target_agent_typed_storage_quarantine = true
+four_peer_process_ids_and_readiness_unchanged = true
+four_peer_automation_store_create_list_cancel_available = true
+four_peer_normal_app_server_turns_completed = true
+general_fleet_lifecycle_qualified_in_g5 = false
+cross_agent_memory_federation_qualified_in_g5 = false
+fleet_or_automation_authority = false
+automation_authority = false
+new_general_fleet_lifecycle_surface_added = false
+new_product_fleet_lifecycle_authority_added = false
+new_automation_authority_added = false
+whole_tree_fleet_merge_allowed = false
+whole_tree_automation_merge_allowed = false
+provider_physical_sampling_exactly_once = false
+operator_acceptance_recorded = false
+promotion_eligible = false
+g5_complete = false
+g5_allowed = false
+fleet_and_automation_unfrozen = false
+
+[[qualification]]
 slice = "R2_matrix_robrix_closed_loop"
 requires = [
   "R2_codex_execution_substrate",
