@@ -18,7 +18,10 @@ pub type AutomationFuture<'a, T> =
 ///
 /// Product implementations must enqueue this admission through the owning
 /// Agent's App Server `thread/queue/add` API. The scheduler cannot call a
-/// model, a tool, Core, or another Agent directly.
+/// model, a tool, Core, or another Agent directly. `Dispatch`, `Unavailable`,
+/// and `Corrupt` are retryable only when the implementation knows the
+/// request did not cross that admission seam; otherwise it must return
+/// `DispatchUnknown` so the durable intent remains quarantined.
 pub trait AutomationTurnQueue: Send + Sync {
     fn enqueue(
         &self,
@@ -77,14 +80,21 @@ where
         else {
             return Ok(AutomationTick::Idle);
         };
+        // Persist the dispatch intent before crossing the App Server seam.
+        // If this process dies after admission (or while the request is still
+        // in flight) the successor must observe a durable unknown outcome and
+        // refuse a blind duplicate.  Known pre-admission failures explicitly
+        // clear this marker below, preserving the bounded retry path.
+        self.store.record_dispatch_uncertain(&lease, now_ms).await?;
         let admission = lease.admission();
         let result = timeout(self.dispatch_timeout, self.queue.enqueue(admission)).await;
         let receipt = match result {
             Ok(Ok(receipt)) => receipt,
-            // Owner/generation fencing is not a transient dispatch failure. Keep
-            // the lease bound to the old generation so its successor can reclaim
-            // it through the normal generation-recovery path.
+            // Owner/generation fencing is not a transient dispatch failure.
+            // Agentd performs this check before the queue seam, so remove the
+            // pre-admission intent before returning the fence to the caller.
             Ok(Err(AutomationError::AccessDenied)) => {
+                self.store.abort_dispatch_before_admission(&lease).await?;
                 return Err(AutomationError::AccessDenied);
             }
             Ok(Err(AutomationError::DispatchUnknown)) | Err(_) => {
@@ -95,7 +105,11 @@ where
                 });
             }
             Ok(Err(_)) => {
-                self.store.release_for_retry(&lease).await?;
+                // Agentd maps only failures observed before the App Server
+                // admission seam to these retryable errors. If the process
+                // dies before this cleanup, the durable intent remains
+                // uncertain and recovery stays fail-closed.
+                self.store.abort_dispatch_before_admission(&lease).await?;
                 return Ok(AutomationTick::RetryScheduled {
                     task_id: lease.task.task_id,
                     occurrence: lease.occurrence,

@@ -125,6 +125,60 @@ impl AutomationTurnQueue for FencedQueue {
     }
 }
 
+struct DispatchRejectQueue;
+
+impl AutomationTurnQueue for DispatchRejectQueue {
+    fn enqueue(
+        &self,
+        _admission: AutomationAdmission,
+    ) -> AutomationFuture<'_, AutomationQueueReceipt> {
+        Box::pin(async { Err(AutomationError::Dispatch) })
+    }
+}
+
+struct AcceptedThenBlockedQueue {
+    admissions: Mutex<Vec<AutomationAdmission>>,
+    entered: Notify,
+    release: Arc<Notify>,
+}
+
+impl AcceptedThenBlockedQueue {
+    fn new(release: Arc<Notify>) -> Self {
+        Self {
+            admissions: Mutex::new(Vec::new()),
+            entered: Notify::new(),
+            release,
+        }
+    }
+
+    async fn admissions(&self) -> Vec<AutomationAdmission> {
+        self.admissions.lock().await.clone()
+    }
+}
+
+impl AutomationTurnQueue for AcceptedThenBlockedQueue {
+    fn enqueue(
+        &self,
+        admission: AutomationAdmission,
+    ) -> AutomationFuture<'_, AutomationQueueReceipt> {
+        Box::pin(async move {
+            // The external queue has durably accepted the request before the
+            // local scheduler receives a terminal receipt.  Holding the
+            // response open gives the test a deterministic crash boundary.
+            self.admissions.lock().await.push(admission.clone());
+            self.entered.notify_one();
+            self.release.notified().await;
+            Ok(AutomationQueueReceipt {
+                queued_submission_id: format!(
+                    "accepted-{}-{}",
+                    admission.task_id, admission.occurrence
+                ),
+                client_user_message_id: admission.client_user_message_id,
+            })
+        })
+    }
+}
+
 #[derive(Default)]
 struct UnknownQueue {
     admissions: Mutex<Vec<AutomationAdmission>>,
@@ -302,6 +356,251 @@ async fn owner_or_generation_fence_is_not_downgraded_to_a_dispatch_retry() {
         scheduler.tick(100).await,
         Err(AutomationError::AccessDenied)
     );
+}
+
+#[tokio::test]
+async fn pre_admission_dispatch_error_clears_intent_and_allows_next_generation_retry() {
+    let fixture = FleetFixture::new(1);
+    let store = AutomationStore::open(&fixture.layouts[0])
+        .await
+        .expect("open store");
+    let task = draft(
+        "019153a4-3088-7000-a56a-9b1964f75010",
+        AutomationSchedule::Once,
+        100,
+    );
+    store.create_task(&task).await.expect("create task");
+    let scheduler = AutomationScheduler::new(
+        store.clone(),
+        Arc::new(DispatchRejectQueue),
+        1,
+        Duration::from_secs(30),
+        Duration::from_secs(2),
+    )
+    .expect("scheduler");
+
+    assert_eq!(
+        scheduler.tick(100).await.expect("pre-admission rejection"),
+        AutomationTick::RetryScheduled {
+            task_id: task.task_id,
+            occurrence: 1,
+        }
+    );
+    assert!(
+        store
+            .uncertain_dispatches(10)
+            .await
+            .expect("uncertain list")
+            .is_empty()
+    );
+
+    let restarted = AutomationStore::open(&fixture.layouts[0])
+        .await
+        .expect("reopen store");
+    assert_eq!(
+        restarted
+            .recover_stale_generation(2)
+            .await
+            .expect("recover generation"),
+        0,
+        "pre-admission cleanup leaves no stale lease to recover"
+    );
+    let lease = restarted
+        .claim_due(101, 2, 60_000)
+        .await
+        .expect("claim retry")
+        .expect("retry remains due");
+    restarted
+        .mark_submitted(
+            &lease,
+            &AutomationQueueReceipt {
+                queued_submission_id: "retry-after-abort".to_string(),
+                client_user_message_id: lease.client_user_message_id.clone(),
+            },
+            102,
+        )
+        .await
+        .expect("complete retry");
+}
+
+#[tokio::test]
+async fn successful_dispatch_upgrades_pre_admission_intent_atomically() {
+    let fixture = FleetFixture::new(1);
+    let store = AutomationStore::open(&fixture.layouts[0])
+        .await
+        .expect("open store");
+    let task = draft(
+        "019153a4-3088-7000-a56a-9b1964f75011",
+        AutomationSchedule::Once,
+        100,
+    );
+    store.create_task(&task).await.expect("create task");
+    let queue = Arc::new(RecordingQueue::default());
+    let scheduler = AutomationScheduler::new(
+        store.clone(),
+        Arc::clone(&queue),
+        1,
+        Duration::from_secs(30),
+        Duration::from_secs(2),
+    )
+    .expect("scheduler");
+
+    assert!(matches!(
+        scheduler.tick(100).await.expect("successful dispatch"),
+        AutomationTick::Submitted {
+            task_id,
+            occurrence: 1,
+            ..
+        } if task_id == task.task_id
+    ));
+    assert!(
+        store
+            .uncertain_dispatches(10)
+            .await
+            .expect("uncertain list")
+            .is_empty()
+    );
+    assert_eq!(queue.admissions().await.len(), 1);
+    assert_eq!(
+        store
+            .task(task.task_id)
+            .await
+            .expect("read task")
+            .expect("task exists")
+            .state,
+        AutomationTaskState::Completed
+    );
+}
+
+#[tokio::test]
+async fn crash_after_external_acceptance_keeps_unknown_intent_across_reopen() {
+    let fixture = FleetFixture::new(1);
+    let store = AutomationStore::open(&fixture.layouts[0])
+        .await
+        .expect("open store");
+    let task = draft(
+        "019153a4-3088-7000-a56a-9b1964f75012",
+        AutomationSchedule::Once,
+        100,
+    );
+    store.create_task(&task).await.expect("create task");
+    let release = Arc::new(Notify::new());
+    let queue = Arc::new(AcceptedThenBlockedQueue::new(Arc::clone(&release)));
+    let scheduler = Arc::new(
+        AutomationScheduler::new(
+            store.clone(),
+            Arc::clone(&queue),
+            1,
+            Duration::from_secs(30),
+            Duration::from_secs(10),
+        )
+        .expect("scheduler"),
+    );
+    let tick = {
+        let scheduler = Arc::clone(&scheduler);
+        tokio::spawn(async move { scheduler.tick(100).await })
+    };
+    queue.entered.notified().await;
+    assert_eq!(queue.admissions().await.len(), 1);
+
+    // Simulate process death after the external queue accepted the request but
+    // before the local scheduler received its terminal receipt.
+    tick.abort();
+    let _ = tick.await;
+    drop(scheduler);
+    store.close().await;
+
+    let reopened = AutomationStore::open(&fixture.layouts[0])
+        .await
+        .expect("reopen store");
+    assert_eq!(
+        reopened
+            .recover_stale_generation(2)
+            .await
+            .expect("recover generation"),
+        0,
+        "durable pre-admission intent must not be reclaimed as a blind retry"
+    );
+    assert!(
+        reopened
+            .claim_due(100_000, 2, 60_000)
+            .await
+            .expect("claim after crash")
+            .is_none(),
+        "lost response remains quarantined until explicit reconciliation"
+    );
+    let uncertain = reopened
+        .uncertain_dispatches(10)
+        .await
+        .expect("uncertain list after crash");
+    assert_eq!(uncertain.len(), 1);
+    assert_eq!(uncertain[0].task_id, task.task_id);
+    assert_eq!(
+        uncertain[0].client_user_message_id,
+        queue.admissions().await[0].client_user_message_id
+    );
+}
+
+#[tokio::test]
+async fn in_flight_unknown_intent_fences_stale_generation_and_second_claim() {
+    let fixture = FleetFixture::new(1);
+    let store = AutomationStore::open(&fixture.layouts[0])
+        .await
+        .expect("open store");
+    let task = draft(
+        "019153a4-3088-7000-a56a-9b1964f75013",
+        AutomationSchedule::Once,
+        100,
+    );
+    store.create_task(&task).await.expect("create task");
+    let release = Arc::new(Notify::new());
+    let queue = Arc::new(AcceptedThenBlockedQueue::new(Arc::clone(&release)));
+    let scheduler = Arc::new(
+        AutomationScheduler::new(
+            store.clone(),
+            Arc::clone(&queue),
+            1,
+            Duration::from_secs(1),
+            Duration::from_millis(500),
+        )
+        .expect("scheduler"),
+    );
+    let tick = {
+        let scheduler = Arc::clone(&scheduler);
+        tokio::spawn(async move { scheduler.tick(100).await })
+    };
+    queue.entered.notified().await;
+
+    assert_eq!(
+        store
+            .recover_stale_generation(2)
+            .await
+            .expect("recover while request is in flight"),
+        0,
+        "unknown in-flight intent must not be reset by generation recovery"
+    );
+    assert!(
+        store
+            .claim_due(2_000, 2, 60_000)
+            .await
+            .expect("second generation claim")
+            .is_none(),
+        "a second generation cannot submit while the first admission is unknown"
+    );
+
+    release.notify_waiters();
+    assert!(matches!(
+        tick.await.expect("join scheduler").expect("dispatch"),
+        AutomationTick::Submitted { .. }
+    ));
+    assert!(
+        store
+            .uncertain_dispatches(10)
+            .await
+            .expect("uncertain list after receipt")
+            .is_empty()
+    );
+    assert_eq!(queue.admissions().await.len(), 1);
 }
 
 #[tokio::test]

@@ -452,7 +452,8 @@ impl AutomationStore {
         }))
     }
 
-    /// Records an admission whose provider outcome cannot be determined.
+    /// Records a dispatch intent before (or immediately after) crossing the
+    /// provider seam when the terminal outcome cannot be determined.
     ///
     /// The occurrence remains leased and is excluded from both stale-generation
     /// recovery and automatic retry.  This is the durable boundary that keeps
@@ -531,6 +532,60 @@ impl AutomationStore {
                     }
                 })?;
             }
+        }
+        transaction.commit().await.map_err(unavailable)
+    }
+
+    /// Aborts an intent only when the queue implementation has proved that the
+    /// request failed before the external admission seam.  The uncertainty
+    /// row and lease are removed in one transaction so a retry cannot race a
+    /// crash between the two local updates.
+    pub async fn abort_dispatch_before_admission(
+        &self,
+        lease: &AutomationLease,
+    ) -> Result<(), AutomationError> {
+        if lease.task.owner_agent_id != self.owner_agent_id {
+            return Err(AutomationError::AccessDenied);
+        }
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let removed = sqlx::query(
+            "DELETE FROM automation_dispatch_outcomes
+             WHERE task_id = ? AND occurrence = ?
+               AND client_user_message_id = ? AND outcome = 'uncertain'",
+        )
+        .bind(lease.task.task_id.to_string())
+        .bind(to_i64(lease.occurrence)?)
+        .bind(&lease.client_user_message_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| {
+            if is_constraint(&error) {
+                AutomationError::Conflict
+            } else {
+                unavailable(error)
+            }
+        })?;
+        if removed.rows_affected() != 1 {
+            return Err(AutomationError::Conflict);
+        }
+        let released = sqlx::query(
+            "UPDATE automation_runs
+             SET state = 'pending', lease_generation = NULL, lease_token = NULL,
+                 lease_expires_at_ms = NULL
+             WHERE task_id = ? AND occurrence = ? AND state = 'leased'
+               AND lease_generation = ? AND lease_token = ?
+               AND client_user_message_id = ?",
+        )
+        .bind(lease.task.task_id.to_string())
+        .bind(to_i64(lease.occurrence)?)
+        .bind(to_i64(lease.lease_generation)?)
+        .bind(&lease.lease_token)
+        .bind(&lease.client_user_message_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if released.rows_affected() != 1 {
+            return Err(AutomationError::Conflict);
         }
         transaction.commit().await.map_err(unavailable)
     }
@@ -711,18 +766,19 @@ impl AutomationStore {
             return Err(AutomationError::Conflict);
         }
 
-        sqlx::query(
-            "INSERT INTO automation_dispatch_outcomes (
-                 task_id, occurrence, client_user_message_id, queued_submission_id,
-                 outcome, observed_at_ms, submitted_at_ms
-             ) VALUES (?, ?, ?, ?, 'submitted', ?, ?)",
+        let uncertainty = sqlx::query(
+            "UPDATE automation_dispatch_outcomes
+             SET outcome = 'submitted', queued_submission_id = ?,
+                 observed_at_ms = ?, submitted_at_ms = ?
+             WHERE task_id = ? AND occurrence = ?
+               AND client_user_message_id = ? AND outcome = 'uncertain'",
         )
-        .bind(lease.task.task_id.to_string())
-        .bind(to_i64(lease.occurrence)?)
-        .bind(&lease.client_user_message_id)
         .bind(&receipt.queued_submission_id)
         .bind(to_i64(submitted_at_ms)?)
         .bind(to_i64(submitted_at_ms)?)
+        .bind(lease.task.task_id.to_string())
+        .bind(to_i64(lease.occurrence)?)
+        .bind(&lease.client_user_message_id)
         .execute(&mut *transaction)
         .await
         .map_err(|error| {
@@ -732,6 +788,29 @@ impl AutomationStore {
                 unavailable(error)
             }
         })?;
+        if uncertainty.rows_affected() == 0 {
+            sqlx::query(
+                "INSERT INTO automation_dispatch_outcomes (
+                     task_id, occurrence, client_user_message_id, queued_submission_id,
+                     outcome, observed_at_ms, submitted_at_ms
+                 ) VALUES (?, ?, ?, ?, 'submitted', ?, ?)",
+            )
+            .bind(lease.task.task_id.to_string())
+            .bind(to_i64(lease.occurrence)?)
+            .bind(&lease.client_user_message_id)
+            .bind(&receipt.queued_submission_id)
+            .bind(to_i64(submitted_at_ms)?)
+            .bind(to_i64(submitted_at_ms)?)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|error| {
+                if is_constraint(&error) {
+                    AutomationError::Conflict
+                } else {
+                    unavailable(error)
+                }
+            })?;
+        }
 
         // Control operations can disable or cancel a task while an already admitted
         // occurrence is in flight. The queue admission cannot be revoked after the
