@@ -96,7 +96,7 @@ def main() -> int:
     if not output.is_relative_to(ARTIFACT_ROOT):
         raise SystemExit(f"output must be under the sealed artifact root: {ARTIFACT_ROOT}")
 
-    dirty = run_git(candidate, "status", "--porcelain")
+    dirty = run_git(candidate, "status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching")
     if dirty:
         raise SystemExit("candidate worktree must be clean")
     head = run_git(candidate, "rev-parse", "HEAD")
@@ -151,7 +151,8 @@ def main() -> int:
             "worktree": str(candidate),
             "clean": True,
             "delta_paths": delta_paths,
-            "product_paths_unchanged_from_parent": True,
+            "delta_allowlist_verified": True,
+            "non_profile_product_paths_unchanged_from_parent": True,
         },
         "local_acknowledgement": {
             "operator": args.operator,
@@ -180,7 +181,7 @@ def main() -> int:
         "provider_effect_policy": {
             "mode": "at_least_once_indeterminate_reconcile",
             "external_effects": False,
-            "unknown_result": "Indeterminate",
+            "unknown_result": "indeterminate",
             "blind_retry": False,
             "physical_exactly_once": False,
         },
@@ -199,6 +200,14 @@ def main() -> int:
             "operator_status": "local_ack_only",
             "promotion_status": "not_eligible",
             "production_operator_acceptance": False,
+        },
+        "lineage": {
+            "artifact_kind": "local_development_declaration",
+            "append_only": True,
+            "supersedes": [
+                "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-20260824/",
+                "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v2-20260824/",
+            ],
         },
         "input_scope": {
             "fixed_local_artifacts_only": True,
