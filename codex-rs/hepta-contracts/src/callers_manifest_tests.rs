@@ -342,7 +342,7 @@ fn g3_intelligence_kg_truth_bounds_qualification_without_hiding_later_candidates
 }
 
 #[test]
-fn g4_matrix_robrix_truth_stays_fail_closed_until_exact_head_qualification() {
+fn g4_matrix_robrix_truth_matches_paired_exact_candidate_qualification() {
     let manifest = manifest();
     let g4 = manifest
         .qualification
@@ -359,7 +359,7 @@ fn g4_matrix_robrix_truth_stays_fail_closed_until_exact_head_qualification() {
     );
     assert_eq!(
         g4.get("development_status").and_then(toml::Value::as_str),
-        Some("in_progress")
+        Some("qualified_exact_candidate")
     );
     assert_eq!(
         g4.get("real_synapse_runtime_skip_allowed")
@@ -422,12 +422,7 @@ fn g4_matrix_robrix_truth_stays_fail_closed_until_exact_head_qualification() {
         "matrix_bridge_durable_dispatch_owner_fence_qualified",
         "thread_hard_delete_durable_operation_journal_qualified",
         "thread_hard_delete_managed_agentd_single_writer_topology_qualified",
-        "generic_multi_app_server_hard_delete_qualified",
-        "matrix_bridge_client_side_queue_turn_scan_authoritative",
-        "matrix_bridge_queue_and_turn_all_pages_scanned",
         "matrix_bridge_conflicting_client_id_fails_before_atomic_admission",
-        "old_binary_parallel_queue_dispatch_supported",
-        "unbound_queue_exact_dispatch_qualified",
         "dual_agent_e2ee_inbound_and_outbound",
         "matrix_transaction_id_deduplicated",
         "loopback_network_disconnect_recovery",
@@ -435,11 +430,24 @@ fn g4_matrix_robrix_truth_stays_fail_closed_until_exact_head_qualification() {
         "agent_generation_rollover",
         "dual_agent_matrix_store_and_provider_isolation",
         "final_provider_and_room_counts_frozen_after_sidecar_stop",
-        "matrix_timeline_control_authority",
         "robrix_matrixd_control_requires_second_local_confirmation",
         "generated_backend_protocol_projection",
-        "whole_tree_ui_merge_allowed",
         "matrix_companion_lifecycle_qualified_in_g4",
+    ] {
+        assert_eq!(
+            g4.get(field).and_then(toml::Value::as_bool),
+            Some(true),
+            "{field} must be true after the paired exact-head G4 candidate passes",
+        );
+    }
+    for field in [
+        "generic_multi_app_server_hard_delete_qualified",
+        "matrix_bridge_client_side_queue_turn_scan_authoritative",
+        "matrix_bridge_queue_and_turn_all_pages_scanned",
+        "old_binary_parallel_queue_dispatch_supported",
+        "unbound_queue_exact_dispatch_qualified",
+        "matrix_timeline_control_authority",
+        "whole_tree_ui_merge_allowed",
         "general_fleet_lifecycle_qualified_in_g4",
         "cross_agent_memory_federation_qualified_in_g4",
         "automation_qualified_in_g4",
