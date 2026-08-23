@@ -129,6 +129,7 @@ pub use local_compact_executor::LOCAL_COMPACT_EXECUTOR_NAMESPACE;
 pub use local_compact_executor::LOCAL_COMPACT_EXECUTOR_SCHEMA_VERSION;
 pub use local_compact_executor::LocalCompactExecutor;
 pub use local_compact_executor::LocalCompactExecutorError;
+pub use local_compact_executor::LocalRehydrationRead;
 pub use local_lease_outbox::LOCAL_LEASE_OUTBOX_EXTERNAL_EFFECTS;
 pub use local_lease_outbox::LOCAL_LEASE_OUTBOX_KG_WRITE_AUTHORITY;
 pub use local_lease_outbox::LOCAL_LEASE_OUTBOX_NAMESPACE;

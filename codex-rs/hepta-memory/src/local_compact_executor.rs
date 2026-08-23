@@ -177,17 +177,21 @@ impl LocalCompactExecutor {
         Ok(journal.state(operation_id))
     }
 
-    /// Executes the local rehydration step for a committed checkpoint.  The
-    /// plan remains read-only, while an append-only local witness is persisted
-    /// so restart/reopen can replay the acknowledgement without duplicating
-    /// metadata.  No KG/projection row or external effect is written or
-    /// claimed.
-    pub async fn rehydrate(
+    /// Reads the committed checkpoint's rehydration plan and any durable local
+    /// witness without appending an event.
+    ///
+    /// This is the extension-facing read seam.  It verifies the complete
+    /// journal, the committed operation state, and the exact checkpoint
+    /// digest/revision binding.  A missing witness is represented as
+    /// `NotStarted`; a present witness upgrades the returned plan to
+    /// `Complete`.  The method never writes KG/projection rows, routes a
+    /// request, invokes a provider, or mutates the compact journal.
+    pub async fn read_rehydration(
         &self,
         operation_id: &str,
         checkpoint: &CompactCheckpoint,
         expected_revision: u64,
-    ) -> Result<RehydrationPlan, LocalCompactExecutorError> {
+    ) -> Result<LocalRehydrationRead, LocalCompactExecutorError> {
         validate_text(operation_id, "operation id", 512)?;
         let plan = checkpoint
             .rehydration_plan(expected_revision)
@@ -215,14 +219,50 @@ impl LocalCompactExecutor {
                 "operation {operation_id} is committed with a different checkpoint"
             )));
         }
+        let witness = journal.rehydration(operation_id).cloned();
+        if let Some(witness) = witness.as_ref()
+            && (witness.checkpoint_sha256 != expected_digest
+                || witness.expected_revision != expected_revision
+                || witness.sequence == 0)
+        {
+            return Err(LocalCompactExecutorError::Corrupt(format!(
+                "operation {operation_id} has an invalid rehydration witness"
+            )));
+        }
+        let status = if witness.is_some() {
+            RehydrationStatus::Complete
+        } else {
+            RehydrationStatus::NotStarted
+        };
+        Ok(LocalRehydrationRead {
+            plan: RehydrationPlan { status, ..plan },
+            checkpoint_sha256: expected_digest,
+            witness,
+        })
+    }
+
+    /// Executes the local rehydration step for a committed checkpoint.  The
+    /// plan remains read-only, while an append-only local witness is persisted
+    /// so restart/reopen can replay the acknowledgement without duplicating
+    /// metadata.  No KG/projection row or external effect is written or
+    /// claimed.
+    pub async fn rehydrate(
+        &self,
+        operation_id: &str,
+        checkpoint: &CompactCheckpoint,
+        expected_revision: u64,
+    ) -> Result<RehydrationPlan, LocalCompactExecutorError> {
+        let read = self
+            .read_rehydration(operation_id, checkpoint, expected_revision)
+            .await?;
         let _ = self
             .mutate(|journal| {
-                journal.record_rehydration(operation_id, &expected_digest, expected_revision)
+                journal.record_rehydration(operation_id, &read.checkpoint_sha256, expected_revision)
             })
             .await?;
         Ok(RehydrationPlan {
             status: RehydrationStatus::Complete,
-            ..plan
+            ..read.plan
         })
     }
 
@@ -386,6 +426,18 @@ impl LocalCompactExecutor {
         .map_err(crate::cognitive_store::unavailable)?;
         Ok(())
     }
+}
+
+/// Pure read result for a local compact rehydration attempt.
+///
+/// The optional witness is local append-only metadata.  This value itself is
+/// not an authority grant and is safe to pass to an explicit host adapter that
+/// retains only digest metadata.
+#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+pub struct LocalRehydrationRead {
+    pub plan: RehydrationPlan,
+    pub checkpoint_sha256: codex_hepta_contracts::Sha256Digest,
+    pub witness: Option<CompactRehydrationRecord>,
 }
 
 impl CognitiveStore {

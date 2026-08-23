@@ -175,6 +175,66 @@ async fn sqlite_checkpoint_commit_reopen_and_rehydrate_replay() {
 }
 
 #[tokio::test]
+async fn read_rehydration_is_pure_until_explicit_rehydrate() {
+    let temp = TempDir::new().expect("temp dir");
+    let owner = agent_id(95);
+    let store = CognitiveStore::open(&layout(&temp, &owner))
+        .await
+        .expect("store");
+    let current_fence = fence(35, "fence:35");
+    let current = snapshot(current_fence.clone());
+    let checkpoint = checkpoint(current_fence.clone());
+    let executor = store
+        .open_local_compact_executor("journal:read-only", current_fence)
+        .await
+        .expect("executor");
+    executor
+        .append_intent("op:read-only", &checkpoint, &current)
+        .await
+        .expect("intent");
+    let digest = checkpoint_digest(&checkpoint).expect("digest");
+    executor
+        .commit_checkpoint("op:read-only", &digest)
+        .await
+        .expect("commit");
+
+    let before = executor.snapshot().await.expect("before snapshot");
+    let read = executor
+        .read_rehydration("op:read-only", &checkpoint, 0)
+        .await
+        .expect("read-only plan");
+    assert_eq!(read.plan.status, crate::RehydrationStatus::NotStarted);
+    assert!(read.witness.is_none());
+    assert_eq!(read.checkpoint_sha256, digest);
+    let after = executor.snapshot().await.expect("after snapshot");
+    assert_eq!(after.entries, before.entries);
+    assert_eq!(after.head_sha256, before.head_sha256);
+
+    executor
+        .rehydrate("op:read-only", &checkpoint, 0)
+        .await
+        .expect("explicit rehydrate");
+    let complete = executor
+        .read_rehydration("op:read-only", &checkpoint, 0)
+        .await
+        .expect("completed read-only plan");
+    assert_eq!(complete.plan.status, crate::RehydrationStatus::Complete);
+    assert_eq!(
+        complete
+            .witness
+            .as_ref()
+            .expect("witness")
+            .checkpoint_sha256,
+        digest
+    );
+    let complete_again = executor
+        .read_rehydration("op:read-only", &checkpoint, 0)
+        .await
+        .expect("replay read-only plan");
+    assert_eq!(complete_again, complete);
+}
+
+#[tokio::test]
 async fn unknown_outcome_survives_reopen_until_explicit_reconcile() {
     let temp = TempDir::new().expect("temp dir");
     let owner = agent_id(92);
