@@ -10,6 +10,7 @@
 
 use codex_extension_api::ExtensionData;
 use codex_hepta_contracts::Sha256Digest;
+use codex_hepta_memory::CompactCheckpoint;
 use codex_hepta_memory::CompactFence;
 use codex_hepta_memory::LocalCompactExecutor;
 use codex_hepta_memory::LocalLeaseOutbox;
@@ -36,6 +37,8 @@ pub const LOCAL_REHYDRATION_REPLAY_PRODUCTION_CALLER: bool = false;
 pub const LOCAL_REHYDRATION_REPLAY_RUNTIME_REGISTERED: bool = false;
 /// H15 observes a plan; it never performs the explicit H14 rehydrate write.
 pub const LOCAL_REHYDRATION_REPLAY_PERFORMED: bool = false;
+/// The lifecycle seam is host-invoked only; `install` does not register it.
+pub const LOCAL_REHYDRATION_REPLAY_LIFECYCLE_REGISTERED: bool = false;
 
 const H13_BINDING_DOMAIN: &[u8] = b"hepta-memory:local-rehydration-host:v1";
 const H14_BINDING_DOMAIN: &[u8] = b"hepta-memory:local-rehydration-runtime:v1";
@@ -84,6 +87,47 @@ impl std::error::Error for LocalRehydrationReplayError {}
 impl From<LocalRehydrationRuntimeError> for LocalRehydrationReplayError {
     fn from(error: LocalRehydrationRuntimeError) -> Self {
         Self::Runtime(error)
+    }
+}
+
+/// Inputs supplied by the one owner that already has the current turn's
+/// lease, compact executor, and checkpoint.
+///
+/// `TurnLifecycleContributor` callbacks intentionally do not carry a
+/// checkpoint or executor.  This value is therefore an explicit host seam,
+/// not an implicit callback payload: callers must invoke
+/// [`observe_local_rehydration_replay`] at the lifecycle boundary where those
+/// objects are already available.  The function returns a stack-owned plan
+/// and never attaches it to `turn_store`.
+pub struct LocalRehydrationReplayLifecycleInput<'a> {
+    pub turn_id: &'a str,
+    pub turn_store: &'a ExtensionData,
+    pub operation_id: &'a str,
+    pub expected_revision: u64,
+    pub checkpoint: &'a CompactCheckpoint,
+    pub lease: &'a LocalLeaseOutbox,
+    pub executor: &'a LocalCompactExecutor,
+}
+
+impl<'a> LocalRehydrationReplayLifecycleInput<'a> {
+    pub fn new(
+        turn_id: &'a str,
+        turn_store: &'a ExtensionData,
+        operation_id: &'a str,
+        expected_revision: u64,
+        checkpoint: &'a CompactCheckpoint,
+        lease: &'a LocalLeaseOutbox,
+        executor: &'a LocalCompactExecutor,
+    ) -> Self {
+        Self {
+            turn_id,
+            turn_store,
+            operation_id,
+            expected_revision,
+            checkpoint,
+            lease,
+            executor,
+        }
     }
 }
 
@@ -315,6 +359,46 @@ pub async fn prepare_local_rehydration_replay(
         lease.lease_id(),
         executor.fence(),
     )
+}
+
+/// Observe bounded rehydration replay at an explicit local turn boundary.
+///
+/// This is the H16 lifecycle seam.  It deliberately delegates to the H14/H15
+/// read path so the lease is verified before and after the read, the checkpoint
+/// and operation are checked against the authoritative compact journal, and
+/// the resulting digest-bound envelope is integrity-revalidated.  No
+/// `ExtensionData` attachment is created, no witness/event/outbox row is
+/// appended, and no runtime contributor, scheduler, router, provider, KG
+/// writer, or external effect is reached.  The host owns the timeout/budget
+/// around this read; this helper does not create a background task or retry.
+pub async fn observe_local_rehydration_replay(
+    input: LocalRehydrationReplayLifecycleInput<'_>,
+) -> Result<LocalRehydrationReplayPlan, LocalRehydrationReplayError> {
+    if input.turn_id.trim().is_empty()
+        || input.turn_id.starts_with("auto-compact-")
+        || input.turn_id != input.turn_store.level_id()
+    {
+        return Err(LocalRehydrationReplayError::TurnBindingMismatch);
+    }
+    let plan = prepare_local_rehydration_replay(
+        input.turn_store,
+        input.lease,
+        input.executor,
+        LocalRehydrationHostInput::new(
+            input.turn_id,
+            input.operation_id,
+            input.checkpoint,
+            input.expected_revision,
+        ),
+    )
+    .await?;
+    plan.validate()?;
+    if !plan.is_local_read_only() {
+        return Err(LocalRehydrationReplayError::Invalid(
+            "lifecycle replay observation is not local read-only".to_string(),
+        ));
+    }
+    Ok(plan)
 }
 
 fn identity_digest(domain: &[u8], kind: &[u8], value: &str) -> Sha256Digest {
@@ -575,6 +659,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn explicit_lifecycle_observation_is_read_only_and_not_registered() {
+        let (_temp, turn_store, lease, executor, checkpoint, current_fence) = prepared().await;
+        let before_counts = lease.snapshot_counts().await.expect("before counts");
+        let before_snapshot = executor.snapshot().await.expect("before snapshot");
+        let before_witness = executor
+            .rehydration("op:h15")
+            .await
+            .expect("before witness");
+
+        let observed = observe_local_rehydration_replay(LocalRehydrationReplayLifecycleInput::new(
+            "turn:h15",
+            &turn_store,
+            "op:h15",
+            0,
+            &checkpoint,
+            &lease,
+            &executor,
+        ))
+        .await
+        .expect("explicit lifecycle observation");
+
+        assert_eq!(
+            observed.disposition,
+            LocalRehydrationReplayDisposition::NotStarted
+        );
+        assert!(observed.is_local_read_only());
+        assert_eq!(observed.generation, current_fence.generation);
+        assert_eq!(
+            lease.snapshot_counts().await.expect("after counts"),
+            before_counts
+        );
+        assert_eq!(
+            executor.snapshot().await.expect("after snapshot"),
+            before_snapshot
+        );
+        assert_eq!(
+            executor.rehydration("op:h15").await.expect("after witness"),
+            before_witness
+        );
+        assert!(turn_store.get::<LocalRehydrationReplayPlan>().is_none());
+        assert!(!LOCAL_REHYDRATION_REPLAY_LIFECYCLE_REGISTERED);
+    }
+
+    #[tokio::test]
     async fn consumes_complete_read_without_rehydrating_again() {
         let (_temp, turn_store, lease, executor, checkpoint, current_fence) = prepared().await;
         executor
@@ -608,6 +736,105 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn explicit_lifecycle_observation_of_complete_replay_is_idempotent() {
+        let (_temp, turn_store, lease, executor, current_checkpoint, _current_fence) =
+            prepared().await;
+        executor
+            .rehydrate("op:h15", &current_checkpoint, 0)
+            .await
+            .expect("explicit witness");
+        let before_counts = lease.snapshot_counts().await.expect("before counts");
+        let before_snapshot = executor.snapshot().await.expect("before snapshot");
+        let before_witness = executor
+            .rehydration("op:h15")
+            .await
+            .expect("before witness")
+            .expect("witness");
+
+        let first = observe_local_rehydration_replay(LocalRehydrationReplayLifecycleInput::new(
+            "turn:h15",
+            &turn_store,
+            "op:h15",
+            0,
+            &current_checkpoint,
+            &lease,
+            &executor,
+        ))
+        .await
+        .expect("first complete observation");
+        let second = observe_local_rehydration_replay(LocalRehydrationReplayLifecycleInput::new(
+            "turn:h15",
+            &turn_store,
+            "op:h15",
+            0,
+            &current_checkpoint,
+            &lease,
+            &executor,
+        ))
+        .await
+        .expect("second complete observation");
+
+        assert_eq!(first, second);
+        assert_eq!(
+            first.disposition,
+            LocalRehydrationReplayDisposition::Complete
+        );
+        assert!(first.witness_present);
+        assert_eq!(
+            lease.snapshot_counts().await.expect("after counts"),
+            before_counts
+        );
+        assert_eq!(
+            executor.snapshot().await.expect("after snapshot"),
+            before_snapshot
+        );
+        assert_eq!(
+            executor
+                .rehydration("op:h15")
+                .await
+                .expect("after witness")
+                .expect("witness"),
+            before_witness
+        );
+    }
+
+    #[tokio::test]
+    async fn terminal_lease_cannot_trigger_lifecycle_observation() {
+        let (_temp, turn_store, lease, executor, checkpoint, _current_fence) = prepared().await;
+        let before_snapshot = executor.snapshot().await.expect("before snapshot");
+        let before_witness = executor
+            .rehydration("op:h15")
+            .await
+            .expect("before witness");
+        lease.release().await.expect("terminal release");
+
+        let error = observe_local_rehydration_replay(LocalRehydrationReplayLifecycleInput::new(
+            "turn:h15",
+            &turn_store,
+            "op:h15",
+            0,
+            &checkpoint,
+            &lease,
+            &executor,
+        ))
+        .await
+        .expect_err("released lease must fail closed");
+        assert!(matches!(
+            error,
+            LocalRehydrationReplayError::Runtime(LocalRehydrationRuntimeError::Lease(_))
+        ));
+        assert_eq!(
+            executor.snapshot().await.expect("after snapshot"),
+            before_snapshot
+        );
+        assert_eq!(
+            executor.rehydration("op:h15").await.expect("after witness"),
+            before_witness
+        );
+        assert!(turn_store.get::<LocalRehydrationReplayPlan>().is_none());
+    }
+
+    #[tokio::test]
     async fn stale_fence_and_turn_binding_fail_closed() {
         let (_temp, turn_store, lease, executor, checkpoint, current_fence) = prepared().await;
         let runtime = prepare_local_rehydration_runtime(
@@ -637,6 +864,112 @@ mod tests {
             error,
             LocalRehydrationReplayError::TurnBindingMismatch
         ));
+    }
+
+    #[tokio::test]
+    async fn lifecycle_observation_rejects_auto_compact_and_payload_rebinding() {
+        let (_temp, turn_store, lease, executor, current_checkpoint, _current_fence) =
+            prepared().await;
+        let before_snapshot = executor.snapshot().await.expect("before snapshot");
+        let auto_compact =
+            observe_local_rehydration_replay(LocalRehydrationReplayLifecycleInput::new(
+                "auto-compact-h15",
+                &turn_store,
+                "op:h15",
+                0,
+                &current_checkpoint,
+                &lease,
+                &executor,
+            ))
+            .await
+            .expect_err("auto-compact identity must be rejected");
+        assert!(matches!(
+            auto_compact,
+            LocalRehydrationReplayError::TurnBindingMismatch
+        ));
+
+        let wrong_operation =
+            observe_local_rehydration_replay(LocalRehydrationReplayLifecycleInput::new(
+                "turn:h15",
+                &turn_store,
+                "op:other",
+                0,
+                &current_checkpoint,
+                &lease,
+                &executor,
+            ))
+            .await
+            .expect_err("operation rebinding must fail closed");
+        assert!(matches!(
+            wrong_operation,
+            LocalRehydrationReplayError::Runtime(_)
+        ));
+
+        let wrong_revision =
+            observe_local_rehydration_replay(LocalRehydrationReplayLifecycleInput::new(
+                "turn:h15",
+                &turn_store,
+                "op:h15",
+                1,
+                &current_checkpoint,
+                &lease,
+                &executor,
+            ))
+            .await
+            .expect_err("revision rebinding must fail closed");
+        assert!(matches!(
+            wrong_revision,
+            LocalRehydrationReplayError::Runtime(_)
+        ));
+
+        let wrong_checkpoint = CompactCheckpoint::new(
+            "ctxcp:h15-other",
+            current_checkpoint.lease.clone(),
+            current_checkpoint.protected_refs.clone(),
+            current_checkpoint.summary.clone(),
+            current_checkpoint.loss_report.clone(),
+            current_checkpoint.checkpoint_revision,
+        )
+        .expect("wrong checkpoint");
+        let wrong_payload =
+            observe_local_rehydration_replay(LocalRehydrationReplayLifecycleInput::new(
+                "turn:h15",
+                &turn_store,
+                "op:h15",
+                0,
+                &wrong_checkpoint,
+                &lease,
+                &executor,
+            ))
+            .await
+            .expect_err("checkpoint rebinding must fail closed");
+        assert!(matches!(
+            wrong_payload,
+            LocalRehydrationReplayError::Runtime(_)
+        ));
+
+        let stale_checkpoint =
+            checkpoint(CompactFence::new(3, 4, 2, "stale-h15").expect("stale fence"));
+        let stale_fence =
+            observe_local_rehydration_replay(LocalRehydrationReplayLifecycleInput::new(
+                "turn:h15",
+                &turn_store,
+                "op:h15",
+                0,
+                &stale_checkpoint,
+                &lease,
+                &executor,
+            ))
+            .await
+            .expect_err("stale checkpoint fence must fail closed");
+        assert!(matches!(
+            stale_fence,
+            LocalRehydrationReplayError::Runtime(LocalRehydrationRuntimeError::FenceMismatch(_))
+        ));
+        assert_eq!(
+            executor.snapshot().await.expect("after snapshot"),
+            before_snapshot
+        );
     }
 
     #[tokio::test]
