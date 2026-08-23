@@ -485,10 +485,59 @@ pub fn checkpoint_digest(
         &mut hasher,
         b"hepta-memory:compact-persistence:checkpoint:v1",
     );
+    frame_part(&mut hasher, &checkpoint.schema_version.to_be_bytes());
+    frame_part(&mut hasher, checkpoint.namespace.as_bytes());
     frame_part(&mut hasher, checkpoint.checkpoint_id.as_bytes());
     frame_part(
         &mut hasher,
         checkpoint.lease.lease_sha256.as_str().as_bytes(),
+    );
+    frame_part(&mut hasher, checkpoint.lease.snapshot.context_id.as_bytes());
+    frame_part(
+        &mut hasher,
+        &checkpoint.lease.snapshot.parent_event_start.to_be_bytes(),
+    );
+    frame_part(
+        &mut hasher,
+        &checkpoint.lease.snapshot.parent_event_end.to_be_bytes(),
+    );
+    frame_part(
+        &mut hasher,
+        &checkpoint
+            .lease
+            .snapshot
+            .expected_parent_revision
+            .to_be_bytes(),
+    );
+    frame_part(
+        &mut hasher,
+        checkpoint
+            .lease
+            .snapshot
+            .expected_state_sha256
+            .as_str()
+            .as_bytes(),
+    );
+    frame_part(
+        &mut hasher,
+        &checkpoint
+            .lease
+            .snapshot
+            .fence
+            .authority_epoch
+            .to_be_bytes(),
+    );
+    frame_part(
+        &mut hasher,
+        &checkpoint.lease.snapshot.fence.owner_epoch.to_be_bytes(),
+    );
+    frame_part(
+        &mut hasher,
+        &checkpoint.lease.snapshot.fence.generation.to_be_bytes(),
+    );
+    frame_part(
+        &mut hasher,
+        checkpoint.lease.snapshot.fence.fencing_token.as_bytes(),
     );
     frame_part(
         &mut hasher,
@@ -499,7 +548,20 @@ pub fn checkpoint_digest(
         checkpoint.loss_report.report_sha256.as_str().as_bytes(),
     );
     frame_part(&mut hasher, &checkpoint.checkpoint_revision.to_be_bytes());
-    Sha256Digest::from_sha256_output(hasher.finalize()).pipe(Ok)
+    let mut protected = checkpoint.protected_refs.iter().collect::<Vec<_>>();
+    protected.sort_by(|left, right| left.ref_id.cmp(&right.ref_id));
+    frame_part(
+        &mut hasher,
+        &u64::try_from(protected.len())
+            .unwrap_or(u64::MAX)
+            .to_be_bytes(),
+    );
+    for protected_ref in protected {
+        frame_part(&mut hasher, protected_ref.ref_id.as_bytes());
+        frame_part(&mut hasher, protected_ref.kind.as_bytes());
+        frame_part(&mut hasher, &[u8::from(protected_ref.required)]);
+    }
+    Ok(Sha256Digest::from_sha256_output(hasher.finalize()))
 }
 
 fn parent_digest(snapshot: &CompactParentSnapshot) -> Sha256Digest {
@@ -516,6 +578,8 @@ fn parent_digest(snapshot: &CompactParentSnapshot) -> Sha256Digest {
         &mut hasher,
         snapshot.expected_state_sha256.as_str().as_bytes(),
     );
+    frame_part(&mut hasher, &snapshot.fence.authority_epoch.to_be_bytes());
+    frame_part(&mut hasher, &snapshot.fence.owner_epoch.to_be_bytes());
     frame_part(&mut hasher, &snapshot.fence.generation.to_be_bytes());
     frame_part(&mut hasher, snapshot.fence.fencing_token.as_bytes());
     Sha256Digest::from_sha256_output(hasher.finalize())
@@ -596,10 +660,3 @@ fn illegal(operation_id: &str, message: String) -> CompactPersistenceError {
         message,
     }
 }
-
-trait Pipe: Sized {
-    fn pipe<T>(self, f: impl FnOnce(Self) -> T) -> T {
-        f(self)
-    }
-}
-impl<T> Pipe for T {}
