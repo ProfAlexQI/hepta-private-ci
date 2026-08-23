@@ -679,6 +679,7 @@ async fn run_real_synapse_qualification_inner(
         "sidecar_respawn_before_sigkill",
         Some(&sidecar_before_a),
     )?;
+    fleet.assert_pair_process_identity_current(&agent_a, &sidecar_before_a)?;
     send_sigkill(sidecar_before_a.matrix_pid)?;
     eprintln!("R4_STAGE sidecar_recovery:killed");
     encrypted_matrix_a
@@ -744,6 +745,7 @@ async fn run_real_synapse_qualification_inner(
         "agent_fault_before_sigkill",
         Some(&generation_before_a),
     )?;
+    fleet.assert_pair_process_identity_current(&agent_a, &generation_before_a)?;
     send_sigkill(generation_before_a.agent_pid)?;
     fleet.wait_stopped(&agent_a).await?;
     eprintln!("R4_STAGE agent_fault_isolation:a_fenced");
@@ -5272,6 +5274,38 @@ impl FleetHarness {
             spawn_generation: pair.map(|pair| pair.spawn_generation),
             identity,
         });
+        Ok(())
+    }
+
+    /// Poll the lifecycle once and fail closed if a fault-injection target
+    /// stopped being the exact process that was observed.  The qualification
+    /// deliberately sends SIGKILL outside Supervisor; checking the live
+    /// snapshot immediately beforehand prevents a stale PID from being
+    /// delivered to a recycled peer process.
+    fn assert_pair_process_identity_current(
+        &mut self,
+        agent: &AgentFixture,
+        expected: &PairObservation,
+    ) -> Result<()> {
+        let report = self.supervisor.tick(Instant::now());
+        ensure!(
+            report.faults.is_empty(),
+            "Supervisor fault while validating fault-injection target {}: {:?}",
+            agent.agent_id,
+            report.faults
+        );
+        let snapshot = self
+            .supervisor
+            .snapshot(&agent.agent_id)
+            .with_context(|| format!("Supervisor omitted target {}", agent.agent_id))?;
+        ensure!(
+            snapshot.process_system_id == Some(expected.agent_pid)
+                && snapshot.matrix.process_system_id == Some(expected.matrix_pid)
+                && snapshot.spawn_generation == Some(expected.spawn_generation)
+                && snapshot.matrix.attached_agent_generation == Some(expected.spawn_generation),
+            "fault-injection target changed before signal: agent={} expected={expected:?} current={snapshot:?}",
+            agent.agent_id,
+        );
         Ok(())
     }
 
