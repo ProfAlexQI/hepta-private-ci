@@ -64,5 +64,9 @@ python3 scripts/hepta-g5-local-profile.py \
   --candidate /Volumes/T5/hepta-vnext/worktrees/r2-g5-local-dev-profile-20260824 \
   --output /Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v5-20260824 \
   --operator local-development-user --ack \
-  --expected-head "$HEAD" --expected-tree "$TREE" --expected-parent "$PARENT"
+  --expected-head "$HEAD" --expected-tree "$TREE" --expected-parent "$PARENT" \
+  --evidence /Volumes/T5/hepta-vnext/artifacts/r2-g5-unified-candidate-v1-20260823/candidate-binding.json \
+  --evidence /Volumes/T5/hepta-vnext/artifacts/r2-g5-unified-truth-v4-20260823/G5-TRUTH-LINEAGE-RECEIPT.json \
+  --evidence /Volumes/T5/hepta-vnext/artifacts/r2-g5-provider-qualification-v1-20260823/G5-PROVIDER-QUALIFICATION-RECEIPT.json \
+  --evidence /Volumes/T5/hepta-vnext/artifacts/r2-g5-fleet-soak-20260823/G5-FLEET-SOAK-SUPPLEMENTAL-RECEIPT.json
 ```

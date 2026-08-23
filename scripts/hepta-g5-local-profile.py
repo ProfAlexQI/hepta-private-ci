@@ -209,6 +209,7 @@ def main() -> int:
                 "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v2-20260824/",
                 "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v3-20260824/",
                 "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v4-20260824/",
+                "/Volumes/T5/hepta-vnext/artifacts/r2-g5-local-development-profile-v5-20260824/",
             ],
         },
         "input_scope": {
