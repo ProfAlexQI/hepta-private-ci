@@ -15,6 +15,7 @@ mod intuition_shadow;
 mod memory_admission;
 mod neuron_proposal;
 mod recall;
+mod shadow_advisory;
 
 pub use cognitive_compact::COGNITIVE_COMPACT_HOOK_NAMESPACE;
 pub use cognitive_compact::COGNITIVE_COMPACT_HOOK_SCHEMA_VERSION;
@@ -146,6 +147,12 @@ pub use recall::RecallObservation;
 pub use recall::RecallObservationId;
 pub use recall::RecallObservationReason;
 pub use recall::shadow_recall;
+pub use shadow_advisory::SHADOW_ADVISORY_NAMESPACE;
+pub use shadow_advisory::SHADOW_ADVISORY_SCHEMA_VERSION;
+pub use shadow_advisory::ShadowAdvisoryError;
+pub use shadow_advisory::ShadowAdvisoryInput;
+pub use shadow_advisory::ShadowAdvisoryReceipt;
+pub use shadow_advisory::shadow_advisory_evaluate;
 
 #[cfg(test)]
 #[path = "cognitive_store_tests.rs"]
