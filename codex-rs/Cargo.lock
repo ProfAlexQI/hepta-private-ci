@@ -3470,6 +3470,7 @@ dependencies = [
  "codex-app-server-protocol",
  "codex-arg0",
  "codex-config",
+ "codex-features",
  "codex-hepta-agent-protocol",
  "codex-hepta-automation",
  "codex-hepta-contracts",

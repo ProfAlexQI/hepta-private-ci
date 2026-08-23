@@ -9,6 +9,7 @@ use codex_core::config::Config;
 use codex_core::config::ConfigBuilder;
 use codex_core::config::ConfigOverrides;
 use codex_exec_server::LOCAL_FS;
+use codex_features::Feature;
 use codex_features::feature_for_key;
 use codex_login::AuthManager;
 use codex_login::default_client::set_default_client_residency_requirement;
@@ -31,6 +32,11 @@ pub(crate) struct ConfigManager {
     codex_home: PathBuf,
     cli_overrides: Arc<RwLock<Vec<(String, TomlValue)>>>,
     runtime_feature_enablement: Arc<RwLock<BTreeMap<String, bool>>>,
+    /// Embedding-owned feature states that are applied after every config
+    /// layer and request override. These are capability boundaries, not
+    /// ordinary user configuration, so a managed or per-request layer must
+    /// not be able to reopen them.
+    required_feature_states: Arc<RwLock<BTreeMap<Feature, bool>>>,
     loader_overrides: LoaderOverrides,
     strict_config: bool,
     cloud_config_bundle: Arc<RwLock<CloudConfigBundleLoader>>,
@@ -52,6 +58,7 @@ impl ConfigManager {
             codex_home,
             cli_overrides: Arc::new(RwLock::new(cli_overrides)),
             runtime_feature_enablement: Arc::new(RwLock::new(BTreeMap::new())),
+            required_feature_states: Arc::new(RwLock::new(BTreeMap::new())),
             loader_overrides,
             strict_config,
             cloud_config_bundle: Arc::new(RwLock::new(cloud_config_bundle)),
@@ -90,6 +97,24 @@ impl ConfigManager {
             self.runtime_feature_enablement.write().map_err(|_| ())?;
         runtime_feature_enablement.extend(enablement);
         Ok(())
+    }
+
+    pub(crate) fn require_feature_states<I>(&self, states: I) -> Result<(), ()>
+    where
+        I: IntoIterator<Item = (Feature, bool)>,
+    {
+        let mut required_feature_states = self.required_feature_states.write().map_err(|_| ())?;
+        required_feature_states.extend(states);
+        Ok(())
+    }
+
+    pub(crate) fn current_required_feature_states(
+        &self,
+    ) -> std::io::Result<BTreeMap<Feature, bool>> {
+        self.required_feature_states
+            .read()
+            .map(|guard| guard.clone())
+            .map_err(|_| std::io::Error::other("required feature state lock poisoned"))
     }
 
     pub(crate) fn replace_cloud_config_bundle_loader(
@@ -155,6 +180,7 @@ impl ConfigManager {
             .rebuild_preserving_session_layers(&refreshed_config)
             .await?;
         self.apply_runtime_feature_enablement(&mut config);
+        self.apply_required_feature_states(&mut config)?;
         self.apply_arg0_paths(&mut config);
         Ok(config)
     }
@@ -171,6 +197,7 @@ impl ConfigManager {
             .build()
             .await?;
         self.apply_runtime_feature_enablement(&mut config);
+        self.apply_required_feature_states(&mut config)?;
         self.apply_arg0_paths(&mut config);
         Ok(config)
     }
@@ -242,6 +269,7 @@ impl ConfigManager {
             .build()
             .await?;
         self.apply_runtime_feature_enablement(&mut config);
+        self.apply_required_feature_states(&mut config)?;
         self.apply_arg0_paths(&mut config);
         Ok(config)
     }
@@ -281,6 +309,26 @@ impl ConfigManager {
             .read()
             .map(|guard| guard.clone())
             .unwrap_or_default()
+    }
+
+    fn apply_required_feature_states(&self, config: &mut Config) -> std::io::Result<()> {
+        let required_feature_states = self.current_required_feature_states()?;
+        for (feature, enabled) in required_feature_states {
+            config
+                .features
+                .set_enabled(feature, enabled)
+                .map_err(|err| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        format!(
+                            "required embedding feature state {}={} could not be enforced: {err}",
+                            feature.key(),
+                            enabled
+                        ),
+                    )
+                })?;
+        }
+        Ok(())
     }
 
     fn apply_arg0_paths(&self, config: &mut Config) {

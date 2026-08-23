@@ -67,6 +67,7 @@ use codex_feedback::CodexFeedback;
 use codex_protocol::protocol::SessionSource;
 use codex_rollout::state_db as rollout_state_db;
 use codex_state::log_db;
+use std::collections::BTreeMap;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -461,6 +462,10 @@ pub struct AppServerRuntimeOptions {
     /// This is false by default and is never inferred from environment or
     /// feature flags.
     pub hepta_local_turn_lifecycle_enabled: bool,
+    /// Embedding-owned feature states applied after ordinary config layers
+    /// and per-request overrides. Empty for ordinary Codex runtimes; a local
+    /// embedding can use this to keep a capability boundary fail-closed.
+    pub required_feature_states: BTreeMap<Feature, bool>,
 }
 
 impl std::fmt::Debug for AppServerRuntimeOptions {
@@ -488,6 +493,7 @@ impl std::fmt::Debug for AppServerRuntimeOptions {
                 "hepta_local_turn_lifecycle_enabled",
                 &self.hepta_local_turn_lifecycle_enabled,
             )
+            .field("required_feature_states", &self.required_feature_states)
             .finish()
     }
 }
@@ -533,6 +539,7 @@ impl PartialEq for AppServerRuntimeOptions {
                 _ => false,
             }
             && self.hepta_local_turn_lifecycle_enabled == other.hepta_local_turn_lifecycle_enabled
+            && self.required_feature_states == other.required_feature_states
     }
 }
 
@@ -550,6 +557,7 @@ impl Default for AppServerRuntimeOptions {
             required_thread_store_mode: None,
             hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime::Absent,
             hepta_local_turn_lifecycle_enabled: false,
+            required_feature_states: BTreeMap::new(),
         }
     }
 }
@@ -599,6 +607,9 @@ pub async fn run_main_with_transport_options(
         arg0_paths.clone(),
         Arc::new(NoopThreadConfigLoader),
     );
+    config_manager
+        .require_feature_states(runtime_options.required_feature_states.clone())
+        .map_err(|_| std::io::Error::other("failed to install required feature states"))?;
     match config_manager
         .load_latest_config(/*fallback_cwd*/ None)
         .await

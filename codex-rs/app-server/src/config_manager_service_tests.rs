@@ -9,6 +9,7 @@ use codex_app_server_protocol::ConfigLayerSource as ApiConfigLayerSource;
 use codex_config::CloudConfigBundleLoader;
 use codex_config::LoaderOverrides;
 use codex_config::test_support::CloudConfigBundleFixture;
+use codex_features::Feature;
 use codex_http_client::HttpClientFactory;
 use codex_http_client::OutboundProxyPolicy;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -147,6 +148,43 @@ async fn psp_feature_configures_first_party_routing() -> Result<()> {
             .and_then(|features| features.get("psp")),
         Some(&toml::Value::Boolean(true))
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn required_embedding_feature_state_overrides_managed_and_request_layers() -> Result<()> {
+    let tmp = tempdir()?;
+    let managed_path = tmp.path().join("managed_config.toml");
+    std::fs::write(&managed_path, "[features]\nhepta_cognitive_write = true\n")?;
+    let service = ConfigManager::new_for_tests(
+        tmp.path().to_path_buf(),
+        Vec::new(),
+        LoaderOverrides::with_managed_config_path_for_tests(managed_path),
+        CloudConfigBundleLoader::default(),
+    );
+    assert!(
+        service
+            .require_feature_states([(Feature::HeptaCognitiveWrite, false)])
+            .is_ok()
+    );
+
+    let config = service
+        .load_with_overrides(
+            Some(
+                [(
+                    "features".to_string(),
+                    serde_json::json!({
+                        "hepta_cognitive_write": true,
+                    }),
+                )]
+                .into_iter()
+                .collect(),
+            ),
+            Default::default(),
+        )
+        .await?;
+
+    assert!(!config.features.enabled(Feature::HeptaCognitiveWrite));
     Ok(())
 }
 

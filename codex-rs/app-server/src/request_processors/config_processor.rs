@@ -91,6 +91,23 @@ impl ConfigRequestProcessor {
         let fallback_cwd = params.cwd.as_ref().map(PathBuf::from);
         let mut response = self.config_manager.read(params).await.map_err(map_error)?;
         let config = self.load_latest_config(fallback_cwd).await?;
+        for (feature, enabled) in self
+            .config_manager
+            .current_required_feature_states()
+            .map_err(|err| internal_error(err.to_string()))?
+        {
+            let features = response
+                .config
+                .additional
+                .entry("features".to_string())
+                .or_insert_with(|| json!({}));
+            if !features.is_object() {
+                *features = json!({});
+            }
+            if let Some(features) = features.as_object_mut() {
+                features.insert(feature.key().to_string(), json!(enabled));
+            }
+        }
         for feature_key in SUPPORTED_EXPERIMENTAL_FEATURE_ENABLEMENT {
             let Some(feature) = feature_for_key(feature_key) else {
                 continue;

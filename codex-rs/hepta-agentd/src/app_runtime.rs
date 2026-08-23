@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
 use codex_app_server::AppServerRuntimeOptions;
@@ -7,6 +8,7 @@ use codex_app_server::RemoteControlStartupMode;
 use codex_app_server::ThreadStoreConfig;
 use codex_arg0::Arg0DispatchPaths;
 use codex_config::LoaderOverrides;
+use codex_features::Feature;
 use codex_hepta_memory::CognitiveRuntime;
 use codex_protocol::protocol::SessionSource;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -71,12 +73,17 @@ pub(crate) fn app_server_runtime_options(
         // that explicitly opts into lifecycle journal admission.  This is a
         // local queue/lease capability, not production effect authority.
         hepta_local_turn_lifecycle_enabled: true,
+        // This is an embedding-owned capability boundary. It is applied
+        // after managed config and per-request overrides, so those layers
+        // cannot reopen cognitive/KG writes in the local profile.
+        required_feature_states: BTreeMap::from([(Feature::HeptaCognitiveWrite, false)]),
         ..Default::default()
     })
 }
 
 #[cfg(test)]
 mod tests {
+    use codex_features::Feature;
     use codex_hepta_contracts::AgentId;
     use codex_hepta_fleet::ResourceBudget;
     use codex_hepta_paths::HeptaFleetRoot;
@@ -149,5 +156,11 @@ mod tests {
             options.required_thread_store_mode.as_ref()
         );
         assert!(options.hepta_local_turn_lifecycle_enabled);
+        assert_eq!(
+            Some(&false),
+            options
+                .required_feature_states
+                .get(&Feature::HeptaCognitiveWrite)
+        );
     }
 }
