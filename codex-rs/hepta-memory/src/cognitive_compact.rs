@@ -147,6 +147,24 @@ impl CompactLease {
             lease_sha256,
         }
     }
+
+    /// Recompute the lease identity after deserialization. Compact leases are
+    /// digest-bound envelopes, not authority grants; callers must reject a
+    /// payload whose stored id or digest no longer matches its snapshot.
+    pub fn validate_integrity(&self) -> Result<(), CognitiveCompactError> {
+        let expected_digest = digest_parts(
+            b"compact-lease",
+            &[self.snapshot.digest().as_str().as_bytes()],
+        );
+        if self.lease_sha256 != expected_digest {
+            return Err(invalid("compact lease digest does not match snapshot"));
+        }
+        let expected_id = format!("ctxlease:v1:{}", expected_digest.as_str());
+        if self.lease_id != expected_id {
+            return Err(invalid("compact lease id does not match digest"));
+        }
+        Ok(())
+    }
 }
 
 /// Bounded protected reference carried through a compact checkpoint.
@@ -366,6 +384,7 @@ impl CompactCheckpoint {
         {
             return Err(invalid("unsupported compact hook schema or namespace"));
         }
+        self.lease.validate_integrity()?;
         if self.summary.fact_admission() {
             return Err(CognitiveCompactError::SummaryFactAdmission);
         }

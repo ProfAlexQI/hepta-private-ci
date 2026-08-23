@@ -82,6 +82,25 @@ fn pre_hook_is_deterministic_and_explicitly_local_only() {
 }
 
 #[test]
+fn deserialized_lease_identity_is_recomputed_before_compact_use() {
+    let mut digest_tampered = checkpoint();
+    digest_tampered.lease.lease_sha256 = Sha256Digest::for_bytes(b"tampered");
+    assert!(matches!(
+        digest_tampered.rehydration_plan(0),
+        Err(CognitiveCompactError::Invalid { message })
+            if message.contains("lease digest")
+    ));
+
+    let mut id_tampered = checkpoint();
+    id_tampered.lease.lease_id.push_str(":tampered");
+    assert!(matches!(
+        id_tampered.rehydration_plan(0),
+        Err(CognitiveCompactError::Invalid { message })
+            if message.contains("lease id")
+    ));
+}
+
+#[test]
 fn compact_commit_validation_fences_parent_cas_and_generation() {
     let checkpoint = checkpoint();
     assert_eq!(
