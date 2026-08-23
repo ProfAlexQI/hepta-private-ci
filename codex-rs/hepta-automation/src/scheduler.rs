@@ -87,7 +87,14 @@ where
             Ok(Err(AutomationError::AccessDenied)) => {
                 return Err(AutomationError::AccessDenied);
             }
-            Ok(Err(_)) | Err(_) => {
+            Ok(Err(AutomationError::DispatchUnknown)) | Err(_) => {
+                self.store.record_dispatch_uncertain(&lease, now_ms).await?;
+                return Ok(AutomationTick::DispatchUncertain {
+                    task_id: lease.task.task_id,
+                    occurrence: lease.occurrence,
+                });
+            }
+            Ok(Err(_)) => {
                 self.store.release_for_retry(&lease).await?;
                 return Ok(AutomationTick::RetryScheduled {
                     task_id: lease.task.task_id,
@@ -98,8 +105,8 @@ where
         if receipt.client_user_message_id != lease.client_user_message_id
             || receipt.queued_submission_id.is_empty()
         {
-            self.store.release_for_retry(&lease).await?;
-            return Ok(AutomationTick::RetryScheduled {
+            self.store.record_dispatch_uncertain(&lease, now_ms).await?;
+            return Ok(AutomationTick::DispatchUncertain {
                 task_id: lease.task.task_id,
                 occurrence: lease.occurrence,
             });

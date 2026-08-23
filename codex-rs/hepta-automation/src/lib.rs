@@ -11,6 +11,7 @@ mod scheduler;
 mod store;
 
 pub use model::AutomationAdmission;
+pub use model::AutomationDispatchUncertainty;
 pub use model::AutomationError;
 pub use model::AutomationLease;
 pub use model::AutomationQueueReceipt;
@@ -25,4 +26,4 @@ pub use scheduler::AutomationScheduler;
 pub use scheduler::AutomationTurnQueue;
 pub use store::AutomationStore;
 
-pub const AUTOMATION_SCHEMA_VERSION: u32 = 1;
+pub const AUTOMATION_SCHEMA_VERSION: u32 = 2;

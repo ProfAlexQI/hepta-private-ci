@@ -10,6 +10,7 @@ use sqlx::Row;
 use sqlx::SqlitePool;
 
 use crate::AUTOMATION_SCHEMA_VERSION;
+use crate::AutomationDispatchUncertainty;
 use crate::AutomationError;
 use crate::AutomationLease;
 use crate::AutomationQueueReceipt;
@@ -146,6 +147,52 @@ impl AutomationStore {
             .collect()
     }
 
+    /// Returns provider admissions whose terminal outcome is not known.
+    ///
+    /// An uncertain occurrence is deliberately not eligible for automatic
+    /// retry.  A provider-specific reconciler may call
+    /// [`Self::reconcile_dispatch`] after it obtains a receipt, or an operator
+    /// may call [`Self::release_uncertain_for_retry`] after independently
+    /// proving that no admission was accepted.
+    pub async fn uncertain_dispatches(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<AutomationDispatchUncertainty>, AutomationError> {
+        if !(1..=MAX_TASK_PAGE).contains(&limit) {
+            return Err(AutomationError::Invalid);
+        }
+        let rows = sqlx::query(
+            "SELECT o.task_id, o.occurrence, r.scheduled_for_ms,
+                    o.client_user_message_id, o.observed_at_ms
+             FROM automation_dispatch_outcomes o
+             JOIN automation_runs r
+               ON r.task_id = o.task_id AND r.occurrence = o.occurrence
+             JOIN automation_tasks t ON t.task_id = o.task_id
+             WHERE t.owner_agent_id = ? AND o.outcome = 'uncertain'
+             ORDER BY o.observed_at_ms, o.task_id, o.occurrence LIMIT ?",
+        )
+        .bind(self.owner_agent_id.as_str())
+        .bind(i64::try_from(limit).map_err(|_| AutomationError::Invalid)?)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        rows.iter()
+            .map(|row| {
+                Ok(AutomationDispatchUncertainty {
+                    task_id: parse_task_id(row, "task_id")?,
+                    occurrence: to_u64(row.try_get("occurrence").map_err(unavailable)?)?,
+                    scheduled_for_ms: to_u64(
+                        row.try_get("scheduled_for_ms").map_err(unavailable)?,
+                    )?,
+                    client_user_message_id: row
+                        .try_get("client_user_message_id")
+                        .map_err(unavailable)?,
+                    observed_at_ms: to_u64(row.try_get("observed_at_ms").map_err(unavailable)?)?,
+                })
+            })
+            .collect()
+    }
+
     pub async fn cancel_task(
         &self,
         task_id: AutomationTaskId,
@@ -255,7 +302,13 @@ impl AutomationStore {
             "UPDATE automation_runs
              SET state = 'pending', lease_generation = NULL, lease_token = NULL,
                  lease_expires_at_ms = NULL
-             WHERE state = 'leased' AND lease_generation != ?",
+             WHERE state = 'leased' AND lease_generation != ?
+               AND NOT EXISTS (
+                   SELECT 1 FROM automation_dispatch_outcomes o
+                   WHERE o.task_id = automation_runs.task_id
+                     AND o.occurrence = automation_runs.occurrence
+                     AND o.outcome = 'uncertain'
+               )",
         )
         .bind(to_i64(current_generation)?)
         .execute(&self.pool)
@@ -285,6 +338,11 @@ impl AutomationStore {
              WHERE t.owner_agent_id = ? AND t.state = 'enabled'
                AND (r.state = 'pending'
                     OR (r.state = 'leased' AND r.lease_expires_at_ms <= ?))
+               AND NOT EXISTS (
+                   SELECT 1 FROM automation_dispatch_outcomes o
+                   WHERE o.task_id = r.task_id AND o.occurrence = r.occurrence
+                     AND o.outcome = 'uncertain'
+               )
              ORDER BY r.scheduled_for_ms, r.task_id, r.occurrence LIMIT 1",
         )
         .bind(self.owner_agent_id.as_str())
@@ -394,6 +452,230 @@ impl AutomationStore {
         }))
     }
 
+    /// Records an admission whose provider outcome cannot be determined.
+    ///
+    /// The occurrence remains leased and is excluded from both stale-generation
+    /// recovery and automatic retry.  This is the durable boundary that keeps
+    /// a lost provider response from becoming an unbounded duplicate stream.
+    pub async fn record_dispatch_uncertain(
+        &self,
+        lease: &AutomationLease,
+        observed_at_ms: u64,
+    ) -> Result<(), AutomationError> {
+        if lease.task.owner_agent_id != self.owner_agent_id {
+            return Err(AutomationError::AccessDenied);
+        }
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let updated = sqlx::query(
+            "UPDATE automation_runs
+             SET state = 'leased'
+             WHERE task_id = ? AND occurrence = ? AND state = 'leased'
+               AND lease_generation = ? AND lease_token = ?
+               AND client_user_message_id = ?",
+        )
+        .bind(lease.task.task_id.to_string())
+        .bind(to_i64(lease.occurrence)?)
+        .bind(to_i64(lease.lease_generation)?)
+        .bind(&lease.lease_token)
+        .bind(&lease.client_user_message_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if updated.rows_affected() != 1 {
+            return Err(AutomationError::Conflict);
+        }
+
+        let existing = sqlx::query(
+            "SELECT outcome FROM automation_dispatch_outcomes
+             WHERE task_id = ? AND occurrence = ?",
+        )
+        .bind(lease.task.task_id.to_string())
+        .bind(to_i64(lease.occurrence)?)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        match existing {
+            Some(row) => {
+                let outcome: String = row.try_get("outcome").map_err(unavailable)?;
+                if outcome != "uncertain" {
+                    return Err(AutomationError::Conflict);
+                }
+                sqlx::query(
+                    "UPDATE automation_dispatch_outcomes SET observed_at_ms = ?
+                     WHERE task_id = ? AND occurrence = ? AND outcome = 'uncertain'",
+                )
+                .bind(to_i64(observed_at_ms)?)
+                .bind(lease.task.task_id.to_string())
+                .bind(to_i64(lease.occurrence)?)
+                .execute(&mut *transaction)
+                .await
+                .map_err(unavailable)?;
+            }
+            None => {
+                sqlx::query(
+                    "INSERT INTO automation_dispatch_outcomes (
+                         task_id, occurrence, client_user_message_id, outcome, observed_at_ms
+                     ) VALUES (?, ?, ?, 'uncertain', ?)",
+                )
+                .bind(lease.task.task_id.to_string())
+                .bind(to_i64(lease.occurrence)?)
+                .bind(&lease.client_user_message_id)
+                .bind(to_i64(observed_at_ms)?)
+                .execute(&mut *transaction)
+                .await
+                .map_err(|error| {
+                    if is_constraint(&error) {
+                        AutomationError::Conflict
+                    } else {
+                        unavailable(error)
+                    }
+                })?;
+            }
+        }
+        transaction.commit().await.map_err(unavailable)
+    }
+
+    /// Reconciles an uncertain occurrence after an external/provider-specific
+    /// lookup returns a durable queue receipt.  This method only proves local
+    /// terminalization and client-id fencing; it makes no physical provider
+    /// exactly-once claim.
+    pub async fn reconcile_dispatch(
+        &self,
+        task_id: AutomationTaskId,
+        occurrence: u64,
+        receipt: &AutomationQueueReceipt,
+        submitted_at_ms: u64,
+    ) -> Result<AutomationTask, AutomationError> {
+        if receipt.queued_submission_id.is_empty() {
+            return Err(AutomationError::Invalid);
+        }
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let row = sqlx::query(
+            "SELECT r.scheduled_for_ms, r.state, o.client_user_message_id,
+                    o.outcome
+             FROM automation_runs r
+             JOIN automation_dispatch_outcomes o
+               ON o.task_id = r.task_id AND o.occurrence = r.occurrence
+             JOIN automation_tasks t ON t.task_id = r.task_id
+             WHERE r.task_id = ? AND r.occurrence = ? AND t.owner_agent_id = ?",
+        )
+        .bind(task_id.to_string())
+        .bind(to_i64(occurrence)?)
+        .bind(self.owner_agent_id.as_str())
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(unavailable)?
+        .ok_or(AutomationError::Conflict)?;
+        let scheduled_for_ms = to_u64(row.try_get("scheduled_for_ms").map_err(unavailable)?)?;
+        let state: String = row.try_get("state").map_err(unavailable)?;
+        let outcome: String = row.try_get("outcome").map_err(unavailable)?;
+        let client_id: String = row.try_get("client_user_message_id").map_err(unavailable)?;
+        if state != "leased"
+            || outcome != "uncertain"
+            || client_id != receipt.client_user_message_id
+        {
+            return Err(AutomationError::Conflict);
+        }
+
+        let updated = sqlx::query(
+            "UPDATE automation_runs
+             SET state = 'submitted', lease_generation = NULL, lease_token = NULL,
+                 lease_expires_at_ms = NULL, queued_submission_id = ?, submitted_at_ms = ?
+             WHERE task_id = ? AND occurrence = ? AND state = 'leased'",
+        )
+        .bind(&receipt.queued_submission_id)
+        .bind(to_i64(submitted_at_ms)?)
+        .bind(task_id.to_string())
+        .bind(to_i64(occurrence)?)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| {
+            if is_constraint(&error) {
+                AutomationError::Conflict
+            } else {
+                unavailable(error)
+            }
+        })?;
+        if updated.rows_affected() != 1 {
+            return Err(AutomationError::Conflict);
+        }
+        sqlx::query(
+            "UPDATE automation_dispatch_outcomes
+             SET outcome = 'submitted', queued_submission_id = ?,
+                 observed_at_ms = ?, submitted_at_ms = ?
+             WHERE task_id = ? AND occurrence = ? AND outcome = 'uncertain'",
+        )
+        .bind(&receipt.queued_submission_id)
+        .bind(to_i64(submitted_at_ms)?)
+        .bind(to_i64(submitted_at_ms)?)
+        .bind(task_id.to_string())
+        .bind(to_i64(occurrence)?)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+
+        advance_task_after_submission(
+            &mut transaction,
+            &self.owner_agent_id,
+            task_id,
+            scheduled_for_ms,
+            submitted_at_ms,
+        )
+        .await?;
+        transaction.commit().await.map_err(unavailable)?;
+        self.task(task_id).await?.ok_or(AutomationError::Corrupt)
+    }
+
+    /// Releases an uncertain occurrence only after an external check proves
+    /// that the provider did not accept it.  The same client id is retained
+    /// when the occurrence is claimed again.
+    pub async fn release_uncertain_for_retry(
+        &self,
+        task_id: AutomationTaskId,
+        occurrence: u64,
+        client_user_message_id: &str,
+    ) -> Result<(), AutomationError> {
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let updated = sqlx::query(
+            "UPDATE automation_runs
+             SET state = 'pending', lease_generation = NULL, lease_token = NULL,
+                 lease_expires_at_ms = NULL
+             WHERE task_id = ? AND occurrence = ? AND state = 'leased'
+               AND client_user_message_id = ?
+               AND EXISTS (
+                   SELECT 1 FROM automation_dispatch_outcomes o
+                   WHERE o.task_id = automation_runs.task_id
+                     AND o.occurrence = automation_runs.occurrence
+                     AND o.outcome = 'uncertain'
+               )
+               AND EXISTS (
+                   SELECT 1 FROM automation_tasks t
+                   WHERE t.task_id = automation_runs.task_id
+                     AND t.owner_agent_id = ?
+               )",
+        )
+        .bind(task_id.to_string())
+        .bind(to_i64(occurrence)?)
+        .bind(client_user_message_id)
+        .bind(self.owner_agent_id.as_str())
+        .execute(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if updated.rows_affected() != 1 {
+            return Err(AutomationError::Conflict);
+        }
+        sqlx::query(
+            "DELETE FROM automation_dispatch_outcomes
+             WHERE task_id = ? AND occurrence = ? AND outcome = 'uncertain'",
+        )
+        .bind(task_id.to_string())
+        .bind(to_i64(occurrence)?)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        transaction.commit().await.map_err(unavailable)
+    }
+
     pub async fn mark_submitted(
         &self,
         lease: &AutomationLease,
@@ -428,6 +710,28 @@ impl AutomationStore {
         if run.rows_affected() != 1 {
             return Err(AutomationError::Conflict);
         }
+
+        sqlx::query(
+            "INSERT INTO automation_dispatch_outcomes (
+                 task_id, occurrence, client_user_message_id, queued_submission_id,
+                 outcome, observed_at_ms, submitted_at_ms
+             ) VALUES (?, ?, ?, ?, 'submitted', ?, ?)",
+        )
+        .bind(lease.task.task_id.to_string())
+        .bind(to_i64(lease.occurrence)?)
+        .bind(&lease.client_user_message_id)
+        .bind(&receipt.queued_submission_id)
+        .bind(to_i64(submitted_at_ms)?)
+        .bind(to_i64(submitted_at_ms)?)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|error| {
+            if is_constraint(&error) {
+                AutomationError::Conflict
+            } else {
+                unavailable(error)
+            }
+        })?;
 
         // Control operations can disable or cancel a task while an already admitted
         // occurrence is in flight. The queue admission cannot be revoked after the
@@ -498,6 +802,52 @@ impl AutomationStore {
         }
         Ok(())
     }
+}
+
+async fn advance_task_after_submission(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    owner_agent_id: &AgentId,
+    task_id: AutomationTaskId,
+    scheduled_for_ms: u64,
+    submitted_at_ms: u64,
+) -> Result<(), AutomationError> {
+    let current_row = sqlx::query(TASK_SELECT_BY_ID)
+        .bind(task_id.to_string())
+        .fetch_one(&mut **transaction)
+        .await
+        .map_err(unavailable)?;
+    let current = task_from_row(&current_row, owner_agent_id)?;
+    let (next_state, next_run) = match current.state {
+        AutomationTaskState::Enabled => {
+            let next_run = current.schedule.next_after(scheduled_for_ms)?;
+            let next_state = if next_run.is_some() {
+                AutomationTaskState::Enabled
+            } else {
+                AutomationTaskState::Completed
+            };
+            (next_state, next_run)
+        }
+        AutomationTaskState::Disabled
+        | AutomationTaskState::Cancelled
+        | AutomationTaskState::Completed => (current.state, None),
+    };
+    let updated = sqlx::query(
+        "UPDATE automation_tasks
+         SET state = ?, next_run_at_ms = ?, updated_at_ms = ?
+         WHERE task_id = ? AND owner_agent_id = ?",
+    )
+    .bind(next_state.as_str())
+    .bind(next_run.map(to_i64).transpose()?)
+    .bind(to_i64(submitted_at_ms)?)
+    .bind(task_id.to_string())
+    .bind(owner_agent_id.as_str())
+    .execute(&mut **transaction)
+    .await
+    .map_err(unavailable)?;
+    if updated.rows_affected() != 1 {
+        return Err(AutomationError::Corrupt);
+    }
+    Ok(())
 }
 
 const TASK_SELECT_BY_ID: &str =
@@ -599,6 +949,25 @@ async fn verify_store(pool: &SqlitePool, owner_agent_id: &AgentId) -> Result<(),
     if foreign != 0 {
         return Err(AutomationError::AccessDenied);
     }
+    let invalid_outcomes: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)
+         FROM automation_dispatch_outcomes o
+         LEFT JOIN automation_runs r
+           ON r.task_id = o.task_id AND r.occurrence = o.occurrence
+         JOIN automation_tasks t ON t.task_id = o.task_id
+         WHERE t.owner_agent_id = ?
+           AND (r.task_id IS NULL
+                OR (o.outcome = 'uncertain' AND r.state != 'leased')
+                OR (o.outcome = 'submitted' AND r.state != 'submitted')
+                OR (o.outcome = 'submitted' AND o.queued_submission_id IS NULL))",
+    )
+    .bind(owner_agent_id.as_str())
+    .fetch_one(pool)
+    .await
+    .map_err(unavailable)?;
+    if invalid_outcomes != 0 {
+        return Err(AutomationError::Corrupt);
+    }
     Ok(())
 }
 
@@ -612,6 +981,14 @@ fn to_i64(value: u64) -> Result<i64, AutomationError> {
 
 fn to_u64(value: i64) -> Result<u64, AutomationError> {
     u64::try_from(value).map_err(|_| AutomationError::Corrupt)
+}
+
+fn parse_task_id(
+    row: &sqlx::sqlite::SqliteRow,
+    column: &str,
+) -> Result<AutomationTaskId, AutomationError> {
+    AutomationTaskId::parse(&row.try_get::<String, _>(column).map_err(unavailable)?)
+        .map_err(|_| AutomationError::Corrupt)
 }
 
 fn unavailable(_error: impl std::fmt::Display) -> AutomationError {

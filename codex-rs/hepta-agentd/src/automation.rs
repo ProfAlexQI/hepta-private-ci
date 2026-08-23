@@ -37,6 +37,17 @@ pub(crate) struct AgentdAutomationQueue {
     identity: AgentdIdentity,
 }
 
+#[derive(Debug)]
+enum QueueFailure {
+    /// The request has not crossed the App Server admission seam.  These
+    /// failures may be retried with the existing bounded dispatch budget.
+    BeforeAdmission(AgentdError),
+    /// The request may have crossed the seam, but no reliable terminal receipt
+    /// was returned.  Retrying would be a blind duplicate, so the occurrence
+    /// must be durably quarantined instead.
+    OutcomeUnknown,
+}
+
 impl AgentdAutomationQueue {
     pub(crate) fn new(state: Arc<AgentdState>, identity: AgentdIdentity) -> Self {
         Self { state, identity }
@@ -45,22 +56,35 @@ impl AgentdAutomationQueue {
     async fn enqueue_inner(
         &self,
         admission: AutomationAdmission,
-    ) -> Result<AutomationQueueReceipt, AgentdError> {
+    ) -> Result<AutomationQueueReceipt, QueueFailure> {
         if admission.agent_id != self.identity.agent_id {
-            return Err(AgentdError::GenerationFenced(
-                "automation admission does not belong to the owning Agent".to_string(),
+            return Err(QueueFailure::BeforeAdmission(
+                AgentdError::GenerationFenced(
+                    "automation admission does not belong to the owning Agent".to_string(),
+                ),
             ));
         }
-        if !self.state.automation_is_available()? {
-            return Err(AutomationError::Unavailable.into());
+        if !self
+            .state
+            .automation_is_available()
+            .map_err(|error| QueueFailure::BeforeAdmission(error))?
+        {
+            return Err(QueueFailure::BeforeAdmission(
+                AutomationError::Unavailable.into(),
+            ));
         }
-        if !self.state.automation_admission_ready()? {
-            return Err(AgentdError::Protocol(
+        if !self
+            .state
+            .automation_admission_ready()
+            .map_err(|error| QueueFailure::BeforeAdmission(error))?
+        {
+            return Err(QueueFailure::BeforeAdmission(AgentdError::Protocol(
                 "automation admission is unavailable until this Agent generation is ready"
                     .to_string(),
-            ));
+            )));
         }
-        let socket_path = AbsolutePathBuf::from_absolute_path(&self.identity.app_server_socket)?;
+        let socket_path = AbsolutePathBuf::from_absolute_path(&self.identity.app_server_socket)
+            .map_err(|error| QueueFailure::BeforeAdmission(error.into()))?;
         let client = RemoteAppServerClient::connect_with_bounded_events(
             RemoteAppServerConnectArgs {
                 endpoint: RemoteAppServerEndpoint::UnixSocket { socket_path },
@@ -73,12 +97,15 @@ impl AgentdAutomationQueue {
             },
             APP_SERVER_EVENT_CAPACITY,
         )
-        .await?;
+        .await
+        .map_err(|error| QueueFailure::BeforeAdmission(error.into()))?;
         let expected_home = self.identity.home_root.to_string_lossy();
         if client.codex_home() != Some(expected_home.as_ref()) {
             let _ = client.shutdown().await;
-            return Err(AgentdError::GenerationFenced(
-                "automation App Server home differs from the owning Agent home".to_string(),
+            return Err(QueueFailure::BeforeAdmission(
+                AgentdError::GenerationFenced(
+                    "automation App Server home differs from the owning Agent home".to_string(),
+                ),
             ));
         }
         let request = automation_queue_request(&admission);
@@ -86,30 +113,51 @@ impl AgentdAutomationQueue {
             .request_handle()
             .request_typed(request)
             .await
-            .map_err(|_| {
-                AgentdError::Protocol("App Server rejected automation thread/queue/add".to_string())
-            })?;
+            .map_err(|_| QueueFailure::OutcomeUnknown)?;
         let _ = client.shutdown().await;
-        self.state.refresh_generation()?;
-        if !self.state.automation_is_available()? {
-            return Err(AutomationError::Unavailable.into());
+        // The response proves only what the App Server returned.  Any state
+        // transition observed after the request is still an uncertain local
+        // outcome: preserve the occurrence for explicit reconciliation rather
+        // than handing it to a retry path.
+        self.state
+            .refresh_generation()
+            .map_err(|_| QueueFailure::OutcomeUnknown)?;
+        if !self
+            .state
+            .automation_is_available()
+            .map_err(|_| QueueFailure::OutcomeUnknown)?
+        {
+            return Err(QueueFailure::OutcomeUnknown);
         }
-        if !self.state.automation_admission_ready()? {
-            return Err(AgentdError::Protocol(
-                "Agent stopped accepting automation during queue admission".to_string(),
-            ));
+        if !self
+            .state
+            .automation_admission_ready()
+            .map_err(|_| QueueFailure::OutcomeUnknown)?
+        {
+            return Err(QueueFailure::OutcomeUnknown);
         }
         if response.queued_submission.client_user_message_id != admission.client_user_message_id
             || response.queued_submission.id.is_empty()
         {
-            return Err(AgentdError::Protocol(
-                "App Server returned a mismatched automation queue receipt".to_string(),
-            ));
+            return Err(QueueFailure::OutcomeUnknown);
         }
         Ok(AutomationQueueReceipt {
             queued_submission_id: response.queued_submission.id,
             client_user_message_id: response.queued_submission.client_user_message_id,
         })
+    }
+}
+
+fn queue_failure_to_automation_error(failure: QueueFailure) -> AutomationError {
+    match failure {
+        QueueFailure::BeforeAdmission(AgentdError::GenerationFenced(_)) => {
+            AutomationError::AccessDenied
+        }
+        QueueFailure::BeforeAdmission(AgentdError::Automation(
+            error @ (AutomationError::Unavailable | AutomationError::Corrupt),
+        )) => error,
+        QueueFailure::BeforeAdmission(_) => AutomationError::Dispatch,
+        QueueFailure::OutcomeUnknown => AutomationError::DispatchUnknown,
     }
 }
 
@@ -121,11 +169,7 @@ impl AutomationTurnQueue for AgentdAutomationQueue {
         Box::pin(async move {
             match self.enqueue_inner(admission).await {
                 Ok(receipt) => Ok(receipt),
-                Err(AgentdError::GenerationFenced(_)) => Err(AutomationError::AccessDenied),
-                Err(AgentdError::Automation(
-                    error @ (AutomationError::Unavailable | AutomationError::Corrupt),
-                )) => Err(error),
-                Err(_) => Err(AutomationError::Dispatch),
+                Err(error) => Err(queue_failure_to_automation_error(error)),
             }
         })
     }
@@ -185,15 +229,18 @@ pub(crate) async fn run_automation_scheduler(
             _ = cancellation.cancelled() => return Ok(()),
             result = scheduler.tick(now_ms) => {
                 match result {
-                    Ok(tick) if retry_budget.observe(&tick) => {
-                        return stop_after_automation_error(
-                            AutomationError::Dispatch,
+                    Ok(tick) => {
+                        if handle_automation_tick(
+                            tick,
+                            &mut retry_budget,
                             &state,
                             &cancellation,
                         )
-                        .await;
+                        .await?
+                        {
+                            return Ok(());
+                        }
                     }
-                    Ok(_) => {}
                     Err(error) => {
                         return stop_after_automation_error(error, &state, &cancellation).await;
                     }
@@ -203,8 +250,31 @@ pub(crate) async fn run_automation_scheduler(
     }
 }
 
+/// Applies the scheduler's fail-stop policy to one tick.  A `true` result
+/// means the caller should terminate its scheduler task after cancellation
+/// has been observed; the Agent itself remains alive for normal turns.
+pub(crate) async fn handle_automation_tick(
+    tick: codex_hepta_automation::AutomationTick,
+    retry_budget: &mut DispatchRetryBudget,
+    state: &AgentdState,
+    cancellation: &CancellationToken,
+) -> Result<bool, AgentdError> {
+    let stop_error = match tick {
+        codex_hepta_automation::AutomationTick::DispatchUncertain { .. } => {
+            Some(AutomationError::DispatchUnknown)
+        }
+        tick if retry_budget.observe(&tick) => Some(AutomationError::Dispatch),
+        _ => None,
+    };
+    let Some(error) = stop_error else {
+        return Ok(false);
+    };
+    stop_after_automation_error(error, state, cancellation).await?;
+    Ok(true)
+}
+
 #[derive(Default)]
-struct DispatchRetryBudget {
+pub(crate) struct DispatchRetryBudget {
     consecutive_retries: u8,
 }
 
@@ -218,7 +288,8 @@ impl DispatchRetryBudget {
                 self.consecutive_retries = self.consecutive_retries.saturating_add(1);
             }
             codex_hepta_automation::AutomationTick::Idle
-            | codex_hepta_automation::AutomationTick::Submitted { .. } => {
+            | codex_hepta_automation::AutomationTick::Submitted { .. }
+            | codex_hepta_automation::AutomationTick::DispatchUncertain { .. } => {
                 self.consecutive_retries = 0;
             }
         }
@@ -329,5 +400,25 @@ mod tests {
         assert!(!budget.observe(&retry));
         assert!(!budget.observe(&AutomationTick::Idle));
         assert!(!budget.observe(&retry));
+    }
+
+    #[test]
+    fn queue_failures_after_admission_seam_are_never_dispatch_retries() {
+        assert_eq!(
+            queue_failure_to_automation_error(QueueFailure::BeforeAdmission(
+                AgentdError::Protocol("socket unavailable".to_string()),
+            )),
+            AutomationError::Dispatch
+        );
+        assert_eq!(
+            queue_failure_to_automation_error(QueueFailure::OutcomeUnknown),
+            AutomationError::DispatchUnknown
+        );
+        assert_eq!(
+            queue_failure_to_automation_error(QueueFailure::BeforeAdmission(
+                AgentdError::GenerationFenced("stale generation".to_string()),
+            )),
+            AutomationError::AccessDenied
+        );
     }
 }

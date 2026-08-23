@@ -214,6 +214,19 @@ pub struct AutomationQueueReceipt {
     pub client_user_message_id: String,
 }
 
+/// Durable evidence that the provider outcome for one occurrence is not yet
+/// known.  The scheduler must not blindly re-submit this occurrence until an
+/// operator or a provider-specific reconciler supplies a terminal receipt (or
+/// explicitly confirms that no admission was accepted).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutomationDispatchUncertainty {
+    pub task_id: AutomationTaskId,
+    pub occurrence: u64,
+    pub scheduled_for_ms: u64,
+    pub client_user_message_id: String,
+    pub observed_at_ms: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AutomationTick {
     Idle,
@@ -223,6 +236,10 @@ pub enum AutomationTick {
         queued_submission_id: String,
     },
     RetryScheduled {
+        task_id: AutomationTaskId,
+        occurrence: u64,
+    },
+    DispatchUncertain {
         task_id: AutomationTaskId,
         occurrence: u64,
     },
@@ -250,4 +267,6 @@ pub enum AutomationError {
     Unavailable,
     #[error("Agent turn queue rejected automation admission")]
     Dispatch,
+    #[error("automation provider admission outcome is unknown")]
+    DispatchUnknown,
 }

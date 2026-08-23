@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use codex_hepta_automation::AutomationError;
 use codex_hepta_automation::AutomationStore;
+use codex_hepta_automation::AutomationTick;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::AgentManifest;
@@ -27,6 +28,8 @@ use super::open_automation_store_after_generation_fence;
 use super::open_cognitive_runtime_after_generation_fence;
 use crate::AgentdMethod;
 use crate::AgentdPayload;
+use crate::automation::DispatchRetryBudget;
+use crate::automation::handle_automation_tick;
 use crate::automation::run_automation_scheduler;
 
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
@@ -289,6 +292,76 @@ async fn runtime_automation_store_failure_stops_only_the_scheduler_plane() {
         .expect("scheduler did not observe cancellation")
         .expect("scheduler task panicked")
         .expect("quarantined scheduler returned an error");
+}
+
+#[tokio::test]
+async fn dispatch_uncertain_tick_fail_stops_scheduler_until_cancelled() {
+    let fixture = runtime_fixture();
+    fixture
+        .registry
+        .compare_and_transition(&fixture.identity.agent_id, 1, AgentLifecycle::Running)
+        .expect("running generation");
+    fixture.state.refresh_generation().expect("refresh running");
+    fixture
+        .state
+        .mark_app_server_ready()
+        .expect("mark App Server ready");
+    let store = AutomationStore::open(&fixture.identity.layout)
+        .await
+        .expect("open automation store");
+    fixture
+        .state
+        .attach_automation_store(store.clone())
+        .expect("attach automation store");
+
+    let cancellation = CancellationToken::new();
+    let state = Arc::clone(&fixture.state);
+    let task = tokio::spawn({
+        let cancellation = cancellation.clone();
+        async move {
+            let mut retry_budget = DispatchRetryBudget::default();
+            handle_automation_tick(
+                AutomationTick::DispatchUncertain {
+                    task_id: codex_hepta_automation::AutomationTaskId::parse(
+                        "019153a4-3088-7000-a56a-9b1964f75009",
+                    )
+                    .expect("task id"),
+                    occurrence: 1,
+                },
+                &mut retry_budget,
+                &state,
+                &cancellation,
+            )
+            .await
+        }
+    });
+
+    timeout(Duration::from_secs(2), async {
+        loop {
+            if !fixture
+                .state
+                .automation_is_available()
+                .expect("automation state")
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("DispatchUncertain did not quarantine automation");
+    assert!(!task.is_finished(), "fail-stop must wait for cancellation");
+    cancellation.cancel();
+    assert!(task.await.expect("handler task").expect("handler result"));
+    let health = fixture
+        .state
+        .response(1, 1, AgentdMethod::Health)
+        .await
+        .expect("health response");
+    assert!(matches!(
+        health.payload,
+        AgentdPayload::Health(ref snapshot) if snapshot.ready && !snapshot.fenced
+    ));
 }
 
 #[tokio::test]
