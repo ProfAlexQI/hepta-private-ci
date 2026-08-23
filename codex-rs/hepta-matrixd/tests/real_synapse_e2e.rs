@@ -659,7 +659,21 @@ async fn run_real_synapse_qualification_inner(
     // restart from the same per-Agent SDK/SQLite roots.  The durable SDK sync
     // token and stable event identity must prevent duplicate Core admission.
     eprintln!("R4_STAGE sidecar_recovery:start");
-    let sidecar_before_a = pair_a.clone();
+    // `pair_a` is intentionally refreshed immediately before SIGKILL.  The
+    // authority probe above can take several minutes, and a Matrix sidecar
+    // may have recovered from a transient transport fault in that interval.
+    // Never signal a cached PID: a stale PID can be reused by the peer and
+    // would turn this isolation proof into an accidental peer kill.
+    let sidecar_before_a = fleet.wait_ready(&agent_a, agent_a_generation).await?;
+    eprintln!(
+        "R4_TARGET stage=sidecar_recovery agent={} agent_pid={} matrix_pid={} spawn_generation={} runtime_generation={} fence={:?}",
+        agent_a.agent_id,
+        sidecar_before_a.agent_pid,
+        sidecar_before_a.matrix_pid,
+        sidecar_before_a.spawn_generation,
+        sidecar_before_a.runtime_generation,
+        sidecar_before_a.fence,
+    );
     fleet.record_release_copy_identity(
         &agent_a,
         "sidecar_respawn_before_sigkill",
@@ -712,7 +726,19 @@ async fn run_real_synapse_qualification_inner(
     // manage the stop. Supervisor must observe the process fault, fence A's
     // sidecar, and leave Agent B accepting real Matrix work.
     eprintln!("R4_STAGE agent_fault_isolation:start");
-    let generation_before_a = pair_a.clone();
+    // Refresh the execution PID as well.  The reply/drain wait above is an
+    // asynchronous boundary where a spontaneous sidecar recovery must not
+    // make us signal an old agentd incarnation.
+    let generation_before_a = fleet.wait_ready(&agent_a, agent_a_generation).await?;
+    eprintln!(
+        "R4_TARGET stage=agent_fault_isolation agent={} agent_pid={} matrix_pid={} spawn_generation={} runtime_generation={} fence={:?}",
+        agent_a.agent_id,
+        generation_before_a.agent_pid,
+        generation_before_a.matrix_pid,
+        generation_before_a.spawn_generation,
+        generation_before_a.runtime_generation,
+        generation_before_a.fence,
+    );
     fleet.record_release_copy_identity(
         &agent_a,
         "agent_fault_before_sigkill",
