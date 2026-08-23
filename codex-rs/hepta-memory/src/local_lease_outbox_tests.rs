@@ -11,6 +11,7 @@ use crate::LocalLeaseAcquire;
 use crate::LocalLeaseOutboxError;
 use crate::LocalOutcomeState;
 use crate::LocalReconcileOutcome;
+use crate::LocalReplayFinalization;
 use crate::cognitive_test_support::agent_id;
 use crate::cognitive_test_support::layout;
 use codex_hepta_contracts::Sha256Digest;
@@ -370,6 +371,162 @@ async fn unknown_reconcile_survives_reopen_and_never_claims_effect() {
     assert_eq!(
         reopened.status("occurrence:unknown").await.expect("status"),
         LocalOutcomeState::Committed
+    );
+}
+
+#[tokio::test]
+async fn indeterminate_replay_is_status_aware_and_releases_without_dispatch() {
+    let temp = TempDir::new().expect("temp dir");
+    let owner = agent_id(110);
+    let store = CognitiveStore::open(&layout(&temp, &owner))
+        .await
+        .expect("store");
+    let first = acquired(
+        store
+            .acquire_local_lease("lease:replay-recovery", 1, "fence:1")
+            .await
+            .expect("acquire"),
+    );
+    let LocalAdmission::Queued(receipt) = first
+        .admit("occurrence:replay-recovery", "topic", "payload")
+        .await
+        .expect("admit")
+    else {
+        panic!("first admission must append");
+    };
+    assert!(!receipt.external_effect);
+    first
+        .mark_indeterminate("occurrence:replay-recovery", "simulated-crash-window")
+        .await
+        .expect("indeterminate");
+
+    // Simulate process death after the durable indeterminate row and before
+    // the lease release.  Reopening the same generation must not call admit
+    // again or turn the quarantined outbox into a dispatchable receipt.
+    drop(first);
+    store.pool.close().await;
+    drop(store);
+    let reopened_store = CognitiveStore::open(&layout(&temp, &owner))
+        .await
+        .expect("reopen store");
+    let replay = match reopened_store
+        .acquire_local_lease("lease:replay-recovery", 1, "fence:1")
+        .await
+        .expect("replay acquire")
+    {
+        LocalLeaseAcquire::Replay(handle) => handle,
+        LocalLeaseAcquire::Acquired(_) => panic!("reopen must replay the active lease"),
+    };
+    let finalized = replay
+        .finalize_replayed_occurrence("occurrence:replay-recovery")
+        .await
+        .expect("status-aware finalization");
+    let LocalReplayFinalization::Released {
+        outcome,
+        external_effect,
+        ..
+    } = finalized
+    else {
+        panic!("indeterminate occurrence must be released");
+    };
+    assert_eq!(outcome, LocalOutcomeState::Indeterminate);
+    assert!(!external_effect);
+    assert_eq!(
+        replay.snapshot_counts().await.expect("counts"),
+        crate::LocalLeaseOutboxCounts {
+            lease_rows: 2,
+            event_rows: 2,
+            outbox_rows: 1,
+        }
+    );
+    assert!(
+        reopened_store
+            .acquire_local_lease("lease:replay-recovery", 1, "fence:1")
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn queued_replay_returns_original_receipt_and_keeps_lease_active() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 111).await;
+    let first = acquired(
+        store
+            .acquire_local_lease("lease:queued-replay", 1, "fence:1")
+            .await
+            .expect("acquire"),
+    );
+    let LocalAdmission::Queued(original) = first
+        .admit("occurrence:queued-replay", "topic", "payload")
+        .await
+        .expect("admit")
+    else {
+        panic!("first admission must append");
+    };
+    let replay = acquired(
+        store
+            .acquire_local_lease("lease:queued-replay", 1, "fence:1")
+            .await
+            .expect("replay"),
+    );
+    let recovered = replay
+        .finalize_replayed_occurrence("occurrence:queued-replay")
+        .await
+        .expect("queued replay");
+    let LocalReplayFinalization::Queued(receipt) = recovered else {
+        panic!("queued occurrence must remain active");
+    };
+    assert_eq!(receipt, original);
+    assert!(!receipt.external_effect);
+    assert_eq!(
+        replay.status("occurrence:queued-replay").await.unwrap(),
+        LocalOutcomeState::Queued
+    );
+}
+
+#[tokio::test]
+async fn replay_without_admission_is_explicit_and_keeps_lease_writable() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 112).await;
+    let replay = acquired(
+        store
+            .acquire_local_lease("lease:admit-crash-window", 1, "fence:1")
+            .await
+            .expect("initial acquire"),
+    );
+
+    // The process exits after acquire commits but before admit starts.  The
+    // next acquire is a replay, yet there is no occurrence row to finalize.
+    let recovered = replay
+        .finalize_replayed_occurrence("occurrence:admit-crash-window")
+        .await
+        .expect("not-admitted replay");
+    assert_eq!(recovered, LocalReplayFinalization::NotAdmitted);
+    assert_eq!(
+        replay.snapshot_counts().await.expect("counts before admit"),
+        crate::LocalLeaseOutboxCounts {
+            lease_rows: 1,
+            event_rows: 0,
+            outbox_rows: 0,
+        }
+    );
+
+    let LocalAdmission::Queued(receipt) = replay
+        .admit("occurrence:admit-crash-window", "topic", "payload")
+        .await
+        .expect("retry original admission")
+    else {
+        panic!("not-admitted replay must permit the first admission");
+    };
+    assert!(!receipt.external_effect);
+    assert_eq!(
+        replay.snapshot_counts().await.expect("counts after admit"),
+        crate::LocalLeaseOutboxCounts {
+            lease_rows: 1,
+            event_rows: 1,
+            outbox_rows: 1,
+        }
     );
 }
 

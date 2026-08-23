@@ -144,6 +144,7 @@ pub use local_lease_outbox::LocalLeaseState;
 pub use local_lease_outbox::LocalOutcomeReceipt;
 pub use local_lease_outbox::LocalOutcomeState;
 pub use local_lease_outbox::LocalReconcileOutcome;
+pub use local_lease_outbox::LocalReplayFinalization;
 pub use local_lease_outbox::QueuedReceipt;
 pub use memory_admission::MemoryAdmissionEvidence;
 pub use memory_admission::MemoryAdmissionReceipt;

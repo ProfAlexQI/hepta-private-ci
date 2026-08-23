@@ -152,6 +152,27 @@ pub enum LocalAdmission {
     Replay(QueuedReceipt),
 }
 
+/// Status-aware result when an owning runtime reopens an active occurrence.
+///
+/// `Queued` preserves the one existing local intent for normal idempotent
+/// replay.  Every other outcome is quarantined or terminal, so recovery
+/// verifies the complete lease/event/outbox chains and appends a release in
+/// the same `BEGIN IMMEDIATE` transaction.  Neither branch dispatches the
+/// outbox or claims an external effect.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LocalReplayFinalization {
+    /// The lease was replayed after acquisition, but no local event/outbox
+    /// admission had committed yet.  The caller may safely continue the
+    /// original admission under this still-active fence.
+    NotAdmitted,
+    Queued(QueuedReceipt),
+    Released {
+        outcome: LocalOutcomeState,
+        lease: LocalLease,
+        external_effect: bool,
+    },
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LocalOutcomeReceipt {
     pub lease_id: String,
@@ -1021,6 +1042,93 @@ impl LocalLeaseOutbox {
             .await
             .map_err(crate::cognitive_store::unavailable)?;
         Ok(state)
+    }
+
+    /// Reopen one already-admitted occurrence without ever re-queuing a
+    /// quarantined or terminal result.
+    ///
+    /// This closes the crash window between a durable outcome transition and
+    /// lease release.  A queued occurrence returns its original receipt and
+    /// leaves the lease active.  An indeterminate or terminal occurrence is
+    /// released atomically after full chain/fence verification.  The outbox
+    /// remains immutable local metadata and is never dispatched here.
+    pub async fn finalize_replayed_occurrence(
+        &self,
+        occurrence_key: impl Into<String>,
+    ) -> Result<LocalReplayFinalization, LocalLeaseOutboxError> {
+        let occurrence_key = occurrence_key.into();
+        validate_text(&occurrence_key, "occurrence key", 512)?;
+        let mut transaction = self
+            .store
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let lease = self.current_lease(&mut transaction).await?;
+        ensure_current_active(&lease, self)?;
+        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let admission = find_admission(
+            &mut transaction,
+            &self.lease_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?;
+        let Some(admission) = admission else {
+            // `acquire` and `admit` are intentionally separate local
+            // transactions.  A process can therefore die after the lease
+            // row commits but before the first event/outbox pair.  This is a
+            // recoverable replay, not journal corruption: the caller keeps
+            // the verified active handle and retries the original admit.
+            transaction
+                .commit()
+                .await
+                .map_err(crate::cognitive_store::unavailable)?;
+            return Ok(LocalReplayFinalization::NotAdmitted);
+        };
+        let outbox = find_outbox(
+            &mut transaction,
+            &self.lease_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?
+        .ok_or_else(|| corrupt("event admission has no paired outbox row"))?;
+        let queued = queued_receipt(self, &admission, &outbox)?;
+        let outcome = current_outcome(
+            &mut transaction,
+            &self.lease_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?;
+        if outcome == LocalOutcomeState::Queued {
+            transaction
+                .commit()
+                .await
+                .map_err(crate::cognitive_store::unavailable)?;
+            return Ok(LocalReplayFinalization::Queued(queued));
+        }
+        let released = append_lease(
+            &mut transaction,
+            &self.lease_id,
+            &self.owner_agent_id,
+            self.generation,
+            &self.fencing_token,
+            LocalLeaseState::Released,
+            Some(&lease),
+        )
+        .await?;
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(LocalReplayFinalization::Released {
+            outcome,
+            lease: released,
+            external_effect: false,
+        })
     }
 
     pub async fn snapshot_counts(&self) -> Result<LocalLeaseOutboxCounts, LocalLeaseOutboxError> {

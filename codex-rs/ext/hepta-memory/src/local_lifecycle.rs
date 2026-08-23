@@ -19,6 +19,7 @@ use codex_extension_api::TurnStopInput;
 use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_memory::CognitiveStore;
 use codex_hepta_memory::LocalLeaseOutbox;
+use codex_hepta_memory::LocalReplayFinalization;
 use serde_json::json;
 use sha2::Digest;
 use sha2::Sha256;
@@ -224,9 +225,9 @@ impl TurnLifecycleContributor for LocalTurnLifecycleContributor {
                     return;
                 }
             };
-            let lease = match acquired {
-                Ok(codex_hepta_memory::LocalLeaseAcquire::Acquired(lease))
-                | Ok(codex_hepta_memory::LocalLeaseAcquire::Replay(lease)) => lease,
+            let (lease, replayed) = match acquired {
+                Ok(codex_hepta_memory::LocalLeaseAcquire::Acquired(lease)) => (lease, false),
+                Ok(codex_hepta_memory::LocalLeaseAcquire::Replay(lease)) => (lease, true),
                 Err(_) => {
                     let mut guard = state.lock().unwrap_or_else(PoisonError::into_inner);
                     guard.starting = false;
@@ -234,41 +235,85 @@ impl TurnLifecycleContributor for LocalTurnLifecycleContributor {
                     return;
                 }
             };
-            let payload = json!({
-                "schema_version": LOCAL_TURN_LIFECYCLE_SCHEMA_VERSION,
-                "kind": "turn_start",
-                "thread_id_sha256": Self::binding_digest(
-                    b"hepta-memory:local-turn-lifecycle:thread:v1",
-                    input.thread_store.level_id(),
-                    "",
-                ),
-                "turn_id_sha256": Sha256Digest::for_bytes(input.turn_id.as_bytes()),
-                "external_effect": LOCAL_TURN_LIFECYCLE_EXTERNAL_EFFECTS,
-                "kg_write_authority": LOCAL_TURN_LIFECYCLE_KG_WRITE_AUTHORITY,
-                "production_caller": LOCAL_TURN_LIFECYCLE_PRODUCTION_CALLER,
-            })
-            .to_string();
-            let admitted = tokio::time::timeout(
-                LOCAL_LIFECYCLE_IO_TIMEOUT,
-                lease.admit(
-                    occurrence_key.clone(),
-                    "codex.turn.lifecycle.start.v1",
-                    payload,
-                ),
-            )
-            .await;
-            if match admitted {
-                Ok(result) => result.is_err(),
-                Err(_) => true,
-            } {
-                // Leave the active lease for exact replay/recovery.  An
-                // admission error may indicate a corrupt or stale chain;
-                // releasing here would hide that evidence and violate
-                // fail-closed semantics.
-                let mut guard = state.lock().unwrap_or_else(PoisonError::into_inner);
-                guard.starting = false;
-                guard.attempted = false;
-                return;
+
+            // A process can die after an indeterminate transition has been
+            // committed but before the lease release.  On an exact replay,
+            // inspect and finalize that occurrence atomically instead of
+            // calling `admit` (which must reject non-queued states).  A
+            // queued replay keeps the original receipt and remains local
+            // metadata; no dispatch path is reachable here.
+            let already_admitted = if replayed {
+                let recovered = tokio::time::timeout(
+                    LOCAL_LIFECYCLE_IO_TIMEOUT,
+                    lease.finalize_replayed_occurrence(occurrence_key.clone()),
+                )
+                .await;
+                match recovered {
+                    Ok(Ok(LocalReplayFinalization::NotAdmitted)) => false,
+                    Ok(Ok(LocalReplayFinalization::Queued(_))) => true,
+                    Ok(Ok(LocalReplayFinalization::Released { .. })) => {
+                        let mut guard = state.lock().unwrap_or_else(PoisonError::into_inner);
+                        guard.starting = false;
+                        guard.terminal_started = true;
+                        guard.active = None;
+                        return;
+                    }
+                    Ok(Err(_)) | Err(_) => {
+                        // Preserve the verified handle for a later terminal
+                        // callback.  A corrupt/stale chain is never hidden by
+                        // an eager release or a background retry.
+                        let mut guard = state.lock().unwrap_or_else(PoisonError::into_inner);
+                        guard.starting = false;
+                        guard.active = Some(ActiveTurnLease {
+                            lease,
+                            occurrence_key,
+                        });
+                        return;
+                    }
+                }
+            } else {
+                false
+            };
+            if !already_admitted {
+                let payload = json!({
+                    "schema_version": LOCAL_TURN_LIFECYCLE_SCHEMA_VERSION,
+                    "kind": "turn_start",
+                    "thread_id_sha256": Self::binding_digest(
+                        b"hepta-memory:local-turn-lifecycle:thread:v1",
+                        input.thread_store.level_id(),
+                        "",
+                    ),
+                    "turn_id_sha256": Sha256Digest::for_bytes(input.turn_id.as_bytes()),
+                    "external_effect": LOCAL_TURN_LIFECYCLE_EXTERNAL_EFFECTS,
+                    "kg_write_authority": LOCAL_TURN_LIFECYCLE_KG_WRITE_AUTHORITY,
+                    "production_caller": LOCAL_TURN_LIFECYCLE_PRODUCTION_CALLER,
+                })
+                .to_string();
+                let admitted = tokio::time::timeout(
+                    LOCAL_LIFECYCLE_IO_TIMEOUT,
+                    lease.admit(
+                        occurrence_key.clone(),
+                        "codex.turn.lifecycle.start.v1",
+                        payload,
+                    ),
+                )
+                .await;
+                if match admitted {
+                    Ok(result) => result.is_err(),
+                    Err(_) => true,
+                } {
+                    // Leave the active lease for exact replay/recovery.  An
+                    // admission error may indicate a corrupt or stale chain;
+                    // releasing here would hide that evidence and violate
+                    // fail-closed semantics.
+                    let mut guard = state.lock().unwrap_or_else(PoisonError::into_inner);
+                    guard.starting = false;
+                    guard.active = Some(ActiveTurnLease {
+                        lease,
+                        occurrence_key,
+                    });
+                    return;
+                }
             }
             let pending = {
                 let mut guard = state.lock().unwrap_or_else(PoisonError::into_inner);
@@ -515,5 +560,125 @@ mod tests {
         assert_eq!(counts.lease_rows, 1);
         assert_eq!(counts.event_rows, 1);
         assert_eq!(counts.outbox_rows, 1);
+    }
+
+    #[tokio::test]
+    async fn acquire_before_admit_replays_and_retries_local_admission() {
+        let temp = TempDir::new().expect("temp dir");
+        let store = opened_store(&temp).await;
+        let session = ExtensionData::new("session");
+        let thread = ExtensionData::new("thread-902-admit");
+        let turn = ExtensionData::new("turn-902-admit");
+        let mode = mode();
+        let usage = TokenUsage::default();
+        let input = start_input("turn-902-admit", &session, &thread, &turn, &mode, &usage);
+        let (lease_id, fence, _) =
+            LocalTurnLifecycleContributor::turn_binding(&input).expect("durable binding");
+        let acquired = store
+            .acquire_local_lease(lease_id, 1, fence)
+            .await
+            .expect("acquire before admission");
+        assert!(matches!(
+            acquired,
+            codex_hepta_memory::LocalLeaseAcquire::Acquired(_)
+        ));
+        drop(acquired);
+
+        // Restarting the host sees an active replay with no event/outbox row.
+        // Recovery must classify it as NotAdmitted and finish the original
+        // local admission, rather than leaving the turn permanently active.
+        let restarted = LocalTurnLifecycleContributor::new(Arc::clone(&store));
+        restarted.on_turn_start(input).await;
+        let state = turn.get::<Mutex<TurnLeaseState>>().expect("turn state");
+        let active = state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .active
+            .clone()
+            .expect("admitted active lease");
+        assert_eq!(
+            active.lease.snapshot_counts().await.expect("counts"),
+            codex_hepta_memory::LocalLeaseOutboxCounts {
+                lease_rows: 1,
+                event_rows: 1,
+                outbox_rows: 1,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn indeterminate_crash_window_replays_as_terminal_and_releases() {
+        let temp = TempDir::new().expect("temp dir");
+        let store = opened_store(&temp).await;
+        let first = LocalTurnLifecycleContributor::new(Arc::clone(&store));
+        let session = ExtensionData::new("session");
+        let thread = ExtensionData::new("thread-903");
+        let first_turn = ExtensionData::new("turn-903");
+        let mode = mode();
+        let usage = TokenUsage::default();
+        first
+            .on_turn_start(start_input(
+                "turn-903",
+                &session,
+                &thread,
+                &first_turn,
+                &mode,
+                &usage,
+            ))
+            .await;
+        let first_state = first_turn
+            .get::<Mutex<TurnLeaseState>>()
+            .expect("first state");
+        let active = first_state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .active
+            .clone()
+            .expect("active lease");
+        active
+            .lease
+            .mark_indeterminate(active.occurrence_key.clone(), "simulated-crash-window")
+            .await
+            .expect("mark indeterminate");
+        // Drop the host turn state without invoking stop/abort: this models a
+        // process exit after the durable outcome row and before release.
+        drop(first_turn);
+        drop(first);
+
+        let restarted = LocalTurnLifecycleContributor::new(Arc::clone(&store));
+        let restarted_turn = ExtensionData::new("turn-903");
+        restarted
+            .on_turn_start(start_input(
+                "turn-903",
+                &session,
+                &thread,
+                &restarted_turn,
+                &mode,
+                &usage,
+            ))
+            .await;
+        let restarted_state = restarted_turn
+            .get::<Mutex<TurnLeaseState>>()
+            .expect("restarted state");
+        let guard = restarted_state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        assert!(guard.active.is_none());
+        assert!(guard.terminal_started);
+        drop(guard);
+        assert_eq!(
+            active.lease.snapshot_counts().await.expect("counts"),
+            codex_hepta_memory::LocalLeaseOutboxCounts {
+                lease_rows: 2,
+                event_rows: 2,
+                outbox_rows: 1,
+            }
+        );
+        assert!(
+            store
+                .acquire_local_lease(active.lease.lease_id(), 1, active.lease.fencing_token())
+                .await
+                .is_err()
+        );
     }
 }
