@@ -1,0 +1,1915 @@
+//! Agent-local authoritative lease/fence and append-only event/outbox seam.
+//!
+//! This module is deliberately bounded to `local_development_only`.  A lease
+//! is an append-only history whose last row is the current fence.  Event and
+//! outbox admission is one SQLite `BEGIN IMMEDIATE` transaction, so a failed
+//! admission cannot leave an event without its paired local intent.  The
+//! outbox is a queue/intention record only; it is never an external effect
+//! receipt and no scheduler, router, KG writer, or production caller is wired
+//! here.
+
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
+
+use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::Sha256Digest;
+use serde::Deserialize;
+use serde::Serialize;
+use sha2::Digest;
+use sha2::Sha256;
+use sqlx::Row;
+use sqlx::Sqlite;
+use sqlx::SqlitePool;
+use sqlx::Transaction;
+use thiserror::Error;
+
+use crate::CognitiveStore;
+use crate::CognitiveStoreError;
+use crate::framing::frame_part;
+
+pub const LOCAL_LEASE_OUTBOX_NAMESPACE: &str = "local_development_only";
+pub const LOCAL_LEASE_OUTBOX_SCHEMA_VERSION: u32 = 1;
+pub const LOCAL_LEASE_OUTBOX_EXTERNAL_EFFECTS: bool = false;
+pub const LOCAL_LEASE_OUTBOX_KG_WRITE_AUTHORITY: bool = false;
+pub const LOCAL_LEASE_OUTBOX_PRODUCTION_CALLER: bool = false;
+
+const MAX_LEASE_ROWS: usize = 4_096;
+const MAX_EVENT_ROWS: usize = 16_384;
+const MAX_OUTBOX_ROWS: usize = 16_384;
+const GENESIS_LEASE_SHA256: &[u8] = b"hepta-memory:local-lease:genesis:v1";
+const GENESIS_EVENT_SHA256: &[u8] = b"hepta-memory:local-event:genesis:v1";
+const GENESIS_OUTBOX_SHA256: &[u8] = b"hepta-memory:local-outbox:genesis:v1";
+
+#[derive(Debug, Error)]
+pub enum LocalLeaseOutboxError {
+    #[error(transparent)]
+    Store(#[from] CognitiveStoreError),
+    #[error("invalid local lease/outbox input: {0}")]
+    Invalid(String),
+    #[error("local lease/outbox access denied: {0}")]
+    AccessDenied(String),
+    #[error("local lease/outbox CAS conflict: {0}")]
+    CasConflict(String),
+    #[error("local lease/outbox stale fence: {0}")]
+    StaleFence(String),
+    #[error("local lease/outbox journal is corrupt: {0}")]
+    Corrupt(String),
+    #[error("local lease/outbox transition is invalid: {0}")]
+    IllegalTransition(String),
+    #[error("local lease/outbox transaction was rolled back: {0}")]
+    TransactionAborted(String),
+    #[error("local lease/outbox serialization failed: {0}")]
+    Serialization(String),
+    #[error("local lease/outbox clock failed: {0}")]
+    Clock(String),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocalAdmissionFault {
+    AfterEventBeforeOutbox,
+    AfterOutboxBeforeCommit,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalLeaseState {
+    Active,
+    Released,
+    RolledBack,
+}
+
+impl LocalLeaseState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Released => "released",
+            Self::RolledBack => "rolled_back",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, LocalLeaseOutboxError> {
+        match value {
+            "active" => Ok(Self::Active),
+            "released" => Ok(Self::Released),
+            "rolled_back" => Ok(Self::RolledBack),
+            other => Err(corrupt(format!("unknown lease state {other:?}"))),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LocalLease {
+    pub lease_id: String,
+    pub lease_sequence: u64,
+    pub owner_agent_id: AgentId,
+    pub generation: u64,
+    pub fencing_token: String,
+    pub state: LocalLeaseState,
+    pub previous_sha256: Sha256Digest,
+    pub lease_sha256: Sha256Digest,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalOutcomeState {
+    Queued,
+    Indeterminate,
+    Committed,
+    Rejected,
+    RolledBack,
+}
+
+impl LocalOutcomeState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Indeterminate => "indeterminate",
+            Self::Committed => "committed",
+            Self::Rejected => "rejected",
+            Self::RolledBack => "rolled_back",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QueuedReceipt {
+    pub lease_id: String,
+    pub occurrence_key: String,
+    pub event_id: String,
+    pub outbox_id: String,
+    pub owner_agent_id: AgentId,
+    pub generation: u64,
+    pub fencing_token: String,
+    pub payload_sha256: Sha256Digest,
+    /// Always false: a queued local intent is not an external effect receipt.
+    pub external_effect: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LocalAdmission {
+    Queued(QueuedReceipt),
+    Replay(QueuedReceipt),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalOutcomeReceipt {
+    pub lease_id: String,
+    pub occurrence_key: String,
+    pub state: LocalOutcomeState,
+    pub event_id: String,
+    /// Always false: outcome reconciliation remains local bookkeeping.
+    pub external_effect: bool,
+}
+
+#[derive(Clone, Debug)]
+pub enum LocalLeaseAcquire {
+    Acquired(LocalLeaseOutbox),
+    Replay(LocalLeaseOutbox),
+}
+
+#[derive(Clone)]
+pub struct LocalLeaseOutbox {
+    store: CognitiveStore,
+    lease_id: String,
+    owner_agent_id: AgentId,
+    generation: u64,
+    fencing_token: String,
+}
+
+impl std::fmt::Debug for LocalLeaseOutbox {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("LocalLeaseOutbox")
+            .field("lease_id", &self.lease_id)
+            .field("owner_agent_id", &self.owner_agent_id)
+            .field("generation", &self.generation)
+            .field("fencing_token", &"<redacted>")
+            .finish()
+    }
+}
+
+impl LocalLeaseOutbox {
+    /// Acquire generation one, or replay an exact active acquisition.
+    pub(crate) async fn acquire(
+        store: &CognitiveStore,
+        lease_id: impl Into<String>,
+        generation: u64,
+        fencing_token: impl Into<String>,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        let lease_id = lease_id.into();
+        let fencing_token = fencing_token.into();
+        validate_text(&lease_id, "lease id", 512)?;
+        validate_generation(generation)?;
+        validate_text(&fencing_token, "fencing token", 256)?;
+        let mut transaction = store
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let (latest, _) =
+            load_lease_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
+        let (state, replay) = match latest {
+            None => {
+                if generation != 1 {
+                    return Err(LocalLeaseOutboxError::CasConflict(
+                        "first lease generation must be 1".to_string(),
+                    ));
+                }
+                let lease = append_lease(
+                    &mut transaction,
+                    &lease_id,
+                    store.owner_agent_id(),
+                    generation,
+                    &fencing_token,
+                    LocalLeaseState::Active,
+                    None,
+                )
+                .await?;
+                (lease, false)
+            }
+            Some(previous) => {
+                if previous.state == LocalLeaseState::Active
+                    && previous.owner_agent_id == *store.owner_agent_id()
+                    && previous.generation == generation
+                    && previous.fencing_token == fencing_token
+                {
+                    (previous, true)
+                } else {
+                    if generation <= previous.generation {
+                        return Err(LocalLeaseOutboxError::StaleFence(format!(
+                            "requested generation {} is not newer than {}",
+                            generation, previous.generation
+                        )));
+                    }
+                    if generation != previous.generation + 1 {
+                        return Err(LocalLeaseOutboxError::CasConflict(format!(
+                            "generation must advance from {} to {}",
+                            previous.generation,
+                            previous.generation + 1
+                        )));
+                    }
+                    if previous.state == LocalLeaseState::Active
+                        && previous.owner_agent_id == *store.owner_agent_id()
+                        && previous.fencing_token == fencing_token
+                    {
+                        return Err(LocalLeaseOutboxError::CasConflict(
+                            "active lease cannot reuse its fencing token for a new generation"
+                                .to_string(),
+                        ));
+                    }
+                    let lease = append_lease(
+                        &mut transaction,
+                        &lease_id,
+                        store.owner_agent_id(),
+                        generation,
+                        &fencing_token,
+                        LocalLeaseState::Active,
+                        Some(&previous),
+                    )
+                    .await?;
+                    (lease, false)
+                }
+            }
+        };
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let handle = Self::from_lease(store, &state)?;
+        Ok(if replay {
+            LocalLeaseAcquire::Replay(handle)
+        } else {
+            LocalLeaseAcquire::Acquired(handle)
+        })
+    }
+
+    /// Acquire an explicitly CAS-bound next generation.  This is useful when
+    /// a recovery owner has a separately read lease head; passing a stale
+    /// expected generation fails before any row is appended.
+    pub(crate) async fn acquire_after(
+        store: &CognitiveStore,
+        lease_id: impl Into<String>,
+        expected_generation: u64,
+        generation: u64,
+        fencing_token: impl Into<String>,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        validate_generation(expected_generation)?;
+        validate_generation(generation)?;
+        if generation != expected_generation + 1 {
+            return Err(LocalLeaseOutboxError::CasConflict(
+                "new lease generation must be expected generation + 1".to_string(),
+            ));
+        }
+        let lease_id = lease_id.into();
+        let fencing_token = fencing_token.into();
+        validate_text(&lease_id, "lease id", 512)?;
+        validate_text(&fencing_token, "fencing token", 256)?;
+        let mut transaction = store
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let (latest, _) =
+            load_lease_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
+        let Some(previous) = latest else {
+            return Err(LocalLeaseOutboxError::CasConflict(
+                "cannot advance a missing lease".to_string(),
+            ));
+        };
+        if previous.generation != expected_generation {
+            return Err(LocalLeaseOutboxError::CasConflict(format!(
+                "expected lease generation {expected_generation}, found {}",
+                previous.generation
+            )));
+        }
+        if previous.state == LocalLeaseState::Active
+            && previous.owner_agent_id == *store.owner_agent_id()
+            && previous.fencing_token == fencing_token
+        {
+            return Err(LocalLeaseOutboxError::CasConflict(
+                "active lease cannot reuse its fencing token for a new generation".to_string(),
+            ));
+        }
+        let lease = append_lease(
+            &mut transaction,
+            &lease_id,
+            store.owner_agent_id(),
+            generation,
+            &fencing_token,
+            LocalLeaseState::Active,
+            Some(&previous),
+        )
+        .await?;
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(LocalLeaseAcquire::Acquired(Self::from_lease(
+            store, &lease,
+        )?))
+    }
+
+    fn from_lease(
+        store: &CognitiveStore,
+        lease: &LocalLease,
+    ) -> Result<Self, LocalLeaseOutboxError> {
+        if lease.state != LocalLeaseState::Active {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "cannot open a released local lease".to_string(),
+            ));
+        }
+        if lease.owner_agent_id != *store.owner_agent_id() {
+            return Err(LocalLeaseOutboxError::AccessDenied(
+                "local lease owner does not match the Agent-local store".to_string(),
+            ));
+        }
+        Ok(Self {
+            store: store.clone(),
+            lease_id: lease.lease_id.clone(),
+            owner_agent_id: lease.owner_agent_id.clone(),
+            generation: lease.generation,
+            fencing_token: lease.fencing_token.clone(),
+        })
+    }
+
+    pub fn lease_id(&self) -> &str {
+        &self.lease_id
+    }
+
+    pub fn owner_agent_id(&self) -> &AgentId {
+        &self.owner_agent_id
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn fencing_token(&self) -> &str {
+        &self.fencing_token
+    }
+
+    /// Reopens an already acquired active lease and verifies every journal
+    /// chain before returning a writable handle.
+    pub(crate) async fn reopen(
+        store: &CognitiveStore,
+        lease_id: impl Into<String>,
+        generation: u64,
+        fencing_token: impl Into<String>,
+    ) -> Result<Self, LocalLeaseOutboxError> {
+        let lease_id = lease_id.into();
+        let fencing_token = fencing_token.into();
+        validate_text(&lease_id, "lease id", 512)?;
+        validate_generation(generation)?;
+        validate_text(&fencing_token, "fencing token", 256)?;
+        let mut transaction = store
+            .pool
+            .begin()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let (latest, _) =
+            load_lease_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
+        let Some(lease) = latest else {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "local lease does not exist".to_string(),
+            ));
+        };
+        if lease.state != LocalLeaseState::Active
+            || lease.owner_agent_id != *store.owner_agent_id()
+            || lease.generation != generation
+            || lease.fencing_token != fencing_token
+        {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "reopened local lease fence is no longer current".to_string(),
+            ));
+        }
+        verify_event_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
+        verify_outbox_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Self::from_lease(store, &lease)
+    }
+
+    pub async fn release(&self) -> Result<LocalLease, LocalLeaseOutboxError> {
+        self.transition_lease(LocalLeaseState::Released).await
+    }
+
+    pub async fn rollback_lease(&self) -> Result<LocalLease, LocalLeaseOutboxError> {
+        self.transition_lease(LocalLeaseState::RolledBack).await
+    }
+
+    async fn transition_lease(
+        &self,
+        state: LocalLeaseState,
+    ) -> Result<LocalLease, LocalLeaseOutboxError> {
+        let mut transaction = self
+            .store
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let (latest, _) =
+            load_lease_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let Some(previous) = latest else {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "local lease disappeared".to_string(),
+            ));
+        };
+        ensure_current_active(&previous, self)?;
+        let lease = append_lease(
+            &mut transaction,
+            &self.lease_id,
+            &self.owner_agent_id,
+            self.generation,
+            &self.fencing_token,
+            state,
+            Some(&previous),
+        )
+        .await?;
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(lease)
+    }
+
+    /// Atomically admit one local event and its paired local outbox intent.
+    pub async fn admit(
+        &self,
+        occurrence_key: impl Into<String>,
+        topic: impl Into<String>,
+        payload_json: impl Into<String>,
+    ) -> Result<LocalAdmission, LocalLeaseOutboxError> {
+        self.admit_inner(
+            occurrence_key.into(),
+            topic.into(),
+            payload_json.into(),
+            None,
+        )
+        .await
+    }
+
+    /// Test/qualification fault hook proving that event+outbox are one
+    /// transaction.  It is local-only and intentionally cannot dispatch.
+    pub async fn admit_with_fault(
+        &self,
+        occurrence_key: impl Into<String>,
+        topic: impl Into<String>,
+        payload_json: impl Into<String>,
+        fault: LocalAdmissionFault,
+    ) -> Result<LocalAdmission, LocalLeaseOutboxError> {
+        self.admit_inner(
+            occurrence_key.into(),
+            topic.into(),
+            payload_json.into(),
+            Some(fault),
+        )
+        .await
+    }
+
+    async fn admit_inner(
+        &self,
+        occurrence_key: String,
+        topic: String,
+        payload_json: String,
+        fault: Option<LocalAdmissionFault>,
+    ) -> Result<LocalAdmission, LocalLeaseOutboxError> {
+        validate_text(&occurrence_key, "occurrence key", 512)?;
+        validate_text(&topic, "outbox topic", 256)?;
+        validate_text(&payload_json, "event payload", 65_536)?;
+        let payload_sha256 = Sha256Digest::for_bytes(payload_json.as_bytes());
+        let mut transaction = self
+            .store
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let lease = self.current_lease(&mut transaction).await?;
+        ensure_current_active(&lease, self)?;
+        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+
+        if let Some(existing) = find_admission(
+            &mut transaction,
+            &self.lease_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?
+        {
+            let outbox = find_outbox(
+                &mut transaction,
+                &self.lease_id,
+                &occurrence_key,
+                &self.owner_agent_id,
+            )
+            .await?
+            .ok_or_else(|| corrupt("event admission has no paired outbox row"))?;
+            if existing.payload_sha256 != payload_sha256
+                || outbox.topic != topic
+                || outbox.payload_sha256 != payload_sha256
+            {
+                return Err(LocalLeaseOutboxError::CasConflict(
+                    "occurrence replay changed its payload or topic".to_string(),
+                ));
+            }
+            let receipt = queued_receipt(self, &existing, &outbox)?;
+            transaction
+                .commit()
+                .await
+                .map_err(crate::cognitive_store::unavailable)?;
+            return Ok(LocalAdmission::Replay(receipt));
+        }
+
+        let event_sequence = next_event_sequence(&mut transaction, &self.lease_id).await?;
+        let event_previous = event_head(&mut transaction, &self.lease_id).await?;
+        let event_id = format!("event:{}:{event_sequence}", self.lease_id);
+        let event_sha256 = event_digest(
+            &self.lease_id,
+            event_sequence,
+            &event_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+            self.generation,
+            &self.fencing_token,
+            "admitted",
+            &payload_sha256,
+            &event_previous,
+        );
+        insert_event(
+            &mut transaction,
+            EventInsert {
+                lease_id: &self.lease_id,
+                sequence: event_sequence,
+                event_id: &event_id,
+                occurrence_key: &occurrence_key,
+                owner: &self.owner_agent_id,
+                generation: self.generation,
+                fencing_token: &self.fencing_token,
+                kind: "admitted",
+                payload_json: &payload_json,
+                payload_sha256: &payload_sha256,
+                previous_sha256: &event_previous,
+                event_sha256: &event_sha256,
+            },
+        )
+        .await?;
+        if fault == Some(LocalAdmissionFault::AfterEventBeforeOutbox) {
+            return Err(LocalLeaseOutboxError::TransactionAborted(
+                "fault injected after event before outbox".to_string(),
+            ));
+        }
+
+        let outbox_sequence = next_outbox_sequence(&mut transaction, &self.lease_id).await?;
+        let outbox_previous = outbox_head(&mut transaction, &self.lease_id).await?;
+        let outbox_id = format!("outbox:{}:{outbox_sequence}", self.lease_id);
+        let outbox_sha256 = outbox_digest(
+            &self.lease_id,
+            outbox_sequence,
+            &outbox_id,
+            &event_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+            self.generation,
+            &self.fencing_token,
+            &topic,
+            &payload_sha256,
+            &outbox_previous,
+        );
+        insert_outbox(
+            &mut transaction,
+            OutboxInsert {
+                lease_id: &self.lease_id,
+                sequence: outbox_sequence,
+                outbox_id: &outbox_id,
+                event_id: &event_id,
+                occurrence_key: &occurrence_key,
+                owner: &self.owner_agent_id,
+                generation: self.generation,
+                fencing_token: &self.fencing_token,
+                topic: &topic,
+                payload_json: &payload_json,
+                payload_sha256: &payload_sha256,
+                previous_sha256: &outbox_previous,
+                outbox_sha256: &outbox_sha256,
+            },
+        )
+        .await?;
+        if fault == Some(LocalAdmissionFault::AfterOutboxBeforeCommit) {
+            return Err(LocalLeaseOutboxError::TransactionAborted(
+                "fault injected after outbox before commit".to_string(),
+            ));
+        }
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(LocalAdmission::Queued(QueuedReceipt {
+            lease_id: self.lease_id.clone(),
+            occurrence_key,
+            event_id,
+            outbox_id,
+            owner_agent_id: self.owner_agent_id.clone(),
+            generation: self.generation,
+            fencing_token: self.fencing_token.clone(),
+            payload_sha256,
+            external_effect: false,
+        }))
+    }
+
+    /// Mark a local intent indeterminate after an unknown local outcome.
+    /// Unknown never becomes committed implicitly.
+    pub async fn mark_indeterminate(
+        &self,
+        occurrence_key: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Result<LocalOutcomeReceipt, LocalLeaseOutboxError> {
+        self.append_outcome(
+            occurrence_key.into(),
+            "indeterminate",
+            reason.into(),
+            &[LocalOutcomeState::Queued, LocalOutcomeState::Indeterminate],
+            LocalOutcomeState::Indeterminate,
+        )
+        .await
+    }
+
+    /// Reconcile an indeterminate local intent.  `StillIndeterminate` keeps
+    /// the quarantine state and can itself be replayed idempotently.
+    pub async fn reconcile(
+        &self,
+        occurrence_key: impl Into<String>,
+        outcome: LocalReconcileOutcome,
+    ) -> Result<LocalOutcomeReceipt, LocalLeaseOutboxError> {
+        let (kind, state) = match outcome {
+            LocalReconcileOutcome::Committed => {
+                ("reconcile_committed", LocalOutcomeState::Committed)
+            }
+            LocalReconcileOutcome::Rejected => ("reconcile_rejected", LocalOutcomeState::Rejected),
+            LocalReconcileOutcome::StillIndeterminate => (
+                "reconcile_still_indeterminate",
+                LocalOutcomeState::Indeterminate,
+            ),
+        };
+        self.append_outcome(
+            occurrence_key.into(),
+            kind,
+            outcome.as_str().to_string(),
+            &[LocalOutcomeState::Indeterminate],
+            state,
+        )
+        .await
+    }
+
+    /// Append an explicit local rollback marker.  This does not delete the
+    /// event or outbox row and never claims that an external effect was
+    /// undone.
+    pub async fn rollback_occurrence(
+        &self,
+        occurrence_key: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Result<LocalOutcomeReceipt, LocalLeaseOutboxError> {
+        self.append_outcome(
+            occurrence_key.into(),
+            "rolled_back",
+            reason.into(),
+            &[
+                LocalOutcomeState::Queued,
+                LocalOutcomeState::Indeterminate,
+                LocalOutcomeState::RolledBack,
+            ],
+            LocalOutcomeState::RolledBack,
+        )
+        .await
+    }
+
+    async fn append_outcome(
+        &self,
+        occurrence_key: String,
+        kind: &str,
+        payload: String,
+        allowed: &[LocalOutcomeState],
+        resulting_state: LocalOutcomeState,
+    ) -> Result<LocalOutcomeReceipt, LocalLeaseOutboxError> {
+        validate_text(&occurrence_key, "occurrence key", 512)?;
+        validate_text(&payload, "outcome payload", 65_536)?;
+        let payload_sha256 = Sha256Digest::for_bytes(payload.as_bytes());
+        let mut transaction = self
+            .store
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let lease = self.current_lease(&mut transaction).await?;
+        ensure_current_active(&lease, self)?;
+        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let _admission = find_admission(
+            &mut transaction,
+            &self.lease_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?
+        .ok_or_else(|| {
+            LocalLeaseOutboxError::IllegalTransition(format!(
+                "occurrence {occurrence_key} has no admitted event"
+            ))
+        })?;
+        let _outbox = find_outbox(
+            &mut transaction,
+            &self.lease_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?
+        .ok_or_else(|| corrupt("event admission has no paired outbox row"))?;
+        let current = current_outcome(
+            &mut transaction,
+            &self.lease_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?;
+        if !allowed.contains(&current) {
+            if let Some(existing) = find_transition(
+                &mut transaction,
+                &self.lease_id,
+                &occurrence_key,
+                kind,
+                &self.owner_agent_id,
+            )
+            .await?
+            {
+                if existing.payload_sha256 == payload_sha256 {
+                    transaction
+                        .commit()
+                        .await
+                        .map_err(crate::cognitive_store::unavailable)?;
+                    return Ok(LocalOutcomeReceipt {
+                        lease_id: self.lease_id.clone(),
+                        occurrence_key,
+                        state: resulting_state,
+                        event_id: existing.event_id,
+                        external_effect: false,
+                    });
+                }
+            }
+            return Err(LocalLeaseOutboxError::IllegalTransition(format!(
+                "occurrence is already in {} state",
+                current.as_str()
+            )));
+        }
+        if let Some(existing) = find_transition(
+            &mut transaction,
+            &self.lease_id,
+            &occurrence_key,
+            kind,
+            &self.owner_agent_id,
+        )
+        .await?
+        {
+            if existing.payload_sha256 != payload_sha256 {
+                return Err(LocalLeaseOutboxError::CasConflict(
+                    "outcome replay changed its reason/payload".to_string(),
+                ));
+            }
+            transaction
+                .commit()
+                .await
+                .map_err(crate::cognitive_store::unavailable)?;
+            return Ok(LocalOutcomeReceipt {
+                lease_id: self.lease_id.clone(),
+                occurrence_key,
+                state: resulting_state,
+                event_id: existing.event_id,
+                external_effect: false,
+            });
+        }
+        let sequence = next_event_sequence(&mut transaction, &self.lease_id).await?;
+        let previous = event_head(&mut transaction, &self.lease_id).await?;
+        let event_id = format!("event:{}:{sequence}", self.lease_id);
+        let digest = event_digest(
+            &self.lease_id,
+            sequence,
+            &event_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+            self.generation,
+            &self.fencing_token,
+            kind,
+            &payload_sha256,
+            &previous,
+        );
+        insert_event(
+            &mut transaction,
+            EventInsert {
+                lease_id: &self.lease_id,
+                sequence,
+                event_id: &event_id,
+                occurrence_key: &occurrence_key,
+                owner: &self.owner_agent_id,
+                generation: self.generation,
+                fencing_token: &self.fencing_token,
+                kind,
+                payload_json: &payload,
+                payload_sha256: &payload_sha256,
+                previous_sha256: &previous,
+                event_sha256: &digest,
+            },
+        )
+        .await?;
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(LocalOutcomeReceipt {
+            lease_id: self.lease_id.clone(),
+            occurrence_key,
+            state: resulting_state,
+            event_id,
+            external_effect: false,
+        })
+    }
+
+    pub async fn status(
+        &self,
+        occurrence_key: impl Into<String>,
+    ) -> Result<LocalOutcomeState, LocalLeaseOutboxError> {
+        let occurrence_key = occurrence_key.into();
+        validate_text(&occurrence_key, "occurrence key", 512)?;
+        let mut transaction = self
+            .store
+            .pool
+            .begin()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let lease = self.current_lease(&mut transaction).await?;
+        ensure_current_active(&lease, self)?;
+        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let _ = find_admission(
+            &mut transaction,
+            &self.lease_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?
+        .ok_or_else(|| {
+            LocalLeaseOutboxError::IllegalTransition("occurrence not found".to_string())
+        })?;
+        let state = current_outcome(
+            &mut transaction,
+            &self.lease_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?;
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(state)
+    }
+
+    pub async fn snapshot_counts(&self) -> Result<LocalLeaseOutboxCounts, LocalLeaseOutboxError> {
+        let mut transaction = self
+            .store
+            .pool
+            .begin()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let lease_rows =
+            count_rows(&mut transaction, "cognitive_local_leases", &self.lease_id).await?;
+        let event_rows =
+            count_rows(&mut transaction, "cognitive_local_events", &self.lease_id).await?;
+        let outbox_rows =
+            count_rows(&mut transaction, "cognitive_local_outbox", &self.lease_id).await?;
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(LocalLeaseOutboxCounts {
+            lease_rows,
+            event_rows,
+            outbox_rows,
+        })
+    }
+
+    async fn current_lease(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+    ) -> Result<LocalLease, LocalLeaseOutboxError> {
+        let (latest, _) =
+            load_lease_chain(transaction, &self.lease_id, &self.owner_agent_id).await?;
+        latest.ok_or_else(|| {
+            LocalLeaseOutboxError::StaleFence("local lease does not exist".to_string())
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LocalLeaseOutboxCounts {
+    pub lease_rows: u64,
+    pub event_rows: u64,
+    pub outbox_rows: u64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalReconcileOutcome {
+    Committed,
+    Rejected,
+    StillIndeterminate,
+}
+
+impl LocalReconcileOutcome {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Committed => "committed",
+            Self::Rejected => "rejected",
+            Self::StillIndeterminate => "still_indeterminate",
+        }
+    }
+}
+
+impl CognitiveStore {
+    /// Opens generation one of the local-only lease/outbox seam, or replays an
+    /// exact active acquisition.
+    pub async fn acquire_local_lease(
+        &self,
+        lease_id: impl Into<String>,
+        generation: u64,
+        fencing_token: impl Into<String>,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        LocalLeaseOutbox::acquire(self, lease_id, generation, fencing_token).await
+    }
+
+    pub async fn acquire_local_lease_after(
+        &self,
+        lease_id: impl Into<String>,
+        expected_generation: u64,
+        generation: u64,
+        fencing_token: impl Into<String>,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        LocalLeaseOutbox::acquire_after(
+            self,
+            lease_id,
+            expected_generation,
+            generation,
+            fencing_token,
+        )
+        .await
+    }
+
+    pub async fn reopen_local_lease(
+        &self,
+        lease_id: impl Into<String>,
+        generation: u64,
+        fencing_token: impl Into<String>,
+    ) -> Result<LocalLeaseOutbox, LocalLeaseOutboxError> {
+        LocalLeaseOutbox::reopen(self, lease_id, generation, fencing_token).await
+    }
+}
+
+#[derive(Clone, Debug)]
+struct EventRow {
+    sequence: u64,
+    event_id: String,
+    occurrence_key: String,
+    owner_agent_id: AgentId,
+    generation: u64,
+    fencing_token: String,
+    kind: String,
+    payload_json: String,
+    payload_sha256: Sha256Digest,
+    previous_sha256: Sha256Digest,
+    event_sha256: Sha256Digest,
+}
+
+#[derive(Clone, Debug)]
+struct OutboxRow {
+    sequence: u64,
+    outbox_id: String,
+    event_id: String,
+    occurrence_key: String,
+    owner_agent_id: AgentId,
+    generation: u64,
+    fencing_token: String,
+    topic: String,
+    payload_json: String,
+    payload_sha256: Sha256Digest,
+    previous_sha256: Sha256Digest,
+    outbox_sha256: Sha256Digest,
+}
+
+struct EventInsert<'a> {
+    lease_id: &'a str,
+    sequence: u64,
+    event_id: &'a str,
+    occurrence_key: &'a str,
+    owner: &'a AgentId,
+    generation: u64,
+    fencing_token: &'a str,
+    kind: &'a str,
+    payload_json: &'a str,
+    payload_sha256: &'a Sha256Digest,
+    previous_sha256: &'a Sha256Digest,
+    event_sha256: &'a Sha256Digest,
+}
+
+struct OutboxInsert<'a> {
+    lease_id: &'a str,
+    sequence: u64,
+    outbox_id: &'a str,
+    event_id: &'a str,
+    occurrence_key: &'a str,
+    owner: &'a AgentId,
+    generation: u64,
+    fencing_token: &'a str,
+    topic: &'a str,
+    payload_json: &'a str,
+    payload_sha256: &'a Sha256Digest,
+    previous_sha256: &'a Sha256Digest,
+    outbox_sha256: &'a Sha256Digest,
+}
+
+async fn append_lease(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+    owner: &AgentId,
+    generation: u64,
+    fencing_token: &str,
+    state: LocalLeaseState,
+    previous: Option<&LocalLease>,
+) -> Result<LocalLease, LocalLeaseOutboxError> {
+    let sequence = previous.map_or(1, |lease| lease.lease_sequence + 1);
+    let previous_sha256 = previous
+        .map(|lease| lease.lease_sha256.clone())
+        .unwrap_or_else(|| Sha256Digest::for_bytes(GENESIS_LEASE_SHA256));
+    let lease_sha256 = lease_digest(
+        lease_id,
+        sequence,
+        owner,
+        generation,
+        fencing_token,
+        state,
+        &previous_sha256,
+    );
+    let recorded_at = now_unix_seconds()?;
+    sqlx::query(
+        "INSERT INTO cognitive_local_leases (
+            lease_id, lease_sequence, owner_agent_id, generation, fencing_token,
+            state, previous_sha256, lease_sha256, recorded_at_unix_seconds
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(lease_id)
+    .bind(to_i64(sequence, "lease sequence")?)
+    .bind(owner.as_str())
+    .bind(to_i64(generation, "lease generation")?)
+    .bind(fencing_token)
+    .bind(state.as_str())
+    .bind(previous_sha256.as_str())
+    .bind(lease_sha256.as_str())
+    .bind(recorded_at)
+    .execute(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    Ok(LocalLease {
+        lease_id: lease_id.to_string(),
+        lease_sequence: sequence,
+        owner_agent_id: owner.clone(),
+        generation,
+        fencing_token: fencing_token.to_string(),
+        state,
+        previous_sha256,
+        lease_sha256,
+    })
+}
+
+async fn load_lease_chain(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+    expected_owner: &AgentId,
+) -> Result<(Option<LocalLease>, usize), LocalLeaseOutboxError> {
+    let rows = sqlx::query(
+        "SELECT lease_sequence, owner_agent_id, generation, fencing_token,
+                state, previous_sha256, lease_sha256
+         FROM cognitive_local_leases
+         WHERE lease_id = ?
+         ORDER BY lease_sequence",
+    )
+    .bind(lease_id)
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    if rows.len() > MAX_LEASE_ROWS {
+        return Err(corrupt(format!(
+            "lease journal exceeds {MAX_LEASE_ROWS} rows"
+        )));
+    }
+    let mut previous = Sha256Digest::for_bytes(GENESIS_LEASE_SHA256);
+    let mut latest: Option<LocalLease> = None;
+    for (index, row) in rows.iter().enumerate() {
+        let sequence = read_u64(row, "lease_sequence")?;
+        if sequence != u64::try_from(index + 1).unwrap_or(u64::MAX) {
+            return Err(corrupt("lease sequence is not contiguous"));
+        }
+        let owner = parse_agent(row, "owner_agent_id")?;
+        if owner != *expected_owner {
+            return Err(corrupt("local lease journal contains a foreign owner"));
+        }
+        let generation = read_u64(row, "generation")?;
+        validate_generation(generation)?;
+        let fencing_token: String = row
+            .try_get("fencing_token")
+            .map_err(crate::cognitive_store::unavailable)?;
+        validate_text(&fencing_token, "fencing token", 256)?;
+        let state = LocalLeaseState::parse(
+            row.try_get::<String, _>("state")
+                .map_err(crate::cognitive_store::unavailable)?
+                .as_str(),
+        )?;
+        let previous_sha256 = digest_from_row(row, "previous_sha256")?;
+        let lease_sha256 = digest_from_row(row, "lease_sha256")?;
+        if previous_sha256 != previous {
+            return Err(corrupt("lease previous digest mismatch"));
+        }
+        let expected_digest = lease_digest(
+            lease_id,
+            sequence,
+            &owner,
+            generation,
+            &fencing_token,
+            state,
+            &previous,
+        );
+        if lease_sha256 != expected_digest {
+            return Err(corrupt("lease digest mismatch"));
+        }
+        if index > 0 {
+            let prior = latest.as_ref().expect("lease prior row");
+            if generation < prior.generation {
+                return Err(corrupt("lease generation regressed"));
+            }
+            if state == LocalLeaseState::Active && prior.state == LocalLeaseState::Active {
+                return Err(corrupt("lease journal has two active rows"));
+            }
+        }
+        let lease = LocalLease {
+            lease_id: lease_id.to_string(),
+            lease_sequence: sequence,
+            owner_agent_id: owner,
+            generation,
+            fencing_token,
+            state,
+            previous_sha256,
+            lease_sha256: lease_sha256.clone(),
+        };
+        previous = lease_sha256;
+        latest = Some(lease);
+    }
+    Ok((latest, rows.len()))
+}
+
+async fn insert_event(
+    transaction: &mut Transaction<'_, Sqlite>,
+    event: EventInsert<'_>,
+) -> Result<(), LocalLeaseOutboxError> {
+    let recorded_at = now_unix_seconds()?;
+    sqlx::query(
+        "INSERT INTO cognitive_local_events (
+            lease_id, event_sequence, event_id, occurrence_key, owner_agent_id,
+            generation, fencing_token, event_kind, payload_json, payload_sha256,
+            previous_sha256, event_sha256, recorded_at_unix_seconds
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(event.lease_id)
+    .bind(to_i64(event.sequence, "event sequence")?)
+    .bind(event.event_id)
+    .bind(event.occurrence_key)
+    .bind(event.owner.as_str())
+    .bind(to_i64(event.generation, "event generation")?)
+    .bind(event.fencing_token)
+    .bind(event.kind)
+    .bind(event.payload_json)
+    .bind(event.payload_sha256.as_str())
+    .bind(event.previous_sha256.as_str())
+    .bind(event.event_sha256.as_str())
+    .bind(recorded_at)
+    .execute(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    Ok(())
+}
+
+async fn insert_outbox(
+    transaction: &mut Transaction<'_, Sqlite>,
+    outbox: OutboxInsert<'_>,
+) -> Result<(), LocalLeaseOutboxError> {
+    let recorded_at = now_unix_seconds()?;
+    sqlx::query(
+        "INSERT INTO cognitive_local_outbox (
+            lease_id, outbox_sequence, outbox_id, event_id, occurrence_key,
+            owner_agent_id, generation, fencing_token, topic, payload_json,
+            payload_sha256, previous_sha256, outbox_sha256, dispatch_state,
+            recorded_at_unix_seconds
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)",
+    )
+    .bind(outbox.lease_id)
+    .bind(to_i64(outbox.sequence, "outbox sequence")?)
+    .bind(outbox.outbox_id)
+    .bind(outbox.event_id)
+    .bind(outbox.occurrence_key)
+    .bind(outbox.owner.as_str())
+    .bind(to_i64(outbox.generation, "outbox generation")?)
+    .bind(outbox.fencing_token)
+    .bind(outbox.topic)
+    .bind(outbox.payload_json)
+    .bind(outbox.payload_sha256.as_str())
+    .bind(outbox.previous_sha256.as_str())
+    .bind(outbox.outbox_sha256.as_str())
+    .bind(recorded_at)
+    .execute(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    Ok(())
+}
+
+async fn verify_event_chain(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+    expected_owner: &AgentId,
+) -> Result<Vec<EventRow>, LocalLeaseOutboxError> {
+    let rows = sqlx::query(
+        "SELECT event_sequence, event_id, occurrence_key, owner_agent_id,
+                generation, fencing_token, event_kind, payload_json,
+                payload_sha256, previous_sha256, event_sha256
+         FROM cognitive_local_events
+         WHERE lease_id = ?
+         ORDER BY event_sequence",
+    )
+    .bind(lease_id)
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    if rows.len() > MAX_EVENT_ROWS {
+        return Err(corrupt(format!(
+            "event journal exceeds {MAX_EVENT_ROWS} rows"
+        )));
+    }
+    let mut previous = Sha256Digest::for_bytes(GENESIS_EVENT_SHA256);
+    let mut events = Vec::with_capacity(rows.len());
+    for (index, row) in rows.iter().enumerate() {
+        let sequence = read_u64(row, "event_sequence")?;
+        if sequence != u64::try_from(index + 1).unwrap_or(u64::MAX) {
+            return Err(corrupt("event sequence is not contiguous"));
+        }
+        let event_id: String = row
+            .try_get("event_id")
+            .map_err(crate::cognitive_store::unavailable)?;
+        let occurrence_key: String = row
+            .try_get("occurrence_key")
+            .map_err(crate::cognitive_store::unavailable)?;
+        let owner = parse_agent(row, "owner_agent_id")?;
+        if owner != *expected_owner {
+            return Err(corrupt("event journal contains a foreign owner"));
+        }
+        let generation = read_u64(row, "generation")?;
+        let fencing_token: String = row
+            .try_get("fencing_token")
+            .map_err(crate::cognitive_store::unavailable)?;
+        let kind: String = row
+            .try_get("event_kind")
+            .map_err(crate::cognitive_store::unavailable)?;
+        let payload_json: String = row
+            .try_get("payload_json")
+            .map_err(crate::cognitive_store::unavailable)?;
+        let payload_sha256 = digest_from_row(row, "payload_sha256")?;
+        if Sha256Digest::for_bytes(payload_json.as_bytes()) != payload_sha256 {
+            return Err(corrupt("event payload digest mismatch"));
+        }
+        let previous_sha256 = digest_from_row(row, "previous_sha256")?;
+        if previous_sha256 != previous {
+            return Err(corrupt("event previous digest mismatch"));
+        }
+        let event_sha256 = digest_from_row(row, "event_sha256")?;
+        if event_sha256
+            != event_digest(
+                lease_id,
+                sequence,
+                &event_id,
+                &occurrence_key,
+                &owner,
+                generation,
+                &fencing_token,
+                &kind,
+                &payload_sha256,
+                &previous,
+            )
+        {
+            return Err(corrupt("event digest mismatch"));
+        }
+        previous = event_sha256.clone();
+        events.push(EventRow {
+            sequence,
+            event_id,
+            occurrence_key,
+            owner_agent_id: owner,
+            generation,
+            fencing_token,
+            kind,
+            payload_json,
+            payload_sha256,
+            previous_sha256,
+            event_sha256,
+        });
+    }
+    Ok(events)
+}
+
+async fn verify_outbox_chain(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+    expected_owner: &AgentId,
+) -> Result<Vec<OutboxRow>, LocalLeaseOutboxError> {
+    let rows = sqlx::query(
+        "SELECT outbox_sequence, outbox_id, event_id, occurrence_key,
+                owner_agent_id, generation, fencing_token, topic, payload_json,
+                payload_sha256, previous_sha256, outbox_sha256
+         FROM cognitive_local_outbox
+         WHERE lease_id = ?
+         ORDER BY outbox_sequence",
+    )
+    .bind(lease_id)
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    if rows.len() > MAX_OUTBOX_ROWS {
+        return Err(corrupt(format!("outbox exceeds {MAX_OUTBOX_ROWS} rows")));
+    }
+    let mut previous = Sha256Digest::for_bytes(GENESIS_OUTBOX_SHA256);
+    let mut outbox_rows = Vec::with_capacity(rows.len());
+    for (index, row) in rows.iter().enumerate() {
+        let sequence = read_u64(row, "outbox_sequence")?;
+        if sequence != u64::try_from(index + 1).unwrap_or(u64::MAX) {
+            return Err(corrupt("outbox sequence is not contiguous"));
+        }
+        let outbox_id: String = row
+            .try_get("outbox_id")
+            .map_err(crate::cognitive_store::unavailable)?;
+        let event_id: String = row
+            .try_get("event_id")
+            .map_err(crate::cognitive_store::unavailable)?;
+        let occurrence_key: String = row
+            .try_get("occurrence_key")
+            .map_err(crate::cognitive_store::unavailable)?;
+        let owner = parse_agent(row, "owner_agent_id")?;
+        if owner != *expected_owner {
+            return Err(corrupt("outbox contains a foreign owner"));
+        }
+        let generation = read_u64(row, "generation")?;
+        let fencing_token: String = row
+            .try_get("fencing_token")
+            .map_err(crate::cognitive_store::unavailable)?;
+        let topic: String = row
+            .try_get("topic")
+            .map_err(crate::cognitive_store::unavailable)?;
+        let payload_json: String = row
+            .try_get("payload_json")
+            .map_err(crate::cognitive_store::unavailable)?;
+        let payload_sha256 = digest_from_row(row, "payload_sha256")?;
+        if Sha256Digest::for_bytes(payload_json.as_bytes()) != payload_sha256 {
+            return Err(corrupt("outbox payload digest mismatch"));
+        }
+        let previous_sha256 = digest_from_row(row, "previous_sha256")?;
+        if previous_sha256 != previous {
+            return Err(corrupt("outbox previous digest mismatch"));
+        }
+        let outbox_sha256 = digest_from_row(row, "outbox_sha256")?;
+        if outbox_sha256
+            != outbox_digest(
+                lease_id,
+                sequence,
+                &outbox_id,
+                &event_id,
+                &occurrence_key,
+                &owner,
+                generation,
+                &fencing_token,
+                &topic,
+                &payload_sha256,
+                &previous,
+            )
+        {
+            return Err(corrupt("outbox digest mismatch"));
+        }
+        previous = outbox_sha256.clone();
+        outbox_rows.push(OutboxRow {
+            sequence,
+            outbox_id,
+            event_id,
+            occurrence_key,
+            owner_agent_id: owner,
+            generation,
+            fencing_token,
+            topic,
+            payload_json,
+            payload_sha256,
+            previous_sha256,
+            outbox_sha256,
+        });
+    }
+    Ok(outbox_rows)
+}
+
+async fn find_admission(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+    occurrence_key: &str,
+    owner: &AgentId,
+) -> Result<Option<EventRow>, LocalLeaseOutboxError> {
+    let events = verify_event_chain(transaction, lease_id, owner).await?;
+    Ok(events
+        .into_iter()
+        .find(|event| event.occurrence_key == occurrence_key && event.kind == "admitted"))
+}
+
+async fn find_transition(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+    occurrence_key: &str,
+    kind: &str,
+    owner: &AgentId,
+) -> Result<Option<EventRow>, LocalLeaseOutboxError> {
+    let events = verify_event_chain(transaction, lease_id, owner).await?;
+    Ok(events
+        .into_iter()
+        .find(|event| event.occurrence_key == occurrence_key && event.kind == kind))
+}
+
+async fn find_outbox(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+    occurrence_key: &str,
+    owner: &AgentId,
+) -> Result<Option<OutboxRow>, LocalLeaseOutboxError> {
+    let rows = verify_outbox_chain(transaction, lease_id, owner).await?;
+    Ok(rows
+        .into_iter()
+        .find(|row| row.occurrence_key == occurrence_key))
+}
+
+async fn current_outcome(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+    occurrence_key: &str,
+    owner: &AgentId,
+) -> Result<LocalOutcomeState, LocalLeaseOutboxError> {
+    let events = verify_event_chain(transaction, lease_id, owner).await?;
+    let mut state = LocalOutcomeState::Queued;
+    for event in events
+        .iter()
+        .filter(|event| event.occurrence_key == occurrence_key)
+    {
+        state = match event.kind.as_str() {
+            "admitted" => LocalOutcomeState::Queued,
+            "indeterminate" => LocalOutcomeState::Indeterminate,
+            "reconcile_committed" => LocalOutcomeState::Committed,
+            "reconcile_rejected" => LocalOutcomeState::Rejected,
+            "reconcile_still_indeterminate" => LocalOutcomeState::Indeterminate,
+            "rolled_back" => LocalOutcomeState::RolledBack,
+            other => return Err(corrupt(format!("unknown event kind {other:?}"))),
+        };
+    }
+    Ok(state)
+}
+
+async fn next_event_sequence(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+) -> Result<u64, LocalLeaseOutboxError> {
+    let value: Option<i64> = sqlx::query_scalar(
+        "SELECT MAX(event_sequence) FROM cognitive_local_events WHERE lease_id = ?",
+    )
+    .bind(lease_id)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    Ok(value
+        .unwrap_or(0)
+        .checked_add(1)
+        .ok_or_else(|| LocalLeaseOutboxError::Invalid("event sequence overflow".to_string()))?
+        as u64)
+}
+
+async fn next_outbox_sequence(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+) -> Result<u64, LocalLeaseOutboxError> {
+    let value: Option<i64> = sqlx::query_scalar(
+        "SELECT MAX(outbox_sequence) FROM cognitive_local_outbox WHERE lease_id = ?",
+    )
+    .bind(lease_id)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    Ok(value
+        .unwrap_or(0)
+        .checked_add(1)
+        .ok_or_else(|| LocalLeaseOutboxError::Invalid("outbox sequence overflow".to_string()))?
+        as u64)
+}
+
+async fn event_head(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+) -> Result<Sha256Digest, LocalLeaseOutboxError> {
+    let value: Option<String> = sqlx::query_scalar(
+        "SELECT event_sha256 FROM cognitive_local_events
+         WHERE lease_id = ? ORDER BY event_sequence DESC LIMIT 1",
+    )
+    .bind(lease_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    match value {
+        Some(value) => Sha256Digest::parse(value).map_err(corrupt),
+        None => Ok(Sha256Digest::for_bytes(GENESIS_EVENT_SHA256)),
+    }
+}
+
+async fn outbox_head(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+) -> Result<Sha256Digest, LocalLeaseOutboxError> {
+    let value: Option<String> = sqlx::query_scalar(
+        "SELECT outbox_sha256 FROM cognitive_local_outbox
+         WHERE lease_id = ? ORDER BY outbox_sequence DESC LIMIT 1",
+    )
+    .bind(lease_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    match value {
+        Some(value) => Sha256Digest::parse(value).map_err(corrupt),
+        None => Ok(Sha256Digest::for_bytes(GENESIS_OUTBOX_SHA256)),
+    }
+}
+
+fn queued_receipt(
+    handle: &LocalLeaseOutbox,
+    event: &EventRow,
+    outbox: &OutboxRow,
+) -> Result<QueuedReceipt, LocalLeaseOutboxError> {
+    if event.event_id != outbox.event_id
+        || event.occurrence_key != outbox.occurrence_key
+        || event.owner_agent_id != handle.owner_agent_id
+        || event.generation != handle.generation
+        || event.fencing_token != handle.fencing_token
+        || outbox.owner_agent_id != handle.owner_agent_id
+        || outbox.generation != handle.generation
+        || outbox.fencing_token != handle.fencing_token
+    {
+        return Err(corrupt("event/outbox receipt fence binding mismatch"));
+    }
+    Ok(QueuedReceipt {
+        lease_id: handle.lease_id.clone(),
+        occurrence_key: event.occurrence_key.clone(),
+        event_id: event.event_id.clone(),
+        outbox_id: outbox.outbox_id.clone(),
+        owner_agent_id: handle.owner_agent_id.clone(),
+        generation: handle.generation,
+        fencing_token: handle.fencing_token.clone(),
+        payload_sha256: event.payload_sha256.clone(),
+        external_effect: false,
+    })
+}
+
+fn ensure_current_active(
+    lease: &LocalLease,
+    handle: &LocalLeaseOutbox,
+) -> Result<(), LocalLeaseOutboxError> {
+    if lease.state != LocalLeaseState::Active {
+        return Err(LocalLeaseOutboxError::StaleFence(
+            "local lease is no longer active".to_string(),
+        ));
+    }
+    if lease.owner_agent_id != handle.owner_agent_id {
+        return Err(LocalLeaseOutboxError::StaleFence(
+            "local lease owner changed".to_string(),
+        ));
+    }
+    if lease.generation != handle.generation || lease.fencing_token != handle.fencing_token {
+        return Err(LocalLeaseOutboxError::StaleFence(
+            "local lease generation or fencing token changed".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn lease_digest(
+    lease_id: &str,
+    sequence: u64,
+    owner: &AgentId,
+    generation: u64,
+    fencing_token: &str,
+    state: LocalLeaseState,
+    previous: &Sha256Digest,
+) -> Sha256Digest {
+    digest_parts(
+        b"hepta-memory:local-lease:v1",
+        &[
+            lease_id.as_bytes(),
+            &sequence.to_be_bytes(),
+            owner.as_str().as_bytes(),
+            &generation.to_be_bytes(),
+            fencing_token.as_bytes(),
+            state.as_str().as_bytes(),
+            previous.as_str().as_bytes(),
+        ],
+    )
+}
+
+fn event_digest(
+    lease_id: &str,
+    sequence: u64,
+    event_id: &str,
+    occurrence_key: &str,
+    owner: &AgentId,
+    generation: u64,
+    fencing_token: &str,
+    kind: &str,
+    payload_sha256: &Sha256Digest,
+    previous: &Sha256Digest,
+) -> Sha256Digest {
+    digest_parts(
+        b"hepta-memory:local-event:v1",
+        &[
+            lease_id.as_bytes(),
+            &sequence.to_be_bytes(),
+            event_id.as_bytes(),
+            occurrence_key.as_bytes(),
+            owner.as_str().as_bytes(),
+            &generation.to_be_bytes(),
+            fencing_token.as_bytes(),
+            kind.as_bytes(),
+            payload_sha256.as_str().as_bytes(),
+            previous.as_str().as_bytes(),
+        ],
+    )
+}
+
+fn outbox_digest(
+    lease_id: &str,
+    sequence: u64,
+    outbox_id: &str,
+    event_id: &str,
+    occurrence_key: &str,
+    owner: &AgentId,
+    generation: u64,
+    fencing_token: &str,
+    topic: &str,
+    payload_sha256: &Sha256Digest,
+    previous: &Sha256Digest,
+) -> Sha256Digest {
+    digest_parts(
+        b"hepta-memory:local-outbox:v1",
+        &[
+            lease_id.as_bytes(),
+            &sequence.to_be_bytes(),
+            outbox_id.as_bytes(),
+            event_id.as_bytes(),
+            occurrence_key.as_bytes(),
+            owner.as_str().as_bytes(),
+            &generation.to_be_bytes(),
+            fencing_token.as_bytes(),
+            topic.as_bytes(),
+            payload_sha256.as_str().as_bytes(),
+            previous.as_str().as_bytes(),
+        ],
+    )
+}
+
+fn digest_parts(domain: &[u8], parts: &[&[u8]]) -> Sha256Digest {
+    let mut hasher = Sha256::new();
+    frame_part(&mut hasher, domain);
+    for part in parts {
+        frame_part(&mut hasher, part);
+    }
+    Sha256Digest::from_sha256_output(hasher.finalize())
+}
+
+fn now_unix_seconds() -> Result<i64, LocalLeaseOutboxError> {
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| LocalLeaseOutboxError::Clock(error.to_string()))?
+        .as_secs();
+    i64::try_from(seconds)
+        .map_err(|_| LocalLeaseOutboxError::Clock("timestamp overflow".to_string()))
+}
+
+fn validate_generation(generation: u64) -> Result<(), LocalLeaseOutboxError> {
+    if generation == 0 {
+        return Err(LocalLeaseOutboxError::Invalid(
+            "generation must be non-zero".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_text(value: &str, label: &str, max_bytes: usize) -> Result<(), LocalLeaseOutboxError> {
+    if value.trim().is_empty() || value.len() > max_bytes || value.as_bytes().contains(&0) {
+        return Err(LocalLeaseOutboxError::Invalid(format!(
+            "{label} must contain 1..={max_bytes} non-NUL bytes"
+        )));
+    }
+    Ok(())
+}
+
+fn to_i64(value: u64, label: &str) -> Result<i64, LocalLeaseOutboxError> {
+    i64::try_from(value)
+        .map_err(|_| LocalLeaseOutboxError::Invalid(format!("{label} overflows SQLite INTEGER")))
+}
+
+fn read_u64(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<u64, LocalLeaseOutboxError> {
+    let value: i64 = row
+        .try_get(column)
+        .map_err(crate::cognitive_store::unavailable)?;
+    u64::try_from(value).map_err(|_| corrupt(format!("{column} is negative")))
+}
+
+fn digest_from_row(
+    row: &sqlx::sqlite::SqliteRow,
+    column: &str,
+) -> Result<Sha256Digest, LocalLeaseOutboxError> {
+    let value: String = row
+        .try_get(column)
+        .map_err(crate::cognitive_store::unavailable)?;
+    Sha256Digest::parse(value).map_err(corrupt)
+}
+
+fn parse_agent(
+    row: &sqlx::sqlite::SqliteRow,
+    column: &str,
+) -> Result<AgentId, LocalLeaseOutboxError> {
+    let value: String = row
+        .try_get(column)
+        .map_err(crate::cognitive_store::unavailable)?;
+    AgentId::parse(value).map_err(|error| corrupt(error.to_string()))
+}
+
+async fn count_rows(
+    transaction: &mut Transaction<'_, Sqlite>,
+    table: &str,
+    lease_id: &str,
+) -> Result<u64, LocalLeaseOutboxError> {
+    let query = format!("SELECT COUNT(*) FROM {table} WHERE lease_id = ?");
+    let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(query))
+        .bind(lease_id)
+        .fetch_one(&mut **transaction)
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+    u64::try_from(count).map_err(|_| corrupt("negative local journal row count"))
+}
+
+fn corrupt(message: impl Into<String>) -> LocalLeaseOutboxError {
+    LocalLeaseOutboxError::Corrupt(message.into())
+}
+
+/// Reopen-time integrity verification invoked by `CognitiveStore::open`.
+pub(crate) async fn verify_local_lease_outbox(
+    pool: &SqlitePool,
+    owner: &AgentId,
+) -> Result<(), CognitiveStoreError> {
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+    let lease_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT lease_id FROM cognitive_local_leases ORDER BY lease_id",
+    )
+    .fetch_all(&mut *transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    for lease_id in lease_ids {
+        load_lease_chain(&mut transaction, &lease_id, owner)
+            .await
+            .map_err(|error| CognitiveStoreError::Corrupt(error.to_string()))?;
+        let events = verify_event_chain(&mut transaction, &lease_id, owner)
+            .await
+            .map_err(|error| CognitiveStoreError::Corrupt(error.to_string()))?;
+        let outbox = verify_outbox_chain(&mut transaction, &lease_id, owner)
+            .await
+            .map_err(|error| CognitiveStoreError::Corrupt(error.to_string()))?;
+        for row in &outbox {
+            if !events.iter().any(|event| {
+                event.event_id == row.event_id
+                    && event.occurrence_key == row.occurrence_key
+                    && event.kind == "admitted"
+                    && event.owner_agent_id == row.owner_agent_id
+                    && event.generation == row.generation
+                    && event.fencing_token == row.fencing_token
+                    && event.payload_sha256 == row.payload_sha256
+            }) {
+                return Err(CognitiveStoreError::Corrupt(
+                    "local outbox row is not paired with the exact admitted event".to_string(),
+                ));
+            }
+        }
+        let admitted: std::collections::BTreeSet<_> = events
+            .iter()
+            .filter(|event| event.kind == "admitted")
+            .map(|event| event.occurrence_key.as_str())
+            .collect();
+        if admitted.len() != outbox.len() {
+            return Err(CognitiveStoreError::Corrupt(
+                "local event/outbox admission cardinality mismatch".to_string(),
+            ));
+        }
+    }
+    let orphan_event_rows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cognitive_local_events AS e
+         LEFT JOIN cognitive_local_leases AS l ON l.lease_id = e.lease_id
+         WHERE l.lease_id IS NULL",
+    )
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    let orphan_outbox_rows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cognitive_local_outbox AS o
+         LEFT JOIN cognitive_local_leases AS l ON l.lease_id = o.lease_id
+         WHERE l.lease_id IS NULL",
+    )
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    if orphan_event_rows != 0 || orphan_outbox_rows != 0 {
+        return Err(CognitiveStoreError::Corrupt(
+            "local event/outbox journal contains an orphan lease reference".to_string(),
+        ));
+    }
+    let foreign_event_rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_local_events WHERE owner_agent_id != ?")
+            .bind(owner.as_str())
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+    let foreign_outbox_rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_local_outbox WHERE owner_agent_id != ?")
+            .bind(owner.as_str())
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+    if foreign_event_rows != 0 || foreign_outbox_rows != 0 {
+        return Err(CognitiveStoreError::Corrupt(
+            "local event/outbox journal contains a foreign owner".to_string(),
+        ));
+    }
+    transaction
+        .commit()
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+    Ok(())
+}

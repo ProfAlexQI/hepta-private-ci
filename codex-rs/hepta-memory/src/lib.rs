@@ -13,6 +13,7 @@ mod compact_persistence;
 mod framing;
 mod intuition_shadow;
 mod local_compact_executor;
+mod local_lease_outbox;
 mod memory_admission;
 mod neuron_proposal;
 mod recall;
@@ -127,6 +128,23 @@ pub use local_compact_executor::LOCAL_COMPACT_EXECUTOR_NAMESPACE;
 pub use local_compact_executor::LOCAL_COMPACT_EXECUTOR_SCHEMA_VERSION;
 pub use local_compact_executor::LocalCompactExecutor;
 pub use local_compact_executor::LocalCompactExecutorError;
+pub use local_lease_outbox::LOCAL_LEASE_OUTBOX_EXTERNAL_EFFECTS;
+pub use local_lease_outbox::LOCAL_LEASE_OUTBOX_KG_WRITE_AUTHORITY;
+pub use local_lease_outbox::LOCAL_LEASE_OUTBOX_NAMESPACE;
+pub use local_lease_outbox::LOCAL_LEASE_OUTBOX_PRODUCTION_CALLER;
+pub use local_lease_outbox::LOCAL_LEASE_OUTBOX_SCHEMA_VERSION;
+pub use local_lease_outbox::LocalAdmission;
+pub use local_lease_outbox::LocalAdmissionFault;
+pub use local_lease_outbox::LocalLease;
+pub use local_lease_outbox::LocalLeaseAcquire;
+pub use local_lease_outbox::LocalLeaseOutbox;
+pub use local_lease_outbox::LocalLeaseOutboxCounts;
+pub use local_lease_outbox::LocalLeaseOutboxError;
+pub use local_lease_outbox::LocalLeaseState;
+pub use local_lease_outbox::LocalOutcomeReceipt;
+pub use local_lease_outbox::LocalOutcomeState;
+pub use local_lease_outbox::LocalReconcileOutcome;
+pub use local_lease_outbox::QueuedReceipt;
 pub use memory_admission::MemoryAdmissionEvidence;
 pub use memory_admission::MemoryAdmissionReceipt;
 pub use memory_admission::MemoryCandidateDraft;
@@ -200,6 +218,10 @@ mod compact_persistence_tests;
 #[cfg(test)]
 #[path = "local_compact_executor_tests.rs"]
 mod local_compact_executor_tests;
+
+#[cfg(test)]
+#[path = "local_lease_outbox_tests.rs"]
+mod local_lease_outbox_tests;
 
 #[cfg(test)]
 mod cognitive_test_support;

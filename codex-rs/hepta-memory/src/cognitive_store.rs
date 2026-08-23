@@ -107,9 +107,25 @@ const REQUIRED_SCHEMA_OBJECTS: &[(&str, &str)] = &[
     ("cognitive_compact_events_no_update", "trigger"),
     ("cognitive_compact_events_no_delete", "trigger"),
     ("cognitive_compact_events_owner_lookup", "index"),
+    ("cognitive_local_leases", "table"),
+    ("cognitive_local_leases_no_update", "trigger"),
+    ("cognitive_local_leases_no_delete", "trigger"),
+    ("cognitive_local_leases_one_active", "index"),
+    ("cognitive_local_leases_owner_lookup", "index"),
+    ("cognitive_local_events", "table"),
+    ("cognitive_local_events_no_update", "trigger"),
+    ("cognitive_local_events_no_delete", "trigger"),
+    ("cognitive_local_events_admission_occurrence", "index"),
+    ("cognitive_local_events_transition_kind", "index"),
+    ("cognitive_local_events_owner_lookup", "index"),
+    ("cognitive_local_outbox", "table"),
+    ("cognitive_local_outbox_no_update", "trigger"),
+    ("cognitive_local_outbox_no_delete", "trigger"),
+    ("cognitive_local_outbox_owner_lookup", "index"),
+    ("cognitive_local_outbox_occurrence_lookup", "index"),
 ];
 const REQUIRED_SCHEMA_ORACLE_SHA256: &str =
-    "928d47dab352b1ce114f6b6daf8aaffb3a8079646983182f6ceb2cfe6aea3394";
+    "84cee271f930df5bcec5f39093d1a2cfa78da5ba594b5e8838e327df7be29231";
 
 #[derive(Debug, thiserror::Error)]
 pub enum CognitiveStoreError {
@@ -388,9 +404,9 @@ async fn verify_store(pool: &SqlitePool, owner: &AgentId) -> Result<(), Cognitiv
             ))
         })
         .collect::<Result<Vec<_>, CognitiveStoreError>>()?;
-    if migrations != [(1, true), (2, true), (3, true), (4, true)] {
+    if migrations != [(1, true), (2, true), (3, true), (4, true), (5, true)] {
         return Err(CognitiveStoreError::Corrupt(format!(
-            "cognitive migration ledger is not the exact successful 0001/0002/0003/0004 set: {migrations:?}"
+            "cognitive migration ledger is not the exact successful 0001/0002/0003/0004/0005 set: {migrations:?}"
         )));
     }
     let mut schema_oracle_parts = Vec::with_capacity(REQUIRED_SCHEMA_OBJECTS.len());
@@ -613,6 +629,7 @@ async fn verify_store(pool: &SqlitePool, owner: &AgentId) -> Result<(), Cognitiv
     }
     verify_revision_fact_digests(pool, owner).await?;
     verify_current_projection_contents(pool, owner).await?;
+    crate::local_lease_outbox::verify_local_lease_outbox(pool, owner).await?;
     Ok(())
 }
 
