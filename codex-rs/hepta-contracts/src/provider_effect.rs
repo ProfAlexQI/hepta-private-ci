@@ -124,8 +124,9 @@ pub enum ProviderEffectAckStatus {
 /// This is intentionally a *local* state machine.  `Accepted` means only that
 /// the provider says it durably admitted the operation; it is not an external
 /// effect receipt.  `Indeterminate` is represented by the absence of a
-/// terminal acknowledgement and must quarantine the occurrence until a later
-/// status lookup (or an operator decision) closes it.
+/// terminal acknowledgement or an explicit uncertainty marker.  It must
+/// remain quarantined until a later status lookup (or an operator decision)
+/// closes it.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderEffectState {
@@ -329,7 +330,9 @@ pub enum ProviderEffectAppendDisposition {
 pub struct ProviderEffectJournal {
     intents: BTreeMap<String, ProviderEffectIntent>,
     acknowledgements: BTreeMap<String, Vec<ProviderEffectAck>>,
+    #[serde(default)]
     uncertainties: BTreeMap<String, Vec<ProviderEffectUncertainty>>,
+    #[serde(default)]
     quarantined: BTreeMap<String, bool>,
 }
 
