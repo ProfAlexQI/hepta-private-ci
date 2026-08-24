@@ -40,6 +40,7 @@ use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_memory::CognitiveAccess;
 use codex_hepta_memory::CognitiveScope;
 use codex_hepta_memory::CognitiveStore;
+use codex_hepta_memory::ForgetMemoryDraft;
 use codex_hepta_memory::LedgerSourceKind;
 use codex_hepta_memory::MemoryDraft;
 use codex_hepta_memory::MemoryLifecycleState;
@@ -492,7 +493,7 @@ async fn real_agentd_local_memory_review_is_read_only_and_replayable() -> Result
     let agent = fleet.register(AGENT_A, "workspace-local-memory-review")?;
     let model = responses::start_mock_server().await;
     MockResponsesConfig::new(&model.uri()).write(agent.layout.home_root())?;
-    let (memory_id, source_id) =
+    let (memory_id, source_id, _) =
         seed_verified_agent_memory_with_receipt(&agent, "local-memory-review", MEMORY).await?;
 
     fleet.start(&agent)?;
@@ -586,6 +587,125 @@ async fn real_agentd_local_memory_review_is_read_only_and_replayable() -> Result
         &["memory_fts", "recency"],
     )?;
     assert_memory_source(&second_request, &memory_id, &source_id)?;
+    restarted_product.shutdown().await?;
+    Ok(())
+}
+
+/// A host-owned tombstone must become visible to the real read-only product
+/// without granting the live Agent any cognitive write tool.  This closes the
+/// semantic gap between a store-level forget regression and the process path
+/// that actually builds the next provider request, and verifies that the
+/// tombstone survives an Agentd reopen.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[cfg_attr(
+    feature = "qualification-cognitive-write",
+    ignore = "qualification profile runs the separate bounded cognitive-write E2E"
+)]
+async fn real_agentd_local_memory_review_hides_host_tombstone_after_reopen() -> Result<()> {
+    const MEMORY: &str = "Host-owned tombstone checkpoint is visible only before withdrawal.";
+    const QUERY: &str = "host-owned tombstone checkpoint";
+    const FORGET_REASON: &str = "host-owned semantic tombstone regression";
+
+    let mut fleet = FleetHarness::new()?;
+    let agent = fleet.register(AGENT_A, "workspace-local-memory-tombstone")?;
+    let model = responses::start_mock_server().await;
+    MockResponsesConfig::new(&model.uri()).write(agent.layout.home_root())?;
+    let (memory_id, source_id, source_citation) =
+        seed_verified_agent_memory_with_receipt(&agent, "local-memory-tombstone", MEMORY).await?;
+
+    fleet.start(&agent)?;
+    let (control, _) = fleet.wait_ready(&agent, 1).await?;
+    let mut product = ProductClient::connect(&agent, &control).await?;
+    let thread = product
+        .start_thread_with_ephemeral(&agent.workspace, false)
+        .await?;
+
+    let before = responses::mount_sse_once(
+        &model,
+        final_sse_with_citation(
+            "local-memory-tombstone-before",
+            &format!("hepta-memory/{source_id}"),
+        ),
+    )
+    .await;
+    product.run_turn(&thread, QUERY).await?;
+    assert_physical_request_count_stable(&before, 1, "pre-tombstone memory-review").await?;
+    assert_thread_read_contains_cited_answer(
+        &product.read_thread(&thread).await?,
+        &format!("hepta-memory/{source_id}"),
+    )?;
+    let before_request = before.single_request();
+    assert_single_memory_reference_with_channels(
+        &before_request,
+        &memory_id,
+        1,
+        MEMORY,
+        &["memory_fts", "recency"],
+    )?;
+    assert_memory_source(&before_request, &memory_id, &source_id)?;
+    for operation in ["remember", "correct", "forget"] {
+        ensure!(
+            before_request
+                .tool_by_name(COGNITIVE_NAMESPACE, operation)
+                .is_none(),
+            "read-only memory-review exposed write tool {operation}"
+        );
+    }
+
+    // The host owns this bounded qualification mutation.  It is deliberately
+    // outside the Agent turn and uses the existing CAS/tombstone API; no live
+    // writer capability, provider effect, or production authority is enabled.
+    let store = CognitiveStore::open(&agent.layout).await?;
+    let forgotten = store
+        .forget_memory(
+            &CognitiveAccess::agent_private(agent.agent_id.clone()),
+            &codex_hepta_memory::StableMemoryId::parse(memory_id.clone())
+                .map_err(anyhow::Error::msg)?,
+            1,
+            &ForgetMemoryDraft {
+                scope: CognitiveScope::AgentPrivate,
+                reason: FORGET_REASON.to_string(),
+                valid_from_unix_seconds: i64::try_from(
+                    SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+                )?,
+                citations: vec![source_citation],
+            },
+        )
+        .await?;
+    ensure!(
+        forgotten.id.revision == 2,
+        "host tombstone did not advance revision"
+    );
+    ensure!(
+        matches!(forgotten.lifecycle, MemoryLifecycleState::Tombstoned { .. }),
+        "host forget did not append a tombstoned revision"
+    );
+
+    let after = responses::mount_sse_once(&model, final_sse("local-memory-tombstone-after")).await;
+    product.run_turn(&thread, QUERY).await?;
+    assert_physical_request_count_stable(&after, 1, "post-tombstone memory-review").await?;
+    assert_no_cognitive_reference(&after.single_request())?;
+    product.shutdown().await?;
+
+    fleet.supervisor.kill(&agent.agent_id)?;
+    wait_inactive(&mut fleet, &agent.agent_id).await?;
+    fleet.supervisor.restart(&agent.agent_id, Instant::now())?;
+    let generation = agent_generation(&fleet, &agent.agent_id)?;
+    ensure!(generation > 1, "Agentd reopen did not advance generation");
+    let restarted_control = fleet.control_client(&agent, generation)?;
+    fleet
+        .wait_until_ready(&agent.agent_id, &restarted_control)
+        .await?;
+    let mut restarted_product = ProductClient::connect(&agent, &restarted_control).await?;
+    let restarted_thread = restarted_product
+        .start_thread_with_ephemeral(&agent.workspace, false)
+        .await?;
+    let after_reopen =
+        responses::mount_sse_once(&model, final_sse("local-memory-tombstone-after-reopen")).await;
+    restarted_product.run_turn(&restarted_thread, QUERY).await?;
+    assert_physical_request_count_stable(&after_reopen, 1, "post-reopen tombstone memory-review")
+        .await?;
+    assert_no_cognitive_reference(&after_reopen.single_request())?;
     restarted_product.shutdown().await?;
     Ok(())
 }
@@ -2025,7 +2145,7 @@ async fn seed_verified_agent_memory_with_receipt(
     agent: &AgentFixture,
     stable_key: &str,
     content: &str,
-) -> Result<(String, String)> {
+) -> Result<(String, String, codex_hepta_memory::SourceRevisionId)> {
     let store = CognitiveStore::open(&agent.layout).await?;
     ensure!(store.owner_agent_id() == &agent.agent_id);
     let access = CognitiveAccess::agent_private(agent.agent_id.clone());
@@ -2063,5 +2183,6 @@ async fn seed_verified_agent_memory_with_receipt(
     Ok((
         memory.id.memory_id.as_str().to_string(),
         citation.source_id.as_str().to_string(),
+        citation,
     ))
 }
