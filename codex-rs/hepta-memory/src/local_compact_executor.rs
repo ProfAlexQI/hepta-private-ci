@@ -13,6 +13,8 @@ use std::time::UNIX_EPOCH;
 use sqlx::Row;
 use sqlx::Sqlite;
 use sqlx::Transaction;
+use sha2::Digest;
+use sha2::Sha256;
 use thiserror::Error;
 
 use crate::CognitiveStore;
@@ -29,6 +31,8 @@ use crate::CompactPersistenceSnapshot;
 use crate::CompactPersistenceState;
 use crate::CompactReconcileOutcome;
 use crate::CompactRehydrationRecord;
+use crate::LocalLeaseOutbox;
+use crate::LocalLeaseOutboxError;
 use crate::RehydrationPlan;
 use crate::RehydrationStatus;
 use crate::checkpoint_digest;
@@ -44,6 +48,8 @@ pub enum LocalCompactExecutorError {
     #[error(transparent)]
     Store(#[from] CognitiveStoreError),
     #[error(transparent)]
+    Lease(#[from] LocalLeaseOutboxError),
+    #[error(transparent)]
     Persistence(#[from] CompactPersistenceError),
     #[error("invalid local compact executor input: {0}")]
     Invalid(String),
@@ -53,6 +59,17 @@ pub enum LocalCompactExecutorError {
     Serialization(String),
     #[error("local compact executor clock failed: {0}")]
     Clock(String),
+}
+
+/// Cross-journal binding persisted on every compact event written by the
+/// schema-bound executor.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalCompactLeaseBinding {
+    pub lease_id: String,
+    pub lease_head_sha256: codex_hepta_contracts::Sha256Digest,
+    pub authority_epoch: u64,
+    pub owner_epoch: u64,
+    pub lease_expires_at_unix_seconds: u64,
 }
 
 /// One Agent-local append-only checkpoint executor.
@@ -66,6 +83,7 @@ pub struct LocalCompactExecutor {
     store: CognitiveStore,
     journal_id: String,
     fence: CompactFence,
+    lease_binding: Option<LocalCompactLeaseBinding>,
 }
 
 impl LocalCompactExecutor {
@@ -74,6 +92,60 @@ impl LocalCompactExecutor {
         journal_id: impl Into<String>,
         fence: CompactFence,
     ) -> Result<Self, LocalCompactExecutorError> {
+        Self::open_with_binding(store, journal_id, fence, None).await
+    }
+
+    pub(crate) async fn open_bound(
+        store: &CognitiveStore,
+        journal_id: impl Into<String>,
+        fence: CompactFence,
+        lease: &LocalLeaseOutbox,
+    ) -> Result<Self, LocalCompactExecutorError> {
+        if !store.is_same_local_store(lease.store()) {
+            return Err(LocalCompactExecutorError::Invalid(
+                "compact executor and lease belong to different local stores".to_string(),
+            ));
+        }
+        let binding = lease.binding().ok_or_else(|| {
+            LocalCompactExecutorError::Invalid(
+                "schema-bound compact executor requires an explicitly bound lease".to_string(),
+            )
+        })?;
+        if binding.authority_epoch != fence.authority_epoch
+            || binding.owner_epoch != fence.owner_epoch
+            || lease.generation() != fence.generation
+            || lease.fencing_token() != fence.fencing_token
+        {
+            return Err(LocalCompactExecutorError::Invalid(
+                "lease binding does not match compact fence".to_string(),
+            ));
+        }
+        let mut transaction = store
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let current = lease.verify_current_in_transaction(&mut transaction).await?;
+        let binding = LocalCompactLeaseBinding {
+            lease_id: current.lease_id.clone(),
+            lease_head_sha256: current.lease_sha256,
+            authority_epoch: binding.authority_epoch,
+            owner_epoch: binding.owner_epoch,
+            lease_expires_at_unix_seconds: binding.lease_expires_at_unix_seconds,
+        };
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Self::open_with_binding(store, journal_id, fence, Some(binding)).await
+    }
+
+    async fn open_with_binding(
+        store: &CognitiveStore,
+        journal_id: impl Into<String>,
+        fence: CompactFence,
+        lease_binding: Option<LocalCompactLeaseBinding>,
+    ) -> Result<Self, LocalCompactExecutorError> {
         let journal_id = journal_id.into();
         validate_text(&journal_id, "journal id", 512)?;
         validate_fence(&fence)?;
@@ -81,6 +153,7 @@ impl LocalCompactExecutor {
             store: store.clone(),
             journal_id,
             fence,
+            lease_binding,
         };
         // Opening always verifies the complete chain.  This is intentionally
         // done before any mutation so a damaged journal fails closed.
@@ -104,6 +177,10 @@ impl LocalCompactExecutor {
 
     pub fn fence(&self) -> &CompactFence {
         &self.fence
+    }
+
+    pub fn lease_binding(&self) -> Option<&LocalCompactLeaseBinding> {
+        self.lease_binding.as_ref()
     }
 
     pub(crate) fn store(&self) -> &CognitiveStore {
@@ -317,7 +394,9 @@ impl LocalCompactExecutor {
         let rows = sqlx::query(
             "SELECT sequence, owner_agent_id, authority_epoch, owner_epoch,
                     generation, fencing_token,
-                    event_json, previous_sha256, event_sha256
+                    event_json, previous_sha256, event_sha256,
+                    lease_id, lease_head_sha256, compact_previous_sha256,
+                    compact_event_binding_sha256
              FROM cognitive_compact_events
              WHERE journal_id = ?
                AND owner_agent_id = ?
@@ -362,6 +441,18 @@ impl LocalCompactExecutor {
             let event_sha256: String = row
                 .try_get("event_sha256")
                 .map_err(crate::cognitive_store::unavailable)?;
+            let lease_id: Option<String> = row
+                .try_get("lease_id")
+                .map_err(crate::cognitive_store::unavailable)?;
+            let lease_head_sha256: Option<String> = row
+                .try_get("lease_head_sha256")
+                .map_err(crate::cognitive_store::unavailable)?;
+            let compact_previous_sha256: Option<String> = row
+                .try_get("compact_previous_sha256")
+                .map_err(crate::cognitive_store::unavailable)?;
+            let compact_event_binding_sha256: Option<String> = row
+                .try_get("compact_event_binding_sha256")
+                .map_err(crate::cognitive_store::unavailable)?;
             let authority_epoch = authority_epoch
                 .and_then(|value| u64::try_from(value).ok())
                 .ok_or_else(|| {
@@ -397,6 +488,33 @@ impl LocalCompactExecutor {
                 return Err(LocalCompactExecutorError::Corrupt(
                     "event row metadata does not match its serialized event".to_string(),
                 ));
+            }
+            match (&self.lease_binding, lease_id, lease_head_sha256, compact_previous_sha256, compact_event_binding_sha256) {
+                (None, None, None, None, None) => {}
+                (Some(binding), Some(lease_id), Some(lease_head_sha256), Some(compact_previous_sha256), Some(compact_event_binding_sha256)) => {
+                    let lease_head_sha256 = codex_hepta_contracts::Sha256Digest::parse(lease_head_sha256)
+                        .map_err(|_| LocalCompactExecutorError::Corrupt("compact lease head digest is invalid".to_string()))?;
+                    let compact_previous_sha256 = codex_hepta_contracts::Sha256Digest::parse(compact_previous_sha256)
+                        .map_err(|_| LocalCompactExecutorError::Corrupt("compact previous digest is invalid".to_string()))?;
+                    let stored_binding = codex_hepta_contracts::Sha256Digest::parse(compact_event_binding_sha256)
+                        .map_err(|_| LocalCompactExecutorError::Corrupt("compact event binding digest is invalid".to_string()))?;
+                    if lease_id != binding.lease_id
+                        || lease_head_sha256 != binding.lease_head_sha256
+                        || compact_previous_sha256.as_str() != previous_sha256
+                    {
+                        return Err(LocalCompactExecutorError::Corrupt("compact lease/head binding mismatch".to_string()));
+                    }
+                    let expected_binding = compact_event_binding_digest(
+                        &lease_id,
+                        &lease_head_sha256,
+                        &compact_previous_sha256,
+                        &entry.event_sha256,
+                    );
+                    if stored_binding != expected_binding {
+                        return Err(LocalCompactExecutorError::Corrupt("compact event binding digest mismatch".to_string()));
+                    }
+                }
+                _ => return Err(LocalCompactExecutorError::Corrupt("compact lease binding columns are partially populated".to_string())),
             }
             entries.push(entry);
         }
@@ -435,8 +553,10 @@ impl LocalCompactExecutor {
             "INSERT INTO cognitive_compact_events (
                 journal_id, owner_agent_id, authority_epoch, owner_epoch,
                 sequence, generation, fencing_token,
-                event_json, previous_sha256, event_sha256, recorded_at_unix_seconds
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                event_json, previous_sha256, event_sha256,
+                lease_id, lease_head_sha256, compact_previous_sha256,
+                compact_event_binding_sha256, recorded_at_unix_seconds
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(&self.journal_id)
         .bind(self.store.owner_agent_id().as_str())
@@ -458,6 +578,23 @@ impl LocalCompactExecutor {
         .bind(event_json)
         .bind(entry.previous_sha256.as_str())
         .bind(entry.event_sha256.as_str())
+        .bind(self.lease_binding.as_ref().map(|binding| binding.lease_id.as_str()))
+        .bind(
+            self.lease_binding
+                .as_ref()
+                .map(|binding| binding.lease_head_sha256.as_str()),
+        )
+        .bind(self.lease_binding.as_ref().map(|_| entry.previous_sha256.as_str()))
+        .bind(self.lease_binding.as_ref().map(|binding| {
+            compact_event_binding_digest(
+                &binding.lease_id,
+                &binding.lease_head_sha256,
+                &entry.previous_sha256,
+                &entry.event_sha256,
+            )
+            .as_str()
+                .to_string()
+        }))
         .bind(recorded_at_unix_seconds)
         .execute(&mut **transaction)
         .await
@@ -487,6 +624,33 @@ impl CognitiveStore {
     ) -> Result<LocalCompactExecutor, LocalCompactExecutorError> {
         LocalCompactExecutor::open(self, journal_id, fence).await
     }
+
+    /// Opens a compact executor whose every SQLite event row is bound to the
+    /// exact active local lease head and explicit epochs/expiry.
+    pub async fn open_local_compact_executor_bound(
+        &self,
+        journal_id: impl Into<String>,
+        fence: CompactFence,
+        lease: &LocalLeaseOutbox,
+    ) -> Result<LocalCompactExecutor, LocalCompactExecutorError> {
+        LocalCompactExecutor::open_bound(self, journal_id, fence, lease).await
+    }
+}
+
+fn compact_event_binding_digest(
+    lease_id: &str,
+    lease_head_sha256: &codex_hepta_contracts::Sha256Digest,
+    compact_previous_sha256: &codex_hepta_contracts::Sha256Digest,
+    event_sha256: &codex_hepta_contracts::Sha256Digest,
+) -> codex_hepta_contracts::Sha256Digest {
+    let mut hasher = Sha256::new();
+    hasher.update(b"hepta-memory:compact-event-binding:v1");
+    hasher.update((lease_id.len() as u64).to_be_bytes());
+    hasher.update(lease_id.as_bytes());
+    hasher.update(lease_head_sha256.as_str().as_bytes());
+    hasher.update(compact_previous_sha256.as_str().as_bytes());
+    hasher.update(event_sha256.as_str().as_bytes());
+    codex_hepta_contracts::Sha256Digest::from_sha256_output(hasher.finalize())
 }
 
 fn validate_fence(fence: &CompactFence) -> Result<(), LocalCompactExecutorError> {

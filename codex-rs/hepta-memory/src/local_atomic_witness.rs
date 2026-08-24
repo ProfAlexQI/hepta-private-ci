@@ -10,9 +10,8 @@
 //!
 //! The writer is local-development-only.  It never writes KG/projection rows,
 //! dispatches an outbox, invokes a provider, or claims an external effect.
-//! The current lease schema does not persist authority/owner epochs or an
-//! expiry deadline, so this slice reports those protocol bindings as absent
-//! rather than inferring them from a digest or timestamp.
+//! Lease authority/owner epochs and the expiry deadline are persisted and
+//! checked inside the same transaction as the compact witness append.
 
 use codex_hepta_contracts::Sha256Digest;
 use serde::Deserialize;
@@ -41,15 +40,15 @@ pub const LOCAL_ATOMIC_WITNESS_EXTERNAL_EFFECTS: bool = false;
 pub const LOCAL_ATOMIC_WITNESS_KG_WRITE_AUTHORITY: bool = false;
 /// No callback or lifecycle contributor is installed by this module.
 pub const LOCAL_ATOMIC_WITNESS_LIFECYCLE_REGISTERED: bool = false;
-/// The current lease schema has no persisted authority epoch column.
-pub const LOCAL_ATOMIC_WITNESS_LEASE_EPOCH_BOUND: bool = false;
-/// The current lease schema has no persisted expiry deadline column.
-pub const LOCAL_ATOMIC_WITNESS_LEASE_EXPIRY_BOUND: bool = false;
+/// Lease authority/owner epochs are persisted and checked by the writer.
+pub const LOCAL_ATOMIC_WITNESS_LEASE_EPOCH_BOUND: bool = true;
+/// The lease expiry deadline is persisted and checked by the writer.
+pub const LOCAL_ATOMIC_WITNESS_LEASE_EXPIRY_BOUND: bool = true;
 
 // Keep identity fields on the same framing/domain as the H14/H15 runtime
 // envelope so a host can cross-check a writer receipt against its observed
-// read plan.  This does not make the missing lease epoch/expiry columns
-// authoritative; those remain explicit false flags below.
+// read plan.  Lease epochs and expiry are independently persisted in the
+// schema-bound lease row and are checked again in the writer transaction.
 const REHYDRATION_RUNTIME_BINDING_DOMAIN: &[u8] = b"hepta-memory:local-rehydration-runtime:v1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -105,14 +104,14 @@ impl LocalRehydrationWitnessReceipt {
                 "unsupported schema or namespace".to_string(),
             ));
         }
-        if self.external_effect
-            || self.kg_write_authority
-            || self.lifecycle_registered
-            || self.lease_epoch_bound
-            || self.lease_expiry_bound
-        {
+        if self.external_effect || self.kg_write_authority || self.lifecycle_registered {
             return Err(LocalAtomicWitnessError::Invalid(
                 "witness receipt crosses the local-development boundary".to_string(),
+            ));
+        }
+        if !self.lease_epoch_bound || !self.lease_expiry_bound {
+            return Err(LocalAtomicWitnessError::Invalid(
+                "witness receipt is missing schema-bound lease authority".to_string(),
             ));
         }
         if self.journal_id.trim().is_empty()
@@ -221,6 +220,27 @@ async fn write_local_rehydration_witness_inner(
         ));
     }
     let fence = executor.fence();
+    let compact_binding = executor.lease_binding().ok_or_else(|| {
+        LocalAtomicWitnessError::FenceMismatch(
+            "schema-bound lease/head binding is required for witness writes".to_string(),
+        )
+    })?;
+    let lease_binding = lease.binding().ok_or_else(|| {
+        LocalAtomicWitnessError::FenceMismatch(
+            "explicit authority/owner/expiry lease binding is required for witness writes"
+                .to_string(),
+        )
+    })?;
+    if compact_binding.lease_id != lease.lease_id()
+        || compact_binding.authority_epoch != lease_binding.authority_epoch
+        || compact_binding.owner_epoch != lease_binding.owner_epoch
+        || compact_binding.lease_expires_at_unix_seconds
+            != lease_binding.lease_expires_at_unix_seconds
+    {
+        return Err(LocalAtomicWitnessError::FenceMismatch(
+            "lease and compact schema bindings do not match".to_string(),
+        ));
+    }
     if lease.generation() != fence.generation || lease.fencing_token() != fence.fencing_token {
         return Err(LocalAtomicWitnessError::FenceMismatch(
             "lease generation/token does not match compact fence".to_string(),
@@ -243,6 +263,11 @@ async fn write_local_rehydration_witness_inner(
         .await?;
     if current_lease.generation != fence.generation
         || current_lease.fencing_token != fence.fencing_token
+        || current_lease.authority_epoch != Some(compact_binding.authority_epoch)
+        || current_lease.owner_epoch != Some(compact_binding.owner_epoch)
+        || current_lease.lease_expires_at_unix_seconds
+            != Some(compact_binding.lease_expires_at_unix_seconds)
+        || current_lease.lease_sha256 != compact_binding.lease_head_sha256
     {
         return Err(LocalAtomicWitnessError::FenceMismatch(
             "current lease head changed before witness append".to_string(),

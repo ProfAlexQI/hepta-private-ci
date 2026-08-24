@@ -1,6 +1,7 @@
 use codex_hepta_contracts::Sha256Digest;
 use pretty_assertions::assert_eq;
 use tempfile::TempDir;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::CognitiveStore;
 use crate::CompactCheckpoint;
@@ -73,15 +74,27 @@ async fn prepared(
         .await
         .expect("store");
     let current_fence = fence();
+    let expires_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_secs()
+        + 3600;
     let lease = match store
-        .acquire_local_lease("lease:e16", 1, current_fence.fencing_token.clone())
+        .acquire_local_lease_bound(
+            "lease:e16",
+            current_fence.authority_epoch,
+            current_fence.owner_epoch,
+            1,
+            current_fence.fencing_token.clone(),
+            expires_at,
+        )
         .await
         .expect("lease")
     {
         LocalLeaseAcquire::Acquired(lease) | LocalLeaseAcquire::Replay(lease) => lease,
     };
     let executor = store
-        .open_local_compact_executor("journal:e16", current_fence.clone())
+        .open_local_compact_executor_bound("journal:e16", current_fence.clone(), &lease)
         .await
         .expect("executor");
     let current = snapshot(current_fence.clone());
@@ -121,8 +134,8 @@ async fn writer_couples_lease_fence_and_compact_witness_idempotently() {
     assert!(!first_receipt.external_effect);
     assert!(!first_receipt.kg_write_authority);
     assert!(!first_receipt.lifecycle_registered);
-    assert!(!first_receipt.lease_epoch_bound);
-    assert!(!first_receipt.lease_expiry_bound);
+    assert!(first_receipt.lease_epoch_bound);
+    assert!(first_receipt.lease_expiry_bound);
 
     let replay = store
         .write_local_rehydration_witness(&lease, &executor, "operation:e16", &checkpoint, 0)
@@ -209,8 +222,8 @@ fn writer_boundary_flags_are_fail_closed() {
     assert!(!LOCAL_ATOMIC_WITNESS_EXTERNAL_EFFECTS);
     assert!(!LOCAL_ATOMIC_WITNESS_KG_WRITE_AUTHORITY);
     assert!(!LOCAL_ATOMIC_WITNESS_LIFECYCLE_REGISTERED);
-    assert!(!LOCAL_ATOMIC_WITNESS_LEASE_EPOCH_BOUND);
-    assert!(!LOCAL_ATOMIC_WITNESS_LEASE_EXPIRY_BOUND);
+    assert!(LOCAL_ATOMIC_WITNESS_LEASE_EPOCH_BOUND);
+    assert!(LOCAL_ATOMIC_WITNESS_LEASE_EXPIRY_BOUND);
 }
 
 #[tokio::test]

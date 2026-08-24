@@ -79,6 +79,43 @@ pub enum LocalLeaseState {
     RolledBack,
 }
 
+/// Explicit authority/fence binding persisted for the E.16 lease writer.
+///
+/// The original H8 API intentionally accepted only generation/token.  Those
+/// calls remain valid as an unbound local qualification seam, but they cannot
+/// authorize the E.16 compact witness writer.  A bound lease must carry all
+/// three values in SQLite and the writer rechecks them inside its transaction.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct LocalLeaseBinding {
+    pub authority_epoch: u64,
+    pub owner_epoch: u64,
+    pub lease_expires_at_unix_seconds: u64,
+}
+
+impl LocalLeaseBinding {
+    pub fn new(
+        authority_epoch: u64,
+        owner_epoch: u64,
+        lease_expires_at_unix_seconds: u64,
+    ) -> Result<Self, LocalLeaseOutboxError> {
+        if authority_epoch == 0 || owner_epoch == 0 {
+            return Err(LocalLeaseOutboxError::Invalid(
+                "lease authority and owner epochs must be non-zero".to_string(),
+            ));
+        }
+        if lease_expires_at_unix_seconds == 0 {
+            return Err(LocalLeaseOutboxError::Invalid(
+                "lease expiry must be non-zero".to_string(),
+            ));
+        }
+        Ok(Self {
+            authority_epoch,
+            owner_epoch,
+            lease_expires_at_unix_seconds,
+        })
+    }
+}
+
 impl LocalLeaseState {
     fn as_str(self) -> &'static str {
         match self {
@@ -106,6 +143,11 @@ pub struct LocalLease {
     pub generation: u64,
     pub fencing_token: String,
     pub state: LocalLeaseState,
+    /// `None` denotes a legacy H8 lease.  Such a lease remains usable by the
+    /// compatibility event/outbox API but is rejected by the E.16 writer.
+    pub authority_epoch: Option<u64>,
+    pub owner_epoch: Option<u64>,
+    pub lease_expires_at_unix_seconds: Option<u64>,
     pub previous_sha256: Sha256Digest,
     pub lease_sha256: Sha256Digest,
 }
@@ -196,6 +238,9 @@ pub struct LocalLeaseOutbox {
     owner_agent_id: AgentId,
     generation: u64,
     fencing_token: String,
+    authority_epoch: Option<u64>,
+    owner_epoch: Option<u64>,
+    lease_expires_at_unix_seconds: Option<u64>,
 }
 
 impl std::fmt::Debug for LocalLeaseOutbox {
@@ -205,6 +250,12 @@ impl std::fmt::Debug for LocalLeaseOutbox {
             .field("lease_id", &self.lease_id)
             .field("owner_agent_id", &self.owner_agent_id)
             .field("generation", &self.generation)
+            .field("authority_epoch", &self.authority_epoch)
+            .field("owner_epoch", &self.owner_epoch)
+            .field(
+                "lease_expires_at_unix_seconds",
+                &self.lease_expires_at_unix_seconds,
+            )
             .field("fencing_token", &"<redacted>")
             .finish()
     }
@@ -218,11 +269,44 @@ impl LocalLeaseOutbox {
         generation: u64,
         fencing_token: impl Into<String>,
     ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        Self::acquire_with_binding(store, lease_id, generation, fencing_token, None).await
+    }
+
+    /// Acquire or replay a lease with an explicit authority/owner epoch and
+    /// expiry binding.  This is the only acquisition path accepted by the
+    /// schema-bound compact witness writer.
+    pub(crate) async fn acquire_bound(
+        store: &CognitiveStore,
+        lease_id: impl Into<String>,
+        binding: LocalLeaseBinding,
+        generation: u64,
+        fencing_token: impl Into<String>,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        Self::acquire_with_binding(
+            store,
+            lease_id,
+            generation,
+            fencing_token,
+            Some(binding),
+        )
+        .await
+    }
+
+    async fn acquire_with_binding(
+        store: &CognitiveStore,
+        lease_id: impl Into<String>,
+        generation: u64,
+        fencing_token: impl Into<String>,
+        binding: Option<LocalLeaseBinding>,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
         let lease_id = lease_id.into();
         let fencing_token = fencing_token.into();
         validate_text(&lease_id, "lease id", 512)?;
         validate_generation(generation)?;
         validate_text(&fencing_token, "fencing token", 256)?;
+        if let Some(binding) = binding.as_ref() {
+            validate_lease_binding(binding)?;
+        }
         let mut transaction = store
             .pool
             .begin_with("BEGIN IMMEDIATE")
@@ -245,6 +329,7 @@ impl LocalLeaseOutbox {
                     &fencing_token,
                     LocalLeaseState::Active,
                     None,
+                    binding.as_ref(),
                 )
                 .await?;
                 (lease, false)
@@ -254,6 +339,14 @@ impl LocalLeaseOutbox {
                     && previous.owner_agent_id == *store.owner_agent_id()
                     && previous.generation == generation
                     && previous.fencing_token == fencing_token
+                    && previous.authority_epoch
+                        == binding.as_ref().map(|value| value.authority_epoch)
+                    && previous.owner_epoch
+                        == binding.as_ref().map(|value| value.owner_epoch)
+                    && previous.lease_expires_at_unix_seconds
+                        == binding
+                            .as_ref()
+                            .map(|value| value.lease_expires_at_unix_seconds)
                 {
                     (previous, true)
                 } else {
@@ -288,6 +381,7 @@ impl LocalLeaseOutbox {
                         &fencing_token,
                         LocalLeaseState::Active,
                         Some(&previous),
+                        binding.as_ref(),
                     )
                     .await?;
                     (lease, false)
@@ -359,11 +453,52 @@ impl LocalLeaseOutbox {
         generation: u64,
         fencing_token: impl Into<String>,
     ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        Self::acquire_after_head_with_binding(
+            store,
+            lease_id,
+            expected_head,
+            generation,
+            fencing_token,
+            None,
+        )
+        .await
+    }
+
+    pub(crate) async fn acquire_after_head_bound(
+        store: &CognitiveStore,
+        lease_id: impl Into<String>,
+        expected_head: LocalLease,
+        binding: LocalLeaseBinding,
+        generation: u64,
+        fencing_token: impl Into<String>,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        Self::acquire_after_head_with_binding(
+            store,
+            lease_id,
+            expected_head,
+            generation,
+            fencing_token,
+            Some(binding),
+        )
+        .await
+    }
+
+    async fn acquire_after_head_with_binding(
+        store: &CognitiveStore,
+        lease_id: impl Into<String>,
+        expected_head: LocalLease,
+        generation: u64,
+        fencing_token: impl Into<String>,
+        binding: Option<LocalLeaseBinding>,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
         let lease_id = lease_id.into();
         let fencing_token = fencing_token.into();
         validate_text(&lease_id, "lease id", 512)?;
         validate_generation(generation)?;
         validate_text(&fencing_token, "fencing token", 256)?;
+        if let Some(binding) = binding.as_ref() {
+            validate_lease_binding(binding)?;
+        }
         validate_generation(expected_head.generation)?;
         if expected_head.lease_id != lease_id {
             return Err(LocalLeaseOutboxError::CasConflict(
@@ -423,6 +558,7 @@ impl LocalLeaseOutbox {
             &fencing_token,
             LocalLeaseState::Active,
             Some(&previous),
+            binding.as_ref(),
         )
         .await?;
         transaction
@@ -454,6 +590,9 @@ impl LocalLeaseOutbox {
             owner_agent_id: lease.owner_agent_id.clone(),
             generation: lease.generation,
             fencing_token: lease.fencing_token.clone(),
+            authority_epoch: lease.authority_epoch,
+            owner_epoch: lease.owner_epoch,
+            lease_expires_at_unix_seconds: lease.lease_expires_at_unix_seconds,
         })
     }
 
@@ -471,6 +610,30 @@ impl LocalLeaseOutbox {
 
     pub fn fencing_token(&self) -> &str {
         &self.fencing_token
+    }
+
+    /// Returns the explicit schema binding, if this handle was acquired via
+    /// `acquire_local_lease_bound`.  Legacy H8 handles return `None` and are
+    /// intentionally ineligible for the E.16 compact witness writer.
+    pub fn binding(&self) -> Option<LocalLeaseBinding> {
+        match (
+            self.authority_epoch,
+            self.owner_epoch,
+            self.lease_expires_at_unix_seconds,
+        ) {
+            (Some(authority_epoch), Some(owner_epoch), Some(lease_expires_at_unix_seconds)) => {
+                Some(LocalLeaseBinding {
+                    authority_epoch,
+                    owner_epoch,
+                    lease_expires_at_unix_seconds,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    pub fn is_explicitly_bound(&self) -> bool {
+        self.binding().is_some()
     }
 
     /// Re-verify the active lease and both append-only journal chains before
@@ -575,6 +738,7 @@ impl LocalLeaseOutbox {
             ));
         };
         ensure_current_active(&previous, self)?;
+        let binding = self.binding();
         let lease = append_lease(
             &mut transaction,
             &self.lease_id,
@@ -583,6 +747,7 @@ impl LocalLeaseOutbox {
             &self.fencing_token,
             state,
             Some(&previous),
+            binding.as_ref(),
         )
         .await?;
         transaction
@@ -1129,6 +1294,7 @@ impl LocalLeaseOutbox {
                 .map_err(crate::cognitive_store::unavailable)?;
             return Ok(LocalReplayFinalization::Queued(queued));
         }
+        let binding = self.binding();
         let released = append_lease(
             &mut transaction,
             &self.lease_id,
@@ -1137,6 +1303,7 @@ impl LocalLeaseOutbox {
             &self.fencing_token,
             LocalLeaseState::Released,
             Some(&lease),
+            binding.as_ref(),
         )
         .await?;
         transaction
@@ -1223,6 +1390,33 @@ impl CognitiveStore {
         LocalLeaseOutbox::acquire(self, lease_id, generation, fencing_token).await
     }
 
+    /// Opens or replays a lease with persisted authority/owner epochs and an
+    /// absolute Unix-seconds expiry.  The returned handle is eligible for the
+    /// schema-bound compact witness path.
+    pub async fn acquire_local_lease_bound(
+        &self,
+        lease_id: impl Into<String>,
+        authority_epoch: u64,
+        owner_epoch: u64,
+        generation: u64,
+        fencing_token: impl Into<String>,
+        lease_expires_at_unix_seconds: u64,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        let binding = LocalLeaseBinding::new(
+            authority_epoch,
+            owner_epoch,
+            lease_expires_at_unix_seconds,
+        )?;
+        LocalLeaseOutbox::acquire_bound(
+            self,
+            lease_id,
+            binding,
+            generation,
+            fencing_token,
+        )
+        .await
+    }
+
     pub async fn acquire_local_lease_after(
         &self,
         lease_id: impl Into<String>,
@@ -1258,6 +1452,32 @@ impl CognitiveStore {
             self,
             lease_id,
             expected_head,
+            generation,
+            fencing_token,
+        )
+        .await
+    }
+
+    pub async fn acquire_local_lease_after_head_bound(
+        &self,
+        lease_id: impl Into<String>,
+        expected_head: LocalLease,
+        authority_epoch: u64,
+        owner_epoch: u64,
+        generation: u64,
+        fencing_token: impl Into<String>,
+        lease_expires_at_unix_seconds: u64,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        let binding = LocalLeaseBinding::new(
+            authority_epoch,
+            owner_epoch,
+            lease_expires_at_unix_seconds,
+        )?;
+        LocalLeaseOutbox::acquire_after_head_bound(
+            self,
+            lease_id,
+            expected_head,
+            binding,
             generation,
             fencing_token,
         )
@@ -1344,6 +1564,7 @@ async fn append_lease(
     fencing_token: &str,
     state: LocalLeaseState,
     previous: Option<&LocalLease>,
+    binding: Option<&LocalLeaseBinding>,
 ) -> Result<LocalLease, LocalLeaseOutboxError> {
     let sequence = previous.map_or(1, |lease| lease.lease_sequence + 1);
     let previous_sha256 = previous
@@ -1357,13 +1578,15 @@ async fn append_lease(
         fencing_token,
         state,
         &previous_sha256,
+        binding,
     );
     let recorded_at = now_unix_seconds()?;
     sqlx::query(
         "INSERT INTO cognitive_local_leases (
             lease_id, lease_sequence, owner_agent_id, generation, fencing_token,
-            state, previous_sha256, lease_sha256, recorded_at_unix_seconds
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            state, authority_epoch, owner_epoch, lease_expires_at_unix_seconds,
+            previous_sha256, lease_sha256, recorded_at_unix_seconds
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(lease_id)
     .bind(to_i64(sequence, "lease sequence")?)
@@ -1371,6 +1594,15 @@ async fn append_lease(
     .bind(to_i64(generation, "lease generation")?)
     .bind(fencing_token)
     .bind(state.as_str())
+    .bind(binding.map(|value| to_i64(value.authority_epoch, "authority epoch"))
+        .transpose()?)
+    .bind(binding.map(|value| to_i64(value.owner_epoch, "owner epoch"))
+        .transpose()?)
+    .bind(
+        binding
+            .map(|value| to_i64(value.lease_expires_at_unix_seconds, "lease expiry"))
+            .transpose()?,
+    )
     .bind(previous_sha256.as_str())
     .bind(lease_sha256.as_str())
     .bind(recorded_at)
@@ -1384,6 +1616,9 @@ async fn append_lease(
         generation,
         fencing_token: fencing_token.to_string(),
         state,
+        authority_epoch: binding.map(|value| value.authority_epoch),
+        owner_epoch: binding.map(|value| value.owner_epoch),
+        lease_expires_at_unix_seconds: binding.map(|value| value.lease_expires_at_unix_seconds),
         previous_sha256,
         lease_sha256,
     })
@@ -1413,7 +1648,8 @@ async fn load_lease_chain(
 ) -> Result<(Option<LocalLease>, usize), LocalLeaseOutboxError> {
     let rows = sqlx::query(
         "SELECT lease_sequence, owner_agent_id, generation, fencing_token,
-                state, previous_sha256, lease_sha256
+                state, authority_epoch, owner_epoch,
+                lease_expires_at_unix_seconds, previous_sha256, lease_sha256
          FROM cognitive_local_leases
          WHERE lease_id = ?
          ORDER BY lease_sequence",
@@ -1450,6 +1686,25 @@ async fn load_lease_chain(
                 .map_err(crate::cognitive_store::unavailable)?
                 .as_str(),
         )?;
+        let authority_epoch = optional_u64(row, "authority_epoch")?;
+        let owner_epoch = optional_u64(row, "owner_epoch")?;
+        let lease_expires_at_unix_seconds =
+            optional_u64(row, "lease_expires_at_unix_seconds")?;
+        let binding = match (
+            authority_epoch,
+            owner_epoch,
+            lease_expires_at_unix_seconds,
+        ) {
+            (None, None, None) => None,
+            (Some(authority_epoch), Some(owner_epoch), Some(lease_expires_at_unix_seconds)) => {
+                Some(LocalLeaseBinding::new(
+                    authority_epoch,
+                    owner_epoch,
+                    lease_expires_at_unix_seconds,
+                )?)
+            }
+            _ => return Err(corrupt("lease binding columns are partially populated")),
+        };
         if index == 0 && (state != LocalLeaseState::Active || generation != 1) {
             return Err(corrupt(
                 "lease journal must begin at generation one in active state",
@@ -1468,6 +1723,7 @@ async fn load_lease_chain(
             &fencing_token,
             state,
             &previous,
+            binding.as_ref(),
         );
         if lease_sha256 != expected_digest {
             return Err(corrupt("lease digest mismatch"));
@@ -1476,6 +1732,19 @@ async fn load_lease_chain(
             let prior = latest.as_ref().expect("lease prior row");
             if generation < prior.generation {
                 return Err(corrupt("lease generation regressed"));
+            }
+            if state != LocalLeaseState::Active && binding != prior_binding(prior) {
+                return Err(corrupt(
+                    "lease terminal row changed authority/owner/expiry binding",
+                ));
+            }
+            if state == LocalLeaseState::Active
+                && prior_binding(prior).is_some()
+                && binding.is_none()
+            {
+                return Err(corrupt(
+                    "bound lease generation cannot downgrade to an unbound lease",
+                ));
             }
             if state == LocalLeaseState::Active {
                 if prior.state == LocalLeaseState::Active {
@@ -1505,6 +1774,9 @@ async fn load_lease_chain(
             generation,
             fencing_token,
             state,
+            authority_epoch,
+            owner_epoch,
+            lease_expires_at_unix_seconds,
             previous_sha256,
             lease_sha256: lease_sha256.clone(),
         };
@@ -1997,7 +2269,33 @@ fn ensure_current_active(
             "local lease generation or fencing token changed".to_string(),
         ));
     }
+    if lease.authority_epoch != handle.authority_epoch
+        || lease.owner_epoch != handle.owner_epoch
+        || lease.lease_expires_at_unix_seconds != handle.lease_expires_at_unix_seconds
+    {
+        return Err(LocalLeaseOutboxError::StaleFence(
+            "local lease authority/owner/expiry binding changed".to_string(),
+        ));
+    }
+    if let Some(expires_at) = lease.lease_expires_at_unix_seconds {
+        let now = u64::try_from(now_unix_seconds()?)
+            .map_err(|_| LocalLeaseOutboxError::Clock("clock before Unix epoch".to_string()))?;
+        if now >= expires_at {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "local lease has expired".to_string(),
+            ));
+        }
+    }
     Ok(())
+}
+
+fn validate_lease_binding(binding: &LocalLeaseBinding) -> Result<(), LocalLeaseOutboxError> {
+    LocalLeaseBinding::new(
+        binding.authority_epoch,
+        binding.owner_epoch,
+        binding.lease_expires_at_unix_seconds,
+    )
+    .map(|_| ())
 }
 
 fn lease_digest(
@@ -2008,18 +2306,40 @@ fn lease_digest(
     fencing_token: &str,
     state: LocalLeaseState,
     previous: &Sha256Digest,
+    binding: Option<&LocalLeaseBinding>,
 ) -> Sha256Digest {
+    let sequence_bytes = sequence.to_be_bytes();
+    let generation_bytes = generation.to_be_bytes();
+    let authority_bytes = binding.map(|value| value.authority_epoch.to_be_bytes());
+    let owner_epoch_bytes = binding.map(|value| value.owner_epoch.to_be_bytes());
+    let expiry_bytes = binding.map(|value| value.lease_expires_at_unix_seconds.to_be_bytes());
+    let mut parts = vec![
+        lease_id.as_bytes(),
+        &sequence_bytes,
+        owner.as_str().as_bytes(),
+        &generation_bytes,
+        fencing_token.as_bytes(),
+        state.as_str().as_bytes(),
+    ];
+    if let (Some(authority), Some(owner_epoch), Some(expiry)) =
+        (
+            authority_bytes.as_ref(),
+            owner_epoch_bytes.as_ref(),
+            expiry_bytes.as_ref(),
+        )
+    {
+        parts.push(authority);
+        parts.push(owner_epoch);
+        parts.push(expiry);
+    }
+    parts.push(previous.as_str().as_bytes());
     digest_parts(
-        b"hepta-memory:local-lease:v1",
-        &[
-            lease_id.as_bytes(),
-            &sequence.to_be_bytes(),
-            owner.as_str().as_bytes(),
-            &generation.to_be_bytes(),
-            fencing_token.as_bytes(),
-            state.as_str().as_bytes(),
-            previous.as_str().as_bytes(),
-        ],
+        if binding.is_some() {
+            b"hepta-memory:local-lease:v2"
+        } else {
+            b"hepta-memory:local-lease:v1"
+        },
+        &parts,
     )
 }
 
@@ -2143,6 +2463,37 @@ fn read_u64(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<u64, LocalLea
         .try_get(column)
         .map_err(crate::cognitive_store::unavailable)?;
     u64::try_from(value).map_err(|_| corrupt(format!("{column} is negative")))
+}
+
+fn optional_u64(
+    row: &sqlx::sqlite::SqliteRow,
+    column: &str,
+) -> Result<Option<u64>, LocalLeaseOutboxError> {
+    let value: Option<i64> = row
+        .try_get(column)
+        .map_err(crate::cognitive_store::unavailable)?;
+    value
+        .map(|value| {
+            u64::try_from(value).map_err(|_| corrupt(format!("{column} is negative")))
+        })
+        .transpose()
+}
+
+fn prior_binding(lease: &LocalLease) -> Option<LocalLeaseBinding> {
+    match (
+        lease.authority_epoch,
+        lease.owner_epoch,
+        lease.lease_expires_at_unix_seconds,
+    ) {
+        (Some(authority_epoch), Some(owner_epoch), Some(lease_expires_at_unix_seconds)) => {
+            Some(LocalLeaseBinding {
+                authority_epoch,
+                owner_epoch,
+                lease_expires_at_unix_seconds,
+            })
+        }
+        _ => None,
+    }
 }
 
 fn digest_from_row(
