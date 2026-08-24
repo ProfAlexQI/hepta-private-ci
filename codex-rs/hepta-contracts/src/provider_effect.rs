@@ -577,6 +577,178 @@ pub trait ProviderEffectAdapter: Send + Sync {
     ) -> ProviderEffectFuture<'a, ProviderEffectLookup>;
 }
 
+/// Error returned by the local dispatch/reconcile coordinator.
+///
+/// The coordinator is deliberately storage-local: it makes the no-blind-retry
+/// decision around a [`ProviderEffectAdapter`], but it does not turn an
+/// adapter's claim into production authority.  A real adapter must still be
+/// backed by a provider-owned durable occurrence key, status lookup, and
+/// payload-bound operation receipt before it may report the supported
+/// capability.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProviderEffectCoordinatorError {
+    Binding(ProviderEffectBindingError),
+}
+
+impl From<ProviderEffectBindingError> for ProviderEffectCoordinatorError {
+    fn from(error: ProviderEffectBindingError) -> Self {
+        Self::Binding(error)
+    }
+}
+
+/// Result of one coordinator call. `physical_dispatch_attempted` is an
+/// observation of the adapter call, not a claim that an external effect was
+/// applied.  `false` means the local journal already had a non-pending state
+/// and the coordinator intentionally did not call the adapter again.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProviderEffectDispatchReceipt {
+    pub state: ProviderEffectState,
+    pub physical_dispatch_attempted: bool,
+}
+
+/// Local state-machine wrapper that enforces intent-before-send and
+/// no-blind-retry semantics for any provider adapter.
+///
+/// This is useful for qualification and for embedding a future provider-owned
+/// adapter.  It never upgrades `Unsupported` to `KeyAndStatusLookup`, never
+/// retries an `Accepted`/`Indeterminate` occurrence, and never treats a lost
+/// response as a successful effect.
+pub struct ProviderEffectCoordinator<A> {
+    adapter: A,
+    journal: ProviderEffectJournal,
+}
+
+impl<A> ProviderEffectCoordinator<A>
+where
+    A: ProviderEffectAdapter,
+{
+    pub fn new(adapter: A) -> Self {
+        Self {
+            adapter,
+            journal: ProviderEffectJournal::default(),
+        }
+    }
+
+    pub fn with_journal(adapter: A, journal: ProviderEffectJournal) -> Self {
+        Self { adapter, journal }
+    }
+
+    pub fn journal(&self) -> &ProviderEffectJournal {
+        &self.journal
+    }
+
+    pub fn journal_mut(&mut self) -> &mut ProviderEffectJournal {
+        &mut self.journal
+    }
+
+    pub fn adapter(&self) -> &A {
+        &self.adapter
+    }
+
+    pub fn adapter_mut(&mut self) -> &mut A {
+        &mut self.adapter
+    }
+
+    pub fn into_parts(self) -> (A, ProviderEffectJournal) {
+        (self.adapter, self.journal)
+    }
+
+    /// Record the intent and make at most one physical dispatch attempt.
+    ///
+    /// Pending is the only state that permits a send.  Accepted and
+    /// Indeterminate are quarantined until [`Self::reconcile`] obtains a
+    /// provider lookup; terminal states are returned without touching the
+    /// adapter.  A provider response that cannot be bound to the exact intent
+    /// is an error and never advances the journal.
+    pub async fn dispatch_once(
+        &mut self,
+        intent: ProviderEffectIntent,
+    ) -> Result<ProviderEffectDispatchReceipt, ProviderEffectCoordinatorError> {
+        let key = intent.key.clone();
+        self.journal.record_intent(intent.clone())?;
+        let current = self
+            .journal
+            .state(&key)
+            .unwrap_or(ProviderEffectState::Indeterminate);
+        if current != ProviderEffectState::Pending {
+            return Ok(ProviderEffectDispatchReceipt {
+                state: current,
+                physical_dispatch_attempted: false,
+            });
+        }
+
+        let dispatch = self.adapter.dispatch(&intent).await;
+        let state = match dispatch {
+            ProviderEffectDispatch::Ack(ack) => {
+                self.journal.record_ack(ack)?;
+                self.journal
+                    .state(&key)
+                    .unwrap_or(ProviderEffectState::Indeterminate)
+            }
+            ProviderEffectDispatch::Rejected { reason_code } => {
+                self.journal.mark_indeterminate(
+                    &key,
+                    validated_reason_code(&reason_code, "provider_dispatch_rejected"),
+                )?;
+                ProviderEffectState::Indeterminate
+            }
+            ProviderEffectDispatch::NotDispatched { reason_code } => {
+                // The adapter says it did not send, but the coordinator has
+                // no independent physical boundary proof.  Quarantine rather
+                // than silently converting this observation into a safe
+                // retry or a terminal rejection.
+                self.journal.mark_indeterminate(
+                    &key,
+                    validated_reason_code(&reason_code, "provider_not_dispatched"),
+                )?;
+                ProviderEffectState::Indeterminate
+            }
+            ProviderEffectDispatch::Unknown => {
+                self.journal
+                    .mark_indeterminate(&key, "provider_dispatch_unknown")?;
+                ProviderEffectState::Indeterminate
+            }
+        };
+        Ok(ProviderEffectDispatchReceipt {
+            state,
+            physical_dispatch_attempted: true,
+        })
+    }
+
+    /// Ask the adapter for a key-bound status and reconcile it locally.
+    ///
+    /// Terminal local state is authoritative and avoids an unnecessary
+    /// provider call.  Unsupported adapters still quarantine the occurrence
+    /// and return `UnsupportedCapability` through the coordinator error.
+    pub async fn reconcile(
+        &mut self,
+        key: &ProviderEffectKey,
+    ) -> Result<ProviderEffectState, ProviderEffectCoordinatorError> {
+        if let Some(state) = self.journal.state(key) {
+            if state.is_terminal() {
+                return Ok(state);
+            }
+        }
+        let lookup = self.adapter.lookup(key).await;
+        self.journal
+            .reconcile(self.adapter.capability(), key, lookup)
+            .map_err(ProviderEffectCoordinatorError::from)
+    }
+}
+
+fn validated_reason_code<'a>(value: &'a str, fallback: &'static str) -> &'a str {
+    if value.len() <= 128
+        && !value.is_empty()
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-' | b'.')
+        })
+    {
+        value
+    } else {
+        fallback
+    }
+}
+
 fn validate_non_empty(label: &'static str, value: &str) -> Result<(), ProviderEffectBindingError> {
     if value.trim().is_empty() {
         return Err(ProviderEffectBindingError::EmptyField(label));
@@ -954,5 +1126,124 @@ mod tests {
             serde_json::from_slice(&encoded).expect("deserialize journal");
         assert_eq!(decoded.state(&key), Some(ProviderEffectState::Completed));
         assert_eq!(decoded, journal);
+    }
+
+    #[derive(Default)]
+    struct ScriptedAdapter {
+        capability: ProviderEffectIdempotencyCapability,
+        dispatches: std::sync::atomic::AtomicU32,
+        dispatch_result: Option<ProviderEffectDispatch>,
+        lookup_result: Option<ProviderEffectLookup>,
+    }
+
+    impl ProviderEffectAdapter for ScriptedAdapter {
+        fn capability(&self) -> ProviderEffectIdempotencyCapability {
+            self.capability
+        }
+
+        fn dispatch<'a>(
+            &'a self,
+            _intent: &'a ProviderEffectIntent,
+        ) -> ProviderEffectFuture<'a, ProviderEffectDispatch> {
+            self.dispatches
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let result = self
+                .dispatch_result
+                .clone()
+                .unwrap_or(ProviderEffectDispatch::Unknown);
+            Box::pin(std::future::ready(result))
+        }
+
+        fn lookup<'a>(
+            &'a self,
+            _key: &'a ProviderEffectKey,
+        ) -> ProviderEffectFuture<'a, ProviderEffectLookup> {
+            let result = self
+                .lookup_result
+                .clone()
+                .unwrap_or(ProviderEffectLookup::Unknown);
+            Box::pin(std::future::ready(result))
+        }
+    }
+
+    #[tokio::test]
+    async fn coordinator_quarantines_unknown_and_never_blind_retries() {
+        let intent = intent(b"payload-a");
+        let key = intent.key.clone();
+        let operation = Sha256Digest::for_bytes(b"operation-1");
+        let adapter = ScriptedAdapter {
+            capability: ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+            dispatch_result: Some(ProviderEffectDispatch::Unknown),
+            lookup_result: Some(ProviderEffectLookup::Ack(ProviderEffectAck::new(
+                key.clone(),
+                intent.payload_sha256.clone(),
+                operation,
+                ProviderEffectAckStatus::Completed,
+            ))),
+            ..Default::default()
+        };
+        let mut coordinator = ProviderEffectCoordinator::new(adapter);
+        let first = coordinator
+            .dispatch_once(intent.clone())
+            .await
+            .expect("first dispatch");
+        assert_eq!(
+            first,
+            ProviderEffectDispatchReceipt {
+                state: ProviderEffectState::Indeterminate,
+                physical_dispatch_attempted: true,
+            }
+        );
+        let second = coordinator
+            .dispatch_once(intent)
+            .await
+            .expect("quarantined replay");
+        assert_eq!(
+            second,
+            ProviderEffectDispatchReceipt {
+                state: ProviderEffectState::Indeterminate,
+                physical_dispatch_attempted: false,
+            }
+        );
+        assert_eq!(
+            coordinator
+                .adapter()
+                .dispatches
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+        assert_eq!(coordinator.reconcile(&key).await, Ok(ProviderEffectState::Completed));
+        assert_eq!(
+            coordinator
+                .adapter()
+                .dispatches
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+        assert_eq!(coordinator.journal().acknowledgements(&key).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn coordinator_unsupported_capability_stays_quarantined() {
+        let intent = intent(b"payload-a");
+        let key = intent.key.clone();
+        let mut coordinator = ProviderEffectCoordinator::new(ScriptedAdapter {
+            dispatch_result: Some(ProviderEffectDispatch::Ack(ack(&intent, b"payload-a"))),
+            ..Default::default()
+        });
+        let receipt = coordinator
+            .dispatch_once(intent)
+            .await
+            .expect("local ACK can be recorded");
+        assert_eq!(receipt.state, ProviderEffectState::Completed);
+        // A terminal local state is not reopened by an unsupported adapter.
+        assert_eq!(coordinator.reconcile(&key).await, Ok(ProviderEffectState::Completed));
+        assert_eq!(
+            coordinator
+                .adapter()
+                .dispatches
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
     }
 }
