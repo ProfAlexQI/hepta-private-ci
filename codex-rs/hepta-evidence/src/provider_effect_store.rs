@@ -368,6 +368,7 @@ pub(crate) async fn verify_provider_effect_rows(pool: &SqlitePool) -> Result<(),
         .await
         .map_err(classify_sqlx_error)?;
         let mut previous_ack: Option<StoredProviderEffectAck> = None;
+        let mut terminal_ack: Option<StoredProviderEffectAck> = None;
         for row in ack_rows {
             let ack = decode_effect_ack_row(&row, &intent.intent)?;
             if let Some(previous) = previous_ack.as_ref() {
@@ -405,10 +406,28 @@ pub(crate) async fn verify_provider_effect_rows(pool: &SqlitePool) -> Result<(),
                     ));
                 }
             }
+            if ack.ack.state().is_terminal() {
+                terminal_ack = Some(ack.clone());
+            }
             previous_ack = Some(ack);
         }
         for row in uncertainty_rows {
-            let _ = decode_effect_uncertainty_row(&row, &intent.intent)?;
+            let uncertainty = decode_effect_uncertainty_row(&row, &intent.intent)?;
+            if let Some(terminal) = terminal_ack.as_ref() {
+                // The public append path rejects this transition.  Repeat
+                // the invariant during startup verification so a damaged or
+                // imported store cannot downgrade a terminal provider result
+                // to Indeterminate merely by appending a late quarantine row.
+                let follows_terminal = uncertainty.seq > terminal.seq
+                    || uncertainty.recorded_at_ms > terminal.recorded_at_ms
+                    || (uncertainty.recorded_at_ms == terminal.recorded_at_ms
+                        && uncertainty.seq > terminal.seq);
+                if follows_terminal {
+                    return Err(EvidenceError::Corrupt(
+                        "provider effect uncertainty follows terminal ACK".to_string(),
+                    ));
+                }
+            }
         }
     }
     Ok(())

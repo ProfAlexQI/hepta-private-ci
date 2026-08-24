@@ -260,6 +260,62 @@ async fn terminal_effect_cannot_be_quarantined_or_replaced() {
 }
 
 #[tokio::test]
+async fn reopen_rejects_late_uncertainty_after_terminal_ack() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"late-uncertainty-payload");
+    let key = intent.key.clone();
+    store
+        .append_provider_effect_intent(&intent)
+        .await
+        .expect("intent");
+    store
+        .append_provider_effect_ack(&completed_ack(&intent, b"terminal-operation"))
+        .await
+        .expect("terminal ACK");
+
+    // Model a damaged/imported store that bypassed the public append guard.
+    // A late quarantine row must not downgrade a terminal result to
+    // Indeterminate when the evidence store is reopened.
+    let uncertainty = ProviderEffectUncertainty::new(
+        key.clone(),
+        intent.payload_sha256.clone(),
+        "late_network_unknown",
+    );
+    let uncertainty_bytes =
+        crate::canonical::canonical_json(&uncertainty).expect("canonical uncertainty");
+    let uncertainty_json = String::from_utf8(uncertainty_bytes.clone()).expect("uncertainty JSON");
+    let uncertainty_record_sha = Sha256Digest::for_bytes(&uncertainty_bytes);
+    sqlx::query(
+        "INSERT INTO provider_effect_uncertainties (
+            effect_key, payload_sha256, reason_code, schema_version,
+            payload_json, record_sha256, recorded_at_ms
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(key.as_str())
+    .bind(uncertainty.payload_sha256.as_str())
+    .bind(&uncertainty.reason_code)
+    .bind(i64::from(uncertainty.schema_version))
+    .bind(&uncertainty_json)
+    .bind(uncertainty_record_sha.as_str())
+    .bind(i64::MAX)
+    .execute(&store.pool)
+    .await
+    .expect("insert damaged late uncertainty");
+    drop(store);
+
+    let reopen = HeptaEvidenceStore::open(&sqlite).await;
+    assert!(matches!(
+        reopen,
+        Err(EvidenceError::Corrupt(detail))
+            if detail.contains("uncertainty follows terminal ACK")
+    ));
+}
+
+#[tokio::test]
 async fn same_key_payload_conflict_and_ack_binding_fail_closed() {
     let temp = TempDir::new().expect("temp dir");
     let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
