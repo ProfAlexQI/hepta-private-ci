@@ -651,6 +651,10 @@ async fn real_agentd_external_gpt53_spark_read_only_smoke() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[cfg_attr(
+    not(feature = "qualification-cognitive-write"),
+    ignore = "requires the explicit qualification-cognitive-write profile; default/local binary keeps cognitive writes disabled"
+)]
 async fn two_real_agentd_app_servers_never_cross_recall() -> Result<()> {
     const MEMORY_A: &str = "Agent Alpha project milestone is Tuesday.";
     const MEMORY_B: &str = "Agent Beta project milestone is Thursday.";
