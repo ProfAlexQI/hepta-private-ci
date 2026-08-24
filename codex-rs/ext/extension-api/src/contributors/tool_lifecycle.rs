@@ -2,6 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use codex_tools::ToolCallSource;
 use codex_tools::ToolName;
 use codex_tools::ToolPayload;
 
