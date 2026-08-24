@@ -168,6 +168,10 @@ fn digest<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
     Ok(digest_bytes(&bytes(value)?))
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "qualification-only test uses a private SQLite fixture, never production state"
+)]
 async fn open_store(root: &Path) -> Result<SqlitePool, LifecycleError> {
     let options = SqliteConnectOptions::new()
         .filename(root.join("h7-qualification.sqlite3"))
