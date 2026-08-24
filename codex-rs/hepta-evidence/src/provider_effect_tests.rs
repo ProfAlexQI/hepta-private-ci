@@ -260,6 +260,63 @@ async fn terminal_effect_cannot_be_quarantined_or_replaced() {
 }
 
 #[tokio::test]
+async fn same_key_payload_conflict_and_ack_binding_fail_closed() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"authoritative-payload");
+    let key = intent.key.clone();
+    assert_eq!(
+        store
+            .append_provider_effect_intent(&intent)
+            .await
+            .expect("intent"),
+        AppendDisposition::Inserted
+    );
+
+    // A provider/client retry may replay the exact occurrence, but it must
+    // not reuse the durable key for a different payload.
+    let conflicting_intent = effect_intent(b"different-payload");
+    let conflict = store
+        .append_provider_effect_intent(&conflicting_intent)
+        .await
+        .expect_err("same-key/different-payload must be rejected");
+    assert!(matches!(conflict, EvidenceError::IdempotencyConflict { .. }));
+
+    // An ACK is independently bound to both the occurrence key and the
+    // exact payload digest; a provider response for another payload cannot
+    // close this intent even when the occurrence key matches.
+    let mismatched_ack = ProviderEffectAck::new(
+        key.clone(),
+        Sha256Digest::for_bytes(b"different-payload"),
+        Sha256Digest::for_bytes(b"provider-operation"),
+        ProviderEffectAckStatus::Completed,
+    );
+    let binding_error = store
+        .append_provider_effect_ack(&mismatched_ack)
+        .await
+        .expect_err("payload-mismatched ACK must be rejected");
+    assert!(matches!(binding_error, EvidenceError::InvalidRecord(_)));
+
+    let valid_ack = completed_ack(&intent, b"provider-operation");
+    assert_eq!(
+        store
+            .append_provider_effect_ack(&valid_ack)
+            .await
+            .expect("valid ACK"),
+        AppendDisposition::Inserted
+    );
+    assert_eq!(
+        store
+            .append_provider_effect_ack(&valid_ack)
+            .await
+            .expect("exact ACK replay"),
+        AppendDisposition::AlreadyPresent
+    );
+}
+
+#[tokio::test]
 async fn effect_tables_are_append_only() {
     let temp = TempDir::new().expect("temp dir");
     let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
