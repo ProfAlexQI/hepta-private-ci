@@ -83,6 +83,12 @@ pub(crate) fn app_server_runtime_options(
         hepta_local_development_policy: Some(
             codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only(),
         ),
+        // The qualification build explicitly opts into the writer seam, but
+        // the host capability remains absent until Agentd can supply a
+        // complete owner/epoch-bound input.  This keeps the default and
+        // production-facing binaries inert while making the gate explicit.
+        hepta_qualification_turn_writer_enabled: COGNITIVE_WRITE_ENABLED,
+        hepta_qualification_turn_writer: None,
         // This is an embedding-owned capability boundary. It is applied
         // after managed config and per-request overrides, so those layers
         // cannot change the selected profile at runtime. The positive value

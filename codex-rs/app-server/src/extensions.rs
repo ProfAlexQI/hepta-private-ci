@@ -60,6 +60,34 @@ pub(crate) struct ThreadExtensionDependencies {
     /// Invalid/absent policies keep lifecycle registration disabled.
     pub(crate) hepta_local_development_policy:
         Option<codex_hepta_memory::LocalDevelopmentLifecyclePolicy>,
+    /// Explicit qualification-only gate for the host-owned turn writer.
+    pub(crate) hepta_qualification_turn_writer_enabled: bool,
+    /// Optional host capability carrying complete, already-bound lifecycle
+    /// inputs.  `None` is the normal and production-facing state.
+    pub(crate) hepta_qualification_turn_writer:
+        Option<codex_hepta_memory_extension::QualificationTurnWriterHost>,
+}
+
+/// Apply the complete qualification writer gate at the app-server boundary.
+///
+/// Keeping this as a pure helper makes the fail-closed combination explicit:
+/// a caller must opt in, present the canonical qualification-only policy, own
+/// an available CognitiveRuntime, and provide a host capability.  No value is
+/// synthesized when any input is absent or invalid.
+pub(crate) fn qualification_turn_writer_capability(
+    enabled: bool,
+    policy: Option<&codex_hepta_memory::LocalDevelopmentLifecyclePolicy>,
+    runtime: &codex_hepta_memory::CognitiveRuntime,
+    host: Option<codex_hepta_memory_extension::QualificationTurnWriterHost>,
+) -> Option<codex_hepta_memory_extension::QualificationTurnWriterHost> {
+    if enabled
+        && policy.is_some_and(|policy| policy.validate().is_ok())
+        && runtime.available_store().is_some()
+    {
+        host
+    } else {
+        None
+    }
 }
 
 pub(crate) fn thread_extensions<S>(
@@ -84,6 +112,8 @@ where
         hepta_cognitive_runtime,
         hepta_local_turn_lifecycle_enabled,
         hepta_local_development_policy,
+        hepta_qualification_turn_writer_enabled,
+        hepta_qualification_turn_writer,
     } = dependencies;
     let mut builder = ExtensionRegistryBuilder::<Config>::with_event_sink(Arc::clone(&event_sink));
     if let Some(queue_service) = queue_service {
@@ -115,12 +145,14 @@ where
             .features
             .enabled(codex_features::Feature::HeptaGovernance)
     });
-    codex_hepta_memory_extension::install(
+    codex_hepta_memory_extension::install_with_turn_writer(
         &mut builder,
         state_db,
         hepta_cognitive_runtime,
         hepta_local_turn_lifecycle_enabled,
         hepta_local_development_policy,
+        hepta_qualification_turn_writer_enabled,
+        hepta_qualification_turn_writer,
         |config: &Config| {
             codex_hepta_memory_extension::HeptaMemoryThreadConfig::for_features(
                 hepta_memory_feature_flags(&config.features),
@@ -425,6 +457,40 @@ mod tests {
 
         features.enable(codex_features::Feature::HeptaCognitiveWrite);
         assert!(hepta_memory_feature_flags(&features).write_enabled);
+    }
+
+    #[test]
+    fn qualification_writer_gate_requires_every_positive_input() {
+        let host = codex_hepta_memory_extension::QualificationTurnWriterHost::from_fn(
+            "app-server-test",
+            |_turn_id| async {
+                Err::<
+                    codex_hepta_memory_extension::QualificationTurnWriterInput,
+                    codex_hepta_memory_extension::QualificationTurnWriterInputError,
+                >(
+                    codex_hepta_memory_extension::QualificationTurnWriterInputError::Invalid(
+                        "test host is not invoked".to_string(),
+                    ),
+                )
+            },
+        );
+        let policy = codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only();
+        let absent = codex_hepta_memory::CognitiveRuntime::Absent;
+        assert!(qualification_turn_writer_capability(
+            false,
+            Some(&policy),
+            &absent,
+            Some(host.clone()),
+        )
+        .is_none());
+        assert!(
+            qualification_turn_writer_capability(true, None, &absent, Some(host.clone()),)
+                .is_none()
+        );
+        assert!(
+            qualification_turn_writer_capability(true, Some(&policy), &absent, Some(host),)
+                .is_none()
+        );
     }
 
     #[tokio::test]

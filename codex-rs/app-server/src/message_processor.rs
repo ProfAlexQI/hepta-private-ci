@@ -16,6 +16,7 @@ use crate::error_code::invalid_request;
 use crate::extensions::ThreadExtensionDependencies;
 use crate::extensions::app_server_extension_event_sink;
 use crate::extensions::guardian_agent_spawner;
+use crate::extensions::qualification_turn_writer_capability;
 use crate::extensions::thread_extensions;
 use crate::external_agent_migration::ExternalAgentConfigRequestProcessor;
 use crate::external_agent_migration::ExternalAgentConfigRequestProcessorArgs;
@@ -289,6 +290,9 @@ pub(crate) struct MessageProcessorArgs {
     pub(crate) hepta_local_turn_lifecycle_enabled: bool,
     pub(crate) hepta_local_development_policy:
         Option<codex_hepta_memory::LocalDevelopmentLifecyclePolicy>,
+    pub(crate) hepta_qualification_turn_writer_enabled: bool,
+    pub(crate) hepta_qualification_turn_writer:
+        Option<codex_hepta_memory_extension::QualificationTurnWriterHost>,
 }
 
 impl MessageProcessor {
@@ -317,7 +321,20 @@ impl MessageProcessor {
             hepta_cognitive_runtime,
             hepta_local_turn_lifecycle_enabled,
             hepta_local_development_policy,
+            hepta_qualification_turn_writer_enabled,
+            hepta_qualification_turn_writer,
         } = args;
+        // Only forward a host capability after every qualification gate has
+        // been checked at the app-server boundary.  In particular, an
+        // absent/unavailable CognitiveRuntime or invalid policy must not let
+        // a callback reach the thread initializer, even if a caller supplied
+        // a capability object.
+        let hepta_qualification_turn_writer = qualification_turn_writer_capability(
+            hepta_qualification_turn_writer_enabled,
+            hepta_local_development_policy.as_ref(),
+            &hepta_cognitive_runtime,
+            hepta_qualification_turn_writer,
+        );
         let thread_state_manager = ThreadStateManager::new();
         // The thread store is intentionally process-scoped. Config reloads can
         // affect per-thread behavior, but they must not move newly started,
@@ -382,6 +399,8 @@ impl MessageProcessor {
                         hepta_cognitive_runtime: hepta_cognitive_runtime.clone(),
                         hepta_local_turn_lifecycle_enabled,
                         hepta_local_development_policy,
+                        hepta_qualification_turn_writer_enabled,
+                        hepta_qualification_turn_writer: hepta_qualification_turn_writer.clone(),
                     },
                 ),
                 Arc::new(CodexHomeUserInstructionsProvider::new(
@@ -552,6 +571,7 @@ impl MessageProcessor {
             Arc::clone(&skills_watcher),
             turn_cost_worker.as_ref().map(TurnCostWorker::handle),
             config_warnings,
+            hepta_qualification_turn_writer,
         );
         let turn_processor = TurnRequestProcessor::new(
             auth_manager,

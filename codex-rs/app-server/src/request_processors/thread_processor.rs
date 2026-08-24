@@ -585,6 +585,8 @@ pub(crate) struct ThreadRequestProcessor {
     pub(super) skills_watcher: Arc<SkillsWatcher>,
     pub(super) turn_cost_worker: Option<crate::turn_cost_worker::TurnCostWorkerHandle>,
     pub(super) initial_config_warnings: Arc<Vec<ConfigWarningNotification>>,
+    pub(super) hepta_qualification_turn_writer:
+        Option<codex_hepta_memory_extension::QualificationTurnWriterHost>,
 }
 
 /// Outcome of trying to satisfy a resume request from an already loaded thread.
@@ -618,6 +620,9 @@ impl ThreadRequestProcessor {
         skills_watcher: Arc<SkillsWatcher>,
         turn_cost_worker: Option<crate::turn_cost_worker::TurnCostWorkerHandle>,
         initial_config_warnings: Vec<ConfigWarningNotification>,
+        hepta_qualification_turn_writer: Option<
+            codex_hepta_memory_extension::QualificationTurnWriterHost,
+        >,
     ) -> Self {
         Self {
             auth_manager,
@@ -640,6 +645,7 @@ impl ThreadRequestProcessor {
             skills_watcher,
             turn_cost_worker,
             initial_config_warnings: Arc::new(initial_config_warnings),
+            hepta_qualification_turn_writer,
         }
     }
 
@@ -1462,11 +1468,13 @@ impl ThreadRequestProcessor {
         let config_manager = self.config_manager.clone();
         let thread_store = Arc::clone(&self.thread_store);
         let initial_config_warnings = Arc::clone(&self.initial_config_warnings);
+        let qualification_turn_writer = self.hepta_qualification_turn_writer.clone();
         let outgoing = Arc::clone(&listener_task_context.outgoing);
         let error_request_id = request_id.clone();
         let thread_start_task = async move {
             if let Err(error) = Self::thread_start_task(
                 listener_task_context,
+                qualification_turn_writer,
                 thread_store,
                 config_manager,
                 request_id,
@@ -1546,6 +1554,9 @@ impl ThreadRequestProcessor {
     #[allow(clippy::too_many_arguments)]
     async fn thread_start_task(
         listener_task_context: ListenerTaskContext,
+        qualification_turn_writer: Option<
+            codex_hepta_memory_extension::QualificationTurnWriterHost,
+        >,
         thread_store: Arc<dyn ThreadStore>,
         config_manager: ConfigManager,
         request_id: ConnectionRequestId,
@@ -1672,6 +1683,12 @@ impl ThreadRequestProcessor {
             })
             .sum();
         let mut thread_extension_init = ExtensionDataInit::new();
+        if let Some(host) = qualification_turn_writer {
+            codex_hepta_memory_extension::insert_qualification_turn_writer_host(
+                &mut thread_extension_init,
+                host,
+            );
+        }
         if !selected_capability_roots.is_empty() {
             thread_extension_init.insert(selected_capability_roots);
         }

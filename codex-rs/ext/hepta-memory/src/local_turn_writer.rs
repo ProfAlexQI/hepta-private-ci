@@ -14,14 +14,19 @@
 //! or append an outbox row accidentally.
 
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::PoisonError;
 use std::time::Duration;
 
 use codex_extension_api::ExtensionData;
+use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::ExtensionFuture;
 use codex_extension_api::ExtensionRegistryBuilder;
+use codex_extension_api::ThreadLifecycleContributor;
+use codex_extension_api::ThreadStartInput;
 use codex_extension_api::TurnAbortInput;
 use codex_extension_api::TurnErrorInput;
 use codex_extension_api::TurnLifecycleContributor;
@@ -88,6 +93,91 @@ impl From<LocalCompactExecutorError> for QualificationTurnWriterInputError {
     fn from(error: LocalCompactExecutorError) -> Self {
         Self::Executor(error)
     }
+}
+
+/// Future returned by an embedding-owned qualification writer factory.
+pub type QualificationTurnWriterPrepareFuture = Pin<
+    Box<
+        dyn Future<Output = Result<QualificationTurnWriterInput, QualificationTurnWriterInputError>>
+            + Send
+            + 'static,
+    >,
+>;
+
+type QualificationTurnWriterPrepareFn =
+    dyn Fn(String) -> QualificationTurnWriterPrepareFuture + Send + Sync + 'static;
+
+/// Explicit host capability for preparing one fully bound local turn input.
+///
+/// The host callback owns the authority contract.  It must return an input
+/// containing a validated [`LocalTurnLifecycleBinding`] and exact lease and
+/// compact-executor handles; this type never invents epochs, generations,
+/// fencing tokens, leases, or expiry values.  A missing capability means the
+/// qualification writer remains inert.
+#[derive(Clone)]
+pub struct QualificationTurnWriterHost {
+    capability_id: Arc<str>,
+    prepare: Arc<QualificationTurnWriterPrepareFn>,
+}
+
+impl fmt::Debug for QualificationTurnWriterHost {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("QualificationTurnWriterHost")
+            .field("capability_id", &self.capability_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for QualificationTurnWriterHost {
+    fn eq(&self, other: &Self) -> bool {
+        self.capability_id == other.capability_id && Arc::ptr_eq(&self.prepare, &other.prepare)
+    }
+}
+
+impl Eq for QualificationTurnWriterHost {}
+
+impl QualificationTurnWriterHost {
+    /// Build a host capability from an embedding-owned asynchronous factory.
+    ///
+    /// `capability_id` is diagnostic provenance only; it does not grant
+    /// authority and is intentionally not used to derive any fence value.
+    pub fn from_fn<F, Fut>(capability_id: impl Into<String>, prepare: F) -> Self
+    where
+        F: Fn(String) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<QualificationTurnWriterInput, QualificationTurnWriterInputError>>
+            + Send
+            + 'static,
+    {
+        Self {
+            capability_id: Arc::from(capability_id.into()),
+            prepare: Arc::new(move |turn_id| Box::pin(prepare(turn_id))),
+        }
+    }
+
+    pub fn capability_id(&self) -> &str {
+        &self.capability_id
+    }
+
+    async fn prepare(
+        &self,
+        turn_id: &str,
+    ) -> Result<QualificationTurnWriterInput, QualificationTurnWriterInputError> {
+        let input = (self.prepare)(turn_id.to_owned()).await?;
+        input.validate_for_turn(turn_id)?;
+        Ok(input)
+    }
+}
+
+/// Seed a host capability into a thread's extension initializer.
+///
+/// The operation is append-only for this capability type: an embedding cannot
+/// replace a capability that another owner already supplied.
+pub fn insert_qualification_turn_writer_host(
+    init: &mut ExtensionDataInit,
+    host: QualificationTurnWriterHost,
+) -> bool {
+    init.insert(host).is_none()
 }
 
 /// Immutable host-supplied input for one turn writer invocation.
@@ -191,6 +281,20 @@ pub fn install_qualification_turn_writer<C: Sync>(builder: &mut ExtensionRegistr
     builder.turn_lifecycle_contributor(Arc::new(QualificationTurnLifecycleContributor::new()));
 }
 
+/// Register the qualification contributor with an explicit host capability.
+///
+/// Registration is still opt-in; the host is copied into each thread's
+/// extension scope and is consulted only for turns whose embedding supplied
+/// the capability.  No host means no automatic lease or outbox activity.
+pub fn install_qualification_turn_writer_with_host<C: Sync>(
+    builder: &mut ExtensionRegistryBuilder<C>,
+    host: QualificationTurnWriterHost,
+) {
+    builder.turn_lifecycle_contributor(Arc::new(QualificationTurnLifecycleContributor::with_host(
+        host,
+    )));
+}
+
 #[derive(Default)]
 struct TurnWriterState {
     attempted: bool,
@@ -208,15 +312,26 @@ enum TerminalAction {
 
 /// Explicit qualification-only lifecycle contributor.
 ///
-/// Hosts must register this value themselves and attach a
-/// [`QualificationTurnWriterInput`] before `on_turn_start`.  The regular
-/// extension installer deliberately does not register it.
-#[derive(Default)]
-pub struct QualificationTurnLifecycleContributor;
+/// Hosts may either attach a [`QualificationTurnWriterInput`] before
+/// `on_turn_start` or supply a [`QualificationTurnWriterHost`] capability.
+/// The regular extension installer deliberately does not register it.
+pub struct QualificationTurnLifecycleContributor {
+    host: Option<QualificationTurnWriterHost>,
+}
+
+impl Default for QualificationTurnLifecycleContributor {
+    fn default() -> Self {
+        Self { host: None }
+    }
+}
 
 impl QualificationTurnLifecycleContributor {
     pub const fn new() -> Self {
-        Self
+        Self { host: None }
+    }
+
+    pub fn with_host(host: QualificationTurnWriterHost) -> Self {
+        Self { host: Some(host) }
     }
 
     fn state<'a>(&self, turn_store: &'a ExtensionData) -> std::sync::Arc<Mutex<TurnWriterState>> {
@@ -257,16 +372,19 @@ impl QualificationTurnLifecycleContributor {
         input: &QualificationTurnWriterInput,
         action: TerminalAction,
     ) -> Result<(), QualificationTurnWriterInputError> {
+        // Re-check the host-owned binding before any terminal write.  A stale
+        // callback must not mark an occurrence indeterminate (or release a
+        // lease) after ownership has moved to a newer epoch.
+        input
+            .binding
+            .verify_current(&input.lease, &input.executor)
+            .await?;
         if let TerminalAction::Indeterminate(reason) = action {
             input
                 .lease
                 .mark_indeterminate(input.occurrence_key.clone(), reason)
                 .await?;
         }
-        input
-            .binding
-            .verify_current(&input.lease, &input.executor)
-            .await?;
         input.lease.release().await?;
         Ok(())
     }
@@ -334,11 +452,53 @@ impl QualificationTurnLifecycleContributor {
     }
 }
 
+impl<C: Sync> ThreadLifecycleContributor<C> for QualificationTurnLifecycleContributor {
+    fn on_thread_start<'a>(&'a self, input: ThreadStartInput<'a, C>) -> ExtensionFuture<'a, ()> {
+        Box::pin(async move {
+            let Some(host) = self.host.as_ref() else {
+                return;
+            };
+            // A host may already have seeded this exact capability through
+            // `StartThreadOptions.thread_extension_init`; never replace it.
+            input
+                .thread_store
+                .insert_if(host.clone(), |current| current.is_none());
+        })
+    }
+}
+
 impl TurnLifecycleContributor for QualificationTurnLifecycleContributor {
     fn on_turn_start<'a>(&'a self, input: TurnStartInput<'a>) -> ExtensionFuture<'a, ()> {
         Box::pin(async move {
-            let Some(host_input) = input.turn_store.get::<QualificationTurnWriterInput>() else {
-                return;
+            let host_input = if let Some(host_input) =
+                input.turn_store.get::<QualificationTurnWriterInput>()
+            {
+                host_input
+            } else {
+                // Prefer the host capability seeded into the exact thread
+                // scope.  The contributor's captured host is a fallback for
+                // resumed/forked threads whose initializer was reconstructed
+                // by Core without the embedding's optional seed.
+                let host = input
+                    .thread_store
+                    .get::<QualificationTurnWriterHost>()
+                    .map(|host| (*host).clone())
+                    .or_else(|| self.host.clone());
+                let Some(host) = host else {
+                    return;
+                };
+                let prepared = tokio::time::timeout(IO_TIMEOUT, host.prepare(input.turn_id)).await;
+                let Ok(Ok(prepared)) = prepared else {
+                    return;
+                };
+                if !attach_qualification_turn_writer(input.turn_store, prepared) {
+                    return;
+                }
+                let Some(host_input) = input.turn_store.get::<QualificationTurnWriterInput>()
+                else {
+                    return;
+                };
+                host_input
             };
             if host_input.validate_for_turn(input.turn_id).is_err()
                 || input.turn_store.level_id() != input.turn_id
@@ -393,6 +553,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use codex_extension_api::ExtensionData;
+    use codex_extension_api::ThreadStartInput;
     use codex_extension_api::TurnStartInput;
     use codex_extension_api::TurnStopInput;
     use codex_hepta_contracts::AgentId;
@@ -413,6 +574,7 @@ mod tests {
     use codex_hepta_memory::SourceDraft;
     use codex_hepta_paths::HeptaFleetRoot;
     use codex_protocol::config_types::{CollaborationMode, ModeKind, Settings};
+    use codex_protocol::protocol::SessionSource;
     use codex_protocol::protocol::TokenUsage;
     use tempfile::TempDir;
 
@@ -552,6 +714,77 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn host_capability_seeds_thread_and_prepares_exact_turn_input() {
+        let (_temp, _store, template) = prepared().await;
+        let callback_template = template.clone();
+        let host =
+            QualificationTurnWriterHost::from_fn("qualification-test-host", move |turn_id| {
+                let callback_template = callback_template.clone();
+                async move {
+                    QualificationTurnWriterInput::new(
+                        turn_id,
+                        callback_template.binding.clone(),
+                        callback_template.lease.clone(),
+                        callback_template.executor.clone(),
+                        callback_template.occurrence_key.clone(),
+                        callback_template.payload_json.clone(),
+                    )
+                }
+            });
+        let contributor = QualificationTurnLifecycleContributor::with_host(host.clone());
+        let turn_store = ExtensionData::new(TURN_ID);
+        let thread_store = ExtensionData::new("thread:writer-e26");
+        let session_store = ExtensionData::new("session:writer-e26");
+        let config = ();
+        contributor
+            .on_thread_start(ThreadStartInput {
+                config: &config,
+                session_source: &SessionSource::Cli,
+                installation_id: "qualification-installation",
+                persistent_thread_state_available: true,
+                environments: &[],
+                mcp_resource_client: None,
+                extension_metrics: None,
+                session_store: &session_store,
+                thread_store: &thread_store,
+            })
+            .await;
+        assert_eq!(
+            thread_store
+                .get::<QualificationTurnWriterHost>()
+                .expect("thread host capability")
+                .capability_id(),
+            "qualification-test-host"
+        );
+
+        let mode = mode();
+        let usage = TokenUsage::default();
+        contributor
+            .on_turn_start(start_input(
+                &turn_store,
+                &thread_store,
+                &session_store,
+                &mode,
+                &usage,
+            ))
+            .await;
+        assert!(
+            turn_store.get::<QualificationTurnWriterInput>().is_some(),
+            "host callback must attach the exact prepared input"
+        );
+        let counts = template.lease.snapshot_counts().await.expect("counts");
+        assert_eq!(counts.event_rows, 1);
+        assert_eq!(counts.outbox_rows, 1);
+        contributor
+            .on_turn_stop(TurnStopInput {
+                session_store: &session_store,
+                thread_store: &thread_store,
+                turn_store: &turn_store,
+            })
+            .await;
     }
 
     #[tokio::test]
@@ -884,5 +1117,37 @@ mod tests {
             state.is_none(),
             "invalid input must not create writer state"
         );
+    }
+
+    #[tokio::test]
+    async fn stale_terminal_callback_verifies_before_indeterminate_write() {
+        let (_temp, _store, input) = prepared().await;
+        input
+            .lease
+            .admit(OCCURRENCE, TURN_START_TOPIC, input.payload_json.clone())
+            .await
+            .expect("admit occurrence");
+
+        // Keep the lease active but make only the callback's copied binding
+        // stale.  A terminal callback must reject this before appending an
+        // indeterminate outcome; otherwise a late stale owner can mutate the
+        // current occurrence even though its fence no longer matches.
+        let mut stale = input.clone();
+        stale.binding.fence.owner_epoch += 1;
+        assert!(
+            QualificationTurnLifecycleContributor::complete(
+                &stale,
+                TerminalAction::Indeterminate("stale callback".to_string()),
+            )
+            .await
+            .is_err()
+        );
+
+        let replay = input
+            .lease
+            .finalize_replayed_occurrence(OCCURRENCE)
+            .await
+            .expect("replay after stale callback");
+        assert!(matches!(replay, LocalReplayFinalization::Queued(_)));
     }
 }

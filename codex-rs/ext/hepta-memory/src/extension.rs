@@ -55,6 +55,8 @@ use crate::framing::domain_digest;
 use crate::framing::path_identity_bytes;
 use crate::framing::workspace_digest;
 use crate::local_lifecycle::LocalTurnLifecycleContributor;
+use crate::local_turn_writer::QualificationTurnLifecycleContributor;
+use crate::local_turn_writer::QualificationTurnWriterHost;
 use crate::observation::ShadowRecallTurnObservation;
 use crate::observation::ShadowRecallTurnReason;
 use crate::observation::commit_turn_observation;
@@ -677,6 +679,38 @@ where
     C: Sync,
     F: Fn(&C) -> Option<HeptaMemoryThreadConfig> + Send + Sync + 'static,
 {
+    install_with_turn_writer(
+        builder,
+        state_db,
+        cognitive_runtime,
+        local_turn_lifecycle_enabled,
+        local_development_policy,
+        false,
+        None,
+        resolve_thread,
+    )
+}
+
+/// Install the extension with an explicit qualification turn-writer gate.
+///
+/// The writer is registered only when all three inputs are positive: the
+/// embedding's explicit flag, a validated qualification-only policy, and an
+/// available CognitiveRuntime plus host capability.  Ordinary `install`
+/// callers retain the historical no-writer behavior.
+pub fn install_with_turn_writer<C, F>(
+    builder: &mut ExtensionRegistryBuilder<C>,
+    state_db: Option<Arc<StateRuntime>>,
+    cognitive_runtime: CognitiveRuntime,
+    local_turn_lifecycle_enabled: bool,
+    local_development_policy: Option<LocalDevelopmentLifecyclePolicy>,
+    qualification_turn_writer_enabled: bool,
+    qualification_turn_writer: Option<QualificationTurnWriterHost>,
+    resolve_thread: F,
+) -> Arc<HeptaMemoryExtension<F>>
+where
+    C: Sync,
+    F: Fn(&C) -> Option<HeptaMemoryThreadConfig> + Send + Sync + 'static,
+{
     // The legacy H9 turn callback is deliberately separate from the E17
     // explicit host-owned witness policy.  A policy value is a positive gate
     // for a host call, but its canonical `automatic_lifecycle_registration`
@@ -688,6 +722,12 @@ where
         && local_development_policy.is_none())
     .then(|| cognitive_runtime.available_store().cloned())
     .flatten();
+    let qualification_writer_profile = qualification_turn_writer_enabled
+        && local_development_policy
+            .as_ref()
+            .is_some_and(|policy| policy.validate().is_ok())
+        && cognitive_runtime.available_store().is_some()
+        && qualification_turn_writer.is_some();
     let legacy_attachment_enabled = matches!(&cognitive_runtime, CognitiveRuntime::Absent);
     let extension = Arc::new(HeptaMemoryExtension::new(
         resolve_thread,
@@ -719,6 +759,13 @@ where
     // and has no dispatch, KG, routing, or production authority.
     if let Some(store) = local_lifecycle_store {
         builder.turn_lifecycle_contributor(Arc::new(LocalTurnLifecycleContributor::new(store)));
+    }
+    if qualification_writer_profile {
+        if let Some(host) = qualification_turn_writer {
+            builder.turn_lifecycle_contributor(Arc::new(
+                QualificationTurnLifecycleContributor::with_host(host),
+            ));
+        }
     }
     extension
 }

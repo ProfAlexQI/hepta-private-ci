@@ -482,6 +482,15 @@ pub struct AppServerRuntimeOptions {
     /// `None` keeps ordinary Codex and production-facing embeddings caller
     /// zero; a value is accepted only when its closed-world policy validates.
     pub hepta_local_development_policy: Option<codex_hepta_memory::LocalDevelopmentLifecyclePolicy>,
+    /// Explicit qualification-only gate for the host-owned Agent-local turn
+    /// writer.  This is false for ordinary Codex and production-facing
+    /// embeddings; it is never inferred from a CognitiveRuntime or config.
+    pub hepta_qualification_turn_writer_enabled: bool,
+    /// Host-owned capability that prepares a fully bound turn-writer input.
+    /// The capability is inert unless the explicit qualification gate, a
+    /// validated local policy, and an available CognitiveRuntime all hold.
+    pub hepta_qualification_turn_writer:
+        Option<codex_hepta_memory_extension::QualificationTurnWriterHost>,
     /// Embedding-owned feature states applied after ordinary config layers
     /// and per-request overrides. Empty for ordinary Codex runtimes; a local
     /// embedding can use this to keep a capability boundary fail-closed.
@@ -516,6 +525,14 @@ impl std::fmt::Debug for AppServerRuntimeOptions {
             .field(
                 "hepta_local_development_policy",
                 &self.hepta_local_development_policy,
+            )
+            .field(
+                "hepta_qualification_turn_writer_enabled",
+                &self.hepta_qualification_turn_writer_enabled,
+            )
+            .field(
+                "hepta_qualification_turn_writer",
+                &self.hepta_qualification_turn_writer,
             )
             .field("required_feature_states", &self.required_feature_states)
             .finish()
@@ -564,6 +581,9 @@ impl PartialEq for AppServerRuntimeOptions {
             }
             && self.hepta_local_turn_lifecycle_enabled == other.hepta_local_turn_lifecycle_enabled
             && self.hepta_local_development_policy == other.hepta_local_development_policy
+            && self.hepta_qualification_turn_writer_enabled
+                == other.hepta_qualification_turn_writer_enabled
+            && self.hepta_qualification_turn_writer == other.hepta_qualification_turn_writer
             && self.required_feature_states == other.required_feature_states
     }
 }
@@ -583,6 +603,8 @@ impl Default for AppServerRuntimeOptions {
             hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime::Absent,
             hepta_local_turn_lifecycle_enabled: false,
             hepta_local_development_policy: None,
+            hepta_qualification_turn_writer_enabled: false,
+            hepta_qualification_turn_writer: None,
             required_feature_states: BTreeMap::new(),
         }
     }
@@ -1077,6 +1099,9 @@ pub async fn run_main_with_transport_options(
             hepta_cognitive_runtime: runtime_options.hepta_cognitive_runtime.clone(),
             hepta_local_turn_lifecycle_enabled: runtime_options.hepta_local_turn_lifecycle_enabled,
             hepta_local_development_policy: runtime_options.hepta_local_development_policy,
+            hepta_qualification_turn_writer_enabled: runtime_options
+                .hepta_qualification_turn_writer_enabled,
+            hepta_qualification_turn_writer: runtime_options.hepta_qualification_turn_writer,
         }));
         let mut thread_created_rx = processor.thread_created_receiver();
         let mut running_turn_count_rx = processor.subscribe_running_assistant_turn_count();
@@ -1628,6 +1653,12 @@ mod tests {
         assert_eq!(
             None,
             AppServerRuntimeOptions::default().hepta_local_development_policy
+        );
+        assert!(!AppServerRuntimeOptions::default().hepta_qualification_turn_writer_enabled);
+        assert!(
+            AppServerRuntimeOptions::default()
+                .hepta_qualification_turn_writer
+                .is_none()
         );
         validate_hepta_local_lifecycle_runtime_options(&AppServerRuntimeOptions::default())
             .expect("ordinary runtime remains caller-zero");
