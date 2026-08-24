@@ -131,6 +131,16 @@ impl ProductClient {
     }
 
     async fn run_turn(&mut self, thread_id: &str, text: &str) -> Result<String> {
+        self.run_turn_with_timeout(thread_id, text, TURN_TIMEOUT)
+            .await
+    }
+
+    async fn run_turn_with_timeout(
+        &mut self,
+        thread_id: &str,
+        text: &str,
+        turn_timeout: Duration,
+    ) -> Result<String> {
         let request_id = self.request_id();
         let response: TurnStartResponse = self
             .inner
@@ -148,12 +158,18 @@ impl ProductClient {
             })
             .await?;
         let turn_id = response.turn.id;
-        self.wait_for_turn(thread_id, &turn_id).await?;
+        self.wait_for_turn_with_timeout(thread_id, &turn_id, turn_timeout)
+            .await?;
         Ok(turn_id)
     }
 
-    async fn wait_for_turn(&mut self, thread_id: &str, turn_id: &str) -> Result<()> {
-        timeout(TURN_TIMEOUT, async {
+    async fn wait_for_turn_with_timeout(
+        &mut self,
+        thread_id: &str,
+        turn_id: &str,
+        turn_timeout: Duration,
+    ) -> Result<()> {
+        timeout(turn_timeout, async {
             loop {
                 let event = self
                     .inner
@@ -563,6 +579,71 @@ async fn real_agentd_loopback_provider_read_only_smoke() -> Result<()> {
         .run_turn(
             &thread,
             "Reply with exactly READY. Do not call tools or access external resources.",
+        )
+        .await?;
+    product.shutdown().await?;
+    Ok(())
+}
+
+/// Opt-in smoke for the real first-party ChatGPT provider.  This test is
+/// intentionally ignored by default and requires an explicit auth.json path;
+/// the credential is copied only into the ephemeral Agent home created by the
+/// FleetHarness and is never included in a receipt or repository artifact.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "set HEPTA_EXTERNAL_CODEX_AUTH_JSON to run the bounded GPT-5.3 Spark provider smoke"]
+async fn real_agentd_external_gpt53_spark_read_only_smoke() -> Result<()> {
+    const MODEL_ID: &str = "gpt-5.3-codex-spark";
+    const CHATGPT_CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
+    const CHATGPT_BASE_URL: &str = "https://chatgpt.com/backend-api";
+
+    let auth_source = std::env::var("HEPTA_EXTERNAL_CODEX_AUTH_JSON")
+        .context("HEPTA_EXTERNAL_CODEX_AUTH_JSON is required for this ignored smoke")?;
+    let model_id =
+        std::env::var("HEPTA_EXTERNAL_PROVIDER_MODEL").unwrap_or_else(|_| MODEL_ID.to_string());
+    ensure!(
+        model_id == MODEL_ID,
+        "external provider smoke is pinned to {MODEL_ID}, got {model_id}"
+    );
+    let auth_source = Path::new(&auth_source);
+    ensure!(
+        auth_source.is_file(),
+        "external provider auth source is not a regular file"
+    );
+
+    let mut fleet = FleetHarness::new()?;
+    let agent = fleet.register(AGENT_A, "workspace-external-gpt53-spark")?;
+    let auth_target = agent.layout.home_root().join("auth.json");
+    std::fs::copy(auth_source, &auth_target)
+        .context("copying explicitly supplied ChatGPT auth into ephemeral Agent home")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = std::fs::metadata(&auth_target)?.permissions();
+        permissions.set_mode(0o600);
+        std::fs::set_permissions(&auth_target, permissions)?;
+    }
+
+    MockResponsesConfig::new("http://127.0.0.1:1")
+        .with_model_provider("openai_external")
+        .with_provider_name("OpenAI")
+        .with_provider_base_url(CHATGPT_CODEX_BASE_URL)
+        .with_model(MODEL_ID)
+        .with_provider_config("requires_openai_auth = true")
+        .with_provider_config("supports_websockets = false")
+        .with_root_config(&format!(
+            "chatgpt_base_url = \"{CHATGPT_BASE_URL}\"\nmodel_reasoning_effort = \"low\"\nweb_search = \"disabled\""
+        ))
+        .write(agent.layout.home_root())?;
+
+    fleet.start(&agent)?;
+    let (control, _health) = fleet.wait_ready(&agent, 1).await?;
+    let mut product = ProductClient::connect(&agent, &control).await?;
+    let thread = product.start_thread(&agent.workspace).await?;
+    product
+        .run_turn_with_timeout(
+            &thread,
+            "Reply with exactly READY. Do not call tools, access memory, or cause any external effect.",
+            Duration::from_secs(90),
         )
         .await?;
     product.shutdown().await?;
