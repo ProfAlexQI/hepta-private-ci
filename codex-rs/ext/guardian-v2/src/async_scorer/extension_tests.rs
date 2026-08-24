@@ -127,6 +127,7 @@ async fn installed_extension_reconnects_after_auth_refresh() -> Result<()> {
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Exec,
+            installation_id: "",
             persistent_thread_state_available: false,
             environments: &[],
             mcp_resource_client: None,
@@ -630,6 +631,7 @@ async fn sample_configured_conversation_history(
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Exec,
+            installation_id: "",
             persistent_thread_state_available: false,
             environments: &[],
             mcp_resource_client: None,
@@ -834,6 +836,7 @@ async fn contributor_fails_closed_when_luna_classification_fails() -> Result<()>
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Exec,
+            installation_id: "",
             persistent_thread_state_available: false,
             environments: &[],
             mcp_resource_client: None,
@@ -1668,6 +1671,7 @@ async fn contributor_skips_models_requiring_managed_guardian_review() -> Result<
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Exec,
+            installation_id: "",
             persistent_thread_state_available: false,
             environments: &[],
             mcp_resource_client: None,
@@ -2057,6 +2061,7 @@ async fn contributor_reuses_the_latest_compatible_parent_compaction() -> Result<
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Exec,
+            installation_id: "",
             persistent_thread_state_available: false,
             environments: &[],
             mcp_resource_client: None,

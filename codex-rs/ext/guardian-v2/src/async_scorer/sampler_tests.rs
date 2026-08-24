@@ -12,6 +12,7 @@ use codex_model_provider::create_model_provider;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_protocol::ResponseItemId;
 use codex_protocol::ThreadId;
+use codex_protocol::models::InternalChatMessageMetadataPassthrough;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::SessionSource;
@@ -402,7 +403,12 @@ async fn sampler_reuses_parent_compaction_only_for_matching_model_hashes() -> Re
         let parent_compaction = ResponseItem::Compaction {
             id: Some(ResponseItemId::from_server("cmp_parent".to_owned())),
             encrypted_content: "opaque encrypted summary".to_owned(),
-            internal_chat_message_metadata_passthrough: None,
+            internal_chat_message_metadata_passthrough: Some(
+                InternalChatMessageMetadataPassthrough {
+                    turn_id: Some("parent-turn".to_owned()),
+                    ..Default::default()
+                },
+            ),
         };
         let mut request = sample_request("turn-1");
         request.parent_compaction = Some(parent_compaction.clone());
@@ -420,7 +426,14 @@ async fn sampler_reuses_parent_compaction_only_for_matching_model_hashes() -> Re
         assert_eq!(input[1]["role"], "developer");
         if should_reuse {
             assert_eq!(input.len(), 5);
-            assert_eq!(input[2], serde_json::to_value(&parent_compaction)?);
+            let mut wire_parent_compaction = parent_compaction.clone();
+            wire_parent_compaction.clear_internal_chat_message_metadata_passthrough();
+            assert_eq!(input[2], serde_json::to_value(&wire_parent_compaction)?);
+            assert_eq!(
+                parent_compaction.turn_id(),
+                Some("parent-turn"),
+                "wire sanitization must not mutate the durable/source item"
+            );
             assert_eq!(input[3]["role"], "developer");
             assert_eq!(input[3]["content"][1]["text"], "trusted review");
             assert_eq!(input[4]["role"], "user");

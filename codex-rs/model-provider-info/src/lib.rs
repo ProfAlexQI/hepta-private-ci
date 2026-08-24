@@ -37,6 +37,10 @@ const MAX_REQUEST_MAX_RETRIES: u64 = 100;
 const OPENAI_PROVIDER_NAME: &str = "OpenAI";
 const OPENAI_ACTOR_AUTHORIZATION_HEADER: &str = "x-openai-actor-authorization";
 pub const OPENAI_PROVIDER_ID: &str = "openai";
+/// The first-party OpenAI Responses API base URL. Local response-item metadata
+/// is accepted only by this public API wire; ChatGPT's Codex backend and
+/// arbitrary OpenAI-compatible endpoints must not receive it.
+pub const OPENAI_API_BASE_URL: &str = "https://api.openai.com/v1";
 pub const CHATGPT_CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 const AMAZON_BEDROCK_PROVIDER_NAME: &str = "Amazon Bedrock";
 pub const AMAZON_BEDROCK_PROVIDER_ID: &str = "amazon-bedrock";
@@ -57,6 +61,20 @@ const AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_VALUE: &str = "codex";
 const CHAT_WIRE_API_REMOVED_ERROR: &str = "`wire_api = \"chat\"` is no longer supported.\nHow to fix: set `wire_api = \"responses\"` in your provider config.\nMore info: https://github.com/openai/codex/discussions/7782";
 pub const LEGACY_OLLAMA_CHAT_PROVIDER_ID: &str = "ollama-chat";
 pub const OLLAMA_CHAT_PROVIDER_REMOVED_ERROR: &str = "`ollama-chat` is no longer supported.\nHow to fix: replace `ollama-chat` with `ollama` in `model_provider`, `oss_provider`, or `--local-provider`.\nMore info: https://github.com/openai/codex/discussions/7782";
+
+/// Returns whether the resolved provider endpoint accepts Hepta's internal
+/// chat-message metadata passthrough field.
+///
+/// This deliberately uses the resolved URL rather than a provider display
+/// name. Custom provider names may point at the first-party OpenAI API, while
+/// a provider named "OpenAI" may point at a proxy or another compatible
+/// endpoint. Only the exact public OpenAI Responses base URL is known to
+/// accept this local field; all other endpoints fail closed.
+pub fn provider_accepts_internal_chat_message_metadata(base_url: &str) -> bool {
+    base_url
+        .trim_end_matches('/')
+        .eq_ignore_ascii_case(OPENAI_API_BASE_URL)
+}
 
 /// Wire protocol that the provider speaks.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
@@ -302,7 +320,7 @@ impl ModelProviderInfo {
         ) {
             CHATGPT_CODEX_BASE_URL
         } else {
-            "https://api.openai.com/v1"
+            OPENAI_API_BASE_URL
         };
         let base_url = self
             .base_url

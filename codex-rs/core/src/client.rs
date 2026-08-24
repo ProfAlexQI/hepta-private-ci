@@ -160,11 +160,11 @@ use codex_model_provider::ProviderAuthScope;
 use codex_model_provider::ProviderUnauthorizedRecovery;
 use codex_model_provider::SharedModelProvider;
 use codex_model_provider::create_model_provider;
-use codex_model_provider_info::CHATGPT_CODEX_BASE_URL;
 #[cfg(test)]
 use codex_model_provider_info::DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::WireApi;
+use codex_model_provider_info::provider_accepts_internal_chat_message_metadata;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::error::Result;
@@ -219,17 +219,6 @@ const RESPONSES_COMPACT_ENDPOINT: &str = "/responses/compact";
 const COMPACT_REQUEST_TIMEOUT_IDLE_MULTIPLIER: u32 = 4;
 const MEMORIES_SUMMARIZE_ENDPOINT: &str = "/memories/trace_summarize";
 
-/// Returns whether a concrete API provider speaks the first-party ChatGPT
-/// Codex wire variant. This is intentionally based on the resolved provider
-/// URL rather than the friendly provider name: both the public OpenAI API and
-/// ChatGPT's backend use the `OpenAI` name, but they do not accept the same
-/// request fields.
-fn api_provider_uses_chatgpt_codex_wire(provider: &ApiProvider) -> bool {
-    provider
-        .base_url
-        .trim_end_matches('/')
-        .eq_ignore_ascii_case(CHATGPT_CODEX_BASE_URL)
-}
 #[cfg(test)]
 pub(crate) const WEBSOCKET_CONNECT_TIMEOUT: Duration =
     Duration::from_millis(DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS);
@@ -792,6 +781,7 @@ impl ModelClient {
             settings.summary,
             settings.service_tier,
             responses_metadata,
+            &client_setup.api_provider,
         )?;
         let ResponsesApiRequest {
             model,
@@ -1181,6 +1171,7 @@ impl ModelClient {
         summary: ReasoningSummaryConfig,
         service_tier: Option<String>,
         responses_metadata: &CodexResponsesMetadata,
+        api_provider: &ApiProvider,
     ) -> Result<ResponsesApiRequest> {
         let mut input = prompt.get_formatted_input_for_request(model_info.use_responses_lite);
         let is_openai = self.state.provider.info().is_openai();
@@ -1210,7 +1201,6 @@ impl ModelClient {
         };
         if !is_openai {
             for item in &mut input {
-                item.clear_internal_chat_message_metadata_passthrough();
                 if let ResponseItem::FunctionCall {
                     encrypted_function_args,
                     ..
@@ -1218,6 +1208,11 @@ impl ModelClient {
                 {
                     *encrypted_function_args = None;
                 }
+            }
+        }
+        if !provider_accepts_internal_chat_message_metadata(&api_provider.base_url) {
+            for item in &mut input {
+                item.clear_internal_chat_message_metadata_passthrough();
             }
         }
         let reasoning = Self::build_reasoning(model_info, effort, summary);
@@ -1271,7 +1266,8 @@ impl ModelClient {
         input: &mut [ResponseItem],
         api_provider: &ApiProvider,
     ) {
-        let strip_internal_metadata = api_provider_uses_chatgpt_codex_wire(api_provider);
+        let strip_internal_metadata =
+            !provider_accepts_internal_chat_message_metadata(&api_provider.base_url);
         for item in input {
             if item.id().is_some_and(|id| !id.is_prefixed()) {
                 item.set_id(/*new_id*/ None);
@@ -1898,6 +1894,7 @@ impl ModelClientSession {
                 summary,
                 service_tier.clone(),
                 responses_metadata,
+                &client_setup.api_provider,
             )?;
             if let Some(header_value) = self.client.build_routing_hint_header(
                 client_setup.auth.as_ref(),
@@ -2315,6 +2312,7 @@ impl ModelClientSession {
                 summary,
                 service_tier.clone(),
                 responses_metadata,
+                &client_setup.api_provider,
             )?;
             let mut websocket_metadata = responses_metadata.clone();
             websocket_metadata.routing_hint = self.client.build_routing_hint_header(

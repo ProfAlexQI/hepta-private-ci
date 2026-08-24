@@ -183,6 +183,46 @@ fn chatgpt_codex_wire_strips_local_content_metadata_but_openai_wire_keeps_it() {
             .map(Vec::len),
         Some(1)
     );
+
+    // The wire policy follows the resolved endpoint, not the friendly name.
+    // A custom provider name using the first-party OpenAI URL keeps metadata.
+    let mut custom_name_provider =
+        ModelProviderInfo::create_openai_provider(Some("https://api.openai.com/v1/".to_string()));
+    custom_name_provider.name = "custom-openai-proxy-name".to_string();
+    let custom_name_provider = custom_name_provider
+        .to_api_provider(Some(AuthMode::ApiKey))
+        .expect("custom OpenAI provider should build");
+    let mut custom_name_item = item_with_metadata();
+    client.prepare_response_items_for_request(
+        std::slice::from_mut(&mut custom_name_item),
+        &custom_name_provider,
+    );
+    assert!(
+        serde_json::to_value(&custom_name_item)
+            .expect("item should serialize")
+            .get("internal_chat_message_metadata_passthrough")
+            .is_some()
+    );
+
+    // Conversely, an `OpenAI`-named provider on a non-standard endpoint is
+    // treated conservatively and does not receive local-only metadata.
+    let mut nonstandard_provider =
+        ModelProviderInfo::create_openai_provider(Some("https://proxy.example.com/v1".to_string()));
+    nonstandard_provider.name = "OpenAI".to_string();
+    let nonstandard_provider = nonstandard_provider
+        .to_api_provider(Some(AuthMode::ApiKey))
+        .expect("non-standard provider should build");
+    let mut nonstandard_item = item_with_metadata();
+    client.prepare_response_items_for_request(
+        std::slice::from_mut(&mut nonstandard_item),
+        &nonstandard_provider,
+    );
+    assert!(
+        serde_json::to_value(&nonstandard_item)
+            .expect("item should serialize")
+            .get("internal_chat_message_metadata_passthrough")
+            .is_none()
+    );
 }
 
 struct TransportSelectionEphemeralContributor {

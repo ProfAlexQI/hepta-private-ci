@@ -155,6 +155,22 @@ fn test_header_auth_uses_chatgpt_codex_base_url() {
 }
 
 #[test]
+fn internal_metadata_wire_policy_uses_resolved_provider_url() {
+    assert!(provider_accepts_internal_chat_message_metadata(
+        OPENAI_API_BASE_URL
+    ));
+    assert!(provider_accepts_internal_chat_message_metadata(
+        "https://API.OPENAI.COM/v1/"
+    ));
+    assert!(!provider_accepts_internal_chat_message_metadata(
+        CHATGPT_CODEX_BASE_URL
+    ));
+    assert!(!provider_accepts_internal_chat_message_metadata(
+        "https://api.openai.com/proxy/v1"
+    ));
+}
+
+#[test]
 fn test_uses_openai_actor_authorization() {
     let mut provider = ModelProviderInfo {
         http_headers: Some(maplit::hashmap! {
