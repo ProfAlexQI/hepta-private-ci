@@ -24,9 +24,9 @@ use sqlx::SqlitePool;
 use sqlx::Transaction;
 use thiserror::Error;
 
+use crate::framing::frame_part;
 use crate::CognitiveStore;
 use crate::CognitiveStoreError;
-use crate::framing::frame_part;
 
 pub const LOCAL_LEASE_OUTBOX_NAMESPACE: &str = "local_development_only";
 pub const LOCAL_LEASE_OUTBOX_SCHEMA_VERSION: u32 = 1;
@@ -113,6 +113,35 @@ impl LocalLeaseBinding {
             owner_epoch,
             lease_expires_at_unix_seconds,
         })
+    }
+
+    /// Validate a host-owned epoch transition against the exact persisted
+    /// lease head.  The legacy local qualification API intentionally keeps
+    /// accepting caller-supplied bindings; only the host-bound API invokes
+    /// this stricter rule.
+    ///
+    /// The pair `(authority_epoch, owner_epoch)` is a lexicographically
+    /// monotonic CAS witness.  A higher authority epoch may deliberately
+    /// reset the owner epoch (for example after a supervisor authority
+    /// transfer), but an unchanged authority epoch must advance the owner
+    /// epoch strictly.  This is still a local contract seam: the actual
+    /// supervisor that allocates the epochs is not implemented here.
+    fn validate_host_successor(
+        &self,
+        previous: Option<&LocalLeaseBinding>,
+    ) -> Result<(), LocalLeaseOutboxError> {
+        validate_lease_binding(self)?;
+        if let Some(previous) = previous {
+            if (self.authority_epoch, self.owner_epoch)
+                <= (previous.authority_epoch, previous.owner_epoch)
+            {
+                return Err(LocalLeaseOutboxError::CasConflict(format!(
+                    "host lease epoch must advance from ({}, {}) to a lexicographically newer pair",
+                    previous.authority_epoch, previous.owner_epoch
+                )));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -269,7 +298,7 @@ impl LocalLeaseOutbox {
         generation: u64,
         fencing_token: impl Into<String>,
     ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
-        Self::acquire_with_binding(store, lease_id, generation, fencing_token, None).await
+        Self::acquire_with_binding(store, lease_id, generation, fencing_token, None, false).await
     }
 
     /// Acquire or replay a lease with an explicit authority/owner epoch and
@@ -282,7 +311,38 @@ impl LocalLeaseOutbox {
         generation: u64,
         fencing_token: impl Into<String>,
     ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
-        Self::acquire_with_binding(store, lease_id, generation, fencing_token, Some(binding)).await
+        Self::acquire_with_binding(
+            store,
+            lease_id,
+            generation,
+            fencing_token,
+            Some(binding),
+            false,
+        )
+        .await
+    }
+
+    /// Acquire or replay a lease using the strict host-bound epoch contract.
+    ///
+    /// This remains a local qualification seam.  It persists and verifies a
+    /// caller-provided binding, but it does not claim to be a supervisor or
+    /// production authority source.
+    pub(crate) async fn acquire_host_bound(
+        store: &CognitiveStore,
+        lease_id: impl Into<String>,
+        binding: LocalLeaseBinding,
+        generation: u64,
+        fencing_token: impl Into<String>,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        Self::acquire_with_binding(
+            store,
+            lease_id,
+            generation,
+            fencing_token,
+            Some(binding),
+            true,
+        )
+        .await
     }
 
     async fn acquire_with_binding(
@@ -291,6 +351,7 @@ impl LocalLeaseOutbox {
         generation: u64,
         fencing_token: impl Into<String>,
         binding: Option<LocalLeaseBinding>,
+        enforce_host_epoch_cas: bool,
     ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
         let lease_id = lease_id.into();
         let fencing_token = fencing_token.into();
@@ -299,6 +360,13 @@ impl LocalLeaseOutbox {
         validate_text(&fencing_token, "fencing token", 256)?;
         if let Some(binding) = binding.as_ref() {
             validate_lease_binding(binding)?;
+            if enforce_host_epoch_cas {
+                binding.validate_host_successor(None)?;
+            }
+        } else if enforce_host_epoch_cas {
+            return Err(LocalLeaseOutboxError::Invalid(
+                "host-bound lease requires an explicit authority/owner/expiry binding".to_string(),
+            ));
         }
         let mut transaction = store
             .pool
@@ -364,6 +432,20 @@ impl LocalLeaseOutbox {
                         return Err(LocalLeaseOutboxError::CasConflict(
                             "fencing token was already used by this lease".to_string(),
                         ));
+                    }
+                    if enforce_host_epoch_cas {
+                        let binding = binding.as_ref().ok_or_else(|| {
+                            LocalLeaseOutboxError::Invalid(
+                                "host-bound lease requires an explicit authority/owner/expiry binding"
+                                    .to_string(),
+                            )
+                        })?;
+                        let previous_binding = prior_binding(&previous).ok_or_else(|| {
+                            LocalLeaseOutboxError::CasConflict(
+                                "host-bound lease cannot advance from an unbound head".to_string(),
+                            )
+                        })?;
+                        binding.validate_host_successor(Some(&previous_binding))?;
                     }
                     let lease = append_lease(
                         &mut transaction,
@@ -452,6 +534,7 @@ impl LocalLeaseOutbox {
             generation,
             fencing_token,
             None,
+            false,
         )
         .await
     }
@@ -471,6 +554,31 @@ impl LocalLeaseOutbox {
             generation,
             fencing_token,
             Some(binding),
+            false,
+        )
+        .await
+    }
+
+    /// Acquire the next generation after an exact head CAS under the strict
+    /// host-bound authority/owner epoch contract.  The expected head is the
+    /// durable local witness; an intervening terminal transition or a stale
+    /// epoch fails closed inside the same SQLite write transaction.
+    pub(crate) async fn acquire_after_head_host_bound(
+        store: &CognitiveStore,
+        lease_id: impl Into<String>,
+        expected_head: LocalLease,
+        binding: LocalLeaseBinding,
+        generation: u64,
+        fencing_token: impl Into<String>,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        Self::acquire_after_head_with_binding(
+            store,
+            lease_id,
+            expected_head,
+            generation,
+            fencing_token,
+            Some(binding),
+            true,
         )
         .await
     }
@@ -482,6 +590,7 @@ impl LocalLeaseOutbox {
         generation: u64,
         fencing_token: impl Into<String>,
         binding: Option<LocalLeaseBinding>,
+        enforce_host_epoch_cas: bool,
     ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
         let lease_id = lease_id.into();
         let fencing_token = fencing_token.into();
@@ -490,6 +599,13 @@ impl LocalLeaseOutbox {
         validate_text(&fencing_token, "fencing token", 256)?;
         if let Some(binding) = binding.as_ref() {
             validate_lease_binding(binding)?;
+            if enforce_host_epoch_cas {
+                binding.validate_host_successor(None)?;
+            }
+        } else if enforce_host_epoch_cas {
+            return Err(LocalLeaseOutboxError::Invalid(
+                "host-bound lease requires an explicit authority/owner/expiry binding".to_string(),
+            ));
         }
         validate_generation(expected_head.generation)?;
         if expected_head.lease_id != lease_id {
@@ -541,6 +657,20 @@ impl LocalLeaseOutbox {
             return Err(LocalLeaseOutboxError::CasConflict(
                 "fencing token was already used by this lease".to_string(),
             ));
+        }
+        if enforce_host_epoch_cas {
+            let binding = binding.as_ref().ok_or_else(|| {
+                LocalLeaseOutboxError::Invalid(
+                    "host-bound lease requires an explicit authority/owner/expiry binding"
+                        .to_string(),
+                )
+            })?;
+            let previous_binding = prior_binding(&previous).ok_or_else(|| {
+                LocalLeaseOutboxError::CasConflict(
+                    "host-bound lease cannot advance from an unbound head".to_string(),
+                )
+            })?;
+            binding.validate_host_successor(Some(&previous_binding))?;
         }
         let lease = append_lease(
             &mut transaction,
@@ -626,6 +756,35 @@ impl LocalLeaseOutbox {
 
     pub fn is_explicitly_bound(&self) -> bool {
         self.binding().is_some()
+    }
+
+    /// Read the fully verified append-only head that this handle names.
+    ///
+    /// Hosts use this witness when handing a lease across a restart or into a
+    /// successor CAS.  Reading it grants no authority and does not bypass the
+    /// strict `reopen_bound` checks.
+    pub async fn head_witness(&self) -> Result<LocalLease, LocalLeaseOutboxError> {
+        let mut transaction = self
+            .store
+            .pool
+            .begin()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let (latest, _) =
+            load_lease_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let latest = latest.ok_or_else(|| {
+            LocalLeaseOutboxError::StaleFence("local lease head does not exist".to_string())
+        })?;
+        // A stale process must not turn this read helper into a way to discover
+        // and re-use a newer generation.  The host can ask a fresh store
+        // handle for that head explicitly; this handle only witnesses its own
+        // generation/fence tuple.
+        ensure_current_handle_fields(&latest, self)?;
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(latest)
     }
 
     /// Return whether this handle was opened against the exact Agent-local
@@ -715,6 +874,79 @@ impl LocalLeaseOutbox {
         }
         verify_event_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
         verify_outbox_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Self::from_lease(store, &lease)
+    }
+
+    /// Reopen an exact active head under the strict host-bound contract.
+    ///
+    /// Unlike the compatibility `reopen` API, this method requires the full
+    /// append-only head witness and an explicit binding.  Every identity and
+    /// digest field is compared inside the read transaction before a writable
+    /// handle is returned.  Expiry is intentionally not checked here: a host
+    /// may reopen an expired head only to make the explicit timeout decision
+    /// through `expire_lease`; ordinary writes still fail closed.
+    pub(crate) async fn reopen_bound(
+        store: &CognitiveStore,
+        expected_head: LocalLease,
+        binding: LocalLeaseBinding,
+    ) -> Result<Self, LocalLeaseOutboxError> {
+        validate_generation(expected_head.generation)?;
+        validate_lease_binding(&binding)?;
+        if expected_head.state != LocalLeaseState::Active {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "host-bound reopen requires an active lease head".to_string(),
+            ));
+        }
+        if expected_head.owner_agent_id != *store.owner_agent_id() {
+            return Err(LocalLeaseOutboxError::AccessDenied(
+                "expected host-bound lease head owner does not match the Agent-local store"
+                    .to_string(),
+            ));
+        }
+        if prior_binding(&expected_head).as_ref() != Some(&binding) {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "expected host-bound lease head binding does not match the supplied binding"
+                    .to_string(),
+            ));
+        }
+
+        let mut transaction = store
+            .pool
+            .begin()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let (latest, _) = load_lease_chain(
+            &mut transaction,
+            &expected_head.lease_id,
+            store.owner_agent_id(),
+        )
+        .await?;
+        let Some(lease) = latest else {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "host-bound local lease does not exist".to_string(),
+            ));
+        };
+        if lease != expected_head {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "expected host-bound lease head no longer matches the append-only head".to_string(),
+            ));
+        }
+        verify_event_chain(
+            &mut transaction,
+            &expected_head.lease_id,
+            store.owner_agent_id(),
+        )
+        .await?;
+        verify_outbox_chain(
+            &mut transaction,
+            &expected_head.lease_id,
+            store.owner_agent_id(),
+        )
+        .await?;
         transaction
             .commit()
             .await
@@ -1582,6 +1814,25 @@ impl CognitiveStore {
         LocalLeaseOutbox::acquire_bound(self, lease_id, binding, generation, fencing_token).await
     }
 
+    /// Host-bound qualification-only acquisition with a strict monotonic
+    /// `(authority_epoch, owner_epoch)` contract.  The caller-provided epoch
+    /// pair is persisted in the local append-only lease chain; no production
+    /// supervisor authority is implied by this API.
+    pub async fn acquire_host_bound_lease(
+        &self,
+        lease_id: impl Into<String>,
+        authority_epoch: u64,
+        owner_epoch: u64,
+        generation: u64,
+        fencing_token: impl Into<String>,
+        lease_expires_at_unix_seconds: u64,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        let binding =
+            LocalLeaseBinding::new(authority_epoch, owner_epoch, lease_expires_at_unix_seconds)?;
+        LocalLeaseOutbox::acquire_host_bound(self, lease_id, binding, generation, fencing_token)
+            .await
+    }
+
     pub async fn acquire_local_lease_after(
         &self,
         lease_id: impl Into<String>,
@@ -1646,6 +1897,31 @@ impl CognitiveStore {
         .await
     }
 
+    /// Host-bound qualification-only successor acquisition after an exact
+    /// append-only head CAS.  Epoch regressions and stale heads fail closed.
+    pub async fn acquire_host_bound_lease_after_head(
+        &self,
+        lease_id: impl Into<String>,
+        expected_head: LocalLease,
+        authority_epoch: u64,
+        owner_epoch: u64,
+        generation: u64,
+        fencing_token: impl Into<String>,
+        lease_expires_at_unix_seconds: u64,
+    ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
+        let binding =
+            LocalLeaseBinding::new(authority_epoch, owner_epoch, lease_expires_at_unix_seconds)?;
+        LocalLeaseOutbox::acquire_after_head_host_bound(
+            self,
+            lease_id,
+            expected_head,
+            binding,
+            generation,
+            fencing_token,
+        )
+        .await
+    }
+
     pub async fn reopen_local_lease(
         &self,
         lease_id: impl Into<String>,
@@ -1653,6 +1929,21 @@ impl CognitiveStore {
         fencing_token: impl Into<String>,
     ) -> Result<LocalLeaseOutbox, LocalLeaseOutboxError> {
         LocalLeaseOutbox::reopen(self, lease_id, generation, fencing_token).await
+    }
+
+    /// Reopen an exact active head under the host-bound qualification
+    /// contract.  The full head witness and binding are checked before a
+    /// writable handle is returned; this does not enable production authority.
+    pub async fn reopen_host_bound_lease(
+        &self,
+        expected_head: LocalLease,
+        authority_epoch: u64,
+        owner_epoch: u64,
+        lease_expires_at_unix_seconds: u64,
+    ) -> Result<LocalLeaseOutbox, LocalLeaseOutboxError> {
+        let binding =
+            LocalLeaseBinding::new(authority_epoch, owner_epoch, lease_expires_at_unix_seconds)?;
+        LocalLeaseOutbox::reopen_bound(self, expected_head, binding).await
     }
 }
 

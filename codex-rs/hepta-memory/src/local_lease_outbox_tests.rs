@@ -3,10 +3,9 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tempfile::TempDir;
 
+use crate::cognitive_test_support::agent_id;
+use crate::cognitive_test_support::layout;
 use crate::CognitiveStore;
-use crate::LOCAL_LEASE_OUTBOX_EXTERNAL_EFFECTS;
-use crate::LOCAL_LEASE_OUTBOX_KG_WRITE_AUTHORITY;
-use crate::LOCAL_LEASE_OUTBOX_PRODUCTION_CALLER;
 use crate::LocalAdmission;
 use crate::LocalAdmissionFault;
 use crate::LocalLeaseAcquire;
@@ -14,8 +13,9 @@ use crate::LocalLeaseOutboxError;
 use crate::LocalOutcomeState;
 use crate::LocalReconcileOutcome;
 use crate::LocalReplayFinalization;
-use crate::cognitive_test_support::agent_id;
-use crate::cognitive_test_support::layout;
+use crate::LOCAL_LEASE_OUTBOX_EXTERNAL_EFFECTS;
+use crate::LOCAL_LEASE_OUTBOX_KG_WRITE_AUTHORITY;
+use crate::LOCAL_LEASE_OUTBOX_PRODUCTION_CALLER;
 use codex_hepta_contracts::Sha256Digest;
 
 async fn opened_store(temp: &TempDir, number: u8) -> CognitiveStore {
@@ -87,12 +87,10 @@ async fn generation_cas_release_and_stale_handle_fail_closed() {
             if message.contains("exact lease head")
     ));
     let released = old.release().await.expect("release");
-    assert!(
-        store
-            .acquire_local_lease_after("lease:generation", 1, 2, "fence:1")
-            .await
-            .is_err()
-    );
+    assert!(store
+        .acquire_local_lease_after("lease:generation", 1, 2, "fence:1")
+        .await
+        .is_err());
     assert!(matches!(
         store
             .acquire_local_lease_after("lease:generation", 1, 2, "fence:2")
@@ -106,22 +104,18 @@ async fn generation_cas_release_and_stale_handle_fail_closed() {
             .await
             .expect("next generation"),
     );
-    assert!(
-        old.admit("occurrence:stale", "topic", "payload")
-            .await
-            .is_err()
-    );
-    assert!(
-        next.admit("occurrence:current", "topic", "payload")
-            .await
-            .is_ok()
-    );
-    assert!(
-        store
-            .acquire_local_lease_after("lease:generation", 1, 3, "fence:3")
-            .await
-            .is_err()
-    );
+    assert!(old
+        .admit("occurrence:stale", "topic", "payload")
+        .await
+        .is_err());
+    assert!(next
+        .admit("occurrence:current", "topic", "payload")
+        .await
+        .is_ok());
+    assert!(store
+        .acquire_local_lease_after("lease:generation", 1, 3, "fence:3")
+        .await
+        .is_err());
 }
 
 #[tokio::test]
@@ -238,11 +232,10 @@ async fn bound_expiry_is_explicit_timeout_rollback_and_exact_head_reopens_genera
             .lease_expires_at_unix_seconds,
         next_expires_at
     );
-    assert!(
-        next.admit("occurrence:next-generation", "topic", "payload")
-            .await
-            .is_ok()
-    );
+    assert!(next
+        .admit("occurrence:next-generation", "topic", "payload")
+        .await
+        .is_ok());
 }
 
 #[tokio::test]
@@ -299,6 +292,217 @@ async fn expiry_rejects_legacy_unbound_leases() {
         Err(LocalLeaseOutboxError::Invalid(message))
             if message.contains("explicit authority/owner/expiry binding")
     ));
+}
+
+#[tokio::test]
+async fn host_bound_reopen_requires_exact_head_and_binding() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 141).await;
+    let expires_at = unix_seconds() + 3_600;
+    let lease = acquired(
+        store
+            .acquire_host_bound_lease(
+                "lease:host-reopen",
+                10,
+                20,
+                1,
+                "fence:host-reopen-1",
+                expires_at,
+            )
+            .await
+            .expect("host-bound acquire"),
+    );
+    let head = lease.head_witness().await.expect("active head witness");
+    assert_eq!(head.state, crate::LocalLeaseState::Active);
+    assert_eq!(head.authority_epoch, Some(10));
+    assert_eq!(head.owner_epoch, Some(20));
+
+    let reopened = store
+        .reopen_host_bound_lease(head.clone(), 10, 20, expires_at)
+        .await
+        .expect("exact host-bound reopen");
+    assert_eq!(reopened.head_witness().await.expect("reopened head"), head);
+
+    let before = lease
+        .snapshot_counts()
+        .await
+        .expect("counts before rejects");
+    assert!(matches!(
+        store
+            .reopen_host_bound_lease(head.clone(), 10, 21, expires_at)
+            .await,
+        Err(LocalLeaseOutboxError::StaleFence(message))
+            if message.contains("binding")
+    ));
+
+    let mut tampered_head = head.clone();
+    tampered_head.lease_sha256 = Sha256Digest::for_bytes(b"tampered-host-head");
+    assert!(matches!(
+        store
+            .reopen_host_bound_lease(tampered_head, 10, 20, expires_at)
+            .await,
+        Err(LocalLeaseOutboxError::StaleFence(message))
+            if message.contains("no longer matches")
+    ));
+    assert_eq!(
+        lease.snapshot_counts().await.expect("counts after rejects"),
+        before,
+        "reopen rejects must never append lease/event/outbox rows"
+    );
+
+    let legacy = acquired(
+        store
+            .acquire_local_lease("lease:host-reopen-legacy", 1, "fence:legacy")
+            .await
+            .expect("legacy acquire"),
+    );
+    let legacy_head = legacy.head_witness().await.expect("legacy head witness");
+    assert!(matches!(
+        store
+            .reopen_host_bound_lease(legacy_head, 1, 1, expires_at)
+            .await,
+        Err(LocalLeaseOutboxError::StaleFence(message))
+            if message.contains("binding")
+    ));
+}
+
+#[tokio::test]
+async fn host_bound_successor_cas_requires_lexicographically_newer_epochs() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 142).await;
+    let first = acquired(
+        store
+            .acquire_host_bound_lease(
+                "lease:host-epochs",
+                4,
+                8,
+                1,
+                "fence:host-epochs-1",
+                unix_seconds() + 3_600,
+            )
+            .await
+            .expect("first host-bound acquire"),
+    );
+    let terminal = first.release().await.expect("terminal head");
+
+    let before = first
+        .snapshot_counts()
+        .await
+        .expect("counts before epoch rejects");
+    assert!(matches!(
+        store
+            .acquire_host_bound_lease_after_head(
+                "lease:host-epochs",
+                terminal.clone(),
+                4,
+                8,
+                2,
+                "fence:host-epochs-replay",
+                unix_seconds() + 3_600,
+            )
+            .await,
+        Err(LocalLeaseOutboxError::CasConflict(message))
+            if message.contains("epoch must advance")
+    ));
+    assert!(matches!(
+        store
+            .acquire_host_bound_lease_after_head(
+                "lease:host-epochs",
+                terminal.clone(),
+                3,
+                99,
+                2,
+                "fence:host-epochs-regressed-authority",
+                unix_seconds() + 3_600,
+            )
+            .await,
+        Err(LocalLeaseOutboxError::CasConflict(message))
+            if message.contains("epoch must advance")
+    ));
+    assert_eq!(
+        first
+            .snapshot_counts()
+            .await
+            .expect("counts after epoch rejects"),
+        before
+    );
+
+    let next = acquired(
+        store
+            .acquire_host_bound_lease_after_head(
+                "lease:host-epochs",
+                terminal.clone(),
+                4,
+                9,
+                2,
+                "fence:host-epochs-2",
+                unix_seconds() + 3_600,
+            )
+            .await
+            .expect("strict owner epoch successor"),
+    );
+    assert_eq!(next.generation(), 2);
+    assert_eq!(next.binding().expect("next binding").owner_epoch, 9);
+    assert!(
+        matches!(
+            first.head_witness().await,
+            Err(LocalLeaseOutboxError::StaleFence(_))
+        ),
+        "a stale handle cannot witness a newer generation"
+    );
+
+    let stale_counts = next
+        .snapshot_counts()
+        .await
+        .expect("counts before stale CAS");
+    let stale_result = store
+        .acquire_host_bound_lease_after_head(
+            "lease:host-epochs",
+            terminal,
+            5,
+            1,
+            2,
+            "fence:host-epochs-stale-head",
+            unix_seconds() + 3_600,
+        )
+        .await;
+    assert!(
+        matches!(
+            stale_result,
+            Err(LocalLeaseOutboxError::CasConflict(ref message))
+                if message.contains("no longer matches")
+        ),
+        "unexpected stale CAS result: {stale_result:?}"
+    );
+    assert_eq!(
+        next.snapshot_counts()
+            .await
+            .expect("counts after stale CAS"),
+        stale_counts
+    );
+
+    let next_terminal = next.release().await.expect("second terminal head");
+    let authority_transfer = acquired(
+        store
+            .acquire_host_bound_lease_after_head(
+                "lease:host-epochs",
+                next_terminal,
+                5,
+                1,
+                3,
+                "fence:host-epochs-3",
+                unix_seconds() + 3_600,
+            )
+            .await
+            .expect("higher authority epoch permits explicit owner reset"),
+    );
+    assert_eq!(
+        authority_transfer
+            .binding()
+            .expect("authority transfer binding")
+            .owner_epoch,
+        1
+    );
 }
 
 #[tokio::test]
@@ -462,17 +666,15 @@ async fn event_and_outbox_faults_leave_no_partial_rows() {
             .await
             .expect("acquire"),
     );
-    assert!(
-        handle
-            .admit_with_fault(
-                "occurrence:fault",
-                "topic",
-                "payload",
-                LocalAdmissionFault::AfterEventBeforeOutbox,
-            )
-            .await
-            .is_err()
-    );
+    assert!(handle
+        .admit_with_fault(
+            "occurrence:fault",
+            "topic",
+            "payload",
+            LocalAdmissionFault::AfterEventBeforeOutbox,
+        )
+        .await
+        .is_err());
     assert_eq!(
         handle.snapshot_counts().await.expect("counts after fault"),
         crate::LocalLeaseOutboxCounts {
@@ -481,17 +683,15 @@ async fn event_and_outbox_faults_leave_no_partial_rows() {
             outbox_rows: 0,
         }
     );
-    assert!(
-        handle
-            .admit_with_fault(
-                "occurrence:fault-after-outbox",
-                "topic",
-                "payload",
-                LocalAdmissionFault::AfterOutboxBeforeCommit,
-            )
-            .await
-            .is_err()
-    );
+    assert!(handle
+        .admit_with_fault(
+            "occurrence:fault-after-outbox",
+            "topic",
+            "payload",
+            LocalAdmissionFault::AfterOutboxBeforeCommit,
+        )
+        .await
+        .is_err());
     assert_eq!(
         handle
             .snapshot_counts()
@@ -625,12 +825,10 @@ async fn indeterminate_replay_is_status_aware_and_releases_without_dispatch() {
             outbox_rows: 1,
         }
     );
-    assert!(
-        reopened_store
-            .acquire_local_lease("lease:replay-recovery", 1, "fence:1")
-            .await
-            .is_err()
-    );
+    assert!(reopened_store
+        .acquire_local_lease("lease:replay-recovery", 1, "fence:1")
+        .await
+        .is_err());
 }
 
 #[tokio::test]
@@ -740,12 +938,10 @@ async fn tampered_event_chain_is_rejected_on_reopen() {
     .execute(&store.pool)
     .await
     .expect("tamper");
-    assert!(
-        store
-            .reopen_local_lease("lease:tamper", 1, "fence:1")
-            .await
-            .is_err()
-    );
+    assert!(store
+        .reopen_local_lease("lease:tamper", 1, "fence:1")
+        .await
+        .is_err());
 }
 
 #[tokio::test]

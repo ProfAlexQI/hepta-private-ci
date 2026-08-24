@@ -14,6 +14,10 @@ use serde::Deserialize;
 use serde::Serialize;
 
 pub const AGENTD_CONTROL_SCHEMA_VERSION: u32 = 2;
+/// Version for the transport-only host turn authority witness.  This type is
+/// deliberately not an authority grant and is not consumed by the Agentd
+/// runtime yet; it gives a future host/supervisor seam one strict wire shape.
+pub const HOST_TURN_AUTHORITY_BINDING_SCHEMA_VERSION: u32 = 1;
 pub const MAX_CONTROL_FRAME_BYTES: u64 = 65_536;
 pub const MAX_EVENT_BATCH: u16 = 256;
 pub const MAX_FEDERATION_CONTROL_LIST: u16 = 128;
@@ -374,6 +378,119 @@ pub struct EventBatch {
     pub latest_cursor: u64,
 }
 
+/// Exact host-bound turn/lease identity transported across the Agentd
+/// boundary.
+///
+/// This is a qualification contract only.  It carries the witness that a
+/// supervisor can later bind to an Agent-local append-only lease CAS, but the
+/// current protocol has no method that grants authority from this value.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostTurnAuthorityBinding {
+    pub schema_version: u32,
+    pub owner_agent_id: AgentId,
+    pub lease_id: String,
+    pub authority_epoch: u64,
+    pub owner_epoch: u64,
+    pub generation: u64,
+    pub fencing_token: String,
+    pub lease_expires_at_unix_seconds: u64,
+    pub lease_head_sha256: Sha256Digest,
+}
+
+impl HostTurnAuthorityBinding {
+    pub fn new(
+        owner_agent_id: AgentId,
+        lease_id: impl Into<String>,
+        authority_epoch: u64,
+        owner_epoch: u64,
+        generation: u64,
+        fencing_token: impl Into<String>,
+        lease_expires_at_unix_seconds: u64,
+        lease_head_sha256: Sha256Digest,
+    ) -> Result<Self, String> {
+        let binding = Self {
+            schema_version: HOST_TURN_AUTHORITY_BINDING_SCHEMA_VERSION,
+            owner_agent_id,
+            lease_id: lease_id.into(),
+            authority_epoch,
+            owner_epoch,
+            generation,
+            fencing_token: fencing_token.into(),
+            lease_expires_at_unix_seconds,
+            lease_head_sha256,
+        };
+        binding.validate()?;
+        Ok(binding)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_version != HOST_TURN_AUTHORITY_BINDING_SCHEMA_VERSION {
+            return Err("unsupported host turn authority binding schema".to_string());
+        }
+        validate_protocol_text(&self.lease_id, "lease id", 512)?;
+        validate_protocol_text(&self.fencing_token, "fencing token", 256)?;
+        if self.authority_epoch == 0 {
+            return Err("authority epoch must be non-zero".to_string());
+        }
+        if self.owner_epoch == 0 {
+            return Err("owner epoch must be non-zero".to_string());
+        }
+        if self.generation == 0 {
+            return Err("lease generation must be non-zero".to_string());
+        }
+        if self.lease_expires_at_unix_seconds == 0 {
+            return Err("lease expiry must be non-zero".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl<'de> Deserialize<'de> for HostTurnAuthorityBinding {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Wire {
+            schema_version: u32,
+            owner_agent_id: AgentId,
+            lease_id: String,
+            authority_epoch: u64,
+            owner_epoch: u64,
+            generation: u64,
+            fencing_token: String,
+            lease_expires_at_unix_seconds: u64,
+            lease_head_sha256: Sha256Digest,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        let binding = Self {
+            schema_version: wire.schema_version,
+            owner_agent_id: wire.owner_agent_id,
+            lease_id: wire.lease_id,
+            authority_epoch: wire.authority_epoch,
+            owner_epoch: wire.owner_epoch,
+            generation: wire.generation,
+            fencing_token: wire.fencing_token,
+            lease_expires_at_unix_seconds: wire.lease_expires_at_unix_seconds,
+            lease_head_sha256: wire.lease_head_sha256,
+        };
+        binding.validate().map_err(serde::de::Error::custom)?;
+        Ok(binding)
+    }
+}
+
+fn validate_protocol_text(value: &str, label: &str, max_bytes: usize) -> Result<(), String> {
+    if value.trim().is_empty() || value.len() > max_bytes || value.as_bytes().contains(&0) {
+        return Err(format!(
+            "{label} must contain 1..={max_bytes} non-NUL bytes"
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -465,5 +582,48 @@ mod tests {
             .expect("utf8")
             .replace(&"a".repeat(64), "not-a-digest");
         assert!(serde_json::from_str::<AgentdRequest>(&malformed).is_err());
+    }
+
+    #[test]
+    fn host_turn_authority_binding_is_strict_and_fail_closed() {
+        let owner = AgentId::parse("019153a4-3088-7e03-a56a-9b1964f75dde").expect("owner id");
+        let binding = HostTurnAuthorityBinding::new(
+            owner,
+            "lease:transport-witness",
+            7,
+            11,
+            3,
+            "fence:transport-witness",
+            1_900_000_000,
+            Sha256Digest::for_bytes(b"transport-head"),
+        )
+        .expect("valid host authority binding");
+        let bytes = serde_json::to_vec(&binding).expect("serialize host binding");
+        assert!(bytes.len() as u64 <= MAX_CONTROL_FRAME_BYTES);
+        assert_eq!(
+            serde_json::from_slice::<HostTurnAuthorityBinding>(&bytes).expect("parse host binding"),
+            binding
+        );
+
+        let mut zero_epoch = serde_json::to_string(&binding).expect("json");
+        zero_epoch = zero_epoch.replace("\"authority_epoch\":7", "\"authority_epoch\":0");
+        assert!(serde_json::from_str::<HostTurnAuthorityBinding>(&zero_epoch).is_err());
+
+        let unknown = serde_json::to_string(&binding)
+            .expect("json")
+            .replace('}', ",\"unexpected\":true}");
+        assert!(serde_json::from_str::<HostTurnAuthorityBinding>(&unknown).is_err());
+
+        assert!(HostTurnAuthorityBinding::new(
+            binding.owner_agent_id,
+            binding.lease_id.clone(),
+            binding.authority_epoch,
+            binding.owner_epoch,
+            binding.generation,
+            "\0",
+            binding.lease_expires_at_unix_seconds,
+            binding.lease_head_sha256.clone(),
+        )
+        .is_err());
     }
 }
