@@ -233,6 +233,45 @@ async fn bound_expiry_is_explicit_timeout_rollback_and_exact_head_reopens_genera
 }
 
 #[tokio::test]
+async fn verify_current_rejects_expired_active_head_but_reopen_allows_explicit_expiry() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 116).await;
+    let expires_at = unix_seconds().saturating_sub(1);
+    let lease = acquired(
+        store
+            .acquire_local_lease_bound(
+                "lease:verify-expired",
+                3,
+                8,
+                1,
+                "fence:verify-expired",
+                expires_at,
+            )
+            .await
+            .expect("bound acquire"),
+    );
+
+    assert!(matches!(
+        lease.verify_current().await,
+        Err(LocalLeaseOutboxError::StaleFence(message))
+            if message.contains("has expired")
+    ));
+
+    // Restart recovery intentionally remains available: a host can reopen
+    // the expired active head and make the explicit timeout decision itself.
+    let reopened = store
+        .reopen_local_lease("lease:verify-expired", 1, "fence:verify-expired")
+        .await
+        .expect("reopen expired head for explicit expiry");
+    let terminal = reopened
+        .expire_lease()
+        .await
+        .expect("explicit expiry after reopen");
+    assert_eq!(terminal.state, crate::LocalLeaseState::RolledBack);
+    assert_eq!(terminal.lease_sequence, 2);
+}
+
+#[tokio::test]
 async fn expiry_rejects_legacy_unbound_leases() {
     let temp = TempDir::new().expect("temp dir");
     let store = opened_store(&temp, 114).await;

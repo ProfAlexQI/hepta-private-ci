@@ -517,6 +517,9 @@ fn hash_part(hasher: &mut Sha256, value: &[u8]) {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::time::Duration;
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
 
     use codex_extension_api::ExtensionData;
     use codex_hepta_contracts::AgentId;
@@ -537,6 +540,13 @@ mod tests {
 
     fn fence(token: &str) -> CompactFence {
         CompactFence::new(3, 4, 1, token).expect("fence")
+    }
+
+    fn unix_seconds() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_secs()
     }
 
     fn checkpoint(fence: CompactFence) -> CompactCheckpoint {
@@ -832,6 +842,132 @@ mod tests {
             before_witness
         );
         assert!(turn_store.get::<LocalRehydrationReplayPlan>().is_none());
+    }
+
+    #[tokio::test]
+    async fn expired_active_bound_lease_rejects_h14_and_h16_without_writes() {
+        let (temp, turn_store, lease, executor, checkpoint, _current_fence) = {
+            let temp = TempDir::new().expect("temp");
+            let store = opened_store(&temp).await;
+            let current_fence = fence("h15-expiry");
+            let checkpoint = checkpoint(current_fence.clone());
+            let expires_at = unix_seconds() + 2;
+            let lease = match store
+                .acquire_local_lease_bound(
+                    "lease:h15-expiry",
+                    current_fence.authority_epoch,
+                    current_fence.owner_epoch,
+                    current_fence.generation,
+                    current_fence.fencing_token.clone(),
+                    expires_at,
+                )
+                .await
+                .expect("bound lease")
+            {
+                codex_hepta_memory::LocalLeaseAcquire::Acquired(lease)
+                | codex_hepta_memory::LocalLeaseAcquire::Replay(lease) => lease,
+            };
+            lease
+                .admit(
+                    "occurrence:h15-expiry",
+                    "local.rehydration.replay.v1",
+                    "{\"external_effect\":false}",
+                )
+                .await
+                .expect("local admission");
+            let executor = store
+                .open_local_compact_executor_bound(
+                    "journal:h15-expiry",
+                    current_fence.clone(),
+                    &lease,
+                )
+                .await
+                .expect("bound executor");
+            let current = checkpoint.lease.snapshot.clone();
+            executor
+                .append_intent("op:h15-expiry", &checkpoint, &current)
+                .await
+                .expect("intent");
+            let digest = checkpoint_digest(&checkpoint).expect("digest");
+            executor
+                .commit_checkpoint("op:h15-expiry", &digest)
+                .await
+                .expect("commit");
+            (
+                temp,
+                ExtensionData::new("turn:h15-expiry"),
+                lease,
+                executor,
+                checkpoint,
+                current_fence,
+            )
+        };
+
+        for _ in 0..200 {
+            if unix_seconds()
+                >= lease
+                    .binding()
+                    .expect("binding")
+                    .lease_expires_at_unix_seconds
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        assert!(
+            unix_seconds()
+                >= lease
+                    .binding()
+                    .expect("binding")
+                    .lease_expires_at_unix_seconds,
+            "test lease did not expire"
+        );
+
+        let before_counts = lease.snapshot_counts().await.expect("before counts");
+        let before_snapshot = executor.snapshot().await.expect("before snapshot");
+        let h14 = prepare_local_rehydration_runtime(
+            &turn_store,
+            &lease,
+            &executor,
+            LocalRehydrationHostInput::new("turn:h15-expiry", "op:h15-expiry", &checkpoint, 0),
+        )
+        .await
+        .expect_err("H14 must reject expired active lease");
+        assert!(matches!(
+            h14,
+            LocalRehydrationRuntimeError::Lease(
+                codex_hepta_memory::LocalLeaseOutboxError::StaleFence(message)
+            ) if message.contains("has expired")
+        ));
+
+        let h16 = observe_local_rehydration_replay(LocalRehydrationReplayLifecycleInput::new(
+            "turn:h15-expiry",
+            &turn_store,
+            "op:h15-expiry",
+            0,
+            &checkpoint,
+            &lease,
+            &executor,
+        ))
+        .await
+        .expect_err("H16 must reject expired active lease");
+        assert!(matches!(
+            h16,
+            LocalRehydrationReplayError::Runtime(LocalRehydrationRuntimeError::Lease(
+                codex_hepta_memory::LocalLeaseOutboxError::StaleFence(message)
+            )) if message.contains("has expired")
+        ));
+
+        assert_eq!(
+            lease.snapshot_counts().await.expect("after counts"),
+            before_counts
+        );
+        assert_eq!(
+            executor.snapshot().await.expect("after snapshot"),
+            before_snapshot
+        );
+        assert!(turn_store.get::<LocalRehydrationReplayPlan>().is_none());
+        drop(temp);
     }
 
     #[tokio::test]

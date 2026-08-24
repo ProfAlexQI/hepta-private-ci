@@ -641,14 +641,23 @@ impl LocalLeaseOutbox {
     /// a caller performs a terminal transition.  In particular, callers
     /// must not use `release` as a way to hide a corrupt event/outbox chain.
     pub async fn verify_current(&self) -> Result<(), LocalLeaseOutboxError> {
-        Self::reopen(
-            &self.store,
-            self.lease_id.clone(),
-            self.generation,
-            self.fencing_token.clone(),
-        )
-        .await
-        .map(|_| ())
+        // Keep the deadline check on the verification path.  `reopen` is
+        // intentionally permissive about an expired active head so a host
+        // that restarted after the deadline can recover a bound handle and
+        // explicitly call `expire_lease`; a read/observer must not use that
+        // recovery seam as proof that the lease is still current.
+        let mut transaction = self
+            .store
+            .pool
+            .begin()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        self.verify_current_in_transaction(&mut transaction).await?;
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(())
     }
 
     /// Verify the active lease and both append-only local chains inside a
