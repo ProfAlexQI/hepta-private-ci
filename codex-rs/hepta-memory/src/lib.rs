@@ -261,4 +261,8 @@ mod local_compact_executor_tests;
 mod local_lease_outbox_tests;
 
 #[cfg(test)]
+#[path = "h7_artifact_qualification_tests.rs"]
+mod h7_artifact_qualification_tests;
+
+#[cfg(test)]
 mod cognitive_test_support;
