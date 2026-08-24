@@ -84,6 +84,12 @@ pub struct LocalCompactExecutor {
     journal_id: String,
     fence: CompactFence,
     lease_binding: Option<LocalCompactLeaseBinding>,
+    /// The exact lease handle used to open a schema-bound executor.  Keeping
+    /// the handle lets every later mutation revalidate the live lease head,
+    /// state, journal chains, and expiry while holding the same SQLite write
+    /// transaction as the compact append.  A binding digest alone is not a
+    /// capability: it cannot detect a lease release/expiry after open.
+    bound_lease: Option<LocalLeaseOutbox>,
 }
 
 impl LocalCompactExecutor {
@@ -92,7 +98,7 @@ impl LocalCompactExecutor {
         journal_id: impl Into<String>,
         fence: CompactFence,
     ) -> Result<Self, LocalCompactExecutorError> {
-        Self::open_with_binding(store, journal_id, fence, None).await
+        Self::open_with_binding(store, journal_id, fence, None, None).await
     }
 
     pub(crate) async fn open_bound(
@@ -139,7 +145,7 @@ impl LocalCompactExecutor {
             .commit()
             .await
             .map_err(crate::cognitive_store::unavailable)?;
-        Self::open_with_binding(store, journal_id, fence, Some(binding)).await
+        Self::open_with_binding(store, journal_id, fence, Some(binding), Some(lease.clone())).await
     }
 
     async fn open_with_binding(
@@ -147,6 +153,7 @@ impl LocalCompactExecutor {
         journal_id: impl Into<String>,
         fence: CompactFence,
         lease_binding: Option<LocalCompactLeaseBinding>,
+        bound_lease: Option<LocalLeaseOutbox>,
     ) -> Result<Self, LocalCompactExecutorError> {
         let journal_id = journal_id.into();
         validate_text(&journal_id, "journal id", 512)?;
@@ -156,6 +163,7 @@ impl LocalCompactExecutor {
             journal_id,
             fence,
             lease_binding,
+            bound_lease,
         };
         // Opening always verifies the complete chain.  This is intentionally
         // done before any mutation so a damaged journal fails closed.
@@ -183,6 +191,15 @@ impl LocalCompactExecutor {
 
     pub fn lease_binding(&self) -> Option<&LocalCompactLeaseBinding> {
         self.lease_binding.as_ref()
+    }
+
+    /// Whether this executor was opened with an explicit live lease handle.
+    ///
+    /// The legacy unbound executor remains available for read-only/shadow
+    /// compatibility, but only a bound executor revalidates the lease inside
+    /// every mutating transaction.
+    pub fn is_bound(&self) -> bool {
+        self.bound_lease.is_some()
     }
 
     pub(crate) fn store(&self) -> &CognitiveStore {
@@ -376,6 +393,28 @@ impl LocalCompactExecutor {
             .begin_with("BEGIN IMMEDIATE")
             .await
             .map_err(crate::cognitive_store::unavailable)?;
+        if let Some(lease) = self.bound_lease.as_ref() {
+            let current = lease
+                .verify_current_in_transaction(&mut transaction)
+                .await?;
+            let binding = self.lease_binding.as_ref().ok_or_else(|| {
+                LocalCompactExecutorError::Invalid(
+                    "bound compact executor is missing its lease binding".to_string(),
+                )
+            })?;
+            if current.lease_id != binding.lease_id
+                || current.lease_sha256 != binding.lease_head_sha256
+                || current.authority_epoch != Some(binding.authority_epoch)
+                || current.owner_epoch != Some(binding.owner_epoch)
+                || current.lease_expires_at_unix_seconds
+                    != Some(binding.lease_expires_at_unix_seconds)
+            {
+                return Err(LocalLeaseOutboxError::StaleFence(
+                    "bound compact executor lease head changed after open".to_string(),
+                )
+                .into());
+            }
+        }
         let mut journal = self.load_journal(&mut transaction).await?;
         let before = journal.entries().len();
         let result = mutation(&mut journal)?;

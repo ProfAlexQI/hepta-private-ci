@@ -1,5 +1,8 @@
 use codex_hepta_contracts::Sha256Digest;
 use pretty_assertions::assert_eq;
+use std::time::Duration;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 use tempfile::TempDir;
 
 use crate::CognitiveStore;
@@ -16,6 +19,7 @@ use crate::CompactSummaryReceipt;
 use crate::LOCAL_COMPACT_EXECUTOR_EXTERNAL_EFFECTS;
 use crate::LOCAL_COMPACT_EXECUTOR_KG_WRITE_AUTHORITY;
 use crate::LOCAL_COMPACT_EXECUTOR_NAMESPACE;
+use crate::LocalLeaseAcquire;
 use crate::cognitive_test_support::agent_id;
 use crate::cognitive_test_support::layout;
 use crate::compact_persistence::checkpoint_digest;
@@ -52,6 +56,227 @@ fn checkpoint(fence: CompactFence) -> CompactCheckpoint {
     .expect("checkpoint")
 }
 
+fn unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_secs()
+}
+
+async fn open_bound_executor(
+    owner_number: u8,
+    expiry_offset_seconds: u64,
+) -> (
+    TempDir,
+    CognitiveStore,
+    crate::LocalLeaseOutbox,
+    crate::LocalCompactExecutor,
+    CompactFence,
+    CompactCheckpoint,
+) {
+    let temp = TempDir::new().expect("temp dir");
+    let owner = agent_id(owner_number);
+    let store = CognitiveStore::open(&layout(&temp, &owner))
+        .await
+        .expect("store");
+    let current_fence = fence(1, "bound-fence");
+    let expires_at = unix_seconds() + expiry_offset_seconds;
+    let lease = match store
+        .acquire_local_lease_bound(
+            "lease:bound-executor",
+            current_fence.authority_epoch,
+            current_fence.owner_epoch,
+            current_fence.generation,
+            current_fence.fencing_token.clone(),
+            expires_at,
+        )
+        .await
+        .expect("bound lease")
+    {
+        LocalLeaseAcquire::Acquired(lease) | LocalLeaseAcquire::Replay(lease) => lease,
+    };
+    let executor = store
+        .open_local_compact_executor_bound("journal:bound-executor", current_fence.clone(), &lease)
+        .await
+        .expect("bound executor");
+    let checkpoint = checkpoint(current_fence.clone());
+    (temp, store, lease, executor, current_fence, checkpoint)
+}
+
+#[tokio::test]
+async fn bound_compact_replay_is_idempotent_while_lease_active() {
+    let (_temp, store, lease, executor, current_fence, checkpoint) =
+        open_bound_executor(201, 3_600).await;
+    assert!(executor.is_bound());
+    let current = snapshot(current_fence);
+    let operation_id = "op:bound-replay";
+    assert_eq!(
+        executor
+            .append_intent(operation_id, &checkpoint, &current)
+            .await
+            .expect("bound intent"),
+        CompactPersistenceAppend::Appended { sequence: 1 }
+    );
+    let digest = checkpoint_digest(&checkpoint).expect("checkpoint digest");
+    assert_eq!(
+        executor
+            .commit_checkpoint(operation_id, &digest)
+            .await
+            .expect("bound commit"),
+        CompactPersistenceAppend::Appended { sequence: 2 }
+    );
+
+    let first = executor
+        .rehydrate(operation_id, &checkpoint, 0)
+        .await
+        .expect("bound rehydrate");
+    assert_eq!(first.status, crate::RehydrationStatus::Complete);
+    let replay = executor
+        .rehydrate(operation_id, &checkpoint, 0)
+        .await
+        .expect("bound rehydrate replay");
+    assert_eq!(replay.status, crate::RehydrationStatus::Complete);
+    let durable = executor.snapshot().await.expect("bound replay snapshot");
+    assert_eq!(durable.entries.len(), 3);
+    assert_eq!(
+        durable.entries.last().map(|entry| &entry.kind),
+        Some(&crate::CompactPersistenceEventKind::Rehydrated {
+            checkpoint_sha256: digest,
+            expected_revision: 0,
+        })
+    );
+    lease.verify_current().await.expect("active bound lease");
+    store.pool.close().await;
+}
+
+#[tokio::test]
+async fn bound_compact_mutations_reject_released_lease_without_compact_rows() {
+    let (_temp, store, lease, executor, current_fence, checkpoint) =
+        open_bound_executor(202, 3_600).await;
+    assert!(executor.is_bound());
+    let current = snapshot(current_fence);
+    let operation_id = "op:bound-release";
+    executor
+        .append_intent(operation_id, &checkpoint, &current)
+        .await
+        .expect("bound intent");
+    let digest = checkpoint_digest(&checkpoint).expect("checkpoint digest");
+    executor
+        .commit_checkpoint(operation_id, &digest)
+        .await
+        .expect("bound commit");
+    let before = executor.snapshot().await.expect("before release snapshot");
+    let before_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_compact_events WHERE journal_id = ?")
+            .bind(executor.journal_id())
+            .fetch_one(&store.pool)
+            .await
+            .expect("before release row count");
+
+    lease.release().await.expect("release bound lease");
+
+    assert!(matches!(
+        executor
+            .append_intent("op:after-release", &checkpoint, &current)
+            .await,
+        Err(crate::LocalCompactExecutorError::Lease(
+            crate::LocalLeaseOutboxError::StaleFence(_)
+        ))
+    ));
+    assert!(matches!(
+        executor.commit_checkpoint(operation_id, &digest).await,
+        Err(crate::LocalCompactExecutorError::Lease(
+            crate::LocalLeaseOutboxError::StaleFence(_)
+        ))
+    ));
+    assert!(matches!(
+        executor
+            .mark_indeterminate(operation_id, "after-release")
+            .await,
+        Err(crate::LocalCompactExecutorError::Lease(
+            crate::LocalLeaseOutboxError::StaleFence(_)
+        ))
+    ));
+    assert!(matches!(
+        executor
+            .reconcile(operation_id, CompactReconcileOutcome::Committed)
+            .await,
+        Err(crate::LocalCompactExecutorError::Lease(
+            crate::LocalLeaseOutboxError::StaleFence(_)
+        ))
+    ));
+    assert!(matches!(
+        executor.rehydrate(operation_id, &checkpoint, 0).await,
+        Err(crate::LocalCompactExecutorError::Lease(
+            crate::LocalLeaseOutboxError::StaleFence(_)
+        ))
+    ));
+
+    let after = executor.snapshot().await.expect("after release snapshot");
+    let after_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_compact_events WHERE journal_id = ?")
+            .bind(executor.journal_id())
+            .fetch_one(&store.pool)
+            .await
+            .expect("after release row count");
+    assert_eq!(after.entries, before.entries);
+    assert_eq!(after.head_sha256, before.head_sha256);
+    assert_eq!(after_count, before_count);
+    store.pool.close().await;
+}
+
+#[tokio::test]
+async fn bound_compact_mutation_rejects_lease_expiry_after_open() {
+    let (_temp, store, lease, executor, current_fence, checkpoint) =
+        open_bound_executor(203, 3).await;
+    assert!(executor.is_bound());
+    let current = snapshot(current_fence);
+    let operation_id = "op:bound-expiry";
+    executor
+        .append_intent(operation_id, &checkpoint, &current)
+        .await
+        .expect("bound intent before expiry");
+    let before = executor.snapshot().await.expect("before expiry snapshot");
+    let expiry = lease
+        .binding()
+        .expect("explicit lease binding")
+        .lease_expires_at_unix_seconds;
+    for _ in 0..240 {
+        if unix_seconds() >= expiry {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        unix_seconds() >= expiry,
+        "test lease did not expire in time"
+    );
+
+    assert!(matches!(
+        executor
+            .append_intent("op:after-expiry", &checkpoint, &current)
+            .await,
+        Err(crate::LocalCompactExecutorError::Lease(
+            crate::LocalLeaseOutboxError::StaleFence(_)
+        ))
+    ));
+    assert!(matches!(
+        executor
+            .commit_checkpoint(
+                operation_id,
+                &checkpoint_digest(&checkpoint).expect("digest")
+            )
+            .await,
+        Err(crate::LocalCompactExecutorError::Lease(
+            crate::LocalLeaseOutboxError::StaleFence(_)
+        ))
+    ));
+    let after = executor.snapshot().await.expect("after expiry snapshot");
+    assert_eq!(after.entries, before.entries);
+    assert_eq!(after.head_sha256, before.head_sha256);
+    store.pool.close().await;
+}
+
 #[tokio::test]
 async fn sqlite_checkpoint_commit_reopen_and_rehydrate_replay() {
     let temp = TempDir::new().expect("temp dir");
@@ -66,6 +291,7 @@ async fn sqlite_checkpoint_commit_reopen_and_rehydrate_replay() {
         .open_local_compact_executor("journal:local-authoritative", current_fence.clone())
         .await
         .expect("executor");
+    assert!(!executor.is_bound());
     assert_eq!(
         executor
             .append_intent("op:commit", &checkpoint, &current)
