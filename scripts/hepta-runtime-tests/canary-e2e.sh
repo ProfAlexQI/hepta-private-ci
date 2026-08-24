@@ -355,7 +355,9 @@ try: os.fsync(fd)
 finally: os.close(fd)
 PY
   ln "$staged" "$destination"
-  rm "$staged"; staged=""
+  # The staged artifact is intentionally 0400; use non-interactive cleanup so
+  # a PTY-backed soak cannot block on a write-protection confirmation prompt.
+  rm -f "$staged"; staged=""
   python3 - "$parent" <<'PY'
 import os, sys
 fd = os.open(sys.argv[1], os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
