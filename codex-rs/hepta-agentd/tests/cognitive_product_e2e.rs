@@ -523,6 +523,52 @@ async fn real_agentd_local_memory_review_is_read_only_and_replayable() -> Result
     Ok(())
 }
 
+/// Opt-in smoke for a real local model process.  The provider URL is accepted
+/// only when it is loopback, and the test always uses a fresh temporary fleet
+/// home.  This deliberately verifies provider/app-server/lifecycle wiring, not
+/// production effects or an external provider contract.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "set HEPTA_LOCAL_PROVIDER_BASE_URL and HEPTA_LOCAL_PROVIDER_MODEL for a loopback model smoke"]
+async fn real_agentd_loopback_provider_read_only_smoke() -> Result<()> {
+    let provider_base_url = std::env::var("HEPTA_LOCAL_PROVIDER_BASE_URL")
+        .context("HEPTA_LOCAL_PROVIDER_BASE_URL is required for this ignored smoke")?;
+    let model_id = std::env::var("HEPTA_LOCAL_PROVIDER_MODEL")
+        .context("HEPTA_LOCAL_PROVIDER_MODEL is required for this ignored smoke")?;
+    ensure!(
+        provider_base_url.starts_with("http://127.0.0.1:")
+            || provider_base_url.starts_with("http://localhost:"),
+        "loopback provider smoke refuses non-local URL: {provider_base_url}"
+    );
+    ensure!(
+        !model_id.trim().is_empty(),
+        "loopback provider model must not be empty"
+    );
+
+    let mut fleet = FleetHarness::new()?;
+    let agent = fleet.register(AGENT_A, "workspace-loopback-provider")?;
+    MockResponsesConfig::new("http://127.0.0.1:1")
+        .with_model_provider("local_mlx")
+        .with_provider_name("Local MLX qualification provider")
+        .with_provider_base_url(&provider_base_url)
+        .with_model(&model_id)
+        .with_provider_config("supports_websockets = false")
+        .with_root_config("model_reasoning_effort = \"minimal\"")
+        .write(agent.layout.home_root())?;
+
+    fleet.start(&agent)?;
+    let (control, _health) = fleet.wait_ready(&agent, 1).await?;
+    let mut product = ProductClient::connect(&agent, &control).await?;
+    let thread = product.start_thread(&agent.workspace).await?;
+    product
+        .run_turn(
+            &thread,
+            "Reply with exactly READY. Do not call tools or access external resources.",
+        )
+        .await?;
+    product.shutdown().await?;
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn two_real_agentd_app_servers_never_cross_recall() -> Result<()> {
     const MEMORY_A: &str = "Agent Alpha project milestone is Tuesday.";
