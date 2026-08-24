@@ -195,6 +195,26 @@ impl AgentdState {
         Ok(())
     }
 
+    /// Return the current fleet lifecycle generation after refreshing the
+    /// process fence. This is distinct from `identity.spawn_generation`: the
+    /// latter identifies the process launch, while this value is the current
+    /// supervisor lifecycle generation used as a host-bound epoch witness.
+    #[cfg(feature = "qualification-cognitive-write")]
+    pub(crate) fn qualification_turn_authority(&self) -> Result<u64, AgentdError> {
+        self.refresh_generation()?;
+        let runtime = self.runtime.lock().map_err(poisoned_state)?;
+        if runtime.lifecycle != AgentLifecycle::Running
+            || !runtime.app_server_ready
+            || runtime.fenced
+        {
+            return Err(AgentdError::GenerationFenced(
+                "agentd qualification writer is unavailable until the running App Server is ready"
+                    .to_string(),
+            ));
+        }
+        Ok(runtime.current_generation)
+    }
+
     pub(crate) fn mark_app_server_ready(&self) -> Result<(), AgentdError> {
         let mut runtime = self.runtime.lock().map_err(poisoned_state)?;
         if !runtime.app_server_ready {

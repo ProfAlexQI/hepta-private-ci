@@ -11,6 +11,7 @@ mod config;
 mod control;
 mod error;
 mod event_buffer;
+mod qualification_writer;
 mod runtime;
 mod state;
 

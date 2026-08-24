@@ -24,9 +24,9 @@ use sqlx::SqlitePool;
 use sqlx::Transaction;
 use thiserror::Error;
 
-use crate::framing::frame_part;
 use crate::CognitiveStore;
 use crate::CognitiveStoreError;
+use crate::framing::frame_part;
 
 pub const LOCAL_LEASE_OUTBOX_NAMESPACE: &str = "local_development_only";
 pub const LOCAL_LEASE_OUTBOX_SCHEMA_VERSION: u32 = 1;
@@ -258,6 +258,21 @@ pub struct LocalOutcomeReceipt {
 pub enum LocalLeaseAcquire {
     Acquired(LocalLeaseOutbox),
     Replay(LocalLeaseOutbox),
+}
+
+impl LocalLeaseAcquire {
+    /// Consume either a fresh acquisition or an exact active replay and
+    /// return the same host-bound lease capability.
+    ///
+    /// Callers still have to verify the binding/current head before every
+    /// mutation.  Collapsing the acquisition disposition here grants no new
+    /// authority; it only avoids downstream crates having to destructure
+    /// variants whose payload fields are intentionally private.
+    pub fn into_handle(self) -> LocalLeaseOutbox {
+        match self {
+            Self::Acquired(lease) | Self::Replay(lease) => lease,
+        }
+    }
 }
 
 #[derive(Clone)]

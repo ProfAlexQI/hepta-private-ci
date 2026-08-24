@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 
 use codex_app_server::AppServerRuntimeOptions;
 use codex_app_server::AppServerTransport;
@@ -15,6 +16,8 @@ use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_cli::CliConfigOverrides;
 
 use crate::AgentdIdentity;
+use crate::AgentdState;
+use crate::qualification_writer::qualification_turn_writer_host;
 
 #[cfg(feature = "qualification-cognitive-write")]
 const COGNITIVE_WRITE_ENABLED: bool = true;
@@ -25,10 +28,12 @@ pub(crate) async fn run_app_server(
     identity: AgentdIdentity,
     arg0_paths: Arg0DispatchPaths,
     cognitive_runtime: CognitiveRuntime,
+    state: Arc<AgentdState>,
 ) -> std::io::Result<()> {
     let socket_path = AbsolutePathBuf::from_absolute_path(&identity.app_server_socket)?;
     let config_overrides = app_server_config_overrides();
-    let runtime_options = app_server_runtime_options(&identity, cognitive_runtime)?;
+    let runtime_options =
+        app_server_runtime_options_for_agent(&identity, state, cognitive_runtime)?;
     codex_app_server::run_main_with_transport_options(
         arg0_paths,
         config_overrides,
@@ -63,6 +68,23 @@ pub(crate) fn app_server_runtime_options(
     identity: &AgentdIdentity,
     cognitive_runtime: CognitiveRuntime,
 ) -> std::io::Result<AppServerRuntimeOptions> {
+    app_server_runtime_options_with_writer(identity, cognitive_runtime, None)
+}
+
+pub(crate) fn app_server_runtime_options_for_agent(
+    identity: &AgentdIdentity,
+    state: Arc<AgentdState>,
+    cognitive_runtime: CognitiveRuntime,
+) -> std::io::Result<AppServerRuntimeOptions> {
+    let writer = qualification_turn_writer_host(identity, state, &cognitive_runtime);
+    app_server_runtime_options_with_writer(identity, cognitive_runtime, writer)
+}
+
+fn app_server_runtime_options_with_writer(
+    identity: &AgentdIdentity,
+    cognitive_runtime: CognitiveRuntime,
+    qualification_turn_writer: Option<codex_hepta_memory_extension::QualificationTurnWriterHost>,
+) -> std::io::Result<AppServerRuntimeOptions> {
     let turn_queue_capacity = usize::try_from(identity.resources.turn_queue_capacity)
         .map_err(|_| std::io::Error::other("turn queue capacity does not fit this platform"))?;
     let turn_queue_capacity = NonZeroUsize::new(turn_queue_capacity).ok_or_else(|| {
@@ -83,12 +105,11 @@ pub(crate) fn app_server_runtime_options(
         hepta_local_development_policy: Some(
             codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only(),
         ),
-        // The qualification build explicitly opts into the writer seam, but
-        // the host capability remains absent until Agentd can supply a
-        // complete owner/epoch-bound input.  This keeps the default and
-        // production-facing binaries inert while making the gate explicit.
+        // The qualification build explicitly opts into the writer seam and
+        // receives a capability only from the owning Agentd process.  The
+        // default and production-facing binaries remain inert.
         hepta_qualification_turn_writer_enabled: COGNITIVE_WRITE_ENABLED,
-        hepta_qualification_turn_writer: None,
+        hepta_qualification_turn_writer: qualification_turn_writer,
         // This is an embedding-owned capability boundary. It is applied
         // after managed config and per-request overrides, so those layers
         // cannot change the selected profile at runtime. The positive value

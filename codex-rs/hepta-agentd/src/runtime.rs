@@ -92,6 +92,7 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
         identity.clone(),
         arg0_paths,
         cognitive_runtime,
+        Arc::clone(&state),
     ));
     let mut monitor_task = tokio::spawn(monitor_runtime(Arc::clone(&state)));
     let automation_cancellation = cancellation.clone();

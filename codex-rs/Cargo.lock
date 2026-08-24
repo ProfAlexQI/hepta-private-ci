@@ -3476,6 +3476,7 @@ dependencies = [
  "codex-hepta-contracts",
  "codex-hepta-fleet",
  "codex-hepta-memory",
+ "codex-hepta-memory-extension",
  "codex-hepta-paths",
  "codex-hepta-supervisor",
  "codex-protocol",

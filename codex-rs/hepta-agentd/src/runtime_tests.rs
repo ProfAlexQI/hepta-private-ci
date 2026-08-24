@@ -13,6 +13,8 @@ use codex_hepta_fleet::FleetRegistry;
 use codex_hepta_fleet::ResourceBudget;
 use codex_hepta_fleet::WorkspaceBinding;
 use codex_hepta_memory::CognitiveRuntime;
+#[cfg(feature = "qualification-cognitive-write")]
+use codex_hepta_memory::CognitiveStore;
 use codex_hepta_memory::CognitiveStoreError;
 use codex_hepta_paths::HeptaFleetRoot;
 use tokio::time::timeout;
@@ -29,9 +31,13 @@ use super::open_cognitive_runtime_after_generation_fence;
 use super::require_cognitive_runtime_for_profile;
 use crate::AgentdMethod;
 use crate::AgentdPayload;
+#[cfg(feature = "qualification-cognitive-write")]
+use crate::app_runtime::app_server_runtime_options_for_agent;
 use crate::automation::DispatchRetryBudget;
 use crate::automation::handle_automation_tick;
 use crate::automation::run_automation_scheduler;
+#[cfg(feature = "qualification-cognitive-write")]
+use crate::qualification_writer::prepare_qualification_turn_writer_input;
 
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
@@ -178,6 +184,79 @@ fn qualification_profile_fails_closed_when_cognitive_store_is_unavailable() {
         result,
         Err(crate::AgentdError::QualificationCognitiveRuntimeUnavailable)
     ));
+}
+
+#[cfg(feature = "qualification-cognitive-write")]
+#[tokio::test]
+async fn qualification_host_binds_one_local_turn_and_replays_exactly_once() {
+    let fixture = runtime_fixture();
+    fixture
+        .registry
+        .compare_and_transition(&fixture.identity.agent_id, 1, AgentLifecycle::Running)
+        .expect("running generation");
+    fixture.state.refresh_generation().expect("refresh running");
+    fixture
+        .state
+        .mark_app_server_ready()
+        .expect("mark App Server ready");
+
+    let store = Arc::new(
+        CognitiveStore::open(&fixture.identity.layout)
+            .await
+            .expect("open cognitive store"),
+    );
+    let runtime = CognitiveRuntime::Available(Arc::clone(&store));
+    let options = app_server_runtime_options_for_agent(
+        &fixture.identity,
+        Arc::clone(&fixture.state),
+        runtime,
+    )
+    .expect("runtime options");
+    assert!(
+        options.hepta_qualification_turn_writer.is_some(),
+        "the explicit qualification profile must carry the Agentd-owned host"
+    );
+
+    let input = prepare_qualification_turn_writer_input(
+        Arc::clone(&fixture.state),
+        Arc::clone(&store),
+        fixture.identity.agent_id.clone(),
+        fixture.identity.spawn_generation,
+        "turn:agentd-qualification-host".to_string(),
+    )
+    .await
+    .expect("prepare host-bound input");
+    input
+        .binding
+        .verify_current(&input.lease, &input.executor)
+        .await
+        .expect("binding remains current");
+    assert!(!input.binding.external_effects);
+    assert!(!input.binding.kg_write_authority);
+    assert!(!input.binding.production_caller);
+
+    input
+        .lease
+        .admit(
+            input.occurrence_key.clone(),
+            "codex.turn.qualification.start.v1",
+            input.payload_json.clone(),
+        )
+        .await
+        .expect("first local admission");
+    input
+        .lease
+        .admit(
+            input.occurrence_key.clone(),
+            "codex.turn.qualification.start.v1",
+            input.payload_json.clone(),
+        )
+        .await
+        .expect("duplicate local admission replays");
+    let counts = input.lease.snapshot_counts().await.expect("local counts");
+    assert_eq!(counts.event_rows, 1);
+    assert_eq!(counts.outbox_rows, 1);
+    input.lease.release().await.expect("release local lease");
 }
 
 #[cfg(not(feature = "qualification-cognitive-write"))]
