@@ -205,6 +205,21 @@ impl LocalCompactExecutor {
         self.bound_lease.is_some()
     }
 
+    /// Whether this executor was opened from the exact lease handle supplied
+    /// by the host.  This is an identity check only; it does not consult or
+    /// mutate SQLite and grants no additional authority.
+    pub(crate) fn is_bound_to_lease(&self, lease: &LocalLeaseOutbox) -> bool {
+        let Some(bound_lease) = self.bound_lease.as_ref() else {
+            return false;
+        };
+        self.store.is_same_local_store(lease.store())
+            && bound_lease.lease_id() == lease.lease_id()
+            && bound_lease.owner_agent_id() == lease.owner_agent_id()
+            && bound_lease.generation() == lease.generation()
+            && bound_lease.fencing_token() == lease.fencing_token()
+            && bound_lease.binding() == lease.binding()
+    }
+
     pub(crate) fn store(&self) -> &CognitiveStore {
         &self.store
     }
