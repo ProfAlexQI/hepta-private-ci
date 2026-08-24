@@ -186,6 +186,7 @@ impl ProductClient {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires the separate production cognitive-write profile; local-development keeps remember/correct/forget disabled"]
 async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_sends() -> Result<()> {
     const ORIGINAL: &str = "Project Aurora deadline is Friday.";
     const CORRECTED: &str = "Project Aurora deadline is Monday.";
@@ -427,6 +428,91 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
     assert_no_cognitive_reference(&after_forget.single_request())?;
 
     product.shutdown().await?;
+    Ok(())
+}
+
+/// The local-development profile's first product slice is deliberately
+/// read-only: verified memory is prepared by the host, while the live Agent
+/// may only recall and explain it.  This is the real-process equivalent of
+/// memory-review and must remain usable without granting KG write authority.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn real_agentd_local_memory_review_is_read_only_and_replayable() -> Result<()> {
+    const MEMORY: &str = "Local memory-review checkpoint is green.";
+    const QUERY: &str = "memory-review checkpoint";
+
+    let mut fleet = FleetHarness::new()?;
+    let agent = fleet.register(AGENT_A, "workspace-local-memory-review")?;
+    let model = responses::start_mock_server().await;
+    MockResponsesConfig::new(&model.uri()).write(agent.layout.home_root())?;
+    let (memory_id, source_id) =
+        seed_verified_agent_memory_with_receipt(&agent, "local-memory-review", MEMORY).await?;
+
+    fleet.start(&agent)?;
+    let (control, initial_health) = fleet.wait_ready(&agent, 1).await?;
+    let mut product = ProductClient::connect(&agent, &control).await?;
+    let thread = product.start_thread(&agent.workspace).await?;
+
+    let first = responses::mount_sse_once(&model, final_sse("local-memory-review-first")).await;
+    product.run_turn(&thread, QUERY).await?;
+    assert_physical_request_count_stable(&first, 1, "local memory-review").await?;
+    let first_request = first.single_request();
+    for operation in ["remember", "correct", "forget"] {
+        ensure!(
+            first_request
+                .tool_by_name(COGNITIVE_NAMESPACE, operation)
+                .is_none(),
+            "local-development ToolRegistry exposed write tool {operation}"
+        );
+    }
+    for operation in ["recall", "explain"] {
+        ensure!(
+            first_request
+                .tool_by_name(COGNITIVE_NAMESPACE, operation)
+                .is_some(),
+            "local-development ToolRegistry omitted read tool {operation}"
+        );
+    }
+    assert_single_memory_reference_with_channels(
+        &first_request,
+        &memory_id,
+        1,
+        MEMORY,
+        &["memory_fts", "recency"],
+    )?;
+    assert_memory_source(&first_request, &memory_id, &source_id)?;
+
+    product.shutdown().await?;
+    fleet.supervisor.kill(&agent.agent_id)?;
+    wait_inactive(&mut fleet, &agent.agent_id).await?;
+    fleet.supervisor.restart(&agent.agent_id, Instant::now())?;
+    let restarted_generation = agent_generation(&fleet, &agent.agent_id)?;
+    ensure!(
+        restarted_generation > 1,
+        "Agentd restart did not advance the generation"
+    );
+    let restarted_control = fleet.control_client(&agent, restarted_generation)?;
+    let restarted_health = fleet
+        .wait_until_ready(&agent.agent_id, &restarted_control)
+        .await?;
+    ensure!(
+        restarted_health.process_id != initial_health.process_id,
+        "Agentd restart reused the original process"
+    );
+    let mut restarted_product = ProductClient::connect(&agent, &restarted_control).await?;
+    let restarted_thread = restarted_product.start_thread(&agent.workspace).await?;
+    let second = responses::mount_sse_once(&model, final_sse("local-memory-review-replay")).await;
+    restarted_product.run_turn(&restarted_thread, QUERY).await?;
+    assert_physical_request_count_stable(&second, 1, "local memory-review replay").await?;
+    let second_request = second.single_request();
+    assert_single_memory_reference_with_channels(
+        &second_request,
+        &memory_id,
+        1,
+        MEMORY,
+        &["memory_fts", "recency"],
+    )?;
+    assert_memory_source(&second_request, &memory_id, &source_id)?;
+    restarted_product.shutdown().await?;
     Ok(())
 }
 
@@ -1693,6 +1779,15 @@ async fn seed_verified_agent_memory(
     stable_key: &str,
     content: &str,
 ) -> Result<()> {
+    seed_verified_agent_memory_with_receipt(agent, stable_key, content).await?;
+    Ok(())
+}
+
+async fn seed_verified_agent_memory_with_receipt(
+    agent: &AgentFixture,
+    stable_key: &str,
+    content: &str,
+) -> Result<(String, String)> {
     let store = CognitiveStore::open(&agent.layout).await?;
     ensure!(store.owner_agent_id() == &agent.agent_id);
     let access = CognitiveAccess::agent_private(agent.agent_id.clone());
@@ -1710,7 +1805,7 @@ async fn seed_verified_agent_memory(
             },
         )
         .await?;
-    store
+    let memory = store
         .remember_memory(
             &access,
             &MemoryDraft {
@@ -1722,10 +1817,13 @@ async fn seed_verified_agent_memory(
                     lifecycle: MemoryLifecycleState::Active,
                     valid_from_unix_seconds: now,
                     valid_to_unix_seconds: None,
-                    citations: vec![citation],
+                    citations: vec![citation.clone()],
                 },
             },
         )
         .await?;
-    Ok(())
+    Ok((
+        memory.id.memory_id.as_str().to_string(),
+        citation.source_id.as_str().to_string(),
+    ))
 }
