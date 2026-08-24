@@ -6,8 +6,12 @@
 //! owner therefore does not register callbacks, create a scheduler, or add a
 //! production caller.
 
+use codex_hepta_memory::CognitiveStore;
 use codex_hepta_memory::LocalDevelopmentLifecyclePolicy;
 use codex_hepta_memory::LocalDevelopmentLifecyclePolicyError;
+use codex_hepta_memory::LocalLease;
+use codex_hepta_memory::LocalLeaseOutbox;
+use codex_hepta_memory::LocalLeaseOutboxError;
 use codex_hepta_memory_extension::LocalRehydrationWitnessLifecycleError;
 use codex_hepta_memory_extension::LocalRehydrationWitnessLifecycleInput;
 use codex_hepta_memory_extension::LocalRehydrationWitnessLifecycleResult;
@@ -21,6 +25,8 @@ pub const HEPTA_LOCAL_LIFECYCLE_OWNER_KG_WRITE_AUTHORITY: bool = false;
 pub enum HeptaLocalDevelopmentLifecycleOwnerError {
     Policy(LocalDevelopmentLifecyclePolicyError),
     Lifecycle(LocalRehydrationWitnessLifecycleError),
+    Lease(LocalLeaseOutboxError),
+    StoreBindingMismatch,
 }
 
 impl std::fmt::Display for HeptaLocalDevelopmentLifecycleOwnerError {
@@ -28,6 +34,10 @@ impl std::fmt::Display for HeptaLocalDevelopmentLifecycleOwnerError {
         match self {
             Self::Policy(error) => write!(formatter, "local lifecycle policy rejected: {error}"),
             Self::Lifecycle(error) => write!(formatter, "local lifecycle write failed: {error}"),
+            Self::Lease(error) => write!(formatter, "local lease expiry failed: {error}"),
+            Self::StoreBindingMismatch => {
+                formatter.write_str("local lease does not belong to the supplied Agent-local store")
+            }
         }
     }
 }
@@ -43,6 +53,12 @@ impl From<LocalDevelopmentLifecyclePolicyError> for HeptaLocalDevelopmentLifecyc
 impl From<LocalRehydrationWitnessLifecycleError> for HeptaLocalDevelopmentLifecycleOwnerError {
     fn from(error: LocalRehydrationWitnessLifecycleError) -> Self {
         Self::Lifecycle(error)
+    }
+}
+
+impl From<LocalLeaseOutboxError> for HeptaLocalDevelopmentLifecycleOwnerError {
+    fn from(error: LocalLeaseOutboxError) -> Self {
+        Self::Lease(error)
     }
 }
 
@@ -96,11 +112,39 @@ impl HeptaLocalDevelopmentLifecycleOwner {
                 .await?,
         )
     }
+
+    /// Explicitly terminalize an expired bound lease owned by the host.
+    ///
+    /// The host supplies the exact store and lease handle it owns.  The owner
+    /// checks the qualification-only policy and the handle's path+Agent
+    /// binding before delegating to E20's single-transaction `expire_lease`.
+    /// No callback, scheduler, retry loop, provider call, or external effect
+    /// is created by this method.
+    pub async fn expire_local_lease(
+        &self,
+        store: &CognitiveStore,
+        lease: &LocalLeaseOutbox,
+    ) -> Result<LocalLease, HeptaLocalDevelopmentLifecycleOwnerError> {
+        self.policy.validate()?;
+        if !lease.is_bound_to_store(store) {
+            return Err(HeptaLocalDevelopmentLifecycleOwnerError::StoreBindingMismatch);
+        }
+        if !lease.is_explicitly_bound() {
+            return Err(HeptaLocalDevelopmentLifecycleOwnerError::Lease(
+                LocalLeaseOutboxError::Invalid(
+                    "explicit authority/owner/expiry binding is required to expire a local lease"
+                        .to_string(),
+                ),
+            ));
+        }
+        Ok(lease.expire_lease().await?)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::time::Duration;
     use std::time::SystemTime;
     use std::time::UNIX_EPOCH;
 
@@ -115,6 +159,7 @@ mod tests {
     use codex_hepta_memory::CompactParentSnapshot;
     use codex_hepta_memory::CompactSummaryReceipt;
     use codex_hepta_memory::LocalLeaseAcquire;
+    use codex_hepta_memory::LocalLeaseState;
     use codex_hepta_memory::LocalRehydrationWitnessWrite;
     use codex_hepta_memory::checkpoint_digest;
     use codex_hepta_memory_extension::LocalRehydrationReplayDisposition;
@@ -313,5 +358,159 @@ mod tests {
             LocalRehydrationWitnessWrite::Replay(_)
         ));
         drop(store);
+    }
+
+    #[tokio::test]
+    async fn explicit_owner_expires_bound_lease_and_fences_old_witness() {
+        let temp = TempDir::new().expect("temp");
+        let fleet_root = temp.path().join("fleet");
+        fs::create_dir_all(&fleet_root).expect("fleet root");
+        let fleet = HeptaFleetRoot::parse(fleet_root).expect("fleet");
+        let owner_id = AgentId::parse("00000000-0000-4000-8000-000000000920").expect("owner id");
+        let store = CognitiveStore::open(&fleet.layout().agent(&owner_id))
+            .await
+            .expect("store");
+        let current_fence = CompactFence::new(7, 8, 1, "e21-owner-fence").expect("fence");
+        let checkpoint = checkpoint(current_fence.clone());
+        let expires_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_secs()
+            + 1;
+        let lease = match store
+            .acquire_local_lease_bound(
+                "lease:e21-owner",
+                current_fence.authority_epoch,
+                current_fence.owner_epoch,
+                current_fence.generation,
+                current_fence.fencing_token.clone(),
+                expires_at,
+            )
+            .await
+            .expect("bound lease")
+        {
+            LocalLeaseAcquire::Acquired(lease) | LocalLeaseAcquire::Replay(lease) => lease,
+        };
+        let executor = store
+            .open_local_compact_executor_bound("journal:e21-owner", current_fence, &lease)
+            .await
+            .expect("bound executor");
+        let current = checkpoint.lease.snapshot.clone();
+        executor
+            .append_intent("operation:e21-owner", &checkpoint, &current)
+            .await
+            .expect("intent");
+
+        let other_temp = TempDir::new().expect("other temp");
+        let other_root = other_temp.path().join("fleet");
+        fs::create_dir_all(&other_root).expect("other fleet root");
+        let other_fleet = HeptaFleetRoot::parse(other_root).expect("other fleet");
+        let other_store = CognitiveStore::open(&other_fleet.layout().agent(&owner_id))
+            .await
+            .expect("other store");
+        let owner = HeptaLocalDevelopmentLifecycleOwner::qualification_only();
+        assert!(!owner.runtime_registered());
+        assert!(!owner.production_caller());
+        assert!(!HEPTA_LOCAL_LIFECYCLE_OWNER_EXTERNAL_EFFECTS);
+        assert!(!HEPTA_LOCAL_LIFECYCLE_OWNER_KG_WRITE_AUTHORITY);
+        assert!(matches!(
+            owner.expire_local_lease(&other_store, &lease).await,
+            Err(HeptaLocalDevelopmentLifecycleOwnerError::StoreBindingMismatch)
+        ));
+
+        for _ in 0..120 {
+            if SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock")
+                .as_secs()
+                >= expires_at
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        assert!(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock")
+                .as_secs()
+                >= expires_at,
+            "test lease did not expire"
+        );
+
+        let terminal = owner
+            .expire_local_lease(&store, &lease)
+            .await
+            .expect("owner timeout terminalization");
+        assert_eq!(terminal.state, LocalLeaseState::RolledBack);
+        let replay = owner
+            .expire_local_lease(&store, &lease)
+            .await
+            .expect("owner timeout replay");
+        assert_eq!(replay, terminal);
+
+        assert!(matches!(
+            executor
+                .append_intent("operation:e21-after-expiry", &checkpoint, &current)
+                .await,
+            Err(codex_hepta_memory::LocalCompactExecutorError::Lease(
+                codex_hepta_memory::LocalLeaseOutboxError::StaleFence(_)
+            ))
+        ));
+        assert!(matches!(
+            lease
+                .admit("occurrence:e21-after-expiry", "topic", "payload")
+                .await,
+            Err(codex_hepta_memory::LocalLeaseOutboxError::StaleFence(_))
+        ));
+
+        let next_expires_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_secs()
+            + 3_600;
+        let next = match store
+            .acquire_local_lease_after_head_bound(
+                "lease:e21-owner",
+                terminal,
+                7,
+                8,
+                2,
+                "e21-owner-fence-2",
+                next_expires_at,
+            )
+            .await
+            .expect("next generation")
+        {
+            LocalLeaseAcquire::Acquired(lease) | LocalLeaseAcquire::Replay(lease) => lease,
+        };
+        assert_eq!(next.generation(), 2);
+        assert!(next.is_explicitly_bound());
+    }
+
+    #[tokio::test]
+    async fn explicit_owner_rejects_unbound_lease_expiry() {
+        let temp = TempDir::new().expect("temp");
+        let fleet_root = temp.path().join("fleet");
+        fs::create_dir_all(&fleet_root).expect("fleet root");
+        let fleet = HeptaFleetRoot::parse(fleet_root).expect("fleet");
+        let owner_id = AgentId::parse("00000000-0000-4000-8000-000000000921").expect("owner id");
+        let store = CognitiveStore::open(&fleet.layout().agent(&owner_id))
+            .await
+            .expect("store");
+        let lease = match store
+            .acquire_local_lease("lease:e21-unbound", 1, "e21-unbound-fence")
+            .await
+            .expect("unbound lease")
+        {
+            LocalLeaseAcquire::Acquired(lease) | LocalLeaseAcquire::Replay(lease) => lease,
+        };
+        let owner = HeptaLocalDevelopmentLifecycleOwner::qualification_only();
+        assert!(matches!(
+            owner.expire_local_lease(&store, &lease).await,
+            Err(HeptaLocalDevelopmentLifecycleOwnerError::Lease(
+                LocalLeaseOutboxError::Invalid(message)
+            )) if message.contains("explicit authority/owner/expiry binding")
+        ));
     }
 }

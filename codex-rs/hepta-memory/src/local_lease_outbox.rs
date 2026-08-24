@@ -628,6 +628,15 @@ impl LocalLeaseOutbox {
         self.binding().is_some()
     }
 
+    /// Return whether this handle was opened against the exact Agent-local
+    /// store supplied by the host.  Owner identity and database path are both
+    /// part of the comparison; matching only the agent id would allow a
+    /// handle from a different temporary/store root to cross the host seam.
+    /// This is an identity check only and grants no additional authority.
+    pub fn is_bound_to_store(&self, store: &CognitiveStore) -> bool {
+        self.store.is_same_local_store(store)
+    }
+
     /// Re-verify the active lease and both append-only journal chains before
     /// a caller performs a terminal transition.  In particular, callers
     /// must not use `release` as a way to hide a corrupt event/outbox chain.
