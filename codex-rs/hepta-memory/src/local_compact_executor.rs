@@ -10,11 +10,11 @@
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use sha2::Digest;
+use sha2::Sha256;
 use sqlx::Row;
 use sqlx::Sqlite;
 use sqlx::Transaction;
-use sha2::Digest;
-use sha2::Sha256;
 use thiserror::Error;
 
 use crate::CognitiveStore;
@@ -125,7 +125,9 @@ impl LocalCompactExecutor {
             .begin_with("BEGIN IMMEDIATE")
             .await
             .map_err(crate::cognitive_store::unavailable)?;
-        let current = lease.verify_current_in_transaction(&mut transaction).await?;
+        let current = lease
+            .verify_current_in_transaction(&mut transaction)
+            .await?;
         let binding = LocalCompactLeaseBinding {
             lease_id: current.lease_id.clone(),
             lease_head_sha256: current.lease_sha256,
@@ -489,20 +491,50 @@ impl LocalCompactExecutor {
                     "event row metadata does not match its serialized event".to_string(),
                 ));
             }
-            match (&self.lease_binding, lease_id, lease_head_sha256, compact_previous_sha256, compact_event_binding_sha256) {
+            match (
+                &self.lease_binding,
+                lease_id,
+                lease_head_sha256,
+                compact_previous_sha256,
+                compact_event_binding_sha256,
+            ) {
                 (None, None, None, None, None) => {}
-                (Some(binding), Some(lease_id), Some(lease_head_sha256), Some(compact_previous_sha256), Some(compact_event_binding_sha256)) => {
-                    let lease_head_sha256 = codex_hepta_contracts::Sha256Digest::parse(lease_head_sha256)
-                        .map_err(|_| LocalCompactExecutorError::Corrupt("compact lease head digest is invalid".to_string()))?;
-                    let compact_previous_sha256 = codex_hepta_contracts::Sha256Digest::parse(compact_previous_sha256)
-                        .map_err(|_| LocalCompactExecutorError::Corrupt("compact previous digest is invalid".to_string()))?;
-                    let stored_binding = codex_hepta_contracts::Sha256Digest::parse(compact_event_binding_sha256)
-                        .map_err(|_| LocalCompactExecutorError::Corrupt("compact event binding digest is invalid".to_string()))?;
+                (
+                    Some(binding),
+                    Some(lease_id),
+                    Some(lease_head_sha256),
+                    Some(compact_previous_sha256),
+                    Some(compact_event_binding_sha256),
+                ) => {
+                    let lease_head_sha256 = codex_hepta_contracts::Sha256Digest::parse(
+                        lease_head_sha256,
+                    )
+                    .map_err(|_| {
+                        LocalCompactExecutorError::Corrupt(
+                            "compact lease head digest is invalid".to_string(),
+                        )
+                    })?;
+                    let compact_previous_sha256 =
+                        codex_hepta_contracts::Sha256Digest::parse(compact_previous_sha256)
+                            .map_err(|_| {
+                                LocalCompactExecutorError::Corrupt(
+                                    "compact previous digest is invalid".to_string(),
+                                )
+                            })?;
+                    let stored_binding =
+                        codex_hepta_contracts::Sha256Digest::parse(compact_event_binding_sha256)
+                            .map_err(|_| {
+                                LocalCompactExecutorError::Corrupt(
+                                    "compact event binding digest is invalid".to_string(),
+                                )
+                            })?;
                     if lease_id != binding.lease_id
                         || lease_head_sha256 != binding.lease_head_sha256
                         || compact_previous_sha256.as_str() != previous_sha256
                     {
-                        return Err(LocalCompactExecutorError::Corrupt("compact lease/head binding mismatch".to_string()));
+                        return Err(LocalCompactExecutorError::Corrupt(
+                            "compact lease/head binding mismatch".to_string(),
+                        ));
                     }
                     let expected_binding = compact_event_binding_digest(
                         &lease_id,
@@ -511,10 +543,16 @@ impl LocalCompactExecutor {
                         &entry.event_sha256,
                     );
                     if stored_binding != expected_binding {
-                        return Err(LocalCompactExecutorError::Corrupt("compact event binding digest mismatch".to_string()));
+                        return Err(LocalCompactExecutorError::Corrupt(
+                            "compact event binding digest mismatch".to_string(),
+                        ));
                     }
                 }
-                _ => return Err(LocalCompactExecutorError::Corrupt("compact lease binding columns are partially populated".to_string())),
+                _ => {
+                    return Err(LocalCompactExecutorError::Corrupt(
+                        "compact lease binding columns are partially populated".to_string(),
+                    ));
+                }
             }
             entries.push(entry);
         }
@@ -578,13 +616,21 @@ impl LocalCompactExecutor {
         .bind(event_json)
         .bind(entry.previous_sha256.as_str())
         .bind(entry.event_sha256.as_str())
-        .bind(self.lease_binding.as_ref().map(|binding| binding.lease_id.as_str()))
+        .bind(
+            self.lease_binding
+                .as_ref()
+                .map(|binding| binding.lease_id.as_str()),
+        )
         .bind(
             self.lease_binding
                 .as_ref()
                 .map(|binding| binding.lease_head_sha256.as_str()),
         )
-        .bind(self.lease_binding.as_ref().map(|_| entry.previous_sha256.as_str()))
+        .bind(
+            self.lease_binding
+                .as_ref()
+                .map(|_| entry.previous_sha256.as_str()),
+        )
         .bind(self.lease_binding.as_ref().map(|binding| {
             compact_event_binding_digest(
                 &binding.lease_id,
@@ -593,7 +639,7 @@ impl LocalCompactExecutor {
                 &entry.event_sha256,
             )
             .as_str()
-                .to_string()
+            .to_string()
         }))
         .bind(recorded_at_unix_seconds)
         .execute(&mut **transaction)

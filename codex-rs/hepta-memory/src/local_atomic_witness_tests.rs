@@ -1,7 +1,8 @@
 use codex_hepta_contracts::Sha256Digest;
 use pretty_assertions::assert_eq;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 use tempfile::TempDir;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::CognitiveStore;
 use crate::CompactCheckpoint;

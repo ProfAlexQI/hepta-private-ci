@@ -251,7 +251,8 @@ pub async fn write_local_rehydration_witness_at_lifecycle(
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::SystemTime;
+    use std::time::UNIX_EPOCH;
 
     use codex_extension_api::ExtensionData;
     use codex_hepta_contracts::AgentId;

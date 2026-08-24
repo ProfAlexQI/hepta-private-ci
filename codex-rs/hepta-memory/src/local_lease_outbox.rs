@@ -282,14 +282,7 @@ impl LocalLeaseOutbox {
         generation: u64,
         fencing_token: impl Into<String>,
     ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
-        Self::acquire_with_binding(
-            store,
-            lease_id,
-            generation,
-            fencing_token,
-            Some(binding),
-        )
-        .await
+        Self::acquire_with_binding(store, lease_id, generation, fencing_token, Some(binding)).await
     }
 
     async fn acquire_with_binding(
@@ -341,8 +334,7 @@ impl LocalLeaseOutbox {
                     && previous.fencing_token == fencing_token
                     && previous.authority_epoch
                         == binding.as_ref().map(|value| value.authority_epoch)
-                    && previous.owner_epoch
-                        == binding.as_ref().map(|value| value.owner_epoch)
+                    && previous.owner_epoch == binding.as_ref().map(|value| value.owner_epoch)
                     && previous.lease_expires_at_unix_seconds
                         == binding
                             .as_ref()
@@ -1402,19 +1394,9 @@ impl CognitiveStore {
         fencing_token: impl Into<String>,
         lease_expires_at_unix_seconds: u64,
     ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
-        let binding = LocalLeaseBinding::new(
-            authority_epoch,
-            owner_epoch,
-            lease_expires_at_unix_seconds,
-        )?;
-        LocalLeaseOutbox::acquire_bound(
-            self,
-            lease_id,
-            binding,
-            generation,
-            fencing_token,
-        )
-        .await
+        let binding =
+            LocalLeaseBinding::new(authority_epoch, owner_epoch, lease_expires_at_unix_seconds)?;
+        LocalLeaseOutbox::acquire_bound(self, lease_id, binding, generation, fencing_token).await
     }
 
     pub async fn acquire_local_lease_after(
@@ -1468,11 +1450,8 @@ impl CognitiveStore {
         fencing_token: impl Into<String>,
         lease_expires_at_unix_seconds: u64,
     ) -> Result<LocalLeaseAcquire, LocalLeaseOutboxError> {
-        let binding = LocalLeaseBinding::new(
-            authority_epoch,
-            owner_epoch,
-            lease_expires_at_unix_seconds,
-        )?;
+        let binding =
+            LocalLeaseBinding::new(authority_epoch, owner_epoch, lease_expires_at_unix_seconds)?;
         LocalLeaseOutbox::acquire_after_head_bound(
             self,
             lease_id,
@@ -1594,10 +1573,16 @@ async fn append_lease(
     .bind(to_i64(generation, "lease generation")?)
     .bind(fencing_token)
     .bind(state.as_str())
-    .bind(binding.map(|value| to_i64(value.authority_epoch, "authority epoch"))
-        .transpose()?)
-    .bind(binding.map(|value| to_i64(value.owner_epoch, "owner epoch"))
-        .transpose()?)
+    .bind(
+        binding
+            .map(|value| to_i64(value.authority_epoch, "authority epoch"))
+            .transpose()?,
+    )
+    .bind(
+        binding
+            .map(|value| to_i64(value.owner_epoch, "owner epoch"))
+            .transpose()?,
+    )
     .bind(
         binding
             .map(|value| to_i64(value.lease_expires_at_unix_seconds, "lease expiry"))
@@ -1688,13 +1673,8 @@ async fn load_lease_chain(
         )?;
         let authority_epoch = optional_u64(row, "authority_epoch")?;
         let owner_epoch = optional_u64(row, "owner_epoch")?;
-        let lease_expires_at_unix_seconds =
-            optional_u64(row, "lease_expires_at_unix_seconds")?;
-        let binding = match (
-            authority_epoch,
-            owner_epoch,
-            lease_expires_at_unix_seconds,
-        ) {
+        let lease_expires_at_unix_seconds = optional_u64(row, "lease_expires_at_unix_seconds")?;
+        let binding = match (authority_epoch, owner_epoch, lease_expires_at_unix_seconds) {
             (None, None, None) => None,
             (Some(authority_epoch), Some(owner_epoch), Some(lease_expires_at_unix_seconds)) => {
                 Some(LocalLeaseBinding::new(
@@ -2321,13 +2301,11 @@ fn lease_digest(
         fencing_token.as_bytes(),
         state.as_str().as_bytes(),
     ];
-    if let (Some(authority), Some(owner_epoch), Some(expiry)) =
-        (
-            authority_bytes.as_ref(),
-            owner_epoch_bytes.as_ref(),
-            expiry_bytes.as_ref(),
-        )
-    {
+    if let (Some(authority), Some(owner_epoch), Some(expiry)) = (
+        authority_bytes.as_ref(),
+        owner_epoch_bytes.as_ref(),
+        expiry_bytes.as_ref(),
+    ) {
         parts.push(authority);
         parts.push(owner_epoch);
         parts.push(expiry);
@@ -2473,9 +2451,7 @@ fn optional_u64(
         .try_get(column)
         .map_err(crate::cognitive_store::unavailable)?;
     value
-        .map(|value| {
-            u64::try_from(value).map_err(|_| corrupt(format!("{column} is negative")))
-        })
+        .map(|value| u64::try_from(value).map_err(|_| corrupt(format!("{column} is negative"))))
         .transpose()
 }
 
