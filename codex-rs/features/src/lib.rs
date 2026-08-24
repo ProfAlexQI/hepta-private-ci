@@ -99,6 +99,8 @@ pub enum Feature {
     SecretAuthStorage,
 
     // Experimental
+    /// Send per-content-entry classifications in internal Responses metadata.
+    ContentItemKinds,
     /// Record model-attempted tool calls in internal Responses metadata.
     ExecutedToolCallMetadata,
     /// Enable JavaScript code mode backed by the standalone host process.
@@ -219,6 +221,10 @@ pub enum Feature {
     ///
     /// Requirements-only gate: this should be set from requirements, not user config.
     InAppDictation,
+    /// Allow desktop apps to run local automations.
+    ///
+    /// Requirements-only gate: this should be set from requirements, not user config.
+    InAppLocalAutomation,
     /// Allow desktop apps to perform in-app updates.
     ///
     /// Requirements-only gate: this should be set from requirements, not user config.
@@ -910,6 +916,12 @@ pub const FEATURES: &[FeatureSpec] = &[
         default_enabled: false,
     },
     FeatureSpec {
+        id: Feature::ContentItemKinds,
+        key: "content_item_kinds",
+        stage: Stage::UnderDevelopment,
+        default_enabled: false,
+    },
+    FeatureSpec {
         id: Feature::ExecutedToolCallMetadata,
         key: "executed_tool_call_metadata",
         stage: Stage::UnderDevelopment,
@@ -1258,6 +1270,12 @@ pub const FEATURES: &[FeatureSpec] = &[
     FeatureSpec {
         id: Feature::InAppDictation,
         key: "in_app_dictation",
+        stage: Stage::Stable,
+        default_enabled: true,
+    },
+    FeatureSpec {
+        id: Feature::InAppLocalAutomation,
+        key: "in_app_local_automation",
         stage: Stage::Stable,
         default_enabled: true,
     },

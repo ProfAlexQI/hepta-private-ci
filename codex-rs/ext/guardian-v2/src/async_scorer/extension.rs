@@ -11,7 +11,6 @@ use codex_core::GuardianAuthorizationVersion;
 use codex_core::GuardianRootMessage;
 use codex_core::ThreadManager;
 use codex_core::config::Config;
-use codex_core::context::ContextualUserFragment;
 use codex_core::context::GuardianReviewEvidence;
 use codex_core::context::NodeReplReviewEvidence;
 use codex_extension_api::ApprovalReviewContributor;
@@ -35,6 +34,8 @@ use codex_login::AgentIdentityAuthPolicy;
 use codex_login::AuthManager;
 use codex_model_provider::create_model_provider;
 use codex_protocol::ThreadId;
+use codex_protocol::mcp::is_node_repl_backed_server;
+use codex_protocol::mcp::is_node_repl_backed_tool;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::protocol::ReviewDecision;
 use codex_protocol::protocol::TruncationPolicy;
@@ -42,22 +43,36 @@ use codex_protocol::security_risk::SecurityRiskScore;
 use serde_json::json;
 
 use super::config::GuardianV2Config;
+use super::config::GuardianV2ReviewScope;
+use super::review_evidence::render_review_evidence;
 use super::sampler::LunaSampler;
 use super::sampler::LunaSamplerConfig;
 use super::sampler::LunaSamplerError;
 use super::sampler::LunaSamplingRequest;
 use super::sampler::MODEL;
+use super::truncation::ClassificationTruncations;
 
 struct GuardianAction {
     tool_name: ToolName,
     payload: ToolPayload,
 }
 
+struct RenderedAction {
+    text: String,
+    original_bytes: usize,
+}
+
 fn should_classify_tool(
     tool_name: &ToolName,
     payload: &ToolPayload,
-    sandboxed_exec_commands: bool,
+    review_scope: GuardianV2ReviewScope,
 ) -> bool {
+    let GuardianV2ReviewScope::Standard {
+        sandboxed_exec_commands,
+    } = review_scope
+    else {
+        return is_node_repl_backed_tool(&tool_name.name, tool_name.namespace.as_deref());
+    };
     if sandboxed_exec_commands
         || !tool_name.is_default_namespace()
         || tool_name.name != "exec_command"
@@ -80,7 +95,7 @@ fn should_classify_tool(
 }
 
 impl GuardianAction {
-    fn render(self, max_action_tokens: usize) -> serde_json::Result<String> {
+    fn render(self, max_action_tokens: usize) -> serde_json::Result<RenderedAction> {
         let arguments = match self.payload {
             ToolPayload::Function { arguments } => {
                 serde_json::from_str(&arguments).unwrap_or(serde_json::Value::String(arguments))
@@ -103,13 +118,20 @@ impl GuardianAction {
             .for_each(serde_json::Value::sort_all_objects);
         let max_action_bytes = TruncationPolicy::Tokens(max_action_tokens).byte_budget();
         let rendered = serde_json::to_string_pretty(&action)?;
+        let original_bytes = rendered.len();
         if rendered.len().saturating_add(1) <= max_action_bytes {
-            return Ok(rendered);
+            return Ok(RenderedAction {
+                text: rendered,
+                original_bytes,
+            });
         }
 
         if let Some(rendered) = fit_action_to_budget(&action, max_action_bytes, max_action_tokens)?
         {
-            return Ok(rendered);
+            return Ok(RenderedAction {
+                text: rendered,
+                original_bytes,
+            });
         }
 
         let mut omission_key = "_guardian_omitted_fields".to_owned();
@@ -148,10 +170,15 @@ impl GuardianAction {
         }
 
         retained.sort_keys();
-        fit_action_to_budget(&retained, max_action_bytes, max_action_tokens)?.ok_or_else(|| {
-            serde_json::Error::io(std::io::Error::other(format!(
-                "Guardian action identity exceeds the {max_action_tokens}-token limit"
-            )))
+        let rendered = fit_action_to_budget(&retained, max_action_bytes, max_action_tokens)?
+            .ok_or_else(|| {
+                serde_json::Error::io(std::io::Error::other(format!(
+                    "Guardian action identity exceeds the {max_action_tokens}-token limit"
+                )))
+            })?;
+        Ok(RenderedAction {
+            text: rendered,
+            original_bytes,
         })
     }
 }
@@ -359,16 +386,27 @@ impl ThreadLifecycleContributor<Config> for GuardianV2Extension {
 }
 
 impl ApprovalReviewContributor for GuardianV2Extension {
-    fn contribute<'a>(
+    fn fast_decision<'a>(
         &'a self,
         _session_store: &'a ExtensionData,
         thread_store: &'a ExtensionData,
-        _prompt: &'a str,
+        prompt: &'a str,
         extension_metrics: Option<Arc<dyn ExtensionMetrics>>,
     ) -> ExtensionFuture<'a, Option<ReviewDecision>> {
         Box::pin(async move {
             thread_store.get::<GuardianV2Enabled>()?;
             let guardian_config = thread_store.get::<GuardianV2Config>()?;
+            if guardian_config.review_scope == GuardianV2ReviewScope::ComputerUseOnly {
+                let action = serde_json::from_str::<serde_json::Value>(prompt).ok()?;
+                if action.get("tool").and_then(serde_json::Value::as_str) != Some("mcp_tool_call")
+                    || !action
+                        .get("server")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(is_node_repl_backed_server)
+                {
+                    return None;
+                }
+            }
             let score_progress = thread_store.get::<GuardianV2ScoreProgress>()?;
             let latest_scored_tool_call = score_progress
                 .latest_scored_tool_call
@@ -446,14 +484,12 @@ impl GuardianV2Extension {
         let Some(score_progress) = input.thread_store.get::<GuardianV2ScoreProgress>() else {
             return;
         };
-        if !should_classify_tool(
-            input.tool_name,
-            input.payload,
-            guardian_config.sandboxed_exec_commands,
-        ) {
-            score_progress
-                .latest_tool_call
-                .fetch_add(/*val*/ 1, Ordering::Relaxed);
+        if !should_classify_tool(input.tool_name, input.payload, guardian_config.review_scope) {
+            if guardian_config.review_scope != GuardianV2ReviewScope::ComputerUseOnly {
+                score_progress
+                    .latest_tool_call
+                    .fetch_add(/*val*/ 1, Ordering::Relaxed);
+            }
             return;
         }
         let metrics = score_progress.metrics.clone();
@@ -608,6 +644,7 @@ impl GuardianV2Extension {
         };
 
         tokio::spawn(async move {
+            let mut truncations = ClassificationTruncations::default();
             let root_snapshot = thread.guardian_root_snapshot().await;
             let root_authorization_version = root_snapshot
                 .as_ref()
@@ -618,12 +655,25 @@ impl GuardianV2Extension {
             let transcript = guardian_config
                 .transcript
                 .build(conversation_history.items());
-            let images = guardian_config
+            truncations.extend(transcript.truncations);
+            let rendered_images = guardian_config
                 .transcript
                 .images(conversation_history.items(), node_repl_images);
+            truncations.record(
+                "transcript_image",
+                rendered_images.omitted_bytes,
+                /*retained_bytes*/ 0,
+            );
+            let images = rendered_images.images;
             drop(conversation_history);
             let planned_action = match action.render(guardian_config.max_action_tokens) {
-                Ok(planned_action) => planned_action,
+                Ok(RenderedAction {
+                    text,
+                    original_bytes,
+                }) => {
+                    truncations.record("action", original_bytes, text.len());
+                    text
+                }
                 Err(error) => {
                     Self::record_fail_closed_score(thread.thread_extension_data(), sampled_at);
                     record_classification(
@@ -656,7 +706,7 @@ impl GuardianV2Extension {
                 classification_input.push(">>> ROOT CONVERSATION END\n".to_owned());
             }
             classification_input.push(">>> TRANSCRIPT START\n".to_owned());
-            classification_input.extend(transcript);
+            classification_input.extend(transcript.entries);
             classification_input.push(">>> TRANSCRIPT END\n\n".to_owned());
             let trusted_review_evidence = sync_reviews
                 .iter()
@@ -664,7 +714,11 @@ impl GuardianV2Extension {
                     review.authorization_version == authorization_version
                         && review.root_authorization_version == root_authorization_version
                 })
-                .map(ContextualUserFragment::render)
+                .map(|review| {
+                    let review = render_review_evidence(review);
+                    truncations.extend(review.truncations);
+                    review.text
+                })
                 .collect();
             classification_input.extend([
                 "The Codex agent has requested the following action:\n".to_owned(),
@@ -765,6 +819,9 @@ impl GuardianV2Extension {
                     .unwrap_or_else(|| classification_started_at.elapsed()),
                 result.as_deref().unwrap_or("failure"),
             );
+            if matches!(result.as_deref(), Ok("success")) {
+                truncations.emit(metrics.as_deref());
+            }
             if let Err(error) = result {
                 event_sink.emit_warning(ExtensionWarning {
                     thread_id,
