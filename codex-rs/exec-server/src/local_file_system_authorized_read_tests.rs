@@ -193,6 +193,36 @@ async fn stable_handle_read_rejects_parent_directory_decoy() -> io::Result<()> {
 }
 
 #[tokio::test]
+async fn stable_handle_read_rejects_file_path_identity_aba() -> io::Result<()> {
+    // Qualification-only ABA check: once the authorized inode leaves the
+    // pathname and a different inode takes its place, reopening by pathname
+    // must fail closed. This is a path/identity binding check, not historical
+    // provenance or production authority.
+    if !super::stable_handle_authorized_read_available() {
+        return Ok(());
+    }
+    let temp_dir = tempfile::tempdir()?;
+    let path = temp_dir.path().join("skill.md");
+    let moved = temp_dir.path().join("skill.moved.md");
+    std::fs::write(&path, b"authorized")?;
+
+    let original = super::regular_file::open(&path).await?;
+    let identity = super::unique_file_identity(&original).await?;
+    let stable_path = super::stable_file_path(&original)?;
+
+    // A pathname ABA: remove the original name, then install a decoy at the
+    // same name before the secure reopen. The stable inode identity must win.
+    std::fs::rename(&path, &moved)?;
+    std::fs::write(&path, b"decoy")?;
+    let error = super::secure_reopen_matching_identity(stable_path.as_path(), identity)
+        .await
+        .expect_err("pathname ABA with a different inode must fail closed");
+    assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(error.to_string(), "Permission denied");
+    Ok(())
+}
+
+#[tokio::test]
 async fn stable_handle_read_is_bound_to_opened_inode_after_path_replacement() -> io::Result<()> {
     if !super::stable_handle_authorized_read_available() {
         return Ok(());
