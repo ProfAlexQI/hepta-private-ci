@@ -283,7 +283,8 @@ impl HeptaEvidenceStore {
     }
 
     /// Reconciles a lookup and appends a matching ACK. Unknown, not-found,
-    /// and conflict lookups persist a quarantine marker and remain fail-closed.
+    /// and conflict lookups persist a quarantine marker only for non-terminal
+    /// local state; a durable Completed/Rejected ACK is returned unchanged.
     pub async fn reconcile_provider_effect_lookup(
         &self,
         capability: ProviderEffectIdempotencyCapability,

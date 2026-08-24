@@ -339,6 +339,59 @@ async fn terminal_lookup_replay_is_idempotent_without_late_uncertainty() {
 }
 
 #[tokio::test]
+async fn rejected_terminal_lookup_replay_is_idempotent_without_late_uncertainty() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"rejected-terminal-lookup-replay");
+    let key = intent.key.clone();
+    let rejection = ProviderEffectAck::new(
+        key.clone(),
+        intent.payload_sha256.clone(),
+        Sha256Digest::for_bytes(b"rejected-terminal-operation"),
+        ProviderEffectAckStatus::Rejected,
+    );
+    store
+        .append_provider_effect_intent(&intent)
+        .await
+        .expect("intent");
+    store
+        .append_provider_effect_ack(&rejection)
+        .await
+        .expect("rejection");
+
+    for lookup in [
+        ProviderEffectLookup::Unknown,
+        ProviderEffectLookup::NotFound,
+        ProviderEffectLookup::Conflict {
+            observed_payload_sha256: None,
+        },
+    ] {
+        assert_eq!(
+            store
+                .reconcile_provider_effect_lookup(
+                    ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+                    &key,
+                    lookup,
+                )
+                .await
+                .expect("terminal rejection must short-circuit late lookup"),
+            ProviderEffectState::Rejected
+        );
+    }
+
+    let effect = store
+        .get_provider_effect(&key)
+        .await
+        .expect("read rejected effect")
+        .expect("effect");
+    assert_eq!(effect.state(), ProviderEffectState::Rejected);
+    assert_eq!(effect.acknowledgements.len(), 1);
+    assert!(effect.uncertainties.is_empty());
+}
+
+#[tokio::test]
 async fn reopen_rejects_late_uncertainty_after_terminal_ack() {
     let temp = TempDir::new().expect("temp dir");
     let sqlite = sqlite_config(&temp);
