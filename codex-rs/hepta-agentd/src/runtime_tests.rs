@@ -26,6 +26,7 @@ use super::cleanup_runtime_tasks;
 use super::monitor_runtime;
 use super::open_automation_store_after_generation_fence;
 use super::open_cognitive_runtime_after_generation_fence;
+use super::require_cognitive_runtime_for_profile;
 use crate::AgentdMethod;
 use crate::AgentdPayload;
 use crate::automation::DispatchRetryBudget;
@@ -165,6 +166,33 @@ async fn unavailable_cognitive_store_degrades_without_leaking_open_error() {
     };
     assert_eq!(reason.code(), "storage_unavailable");
     assert!(!format!("{reason:?}").contains("/private/raw"));
+}
+
+#[cfg(feature = "qualification-cognitive-write")]
+#[test]
+fn qualification_profile_fails_closed_when_cognitive_store_is_unavailable() {
+    let result = require_cognitive_runtime_for_profile(CognitiveRuntime::Unavailable(
+        codex_hepta_memory::CognitiveUnavailableReason::StorageUnavailable,
+    ));
+    assert!(matches!(
+        result,
+        Err(crate::AgentdError::QualificationCognitiveRuntimeUnavailable)
+    ));
+}
+
+#[cfg(not(feature = "qualification-cognitive-write"))]
+#[test]
+fn default_profile_preserves_degraded_cognitive_runtime_behavior() {
+    let result = require_cognitive_runtime_for_profile(CognitiveRuntime::Unavailable(
+        codex_hepta_memory::CognitiveUnavailableReason::StorageUnavailable,
+    ))
+    .expect("default profile remains availability tolerant");
+    assert!(matches!(
+        result,
+        CognitiveRuntime::Unavailable(
+            codex_hepta_memory::CognitiveUnavailableReason::StorageUnavailable
+        )
+    ));
 }
 
 #[tokio::test]

@@ -7,6 +7,8 @@ pub enum AgentdError {
     Invalid(String),
     #[error("agentd generation fenced: {0}")]
     GenerationFenced(String),
+    #[error("qualification cognitive runtime unavailable")]
+    QualificationCognitiveRuntimeUnavailable,
     #[error("agentd protocol error: {0}")]
     Protocol(String),
     #[error(transparent)]
