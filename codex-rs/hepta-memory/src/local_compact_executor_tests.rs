@@ -1,10 +1,24 @@
 use codex_hepta_contracts::AgentId;
 use codex_hepta_contracts::Sha256Digest;
 use pretty_assertions::assert_eq;
+use std::env;
+use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Child;
+use std::process::Command;
+use std::process::ExitStatus;
+use std::process::Stdio;
+use std::thread;
 use std::time::Duration;
+use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tempfile::TempDir;
+
+use codex_hepta_paths::HeptaFleetRoot;
 
 use crate::CognitiveStore;
 use crate::CompactCheckpoint;
@@ -26,6 +40,24 @@ use crate::LocalLeaseAcquire;
 use crate::cognitive_test_support::agent_id;
 use crate::cognitive_test_support::layout;
 use crate::compact_persistence::checkpoint_digest;
+
+// These environment variables are intentionally test-only.  The process
+// soak is an ignored qualification harness and never participates in the
+// runtime/production path.
+const PROCESS_SOAK_MODE_ENV: &str = "HEPTA_MEMORY_PROCESS_SOAK_MODE";
+const PROCESS_SOAK_FLEET_ROOT_ENV: &str = "HEPTA_MEMORY_PROCESS_SOAK_FLEET_ROOT";
+const PROCESS_SOAK_MARKER_DIR_ENV: &str = "HEPTA_MEMORY_PROCESS_SOAK_MARKER_DIR";
+const PROCESS_SOAK_OPERATION_ENV: &str = "HEPTA_MEMORY_PROCESS_SOAK_OPERATION";
+const PROCESS_SOAK_STAGE_ENV: &str = "HEPTA_MEMORY_PROCESS_SOAK_STAGE";
+const PROCESS_SOAK_EXPECTED_STATE_ENV: &str = "HEPTA_MEMORY_PROCESS_SOAK_EXPECTED_STATE";
+const PROCESS_SOAK_OPERATIONS_ENV: &str = "HEPTA_MEMORY_PROCESS_SOAK_OPERATIONS";
+const PROCESS_SOAK_CHILD_TIMEOUT_ENV: &str = "HEPTA_MEMORY_PROCESS_SOAK_CHILD_TIMEOUT_SECS";
+const PROCESS_SOAK_JOURNAL_ID: &str = "journal:host-process-soak";
+const PROCESS_SOAK_OWNER_NUMBER: u8 = 97;
+const PROCESS_SOAK_DEFAULT_OPERATIONS: usize = 1_000;
+const PROCESS_SOAK_SEED: u64 = 0x4853_544f_5053_4f41;
+const PROCESS_SOAK_HELPER_TEST: &str =
+    "local_compact_executor_tests::host_restart_replay_process_helper";
 
 fn fence(generation: u64, token: &str) -> CompactFence {
     CompactFence::new(3, 8, generation, token).expect("fence")
@@ -121,6 +153,219 @@ impl SeededChoices {
         self.0 ^= self.0 << 25;
         self.0 ^= self.0 >> 27;
         self.0.wrapping_mul(0x2545_f491_4f6c_dd1d)
+    }
+}
+
+fn process_soak_marker_path(marker_dir: &Path, operation_index: usize, phase: &str) -> PathBuf {
+    marker_dir.join(format!("operation-{operation_index:04}-{phase}"))
+}
+
+/// Publish a marker with a create-new temporary file and a rename.  The
+/// parent only treats a fully published marker as permission to kill the
+/// child, so a partially written marker cannot create a false crash point.
+fn publish_process_soak_marker(path: &Path, payload: &str) {
+    let parent = path.parent().expect("process soak marker parent");
+    fs::create_dir_all(parent).expect("create process soak marker directory");
+    let file_name = path
+        .file_name()
+        .expect("process soak marker file name")
+        .to_string_lossy();
+    let temporary = parent.join(format!(".{file_name}.tmp-{}", std::process::id()));
+    let mut file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&temporary)
+        .expect("create process soak marker temporary file");
+    file.write_all(payload.as_bytes())
+        .expect("write process soak marker");
+    file.sync_all().expect("sync process soak marker");
+    drop(file);
+    fs::rename(&temporary, path).expect("publish process soak marker");
+}
+
+async fn open_process_soak_executor(
+    fleet_root: &Path,
+) -> (
+    CognitiveStore,
+    crate::LocalCompactExecutor,
+    CompactParentSnapshot,
+    CompactCheckpoint,
+    Sha256Digest,
+) {
+    let fleet = HeptaFleetRoot::parse(fleet_root.to_path_buf()).expect("process soak fleet root");
+    let owner = agent_id(PROCESS_SOAK_OWNER_NUMBER);
+    let layout = fleet.layout().agent(&owner);
+    let store = CognitiveStore::open(&layout)
+        .await
+        .expect("process soak store");
+    let current_fence = fence(77, "fence:host-process-soak");
+    let current = snapshot(current_fence.clone());
+    let checkpoint = checkpoint(current_fence.clone());
+    let checkpoint_sha256 = checkpoint_digest(&checkpoint).expect("process soak checkpoint digest");
+    let executor = store
+        .open_local_compact_executor(PROCESS_SOAK_JOURNAL_ID, current_fence)
+        .await
+        .expect("process soak executor");
+    (store, executor, current, checkpoint, checkpoint_sha256)
+}
+
+fn process_soak_operations_from_env() -> usize {
+    env::var(PROCESS_SOAK_OPERATIONS_ENV)
+        .ok()
+        .map(|value| {
+            value
+                .parse::<usize>()
+                .expect("process soak operations must be an integer")
+        })
+        .unwrap_or(PROCESS_SOAK_DEFAULT_OPERATIONS)
+}
+
+fn process_soak_child_timeout() -> Duration {
+    Duration::from_secs(
+        env::var(PROCESS_SOAK_CHILD_TIMEOUT_ENV)
+            .ok()
+            .map(|value| {
+                value
+                    .parse::<u64>()
+                    .expect("process soak child timeout must be an integer")
+            })
+            .unwrap_or(30),
+    )
+}
+
+fn process_soak_child_command(
+    executable: &Path,
+    mode: &str,
+    fleet_root: &Path,
+    marker_dir: &Path,
+    operation_index: Option<usize>,
+    stage: Option<u8>,
+    expected_state: Option<&str>,
+    operations: usize,
+) -> Command {
+    let mut command = Command::new(executable);
+    command
+        .arg("--exact")
+        .arg(PROCESS_SOAK_HELPER_TEST)
+        .arg("--nocapture")
+        .env(PROCESS_SOAK_MODE_ENV, mode)
+        .env(PROCESS_SOAK_FLEET_ROOT_ENV, fleet_root)
+        .env(PROCESS_SOAK_MARKER_DIR_ENV, marker_dir)
+        .env(PROCESS_SOAK_OPERATIONS_ENV, operations.to_string())
+        .env("RUST_BACKTRACE", "1")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    if let Some(operation_index) = operation_index {
+        command.env(PROCESS_SOAK_OPERATION_ENV, operation_index.to_string());
+    }
+    if let Some(stage) = stage {
+        command.env(PROCESS_SOAK_STAGE_ENV, stage.to_string());
+    }
+    if let Some(expected_state) = expected_state {
+        command.env(PROCESS_SOAK_EXPECTED_STATE_ENV, expected_state);
+    }
+    command
+}
+
+/// Small RAII wrapper so a failed qualification assertion cannot leave a
+/// child that waits forever at a deterministic kill marker.
+struct ProcessSoakChild {
+    child: Option<Child>,
+}
+
+impl ProcessSoakChild {
+    fn spawn(mut command: Command) -> Self {
+        Self {
+            child: Some(command.spawn().expect("spawn process soak child")),
+        }
+    }
+
+    fn wait_for_marker(&mut self, marker: &Path, timeout: Duration) -> String {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if marker.is_file() {
+                return fs::read_to_string(marker).expect("read process soak marker");
+            }
+            if let Some(status) = self
+                .child
+                .as_mut()
+                .expect("process soak child handle")
+                .try_wait()
+                .expect("poll process soak child")
+            {
+                panic!(
+                    "process soak child exited before marker {}: {status}",
+                    marker.display()
+                );
+            }
+            assert!(
+                Instant::now() < deadline,
+                "process soak child did not publish marker {} within {:?}",
+                marker.display(),
+                timeout
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn wait(&mut self, timeout: Duration) -> ExitStatus {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if let Some(status) = self
+                .child
+                .as_mut()
+                .expect("process soak child handle")
+                .try_wait()
+                .expect("poll process soak child")
+            {
+                self.child.take();
+                return status;
+            }
+            if Instant::now() >= deadline {
+                let _ = self
+                    .child
+                    .as_mut()
+                    .expect("process soak child handle")
+                    .kill();
+                let status = self
+                    .child
+                    .as_mut()
+                    .expect("process soak child handle")
+                    .wait()
+                    .expect("wait timed-out process soak child");
+                self.child.take();
+                panic!("process soak child timed out after {:?}: {status}", timeout);
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn kill_and_wait(&mut self) -> ExitStatus {
+        let _ = self
+            .child
+            .as_mut()
+            .expect("process soak child handle")
+            .kill();
+        let status = self
+            .child
+            .as_mut()
+            .expect("process soak child handle")
+            .wait()
+            .expect("wait killed process soak child");
+        self.child.take();
+        status
+    }
+}
+
+impl Drop for ProcessSoakChild {
+    fn drop(&mut self) {
+        let Some(mut child) = self.child.take() else {
+            return;
+        };
+        if child.try_wait().ok().flatten().is_none() {
+            let _ = child.kill();
+        }
+        let _ = child.wait();
     }
 }
 
@@ -1007,6 +1252,345 @@ async fn sqlite_1000_operation_seeded_reopen_replay_stress() {
             .expect("final compact event row count");
     assert_eq!(row_count, expected_events as i64);
     store.pool.close().await;
+}
+
+/// Child entrypoint for [`host_restart_reopen_replay_process_soak`].
+///
+/// The helper is present in the ordinary test binary but is inert unless the
+/// parent sets `PROCESS_SOAK_MODE_ENV`.  Running it in a fresh OS process is
+/// what makes this harness different from the in-process stress test above:
+/// each worker opens a new SQLite pool, and kill stages terminate that worker
+/// before a later worker reopens the same Agent-local journal.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn host_restart_replay_process_helper() {
+    let Some(mode) = env::var(PROCESS_SOAK_MODE_ENV).ok() else {
+        return;
+    };
+    let fleet_root = PathBuf::from(
+        env::var(PROCESS_SOAK_FLEET_ROOT_ENV).expect("process soak fleet root environment"),
+    );
+    let marker_dir = PathBuf::from(
+        env::var(PROCESS_SOAK_MARKER_DIR_ENV).expect("process soak marker directory environment"),
+    );
+    let operations = process_soak_operations_from_env();
+    let (store, executor, current, checkpoint, checkpoint_sha256) =
+        open_process_soak_executor(&fleet_root).await;
+
+    match mode.as_str() {
+        "worker" => {
+            let operation_index = env::var(PROCESS_SOAK_OPERATION_ENV)
+                .expect("process soak operation environment")
+                .parse::<usize>()
+                .expect("process soak operation index");
+            let stage = env::var(PROCESS_SOAK_STAGE_ENV)
+                .expect("process soak stage environment")
+                .parse::<u8>()
+                .expect("process soak stage");
+            let operation_id = format!("op:host-process:{operation_index:04}");
+            assert!(matches!(
+                executor
+                    .append_intent(&operation_id, &checkpoint, &current)
+                    .await
+                    .expect("process soak append intent"),
+                CompactPersistenceAppend::Appended { .. }
+            ));
+            if stage == 1 {
+                publish_process_soak_marker(
+                    &process_soak_marker_path(&marker_dir, operation_index, "after-intent"),
+                    &format!("pid={} phase=after-intent\n", std::process::id()),
+                );
+                // The parent sends an OS-level kill after this marker.  The
+                // pending future ensures the process remains alive until the
+                // kill, rather than turning this into an ordinary clean exit.
+                std::future::pending::<()>().await;
+            }
+
+            assert!(matches!(
+                executor
+                    .commit_checkpoint(&operation_id, &checkpoint_sha256)
+                    .await
+                    .expect("process soak commit checkpoint"),
+                CompactPersistenceAppend::Appended { .. }
+            ));
+            if stage == 2 {
+                publish_process_soak_marker(
+                    &process_soak_marker_path(&marker_dir, operation_index, "after-commit"),
+                    &format!("pid={} phase=after-commit\n", std::process::id()),
+                );
+                std::future::pending::<()>().await;
+            }
+
+            assert_eq!(
+                executor
+                    .rehydrate(&operation_id, &checkpoint, 0)
+                    .await
+                    .expect("process soak rehydrate")
+                    .status,
+                crate::RehydrationStatus::Complete
+            );
+            if stage == 3 {
+                publish_process_soak_marker(
+                    &process_soak_marker_path(&marker_dir, operation_index, "after-rehydrate"),
+                    &format!("pid={} phase=after-rehydrate\n", std::process::id()),
+                );
+                std::future::pending::<()>().await;
+            }
+
+            publish_process_soak_marker(
+                &process_soak_marker_path(&marker_dir, operation_index, "done"),
+                &format!("pid={} phase=done\n", std::process::id()),
+            );
+        }
+        "recover" => {
+            let operation_index = env::var(PROCESS_SOAK_OPERATION_ENV)
+                .expect("process soak operation environment")
+                .parse::<usize>()
+                .expect("process soak operation index");
+            let expected_state = env::var(PROCESS_SOAK_EXPECTED_STATE_ENV)
+                .expect("process soak expected state environment");
+            let operation_id = format!("op:host-process:{operation_index:04}");
+            let state = executor
+                .state(&operation_id)
+                .await
+                .expect("process soak recovery state")
+                .expect("process soak recovery operation state");
+            match expected_state.as_str() {
+                "pending" => assert_eq!(state, CompactPersistenceState::Pending),
+                "committed" => assert_eq!(state, CompactPersistenceState::Committed),
+                other => panic!("invalid process soak expected state {other}"),
+            }
+
+            // Reopening always starts with an idempotent replay.  A killed
+            // after-intent worker needs the commit append; later kill stages
+            // must receive Replay for both intent and commit.
+            assert!(matches!(
+                executor
+                    .append_intent(&operation_id, &checkpoint, &current)
+                    .await
+                    .expect("process soak recovery intent replay"),
+                CompactPersistenceAppend::Replay { .. }
+            ));
+            let commit = executor
+                .commit_checkpoint(&operation_id, &checkpoint_sha256)
+                .await
+                .expect("process soak recovery commit");
+            match expected_state.as_str() {
+                "pending" => assert!(matches!(commit, CompactPersistenceAppend::Appended { .. })),
+                "committed" => assert!(matches!(commit, CompactPersistenceAppend::Replay { .. })),
+                _ => unreachable!(),
+            }
+            assert_eq!(
+                executor
+                    .rehydrate(&operation_id, &checkpoint, 0)
+                    .await
+                    .expect("process soak recovery rehydrate")
+                    .status,
+                crate::RehydrationStatus::Complete
+            );
+
+            // A second replay in the same fresh process makes the no-new-row
+            // guarantee explicit instead of relying only on the first replay.
+            assert!(matches!(
+                executor
+                    .append_intent(&operation_id, &checkpoint, &current)
+                    .await
+                    .expect("process soak second intent replay"),
+                CompactPersistenceAppend::Replay { .. }
+            ));
+            assert!(matches!(
+                executor
+                    .commit_checkpoint(&operation_id, &checkpoint_sha256)
+                    .await
+                    .expect("process soak second commit replay"),
+                CompactPersistenceAppend::Replay { .. }
+            ));
+            assert_eq!(
+                executor
+                    .rehydrate(&operation_id, &checkpoint, 0)
+                    .await
+                    .expect("process soak second rehydrate replay")
+                    .status,
+                crate::RehydrationStatus::Complete
+            );
+            publish_process_soak_marker(
+                &process_soak_marker_path(&marker_dir, operation_index, "recovered"),
+                &format!("pid={} phase=recovered\n", std::process::id()),
+            );
+        }
+        "audit" => {
+            let snapshot = executor
+                .snapshot()
+                .await
+                .expect("process soak audit snapshot");
+            assert_eq!(snapshot.entries.len(), operations * 3);
+            let reopened = CompactPersistenceJournal::reopen(snapshot.clone())
+                .expect("process soak audit hash-chain reopen");
+            for operation_index in 0..operations {
+                let operation_id = format!("op:host-process:{operation_index:04}");
+                let operation_events = reopened
+                    .entries()
+                    .iter()
+                    .filter(|entry| entry.operation_id == operation_id)
+                    .count();
+                assert_eq!(operation_events, 3, "event count for {operation_id}");
+                assert_eq!(
+                    reopened.state(&operation_id),
+                    Some(CompactPersistenceState::Committed),
+                    "state for {operation_id}"
+                );
+                assert!(
+                    reopened.rehydration(&operation_id).is_some(),
+                    "rehydration witness for {operation_id}"
+                );
+            }
+            publish_process_soak_marker(
+                &marker_dir.join("audit"),
+                &format!(
+                    "operations={} events={} head={} pid={}\n",
+                    operations,
+                    snapshot.entries.len(),
+                    snapshot.head_sha256.as_str(),
+                    std::process::id()
+                ),
+            );
+        }
+        other => panic!("unknown process soak helper mode {other}"),
+    }
+
+    store.pool.close().await;
+}
+
+/// Qualification-only process restart/reopen/replay soak.
+///
+/// The default run launches 1,000 independent helper processes.  A
+/// deterministic schedule gives the first four operations one each of the
+/// clean, kill-after-intent, kill-after-commit, and kill-after-rehydrate
+/// paths; subsequent operations use the fixed xorshift seed.  Kill stages
+/// publish an fsync'd marker, are terminated with `Child::kill`, and are
+/// followed by a new process that reopens the same SQLite journal and checks
+/// idempotent replay.  A final audit child reopens and validates the complete
+/// hash chain and all operation witnesses.
+///
+/// This is intentionally ignored by the ordinary unit gate.  It is local
+/// qualification evidence only: the kill occurs after the selected API call
+/// has returned, so this does not claim interruption in the middle of a
+/// SQLite syscall, host/VM power-loss durability, supervisor semantics, an
+/// arbitrary fleet, provider effects, or production authority.
+#[test]
+#[ignore = "qualification stress: 1000 real child-process kill/reopen/replay operations"]
+fn host_restart_reopen_replay_process_soak() {
+    let operations = process_soak_operations_from_env();
+    assert!(
+        (1..=PROCESS_SOAK_DEFAULT_OPERATIONS).contains(&operations),
+        "process soak operations must be in 1..={PROCESS_SOAK_DEFAULT_OPERATIONS}"
+    );
+    let child_timeout = process_soak_child_timeout();
+    let temp = TempDir::new().expect("process soak temp dir");
+    let fleet_root = temp.path().join("fleet");
+    let marker_dir = temp.path().join("markers");
+    fs::create_dir_all(&fleet_root).expect("process soak fleet root");
+    fs::create_dir_all(&marker_dir).expect("process soak marker root");
+    let executable = env::current_exe().expect("process soak test executable");
+    let mut choices = SeededChoices(PROCESS_SOAK_SEED);
+    let mut stage_counts = [0_usize; 4];
+
+    for operation_index in 0..operations {
+        let choice = choices.next();
+        let stage = if operation_index < 4 {
+            operation_index as u8
+        } else {
+            (choice & 0b11) as u8
+        };
+        stage_counts[stage as usize] += 1;
+        let mut worker = ProcessSoakChild::spawn(process_soak_child_command(
+            &executable,
+            "worker",
+            &fleet_root,
+            &marker_dir,
+            Some(operation_index),
+            Some(stage),
+            None,
+            operations,
+        ));
+        if stage == 0 {
+            let status = worker.wait(child_timeout);
+            assert!(
+                status.success(),
+                "clean process soak worker failed at operation {operation_index}: {status}"
+            );
+            assert!(
+                process_soak_marker_path(&marker_dir, operation_index, "done").is_file(),
+                "clean process soak worker omitted done marker at operation {operation_index}"
+            );
+            continue;
+        }
+
+        let phase = match stage {
+            1 => "after-intent",
+            2 => "after-commit",
+            3 => "after-rehydrate",
+            _ => unreachable!(),
+        };
+        let marker = process_soak_marker_path(&marker_dir, operation_index, phase);
+        let marker_contents = worker.wait_for_marker(&marker, child_timeout);
+        assert!(
+            marker_contents.contains(&format!("phase={phase}")),
+            "unexpected process soak marker for operation {operation_index}: {marker_contents}"
+        );
+        let killed_status = worker.kill_and_wait();
+        assert!(
+            !killed_status.success(),
+            "kill stage unexpectedly exited successfully at operation {operation_index}: {killed_status}"
+        );
+
+        let expected_state = if stage == 1 { "pending" } else { "committed" };
+        let mut recovery = ProcessSoakChild::spawn(process_soak_child_command(
+            &executable,
+            "recover",
+            &fleet_root,
+            &marker_dir,
+            Some(operation_index),
+            Some(stage),
+            Some(expected_state),
+            operations,
+        ));
+        let recovery_status = recovery.wait(child_timeout);
+        assert!(
+            recovery_status.success(),
+            "process soak recovery failed at operation {operation_index}: {recovery_status}"
+        );
+        assert!(
+            process_soak_marker_path(&marker_dir, operation_index, "recovered").is_file(),
+            "process soak recovery omitted marker at operation {operation_index}"
+        );
+    }
+
+    if operations >= 4 {
+        assert!(stage_counts.iter().all(|count| *count > 0));
+    }
+    let mut audit = ProcessSoakChild::spawn(process_soak_child_command(
+        &executable,
+        "audit",
+        &fleet_root,
+        &marker_dir,
+        None,
+        None,
+        None,
+        operations,
+    ));
+    let audit_status = audit.wait(child_timeout);
+    assert!(
+        audit_status.success(),
+        "process soak audit failed: {audit_status}"
+    );
+    let audit_receipt =
+        fs::read_to_string(marker_dir.join("audit")).expect("read process soak audit marker");
+    assert!(audit_receipt.contains(&format!("operations={operations}")));
+    assert!(audit_receipt.contains(&format!("events={}", operations * 3)));
+    eprintln!(
+        "host process soak qualification passed: operations={operations} stages={stage_counts:?}; \
+         local-only, no production/host-power-loss claim"
+    );
 }
 
 #[tokio::test]
