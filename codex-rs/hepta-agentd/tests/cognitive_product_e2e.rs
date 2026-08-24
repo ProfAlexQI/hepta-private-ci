@@ -186,7 +186,10 @@ impl ProductClient {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires the separate production cognitive-write profile; local-development keeps remember/correct/forget disabled"]
+#[cfg_attr(
+    not(feature = "qualification-cognitive-write"),
+    ignore = "requires the explicit qualification-cognitive-write profile; local-development keeps remember/correct/forget disabled"
+)]
 async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_sends() -> Result<()> {
     const ORIGINAL: &str = "Project Aurora deadline is Friday.";
     const CORRECTED: &str = "Project Aurora deadline is Monday.";
@@ -436,6 +439,10 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
 /// may only recall and explain it.  This is the real-process equivalent of
 /// memory-review and must remain usable without granting KG write authority.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[cfg_attr(
+    feature = "qualification-cognitive-write",
+    ignore = "qualification profile runs the separate bounded cognitive-write E2E"
+)]
 async fn real_agentd_local_memory_review_is_read_only_and_replayable() -> Result<()> {
     const MEMORY: &str = "Local memory-review checkpoint is green.";
     const QUERY: &str = "memory-review checkpoint";

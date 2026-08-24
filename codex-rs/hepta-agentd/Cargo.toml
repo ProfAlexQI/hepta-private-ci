@@ -10,6 +10,12 @@ name = "codex_hepta_agentd"
 path = "src/lib.rs"
 doctest = false
 
+[features]
+default = []
+# Qualification-only host profile. This is intentionally opt-in at build time;
+# the default and production binaries keep the cognitive/KG writer disabled.
+qualification-cognitive-write = []
+
 [[bin]]
 name = "codex-hepta-agentd"
 path = "src/main.rs"

@@ -16,6 +16,11 @@ use codex_utils_cli::CliConfigOverrides;
 
 use crate::AgentdIdentity;
 
+#[cfg(feature = "qualification-cognitive-write")]
+const COGNITIVE_WRITE_ENABLED: bool = true;
+#[cfg(not(feature = "qualification-cognitive-write"))]
+const COGNITIVE_WRITE_ENABLED: bool = false;
+
 pub(crate) async fn run_app_server(
     identity: AgentdIdentity,
     arg0_paths: Arg0DispatchPaths,
@@ -45,10 +50,11 @@ fn app_server_config_overrides() -> CliConfigOverrides {
             "features.hepta_turn_recovery=true".to_string(),
             "features.hepta_memory=true".to_string(),
             "features.hepta_memory_read_only=true".to_string(),
-            // Local-development agentd may use the cognitive store for the
-            // lease/lifecycle journal, but it must not enable KG/cognitive
-            // writes.  Production write authority is a separate future gate.
-            "features.hepta_cognitive_write=false".to_string(),
+            // The default binary is read-only.  The only positive writer
+            // profile is an explicit build-time qualification binary; it is
+            // still local/host-owned and does not grant production effects,
+            // fleet authority, or promotion.
+            format!("features.hepta_cognitive_write={COGNITIVE_WRITE_ENABLED}"),
         ],
     }
 }
@@ -79,8 +85,12 @@ pub(crate) fn app_server_runtime_options(
         ),
         // This is an embedding-owned capability boundary. It is applied
         // after managed config and per-request overrides, so those layers
-        // cannot reopen cognitive/KG writes in the local profile.
-        required_feature_states: BTreeMap::from([(Feature::HeptaCognitiveWrite, false)]),
+        // cannot change the selected profile at runtime. The positive value
+        // exists only in the explicit qualification build.
+        required_feature_states: BTreeMap::from([(
+            Feature::HeptaCognitiveWrite,
+            COGNITIVE_WRITE_ENABLED,
+        )]),
         ..Default::default()
     })
 }
@@ -92,6 +102,7 @@ mod tests {
     use codex_hepta_fleet::ResourceBudget;
     use codex_hepta_paths::HeptaFleetRoot;
 
+    use super::COGNITIVE_WRITE_ENABLED;
     use super::app_server_config_overrides;
     use super::app_server_runtime_options;
     use crate::AgentdIdentity;
@@ -110,14 +121,11 @@ mod tests {
     }
 
     #[test]
-    fn agentd_forces_explicit_hepta_cognitive_write_off() {
+    fn agentd_forces_explicit_cognitive_write_profile_state() {
         let overrides = app_server_config_overrides();
-        assert!(
-            overrides
-                .raw_overrides
-                .iter()
-                .any(|value| value == "features.hepta_cognitive_write=false")
-        );
+        assert!(overrides.raw_overrides.iter().any(|value| {
+            value == &format!("features.hepta_cognitive_write={COGNITIVE_WRITE_ENABLED}")
+        }));
     }
 
     #[test]
@@ -165,7 +173,7 @@ mod tests {
             options.hepta_local_development_policy
         );
         assert_eq!(
-            Some(&false),
+            Some(&COGNITIVE_WRITE_ENABLED),
             options
                 .required_feature_states
                 .get(&Feature::HeptaCognitiveWrite)
