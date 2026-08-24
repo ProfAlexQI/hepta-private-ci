@@ -8,7 +8,6 @@ use axum::extract::State;
 use axum::extract::WebSocketUpgrade;
 use axum::response::IntoResponse;
 use axum::routing::any;
-use codex_exec_server::EnvironmentInfo;
 use codex_exec_server::EnvironmentManager;
 use codex_exec_server::EnvironmentObservedStatus;
 use codex_exec_server::EnvironmentStatus;
@@ -21,6 +20,7 @@ use codex_exec_server::InitializeResponse;
 use codex_exec_server::ProcessId;
 use codex_exec_server::ReadParams;
 use codex_exec_server::ReadResponse;
+use codex_exec_server::local_environment_info;
 use codex_exec_server_protocol::JSONRPCError;
 use codex_exec_server_protocol::JSONRPCErrorError;
 use codex_exec_server_protocol::JSONRPCMessage;
@@ -89,7 +89,7 @@ async fn accepted_websocket_environment_info_uses_initialization_metadata() -> R
 
     assert_eq!(
         timeout(TEST_TIMEOUT, environment.info()).await??,
-        EnvironmentInfo::local()
+        local_environment_info()
     );
 
     server_task.abort();
@@ -450,7 +450,7 @@ where
             id,
             result: serde_json::to_value(InitializeResponse {
                 session_id: session_id.to_string(),
-                environment_info: Some(EnvironmentInfo::local()),
+                environment_info: Some(local_environment_info()),
             })?,
         }),
     )
