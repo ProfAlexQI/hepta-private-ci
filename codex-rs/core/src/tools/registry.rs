@@ -93,6 +93,12 @@ pub(crate) trait CoreToolRuntime: ToolExecutor<ToolInvocation> {
         )
     }
 
+    /// Whether cancellation should let the handler finish teardown before the
+    /// host returns an aborted tool response.
+    fn waits_for_runtime_cancellation(&self) -> bool {
+        false
+    }
+
     fn telemetry_tags(&self, _invocation: &ToolInvocation) -> ToolTelemetryTags {
         Vec::new()
     }
@@ -704,6 +710,8 @@ impl ToolRegistry {
             tool_result_tags.push(("command_category", category));
         }
 
+        let response_cell = tokio::sync::Mutex::new(None);
+        let invocation_for_tool = invocation.clone();
         let log_payload = tool_log_payload(&invocation.payload, &invocation.source);
         let policy_terminal_attempt = attempt_id.clone();
         let policy_active = attempt_id.policy_is_active();
@@ -724,7 +732,7 @@ impl ToolRegistry {
                                 if policy_active {
                                     policy_terminal_attempt.try_begin_handler_terminal();
                                 }
-                                let preview = result.result.log_preview();
+                                let preview = result.result.log_output();
                                 let success = result.result.success_for_logging();
                                 let mut guard = response_cell.lock().await;
                                 *guard = Some(result);
@@ -739,10 +747,11 @@ impl ToolRegistry {
                         }
                     }
                 },
+                |(preview, success)| (preview.clone(), *success),
             )
             .await;
         let success = match &result {
-            Ok(result) => result.result.success_for_logging(),
+            Ok((_, success)) => *success,
             Err(_) => false,
         };
         if let Some(analytics) = control_tool_analytics.as_mut() {
@@ -784,9 +793,9 @@ impl ToolRegistry {
             }
         };
         let post_tool_use_payload = if success {
-            result
+            let guard = response_cell.lock().await;
+            guard
                 .as_ref()
-                .ok()
                 .and_then(|result| result.post_tool_use_payload.clone())
         } else {
             None
@@ -836,7 +845,11 @@ impl ToolRegistry {
         }
 
         match result {
-            Ok(mut result) => {
+            Ok(_) => {
+                let mut guard = response_cell.lock().await;
+                let mut result = guard.take().ok_or_else(|| {
+                    FunctionCallError::Fatal("tool produced no output".to_string())
+                })?;
                 if let Some(outcome) = post_tool_use_outcome {
                     if outcome.should_block {
                         let message = outcome.feedback_message.unwrap_or_else(|| {

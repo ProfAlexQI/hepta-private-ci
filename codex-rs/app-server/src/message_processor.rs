@@ -1027,6 +1027,8 @@ impl MessageProcessor {
             app_server_client_name,
             client_version,
             client_mcp_extensions,
+            session,
+            event_stream_ready,
         )
         .await;
 
@@ -1054,6 +1056,8 @@ impl MessageProcessor {
         app_server_client_name: Option<String>,
         client_version: Option<String>,
         client_mcp_extensions: ClientMcpExtensions,
+        session: Arc<ConnectionSessionState>,
+        event_stream_ready: Option<McpEventStreamReady>,
     ) -> InitializedClientRequestFuture {
         let connection_id = request_id.connection_id;
         boxed_request_match!(codex_request, {
@@ -1611,6 +1615,27 @@ impl MessageProcessor {
                 processor.mcp_processor
                     .mcp_resource_read(&request_id, params)
                     .await
+            },
+            ClientRequest::McpServerEventStreamStart { params, .. } => {
+                let ready = event_stream_ready.ok_or_else(|| {
+                    internal_error("MCP event subscription was not reserved before startup")
+                })?;
+                session
+                    .mcp_event_streams
+                    .wait_for_activation(&params.subscription_id, ready)
+                    .await?;
+                Ok(Some(
+                    codex_app_server_protocol::McpServerEventStreamStartResponse {}.into(),
+                ))
+            },
+            ClientRequest::McpServerEventStreamStop { params, .. } => {
+                session
+                    .mcp_event_streams
+                    .stop(&params.subscription_id)
+                    .await;
+                Ok(Some(
+                    codex_app_server_protocol::McpServerEventStreamStopResponse {}.into(),
+                ))
             },
             ClientRequest::McpServerToolCall { params, .. } => {
                 processor.mcp_processor

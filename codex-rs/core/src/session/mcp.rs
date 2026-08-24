@@ -279,6 +279,14 @@ impl Session {
                 executor_capability_discovery.as_deref(),
             )
             .await;
+        let mcp_projection = self
+            .project_selected_environment_mcp_servers(
+                &desired.config,
+                &desired.environments,
+                mcp_projection,
+            )
+            .await;
+        let selected_plugins = mcp_projection.selected_plugins.clone();
         let input = self.build_mcp_runtime_input(
             &desired,
             mcp_projection,
@@ -290,6 +298,7 @@ impl Session {
             "unknown MCP server '{CODEX_APPS_MCP_SERVER_NAME}'"
         );
         let refreshed = self.services.mcp_runtime.replace_fresh(input).await;
+        self.services.thread_extension_data.insert(selected_plugins);
         refreshed
     }
 

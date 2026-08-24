@@ -20,6 +20,7 @@ pub use find_up::FindUpErrorPolicy;
 pub use find_up::find_nearest_ancestor_with_markers;
 pub use find_up::find_nearest_native_ancestor_with_markers;
 use futures::Stream;
+use futures::StreamExt;
 use serde::Deserialize;
 use serde::Serialize;
 use std::future::Future;
@@ -468,44 +469,54 @@ pub trait ExecutorFileSystem: Send + Sync {
         sandbox: Option<&'a FileSystemSandboxContext>,
     ) -> ExecutorFileSystemFuture<'a, Vec<u8>>;
 
-    /// Reads at most `max_bytes` after authorizing the opened file's stable identity.
-    ///
-    /// Implementations must bind path-policy authorization to a stable file identity and read only
-    /// from the handle returned by the atomic lookup. They must not compose path canonicalization,
-    /// a policy check, and a later unbound path read because that leaves a symlink race. A file
-    /// larger than `max_bytes` must return an error without exposing a partial prefix. A supported
-    /// implementation must define one kernel-enforced path lookup as the authorization
-    /// linearization point. Once that lookup succeeds, later namespace mutations, including
-    /// renames or new hard links, do not retroactively revoke the already-authorized handle. This
-    /// contract is current-path snapshot authority, not historical file provenance or a namespace
-    /// lease.
-    /// Filesystems without the required primitives fail closed.
-    fn read_file_bounded_authorized<'a>(
-        &'a self,
-        _path: &'a PathUri,
-        _sandbox: &'a FileSystemSandboxContext,
-        max_bytes: usize,
-    ) -> ExecutorFileSystemFuture<'a, Vec<u8>> {
-        Box::pin(async move {
-            if max_bytes == 0 || max_bytes.checked_add(1).is_none() {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "authorized file read bound must leave room for an overflow sentinel",
-                ));
-            }
-            Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "bounded authorized file reads are unsupported",
-            ))
-        })
-    }
-
     /// Reads a file as a stream of chunks no larger than [`FILE_READ_CHUNK_SIZE`].
     fn read_file_stream<'a>(
         &'a self,
         path: &'a PathUri,
         sandbox: Option<&'a FileSystemSandboxContext>,
     ) -> ExecutorFileSystemFuture<'a, FileSystemReadStream>;
+
+    /// Reads one already-authorized file through a single immutable stream and
+    /// rejects the operation if the result exceeds `max_bytes`.
+    ///
+    /// The stream open is the authorization/linearization point.  Keeping the
+    /// bounded read on that handle avoids returning a partial prefix and
+    /// preserves the sandbox decision made by the executor filesystem.
+    fn read_file_bounded_authorized<'a>(
+        &'a self,
+        path: &'a PathUri,
+        sandbox: &'a FileSystemSandboxContext,
+        max_bytes: usize,
+    ) -> ExecutorFileSystemFuture<'a, Vec<u8>> {
+        Box::pin(async move {
+            if max_bytes == 0 || max_bytes.checked_add(1).is_none() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "authorized file read bound must be positive",
+                ));
+            }
+
+            let mut stream = self.read_file_stream(path, Some(sandbox)).await?;
+            let mut contents = Vec::new();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk?;
+                let Some(new_len) = contents.len().checked_add(chunk.len()) else {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "authorized file read size overflow",
+                    ));
+                };
+                if new_len > max_bytes {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "authorized file read exceeds bound",
+                    ));
+                }
+                contents.extend_from_slice(&chunk);
+            }
+            Ok(contents)
+        })
+    }
 
     /// Reads a file and decodes it as UTF-8 text.
     fn read_file_text<'a>(

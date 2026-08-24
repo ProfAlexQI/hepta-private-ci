@@ -77,7 +77,7 @@ impl Default for ProviderCapabilities {
             image_generation: true,
             web_search: true,
             external_web_access: true,
-            remote_compaction: RemoteCompactionSupport::V2,
+            remote_compaction: RemoteCompactionSupport::Unsupported,
             provider_effect_idempotency: ProviderEffectIdempotencyCapability::Unsupported,
         }
     }
@@ -656,23 +656,6 @@ mod tests {
                 remote_compaction: RemoteCompactionSupport::V2,
                 ..ProviderCapabilities::default()
             }
-        );
-    }
-
-    #[test]
-    fn configured_provider_exposes_fail_closed_effect_adapter() {
-        let provider = create_model_provider(
-            ModelProviderInfo::create_openai_provider(/*base_url*/ None),
-            /*auth_manager*/ None,
-        );
-
-        assert_eq!(
-            provider.provider_effect_adapter().capability(),
-            ProviderEffectIdempotencyCapability::Unsupported
-        );
-        assert_eq!(
-            provider.capabilities().provider_effect_idempotency,
-            ProviderEffectIdempotencyCapability::Unsupported
         );
     }
 

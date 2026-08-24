@@ -59,6 +59,7 @@ use codex_config::ConfigLoadError;
 use codex_config::TextRange as CoreTextRange;
 use codex_core::ExecPolicyError;
 use codex_core::check_execpolicy_for_warnings;
+use codex_core::config::UnsupportedUntrustedApprovalPolicyError;
 use codex_core::config::find_codex_home;
 use codex_exec_server::EnvironmentManager;
 use codex_exec_server::ExecServerRuntimePaths;

@@ -963,10 +963,9 @@ pub(crate) fn create_seatbelt_command_args_with_profile(
             }
         } else {
             build_seatbelt_access_policy(
-                "file-write*",
-                "WRITABLE_ROOT",
+                SeatbeltAccessKind::Write,
                 seatbelt_writable_access_roots(file_system_sandbox_policy, sandbox_policy_cwd),
-            )
+            )?
         };
 
     let (file_read_policy, file_read_dir_params) =

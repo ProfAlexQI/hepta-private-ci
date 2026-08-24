@@ -2136,6 +2136,7 @@ dependencies = [
  "codex-hepta-memory",
  "codex-hepta-memory-extension",
  "codex-hepta-paths",
+ "codex-history-notes-extension",
  "codex-home",
  "codex-hooks",
  "codex-http-client",

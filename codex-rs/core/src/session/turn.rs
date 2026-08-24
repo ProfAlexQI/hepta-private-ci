@@ -1542,7 +1542,7 @@ fn run_auto_compact<'a>(
         }
         .instrument(compact_span)
         .boxed(),
-        RemoteCompactionSupport::V1 | RemoteCompactionSupport::V2 => async move {
+        RemoteCompactionSupport::V2 => async move {
             let turn_context = Arc::clone(&step_context.turn);
             let _profile_guard = turn_context.turn_timing_state.begin_compaction();
             emit_compact_metric(&sess.services.session_telemetry, "remote", false);

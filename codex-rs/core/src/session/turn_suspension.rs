@@ -95,7 +95,10 @@ pub(super) async fn suspend_turn_and_shutdown(
     }
     // Pending accepted input and interactive waiters live only in this process. Handoff
     // intentionally drops that state; persisting or replaying it needs a separate protocol.
-    session.input_queue.clear_pending(&turn).await;
+    session
+        .input_queue
+        .clear_pending_for_turn_state(&turn.turn_state)
+        .await;
 
     // Stop all producers before flushing their final history and closing its writer.
     // If either persistence step fails, do not report success: the current worker

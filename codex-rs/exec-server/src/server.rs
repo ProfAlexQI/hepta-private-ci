@@ -1,6 +1,4 @@
 mod file_system_handler;
-#[cfg(test)]
-mod file_system_handler_authorized_read_tests;
 mod handler;
 mod process_handler;
 mod processor;

@@ -13,7 +13,6 @@ use codex_exec_server::ReadResponse;
 use codex_exec_server::TerminateResponse;
 use codex_exec_server::WriteResponse;
 use codex_exec_server::WriteStatus;
-use codex_exec_server::local_environment_info;
 use codex_exec_server_protocol::JSONRPCMessage;
 use codex_exec_server_protocol::JSONRPCResponse;
 use codex_exec_server_protocol::ProcessSandboxType;
@@ -208,7 +207,7 @@ async fn exec_server_runs_ordinary_requests_serially_by_default() -> anyhow::Res
         panic!("expected the queued environment/info response after process/read");
     };
     assert_eq!(id, queued_environment_info_id);
-    let mut expected_environment_info = local_environment_info();
+    let mut expected_environment_info = EnvironmentInfo::local();
     expected_environment_info.temporary_directories = Some(vec![PathUri::from_host_native_path(
         temporary_directory.path(),
     )?]);

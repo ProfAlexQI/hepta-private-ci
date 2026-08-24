@@ -10,7 +10,8 @@ use crate::CopyOptions;
 use crate::CreateDirectoryOptions;
 use crate::ExecServerRuntimePaths;
 use crate::ExecutorFileSystem;
-use crate::FileSystemSandboxContext;
+use crate::GetMetadataOptions;
+use crate::ReadFileOptions;
 use crate::RemoveOptions;
 use crate::WriteFileOptions;
 use crate::file_read::FileReadHandleManager;
@@ -34,7 +35,6 @@ use crate::protocol::FsReadBlockResponse;
 use crate::protocol::FsReadDirectoryEntry;
 use crate::protocol::FsReadDirectoryParams;
 use crate::protocol::FsReadDirectoryResponse;
-use crate::protocol::FsReadFileAuthorizedParams;
 use crate::protocol::FsReadFileParams;
 use crate::protocol::FsReadFileResponse;
 use crate::protocol::FsRemoveParams;
@@ -74,16 +74,6 @@ impl FileSystemHandler {
         &self,
         params: CapabilityRootsDiscoverParams,
     ) -> Result<CapabilityRootsDiscoverResponse, JSONRPCErrorError> {
-        if params.roots.iter().any(|root| {
-            root.sandbox
-                .as_ref()
-                .is_some_and(FileSystemSandboxContext::should_run_in_sandbox)
-        }) && !crate::local_file_system::stable_handle_authorized_read_available()
-        {
-            return Err(invalid_request(
-                "exec-server does not support sandboxed capability discovery".to_string(),
-            ));
-        }
         crate::discover_capability_roots(&self.file_system, params)
             .await
             .map_err(|error| invalid_request(error.to_string()))
@@ -145,29 +135,6 @@ impl FileSystemHandler {
                 },
                 params.sandbox.as_ref(),
             )
-            .await
-            .map_err(map_fs_error)?;
-        Ok(FsReadFileResponse {
-            data_base64: STANDARD.encode(bytes),
-        })
-    }
-
-    pub(crate) async fn read_file_authorized(
-        &self,
-        params: FsReadFileAuthorizedParams,
-    ) -> Result<FsReadFileResponse, JSONRPCErrorError> {
-        let max_bytes = usize::try_from(params.max_bytes)
-            .ok()
-            .filter(|max_bytes| *max_bytes > 0 && max_bytes.checked_add(1).is_some())
-            .ok_or_else(|| {
-                invalid_request(
-                    "authorized file read bound must leave room for an overflow sentinel"
-                        .to_string(),
-                )
-            })?;
-        let bytes = self
-            .file_system
-            .read_file_bounded_authorized(&params.path, &params.sandbox, max_bytes)
             .await
             .map_err(map_fs_error)?;
         Ok(FsReadFileResponse {

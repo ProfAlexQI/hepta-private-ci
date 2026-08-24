@@ -166,7 +166,6 @@ pub use protocol::FsReadBlockResponse;
 pub use protocol::FsReadDirectoryEntry;
 pub use protocol::FsReadDirectoryParams;
 pub use protocol::FsReadDirectoryResponse;
-pub use protocol::FsReadFileAuthorizedParams;
 pub use protocol::FsReadFileParams;
 pub use protocol::FsReadFileResponse;
 pub use protocol::FsRemoveParams;
@@ -212,17 +211,3 @@ pub use server::RequestDispatchMode;
 pub use server::run_main;
 pub use server::run_main_with_telemetry;
 pub use telemetry::ExecServerTelemetry;
-
-/// Returns local environment information with executor-owned runtime capabilities populated.
-pub fn local_environment_info() -> EnvironmentInfo {
-    let mut info = EnvironmentInfo::local();
-    let stable_handle_authorized_read =
-        local_file_system::stable_handle_authorized_read_available();
-    info.capabilities.stable_handle_authorized_read = stable_handle_authorized_read;
-    // Sandboxed discovery materializes plugin and skill contents through the
-    // atomic authorized-read contract. Advertising discovery when that read
-    // primitive is unavailable would silently turn permitted files into an
-    // empty bundle instead of failing closed.
-    info.capabilities.capability_discovery_sandbox = stable_handle_authorized_read;
-    info
-}

@@ -179,7 +179,7 @@ async fn discovers_cursor_plugin_without_reading_default_mcp_for_inline_servers(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sandboxed_discovery_follows_only_permitted_external_symlinks() -> anyhow::Result<()> {
     let root = tempfile::tempdir()?;
@@ -258,65 +258,6 @@ async fn sandboxed_discovery_follows_only_permitted_external_symlinks() -> anyho
             "{scenario}"
         );
     }
-
-    server.shutdown().await?;
-    Ok(())
-}
-
-#[cfg(all(unix, not(target_os = "macos")))]
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn sandboxed_discovery_fails_closed_without_atomic_authorized_reads() -> anyhow::Result<()> {
-    assert!(
-        !codex_exec_server::local_environment_info()
-            .capabilities
-            .stable_handle_authorized_read
-    );
-    assert!(
-        !codex_exec_server::local_environment_info()
-            .capabilities
-            .capability_discovery_sandbox
-    );
-
-    let root = tempfile::tempdir()?;
-    write_file(
-        &root.path().join("skills/blocked/SKILL.md"),
-        "---\nname: blocked\ndescription: Must not be read.\n---\n",
-    )?;
-    let root_uri = PathUri::from_host_native_path(root.path())?;
-    let root_path = AbsolutePathBuf::from_absolute_path(root.path())?;
-    let policy = FileSystemSandboxPolicy::restricted(vec![FileSystemSandboxEntry::new(
-        FileSystemPath::Path { path: root_path },
-        FileSystemAccessMode::Read,
-    )]);
-    let sandbox = FileSystemSandboxContext::from_permission_profile_with_cwd(
-        PermissionProfile::from_runtime_permissions(&policy, NetworkSandboxPolicy::Restricted),
-        root_uri.clone(),
-    );
-
-    let mut server = exec_server().await?;
-    initialize(&mut server).await?;
-    let request_id = server
-        .send_request(
-            CAPABILITY_ROOTS_DISCOVER_METHOD,
-            serde_json::to_value(CapabilityRootsDiscoverParams {
-                roots: vec![CapabilityRootDiscoverRequest {
-                    id: "unsupported-sandbox".to_string(),
-                    path: root_uri,
-                    sandbox: Some(sandbox),
-                }],
-            })?,
-        )
-        .await?;
-    let JSONRPCMessage::Error(response) = server.next_event().await? else {
-        anyhow::bail!("sandboxed discovery must fail before reading on this platform");
-    };
-    assert_eq!(response.id, request_id);
-    assert_eq!(response.error.code, -32600);
-    assert_eq!(
-        response.error.message,
-        "exec-server does not support sandboxed capability discovery"
-    );
-    assert!(!response.error.message.contains("SKILL.md"));
 
     server.shutdown().await?;
     Ok(())

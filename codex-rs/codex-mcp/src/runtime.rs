@@ -45,8 +45,6 @@ use tokio_util::sync::CancellationToken;
 
 use crate::McpConfig;
 use crate::binding::McpBinding;
-use crate::binding::PreparedMcpCall;
-use crate::binding::SelectedPluginSnapshot;
 use crate::connection_manager::McpConnectionSet;
 use crate::elicitation::ElicitationLifecycle;
 use crate::elicitation::ElicitationRequestRouter;
@@ -71,7 +69,7 @@ pub struct McpRuntimeInput {
     pub startup_policy: McpStartupPolicy,
     pub config: Arc<McpConfig>,
     pub plugins_available: bool,
-    pub selected_plugins: Arc<SelectedPluginSnapshot>,
+    pub selected_plugins: Arc<crate::SelectedPluginSnapshot>,
     pub ready_selected_capability_roots: Vec<SelectedCapabilityRoot>,
     pub mcp_servers: HashMap<String, EffectiveMcpServer>,
     pub submit_id: String,
@@ -106,7 +104,7 @@ struct PublishedMcpRuntime {
     auth: Option<CodexAuth>,
     auth_token: Option<String>,
     plugins_available: bool,
-    selected_plugins: Arc<SelectedPluginSnapshot>,
+    selected_plugins: Arc<crate::SelectedPluginSnapshot>,
     ready_selected_capability_roots: Vec<SelectedCapabilityRoot>,
     cached_binding: Mutex<Option<CachedMcpBinding>>,
 }
@@ -177,7 +175,7 @@ impl McpRuntime {
                 auth: None,
                 auth_token: None,
                 plugins_available: false,
-                selected_plugins: Arc::new(SelectedPluginSnapshot::default()),
+                selected_plugins: Arc::new(crate::SelectedPluginSnapshot::default()),
                 ready_selected_capability_roots: Vec::new(),
                 cached_binding: Mutex::new(None),
             }),
@@ -800,7 +798,7 @@ mod tests {
             auth: None,
             auth_token: None,
             plugins_available: false,
-            selected_plugins: Arc::new(SelectedPluginSnapshot::default()),
+            selected_plugins: Arc::new(crate::SelectedPluginSnapshot::default()),
             ready_selected_capability_roots: Vec::new(),
             cached_binding: Mutex::new(None),
         });
@@ -828,49 +826,6 @@ mod tests {
                 .await
                 .expect("republished binding");
         assert!(!Arc::ptr_eq(&first, &refreshed));
-    }
-
-    #[tokio::test]
-    async fn bindings_retain_their_published_selected_plugin_snapshot() {
-        fn published(plugin_id: &str) -> Arc<PublishedMcpRuntime> {
-            Arc::new(PublishedMcpRuntime {
-                connections: Arc::new(McpConnectionSet::empty(/*prefix_mcp_tool_names*/ true)),
-                config: Some(Arc::new(crate::mcp::tests::test_mcp_config(
-                    std::env::temp_dir(),
-                ))),
-                auth: None,
-                auth_token: None,
-                plugins_available: true,
-                selected_plugins: Arc::new(SelectedPluginSnapshot {
-                    plugins: vec![crate::SelectedPluginIdentity {
-                        selected_root_id: "root".to_string(),
-                        plugin_id: plugin_id.to_string(),
-                    }],
-                }),
-                ready_selected_capability_roots: Vec::new(),
-                cached_binding: Mutex::new(None),
-            })
-        }
-
-        let first = McpRuntime::binding_from_published_runtime(
-            published("plugin-one"),
-            /*required_servers*/ &[],
-        )
-        .await
-        .expect("first binding");
-        let second = McpRuntime::binding_from_published_runtime(
-            published("plugin-two"),
-            /*required_servers*/ &[],
-        )
-        .await
-        .expect("second binding");
-
-        assert_eq!(first.selected_plugins().plugins[0].plugin_id, "plugin-one");
-        assert_eq!(second.selected_plugins().plugins[0].plugin_id, "plugin-two");
-        assert!(!Arc::ptr_eq(
-            first.selected_plugins(),
-            second.selected_plugins()
-        ));
     }
 
     fn http_server(environment_id: &str) -> McpServerConfig {

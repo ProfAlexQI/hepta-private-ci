@@ -74,7 +74,6 @@ use crate::protocol::FS_GET_METADATA_METHOD;
 use crate::protocol::FS_OPEN_METHOD;
 use crate::protocol::FS_READ_BLOCK_METHOD;
 use crate::protocol::FS_READ_DIRECTORY_METHOD;
-use crate::protocol::FS_READ_FILE_AUTHORIZED_METHOD;
 use crate::protocol::FS_READ_FILE_METHOD;
 use crate::protocol::FS_REMOVE_METHOD;
 use crate::protocol::FS_WALK_METHOD;
@@ -95,7 +94,6 @@ use crate::protocol::FsReadBlockParams;
 use crate::protocol::FsReadBlockResponse;
 use crate::protocol::FsReadDirectoryParams;
 use crate::protocol::FsReadDirectoryResponse;
-use crate::protocol::FsReadFileAuthorizedParams;
 use crate::protocol::FsReadFileParams;
 use crate::protocol::FsReadFileResponse;
 use crate::protocol::FsRemoveParams;
@@ -869,13 +867,6 @@ impl ExecServerClient {
         params: FsReadFileParams,
     ) -> Result<FsReadFileResponse, ExecServerError> {
         self.call(FS_READ_FILE_METHOD, &params).await
-    }
-
-    pub async fn fs_read_file_authorized(
-        &self,
-        params: FsReadFileAuthorizedParams,
-    ) -> Result<FsReadFileResponse, ExecServerError> {
-        self.call(FS_READ_FILE_AUTHORIZED_METHOD, &params).await
     }
 
     pub async fn fs_open(&self, params: FsOpenParams) -> Result<FsOpenResponse, ExecServerError> {

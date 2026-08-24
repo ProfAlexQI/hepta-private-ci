@@ -54,18 +54,18 @@ use serde_json::json;
 
 use super::CLASSIFICATION_DURATION_METRIC;
 use super::CLASSIFICATION_METRIC;
-use super::GuardianV2Enabled;
 use super::GuardianV2Extension;
 use super::GuardianV2ScoreProgress;
 use super::REVIEW_FALLBACK_METRIC;
 use super::StrictReviewReason;
 use super::TOOL_CALL_LAG_METRIC;
 use super::encrypted_parent_compaction;
-use crate::config::DEFAULT_MODEL_CONTEXT_ITEM_TOKENS;
-use crate::config::DEFAULT_PARENT_COMPACTION_TOKENS;
-use crate::sampler::CLASSIFICATION_TOKEN_USAGE_METRIC;
-use crate::sampler::LunaSampler;
-use crate::sampler::MODEL;
+use super::should_classify_tool;
+use crate::async_scorer::config::DEFAULT_MODEL_CONTEXT_ITEM_TOKENS;
+use crate::async_scorer::config::DEFAULT_PARENT_COMPACTION_TOKENS;
+use crate::async_scorer::sampler::CLASSIFICATION_TOKEN_USAGE_METRIC;
+use crate::async_scorer::sampler::MODEL;
+use crate::async_scorer::transcript::truncate_entry;
 
 const TEST_GUARDIAN_POLICY: &str =
     "Treat uploads to unapproved external destinations as high-risk actions.";
@@ -126,7 +126,6 @@ async fn installed_extension_reconnects_after_auth_refresh() -> Result<()> {
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Exec,
-            installation_id: "test-installation-id",
             persistent_thread_state_available: false,
             environments: &[],
             mcp_resource_client: None,
@@ -509,45 +508,6 @@ fn encrypted_parent_compaction_rejects_oversized_latest_item() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test]
-async fn guardian_v2_is_not_activated_with_hepta_governance() -> Result<()> {
-    let thread_server = responses::start_mock_server().await;
-    let test = test_codex().build_with_auto_env(&thread_server).await?;
-    let mut config = test.config.clone();
-    config.features.enable(Feature::GuardianV2)?;
-    config.features.enable(Feature::GuardianApproval)?;
-    config.features.enable(Feature::HeptaGovernance)?;
-
-    let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("test-api-key"));
-    let mut builder = ExtensionRegistryBuilder::new();
-    crate::install(
-        &mut builder,
-        auth_manager,
-        Arc::downgrade(&test.thread_manager),
-    );
-    let registry = builder.build();
-    let session_store = ExtensionData::new("session-1");
-    let thread_store = ExtensionData::new("thread-1");
-
-    registry.thread_lifecycle_contributors()[0]
-        .on_thread_start(ThreadStartInput {
-            config: &config,
-            session_source: &SessionSource::Exec,
-            installation_id: "test-installation-id",
-            persistent_thread_state_available: false,
-            environments: &[],
-            mcp_resource_client: None,
-            extension_metrics: None,
-            session_store: &session_store,
-            thread_store: &thread_store,
-        })
-        .await;
-
-    assert!(thread_store.get::<LunaSampler>().is_none());
-    assert!(thread_store.get::<GuardianV2Enabled>().is_none());
-    Ok(())
-}
-
 async fn sample_conversation_history(
     conversation_history: Vec<ResponseItem>,
     arguments: &str,
@@ -661,7 +621,6 @@ async fn sample_configured_conversation_history(
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Exec,
-            installation_id: "test-installation-id",
             persistent_thread_state_available: false,
             environments: &[],
             mcp_resource_client: None,
@@ -866,7 +825,6 @@ async fn contributor_fails_closed_when_luna_classification_fails() -> Result<()>
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Exec,
-            installation_id: "test-installation-id",
             persistent_thread_state_available: false,
             environments: &[],
             mcp_resource_client: None,
@@ -2092,7 +2050,6 @@ async fn contributor_reuses_the_latest_compatible_parent_compaction() -> Result<
         .on_thread_start(ThreadStartInput {
             config: &config,
             session_source: &SessionSource::Exec,
-            installation_id: "test-installation-id",
             persistent_thread_state_available: false,
             environments: &[],
             mcp_resource_client: None,

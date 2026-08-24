@@ -59,6 +59,7 @@ use crate::session::step_context::StepContext;
 use crate::session::turn_context::TurnContext;
 use crate::tools::hook_names::HookToolName;
 use crate::tools::sandboxing::PermissionRequestPayload;
+use crate::turn_metadata::McpTurnMetadataContext;
 use crate::user_message_admission::UserMessageAdmissionError;
 
 pub(crate) struct HookRuntimeOutcome {

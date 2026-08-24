@@ -76,6 +76,7 @@ members = [
     "ext/goal",
     "ext/git-attribution",
     "ext/guardian-v2",
+    "ext/history-notes",
     "ext/hepta-governance",
     "ext/hepta-memory",
     "ext/image-generation",
@@ -233,6 +234,7 @@ codex-extension-items = { path = "ext/items" }
 codex-goal-extension = { path = "ext/goal" }
 codex-git-attribution = { path = "ext/git-attribution" }
 codex-guardian-v2 = { path = "ext/guardian-v2" }
+codex-history-notes-extension = { path = "ext/history-notes" }
 codex-hepta-governance = { path = "ext/hepta-governance" }
 codex-hepta-memory-extension = { path = "ext/hepta-memory" }
 codex-image-generation-extension = { path = "ext/image-generation" }

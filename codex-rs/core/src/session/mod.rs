@@ -300,6 +300,7 @@ use crate::state::TurnState;
 use crate::stream_events_utils::HandleOutputCtx;
 #[cfg(test)]
 use crate::stream_events_utils::handle_output_item_done;
+use crate::stream_events_utils::mark_thread_memory_mode_polluted_if_external_context;
 use crate::tasks::ReviewTask;
 use crate::tools::ApprovalContext;
 use crate::tools::network_approval::NetworkApprovalService;
@@ -3899,6 +3900,9 @@ impl Session {
                         Some(serde_json::json!({
                             "threadId": self.thread_id().to_string(),
                         })),
+                        /*meta*/ None,
+                        /*requested_timeout*/ None,
+                        /*wait_for_server*/ false,
                     )
                     .await
                     .ok()

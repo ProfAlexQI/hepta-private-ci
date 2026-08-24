@@ -29,17 +29,14 @@ use tokio_tungstenite::tungstenite::Message;
 use super::*;
 use crate::client_api::DEFAULT_REMOTE_EXEC_SERVER_CONNECT_TIMEOUT;
 use crate::client_api::ExecServerTransportParams;
-use crate::protocol::ENVIRONMENT_INFO_METHOD;
 use crate::protocol::FS_COPY_METHOD;
 use crate::protocol::FS_CREATE_DIRECTORY_METHOD;
 use crate::protocol::FS_GET_METADATA_METHOD;
-use crate::protocol::FS_READ_FILE_AUTHORIZED_METHOD;
 use crate::protocol::FS_READ_FILE_METHOD;
 use crate::protocol::FS_REMOVE_METHOD;
 use crate::protocol::FS_WRITE_FILE_METHOD;
 use crate::protocol::FsGetMetadataParams;
 use crate::protocol::FsGetMetadataResponse;
-use crate::protocol::FsReadFileAuthorizedParams;
 use crate::protocol::FsReadFileParams;
 use crate::protocol::FsReadFileResponse;
 use crate::protocol::INITIALIZE_METHOD;
@@ -97,154 +94,6 @@ async fn remote_file_system_sends_path_and_sandbox_cwd_uris_without_native_conve
         expected_params
     );
     server.await.expect("recording server should succeed");
-}
-
-#[tokio::test]
-async fn authorized_reads_query_capability_each_time_and_preserve_wire_authority() {
-    let data = STANDARD.encode(b"data");
-    let (websocket_url, captured_params, server) =
-        record_authorized_reads(vec![(Some(true), Ok(data.clone())), (Some(true), Ok(data))]).await;
-    let file_system = remote_file_system(websocket_url);
-    let sandbox = authorized_sandbox();
-    let path = non_native_cwd().join("AGENTS.md").expect("file URI");
-
-    for _ in 0..2 {
-        assert_eq!(
-            file_system
-                .read_file_bounded_authorized(&path, &sandbox, 4)
-                .await
-                .expect("authorized read"),
-            b"data"
-        );
-    }
-    assert_eq!(
-        captured_params.await.expect("captured params"),
-        vec![
-            FsReadFileAuthorizedParams {
-                path,
-                sandbox: sandbox.drop_cwd_if_unused(),
-                max_bytes: 4,
-            };
-            2
-        ]
-    );
-    server.await.expect("recording server should succeed");
-}
-
-#[tokio::test]
-async fn authorized_reads_reject_oversized_and_invalid_responses() {
-    let (websocket_url, _, server) = record_authorized_reads(vec![
-        (Some(true), Ok(STANDARD.encode(b"large"))),
-        (Some(true), Ok(STANDARD.encode([0_u8; 8]))),
-        (Some(true), Ok("%%%".to_string())),
-    ])
-    .await;
-    let file_system = remote_file_system(websocket_url);
-    let sandbox = authorized_sandbox();
-    let path = non_native_cwd().join("AGENTS.md").expect("file URI");
-
-    for expected_message in [
-        "remote authorized file read exceeded its bound",
-        "remote authorized file read exceeded its bound",
-        "invalid remote authorized read data",
-    ] {
-        let error = file_system
-            .read_file_bounded_authorized(&path, &sandbox, 4)
-            .await
-            .expect_err("invalid remote response must fail closed");
-        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
-        assert_eq!(error.to_string(), expected_message);
-    }
-    server.await.expect("recording server should succeed");
-}
-
-#[tokio::test]
-async fn authorized_reads_fail_closed_for_legacy_or_disabled_capability() {
-    let (websocket_url, captured_params, server) = record_authorized_reads(vec![
-        (None, Ok(String::new())),
-        (Some(false), Ok(String::new())),
-    ])
-    .await;
-    let file_system = remote_file_system(websocket_url);
-    let sandbox = authorized_sandbox();
-    let path = non_native_cwd().join("AGENTS.md").expect("file URI");
-
-    for _ in 0..2 {
-        let error = file_system
-            .read_file_bounded_authorized(&path, &sandbox, 4)
-            .await
-            .expect_err("missing capability must fail closed");
-        assert_eq!(error.kind(), std::io::ErrorKind::Unsupported);
-        assert_eq!(
-            error.to_string(),
-            "remote exec-server does not support stable-handle authorized reads"
-        );
-    }
-    assert!(captured_params.await.expect("captured params").is_empty());
-    server.await.expect("recording server should succeed");
-}
-
-#[tokio::test]
-async fn authorized_read_redacts_all_remote_server_errors() {
-    let cases = [
-        (INVALID_REQUEST_ERROR_CODE, std::io::ErrorKind::InvalidInput),
-        (-32602, std::io::ErrorKind::InvalidInput),
-        (NOT_FOUND_ERROR_CODE, std::io::ErrorKind::NotFound),
-        (-32603, std::io::ErrorKind::Other),
-        (METHOD_NOT_FOUND_ERROR_CODE, std::io::ErrorKind::Unsupported),
-    ];
-    let responses = cases
-        .iter()
-        .map(|(code, _)| {
-            (
-                Some(true),
-                Err(JSONRPCErrorError {
-                    code: *code,
-                    data: None,
-                    message: "secret path and provider contents".to_string(),
-                }),
-            )
-        })
-        .collect();
-    let (websocket_url, _, server) = record_authorized_reads(responses).await;
-    let file_system = remote_file_system(websocket_url);
-    let sandbox = authorized_sandbox();
-    let path = non_native_cwd().join("AGENTS.md").expect("file URI");
-
-    for (_, expected_kind) in cases {
-        let error = file_system
-            .read_file_bounded_authorized(&path, &sandbox, 4)
-            .await
-            .expect_err("remote error must fail closed");
-        assert_eq!(error.kind(), expected_kind);
-        assert!(!error.to_string().contains("secret"));
-        assert!(!error.to_string().contains("provider"));
-    }
-    server.await.expect("recording server should succeed");
-}
-
-#[tokio::test]
-async fn authorized_read_rejects_invalid_bounds_before_connecting() {
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("listener should bind");
-    let file_system = remote_file_system(format!(
-        "ws://{}",
-        listener.local_addr().expect("listener address")
-    ));
-    let sandbox = authorized_sandbox();
-    let path = non_native_cwd().join("AGENTS.md").expect("file URI");
-
-    for max_bytes in [0, usize::MAX] {
-        let error = timeout(
-            Duration::from_millis(100),
-            file_system.read_file_bounded_authorized(&path, &sandbox, max_bytes),
-        )
-        .await
-        .expect("bound validation must not connect")
-        .expect_err("invalid bound must fail closed");
-        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
-    }
 }
 
 #[tokio::test]
@@ -643,98 +492,6 @@ async fn record_read_file_params(
     });
 
     (websocket_url, captured_params_rx, server)
-}
-
-fn remote_file_system(websocket_url: String) -> RemoteFileSystem {
-    RemoteFileSystem::new(LazyRemoteExecServerClient::new(
-        ExecServerTransportParams::websocket_url(
-            websocket_url,
-            DEFAULT_REMOTE_EXEC_SERVER_CONNECT_TIMEOUT,
-        ),
-        HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
-    ))
-}
-
-fn authorized_sandbox() -> FileSystemSandboxContext {
-    FileSystemSandboxContext::from_permission_profile_with_cwd(
-        PermissionProfile::default(),
-        non_native_cwd(),
-    )
-}
-
-async fn record_authorized_reads(
-    exchanges: Vec<(Option<bool>, Result<String, JSONRPCErrorError>)>,
-) -> (
-    String,
-    oneshot::Receiver<Vec<FsReadFileAuthorizedParams>>,
-    tokio::task::JoinHandle<()>,
-) {
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("listener should bind");
-    let websocket_url = format!("ws://{}", listener.local_addr().expect("listener address"));
-    let (captured_tx, captured_rx) = oneshot::channel();
-    let server = tokio::spawn(async move {
-        let (stream, _) = listener.accept().await.expect("listener should accept");
-        let mut websocket = accept_async(stream).await.expect("websocket handshake");
-        complete_websocket_initialize(&mut websocket).await;
-        let mut captured = Vec::new();
-        for (capability, reply) in exchanges {
-            let request = match read_jsonrpc_websocket(&mut websocket).await {
-                JSONRPCMessage::Request(request) if request.method == ENVIRONMENT_INFO_METHOD => {
-                    request
-                }
-                other => panic!("expected environment/info request, got {other:?}"),
-            };
-            let mut info = serde_json::json!({
-                "shell": {"name": "sh", "path": "/bin/sh"},
-                "capabilities": {},
-            });
-            if let Some(capability) = capability {
-                info["capabilities"]["stableHandleAuthorizedRead"] = serde_json::json!(capability);
-            }
-            write_jsonrpc_websocket(
-                &mut websocket,
-                JSONRPCMessage::Response(JSONRPCResponse {
-                    id: request.id,
-                    result: info,
-                }),
-            )
-            .await;
-            if capability != Some(true) {
-                continue;
-            }
-            let request = match read_jsonrpc_websocket(&mut websocket).await {
-                JSONRPCMessage::Request(request)
-                    if request.method == FS_READ_FILE_AUTHORIZED_METHOD =>
-                {
-                    request
-                }
-                other => panic!("expected authorized read request, got {other:?}"),
-            };
-            captured.push(
-                serde_json::from_value(request.params.expect("authorized read params"))
-                    .expect("valid authorized read params"),
-            );
-            let response = match reply {
-                Ok(data_base64) => JSONRPCMessage::Response(JSONRPCResponse {
-                    id: request.id,
-                    result: serde_json::to_value(FsReadFileResponse { data_base64 })
-                        .expect("serialize response"),
-                }),
-                Err(error) => JSONRPCMessage::Error(JSONRPCError {
-                    id: request.id,
-                    error,
-                }),
-            };
-            write_jsonrpc_websocket(&mut websocket, response).await;
-        }
-        if let Ok(Some(Ok(message))) = timeout(Duration::from_millis(50), websocket.next()).await {
-            panic!("unexpected fallback message: {message:?}");
-        }
-        let _ = captured_tx.send(captured);
-    });
-    (websocket_url, captured_rx, server)
 }
 
 enum MetadataResponse {

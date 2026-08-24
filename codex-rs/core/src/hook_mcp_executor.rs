@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::Weak;
 
+use anyhow::Context;
 use anyhow::bail;
 use codex_features::Feature;
 use codex_hooks::HookMcpCall;
@@ -19,8 +20,6 @@ pub(crate) struct CoreHookMcpExecutor {
     pub(crate) runtime: Arc<McpRuntime>,
     // Session-scoped MCP tools require the owning thread ID in request metadata.
     pub(crate) thread_id: ThreadId,
-    // Initialized immediately after Session construction. Execution fails closed if the binding
-    // is absent or expired, before any MCP runtime lookup or transport preparation.
     pub(crate) session: Arc<OnceLock<Weak<Session>>>,
 }
 
@@ -40,27 +39,26 @@ impl HookMcpExecutor for CoreHookMcpExecutor {
                 );
             }
 
-            let prepared_call = self
-                .runtime
-                .prepare_call_if_connected(&call.server, &call.tool)
-                .await
-                .with_context(|| {
-                    format!(
-                        "MCP server `{}` or tool `{}` is not connected and available",
-                        call.server, call.tool
-                    )
-                })?;
+            let binding = self.runtime.current_binding().await.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "MCP server `{}` or tool `{}` is not connected and available",
+                    call.server,
+                    call.tool
+                )
+            })?;
+            let prepared_call = binding.prepare_call(&call.server, &call.tool).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "MCP server `{}` or tool `{}` is not connected and available",
+                    call.server,
+                    call.tool
+                )
+            })?;
 
-            let result = self
-                .runtime
-                .latest_call_tool(
-                    &call.server,
-                    &call.tool,
-                    call.environment_id.as_deref(),
+            let result = prepared_call
+                .call(
                     Some(Value::Object(call.input)),
-                    Some(Value::Object(metadata)),
+                    Some(serde_json::json!({ "threadId": self.thread_id.to_string() })),
                     Some(call.timeout),
-                    /*wait_for_server*/ false,
                 )
                 .await?;
             let text = result

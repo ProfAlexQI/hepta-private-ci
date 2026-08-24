@@ -93,7 +93,7 @@ impl McpBinding {
         self.plugins_available
     }
 
-    /// Returns the plugin identities captured by the same runtime publication as this binding.
+    /// Returns the plugin identities captured by the same runtime publication.
     pub fn selected_plugins(&self) -> &Arc<SelectedPluginSnapshot> {
         &self.selected_plugins
     }

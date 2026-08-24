@@ -332,52 +332,45 @@ async fn read_optional_text_file(
     budget: &mut BundleBudget,
     warnings: &mut Vec<String>,
 ) -> Option<CapabilityTextFile> {
-    let contents = if let Some(sandbox) = authorized_read_context(sandbox) {
-        match file_system
-            .read_file_bounded_authorized(&path, sandbox, MAX_FILE_BYTES)
-            .await
-        {
-            Ok(contents) if contents.len() <= MAX_FILE_BYTES => contents,
-            Ok(_) => {
-                warnings.push("capability file exceeded its authorized read limit".to_string());
-                return None;
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return None,
-            Err(_) => {
-                warnings.push(
-                    "capability file could not be read through the authorized sandbox".to_string(),
-                );
-                return None;
-            }
-        }
-    } else {
-        let metadata = match file_system.get_metadata(&path, sandbox).await {
-            Ok(metadata) if metadata.is_file => metadata,
-            Ok(_) => return None,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return None,
-            Err(error) => {
-                warnings.push(format!("failed to inspect capability file {path}: {error}"));
-                return None;
-            }
-        };
-        let Ok(size) = usize::try_from(metadata.size) else {
-            warnings.push(format!("capability file {path} is too large"));
-            return None;
-        };
-        if size > MAX_FILE_BYTES {
-            warnings.push(format!(
-                "capability file {path} exceeds the {MAX_FILE_BYTES}-byte limit"
-            ));
+    let metadata = match file_system
+        .get_metadata(&path, Default::default(), sandbox)
+        .await
+    {
+        Ok(metadata) if metadata.is_file => metadata,
+        Ok(_) => return None,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return None,
+        Err(error) => {
+            warnings.push(format!("failed to inspect capability file {path}: {error}"));
             return None;
         }
-        if !budget.can_add(size) {
-            warnings.push(format!(
-                "capability root bundle exceeds the {MAX_BUNDLE_BYTES_PER_ROOT}-byte limit"
-            ));
+    };
+    let Ok(size) = usize::try_from(metadata.size) else {
+        warnings.push(format!("capability file {path} is too large"));
+        return None;
+    };
+    if size > MAX_FILE_BYTES {
+        warnings.push(format!(
+            "capability file {path} exceeds the {MAX_FILE_BYTES}-byte limit"
+        ));
+        return None;
+    }
+    if !budget.can_add(size) {
+        warnings.push(format!(
+            "capability root bundle exceeds the {MAX_BUNDLE_BYTES_PER_ROOT}-byte limit"
+        ));
+        return None;
+    }
+    let mut stream = match file_system.read_file_stream(&path, sandbox).await {
+        Ok(stream) => stream,
+        Err(error) => {
+            warnings.push(format!("failed to read capability file {path}: {error}"));
             return None;
         }
-        let mut stream = match file_system.read_file_stream(&path, sandbox).await {
-            Ok(stream) => stream,
+    };
+    let mut contents = Vec::with_capacity(size);
+    while let Some(chunk) = stream.next().await {
+        let chunk = match chunk {
+            Ok(chunk) => chunk,
             Err(error) => {
                 warnings.push(format!("failed to read capability file {path}: {error}"));
                 return None;
@@ -391,13 +384,7 @@ async fn read_optional_text_file(
             warnings.push(format!("capability file {path} exceeded its read limit"));
             return None;
         }
-        contents
-    };
-    if !budget.can_add(contents.len()) {
-        warnings.push(format!(
-            "capability root bundle exceeds the {MAX_BUNDLE_BYTES_PER_ROOT}-byte limit"
-        ));
-        return None;
+        contents.extend_from_slice(&chunk);
     }
     let contents = match String::from_utf8(contents) {
         Ok(contents) => contents,
@@ -408,12 +395,6 @@ async fn read_optional_text_file(
     };
     budget.add(contents.len());
     Some(CapabilityTextFile { path, contents })
-}
-
-fn authorized_read_context(
-    sandbox: Option<&FileSystemSandboxContext>,
-) -> Option<&FileSystemSandboxContext> {
-    sandbox.filter(|context| context.should_run_in_sandbox())
 }
 
 fn is_plugin_manifest_path(path: &PathUri) -> bool {
@@ -527,193 +508,5 @@ fn declared_file_path(
             ));
             None
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::sync::atomic::AtomicUsize;
-    use std::sync::atomic::Ordering;
-
-    use codex_protocol::models::PermissionProfile;
-
-    use super::*;
-    use crate::CopyOptions;
-    use crate::CreateDirectoryOptions;
-    use crate::ExecutorFileSystemFuture;
-    use crate::FileMetadata;
-    use crate::FileSystemReadStream;
-    use crate::ReadDirectoryEntry;
-    use crate::RemoveOptions;
-
-    type Sandbox<'a> = Option<&'a FileSystemSandboxContext>;
-
-    struct AuthorizedOnlyFileSystem {
-        contents: Result<Vec<u8>, io::ErrorKind>,
-        authorized_calls: AtomicUsize,
-        legacy_calls: AtomicUsize,
-        max_bytes: AtomicUsize,
-    }
-
-    impl AuthorizedOnlyFileSystem {
-        fn new(contents: Result<Vec<u8>, io::ErrorKind>) -> Self {
-            Self {
-                contents,
-                authorized_calls: AtomicUsize::new(0),
-                legacy_calls: AtomicUsize::new(0),
-                max_bytes: AtomicUsize::new(0),
-            }
-        }
-
-        fn legacy<T: Send + 'static>(&self) -> ExecutorFileSystemFuture<'_, T> {
-            self.legacy_calls.fetch_add(1, Ordering::Relaxed);
-            Box::pin(async { Err(io::Error::other("legacy filesystem path")) })
-        }
-    }
-
-    macro_rules! legacy_method {
-        ($name:ident($($arg:ident: $arg_type:ty),*) -> $result:ty) => {
-            fn $name<'a>(
-                &'a self,
-                $($arg: $arg_type),*
-            ) -> ExecutorFileSystemFuture<'a, $result> {
-                self.legacy()
-            }
-        };
-    }
-
-    impl ExecutorFileSystem for AuthorizedOnlyFileSystem {
-        legacy_method!(canonicalize(_path: &'a PathUri, _sandbox: Sandbox<'a>) -> PathUri);
-        legacy_method!(read_file(_path: &'a PathUri, _sandbox: Sandbox<'a>) -> Vec<u8>);
-
-        fn read_file_bounded_authorized<'a>(
-            &'a self,
-            _path: &'a PathUri,
-            _sandbox: &'a FileSystemSandboxContext,
-            max_bytes: usize,
-        ) -> ExecutorFileSystemFuture<'a, Vec<u8>> {
-            self.authorized_calls.fetch_add(1, Ordering::Relaxed);
-            self.max_bytes.store(max_bytes, Ordering::Relaxed);
-            let contents = self.contents.clone();
-            Box::pin(async move {
-                contents.map_err(|kind| io::Error::new(kind, "/private/secret/provider-path"))
-            })
-        }
-
-        legacy_method!(read_file_stream(_path: &'a PathUri, _sandbox: Sandbox<'a>)
-            -> FileSystemReadStream);
-        legacy_method!(write_file(
-            _path: &'a PathUri,
-            _contents: Vec<u8>,
-            _sandbox: Sandbox<'a>
-        ) -> ());
-        legacy_method!(create_directory(
-            _path: &'a PathUri,
-            _options: CreateDirectoryOptions,
-            _sandbox: Sandbox<'a>
-        ) -> ());
-        legacy_method!(get_metadata(_path: &'a PathUri, _sandbox: Sandbox<'a>) -> FileMetadata);
-        legacy_method!(read_directory(_path: &'a PathUri, _sandbox: Sandbox<'a>)
-            -> Vec<ReadDirectoryEntry>);
-        legacy_method!(remove(
-            _path: &'a PathUri,
-            _options: RemoveOptions,
-            _sandbox: Sandbox<'a>
-        ) -> ());
-        legacy_method!(copy(
-            _source_path: &'a PathUri,
-            _destination_path: &'a PathUri,
-            _options: CopyOptions,
-            _sandbox: Sandbox<'a>
-        ) -> ());
-    }
-
-    async fn sandboxed_read(
-        file_system: &AuthorizedOnlyFileSystem,
-        budget: &mut BundleBudget,
-    ) -> (Option<CapabilityTextFile>, Vec<String>) {
-        let mut warnings = Vec::new();
-        let result = read_optional_text_file(
-            file_system,
-            PathUri::parse("file:///capabilities/SKILL.md").expect("test path"),
-            Some(&FileSystemSandboxContext::from_permission_profile(
-                PermissionProfile::default(),
-            )),
-            budget,
-            &mut warnings,
-        )
-        .await;
-        (result, warnings)
-    }
-
-    #[test]
-    fn authorized_reads_require_platform_sandbox_enforcement() {
-        let restricted =
-            FileSystemSandboxContext::from_permission_profile(PermissionProfile::read_only());
-        let disabled =
-            FileSystemSandboxContext::from_permission_profile(PermissionProfile::Disabled);
-
-        assert!(authorized_read_context(Some(&restricted)).is_some());
-        assert!(authorized_read_context(Some(&disabled)).is_none());
-        assert!(authorized_read_context(None).is_none());
-    }
-
-    #[tokio::test]
-    async fn sandboxed_capability_read_uses_only_the_authorized_seam_and_rechecks_bounds() {
-        let file_system = AuthorizedOnlyFileSystem::new(Ok(b"capability".to_vec()));
-        let mut budget = BundleBudget::default();
-        let (file, warnings) = sandboxed_read(&file_system, &mut budget).await;
-        assert_eq!(file.expect("authorized contents").contents, "capability");
-        assert!(warnings.is_empty());
-        assert_eq!(budget.bytes, "capability".len());
-        assert_eq!(file_system.authorized_calls.load(Ordering::Relaxed), 1);
-        assert_eq!(
-            file_system.max_bytes.load(Ordering::Relaxed),
-            MAX_FILE_BYTES
-        );
-        assert_eq!(file_system.legacy_calls.load(Ordering::Relaxed), 0);
-
-        let file_system = AuthorizedOnlyFileSystem::new(Ok(vec![b'x'; MAX_FILE_BYTES + 1]));
-        let (file, warnings) = sandboxed_read(&file_system, &mut BundleBudget::default()).await;
-        assert!(file.is_none(), "an over-limit prefix must not be returned");
-        assert_eq!(
-            warnings,
-            ["capability file exceeded its authorized read limit"]
-        );
-        assert_eq!(file_system.legacy_calls.load(Ordering::Relaxed), 0);
-
-        let file_system = AuthorizedOnlyFileSystem::new(Ok(b"ab".to_vec()));
-        let mut budget = BundleBudget {
-            bytes: MAX_BUNDLE_BYTES_PER_ROOT - 1,
-        };
-        let (file, warnings) = sandboxed_read(&file_system, &mut budget).await;
-        assert!(file.is_none());
-        assert_eq!(
-            warnings,
-            [format!(
-                "capability root bundle exceeds the {MAX_BUNDLE_BYTES_PER_ROOT}-byte limit"
-            )]
-        );
-    }
-
-    #[tokio::test]
-    async fn sandboxed_capability_read_fails_closed_without_fallback_or_path_leaks() {
-        for kind in [io::ErrorKind::Unsupported, io::ErrorKind::PermissionDenied] {
-            let file_system = AuthorizedOnlyFileSystem::new(Err(kind));
-            let (file, warnings) = sandboxed_read(&file_system, &mut BundleBudget::default()).await;
-            assert!(file.is_none());
-            assert_eq!(
-                warnings,
-                ["capability file could not be read through the authorized sandbox"]
-            );
-            assert!(!warnings[0].contains("private/secret"));
-            assert_eq!(file_system.legacy_calls.load(Ordering::Relaxed), 0);
-        }
-
-        let file_system = AuthorizedOnlyFileSystem::new(Err(io::ErrorKind::NotFound));
-        let (file, warnings) = sandboxed_read(&file_system, &mut BundleBudget::default()).await;
-        assert!(file.is_none());
-        assert!(warnings.is_empty(), "atomic NotFound remains optional");
-        assert_eq!(file_system.legacy_calls.load(Ordering::Relaxed), 0);
     }
 }

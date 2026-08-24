@@ -31,6 +31,8 @@ use codex_analytics::CompactionStatus;
 use codex_analytics::CompactionStrategy;
 use codex_analytics::CompactionTrigger;
 use codex_analytics::now_unix_seconds;
+use codex_context_fragments::AnnotatedContent;
+use codex_context_fragments::set_annotated_content;
 use codex_extension_api::ModelProviderRequestKind;
 use codex_history::CodexHarnessMetadata;
 use codex_history::ResponseItemEnvelope;
