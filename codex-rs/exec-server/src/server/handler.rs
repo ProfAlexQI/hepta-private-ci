@@ -43,6 +43,7 @@ use crate::protocol::FsReadBlockParams;
 use crate::protocol::FsReadBlockResponse;
 use crate::protocol::FsReadDirectoryParams;
 use crate::protocol::FsReadDirectoryResponse;
+use crate::protocol::FsReadFileAuthorizedParams;
 use crate::protocol::FsReadFileParams;
 use crate::protocol::FsReadFileResponse;
 use crate::protocol::FsRemoveParams;
@@ -158,7 +159,7 @@ impl ExecServerHandler {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(session);
         Ok(InitializeResponse {
             session_id,
-            environment_info: Some(EnvironmentInfo::local()),
+            environment_info: Some(crate::local_environment_info()),
         })
     }
 
@@ -179,7 +180,7 @@ impl ExecServerHandler {
 
     pub(crate) fn environment_info(&self) -> Result<EnvironmentInfo, JSONRPCErrorError> {
         self.require_initialized_for("environment info")?;
-        Ok(EnvironmentInfo::local())
+        Ok(crate::local_environment_info())
     }
 
     pub(crate) async fn environment_config_read(
@@ -285,6 +286,14 @@ impl ExecServerHandler {
     ) -> Result<FsReadFileResponse, JSONRPCErrorError> {
         self.require_initialized_for("filesystem")?;
         self.file_system.read_file(params).await
+    }
+
+    pub(crate) async fn fs_read_file_authorized(
+        &self,
+        params: FsReadFileAuthorizedParams,
+    ) -> Result<FsReadFileResponse, JSONRPCErrorError> {
+        self.require_initialized_for("filesystem")?;
+        self.file_system.read_file_authorized(params).await
     }
 
     pub(crate) async fn discover_capability_roots(

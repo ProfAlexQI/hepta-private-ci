@@ -1,8 +1,8 @@
 mod common;
 
-use codex_exec_server::EnvironmentInfo;
 use codex_exec_server::InitializeParams;
 use codex_exec_server::InitializeResponse;
+use codex_exec_server::local_environment_info;
 use codex_exec_server_protocol::JSONRPCError;
 use codex_exec_server_protocol::JSONRPCErrorError;
 use codex_exec_server_protocol::JSONRPCMessage;
@@ -34,7 +34,7 @@ async fn exec_server_accepts_initialize() -> anyhow::Result<()> {
     Uuid::parse_str(&initialize_response.session_id)?;
     assert_eq!(
         initialize_response.environment_info,
-        Some(EnvironmentInfo::local())
+        Some(local_environment_info())
     );
 
     server.shutdown().await?;

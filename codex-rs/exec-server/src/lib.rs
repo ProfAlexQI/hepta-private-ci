@@ -149,6 +149,7 @@ pub use protocol::ExecResponse;
 pub use protocol::ExecServerNetworkPolicyDecision;
 pub use protocol::ExecServerNetworkPolicyRequest;
 pub use protocol::ExecServerNetworkProtocol;
+pub use protocol::FS_READ_FILE_AUTHORIZED_METHOD;
 pub use protocol::FsCanonicalizeParams;
 pub use protocol::FsCanonicalizeResponse;
 pub use protocol::FsCloseParams;
@@ -166,6 +167,7 @@ pub use protocol::FsReadBlockResponse;
 pub use protocol::FsReadDirectoryEntry;
 pub use protocol::FsReadDirectoryParams;
 pub use protocol::FsReadDirectoryResponse;
+pub use protocol::FsReadFileAuthorizedParams;
 pub use protocol::FsReadFileParams;
 pub use protocol::FsReadFileResponse;
 pub use protocol::FsRemoveParams;
@@ -211,3 +213,13 @@ pub use server::RequestDispatchMode;
 pub use server::run_main;
 pub use server::run_main_with_telemetry;
 pub use telemetry::ExecServerTelemetry;
+
+/// Returns executor-local environment metadata with runtime-probed
+/// capabilities. Protocol defaults remain conservative; only this process can
+/// attest that its stable-handle primitives are actually available.
+pub fn local_environment_info() -> EnvironmentInfo {
+    let mut info = EnvironmentInfo::local();
+    info.capabilities.stable_handle_authorized_read =
+        local_file_system::stable_handle_authorized_read_available();
+    info
+}

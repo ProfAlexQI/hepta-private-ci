@@ -29,6 +29,10 @@ pub const EXEC_CLOSED_METHOD: &str = "process/closed";
 pub const ENVIRONMENT_INFO_METHOD: &str = "environment/info";
 pub const ENVIRONMENT_STATUS_METHOD: &str = "environment/status";
 pub const FS_READ_FILE_METHOD: &str = "fs/readFile";
+/// Version-1 bounded read whose authorization and bytes are bound to one
+/// executor-local stable file handle. Callers must gate this method on the
+/// `stableHandleAuthorizedRead` capability; unsupported executors reject it.
+pub const FS_READ_FILE_AUTHORIZED_METHOD: &str = "fs/readFileAuthorized";
 pub const FS_OPEN_METHOD: &str = "fs/open";
 pub const FS_READ_BLOCK_METHOD: &str = "fs/readBlock";
 pub const FS_CLOSE_METHOD: &str = "fs/close";
@@ -122,6 +126,11 @@ pub struct EnvironmentCapabilities {
     /// Whether this executor supports the `environmentConfig/read` request.
     #[serde(default)]
     pub environment_config_read: bool,
+    /// Whether version-1 bounded reads authorize and consume the same
+    /// executor-local stable file handle. This is false unless the executor
+    /// has completed its platform-specific stable-handle probe.
+    #[serde(default)]
+    pub stable_handle_authorized_read: bool,
     /// Whether HTTP headers can resolve values from the executor environment.
     #[serde(default)]
     pub http_header_env_vars: bool,
@@ -192,6 +201,7 @@ impl EnvironmentInfo {
                 network_proxy_launch: true,
                 capability_discovery_sandbox: true,
                 environment_config_read: true,
+                stable_handle_authorized_read: false,
                 http_header_env_vars: true,
                 sandboxed_file_streaming: true,
                 shell_snapshot_v2: cfg!(unix),
@@ -389,6 +399,18 @@ pub struct FsReadFileParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub follow_symlinks: Option<bool>,
     pub sandbox: Option<FileSystemSandboxContext>,
+}
+
+/// Version-1 request for a bounded, fail-closed authorized file read.
+///
+/// The sandbox is required (rather than optional) so an executor cannot
+/// accidentally interpret this operation as an unrestricted path read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsReadFileAuthorizedParams {
+    pub path: PathUri,
+    pub sandbox: FileSystemSandboxContext,
+    pub max_bytes: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -843,6 +865,7 @@ mod tests {
     use super::ExecExitedNotification;
     use super::ExecParams;
     use super::ExecResponse;
+    use super::FsReadFileAuthorizedParams;
     use super::FsReadFileParams;
     use super::HttpRequestParams;
     use super::ProcessId;
@@ -971,10 +994,34 @@ mod tests {
                 network_proxy_launch: true,
                 capability_discovery_sandbox: true,
                 environment_config_read: false,
+                stable_handle_authorized_read: false,
                 http_header_env_vars: false,
                 sandboxed_file_streaming: false,
                 shell_snapshot_v2: false,
             }
+        );
+    }
+
+    #[test]
+    fn authorized_read_v1_round_trips_required_sandbox_and_bound() {
+        let cwd =
+            PathUri::from_host_native_path(std::env::current_dir().expect("cwd")).expect("cwd URI");
+        let path = cwd.join("bounded.txt").expect("path URI");
+        let params = FsReadFileAuthorizedParams {
+            path: path.clone(),
+            sandbox: FileSystemSandboxContext::from_permission_profile_with_cwd(
+                PermissionProfile::default(),
+                cwd,
+            ),
+            max_bytes: 4096,
+        };
+        let serialized = serde_json::to_value(&params).expect("serialize authorized read");
+        assert_eq!(serialized["path"], path.to_string());
+        assert_eq!(serialized["maxBytes"], 4096);
+        assert_eq!(
+            serde_json::from_value::<FsReadFileAuthorizedParams>(serialized)
+                .expect("deserialize authorized read"),
+            params
         );
     }
 
@@ -988,6 +1035,7 @@ mod tests {
                 "networkProxyLaunch": false,
                 "capabilityDiscoverySandbox": false,
                 "environmentConfigRead": false,
+                "stableHandleAuthorizedRead": false,
                 "httpHeaderEnvVars": false,
                 "sandboxedFileStreaming": false,
                 "shellSnapshotV2": false,
