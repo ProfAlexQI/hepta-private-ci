@@ -25,6 +25,8 @@ pub use advisory_observation::observe_shadow_advisory;
 pub use advisory_observation::observe_shadow_advisory_input;
 pub use advisory_observation::require_shadow_advisory_observation;
 pub use advisory_observation::shadow_advisory_turn_observation;
+pub use codex_hepta_memory::LocalDevelopmentLifecyclePolicy;
+pub use codex_hepta_memory::LocalDevelopmentLifecyclePolicyError;
 pub use extension::HeptaMemoryExtension;
 pub use extension::HeptaMemoryFeatureFlags;
 pub use extension::HeptaMemoryThreadConfig;

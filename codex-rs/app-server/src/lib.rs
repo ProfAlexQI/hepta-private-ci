@@ -107,6 +107,7 @@ mod filters;
 mod fs_watch;
 mod fuzzy_file_search;
 mod hepta_evidence_processor;
+mod hepta_local_lifecycle;
 mod image_url;
 pub mod in_process;
 mod mcp_refresh;
@@ -128,6 +129,12 @@ pub use crate::code_mode_host::AppServerCodeModeHostArgs;
 pub use crate::code_mode_host::CodeModeHostTransport;
 pub use crate::error_code::INPUT_TOO_LARGE_ERROR_CODE;
 pub use crate::error_code::INVALID_PARAMS_ERROR_CODE;
+pub use crate::hepta_local_lifecycle::HEPTA_LOCAL_LIFECYCLE_OWNER_EXTERNAL_EFFECTS;
+pub use crate::hepta_local_lifecycle::HEPTA_LOCAL_LIFECYCLE_OWNER_KG_WRITE_AUTHORITY;
+pub use crate::hepta_local_lifecycle::HEPTA_LOCAL_LIFECYCLE_OWNER_PRODUCTION_CALLER;
+pub use crate::hepta_local_lifecycle::HEPTA_LOCAL_LIFECYCLE_OWNER_RUNTIME_REGISTERED;
+pub use crate::hepta_local_lifecycle::HeptaLocalDevelopmentLifecycleOwner;
+pub use crate::hepta_local_lifecycle::HeptaLocalDevelopmentLifecycleOwnerError;
 pub use crate::transport::AppServerTransport;
 pub use crate::transport::RemoteControlStartupMode;
 pub use crate::transport::app_server_control_socket_path;
@@ -462,6 +469,10 @@ pub struct AppServerRuntimeOptions {
     /// This is false by default and is never inferred from environment or
     /// feature flags.
     pub hepta_local_turn_lifecycle_enabled: bool,
+    /// Explicit qualification-only policy for the host-owned witness seam.
+    /// `None` keeps ordinary Codex and production-facing embeddings caller
+    /// zero; a value is accepted only when its closed-world policy validates.
+    pub hepta_local_development_policy: Option<codex_hepta_memory::LocalDevelopmentLifecyclePolicy>,
     /// Embedding-owned feature states applied after ordinary config layers
     /// and per-request overrides. Empty for ordinary Codex runtimes; a local
     /// embedding can use this to keep a capability boundary fail-closed.
@@ -492,6 +503,10 @@ impl std::fmt::Debug for AppServerRuntimeOptions {
             .field(
                 "hepta_local_turn_lifecycle_enabled",
                 &self.hepta_local_turn_lifecycle_enabled,
+            )
+            .field(
+                "hepta_local_development_policy",
+                &self.hepta_local_development_policy,
             )
             .field("required_feature_states", &self.required_feature_states)
             .finish()
@@ -539,6 +554,7 @@ impl PartialEq for AppServerRuntimeOptions {
                 _ => false,
             }
             && self.hepta_local_turn_lifecycle_enabled == other.hepta_local_turn_lifecycle_enabled
+            && self.hepta_local_development_policy == other.hepta_local_development_policy
             && self.required_feature_states == other.required_feature_states
     }
 }
@@ -557,6 +573,7 @@ impl Default for AppServerRuntimeOptions {
             required_thread_store_mode: None,
             hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime::Absent,
             hepta_local_turn_lifecycle_enabled: false,
+            hepta_local_development_policy: None,
             required_feature_states: BTreeMap::new(),
         }
     }
@@ -574,6 +591,7 @@ pub async fn run_main_with_transport_options(
     auth: AppServerWebsocketAuthSettings,
     runtime_options: AppServerRuntimeOptions,
 ) -> IoResult<()> {
+    validate_hepta_local_lifecycle_runtime_options(&runtime_options)?;
     let loader_overrides = loader_overrides_with_test_user_config_file(
         loader_overrides,
         test_user_config_file_from_env(),
@@ -1044,6 +1062,7 @@ pub async fn run_main_with_transport_options(
             turn_queue_capacity: runtime_options.turn_queue_capacity,
             hepta_cognitive_runtime: runtime_options.hepta_cognitive_runtime.clone(),
             hepta_local_turn_lifecycle_enabled: runtime_options.hepta_local_turn_lifecycle_enabled,
+            hepta_local_development_policy: runtime_options.hepta_local_development_policy,
         }));
         let mut thread_created_rx = processor.thread_created_receiver();
         let mut running_turn_count_rx = processor.subscribe_running_assistant_turn_count();
@@ -1329,6 +1348,29 @@ pub async fn run_main_with_transport_options(
     Ok(())
 }
 
+fn validate_hepta_local_lifecycle_runtime_options(
+    runtime_options: &AppServerRuntimeOptions,
+) -> IoResult<()> {
+    let owner_present = runtime_options
+        .hepta_local_development_policy
+        .map(HeptaLocalDevelopmentLifecycleOwner::new)
+        .transpose()
+        .map_err(|error| {
+            std::io::Error::new(
+                ErrorKind::PermissionDenied,
+                format!("invalid local-development lifecycle policy: {error}"),
+            )
+        })?
+        .is_some();
+    if runtime_options.hepta_local_turn_lifecycle_enabled && !owner_present {
+        return Err(std::io::Error::new(
+            ErrorKind::PermissionDenied,
+            "local turn lifecycle requires an explicit qualification-only policy",
+        ));
+    }
+    Ok(())
+}
+
 struct SqliteRecoveryNotice {
     details: String,
 }
@@ -1540,11 +1582,13 @@ fn enforce_required_thread_store_mode(
 #[cfg(test)]
 mod tests {
     use super::AppServerRuntimeOptions;
+    use super::HeptaLocalDevelopmentLifecycleOwner;
     use super::LogFormat;
     use super::enforce_required_sqlite_home;
     use super::enforce_required_thread_store_mode;
     #[cfg(debug_assertions)]
     use super::loader_overrides_with_test_user_config_file;
+    use super::validate_hepta_local_lifecycle_runtime_options;
     #[cfg(debug_assertions)]
     use codex_config::LoaderOverrides;
     use codex_core::config::ThreadStoreConfig;
@@ -1565,6 +1609,44 @@ mod tests {
             None,
             AppServerRuntimeOptions::default().required_thread_store_mode
         );
+        assert_eq!(
+            None,
+            AppServerRuntimeOptions::default().hepta_local_development_policy
+        );
+        validate_hepta_local_lifecycle_runtime_options(&AppServerRuntimeOptions::default())
+            .expect("ordinary runtime remains caller-zero");
+    }
+
+    #[test]
+    fn local_turn_lifecycle_requires_positive_qualification_policy() {
+        let mut options = AppServerRuntimeOptions {
+            hepta_local_turn_lifecycle_enabled: true,
+            ..Default::default()
+        };
+        let error = validate_hepta_local_lifecycle_runtime_options(&options)
+            .expect_err("legacy bool must not bypass the policy gate");
+        assert_eq!(ErrorKind::PermissionDenied, error.kind());
+
+        options.hepta_local_development_policy =
+            Some(codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only());
+        validate_hepta_local_lifecycle_runtime_options(&options)
+            .expect("canonical local policy should open only the qualification gate");
+        let owner = HeptaLocalDevelopmentLifecycleOwner::qualification_only();
+        assert!(!owner.runtime_registered());
+        assert!(!owner.production_caller());
+    }
+
+    #[test]
+    fn invalid_local_policy_fails_before_app_server_startup() {
+        let mut policy = codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only();
+        policy.external_effects = true;
+        let options = AppServerRuntimeOptions {
+            hepta_local_development_policy: Some(policy),
+            ..Default::default()
+        };
+        let error = validate_hepta_local_lifecycle_runtime_options(&options)
+            .expect_err("production capability must be rejected");
+        assert_eq!(ErrorKind::PermissionDenied, error.kind());
     }
 
     #[test]

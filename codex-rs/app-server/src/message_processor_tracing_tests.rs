@@ -273,6 +273,7 @@ async fn build_test_processor(
         turn_queue_capacity: None,
         hepta_cognitive_runtime: codex_hepta_memory::CognitiveRuntime::Absent,
         hepta_local_turn_lifecycle_enabled: false,
+        hepta_local_development_policy: None,
     }));
     (processor, outgoing_rx)
 }

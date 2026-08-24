@@ -11,6 +11,8 @@ use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_memory::CompactCheckpoint;
 use codex_hepta_memory::LocalAtomicWitnessError;
 use codex_hepta_memory::LocalCompactExecutor;
+use codex_hepta_memory::LocalDevelopmentLifecyclePolicy;
+use codex_hepta_memory::LocalDevelopmentLifecyclePolicyError;
 use codex_hepta_memory::LocalLeaseOutbox;
 use codex_hepta_memory::LocalRehydrationWitnessReceipt;
 use serde::Deserialize;
@@ -30,6 +32,7 @@ pub const LOCAL_REHYDRATION_WITNESS_LIFECYCLE_REGISTERED: bool = false;
 
 #[derive(Debug)]
 pub enum LocalRehydrationWitnessLifecycleError {
+    Policy(LocalDevelopmentLifecyclePolicyError),
     Replay(LocalRehydrationReplayError),
     Writer(LocalAtomicWitnessError),
     TurnBindingMismatch,
@@ -39,6 +42,7 @@ pub enum LocalRehydrationWitnessLifecycleError {
 impl std::fmt::Display for LocalRehydrationWitnessLifecycleError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Policy(error) => write!(formatter, "local witness policy rejected: {error}"),
             Self::Replay(error) => write!(
                 formatter,
                 "local witness replay observation failed: {error}"
@@ -56,6 +60,12 @@ impl std::fmt::Display for LocalRehydrationWitnessLifecycleError {
 
 impl std::error::Error for LocalRehydrationWitnessLifecycleError {}
 
+impl From<LocalDevelopmentLifecyclePolicyError> for LocalRehydrationWitnessLifecycleError {
+    fn from(error: LocalDevelopmentLifecyclePolicyError) -> Self {
+        Self::Policy(error)
+    }
+}
+
 impl From<LocalRehydrationReplayError> for LocalRehydrationWitnessLifecycleError {
     fn from(error: LocalRehydrationReplayError) -> Self {
         Self::Replay(error)
@@ -70,6 +80,7 @@ impl From<LocalAtomicWitnessError> for LocalRehydrationWitnessLifecycleError {
 
 /// Explicit host-owned inputs for one local witness write.
 pub struct LocalRehydrationWitnessLifecycleInput<'a> {
+    pub policy: LocalDevelopmentLifecyclePolicy,
     pub turn_id: &'a str,
     pub turn_store: &'a ExtensionData,
     pub operation_id: &'a str,
@@ -89,7 +100,31 @@ impl<'a> LocalRehydrationWitnessLifecycleInput<'a> {
         lease: &'a LocalLeaseOutbox,
         executor: &'a LocalCompactExecutor,
     ) -> Self {
+        Self::with_policy(
+            LocalDevelopmentLifecyclePolicy::qualification_only(),
+            turn_id,
+            turn_store,
+            operation_id,
+            expected_revision,
+            checkpoint,
+            lease,
+            executor,
+        )
+    }
+
+    /// Construct an input with an embedding-supplied policy gate.
+    pub fn with_policy(
+        policy: LocalDevelopmentLifecyclePolicy,
+        turn_id: &'a str,
+        turn_store: &'a ExtensionData,
+        operation_id: &'a str,
+        expected_revision: u64,
+        checkpoint: &'a CompactCheckpoint,
+        lease: &'a LocalLeaseOutbox,
+        executor: &'a LocalCompactExecutor,
+    ) -> Self {
         Self {
+            policy,
             turn_id,
             turn_store,
             operation_id,
@@ -113,6 +148,7 @@ pub struct LocalRehydrationWitnessLifecycleResult {
     pub kg_write_authority: bool,
     pub production_caller: bool,
     pub lifecycle_registered: bool,
+    pub policy_gate_bound: bool,
 }
 
 impl LocalRehydrationWitnessLifecycleResult {
@@ -128,6 +164,7 @@ impl LocalRehydrationWitnessLifecycleResult {
             || self.kg_write_authority
             || self.production_caller
             || self.lifecycle_registered
+            || !self.policy_gate_bound
         {
             return Err(LocalRehydrationWitnessLifecycleError::Invalid(
                 "witness lifecycle result crosses the local boundary".to_string(),
@@ -151,6 +188,7 @@ impl LocalRehydrationWitnessLifecycleResult {
 pub async fn write_local_rehydration_witness_at_lifecycle(
     input: LocalRehydrationWitnessLifecycleInput<'_>,
 ) -> Result<LocalRehydrationWitnessLifecycleResult, LocalRehydrationWitnessLifecycleError> {
+    input.policy.validate()?;
     if input.turn_id.trim().is_empty()
         || input.turn_id.starts_with("auto-compact-")
         || input.turn_id != input.turn_store.level_id()
@@ -204,6 +242,7 @@ pub async fn write_local_rehydration_witness_at_lifecycle(
         kg_write_authority: LOCAL_REHYDRATION_WITNESS_KG_WRITE_AUTHORITY,
         production_caller: LOCAL_REHYDRATION_WITNESS_PRODUCTION_CALLER,
         lifecycle_registered: LOCAL_REHYDRATION_WITNESS_LIFECYCLE_REGISTERED,
+        policy_gate_bound: true,
     };
     result.validate()?;
     Ok(result)
@@ -343,6 +382,8 @@ mod tests {
             LocalRehydrationReplayDisposition::NotStarted
         );
         assert!(!first.witness.replayed);
+        assert!(first.validate().is_ok());
+        assert!(first.policy_gate_bound);
         first.validate().expect("first result validates");
         assert!(
             turn_store
@@ -403,5 +444,30 @@ mod tests {
                 .expect("witness lookup")
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn lifecycle_writer_rejects_policy_that_enables_authority() {
+        let (_temp, turn_store, lease, executor, checkpoint) = prepared().await;
+        let mut policy = LocalDevelopmentLifecyclePolicy::qualification_only();
+        policy.production_activation = true;
+        let error = write_local_rehydration_witness_at_lifecycle(
+            LocalRehydrationWitnessLifecycleInput::with_policy(
+                policy,
+                "turn:e16-extension-policy",
+                &turn_store,
+                "operation:e16-extension",
+                0,
+                &checkpoint,
+                &lease,
+                &executor,
+            ),
+        )
+        .await
+        .expect_err("production policy must fail closed");
+        assert!(matches!(
+            error,
+            LocalRehydrationWitnessLifecycleError::Policy(_)
+        ));
     }
 }

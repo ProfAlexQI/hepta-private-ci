@@ -54,6 +54,10 @@ pub(crate) struct ThreadExtensionDependencies {
     /// Explicit local-development-only lifecycle journal capability. Plain
     /// Codex and production-facing embeddings keep this false.
     pub(crate) hepta_local_turn_lifecycle_enabled: bool,
+    /// Positive gate for explicit local-development lifecycle ownership.
+    /// Invalid/absent policies keep lifecycle registration disabled.
+    pub(crate) hepta_local_development_policy:
+        Option<codex_hepta_memory::LocalDevelopmentLifecyclePolicy>,
 }
 
 pub(crate) fn thread_extensions<S>(
@@ -77,6 +81,7 @@ where
         queue_service,
         hepta_cognitive_runtime,
         hepta_local_turn_lifecycle_enabled,
+        hepta_local_development_policy,
     } = dependencies;
     let mut builder = ExtensionRegistryBuilder::<Config>::with_event_sink(Arc::clone(&event_sink));
     if let Some(queue_service) = queue_service {
@@ -112,6 +117,7 @@ where
         state_db,
         hepta_cognitive_runtime,
         hepta_local_turn_lifecycle_enabled,
+        hepta_local_development_policy,
         |config: &Config| {
             codex_hepta_memory_extension::HeptaMemoryThreadConfig::for_features(
                 hepta_memory_feature_flags(&config.features),

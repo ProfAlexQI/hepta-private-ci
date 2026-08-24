@@ -856,6 +856,7 @@ fn install_registers_only_the_three_owned_contributor_seams() {
         None,
         codex_hepta_memory::CognitiveRuntime::Absent,
         false,
+        None,
         resolve_test_config as fn(&TestConfig) -> Option<HeptaMemoryThreadConfig>,
     );
     let registry = builder.build();
@@ -882,6 +883,7 @@ fn local_turn_lifecycle_requires_explicit_enable_and_available_store() {
             None,
             runtime,
             true,
+            Some(codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only()),
             resolve_test_config as fn(&TestConfig) -> Option<HeptaMemoryThreadConfig>,
         );
         assert!(builder.build().turn_lifecycle_contributors().is_empty());

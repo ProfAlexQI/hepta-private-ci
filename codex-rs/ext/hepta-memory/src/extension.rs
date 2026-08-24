@@ -38,6 +38,7 @@ use codex_hepta_contracts::RecallRequestId;
 use codex_hepta_contracts::RevisionStamp;
 use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_memory::CognitiveRuntime;
+use codex_hepta_memory::LocalDevelopmentLifecyclePolicy;
 use codex_hepta_memory::RecallObservation;
 use codex_hepta_memory::RecallObservationReason;
 use codex_hepta_memory::shadow_recall;
@@ -669,15 +670,19 @@ pub fn install<C, F>(
     state_db: Option<Arc<StateRuntime>>,
     cognitive_runtime: CognitiveRuntime,
     local_turn_lifecycle_enabled: bool,
+    local_development_policy: Option<LocalDevelopmentLifecyclePolicy>,
     resolve_thread: F,
 ) -> Arc<HeptaMemoryExtension<F>>
 where
     C: Sync,
     F: Fn(&C) -> Option<HeptaMemoryThreadConfig> + Send + Sync + 'static,
 {
-    let local_lifecycle_store = local_turn_lifecycle_enabled
-        .then(|| cognitive_runtime.available_store().cloned())
-        .flatten();
+    let local_lifecycle_store = (local_turn_lifecycle_enabled
+        && local_development_policy
+            .map(|policy| policy.validate().is_ok())
+            .unwrap_or(false))
+    .then(|| cognitive_runtime.available_store().cloned())
+    .flatten();
     let legacy_attachment_enabled = matches!(&cognitive_runtime, CognitiveRuntime::Absent);
     let extension = Arc::new(HeptaMemoryExtension::new(
         resolve_thread,

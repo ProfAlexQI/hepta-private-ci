@@ -73,6 +73,9 @@ pub(crate) fn app_server_runtime_options(
         // that explicitly opts into lifecycle journal admission.  This is a
         // local queue/lease capability, not production effect authority.
         hepta_local_turn_lifecycle_enabled: true,
+        hepta_local_development_policy: Some(
+            codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only(),
+        ),
         // This is an embedding-owned capability boundary. It is applied
         // after managed config and per-request overrides, so those layers
         // cannot reopen cognitive/KG writes in the local profile.
@@ -156,6 +159,10 @@ mod tests {
             options.required_thread_store_mode.as_ref()
         );
         assert!(options.hepta_local_turn_lifecycle_enabled);
+        assert_eq!(
+            Some(codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only()),
+            options.hepta_local_development_policy
+        );
         assert_eq!(
             Some(&false),
             options
