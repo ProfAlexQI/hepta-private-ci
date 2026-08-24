@@ -422,10 +422,11 @@ async fn verify_store(pool: &SqlitePool, owner: &AgentId) -> Result<(), Cognitiv
             (5, true),
             (6, true),
             (7, true),
+            (8, true),
         ]
     {
         return Err(CognitiveStoreError::Corrupt(format!(
-            "cognitive migration ledger is not the exact successful 0001/0002/0003/0004/0005/0006/0007 set: {migrations:?}"
+            "cognitive migration ledger is not the exact successful 0001/0002/0003/0004/0005/0006/0007/0008 set: {migrations:?}"
         )));
     }
     let mut schema_oracle_parts = Vec::with_capacity(REQUIRED_SCHEMA_OBJECTS.len());

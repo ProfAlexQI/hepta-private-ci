@@ -82,6 +82,81 @@ async fn stores_are_per_agent_append_only_and_scope_fail_closed() {
     );
 }
 
+#[tokio::test]
+async fn h7_trajectory_schema_is_bound_and_append_only() {
+    let temp = TempDir::new().expect("H7 trajectory temp dir");
+    let owner = agent_id(3);
+    let store = CognitiveStore::open(&layout(&temp, &owner))
+        .await
+        .expect("H7 trajectory store");
+    let digest = "a".repeat(64);
+    sqlx::query(
+        "INSERT INTO cognitive_h7_trajectory_events (
+            owner_agent_id, trajectory_id, event_seq, event_id, occurrence_key,
+            event_kind, turn_id, causal_parent_sha256, causal_parent_seq,
+            receipt_sha256, outcome, reward_bps, safety_ok, terminal,
+            propensity_json, support_json, metadata_json, reason,
+            external_effect_executed, kg_write_authority, production_caller,
+            lease_id, lease_head_sha256, authority_epoch, owner_epoch, generation,
+            fencing_token_sha256, state_digest, policy_digest, model_receipt_digest,
+            payload_json, payload_sha256, previous_sha256, event_sha256,
+            recorded_at_unix_seconds
+         ) VALUES (?, ?, 1, ?, ?, ?, ?, NULL, NULL, ?, ?, 0, 1, 0,
+                   NULL, NULL, '{}', 'not_applicable', 0, 0, 0, ?, ?, 1, 1, 1,
+                   ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+    )
+    .bind(owner.as_str())
+    .bind("trajectory:test")
+    .bind("event:test:1")
+    .bind("occurrence:test:1")
+    .bind("observation")
+    .bind("turn:test:1")
+    .bind(&digest)
+    .bind("observed")
+    .bind("lease:test")
+    .bind(&digest)
+    .bind(&digest)
+    .bind(&digest)
+    .bind(&digest)
+    .bind(&digest)
+    .bind("{}")
+    .bind(&digest)
+    .bind(&digest)
+    .bind(&digest)
+    .execute(&store.pool)
+    .await
+    .expect("valid H7 trajectory row");
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM cognitive_h7_trajectory_events",
+        )
+        .fetch_one(&store.pool)
+        .await
+        .expect("H7 trajectory row count"),
+        1
+    );
+
+    let update_error = sqlx::query(
+        "UPDATE cognitive_h7_trajectory_events
+         SET outcome = 'tampered' WHERE owner_agent_id = ?",
+    )
+    .bind(owner.as_str())
+    .execute(&store.pool)
+    .await
+    .expect_err("H7 trajectory rows must be immutable");
+    assert!(update_error
+        .to_string()
+        .contains("H7 trajectory events are immutable"));
+
+    let delete_error = sqlx::query("DELETE FROM cognitive_h7_trajectory_events")
+        .execute(&store.pool)
+        .await
+        .expect_err("H7 trajectory rows must not be deleted");
+    assert!(delete_error
+        .to_string()
+        .contains("H7 trajectory events are immutable"));
+}
+
 async fn seeded_projection_store(
     temp: &TempDir,
     owner: &codex_hepta_contracts::AgentId,
@@ -462,6 +537,6 @@ async fn v2_fixture_migrates_forward_preserving_memory_and_revoking_legacy_proje
         .fetch_one(&migrated.pool)
         .await
         .expect("migration ledger"),
-        "1,2,3,4,5,6,7"
+        "1,2,3,4,5,6,7,8"
     );
 }
