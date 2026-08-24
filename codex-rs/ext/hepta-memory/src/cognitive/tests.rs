@@ -444,6 +444,81 @@ async fn every_physical_attempt_revalidates_with_stable_source_content_and_bindi
     assert_eq!(backend.revalidate_calls.load(Ordering::SeqCst), 2);
 }
 
+/// A retrying transport may invoke the same physical attempt more than once
+/// after a timeout or callback race.  Read-only memory context must remain a
+/// deterministic replay: the exact source, revision-bound attachment, and
+/// content digests cannot drift, and retries must not trigger a fresh search.
+#[tokio::test]
+async fn duplicate_read_only_replay_soak_preserves_exact_memory_binding() {
+    const REPLAY_COUNT: usize = 32;
+
+    let fixture = cognitive_fixture().await;
+    let backend = Arc::new(CountingRecallBackend::new(fixture.store.clone()));
+    let extension = CognitiveExtension::with_recall(fixture.store, backend.clone());
+    let thread_store = cognitive_thread_store();
+    let turn_store = ExtensionData::new("turn-duplicate-replay-soak");
+    prepare(
+        &extension,
+        &thread_store,
+        &turn_store,
+        &fixture.workspace,
+        "rust durability",
+    )
+    .await;
+
+    let first = propose(
+        &extension,
+        &thread_store,
+        &turn_store,
+        &fixture.workspace,
+        "model-provider-attempt:v1:duplicate",
+    )
+    .await
+    .expect("initial read-only proposal");
+    let expected_source = first.source().as_str().to_string();
+    let expected_binding = first.source_binding_sha256().as_str().to_string();
+    let expected_content_sha = first.content_sha256().as_str().to_string();
+    let expected_content = first.into_content();
+    let expected_attachment: serde_json::Value =
+        serde_json::from_str(&expected_content).expect("structured cognitive attachment");
+    assert_eq!(
+        expected_attachment["memories"][0]["revision"],
+        fixture.memory.id.revision
+    );
+    assert_eq!(
+        expected_attachment["memories"][0]["citations"][0]["revision"],
+        fixture.memory.citations[0].revision
+    );
+
+    for replay in 0..REPLAY_COUNT {
+        let proposal = propose(
+            &extension,
+            &thread_store,
+            &turn_store,
+            &fixture.workspace,
+            "model-provider-attempt:v1:duplicate",
+        )
+        .await
+        .unwrap_or_else(|| panic!("duplicate replay {replay} lost read-only context"));
+        assert_eq!(proposal.attempt_id(), "model-provider-attempt:v1:duplicate");
+        assert_eq!(proposal.source().as_str(), expected_source);
+        assert_eq!(proposal.source_binding_sha256().as_str(), expected_binding);
+        assert_eq!(proposal.content_sha256().as_str(), expected_content_sha);
+        assert_eq!(proposal.into_content(), expected_content);
+    }
+
+    assert_eq!(
+        backend.retrieve_calls.load(Ordering::SeqCst),
+        1,
+        "duplicate physical replay must not rescan memory"
+    );
+    assert_eq!(
+        backend.revalidate_calls.load(Ordering::SeqCst),
+        REPLAY_COUNT + 1,
+        "each physical replay must revalidate the immutable binding"
+    );
+}
+
 #[tokio::test]
 async fn entity_and_graph_channels_survive_initial_compile_and_physical_revalidation() {
     let fixture = cognitive_fixture().await;
