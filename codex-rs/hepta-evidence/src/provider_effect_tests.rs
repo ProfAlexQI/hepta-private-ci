@@ -260,6 +260,85 @@ async fn terminal_effect_cannot_be_quarantined_or_replaced() {
 }
 
 #[tokio::test]
+async fn terminal_lookup_replay_is_idempotent_without_late_uncertainty() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"terminal-lookup-replay");
+    let key = intent.key.clone();
+    let completion = completed_ack(&intent, b"terminal-lookup-operation");
+    store
+        .append_provider_effect_intent(&intent)
+        .await
+        .expect("intent");
+    store
+        .append_provider_effect_ack(&completion)
+        .await
+        .expect("completion");
+
+    for lookup in [
+        ProviderEffectLookup::Unknown,
+        ProviderEffectLookup::NotFound,
+        ProviderEffectLookup::Conflict {
+            observed_payload_sha256: None,
+        },
+    ] {
+        assert_eq!(
+            store
+                .reconcile_provider_effect_lookup(
+                    ProviderEffectIdempotencyCapability::Unsupported,
+                    &key,
+                    lookup,
+                )
+                .await
+                .expect("terminal state must short-circuit late lookup"),
+            ProviderEffectState::Completed
+        );
+    }
+
+    assert_eq!(
+        store
+            .reconcile_provider_effect_lookup(
+                ProviderEffectIdempotencyCapability::Unsupported,
+                &key,
+                ProviderEffectLookup::Ack(completion.clone()),
+            )
+            .await
+            .expect("exact terminal ACK replay"),
+        ProviderEffectState::Completed
+    );
+
+    let conflicting_ack = ProviderEffectAck::new(
+        key.clone(),
+        intent.payload_sha256.clone(),
+        Sha256Digest::for_bytes(b"conflicting-terminal-operation"),
+        ProviderEffectAckStatus::Completed,
+    );
+    let conflict = store
+        .reconcile_provider_effect_lookup(
+            ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+            &key,
+            ProviderEffectLookup::Ack(conflicting_ack),
+        )
+        .await
+        .expect_err("conflicting terminal ACK must remain fail-closed");
+    assert!(matches!(
+        conflict,
+        EvidenceError::IdempotencyConflict { .. }
+    ));
+
+    let effect = store
+        .get_provider_effect(&key)
+        .await
+        .expect("read terminal effect")
+        .expect("effect");
+    assert_eq!(effect.state(), ProviderEffectState::Completed);
+    assert_eq!(effect.acknowledgements.len(), 1);
+    assert!(effect.uncertainties.is_empty());
+}
+
+#[tokio::test]
 async fn reopen_rejects_late_uncertainty_after_terminal_ack() {
     let temp = TempDir::new().expect("temp dir");
     let sqlite = sqlite_config(&temp);

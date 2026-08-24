@@ -293,6 +293,20 @@ impl HeptaEvidenceStore {
         let stored = self.get_provider_effect(key).await?.ok_or_else(|| {
             EvidenceError::InvalidRecord("provider effect intent not found".into())
         })?;
+        // A durable terminal acknowledgement is authoritative for this local
+        // occurrence.  Late Unknown/NotFound/Conflict observations must not
+        // append a new uncertainty row and make a completed/rejected effect
+        // appear Indeterminate.  An ACK is different: validate its exact
+        // key/payload binding and let the append path distinguish an exact
+        // replay from a conflicting acknowledgement.
+        if stored.state().is_terminal() {
+            if let ProviderEffectLookup::Ack(ack) = &lookup {
+                ack.validate_for(&stored.intent.intent)
+                    .map_err(binding_invalid)?;
+                self.append_provider_effect_ack(ack).await?;
+            }
+            return Ok(stored.state());
+        }
         if capability == ProviderEffectIdempotencyCapability::Unsupported {
             self.mark_provider_effect_indeterminate(key, "provider_capability_unsupported")
                 .await?;
