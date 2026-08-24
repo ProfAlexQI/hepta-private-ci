@@ -1,5 +1,4 @@
 use pretty_assertions::assert_eq;
-use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tempfile::TempDir;
@@ -129,7 +128,7 @@ async fn generation_cas_release_and_stale_handle_fail_closed() {
 async fn bound_expiry_is_explicit_timeout_rollback_and_exact_head_reopens_generation() {
     let temp = TempDir::new().expect("temp dir");
     let store = opened_store(&temp, 113).await;
-    let expires_at = unix_seconds() + 1;
+    let expires_at = unix_seconds() + 3_600;
     let old = acquired(
         store
             .acquire_local_lease_bound(
@@ -148,33 +147,44 @@ async fn bound_expiry_is_explicit_timeout_rollback_and_exact_head_reopens_genera
         .expect("admit before expiry");
 
     assert!(matches!(
-        old.expire_lease().await,
+        old.expire_lease_at_unix_seconds(expires_at - 1).await,
         Err(LocalLeaseOutboxError::StaleFence(message))
             if message.contains("has not expired")
     ));
 
-    for _ in 0..120 {
-        if unix_seconds() >= expires_at {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-    assert!(unix_seconds() >= expires_at, "test lease did not expire");
-
     // Deadline expiry makes ordinary host transitions stale; only the
-    // explicit timeout operation may close this bound lease.
+    // explicit timeout operation may close a bound lease.  Use a separate
+    // already-expired head so this assertion is independent of wall-clock
+    // scheduling while the admitted lease below still exercises its child
+    // journals during terminalization.
+    let expired_host_transition = acquired(
+        store
+            .acquire_local_lease_bound(
+                "lease:expired-host-transition",
+                3,
+                8,
+                1,
+                "fence:expired-host-transition",
+                unix_seconds().saturating_sub(1),
+            )
+            .await
+            .expect("already-expired bound acquire"),
+    );
     assert!(matches!(
-        old.release().await,
+        expired_host_transition.release().await,
         Err(LocalLeaseOutboxError::StaleFence(message))
             if message.contains("has expired")
     ));
     assert!(matches!(
-        old.rollback_lease().await,
+        expired_host_transition.rollback_lease().await,
         Err(LocalLeaseOutboxError::StaleFence(message))
             if message.contains("has expired")
     ));
 
-    let expired = old.expire_lease().await.expect("explicit expiry rollback");
+    let expired = old
+        .expire_lease_at_unix_seconds(expires_at)
+        .await
+        .expect("explicit expiry rollback");
     assert_eq!(expired.state, crate::LocalLeaseState::RolledBack);
     assert_eq!(expired.lease_sequence, 2);
     assert_eq!(expired.generation, 1);
@@ -185,7 +195,10 @@ async fn bound_expiry_is_explicit_timeout_rollback_and_exact_head_reopens_genera
 
     // A host retry after a committed timeout is a replay, not another
     // terminal append.  The historical event/outbox fence remains valid.
-    let replay = old.expire_lease().await.expect("expiry replay");
+    let replay = old
+        .expire_lease_at_unix_seconds(expires_at)
+        .await
+        .expect("expiry replay");
     assert_eq!(replay, expired);
     assert_eq!(
         old.snapshot_counts()

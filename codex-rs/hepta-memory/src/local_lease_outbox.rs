@@ -750,6 +750,21 @@ impl LocalLeaseOutbox {
     /// `BEGIN IMMEDIATE` transaction as the terminal append.  No takeover,
     /// renewal, reconciliation, scheduler, or external effect is performed.
     pub async fn expire_lease(&self) -> Result<LocalLease, LocalLeaseOutboxError> {
+        self.expire_lease_inner(None).await
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn expire_lease_at_unix_seconds(
+        &self,
+        now: u64,
+    ) -> Result<LocalLease, LocalLeaseOutboxError> {
+        self.expire_lease_inner(Some(now)).await
+    }
+
+    async fn expire_lease_inner(
+        &self,
+        now_override: Option<u64>,
+    ) -> Result<LocalLease, LocalLeaseOutboxError> {
         let handle_binding = self.binding().ok_or_else(|| {
             LocalLeaseOutboxError::Invalid(
                 "explicit authority/owner/expiry binding is required to expire a local lease"
@@ -800,8 +815,11 @@ impl LocalLeaseOutbox {
         verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         self.verify_bound_compact_journals(&mut transaction).await?;
 
-        let now = u64::try_from(now_unix_seconds()?)
-            .map_err(|_| LocalLeaseOutboxError::Clock("clock before Unix epoch".to_string()))?;
+        let now = match now_override {
+            Some(now) => now,
+            None => u64::try_from(now_unix_seconds()?)
+                .map_err(|_| LocalLeaseOutboxError::Clock("clock before Unix epoch".to_string()))?,
+        };
         if now < persisted_binding.lease_expires_at_unix_seconds {
             return Err(LocalLeaseOutboxError::StaleFence(format!(
                 "local lease has not expired (deadline {})",
