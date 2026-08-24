@@ -507,7 +507,7 @@ fn policy_failure(error: ToolPolicyError, phase: &'static str) -> FunctionCallEr
     ))
 }
 
-fn extension_tool_call_source(source: ToolCallSource) -> ExtensionToolCallSource {
+pub(crate) fn extension_tool_call_source(source: ToolCallSource) -> ExtensionToolCallSource {
     match source {
         ToolCallSource::Direct => ExtensionToolCallSource::Direct,
         ToolCallSource::DirectPlaintextMessage => ExtensionToolCallSource::DirectPlaintextMessage,

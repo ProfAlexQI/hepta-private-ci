@@ -25,6 +25,7 @@ mod turn_input;
 mod turn_lifecycle;
 mod world_state;
 
+pub use codex_tools::ToolCallSource;
 pub use context::TurnContextContributionInput;
 pub use mcp::McpServerContribution;
 pub use mcp::McpServerContributionContext;

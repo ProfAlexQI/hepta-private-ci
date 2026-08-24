@@ -91,6 +91,8 @@ impl TurnItemEmitter for NoopTurnItemEmitter {
 pub enum ToolCallSource {
     /// The model invoked the tool directly.
     Direct,
+    /// A collaboration message invoked the tool through the explicit plaintext path.
+    DirectPlaintextMessage,
     /// Code mode invoked the tool while executing a runtime cell.
     CodeMode {
         /// Runtime cell that issued the nested tool request.
@@ -144,7 +146,7 @@ impl ToolCall {
     /// Callers must include serialization overhead when fitting a response to this budget.
     pub fn response_byte_budget(&self, max_response_bytes: usize) -> usize {
         match &self.source {
-            ToolCallSource::Direct => {
+            ToolCallSource::Direct | ToolCallSource::DirectPlaintextMessage => {
                 max_response_bytes.min((self.truncation_policy * 1.2).byte_budget())
             }
             ToolCallSource::CodeMode {

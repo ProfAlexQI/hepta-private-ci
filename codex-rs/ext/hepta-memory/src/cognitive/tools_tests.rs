@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use codex_extension_api::ConversationHistory;
 use codex_extension_api::NoopTurnItemEmitter;
+use codex_extension_api::ToolCallSource;
 use codex_extension_api::ToolPayload;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_memory::CognitiveUnavailableReason;
@@ -63,6 +64,7 @@ fn call(operation: CognitiveToolOperation, call_id: &str, arguments: Value) -> T
         model: "gpt-test".to_string(),
         codex_turn_metadata: None,
         truncation_policy: TruncationPolicy::Bytes(16 * 1024),
+        source: ToolCallSource::Direct,
         conversation_history: ConversationHistory::default(),
         turn_item_emitter: Arc::new(NoopTurnItemEmitter),
         environments: Vec::new(),
