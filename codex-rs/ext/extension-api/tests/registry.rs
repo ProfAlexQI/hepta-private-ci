@@ -243,6 +243,8 @@ fn ephemeral_model_input_contributors_preserve_registration_order() {
 
     assert!(Arc::ptr_eq(&contributors[0], &first));
     assert!(Arc::ptr_eq(&contributors[1], &second));
+}
+
 impl ConversationHistorySnapshot for AllContributors {
     fn history_version(&self) -> u64 {
         0
