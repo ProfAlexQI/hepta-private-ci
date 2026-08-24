@@ -13,7 +13,7 @@ use app_test_support::MockResponsesConfig;
 use app_test_support::TestAppServer;
 use app_test_support::create_final_assistant_message_sse_response;
 use app_test_support::create_mock_responses_server_sequence_unchecked;
-use app_test_support::create_shell_command_sse_response;
+use app_test_support::create_command_execution_sse_response;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::RequestId;
@@ -968,7 +968,7 @@ async fn model_requests(server: &MockServer) -> Result<Vec<wiremock::Request>> {
 }
 
 fn blocked_turn_response(call_id: &str) -> Result<String> {
-    create_shell_command_sse_response(
+    create_command_execution_sse_response(
         vec![
             "python3".to_string(),
             "-c".to_string(),
