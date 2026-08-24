@@ -848,6 +848,13 @@ impl LocalLeaseOutbox {
             ));
         };
         ensure_current_active(&previous, self)?;
+        // A terminal transition must never be usable as a way to hide a
+        // damaged child journal. Keep both chain checks inside this same
+        // write transaction, immediately before appending the terminal
+        // lease row, so a concurrent writer cannot change the checked heads
+        // between validation and commit.
+        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         let binding = self.binding();
         let lease = append_lease(
             &mut transaction,

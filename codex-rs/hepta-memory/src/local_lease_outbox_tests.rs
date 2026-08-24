@@ -696,6 +696,83 @@ async fn tampered_event_chain_is_rejected_on_reopen() {
     );
 }
 
+#[tokio::test]
+async fn tampered_child_chain_cannot_be_terminalized_by_release_or_rollback() {
+    // Exercise both host terminal decisions against each append-only child
+    // journal.  A corrupt child must fail before the lease terminal row is
+    // appended; otherwise a caller could use release/rollback to hide the
+    // damaged history from subsequent readers.
+    for (index, (transition, child)) in [
+        ("release", "event"),
+        ("rollback", "event"),
+        ("release", "outbox"),
+        ("rollback", "outbox"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let temp = TempDir::new().expect("temp dir");
+        let store = opened_store(&temp, 115 + index as u8).await;
+        let lease_id = format!("lease:terminal-tamper-{transition}-{child}");
+        let handle = acquired(
+            store
+                .acquire_local_lease(&lease_id, 1, "fence:tamper")
+                .await
+                .expect("acquire"),
+        );
+        handle
+            .admit("occurrence:terminal-tamper", "topic", "payload")
+            .await
+            .expect("admit");
+
+        if child == "event" {
+            sqlx::query("DROP TRIGGER cognitive_local_events_no_update")
+                .execute(&store.pool)
+                .await
+                .expect("drop event update trigger");
+            sqlx::query("UPDATE cognitive_local_events SET payload_json = ? WHERE lease_id = ?")
+                .bind("tampered event payload")
+                .bind(&lease_id)
+                .execute(&store.pool)
+                .await
+                .expect("tamper event payload");
+        } else {
+            sqlx::query("DROP TRIGGER cognitive_local_outbox_no_update")
+                .execute(&store.pool)
+                .await
+                .expect("drop outbox update trigger");
+            sqlx::query("UPDATE cognitive_local_outbox SET payload_json = ? WHERE lease_id = ?")
+                .bind("tampered outbox payload")
+                .bind(&lease_id)
+                .execute(&store.pool)
+                .await
+                .expect("tamper outbox payload");
+        }
+
+        let before = handle
+            .snapshot_counts()
+            .await
+            .expect("counts before transition");
+        let result = match transition {
+            "release" => handle.release().await,
+            "rollback" => handle.rollback_lease().await,
+            _ => unreachable!("test transition"),
+        };
+        assert!(
+            matches!(result, Err(LocalLeaseOutboxError::Corrupt(_))),
+            "{transition} must fail closed for tampered {child} chain: {result:?}"
+        );
+        assert_eq!(
+            handle
+                .snapshot_counts()
+                .await
+                .expect("counts after transition"),
+            before,
+            "{transition} must not append a terminal lease for tampered {child} chain"
+        );
+    }
+}
+
 #[test]
 fn local_lease_outbox_has_no_production_authority() {
     assert!(!LOCAL_LEASE_OUTBOX_EXTERNAL_EFFECTS);
