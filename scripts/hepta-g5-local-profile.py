@@ -19,7 +19,9 @@ from pathlib import Path
 
 SCHEMA = "hepta_g5_local_development_profile_v1"
 PROFILE_NAME = "local_development"
-EXPECTED_WORKTREE = Path("/Volumes/T5/hepta-vnext/worktrees/r2-g5-local-dev-profile-20260824")
+EXPECTED_WORKTREE = Path(
+    "/Volumes/T5/hepta-vnext/worktrees/r2-g5-local-dev-profile-20260824"
+)
 EXPECTED_ANCESTOR = "2dae1ae2b09111dad94aebd6788df2d1234217cd"
 ALLOWED_DELTA_PATHS = frozenset(
     {
@@ -50,7 +52,15 @@ def run_git(candidate: Path, *args: str) -> str:
 
 def git_is_ancestor(candidate: Path, ancestor: str, descendant: str) -> bool:
     result = subprocess.run(
-        ["git", "-C", str(candidate), "merge-base", "--is-ancestor", ancestor, descendant],
+        [
+            "git",
+            "-C",
+            str(candidate),
+            "merge-base",
+            "--is-ancestor",
+            ancestor,
+            descendant,
+        ],
         check=False,
     )
     return result.returncode == 0
@@ -65,7 +75,10 @@ def sha256_file(path: Path) -> str:
 
 
 def canonical_json(value: object) -> bytes:
-    return (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    return (
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode()
 
 
 def write_json(path: Path, value: object) -> bytes:
@@ -100,23 +113,39 @@ def main() -> int:
     if not candidate.is_dir():
         raise SystemExit(f"candidate is not a directory: {candidate}")
     if candidate != EXPECTED_WORKTREE:
-        raise SystemExit(f"candidate must be the sealed local profile worktree: {EXPECTED_WORKTREE}")
+        raise SystemExit(
+            f"candidate must be the sealed local profile worktree: {EXPECTED_WORKTREE}"
+        )
     if not output.is_relative_to(ARTIFACT_ROOT):
-        raise SystemExit(f"output must be under the sealed artifact root: {ARTIFACT_ROOT}")
+        raise SystemExit(
+            f"output must be under the sealed artifact root: {ARTIFACT_ROOT}"
+        )
 
-    dirty = run_git(candidate, "status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching")
+    dirty = run_git(
+        candidate,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+        "--ignored=matching",
+    )
     if dirty:
         raise SystemExit("candidate worktree must be clean")
     head = run_git(candidate, "rev-parse", "HEAD")
     tree = run_git(candidate, "rev-parse", "HEAD^{tree}")
     parent = run_git(candidate, "rev-parse", "HEAD^")
-    if (head, tree, parent) != (args.expected_head, args.expected_tree, args.expected_parent):
+    if (head, tree, parent) != (
+        args.expected_head,
+        args.expected_tree,
+        args.expected_parent,
+    ):
         raise SystemExit(
             "candidate identity mismatch; expected exact head/tree/parent "
             f"{args.expected_head}/{args.expected_tree}/{args.expected_parent}"
         )
     if not git_is_ancestor(candidate, EXPECTED_ANCESTOR, head):
-        raise SystemExit(f"candidate is not descended from the unified candidate: {EXPECTED_ANCESTOR}")
+        raise SystemExit(
+            f"candidate is not descended from the unified candidate: {EXPECTED_ANCESTOR}"
+        )
     delta_paths = [
         path
         for path in run_git(candidate, "diff", "--name-only", parent, head).splitlines()
@@ -124,10 +153,15 @@ def main() -> int:
     ]
     full_delta_paths = [
         path
-        for path in run_git(candidate, "diff", "--name-only", f"{EXPECTED_ANCESTOR}..{head}").splitlines()
+        for path in run_git(
+            candidate, "diff", "--name-only", f"{EXPECTED_ANCESTOR}..{head}"
+        ).splitlines()
         if path
     ]
-    if set(delta_paths) != ALLOWED_DELTA_PATHS or set(full_delta_paths) != ALLOWED_DELTA_PATHS:
+    if (
+        set(delta_paths) != ALLOWED_DELTA_PATHS
+        or set(full_delta_paths) != ALLOWED_DELTA_PATHS
+    ):
         raise SystemExit(
             "local profile history has an unexpected delta; expected exactly: "
             + ", ".join(sorted(ALLOWED_DELTA_PATHS))
@@ -257,7 +291,8 @@ def main() -> int:
         "external_inputs_required_for_this_profile": [],
         "evidence_scope": {
             "supplied": bool(evidence),
-            "local_evidence_complete": len(evidence) == len(REQUIRED_EVIDENCE_BASENAMES),
+            "local_evidence_complete": len(evidence)
+            == len(REQUIRED_EVIDENCE_BASENAMES),
             "required_for_declaration": True,
             "required_receipt_basenames": sorted(REQUIRED_EVIDENCE_BASENAMES),
             "hash_only": True,
@@ -283,7 +318,11 @@ def main() -> int:
         "it does not grant production authority or claim provider exactly-once.\n",
         encoding="utf-8",
     )
-    print(json.dumps({"profile": str(profile_path), "sha256": sha256_bytes(profile_bytes)}))
+    print(
+        json.dumps(
+            {"profile": str(profile_path), "sha256": sha256_bytes(profile_bytes)}
+        )
+    )
     return 0
 
 

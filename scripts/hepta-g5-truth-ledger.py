@@ -65,7 +65,8 @@ def sha256_file(path: Path) -> str:
 
 def canonical_json(value: Any) -> bytes:
     return (
-        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
     ).encode("utf-8")
 
 
@@ -107,7 +108,13 @@ def git_identity(worktree_arg: str) -> dict[str, Any]:
     dirty = run_git(requested, "status", "--porcelain=v1", "--untracked-files=all")
     if dirty:
         fail(f"candidate worktree is dirty:\n{dirty}")
-    return {"worktree": str(requested), "repository": str(top), "head": head, "tree": tree, "clean": True}
+    return {
+        "worktree": str(requested),
+        "repository": str(top),
+        "head": head,
+        "tree": tree,
+        "clean": True,
+    }
 
 
 def verify_ancestor(worktree: Path, ancestor: str, *, label: str) -> dict[str, Any]:
@@ -137,7 +144,9 @@ def verify_sha256sums(directory_arg: str) -> dict[str, Any]:
         fail(f"evidence directory is not a physical directory: {directory}")
     manifest = regular_file(directory / "SHA256SUMS", label="SHA256SUMS")
     entries: list[dict[str, Any]] = []
-    for line_number, line in enumerate(manifest.read_text(encoding="utf-8").splitlines(), 1):
+    for line_number, line in enumerate(
+        manifest.read_text(encoding="utf-8").splitlines(), 1
+    ):
         if not line.strip():
             continue
         match = SUM_LINE_RE.fullmatch(line)
@@ -154,12 +163,22 @@ def verify_sha256sums(directory_arg: str) -> dict[str, Any]:
         try:
             target.relative_to(directory)
         except ValueError:
-            fail(f"checksum path resolves outside its evidence directory: {relative_text}")
+            fail(
+                f"checksum path resolves outside its evidence directory: {relative_text}"
+            )
         regular_file(target, label=f"checksum target {relative_text}")
         observed = sha256_file(target)
         if observed != expected:
-            fail(f"checksum mismatch for {target}: expected {expected}, observed {observed}")
-        entries.append({"path": relative.as_posix(), "sha256": observed, "size": target.stat().st_size})
+            fail(
+                f"checksum mismatch for {target}: expected {expected}, observed {observed}"
+            )
+        entries.append(
+            {
+                "path": relative.as_posix(),
+                "sha256": observed,
+                "size": target.stat().st_size,
+            }
+        )
     if not entries:
         fail(f"SHA256SUMS is empty: {manifest}")
     return {
@@ -216,24 +235,42 @@ def emit(args: argparse.Namespace) -> dict[str, Any]:
     identity = git_identity(args.worktree)
     worktree = Path(identity["worktree"])
     if args.expected_head and identity["head"] != args.expected_head:
-        fail(f"candidate HEAD mismatch: expected {args.expected_head}, observed {identity['head']}")
+        fail(
+            f"candidate HEAD mismatch: expected {args.expected_head}, observed {identity['head']}"
+        )
     if args.expected_tree and identity["tree"] != args.expected_tree:
-        fail(f"candidate tree mismatch: expected {args.expected_tree}, observed {identity['tree']}")
-    if not GIT_ID_RE.fullmatch(args.canonical_head) or not GIT_ID_RE.fullmatch(args.canonical_tree):
+        fail(
+            f"candidate tree mismatch: expected {args.expected_tree}, observed {identity['tree']}"
+        )
+    if not GIT_ID_RE.fullmatch(args.canonical_head) or not GIT_ID_RE.fullmatch(
+        args.canonical_tree
+    ):
         fail("canonical head/tree must be 40-character lowercase hexadecimal git ids")
-    observed_canonical_tree = run_git(worktree, "rev-parse", f"{args.canonical_head}^{{tree}}")
+    observed_canonical_tree = run_git(
+        worktree, "rev-parse", f"{args.canonical_head}^{{tree}}"
+    )
     if observed_canonical_tree != args.canonical_tree:
         fail(
             "canonical tree mismatch: "
             f"expected {args.canonical_tree}, observed {observed_canonical_tree}"
         )
     result = subprocess.run(
-        ["git", "-C", str(worktree), "merge-base", "--is-ancestor", args.canonical_head, "HEAD"],
+        [
+            "git",
+            "-C",
+            str(worktree),
+            "merge-base",
+            "--is-ancestor",
+            args.canonical_head,
+            "HEAD",
+        ],
         check=False,
     )
     if result.returncode != 0:
         fail("candidate is not a descendant of canonical main-integration")
-    required = [verify_ancestor(worktree, args.g5_anchor, label="g5_minimum_six_anchor")]
+    required = [
+        verify_ancestor(worktree, args.g5_anchor, label="g5_minimum_six_anchor")
+    ]
     if required[0]["tree"] != args.g5_anchor_tree:
         fail(
             "G5 minimum-six anchor tree mismatch: "
@@ -242,7 +279,9 @@ def emit(args: argparse.Namespace) -> dict[str, Any]:
     for index, ancestor in enumerate(args.required_ancestor, 1):
         if ancestor == args.g5_anchor:
             continue
-        required.append(verify_ancestor(worktree, ancestor, label=f"required_ancestor_{index}"))
+        required.append(
+            verify_ancestor(worktree, ancestor, label=f"required_ancestor_{index}")
+        )
     parent: dict[str, Any] | None = None
     if args.parent_head:
         parent = verify_ancestor(worktree, args.parent_head, label="declared_parent")
@@ -253,7 +292,9 @@ def emit(args: argparse.Namespace) -> dict[str, Any]:
                 f"expected {args.parent_head}, observed {immediate_parent}"
             )
         if args.parent_tree and parent["tree"] != args.parent_tree:
-            fail(f"declared parent tree mismatch: expected {args.parent_tree}, observed {parent['tree']}")
+            fail(
+                f"declared parent tree mismatch: expected {args.parent_tree}, observed {parent['tree']}"
+            )
         parent["declared_tree"] = args.parent_tree or parent["tree"]
     evidence = [verify_sha256sums(path) for path in args.evidence_dir]
     supersedes = [verify_superseded(path) for path in args.supersedes]
@@ -261,7 +302,10 @@ def emit(args: argparse.Namespace) -> dict[str, Any]:
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
         "kind": "g5_truth_lineage",
-        "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "generated_at": datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         **status_block(
             qualification=args.qualification_status,
             operator=args.operator_status,
@@ -270,7 +314,11 @@ def emit(args: argparse.Namespace) -> dict[str, Any]:
             caller_evidence_ratchet_present=args.caller_evidence_ratchet_present,
         ),
         "lineage": {
-            "canonical": {"head": args.canonical_head, "tree": args.canonical_tree, "is_ancestor": True},
+            "canonical": {
+                "head": args.canonical_head,
+                "tree": args.canonical_tree,
+                "is_ancestor": True,
+            },
             "candidate": {
                 "head": identity["head"],
                 "tree": identity["tree"],
@@ -287,7 +335,11 @@ def emit(args: argparse.Namespace) -> dict[str, Any]:
             "independent operator signer/trust acceptance is not present",
             "qualification does not grant CALLERS authority or mutate canonical main-integration",
         ],
-        "tool": {"name": "scripts/hepta-g5-truth-ledger.py", "mode": "evidence_only", "python": sys.version.split()[0]},
+        "tool": {
+            "name": "scripts/hepta-g5-truth-ledger.py",
+            "mode": "evidence_only",
+            "python": sys.version.split()[0],
+        },
     }
     output = absolute_path(args.output, label="output receipt")
     if output.exists() or output.is_symlink():
@@ -341,7 +393,9 @@ def verify_receipt(args: argparse.Namespace) -> dict[str, Any]:
     if not isinstance(worktree_value, str) or not worktree_value:
         fail("truth receipt does not name a candidate worktree")
     identity = git_identity(worktree_value)
-    if identity["head"] != candidate.get("head") or identity["tree"] != candidate.get("tree"):
+    if identity["head"] != candidate.get("head") or identity["tree"] != candidate.get(
+        "tree"
+    ):
         fail("receipt candidate identity differs from supplied worktree")
     worktree = Path(identity["worktree"])
     if args.canonical_head and canonical.get("head") != args.canonical_head:
@@ -355,7 +409,15 @@ def verify_receipt(args: argparse.Namespace) -> dict[str, Any]:
     if run_git(worktree, "rev-parse", f"{canonical_head}^{{tree}}") != canonical_tree:
         fail("receipt canonical head/tree binding no longer verifies")
     canonical_result = subprocess.run(
-        ["git", "-C", str(worktree), "merge-base", "--is-ancestor", canonical_head, "HEAD"],
+        [
+            "git",
+            "-C",
+            str(worktree),
+            "merge-base",
+            "--is-ancestor",
+            canonical_head,
+            "HEAD",
+        ],
         check=False,
     )
     if canonical_result.returncode != 0 or canonical.get("is_ancestor") is not True:
@@ -371,7 +433,10 @@ def verify_receipt(args: argparse.Namespace) -> dict[str, Any]:
             str(ancestor.get("commit", "")),
             label=str(ancestor.get("label", "required_ancestor")),
         )
-        if checked["tree"] != ancestor.get("tree") or ancestor.get("verified") is not True:
+        if (
+            checked["tree"] != ancestor.get("tree")
+            or ancestor.get("verified") is not True
+        ):
             fail(f"required ancestor binding changed: {ancestor.get('commit')}")
     parent = lineage.get("parent")
     if parent is not None:
@@ -390,7 +455,9 @@ def verify_receipt(args: argparse.Namespace) -> dict[str, Any]:
         if not isinstance(evidence, dict) or "directory" not in evidence:
             fail("truth receipt evidence entry is malformed")
         checked = verify_sha256sums(str(evidence["directory"]))
-        if checked["manifest_sha256"] != evidence.get("manifest_sha256") or checked["entry_count"] != evidence.get("entry_count"):
+        if checked["manifest_sha256"] != evidence.get("manifest_sha256") or checked[
+            "entry_count"
+        ] != evidence.get("entry_count"):
             fail(f"evidence manifest changed: {evidence.get('directory')}")
     for superseded in value.get("supersedes", []):
         if not isinstance(superseded, dict):
@@ -418,33 +485,62 @@ def self_test() -> None:
         repository = root / "repository"
         repository.mkdir()
         subprocess.run(["git", "-C", str(repository), "init", "-q"], check=True)
-        for config, value in (("user.name", "G5 self-test"), ("user.email", "g5-self-test@example.invalid")):
-            subprocess.run(["git", "-C", str(repository), "config", config, value], check=True)
+        for config, value in (
+            ("user.name", "G5 self-test"),
+            ("user.email", "g5-self-test@example.invalid"),
+        ):
+            subprocess.run(
+                ["git", "-C", str(repository), "config", config, value], check=True
+            )
         (repository / "README").write_text("one\n", encoding="utf-8")
         subprocess.run(["git", "-C", str(repository), "add", "README"], check=True)
-        subprocess.run(["git", "-C", str(repository), "commit", "-qm", "genesis"], check=True)
+        subprocess.run(
+            ["git", "-C", str(repository), "commit", "-qm", "genesis"], check=True
+        )
         canonical = run_git(repository, "rev-parse", "HEAD")
         canonical_tree = run_git(repository, "rev-parse", "HEAD^{tree}")
         (repository / "README").write_text("two\n", encoding="utf-8")
         subprocess.run(["git", "-C", str(repository), "add", "README"], check=True)
-        subprocess.run(["git", "-C", str(repository), "commit", "-qm", "candidate"], check=True)
+        subprocess.run(
+            ["git", "-C", str(repository), "commit", "-qm", "candidate"], check=True
+        )
         evidence = root / "evidence"
         evidence.mkdir()
         payload = evidence / "child.log"
         payload.write_text("pass\n", encoding="utf-8")
-        (evidence / "SHA256SUMS").write_text(f"{sha256_file(payload)}  child.log\n", encoding="utf-8")
+        (evidence / "SHA256SUMS").write_text(
+            f"{sha256_file(payload)}  child.log\n", encoding="utf-8"
+        )
         output = root / "receipt.json"
         args = argparse.Namespace(
-            worktree=str(repository), output=str(output), expected_head=None, expected_tree=None,
-            canonical_head=canonical, canonical_tree=canonical_tree, required_ancestor=[canonical],
-            g5_anchor=canonical, g5_anchor_tree=canonical_tree,
-            parent_head=None, parent_tree=None, evidence_dir=[str(evidence)], supersedes=[],
-            qualification_status="bounded_candidate", operator_status="blocked_prep",
-            provider_status="contract_only", integration_status="detached_only",
+            worktree=str(repository),
+            output=str(output),
+            expected_head=None,
+            expected_tree=None,
+            canonical_head=canonical,
+            canonical_tree=canonical_tree,
+            required_ancestor=[canonical],
+            g5_anchor=canonical,
+            g5_anchor_tree=canonical_tree,
+            parent_head=None,
+            parent_tree=None,
+            evidence_dir=[str(evidence)],
+            supersedes=[],
+            qualification_status="bounded_candidate",
+            operator_status="blocked_prep",
+            provider_status="contract_only",
+            integration_status="detached_only",
             caller_evidence_ratchet_present=False,
         )
         emit(args)
-        verify_receipt(argparse.Namespace(receipt=str(output), worktree=str(repository), canonical_head=canonical, canonical_tree=canonical_tree))
+        verify_receipt(
+            argparse.Namespace(
+                receipt=str(output),
+                worktree=str(repository),
+                canonical_head=canonical,
+                canonical_tree=canonical_tree,
+            )
+        )
         try:
             emit(args)
         except LedgerError:
@@ -453,7 +549,14 @@ def self_test() -> None:
             fail("self-test append-only reservation did not reject overwrite")
         payload.write_text("tampered\n", encoding="utf-8")
         try:
-            verify_receipt(argparse.Namespace(receipt=str(output), worktree=None, canonical_head=None, canonical_tree=None))
+            verify_receipt(
+                argparse.Namespace(
+                    receipt=str(output),
+                    worktree=None,
+                    canonical_head=None,
+                    canonical_tree=None,
+                )
+            )
         except LedgerError:
             pass
         else:
@@ -464,7 +567,9 @@ def self_test() -> None:
 def make_parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description=__doc__)
     subparsers = root.add_subparsers(dest="command", required=True)
-    emit_parser = subparsers.add_parser("emit", help="verify a candidate and publish one new receipt")
+    emit_parser = subparsers.add_parser(
+        "emit", help="verify a candidate and publish one new receipt"
+    )
     emit_parser.add_argument("--worktree", required=True)
     emit_parser.add_argument("--output", required=True)
     emit_parser.add_argument("--expected-head")
@@ -483,7 +588,9 @@ def make_parser() -> argparse.ArgumentParser:
     emit_parser.add_argument("--provider-status", default="contract_only")
     emit_parser.add_argument("--integration-status", default="detached_only")
     emit_parser.add_argument("--caller-evidence-ratchet-present", action="store_true")
-    verify_parser = subparsers.add_parser("verify", help="recheck one receipt and its evidence")
+    verify_parser = subparsers.add_parser(
+        "verify", help="recheck one receipt and its evidence"
+    )
     verify_parser.add_argument("--receipt", required=True)
     verify_parser.add_argument("--worktree")
     verify_parser.add_argument("--canonical-head")
