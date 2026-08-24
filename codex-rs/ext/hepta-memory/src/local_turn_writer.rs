@@ -396,9 +396,21 @@ mod tests {
     use codex_extension_api::TurnStartInput;
     use codex_extension_api::TurnStopInput;
     use codex_hepta_contracts::AgentId;
+    use codex_hepta_memory::CognitiveAccess;
+    use codex_hepta_memory::CognitiveScope;
     use codex_hepta_memory::CognitiveStore;
     use codex_hepta_memory::CompactFence;
+    use codex_hepta_memory::KgFactSetDraft;
+    use codex_hepta_memory::LedgerSourceKind;
     use codex_hepta_memory::LocalLeaseAcquire;
+    use codex_hepta_memory::LocalLeaseState;
+    use codex_hepta_memory::MemoryAdmissionEvidence;
+    use codex_hepta_memory::MemoryCandidateDraft;
+    use codex_hepta_memory::MemoryCandidateOrigin;
+    use codex_hepta_memory::MemoryCandidateState;
+    use codex_hepta_memory::MemoryLifecycleState;
+    use codex_hepta_memory::RetrievalRequest;
+    use codex_hepta_memory::SourceDraft;
     use codex_hepta_paths::HeptaFleetRoot;
     use codex_protocol::config_types::{CollaborationMode, ModeKind, Settings};
     use codex_protocol::protocol::TokenUsage;
@@ -619,6 +631,232 @@ mod tests {
                 turn_store: &second_turn,
             })
             .await;
+    }
+
+    /// The qualification-only admission/Saga/forget path must keep all state
+    /// in one real Agent-local SQLite store: a candidate is admitted,
+    /// explicitly verified without facts, bound to one lifecycle outbox
+    /// occurrence, host-tombstoned, and then observed again after reopen.
+    ///
+    /// This intentionally exercises no production caller, shared KG, or
+    /// external effect.  The queued outbox row is only a local intent, and a
+    /// replay after the simulated crash must return that same row rather than
+    /// append a second admission.
+    #[tokio::test]
+    async fn qualification_admission_saga_forget_tombstone_survives_reopen() {
+        let (temp, store, prepared_input) = prepared().await;
+        let owner = prepared_input.lease.owner_agent_id().clone();
+        let access = CognitiveAccess::agent_private(owner.clone());
+        let content = "qualification candidate is withdrawn by the host";
+        let candidate = store
+            .admit_memory_candidate(
+                &access,
+                &MemoryCandidateDraft {
+                    stable_key: "writer-e26-forget-candidate".to_string(),
+                    scope: CognitiveScope::AgentPrivate,
+                    content: content.to_string(),
+                    source_event_key: "qualification:writer-e26:candidate".to_string(),
+                    observed_at_unix_seconds: 100,
+                    origin: MemoryCandidateOrigin::CompactionSummary,
+                },
+            )
+            .await
+            .expect("candidate admission");
+        assert_eq!(candidate.state, MemoryCandidateState::Provisional);
+        assert!(!candidate.fact_admitted);
+        assert_eq!(candidate.write.projection.entity_count, 0);
+        assert_eq!(candidate.write.projection.relation_count, 0);
+
+        let evidence = MemoryAdmissionEvidence::from_bytes(content.as_bytes(), "qualification")
+            .expect("content-bound evidence");
+        let verify_source = SourceDraft {
+            scope: CognitiveScope::AgentPrivate,
+            kind: LedgerSourceKind::ExplicitMemoryDirective,
+            event_key: "qualification:writer-e26:verify".to_string(),
+            content: content.as_bytes().to_vec(),
+            observed_at_unix_seconds: 101,
+        };
+        let verified = store
+            .verify_memory_candidate(
+                &access,
+                &candidate.candidate_id,
+                1,
+                candidate.origin,
+                &verify_source,
+                content.to_string(),
+                101,
+                &evidence,
+                &KgFactSetDraft::default(),
+            )
+            .await
+            .expect("candidate verification");
+        assert_eq!(verified.state, MemoryCandidateState::Verified);
+        assert!(!verified.fact_admitted);
+        assert_eq!(verified.revision, 2);
+        assert_eq!(verified.write.projection.entity_count, 0);
+        assert_eq!(verified.write.projection.relation_count, 0);
+
+        let before_forget = store
+            .retrieve_memory_candidates(&access, &RetrievalRequest::new("withdrawn host", 200))
+            .await
+            .expect("pre-forget retrieval");
+        assert_eq!(before_forget.candidates.len(), 1);
+        assert_eq!(
+            before_forget.candidates[0].memory.id.memory_id,
+            candidate.candidate_id
+        );
+
+        // Bind the Saga payload to the exact local candidate identity.  This
+        // remains a local queue intent; it is never sent to a provider.
+        let writer_input = QualificationTurnWriterInput::new(
+            TURN_ID,
+            prepared_input.binding.clone(),
+            prepared_input.lease.clone(),
+            prepared_input.executor.clone(),
+            OCCURRENCE,
+            format!(
+                r#"{{"candidate_id":"{}","external_effect":false,"kg_write_authority":false}}"#,
+                candidate.candidate_id.as_str()
+            ),
+        )
+        .expect("candidate-bound writer input");
+        let turn_store = ExtensionData::new(TURN_ID);
+        let thread_store = ExtensionData::new("thread:writer-e26");
+        let session_store = ExtensionData::new("session:writer-e26");
+        assert!(attach_qualification_turn_writer(
+            &turn_store,
+            writer_input.clone()
+        ));
+        let contributor = QualificationTurnLifecycleContributor::new();
+        let mode = mode();
+        let usage = TokenUsage::default();
+        contributor
+            .on_turn_start(start_input(
+                &turn_store,
+                &thread_store,
+                &session_store,
+                &mode,
+                &usage,
+            ))
+            .await;
+        let counts_before_forget = writer_input.lease.snapshot_counts().await.expect("counts");
+        assert_eq!(counts_before_forget.event_rows, 1);
+        assert_eq!(counts_before_forget.outbox_rows, 1);
+        assert!(
+            !writer_input
+                .lease
+                .admit(
+                    OCCURRENCE,
+                    TURN_START_TOPIC,
+                    r#"{"candidate_id":"different"}"#,
+                )
+                .await
+                .is_ok(),
+            "replaying with a different payload must fail closed"
+        );
+
+        let reason = "qualification host withdrawal".to_string();
+        let tombstone_source = SourceDraft {
+            scope: CognitiveScope::AgentPrivate,
+            kind: LedgerSourceKind::ExplicitMemoryDirective,
+            event_key: "qualification:writer-e26:forget".to_string(),
+            content: reason.as_bytes().to_vec(),
+            observed_at_unix_seconds: 102,
+        };
+        let tombstone = store
+            .tombstone_memory_candidate(
+                &access,
+                &candidate.candidate_id,
+                2,
+                candidate.origin,
+                &tombstone_source,
+                reason,
+                102,
+            )
+            .await
+            .expect("host tombstone");
+        assert_eq!(tombstone.state, MemoryCandidateState::Tombstoned);
+        assert_eq!(tombstone.revision, 3);
+        assert!(!tombstone.fact_admitted);
+        assert_eq!(tombstone.write.projection.entity_count, 0);
+        assert_eq!(tombstone.write.projection.relation_count, 0);
+        assert!(matches!(
+            tombstone.write.memory.lifecycle,
+            MemoryLifecycleState::Tombstoned { .. }
+        ));
+        assert!(
+            store
+                .retrieve_memory_candidates(&access, &RetrievalRequest::new("withdrawn host", 200))
+                .await
+                .expect("post-forget retrieval")
+                .candidates
+                .is_empty()
+        );
+
+        // Simulate a host crash after durable admission and forget but before
+        // lifecycle terminalization.  Reopen must replay the same local
+        // occurrence and keep the immutable tombstone visible.
+        drop(contributor);
+        drop(turn_store);
+        drop(writer_input);
+        drop(prepared_input);
+        drop(store);
+
+        let fleet = HeptaFleetRoot::parse(temp.path().join("fleet")).expect("fleet reopen");
+        let reopened_store = CognitiveStore::open(&fleet.layout().agent(&owner))
+            .await
+            .expect("reopen store");
+        let reopened_access = CognitiveAccess::agent_private(owner.clone());
+        let reopened_latest = reopened_store
+            .latest_memory(&reopened_access, &candidate.candidate_id)
+            .await
+            .expect("reopened tombstone");
+        assert_eq!(reopened_latest.id.revision, 3);
+        assert!(matches!(
+            reopened_latest.lifecycle,
+            MemoryLifecycleState::Tombstoned { .. }
+        ));
+        assert!(
+            reopened_store
+                .retrieve_memory_candidates(
+                    &reopened_access,
+                    &RetrievalRequest::new("withdrawn host", 200)
+                )
+                .await
+                .expect("reopened post-forget retrieval")
+                .candidates
+                .is_empty()
+        );
+
+        let reopened_lease = reopened_store
+            .reopen_local_lease(LEASE_ID, 1, "writer-e26-fence")
+            .await
+            .expect("reopen active Saga lease");
+        let replay = reopened_lease
+            .finalize_replayed_occurrence(OCCURRENCE)
+            .await
+            .expect("replay local occurrence");
+        match replay {
+            LocalReplayFinalization::Queued(receipt) => {
+                assert!(!receipt.external_effect);
+            }
+            other => panic!("queued occurrence changed state on reopen: {other:?}"),
+        }
+        assert_eq!(
+            reopened_lease
+                .snapshot_counts()
+                .await
+                .expect("reopened counts"),
+            counts_before_forget
+        );
+        let released = reopened_lease
+            .release()
+            .await
+            .expect("terminalize Saga lease");
+        assert_eq!(released.state, LocalLeaseState::Released);
+        assert!(!QUALIFICATION_TURN_WRITER_EXTERNAL_EFFECTS);
+        assert!(!QUALIFICATION_TURN_WRITER_KG_WRITE_AUTHORITY);
+        assert!(!QUALIFICATION_TURN_WRITER_PRODUCTION_CALLER);
     }
 
     #[tokio::test]
