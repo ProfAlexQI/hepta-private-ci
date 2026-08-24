@@ -1,4 +1,14 @@
+use codex_hepta_contracts::ActionId;
+use codex_hepta_contracts::GovernanceDecision;
+use codex_hepta_contracts::GovernanceDecisionRecord;
+use codex_hepta_contracts::GovernanceMode;
+use codex_hepta_contracts::GovernanceReceipt;
+use codex_hepta_contracts::HandlerOutcome;
+use codex_hepta_contracts::PolicyPhase;
+use codex_hepta_contracts::PolicyStamp;
 use codex_hepta_contracts::Sha256Digest;
+use codex_hepta_contracts::ToolAction;
+use codex_hepta_contracts::ToolActionSource;
 use pretty_assertions::assert_eq;
 use sqlx::Executor;
 use sqlx::Row;
@@ -18,9 +28,21 @@ use crate::CompactLossReport;
 use crate::CompactParentSnapshot;
 use crate::CompactProtectedRef;
 use crate::CompactSummaryReceipt;
+use crate::IntuitionCandidate;
+use crate::IntuitionDecision;
+use crate::IntuitionMode;
+use crate::IntuitionShadowInput;
+use crate::NeuronFeature;
+use crate::NeuronParameter;
+use crate::NeuronPosition;
+use crate::NeuronProposalDecision;
+use crate::NeuronProposalInput;
 use crate::RehydrationStatus;
 use crate::cognitive_test_support::agent_id;
 use crate::cognitive_test_support::layout;
+use crate::intuition_schema_digest;
+use crate::shadow_intuition_decide;
+use crate::shadow_neuron_propose;
 
 fn fence() -> CompactFence {
     CompactFence::new(3, 8, 19, "fence:19").expect("valid fence")
@@ -135,6 +157,178 @@ fn compact_commit_validation_fences_parent_cas_and_generation() {
         checkpoint.validate_against(&generation_changed),
         CompactCommitDecision::StaleGeneration
     );
+}
+
+/// H5's deterministic proposal and H6's deterministic decision are joined by
+/// explicit digests before a local postcondition is built.  The postcondition
+/// is then checked against the Agent-local runtime fence: an owner or
+/// generation rollover must reject it, even when all payload bytes are
+/// otherwise unchanged.  This is qualification evidence only; no model,
+/// KG write, scheduler, or external effect is involved.
+#[tokio::test]
+async fn qualification_h5_h6_typed_handoff_rejects_stale_fenced_postcondition() {
+    let temp = TempDir::new().expect("temp dir");
+    let owner = agent_id(92);
+    let store = CognitiveStore::open(&layout(&temp, &owner))
+        .await
+        .expect("open Agent-local store");
+    let before: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM memory_revisions")
+        .fetch_one(&store.pool)
+        .await
+        .expect("memory count before seam");
+    let runtime = CognitiveRuntime::from_open_result(Ok(store));
+
+    // H5: produce a proposal from a fixed replay snapshot.  Its input and
+    // proposal digests are the causal identifiers handed to H6 below.
+    let h5_input = NeuronProposalInput {
+        position: NeuronPosition::MemoryRetrievalRank,
+        state_digest: Sha256Digest::for_bytes(b"agent-local-state:h5-h6:v1"),
+        policy_digest: Sha256Digest::for_bytes(b"agent-local-policy:h5-h6:v1"),
+        authority_epoch: 11,
+        sample_count: 2,
+        baseline_bps: 6_500,
+        features: vec![
+            NeuronFeature::new("retrieval_signal", 8_000).expect("feature"),
+            NeuronFeature::new("freshness_signal", 9_000).expect("feature"),
+        ],
+    };
+    let h5_proposal = match shadow_neuron_propose(&h5_input, NeuronParameter::RetrievalWeightBps)
+        .expect("H5 proposal")
+    {
+        NeuronProposalDecision::Proposed(proposal) => proposal,
+        NeuronProposalDecision::Abstained { .. } => panic!("fixed H5 input must propose"),
+    };
+    h5_proposal.validate().expect("proposal remains typed");
+    assert!(h5_proposal.is_shadow_only());
+
+    // H6: consume only the H5 proposal digest as its immutable snapshot.
+    // The decision cannot be reconstructed from a different proposal or
+    // policy because both are bound into this input and receipt.
+    let h6_input = IntuitionShadowInput {
+        snapshot_digest: h5_proposal.proposal_id.clone(),
+        schema_digest: intuition_schema_digest(),
+        policy_digest: h5_input.policy_digest.clone(),
+        authority_epoch: h5_input.authority_epoch,
+        mode: IntuitionMode::SuggestOnly,
+        max_risk_bps: 2_000,
+        min_confidence_bps: 1_000,
+        require_evidence: true,
+        candidates: vec![
+            IntuitionCandidate::new(
+                h5_proposal.proposal_id.as_str(),
+                h5_proposal.confidence_bps,
+                1_000,
+                vec![IntuitionMode::SuggestOnly],
+                true,
+            )
+            .expect("H6 candidate"),
+        ],
+    };
+    let h6_receipt = shadow_intuition_decide(&h6_input).expect("H6 decision");
+    h6_receipt
+        .validate_against(&h6_input)
+        .expect("H5 -> H6 binding");
+    assert!(matches!(
+        h6_receipt.decision,
+        IntuitionDecision::Suggested { .. }
+    ));
+    assert!(h6_receipt.is_shadow_only());
+
+    // Typed action handoff: preserve both causal IDs in the exact payload
+    // digest while keeping the governance receipt non-executable.
+    let handoff_payload = serde_json::json!({
+        "h5_input_digest": h5_proposal.input_digest,
+        "h5_proposal_id": h5_proposal.proposal_id,
+        "h6_receipt_digest": h6_receipt.receipt_digest,
+        "authority_epoch": h6_receipt.authority_epoch,
+    });
+    let handoff_bytes = serde_json::to_vec(&handoff_payload).expect("handoff payload");
+    let action = ToolAction {
+        schema_version: 1,
+        action_id: ActionId::for_tool_call("thread:h5-h6", "turn:h5-h6", "call:h5-h6"),
+        thread_id: "thread:h5-h6".to_string(),
+        turn_id: "turn:h5-h6".to_string(),
+        call_id: "call:h5-h6".to_string(),
+        tool_name: "h5_h6_shadow_handoff".to_string(),
+        source: ToolActionSource::Direct,
+        payload_sha256: Sha256Digest::for_bytes(&handoff_bytes),
+    };
+    let admission = GovernanceDecisionRecord::new(
+        action.clone(),
+        PolicyPhase::Admission,
+        GovernanceMode::Shadow,
+        PolicyStamp::new("h5-h6-shadow-policy", 1, b"no-runtime-effect:v1"),
+        GovernanceDecision::NotEvaluated,
+    );
+    let receipt = GovernanceReceipt::new(admission, None, false, HandlerOutcome::Aborted);
+    assert_eq!(receipt.action_id, action.action_id);
+    assert!(!receipt.host_accepted);
+    assert!(matches!(receipt.outcome, HandlerOutcome::Aborted));
+
+    // The H6 receipt digest is the summary/postcondition payload.  A matching
+    // owner/generation fence accepts it; either rollover rejects it as stale.
+    let fence = CompactFence::new(11, 23, 7, "h5-h6-owner-fence").expect("fence");
+    let parent = CompactParentSnapshot::new(
+        "ctx:h5-h6-postcondition",
+        1,
+        2,
+        4,
+        Sha256Digest::for_bytes(&handoff_bytes),
+        fence,
+    )
+    .expect("parent snapshot");
+    let checkpoint = CompactCheckpoint::new(
+        "ctxcp:h5-h6-postcondition",
+        CompactLease::from_snapshot(parent.clone()),
+        Vec::new(),
+        CompactSummaryReceipt::new(
+            h6_receipt.receipt_digest.clone(),
+            Sha256Digest::for_bytes(b"h5-h6-model-receipt"),
+            h5_input.policy_digest.clone(),
+        ),
+        CompactLossReport::new(Vec::new(), 0, Vec::new(), 0).expect("loss report"),
+        4,
+    )
+    .expect("postcondition");
+    assert_eq!(
+        runtime
+            .validate_compact_commit(&checkpoint, &parent)
+            .expect("local fence validation"),
+        CompactCommitDecision::Accepted {
+            checkpoint_id: "ctxcp:h5-h6-postcondition".to_string(),
+            checkpoint_revision: 4,
+        }
+    );
+    assert_eq!(
+        runtime
+            .post_compact(&checkpoint, 4)
+            .expect("visible postcondition plan")
+            .status,
+        RehydrationStatus::NotStarted
+    );
+
+    let mut stale_owner = parent.clone();
+    stale_owner.fence.owner_epoch += 1;
+    assert_eq!(
+        runtime
+            .validate_compact_commit(&checkpoint, &stale_owner)
+            .expect("stale owner is a validation result"),
+        CompactCommitDecision::StaleGeneration
+    );
+    let mut stale_generation = parent.clone();
+    stale_generation.fence.generation += 1;
+    assert_eq!(
+        runtime
+            .validate_compact_commit(&checkpoint, &stale_generation)
+            .expect("stale generation is a validation result"),
+        CompactCommitDecision::StaleGeneration
+    );
+
+    let after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM memory_revisions")
+        .fetch_one(&runtime.available_store().expect("runtime store").pool)
+        .await
+        .expect("memory count after seam");
+    assert_eq!(before, after, "H5/H6 shadow seam must not write the KG");
 }
 
 #[test]
