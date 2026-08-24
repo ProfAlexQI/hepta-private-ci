@@ -227,6 +227,202 @@ async fn bound_compact_mutations_reject_released_lease_without_compact_rows() {
 }
 
 #[tokio::test]
+async fn bound_lease_terminalization_without_compact_journal_is_allowed() {
+    let (_temp, store, lease, _executor, _fence, _checkpoint) =
+        open_bound_executor(129, 3_600).await;
+    // Opening a bound executor does not create a journal row.  The lifecycle
+    // audit must treat that empty case as valid rather than requiring a
+    // compact witness that was never started.
+    let released = lease.release().await.expect("release without compact rows");
+    assert_eq!(released.state, crate::LocalLeaseState::Released);
+    let compact_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_compact_events")
+        .fetch_one(&store.pool)
+        .await
+        .expect("compact row count");
+    assert_eq!(compact_rows, 0);
+    store.pool.close().await;
+}
+
+#[tokio::test]
+async fn terminal_bound_lease_transitions_audit_compact_journal_atomically() {
+    // E.25: a damaged compact row must prevent every terminal lease path
+    // from appending its terminal row.  The compact journal is tampered only
+    // through a test-only trigger drop; the lifecycle transaction itself must
+    // still leave the lease row count and compact row count unchanged.
+    for (index, transition) in ["release", "rollback", "expire"].into_iter().enumerate() {
+        let expiry_offset = if transition == "expire" { 1 } else { 3_600 };
+        let (_temp, store, lease, executor, current_fence, checkpoint) =
+            open_bound_executor(130 + index as u8, expiry_offset).await;
+        let current = snapshot(current_fence);
+        executor
+            .append_intent("op:terminal-compact-tamper", &checkpoint, &current)
+            .await
+            .expect("bound compact intent");
+
+        let lease_rows_before: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_local_leases WHERE lease_id = ?")
+                .bind(lease.lease_id())
+                .fetch_one(&store.pool)
+                .await
+                .expect("lease rows before");
+        let compact_rows_before: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM cognitive_compact_events WHERE journal_id = ?",
+        )
+        .bind(executor.journal_id())
+        .fetch_one(&store.pool)
+        .await
+        .expect("compact rows before");
+
+        // Corrupt the serialized event while retaining the immutable row
+        // shape.  The compact loader must reject the digest/metadata mismatch
+        // inside the same transaction as terminalization.
+        sqlx::query("DROP TRIGGER cognitive_compact_events_no_update")
+            .execute(&store.pool)
+            .await
+            .expect("drop compact update trigger");
+        sqlx::query(
+            "UPDATE cognitive_compact_events
+             SET event_json = '{}'
+             WHERE journal_id = ? AND sequence = 1",
+        )
+        .bind(executor.journal_id())
+        .execute(&store.pool)
+        .await
+        .expect("tamper compact event");
+
+        if transition == "expire" {
+            let expiry = lease
+                .binding()
+                .expect("bound lease binding")
+                .lease_expires_at_unix_seconds;
+            for _ in 0..120 {
+                if unix_seconds() >= expiry {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            assert!(unix_seconds() >= expiry, "test lease did not expire");
+        }
+
+        let result = match transition {
+            "release" => lease.release().await.map(|_| ()),
+            "rollback" => lease.rollback_lease().await.map(|_| ()),
+            "expire" => lease.expire_lease().await.map(|_| ()),
+            _ => unreachable!("test transition"),
+        };
+        assert!(
+            matches!(
+                result,
+                Err(crate::LocalLeaseOutboxError::Corrupt(ref message))
+                    if message.contains("compact journal")
+            ),
+            "{transition} must fail closed on a tampered compact journal: {result:?}"
+        );
+
+        let lease_rows_after: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_local_leases WHERE lease_id = ?")
+                .bind(lease.lease_id())
+                .fetch_one(&store.pool)
+                .await
+                .expect("lease rows after");
+        let compact_rows_after: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM cognitive_compact_events WHERE journal_id = ?",
+        )
+        .bind(executor.journal_id())
+        .fetch_one(&store.pool)
+        .await
+        .expect("compact rows after");
+        assert_eq!(
+            lease_rows_after, lease_rows_before,
+            "{transition} appended lease"
+        );
+        assert_eq!(
+            compact_rows_after, compact_rows_before,
+            "{transition} changed compact row count"
+        );
+        let state: String = sqlx::query_scalar(
+            "SELECT state FROM cognitive_local_leases
+             WHERE lease_id = ? ORDER BY lease_sequence DESC LIMIT 1",
+        )
+        .bind(lease.lease_id())
+        .fetch_one(&store.pool)
+        .await
+        .expect("lease state after");
+        assert_eq!(state, "active", "{transition} changed lease state");
+        store.pool.close().await;
+    }
+}
+
+#[tokio::test]
+async fn terminal_bound_lease_transition_rejects_foreign_compact_row() {
+    let (_temp, store, lease, executor, current_fence, checkpoint) =
+        open_bound_executor(133, 3_600).await;
+    let current = snapshot(current_fence);
+    executor
+        .append_intent("op:foreign-terminal", &checkpoint, &current)
+        .await
+        .expect("bound compact intent");
+
+    let event_json: String = sqlx::query_scalar(
+        "SELECT event_json FROM cognitive_compact_events
+         WHERE journal_id = ? AND sequence = 1",
+    )
+    .bind(executor.journal_id())
+    .fetch_one(&store.pool)
+    .await
+    .expect("event json");
+    let previous_sha256: String = sqlx::query_scalar(
+        "SELECT previous_sha256 FROM cognitive_compact_events
+         WHERE journal_id = ? AND sequence = 1",
+    )
+    .bind(executor.journal_id())
+    .fetch_one(&store.pool)
+    .await
+    .expect("previous digest");
+    sqlx::query(
+        "INSERT INTO cognitive_compact_events (
+            journal_id, owner_agent_id, authority_epoch, owner_epoch,
+            sequence, generation, fencing_token, event_json,
+            previous_sha256, event_sha256, recorded_at_unix_seconds
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(executor.journal_id())
+    .bind(agent_id(134).as_str())
+    .bind(3_i64)
+    .bind(8_i64)
+    .bind(2_i64)
+    .bind(i64::try_from(1_u64).expect("generation"))
+    .bind("bound-fence")
+    .bind(event_json)
+    .bind(previous_sha256)
+    .bind("f".repeat(64))
+    .bind(i64::try_from(unix_seconds()).expect("timestamp"))
+    .execute(&store.pool)
+    .await
+    .expect("foreign compact row");
+
+    let lease_rows_before: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_local_leases WHERE lease_id = ?")
+            .bind(lease.lease_id())
+            .fetch_one(&store.pool)
+            .await
+            .expect("lease rows before");
+    let result = lease.release().await;
+    assert!(matches!(
+        result,
+        Err(crate::LocalLeaseOutboxError::Corrupt(_))
+    ));
+    let lease_rows_after: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_local_leases WHERE lease_id = ?")
+            .bind(lease.lease_id())
+            .fetch_one(&store.pool)
+            .await
+            .expect("lease rows after");
+    assert_eq!(lease_rows_after, lease_rows_before);
+    store.pool.close().await;
+}
+
+#[tokio::test]
 async fn bound_compact_mutation_rejects_lease_expiry_after_open() {
     let (_temp, store, lease, executor, current_fence, checkpoint) =
         open_bound_executor(203, 3).await;
@@ -738,7 +934,9 @@ async fn compact_reopen_rejects_foreign_owner_row_sharing_journal_id() {
         store.owner_agent_id(),
     )
     .await;
-    assert!(matches!(audit, Err(crate::CognitiveStoreError::Corrupt(message)) if message.contains("owner")));
+    assert!(
+        matches!(audit, Err(crate::CognitiveStoreError::Corrupt(message)) if message.contains("owner"))
+    );
 }
 
 #[tokio::test]
@@ -772,7 +970,9 @@ async fn compact_reopen_rejects_orphan_bound_lease_head() {
         store.owner_agent_id(),
     )
     .await;
-    assert!(matches!(audit, Err(crate::CognitiveStoreError::Corrupt(message)) if message.contains("historical lease head")));
+    assert!(
+        matches!(audit, Err(crate::CognitiveStoreError::Corrupt(message)) if message.contains("historical lease head"))
+    );
 }
 
 #[tokio::test]

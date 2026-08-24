@@ -798,6 +798,7 @@ impl LocalLeaseOutbox {
         // checked head is the one immediately preceding the terminal row.
         verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        self.verify_bound_compact_journals(&mut transaction).await?;
 
         let now = u64::try_from(now_unix_seconds()?)
             .map_err(|_| LocalLeaseOutboxError::Clock("clock before Unix epoch".to_string()))?;
@@ -864,6 +865,7 @@ impl LocalLeaseOutbox {
         // between validation and commit.
         verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        self.verify_bound_compact_journals(&mut transaction).await?;
         let binding = self.binding();
         let lease = append_lease(
             &mut transaction,
@@ -1420,6 +1422,7 @@ impl LocalLeaseOutbox {
                 .map_err(crate::cognitive_store::unavailable)?;
             return Ok(LocalReplayFinalization::Queued(queued));
         }
+        self.verify_bound_compact_journals(&mut transaction).await?;
         let binding = self.binding();
         let released = append_lease(
             &mut transaction,
@@ -1475,6 +1478,34 @@ impl LocalLeaseOutbox {
             load_lease_chain(transaction, &self.lease_id, &self.owner_agent_id).await?;
         latest.ok_or_else(|| {
             LocalLeaseOutboxError::StaleFence("local lease does not exist".to_string())
+        })
+    }
+
+    /// Audit compact journals in the caller-owned terminalization transaction.
+    ///
+    /// The compact reopen audit has a convenient store-wide API, but it starts
+    /// its own SQLite transaction. Calling it while this handle holds the
+    /// `BEGIN IMMEDIATE` lifecycle lock would create a nested-lock/deadlock
+    /// hazard. The transaction-scoped helper performs the same descriptor,
+    /// fence, hash-chain, owner, and historical lease-head checks through this
+    /// exact transaction instead.
+    async fn verify_bound_compact_journals(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+    ) -> Result<(), LocalLeaseOutboxError> {
+        crate::local_compact_executor::verify_local_compact_journals_for_lease_in_transaction(
+            &self.store,
+            transaction,
+            &self.lease_id,
+        )
+        .await
+        .map_err(|error| match error {
+            crate::local_compact_executor::LocalCompactExecutorError::Store(error) => {
+                LocalLeaseOutboxError::Store(error)
+            }
+            other => LocalLeaseOutboxError::Corrupt(format!(
+                "compact journal integrity audit failed: {other}"
+            )),
         })
     }
 }

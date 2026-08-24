@@ -909,8 +909,13 @@ async fn compact_journal_descriptor(
         .try_get("fencing_token")
         .map_err(crate::cognitive_store::unavailable)?;
     validate_text(&fencing_token, "fencing token", 256)?;
-    let fence = CompactFence::new(authority_epoch, owner_epoch, generation, fencing_token.clone())
-        .map_err(|error| LocalCompactExecutorError::Corrupt(error.to_string()))?;
+    let fence = CompactFence::new(
+        authority_epoch,
+        owner_epoch,
+        generation,
+        fencing_token.clone(),
+    )
+    .map_err(|error| LocalCompactExecutorError::Corrupt(error.to_string()))?;
 
     let lease_id: Option<String> = row
         .try_get("lease_id")
@@ -935,18 +940,16 @@ async fn compact_journal_descriptor(
             validate_text(&lease_id, "lease id", 512)?;
             let lease_head_sha256 = codex_hepta_contracts::Sha256Digest::parse(lease_head_sha256)
                 .map_err(|_| {
-                    LocalCompactExecutorError::Corrupt(
-                        "compact lease head digest is invalid".to_string(),
-                    )
-                })?;
-            let compact_previous_sha256 =
-                codex_hepta_contracts::Sha256Digest::parse(compact_previous_sha256).map_err(
-                    |_| {
-                        LocalCompactExecutorError::Corrupt(
-                            "compact previous digest is invalid".to_string(),
-                        )
-                    },
-                )?;
+                LocalCompactExecutorError::Corrupt(
+                    "compact lease head digest is invalid".to_string(),
+                )
+            })?;
+            let compact_previous_sha256 = codex_hepta_contracts::Sha256Digest::parse(
+                compact_previous_sha256,
+            )
+            .map_err(|_| {
+                LocalCompactExecutorError::Corrupt("compact previous digest is invalid".to_string())
+            })?;
             let _binding = codex_hepta_contracts::Sha256Digest::parse(binding).map_err(|_| {
                 LocalCompactExecutorError::Corrupt(
                     "compact event binding digest is invalid".to_string(),
@@ -1003,21 +1006,15 @@ pub(crate) async fn verify_local_compact_events(
     .fetch_all(&mut *transaction)
     .await
     .map_err(crate::cognitive_store::unavailable)?;
-    let audit_store = CognitiveStore::from_read_only_pool(
-        pool.clone(),
-        owner.clone(),
-        PathBuf::new(),
-    );
+    let audit_store =
+        CognitiveStore::from_read_only_pool(pool.clone(), owner.clone(), PathBuf::new());
     for journal_id in journal_ids {
         validate_text(&journal_id, "journal id", 512)
             .map_err(|error| CognitiveStoreError::Corrupt(error.to_string()))?;
-        let (fence, lease_binding) = compact_journal_descriptor(
-            &mut transaction,
-            &journal_id,
-            owner,
-        )
-        .await
-        .map_err(|error| CognitiveStoreError::Corrupt(error.to_string()))?;
+        let (fence, lease_binding) =
+            compact_journal_descriptor(&mut transaction, &journal_id, owner)
+                .await
+                .map_err(|error| CognitiveStoreError::Corrupt(error.to_string()))?;
         let executor = LocalCompactExecutor {
             store: audit_store.clone(),
             journal_id,
@@ -1037,6 +1034,110 @@ pub(crate) async fn verify_local_compact_events(
         .commit()
         .await
         .map_err(crate::cognitive_store::unavailable)?;
+    Ok(())
+}
+
+/// Verify the compact journals that can be bound to one local lease while a
+/// caller-owned SQLite transaction is already open.
+///
+/// Lifecycle terminalization must not call [`verify_local_compact_events`]
+/// here: that public reopen audit starts a second transaction, which can
+/// deadlock against the `BEGIN IMMEDIATE` held by `release`, `rollback`, or
+/// `expire_lease`.  This helper deliberately performs only reads through the
+/// supplied transaction and reuses the exact descriptor/row loader used by
+/// the store-wide audit.
+///
+/// Journal ids are selected without an owner predicate so a foreign row that
+/// shares a target journal cannot be hidden by the normal owner lookup.  The
+/// historical lease-head predicate also catches a tamper that rewrites
+/// `lease_id` while retaining the immutable lease-head witness.  Unrelated
+/// owner-only or legacy/unbound journals are intentionally out of scope: a
+/// terminal transition audits only rows that can be bound to this lease.
+/// Once a journal is related to the target lease, every row must retain that
+/// exact lease id; mixed/foreign rows then fail closed before the terminal
+/// lease append.
+pub(crate) async fn verify_local_compact_journals_for_lease_in_transaction(
+    store: &CognitiveStore,
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+) -> Result<(), LocalCompactExecutorError> {
+    validate_text(lease_id, "lease id", 512)?;
+    let owner = store.owner_agent_id();
+    let journal_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT journal_id
+         FROM cognitive_compact_events
+         WHERE lease_id = ?
+            OR lease_head_sha256 IN (
+                SELECT lease_sha256
+                FROM cognitive_local_leases
+                WHERE lease_id = ? AND owner_agent_id = ?
+            )
+         ORDER BY journal_id",
+    )
+    .bind(lease_id)
+    .bind(lease_id)
+    .bind(owner.as_str())
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+
+    for journal_id in journal_ids {
+        validate_text(&journal_id, "journal id", 512)?;
+
+        // A row selected by a target lease id or historical lease-head digest
+        // makes the whole journal part of this lifecycle decision.  A
+        // different/null lease id in that journal is not an unrelated
+        // journal: it is a mixed binding and must be rejected explicitly.
+        let target_related_rows: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*)
+             FROM cognitive_compact_events
+             WHERE journal_id = ?
+               AND (
+                   lease_id = ?
+                   OR lease_head_sha256 IN (
+                       SELECT lease_sha256
+                       FROM cognitive_local_leases
+                       WHERE lease_id = ? AND owner_agent_id = ?
+                   )
+               )",
+        )
+        .bind(&journal_id)
+        .bind(lease_id)
+        .bind(lease_id)
+        .bind(owner.as_str())
+        .fetch_one(&mut **transaction)
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+        if target_related_rows != 0 {
+            let mismatched_lease_rows: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*)
+                 FROM cognitive_compact_events
+                 WHERE journal_id = ?
+                   AND (lease_id IS NULL OR lease_id != ?)",
+            )
+            .bind(&journal_id)
+            .bind(lease_id)
+            .fetch_one(&mut **transaction)
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+            if mismatched_lease_rows != 0 {
+                return Err(LocalCompactExecutorError::Corrupt(format!(
+                    "compact journal {journal_id} mixes lease bindings for {lease_id}"
+                )));
+            }
+        }
+
+        let (fence, lease_binding) =
+            compact_journal_descriptor(transaction, &journal_id, owner).await?;
+        let executor = LocalCompactExecutor {
+            store: store.clone(),
+            journal_id,
+            fence,
+            lease_binding,
+            bound_lease: None,
+        };
+        executor.load_journal(transaction).await?;
+    }
     Ok(())
 }
 
