@@ -1,3 +1,4 @@
+use codex_hepta_contracts::AgentId;
 use codex_hepta_contracts::Sha256Digest;
 use pretty_assertions::assert_eq;
 use std::time::Duration;
@@ -12,6 +13,7 @@ use crate::CompactLease;
 use crate::CompactLossReport;
 use crate::CompactParentSnapshot;
 use crate::CompactPersistenceAppend;
+use crate::CompactPersistenceJournal;
 use crate::CompactPersistenceState;
 use crate::CompactProtectedRef;
 use crate::CompactReconcileOutcome;
@@ -102,6 +104,46 @@ async fn open_bound_executor(
         .expect("bound executor");
     let checkpoint = checkpoint(current_fence.clone());
     (temp, store, lease, executor, current_fence, checkpoint)
+}
+
+/// Small dependency-free generator for reproducible persistence stress.
+///
+/// This is deliberately not a fuzz source: a fixed seed keeps the exact
+/// reopen/unknown-outcome schedule replayable in CI and in qualification
+/// receipts.
+struct SeededChoices(u64);
+
+impl SeededChoices {
+    fn next(&mut self) -> u64 {
+        // xorshift64*: the test seed is non-zero, so the state cannot become
+        // trapped at zero.
+        self.0 ^= self.0 >> 12;
+        self.0 ^= self.0 << 25;
+        self.0 ^= self.0 >> 27;
+        self.0.wrapping_mul(0x2545_f491_4f6c_dd1d)
+    }
+}
+
+async fn restart_unbound_executor(
+    store: CognitiveStore,
+    executor: crate::LocalCompactExecutor,
+    temp: &TempDir,
+    owner: &AgentId,
+    journal_id: &str,
+    current_fence: &CompactFence,
+) -> (CognitiveStore, crate::LocalCompactExecutor) {
+    store.pool.close().await;
+    drop(executor);
+    drop(store);
+
+    let reopened_store = CognitiveStore::open(&layout(temp, owner))
+        .await
+        .expect("stress reopen store");
+    let reopened_executor = reopened_store
+        .open_local_compact_executor(journal_id, current_fence.clone())
+        .await
+        .expect("stress reopen executor");
+    (reopened_store, reopened_executor)
 }
 
 #[tokio::test]
@@ -686,6 +728,285 @@ async fn sqlite_checkpoint_commit_reopen_and_rehydrate_replay() {
             .await
             .expect("restart row count");
     assert_eq!(restart_row_count, 3);
+}
+
+/// Qualification-only persistence stress.  This exercises one thousand
+/// unique compact operations against the real Agent-local SQLite journal.
+/// Every operation closes and reopens the store at a deterministic seeded
+/// state-machine boundary, then idempotently replays a seeded historical
+/// operation.  It is intentionally ignored by the ordinary unit gate because
+/// loading and verifying the complete append-only chain is quadratic across
+/// this many events.
+///
+/// This is not evidence of one thousand host kills: the test does not kill an
+/// OS process, interrupt SQLite syscalls, or exercise agentd supervision.  It
+/// proves the narrower deterministic close/reopen/hash-chain/replay boundary.
+#[tokio::test]
+#[ignore = "qualification stress: 1000 SQLite operations with deterministic reopen/replay"]
+async fn sqlite_1000_operation_seeded_reopen_replay_stress() {
+    const OPERATIONS: usize = 1_000;
+    const SEED: u64 = 0x4845_5054_415f_5250;
+    const JOURNAL_ID: &str = "journal:seeded-1000-reopen-replay";
+
+    let temp = TempDir::new().expect("temp dir");
+    let owner = agent_id(96);
+    let current_fence = fence(77, "fence:seeded-1000");
+    let current = snapshot(current_fence.clone());
+    let checkpoint = checkpoint(current_fence.clone());
+    let checkpoint_sha256 = checkpoint_digest(&checkpoint).expect("checkpoint digest");
+    let mut store = CognitiveStore::open(&layout(&temp, &owner))
+        .await
+        .expect("stress store");
+    let mut executor = store
+        .open_local_compact_executor(JOURNAL_ID, current_fence.clone())
+        .await
+        .expect("stress executor");
+    let mut choices = SeededChoices(SEED);
+    let mut expected_events = 0_usize;
+    let mut intent_sequences = Vec::with_capacity(OPERATIONS);
+    let mut witness_sequences = Vec::with_capacity(OPERATIONS);
+    let mut direct_operations = 0_usize;
+    let mut indeterminate_operations = 0_usize;
+    let mut operation_reopens = 0_usize;
+
+    for operation_index in 0..OPERATIONS {
+        let choice = choices.next();
+        let reopen_stage = choice & 0b11;
+        let becomes_indeterminate = choice & 0b100 != 0;
+        let operation_id = format!("op:seeded:{operation_index:04}");
+
+        let intent_sequence = expected_events as u64 + 1;
+        assert_eq!(
+            executor
+                .append_intent(&operation_id, &checkpoint, &current)
+                .await
+                .expect("append seeded intent"),
+            CompactPersistenceAppend::Appended {
+                sequence: intent_sequence,
+            }
+        );
+        expected_events += 1;
+        intent_sequences.push(intent_sequence);
+        assert_eq!(
+            executor
+                .append_intent(&operation_id, &checkpoint, &current)
+                .await
+                .expect("replay seeded intent"),
+            CompactPersistenceAppend::Replay {
+                sequence: intent_sequence,
+            }
+        );
+
+        if reopen_stage == 0 {
+            (store, executor) = restart_unbound_executor(
+                store,
+                executor,
+                &temp,
+                &owner,
+                JOURNAL_ID,
+                &current_fence,
+            )
+            .await;
+            operation_reopens += 1;
+            assert_eq!(
+                executor.state(&operation_id).await.expect("pending state"),
+                Some(CompactPersistenceState::Pending)
+            );
+        }
+
+        if becomes_indeterminate {
+            indeterminate_operations += 1;
+            assert_eq!(
+                executor
+                    .mark_indeterminate(&operation_id, "seeded-unknown-outcome")
+                    .await
+                    .expect("mark seeded operation indeterminate"),
+                CompactPersistenceAppend::Appended {
+                    sequence: expected_events as u64 + 1,
+                }
+            );
+            expected_events += 1;
+            if reopen_stage == 1 {
+                (store, executor) = restart_unbound_executor(
+                    store,
+                    executor,
+                    &temp,
+                    &owner,
+                    JOURNAL_ID,
+                    &current_fence,
+                )
+                .await;
+                operation_reopens += 1;
+                assert_eq!(
+                    executor
+                        .state(&operation_id)
+                        .await
+                        .expect("indeterminate state"),
+                    Some(CompactPersistenceState::Indeterminate)
+                );
+            }
+            assert_eq!(
+                executor
+                    .reconcile(&operation_id, CompactReconcileOutcome::Committed)
+                    .await
+                    .expect("reconcile seeded operation"),
+                CompactPersistenceAppend::Appended {
+                    sequence: expected_events as u64 + 1,
+                }
+            );
+            expected_events += 1;
+        } else {
+            direct_operations += 1;
+            assert_eq!(
+                executor
+                    .commit_checkpoint(&operation_id, &checkpoint_sha256)
+                    .await
+                    .expect("commit seeded operation"),
+                CompactPersistenceAppend::Appended {
+                    sequence: expected_events as u64 + 1,
+                }
+            );
+            expected_events += 1;
+            if reopen_stage == 1 {
+                (store, executor) = restart_unbound_executor(
+                    store,
+                    executor,
+                    &temp,
+                    &owner,
+                    JOURNAL_ID,
+                    &current_fence,
+                )
+                .await;
+                operation_reopens += 1;
+            }
+        }
+
+        if reopen_stage == 2 {
+            (store, executor) = restart_unbound_executor(
+                store,
+                executor,
+                &temp,
+                &owner,
+                JOURNAL_ID,
+                &current_fence,
+            )
+            .await;
+            operation_reopens += 1;
+        }
+        assert_eq!(
+            executor
+                .state(&operation_id)
+                .await
+                .expect("committed state"),
+            Some(CompactPersistenceState::Committed)
+        );
+        assert_eq!(
+            executor
+                .rehydrate(&operation_id, &checkpoint, 0)
+                .await
+                .expect("rehydrate seeded operation")
+                .status,
+            crate::RehydrationStatus::Complete
+        );
+        expected_events += 1;
+        witness_sequences.push(expected_events as u64);
+
+        if reopen_stage == 3 {
+            (store, executor) = restart_unbound_executor(
+                store,
+                executor,
+                &temp,
+                &owner,
+                JOURNAL_ID,
+                &current_fence,
+            )
+            .await;
+            operation_reopens += 1;
+        }
+
+        // Replay a seeded historical operation after this operation's chosen
+        // reopen boundary.  None of these calls may append another row or
+        // advance the digest-chain head.
+        let replay_index = (choices.next() as usize) % (operation_index + 1);
+        let replay_operation_id = format!("op:seeded:{replay_index:04}");
+        let before_replay = executor.snapshot().await.expect("before replay snapshot");
+        assert_eq!(before_replay.entries.len(), expected_events);
+        assert_eq!(
+            executor
+                .append_intent(&replay_operation_id, &checkpoint, &current)
+                .await
+                .expect("replay historical intent"),
+            CompactPersistenceAppend::Replay {
+                sequence: intent_sequences[replay_index],
+            }
+        );
+        assert_eq!(
+            executor
+                .commit_checkpoint(&replay_operation_id, &checkpoint_sha256)
+                .await
+                .expect("replay historical commit"),
+            CompactPersistenceAppend::Replay {
+                sequence: witness_sequences[replay_index],
+            }
+        );
+        assert_eq!(
+            executor
+                .rehydrate(&replay_operation_id, &checkpoint, 0)
+                .await
+                .expect("replay historical rehydration")
+                .status,
+            crate::RehydrationStatus::Complete
+        );
+        let after_replay = executor.snapshot().await.expect("after replay snapshot");
+        assert_eq!(after_replay.entries.len(), expected_events);
+        assert_eq!(after_replay.head_sha256, before_replay.head_sha256);
+    }
+
+    assert_eq!(operation_reopens, OPERATIONS);
+    assert!(direct_operations > 0);
+    assert!(indeterminate_operations > 0);
+    assert_eq!(expected_events, OPERATIONS * 3 + indeterminate_operations);
+    // The executor rejects journals over 4096 rows on reopen.  The fixed
+    // schedule leaves at least 96 rows of margin below that production guard.
+    assert!(expected_events <= 4_000);
+
+    let before_final_reopen = executor.snapshot().await.expect("final stress snapshot");
+    assert_eq!(before_final_reopen.entries.len(), expected_events);
+    (store, executor) =
+        restart_unbound_executor(store, executor, &temp, &owner, JOURNAL_ID, &current_fence).await;
+    let after_final_reopen = executor
+        .snapshot()
+        .await
+        .expect("post-restart stress snapshot");
+    assert_eq!(after_final_reopen.entries, before_final_reopen.entries);
+    assert_eq!(
+        after_final_reopen.head_sha256,
+        before_final_reopen.head_sha256
+    );
+    let reopened = CompactPersistenceJournal::reopen(after_final_reopen.clone())
+        .expect("reopen final in-memory journal");
+    for operation_index in 0..OPERATIONS {
+        let operation_id = format!("op:seeded:{operation_index:04}");
+        assert_eq!(
+            reopened.state(&operation_id),
+            Some(CompactPersistenceState::Committed)
+        );
+        assert_eq!(
+            reopened
+                .rehydration(&operation_id)
+                .expect("final rehydration witness")
+                .sequence,
+            witness_sequences[operation_index]
+        );
+    }
+    let row_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_compact_events WHERE journal_id = ?")
+            .bind(JOURNAL_ID)
+            .fetch_one(&store.pool)
+            .await
+            .expect("final compact event row count");
+    assert_eq!(row_count, expected_events as i64);
+    store.pool.close().await;
 }
 
 #[tokio::test]
