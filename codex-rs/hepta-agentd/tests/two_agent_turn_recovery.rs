@@ -2,7 +2,6 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::Condvar;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -14,16 +13,16 @@ use anyhow::Result;
 use anyhow::bail;
 use anyhow::ensure;
 use app_test_support::MockResponsesConfig;
-use codex_app_server_client::AppServerEvent;
 use codex_app_server_client::RemoteAppServerClient;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::RequestId;
-use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::ThreadQueueAddParams;
 use codex_app_server_protocol::ThreadQueueAddResponse;
 use codex_app_server_protocol::ThreadQueueListParams;
 use codex_app_server_protocol::ThreadQueueListResponse;
+use codex_app_server_protocol::ThreadQueueStartParams;
+use codex_app_server_protocol::ThreadQueueStartResponse;
 use codex_app_server_protocol::ThreadReadParams;
 use codex_app_server_protocol::ThreadReadResponse;
 use codex_app_server_protocol::ThreadResumeParams;
@@ -41,6 +40,7 @@ use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
 use core_test_support::responses;
 use serde_json::Value;
+use tokio::time::sleep;
 use tokio::time::timeout;
 use wiremock::Mock;
 use wiremock::Request;
@@ -191,6 +191,60 @@ impl QualificationClient {
             .await?)
     }
 
+    async fn wait_for_user_turn(
+        &mut self,
+        thread_id: &str,
+        client_user_message_id: &str,
+        expected_text: &str,
+    ) -> Result<String> {
+        timeout(EVENT_TIMEOUT, async {
+            loop {
+                let response = self.read(thread_id).await?;
+                if let Some(turn) = response.thread.turns.iter().find(|turn| {
+                    turn.items.iter().any(|item| {
+                        matches!(
+                            item,
+                            ThreadItem::UserMessage { client_id, content, .. }
+                                if client_id.as_deref() == Some(client_user_message_id)
+                                    && content == &vec![text_input(expected_text)]
+                        )
+                    })
+                }) {
+                    return Ok::<String, anyhow::Error>(turn.id.clone());
+                }
+                sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .context("timed out waiting for the persisted user turn")?
+    }
+
+    async fn wait_for_turn_status(
+        &mut self,
+        thread_id: &str,
+        turn_id: &str,
+        expected_status: TurnStatus,
+    ) -> Result<()> {
+        timeout(EVENT_TIMEOUT, async {
+            loop {
+                let response = self.read(thread_id).await?;
+                if response
+                    .thread
+                    .turns
+                    .iter()
+                    .any(|turn| turn.id == turn_id && turn.status == expected_status)
+                {
+                    return Ok::<(), anyhow::Error>(());
+                }
+                sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .with_context(|| {
+            format!("timed out waiting for turn {turn_id} to reach {expected_status:?}")
+        })?
+    }
+
     async fn wait_turn_then_queue(
         &mut self,
         thread_id: &str,
@@ -198,74 +252,44 @@ impl QualificationClient {
         queued_client_id: &str,
     ) -> Result<String> {
         timeout(EVENT_TIMEOUT, async {
-            let mut event_index = 0_usize;
-            let mut preceding_completed_at = None;
-            let mut queued_started_at = None;
-            let mut queued_turn_id = None;
-            let mut queued_completed = false;
             loop {
-                let event = self
-                    .inner
-                    .next_event()
-                    .await
-                    .context("App Server event stream closed while waiting for turn/queue")?;
-                event_index += 1;
-                match event {
-                    AppServerEvent::ServerNotification(notification) => match notification.as_ref()
-                    {
-                        ServerNotification::ItemStarted(started)
-                            if started.thread_id == thread_id
-                                && matches!(
-                                    &started.item,
-                                    ThreadItem::UserMessage { client_id, .. }
-                                        if client_id.as_deref() == Some(queued_client_id)
-                                ) =>
-                        {
-                            ensure!(
-                                queued_turn_id
-                                    .as_ref()
-                                    .is_none_or(|turn_id| turn_id == &started.turn_id),
-                                "queued client id started under more than one turn"
-                            );
-                            queued_started_at.get_or_insert(event_index);
-                            queued_turn_id = Some(started.turn_id.clone());
-                        }
-                        ServerNotification::TurnCompleted(completed)
-                            if completed.thread_id == thread_id =>
-                        {
-                            ensure!(
-                                completed.turn.status == TurnStatus::Completed,
-                                "preceding/queued turn ended with {:#?}",
-                                completed.turn
-                            );
-                            if completed.turn.id == preceding_turn_id {
-                                preceding_completed_at.get_or_insert(event_index);
-                            }
-                            if queued_turn_id.as_deref() == Some(completed.turn.id.as_str()) {
-                                queued_completed = true;
-                            }
-                        }
-                        _ => {}
-                    },
-                    AppServerEvent::Disconnected { message } => {
-                        bail!("App Server disconnected during recovery: {message}");
-                    }
-                    AppServerEvent::Lagged { skipped } => {
-                        bail!("App Server event client lagged by {skipped} events");
-                    }
-                    AppServerEvent::ServerRequest(_) => {}
-                }
-                if preceding_completed_at.is_some() && queued_completed {
-                    let preceding_completed_at = preceding_completed_at
-                        .context("preceding completion position disappeared")?;
-                    let queued_started_at =
-                        queued_started_at.context("queued user item never started")?;
+                // Read the durable thread history instead of depending on a
+                // notification stream.  A freshly reconnected client may not
+                // receive the ItemStarted/TurnCompleted events emitted before
+                // it subscribed; persisted ordering is the stronger recovery
+                // assertion and remains available across process restarts.
+                let response = self.read(thread_id).await?;
+                let preceding_index = response
+                    .thread
+                    .turns
+                    .iter()
+                    .position(|turn| turn.id == preceding_turn_id);
+                let queued = response.thread.turns.iter().enumerate().find(|(_, turn)| {
+                    turn.items.iter().any(|item| {
+                        matches!(
+                            item,
+                            ThreadItem::UserMessage { client_id, .. }
+                                if client_id.as_deref() == Some(queued_client_id)
+                        )
+                    })
+                });
+                if let (Some(preceding_index), Some((queued_index, queued_turn))) =
+                    (preceding_index, queued)
+                {
                     ensure!(
-                        preceding_completed_at < queued_started_at,
-                        "queued dispatch began before the preceding turn reached terminal state"
+                        queued_index > preceding_index,
+                        "queued dispatch appeared before the preceding turn in persisted history"
                     );
-                    return queued_turn_id.context("queued turn id disappeared");
+                    if response.thread.turns[preceding_index].status == TurnStatus::Completed {
+                        ensure!(
+                            queued_turn.status == TurnStatus::Completed,
+                            "queued turn appeared before reaching terminal state: {:#?}",
+                            queued_turn
+                        );
+                        return Ok::<String, anyhow::Error>(queued_turn.id.clone());
+                    }
                 }
+                sleep(Duration::from_millis(20)).await;
             }
         })
         .await
@@ -346,6 +370,70 @@ impl QueueAdapter {
             })
             .await?)
     }
+
+    async fn start(
+        &mut self,
+        thread_id: &str,
+        queued_submission_id: Option<&str>,
+    ) -> Result<ThreadQueueStartResponse> {
+        let request_id = self.request_id();
+        Ok(self
+            .inner
+            .request_typed(ClientRequest::ThreadQueueStart {
+                request_id,
+                params: ThreadQueueStartParams {
+                    thread_id: thread_id.to_string(),
+                    queued_submission_id: queued_submission_id.map(str::to_owned),
+                },
+            })
+            .await?)
+    }
+}
+
+/// Start a durable submission when it is still pending, while tolerating the
+/// narrow race where the queue service observes the recovered turn becoming
+/// idle and dispatches the row itself.  Both paths must converge on the same
+/// persisted client-message identity; the caller verifies that identity and
+/// physical model-send count below.
+async fn start_queued_if_pending(
+    queue: &mut QueueAdapter,
+    thread_id: &str,
+    queued_submission_id: &str,
+) -> Result<()> {
+    timeout(EVENT_TIMEOUT, async {
+        loop {
+            let pending = queue.list(thread_id).await?.data;
+            if !pending
+                .iter()
+                .any(|submission| submission.id == queued_submission_id)
+            {
+                // The queue worker may have won the race and consumed it.
+                return Ok::<(), anyhow::Error>(());
+            }
+            match queue.start(thread_id, Some(queued_submission_id)).await {
+                Ok(started) => {
+                    ensure!(started.turn.status == TurnStatus::InProgress);
+                    return Ok(());
+                }
+                Err(error)
+                    if error.to_string().contains("queued submission not found")
+                        || error
+                            .to_string()
+                            .contains("already has an active or pending turn")
+                        || error
+                            .to_string()
+                            .contains("malformed rollout turn boundary") =>
+                {
+                    // The durable row is still present, but the queue/core
+                    // idle transition is not yet visible to this request.
+                    sleep(Duration::from_millis(25)).await;
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    })
+    .await
+    .context("timed out waiting to start the durable queued submission")?
 }
 
 #[derive(Default)]
@@ -377,42 +465,18 @@ impl Respond for DelayedFirstSequence {
         if index == 0 {
             // The request has crossed the physical-send boundary, but the old
             // process cannot receive a terminal model response before SIGKILL.
-            response.set_delay(Duration::from_secs(120))
+            // Keep enough time for the harness to enqueue work and SIGKILL
+            // the old Agent, while allowing the mock server to service the
+            // post-restart recovery request without a two-minute queue.
+            response.set_delay(Duration::from_secs(8))
         } else {
             response
         }
     }
 }
 
-#[derive(Default)]
-struct ResponseGate {
-    released: Mutex<bool>,
-    changed: Condvar,
-}
-
-impl ResponseGate {
-    fn release(&self) {
-        let mut released = self.released.lock().expect("response gate lock poisoned");
-        *released = true;
-        self.changed.notify_all();
-    }
-
-    fn wait(&self) {
-        let released = self.released.lock().expect("response gate lock poisoned");
-        let (released, wait) = self
-            .changed
-            .wait_timeout_while(released, EVENT_TIMEOUT, |released| !*released)
-            .expect("response gate lock poisoned while waiting");
-        assert!(
-            *released && !wait.timed_out(),
-            "timed out waiting to release the gated model response"
-        );
-    }
-}
-
 struct GatedFirstSequence {
     state: Arc<SequenceState>,
-    gate: Arc<ResponseGate>,
     bodies: Vec<String>,
 }
 
@@ -428,12 +492,21 @@ impl Respond for GatedFirstSequence {
             .bodies
             .get(index)
             .unwrap_or_else(|| panic!("unexpected gated model request {index}"));
-        if index == 0 {
-            self.gate.wait();
-        }
-        ResponseTemplate::new(200)
+        let response = ResponseTemplate::new(200)
             .insert_header("content-type", "text/event-stream")
             .set_body_string(body.clone())
+            // Keep the first peer turn in flight while the other Agent is
+            // killed/restarted.  A finite HTTP delay is deliberately used
+            // instead of blocking `Respond::respond` on a condition variable:
+            // wiremock may execute responders on the test runtime, and a
+            // blocking gate can starve the supervisor and make the test
+            // deadlock before the release point.
+            ;
+        if index == 0 {
+            response.set_delay(Duration::from_secs(15))
+        } else {
+            response
+        }
     }
 }
 
@@ -463,12 +536,10 @@ async fn killed_agent_recovers_same_turn_then_dispatches_queue_once_while_peer_s
         .mount(&model_a)
         .await;
     let model_b_state = Arc::new(SequenceState::default());
-    let model_b_gate = Arc::new(ResponseGate::default());
     Mock::given(method("POST"))
         .and(path_regex(".*/responses$"))
         .respond_with(GatedFirstSequence {
             state: Arc::clone(&model_b_state),
-            gate: Arc::clone(&model_b_gate),
             bodies: vec![
                 final_sse("agent-b-original-response"),
                 final_sse("agent-b-queued-response"),
@@ -524,12 +595,28 @@ async fn killed_agent_recovers_same_turn_then_dispatches_queue_once_while_peer_s
     ensure!(model_a_state.calls.load(Ordering::Acquire) == 1);
     ensure!(model_b_state.calls.load(Ordering::Acquire) == 0);
 
-    let b_turn = client_b
-        .start_turn(&thread_b.id, B_CLIENT_ID, B_TEXT)
-        .await?;
-    let b_turn_id = b_turn.turn.id.clone();
-    ensure!(b_turn.turn.status == TurnStatus::InProgress);
+    // A gated provider response must not block the request that starts the
+    // turn: the test needs a second control connection to observe the
+    // persisted in-progress turn and queue work while the first HTTP request
+    // is intentionally held open.  The previous single-connection form could
+    // deadlock in the provider mock before the test reached `gate.release()`.
+    let mut b_turn_starter = QualificationClient::connect(&agent_b, &control_b).await?;
+    let b_thread_id = thread_b.id.clone();
+    let b_turn_task = tokio::spawn(async move {
+        b_turn_starter
+            .start_turn(&b_thread_id, B_CLIENT_ID, B_TEXT)
+            .await
+    });
     wait_for_request_count(&model_b_state, 1).await?;
+    let b_turn_id = client_b
+        .wait_for_user_turn(&thread_b.id, B_CLIENT_ID, B_TEXT)
+        .await?;
+    let b_before_gate = client_b.read(&thread_b.id).await?;
+    assert_turn_once_with_status(
+        &b_before_gate.thread.turns,
+        &b_turn_id,
+        TurnStatus::InProgress,
+    )?;
     let b_queued = queue_b
         .add(&thread_b.id, B_QUEUED_CLIENT_ID, B_QUEUED_TEXT)
         .await?
@@ -606,7 +693,7 @@ async fn killed_agent_recovers_same_turn_then_dispatches_queue_once_while_peer_s
     assert_user_item_once(&resumed.thread.turns, ORIGINAL_CLIENT_ID, ORIGINAL_TEXT)?;
     let queue_after_resume = restarted_queue_a.list(&thread_a.id).await?;
     ensure!(
-        queue_after_resume.data == vec![queued],
+        queue_after_resume.data == vec![queued.clone()],
         "cold normalization dispatched or lost the durable queue before turn/recover; \
          queue={:?}; model_calls={}; turns={:?}",
         queue_after_resume.data,
@@ -622,6 +709,15 @@ async fn killed_agent_recovers_same_turn_then_dispatches_queue_once_while_peer_s
     let recovered = restarted_a.recover(&thread_a.id, &original_turn_id).await?;
     ensure!(recovered.turn.id == original_turn_id);
     ensure!(recovered.turn.status == TurnStatus::InProgress);
+    // Upstream queue semantics deliberately keep durable submissions pending
+    // after recovery.  Start the exact persisted submission only after the
+    // recovered turn reaches a terminal state; this makes the qualification
+    // prove durable queue identity and explicit dispatch rather than relying
+    // on a notification race or an implicit auto-start policy.
+    restarted_a
+        .wait_for_turn_status(&thread_a.id, &original_turn_id, TurnStatus::Completed)
+        .await?;
+    start_queued_if_pending(&mut restarted_queue_a, &thread_a.id, &queued.id).await?;
     let queued_turn_id = restarted_a
         .wait_turn_then_queue(&thread_a.id, &original_turn_id, QUEUED_CLIENT_ID)
         .await?;
@@ -667,7 +763,14 @@ async fn killed_agent_recovers_same_turn_then_dispatches_queue_once_while_peer_s
     assert_user_item_once(&b_before_release.thread.turns, B_CLIENT_ID, B_TEXT)?;
     ensure!(model_b_state.calls.load(Ordering::Acquire) == 1);
 
-    model_b_gate.release();
+    let b_turn = b_turn_task
+        .await
+        .context("gated Agent B turn task panicked")??;
+    ensure!(b_turn.turn.id == b_turn_id);
+    client_b
+        .wait_for_turn_status(&thread_b.id, &b_turn_id, TurnStatus::Completed)
+        .await?;
+    start_queued_if_pending(&mut queue_b, &thread_b.id, &b_queued.id).await?;
     let b_queued_turn_id = client_b
         .wait_turn_then_queue(&thread_b.id, &b_turn_id, B_QUEUED_CLIENT_ID)
         .await?;

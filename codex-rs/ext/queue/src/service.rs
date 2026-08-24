@@ -30,6 +30,7 @@ use codex_protocol::protocol::AgentStatus;
 use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::ThreadQueueChangedEvent;
+use codex_protocol::protocol::TurnRecoveryCandidateState;
 use codex_protocol::protocol::W3cTraceContext;
 use codex_protocol::user_input::MAX_USER_INPUT_TEXT_CHARS;
 use codex_protocol::user_input::UserInput;
@@ -1471,6 +1472,13 @@ async fn persisted_turn_for_client_id_path_with_mode(
         Err(error) => return Err(queue_rollout_error(path, "open", error)),
     };
     let mut current_turn_id = None;
+    // Recovery reuses the interrupted logical turn id.  Only a strict,
+    // durable Unready -> replay-applied binding hand-off may authorize its
+    // second TurnStarted boundary.  Keep the consumed marker separate from
+    // the binding so an orphan or mismatched binding can never manufacture
+    // recovery authority from the binding alone.
+    let mut pending_recovery_unready = None;
+    let mut recovery_restart_turn_id = None;
     let mut found = None;
     let mut legacy_turn_ids = HashSet::new();
     let mut legacy_without_digest = false;
@@ -1495,10 +1503,17 @@ async fn persisted_turn_for_client_id_path_with_mode(
             client_id,
             expected_sha256,
             &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
             &mut found,
             &mut legacy_turn_ids,
             &mut legacy_without_digest,
         )?;
+    }
+    if let Some(turn_id) = recovery_restart_turn_id {
+        return Err(malformed_rollout_turn_boundary(format!(
+            "recovery hand-off for turn `{turn_id}` was not followed by a turn start"
+        )));
     }
     if legacy_turn_ids
         .iter()
@@ -1523,10 +1538,61 @@ fn scan_persisted_client_line(
     client_id: &str,
     expected_sha256: &str,
     current_turn_id: &mut Option<String>,
+    pending_recovery_unready: &mut Option<(String, u64)>,
+    recovery_restart_turn_id: &mut Option<String>,
     found: &mut Option<String>,
     legacy_turn_ids: &mut HashSet<String>,
     legacy_without_digest: &mut bool,
 ) -> Result<(), QueueServiceError> {
+    // Once a replay hand-off has been durably applied, only warnings may
+    // appear before the lifecycle's replacement TurnStarted.  In particular,
+    // do not let response/history items or a second binding slip between the
+    // binding and the restart boundary.
+    if let Some(recovery_turn_id) = recovery_restart_turn_id.as_deref() {
+        match item {
+            RolloutItem::EventMsg(EventMsg::Warning(_)) => return Ok(()),
+            RolloutItem::EventMsg(EventMsg::TurnStarted(event)) => {
+                if event.turn_id != recovery_turn_id {
+                    return Err(malformed_rollout_turn_boundary(format!(
+                        "recovery hand-off for turn `{recovery_turn_id}` was followed by turn `{}`",
+                        event.turn_id
+                    )));
+                }
+                if let Some(active_turn_id) = current_turn_id.as_deref()
+                    && active_turn_id != recovery_turn_id
+                {
+                    return Err(malformed_rollout_turn_boundary(format!(
+                        "recovery hand-off for turn `{recovery_turn_id}` encountered active turn `{active_turn_id}`"
+                    )));
+                }
+                *current_turn_id = Some(recovery_turn_id.to_string());
+                *recovery_restart_turn_id = None;
+                return Ok(());
+            }
+            _ => {
+                return Err(malformed_rollout_turn_boundary(format!(
+                    "recovery hand-off for turn `{recovery_turn_id}` was followed by a non-warning item before turn restart"
+                )));
+            }
+        }
+    }
+
+    // An Unready marker remains eligible only across warnings and the
+    // matching replay-applied binding.  Any ordinary history/lifecycle item
+    // consumes that provisional state; a later binding is then an orphan and
+    // is rejected below rather than being treated as authority.
+    let preserves_pending_recovery = match &item {
+        RolloutItem::EventMsg(EventMsg::Warning(_))
+        | RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(_)) => true,
+        RolloutItem::TurnRecoveryRequestBinding(binding) => {
+            binding.replay_applied_from_generation.is_some()
+        }
+        _ => false,
+    };
+    if !preserves_pending_recovery {
+        *pending_recovery_unready = None;
+    }
+
     match item {
         RolloutItem::EventMsg(EventMsg::TurnStarted(event)) => {
             if let Some(active_turn_id) = current_turn_id.as_deref() {
@@ -1536,6 +1602,71 @@ fn scan_persisted_client_line(
                 )));
             }
             *current_turn_id = Some(event.turn_id);
+        }
+        RolloutItem::TurnRecoveryRequestBinding(binding)
+            if binding.replay_applied_from_generation.is_some() =>
+        {
+            let Some((pending_turn_id, pending_generation)) = pending_recovery_unready.take()
+            else {
+                return Err(malformed_rollout_turn_boundary(format!(
+                    "replay-applied recovery binding for turn `{}` had no matching consumed Unready marker",
+                    binding.turn_id
+                )));
+            };
+            let Some(source_generation) = binding.replay_applied_from_generation else {
+                unreachable!("binding arm is guarded by replay-applied generation");
+            };
+            if pending_turn_id != binding.turn_id
+                || pending_generation != binding.generation
+                || source_generation.checked_add(1) != Some(binding.generation)
+                || binding.fingerprint_sha256.is_empty()
+                || binding.history_boundary.is_none()
+                || binding.replay.is_none()
+            {
+                return Err(malformed_rollout_turn_boundary(format!(
+                    "replay-applied recovery binding for turn `{}` did not match its consumed Unready provenance",
+                    binding.turn_id
+                )));
+            }
+            if current_turn_id
+                .as_deref()
+                .is_some_and(|active_turn_id| active_turn_id != binding.turn_id)
+            {
+                return Err(malformed_rollout_turn_boundary(format!(
+                    "replay-applied recovery binding for turn `{}` encountered a different active turn",
+                    binding.turn_id
+                )));
+            }
+            *recovery_restart_turn_id = Some(binding.turn_id);
+        }
+        RolloutItem::TurnRecoveryRequestBinding(_) => {
+            // A non-replay binding is provenance for a candidate, not a
+            // consumed recovery hand-off. It cannot preserve an Unready
+            // marker or authorize a repeated lifecycle start.
+            *pending_recovery_unready = None;
+        }
+        RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(marker)) => {
+            if marker.state == TurnRecoveryCandidateState::Unready {
+                if pending_recovery_unready.is_some() {
+                    return Err(malformed_rollout_turn_boundary(format!(
+                        "turn `{}` emitted a second Unready recovery marker before its first was consumed",
+                        marker.turn_id
+                    )));
+                }
+                if current_turn_id
+                    .as_deref()
+                    .is_some_and(|active_turn_id| active_turn_id != marker.turn_id)
+                {
+                    return Err(malformed_rollout_turn_boundary(format!(
+                        "Unready recovery marker for turn `{}` crossed active turn `{}`",
+                        marker.turn_id,
+                        current_turn_id.as_deref().unwrap_or_default()
+                    )));
+                }
+                *pending_recovery_unready = Some((marker.turn_id, marker.generation));
+            } else {
+                *pending_recovery_unready = None;
+            }
         }
         RolloutItem::TurnContext(context) => {
             if let Some(turn_id) = context.turn_id {
@@ -1699,4 +1830,347 @@ fn queue_rollout_error(
         ),
     }
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::*;
+    use codex_history::TurnRecoveryEnvironmentSelection;
+    use codex_history::TurnRecoveryHistoryBoundary;
+    use codex_history::TurnRecoveryReplayV1;
+    use codex_history::TurnRecoveryRequestBinding;
+    use codex_history::TurnRecoveryStartState;
+    use codex_protocol::protocol::TurnCompleteEvent;
+    use codex_protocol::protocol::TurnRecoveryCandidateEvent;
+    use codex_protocol::protocol::TurnRecoveryCandidateState;
+    use codex_protocol::protocol::TurnStartedEvent;
+
+    fn recovery_binding_record(turn_id: &str) -> TurnRecoveryRequestBinding {
+        TurnRecoveryRequestBinding {
+            turn_id: turn_id.to_string(),
+            generation: 8,
+            fingerprint_sha256: "fingerprint".to_string(),
+            history_boundary: Some(TurnRecoveryHistoryBoundary {
+                item_count: 1,
+                prefix_sha256: "prefix".to_string(),
+            }),
+            replay: Some(TurnRecoveryReplayV1 {
+                history_boundary: TurnRecoveryHistoryBoundary {
+                    item_count: 1,
+                    prefix_sha256: "prefix".to_string(),
+                },
+                turn_context_sha256: "context".to_string(),
+                start: TurnRecoveryStartState {
+                    final_output_json_schema: None,
+                    parent_turn_id: None,
+                    root_turn_id: Some(turn_id.to_string()),
+                    responses_metadata_extra: BTreeMap::new(),
+                },
+                environments: vec![TurnRecoveryEnvironmentSelection {
+                    environment_id: "environment".to_string(),
+                    cwd: "/tmp".to_string(),
+                    workspace_roots: vec!["/tmp".to_string()],
+                }],
+            }),
+            replay_applied_from_generation: Some(7),
+        }
+    }
+
+    fn recovery_binding(turn_id: &str) -> RolloutItem {
+        RolloutItem::TurnRecoveryRequestBinding(recovery_binding_record(turn_id))
+    }
+
+    fn recovery_unready(turn_id: &str) -> RolloutItem {
+        RolloutItem::EventMsg(EventMsg::TurnRecoveryCandidate(
+            TurnRecoveryCandidateEvent {
+                turn_id: turn_id.to_string(),
+                generation: 8,
+                state: TurnRecoveryCandidateState::Unready,
+            },
+        ))
+    }
+
+    fn warning() -> RolloutItem {
+        RolloutItem::EventMsg(EventMsg::Warning(codex_protocol::protocol::WarningEvent {
+            message: "warning".to_string(),
+        }))
+    }
+
+    fn turn_started(turn_id: &str) -> RolloutItem {
+        RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+            turn_id: turn_id.to_string(),
+            trace_id: None,
+            started_at: None,
+            model_context_window: None,
+            collaboration_mode_kind: Default::default(),
+        }))
+    }
+
+    fn turn_completed(turn_id: &str) -> RolloutItem {
+        RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+            turn_id: turn_id.to_string(),
+            last_agent_message: None,
+            error: None,
+            started_at: None,
+            completed_at: None,
+            duration_ms: None,
+            time_to_first_token_ms: None,
+        }))
+    }
+
+    fn scan(
+        item: RolloutItem,
+        current_turn_id: &mut Option<String>,
+        pending_recovery_unready: &mut Option<(String, u64)>,
+        recovery_restart_turn_id: &mut Option<String>,
+    ) -> Result<(), QueueServiceError> {
+        let mut found = None;
+        let mut legacy_turn_ids = HashSet::new();
+        let mut legacy_without_digest = false;
+        scan_persisted_client_line(
+            item,
+            "client",
+            "digest",
+            current_turn_id,
+            pending_recovery_unready,
+            recovery_restart_turn_id,
+            &mut found,
+            &mut legacy_turn_ids,
+            &mut legacy_without_digest,
+        )
+    }
+
+    #[test]
+    fn replay_applied_binding_allows_same_turn_recovery_boundary() {
+        let mut current_turn_id = Some("turn-1".to_string());
+        let mut pending_recovery_unready = None;
+        let mut recovery_restart_turn_id = None;
+        scan(
+            recovery_unready("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .expect("matching Unready marker should be accepted");
+        scan(
+            warning(),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .expect("warnings may precede replay binding");
+        scan(
+            recovery_binding("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .expect("replay-applied binding should extend the active turn");
+        scan(
+            turn_started("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .expect("same-id recovery start should be accepted");
+        scan(
+            turn_completed("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .expect("recovered turn should close normally");
+        assert!(current_turn_id.is_none());
+        assert!(recovery_restart_turn_id.is_none());
+    }
+
+    #[test]
+    fn duplicate_turn_start_without_recovery_binding_fails_closed() {
+        let mut current_turn_id = Some("turn-1".to_string());
+        let mut pending_recovery_unready = None;
+        let mut recovery_restart_turn_id = None;
+        let error = scan(
+            turn_started("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .expect_err("unbound duplicate turn start must fail closed");
+        assert!(error.to_string().contains("still active"));
+    }
+
+    #[test]
+    fn orphan_or_mismatched_replay_binding_fails_closed() {
+        let cases = [
+            ("orphan", None, recovery_binding("turn-1")),
+            (
+                "wrong turn",
+                Some(("other".to_string(), 8)),
+                recovery_binding("turn-1"),
+            ),
+            (
+                "wrong generation",
+                Some(("turn-1".to_string(), 9)),
+                recovery_binding("turn-1"),
+            ),
+        ];
+        for (name, pending, binding) in cases {
+            let mut current_turn_id = Some("turn-1".to_string());
+            let mut pending_recovery_unready = pending;
+            let mut recovery_restart_turn_id = None;
+            let error = scan(
+                binding,
+                &mut current_turn_id,
+                &mut pending_recovery_unready,
+                &mut recovery_restart_turn_id,
+            )
+            .expect_err(name);
+            assert!(
+                error.to_string().contains("recovery binding"),
+                "case: {name}"
+            );
+            assert!(recovery_restart_turn_id.is_none(), "case: {name}");
+        }
+
+        let mut invalid = recovery_binding_record("turn-1");
+        invalid.replay = None;
+        let mut current_turn_id = Some("turn-1".to_string());
+        let mut pending_recovery_unready = Some(("turn-1".to_string(), 8));
+        let mut recovery_restart_turn_id = None;
+        let error = scan(
+            RolloutItem::TurnRecoveryRequestBinding(invalid),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .expect_err("missing replay must fail closed");
+        assert!(error.to_string().contains("provenance"));
+        assert!(recovery_restart_turn_id.is_none());
+    }
+
+    #[test]
+    fn recovery_binding_allows_only_warning_until_matching_restart() {
+        let mut current_turn_id = Some("turn-1".to_string());
+        let mut pending_recovery_unready = None;
+        let mut recovery_restart_turn_id = None;
+        scan(
+            recovery_unready("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .unwrap();
+        scan(
+            recovery_binding("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .unwrap();
+
+        let error = scan(
+            warning(),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        );
+        assert!(error.is_ok());
+        let error = scan(
+            recovery_binding("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .expect_err("duplicate replay binding must not be accepted");
+        assert!(error.to_string().contains("non-warning item"));
+    }
+
+    #[test]
+    fn recovery_binding_rejects_history_and_wrong_restart_id() {
+        let mut current_turn_id = Some("turn-1".to_string());
+        let mut pending_recovery_unready = None;
+        let mut recovery_restart_turn_id = None;
+        scan(
+            recovery_unready("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .unwrap();
+        scan(
+            recovery_binding("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .unwrap();
+        let error = scan(
+            turn_started("different-turn"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .expect_err("different restart id must fail closed");
+        assert!(error.to_string().contains("followed by turn"));
+
+        // Rebuild the state and ensure a non-warning history item cannot be
+        // inserted between the binding and its lifecycle restart.
+        let mut current_turn_id = Some("turn-1".to_string());
+        let mut pending_recovery_unready = None;
+        let mut recovery_restart_turn_id = None;
+        scan(
+            recovery_unready("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .unwrap();
+        scan(
+            recovery_binding("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .unwrap();
+        let error = scan(
+            turn_completed("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .expect_err("history/lifecycle item before restart must fail closed");
+        assert!(error.to_string().contains("non-warning item"));
+    }
+
+    #[test]
+    fn controlled_interrupt_can_recover_from_idle_state() {
+        let mut current_turn_id = None;
+        let mut pending_recovery_unready = None;
+        let mut recovery_restart_turn_id = None;
+        scan(
+            recovery_unready("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .unwrap();
+        scan(
+            recovery_binding("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .unwrap();
+        scan(
+            turn_started("turn-1"),
+            &mut current_turn_id,
+            &mut pending_recovery_unready,
+            &mut recovery_restart_turn_id,
+        )
+        .unwrap();
+        assert_eq!(current_turn_id.as_deref(), Some("turn-1"));
+        assert!(recovery_restart_turn_id.is_none());
+    }
 }

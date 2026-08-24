@@ -282,7 +282,10 @@ async fn same_key_payload_conflict_and_ack_binding_fail_closed() {
         .append_provider_effect_intent(&conflicting_intent)
         .await
         .expect_err("same-key/different-payload must be rejected");
-    assert!(matches!(conflict, EvidenceError::IdempotencyConflict { .. }));
+    assert!(matches!(
+        conflict,
+        EvidenceError::IdempotencyConflict { .. }
+    ));
 
     // An ACK is independently bound to both the occurrence key and the
     // exact payload digest; a provider response for another payload cannot
