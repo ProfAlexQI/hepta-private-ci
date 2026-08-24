@@ -124,9 +124,23 @@ const REQUIRED_SCHEMA_OBJECTS: &[(&str, &str)] = &[
     ("cognitive_local_outbox_no_delete", "trigger"),
     ("cognitive_local_outbox_owner_lookup", "index"),
     ("cognitive_local_outbox_occurrence_lookup", "index"),
+    ("cognitive_h7_trajectory_events", "table"),
+    ("cognitive_h7_trajectory_events_no_update", "trigger"),
+    ("cognitive_h7_trajectory_events_no_delete", "trigger"),
+    (
+        "cognitive_h7_trajectory_events_observation_guard",
+        "trigger",
+    ),
+    ("cognitive_h7_trajectory_events_trajectory_lookup", "index"),
+    ("cognitive_h7_trajectory_events_turn_lookup", "index"),
+    ("cognitive_h7_trajectory_events_lease_binding", "index"),
+    ("cognitive_h7_trajectory_events_causal_lookup", "index"),
+    ("cognitive_h7_trajectory_events_occurrence_lookup", "index"),
+    ("cognitive_h7_trajectory_events_receipt_lookup", "index"),
+    ("cognitive_h7_trajectory_events_kind_lookup", "index"),
 ];
 const REQUIRED_SCHEMA_ORACLE_SHA256: &str =
-    "8d44e2fc48dc7e0ae0beabf70de7ae88a56f4ae238adb4b51ada4cc9d7c2e9f1";
+    "76ee601dc8effbfa2d2db9dce09ab82e775b5c8556c193d24754e3768ea5c472";
 
 #[derive(Debug, thiserror::Error)]
 pub enum CognitiveStoreError {
@@ -423,10 +437,11 @@ async fn verify_store(pool: &SqlitePool, owner: &AgentId) -> Result<(), Cognitiv
             (6, true),
             (7, true),
             (8, true),
+            (9, true),
         ]
     {
         return Err(CognitiveStoreError::Corrupt(format!(
-            "cognitive migration ledger is not the exact successful 0001/0002/0003/0004/0005/0006/0007/0008 set: {migrations:?}"
+            "cognitive migration ledger is not the exact successful 0001/0002/0003/0004/0005/0006/0007/0008/0009 set: {migrations:?}"
         )));
     }
     let mut schema_oracle_parts = Vec::with_capacity(REQUIRED_SCHEMA_OBJECTS.len());

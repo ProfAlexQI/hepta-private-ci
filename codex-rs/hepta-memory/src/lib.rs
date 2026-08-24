@@ -12,6 +12,7 @@ mod cognitive_store;
 mod compact_persistence;
 mod framing;
 mod h7_runtime;
+mod h7_trajectory_store;
 mod intuition_shadow;
 mod local_atomic_witness;
 mod local_compact_executor;
@@ -125,6 +126,18 @@ pub use h7_runtime::H7_QUALIFICATION_RUNTIME_EXTERNAL_EFFECTS;
 pub use h7_runtime::H7_QUALIFICATION_RUNTIME_NAMESPACE;
 pub use h7_runtime::H7_QUALIFICATION_RUNTIME_PRODUCTION_AUTHORITY;
 pub use h7_runtime::H7_QUALIFICATION_RUNTIME_SCHEMA_VERSION;
+pub use h7_trajectory_store::H7TrajectoryAppend;
+pub use h7_trajectory_store::H7TrajectoryEventKind;
+pub use h7_trajectory_store::H7TrajectoryRecord;
+pub use h7_trajectory_store::H7TrajectoryRead;
+pub use h7_trajectory_store::H7TrajectoryStoreError;
+pub use h7_trajectory_store::H7_TRAJECTORY_EXTERNAL_EFFECTS;
+pub use h7_trajectory_store::H7_TRAJECTORY_KG_WRITE_AUTHORITY;
+pub use h7_trajectory_store::H7_TRAJECTORY_NAMESPACE;
+pub use h7_trajectory_store::H7_TRAJECTORY_PRODUCTION_CALLER;
+pub use h7_trajectory_store::H7_TRAJECTORY_SCHEMA_VERSION;
+pub use h7_trajectory_store::append_h7_trajectory_event_bound;
+pub use h7_trajectory_store::h7_trajectory_local_receipt_digest;
 pub use intuition_shadow::H6_INTUITION_SHADOW_NAMESPACE;
 pub use intuition_shadow::H6_INTUITION_SHADOW_SCHEMA_VERSION;
 pub use intuition_shadow::IntuitionAbstainReason;
@@ -277,6 +290,10 @@ mod local_lease_outbox_tests;
 #[cfg(test)]
 #[path = "h7_artifact_qualification_tests.rs"]
 mod h7_artifact_qualification_tests;
+
+#[cfg(test)]
+#[path = "h7_trajectory_store_tests.rs"]
+mod h7_trajectory_store_tests;
 
 #[cfg(test)]
 mod cognitive_test_support;

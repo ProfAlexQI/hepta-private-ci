@@ -41,6 +41,7 @@ use codex_hepta_memory::CognitiveAccess;
 use codex_hepta_memory::CognitiveScope;
 use codex_hepta_memory::CognitiveStore;
 use codex_hepta_memory::ForgetMemoryDraft;
+use codex_hepta_memory::H7TrajectoryEventKind;
 use codex_hepta_memory::LedgerSourceKind;
 use codex_hepta_memory::MemoryDraft;
 use codex_hepta_memory::MemoryLifecycleState;
@@ -270,7 +271,7 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
         ],
     )
     .await;
-    product.run_turn(&thread_a, ORIGINAL).await?;
+    let remember_turn_id = product.run_turn(&thread_a, ORIGINAL).await?;
     assert_physical_request_count_stable(&remember, 2, "remember").await?;
     let remember_requests = remember.requests();
     let remember_tool = remember_requests[0]
@@ -305,6 +306,30 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
     product.shutdown().await?;
     fleet.supervisor.kill(&agent.agent_id)?;
     wait_inactive(&mut fleet, &agent.agent_id).await?;
+    let trajectory_store = CognitiveStore::open(&agent.layout).await?;
+    let remember_trajectory = trajectory_store
+        .read_h7_trajectory(format!("qualification:trajectory:{remember_turn_id}"))
+        .await?
+        .context("qualification turn did not leave an H7 trajectory")?;
+    ensure!(
+        remember_trajectory.events.len() == 2,
+        "qualification turn trajectory was not start+terminal: {:?}",
+        remember_trajectory.events
+    );
+    ensure!(
+        remember_trajectory.events[0].event_kind == H7TrajectoryEventKind::TurnStart
+            && remember_trajectory.events[1].event_kind == H7TrajectoryEventKind::Terminal
+            && remember_trajectory.events[0].causal_parent_seq.is_none()
+            && remember_trajectory.events[1].causal_parent_seq == Some(1)
+            && remember_trajectory.events[1].causal_parent_sha256.is_some()
+            && remember_trajectory
+                .events
+                .iter()
+                .all(|event| !event.external_effect_executed
+                    && !event.kg_write_authority
+                    && !event.production_caller),
+        "qualification H7 trajectory violated its local observation-only boundary"
+    );
     let before_restart =
         read_kg_sqlite_evidence(&agent, &memory_id, 1, &remember_source_id).await?;
     ensure!(before_restart.generation == 1);

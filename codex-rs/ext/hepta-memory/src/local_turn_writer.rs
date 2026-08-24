@@ -32,6 +32,9 @@ use codex_extension_api::TurnErrorInput;
 use codex_extension_api::TurnLifecycleContributor;
 use codex_extension_api::TurnStartInput;
 use codex_extension_api::TurnStopInput;
+use codex_hepta_contracts::Sha256Digest;
+use codex_hepta_memory::H7TrajectoryEventKind;
+use codex_hepta_memory::H7TrajectoryRecord;
 use codex_hepta_memory::LocalAdmission;
 use codex_hepta_memory::LocalCompactExecutor;
 use codex_hepta_memory::LocalCompactExecutorError;
@@ -40,6 +43,9 @@ use codex_hepta_memory::LocalLeaseOutboxError;
 use codex_hepta_memory::LocalReplayFinalization;
 use codex_hepta_memory::LocalTurnLifecycleBinding;
 use codex_hepta_memory::LocalTurnLifecycleBindingError;
+use codex_hepta_memory::QueuedReceipt;
+use codex_hepta_memory::append_h7_trajectory_event_bound;
+use codex_hepta_memory::h7_trajectory_local_receipt_digest;
 
 /// Schema version for the qualification-only turn writer payload.
 pub const QUALIFICATION_TURN_WRITER_SCHEMA_VERSION: u32 = 1;
@@ -54,6 +60,28 @@ pub const QUALIFICATION_TURN_WRITER_PRODUCTION_CALLER: bool = false;
 
 const TURN_START_TOPIC: &str = "codex.turn.qualification.start.v1";
 const IO_TIMEOUT: Duration = Duration::from_millis(750);
+const MAX_OCCURRENCE_KEY_BYTES: usize = 512;
+
+fn bounded_terminal_reason(reason: &str) -> String {
+    if reason.len() <= 512 && !reason.as_bytes().contains(&0) {
+        return reason.to_string();
+    }
+    format!(
+        "reason_sha256:{}",
+        Sha256Digest::for_bytes(reason.as_bytes()).as_str()
+    )
+}
+
+fn bounded_terminal_occurrence_key(occurrence_key: &str) -> String {
+    const SUFFIX: &str = ":terminal";
+    if occurrence_key.len() + SUFFIX.len() <= MAX_OCCURRENCE_KEY_BYTES {
+        return format!("{occurrence_key}{SUFFIX}");
+    }
+    format!(
+        "qualification:terminal-occurrence:{}",
+        Sha256Digest::for_bytes(occurrence_key.as_bytes()).as_str()
+    )
+}
 
 /// Errors found while constructing the immutable host attachment.
 #[derive(Debug)]
@@ -217,7 +245,7 @@ impl QualificationTurnWriterInput {
             ));
         }
         if occurrence_key.trim().is_empty()
-            || occurrence_key.len() > 512
+            || occurrence_key.len() > MAX_OCCURRENCE_KEY_BYTES
             || occurrence_key.as_bytes().contains(&0)
         {
             return Err(QualificationTurnWriterInputError::Invalid(
@@ -301,7 +329,15 @@ struct TurnWriterState {
     starting: bool,
     terminal_requested: Option<TerminalAction>,
     terminal_started: bool,
-    active: Option<QualificationTurnWriterInput>,
+    active: Option<ActiveTurn>,
+}
+
+#[derive(Clone)]
+struct ActiveTurn {
+    input: QualificationTurnWriterInput,
+    trajectory_id: String,
+    event_seq: u32,
+    event_sha256: Sha256Digest,
 }
 
 #[derive(Clone, Debug)]
@@ -340,7 +376,7 @@ impl QualificationTurnLifecycleContributor {
 
     async fn admit(
         input: &QualificationTurnWriterInput,
-    ) -> Result<bool, QualificationTurnWriterInputError> {
+    ) -> Result<Option<QueuedReceipt>, QualificationTurnWriterInputError> {
         input
             .binding
             .verify_current(&input.lease, &input.executor)
@@ -350,8 +386,8 @@ impl QualificationTurnLifecycleContributor {
             .finalize_replayed_occurrence(input.occurrence_key.clone())
             .await?;
         match replay {
-            LocalReplayFinalization::Released { .. } => Ok(false),
-            LocalReplayFinalization::Queued(_) => Ok(true),
+            LocalReplayFinalization::Released { .. } => Ok(None),
+            LocalReplayFinalization::Queued(receipt) => Ok(Some(receipt)),
             LocalReplayFinalization::NotAdmitted => {
                 match input
                     .lease
@@ -362,16 +398,74 @@ impl QualificationTurnLifecycleContributor {
                     )
                     .await?
                 {
-                    LocalAdmission::Queued(_) | LocalAdmission::Replay(_) => Ok(true),
+                    LocalAdmission::Queued(receipt) | LocalAdmission::Replay(receipt) => {
+                        Ok(Some(receipt))
+                    }
                 }
             }
         }
     }
 
-    async fn complete(
+    async fn append_start(
         input: &QualificationTurnWriterInput,
+        receipt: &QueuedReceipt,
+    ) -> Result<ActiveTurn, QualificationTurnWriterInputError> {
+        let trajectory_id = format!("qualification:trajectory:{}", input.turn_id);
+        let state_digest = Sha256Digest::for_bytes(input.payload_json.as_bytes());
+        let policy_digest = Sha256Digest::for_bytes(b"qualification:observation-only-policy:v1");
+        let model_receipt_digest =
+            Sha256Digest::for_bytes(b"qualification:model-receipt:not-applicable:v1");
+        let record = H7TrajectoryRecord::new(
+            trajectory_id.clone(),
+            1,
+            format!("{trajectory_id}:event:turn-start"),
+            H7TrajectoryEventKind::TurnStart,
+            input.turn_id.clone(),
+            input.occurrence_key.clone(),
+            None,
+            None,
+            state_digest,
+            policy_digest,
+            model_receipt_digest,
+            h7_trajectory_local_receipt_digest(receipt),
+            "turn_started",
+            0,
+            true,
+            serde_json::json!({
+                "observation_only": true,
+                "propensity": "not_applicable",
+                "support": "not_applicable",
+                "source": "qualification_turn_writer"
+            })
+            .to_string(),
+            "not_applicable",
+        )
+        .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?;
+        let result = append_h7_trajectory_event_bound(
+            &input.lease,
+            &input.executor,
+            &input.binding,
+            &record,
+        )
+        .await
+        .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?;
+        let event_sha256 = match result {
+            codex_hepta_memory::H7TrajectoryAppend::Inserted { event_sha256, .. }
+            | codex_hepta_memory::H7TrajectoryAppend::Replay { event_sha256, .. } => event_sha256,
+        };
+        Ok(ActiveTurn {
+            input: input.clone(),
+            trajectory_id,
+            event_seq: 1,
+            event_sha256,
+        })
+    }
+
+    async fn complete(
+        active: &ActiveTurn,
         action: TerminalAction,
     ) -> Result<(), QualificationTurnWriterInputError> {
+        let input = &active.input;
         // Re-check the host-owned binding before any terminal write.  A stale
         // callback must not mark an occurrence indeterminate (or release a
         // lease) after ownership has moved to a newer epoch.
@@ -379,10 +473,62 @@ impl QualificationTurnLifecycleContributor {
             .binding
             .verify_current(&input.lease, &input.executor)
             .await?;
-        if let TerminalAction::Indeterminate(reason) = action {
+        let (outcome, reason, action_label) = match &action {
+            TerminalAction::Stop => (
+                "turn_stopped".to_string(),
+                "turn_stopped".to_string(),
+                "stop",
+            ),
+            TerminalAction::Indeterminate(reason) => (
+                "turn_indeterminate".to_string(),
+                reason.clone(),
+                "indeterminate",
+            ),
+        };
+        let reason = bounded_terminal_reason(&reason);
+        let next_seq = active.event_seq.checked_add(1).ok_or_else(|| {
+            QualificationTurnWriterInputError::Invalid("trajectory sequence overflow".to_string())
+        })?;
+        let terminal_receipt = Sha256Digest::for_bytes(
+            format!(
+                "qualification:terminal-observation:v1:{}:{}:{}",
+                active.event_sha256.as_str(),
+                action_label,
+                reason
+            )
+            .as_bytes(),
+        );
+        let record = H7TrajectoryRecord::terminal(
+            active.trajectory_id.clone(),
+            next_seq,
+            format!("{}:event:terminal:{}", active.trajectory_id, action_label),
+            input.turn_id.clone(),
+            bounded_terminal_occurrence_key(&input.occurrence_key),
+            active.event_seq,
+            active.event_sha256.clone(),
+            Sha256Digest::for_bytes(format!("terminal:{}:{}", input.turn_id, reason).as_bytes()),
+            Sha256Digest::for_bytes(b"qualification:observation-only-policy:v1"),
+            Sha256Digest::for_bytes(b"qualification:model-receipt:not-applicable:v1"),
+            terminal_receipt,
+            outcome,
+            reason.clone(),
+            serde_json::json!({
+                "observation_only": true,
+                "propensity": "not_applicable",
+                "support": "not_applicable",
+                "source": "qualification_turn_writer",
+                "terminal_action": action_label
+            })
+            .to_string(),
+        )
+        .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?;
+        append_h7_trajectory_event_bound(&input.lease, &input.executor, &input.binding, &record)
+            .await
+            .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?;
+        if matches!(&action, TerminalAction::Indeterminate(_)) {
             input
                 .lease
-                .mark_indeterminate(input.occurrence_key.clone(), reason)
+                .mark_indeterminate(input.occurrence_key.clone(), reason.clone())
                 .await?;
         }
         input.lease.release().await?;
@@ -391,22 +537,37 @@ impl QualificationTurnLifecycleContributor {
 
     async fn start_one(&self, input: QualificationTurnWriterInput, turn_store: &ExtensionData) {
         let result = tokio::time::timeout(IO_TIMEOUT, Self::admit(&input)).await;
-        let active = matches!(result, Ok(Ok(true)));
+        let active = match result {
+            Ok(Ok(Some(receipt))) => {
+                match tokio::time::timeout(IO_TIMEOUT, Self::append_start(&input, &receipt)).await {
+                    Ok(Ok(active)) => Some(active),
+                    Ok(Err(_)) | Err(_) => {
+                        let _ = input
+                            .lease
+                            .mark_indeterminate(input.occurrence_key.clone(), "h7_start_failed")
+                            .await;
+                        let _ = input.lease.release().await;
+                        None
+                    }
+                }
+            }
+            _ => None,
+        };
         let terminal = {
             let state = turn_store.get::<Mutex<TurnWriterState>>();
             let Some(state) = state else { return };
             let mut guard = state.lock().unwrap_or_else(PoisonError::into_inner);
             guard.starting = false;
-            if active {
-                guard.active = Some(input.clone());
+            if let Some(active) = active.clone() {
+                guard.active = Some(active);
             }
             guard
                 .terminal_requested
                 .take()
-                .map(|action| (input, action))
+                .map(|action| (action, active))
         };
-        if let Some((input, action)) = terminal {
-            let completed = tokio::time::timeout(IO_TIMEOUT, Self::complete(&input, action))
+        if let Some((action, Some(active))) = terminal {
+            let completed = tokio::time::timeout(IO_TIMEOUT, Self::complete(&active, action))
                 .await
                 .is_ok_and(|result| result.is_ok());
             if let Some(state) = turn_store.get::<Mutex<TurnWriterState>>() {
@@ -414,8 +575,8 @@ impl QualificationTurnLifecycleContributor {
                 guard.terminal_started = completed;
                 if completed {
                     guard.active = None;
-                } else if active {
-                    guard.active = Some(input);
+                } else {
+                    guard.active = Some(active);
                 }
             }
         }
@@ -1134,9 +1295,15 @@ mod tests {
         // current occurrence even though its fence no longer matches.
         let mut stale = input.clone();
         stale.binding.fence.owner_epoch += 1;
+        let stale_active = ActiveTurn {
+            input: stale,
+            trajectory_id: "qualification:trajectory:stale".to_string(),
+            event_seq: 1,
+            event_sha256: Sha256Digest::for_bytes(b"stale-parent"),
+        };
         assert!(
             QualificationTurnLifecycleContributor::complete(
-                &stale,
+                &stale_active,
                 TerminalAction::Indeterminate("stale callback".to_string()),
             )
             .await
@@ -1149,5 +1316,22 @@ mod tests {
             .await
             .expect("replay after stale callback");
         assert!(matches!(replay, LocalReplayFinalization::Queued(_)));
+    }
+
+    #[test]
+    fn terminal_projection_bounds_long_occurrence_and_reason_values() {
+        let long_occurrence = "o".repeat(MAX_OCCURRENCE_KEY_BYTES);
+        let terminal_occurrence = bounded_terminal_occurrence_key(&long_occurrence);
+        assert!(terminal_occurrence.len() <= MAX_OCCURRENCE_KEY_BYTES);
+        assert!(terminal_occurrence.starts_with("qualification:terminal-occurrence:"));
+        assert_eq!(
+            terminal_occurrence,
+            bounded_terminal_occurrence_key(&long_occurrence)
+        );
+
+        let long_reason = format!("{}\0", "r".repeat(513));
+        let terminal_reason = bounded_terminal_reason(&long_reason);
+        assert!(terminal_reason.len() <= 512);
+        assert!(terminal_reason.starts_with("reason_sha256:"));
     }
 }
