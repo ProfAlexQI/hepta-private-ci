@@ -48,6 +48,7 @@ use codex_protocol::permissions::FileSystemSandboxPolicy;
 use codex_protocol::permissions::FileSystemSpecialPath;
 use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_utils_path_uri::PathUri;
+use futures::TryStreamExt;
 use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 use test_case::test_case;
@@ -1140,6 +1141,129 @@ async fn file_system_sandboxed_read_rejects_symlink_parent_dotdot_escape(
     // through a top-level symlink alias, the request can surface as either
     // "missing file" or an upfront sandbox rejection.
     assert_normalized_path_rejected(&error);
+
+    Ok(())
+}
+
+#[test_case(FileSystemImplementation::Local ; "local")]
+#[test_case(FileSystemImplementation::Remote ; "remote")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_system_bounded_authorized_read_enforces_limit_without_prefix(
+    implementation: FileSystemImplementation,
+) -> Result<()> {
+    let context = create_file_system_context(implementation).await?;
+    let file_system = context.file_system;
+
+    let tmp = TempDir::new()?;
+    let root = tmp.path().join("allowed");
+    std::fs::create_dir_all(&root)?;
+    let exact_path = root.join("exact.txt");
+    let oversized_path = root.join("oversized.txt");
+    std::fs::write(&exact_path, b"12345678")?;
+    std::fs::write(&oversized_path, b"123456789")?;
+    let sandbox = read_only_sandbox(root);
+
+    let exact = file_system
+        .read_file_bounded_authorized(&PathUri::from_host_native_path(&exact_path)?, &sandbox, 8)
+        .await
+        .with_context(|| format!("mode={implementation}, exact bound"))?;
+    assert_eq!(exact, b"12345678");
+
+    let error = file_system
+        .read_file_bounded_authorized(
+            &PathUri::from_host_native_path(&oversized_path)?,
+            &sandbox,
+            8,
+        )
+        .await
+        .expect_err("a file larger than the bound must fail closed");
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    assert_eq!(error.to_string(), "authorized file read exceeds bound");
+
+    Ok(())
+}
+
+#[test_case(FileSystemImplementation::Local ; "local")]
+#[test_case(FileSystemImplementation::Remote ; "remote")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_system_bounded_authorized_read_rejects_symlink_and_parent_escape(
+    implementation: FileSystemImplementation,
+) -> Result<()> {
+    let context = create_file_system_context(implementation).await?;
+    let file_system = context.file_system;
+
+    let tmp = TempDir::new()?;
+    let allowed_dir = tmp.path().join("allowed");
+    let outside_dir = tmp.path().join("outside");
+    std::fs::create_dir_all(&allowed_dir)?;
+    std::fs::create_dir_all(&outside_dir)?;
+    let secret = outside_dir.join("secret.txt");
+    std::fs::write(&secret, b"outside-secret")?;
+    symlink(&outside_dir, allowed_dir.join("link"))?;
+
+    let sandbox = read_only_sandbox(allowed_dir.clone());
+    let symlink_escape = allowed_dir.join("link").join("secret.txt");
+    let error = file_system
+        .read_file_bounded_authorized(
+            &PathUri::from_host_native_path(&symlink_escape)?,
+            &sandbox,
+            128,
+        )
+        .await
+        .expect_err("a symlink escaping the readable root must fail closed");
+    assert_sandbox_denied(&error);
+
+    let parent_escape = allowed_dir
+        .join("nested")
+        .join("..")
+        .join("..")
+        .join("outside")
+        .join("secret.txt");
+    let error = file_system
+        .read_file_bounded_authorized(
+            &PathUri::from_host_native_path(&parent_escape)?,
+            &sandbox,
+            128,
+        )
+        .await
+        .expect_err("a parent traversal escaping the readable root must fail closed");
+    assert_normalized_path_rejected(&error);
+
+    Ok(())
+}
+
+#[test_case(FileSystemImplementation::Local ; "local")]
+#[test_case(FileSystemImplementation::Remote ; "remote")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_system_read_stream_remains_bound_after_path_replacement(
+    implementation: FileSystemImplementation,
+) -> Result<()> {
+    let context = create_file_system_context(implementation).await?;
+    let file_system = context.file_system;
+
+    let tmp = TempDir::new()?;
+    let root = tmp.path().join("allowed");
+    std::fs::create_dir_all(&root)?;
+    let path = root.join("note.txt");
+    let replacement = root.join("replacement.txt");
+    std::fs::write(&path, b"authorized-content")?;
+    let sandbox = read_only_sandbox(root);
+
+    let stream = file_system
+        .read_file_stream(&PathUri::from_host_native_path(&path)?, Some(&sandbox))
+        .await
+        .with_context(|| format!("mode={implementation}, open stream"))?;
+
+    std::fs::rename(&path, &replacement)?;
+    std::fs::write(&path, b"replacement-content")?;
+
+    let bytes = stream
+        .try_collect::<Vec<_>>()
+        .await?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    assert_eq!(bytes, b"authorized-content");
 
     Ok(())
 }
