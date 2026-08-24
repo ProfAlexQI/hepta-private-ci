@@ -487,6 +487,25 @@ impl LocalLeaseOutbox {
         .map(|_| ())
     }
 
+    /// Verify the active lease and both append-only local chains inside a
+    /// caller-owned transaction.  Composite local writers use this helper to
+    /// hold the SQLite write lock while coupling another journal mutation to
+    /// this exact lease fence; it intentionally performs no write.
+    pub(crate) async fn verify_current_in_transaction(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+    ) -> Result<LocalLease, LocalLeaseOutboxError> {
+        let lease = self.current_lease(transaction).await?;
+        ensure_current_active(&lease, self)?;
+        verify_event_chain(transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_outbox_chain(transaction, &self.lease_id, &self.owner_agent_id).await?;
+        Ok(lease)
+    }
+
+    pub(crate) fn store(&self) -> &CognitiveStore {
+        &self.store
+    }
+
     /// Reopens an already acquired active lease and verifies every journal
     /// chain before returning a writable handle.
     pub(crate) async fn reopen(

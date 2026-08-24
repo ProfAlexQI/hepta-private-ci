@@ -201,6 +201,14 @@ impl CognitiveStore {
         &self.owner_agent_id
     }
 
+    /// Returns whether two handles refer to the same Agent-local database and
+    /// owner.  This is crate-private so composite local writers can reject a
+    /// lease/executor assembled from different stores before opening a
+    /// transaction.  It is not an authority or capability check.
+    pub(crate) fn is_same_local_store(&self, other: &Self) -> bool {
+        self.owner_agent_id == other.owner_agent_id && self.path == other.path
+    }
+
     pub async fn append_source(
         &self,
         access: &CognitiveAccess,

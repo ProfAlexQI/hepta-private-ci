@@ -106,6 +106,10 @@ impl LocalCompactExecutor {
         &self.fence
     }
 
+    pub(crate) fn store(&self) -> &CognitiveStore {
+        &self.store
+    }
+
     /// Appends an idempotent checkpoint intent under the current parent CAS.
     pub async fn append_intent(
         &self,
@@ -306,7 +310,7 @@ impl LocalCompactExecutor {
         Ok(result)
     }
 
-    async fn load_journal(
+    pub(crate) async fn load_journal(
         &self,
         transaction: &mut Transaction<'_, Sqlite>,
     ) -> Result<CompactPersistenceJournal, LocalCompactExecutorError> {
@@ -414,7 +418,7 @@ impl LocalCompactExecutor {
         CompactPersistenceJournal::reopen(snapshot).map_err(Into::into)
     }
 
-    async fn insert_event(
+    pub(crate) async fn insert_event(
         &self,
         transaction: &mut Transaction<'_, Sqlite>,
         entry: &CompactPersistenceEvent,

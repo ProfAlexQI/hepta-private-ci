@@ -12,6 +12,7 @@ mod cognitive_store;
 mod compact_persistence;
 mod framing;
 mod intuition_shadow;
+mod local_atomic_witness;
 mod local_compact_executor;
 mod local_lease_outbox;
 mod memory_admission;
@@ -123,6 +124,19 @@ pub use intuition_shadow::MAX_INTUITION_CANDIDATE_ID_BYTES;
 pub use intuition_shadow::MAX_INTUITION_CANDIDATES;
 pub use intuition_shadow::intuition_schema_digest;
 pub use intuition_shadow::shadow_intuition_decide;
+pub use local_atomic_witness::LOCAL_ATOMIC_WITNESS_EXTERNAL_EFFECTS;
+pub use local_atomic_witness::LOCAL_ATOMIC_WITNESS_KG_WRITE_AUTHORITY;
+pub use local_atomic_witness::LOCAL_ATOMIC_WITNESS_LEASE_EPOCH_BOUND;
+pub use local_atomic_witness::LOCAL_ATOMIC_WITNESS_LEASE_EXPIRY_BOUND;
+pub use local_atomic_witness::LOCAL_ATOMIC_WITNESS_LIFECYCLE_REGISTERED;
+pub use local_atomic_witness::LOCAL_ATOMIC_WITNESS_NAMESPACE;
+pub use local_atomic_witness::LOCAL_ATOMIC_WITNESS_SCHEMA_VERSION;
+pub use local_atomic_witness::LocalAtomicWitnessError;
+pub use local_atomic_witness::LocalAtomicWitnessFault;
+pub use local_atomic_witness::LocalRehydrationWitnessReceipt;
+pub use local_atomic_witness::LocalRehydrationWitnessWrite;
+pub use local_atomic_witness::write_local_rehydration_witness;
+pub use local_atomic_witness::write_local_rehydration_witness_with_fault;
 pub use local_compact_executor::LOCAL_COMPACT_EXECUTOR_EXTERNAL_EFFECTS;
 pub use local_compact_executor::LOCAL_COMPACT_EXECUTOR_KG_WRITE_AUTHORITY;
 pub use local_compact_executor::LOCAL_COMPACT_EXECUTOR_NAMESPACE;
@@ -213,6 +227,10 @@ mod cognitive_runtime_tests;
 #[cfg(test)]
 #[path = "cognitive_compact_tests.rs"]
 mod cognitive_compact_tests;
+
+#[cfg(test)]
+#[path = "local_atomic_witness_tests.rs"]
+mod local_atomic_witness_tests;
 
 #[cfg(test)]
 #[path = "compact_persistence_tests.rs"]
