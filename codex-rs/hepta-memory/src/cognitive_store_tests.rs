@@ -109,7 +109,7 @@ async fn h7_trajectory_schema_is_bound_and_append_only() {
     .bind("trajectory:test")
     .bind("event:test:1")
     .bind("occurrence:test:1")
-    .bind("observation")
+    .bind("turn_start")
     .bind("turn:test:1")
     .bind(&digest)
     .bind("observed")

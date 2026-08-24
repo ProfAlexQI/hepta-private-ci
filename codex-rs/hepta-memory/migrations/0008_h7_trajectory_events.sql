@@ -24,8 +24,7 @@ CREATE TABLE cognitive_h7_trajectory_events (
         instr(occurrence_key, char(0)) = 0
     ),
     event_kind TEXT NOT NULL CHECK (
-        length(trim(event_kind)) BETWEEN 1 AND 128 AND
-        instr(event_kind, char(0)) = 0
+        event_kind IN ('turn_start', 'feedback', 'terminal')
     ),
     turn_id TEXT NOT NULL CHECK (
         length(trim(turn_id)) BETWEEN 1 AND 512 AND instr(turn_id, char(0)) = 0
@@ -123,8 +122,13 @@ CREATE TABLE cognitive_h7_trajectory_events (
     UNIQUE (owner_agent_id, trajectory_id, event_id),
     UNIQUE (owner_agent_id, trajectory_id, occurrence_key),
     CHECK (
-        (event_seq = 1 AND causal_parent_seq IS NULL) OR
+        (event_seq = 1 AND event_kind = 'turn_start' AND terminal = 0 AND
+         causal_parent_seq IS NULL AND causal_parent_sha256 IS NULL) OR
         (event_seq > 1 AND causal_parent_seq = event_seq - 1)
+    ),
+    CHECK (
+        (terminal = 1 AND event_kind = 'terminal') OR
+        (terminal = 0 AND event_kind <> 'terminal')
     ),
     CHECK (
         external_effect_executed = 0 AND
