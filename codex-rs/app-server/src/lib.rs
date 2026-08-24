@@ -83,6 +83,14 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 const SQLITE_RECOVERY_CONFIG_WARNING_SUMMARY: &str = "Codex rebuilt its local database.";
 
+fn is_unsupported_untrusted_approval_policy_error(err: &std::io::Error) -> bool {
+    err.get_ref().is_some_and(
+        <dyn std::error::Error + Send + Sync + 'static>::is::<
+            UnsupportedUntrustedApprovalPolicyError,
+        >,
+    )
+}
+
 mod analytics_utils;
 mod app_info;
 mod app_server_tracing;
@@ -643,11 +651,13 @@ pub async fn run_main_with_transport_options(
                 config.http_client_factory(),
             );
         }
+        Err(err) if is_unsupported_untrusted_approval_policy_error(&err) => {
+            return Err(err);
+        }
         Err(err) => {
             warn!(error = %err, "Failed to preload config for cloud config bundle");
-            // TODO: Decide whether bootstrap config preload failures should block startup.
             // If this fails, we cannot install cloud/thread config loaders, so non-strict
-            // startup may continue without managed cloud config.
+            // startup continues without managed cloud config.
         }
     };
     let mut config_warnings = Vec::new();
@@ -656,6 +666,9 @@ pub async fn run_main_with_transport_options(
         .await
     {
         Ok(config) => config,
+        Err(err) if is_unsupported_untrusted_approval_policy_error(&err) => {
+            return Err(err);
+        }
         Err(err) => {
             if strict_config {
                 return Err(err);
@@ -1313,11 +1326,11 @@ pub async fn run_main_with_transport_options(
             };
 
             if !shutdown_state.forced() {
-                futures::future::join_all(
-                    connections
-                        .values()
-                        .map(|connection_state| connection_state.session.rpc_gate.shutdown()),
-                )
+                futures::future::join_all(connections.iter().map(
+                    |(&connection_id, connection_state)| {
+                        processor.connection_closed(connection_id, &connection_state.session)
+                    },
+                ))
                 .await;
                 connection_cleanup_tasks.drain().await;
                 processor.drain_background_tasks().await;

@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::Weak;
 
-use anyhow::Context;
 use anyhow::bail;
 use codex_features::Feature;
 use codex_hooks::HookMcpCall;
@@ -52,11 +51,16 @@ impl HookMcpExecutor for CoreHookMcpExecutor {
                     )
                 })?;
 
-            let result = prepared_call
-                .call(
+            let result = self
+                .runtime
+                .latest_call_tool(
+                    &call.server,
+                    &call.tool,
+                    call.environment_id.as_deref(),
                     Some(Value::Object(call.input)),
-                    Some(serde_json::json!({ "threadId": self.thread_id.to_string() })),
+                    Some(Value::Object(metadata)),
                     Some(call.timeout),
+                    /*wait_for_server*/ false,
                 )
                 .await?;
             let text = result

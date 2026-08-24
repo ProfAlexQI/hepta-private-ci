@@ -9,6 +9,7 @@ use crate::config::AgentRoleConfig;
 use crate::config::Config;
 use crate::config::ConfigBuilder;
 use crate::context::ContextualUserFragment;
+use crate::context::ManagedDeveloperInstructions;
 use crate::context::MultiAgentRoleInstructions;
 use crate::context::SubagentNotification;
 use crate::init_state_db;
@@ -34,6 +35,9 @@ use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::items::TurnItem;
 use codex_protocol::items::UserMessageItem;
 use codex_protocol::models::ContentItem;
+use codex_protocol::models::ContentItemKind;
+use codex_protocol::models::FunctionCallOutputPayload;
+use codex_protocol::models::InternalChatMessageMetadataPassthrough;
 use codex_protocol::models::MessagePhase;
 use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::ResponseItem;
@@ -113,6 +117,18 @@ fn captured_op_matches(actual: &(ThreadId, Op), expected: &(ThreadId, Op)) -> bo
 
 fn rollout_response_item(item: ResponseItem) -> RolloutItem {
     RolloutItem::ResponseItem(item.into())
+}
+
+fn user_message(text: &str) -> ResponseItem {
+    ResponseItem::Message {
+        id: None,
+        role: "user".to_string(),
+        content: vec![ContentItem::InputText {
+            text: text.to_string(),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    }
 }
 
 fn assistant_message(text: &str, phase: Option<MessagePhase>) -> ResponseItem {
@@ -367,8 +383,9 @@ async fn persist_thread_for_tree_resume(thread: &Arc<CodexThread>, message: &str
         .abort_all_tasks(TurnAbortReason::Interrupted)
         .await;
     thread
-        .inject_user_message_without_turn(message.to_string())
-        .await;
+        .inject_response_items(vec![user_message(message)])
+        .await
+        .expect("inject thread resume context");
     thread
         .session
         .ensure_rollout_materialized(PersistContext::Standard)
@@ -1010,8 +1027,9 @@ async fn spawn_agent_fork_from_paginated_parent_uses_model_context_prefix() {
     let harness = AgentControlHarness::new().await;
     let (parent_thread_id, parent_thread) = harness.start_paginated_thread().await;
     parent_thread
-        .inject_user_message_without_turn("paginated parent context".to_string())
-        .await;
+        .inject_response_items(vec![user_message("paginated parent context")])
+        .await
+        .expect("inject paginated parent context");
     let turn_context = parent_thread.session.new_default_turn().await;
     let parent_spawn_call_id = "spawn-call-paginated".to_string();
     parent_thread
@@ -1178,8 +1196,9 @@ async fn spawn_agent_without_fork_from_paginated_parent_stays_fresh_and_paginate
     let harness = AgentControlHarness::new().await;
     let (parent_thread_id, parent_thread) = harness.start_paginated_thread().await;
     parent_thread
-        .inject_user_message_without_turn("parent-only context".to_string())
-        .await;
+        .inject_response_items(vec![user_message("parent-only context")])
+        .await
+        .expect("inject parent-only context");
 
     let child_thread_id = harness
         .spawn_anonymous_child(
@@ -1307,6 +1326,7 @@ async fn spawn_agent_numeric_fork_from_compacted_paginated_parent_clamps_to_prov
 
 #[tokio::test]
 async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
+    let managed_fragment = "<managed_developer_instructions>\nParent developer instructions.\n</managed_developer_instructions>";
     let harness = AgentControlHarness::new().await;
     let mut parent_config = harness.config.clone();
     let _ = parent_config.features.enable(Feature::MultiAgentV2);
@@ -1332,7 +1352,11 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
     let parent_thread_id = new_thread.thread_id;
     let parent_thread = new_thread.thread;
     parent_thread
-        .inject_user_message_without_turn("parent seed context".to_string())
+        .session
+        .inject_no_new_turn(
+            vec![user_message("parent seed context")],
+            /*current_turn_context*/ None,
+        )
         .await;
     let expected_parent_seed = parent_thread
         .session
@@ -1351,6 +1375,14 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         "parent trigger message".to_string(),
         /*trigger_turn*/ true,
     );
+    let standalone_output = ResponseItem::FunctionCallOutput {
+        id: None,
+        call_id: None,
+        name: Some("notifications".to_string()),
+        namespace: Some("slack".to_string()),
+        output: FunctionCallOutputPayload::from_text("parent notification".to_string()),
+        internal_chat_message_metadata_passthrough: None,
+    };
     parent_thread
         .session
         .record_conversation_items(
@@ -1383,14 +1415,32 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
                                 .to_string(),
                         },
                         ContentItem::InputText {
+                            text: "<multi_agent_mode>Proactive multi-agent delegation is active.</multi_agent_mode>"
+                                .to_string(),
+                        },
+                        ContentItem::InputText {
                             text: "Preserved developer context.".to_string(),
+                        },
+                        ContentItem::InputText {
+                            text: managed_fragment.to_string(),
                         },
                     ],
                     phase: None,
-                    internal_chat_message_metadata_passthrough: None,
+                    internal_chat_message_metadata_passthrough: Some(
+                        InternalChatMessageMetadataPassthrough {
+                            content_item_kinds: Some(vec![
+                                ContentItemKind("generic.developer_instructions".to_string()),
+                                ContentItemKind("multi_agent.mode_instructions".to_string()),
+                                ContentItemKind("generic.developer_policy".to_string()),
+                                ContentItemKind("managed_config.developer_instructions".to_string()),
+                            ]),
+                            ..Default::default()
+                        },
+                    ),
                 },
                 assistant_message("parent commentary", Some(MessagePhase::Commentary)),
                 assistant_message("parent final answer", Some(MessagePhase::FinalAnswer)),
+                standalone_output,
                 assistant_message("parent unknown phase", /*phase*/ None),
                 ResponseItem::Reasoning {
                     id: Some(ResponseItemId::with_suffix("rs", "parent-reasoning")),
@@ -1404,6 +1454,14 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
             ],
         )
         .await;
+    let expected_standalone_output = parent_thread
+        .session
+        .clone_history()
+        .await
+        .raw_items()
+        .find(|item| matches!(item, ResponseItem::FunctionCallOutput { call_id: None, .. }))
+        .cloned()
+        .expect("standalone output should be recorded");
     let parent_reference_context_item = turn_context.to_turn_context_item();
     parent_thread
         .session
@@ -1454,9 +1512,23 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
     );
     let history = child_thread.session.clone_history().await;
     let history_items = history.raw_items().cloned().collect::<Vec<_>>();
-    let mut expected_final_answer =
-        assistant_message("parent final answer", Some(MessagePhase::FinalAnswer));
-    expected_final_answer.set_turn_id_if_missing(&turn_context.sub_id);
+    let expected_final_answer = parent_thread
+        .session
+        .clone_history()
+        .await
+        .raw_items()
+        .find(|item| {
+            matches!(
+                item,
+                ResponseItem::Message {
+                    role,
+                    phase: Some(MessagePhase::FinalAnswer),
+                    ..
+                } if role == "assistant"
+            )
+        })
+        .cloned()
+        .expect("parent final answer should be recorded");
     let mut expected_developer_message = ResponseItem::Message {
         id: None,
         role: "developer".to_string(),
@@ -1468,9 +1540,21 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
             ContentItem::InputText {
                 text: "Preserved developer context.".to_string(),
             },
+            ContentItem::InputText {
+                text: managed_fragment.to_string(),
+            },
         ],
         phase: None,
-        internal_chat_message_metadata_passthrough: None,
+        internal_chat_message_metadata_passthrough: Some(
+            InternalChatMessageMetadataPassthrough {
+                content_item_kinds: Some(vec![
+                    ContentItemKind("generic.developer_instructions".to_string()),
+                    ContentItemKind("generic.developer_policy".to_string()),
+                    ContentItemKind("managed_config.developer_instructions".to_string()),
+                ]),
+                ..Default::default()
+            },
+        ),
     };
     expected_developer_message.set_turn_id_if_missing(&turn_context.sub_id);
     expected_developer_message.set_create_time_if_missing(
@@ -1483,15 +1567,10 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
         expected_parent_seed,
         expected_developer_message,
         expected_final_answer,
-        ResponseItem::Message {
-            id: None,
-            role: "developer".to_string(),
-            content: vec![ContentItem::InputText {
-                text: "Child subagent guidance.".to_string(),
-            }],
-            phase: None,
-            internal_chat_message_metadata_passthrough: None,
-        },
+        expected_standalone_output,
+        ContextualUserFragment::into(MultiAgentRoleInstructions::unmarked(
+            "Child subagent guidance.",
+        )),
     ];
     assert_eq!(
         strip_response_item_ids(&history_items),
@@ -1551,9 +1630,13 @@ async fn spawn_agent_can_fork_parent_thread_history_with_sanitized_items() {
     assert!(
         !history_contains_text(
             no_hint_history.raw_items(),
-            "Parent developer instructions."
+            "Developer context before.\nParent developer instructions."
         ),
         "empty child developer instructions should remove parent developer instructions"
+    );
+    assert!(
+        history_contains_text(no_hint_history.raw_items(), managed_fragment),
+        "clearing child instructions must preserve an overlapping managed policy"
     );
     assert!(
         history_contains_text(
@@ -1652,6 +1735,10 @@ async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history() {
                         .to_string(),
                 },
                 ContentItem::InputText {
+                    text: "<multi_agent_mode>Proactive multi-agent delegation is active.</multi_agent_mode>"
+                        .to_string(),
+                },
+                ContentItem::InputText {
                     text: "Preserved compacted developer context.".to_string(),
                 },
             ],
@@ -1742,6 +1829,13 @@ async fn spawn_agent_fork_strips_parent_usage_hints_from_compacted_history() {
     assert!(
         !history_contains_text(history.raw_items(), "Parent root guidance."),
         "forked child history should strip stale parent hints from compacted replacement history"
+    );
+    assert!(
+        !history_contains_text(
+            history.raw_items(),
+            "Proactive multi-agent delegation is active."
+        ),
+        "forked child history should strip stale policy fragments from compound compacted messages"
     );
     assert!(
         !history_contains_text(history.raw_items(), "Parent developer instructions."),
@@ -1920,6 +2014,12 @@ async fn spawn_agent_full_fork_restores_instructions_after_compaction_discards_p
 /// rebuild configured developer instructions exactly once.
 #[tokio::test]
 async fn spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_once() {
+    let managed_policy = "Managed policy for every agent.";
+    let current_managed_fragment = format!(
+        "<managed_developer_instructions>\n{managed_policy}\n</managed_developer_instructions>"
+    );
+    let stale_managed_fragment =
+        "<managed_developer_instructions>\nOld managed policy.\n</managed_developer_instructions>";
     for (case, parent_developer_instructions) in [
         ("without parent instructions", None),
         (
@@ -1931,6 +2031,23 @@ async fn spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_onc
         let mut parent_config = harness.config.clone();
         let _ = parent_config.features.enable(Feature::MultiAgentV2);
         parent_config.developer_instructions = parent_developer_instructions.map(str::to_string);
+        let mut requirements = parent_config.config_layer_stack.requirements().clone();
+        requirements.additional_developer_instructions = Some(codex_config::Sourced::new(
+            managed_policy.to_string(),
+            codex_config::RequirementSource::Unknown,
+        ));
+        let mut requirements_toml = parent_config.config_layer_stack.requirements_toml().clone();
+        requirements_toml.additional_developer_instructions = Some(managed_policy.to_string());
+        parent_config.config_layer_stack = codex_config::ConfigLayerStack::new(
+            parent_config
+                .config_layer_stack
+                .all_layers_low_to_high()
+                .cloned()
+                .collect(),
+            requirements,
+            requirements_toml,
+        )
+        .expect("managed requirements stack");
         let mut child_config = parent_config.clone();
         child_config.developer_instructions = Some("Child developer instructions.".to_string());
         child_config.multi_agent_v2.subagent_developer_instructions =
@@ -1990,6 +2107,15 @@ async fn spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_onc
                 internal_chat_message_metadata_passthrough: None,
             }));
         }
+        rollout_items.push(rollout_response_item(ResponseItem::Message {
+            id: None,
+            role: "developer".to_string(),
+            content: vec![ContentItem::InputText {
+                text: stale_managed_fragment.to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }));
         rollout_items.push(RolloutItem::TurnContext(
             turn_context.to_turn_context_item(),
         ));
@@ -2046,6 +2172,7 @@ async fn spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_onc
         }
         let history = child_thread.session.clone_history().await;
         let mut instruction_count = 0;
+        let mut managed_instructions = Vec::new();
         for item in history.raw_items() {
             let ResponseItem::Message { role, content, .. } = item else {
                 continue;
@@ -2054,16 +2181,18 @@ async fn spawn_agent_full_fork_legacy_compaction_rebuilds_child_instructions_onc
                 continue;
             }
             for content_item in content {
-                if let ContentItem::InputText { text } = content_item
-                    && text == "Child developer instructions."
-                {
-                    instruction_count += 1;
+                if let ContentItem::InputText { text } = content_item {
+                    instruction_count += usize::from(text == "Child developer instructions.");
+                    if ManagedDeveloperInstructions::matches_text(text) {
+                        managed_instructions.push(text.as_str());
+                    }
                 }
             }
         }
         assert_eq!(
-            instruction_count, 1,
-            "{case}: canonical context reconstruction must not duplicate child developer instructions"
+            (instruction_count, managed_instructions),
+            (1, vec![current_managed_fragment.as_str()]),
+            "{case}: canonical context reconstruction must keep only the current child and managed developer instructions"
         );
 
         let _ = harness
@@ -2145,8 +2274,9 @@ async fn spawn_agent_fork_last_n_turns_keeps_only_recent_turns() {
     let (parent_thread_id, parent_thread) = harness.start_thread().await;
 
     parent_thread
-        .inject_user_message_without_turn("old parent context".to_string())
-        .await;
+        .inject_response_items(vec![user_message("old parent context")])
+        .await
+        .expect("inject old parent context");
     let queued_communication = InterAgentCommunication::new(
         AgentPath::root(),
         AgentPath::try_from("/root/worker").expect("agent path"),
@@ -2179,8 +2309,9 @@ async fn spawn_agent_fork_last_n_turns_keeps_only_recent_turns() {
         )
         .await;
     parent_thread
-        .inject_user_message_without_turn("current parent task".to_string())
-        .await;
+        .inject_response_items(vec![user_message("current parent task")])
+        .await
+        .expect("inject current parent task");
     let spawn_turn_context = parent_thread.session.new_default_turn().await;
     let parent_spawn_call_id = "spawn-call-last-n".to_string();
     parent_thread
@@ -2311,8 +2442,9 @@ async fn spawn_agent_fork_last_n_turns_drops_parent_startup_prefix_when_under_li
         )
         .await;
     parent_thread
-        .inject_user_message_without_turn("current parent task".to_string())
-        .await;
+        .inject_response_items(vec![user_message("current parent task")])
+        .await
+        .expect("inject current parent task");
     let spawn_turn_context = parent_thread.session.new_default_turn().await;
     let parent_spawn_call_id = "spawn-call-last-n-under-limit".to_string();
     parent_thread
@@ -2415,8 +2547,9 @@ async fn spawn_agent_fork_last_n_turns_strips_parent_usage_hints() {
     let parent_thread_id = new_thread.thread_id;
     let parent_thread = new_thread.thread;
     parent_thread
-        .inject_user_message_without_turn("parent task".to_string())
-        .await;
+        .inject_response_items(vec![user_message("parent task")])
+        .await
+        .expect("inject parent task");
     let turn_context = parent_thread.session.new_default_turn().await;
     let parent_spawn_call_id = "spawn-call-last-n-usage-hints".to_string();
     parent_thread

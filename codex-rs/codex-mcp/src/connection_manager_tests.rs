@@ -22,20 +22,12 @@ use crate::tools::ToolFilter;
 use crate::tools::ToolInfo;
 use crate::tools::filter_tools;
 use crate::tools::normalize_tools_for_model_with_prefix;
-use codex_config::AbsolutePathBuf;
-use codex_config::AppRequirementToml;
 use codex_config::AppToolApproval;
-use codex_config::AppsRequirementsToml;
-use codex_config::CONFIG_TOML_FILE;
-use codex_config::ConfigLayerStack;
-use codex_config::ConfigRequirements;
-use codex_config::ConfigRequirementsToml;
 use codex_config::Constrained;
 use codex_config::McpServerAuth;
 use codex_config::McpServerConfig;
 use codex_config::McpServerEnvVar;
 use codex_config::McpServerToolConfig;
-use codex_config::TomlValue;
 use codex_config::types::AuthKeyringBackendKind;
 use codex_config::types::OAuthCredentialsStoreMode;
 use codex_connectors::ConnectorRuntimeContext;
@@ -79,7 +71,6 @@ use rmcp::model::ServerCapabilities;
 use rmcp::model::ServerInfo;
 use rmcp::model::Tool;
 use rmcp::service::RequestContext;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io;
@@ -101,6 +92,7 @@ impl McpConnectionSet {
     ) -> Self {
         Self {
             servers: HashMap::new(),
+            disabled_servers: Vec::new(),
             protocol_mode: crate::McpProtocolMode::Legacy,
             required_servers: Vec::new(),
             optional_startup_deadline: OnceLock::new(),
@@ -449,6 +441,138 @@ async fn create_ready_async_managed_client(tools: Vec<ToolInfo>) -> AsyncManaged
         startup_reconnect: None,
         cancel_token: CancellationToken::new(),
     }
+}
+
+#[tokio::test]
+async fn connection_statuses_observe_clients_without_starting_them() {
+    use codex_protocol::mcp::McpServerConnectionStatus as Status;
+
+    let mut manager = McpConnectionSet::empty(/*prefix_mcp_tool_names*/ true);
+    manager.disabled_servers.push("disabled".to_string());
+    let ready = create_ready_async_managed_client(Vec::new()).await;
+    ready.client().await.expect("ready client");
+    manager.insert_test_client("connected", ready);
+    for (name, error) in [
+        (
+            "failed",
+            StartupOutcomeError::Failed {
+                error: "broken".to_string(),
+                is_authentication_required: false,
+            },
+        ),
+        (
+            "auth",
+            StartupOutcomeError::Failed {
+                error: "login".to_string(),
+                is_authentication_required: true,
+            },
+        ),
+        (
+            "flattened-auth",
+            StartupOutcomeError::from(anyhow!("Auth required for server")),
+        ),
+        ("cancelled", StartupOutcomeError::Cancelled),
+    ] {
+        let mut client = create_ready_async_managed_client(Vec::new()).await;
+        client.client = futures::future::ready(Err(error)).boxed().shared();
+        assert!(client.client().await.is_err());
+        manager.insert_test_client(name, client);
+    }
+    let mut pending = create_ready_async_managed_client(Vec::new()).await;
+    pending.client = futures::future::pending().boxed().shared();
+    pending.cached_server_info = Some(create_test_server_info("Cached"));
+    manager.insert_test_client("starting", pending.clone());
+    manager.insert_test_client("deferred", pending);
+    let (trigger, _receiver) = watch::channel(/*init*/ false);
+    Arc::get_mut(&mut manager.servers.get_mut("deferred").unwrap().connection)
+        .unwrap()
+        .startup_trigger = Some(trigger.clone());
+
+    let statuses = tokio::time::timeout(
+        Duration::from_millis(/*millis*/ 100),
+        manager.connection_statuses(),
+    )
+    .await
+    .expect("status must not await startup");
+    let mut expected = HashMap::from([
+        ("connected".to_string(), Status::Connected),
+        ("failed".to_string(), Status::Failed),
+        ("auth".to_string(), Status::AuthenticationRequired),
+        ("flattened-auth".to_string(), Status::AuthenticationRequired),
+        ("cancelled".to_string(), Status::Cancelled),
+        ("starting".to_string(), Status::Starting),
+        ("deferred".to_string(), Status::NotStarted),
+        ("disabled".to_string(), Status::Disabled),
+    ]);
+    assert_eq!(statuses, expected);
+    assert!(!*trigger.borrow());
+    manager.test_client("connected").cancel_token.cancel();
+    expected.insert("connected".to_string(), Status::Cancelled);
+    assert_eq!(manager.connection_statuses().await, expected);
+}
+
+#[tokio::test(start_paused = true)]
+async fn connection_statuses_follow_latest_reconnect_outcome() {
+    use codex_protocol::mcp::McpServerConnectionStatus as Status;
+
+    let recovered = create_test_managed_client(Vec::new()).await;
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let started = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let finished = Arc::new(Notify::new());
+    let factory = {
+        let attempts = Arc::clone(&attempts);
+        let started = Arc::clone(&started);
+        let release = Arc::clone(&release);
+        let finished = Arc::clone(&finished);
+        Arc::new(move || {
+            let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+            let recovered = recovered.clone();
+            let started = Arc::clone(&started);
+            let release = Arc::clone(&release);
+            let finished = Arc::clone(&finished);
+            async move {
+                started.notify_one();
+                release.notified().await;
+                finished.notify_one();
+                match attempt {
+                    0 | 1 => Err(StartupOutcomeError::Failed {
+                        error: "retry failed".to_string(),
+                        is_authentication_required: attempt == 0,
+                    }),
+                    _ => Ok(recovered),
+                }
+            }
+            .boxed()
+            .shared()
+        })
+    };
+    let manager = create_test_manager_with_failed_apps_startup(Vec::new(), factory);
+    let client = manager.test_client(CODEX_APPS_MCP_SERVER_NAME);
+    assert!(client.client().await.is_err());
+    let expected = |status| HashMap::from([(CODEX_APPS_MCP_SERVER_NAME.to_string(), status)]);
+    assert_eq!(
+        manager.connection_statuses().await,
+        expected(Status::Failed)
+    );
+
+    for status in [
+        Status::AuthenticationRequired,
+        Status::Failed,
+        Status::Connected,
+    ] {
+        client.reconnect_failed_startup().await;
+        started.notified().await;
+        assert_eq!(
+            manager.connection_statuses().await,
+            expected(Status::Starting)
+        );
+        release.notify_one();
+        finished.notified().await;
+        assert_eq!(manager.connection_statuses().await, expected(status));
+        tokio::time::advance(CODEX_APPS_RECONNECT_INITIAL_BACKOFF * 2).await;
+    }
+    assert_eq!(attempts.load(Ordering::SeqCst), 3);
 }
 
 fn create_gated_async_managed_client(
@@ -1451,18 +1575,37 @@ fn test_normalize_tools_duplicated_names_skipped() {
 }
 
 #[test]
+fn test_normalize_tools_respects_responses_api_name_length_boundaries() {
+    let namespace = "mcp__codex_apps";
+    let namespace_len = namespace.len() + "__".len();
+
+    for total_len in [128, 129] {
+        let tool_name = "a".repeat(total_len - namespace_len);
+        let model_tools = normalize_tools_for_model_with_prefix(
+            vec![create_test_tool("codex_apps", &tool_name)],
+            /*prefix_mcp_tool_names*/ true,
+            &[],
+        );
+        let model_name = model_tools[0].canonical_tool_name();
+
+        assert_eq!(model_tool_name_len(&model_name), 128);
+        if total_len == 128 {
+            assert_eq!(model_name, ToolName::namespaced(namespace, tool_name));
+        } else {
+            assert_ne!(model_name.name, tool_name);
+        }
+    }
+}
+
+#[test]
 fn test_normalize_tools_long_names_same_server() {
     let server_name = "my_server";
+    let first_name = "a".repeat(128);
+    let second_name = "b".repeat(128);
 
     let tools = vec![
-        create_test_tool(
-            server_name,
-            "extremely_lengthy_function_name_that_absolutely_surpasses_all_reasonable_limits",
-        ),
-        create_test_tool(
-            server_name,
-            "yet_another_extremely_lengthy_function_name_that_absolutely_surpasses_all_reasonable_limits",
-        ),
+        create_test_tool(server_name, &first_name),
+        create_test_tool(server_name, &second_name),
     ];
 
     let model_tools =
@@ -1472,7 +1615,7 @@ fn test_normalize_tools_long_names_same_server() {
 
     let names = model_tool_names(&model_tools);
 
-    assert!(names.iter().all(|name| model_tool_name_len(name) == 64));
+    assert!(names.iter().all(|name| model_tool_name_len(name) == 128));
     assert!(
         names
             .iter()
@@ -2649,7 +2792,7 @@ async fn list_all_tools_applies_legacy_mcp_prefix_by_default() {
 }
 
 #[tokio::test]
-async fn prepare_connected_call_fails_immediately_until_server_startup_finishes() {
+async fn call_tool_requires_connection_without_waiting_for_startup() {
     let client = create_test_managed_client(vec![create_test_tool("docs", "search")]).await;
     let (client, startup_started, release_startup) = create_gated_async_managed_client(client);
     let startup_client = client.clone();
@@ -2661,16 +2804,23 @@ async fn prepare_connected_call_fails_immediately_until_server_startup_finishes(
         /*prefix_mcp_tool_names*/ true,
     );
     manager.insert_test_client("docs", client);
-    let manager = Arc::new(manager);
-    let config = Arc::new(crate::mcp::tests::test_mcp_config(std::env::temp_dir()));
 
     let pending_call = tokio::time::timeout(
         Duration::from_millis(50),
-        manager.prepare_connected_call(Arc::clone(&config), "docs", "search"),
+        manager.call_tool(
+            "docs",
+            "search",
+            /*environment_id*/ None,
+            /*arguments*/ None,
+            /*meta*/ None,
+            Some(Duration::from_secs(5)),
+            /*wait_for_server*/ false,
+        ),
     )
     .await
-    .expect("ready-only preparation must not wait for pending server startup");
-    assert!(pending_call.is_none());
+    .expect("ready-only invocation must not wait for pending server startup")
+    .expect_err("pending server must not accept ready-only calls");
+    assert!(pending_call.to_string().contains("not connected"));
 
     let startup = tokio::spawn(async move { startup_client.client().await });
     startup_started.await.expect("server startup should begin");
@@ -2680,21 +2830,23 @@ async fn prepare_connected_call_fails_immediately_until_server_startup_finishes(
         .expect("startup task should finish")
         .expect("server startup should succeed");
 
-    let prepared_call = manager
-        .prepare_connected_call(config, "docs", "search")
+    let ready_error = manager
+        .call_tool(
+            "docs",
+            "search",
+            /*environment_id*/ None,
+            /*arguments*/ None,
+            /*meta*/ None,
+            Some(Duration::from_secs(5)),
+            /*wait_for_server*/ false,
+        )
         .await
-        .expect("ready server should prepare its exact configured tool");
-    assert_eq!(
-        (
-            prepared_call.server_name(),
-            prepared_call.tool_info().tool.name.as_ref(),
-        ),
-        ("docs", "search")
-    );
+        .expect_err("ready server should reach the uninitialized test transport");
+    assert!(format!("{ready_error:#}").contains("MCP client not initialized"));
 }
 
 #[tokio::test]
-async fn prepare_connected_call_respects_server_tool_filters() {
+async fn connected_call_respects_server_tool_filters() {
     let client = create_ready_async_managed_client(vec![create_test_tool("docs", "search")]).await;
     client.client().await.expect("server should be ready");
     let approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
@@ -2713,75 +2865,25 @@ async fn prepare_connected_call_respects_server_tool_filters() {
         .disabled
         .insert("search".to_string());
 
-    assert!(
-        Arc::new(manager)
-            .prepare_connected_call(
-                Arc::new(crate::mcp::tests::test_mcp_config(std::env::temp_dir())),
-                "docs",
-                "search",
-            )
-            .await
-            .is_none()
-    );
-}
-
-#[tokio::test]
-async fn prepare_connected_call_captures_revision_before_codex_apps_catalog() {
-    let client = create_ready_async_managed_client(vec![create_test_tool(
-        CODEX_APPS_MCP_SERVER_NAME,
-        "search",
-    )])
-    .await;
-    client.client().await.expect("server should be ready");
-    let approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
-    let permission_profile = Constrained::allow_any(PermissionProfile::default());
-    let mut manager = McpConnectionSet::new_uninitialized(
-        &approval_policy,
-        &permission_profile,
-        /*prefix_mcp_tool_names*/ true,
-    );
-    manager.insert_test_client(CODEX_APPS_MCP_SERVER_NAME, client);
-    let manager = Arc::new(manager);
-    let config = Arc::new(crate::mcp::tests::test_mcp_config(std::env::temp_dir()));
-
-    let catalog_override = manager.codex_apps_tools_override.write().await;
-    let mut preparation =
-        Box::pin(manager.prepare_connected_call(config, CODEX_APPS_MCP_SERVER_NAME, "search"));
-
-    assert!(
-        preparation.as_mut().now_or_never().is_none(),
-        "preparation should wait for the Codex Apps catalog"
-    );
-    *manager
-        .tool_catalog_revision
-        .try_write()
-        .expect("catalog lookup must not hold the revision lock across an await") += 1;
-
-    drop(catalog_override);
-    let prepared_call = preparation
-        .await
-        .expect("ready server should prepare its exact configured tool");
-    let error = prepared_call
-        .call(
-            /*arguments*/ None, /*meta*/ None, /*timeout*/ None,
+    let filtered_error = manager
+        .call_tool(
+            "docs",
+            "search",
+            /*environment_id*/ None,
+            /*arguments*/ None,
+            /*meta*/ None,
+            Some(Duration::from_secs(5)),
+            /*wait_for_server*/ false,
         )
         .await
-        .expect_err("catalog refresh during lookup must invalidate the prepared call");
-    assert!(error.to_string().contains("catalog changed"));
+        .expect_err("disabled tools should not be callable");
+    assert!(filtered_error.to_string().contains("disabled"));
 }
 
 #[tokio::test]
-async fn prepare_connected_call_rejects_only_administrator_disabled_connectors() {
-    let mut administrator_disabled_tool =
-        create_test_tool(CODEX_APPS_MCP_SERVER_NAME, "administrator_disabled");
-    administrator_disabled_tool.connector_id = Some("administrator_disabled".to_string());
-    let mut user_disabled_tool = create_test_tool(CODEX_APPS_MCP_SERVER_NAME, "user_disabled");
-    user_disabled_tool.connector_id = Some("user_disabled".to_string());
-    let client =
-        create_ready_async_managed_client(vec![administrator_disabled_tool, user_disabled_tool])
-            .await;
-    client.client().await.expect("server should be ready");
-
+async fn call_tool_validates_environment_without_waiting_for_ready_connections() {
+    let client = create_test_managed_client(vec![create_test_tool("docs", "search")]).await;
+    let (client, _, _) = create_gated_async_managed_client(client);
     let approval_policy = Constrained::allow_any(AskForApproval::OnRequest);
     let permission_profile = Constrained::allow_any(PermissionProfile::default());
     let mut manager = McpConnectionSet::new_uninitialized(
@@ -2789,59 +2891,47 @@ async fn prepare_connected_call_rejects_only_administrator_disabled_connectors()
         &permission_profile,
         /*prefix_mcp_tool_names*/ true,
     );
-    manager.insert_test_client(CODEX_APPS_MCP_SERVER_NAME, client);
-    let manager = Arc::new(manager);
+    manager.insert_test_client("docs", client);
+    manager
+        .servers
+        .get_mut("docs")
+        .expect("test server should exist")
+        .metadata
+        .environment_id = "executor-a".to_string();
 
-    let requirements = ConfigRequirementsToml {
-        apps: Some(AppsRequirementsToml {
-            apps: BTreeMap::from([(
-                "administrator_disabled".to_string(),
-                AppRequirementToml {
-                    enabled: Some(false),
-                    tools: None,
-                },
-            )]),
-        }),
-        ..Default::default()
-    };
-    let config_layer_stack =
-        ConfigLayerStack::new(Vec::new(), ConfigRequirements::default(), requirements)
-            .expect("config layer stack");
-    let user_config: TomlValue = serde_json::from_value(serde_json::json!({
-        "apps": {
-            "user_disabled": {
-                "enabled": false,
-                "tools": {
-                    "user_disabled": { "enabled": false }
-                }
-            }
-        }
-    }))
-    .expect("user app configuration");
-    let config_toml_path = AbsolutePathBuf::try_from(std::env::temp_dir().join(CONFIG_TOML_FILE))
-        .expect("absolute config path");
-    let mut config = crate::mcp::tests::test_mcp_config(std::env::temp_dir());
-    config.config_layer_stack = config_layer_stack
-        .with_user_config(&config_toml_path, user_config)
-        .expect("user app configuration should be valid");
-    let config = Arc::new(config);
+    let mismatched_environment = manager
+        .call_tool(
+            "docs",
+            "search",
+            Some("executor-b"),
+            /*arguments*/ None,
+            /*meta*/ None,
+            Some(Duration::from_secs(5)),
+            /*wait_for_server*/ false,
+        )
+        .await
+        .expect_err("calls must reject a server from a different environment");
+    assert_eq!(
+        mismatched_environment.to_string(),
+        "MCP server `docs` is running in environment `executor-a`, expected `executor-b`"
+    );
 
-    assert!(
-        manager
-            .prepare_connected_call(
-                Arc::clone(&config),
-                CODEX_APPS_MCP_SERVER_NAME,
-                "administrator_disabled",
-            )
-            .await
-            .is_none()
-    );
-    assert!(
-        manager
-            .prepare_connected_call(config, CODEX_APPS_MCP_SERVER_NAME, "user_disabled")
-            .await
-            .is_some()
-    );
+    let pending_call = tokio::time::timeout(
+        Duration::from_millis(50),
+        manager.call_tool(
+            "docs",
+            "search",
+            Some("executor-a"),
+            /*arguments*/ None,
+            /*meta*/ None,
+            Some(Duration::from_secs(5)),
+            /*wait_for_server*/ false,
+        ),
+    )
+    .await
+    .expect("environment-scoped calls must not wait for pending server startup")
+    .expect_err("pending server must not accept environment-scoped calls");
+    assert!(pending_call.to_string().contains("not connected"));
 }
 
 #[tokio::test]

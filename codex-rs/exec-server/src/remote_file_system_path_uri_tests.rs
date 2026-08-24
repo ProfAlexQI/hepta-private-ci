@@ -77,7 +77,7 @@ async fn remote_file_system_sends_path_and_sandbox_cwd_uris_without_native_conve
     for path in &paths {
         assert_eq!(
             file_system
-                .read_file(path, Some(&sandbox))
+                .read_file(path, Default::default(), Some(&sandbox))
                 .await
                 .expect("remote read should succeed"),
             Vec::<u8>::new()
@@ -88,6 +88,7 @@ async fn remote_file_system_sends_path_and_sandbox_cwd_uris_without_native_conve
         .into_iter()
         .map(|path| FsReadFileParams {
             path,
+            follow_symlinks: None,
             sandbox: Some(sandbox.clone()),
         })
         .collect::<Vec<_>>();
@@ -265,8 +266,8 @@ async fn concurrent_remote_metadata_requests_share_only_in_flight_results() {
     let path = PathUri::parse("file:///workspace/project/AGENTS.md").expect("valid path URI");
 
     let (first, second) = tokio::join!(
-        file_system.get_metadata(&path, /*sandbox*/ None),
-        file_system.get_metadata(&path, /*sandbox*/ None),
+        file_system.get_metadata(&path, Default::default(), /*sandbox*/ None),
+        file_system.get_metadata(&path, Default::default(), /*sandbox*/ None),
     );
     let expected = FileMetadata {
         is_directory: false,
@@ -284,14 +285,18 @@ async fn concurrent_remote_metadata_requests_share_only_in_flight_results() {
     let initializing_path = path.clone();
     let initializer = tokio::spawn(async move {
         initializing_file_system
-            .get_metadata(&initializing_path, /*sandbox*/ None)
+            .get_metadata(
+                &initializing_path,
+                Default::default(),
+                /*sandbox*/ None,
+            )
             .await
     });
     abandoned_request_rx
         .await
         .expect("server should receive the abandoned metadata request");
 
-    let follower = file_system.get_metadata(&path, /*sandbox*/ None);
+    let follower = file_system.get_metadata(&path, Default::default(), /*sandbox*/ None);
     tokio::pin!(follower);
     assert!(futures::poll!(follower.as_mut()).is_pending());
     assert_eq!(
@@ -326,6 +331,7 @@ async fn concurrent_remote_metadata_requests_share_only_in_flight_results() {
         vec![
             FsGetMetadataParams {
                 path: path.clone(),
+                follow_symlinks: None,
                 sandbox: None,
             };
             3
@@ -355,8 +361,8 @@ async fn concurrent_remote_metadata_errors_are_shared_but_retried() {
     let path = PathUri::parse("file:///workspace/project/AGENTS.md").expect("valid path URI");
 
     let (first, second) = tokio::join!(
-        file_system.get_metadata(&path, /*sandbox*/ None),
-        file_system.get_metadata(&path, /*sandbox*/ None),
+        file_system.get_metadata(&path, Default::default(), /*sandbox*/ None),
+        file_system.get_metadata(&path, Default::default(), /*sandbox*/ None),
     );
     assert_eq!(
         first.expect_err("first metadata error").kind(),
@@ -368,7 +374,7 @@ async fn concurrent_remote_metadata_errors_are_shared_but_retried() {
     );
     assert_eq!(
         file_system
-            .get_metadata(&path, /*sandbox*/ None)
+            .get_metadata(&path, Default::default(), /*sandbox*/ None)
             .await
             .expect("failed metadata request should be retried")
             .size,
@@ -379,10 +385,12 @@ async fn concurrent_remote_metadata_errors_are_shared_but_retried() {
         vec![
             FsGetMetadataParams {
                 path: path.clone(),
+                follow_symlinks: None,
                 sandbox: None,
             },
             FsGetMetadataParams {
                 path,
+                follow_symlinks: None,
                 sandbox: None,
             },
         ]
@@ -430,21 +438,30 @@ async fn remote_metadata_starts_fresh_after_intervening_filesystem_mutation() {
             .await
             .expect("remote filesystem client should connect");
 
-        let stale_request = file_system.get_metadata(&path, /*sandbox*/ None);
+        let stale_request =
+            file_system.get_metadata(&path, Default::default(), /*sandbox*/ None);
         tokio::pin!(stale_request);
         assert!(futures::poll!(stale_request.as_mut()).is_pending());
 
         let result = match mutation {
             MetadataMutation::Write => {
                 file_system
-                    .write_file(&path, b"updated".to_vec(), /*sandbox*/ None)
+                    .write_file(
+                        &path,
+                        b"updated".to_vec(),
+                        Default::default(),
+                        /*sandbox*/ None,
+                    )
                     .await
             }
             MetadataMutation::CreateDirectory => {
                 file_system
                     .create_directory(
                         &path,
-                        CreateDirectoryOptions { recursive: true },
+                        CreateDirectoryOptions {
+                            recursive: true,
+                            follow_symlinks: true,
+                        },
                         /*sandbox*/ None,
                     )
                     .await
@@ -456,6 +473,7 @@ async fn remote_metadata_starts_fresh_after_intervening_filesystem_mutation() {
                         RemoveOptions {
                             recursive: true,
                             force: true,
+                            follow_symlinks: true,
                         },
                         /*sandbox*/ None,
                     )
@@ -484,7 +502,7 @@ async fn remote_metadata_starts_fresh_after_intervening_filesystem_mutation() {
         }
 
         let (refreshed, stale) = tokio::join!(
-            file_system.get_metadata(&path, /*sandbox*/ None),
+            file_system.get_metadata(&path, Default::default(), /*sandbox*/ None),
             stale_request.as_mut(),
         );
         assert_eq!(stale.expect("original metadata request").size, 42);
@@ -494,6 +512,7 @@ async fn remote_metadata_starts_fresh_after_intervening_filesystem_mutation() {
             vec![
                 FsGetMetadataParams {
                     path: path.clone(),
+                    follow_symlinks: None,
                     sandbox: None,
                 };
                 2
@@ -537,15 +556,15 @@ async fn remote_metadata_requests_do_not_cross_path_or_sandbox_boundaries() {
     );
 
     let (first, second) = tokio::join!(
-        file_system.get_metadata(&first_path, /*sandbox*/ None),
-        file_system.get_metadata(&second_path, /*sandbox*/ None),
+        file_system.get_metadata(&first_path, Default::default(), /*sandbox*/ None),
+        file_system.get_metadata(&second_path, Default::default(), /*sandbox*/ None),
     );
     first.expect("metadata for first path");
     second.expect("metadata for second path");
 
     let (first, second) = tokio::join!(
-        file_system.get_metadata(&first_path, Some(&sandbox)),
-        file_system.get_metadata(&first_path, Some(&sandbox)),
+        file_system.get_metadata(&first_path, Default::default(), Some(&sandbox)),
+        file_system.get_metadata(&first_path, Default::default(), Some(&sandbox)),
     );
     first.expect("first sandboxed metadata request");
     second.expect("second sandboxed metadata request");
@@ -838,6 +857,7 @@ async fn complete_websocket_initialize(websocket: &mut WebSocketStream<TcpStream
             id: request.id,
             result: serde_json::to_value(InitializeResponse {
                 session_id: "session-1".to_string(),
+                environment_info: None,
             })
             .expect("initialize response should serialize"),
         }),

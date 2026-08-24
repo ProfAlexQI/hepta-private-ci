@@ -86,7 +86,10 @@ async fn discover_root(
         return discovery;
     }
 
-    match file_system.get_metadata(&path, sandbox).await {
+    match file_system
+        .get_metadata(&path, Default::default(), sandbox)
+        .await
+    {
         Ok(metadata) if metadata.is_directory => {}
         Ok(_) => {
             discovery.error = Some(format!("capability root {path} is not a directory"));
@@ -380,24 +383,13 @@ async fn read_optional_text_file(
                 return None;
             }
         };
-        let mut contents = Vec::with_capacity(size);
-        while let Some(chunk) = stream.next().await {
-            let chunk = match chunk {
-                Ok(chunk) => chunk,
-                Err(error) => {
-                    warnings.push(format!("failed to read capability file {path}: {error}"));
-                    return None;
-                }
-            };
-            let Some(new_len) = contents.len().checked_add(chunk.len()) else {
-                warnings.push(format!("capability file {path} exceeded its read limit"));
-                return None;
-            };
-            if new_len > MAX_FILE_BYTES || !budget.can_add(new_len) {
-                warnings.push(format!("capability file {path} exceeded its read limit"));
-                return None;
-            }
-            contents.extend_from_slice(&chunk);
+        let Some(new_len) = contents.len().checked_add(chunk.len()) else {
+            warnings.push(format!("capability file {path} exceeded its read limit"));
+            return None;
+        };
+        if new_len > MAX_FILE_BYTES || !budget.can_add(new_len) {
+            warnings.push(format!("capability file {path} exceeded its read limit"));
+            return None;
         }
         contents
     };

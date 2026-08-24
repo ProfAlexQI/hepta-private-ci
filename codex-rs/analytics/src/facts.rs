@@ -28,6 +28,7 @@ use codex_protocol::protocol::HookSource;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SkillScope;
 use codex_protocol::protocol::SubAgentSource;
+use codex_protocol::protocol::ThreadSource;
 use codex_protocol::protocol::TokenUsage;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use serde::Serialize;
@@ -104,6 +105,26 @@ pub enum CodeModeToolCallFact {
 pub enum CodeModeToolCallStatus {
     Completed,
     Failed,
+    Interrupted,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ControlToolCallFact {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub call_id: String,
+    pub cell_id: Option<String>,
+    pub tool_name: String,
+    pub started_at_ms: u64,
+    pub completed_at_ms: u64,
+    pub status: ControlToolCallStatus,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ControlToolCallStatus {
+    Completed,
+    Failed,
+    Rejected,
     Interrupted,
 }
 
@@ -368,6 +389,7 @@ pub struct SubAgentThreadStartedInput {
     pub client_version: String,
     pub model: String,
     pub ephemeral: bool,
+    pub thread_source: Option<ThreadSource>,
     pub subagent_source: SubAgentSource,
     pub created_at: u64,
 }
@@ -521,6 +543,7 @@ pub(crate) enum AnalyticsFact {
 pub(crate) enum CustomAnalyticsFact {
     ArtifactOperation(ArtifactOperationInput),
     CodeModeToolCall(CodeModeToolCallFact),
+    ControlToolCall(ControlToolCallFact),
     SubAgentThreadStarted(SubAgentThreadStartedInput),
     Compaction(Box<CodexCompactionEvent>),
     Goal(Box<CodexGoalEvent>),
