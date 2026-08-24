@@ -251,6 +251,7 @@ pub async fn write_local_rehydration_witness_at_lifecycle(
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use codex_extension_api::ExtensionData;
     use codex_hepta_contracts::AgentId;
@@ -321,8 +322,20 @@ mod tests {
         let store = opened_store(&temp).await;
         let current_fence = fence();
         let checkpoint = checkpoint(current_fence.clone());
+        let lease_expires_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_secs()
+            + 3600;
         let lease = match store
-            .acquire_local_lease("lease:e16-extension", 1, "e16-extension-fence")
+            .acquire_local_lease_bound(
+                "lease:e16-extension",
+                current_fence.authority_epoch,
+                current_fence.owner_epoch,
+                1,
+                "e16-extension-fence",
+                lease_expires_at,
+            )
             .await
             .expect("lease")
         {
@@ -337,7 +350,7 @@ mod tests {
             .await
             .expect("local admission");
         let executor = store
-            .open_local_compact_executor("journal:e16-extension", current_fence)
+            .open_local_compact_executor_bound("journal:e16-extension", current_fence, &lease)
             .await
             .expect("executor");
         let current = checkpoint.lease.snapshot.clone();
