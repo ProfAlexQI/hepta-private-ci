@@ -21,6 +21,9 @@ use codex_app_server_client::RemoteAppServerClient;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerNotification;
+use codex_app_server_protocol::ThreadItem;
+use codex_app_server_protocol::ThreadReadParams;
+use codex_app_server_protocol::ThreadReadResponse;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
 use codex_app_server_protocol::TurnStartParams;
@@ -111,6 +114,14 @@ impl ProductClient {
     }
 
     async fn start_thread(&mut self, workspace: &Path) -> Result<String> {
+        self.start_thread_with_ephemeral(workspace, true).await
+    }
+
+    async fn start_thread_with_ephemeral(
+        &mut self,
+        workspace: &Path,
+        ephemeral: bool,
+    ) -> Result<String> {
         let request_id = self.request_id();
         let response: ThreadStartResponse = self
             .inner
@@ -118,7 +129,7 @@ impl ProductClient {
                 request_id,
                 params: ThreadStartParams {
                     cwd: Some(workspace.to_string_lossy().into_owned()),
-                    ephemeral: Some(true),
+                    ephemeral: Some(ephemeral),
                     ..ThreadStartParams::default()
                 },
             })
@@ -128,6 +139,20 @@ impl ProductClient {
             "thread started in the wrong workspace"
         );
         Ok(response.thread.id)
+    }
+
+    async fn read_thread(&mut self, thread_id: &str) -> Result<ThreadReadResponse> {
+        let request_id = self.request_id();
+        self.inner
+            .request_typed(ClientRequest::ThreadRead {
+                request_id,
+                params: ThreadReadParams {
+                    thread_id: thread_id.to_string(),
+                    include_turns: true,
+                },
+            })
+            .await
+            .map_err(Into::into)
     }
 
     async fn run_turn(&mut self, thread_id: &str, text: &str) -> Result<String> {
@@ -473,11 +498,24 @@ async fn real_agentd_local_memory_review_is_read_only_and_replayable() -> Result
     fleet.start(&agent)?;
     let (control, initial_health) = fleet.wait_ready(&agent, 1).await?;
     let mut product = ProductClient::connect(&agent, &control).await?;
-    let thread = product.start_thread(&agent.workspace).await?;
+    let thread = product
+        .start_thread_with_ephemeral(&agent.workspace, false)
+        .await?;
 
-    let first = responses::mount_sse_once(&model, final_sse("local-memory-review-first")).await;
+    let first = responses::mount_sse_once(
+        &model,
+        final_sse_with_citation(
+            "local-memory-review-first",
+            &format!("hepta-memory/{source_id}"),
+        ),
+    )
+    .await;
     product.run_turn(&thread, QUERY).await?;
     assert_physical_request_count_stable(&first, 1, "local memory-review").await?;
+    assert_thread_read_contains_cited_answer(
+        &product.read_thread(&thread).await?,
+        &format!("hepta-memory/{source_id}"),
+    )?;
     let first_request = first.single_request();
     for operation in ["remember", "correct", "forget"] {
         ensure!(
@@ -522,10 +560,23 @@ async fn real_agentd_local_memory_review_is_read_only_and_replayable() -> Result
         "Agentd restart reused the original process"
     );
     let mut restarted_product = ProductClient::connect(&agent, &restarted_control).await?;
-    let restarted_thread = restarted_product.start_thread(&agent.workspace).await?;
-    let second = responses::mount_sse_once(&model, final_sse("local-memory-review-replay")).await;
+    let restarted_thread = restarted_product
+        .start_thread_with_ephemeral(&agent.workspace, false)
+        .await?;
+    let second = responses::mount_sse_once(
+        &model,
+        final_sse_with_citation(
+            "local-memory-review-replay",
+            &format!("hepta-memory/{source_id}"),
+        ),
+    )
+    .await;
     restarted_product.run_turn(&restarted_thread, QUERY).await?;
     assert_physical_request_count_stable(&second, 1, "local memory-review replay").await?;
+    assert_thread_read_contains_cited_answer(
+        &restarted_product.read_thread(&restarted_thread).await?,
+        &format!("hepta-memory/{source_id}"),
+    )?;
     let second_request = second.single_request();
     assert_single_memory_reference_with_channels(
         &second_request,
@@ -1412,6 +1463,55 @@ fn final_sse(response_id: &str) -> String {
         responses::ev_assistant_message(&format!("message-{response_id}"), "done"),
         responses::ev_completed(response_id),
     ])
+}
+
+fn final_sse_with_citation(response_id: &str, citation_path: &str) -> String {
+    responses::sse(vec![
+        responses::ev_response_created(response_id),
+        responses::ev_assistant_message(
+            &format!("message-{response_id}"),
+            &format!(
+                "done<oai-mem-citation><citation_entries>\n{citation_path}:1-1|note=[verified source]\n</citation_entries>\n</oai-mem-citation>"
+            ),
+        ),
+        responses::ev_completed(response_id),
+    ])
+}
+
+fn assert_thread_read_contains_cited_answer(
+    response: &ThreadReadResponse,
+    expected_citation_path: &str,
+) -> Result<()> {
+    let agent_message = response
+        .thread
+        .turns
+        .iter()
+        .flat_map(|turn| turn.items.iter())
+        .filter_map(|item| match item {
+            ThreadItem::AgentMessage {
+                text,
+                memory_citation,
+                ..
+            } => Some((text, memory_citation.as_ref())),
+            _ => None,
+        })
+        .last()
+        .context("thread/read omitted the completed assistant message")?;
+    ensure!(
+        agent_message.0 == "done",
+        "assistant response text was not persisted"
+    );
+    let citation = agent_message
+        .1
+        .context("assistant response omitted its parsed memory citation")?;
+    ensure!(
+        citation
+            .entries
+            .iter()
+            .any(|entry| entry.path == expected_citation_path),
+        "assistant memory citation did not bind to the expected source path"
+    );
+    Ok(())
 }
 
 struct DelayedToolSequence {
