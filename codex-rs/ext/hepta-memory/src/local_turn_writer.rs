@@ -1,0 +1,650 @@
+//! Qualification-only host-bound turn writer.
+//!
+//! This is the narrow bridge between the host's explicit turn binding and the
+//! Agent-local SQLite lease/event/outbox journal.  It is intentionally a
+//! lifecycle contributor, but it never invents a binding: the host must attach
+//! a [`QualificationTurnWriterInput`] to the turn store before the callback is
+//! invoked.  Missing, malformed, stale, or cross-store inputs are ignored by
+//! the callback (the extension API has no error channel) and are exposed as
+//! errors by the input constructor/host helpers.
+//!
+//! The contributor is not installed by `install`.  A qualification embedding
+//! may register it explicitly after it has supplied the host-bound input.  The
+//! default and production extension profiles therefore cannot acquire a lease
+//! or append an outbox row accidentally.
+
+use std::fmt;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::PoisonError;
+use std::time::Duration;
+
+use codex_extension_api::ExtensionData;
+use codex_extension_api::ExtensionFuture;
+use codex_extension_api::ExtensionRegistryBuilder;
+use codex_extension_api::TurnAbortInput;
+use codex_extension_api::TurnErrorInput;
+use codex_extension_api::TurnLifecycleContributor;
+use codex_extension_api::TurnStartInput;
+use codex_extension_api::TurnStopInput;
+use codex_hepta_memory::LocalAdmission;
+use codex_hepta_memory::LocalCompactExecutor;
+use codex_hepta_memory::LocalCompactExecutorError;
+use codex_hepta_memory::LocalLeaseOutbox;
+use codex_hepta_memory::LocalLeaseOutboxError;
+use codex_hepta_memory::LocalReplayFinalization;
+use codex_hepta_memory::LocalTurnLifecycleBinding;
+use codex_hepta_memory::LocalTurnLifecycleBindingError;
+
+/// Schema version for the qualification-only turn writer payload.
+pub const QUALIFICATION_TURN_WRITER_SCHEMA_VERSION: u32 = 1;
+/// This writer never dispatches its local outbox.
+pub const QUALIFICATION_TURN_WRITER_EXTERNAL_EFFECTS: bool = false;
+/// The writer records lifecycle metadata only; it does not mutate the KG.
+pub const QUALIFICATION_TURN_WRITER_KG_WRITE_AUTHORITY: bool = false;
+/// The contributor is opt-in and is not automatically registered.
+pub const QUALIFICATION_TURN_WRITER_LIFECYCLE_REGISTERED: bool = false;
+/// The writer is never a production caller.
+pub const QUALIFICATION_TURN_WRITER_PRODUCTION_CALLER: bool = false;
+
+const TURN_START_TOPIC: &str = "codex.turn.qualification.start.v1";
+const IO_TIMEOUT: Duration = Duration::from_millis(750);
+
+/// Errors found while constructing the immutable host attachment.
+#[derive(Debug)]
+pub enum QualificationTurnWriterInputError {
+    Binding(LocalTurnLifecycleBindingError),
+    Lease(LocalLeaseOutboxError),
+    Executor(LocalCompactExecutorError),
+    Invalid(String),
+}
+
+impl fmt::Display for QualificationTurnWriterInputError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Binding(error) => write!(formatter, "turn binding rejected: {error}"),
+            Self::Lease(error) => write!(formatter, "turn lease rejected: {error}"),
+            Self::Executor(error) => write!(formatter, "turn executor rejected: {error}"),
+            Self::Invalid(error) => write!(formatter, "invalid turn writer input: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for QualificationTurnWriterInputError {}
+
+impl From<LocalTurnLifecycleBindingError> for QualificationTurnWriterInputError {
+    fn from(error: LocalTurnLifecycleBindingError) -> Self {
+        Self::Binding(error)
+    }
+}
+
+impl From<LocalLeaseOutboxError> for QualificationTurnWriterInputError {
+    fn from(error: LocalLeaseOutboxError) -> Self {
+        Self::Lease(error)
+    }
+}
+
+impl From<LocalCompactExecutorError> for QualificationTurnWriterInputError {
+    fn from(error: LocalCompactExecutorError) -> Self {
+        Self::Executor(error)
+    }
+}
+
+/// Immutable host-supplied input for one turn writer invocation.
+///
+/// The lease and compact executor are cloned handles to the same Agent-local
+/// store.  [`LocalTurnLifecycleBinding`] is derived from those exact handles,
+/// so an input cannot be constructed from guessed epochs or a legacy lease.
+#[derive(Clone)]
+pub struct QualificationTurnWriterInput {
+    pub schema_version: u32,
+    pub turn_id: String,
+    pub binding: LocalTurnLifecycleBinding,
+    pub occurrence_key: String,
+    pub payload_json: String,
+    pub lease: LocalLeaseOutbox,
+    pub executor: LocalCompactExecutor,
+}
+
+impl QualificationTurnWriterInput {
+    /// Build an input from exact host-owned handles and a binding made from
+    /// those handles.  No database mutation occurs here.
+    pub fn new(
+        turn_id: impl Into<String>,
+        binding: LocalTurnLifecycleBinding,
+        lease: LocalLeaseOutbox,
+        executor: LocalCompactExecutor,
+        occurrence_key: impl Into<String>,
+        payload_json: impl Into<String>,
+    ) -> Result<Self, QualificationTurnWriterInputError> {
+        let turn_id = turn_id.into();
+        let occurrence_key = occurrence_key.into();
+        let payload_json = payload_json.into();
+        binding.validate()?;
+        if binding.turn_id != turn_id {
+            return Err(QualificationTurnWriterInputError::Invalid(
+                "binding turn id does not match input turn id".to_string(),
+            ));
+        }
+        if occurrence_key.trim().is_empty()
+            || occurrence_key.len() > 512
+            || occurrence_key.as_bytes().contains(&0)
+        {
+            return Err(QualificationTurnWriterInputError::Invalid(
+                "occurrence key must contain 1..=512 non-NUL bytes".to_string(),
+            ));
+        }
+        if payload_json.trim().is_empty()
+            || payload_json.len() > 65_536
+            || payload_json.as_bytes().contains(&0)
+        {
+            return Err(QualificationTurnWriterInputError::Invalid(
+                "payload must contain 1..=65536 non-NUL bytes".to_string(),
+            ));
+        }
+        Ok(Self {
+            schema_version: QUALIFICATION_TURN_WRITER_SCHEMA_VERSION,
+            turn_id,
+            binding,
+            occurrence_key,
+            payload_json,
+            lease,
+            executor,
+        })
+    }
+
+    fn validate_for_turn(&self, turn_id: &str) -> Result<(), QualificationTurnWriterInputError> {
+        if self.schema_version != QUALIFICATION_TURN_WRITER_SCHEMA_VERSION {
+            return Err(QualificationTurnWriterInputError::Invalid(
+                "unsupported writer input schema".to_string(),
+            ));
+        }
+        if self.turn_id != turn_id || self.binding.turn_id != turn_id {
+            return Err(QualificationTurnWriterInputError::Invalid(
+                "writer input is bound to a different turn".to_string(),
+            ));
+        }
+        self.binding.validate()?;
+        Ok(())
+    }
+}
+
+/// Atomically attach an input to a turn store.
+///
+/// A second attachment is rejected rather than replaced.  This prevents a
+/// late or untrusted host callback from swapping the lease/fence underneath a
+/// running turn.
+pub fn attach_qualification_turn_writer(
+    turn_store: &ExtensionData,
+    input: QualificationTurnWriterInput,
+) -> bool {
+    turn_store.insert_if(input, |current| current.is_none())
+}
+
+/// Register the qualification contributor on an embedding-owned registry.
+///
+/// This function is intentionally separate from [`super::install`].  An
+/// embedding must choose the qualification profile explicitly and must still
+/// attach a host-bound input for each turn; registration alone cannot create a
+/// lease or grant authority.
+pub fn install_qualification_turn_writer<C: Sync>(builder: &mut ExtensionRegistryBuilder<C>) {
+    builder.turn_lifecycle_contributor(Arc::new(QualificationTurnLifecycleContributor::new()));
+}
+
+#[derive(Default)]
+struct TurnWriterState {
+    attempted: bool,
+    starting: bool,
+    terminal_requested: Option<TerminalAction>,
+    terminal_started: bool,
+    active: Option<QualificationTurnWriterInput>,
+}
+
+#[derive(Clone, Debug)]
+enum TerminalAction {
+    Stop,
+    Indeterminate(String),
+}
+
+/// Explicit qualification-only lifecycle contributor.
+///
+/// Hosts must register this value themselves and attach a
+/// [`QualificationTurnWriterInput`] before `on_turn_start`.  The regular
+/// extension installer deliberately does not register it.
+#[derive(Default)]
+pub struct QualificationTurnLifecycleContributor;
+
+impl QualificationTurnLifecycleContributor {
+    pub const fn new() -> Self {
+        Self
+    }
+
+    fn state<'a>(&self, turn_store: &'a ExtensionData) -> std::sync::Arc<Mutex<TurnWriterState>> {
+        turn_store.get_or_init(Mutex::default)
+    }
+
+    async fn admit(
+        input: &QualificationTurnWriterInput,
+    ) -> Result<bool, QualificationTurnWriterInputError> {
+        input
+            .binding
+            .verify_current(&input.lease, &input.executor)
+            .await?;
+        let replay = input
+            .lease
+            .finalize_replayed_occurrence(input.occurrence_key.clone())
+            .await?;
+        match replay {
+            LocalReplayFinalization::Released { .. } => Ok(false),
+            LocalReplayFinalization::Queued(_) => Ok(true),
+            LocalReplayFinalization::NotAdmitted => {
+                match input
+                    .lease
+                    .admit(
+                        input.occurrence_key.clone(),
+                        TURN_START_TOPIC,
+                        input.payload_json.clone(),
+                    )
+                    .await?
+                {
+                    LocalAdmission::Queued(_) | LocalAdmission::Replay(_) => Ok(true),
+                }
+            }
+        }
+    }
+
+    async fn complete(
+        input: &QualificationTurnWriterInput,
+        action: TerminalAction,
+    ) -> Result<(), QualificationTurnWriterInputError> {
+        if let TerminalAction::Indeterminate(reason) = action {
+            input
+                .lease
+                .mark_indeterminate(input.occurrence_key.clone(), reason)
+                .await?;
+        }
+        input
+            .binding
+            .verify_current(&input.lease, &input.executor)
+            .await?;
+        input.lease.release().await?;
+        Ok(())
+    }
+
+    async fn start_one(&self, input: QualificationTurnWriterInput, turn_store: &ExtensionData) {
+        let result = tokio::time::timeout(IO_TIMEOUT, Self::admit(&input)).await;
+        let active = matches!(result, Ok(Ok(true)));
+        let terminal = {
+            let state = turn_store.get::<Mutex<TurnWriterState>>();
+            let Some(state) = state else { return };
+            let mut guard = state.lock().unwrap_or_else(PoisonError::into_inner);
+            guard.starting = false;
+            if active {
+                guard.active = Some(input.clone());
+            }
+            guard
+                .terminal_requested
+                .take()
+                .map(|action| (input, action))
+        };
+        if let Some((input, action)) = terminal {
+            let completed = tokio::time::timeout(IO_TIMEOUT, Self::complete(&input, action))
+                .await
+                .is_ok_and(|result| result.is_ok());
+            if let Some(state) = turn_store.get::<Mutex<TurnWriterState>>() {
+                let mut guard = state.lock().unwrap_or_else(PoisonError::into_inner);
+                guard.terminal_started = completed;
+                if completed {
+                    guard.active = None;
+                } else if active {
+                    guard.active = Some(input);
+                }
+            }
+        }
+    }
+
+    async fn finish(&self, turn_store: &ExtensionData, action: TerminalAction) {
+        let state = turn_store.get::<Mutex<TurnWriterState>>();
+        let Some(state) = state else { return };
+        let active = {
+            let mut guard = state.lock().unwrap_or_else(PoisonError::into_inner);
+            if guard.terminal_started {
+                return;
+            }
+            if guard.starting {
+                guard.terminal_requested.get_or_insert(action);
+                return;
+            }
+            let Some(active) = guard.active.clone() else {
+                return;
+            };
+            guard.terminal_started = true;
+            active
+        };
+        let completed = tokio::time::timeout(IO_TIMEOUT, Self::complete(&active, action))
+            .await
+            .is_ok_and(|result| result.is_ok());
+        let mut guard = state.lock().unwrap_or_else(PoisonError::into_inner);
+        if completed {
+            guard.active = None;
+        } else {
+            guard.terminal_started = false;
+            guard.active = Some(active);
+        }
+    }
+}
+
+impl TurnLifecycleContributor for QualificationTurnLifecycleContributor {
+    fn on_turn_start<'a>(&'a self, input: TurnStartInput<'a>) -> ExtensionFuture<'a, ()> {
+        Box::pin(async move {
+            let Some(host_input) = input.turn_store.get::<QualificationTurnWriterInput>() else {
+                return;
+            };
+            if host_input.validate_for_turn(input.turn_id).is_err()
+                || input.turn_store.level_id() != input.turn_id
+            {
+                return;
+            }
+            let state = self.state(input.turn_store);
+            {
+                let mut guard = state.lock().unwrap_or_else(PoisonError::into_inner);
+                if guard.attempted {
+                    return;
+                }
+                guard.attempted = true;
+                guard.starting = true;
+            }
+            self.start_one((*host_input).clone(), input.turn_store)
+                .await;
+        })
+    }
+
+    fn on_turn_stop<'a>(&'a self, input: TurnStopInput<'a>) -> ExtensionFuture<'a, ()> {
+        Box::pin(async move { self.finish(input.turn_store, TerminalAction::Stop).await })
+    }
+
+    fn on_turn_abort<'a>(&'a self, input: TurnAbortInput<'a>) -> ExtensionFuture<'a, ()> {
+        Box::pin(async move {
+            self.finish(
+                input.turn_store,
+                TerminalAction::Indeterminate(format!("turn_aborted:{:?}", input.reason)),
+            )
+            .await;
+        })
+    }
+
+    fn on_turn_error<'a>(&'a self, input: TurnErrorInput<'a>) -> ExtensionFuture<'a, ()> {
+        Box::pin(async move {
+            if input.turn_id != input.turn_store.level_id() {
+                return;
+            }
+            self.finish(
+                input.turn_store,
+                TerminalAction::Indeterminate(format!("turn_error:{:?}", input.error)),
+            )
+            .await;
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use codex_extension_api::ExtensionData;
+    use codex_extension_api::TurnStartInput;
+    use codex_extension_api::TurnStopInput;
+    use codex_hepta_contracts::AgentId;
+    use codex_hepta_memory::CognitiveStore;
+    use codex_hepta_memory::CompactFence;
+    use codex_hepta_memory::LocalLeaseAcquire;
+    use codex_hepta_paths::HeptaFleetRoot;
+    use codex_protocol::config_types::{CollaborationMode, ModeKind, Settings};
+    use codex_protocol::protocol::TokenUsage;
+    use tempfile::TempDir;
+
+    use super::*;
+
+    const TURN_ID: &str = "turn:writer-e26";
+    const LEASE_ID: &str = "lease:writer-e26";
+    const OCCURRENCE: &str = "occurrence:writer-e26";
+
+    fn mode() -> CollaborationMode {
+        CollaborationMode {
+            mode: ModeKind::Default,
+            settings: Settings {
+                model: "test-model".to_string(),
+                reasoning_effort: None,
+                developer_instructions: None,
+            },
+        }
+    }
+
+    async fn prepared() -> (TempDir, CognitiveStore, QualificationTurnWriterInput) {
+        let temp = TempDir::new().expect("temp");
+        let fleet_root = temp.path().join("fleet");
+        fs::create_dir_all(&fleet_root).expect("fleet root");
+        let fleet = HeptaFleetRoot::parse(fleet_root).expect("fleet");
+        let owner = AgentId::parse("00000000-0000-4000-8000-000000000981").expect("owner");
+        let store = CognitiveStore::open(&fleet.layout().agent(&owner))
+            .await
+            .expect("store");
+        let fence = CompactFence::new(17, 19, 1, "writer-e26-fence").expect("fence");
+        let expires = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_secs()
+            + 3_600;
+        let lease = match store
+            .acquire_local_lease_bound(
+                LEASE_ID,
+                fence.authority_epoch,
+                fence.owner_epoch,
+                fence.generation,
+                fence.fencing_token.clone(),
+                expires,
+            )
+            .await
+            .expect("bound lease")
+        {
+            LocalLeaseAcquire::Acquired(lease) | LocalLeaseAcquire::Replay(lease) => lease,
+        };
+        let executor = store
+            .open_local_compact_executor_bound("journal:writer-e26", fence, &lease)
+            .await
+            .expect("bound executor");
+        let binding =
+            LocalTurnLifecycleBinding::from_handles(TURN_ID, &lease, &executor).expect("binding");
+        let input = QualificationTurnWriterInput::new(
+            TURN_ID,
+            binding,
+            lease,
+            executor,
+            OCCURRENCE,
+            r#"{"schema_version":1,"external_effect":false,"kg_write_authority":false}"#,
+        )
+        .expect("writer input");
+        (temp, store, input)
+    }
+
+    fn start_input<'a>(
+        turn_store: &'a ExtensionData,
+        thread_store: &'a ExtensionData,
+        session_store: &'a ExtensionData,
+        mode: &'a CollaborationMode,
+        usage: &'a TokenUsage,
+    ) -> TurnStartInput<'a> {
+        TurnStartInput {
+            turn_id: TURN_ID,
+            collaboration_mode: mode,
+            token_usage_at_turn_start: usage,
+            session_store,
+            thread_store,
+            turn_store,
+        }
+    }
+
+    #[tokio::test]
+    async fn explicit_bound_writer_admits_once_and_releases_on_stop() {
+        let (_temp, store, input) = prepared().await;
+        let turn_store = ExtensionData::new(TURN_ID);
+        let thread_store = ExtensionData::new("thread:writer-e26");
+        let session_store = ExtensionData::new("session:writer-e26");
+        assert!(attach_qualification_turn_writer(&turn_store, input.clone()));
+        assert!(!attach_qualification_turn_writer(
+            &turn_store,
+            input.clone()
+        ));
+        let contributor = QualificationTurnLifecycleContributor::new();
+        let mode = mode();
+        let usage = TokenUsage::default();
+        contributor
+            .on_turn_start(start_input(
+                &turn_store,
+                &thread_store,
+                &session_store,
+                &mode,
+                &usage,
+            ))
+            .await;
+        contributor
+            .on_turn_start(start_input(
+                &turn_store,
+                &thread_store,
+                &session_store,
+                &mode,
+                &usage,
+            ))
+            .await;
+        let counts = input.lease.snapshot_counts().await.expect("counts");
+        assert_eq!(counts.event_rows, 1);
+        assert_eq!(counts.outbox_rows, 1);
+        contributor
+            .on_turn_stop(TurnStopInput {
+                session_store: &session_store,
+                thread_store: &thread_store,
+                turn_store: &turn_store,
+            })
+            .await;
+        contributor
+            .on_turn_stop(TurnStopInput {
+                session_store: &session_store,
+                thread_store: &thread_store,
+                turn_store: &turn_store,
+            })
+            .await;
+        assert!(
+            store
+                .reopen_local_lease(LEASE_ID, 1, input.lease.fencing_token().to_string())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn reopened_host_replays_same_occurrence_without_second_outbox_row() {
+        let (temp, store, input) = prepared().await;
+        let first_turn = ExtensionData::new(TURN_ID);
+        let thread_store = ExtensionData::new("thread:writer-e26");
+        let session_store = ExtensionData::new("session:writer-e26");
+        assert!(attach_qualification_turn_writer(&first_turn, input.clone()));
+        let contributor = QualificationTurnLifecycleContributor::new();
+        let mode = mode();
+        let usage = TokenUsage::default();
+        contributor
+            .on_turn_start(start_input(
+                &first_turn,
+                &thread_store,
+                &session_store,
+                &mode,
+                &usage,
+            ))
+            .await;
+        let counts_before = input.lease.snapshot_counts().await.expect("counts");
+        drop(contributor);
+        drop(first_turn);
+        drop(input);
+        drop(store);
+
+        let fleet_root = temp.path().join("fleet");
+        let fleet = HeptaFleetRoot::parse(fleet_root).expect("fleet reopen");
+        let owner = AgentId::parse("00000000-0000-4000-8000-000000000981").expect("owner");
+        let reopened_store = CognitiveStore::open(&fleet.layout().agent(&owner))
+            .await
+            .expect("reopen store");
+        let lease = reopened_store
+            .reopen_local_lease(LEASE_ID, 1, "writer-e26-fence")
+            .await
+            .expect("reopen lease");
+        let fence = CompactFence::new(17, 19, 1, "writer-e26-fence").expect("fence");
+        let executor = reopened_store
+            .open_local_compact_executor_bound("journal:writer-e26", fence, &lease)
+            .await
+            .expect("reopen executor");
+        let binding = LocalTurnLifecycleBinding::from_handles(TURN_ID, &lease, &executor)
+            .expect("reopen binding");
+        let input = QualificationTurnWriterInput::new(
+            TURN_ID,
+            binding,
+            lease,
+            executor,
+            OCCURRENCE,
+            r#"{"schema_version":1,"external_effect":false,"kg_write_authority":false}"#,
+        )
+        .expect("reopen input");
+        let second_turn = ExtensionData::new(TURN_ID);
+        assert!(attach_qualification_turn_writer(
+            &second_turn,
+            input.clone()
+        ));
+        let contributor = QualificationTurnLifecycleContributor::new();
+        contributor
+            .on_turn_start(start_input(
+                &second_turn,
+                &thread_store,
+                &session_store,
+                &mode,
+                &usage,
+            ))
+            .await;
+        assert_eq!(
+            input.lease.snapshot_counts().await.expect("counts"),
+            counts_before
+        );
+        contributor
+            .on_turn_stop(TurnStopInput {
+                session_store: &session_store,
+                thread_store: &thread_store,
+                turn_store: &second_turn,
+            })
+            .await;
+    }
+
+    #[tokio::test]
+    async fn forged_binding_is_rejected_before_any_admission() {
+        let (_temp, _store, mut input) = prepared().await;
+        input.binding.fence.owner_epoch += 1;
+        let turn_store = ExtensionData::new(TURN_ID);
+        assert!(attach_qualification_turn_writer(&turn_store, input));
+        let contributor = QualificationTurnLifecycleContributor::new();
+        let thread_store = ExtensionData::new("thread:writer-e26");
+        let session_store = ExtensionData::new("session:writer-e26");
+        let mode = mode();
+        let usage = TokenUsage::default();
+        contributor
+            .on_turn_start(start_input(
+                &turn_store,
+                &thread_store,
+                &session_store,
+                &mode,
+                &usage,
+            ))
+            .await;
+        let state = turn_store.get::<Mutex<TurnWriterState>>();
+        assert!(
+            state.is_none(),
+            "invalid input must not create writer state"
+        );
+    }
+}
