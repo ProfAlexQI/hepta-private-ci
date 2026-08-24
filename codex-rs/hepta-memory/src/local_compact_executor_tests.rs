@@ -271,6 +271,23 @@ async fn bound_compact_mutation_rejects_lease_expiry_after_open() {
             crate::LocalLeaseOutboxError::StaleFence(_)
         ))
     ));
+
+    // E20 closes the expired bound lease only through the explicit host
+    // timeout transition.  The already-open compact writer remains fenced
+    // after that terminal append; expiry never grants a takeover or a retry.
+    let expired = lease
+        .expire_lease()
+        .await
+        .expect("explicit expiry terminalization");
+    assert_eq!(expired.state, crate::LocalLeaseState::RolledBack);
+    assert!(matches!(
+        executor
+            .append_intent("op:after-explicit-expiry", &checkpoint, &current)
+            .await,
+        Err(crate::LocalCompactExecutorError::Lease(
+            crate::LocalLeaseOutboxError::StaleFence(_)
+        ))
+    ));
     let after = executor.snapshot().await.expect("after expiry snapshot");
     assert_eq!(after.entries, before.entries);
     assert_eq!(after.head_sha256, before.head_sha256);

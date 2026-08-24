@@ -1,4 +1,7 @@
 use pretty_assertions::assert_eq;
+use std::time::Duration;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 use tempfile::TempDir;
 
 use crate::CognitiveStore;
@@ -27,6 +30,13 @@ fn acquired(value: LocalLeaseAcquire) -> crate::LocalLeaseOutbox {
     match value {
         LocalLeaseAcquire::Acquired(handle) | LocalLeaseAcquire::Replay(handle) => handle,
     }
+}
+
+fn unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_secs()
 }
 
 #[tokio::test]
@@ -113,6 +123,130 @@ async fn generation_cas_release_and_stale_handle_fail_closed() {
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn bound_expiry_is_explicit_timeout_rollback_and_exact_head_reopens_generation() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 113).await;
+    let expires_at = unix_seconds() + 1;
+    let old = acquired(
+        store
+            .acquire_local_lease_bound(
+                "lease:expiry-terminal",
+                3,
+                8,
+                1,
+                "fence:expiry-1",
+                expires_at,
+            )
+            .await
+            .expect("bound acquire"),
+    );
+    old.admit("occurrence:before-expiry", "topic", "payload")
+        .await
+        .expect("admit before expiry");
+
+    assert!(matches!(
+        old.expire_lease().await,
+        Err(LocalLeaseOutboxError::StaleFence(message))
+            if message.contains("has not expired")
+    ));
+
+    for _ in 0..120 {
+        if unix_seconds() >= expires_at {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert!(unix_seconds() >= expires_at, "test lease did not expire");
+
+    // Deadline expiry makes ordinary host transitions stale; only the
+    // explicit timeout operation may close this bound lease.
+    assert!(matches!(
+        old.release().await,
+        Err(LocalLeaseOutboxError::StaleFence(message))
+            if message.contains("has expired")
+    ));
+    assert!(matches!(
+        old.rollback_lease().await,
+        Err(LocalLeaseOutboxError::StaleFence(message))
+            if message.contains("has expired")
+    ));
+
+    let expired = old.expire_lease().await.expect("explicit expiry rollback");
+    assert_eq!(expired.state, crate::LocalLeaseState::RolledBack);
+    assert_eq!(expired.lease_sequence, 2);
+    assert_eq!(expired.generation, 1);
+    assert_eq!(expired.fencing_token, "fence:expiry-1");
+    assert_eq!(expired.authority_epoch, Some(3));
+    assert_eq!(expired.owner_epoch, Some(8));
+    assert_eq!(expired.lease_expires_at_unix_seconds, Some(expires_at));
+
+    // A host retry after a committed timeout is a replay, not another
+    // terminal append.  The historical event/outbox fence remains valid.
+    let replay = old.expire_lease().await.expect("expiry replay");
+    assert_eq!(replay, expired);
+    assert_eq!(
+        old.snapshot_counts()
+            .await
+            .expect("post-expiry counts")
+            .lease_rows,
+        2
+    );
+
+    // The pre-expiry writer remains fenced after timeout terminalization.
+    assert!(matches!(
+        old.admit("occurrence:stale-after-expiry", "topic", "payload")
+            .await,
+        Err(LocalLeaseOutboxError::StaleFence(_))
+    ));
+
+    let next_expires_at = unix_seconds() + 3_600;
+    let next = acquired(
+        store
+            .acquire_local_lease_after_head_bound(
+                "lease:expiry-terminal",
+                expired.clone(),
+                3,
+                8,
+                2,
+                "fence:expiry-2",
+                next_expires_at,
+            )
+            .await
+            .expect("exact-head next generation"),
+    );
+    assert_eq!(next.generation(), 2);
+    assert_eq!(next.fencing_token(), "fence:expiry-2");
+    assert_eq!(
+        next.binding()
+            .expect("next bound lease")
+            .lease_expires_at_unix_seconds,
+        next_expires_at
+    );
+    assert!(
+        next.admit("occurrence:next-generation", "topic", "payload")
+            .await
+            .is_ok()
+    );
+}
+
+#[tokio::test]
+async fn expiry_rejects_legacy_unbound_leases() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 114).await;
+    let legacy = acquired(
+        store
+            .acquire_local_lease("lease:unbound-expiry", 1, "fence:legacy")
+            .await
+            .expect("legacy acquire"),
+    );
+    assert!(matches!(
+        legacy.expire_lease().await,
+        Err(LocalLeaseOutboxError::Invalid(message))
+            if message.contains("explicit authority/owner/expiry binding")
+    ));
 }
 
 #[tokio::test]

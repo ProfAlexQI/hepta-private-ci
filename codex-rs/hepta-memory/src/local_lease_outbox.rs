@@ -712,6 +712,115 @@ impl LocalLeaseOutbox {
         self.transition_lease(LocalLeaseState::RolledBack).await
     }
 
+    /// Terminalize an explicitly bound lease after its deadline has passed.
+    ///
+    /// Expiry is deliberately a separate operation from `release` and
+    /// `rollback_lease`: those operations are host decisions that must happen
+    /// before the fence deadline, while this operation is the host's explicit
+    /// timeout decision after the deadline.  The append-only schema predates a
+    /// distinct `expired` state, so the existing `rolled_back` terminal state
+    /// is used for this timeout transition.  The API name and the persisted
+    /// binding make the reason auditable without weakening the journal check.
+    ///
+    /// This method is bound-only.  Legacy H8 leases have no authority epoch,
+    /// owner epoch, or expiry and therefore cannot be expired by inference.
+    /// Because the compatibility schema has one `rolled_back` terminal state,
+    /// a matching bound rollback that was already recorded before the deadline
+    /// is also returned as an idempotent terminal result once that deadline is
+    /// reached; no second reason marker is invented in SQLite.
+    /// All lease, event, and outbox checks happen under the same
+    /// `BEGIN IMMEDIATE` transaction as the terminal append.  No takeover,
+    /// renewal, reconciliation, scheduler, or external effect is performed.
+    pub async fn expire_lease(&self) -> Result<LocalLease, LocalLeaseOutboxError> {
+        let handle_binding = self.binding().ok_or_else(|| {
+            LocalLeaseOutboxError::Invalid(
+                "explicit authority/owner/expiry binding is required to expire a local lease"
+                    .to_string(),
+            )
+        })?;
+        validate_lease_binding(&handle_binding)?;
+
+        let mut transaction = self
+            .store
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let (latest, _) =
+            load_lease_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let Some(previous) = latest else {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "local lease disappeared".to_string(),
+            ));
+        };
+
+        // `ensure_current_active` intentionally rejects an expired lease.  An
+        // expiry transition needs the same identity/fence checks without that
+        // final deadline check, so perform the identity check first and apply
+        // the monotonic deadline condition below.  A matching rolled-back
+        // head is accepted as an idempotent retry of a timeout that committed
+        // before the host observed its result; no second terminal row is
+        // appended.
+        ensure_current_handle_fields(&previous, self)?;
+        let persisted_binding = prior_binding(&previous).ok_or_else(|| {
+            LocalLeaseOutboxError::Invalid(
+                "explicit authority/owner/expiry binding is required to expire a local lease"
+                    .to_string(),
+            )
+        })?;
+        if persisted_binding != handle_binding {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "local lease authority/owner/expiry binding changed".to_string(),
+            ));
+        }
+
+        // Validate both append-only child journals before closing the lease;
+        // expiry must not become a way to hide a damaged event or outbox
+        // chain.  These reads remain inside the write transaction, so the
+        // checked head is the one immediately preceding the terminal row.
+        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+
+        let now = u64::try_from(now_unix_seconds()?)
+            .map_err(|_| LocalLeaseOutboxError::Clock("clock before Unix epoch".to_string()))?;
+        if now < persisted_binding.lease_expires_at_unix_seconds {
+            return Err(LocalLeaseOutboxError::StaleFence(format!(
+                "local lease has not expired (deadline {})",
+                persisted_binding.lease_expires_at_unix_seconds
+            )));
+        }
+
+        if previous.state == LocalLeaseState::RolledBack {
+            transaction
+                .commit()
+                .await
+                .map_err(crate::cognitive_store::unavailable)?;
+            return Ok(previous);
+        }
+        if previous.state != LocalLeaseState::Active {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "local lease is no longer active".to_string(),
+            ));
+        }
+
+        let lease = append_lease(
+            &mut transaction,
+            &self.lease_id,
+            &self.owner_agent_id,
+            self.generation,
+            &self.fencing_token,
+            LocalLeaseState::RolledBack,
+            Some(&previous),
+            Some(&persisted_binding),
+        )
+        .await?;
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(lease)
+    }
+
     async fn transition_lease(
         &self,
         state: LocalLeaseState,
@@ -1766,11 +1875,14 @@ async fn load_lease_chain(
     Ok((latest, rows.len()))
 }
 
-/// Return every fence tuple that was actually active in the lease history.
+/// Return every fence tuple granted anywhere in the lease history.
 /// Event/outbox rows are append-only and may outlive the active lease row, so
-/// checking membership in this history (rather than only comparing with the
-/// current head) preserves valid historical rows while rejecting forged rows
-/// that carry a generation/fence never granted by the lease journal.
+/// checking membership in the complete history (rather than only comparing
+/// with the current active head) preserves valid historical rows after a
+/// release, rollback, or timeout expiry while rejecting forged rows that carry
+/// a generation/fence never granted by the lease journal. `load_lease_chain`
+/// validates every row's digest and transition shape before this helper is
+/// called, and the set deduplicates the terminal copy of each tuple.
 async fn active_lease_fences(
     transaction: &mut Transaction<'_, Sqlite>,
     lease_id: &str,
@@ -1779,7 +1891,7 @@ async fn active_lease_fences(
     let rows = sqlx::query(
         "SELECT owner_agent_id, generation, fencing_token
          FROM cognitive_local_leases
-         WHERE lease_id = ? AND state = 'active'",
+         WHERE lease_id = ?",
     )
     .bind(lease_id)
     .fetch_all(&mut **transaction)
@@ -2234,11 +2346,35 @@ fn ensure_current_active(
     lease: &LocalLease,
     handle: &LocalLeaseOutbox,
 ) -> Result<(), LocalLeaseOutboxError> {
+    ensure_current_identity(lease, handle)?;
+    if let Some(expires_at) = lease.lease_expires_at_unix_seconds {
+        let now = u64::try_from(now_unix_seconds()?)
+            .map_err(|_| LocalLeaseOutboxError::Clock("clock before Unix epoch".to_string()))?;
+        if now >= expires_at {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "local lease has expired".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn ensure_current_identity(
+    lease: &LocalLease,
+    handle: &LocalLeaseOutbox,
+) -> Result<(), LocalLeaseOutboxError> {
     if lease.state != LocalLeaseState::Active {
         return Err(LocalLeaseOutboxError::StaleFence(
             "local lease is no longer active".to_string(),
         ));
     }
+    ensure_current_handle_fields(lease, handle)
+}
+
+fn ensure_current_handle_fields(
+    lease: &LocalLease,
+    handle: &LocalLeaseOutbox,
+) -> Result<(), LocalLeaseOutboxError> {
     if lease.owner_agent_id != handle.owner_agent_id {
         return Err(LocalLeaseOutboxError::StaleFence(
             "local lease owner changed".to_string(),
@@ -2256,15 +2392,6 @@ fn ensure_current_active(
         return Err(LocalLeaseOutboxError::StaleFence(
             "local lease authority/owner/expiry binding changed".to_string(),
         ));
-    }
-    if let Some(expires_at) = lease.lease_expires_at_unix_seconds {
-        let now = u64::try_from(now_unix_seconds()?)
-            .map_err(|_| LocalLeaseOutboxError::Clock("clock before Unix epoch".to_string()))?;
-        if now >= expires_at {
-            return Err(LocalLeaseOutboxError::StaleFence(
-                "local lease has expired".to_string(),
-            ));
-        }
     }
     Ok(())
 }
