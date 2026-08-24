@@ -19,6 +19,7 @@ use crate::CompactSummaryReceipt;
 use crate::LOCAL_COMPACT_EXECUTOR_EXTERNAL_EFFECTS;
 use crate::LOCAL_COMPACT_EXECUTOR_KG_WRITE_AUTHORITY;
 use crate::LOCAL_COMPACT_EXECUTOR_NAMESPACE;
+use crate::LocalCompactExecutorError;
 use crate::LocalLeaseAcquire;
 use crate::cognitive_test_support::agent_id;
 use crate::cognitive_test_support::layout;
@@ -291,6 +292,80 @@ async fn bound_compact_mutation_rejects_lease_expiry_after_open() {
     let after = executor.snapshot().await.expect("after expiry snapshot");
     assert_eq!(after.entries, before.entries);
     assert_eq!(after.head_sha256, before.head_sha256);
+    store.pool.close().await;
+}
+
+#[tokio::test]
+async fn compact_rotation_rejects_old_journal_and_accepts_new_journal_id() {
+    let (_temp, store, lease, old_executor, old_fence, old_checkpoint) =
+        open_bound_executor(205, 1).await;
+    let old_current = snapshot(old_fence.clone());
+    old_executor
+        .append_intent("op:rotation-old", &old_checkpoint, &old_current)
+        .await
+        .expect("old generation intent");
+
+    let expires_at = lease
+        .binding()
+        .expect("explicit old lease binding")
+        .lease_expires_at_unix_seconds;
+    for _ in 0..240 {
+        if unix_seconds() >= expires_at {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(unix_seconds() >= expires_at, "old lease did not expire");
+    let terminal = lease
+        .expire_lease()
+        .await
+        .expect("old timeout terminalization");
+
+    let next_fence = fence(2, "bound-fence-next");
+    let next_expiry = unix_seconds() + 3_600;
+    let next = match store
+        .acquire_local_lease_after_head_bound(
+            "lease:bound-executor",
+            terminal,
+            next_fence.authority_epoch,
+            next_fence.owner_epoch,
+            next_fence.generation,
+            next_fence.fencing_token.clone(),
+            next_expiry,
+        )
+        .await
+        .expect("next generation lease")
+    {
+        LocalLeaseAcquire::Acquired(lease) | LocalLeaseAcquire::Replay(lease) => lease,
+    };
+
+    // Reusing the old journal id would mix generation-1 rows with the new
+    // fence.  The opener must reject that history rather than rotate it
+    // implicitly or overwrite it.
+    assert!(matches!(
+        store
+            .open_local_compact_executor_bound("journal:bound-executor", next_fence.clone(), &next,)
+            .await,
+        Err(LocalCompactExecutorError::Corrupt(_))
+    ));
+
+    // Rotation is explicit at the host seam: a fresh journal id gives the
+    // next generation an empty, independently bound compact history.
+    let next_executor = store
+        .open_local_compact_executor_bound(
+            "journal:bound-executor-generation-2",
+            next_fence.clone(),
+            &next,
+        )
+        .await
+        .expect("new journal id accepts next generation");
+    assert!(next_executor.is_bound());
+    let next_checkpoint = checkpoint(next_fence.clone());
+    let next_current = snapshot(next_fence);
+    next_executor
+        .append_intent("op:rotation-next", &next_checkpoint, &next_current)
+        .await
+        .expect("next generation intent");
     store.pool.close().await;
 }
 
