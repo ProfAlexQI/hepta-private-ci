@@ -55,6 +55,8 @@ use codex_protocol::error::CodexErr;
 use codex_protocol::error::CodexErrorDetails;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
+use codex_protocol::models::ContentItemKind;
+use codex_protocol::models::InternalChatMessageMetadataPassthrough;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ModelsResponse;
@@ -128,6 +130,59 @@ fn test_model_client_with_thread_id(
         /*attestation_provider*/ None,
         HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault),
     )
+}
+
+#[test]
+fn chatgpt_codex_wire_strips_local_content_metadata_but_openai_wire_keeps_it() {
+    let client = test_model_client(SessionSource::Exec);
+    let chatgpt_provider =
+        ModelProviderInfo::create_openai_provider(Some(CHATGPT_CODEX_BASE_URL.to_string()))
+            .to_api_provider(Some(AuthMode::Chatgpt))
+            .expect("ChatGPT provider should build");
+    let openai_provider =
+        ModelProviderInfo::create_openai_provider(Some("https://api.openai.com/v1".to_string()))
+            .to_api_provider(Some(AuthMode::ApiKey))
+            .expect("OpenAI provider should build");
+
+    let item_with_metadata = || ResponseItem::Message {
+        id: None,
+        role: "user".to_string(),
+        content: vec![ContentItem::InputText {
+            text: "hello".to_string(),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: Some(InternalChatMessageMetadataPassthrough {
+            content_item_kinds: Some(vec![ContentItemKind("user.text".to_string())]),
+            ..Default::default()
+        }),
+    };
+
+    let mut chatgpt_item = item_with_metadata();
+    client.prepare_response_items_for_request(
+        std::slice::from_mut(&mut chatgpt_item),
+        &chatgpt_provider,
+    );
+    let chatgpt_wire = serde_json::to_value(&chatgpt_item).expect("item should serialize");
+    assert!(
+        chatgpt_wire
+            .get("internal_chat_message_metadata_passthrough")
+            .is_none()
+    );
+
+    let mut openai_item = item_with_metadata();
+    client.prepare_response_items_for_request(
+        std::slice::from_mut(&mut openai_item),
+        &openai_provider,
+    );
+    let openai_wire = serde_json::to_value(&openai_item).expect("item should serialize");
+    assert_eq!(
+        openai_wire
+            .get("internal_chat_message_metadata_passthrough")
+            .and_then(|metadata| metadata.get("content_item_kinds"))
+            .and_then(|kinds| kinds.as_array())
+            .map(Vec::len),
+        Some(1)
+    );
 }
 
 struct TransportSelectionEphemeralContributor {

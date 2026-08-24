@@ -160,6 +160,7 @@ use codex_model_provider::ProviderAuthScope;
 use codex_model_provider::ProviderUnauthorizedRecovery;
 use codex_model_provider::SharedModelProvider;
 use codex_model_provider::create_model_provider;
+use codex_model_provider_info::CHATGPT_CODEX_BASE_URL;
 #[cfg(test)]
 use codex_model_provider_info::DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS;
 use codex_model_provider_info::ModelProviderInfo;
@@ -217,6 +218,18 @@ const RESPONSES_COMPACT_ENDPOINT: &str = "/responses/compact";
 // period between stream events.
 const COMPACT_REQUEST_TIMEOUT_IDLE_MULTIPLIER: u32 = 4;
 const MEMORIES_SUMMARIZE_ENDPOINT: &str = "/memories/trace_summarize";
+
+/// Returns whether a concrete API provider speaks the first-party ChatGPT
+/// Codex wire variant. This is intentionally based on the resolved provider
+/// URL rather than the friendly provider name: both the public OpenAI API and
+/// ChatGPT's backend use the `OpenAI` name, but they do not accept the same
+/// request fields.
+fn api_provider_uses_chatgpt_codex_wire(provider: &ApiProvider) -> bool {
+    provider
+        .base_url
+        .trim_end_matches('/')
+        .eq_ignore_ascii_case(CHATGPT_CODEX_BASE_URL)
+}
 #[cfg(test)]
 pub(crate) const WEBSOCKET_CONNECT_TIMEOUT: Duration =
     Duration::from_millis(DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS);
@@ -792,7 +805,7 @@ impl ModelClient {
             text,
             ..
         } = request;
-        self.prepare_response_items_for_request(&mut input);
+        self.prepare_response_items_for_request(&mut input, &client_setup.api_provider);
         let payload = ApiCompactionInput {
             model: &model,
             input: &input,
@@ -1253,10 +1266,22 @@ impl ModelClient {
         Ok(request)
     }
 
-    fn prepare_response_items_for_request(&self, input: &mut [ResponseItem]) {
+    fn prepare_response_items_for_request(
+        &self,
+        input: &mut [ResponseItem],
+        api_provider: &ApiProvider,
+    ) {
+        let strip_internal_metadata = api_provider_uses_chatgpt_codex_wire(api_provider);
         for item in input {
             if item.id().is_some_and(|id| !id.is_prefixed()) {
                 item.set_id(/*new_id*/ None);
+            }
+            if strip_internal_metadata {
+                // The ChatGPT Codex backend does not accept Hepta's local
+                // content classification metadata on the wire. Keep it in
+                // durable history, but strip it from this provider-specific
+                // request copy immediately before serialization.
+                item.clear_internal_chat_message_metadata_passthrough();
             }
         }
     }
@@ -1884,7 +1909,7 @@ impl ModelClientSession {
                     .insert(X_CODEX_ROUTING_HINT_HEADER, header_value);
             }
             self.client
-                .prepare_response_items_for_request(&mut request.input);
+                .prepare_response_items_for_request(&mut request.input, &client_setup.api_provider);
             let request_session_telemetry =
                 session_telemetry_for_request(session_telemetry, &request);
             let mut effective_request = None;
@@ -2354,8 +2379,10 @@ impl ModelClientSession {
                 provider_policy_active || turn_recovery_checkpoint.is_some();
             let policy_logical_request = if provider_binding_required {
                 let mut logical_request = request.clone();
-                self.client
-                    .prepare_response_items_for_request(&mut logical_request.input);
+                self.client.prepare_response_items_for_request(
+                    &mut logical_request.input,
+                    &client_setup.api_provider,
+                );
                 Some(logical_responses_request(&logical_request))
             } else {
                 None
@@ -2383,8 +2410,10 @@ impl ModelClientSession {
             };
             let previous_response_id_for_policy = previous_response_id.clone();
             let original_item_ids = if let Some(incremental_items) = &mut incremental_items {
-                self.client
-                    .prepare_response_items_for_request(incremental_items);
+                self.client.prepare_response_items_for_request(
+                    incremental_items,
+                    &client_setup.api_provider,
+                );
                 None
             } else {
                 let original_item_ids = request
@@ -2392,8 +2421,10 @@ impl ModelClientSession {
                     .iter()
                     .map(|item| item.id().cloned())
                     .collect::<Vec<_>>();
-                self.client
-                    .prepare_response_items_for_request(&mut request.input);
+                self.client.prepare_response_items_for_request(
+                    &mut request.input,
+                    &client_setup.api_provider,
+                );
                 Some(original_item_ids)
             };
             let ws_payload = ResponseCreateWsRequest {
