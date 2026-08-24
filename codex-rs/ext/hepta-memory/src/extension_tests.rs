@@ -1,3 +1,4 @@
+use std::fs;
 use std::future::pending;
 use std::path::Path;
 use std::path::PathBuf;
@@ -22,12 +23,16 @@ use codex_extension_api::ThreadStartInput;
 use codex_extension_api::TurnInputContext;
 use codex_extension_api::TurnInputContributor;
 use codex_extension_api::TurnInputEnvironment;
+use codex_hepta_contracts::AgentId;
 use codex_hepta_contracts::RecallLimits;
+use codex_hepta_memory::CognitiveStore;
+use codex_hepta_paths::HeptaFleetRoot;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::user_input::UserInput;
 use codex_state::Stage1RecallCandidate;
 use codex_utils_path_uri::PathUri;
+use tempfile::TempDir;
 
 use super::*;
 use crate::observation::ShadowRecallObservationCommitDisposition;
@@ -888,4 +893,50 @@ fn local_turn_lifecycle_requires_explicit_enable_and_available_store() {
         );
         assert!(builder.build().turn_lifecycle_contributors().is_empty());
     }
+}
+
+#[tokio::test]
+async fn policy_gated_runtime_never_registers_legacy_turn_callback() {
+    let temp = TempDir::new().expect("temp");
+    let fleet_root = temp.path().join("fleet");
+    fs::create_dir_all(&fleet_root).expect("fleet root");
+    let fleet = HeptaFleetRoot::parse(fleet_root).expect("fleet");
+    let owner = AgentId::parse("00000000-0000-4000-8000-000000000103").expect("owner");
+    let store = Arc::new(
+        CognitiveStore::open(&fleet.layout().agent(&owner))
+            .await
+            .expect("store"),
+    );
+
+    let mut builder = ExtensionRegistryBuilder::<TestConfig>::new();
+    let _extension = install(
+        &mut builder,
+        None,
+        codex_hepta_memory::CognitiveRuntime::Available(Arc::clone(&store)),
+        true,
+        Some(codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only()),
+        resolve_test_config as fn(&TestConfig) -> Option<HeptaMemoryThreadConfig>,
+    );
+    let registry = builder.build();
+
+    assert!(
+        registry.turn_lifecycle_contributors().is_empty(),
+        "policy-gated local witness writes must remain host-invoked"
+    );
+
+    let mut inert_builder = ExtensionRegistryBuilder::<TestConfig>::new();
+    let _extension = install(
+        &mut inert_builder,
+        None,
+        codex_hepta_memory::CognitiveRuntime::Available(store),
+        false,
+        Some(codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only()),
+        resolve_test_config as fn(&TestConfig) -> Option<HeptaMemoryThreadConfig>,
+    );
+    assert!(
+        inert_builder
+            .build()
+            .turn_lifecycle_contributors()
+            .is_empty()
+    );
 }

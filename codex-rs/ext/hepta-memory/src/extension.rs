@@ -677,10 +677,15 @@ where
     C: Sync,
     F: Fn(&C) -> Option<HeptaMemoryThreadConfig> + Send + Sync + 'static,
 {
+    // The legacy H9 turn callback is deliberately separate from the E17
+    // explicit host-owned witness policy.  A policy value is a positive gate
+    // for a host call, but its canonical `automatic_lifecycle_registration`
+    // bit is false; accepting both here would silently install a callback and
+    // create an unbound legacy lease before the host can supply a bound
+    // lease/checkpoint pair.  Keep the old callback available only to direct
+    // legacy embeddings that do not opt into the policy seam.
     let local_lifecycle_store = (local_turn_lifecycle_enabled
-        && local_development_policy
-            .map(|policy| policy.validate().is_ok())
-            .unwrap_or(false))
+        && local_development_policy.is_none())
     .then(|| cognitive_runtime.available_store().cloned())
     .flatten();
     let legacy_attachment_enabled = matches!(&cognitive_runtime, CognitiveRuntime::Absent);
@@ -707,10 +712,11 @@ where
             builder.ephemeral_model_input_contributor(cognitive);
         }
     }
-    // This is an explicit embedding capability, never inferred from an
-    // environment variable or from a non-absent CognitiveRuntime.  The
-    // contributor only records local-development journal rows and has no
-    // dispatch, KG, routing, or production authority.
+    // This is an explicit legacy embedding capability, never inferred from an
+    // environment variable or from a non-absent CognitiveRuntime.  Policy-
+    // gated embeddings use the host-owned writer above instead of this
+    // callback.  The contributor only records local-development journal rows
+    // and has no dispatch, KG, routing, or production authority.
     if let Some(store) = local_lifecycle_store {
         builder.turn_lifecycle_contributor(Arc::new(LocalTurnLifecycleContributor::new(store)));
     }

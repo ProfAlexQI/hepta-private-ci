@@ -1362,11 +1362,13 @@ fn validate_hepta_local_lifecycle_runtime_options(
             )
         })?
         .is_some();
-    if runtime_options.hepta_local_turn_lifecycle_enabled && !owner_present {
-        return Err(std::io::Error::new(
-            ErrorKind::PermissionDenied,
-            "local turn lifecycle requires an explicit qualification-only policy",
-        ));
+    if runtime_options.hepta_local_turn_lifecycle_enabled {
+        let message = if owner_present {
+            "automatic local turn lifecycle registration is forbidden by the explicit host-owned policy"
+        } else {
+            "local turn lifecycle requires an explicit qualification-only policy"
+        };
+        return Err(std::io::Error::new(ErrorKind::PermissionDenied, message));
     }
     Ok(())
 }
@@ -1629,8 +1631,13 @@ mod tests {
 
         options.hepta_local_development_policy =
             Some(codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only());
+        options.hepta_local_turn_lifecycle_enabled = false;
         validate_hepta_local_lifecycle_runtime_options(&options)
-            .expect("canonical local policy should open only the qualification gate");
+            .expect("canonical local policy remains valid when callback is disabled");
+        options.hepta_local_turn_lifecycle_enabled = true;
+        let error = validate_hepta_local_lifecycle_runtime_options(&options)
+            .expect_err("policy-gated runtime must reject automatic callback registration");
+        assert_eq!(ErrorKind::PermissionDenied, error.kind());
         let owner = HeptaLocalDevelopmentLifecycleOwner::qualification_only();
         assert!(!owner.runtime_registered());
         assert!(!owner.production_caller());

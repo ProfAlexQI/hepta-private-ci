@@ -69,10 +69,11 @@ pub(crate) fn app_server_runtime_options(
         required_sqlite_home: Some(AbsolutePathBuf::from_absolute_path(&identity.home_root)?),
         required_thread_store_mode: Some(ThreadStoreConfig::Local),
         hepta_cognitive_runtime: cognitive_runtime,
-        // The owning agent is the only detached local-development embedding
-        // that explicitly opts into lifecycle journal admission.  This is a
-        // local queue/lease capability, not production effect authority.
-        hepta_local_turn_lifecycle_enabled: true,
+        // The owning agent supplies the qualification-only policy to the
+        // explicit host owner.  The legacy turn callback remains disabled:
+        // policy-gated local witness writes must be host-invoked and must not
+        // create an unbound lease implicitly during turn startup.
+        hepta_local_turn_lifecycle_enabled: false,
         hepta_local_development_policy: Some(
             codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only(),
         ),
@@ -158,7 +159,7 @@ mod tests {
             Some(&codex_app_server::ThreadStoreConfig::Local),
             options.required_thread_store_mode.as_ref()
         );
-        assert!(options.hepta_local_turn_lifecycle_enabled);
+        assert!(!options.hepta_local_turn_lifecycle_enabled);
         assert_eq!(
             Some(codex_hepta_memory::LocalDevelopmentLifecyclePolicy::qualification_only()),
             options.hepta_local_development_policy
