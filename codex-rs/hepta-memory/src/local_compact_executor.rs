@@ -7,13 +7,16 @@
 //! workflow, or dispatch an external effect.  Rehydration is a read-only
 //! reconstruction plan backed by a durable committed checkpoint.
 
+use std::path::PathBuf;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use codex_hepta_contracts::AgentId;
 use sha2::Digest;
 use sha2::Sha256;
 use sqlx::Row;
 use sqlx::Sqlite;
+use sqlx::SqlitePool;
 use sqlx::Transaction;
 use thiserror::Error;
 
@@ -440,11 +443,9 @@ impl LocalCompactExecutor {
                     compact_event_binding_sha256
              FROM cognitive_compact_events
              WHERE journal_id = ?
-               AND owner_agent_id = ?
              ORDER BY sequence",
         )
         .bind(&self.journal_id)
-        .bind(self.store.owner_agent_id().as_str())
         .fetch_all(&mut **transaction)
         .await
         .map_err(crate::cognitive_store::unavailable)?;
@@ -586,6 +587,17 @@ impl LocalCompactExecutor {
                             "compact event binding digest mismatch".to_string(),
                         ));
                     }
+                    verify_historical_compact_lease_binding(
+                        transaction,
+                        self.store.owner_agent_id(),
+                        &lease_id,
+                        &lease_head_sha256,
+                        authority_epoch,
+                        owner_epoch,
+                        &fencing_token,
+                        self.fence.generation,
+                    )
+                    .await?;
                 }
                 _ => {
                     return Err(LocalCompactExecutorError::Corrupt(
@@ -736,6 +748,296 @@ fn compact_event_binding_digest(
     hasher.update(compact_previous_sha256.as_str().as_bytes());
     hasher.update(event_sha256.as_str().as_bytes());
     codex_hepta_contracts::Sha256Digest::from_sha256_output(hasher.finalize())
+}
+
+/// Return the expiry stored on the exact historical lease row that supplied a
+/// compact event's lease head.  Compact rows retain only the lease id/head
+/// digest, so the lookup intentionally covers the complete lease history (not
+/// just the current active row): a compact witness remains auditable after a
+/// host explicitly releases or rolls back its lease.  A digest that was never
+/// granted by this owner/fence is an orphan/foreign binding and fails closed.
+async fn historical_compact_lease_expiry(
+    transaction: &mut Transaction<'_, Sqlite>,
+    owner: &AgentId,
+    lease_id: &str,
+    lease_head_sha256: &codex_hepta_contracts::Sha256Digest,
+    authority_epoch: u64,
+    owner_epoch: u64,
+    generation: u64,
+    fencing_token: &str,
+) -> Result<u64, LocalCompactExecutorError> {
+    let authority_epoch = i64::try_from(authority_epoch).map_err(|_| {
+        LocalCompactExecutorError::Corrupt("compact authority epoch overflows SQLite".to_string())
+    })?;
+    let owner_epoch = i64::try_from(owner_epoch).map_err(|_| {
+        LocalCompactExecutorError::Corrupt("compact owner epoch overflows SQLite".to_string())
+    })?;
+    let generation = i64::try_from(generation).map_err(|_| {
+        LocalCompactExecutorError::Corrupt("compact generation overflows SQLite".to_string())
+    })?;
+    let rows = sqlx::query(
+        "SELECT lease_expires_at_unix_seconds
+         FROM cognitive_local_leases
+         WHERE lease_id = ?
+           AND owner_agent_id = ?
+           AND authority_epoch = ?
+           AND owner_epoch = ?
+           AND generation = ?
+           AND fencing_token = ?
+           AND lease_sha256 = ?",
+    )
+    .bind(lease_id)
+    .bind(owner.as_str())
+    .bind(authority_epoch)
+    .bind(owner_epoch)
+    .bind(generation)
+    .bind(fencing_token)
+    .bind(lease_head_sha256.as_str())
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    if rows.len() != 1 {
+        return Err(LocalCompactExecutorError::Corrupt(format!(
+            "compact event lease binding is not an exact historical lease head (found {} rows)",
+            rows.len()
+        )));
+    }
+    let expiry: Option<i64> = rows[0]
+        .try_get("lease_expires_at_unix_seconds")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let expiry = expiry
+        .and_then(|value| u64::try_from(value).ok())
+        .filter(|value| *value > 0)
+        .ok_or_else(|| {
+            LocalCompactExecutorError::Corrupt(
+                "compact event lease head has no valid persisted expiry".to_string(),
+            )
+        })?;
+    Ok(expiry)
+}
+
+async fn verify_historical_compact_lease_binding(
+    transaction: &mut Transaction<'_, Sqlite>,
+    owner: &AgentId,
+    lease_id: &str,
+    lease_head_sha256: &codex_hepta_contracts::Sha256Digest,
+    authority_epoch: u64,
+    owner_epoch: u64,
+    fencing_token: &str,
+    generation: u64,
+) -> Result<(), LocalCompactExecutorError> {
+    let _ = historical_compact_lease_expiry(
+        transaction,
+        owner,
+        lease_id,
+        lease_head_sha256,
+        authority_epoch,
+        owner_epoch,
+        generation,
+        fencing_token,
+    )
+    .await?;
+    Ok(())
+}
+
+/// Read the fence/binding descriptor from the first row of a journal.  The
+/// complete row set is still validated by `load_journal`; this helper only
+/// supplies the expected fence/binding needed to run that validator during a
+/// store-wide reopen audit.
+async fn compact_journal_descriptor(
+    transaction: &mut Transaction<'_, Sqlite>,
+    journal_id: &str,
+    owner: &AgentId,
+) -> Result<(CompactFence, Option<LocalCompactLeaseBinding>), LocalCompactExecutorError> {
+    let row = sqlx::query(
+        "SELECT owner_agent_id, authority_epoch, owner_epoch,
+                generation, fencing_token,
+                lease_id, lease_head_sha256, compact_previous_sha256,
+                compact_event_binding_sha256
+         FROM cognitive_compact_events
+         WHERE journal_id = ?
+         ORDER BY sequence
+         LIMIT 1",
+    )
+    .bind(journal_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?
+    .ok_or_else(|| {
+        LocalCompactExecutorError::Corrupt(
+            "compact journal descriptor disappeared during reopen audit".to_string(),
+        )
+    })?;
+    let owner_agent_id: String = row
+        .try_get("owner_agent_id")
+        .map_err(crate::cognitive_store::unavailable)?;
+    validate_text(&owner_agent_id, "owner agent id", 128)?;
+    let authority_epoch: i64 = row
+        .try_get("authority_epoch")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let owner_epoch: i64 = row
+        .try_get("owner_epoch")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let generation: i64 = row
+        .try_get("generation")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let authority_epoch = u64::try_from(authority_epoch)
+        .ok()
+        .filter(|value| *value > 0)
+        .ok_or_else(|| {
+            LocalCompactExecutorError::Corrupt(
+                "compact journal descriptor has an invalid authority epoch".to_string(),
+            )
+        })?;
+    let owner_epoch = u64::try_from(owner_epoch)
+        .ok()
+        .filter(|value| *value > 0)
+        .ok_or_else(|| {
+            LocalCompactExecutorError::Corrupt(
+                "compact journal descriptor has an invalid owner epoch".to_string(),
+            )
+        })?;
+    let generation = u64::try_from(generation)
+        .ok()
+        .filter(|value| *value > 0)
+        .ok_or_else(|| {
+            LocalCompactExecutorError::Corrupt(
+                "compact journal descriptor has an invalid generation".to_string(),
+            )
+        })?;
+    let fencing_token: String = row
+        .try_get("fencing_token")
+        .map_err(crate::cognitive_store::unavailable)?;
+    validate_text(&fencing_token, "fencing token", 256)?;
+    let fence = CompactFence::new(authority_epoch, owner_epoch, generation, fencing_token.clone())
+        .map_err(|error| LocalCompactExecutorError::Corrupt(error.to_string()))?;
+
+    let lease_id: Option<String> = row
+        .try_get("lease_id")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let lease_head_sha256: Option<String> = row
+        .try_get("lease_head_sha256")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let compact_previous_sha256: Option<String> = row
+        .try_get("compact_previous_sha256")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let compact_event_binding_sha256: Option<String> = row
+        .try_get("compact_event_binding_sha256")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let binding = match (
+        lease_id,
+        lease_head_sha256,
+        compact_previous_sha256,
+        compact_event_binding_sha256,
+    ) {
+        (None, None, None, None) => None,
+        (Some(lease_id), Some(lease_head_sha256), Some(compact_previous_sha256), Some(binding)) => {
+            validate_text(&lease_id, "lease id", 512)?;
+            let lease_head_sha256 = codex_hepta_contracts::Sha256Digest::parse(lease_head_sha256)
+                .map_err(|_| {
+                    LocalCompactExecutorError::Corrupt(
+                        "compact lease head digest is invalid".to_string(),
+                    )
+                })?;
+            let compact_previous_sha256 =
+                codex_hepta_contracts::Sha256Digest::parse(compact_previous_sha256).map_err(
+                    |_| {
+                        LocalCompactExecutorError::Corrupt(
+                            "compact previous digest is invalid".to_string(),
+                        )
+                    },
+                )?;
+            let _binding = codex_hepta_contracts::Sha256Digest::parse(binding).map_err(|_| {
+                LocalCompactExecutorError::Corrupt(
+                    "compact event binding digest is invalid".to_string(),
+                )
+            })?;
+            let lease_expires_at_unix_seconds = historical_compact_lease_expiry(
+                transaction,
+                owner,
+                &lease_id,
+                &lease_head_sha256,
+                authority_epoch,
+                owner_epoch,
+                generation,
+                &fence.fencing_token,
+            )
+            .await?;
+            let _ = compact_previous_sha256;
+            Some(LocalCompactLeaseBinding {
+                lease_id,
+                lease_head_sha256,
+                authority_epoch,
+                owner_epoch,
+                lease_expires_at_unix_seconds,
+            })
+        }
+        _ => {
+            return Err(LocalCompactExecutorError::Corrupt(
+                "compact lease binding columns are partially populated".to_string(),
+            ));
+        }
+    };
+    Ok((fence, binding))
+}
+
+/// Reopen-time integrity verification for every persisted compact journal.
+///
+/// The direct executor loader historically filtered by `owner_agent_id`,
+/// which made a foreign row sharing a journal id invisible.  This audit first
+/// enumerates journal ids without an owner predicate, then runs the exact
+/// owner/fence/hash/binding validator over every row.  It is deliberately
+/// read-only and has no lifecycle, scheduler, KG, provider, or external
+/// effect behavior.
+pub(crate) async fn verify_local_compact_events(
+    pool: &SqlitePool,
+    owner: &AgentId,
+) -> Result<(), CognitiveStoreError> {
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+    let journal_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT journal_id FROM cognitive_compact_events ORDER BY journal_id",
+    )
+    .fetch_all(&mut *transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    let audit_store = CognitiveStore::from_read_only_pool(
+        pool.clone(),
+        owner.clone(),
+        PathBuf::new(),
+    );
+    for journal_id in journal_ids {
+        validate_text(&journal_id, "journal id", 512)
+            .map_err(|error| CognitiveStoreError::Corrupt(error.to_string()))?;
+        let (fence, lease_binding) = compact_journal_descriptor(
+            &mut transaction,
+            &journal_id,
+            owner,
+        )
+        .await
+        .map_err(|error| CognitiveStoreError::Corrupt(error.to_string()))?;
+        let executor = LocalCompactExecutor {
+            store: audit_store.clone(),
+            journal_id,
+            fence,
+            lease_binding,
+            bound_lease: None,
+        };
+        executor
+            .load_journal(&mut transaction)
+            .await
+            .map_err(|error| match error {
+                LocalCompactExecutorError::Store(error) => error,
+                other => CognitiveStoreError::Corrupt(other.to_string()),
+            })?;
+    }
+    transaction
+        .commit()
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+    Ok(())
 }
 
 fn validate_fence(fence: &CompactFence) -> Result<(), LocalCompactExecutorError> {

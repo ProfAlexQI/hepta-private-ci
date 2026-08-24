@@ -666,6 +666,145 @@ async fn stale_fence_and_sqlite_tamper_fail_closed() {
 }
 
 #[tokio::test]
+async fn compact_reopen_rejects_foreign_owner_row_sharing_journal_id() {
+    let temp = TempDir::new().expect("temp dir");
+    let owner = agent_id(97);
+    let store = CognitiveStore::open(&layout(&temp, &owner))
+        .await
+        .expect("store");
+    let current_fence = fence(43, "fence:foreign-owner");
+    let current = snapshot(current_fence.clone());
+    let checkpoint = checkpoint(current_fence.clone());
+    let executor = store
+        .open_local_compact_executor("journal:foreign-owner", current_fence.clone())
+        .await
+        .expect("executor");
+    executor
+        .append_intent("op:foreign-owner", &checkpoint, &current)
+        .await
+        .expect("intent");
+
+    // Test-only insertion: the foreign row uses a distinct event digest and
+    // a later sequence, so an owner-filtered loader would silently ignore it.
+    let event_json: String = sqlx::query_scalar(
+        "SELECT event_json FROM cognitive_compact_events
+         WHERE journal_id = ? AND sequence = 1",
+    )
+    .bind("journal:foreign-owner")
+    .fetch_one(&store.pool)
+    .await
+    .expect("event json");
+    let previous_sha256: String = sqlx::query_scalar(
+        "SELECT previous_sha256 FROM cognitive_compact_events
+         WHERE journal_id = ? AND sequence = 1",
+    )
+    .bind("journal:foreign-owner")
+    .fetch_one(&store.pool)
+    .await
+    .expect("previous digest");
+    let foreign_owner = agent_id(98);
+    sqlx::query(
+        "INSERT INTO cognitive_compact_events (
+            journal_id, owner_agent_id, authority_epoch, owner_epoch,
+            sequence, generation, fencing_token, event_json,
+            previous_sha256, event_sha256, recorded_at_unix_seconds
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind("journal:foreign-owner")
+    .bind(foreign_owner.as_str())
+    .bind(i64::from(current_fence.authority_epoch as u32))
+    .bind(i64::from(current_fence.owner_epoch as u32))
+    .bind(2_i64)
+    .bind(i64::try_from(current_fence.generation).expect("generation"))
+    .bind(&current_fence.fencing_token)
+    .bind(event_json)
+    .bind(previous_sha256)
+    .bind("f".repeat(64))
+    .bind(i64::try_from(unix_seconds()).expect("timestamp"))
+    .execute(&store.pool)
+    .await
+    .expect("foreign compact row");
+
+    let reopened = store
+        .open_local_compact_executor("journal:foreign-owner", current_fence)
+        .await;
+    assert!(matches!(
+        reopened,
+        Err(crate::LocalCompactExecutorError::Corrupt(message))
+            if message.contains("owner")
+    ));
+    let audit = crate::local_compact_executor::verify_local_compact_events(
+        &store.pool,
+        store.owner_agent_id(),
+    )
+    .await;
+    assert!(matches!(audit, Err(crate::CognitiveStoreError::Corrupt(message)) if message.contains("owner")));
+}
+
+#[tokio::test]
+async fn compact_reopen_rejects_orphan_bound_lease_head() {
+    let (_temp, store, _lease, executor, current_fence, checkpoint) =
+        open_bound_executor(99, 3_600).await;
+    let current = snapshot(current_fence);
+    executor
+        .append_intent("op:orphan-bound", &checkpoint, &current)
+        .await
+        .expect("bound intent");
+
+    // Test-only tamper: preserve the row's shape but point its immutable
+    // binding at a lease head that was never granted by this owner/fence.
+    sqlx::query("DROP TRIGGER cognitive_compact_events_no_update")
+        .execute(&store.pool)
+        .await
+        .expect("drop test trigger");
+    sqlx::query(
+        "UPDATE cognitive_compact_events
+         SET lease_id = 'lease:does-not-exist'
+         WHERE journal_id = ? AND sequence = 1",
+    )
+    .bind(executor.journal_id())
+    .execute(&store.pool)
+    .await
+    .expect("orphan lease id");
+
+    let audit = crate::local_compact_executor::verify_local_compact_events(
+        &store.pool,
+        store.owner_agent_id(),
+    )
+    .await;
+    assert!(matches!(audit, Err(crate::CognitiveStoreError::Corrupt(message)) if message.contains("historical lease head")));
+}
+
+#[tokio::test]
+async fn bound_compact_journal_survives_terminal_lease_and_store_reopen() {
+    let (temp, store, lease, executor, current_fence, checkpoint) =
+        open_bound_executor(100, 3_600).await;
+    let current = snapshot(current_fence);
+    executor
+        .append_intent("op:terminal-reopen", &checkpoint, &current)
+        .await
+        .expect("bound intent");
+    lease.release().await.expect("explicit terminal release");
+    store.pool.close().await;
+    drop(executor);
+    drop(lease);
+    drop(store);
+
+    // The compact event remains valid historical evidence after the host has
+    // explicitly terminalized the lease; reopening must not require an
+    // active lease or silently discard the bound journal.
+    let reopened_store = CognitiveStore::open(&layout(&temp, &agent_id(100)))
+        .await
+        .expect("reopen store with terminal lease");
+    let audit = crate::local_compact_executor::verify_local_compact_events(
+        &reopened_store.pool,
+        reopened_store.owner_agent_id(),
+    )
+    .await;
+    assert!(audit.is_ok(), "terminal bound compact journal must verify");
+}
+
+#[tokio::test]
 async fn compact_reopen_binds_authority_and_owner_epochs_and_rejects_legacy_nulls() {
     let temp = TempDir::new().expect("temp dir");
     let owner = agent_id(96);

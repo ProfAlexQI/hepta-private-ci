@@ -649,6 +649,7 @@ async fn verify_store(pool: &SqlitePool, owner: &AgentId) -> Result<(), Cognitiv
     verify_revision_fact_digests(pool, owner).await?;
     verify_current_projection_contents(pool, owner).await?;
     crate::local_lease_outbox::verify_local_lease_outbox(pool, owner).await?;
+    crate::local_compact_executor::verify_local_compact_events(pool, owner).await?;
     Ok(())
 }
 
