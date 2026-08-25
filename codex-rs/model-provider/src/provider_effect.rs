@@ -15,6 +15,7 @@ use codex_hepta_contracts::ProviderEffectIdempotencyCapability;
 use codex_hepta_contracts::ProviderEffectIntent;
 use codex_hepta_contracts::ProviderEffectKey;
 use codex_hepta_contracts::ProviderEffectLookup;
+use codex_hepta_contracts::Sha256Digest;
 use http::HeaderMap;
 use http::HeaderName;
 use http::HeaderValue;
@@ -30,19 +31,30 @@ pub const PROVIDER_EFFECT_SCHEMA_VERSION_HEADER: &str = "x-hepta-effect-schema-v
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreparedProviderEffectDispatch {
     pub key: ProviderEffectKey,
+    /// The exact bytes whose digest is carried by [`Self::headers`].
+    ///
+    /// Keeping the body and headers in one owned value prevents a future
+    /// transport adapter from preparing one byte sequence and sending another
+    /// after this qualification boundary returns.
+    pub payload: Vec<u8>,
     pub payload_sha256: String,
     pub headers: HeaderMap,
 }
 
-/// Builds occurrence and payload headers without exposing the payload itself.
+/// Binds the exact wire payload to the durable effect intent and its headers.
 ///
 /// This helper does not send a request and does not imply that the destination
 /// honors the headers.  A provider may be marked `KeyAndStatusLookup` only
 /// after an external contract and independent qualification prove that fact.
 pub fn prepare_provider_effect_dispatch(
     intent: &ProviderEffectIntent,
+    wire_payload: &[u8],
 ) -> Result<PreparedProviderEffectDispatch, ProviderEffectBindingError> {
     intent.validate()?;
+    let payload_sha256 = Sha256Digest::for_bytes(wire_payload);
+    if payload_sha256 != intent.payload_sha256 {
+        return Err(ProviderEffectBindingError::PayloadMismatch);
+    }
     let mut headers = HeaderMap::new();
     headers.insert(
         HeaderName::from_static(PROVIDER_EFFECT_IDEMPOTENCY_KEY_HEADER),
@@ -51,7 +63,7 @@ pub fn prepare_provider_effect_dispatch(
     );
     headers.insert(
         HeaderName::from_static(PROVIDER_EFFECT_PAYLOAD_SHA256_HEADER),
-        HeaderValue::from_str(intent.payload_sha256.as_str())
+        HeaderValue::from_str(payload_sha256.as_str())
             .map_err(|error| ProviderEffectBindingError::InvalidDigest(error.to_string()))?,
     );
     headers.insert(
@@ -60,7 +72,8 @@ pub fn prepare_provider_effect_dispatch(
     );
     Ok(PreparedProviderEffectDispatch {
         key: intent.key.clone(),
-        payload_sha256: intent.payload_sha256.as_str().to_string(),
+        payload: wire_payload.to_vec(),
+        payload_sha256: payload_sha256.as_str().to_string(),
         headers,
     })
 }
@@ -140,7 +153,10 @@ mod tests {
 
     #[test]
     fn headers_bind_stable_key_and_exact_payload_digest() {
-        let prepared = prepare_provider_effect_dispatch(&intent()).expect("prepared dispatch");
+        let wire_payload = b"payload";
+        let prepared =
+            prepare_provider_effect_dispatch(&intent(), wire_payload).expect("prepared dispatch");
+        assert_eq!(prepared.payload, wire_payload);
         assert_eq!(
             prepared
                 .headers
@@ -165,6 +181,14 @@ mod tests {
                 .get(PROVIDER_EFFECT_SCHEMA_VERSION_HEADER)
                 .expect("schema version"),
             "1"
+        );
+    }
+
+    #[test]
+    fn mismatched_wire_payload_is_rejected_before_headers_are_prepared() {
+        assert_eq!(
+            prepare_provider_effect_dispatch(&intent(), b"different-payload"),
+            Err(ProviderEffectBindingError::PayloadMismatch)
         );
     }
 
