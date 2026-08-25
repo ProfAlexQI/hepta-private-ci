@@ -1611,6 +1611,84 @@ async fn shutdown_transition_drain_serializes_with_start_publication() {
         .expect("shutdown drain task should not panic");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shutdown_transition_drain_releases_caller_reservation() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    {
+        let mut active = session.active_turn.lock().await;
+        active
+            .get_or_insert_with(ActiveTurn::default)
+            .reserve_start(turn_context.sub_id.clone())
+            .expect("idle slot should reserve the caller-owned start");
+    }
+
+    session.begin_shutdown();
+    timeout(
+        StdDuration::from_secs(2),
+        session.drain_start_transition_for_shutdown(),
+    )
+    .await
+    .expect("shutdown drain should release an unmaterialized reservation");
+
+    assert!(
+        session.active_turn.lock().await.is_none(),
+        "shutdown must not leave a caller-owned reservation behind"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shutdown_drain_releases_live_caller_reservation_before_context() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    // Keep the caller in its pre-context preparation await after the
+    // reservation is installed.  Shutdown must reclaim the reservation even
+    // though the owner future itself is still alive and has not been dropped.
+    let state_guard = session.state.lock().await;
+    let start = tokio::spawn({
+        let session = Arc::clone(&session);
+        let turn_context = Arc::clone(&turn_context);
+        async move {
+            let _ = session
+                .spawn_task(turn_context, Vec::new(), CompletingTask)
+                .await;
+        }
+    });
+
+    timeout(StdDuration::from_secs(2), async {
+        loop {
+            if session
+                .active_turn
+                .lock()
+                .await
+                .as_ref()
+                .is_some_and(|active| {
+                    active.task.is_none()
+                        && active.start_reservation.is_some()
+                        && active.start_transition.is_none()
+                })
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("spawn preamble should install its start reservation");
+
+    session.begin_shutdown();
+    session.abort_all_tasks(TurnAbortReason::Interrupted).await;
+    timeout(
+        StdDuration::from_secs(2),
+        session.drain_start_transition_for_shutdown(),
+    )
+    .await
+    .expect("shutdown drain should reclaim the live caller reservation");
+    assert!(session.active_turn.lock().await.is_none());
+
+    drop(state_guard);
+    start.await.expect("caller owner should eventually leave its preamble");
+    assert!(session.active_turn.lock().await.is_none());
+}
+
 fn cleanup_slot_is_populated(session: &Arc<Session>) -> bool {
     session
         .pending_start_transition_completions

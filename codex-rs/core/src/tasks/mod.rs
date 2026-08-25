@@ -2266,7 +2266,8 @@ impl Session {
         }
     }
 
-    /// Drain a materialized start transition during session teardown.
+    /// Drain caller reservations and materialized start transitions during
+    /// session teardown.
     ///
     /// Ordinary `abort_all_tasks` callers intentionally return immediately for
     /// `Starting`: a lifecycle contributor may be waiting on the caller that
@@ -2285,8 +2286,51 @@ impl Session {
             // registry in the check-to-register window.  begin_shutdown must
             // remain lock-free because suspension can call it while holding
             // the active-turn lock.
-            let active = self.active_turn.lock().await;
-            drop(active);
+            // `abort_all_tasks` records an abort reason on a caller-owned
+            // reservation, but there is no materialized turn context yet and
+            // therefore no transition completion fence for the ordinary
+            // drain to observe.  Once shutdown is sealed, release that exact
+            // reservation here so a caller that remains in its preparation
+            // preamble cannot keep the session busy indefinitely.  The owner
+            // continuation will later fail the same identity check at
+            // promotion; no terminal event is valid before a context exists.
+            let release = {
+                // This acquisition is also the publication barrier described
+                // above: a start either publishes its transition before this
+                // lock is acquired, or observes shutdown before publishing.
+                let mut active = self.active_turn.lock().await;
+                if !self.shutdown_started() {
+                    None
+                } else {
+                    let handle = active.as_ref().and_then(|active_turn| {
+                        active_turn
+                            .start_reservation
+                            .as_ref()
+                            .map(|reservation| StartReservationHandle {
+                                identity: Arc::clone(&reservation.identity),
+                                turn_id: reservation.turn_id.clone(),
+                                turn_state: Arc::clone(&active_turn.turn_state),
+                            })
+                    });
+                    let abort_requested = active
+                        .as_mut()
+                        .and_then(|active_turn| active_turn.start_reservation.as_mut())
+                        .is_some_and(|reservation| {
+                            reservation.request_abort(TurnAbortReason::Interrupted)
+                        });
+                    if abort_requested {
+                        self.mark_interrupted();
+                    }
+                    handle.map(|handle| {
+                        Self::release_start_reservation_if_current_locked(&mut active, &handle)
+                    })
+                }
+            };
+            if let Some(release) = release
+                && !matches!(release, StartReservationRelease::Stale)
+            {
+                self.settle_consumed_recovery_status();
+            }
             // A detached owner may have been dropped after its construction
             // runtime closed, or its first spawn may have been accepted by a
             // scheduler that was already shutting down.  In both cases the
