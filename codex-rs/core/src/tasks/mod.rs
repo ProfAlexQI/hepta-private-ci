@@ -4,6 +4,7 @@ mod regular;
 mod review;
 mod user_shell;
 
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -13,6 +14,7 @@ use std::time::Instant;
 use codex_diagnostics::Gauge;
 use codex_extension_api::QualificationTurnAdmissionIdentity;
 use codex_extension_api::ThreadIdleCause;
+use futures::FutureExt;
 use futures::future::BoxFuture;
 use tokio::select;
 use tokio::sync::Mutex;
@@ -1494,25 +1496,43 @@ impl Session {
                 // common spawn boundary.  RegularTask repeats the check
                 // before TurnStarted; this common check also protects review,
                 // compact, and shell tasks if a gate is ever attached there.
-                let task_result = async {
-                    if let Some(gate) = ctx
-                        .extension_data
-                        .get::<codex_extension_api::TurnStartGate>()
-                        && !gate.is_allowed()
-                    {
-                        return Err(CodexErr::TurnAborted);
+                let task_result = AssertUnwindSafe(
+                    async {
+                        if let Some(gate) = ctx
+                            .extension_data
+                            .get::<codex_extension_api::TurnStartGate>()
+                            && !gate.is_allowed()
+                        {
+                            return Err(CodexErr::TurnAborted);
+                        }
+                        task_for_run
+                            .run(
+                                Arc::clone(&session),
+                                ctx,
+                                task_input,
+                                task_cancellation_token.child_token(),
+                            )
+                            .await
                     }
-                    task_for_run
-                        .run(
-                            Arc::clone(&session),
-                            ctx,
-                            task_input,
-                            task_cancellation_token.child_token(),
-                        )
-                        .await
-                }
-                .instrument(trace_span!("session_task.run"))
+                    .instrument(trace_span!("session_task.run")),
+                )
+                .catch_unwind()
                 .await;
+                let task_result = match task_result {
+                    Ok(result) => result,
+                    Err(_) => {
+                        // A panic in a SessionTask must still pass through the
+                        // ordinary terminalization path. The RunningTask is
+                        // already attached to `active_turn`; letting the
+                        // JoinHandle unwind would otherwise strand that task,
+                        // its recovery authority, and every later admission.
+                        warn!(
+                            turn_id = %ctx_for_finish.sub_id,
+                            "session task panicked; converting panic to a terminal error"
+                        );
+                        Err(CodexErr::Fatal("session task panicked".to_string()))
+                    }
+                };
                 let sess = Arc::clone(&session);
                 if !task_cancellation_token.is_cancelled() {
                     // Finish uniformly from the spawn site so all tasks share the same lifecycle.

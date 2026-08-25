@@ -11288,6 +11288,63 @@ impl SessionTask for CompletingTask {
     }
 }
 
+#[derive(Clone, Copy)]
+struct PanickingTask;
+
+impl SessionTask for PanickingTask {
+    fn kind(&self) -> TaskKind {
+        TaskKind::Regular
+    }
+
+    fn span_name(&self) -> &'static str {
+        "session_task.panicking"
+    }
+
+    async fn run(
+        self: Arc<Self>,
+        _session: Arc<Session>,
+        _ctx: Arc<TurnContext>,
+        _input: Vec<TurnInput>,
+        _cancellation_token: CancellationToken,
+    ) -> SessionTaskResult {
+        panic!("intentional session task panic for lifecycle fencing test");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn panicking_session_task_is_converted_to_terminal_error_and_releases_slot() {
+    let (sess, tc, rx) = make_session_and_context_with_rx().await;
+    sess.spawn_task(Arc::clone(&tc), Vec::new(), PanickingTask)
+        .await
+        .expect("panicking task should be admitted");
+
+    let terminal = timeout(StdDuration::from_secs(2), async {
+        loop {
+            let event = rx.recv().await.expect("event channel should remain open");
+            if matches!(
+                event.msg,
+                EventMsg::TurnComplete(_) | EventMsg::TurnAborted(_)
+            ) {
+                break event;
+            }
+        }
+    })
+    .await
+    .expect("panic must still produce a terminal lifecycle event");
+    assert!(matches!(terminal.msg, EventMsg::TurnComplete(_)));
+
+    timeout(StdDuration::from_secs(2), async {
+        loop {
+            if sess.active_turn.lock().await.is_none() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("panic terminalization must release the active turn slot");
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TerminalEventKind {
     TurnComplete,

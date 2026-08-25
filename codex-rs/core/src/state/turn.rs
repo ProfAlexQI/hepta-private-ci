@@ -85,7 +85,14 @@ impl StartTransitionCompletion {
 
     pub(crate) async fn wait(&self) {
         while !self.done.load(std::sync::atomic::Ordering::Acquire) {
+            // Register the waiter before the second state check. Without
+            // `enable`, completion can land after `notified()` is created but
+            // before that future is first polled; `notify_one` then spends its
+            // permit on one waiter and a second concurrent waiter can sleep
+            // forever even though the fence is already complete.
             let notified = self.notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
             if self.done.load(std::sync::atomic::Ordering::Acquire) {
                 break;
             }
@@ -521,9 +528,40 @@ impl TurnState {
 mod tests {
     use super::ActiveTurn;
     use super::StartTransition;
+    use super::StartTransitionCompletion;
     use codex_extension_api::ThreadIdleCause;
     use codex_protocol::protocol::TurnAbortReason;
     use std::sync::Arc;
+    use std::time::Duration;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn start_transition_completion_wakes_all_waiters() {
+        let completion = StartTransitionCompletion::new();
+        let first = {
+            let completion = Arc::clone(&completion);
+            tokio::spawn(async move { completion.wait().await })
+        };
+        let second = {
+            let completion = Arc::clone(&completion);
+            tokio::spawn(async move { completion.wait().await })
+        };
+
+        // Give both waiters a chance to register with Notify before the
+        // completion transition. The `enable` call in `wait` also closes the
+        // create-but-not-yet-polled race.
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+        completion.complete();
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            first.await.expect("first completion waiter should finish");
+            second
+                .await
+                .expect("second completion waiter should finish");
+        })
+        .await
+        .expect("all completion waiters must observe the fence");
+    }
 
     #[test]
     fn start_transition_keeps_first_abort_reason() {
