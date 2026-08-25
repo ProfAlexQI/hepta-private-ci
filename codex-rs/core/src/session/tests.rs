@@ -12073,6 +12073,114 @@ async fn task_finish_emits_thread_idle_lifecycle_after_active_turn_clears() {
     assert!(session.active_turn.lock().await.is_none());
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelled_finish_owner_keeps_terminalizer_alive() {
+    struct BlockingThreadIdle {
+        entered: Arc<Notify>,
+        release: Arc<Notify>,
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl codex_extension_api::ThreadLifecycleContributor<crate::config::Config> for BlockingThreadIdle {
+        fn on_thread_idle<'a>(
+            &'a self,
+            _input: codex_extension_api::ThreadIdleInput<'a>,
+        ) -> codex_extension_api::ExtensionFuture<'a, ()> {
+            Box::pin(async move {
+                self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                self.entered.notify_one();
+                self.release.notified().await;
+            })
+        }
+    }
+
+    struct FinishGateTask {
+        release: Arc<Notify>,
+    }
+
+    impl SessionTask for FinishGateTask {
+        fn kind(&self) -> TaskKind {
+            TaskKind::Regular
+        }
+
+        fn span_name(&self) -> &'static str {
+            "session_task.finish_owner_cancellation_gate"
+        }
+
+        async fn run(
+            self: Arc<Self>,
+            _session: Arc<Session>,
+            _ctx: Arc<TurnContext>,
+            _input: Vec<TurnInput>,
+            _cancellation_token: CancellationToken,
+        ) -> SessionTaskResult {
+            self.release.notified().await;
+            Ok(None)
+        }
+    }
+
+    let (mut session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    let idle_entered = Arc::new(Notify::new());
+    let idle_release = Arc::new(Notify::new());
+    let idle_calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut builder = codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+    builder.thread_lifecycle_contributor(Arc::new(BlockingThreadIdle {
+        entered: Arc::clone(&idle_entered),
+        release: Arc::clone(&idle_release),
+        calls: Arc::clone(&idle_calls),
+    }));
+    Arc::get_mut(&mut session)
+        .expect("session should have a unique test owner")
+        .services
+        .extensions = Arc::new(builder.build());
+    let session = Arc::new(session);
+    let task_release = Arc::new(Notify::new());
+    session
+        .spawn_task(
+            Arc::clone(&turn_context),
+            Vec::new(),
+            FinishGateTask {
+                release: Arc::clone(&task_release),
+            },
+        )
+        .await
+        .expect("finish gate task should start");
+
+    let finish_owner = tokio::spawn({
+        let session = Arc::clone(&session);
+        let turn_context = Arc::clone(&turn_context);
+        async move {
+            session.on_task_finished(turn_context, Ok(None)).await;
+        }
+    });
+    timeout(Duration::from_secs(2), idle_entered.notified())
+        .await
+        .expect("finish terminalizer should reach idle lifecycle");
+    assert!(session.has_pending_task_terminalization());
+
+    finish_owner.abort();
+    let _ = finish_owner.await;
+    idle_release.notify_one();
+
+    timeout(Duration::from_secs(2), async {
+        loop {
+            if session.active_turn.lock().await.is_none()
+                && !session.has_pending_task_terminalization()
+            {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("detached finish terminalizer should clear its exact fence");
+    assert_eq!(1, idle_calls.load(std::sync::atomic::Ordering::SeqCst));
+
+    // Let the original runner observe completion after the direct finish owner
+    // has detached it; its second callback is identity-fenced and should no-op.
+    task_release.notify_one();
+}
+
 #[tokio::test]
 async fn thread_idle_lifecycle_waits_for_trigger_turn_mailbox_work() {
     struct ThreadIdleRecorder {
@@ -12259,9 +12367,58 @@ async fn abort_reservation_rejects_injection_mailbox_start_and_replacement() {
         "replacement start must report that the abort reservation is busy"
     );
 
-    release_abort.notify_waiters();
+    release_abort.notify_one();
     abort_task.await.expect("abort task should finish");
     assert!(session.active_turn.lock().await.is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelled_abort_owner_keeps_terminalizer_alive() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    let (abort_entered_tx, abort_entered_rx) = async_channel::bounded(1);
+    let release_abort = Arc::new(Notify::new());
+    session
+        .spawn_task(
+            Arc::clone(&turn_context),
+            Vec::new(),
+            BlockingAbortCleanupTask {
+                abort_entered: abort_entered_tx,
+                release_abort: Arc::clone(&release_abort),
+            },
+        )
+        .await
+        .expect("initial task should start");
+
+    let abort_owner = tokio::spawn({
+        let session = Arc::clone(&session);
+        async move {
+            session.abort_all_tasks(TurnAbortReason::Replaced).await;
+        }
+    });
+    timeout(Duration::from_secs(2), abort_entered_rx.recv())
+        .await
+        .expect("abort cleanup should begin")
+        .expect("abort signal channel should remain open");
+
+    // The public owner is now cancelled while its terminalizer is blocked in
+    // the task-specific abort hook. The detached inner job must retain the
+    // exact task and registry fence instead of leaving a permanent marker.
+    abort_owner.abort();
+    let _ = abort_owner.await;
+    release_abort.notify_one();
+
+    timeout(Duration::from_secs(2), async {
+        loop {
+            if session.active_turn.lock().await.is_none()
+                && !session.has_pending_task_terminalization()
+            {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("detached abort terminalizer should clear its exact fence");
 }
 
 async fn set_total_token_usage(sess: &Session, total_token_usage: TokenUsage) {

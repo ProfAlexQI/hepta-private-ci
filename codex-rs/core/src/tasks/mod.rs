@@ -2104,7 +2104,24 @@ impl Session {
         }
     }
 
+    /// Runs abort terminalization in a detached job. Dropping the caller's
+    /// future after the task-terminalization claim must not drop the owner
+    /// body; Tokio JoinHandle drop detaches the job and the registry fence
+    /// remains the teardown backstop if the job itself fails.
     pub async fn abort_all_tasks(self: &Arc<Self>, reason: TurnAbortReason) {
+        let session = Arc::clone(self);
+        let join = self.services.runtime_handle.spawn(
+            async move {
+                session.abort_all_tasks_inner(reason).await;
+            }
+            .in_current_span(),
+        );
+        if let Err(error) = join.await {
+            warn!(?error, "abort-all terminalizer did not complete");
+        }
+    }
+
+    async fn abort_all_tasks_inner(self: &Arc<Self>, reason: TurnAbortReason) {
         let mut aborted_turn = false;
         let mut reserved_turn_state = None;
         let mut turn_context = None;
@@ -2269,6 +2286,50 @@ impl Session {
         reason: TurnAbortReason,
         deferred_idle_cause: Option<ThreadIdleCause>,
     ) -> AbortTurnOutcome {
+        let session = Arc::clone(self);
+        let turn_id = turn_id.to_string();
+        let expected_turn_state = expected_turn_state.cloned();
+        let join = self.services.runtime_handle.spawn(
+            async move {
+                let outcome = session
+                    .abort_turn_if_active_inner(
+                        &turn_id,
+                        expected_turn_state.as_ref(),
+                        reason,
+                        deferred_idle_cause,
+                    )
+                    .await;
+                if matches!(outcome, AbortTurnOutcome::Running)
+                    && let Some(cause) = deferred_idle_cause
+                {
+                    // Guardian's running-task abort bypasses the ordinary finish
+                    // lifecycle. Keep this callback inside the detached owner so
+                    // cancellation of the guardian caller cannot lose it.
+                    session.emit_thread_idle_lifecycle_if_idle(cause).await;
+                }
+                outcome
+            }
+            .in_current_span(),
+        );
+        match join.await {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                warn!(?error, "abort terminalizer did not complete");
+                // The detached job may have claimed the marker before
+                // panicking. Keep callers fail-closed rather than reporting a
+                // false idle/not-active result.
+                AbortTurnOutcome::Terminalizing
+            }
+        }
+    }
+
+    async fn abort_turn_if_active_inner(
+        self: &Arc<Self>,
+        turn_id: &str,
+        expected_turn_state: Option<&Arc<Mutex<TurnState>>>,
+        reason: TurnAbortReason,
+        deferred_idle_cause: Option<ThreadIdleCause>,
+    ) -> AbortTurnOutcome {
         let Some(target) = self
             .detach_active_task_for_abort(
                 &reason,
@@ -2346,7 +2407,30 @@ impl Session {
         AbortTurnOutcome::Running
     }
 
+    /// Keeps the task's terminal owner alive if the task runner/caller is
+    /// cancelled while recovery, persistence, or lifecycle callbacks await.
+    /// The inner job owns the exact task context and marker CAS; dropping this
+    /// JoinHandle detaches it rather than aborting the terminalizer.
     pub async fn on_task_finished(
+        self: &Arc<Self>,
+        turn_context: Arc<TurnContext>,
+        task_result: SessionTaskResult,
+    ) {
+        let session = Arc::clone(self);
+        let join = self.services.runtime_handle.spawn(
+            async move {
+                session
+                    .on_task_finished_inner(turn_context, task_result)
+                    .await;
+            }
+            .in_current_span(),
+        );
+        if let Err(error) = join.await {
+            warn!(?error, "task-finish terminalizer did not complete");
+        }
+    }
+
+    async fn on_task_finished_inner(
         self: &Arc<Self>,
         turn_context: Arc<TurnContext>,
         task_result: SessionTaskResult,

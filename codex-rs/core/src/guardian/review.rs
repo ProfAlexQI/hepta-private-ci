@@ -6,7 +6,6 @@ use codex_analytics::GuardianReviewTerminalStatus;
 use codex_analytics::GuardianReviewTrackContext;
 use codex_analytics::GuardianReviewedAction;
 use codex_core_plugins::PluginCommandAttribution;
-use codex_extension_api::ThreadIdleCause;
 use codex_features::Feature;
 use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::openai_models::MODEL_SPECIALTY_CYBER;
@@ -296,20 +295,16 @@ async fn record_guardian_denial(session: &Arc<Session>, turn: &Arc<TurnContext>,
     let session = Arc::clone(session);
     let turn_id = turn_id.to_string();
     let _abort_task = runtime_handle.spawn(async move {
-        let outcome = session
+        // `abort_turn_if_active_for_guardian` owns the detached abort and its
+        // running-task idle callback. Keeping both in that job prevents a
+        // cancelled guardian caller from losing the lifecycle handoff.
+        session
             .abort_turn_if_active_for_guardian(
                 &turn_id,
                 &expected_turn_state,
                 TurnAbortReason::Interrupted,
             )
             .await;
-        if matches!(outcome, crate::tasks::AbortTurnOutcome::Running) {
-            // Guardian aborts bypass normal task completion, so emit its idle lifecycle here.
-            // User interrupts deliberately do not take this path.
-            session
-                .emit_thread_idle_lifecycle_if_idle(ThreadIdleCause::Interrupted)
-                .await;
-        }
     });
 }
 
