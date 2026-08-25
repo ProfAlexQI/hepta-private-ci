@@ -13,6 +13,7 @@ use crate::H7TrajectoryRecord;
 use crate::H7TrajectoryStoreError;
 use crate::LocalTurnLifecycleBinding;
 use crate::append_h7_trajectory_event_bound;
+use crate::read_h7_trajectory_bound;
 
 fn digest(label: &str) -> Sha256Digest {
     Sha256Digest::for_bytes(label.as_bytes())
@@ -168,6 +169,148 @@ async fn bound_trajectory_is_append_only_causal_and_reopenable() {
         .expect("reopen read")
         .expect("reopened trajectory");
     assert_eq!(reopened_read.events.len(), 2);
+}
+
+#[tokio::test]
+async fn bound_read_rejects_terminal_trajectory_from_prior_lease_head() {
+    let (_temp, store, lease, executor, binding) = prepared().await;
+    let start = start_record();
+    let H7TrajectoryAppend::Inserted {
+        event_sha256: parent,
+        ..
+    } = append_h7_trajectory_event_bound(&lease, &executor, &binding, &start)
+        .await
+        .expect("append start")
+    else {
+        panic!("first event must be inserted")
+    };
+    let terminal = H7TrajectoryRecord::terminal(
+        "trajectory:h7-trajectory",
+        2,
+        "event:h7-trajectory:2",
+        "turn:h7-trajectory",
+        "occurrence:h7-trajectory:terminal",
+        1,
+        parent,
+        digest("state:2"),
+        digest("policy:none"),
+        digest("model:none"),
+        digest("receipt:terminal"),
+        "stopped",
+        "turn_stopped",
+        "{}",
+    )
+    .expect("terminal record");
+    append_h7_trajectory_event_bound(&lease, &executor, &binding, &terminal)
+        .await
+        .expect("append terminal");
+    let released = lease.release().await.expect("release generation one");
+
+    let next = store
+        .acquire_host_bound_lease_after_head(
+            "lease:h7-trajectory",
+            released,
+            31,
+            38,
+            2,
+            "h7-trajectory-fence-2",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock")
+                .as_secs()
+                + 3_600,
+        )
+        .await
+        .expect("acquire generation two")
+        .into_handle();
+    let fence = CompactFence::new(31, 38, 2, "h7-trajectory-fence-2").expect("fence");
+    let next_executor = store
+        .open_local_compact_executor_bound("journal:h7-trajectory-2", fence, &next)
+        .await
+        .expect("executor generation two");
+    let next_binding =
+        LocalTurnLifecycleBinding::from_handles("turn:h7-trajectory", &next, &next_executor)
+            .expect("binding generation two");
+    let error = read_h7_trajectory_bound(
+        &next,
+        &next_executor,
+        &next_binding,
+        "trajectory:h7-trajectory",
+    )
+    .await
+    .expect_err("prior terminal head must not be reused by a new generation");
+    assert!(matches!(
+        error,
+        H7TrajectoryStoreError::StaleFence(message)
+            if message.contains("does not match the current lifecycle binding")
+    ));
+}
+
+#[tokio::test]
+async fn trajectory_rejects_mixed_generation_event_chain() {
+    let (_temp, store, lease, executor, binding) = prepared().await;
+    let start = start_record();
+    let H7TrajectoryAppend::Inserted {
+        event_sha256: parent,
+        ..
+    } = append_h7_trajectory_event_bound(&lease, &executor, &binding, &start)
+        .await
+        .expect("append start")
+    else {
+        panic!("first event must be inserted")
+    };
+    let released = lease.release().await.expect("release generation one");
+    let next = store
+        .acquire_host_bound_lease_after_head(
+            "lease:h7-trajectory",
+            released,
+            31,
+            38,
+            2,
+            "h7-trajectory-fence-2",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock")
+                .as_secs()
+                + 3_600,
+        )
+        .await
+        .expect("acquire generation two")
+        .into_handle();
+    let fence = CompactFence::new(31, 38, 2, "h7-trajectory-fence-2").expect("fence");
+    let next_executor = store
+        .open_local_compact_executor_bound("journal:h7-trajectory-2", fence, &next)
+        .await
+        .expect("executor generation two");
+    let next_binding =
+        LocalTurnLifecycleBinding::from_handles("turn:h7-trajectory", &next, &next_executor)
+            .expect("binding generation two");
+    let terminal = H7TrajectoryRecord::terminal(
+        "trajectory:h7-trajectory",
+        2,
+        "event:h7-trajectory:2",
+        "turn:h7-trajectory",
+        "occurrence:h7-trajectory:terminal",
+        1,
+        parent,
+        digest("state:2"),
+        digest("policy:none"),
+        digest("model:none"),
+        digest("receipt:terminal"),
+        "stopped",
+        "turn_stopped",
+        "{}",
+    )
+    .expect("terminal record");
+    let error = append_h7_trajectory_event_bound(&next, &next_executor, &next_binding, &terminal)
+        .await
+        .expect_err("one trajectory cannot cross lease generations");
+    assert!(matches!(
+        error,
+        H7TrajectoryStoreError::Corrupt(message)
+            if message.contains("does not match the current lifecycle binding")
+    ));
+    next.release().await.expect("release generation two");
 }
 
 #[tokio::test]

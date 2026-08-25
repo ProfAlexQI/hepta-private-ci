@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -62,6 +63,9 @@ pub struct StoredActionEvidence {
 pub struct HeptaEvidenceStore {
     pub(crate) pool: SqlitePool,
     path: PathBuf,
+    /// Serializes adapter-boundary operations for clones of one opened store.
+    /// Separate opens/processes still require provider-owned idempotency.
+    pub(crate) provider_effect_boundary_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl HeptaEvidenceStore {
@@ -83,7 +87,11 @@ impl HeptaEvidenceStore {
             pool.close().await;
             return Err(error);
         }
-        Ok(Self { pool, path })
+        Ok(Self {
+            pool,
+            path,
+            provider_effect_boundary_lock: Arc::new(tokio::sync::Mutex::new(())),
+        })
     }
 
     /// Opens only an already-created, fully migrated evidence lineage.
@@ -105,7 +113,11 @@ impl HeptaEvidenceStore {
             pool.close().await;
             return Err(error);
         }
-        Ok(Self { pool, path })
+        Ok(Self {
+            pool,
+            path,
+            provider_effect_boundary_lock: Arc::new(tokio::sync::Mutex::new(())),
+        })
     }
 
     pub fn path(&self) -> &std::path::Path {

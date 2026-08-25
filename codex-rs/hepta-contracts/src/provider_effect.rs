@@ -724,10 +724,10 @@ where
         &mut self,
         key: &ProviderEffectKey,
     ) -> Result<ProviderEffectState, ProviderEffectCoordinatorError> {
-        if let Some(state) = self.journal.state(key) {
-            if state.is_terminal() {
-                return Ok(state);
-            }
+        if let Some(state) = self.journal.state(key)
+            && state.is_terminal()
+        {
+            return Ok(state);
         }
         let lookup = self.adapter.lookup(key).await;
         self.journal
@@ -991,7 +991,7 @@ mod tests {
             Ok(ProviderEffectAppendDisposition::AlreadyPresent)
         );
         let conflicting_accepted = ProviderEffectAck::new(
-            key.clone(),
+            key,
             Sha256Digest::for_bytes(b"payload-a"),
             Sha256Digest::for_bytes(b"operation-2"),
             ProviderEffectAckStatus::Accepted,
@@ -1065,7 +1065,7 @@ mod tests {
         assert!(
             journal
                 .state(&key)
-                .is_some_and(|state| state.is_retry_blocked())
+                .is_some_and(ProviderEffectState::is_retry_blocked)
         );
         assert_eq!(journal.uncertainties(&key).len(), 1);
         assert_eq!(

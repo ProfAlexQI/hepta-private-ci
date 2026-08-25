@@ -46,6 +46,7 @@ use codex_hepta_memory::LocalTurnLifecycleBindingError;
 use codex_hepta_memory::QueuedReceipt;
 use codex_hepta_memory::append_h7_trajectory_event_bound;
 use codex_hepta_memory::h7_trajectory_local_receipt_digest;
+use codex_hepta_memory::read_h7_trajectory_bound;
 
 /// Schema version for the qualification-only turn writer payload.
 pub const QUALIFICATION_TURN_WRITER_SCHEMA_VERSION: u32 = 1;
@@ -381,6 +382,31 @@ impl QualificationTurnLifecycleContributor {
             .binding
             .verify_current(&input.lease, &input.executor)
             .await?;
+        let trajectory_id = format!("qualification:trajectory:{}", input.turn_id);
+        if let Some(trajectory) =
+            read_h7_trajectory_bound(&input.lease, &input.executor, &input.binding, trajectory_id)
+                .await
+                .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?
+        {
+            if let Some(terminal) = trajectory.events.last().filter(|event| event.terminal) {
+                // A process may die after the H7 terminal observation commits
+                // but before the local outcome/release transaction.  The
+                // durable trajectory is authoritative for this local
+                // observation; close the leftover lease without attempting a
+                // second turn_start append.
+                if terminal.outcome == "turn_indeterminate" {
+                    input
+                        .lease
+                        .mark_indeterminate(
+                            input.occurrence_key.clone(),
+                            bounded_terminal_reason(&terminal.reason),
+                        )
+                        .await?;
+                }
+                input.lease.release().await?;
+                return Ok(None);
+            }
+        }
         let replay = input
             .lease
             .finalize_replayed_occurrence(input.occurrence_key.clone())
@@ -461,7 +487,7 @@ impl QualificationTurnLifecycleContributor {
         })
     }
 
-    async fn complete(
+    async fn append_terminal(
         active: &ActiveTurn,
         action: TerminalAction,
     ) -> Result<(), QualificationTurnWriterInputError> {
@@ -525,6 +551,19 @@ impl QualificationTurnLifecycleContributor {
         append_h7_trajectory_event_bound(&input.lease, &input.executor, &input.binding, &record)
             .await
             .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?;
+        Ok(())
+    }
+
+    async fn complete(
+        active: &ActiveTurn,
+        action: TerminalAction,
+    ) -> Result<(), QualificationTurnWriterInputError> {
+        let input = &active.input;
+        Self::append_terminal(active, action.clone()).await?;
+        let reason = match &action {
+            TerminalAction::Stop => "turn_stopped".to_string(),
+            TerminalAction::Indeterminate(reason) => bounded_terminal_reason(reason),
+        };
         if matches!(&action, TerminalAction::Indeterminate(_)) {
             input
                 .lease
@@ -1025,6 +1064,99 @@ mod tests {
                 turn_store: &second_turn,
             })
             .await;
+    }
+
+    #[tokio::test]
+    async fn reopened_host_terminal_h7_closes_queued_occurrence_without_start_replay() {
+        let (temp, store, input) = prepared().await;
+        let receipt = QualificationTurnLifecycleContributor::admit(&input)
+            .await
+            .expect("admit")
+            .expect("queued receipt");
+        let active = QualificationTurnLifecycleContributor::append_start(&input, &receipt)
+            .await
+            .expect("H7 start");
+        // Simulate a kill in the narrow window after the immutable H7
+        // terminal row commits but before the local outcome/release step.
+        QualificationTurnLifecycleContributor::append_terminal(&active, TerminalAction::Stop)
+            .await
+            .expect("H7 terminal");
+        let counts_before = input.lease.snapshot_counts().await.expect("counts");
+        assert_eq!(counts_before.event_rows, 1);
+        assert_eq!(counts_before.outbox_rows, 1);
+        drop(active);
+        drop(input);
+        drop(store);
+
+        let fleet = HeptaFleetRoot::parse(temp.path().join("fleet")).expect("fleet reopen");
+        let owner = AgentId::parse("00000000-0000-4000-8000-000000000981").expect("owner");
+        let reopened_store = CognitiveStore::open(&fleet.layout().agent(&owner))
+            .await
+            .expect("reopen store");
+        let lease = reopened_store
+            .reopen_local_lease(LEASE_ID, 1, "writer-e26-fence")
+            .await
+            .expect("reopen active lease");
+        let fence = CompactFence::new(17, 19, 1, "writer-e26-fence").expect("fence");
+        let executor = reopened_store
+            .open_local_compact_executor_bound("journal:writer-e26", fence, &lease)
+            .await
+            .expect("reopen executor");
+        let binding = LocalTurnLifecycleBinding::from_handles(TURN_ID, &lease, &executor)
+            .expect("reopen binding");
+        let reopened_input = QualificationTurnWriterInput::new(
+            TURN_ID,
+            binding,
+            lease,
+            executor,
+            OCCURRENCE,
+            r#"{"schema_version":1,"external_effect":false,"kg_write_authority":false}"#,
+        )
+        .expect("reopen input");
+        let second_turn = ExtensionData::new(TURN_ID);
+        assert!(attach_qualification_turn_writer(
+            &second_turn,
+            reopened_input.clone()
+        ));
+        let contributor = QualificationTurnLifecycleContributor::new();
+        let thread_store = ExtensionData::new("thread:writer-e26");
+        let session_store = ExtensionData::new("session:writer-e26");
+        let mode = mode();
+        let usage = TokenUsage::default();
+        contributor
+            .on_turn_start(start_input(
+                &second_turn,
+                &thread_store,
+                &session_store,
+                &mode,
+                &usage,
+            ))
+            .await;
+        let counts_after = reopened_input
+            .lease
+            .snapshot_counts()
+            .await
+            .expect("reopened counts");
+        assert_eq!(counts_after.event_rows, counts_before.event_rows);
+        assert_eq!(counts_after.outbox_rows, counts_before.outbox_rows);
+        assert_eq!(counts_after.lease_rows, counts_before.lease_rows + 1);
+        assert_eq!(
+            reopened_store
+                .read_h7_trajectory("qualification:trajectory:turn:writer-e26")
+                .await
+                .expect("read terminal trajectory")
+                .expect("trajectory")
+                .events
+                .len(),
+            2
+        );
+        assert!(
+            reopened_store
+                .reopen_local_lease(LEASE_ID, 1, "writer-e26-fence")
+                .await
+                .is_err(),
+            "replay must release the leftover active lease after terminal H7"
+        );
     }
 
     /// The qualification-only admission/Saga/forget path must keep all state

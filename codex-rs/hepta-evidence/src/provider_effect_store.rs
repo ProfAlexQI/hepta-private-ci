@@ -1,6 +1,8 @@
 use codex_hepta_contracts::ProviderEffectAck;
 use codex_hepta_contracts::ProviderEffectAckStatus;
+use codex_hepta_contracts::ProviderEffectAdapter;
 use codex_hepta_contracts::ProviderEffectBindingError;
+use codex_hepta_contracts::ProviderEffectDispatch;
 use codex_hepta_contracts::ProviderEffectIdempotencyCapability;
 use codex_hepta_contracts::ProviderEffectIntent;
 use codex_hepta_contracts::ProviderEffectKey;
@@ -47,6 +49,30 @@ pub struct StoredProviderEffect {
     pub acknowledgements: Vec<StoredProviderEffectAck>,
     pub uncertainties: Vec<StoredProviderEffectUncertainty>,
 }
+
+/// Result of one durable, qualification-only adapter dispatch attempt.
+///
+/// `dispatch_attempted` means that the adapter method was invoked; it is not
+/// evidence that an external provider applied an effect.  The facade persists
+/// an uncertainty claim before invoking an adapter and serializes competing
+/// calls through one opened store.  This is deliberately a durable local
+/// boundary claim, not provider physical exactly-once authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProviderEffectQualificationDispatchReceipt {
+    pub state: ProviderEffectState,
+    /// Whether this invocation inserted the durable pre-dispatch claim.
+    pub dispatch_claimed: bool,
+    /// Whether this invocation called the adapter's `dispatch` method.
+    pub dispatch_attempted: bool,
+}
+
+/// Descriptive qualification metadata only; this is not a runtime capability
+/// or an isolation gate for an adapter supplied by a caller.
+pub const PROVIDER_EFFECT_QUALIFICATION_NAMESPACE: &str = "local_qualification_only";
+/// Registration convention only; an injected adapter can still have effects.
+pub const PROVIDER_EFFECT_QUALIFICATION_EXTERNAL_EFFECTS: bool = false;
+/// Registration convention only; this API does not authenticate its caller.
+pub const PROVIDER_EFFECT_QUALIFICATION_PRODUCTION_CALLER: bool = false;
 
 impl StoredProviderEffect {
     pub fn state(&self) -> ProviderEffectState {
@@ -107,6 +133,201 @@ impl HeptaEvidenceStore {
         .await?;
         transaction.commit().await.map_err(classify_sqlx_error)?;
         Ok(disposition)
+    }
+
+    /// Dispatch one provider effect through a durable, qualification-only
+    /// adapter seam.
+    ///
+    /// The intent is persisted first.  A `provider_dispatch_boundary_pending`
+    /// uncertainty is then won by at most one concurrent caller through this
+    /// opened store before the adapter is invoked.  Any later facade call—
+    /// including after process death and reopen—observes
+    /// `Indeterminate`/`Accepted`/a terminal state and does not send again; it
+    /// must use [`Self::reconcile_provider_effect_with_adapter`].  Direct
+    /// low-level append/reconcile calls, separate store opens, and separate
+    /// processes remain outside this process-local lock and can still race;
+    /// provider-owned idempotency is therefore required for physical
+    /// exactly-once semantics.
+    ///
+    /// This method is not registered with Agentd, App Server, automation, or a
+    /// production caller.  `dispatch_attempted` is only a local observation
+    /// of the adapter call and never a provider effect receipt.
+    pub async fn dispatch_provider_effect_qualification<A: ProviderEffectAdapter + ?Sized>(
+        &self,
+        adapter: &A,
+        intent: &ProviderEffectIntent,
+    ) -> Result<ProviderEffectQualificationDispatchReceipt, EvidenceError> {
+        let _boundary_guard = self
+            .provider_effect_boundary_lock
+            .clone()
+            .lock_owned()
+            .await;
+        intent.validate().map_err(binding_invalid)?;
+        self.append_provider_effect_intent(intent).await?;
+        let key = intent.key.clone();
+        let current = self
+            .get_provider_effect(&key)
+            .await?
+            .ok_or_else(|| EvidenceError::Corrupt("provider effect intent disappeared".into()))?;
+        if current.state() != ProviderEffectState::Pending {
+            return Ok(ProviderEffectQualificationDispatchReceipt {
+                state: current.state(),
+                dispatch_claimed: false,
+                dispatch_attempted: false,
+            });
+        }
+
+        let claim = self
+            .mark_provider_effect_indeterminate(&key, "provider_dispatch_boundary_pending")
+            .await?;
+        let claimed = claim == AppendDisposition::Inserted;
+        let after_claim = self
+            .get_provider_effect(&key)
+            .await?
+            .ok_or_else(|| EvidenceError::Corrupt("provider effect claim disappeared".into()))?;
+        // A concurrent caller may have won the claim, or a reconciler may
+        // have appended an ACK while this call was between transactions.  In
+        // either case, do not cross the adapter boundary a second time.
+        if !claimed
+            || after_claim.state() != ProviderEffectState::Indeterminate
+            || after_claim.uncertainties.len() != 1
+        {
+            return Ok(ProviderEffectQualificationDispatchReceipt {
+                state: after_claim.state(),
+                dispatch_claimed: claimed,
+                dispatch_attempted: false,
+            });
+        }
+
+        // An unsupported capability is explicitly fail-closed: retain the
+        // durable quarantine but never invoke even a nominal adapter method.
+        if adapter.capability() == ProviderEffectIdempotencyCapability::Unsupported {
+            self.mark_provider_effect_indeterminate(&key, "provider_capability_unsupported")
+                .await?;
+            return Ok(ProviderEffectQualificationDispatchReceipt {
+                state: ProviderEffectState::Indeterminate,
+                dispatch_claimed: true,
+                dispatch_attempted: false,
+            });
+        }
+
+        let dispatch = adapter.dispatch(intent).await;
+        match dispatch {
+            ProviderEffectDispatch::Ack(ack) => {
+                let ack_result = match ack.validate_for(intent) {
+                    Ok(()) => self.append_provider_effect_ack(&ack).await,
+                    Err(error) => Err(binding_invalid(error)),
+                };
+                if let Err(error) = ack_result {
+                    // A malformed/lost ACK must leave a durable quarantine
+                    // marker before the error escapes to the caller.
+                    let _ = self
+                        .mark_provider_effect_indeterminate(&key, "provider_dispatch_ack_invalid")
+                        .await;
+                    return Err(error);
+                }
+            }
+            ProviderEffectDispatch::Rejected { reason_code } => {
+                self.mark_provider_effect_indeterminate(
+                    &key,
+                    qualification_reason_code(&reason_code, "provider_dispatch_rejected"),
+                )
+                .await?;
+            }
+            ProviderEffectDispatch::NotDispatched { reason_code } => {
+                self.mark_provider_effect_indeterminate(
+                    &key,
+                    qualification_reason_code(&reason_code, "provider_not_dispatched"),
+                )
+                .await?;
+            }
+            ProviderEffectDispatch::Unknown => {
+                self.mark_provider_effect_indeterminate(&key, "provider_dispatch_unknown")
+                    .await?;
+            }
+        }
+        let state = self
+            .get_provider_effect(&key)
+            .await?
+            .map(|effect| effect.state())
+            .unwrap_or(ProviderEffectState::Indeterminate);
+        Ok(ProviderEffectQualificationDispatchReceipt {
+            state,
+            dispatch_claimed: true,
+            dispatch_attempted: true,
+        })
+    }
+
+    /// Reconcile an existing intent through lookup.  The intent may have been
+    /// claimed by this facade or explicitly imported from another local
+    /// journal; this path never calls `dispatch`, including after a reopen.
+    /// `Unknown`/`NotFound` outcomes remain durably quarantined and therefore
+    /// cannot be sent again by the dispatch facade.
+    pub async fn reconcile_provider_effect_with_adapter<A: ProviderEffectAdapter + ?Sized>(
+        &self,
+        adapter: &A,
+        key: &ProviderEffectKey,
+    ) -> Result<ProviderEffectState, EvidenceError> {
+        let _boundary_guard = self
+            .provider_effect_boundary_lock
+            .clone()
+            .lock_owned()
+            .await;
+        let stored = self.get_provider_effect(key).await?.ok_or_else(|| {
+            EvidenceError::InvalidRecord("provider effect intent not found".into())
+        })?;
+        if stored.state().is_terminal() {
+            return Ok(stored.state());
+        }
+        let capability = adapter.capability();
+        if capability == ProviderEffectIdempotencyCapability::Unsupported {
+            return self
+                .reconcile_provider_effect_lookup(capability, key, ProviderEffectLookup::Unknown)
+                .await;
+        }
+        let lookup = adapter.lookup(key).await;
+        match lookup {
+            ProviderEffectLookup::Ack(ack) => {
+                match self
+                    .reconcile_provider_effect_lookup(
+                        capability,
+                        key,
+                        ProviderEffectLookup::Ack(ack),
+                    )
+                    .await
+                {
+                    Ok(state) => Ok(state),
+                    Err(error) => {
+                        // A malformed or conflicting lookup ACK must close
+                        // the local occurrence before the error escapes; a
+                        // later dispatch facade call must not treat it as
+                        // fresh Pending work.
+                        let quarantine_required = matches!(
+                            &error,
+                            EvidenceError::InvalidRecord(_)
+                                | EvidenceError::IdempotencyConflict { .. }
+                        );
+                        if quarantine_required
+                            && let Err(quarantine_error) = self
+                                .mark_provider_effect_indeterminate(
+                                    key,
+                                    "provider_reconcile_ack_invalid",
+                                )
+                                .await
+                        {
+                            return Err(EvidenceError::Corrupt(format!(
+                                "provider reconcile ACK failed ({error}); durable quarantine failed ({quarantine_error})"
+                            )));
+                        }
+                        Err(error)
+                    }
+                }
+            }
+            lookup => {
+                self.reconcile_provider_effect_lookup(capability, key, lookup)
+                    .await
+            }
+        }
     }
 
     /// Appends a provider ACK after validating it against the authoritative
@@ -433,10 +654,12 @@ pub(crate) async fn verify_provider_effect_rows(pool: &SqlitePool) -> Result<(),
                 // the invariant during startup verification so a damaged or
                 // imported store cannot downgrade a terminal provider result
                 // to Indeterminate merely by appending a late quarantine row.
-                let follows_terminal = uncertainty.seq > terminal.seq
-                    || uncertainty.recorded_at_ms > terminal.recorded_at_ms
-                    || (uncertainty.recorded_at_ms == terminal.recorded_at_ms
-                        && uncertainty.seq > terminal.seq);
+                // ACK and uncertainty `seq` values come from separate
+                // AUTOINCREMENT tables and are not a shared journal order.
+                // The per-key recorded timestamp is the only cross-table
+                // ordering witness; public append paths make it strictly
+                // increasing.
+                let follows_terminal = uncertainty.recorded_at_ms > terminal.recorded_at_ms;
                 if follows_terminal {
                     return Err(EvidenceError::Corrupt(
                         "provider effect uncertainty follows terminal ACK".to_string(),
@@ -827,6 +1050,19 @@ fn ack_status_as_str(status: ProviderEffectAckStatus) -> &'static str {
         ProviderEffectAckStatus::Accepted => "accepted",
         ProviderEffectAckStatus::Completed => "completed",
         ProviderEffectAckStatus::Rejected => "rejected",
+    }
+}
+
+fn qualification_reason_code(value: &str, fallback: &'static str) -> String {
+    if value.len() <= 128
+        && !value.is_empty()
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-' | b'.')
+        })
+    {
+        value.to_string()
+    } else {
+        fallback.to_string()
     }
 }
 

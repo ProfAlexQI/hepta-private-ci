@@ -1,6 +1,13 @@
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+
 use codex_hepta_contracts::PROVIDER_EVIDENCE_SCHEMA_VERSION;
 use codex_hepta_contracts::ProviderEffectAck;
 use codex_hepta_contracts::ProviderEffectAckStatus;
+use codex_hepta_contracts::ProviderEffectAdapter;
+use codex_hepta_contracts::ProviderEffectDispatch;
+use codex_hepta_contracts::ProviderEffectFuture;
 use codex_hepta_contracts::ProviderEffectIdempotencyCapability;
 use codex_hepta_contracts::ProviderEffectIntent;
 use codex_hepta_contracts::ProviderEffectKey;
@@ -15,10 +22,92 @@ use codex_hepta_contracts::Sha256Digest;
 use codex_state::SqliteConfig;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use tempfile::TempDir;
+use tokio::sync::Notify;
 
 use crate::AppendDisposition;
 use crate::EvidenceError;
 use crate::HeptaEvidenceStore;
+
+#[derive(Clone)]
+struct DurableScriptedAdapter {
+    capability: ProviderEffectIdempotencyCapability,
+    dispatch_result: ProviderEffectDispatch,
+    lookup_result: ProviderEffectLookup,
+    dispatches: Arc<AtomicUsize>,
+    lookups: Arc<AtomicUsize>,
+}
+
+#[derive(Clone)]
+struct BlockingLookupAdapter {
+    dispatches: Arc<AtomicUsize>,
+    lookup_started: Arc<Notify>,
+    release_lookup: Arc<Notify>,
+}
+
+impl ProviderEffectAdapter for BlockingLookupAdapter {
+    fn capability(&self) -> ProviderEffectIdempotencyCapability {
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup
+    }
+
+    fn dispatch<'a>(
+        &'a self,
+        _intent: &'a ProviderEffectIntent,
+    ) -> ProviderEffectFuture<'a, ProviderEffectDispatch> {
+        self.dispatches.fetch_add(1, Ordering::Relaxed);
+        Box::pin(async { ProviderEffectDispatch::Unknown })
+    }
+
+    fn lookup<'a>(
+        &'a self,
+        _key: &'a ProviderEffectKey,
+    ) -> ProviderEffectFuture<'a, ProviderEffectLookup> {
+        let lookup_started = self.lookup_started.clone();
+        let release_lookup = self.release_lookup.clone();
+        Box::pin(async move {
+            lookup_started.notify_one();
+            release_lookup.notified().await;
+            ProviderEffectLookup::Unknown
+        })
+    }
+}
+
+impl ProviderEffectAdapter for DurableScriptedAdapter {
+    fn capability(&self) -> ProviderEffectIdempotencyCapability {
+        self.capability
+    }
+
+    fn dispatch<'a>(
+        &'a self,
+        _intent: &'a ProviderEffectIntent,
+    ) -> ProviderEffectFuture<'a, ProviderEffectDispatch> {
+        self.dispatches.fetch_add(1, Ordering::Relaxed);
+        let result = self.dispatch_result.clone();
+        Box::pin(async move { result })
+    }
+
+    fn lookup<'a>(
+        &'a self,
+        _key: &'a ProviderEffectKey,
+    ) -> ProviderEffectFuture<'a, ProviderEffectLookup> {
+        self.lookups.fetch_add(1, Ordering::Relaxed);
+        let result = self.lookup_result.clone();
+        Box::pin(async move { result })
+    }
+}
+
+fn scripted_adapter(
+    capability: ProviderEffectIdempotencyCapability,
+    dispatch_result: ProviderEffectDispatch,
+    lookup_result: ProviderEffectLookup,
+) -> DurableScriptedAdapter {
+    DurableScriptedAdapter {
+        capability,
+        dispatch_result,
+        lookup_result,
+        dispatches: Arc::new(AtomicUsize::new(0)),
+        lookups: Arc::new(AtomicUsize::new(0)),
+    }
+}
 
 fn sqlite_config(temp: &TempDir) -> SqliteConfig {
     SqliteConfig::new_for_testing(
@@ -47,14 +136,18 @@ fn request_binding_id() -> RequestBindingId {
     })
 }
 
-fn effect_intent(payload: &[u8]) -> ProviderEffectIntent {
+fn effect_intent_for_occurrence(payload: &[u8], occurrence: &str) -> ProviderEffectIntent {
     let key = ProviderEffectKey::for_occurrence(
         "provider-effect-fixture/config-v1",
-        "automation:agent-a:occurrence-1",
+        occurrence,
         &request_binding_id(),
     )
     .expect("effect key");
     ProviderEffectIntent::new(key, Sha256Digest::for_bytes(payload))
+}
+
+fn effect_intent(payload: &[u8]) -> ProviderEffectIntent {
+    effect_intent_for_occurrence(payload, "automation:agent-a:occurrence-1")
 }
 
 fn completed_ack(intent: &ProviderEffectIntent, operation: &[u8]) -> ProviderEffectAck {
@@ -130,6 +223,349 @@ async fn effect_journal_quarantines_unknown_and_reconciles_after_restart() {
     assert_eq!(completed.state(), ProviderEffectState::Completed);
     assert_eq!(completed.uncertainties.len(), 1);
     assert_eq!(completed.acknowledgements.len(), 1);
+}
+
+#[tokio::test]
+async fn qualification_dispatch_claim_survives_reopen_without_redispatch() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"qualification-dispatch-claim");
+    let key = intent.key.clone();
+    let first_adapter = scripted_adapter(
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+        ProviderEffectDispatch::Unknown,
+        ProviderEffectLookup::Unknown,
+    );
+    let first = store
+        .dispatch_provider_effect_qualification(&first_adapter, &intent)
+        .await
+        .expect("qualification dispatch");
+    assert_eq!(first.state, ProviderEffectState::Indeterminate);
+    assert!(first.dispatch_claimed);
+    assert!(first.dispatch_attempted);
+    assert_eq!(first_adapter.dispatches.load(Ordering::Relaxed), 1);
+
+    drop(store);
+    let reopened = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("reopen evidence");
+    let completion = completed_ack(&intent, b"qualification-operation");
+    let replay_adapter = scripted_adapter(
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+        ProviderEffectDispatch::Ack(completion.clone()),
+        ProviderEffectLookup::Ack(completion),
+    );
+    let replay = reopened
+        .dispatch_provider_effect_qualification(&replay_adapter, &intent)
+        .await
+        .expect("replayed qualification dispatch");
+    assert_eq!(replay.state, ProviderEffectState::Indeterminate);
+    assert!(!replay.dispatch_attempted);
+    assert_eq!(replay_adapter.dispatches.load(Ordering::Relaxed), 0);
+
+    assert_eq!(
+        reopened
+            .reconcile_provider_effect_with_adapter(&replay_adapter, &key)
+            .await
+            .expect("lookup reconciliation"),
+        ProviderEffectState::Completed
+    );
+    assert_eq!(replay_adapter.dispatches.load(Ordering::Relaxed), 0);
+    assert_eq!(replay_adapter.lookups.load(Ordering::Relaxed), 1);
+    let effect = reopened
+        .get_provider_effect(&key)
+        .await
+        .expect("read reconciled effect")
+        .expect("effect");
+    assert_eq!(effect.state(), ProviderEffectState::Completed);
+    assert_eq!(effect.acknowledgements.len(), 1);
+    assert_eq!(effect.uncertainties.len(), 2);
+}
+
+#[tokio::test]
+async fn qualification_dispatch_malformed_ack_quarantines_and_replay_does_not_send() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"qualification-malformed-ack");
+    let malformed = ProviderEffectAck::new(
+        intent.key.clone(),
+        Sha256Digest::for_bytes(b"wrong-payload"),
+        Sha256Digest::for_bytes(b"malformed-operation"),
+        ProviderEffectAckStatus::Completed,
+    );
+    let bad_adapter = scripted_adapter(
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+        ProviderEffectDispatch::Ack(malformed),
+        ProviderEffectLookup::Unknown,
+    );
+    let error = store
+        .dispatch_provider_effect_qualification(&bad_adapter, &intent)
+        .await
+        .expect_err("payload-mismatched adapter ACK must fail closed");
+    assert!(matches!(error, EvidenceError::InvalidRecord(_)));
+    assert_eq!(bad_adapter.dispatches.load(Ordering::Relaxed), 1);
+
+    let good_ack = completed_ack(&intent, b"reconciled-after-malformed");
+    let good_adapter = scripted_adapter(
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+        ProviderEffectDispatch::Ack(good_ack.clone()),
+        ProviderEffectLookup::Ack(good_ack),
+    );
+    let replay = store
+        .dispatch_provider_effect_qualification(&good_adapter, &intent)
+        .await
+        .expect("quarantined replay");
+    assert_eq!(replay.state, ProviderEffectState::Indeterminate);
+    assert!(!replay.dispatch_attempted);
+    assert_eq!(good_adapter.dispatches.load(Ordering::Relaxed), 0);
+    assert_eq!(
+        store
+            .reconcile_provider_effect_with_adapter(&good_adapter, &intent.key)
+            .await
+            .expect("reconcile malformed ACK quarantine"),
+        ProviderEffectState::Completed
+    );
+    assert_eq!(good_adapter.lookups.load(Ordering::Relaxed), 1);
+}
+
+#[tokio::test]
+async fn qualification_reconcile_malformed_ack_quarantines_and_blocks_dispatch() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"qualification-reconcile-malformed-ack");
+    store
+        .append_provider_effect_intent(&intent)
+        .await
+        .expect("intent");
+    let malformed = ProviderEffectAck::new(
+        intent.key.clone(),
+        Sha256Digest::for_bytes(b"wrong-lookup-payload"),
+        Sha256Digest::for_bytes(b"malformed-lookup-operation"),
+        ProviderEffectAckStatus::Completed,
+    );
+    let bad_adapter = scripted_adapter(
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+        ProviderEffectDispatch::Unknown,
+        ProviderEffectLookup::Ack(malformed),
+    );
+    let error = store
+        .reconcile_provider_effect_with_adapter(&bad_adapter, &intent.key)
+        .await
+        .expect_err("payload-mismatched lookup ACK must fail closed");
+    assert!(matches!(error, EvidenceError::InvalidRecord(_)));
+    let effect = store
+        .get_provider_effect(&intent.key)
+        .await
+        .expect("read lookup quarantine")
+        .expect("effect");
+    assert_eq!(effect.state(), ProviderEffectState::Indeterminate);
+    assert_eq!(effect.uncertainties.len(), 1);
+    assert_eq!(
+        effect.uncertainties[0].uncertainty.reason_code,
+        "provider_reconcile_ack_invalid"
+    );
+
+    let replay_adapter = scripted_adapter(
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+        ProviderEffectDispatch::Ack(completed_ack(&intent, b"must-not-dispatch")),
+        ProviderEffectLookup::Unknown,
+    );
+    let replay = store
+        .dispatch_provider_effect_qualification(&replay_adapter, &intent)
+        .await
+        .expect("quarantined lookup replay");
+    assert_eq!(replay.state, ProviderEffectState::Indeterminate);
+    assert!(!replay.dispatch_attempted);
+    assert_eq!(replay_adapter.dispatches.load(Ordering::Relaxed), 0);
+}
+
+#[tokio::test]
+async fn qualification_dispatch_rejects_cross_key_ack_without_mutating_other_effect() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
+        .await
+        .expect("open evidence");
+    let intent_a = effect_intent_for_occurrence(
+        b"qualification-cross-key-a",
+        "automation:agent-a:cross-key-a",
+    );
+    let intent_b = effect_intent_for_occurrence(
+        b"qualification-cross-key-b",
+        "automation:agent-a:cross-key-b",
+    );
+    store
+        .append_provider_effect_intent(&intent_b)
+        .await
+        .expect("intent B");
+    let adapter = scripted_adapter(
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+        ProviderEffectDispatch::Ack(completed_ack(&intent_b, b"wrong-target-operation")),
+        ProviderEffectLookup::Unknown,
+    );
+    let error = store
+        .dispatch_provider_effect_qualification(&adapter, &intent_a)
+        .await
+        .expect_err("cross-key ACK must fail closed");
+    assert!(matches!(error, EvidenceError::InvalidRecord(_)));
+    assert_eq!(adapter.dispatches.load(Ordering::Relaxed), 1);
+
+    let effect_a = store
+        .get_provider_effect(&intent_a.key)
+        .await
+        .expect("read A")
+        .expect("effect A");
+    assert_eq!(effect_a.state(), ProviderEffectState::Indeterminate);
+    assert_eq!(effect_a.uncertainties.len(), 2);
+    assert_eq!(
+        effect_a.uncertainties[1].uncertainty.reason_code,
+        "provider_dispatch_ack_invalid"
+    );
+    let effect_b = store
+        .get_provider_effect(&intent_b.key)
+        .await
+        .expect("read B")
+        .expect("effect B");
+    assert_eq!(effect_b.state(), ProviderEffectState::Pending);
+    assert!(effect_b.acknowledgements.is_empty());
+    assert!(effect_b.uncertainties.is_empty());
+}
+
+#[tokio::test]
+async fn qualification_boundary_lock_serializes_lookup_against_dispatch() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"qualification-boundary-lock");
+    store
+        .append_provider_effect_intent(&intent)
+        .await
+        .expect("intent");
+    let adapter = BlockingLookupAdapter {
+        dispatches: Arc::new(AtomicUsize::new(0)),
+        lookup_started: Arc::new(Notify::new()),
+        release_lookup: Arc::new(Notify::new()),
+    };
+    let reconcile_store = store.clone();
+    let reconcile_adapter = adapter.clone();
+    let key = intent.key.clone();
+    let reconcile_task = tokio::spawn(async move {
+        reconcile_store
+            .reconcile_provider_effect_with_adapter(&reconcile_adapter, &key)
+            .await
+    });
+    adapter.lookup_started.notified().await;
+
+    let dispatch_store = store.clone();
+    let dispatch_adapter = adapter.clone();
+    let dispatch_intent = intent.clone();
+    let dispatch_task = tokio::spawn(async move {
+        dispatch_store
+            .dispatch_provider_effect_qualification(&dispatch_adapter, &dispatch_intent)
+            .await
+    });
+    tokio::task::yield_now().await;
+    assert_eq!(
+        adapter.dispatches.load(Ordering::Relaxed),
+        0,
+        "dispatch must wait while lookup owns the opened-store boundary"
+    );
+    adapter.release_lookup.notify_one();
+    assert_eq!(
+        reconcile_task
+            .await
+            .expect("reconcile task")
+            .expect("reconcile result"),
+        ProviderEffectState::Indeterminate
+    );
+    let dispatch = dispatch_task
+        .await
+        .expect("dispatch task")
+        .expect("dispatch result");
+    assert!(!dispatch.dispatch_attempted);
+    assert_eq!(adapter.dispatches.load(Ordering::Relaxed), 0);
+}
+
+#[tokio::test]
+async fn qualification_dispatch_claim_has_one_concurrent_winner() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"qualification-concurrent-claim");
+    let first_adapter = scripted_adapter(
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+        ProviderEffectDispatch::Unknown,
+        ProviderEffectLookup::Unknown,
+    );
+    let second_adapter = scripted_adapter(
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+        ProviderEffectDispatch::Unknown,
+        ProviderEffectLookup::Unknown,
+    );
+    let (first, second) = tokio::join!(
+        store.dispatch_provider_effect_qualification(&first_adapter, &intent),
+        store.dispatch_provider_effect_qualification(&second_adapter, &intent),
+    );
+    let first = first.expect("first concurrent qualification call");
+    let second = second.expect("second concurrent qualification call");
+    assert_eq!(
+        first.dispatch_attempted as u8 + second.dispatch_attempted as u8,
+        1,
+        "only one caller may cross the adapter boundary"
+    );
+    assert_eq!(
+        first_adapter.dispatches.load(Ordering::Relaxed)
+            + second_adapter.dispatches.load(Ordering::Relaxed),
+        1
+    );
+    let effect = store
+        .get_provider_effect(&intent.key)
+        .await
+        .expect("read concurrent claim")
+        .expect("effect");
+    assert_eq!(effect.state(), ProviderEffectState::Indeterminate);
+}
+
+#[tokio::test]
+async fn qualification_dispatch_unsupported_capability_never_invokes_adapter() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"qualification-unsupported");
+    let adapter = scripted_adapter(
+        ProviderEffectIdempotencyCapability::Unsupported,
+        ProviderEffectDispatch::Ack(completed_ack(&intent, b"must-not-send")),
+        ProviderEffectLookup::Unknown,
+    );
+    let receipt = store
+        .dispatch_provider_effect_qualification(&adapter, &intent)
+        .await
+        .expect("unsupported capability quarantine");
+    assert_eq!(receipt.state, ProviderEffectState::Indeterminate);
+    assert!(receipt.dispatch_claimed);
+    assert!(!receipt.dispatch_attempted);
+    assert_eq!(adapter.dispatches.load(Ordering::Relaxed), 0);
+    let reconcile_error = store
+        .reconcile_provider_effect_with_adapter(&adapter, &intent.key)
+        .await
+        .expect_err("unsupported lookup must remain fail-closed");
+    assert!(matches!(reconcile_error, EvidenceError::InvalidRecord(_)));
+    assert_eq!(adapter.lookups.load(Ordering::Relaxed), 0);
+    let external_effects = crate::PROVIDER_EFFECT_QUALIFICATION_EXTERNAL_EFFECTS;
+    let production_caller = crate::PROVIDER_EFFECT_QUALIFICATION_PRODUCTION_CALLER;
+    assert!(!external_effects);
+    assert!(!production_caller);
 }
 
 #[tokio::test]
@@ -445,6 +881,63 @@ async fn reopen_rejects_late_uncertainty_after_terminal_ack() {
         Err(EvidenceError::Corrupt(detail))
             if detail.contains("uncertainty follows terminal ACK")
     ));
+}
+
+#[tokio::test]
+async fn reopen_orders_ack_and_uncertainty_by_per_key_time_not_cross_table_seq() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let target = effect_intent(b"cross-table-seq-target");
+    store
+        .append_provider_effect_intent(&target)
+        .await
+        .expect("target intent");
+
+    // Skew the global uncertainty AUTOINCREMENT sequence with unrelated
+    // effects.  A target uncertainty may then have seq 100+ while its target
+    // ACK still has acknowledgement seq 1; those values are not comparable.
+    for index in 0..4 {
+        let other = effect_intent_for_occurrence(
+            format!("cross-table-seq-other-{index}").as_bytes(),
+            &format!("automation:agent-a:cross-table-other-{index}"),
+        );
+        store
+            .append_provider_effect_intent(&other)
+            .await
+            .expect("other intent");
+        store
+            .mark_provider_effect_indeterminate(&other.key, "provider_lookup_unknown")
+            .await
+            .expect("other uncertainty");
+    }
+    store
+        .reconcile_provider_effect_lookup(
+            ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+            &target.key,
+            ProviderEffectLookup::Unknown,
+        )
+        .await
+        .expect("target uncertainty");
+    store
+        .append_provider_effect_ack(&completed_ack(&target, b"cross-table-seq-operation"))
+        .await
+        .expect("target terminal ACK");
+    drop(store);
+
+    let reopened = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("reopen evidence");
+    let effect = reopened
+        .get_provider_effect(&target.key)
+        .await
+        .expect("read target")
+        .expect("target effect");
+    assert_eq!(effect.state(), ProviderEffectState::Completed);
+    assert_eq!(effect.uncertainties.len(), 1);
+    assert_eq!(effect.acknowledgements.len(), 1);
 }
 
 #[tokio::test]

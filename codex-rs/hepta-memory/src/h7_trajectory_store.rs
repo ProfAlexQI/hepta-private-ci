@@ -341,6 +341,8 @@ pub enum H7TrajectoryStoreError {
 
 /// Append one H7 trajectory event while holding the exact local lease/fence
 /// transaction.  This is the only mutating API exposed to extension hosts.
+/// Every event in one immutable trajectory must retain the same binding tuple;
+/// a successor generation must use a new trajectory identity.
 pub async fn append_h7_trajectory_event_bound(
     lease: &LocalLeaseOutbox,
     executor: &LocalCompactExecutor,
@@ -372,12 +374,20 @@ pub async fn append_h7_trajectory_event_bound(
         .map_err(|error| H7TrajectoryStoreError::Lease(error.to_string()))?;
     verify_current_binding(binding, lease, executor, &current)?;
     let existing = load_trajectory_rows(&mut transaction, store, &record.trajectory_id).await?;
+    let binding_tuple = binding_tuple(binding);
+    if existing
+        .iter()
+        .any(|row| &row.binding_tuple() != &binding_tuple)
+    {
+        return Err(corrupt(
+            "trajectory binding does not match the current lifecycle binding",
+        ));
+    }
     let payload_json = record.payload_json()?;
     if payload_json.len() > MAX_PAYLOAD_BYTES || payload_json.as_bytes().contains(&0) {
         return Err(invalid("trajectory payload exceeds the bounded size"));
     }
     let payload_sha256 = Sha256Digest::for_bytes(payload_json.as_bytes());
-    let binding_tuple = binding_tuple(binding);
     if let Some(previous) = existing.last() {
         if previous.record.event_seq == record.event_seq {
             let expected = event_digest(
@@ -501,27 +511,62 @@ impl CognitiveStore {
             .begin()
             .await
             .map_err(crate::cognitive_store::unavailable)?;
-        let rows = load_trajectory_rows(&mut transaction, self, &trajectory_id).await?;
+        let result =
+            read_h7_trajectory_in_transaction(&mut transaction, self, &trajectory_id, None).await?;
         transaction
             .commit()
             .await
             .map_err(crate::cognitive_store::unavailable)?;
-        if rows.is_empty() {
-            return Ok(None);
-        }
-        let head_sha256 = rows
-            .last()
-            .map(|row| row.event_sha256.clone())
-            .ok_or_else(|| corrupt("trajectory head disappeared"))?;
-        Ok(Some(H7TrajectoryRead {
-            trajectory_id,
-            events: rows.into_iter().map(|row| row.record).collect(),
-            head_sha256,
-        }))
+        Ok(result)
     }
 }
 
-#[derive(Clone, Debug)]
+/// Reopen and verify one trajectory while retaining the exact local
+/// lease/compact binding used by its writer.  This is a read-only recovery
+/// helper: it grants no new authority and never appends or releases anything.
+/// A caller can use it before replaying a queued occurrence so an already
+/// terminal H7 observation cannot be mistaken for a fresh turn start.
+pub async fn read_h7_trajectory_bound(
+    lease: &LocalLeaseOutbox,
+    executor: &LocalCompactExecutor,
+    binding: &LocalTurnLifecycleBinding,
+    trajectory_id: impl Into<String>,
+) -> Result<Option<H7TrajectoryRead>, H7TrajectoryStoreError> {
+    binding.validate()?;
+    if !executor.is_bound_to_lease(lease) || !lease.is_bound_to_store(executor.store()) {
+        return Err(H7TrajectoryStoreError::StaleFence(
+            "trajectory handles are not bound to one local store/lease".to_string(),
+        ));
+    }
+    let trajectory_id = trajectory_id.into();
+    validate_text(&trajectory_id, "trajectory id", MAX_TEXT_BYTES)?;
+    let store = executor.store();
+    let mut transaction = store
+        .pool
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+    let current = lease
+        .verify_current_in_transaction(&mut transaction)
+        .await
+        .map_err(|error| H7TrajectoryStoreError::Lease(error.to_string()))?;
+    verify_current_binding(binding, lease, executor, &current)?;
+    let expected_binding = binding_tuple(binding);
+    let result = read_h7_trajectory_in_transaction(
+        &mut transaction,
+        store,
+        &trajectory_id,
+        Some(&expected_binding),
+    )
+    .await?;
+    transaction
+        .commit()
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+    Ok(result)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct BindingTuple {
     lease_id: String,
     lease_head_sha256: Sha256Digest,
@@ -536,9 +581,26 @@ struct StoredRow {
     record: H7TrajectoryRecord,
     lease_id: String,
     lease_head_sha256: Sha256Digest,
+    authority_epoch: u64,
+    owner_epoch: u64,
+    generation: u64,
+    fencing_token_sha256: Sha256Digest,
     payload_sha256: Sha256Digest,
     previous_sha256: Sha256Digest,
     event_sha256: Sha256Digest,
+}
+
+impl StoredRow {
+    fn binding_tuple(&self) -> BindingTuple {
+        BindingTuple {
+            lease_id: self.lease_id.clone(),
+            lease_head_sha256: self.lease_head_sha256.clone(),
+            authority_epoch: self.authority_epoch,
+            owner_epoch: self.owner_epoch,
+            generation: self.generation,
+            fencing_token_sha256: self.fencing_token_sha256.clone(),
+        }
+    }
 }
 
 fn binding_tuple(binding: &LocalTurnLifecycleBinding) -> BindingTuple {
@@ -721,8 +783,15 @@ async fn load_trajectory_rows(
             authority_epoch,
             owner_epoch,
             generation,
-            fencing_token_sha256,
+            fencing_token_sha256: fencing_token_sha256.clone(),
         };
+        if let Some(prior) = result.last()
+            && prior.binding_tuple() != binding_tuple
+        {
+            return Err(corrupt(
+                "trajectory binding changed across its immutable event chain",
+            ));
+        }
         let expected_event = event_digest(
             store.owner_agent_id().as_str(),
             trajectory_id,
@@ -739,12 +808,47 @@ async fn load_trajectory_rows(
             record,
             lease_id,
             lease_head_sha256,
+            authority_epoch,
+            owner_epoch,
+            generation,
+            fencing_token_sha256,
             payload_sha256,
             previous_sha256,
             event_sha256,
         });
     }
     Ok(result)
+}
+
+async fn read_h7_trajectory_in_transaction(
+    transaction: &mut Transaction<'_, Sqlite>,
+    store: &CognitiveStore,
+    trajectory_id: &str,
+    expected_binding: Option<&BindingTuple>,
+) -> Result<Option<H7TrajectoryRead>, H7TrajectoryStoreError> {
+    let rows = load_trajectory_rows(transaction, store, trajectory_id).await?;
+    if rows.is_empty() {
+        return Ok(None);
+    }
+    if let Some(expected_binding) = expected_binding {
+        let head = rows
+            .last()
+            .ok_or_else(|| corrupt("trajectory head disappeared"))?;
+        if &head.binding_tuple() != expected_binding {
+            return Err(H7TrajectoryStoreError::StaleFence(
+                "trajectory head does not match the current lifecycle binding".to_string(),
+            ));
+        }
+    }
+    let head_sha256 = rows
+        .last()
+        .map(|row| row.event_sha256.clone())
+        .ok_or_else(|| corrupt("trajectory head disappeared"))?;
+    Ok(Some(H7TrajectoryRead {
+        trajectory_id: trajectory_id.to_string(),
+        events: rows.into_iter().map(|row| row.record).collect(),
+        head_sha256,
+    }))
 }
 
 async fn verify_historical_lease(
