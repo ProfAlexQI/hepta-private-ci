@@ -73,6 +73,10 @@ pub const PROVIDER_EFFECT_QUALIFICATION_NAMESPACE: &str = "local_qualification_o
 pub const PROVIDER_EFFECT_QUALIFICATION_EXTERNAL_EFFECTS: bool = false;
 /// Registration convention only; this API does not authenticate its caller.
 pub const PROVIDER_EFFECT_QUALIFICATION_PRODUCTION_CALLER: bool = false;
+/// An intent that was already durable before the dispatch facade saw it has
+/// no local proof that this process owns the pre-dispatch boundary.  It must
+/// be quarantined before any adapter call.
+const PROVIDER_EFFECT_IMPORTED_PENDING_REASON: &str = "provider_imported_pending";
 
 impl StoredProviderEffect {
     pub fn state(&self) -> ProviderEffectState {
@@ -148,6 +152,9 @@ impl HeptaEvidenceStore {
     /// processes remain outside this process-local lock and can still race;
     /// provider-owned idempotency is therefore required for physical
     /// exactly-once semantics.
+    /// An intent that was already present before this facade call is treated
+    /// as imported Pending state and quarantined without a dispatch attempt;
+    /// only a call that inserts the intent may claim this local boundary.
     ///
     /// This method is not registered with Agentd, App Server, automation, or a
     /// production caller.  `dispatch_attempted` is only a local observation
@@ -163,7 +170,7 @@ impl HeptaEvidenceStore {
             .lock_owned()
             .await;
         intent.validate().map_err(binding_invalid)?;
-        self.append_provider_effect_intent(intent).await?;
+        let intent_disposition = self.append_provider_effect_intent(intent).await?;
         let key = intent.key.clone();
         let current = self
             .get_provider_effect(&key)
@@ -172,6 +179,26 @@ impl HeptaEvidenceStore {
         if current.state() != ProviderEffectState::Pending {
             return Ok(ProviderEffectQualificationDispatchReceipt {
                 state: current.state(),
+                dispatch_claimed: false,
+                dispatch_attempted: false,
+            });
+        }
+        if intent_disposition == AppendDisposition::AlreadyPresent
+            && current.acknowledgements.is_empty()
+            && current.uncertainties.is_empty()
+        {
+            // A Pending intent imported from another local journal (or left
+            // behind by a crash before this facade's claim) has no durable
+            // proof that this caller owns the physical dispatch boundary.
+            // Persist quarantine first; reconciliation may still resolve a
+            // later provider ACK, but blind redispatch is forbidden.
+            self.mark_provider_effect_indeterminate(
+                &key,
+                PROVIDER_EFFECT_IMPORTED_PENDING_REASON,
+            )
+            .await?;
+            return Ok(ProviderEffectQualificationDispatchReceipt {
+                state: ProviderEffectState::Indeterminate,
                 dispatch_claimed: false,
                 dispatch_attempted: false,
             });

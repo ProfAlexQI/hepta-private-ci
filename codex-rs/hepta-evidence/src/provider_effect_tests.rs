@@ -286,6 +286,64 @@ async fn qualification_dispatch_claim_survives_reopen_without_redispatch() {
 }
 
 #[tokio::test]
+async fn imported_pending_is_quarantined_before_dispatch_and_reconcile_only() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"imported-pending-quarantine");
+    store
+        .append_provider_effect_intent(&intent)
+        .await
+        .expect("imported intent");
+    drop(store);
+
+    // Reopen models an intent imported from another local journal or a crash
+    // window before the dispatch-boundary claim.  The dispatch facade must
+    // quarantine it before touching the adapter; only lookup reconciliation
+    // may later close the occurrence.
+    let reopened = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("reopen evidence");
+    let completion = completed_ack(&intent, b"imported-operation");
+    let adapter = scripted_adapter(
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+        ProviderEffectDispatch::Ack(completion.clone()),
+        ProviderEffectLookup::Ack(completion),
+    );
+    let receipt = reopened
+        .dispatch_provider_effect_qualification(&adapter, &intent)
+        .await
+        .expect("imported pending quarantine");
+    assert_eq!(receipt.state, ProviderEffectState::Indeterminate);
+    assert!(!receipt.dispatch_claimed);
+    assert!(!receipt.dispatch_attempted);
+    assert_eq!(adapter.dispatches.load(Ordering::Relaxed), 0);
+    let quarantined = reopened
+        .get_provider_effect(&intent.key)
+        .await
+        .expect("read imported quarantine")
+        .expect("effect");
+    assert_eq!(quarantined.state(), ProviderEffectState::Indeterminate);
+    assert_eq!(quarantined.uncertainties.len(), 1);
+    assert_eq!(
+        quarantined.uncertainties[0].uncertainty.reason_code,
+        "provider_imported_pending"
+    );
+
+    assert_eq!(
+        reopened
+            .reconcile_provider_effect_with_adapter(&adapter, &intent.key)
+            .await
+            .expect("lookup reconciliation"),
+        ProviderEffectState::Completed
+    );
+    assert_eq!(adapter.dispatches.load(Ordering::Relaxed), 0);
+    assert_eq!(adapter.lookups.load(Ordering::Relaxed), 1);
+}
+
+#[tokio::test]
 async fn qualification_dispatch_malformed_ack_quarantines_and_replay_does_not_send() {
     let temp = TempDir::new().expect("temp dir");
     let sqlite = sqlite_config(&temp);
