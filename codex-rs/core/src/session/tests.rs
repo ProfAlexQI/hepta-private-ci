@@ -12580,6 +12580,88 @@ async fn suspend_turn_handoff_closes_writer_before_releasing_fence() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn closed_construction_runtime_suspends_on_caller_runtime() {
+    let (session_tx, session_rx) = std::sync::mpsc::sync_channel(1);
+    let owner_thread = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("construction runtime should build");
+        let (session, turn_context, rx, store) = runtime.block_on(async move {
+            let (mut session, turn_context, rx) = make_session_and_context_with_rx().await;
+            let store = attach_in_memory_thread_store(
+                Arc::get_mut(&mut session).expect("session should be uniquely owned"),
+            )
+            .await;
+            session
+                .spawn_task(
+                    Arc::clone(&turn_context),
+                    Vec::new(),
+                    NeverEndingTask {
+                        kind: TaskKind::Regular,
+                        listen_to_cancellation_token: true,
+                    },
+                )
+                .await
+                .expect("suspension task should attach on construction runtime");
+            (session, turn_context, rx, store)
+        });
+        session_tx
+            .send((session, turn_context, rx, store))
+            .expect("suspension session handoff should remain open");
+        // The suspension owner must be scheduled by the caller's live
+        // runtime.  A construction-time handle that is merely accepted by
+        // Tokio could otherwise drop the handoff before its first poll.
+        runtime.shutdown_background();
+    });
+
+    let (session, turn_context, rx, store) = tokio::task::spawn_blocking(move || {
+        session_rx
+            .recv_timeout(StdDuration::from_secs(5))
+            .expect("construction runtime should hand back the suspension session")
+    })
+    .await
+    .expect("suspension session handoff task should join");
+    tokio::task::spawn_blocking(move || owner_thread.join().expect("owner thread should exit"))
+        .await
+        .expect("owner thread join should complete");
+
+    let turn_id = turn_context.sub_id.clone();
+    let outcome = timeout(
+        StdDuration::from_secs(5),
+        super::turn_suspension::suspend_turn_and_shutdown_for_test(
+            &session,
+            "closed-construction-suspend".to_string(),
+        ),
+    )
+    .await
+    .expect("caller runtime should drive the suspension handoff")
+    .expect("suspension handoff should complete after runtime teardown");
+    assert_eq!(
+        outcome,
+        codex_protocol::turn_input::SuspendTurnOutcome::Suspended { turn_id }
+    );
+
+    let calls = store.calls().await;
+    assert!(
+        calls.flush_thread >= 2,
+        "suspension must flush before and after cancel"
+    );
+    assert_eq!(
+        calls.shutdown_thread, 1,
+        "suspended writer must close exactly once"
+    );
+    assert!(session.active_turn.lock().await.is_none());
+    assert!(!session.has_pending_task_terminalization());
+    while let Ok(event) = rx.try_recv() {
+        assert!(!matches!(
+            event.msg,
+            EventMsg::TurnAborted(_) | EventMsg::TurnComplete(_)
+        ));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cancelled_suspend_caller_keeps_writer_handoff_alive() {
     struct BlockingThreadStop {
         entered: Arc<Notify>,
