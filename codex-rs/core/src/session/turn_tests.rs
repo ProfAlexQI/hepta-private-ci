@@ -162,44 +162,61 @@ fn assistant_output_text(text: &str) -> ResponseItem {
     }
 }
 
-struct PostSamplingTokenEstimateCallsite;
-
-static POST_SAMPLING_TOKEN_ESTIMATE_CALLSITE: PostSamplingTokenEstimateCallsite =
-    PostSamplingTokenEstimateCallsite;
-static POST_SAMPLING_TOKEN_ESTIMATE_METADATA: tracing::Metadata<'static> = tracing::metadata! {
-    name: "post_sampling_token_estimate",
-    target: POST_SAMPLING_TOKEN_ESTIMATE_TARGET,
-    level: tracing::Level::TRACE,
-    fields: &["turn_id", "estimated_token_count", "message"],
-    callsite: &POST_SAMPLING_TOKEN_ESTIMATE_CALLSITE,
-    kind: tracing::metadata::Kind::EVENT,
-};
-
-impl tracing::Callsite for PostSamplingTokenEstimateCallsite {
-    fn set_interest(&self, _interest: tracing::subscriber::Interest) {}
-
-    fn metadata(&self) -> &tracing::Metadata<'_> {
-        &POST_SAMPLING_TOKEN_ESTIMATE_METADATA
-    }
-}
-
-#[test]
-fn post_sampling_token_estimate_is_disabled_by_always_on_sinks() {
+#[tokio::test]
+async fn post_sampling_token_estimate_is_filtered_from_always_on_sinks() {
+    let codex_home = tempfile::tempdir().expect("create isolated state directory");
+    let runtime = codex_state::StateRuntime::init(
+        codex_state::SqliteConfig::new_for_testing(
+            codex_utils_absolute_path::AbsolutePathBuf::try_from(codex_home.path())
+                .expect("temporary state directory should be absolute"),
+        ),
+        "test-provider".to_string(),
+    )
+    .await
+    .expect("initialize isolated state runtime");
     let feedback = codex_feedback::CodexFeedback::new();
+    let log_db = codex_state::log_db::start(Arc::clone(&runtime));
     let subscriber = tracing_subscriber::registry()
         .with(feedback.logger_layer())
-        .with(tracing_subscriber::fmt::layer().with_filter(codex_state::log_db::default_filter()));
+        .with(
+            log_db
+                .clone()
+                .with_filter(codex_state::log_db::default_filter()),
+        );
 
     tracing::subscriber::with_default(subscriber, || {
-        tracing::callsite::rebuild_interest_cache();
-        assert!(!tracing::event_enabled!(
+        tracing::trace!(
             target: POST_SAMPLING_TOKEN_ESTIMATE_TARGET,
-            tracing::Level::TRACE,
-            turn_id,
-            estimated_token_count,
-            message
-        ));
+            turn_id = "test-turn",
+            estimated_token_count = 42_u64,
+            "filtered post sampling token estimate"
+        );
+        tracing::trace!(
+            target: "codex_core::turn_filter_control",
+            "retained turn filter control"
+        );
     });
+    log_db.flush().await;
+
+    let log_rows = runtime
+        .query_logs(&codex_state::LogQuery {
+            include_threadless: true,
+            ..Default::default()
+        })
+        .await
+        .expect("query isolated log database");
+    assert!(
+        !log_rows
+            .iter()
+            .any(|row| row.target == POST_SAMPLING_TOKEN_ESTIMATE_TARGET)
+    );
+    assert!(log_rows.iter().any(|row| {
+        row.target == "codex_core::turn_filter_control"
+            && row
+                .message
+                .as_deref()
+                .is_some_and(|message| message.contains("retained turn filter control"))
+    }));
 }
 
 #[tokio::test]
