@@ -193,19 +193,20 @@ impl Drop for StartReservationOwner {
             return;
         };
         let session = Arc::clone(&self.session);
-        let Some(runtime_handle) = self.runtime_handle.take() else {
-            let release = match session.active_turn.try_lock() {
-                Ok(mut active) => {
-                    Session::release_start_reservation_if_current_locked(&mut active, &handle)
-                }
-                Err(_) => {
-                    warn!(
-                        turn_id = %handle.turn_id,
-                        "caller-owned start reservation dropped outside a Tokio runtime while active state was busy"
-                    );
-                    return;
-                }
-            };
+        // The owner can be constructed on a non-runtime thread and later be
+        // dropped from a runtime callback (or vice versa). Prefer the handle
+        // captured at construction, but rediscover a live runtime before
+        // falling back to a synchronous lock. This keeps the synchronous path
+        // strictly outside Tokio and avoids the old try_lock leak when the
+        // active slot was briefly held by another task.
+        let runtime_handle = self
+            .runtime_handle
+            .take()
+            .or_else(|| tokio::runtime::Handle::try_current().ok());
+        let Some(runtime_handle) = runtime_handle else {
+            let mut active = session.active_turn.blocking_lock();
+            let release =
+                Session::release_start_reservation_if_current_locked(&mut active, &handle);
             if !matches!(release, StartReservationRelease::Stale) {
                 session.settle_consumed_recovery_status();
             }

@@ -91,6 +91,7 @@ use crate::state::ActiveTurn;
 use crate::state::TaskKind;
 use crate::tasks::SessionTask;
 use crate::tasks::SessionTaskResult;
+use crate::tasks::StartReservationOwner;
 use crate::tasks::UserShellCommandMode;
 use crate::tasks::execute_user_shell_command;
 use crate::tools::ToolRouter;
@@ -1260,6 +1261,68 @@ async fn cancelled_spawn_reservation_owner_releases_before_context() {
     })
     .await
     .expect("cancelling the owner should release its reservation");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn non_runtime_reservation_drop_waits_for_busy_active_slot() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    let start_reservation = {
+        let mut active = session.active_turn.lock().await;
+        let active_turn = active.get_or_insert_with(ActiveTurn::default);
+        active_turn
+            .reserve_start(turn_context.sub_id.clone())
+            .expect("idle slot should accept a reservation")
+    };
+
+    let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let holder_session = Arc::clone(&session);
+    let holder = tokio::spawn(async move {
+        let active_guard = holder_session.active_turn.lock().await;
+        locked_tx.send(()).expect("lock waiter should be notified");
+        release_rx.await.expect("lock release should arrive");
+        drop(active_guard);
+    });
+    locked_rx.await.expect("active slot should be held");
+
+    let (drop_started_tx, drop_started_rx) = std::sync::mpsc::channel();
+    let (drop_done_tx, drop_done_rx) = std::sync::mpsc::channel();
+    let owner_session = Arc::clone(&session);
+    let owner_thread = std::thread::spawn(move || {
+        let owner = StartReservationOwner::new(&owner_session, start_reservation);
+        drop_started_tx
+            .send(())
+            .expect("owner thread should reach the drop boundary");
+        drop(owner);
+        drop_done_tx.send(()).expect("owner drop should complete");
+    });
+    drop_started_rx
+        .recv_timeout(StdDuration::from_secs(2))
+        .expect("owner thread should start");
+
+    // The non-runtime path must wait for the active lock instead of using a
+    // best-effort try_lock that silently strands the reservation.
+    tokio::time::sleep(StdDuration::from_millis(50)).await;
+    assert!(
+        drop_done_rx.try_recv().is_err(),
+        "reservation must not be silently abandoned while active state is busy"
+    );
+    release_tx.send(()).expect("active lock should be released");
+    tokio::task::spawn_blocking(move || owner_thread.join().expect("owner thread should exit"))
+        .await
+        .expect("owner join should complete");
+    holder.await.expect("lock holder should exit");
+
+    timeout(StdDuration::from_secs(2), async {
+        loop {
+            if session.active_turn.lock().await.is_none() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("non-runtime reservation drop must release the slot");
 }
 
 #[tokio::test]
