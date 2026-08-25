@@ -63,6 +63,35 @@ async fn release_start_reservation_after_error(
     release
 }
 
+/// Performs the final caller-reservation admission check after the async
+/// recovery preamble. The active-turn lock is already held by both callers;
+/// taking the short synchronous gate second makes the shutdown/fence check
+/// and `reserve_start` one publication window without changing lock order.
+fn reserve_start_after_admission(
+    session: &Session,
+    active_turn: &mut Option<ActiveTurn>,
+    turn_id: String,
+    consumed_recovery: bool,
+) -> Option<StartReservationHandle> {
+    let admission_gate = session
+        .start_admission_gate
+        .lock()
+        .expect("start admission gate mutex poisoned");
+    if session.shutdown_started() || session.has_pending_admission_fence() {
+        drop(admission_gate);
+        if consumed_recovery {
+            session.settle_consumed_recovery_status();
+        }
+        return None;
+    }
+    let active_turn = active_turn.get_or_insert_with(ActiveTurn::default);
+    let start_reservation = active_turn
+        .reserve_start(turn_id)
+        .expect("idle slot should accept one start reservation");
+    drop(admission_gate);
+    Some(start_reservation)
+}
+
 #[cfg(test)]
 #[path = "turn_input_tests.rs"]
 mod tests;
@@ -266,19 +295,27 @@ async fn start_or_steer(
                         reason: NotSubmittedReason::NotIdle,
                     });
                 }
-                if session
+                let consumed_recovery = match session
                     .consume_recovery_candidate_for_mutation()
                     .await
-                    .is_err()
                 {
+                    Ok(consumed_recovery) => consumed_recovery,
+                    Err(_) => {
+                        return Ok(TurnInputSubmission::NotSubmitted {
+                            reason: NotSubmittedReason::RecoveryPersistenceFailed,
+                        });
+                    }
+                };
+                let Some(start_reservation) = reserve_start_after_admission(
+                    session,
+                    &mut active_turn,
+                    submission_id.clone(),
+                    consumed_recovery,
+                ) else {
                     return Ok(TurnInputSubmission::NotSubmitted {
-                        reason: NotSubmittedReason::RecoveryPersistenceFailed,
+                        reason: NotSubmittedReason::NotIdle,
                     });
-                }
-                let active_turn = active_turn.get_or_insert_with(ActiveTurn::default);
-                let start_reservation = active_turn
-                    .reserve_start(submission_id.clone())
-                    .expect("idle slot should accept one start reservation");
+                };
                 start_reservation
             };
             let mut start_reservation_owner =
@@ -493,19 +530,30 @@ async fn start_if_idle(
             };
             recovery_expected_context = Some(expected_context);
         }
-        if session
+        let consumed_recovery = match session
             .consume_recovery_candidate_for_mutation()
             .await
-            .is_err()
         {
+            Ok(consumed_recovery) => consumed_recovery,
+            Err(_) => {
+                return Ok(TurnInputSubmission::NotSubmitted {
+                    reason: NotSubmittedReason::RecoveryPersistenceFailed,
+                });
+            }
+        };
+        let Some(start_reservation) = reserve_start_after_admission(
+            session,
+            &mut active_turn,
+            submission_id.clone(),
+            consumed_recovery,
+        ) else {
             return Ok(TurnInputSubmission::NotSubmitted {
-                reason: NotSubmittedReason::RecoveryPersistenceFailed,
+                reason: NotSubmittedReason::NotIdle,
             });
-        }
-        let active_turn = active_turn.get_or_insert_with(ActiveTurn::default);
-        let start_reservation = active_turn
-            .reserve_start(submission_id.clone())
-            .expect("idle slot should accept one start reservation");
+        };
+        let active_turn = active_turn
+            .as_ref()
+            .expect("caller reservation should retain the active turn state");
         (Arc::clone(&active_turn.turn_state), start_reservation)
     };
     let mut start_reservation_owner = StartReservationOwner::new(session, start_reservation);

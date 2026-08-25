@@ -385,6 +385,39 @@ async fn start_only_rejects_active_turn_without_injecting() {
     session.abort_all_tasks(TurnAbortReason::Interrupted).await;
 }
 
+#[expect(
+    clippy::await_holding_invalid_type,
+    reason = "the recovery consumption contract requires active_turn to stay held"
+)]
+#[tokio::test]
+async fn shutdown_fence_settles_consumed_recovery_before_caller_reservation() {
+    let (session, _turn_context, _rx) = make_turn_recovery_session_and_context_with_rx().await;
+    let turn_id = "shutdown-before-recovery-reservation";
+    seed_recovery_candidate(&session, turn_id).await;
+
+    // Model the completion of the async recovery preamble while retaining the
+    // active-turn lock. Shutdown wins before the final reserve_start window;
+    // the shared helper must reject and settle the consumed authority.
+    let mut active_turn = session.active_turn.lock().await;
+    let consumed_recovery = session
+        .consume_recovery_candidate_for_mutation()
+        .await
+        .expect("recovery authority should be consumed");
+    assert!(consumed_recovery);
+    session.begin_shutdown();
+
+    let reservation = reserve_start_after_admission(
+        &session,
+        &mut active_turn,
+        turn_id.to_string(),
+        consumed_recovery,
+    );
+    assert!(reservation.is_none());
+    assert!(active_turn.is_none());
+    drop(active_turn);
+    assert!(!session.is_interrupted());
+}
+
 #[tokio::test]
 async fn steer_rejects_after_shutdown_without_injecting() {
     let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
