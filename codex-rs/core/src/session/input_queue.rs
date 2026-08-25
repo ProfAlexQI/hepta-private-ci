@@ -188,6 +188,9 @@ impl InputQueue {
     ) -> Option<Arc<Mutex<TurnState>>> {
         let active = active_turn.lock().await;
         active.as_ref().and_then(|active_turn| {
+            if active_turn.task_terminalization.is_some() {
+                return None;
+            }
             active_turn
                 .task
                 .as_ref()
@@ -291,6 +294,9 @@ impl InputQueue {
             let mut active = active_turn.lock().await;
             match active.as_mut() {
                 Some(active_turn) => {
+                    if active_turn.task_terminalization.is_some() {
+                        return (Vec::new(), None, None);
+                    }
                     let active_turn_metadata = active_turn
                         .task
                         .as_ref()
@@ -346,6 +352,9 @@ impl InputQueue {
             let active = active_turn.lock().await;
             match active.as_ref() {
                 Some(active_turn) => {
+                    if active_turn.task_terminalization.is_some() {
+                        return false;
+                    }
                     let turn_state = active_turn.turn_state.lock().await;
                     (
                         !turn_state.pending_input.items.is_empty(),

@@ -11,6 +11,7 @@ use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::shell_snapshot::ShellSnapshot;
 use crate::state::ActiveTurn;
 use crate::state::StartTransitionCompletion;
+use crate::state::TaskTerminalizationKind;
 use codex_extension_api::ExtensionDataInit;
 use codex_http_client::ClientRouteClass;
 use codex_http_client::RouteAwareClientPool;
@@ -63,11 +64,21 @@ pub(crate) struct Session {
     pub(super) mcp_prewarm_task: std::sync::Mutex<Option<JoinHandle<()>>>,
     pub(crate) conversation: Arc<RealtimeConversationManager>,
     pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
+    /// Serializes claims of the running task's terminalization owner. The
+    /// active-turn mutex remains available while recovery/persistence awaits;
+    /// the typed marker in `ActiveTurn` carries the exact ownership fence.
+    pub(crate) terminalization_claim_lock: Mutex<()>,
     /// Completion fences for materialized start transitions whose terminal
     /// side effects may outlive the active-turn marker.  Shutdown drains this
     /// registry instead of inferring liveness from `active_turn` alone.
     pub(crate) pending_start_transition_completions:
         std::sync::Mutex<Vec<(Arc<()>, Arc<StartTransitionCompletion>)>>,
+    /// Completion fences for task finish/abort terminalizers.  The active-turn
+    /// marker is intentionally cleared before a replacement turn may be
+    /// admitted, so shutdown must retain an independent registry until the
+    /// terminalizer has also published recovery and idle side effects.
+    pub(crate) pending_task_terminalization_completions:
+        std::sync::Mutex<Vec<(Arc<()>, Arc<StartTransitionCompletion>, TaskTerminalizationKind)>>,
     /// Once teardown begins, no new host-owned start transition may be
     /// admitted.  This prevents pending-mailbox wakeups from racing the
     /// shutdown completion drain.
@@ -1534,7 +1545,9 @@ impl Session {
                 mcp_prewarm_task: std::sync::Mutex::new(None),
                 conversation: Arc::new(RealtimeConversationManager::new()),
                 active_turn: Mutex::new(None),
+                terminalization_claim_lock: Mutex::new(()),
                 pending_start_transition_completions: std::sync::Mutex::new(Vec::new()),
+                pending_task_terminalization_completions: std::sync::Mutex::new(Vec::new()),
                 shutdown_started: AtomicBool::new(false),
                 turn_epoch: AtomicU64::new(0),
                 recovery_candidate: std::sync::Mutex::new(None),

@@ -14,8 +14,17 @@ pub(super) async fn suspend_turn_and_shutdown(
     session: &Arc<Session>,
     submission_id: String,
 ) -> CodexResult<SuspendTurnOutcome> {
+    if session.shutdown_started() {
+        return Ok(SuspendTurnOutcome::NotActive);
+    }
     {
         let active = session.active_turn.lock().await;
+        if active
+            .as_ref()
+            .is_some_and(|turn| turn.task_terminalization.is_some())
+        {
+            return Ok(SuspendTurnOutcome::NotActive);
+        }
         let Some(task) = active.as_ref().and_then(|turn| turn.task.as_ref()) else {
             return Ok(SuspendTurnOutcome::NotActive);
         };
@@ -45,27 +54,20 @@ pub(super) async fn suspend_turn_and_shutdown(
         CodexErr::Fatal(format!("flush before root turn suspension failed: {error}"))
     })?;
 
-    // The flush can yield while the active turn completes or changes. Recheck its
-    // kind under the same lock used to remove it.
-    let mut turn = {
-        let mut active = session.active_turn.lock().await;
-        let Some(active_turn) = active.as_ref() else {
-            return Ok(SuspendTurnOutcome::NotActive);
-        };
-        let Some(task) = active_turn.task.as_ref() else {
-            return Ok(SuspendTurnOutcome::NotActive);
-        };
-        if task.kind != TaskKind::Regular {
-            return Ok(SuspendTurnOutcome::UnsupportedTask);
-        }
-        active.take().ok_or_else(|| {
-            CodexErr::Fatal("accepted root turn suspension had no running turn".to_string())
-        })?
-    };
-
-    let task = turn.task.take().ok_or_else(|| {
+    // The flush can yield while the active turn completes or changes.  Claim
+    // and detach by exact task/context/epoch identity only after the flush;
+    // the typed marker remains installed until the writer is closed.
+    let mut suspended = session
+        .take_task_for_suspension()
+        .await
+        .ok_or_else(|| CodexErr::Fatal("root turn changed during suspension".to_string()))?;
+    let task = suspended.task.take().ok_or_else(|| {
         CodexErr::Fatal("accepted root turn suspension had no running task".to_string())
     })?;
+    // From this point onward the session is committed to shutdown.  Seal new
+    // admissions before the first await so paths that do not inspect the
+    // active marker cannot reopen the slot while the handoff drains.
+    session.begin_shutdown();
     let turn_id = task.turn_context.sub_id.clone();
     // Normal shutdown records a terminal turn event, preventing another worker from
     // recovering this turn under its original ID. Cancel the task without that event.
@@ -97,19 +99,28 @@ pub(super) async fn suspend_turn_and_shutdown(
     // intentionally drops that state; persisting or replaying it needs a separate protocol.
     session
         .input_queue
-        .clear_pending_for_turn_state(&turn.turn_state)
+        .clear_pending_for_turn_state(&suspended.turn_state)
         .await;
 
     // Stop all producers before flushing their final history and closing its writer.
     // If either persistence step fails, do not report success: the current worker
     // retains ownership until worker-failure recovery can take responsibility.
-    handlers::shutdown_session_runtime(session).await;
+    handlers::shutdown_session_runtime_excluding(
+        session,
+        Some(&suspended.terminalization_identity),
+    )
+    .await;
     live_thread.flush().await.map_err(|error| {
         CodexErr::Fatal(format!("flush after root turn suspension failed: {error}"))
     })?;
     live_thread.shutdown().await.map_err(|error| {
         CodexErr::Fatal(format!("close suspended root turn writer failed: {error}"))
     })?;
+    if !session.finish_task_suspension(&suspended).await {
+        return Err(CodexErr::Fatal(
+            "suspended root turn ownership changed before final release".to_string(),
+        ));
+    }
     // Announce thread shutdown only after its writer closes so a replacement worker
     // cannot write the same thread concurrently.
     handlers::emit_thread_stop_lifecycle(session.as_ref()).await;

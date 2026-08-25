@@ -554,8 +554,20 @@ impl Session {
         let (tx_response, rx_response) = oneshot::channel();
         let prev_entry = {
             let mut active = self.active_turn.lock().await;
+            if self.shutdown_started() || self.has_pending_task_terminalization() {
+                return McpServerElicitationOutcome {
+                    response: None,
+                    sent: false,
+                };
+            }
             match active.as_mut() {
                 Some(at) => {
+                    if at.task_terminalization.is_some() {
+                        return McpServerElicitationOutcome {
+                            response: None,
+                            sent: false,
+                        };
+                    }
                     let mut ts = at.turn_state.lock().await;
                     ts.insert_pending_elicitation(
                         server_name.clone(),
@@ -563,7 +575,12 @@ impl Session {
                         tx_response,
                     )
                 }
-                None => None,
+                None => {
+                    return McpServerElicitationOutcome {
+                        response: None,
+                        sent: false,
+                    };
+                }
             }
         };
         if prev_entry.is_some() {
@@ -619,6 +636,9 @@ impl Session {
             let mut active = self.active_turn.lock().await;
             match active.as_mut() {
                 Some(at) => {
+                    if at.task_terminalization.is_some() {
+                        return Ok(());
+                    }
                     let mut ts = at.turn_state.lock().await;
                     ts.remove_pending_elicitation(&server_name, &id)
                 }

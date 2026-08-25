@@ -48,9 +48,23 @@ async fn apply_standalone_update(
     updates: SessionSettingsUpdate,
 ) -> Result<(), String> {
     if !session.enabled(Feature::HeptaTurnRecovery) {
-        return apply_update(session, submission_id, updates)
+        let active = session.active_turn.lock().await;
+        if session.shutdown_started()
+            || session.has_pending_task_terminalization()
+            || active
+                .as_ref()
+                .is_some_and(|active_turn| active_turn.task_terminalization.is_some())
+        {
+            return Err(
+                "turn is terminalizing and cannot accept a standalone settings update"
+                    .to_string(),
+            );
+        }
+        let result = apply_update(session, submission_id, updates)
             .await
             .map_err(|error| error.to_string());
+        drop(active);
+        return result;
     }
 
     session
@@ -59,9 +73,16 @@ async fn apply_standalone_update(
         .map_err(|error| error.to_string())?;
 
     let active = session.active_turn.lock().await;
+    if session.shutdown_started() || session.has_pending_task_terminalization() {
+        return Err(
+            "turn is terminalizing and cannot accept a standalone settings update".to_string(),
+        );
+    }
     if active
         .as_ref()
-        .is_some_and(|active_turn| active_turn.task.is_none())
+        .is_some_and(|active_turn| {
+            active_turn.task_terminalization.is_some() || active_turn.task.is_none()
+        })
     {
         return Err(
             "turn is transitioning and cannot accept a standalone settings update".to_string(),

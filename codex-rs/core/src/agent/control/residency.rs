@@ -231,11 +231,24 @@ pub(super) fn is_v2_resident_session_source(session_source: &SessionSource) -> b
 }
 
 async fn is_unloadable(thread: &CodexThread) -> bool {
-    matches!(
+    if !matches!(
         thread.agent_status().await,
         AgentStatus::Completed(_) | AgentStatus::Errored(_) | AgentStatus::Interrupted
-    ) && thread.session.active_turn.lock().await.is_none()
-        && !thread.session.input_queue.has_pending_mailbox_items().await
+    ) {
+        return false;
+    }
+    // Keep the active-turn snapshot through the mailbox check.  Otherwise a
+    // terminalizer can claim immediately after the `is_none()` await and the
+    // residency eviction path can still unload a thread whose terminal work
+    // has not drained.
+    let active = thread.session.active_turn.lock().await;
+    if thread.session.shutdown_started()
+        || thread.session.has_pending_task_terminalization()
+        || active.is_some()
+    {
+        return false;
+    }
+    !thread.session.input_queue.has_pending_mailbox_items().await
 }
 
 #[cfg(test)]

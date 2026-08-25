@@ -31,9 +31,19 @@ impl AgentControl {
         &self,
         thread: &CodexThread,
     ) -> CodexResult<()> {
-        if thread.session.active_turn.lock().await.is_some() {
+        let active = thread.session.active_turn.lock().await;
+        if active.is_some() {
             return Ok(());
         }
+        if thread.session.shutdown_started()
+            || thread.session.has_pending_task_terminalization()
+        {
+            return Err(CodexErr::InvalidRequest(
+                "turn start is fenced while the session is terminalizing or shutting down"
+                    .to_string(),
+            ));
+        }
+        drop(active);
         let config = thread.session.get_config().await;
         let multi_agent_version = thread
             .multi_agent_version()

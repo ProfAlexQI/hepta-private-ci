@@ -1183,17 +1183,10 @@ async fn abort_turn_if_active_revalidates_ready_after_task_quiesces() {
 async fn abort_turn_if_active_publishes_unchanged_in_flight_ready() {
     let (session, _turn_context, _rx) = make_turn_recovery_session_and_context_with_rx().await;
     let turn_id = "abort-exact-preserves-ready";
-    let turn_context = session
-        .new_default_turn_with_sub_id(turn_id.to_string())
-        .await;
-    session
-        .spawn_task(
-            turn_context,
-            Vec::new(),
-            RecoverableNeverEndingModelTask::new(/*ready*/ true),
-        )
-        .await
-        .expect("ready recoverable task should start");
+    // Use the same valid replay/fingerprint fixture as the other recovery
+    // tests.  Constructing only a durable Ready bit is intentionally
+    // fail-closed and cannot authorize a recovery candidate.
+    let _authority = spawn_ready_recoverable_task(&session, turn_id).await;
 
     assert!(
         session
@@ -1209,17 +1202,7 @@ async fn abort_turn_if_active_publishes_unchanged_in_flight_ready() {
 async fn recovery_candidate_uses_task_attach_epoch_not_later_global_epoch() {
     let (session, _turn_context, _rx) = make_turn_recovery_session_and_context_with_rx().await;
     let turn_id = "attach-epoch-model-turn";
-    let turn_context = session
-        .new_default_turn_with_sub_id(turn_id.to_string())
-        .await;
-    session
-        .spawn_task(
-            turn_context,
-            Vec::new(),
-            RecoverableNeverEndingModelTask::new(/*ready*/ true),
-        )
-        .await
-        .expect("recoverable task should start");
+    let _authority = spawn_ready_recoverable_task(&session, turn_id).await;
     let attach_epoch = session
         .active_turn
         .lock()

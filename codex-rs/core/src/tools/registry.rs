@@ -541,6 +541,16 @@ impl ToolRegistry {
 
         {
             let mut active = invocation.session.active_turn.lock().await;
+            if invocation.session.shutdown_started()
+                || invocation.session.has_pending_task_terminalization()
+                || active
+                    .as_ref()
+                    .is_some_and(|current| current.task_terminalization.is_some())
+            {
+                return Err(FunctionCallError::RespondToModel(
+                    "tool call was cancelled while the turn was terminalizing".to_string(),
+                ));
+            }
             if let Some(active_turn) = active.as_mut() {
                 let mut turn_state = active_turn.turn_state.lock().await;
                 turn_state.tool_calls = turn_state.tool_calls.saturating_add(1);

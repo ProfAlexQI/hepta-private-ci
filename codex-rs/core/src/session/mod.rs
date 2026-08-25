@@ -1211,7 +1211,10 @@ impl Session {
 
     /// Captures a recovery token only for the exact idle model-turn candidate.
     pub(crate) async fn recovery_epoch_if_idle(&self, turn_id: &str) -> Option<u64> {
-        if !self.enabled(Feature::HeptaTurnRecovery) {
+        if !self.enabled(Feature::HeptaTurnRecovery)
+            || self.shutdown_started()
+            || self.has_pending_task_terminalization()
+        {
             return None;
         }
         let active_turn = self.active_turn.lock().await;
@@ -1285,8 +1288,14 @@ impl Session {
     pub(crate) async fn reserve_history_mutation_if_idle(
         &self,
     ) -> CodexResult<Option<Arc<Mutex<TurnState>>>> {
+        if self.shutdown_started() || self.has_pending_task_terminalization() {
+            return Ok(None);
+        }
         let mut active_turn = self.active_turn.lock().await;
-        if active_turn.is_some() {
+        if self.shutdown_started()
+            || self.has_pending_task_terminalization()
+            || active_turn.is_some()
+        {
             return Ok(None);
         }
         self.consume_recovery_candidate_for_mutation().await?;
@@ -2539,6 +2548,12 @@ impl Session {
 
     pub(crate) async fn turn_context_for_sub_id(&self, sub_id: &str) -> Option<Arc<TurnContext>> {
         let active = self.active_turn.lock().await;
+        if active
+            .as_ref()
+            .is_some_and(|turn| turn.task_terminalization.is_some())
+        {
+            return None;
+        }
         active
             .as_ref()
             .and_then(|turn| turn.task.as_ref())
@@ -2550,6 +2565,12 @@ impl Session {
         &self,
     ) -> Option<(Arc<TurnContext>, CancellationToken)> {
         let active = self.active_turn.lock().await;
+        if active
+            .as_ref()
+            .is_some_and(|turn| turn.task_terminalization.is_some())
+        {
+            return None;
+        }
         let task = active.as_ref()?.task.as_ref()?;
         Some((
             Arc::clone(&task.turn_context),
@@ -2687,12 +2708,18 @@ impl Session {
         let (tx_approve, rx_approve) = oneshot::channel();
         let prev_entry = {
             let mut active = self.active_turn.lock().await;
+            if self.shutdown_started() || self.has_pending_task_terminalization() {
+                return ReviewDecision::Abort;
+            }
             match active.as_mut() {
                 Some(at) => {
+                    if at.task_terminalization.is_some() {
+                        return ReviewDecision::Abort;
+                    }
                     let mut ts = at.turn_state.lock().await;
                     ts.insert_pending_approval(effective_approval_id.clone(), tx_approve)
                 }
-                None => None,
+                None => return ReviewDecision::Abort,
             }
         };
         if prev_entry.is_some() {
@@ -2766,12 +2793,18 @@ impl Session {
         let approval_id = call_id.clone();
         let prev_entry = {
             let mut active = self.active_turn.lock().await;
+            if self.shutdown_started() || self.has_pending_task_terminalization() {
+                return ReviewDecision::Abort;
+            }
             match active.as_mut() {
                 Some(at) => {
+                    if at.task_terminalization.is_some() {
+                        return ReviewDecision::Abort;
+                    }
                     let mut ts = at.turn_state.lock().await;
                     ts.insert_pending_approval(approval_id.clone(), tx_approve)
                 }
-                None => None,
+                None => return ReviewDecision::Abort,
             }
         };
         if prev_entry.is_some() {
@@ -2827,6 +2860,17 @@ impl Session {
         }
 
         let requested_permissions = args.permissions;
+        {
+            let active = self.active_turn.lock().await;
+            if self.shutdown_started()
+                || self.has_pending_task_terminalization()
+                || active
+                    .as_ref()
+                    .map_or(true, |current| current.task_terminalization.is_some())
+            {
+                return None;
+            }
+        }
         // TODO(anp): Migrate request_permissions to support paths from foreign environments.
         let Ok(native_environment_cwd) = environment.cwd.to_abs_path() else {
             warn!(
@@ -2843,6 +2887,14 @@ impl Session {
         if crate::guardian::routes_approval_to_guardian(turn_context.as_ref()) {
             let originating_turn_state = {
                 let active = self.active_turn.lock().await;
+                if self.shutdown_started()
+                    || self.has_pending_task_terminalization()
+                    || active
+                        .as_ref()
+                        .map_or(true, |current| current.task_terminalization.is_some())
+                {
+                    return None;
+                }
                 active.as_ref().map(|active| Arc::clone(&active.turn_state))
             };
             let action = ApprovalAction::RequestPermissions {
@@ -2905,11 +2957,27 @@ impl Session {
                     strict_auto_review: false,
                 },
             };
+            let still_current = {
+                let active = self.active_turn.lock().await;
+                !self.shutdown_started()
+                    && !self.has_pending_task_terminalization()
+                    && originating_turn_state.as_ref().is_some_and(|state| {
+                        active
+                            .as_ref()
+                            .is_some_and(|current| Arc::ptr_eq(&current.turn_state, state))
+                    })
+            };
+            if !still_current {
+                return None;
+            }
             let response = Self::normalize_request_permissions_response(
                 requested_permissions,
                 response,
                 native_environment_cwd.as_path(),
             );
+            if self.shutdown_started() || self.has_pending_task_terminalization() {
+                return None;
+            }
             self.record_granted_request_permissions_for_turn(
                 &response,
                 &environment.environment_id,
@@ -2923,8 +2991,14 @@ impl Session {
         let (tx_response, rx_response) = oneshot::channel();
         let prev_entry = {
             let mut active = self.active_turn.lock().await;
+            if self.shutdown_started() || self.has_pending_task_terminalization() {
+                return None;
+            }
             match active.as_mut() {
                 Some(at) => {
+                    if at.task_terminalization.is_some() {
+                        return None;
+                    }
                     let mut ts = at.turn_state.lock().await;
                     ts.insert_pending_request_permissions(
                         call_id.clone(),
@@ -2935,7 +3009,7 @@ impl Session {
                         },
                     )
                 }
-                None => None,
+                None => return None,
             }
         };
         if prev_entry.is_some() {
@@ -2982,12 +3056,18 @@ impl Session {
         let event_id = sub_id.clone();
         let prev_entry = {
             let mut active = self.active_turn.lock().await;
+            if self.shutdown_started() || self.has_pending_task_terminalization() {
+                return None;
+            }
             match active.as_mut() {
                 Some(at) => {
+                    if at.task_terminalization.is_some() {
+                        return None;
+                    }
                     let mut ts = at.turn_state.lock().await;
                     ts.insert_pending_user_input(sub_id, tx_response)
                 }
-                None => None,
+                None => return None,
             }
         };
         if prev_entry.is_some() {
@@ -3021,6 +3101,9 @@ impl Session {
             let mut active = self.active_turn.lock().await;
             match active.as_mut() {
                 Some(at) => {
+                    if at.task_terminalization.is_some() {
+                        return;
+                    }
                     let mut ts = at.turn_state.lock().await;
                     ts.remove_pending_user_input(sub_id)
                 }
@@ -3050,6 +3133,9 @@ impl Session {
             let mut active = self.active_turn.lock().await;
             match active.as_mut() {
                 Some(at) => {
+                    if at.task_terminalization.is_some() {
+                        return;
+                    }
                     let mut ts = at.turn_state.lock().await;
                     let entry = ts.remove_pending_request_permissions(call_id);
                     let originating_turn_state = entry.as_ref().map(|_| Arc::clone(&at.turn_state));
@@ -3164,6 +3250,9 @@ impl Session {
     ) -> Option<AdditionalPermissionProfile> {
         let active = self.active_turn.lock().await;
         let active = active.as_ref()?;
+        if active.task_terminalization.is_some() {
+            return None;
+        }
         let ts = active.turn_state.lock().await;
         ts.granted_permissions(environment_id)
     }
@@ -3177,6 +3266,9 @@ impl Session {
     ) -> Option<(Arc<TurnContext>, bool)> {
         let active = self.active_turn.lock().await;
         let active = active.as_ref()?;
+        if active.task_terminalization.is_some() {
+            return None;
+        }
         let turn_context = Arc::clone(&active.task.as_ref()?.turn_context);
         let ts = active.turn_state.lock().await;
         Some((turn_context, ts.strict_auto_review_enabled()))
@@ -3199,6 +3291,9 @@ impl Session {
             let mut active = self.active_turn.lock().await;
             match active.as_mut() {
                 Some(at) => {
+                    if at.task_terminalization.is_some() {
+                        return;
+                    }
                     let mut ts = at.turn_state.lock().await;
                     ts.remove_pending_dynamic_tool(call_id)
                 }
@@ -3224,6 +3319,9 @@ impl Session {
             let mut active = self.active_turn.lock().await;
             match active.as_mut() {
                 Some(at) => {
+                    if at.task_terminalization.is_some() {
+                        return;
+                    }
                     let mut ts = at.turn_state.lock().await;
                     ts.remove_pending_approval(approval_id)
                 }

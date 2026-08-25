@@ -42,6 +42,11 @@ pub(crate) struct ActiveTurn {
     /// `RunningTask` can be attached. This is deliberately distinct from both
     /// a caller reservation and a plain idle/mutation reservation.
     pub(crate) start_transition: Option<StartTransition>,
+    /// Exact owner for the recovery/terminalization phase after a running task
+    /// has been claimed by finish or abort. The marker remains installed when
+    /// `task` is temporarily absent, so stale idle cleanup cannot mistake the
+    /// slot for a fresh idle turn.
+    pub(crate) task_terminalization: Option<TaskTerminalization>,
 }
 
 #[derive(Clone)]
@@ -99,6 +104,33 @@ impl StartTransitionCompletion {
             notified.await;
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TaskTerminalizationKind {
+    Finish,
+    Abort,
+    Suspend,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TaskTerminalizationPhase {
+    Claimed,
+    Terminalizing,
+}
+
+/// Identity-fenced owner for one running task's terminal path. This remains
+/// in `ActiveTurn` even after the `RunningTask` is moved into the owner so
+/// every stale cleanup path stays fail-closed.
+pub(crate) struct TaskTerminalization {
+    pub(crate) identity: Arc<()>,
+    pub(crate) task_identity: Arc<dyn AnySessionTask>,
+    pub(crate) turn_context: Arc<TurnContext>,
+    pub(crate) turn_state: Arc<Mutex<TurnState>>,
+    pub(crate) attach_epoch: u64,
+    pub(crate) kind: TaskTerminalizationKind,
+    pub(crate) phase: TaskTerminalizationPhase,
+    pub(crate) completion: Arc<StartTransitionCompletion>,
 }
 
 pub(crate) struct StartTransition {
@@ -185,6 +217,7 @@ impl ActiveTurn {
         if self.task.is_some()
             || self.start_reservation.is_some()
             || self.start_transition.is_some()
+            || self.task_terminalization.is_some()
         {
             return None;
         }
@@ -205,7 +238,10 @@ impl ActiveTurn {
     /// Promotes a caller reservation to the host-owned transition under the
     /// same active-turn lock. A stale handle cannot consume a later attempt.
     pub(crate) fn promote_start(&mut self, handle: &StartReservationHandle) -> bool {
-        if self.task.is_some() || self.start_transition.is_some() {
+        if self.task.is_some()
+            || self.start_transition.is_some()
+            || self.task_terminalization.is_some()
+        {
             return false;
         }
         let Some(reservation) = self.start_reservation.take() else {
@@ -251,6 +287,7 @@ impl Default for ActiveTurn {
             turn_state: Arc::new(Mutex::new(TurnState::default())),
             start_reservation: None,
             start_transition: None,
+            task_terminalization: None,
         }
     }
 }

@@ -26,14 +26,41 @@ impl Session {
         root_turn_id: Option<String>,
     ) -> CodexResult<()> {
         if !self.enabled(Feature::HeptaTurnRecovery) {
+            let active = self.active_turn.lock().await;
+            if self.shutdown_started()
+                || self.has_pending_task_terminalization()
+                || active
+                    .as_ref()
+                    .is_some_and(|active_turn| active_turn.task_terminalization.is_some())
+            {
+                return Err(CodexErr::InvalidRequest(
+                    "turn is terminalizing and cannot accept inter-agent communication".to_string(),
+                ));
+            }
             self.input_queue
                 .enqueue_mailbox_communication(communication, parent_turn_id, root_turn_id)
                 .await;
+            drop(active);
             return Ok(());
         }
 
+        if self.shutdown_started() || self.has_pending_task_terminalization() {
+            return Err(CodexErr::InvalidRequest(
+                "turn is terminalizing and cannot accept inter-agent communication".to_string(),
+            ));
+        }
         let active = self.active_turn.lock().await;
+        if self.shutdown_started() || self.has_pending_task_terminalization() {
+            return Err(CodexErr::InvalidRequest(
+                "turn is terminalizing and cannot accept inter-agent communication".to_string(),
+            ));
+        }
         if let Some(active_turn) = active.as_ref() {
+            if active_turn.task_terminalization.is_some() {
+                return Err(CodexErr::InvalidRequest(
+                    "turn is terminalizing and cannot accept inter-agent communication".to_string(),
+                ));
+            }
             let Some(task) = active_turn.task.as_ref() else {
                 return Err(CodexErr::InvalidRequest(
                     "turn is transitioning and cannot accept inter-agent communication".to_string(),
@@ -72,7 +99,7 @@ impl Session {
         let mut active = self.active_turn.lock().await;
         match active.as_mut() {
             Some(active_turn) => {
-                if active_turn.task.is_none() {
+                if active_turn.task_terminalization.is_some() || active_turn.task.is_none() {
                     return Err(InjectIfRunningError::NoActiveTurn(input));
                 }
                 if let Some(task) = active_turn.task.as_ref()
@@ -119,9 +146,21 @@ impl Session {
             .into_iter()
             .map(|item| self.annotate_client_response_item(item))
             .collect::<Vec<_>>();
+        if self.shutdown_started() || self.has_pending_task_terminalization() {
+            return Err(codex_protocol::error::CodexErr::InvalidRequest(
+                "turn is terminalizing or shutting down and cannot accept injected context"
+                    .to_string(),
+            ));
+        }
         let mut active = self.active_turn.lock().await;
+        if self.shutdown_started() || self.has_pending_task_terminalization() {
+            return Err(codex_protocol::error::CodexErr::InvalidRequest(
+                "turn is terminalizing or shutting down and cannot accept injected context"
+                    .to_string(),
+            ));
+        }
         if let Some(active_turn) = active.as_mut() {
-            if active_turn.task.is_none() {
+            if active_turn.task_terminalization.is_some() || active_turn.task.is_none() {
                 return Err(codex_protocol::error::CodexErr::InvalidRequest(
                     "turn is transitioning and cannot accept injected context".to_string(),
                 ));
@@ -144,6 +183,12 @@ impl Session {
                 )
                 .await;
             return Ok(());
+        }
+        if self.shutdown_started() || self.has_pending_task_terminalization() {
+            return Err(CodexErr::InvalidRequest(
+                "turn is terminalizing or shutting down and cannot accept idle injected context"
+                    .to_string(),
+            ));
         }
         let consumed_recovery = self.consume_recovery_candidate_for_mutation().await?;
         self.record_annotated_conversation_items(turn_context, items)
@@ -216,10 +261,19 @@ impl Session {
                 return;
             }
         };
-        let active = self.active_turn.lock().await;
-        if active.is_some() {
+        if self.shutdown_started() || self.has_pending_task_terminalization() {
             tracing::error!(
-                "active turn changed while preparing an idle context injection; items were not recorded"
+                "session is terminalizing or shutting down; idle context injection was not recorded"
+            );
+            return;
+        }
+        let active = self.active_turn.lock().await;
+        if self.shutdown_started()
+            || self.has_pending_task_terminalization()
+            || active.is_some()
+        {
+            tracing::error!(
+                "active turn or terminalization fence changed while preparing an idle context injection; items were not recorded"
             );
             return;
         }

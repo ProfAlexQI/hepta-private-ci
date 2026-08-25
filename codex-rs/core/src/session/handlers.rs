@@ -421,10 +421,29 @@ pub async fn thread_rollback(sess: &Arc<Session>, sub_id: String, num_turns: u32
     .await;
 }
 
+#[expect(
+    clippy::await_holding_invalid_type,
+    reason = "canonical rollout memory-mode mutation stays serialized with terminalization"
+)]
 pub(super) async fn persist_thread_memory_mode_update(
     sess: &Arc<Session>,
     mode: ThreadMemoryMode,
 ) -> anyhow::Result<()> {
+    // Keep the active-turn guard across all persistence awaits.  This update
+    // mutates the canonical rollout directly (rather than through the idle
+    // history reservation), so releasing the guard between the preflight and
+    // final flush would let task terminalization publish a competing tail.
+    let _active = sess.active_turn.lock().await;
+    if sess.shutdown_started()
+        || sess.has_pending_task_terminalization()
+        || _active
+            .as_ref()
+            .is_some_and(|active_turn| active_turn.task_terminalization.is_some())
+    {
+        return Err(anyhow::anyhow!(
+            "thread memory mode update fenced while the session is terminalizing or shutting down"
+        ));
+    }
     let live_thread = sess.live_thread_for_persistence("update thread memory mode")?;
     live_thread.persist(PersistContext::Standard).await?;
     live_thread.flush().await?;
@@ -454,6 +473,13 @@ pub async fn set_thread_memory_mode(sess: &Arc<Session>, sub_id: String, mode: T
 }
 
 pub(super) async fn shutdown_session_runtime(sess: &Arc<Session>) {
+    shutdown_session_runtime_excluding(sess, None).await;
+}
+
+pub(super) async fn shutdown_session_runtime_excluding(
+    sess: &Arc<Session>,
+    excluded_terminalization: Option<&std::sync::Arc<()>>,
+) {
     sess.begin_shutdown();
     if let Some(startup_prewarm) = sess.take_session_startup_prewarm().await {
         startup_prewarm.abort().await;
@@ -461,6 +487,9 @@ pub(super) async fn shutdown_session_runtime(sess: &Arc<Session>) {
     let _ = sess.conversation.shutdown().await;
     sess.abort_all_tasks(TurnAbortReason::Interrupted).await;
     sess.drain_start_transition_for_shutdown().await;
+    sess
+        .drain_task_terminalizations_for_shutdown_except(excluded_terminalization)
+        .await;
     sess.hooks().shutdown().await;
     sess.async_hook_results.close();
     while sess.async_hook_results.try_recv().is_ok() {}

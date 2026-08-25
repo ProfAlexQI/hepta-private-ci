@@ -7233,7 +7233,9 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         mcp_prewarm_task: std::sync::Mutex::new(None),
         conversation: Arc::new(RealtimeConversationManager::new()),
         active_turn: Mutex::new(None),
+        terminalization_claim_lock: Mutex::new(()),
         pending_start_transition_completions: std::sync::Mutex::new(Vec::new()),
+        pending_task_terminalization_completions: std::sync::Mutex::new(Vec::new()),
         shutdown_started: AtomicBool::new(false),
         turn_epoch: AtomicU64::new(0),
         recovery_candidate: std::sync::Mutex::new(None),
@@ -9453,7 +9455,9 @@ where
         mcp_prewarm_task: std::sync::Mutex::new(None),
         conversation: Arc::new(RealtimeConversationManager::new()),
         active_turn: Mutex::new(None),
+        terminalization_claim_lock: Mutex::new(()),
         pending_start_transition_completions: std::sync::Mutex::new(Vec::new()),
+        pending_task_terminalization_completions: std::sync::Mutex::new(Vec::new()),
         shutdown_started: AtomicBool::new(false),
         turn_epoch: AtomicU64::new(0),
         recovery_candidate: std::sync::Mutex::new(None),
@@ -12191,6 +12195,12 @@ async fn abort_reservation_rejects_injection_mailbox_start_and_replacement() {
                 .as_ref()
                 .is_some_and(|active_turn| active_turn.task.is_none()),
             "detaching task must leave a visible reservation"
+        );
+        assert!(
+            active
+                .as_ref()
+                .is_some_and(|active_turn| active_turn.task_terminalization.is_some()),
+            "detaching task must install the typed terminalization fence"
         );
     }
 

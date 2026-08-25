@@ -259,7 +259,7 @@ async fn start_or_steer(
             let start_reservation = {
                 let mut active_turn = session.active_turn.lock().await;
                 if session.shutdown_started()
-                    || session.has_pending_start_transition()
+                    || session.has_pending_admission_fence()
                     || active_turn.is_some()
                 {
                     return Ok(TurnInputSubmission::NotSubmitted {
@@ -376,7 +376,7 @@ async fn start_if_idle(
     debug_assert_eq!(is_recovery, recovery_epoch.is_some());
     let is_automatic_idle_work = !has_user_input && !is_recovery;
     let can_start_root_turn = start.parent_turn_id.is_none() && start.root_turn_id.is_none();
-    if session.shutdown_started() || session.has_pending_start_transition() {
+    if session.shutdown_started() || session.has_pending_admission_fence() {
         return Ok(TurnInputSubmission::NotSubmitted {
             reason: NotSubmittedReason::NotIdle,
         });
@@ -400,7 +400,7 @@ async fn start_if_idle(
     let (turn_state, start_reservation) = {
         let mut active_turn = session.active_turn.lock().await;
         if session.shutdown_started()
-            || session.has_pending_start_transition()
+            || session.has_pending_admission_fence()
             || active_turn.is_some()
         {
             return Ok(TurnInputSubmission::NotSubmitted {
@@ -818,6 +818,7 @@ impl Session {
             && active_turn.task.is_none()
             && active_turn.start_reservation.is_none()
             && active_turn.start_transition.is_none()
+            && active_turn.task_terminalization.is_none()
             && Arc::ptr_eq(&active_turn.turn_state, turn_state)
         {
             *active_turn_guard = None;
@@ -837,6 +838,7 @@ impl Session {
             && active_turn.task.is_none()
             && active_turn.start_reservation.is_none()
             && active_turn.start_transition.is_none()
+            && active_turn.task_terminalization.is_none()
             && Arc::ptr_eq(&active_turn.turn_state, turn_state)
         {
             self.settle_consumed_recovery_status();
@@ -869,6 +871,10 @@ impl Session {
         let Some(active_turn) = active.as_mut() else {
             return Err(NotSubmittedReason::NoActiveTurn);
         };
+
+        if active_turn.task_terminalization.is_some() {
+            return Err(NotSubmittedReason::NotIdle);
+        }
 
         let Some(active_task) = active_turn.task.as_ref() else {
             return Err(NotSubmittedReason::NoActiveTurn);

@@ -46,6 +46,9 @@ use crate::state::StartReservationHandle;
 use crate::state::StartTransition;
 use crate::state::StartTransitionCompletion;
 use crate::state::TaskKind;
+use crate::state::TaskTerminalization;
+use crate::state::TaskTerminalizationKind;
+use crate::state::TaskTerminalizationPhase;
 use crate::state::TurnRecoveryAuthority;
 use crate::state::TurnState;
 use codex_analytics::TurnProfileFact;
@@ -124,13 +127,28 @@ struct TaskAbortOutcome {
 struct DetachedTaskForAbort {
     task: RunningTask,
     turn_state: Arc<Mutex<TurnState>>,
+    terminalization_identity: Arc<()>,
     recovery_seed: Option<RecoverySeed>,
     recovery_authority: Option<Arc<TurnRecoveryAuthority>>,
+}
+
+/// Exact task witness owned by root-turn suspension.  Suspension is not a
+/// terminal protocol outcome, but it still has to keep the active slot fenced
+/// while cancellation and persistence drain; the typed marker prevents a
+/// replacement admission from observing a false idle turn.
+pub(crate) struct DetachedTaskForSuspension {
+    pub(crate) task: Option<RunningTask>,
+    pub(crate) turn_state: Arc<Mutex<TurnState>>,
+    pub(crate) terminalization_identity: Arc<()>,
+    pub(crate) task_identity: Arc<dyn AnySessionTask>,
+    pub(crate) turn_context: Arc<TurnContext>,
+    pub(crate) attach_epoch: u64,
 }
 
 enum ActiveTurnAbortTarget {
     Running(DetachedTaskForAbort),
     Starting { deferred_idle: bool },
+    Terminalizing,
 }
 
 enum StartTransitionClearOutcome {
@@ -146,6 +164,7 @@ pub(crate) enum AbortTurnOutcome {
     Running,
     Starting,
     DeferredStart,
+    Terminalizing,
 }
 
 #[derive(Debug)]
@@ -289,14 +308,20 @@ impl StartTransitionOwner {
             return None;
         }
         let cleanup = self.cleanup.take()?;
-        self.cleanup_spawned = true;
         let Some(runtime_handle) = self.runtime_handle.take() else {
             warn!(
                 turn_id = %cleanup.turn_context.sub_id,
-                "start transition cleanup preserved its marker because no Tokio runtime is available"
+                "start transition cleanup cannot be scheduled because no Tokio runtime is available; preserving its fence"
             );
+            // No runtime exists on which a durable terminalizer could run.
+            // Keep the cleanup payload attached to the owner and leave the
+            // completion unresolved so teardown fails closed instead of
+            // silently losing the transition's terminal work.
+            self.cleanup = Some(cleanup);
+            self.cleanup_spawned = true;
             return None;
         };
+        self.cleanup_spawned = true;
         let session = Arc::clone(&cleanup.session);
         Some(runtime_handle.spawn(async move {
             session
@@ -369,12 +394,131 @@ impl Session {
             .collect()
     }
 
+    /// Registers a task terminalizer before its owner releases the
+    /// active-turn lock.  The registry is independent of `ActiveTurn` because
+    /// a replacement may be admitted as soon as the old slot CAS succeeds,
+    /// while shutdown still has to wait for the old owner's post-CAS recovery
+    /// and lifecycle side effects.
+    fn register_task_terminalization(
+        &self,
+        identity: Arc<()>,
+        completion: Arc<StartTransitionCompletion>,
+        kind: TaskTerminalizationKind,
+    ) {
+        self.pending_task_terminalization_completions
+            .lock()
+            .expect("task terminalization completion registry mutex poisoned")
+            .push((identity, completion, kind));
+    }
+
+    /// Retires and signals one exact task terminalizer after all of its
+    /// post-terminal side effects have completed.  A stale owner cannot
+    /// retire a later entry because both identity pointers are checked.
+    fn finish_task_terminalization(
+        &self,
+        identity: &Arc<()>,
+        completion: &Arc<StartTransitionCompletion>,
+    ) {
+        let mut pending = self
+            .pending_task_terminalization_completions
+            .lock()
+            .expect("task terminalization completion registry mutex poisoned");
+        pending.retain(|(current_identity, current_completion, _kind)| {
+            !(Arc::ptr_eq(current_identity, identity)
+                && Arc::ptr_eq(current_completion, completion))
+        });
+        drop(pending);
+        completion.complete();
+    }
+
+    fn pending_task_terminalization_completions_except(
+        &self,
+        excluded_identity: Option<&Arc<()>>,
+    ) -> Vec<Arc<StartTransitionCompletion>> {
+        self.pending_task_terminalization_completions
+            .lock()
+            .expect("task terminalization completion registry mutex poisoned")
+            .iter()
+            .filter(|(identity, _, _)| {
+                excluded_identity
+                    .map_or(true, |excluded| !Arc::ptr_eq(identity, excluded))
+            })
+            .map(|(_, completion, _)| Arc::clone(completion))
+            .collect()
+    }
+
+    /// Shutdown waits for every materialized task terminalizer.  A panic or
+    /// hang intentionally leaves its fence unresolved, so teardown remains
+    /// fail-closed instead of publishing thread-stop or closing persistence
+    /// behind an unfinished terminal path.
+    pub(crate) async fn drain_task_terminalizations_for_shutdown_except(
+        &self,
+        excluded_identity: Option<&Arc<()>>,
+    ) {
+        loop {
+            let completions = self.pending_task_terminalization_completions_except(excluded_identity);
+            if completions.is_empty() {
+                return;
+            }
+            for completion in completions {
+                completion.wait().await;
+            }
+        }
+    }
+
     pub(crate) fn has_pending_start_transition(&self) -> bool {
-        !self
-            .pending_start_transition_completions
+        self.has_pending_start_transition_except(None)
+    }
+
+    pub(crate) fn has_pending_start_transition_except(
+        &self,
+        ignored_identity: Option<&Arc<()>>,
+    ) -> bool {
+        self.pending_start_transition_completions
             .lock()
             .expect("start transition completion registry mutex poisoned")
-            .is_empty()
+            .iter()
+            .any(|(identity, _)| {
+                ignored_identity.map_or(true, |ignored| !Arc::ptr_eq(identity, ignored))
+            })
+    }
+
+    /// Returns true while any task finish/abort/suspend owner still has
+    /// post-terminal work outstanding.  The marker is intentionally kept in
+    /// an independent registry after the active slot CAS so idle observers
+    /// cannot admit history mutation or a replacement in the clear→publish
+    /// window.
+    pub(crate) fn has_pending_task_terminalization(&self) -> bool {
+        self.has_pending_task_terminalization_except(None)
+    }
+
+    pub(crate) fn has_pending_task_terminalization_except(
+        &self,
+        ignored_identity: Option<&Arc<()>>,
+    ) -> bool {
+        self.pending_task_terminalization_completions
+            .lock()
+            .expect("task terminalization completion registry mutex poisoned")
+            .iter()
+            .any(|(identity, _, _)| {
+                ignored_identity.map_or(true, |ignored| !Arc::ptr_eq(identity, ignored))
+            })
+    }
+
+    /// Admission-facing fence for host starts.  Keep the legacy
+    /// `has_pending_start_transition` semantics for shutdown's dedicated
+    /// transition drain, while all normal starts also respect task
+    /// terminalizers that have already cleared the active slot.
+    pub(crate) fn has_pending_admission_fence(&self) -> bool {
+        self.has_pending_admission_fence_except(None)
+    }
+
+    pub(crate) fn has_pending_admission_fence_except(
+        &self,
+        ignored_terminalization: Option<&Arc<()>>,
+    ) -> bool {
+        self.has_pending_start_transition()
+            || self.has_pending_task_terminalization_except(ignored_terminalization)
     }
 
     pub(crate) fn begin_shutdown(&self) {
@@ -685,6 +829,201 @@ where
 }
 
 impl Session {
+    /// Installs one exact terminalization owner while the active-turn lock is
+    /// held. The running task stays attached until the owner has revoked its
+    /// recovery authority, so every admission path continues to see a busy
+    /// slot during the lock-free await phase.
+    fn claim_task_terminalization_locked(
+        &self,
+        active_turn: &mut ActiveTurn,
+        task_identity: &Arc<dyn AnySessionTask>,
+        turn_context: &Arc<TurnContext>,
+        attach_epoch: u64,
+        kind: TaskTerminalizationKind,
+    ) -> Option<(Arc<()>, Arc<StartTransitionCompletion>)> {
+        if active_turn.task_terminalization.is_some() {
+            return None;
+        }
+        let identity = Arc::new(());
+        let completion = StartTransitionCompletion::new();
+        active_turn.task_terminalization = Some(TaskTerminalization {
+            identity: Arc::clone(&identity),
+            task_identity: Arc::clone(task_identity),
+            turn_context: Arc::clone(turn_context),
+            turn_state: Arc::clone(&active_turn.turn_state),
+            attach_epoch,
+            kind,
+            phase: TaskTerminalizationPhase::Claimed,
+            completion: Arc::clone(&completion),
+        });
+        // Register while the active-turn lock is still held.  A shutdown
+        // drain must never observe the marker before its independent fence is
+        // visible, otherwise abort_all_tasks can return for Terminalizing and
+        // shutdown can race past this owner's terminal event/flush.
+        self.register_task_terminalization(
+            Arc::clone(&identity),
+            Arc::clone(&completion),
+            kind,
+        );
+        Some((identity, completion))
+    }
+
+    fn task_terminalization_matches_locked(
+        active_turn: &ActiveTurn,
+        identity: &Arc<()>,
+        task: &RunningTask,
+        kind: TaskTerminalizationKind,
+    ) -> bool {
+        active_turn.task_terminalization.as_ref().is_some_and(|marker| {
+            marker.kind == kind
+                && Arc::ptr_eq(&marker.identity, identity)
+                && Arc::ptr_eq(&marker.task_identity, &task.task)
+                && Arc::ptr_eq(&marker.turn_context, &task.turn_context)
+                && Arc::ptr_eq(&marker.turn_state, &active_turn.turn_state)
+                && marker.attach_epoch == task.attach_epoch
+        })
+    }
+
+    /// Moves the exact task into its terminal owner while retaining the marker
+    /// in the active slot. A stale owner can never consume a replacement task.
+    fn take_task_for_terminalization_locked(
+        active_turn: &mut ActiveTurn,
+        identity: &Arc<()>,
+        kind: TaskTerminalizationKind,
+    ) -> Option<RunningTask> {
+        let task = active_turn.task.as_ref()?;
+        if !Self::task_terminalization_matches_locked(active_turn, identity, task, kind) {
+            return None;
+        }
+        active_turn
+            .task_terminalization
+            .as_mut()
+            .expect("terminalization marker matched")
+            .phase = TaskTerminalizationPhase::Terminalizing;
+        active_turn.task.take()
+    }
+
+    /// Clears only a terminalization marker that still owns the exact turn
+    /// state and task identity. The completion fence is signalled after the
+    /// slot CAS, never before it.
+    fn clear_task_terminalization_if_current_locked(
+        active: &mut Option<ActiveTurn>,
+        identity: &Arc<()>,
+        kind: TaskTerminalizationKind,
+        turn_state: &Arc<Mutex<TurnState>>,
+        task_identity: &Arc<dyn AnySessionTask>,
+        turn_context: &Arc<TurnContext>,
+        attach_epoch: u64,
+    ) -> Option<Arc<StartTransitionCompletion>> {
+        let Some(active_turn) = active.as_mut() else {
+            return None;
+        };
+        let Some(marker) = active_turn.task_terminalization.as_ref() else {
+            return None;
+        };
+        if active_turn.task.is_some()
+            || active_turn.start_reservation.is_some()
+            || active_turn.start_transition.is_some()
+            || marker.kind != kind
+            || marker.phase != TaskTerminalizationPhase::Terminalizing
+            || !Arc::ptr_eq(&marker.identity, identity)
+            || !Arc::ptr_eq(&marker.task_identity, task_identity)
+            || !Arc::ptr_eq(&marker.turn_context, turn_context)
+            || !Arc::ptr_eq(&marker.turn_state, turn_state)
+            || marker.attach_epoch != attach_epoch
+        {
+            return None;
+        }
+        let completion = Arc::clone(&marker.completion);
+        active_turn.task_terminalization = None;
+        *active = None;
+        Some(completion)
+    }
+
+    /// Claims and detaches the exact regular task for root-turn suspension.
+    /// The marker remains in `active_turn` while the caller performs bounded
+    /// cancellation and closes persistence, so no start/input path can treat
+    /// the session as idle in that interval.
+    pub(crate) async fn take_task_for_suspension(
+        &self,
+    ) -> Option<DetachedTaskForSuspension> {
+        if self.shutdown_started() {
+            return None;
+        }
+        let _claim_lock = self.terminalization_claim_lock.lock().await;
+        let mut active = self.active_turn.lock().await;
+        if self.shutdown_started() {
+            return None;
+        }
+        let active_turn = active.as_mut()?;
+        if active_turn.task_terminalization.is_some()
+            || active_turn.start_reservation.is_some()
+            || active_turn.start_transition.is_some()
+        {
+            return None;
+        }
+        let task_ref = active_turn.task.as_ref()?;
+        if task_ref.kind != TaskKind::Regular {
+            return None;
+        }
+        let task_identity = Arc::clone(&task_ref.task);
+        let task_context = Arc::clone(&task_ref.turn_context);
+        let attach_epoch = task_ref.attach_epoch;
+        let turn_state = Arc::clone(&active_turn.turn_state);
+        let (terminalization_identity, _terminalization_completion) =
+            self.claim_task_terminalization_locked(
+                active_turn,
+                &task_identity,
+                &task_context,
+                attach_epoch,
+                TaskTerminalizationKind::Suspend,
+            )?;
+        let task = Self::take_task_for_terminalization_locked(
+            active_turn,
+            &terminalization_identity,
+            TaskTerminalizationKind::Suspend,
+        )?;
+        // Suspension owns the shutdown handoff from this point.  Seal it
+        // before releasing the active-turn lock so a concurrent shutdown or
+        // idle mutation cannot observe the detached slot as admissible.
+        self.begin_shutdown();
+        drop(active);
+        Some(DetachedTaskForSuspension {
+            task: Some(task),
+            turn_state,
+            terminalization_identity,
+            task_identity,
+            turn_context: task_context,
+            attach_epoch,
+        })
+    }
+
+    /// Releases the suspension marker only after the caller has closed the
+    /// writer and completed every shutdown-side persistence step.
+    pub(crate) async fn finish_task_suspension(
+        &self,
+        suspended: &DetachedTaskForSuspension,
+    ) -> bool {
+        let completion = {
+            let mut active = self.active_turn.lock().await;
+            Self::clear_task_terminalization_if_current_locked(
+                &mut active,
+                &suspended.terminalization_identity,
+                TaskTerminalizationKind::Suspend,
+                &suspended.turn_state,
+                &suspended.task_identity,
+                &suspended.turn_context,
+                suspended.attach_epoch,
+            )
+        };
+        if let Some(completion) = completion.as_ref() {
+            self.finish_task_terminalization(&suspended.terminalization_identity, completion);
+            true
+        } else {
+            false
+        }
+    }
+
     fn recovery_seed_for_task(
         task: &RunningTask,
         abort_reason: Option<&TurnAbortReason>,
@@ -833,6 +1172,12 @@ impl Session {
                 .await;
             return false;
         }
+        if self.shutdown_started() {
+            drop(active_turn);
+            self.persist_turn_recovery_failure_tombstone(&seed.turn_id, seed.authority.as_ref())
+                .await;
+            return false;
+        }
         if let Err(err) = self
             .confirm_interrupted_turn_recovery(
                 &seed.turn_id,
@@ -850,6 +1195,12 @@ impl Session {
                 .await;
             return false;
         }
+        if self.shutdown_started() {
+            drop(active_turn);
+            self.persist_turn_recovery_failure_tombstone(&seed.turn_id, seed.authority.as_ref())
+                .await;
+            return false;
+        }
         let state = seed.authority.state.lock().await;
         let authority_invalid = state.poisoned
             || state.durable_state != DurableRecoveryState::InterruptedConfirmed
@@ -861,6 +1212,13 @@ impl Session {
             || seed.authority.ready.load(Ordering::Acquire)
             || self.rollout_persistence_failure_generation() != seed.persistence_failure_generation;
         if authority_invalid {
+            drop(state);
+            drop(active_turn);
+            self.persist_turn_recovery_failure_tombstone(&seed.turn_id, seed.authority.as_ref())
+                .await;
+            return false;
+        }
+        if self.shutdown_started() {
             drop(state);
             drop(active_turn);
             self.persist_turn_recovery_failure_tombstone(&seed.turn_id, seed.authority.as_ref())
@@ -930,6 +1288,9 @@ impl Session {
         let Some(active_turn) = active.as_ref() else {
             return Ok(RecoveryReadyForSampling::Detached);
         };
+        if active_turn.task_terminalization.is_some() {
+            return Ok(RecoveryReadyForSampling::Detached);
+        }
         let Some(task) = active_turn.task.as_ref() else {
             return Ok(RecoveryReadyForSampling::Detached);
         };
@@ -972,10 +1333,17 @@ impl Session {
         turn_id: &str,
         authority: &Arc<TurnRecoveryAuthority>,
     ) -> RecoveryProviderOutputGate {
-        if !self.enabled(Feature::HeptaTurnRecovery) {
-            return RecoveryProviderOutputGate::Attached;
-        }
         let active = self.active_turn.lock().await;
+        if self.shutdown_started() {
+            return RecoveryProviderOutputGate::Detached;
+        }
+        let recovery_enabled = self.enabled(Feature::HeptaTurnRecovery);
+        if active
+            .as_ref()
+            .is_some_and(|active_turn| active_turn.task_terminalization.is_some())
+        {
+            return RecoveryProviderOutputGate::Detached;
+        }
         let Some(task) = active
             .as_ref()
             .and_then(|active_turn| active_turn.task.as_ref())
@@ -983,12 +1351,16 @@ impl Session {
             return RecoveryProviderOutputGate::Detached;
         };
         if task.turn_context.sub_id != turn_id
-            || !task
-                .recovery_authority
-                .as_ref()
-                .is_some_and(|current| Arc::ptr_eq(current, authority))
+            || (recovery_enabled
+                && !task
+                    .recovery_authority
+                    .as_ref()
+                    .is_some_and(|current| Arc::ptr_eq(current, authority)))
         {
             return RecoveryProviderOutputGate::Detached;
+        }
+        if !recovery_enabled {
+            return RecoveryProviderOutputGate::Attached;
         }
         RecoveryProviderOutputGate::Attached
     }
@@ -1005,10 +1377,17 @@ impl Session {
         turn_id: &str,
         authority: &Arc<TurnRecoveryAuthority>,
     ) -> CodexResult<RecoveryProviderOutputGate> {
-        if !self.enabled(Feature::HeptaTurnRecovery) {
-            return Ok(RecoveryProviderOutputGate::Attached);
-        }
         let active = self.active_turn.lock().await;
+        if self.shutdown_started() {
+            return Ok(RecoveryProviderOutputGate::Detached);
+        }
+        if active
+            .as_ref()
+            .is_some_and(|active_turn| active_turn.task_terminalization.is_some())
+        {
+            return Ok(RecoveryProviderOutputGate::Detached);
+        }
+        let recovery_enabled = self.enabled(Feature::HeptaTurnRecovery);
         let Some(task) = active
             .as_ref()
             .and_then(|active_turn| active_turn.task.as_ref())
@@ -1016,15 +1395,18 @@ impl Session {
             return Ok(RecoveryProviderOutputGate::Detached);
         };
         if task.turn_context.sub_id != turn_id
-            || !task
-                .recovery_authority
-                .as_ref()
-                .is_some_and(|current| Arc::ptr_eq(current, authority))
+            || (recovery_enabled
+                && !task
+                    .recovery_authority
+                    .as_ref()
+                    .is_some_and(|current| Arc::ptr_eq(current, authority)))
         {
             return Ok(RecoveryProviderOutputGate::Detached);
         }
-        self.ensure_turn_recovery_unready(turn_id, authority.as_ref())
-            .await?;
+        if recovery_enabled {
+            self.ensure_turn_recovery_unready(turn_id, authority.as_ref())
+                .await?;
+        }
         Ok(RecoveryProviderOutputGate::Attached)
     }
 
@@ -1039,7 +1421,7 @@ impl Session {
                 "cannot start a task while the session is shutting down".to_string(),
             ));
         }
-        if self.has_pending_start_transition() {
+        if self.has_pending_admission_fence() {
             return Err(CodexErr::InvalidRequest(
                 "cannot start a task while the previous turn is terminalizing".to_string(),
             ));
@@ -1048,7 +1430,7 @@ impl Session {
         let start_reservation = {
             let mut active_turn = self.active_turn.lock().await;
             if self.shutdown_started()
-                || self.has_pending_start_transition()
+                || self.has_pending_admission_fence()
                 || active_turn.is_some()
             {
                 return Err(CodexErr::InvalidRequest(
@@ -1098,6 +1480,7 @@ impl Session {
             mailbox_parent_provenance,
             None,
             None,
+            None,
         )
         .await;
     }
@@ -1116,6 +1499,7 @@ impl Session {
             task,
             mailbox_parent_provenance,
             recovery_history,
+            None,
             None,
         )
         .await;
@@ -1136,6 +1520,7 @@ impl Session {
             mailbox_parent_provenance,
             None,
             Some(start_reservation),
+            None,
         )
         .await
     }
@@ -1156,6 +1541,7 @@ impl Session {
             mailbox_parent_provenance,
             recovery_history,
             Some(start_reservation),
+            None,
         )
         .await
     }
@@ -1168,6 +1554,7 @@ impl Session {
         mailbox_parent_provenance: MailboxParentProvenance,
         recovery_history: Option<RecoveryHistoryTransition>,
         start_reservation: Option<StartReservationHandle>,
+        terminalization_owner: Option<Arc<()>>,
     ) -> StartTaskOutcome {
         let task: Arc<dyn AnySessionTask> = Arc::new(task);
         let task_kind = task.kind();
@@ -1183,7 +1570,10 @@ impl Session {
         let transition_completion;
         {
             let mut active = self.active_turn.lock().await;
-            if self.shutdown_started() || self.has_pending_start_transition() {
+            if self.shutdown_started()
+                || self
+                    .has_pending_admission_fence_except(terminalization_owner.as_ref())
+            {
                 return StartTaskOutcome::Stale;
             }
             if let Some(start_reservation) = start_reservation.as_ref() {
@@ -1369,7 +1759,17 @@ impl Session {
                 start_transition_owner.disarm();
                 return StartTaskOutcome::Stale;
             };
-            debug_assert!(turn.task.is_none());
+            if turn.task.is_some() || turn.task_terminalization.is_some() {
+                drop(active);
+                self.restore_recovery_history_if_current(
+                    None,
+                    &start_transition_identity,
+                    &mut recovery_history_restore,
+                )
+                .await;
+                start_transition_owner.disarm();
+                return StartTaskOutcome::Stale;
+            }
             let Some(transition) = turn.start_transition.as_ref() else {
                 drop(active);
                 self.restore_recovery_history_if_current(
@@ -1417,7 +1817,17 @@ impl Session {
             start_transition_owner.disarm();
             return StartTaskOutcome::Stale;
         };
-        debug_assert!(turn.task.is_none());
+        if turn.task.is_some() || turn.task_terminalization.is_some() {
+            drop(active);
+            self.restore_recovery_history_if_current(
+                None,
+                &start_transition_identity,
+                &mut recovery_history_restore,
+            )
+            .await;
+            start_transition_owner.disarm();
+            return StartTaskOutcome::Stale;
+        }
         let Some(transition) = turn.start_transition.as_ref() else {
             drop(active);
             self.restore_recovery_history_if_current(
@@ -1594,7 +2004,25 @@ impl Session {
         let session = Arc::clone(self);
         Box::pin(async move {
             session
-                .maybe_start_turn_for_pending_work_with_sub_id(uuid::Uuid::new_v4().to_string())
+                .maybe_start_turn_for_pending_work_with_sub_id_and_owner(
+                    uuid::Uuid::new_v4().to_string(),
+                    None,
+                )
+                .await;
+        })
+    }
+
+    pub(crate) fn maybe_start_turn_for_pending_work_after_terminalization(
+        self: &Arc<Self>,
+        terminalization_owner: Arc<()>,
+    ) -> BoxFuture<'static, ()> {
+        let session = Arc::clone(self);
+        Box::pin(async move {
+            session
+                .maybe_start_turn_for_pending_work_with_sub_id_and_owner(
+                    uuid::Uuid::new_v4().to_string(),
+                    Some(terminalization_owner),
+                )
                 .await;
         })
     }
@@ -1608,7 +2036,19 @@ impl Session {
         self: &Arc<Self>,
         sub_id: String,
     ) {
-        if self.shutdown_started() || self.has_pending_start_transition() {
+        self.maybe_start_turn_for_pending_work_with_sub_id_and_owner(sub_id, None)
+            .await;
+    }
+
+    async fn maybe_start_turn_for_pending_work_with_sub_id_and_owner(
+        self: &Arc<Self>,
+        sub_id: String,
+        terminalization_owner: Option<Arc<()>>,
+    ) {
+        if self.shutdown_started()
+            || self
+                .has_pending_admission_fence_except(terminalization_owner.as_ref())
+        {
             return;
         }
         if !self.input_queue.has_pending_mailbox_items().await
@@ -1621,7 +2061,8 @@ impl Session {
         let start_reservation = {
             let mut active_turn = self.active_turn.lock().await;
             if self.shutdown_started()
-                || self.has_pending_start_transition()
+                || self
+                    .has_pending_admission_fence_except(terminalization_owner.as_ref())
                 || active_turn.is_some()
             {
                 return;
@@ -1648,12 +2089,14 @@ impl Session {
         self.maybe_emit_model_warnings_for_turn(turn_context.as_ref())
             .await;
         let start_outcome = self
-            .start_task_owned(
+            .start_task_with_options(
                 turn_context,
                 Vec::new(),
                 RegularTask::new(TurnRunOrigin::NewTurn),
                 MailboxParentProvenance::Attribute,
-                start_reservation_owner.handle().clone(),
+                None,
+                Some(start_reservation_owner.handle().clone()),
+                terminalization_owner,
             )
             .await;
         if start_outcome != StartTaskOutcome::Stale {
@@ -1665,6 +2108,11 @@ impl Session {
         let mut aborted_turn = false;
         let mut reserved_turn_state = None;
         let mut turn_context = None;
+        let mut terminalization_identity = None;
+        let mut task_identity = None;
+        let mut task_context = None;
+        let mut task_epoch = None;
+        let mut cleared_completion = None;
         let mut abort_outcome = TaskAbortOutcome::default();
         if let Some(target) = self
             .detach_active_task_for_abort(
@@ -1673,18 +2121,31 @@ impl Session {
             )
             .await
         {
-            let ActiveTurnAbortTarget::Running(detached) = target else {
-                // The start owner performs terminalization after its
-                // in-flight lifecycle callback returns.  Finalizing here
-                // would race on_turn_start/on_turn_abort ordering.  The
-                // shutdown handler performs the separate completion drain;
-                // ordinary replacement/steer callers must remain
-                // non-blocking if a contributor is waiting on them.
-                return;
+            let detached = match target {
+                ActiveTurnAbortTarget::Running(detached) => detached,
+                ActiveTurnAbortTarget::Terminalizing => {
+                    // A finish/abort owner already has the exact task. The
+                    // ordinary replacement path must remain non-blocking: a
+                    // second abort cannot drive the owner's cleanup and
+                    // waiting here would deadlock callers that are expected
+                    // to release the owner's test/abort latch.
+                    return;
+                }
+                ActiveTurnAbortTarget::Starting { .. } => {
+                    // The start owner performs terminalization after its
+                    // in-flight lifecycle callback returns. Finalizing here
+                    // would race on_turn_start/on_turn_abort ordering. The
+                    // shutdown handler performs the separate completion drain.
+                    return;
+                }
             };
             aborted_turn = true;
             turn_context = Some(Arc::clone(&detached.task.turn_context));
             reserved_turn_state = Some(Arc::clone(&detached.turn_state));
+            terminalization_identity = Some(Arc::clone(&detached.terminalization_identity));
+            task_identity = Some(Arc::clone(&detached.task.task));
+            task_context = Some(Arc::clone(&detached.task.turn_context));
+            task_epoch = Some(detached.task.attach_epoch);
             abort_outcome = self
                 .handle_task_abort(
                     detached.task,
@@ -1699,13 +2160,34 @@ impl Session {
             self.emit_turn_abort_lifecycle(reason.clone(), turn_context.extension_data.as_ref())
                 .await;
         }
-        if let Some(turn_state) = reserved_turn_state.as_ref() {
+        if let (
+            Some(turn_state),
+            Some(terminalization_identity),
+            Some(task_identity),
+            Some(task_context),
+            Some(task_epoch),
+        ) = (
+            reserved_turn_state.as_ref(),
+            terminalization_identity.as_ref(),
+            task_identity.as_ref(),
+            task_context.as_ref(),
+            task_epoch,
+        ) {
             // Let interrupted tasks observe cancellation before dropping pending approvals, or an
             // in-flight approval wait can surface as a model-visible rejection before TurnAborted.
             self.input_queue
                 .clear_pending_for_turn_state(turn_state.as_ref())
                 .await;
-            self.clear_reserved_idle_turn(turn_state).await;
+            let mut active = self.active_turn.lock().await;
+            cleared_completion = Self::clear_task_terminalization_if_current_locked(
+                &mut active,
+                terminalization_identity,
+                TaskTerminalizationKind::Abort,
+                turn_state,
+                task_identity,
+                task_context,
+                task_epoch,
+            );
         }
         self.publish_recovery_seed_after_terminal(
             abort_outcome.recovery_seed,
@@ -1713,8 +2195,14 @@ impl Session {
             abort_outcome.terminal_persistence_generation,
         )
         .await;
-        if reason == TurnAbortReason::Interrupted && aborted_turn {
-            self.maybe_start_turn_for_pending_work().await;
+        if let (Some(identity), Some(completion)) =
+            (terminalization_identity.as_ref(), cleared_completion.as_ref())
+        {
+            if reason == TurnAbortReason::Interrupted && aborted_turn {
+                self.maybe_start_turn_for_pending_work_after_terminalization(Arc::clone(identity))
+                    .await;
+            }
+            self.finish_task_terminalization(identity, completion);
         }
     }
 
@@ -1792,19 +2280,25 @@ impl Session {
         else {
             return AbortTurnOutcome::NotActive;
         };
-        let ActiveTurnAbortTarget::Running(detached) = target else {
-            let ActiveTurnAbortTarget::Starting { deferred_idle, .. } = target else {
-                unreachable!("non-running abort target must be starting")
-            };
-            return if deferred_idle {
-                AbortTurnOutcome::DeferredStart
-            } else {
-                AbortTurnOutcome::Starting
-            };
+        let detached = match target {
+            ActiveTurnAbortTarget::Running(detached) => detached,
+            ActiveTurnAbortTarget::Terminalizing => {
+                return AbortTurnOutcome::Terminalizing;
+            }
+            ActiveTurnAbortTarget::Starting { deferred_idle, .. } => {
+                return if deferred_idle {
+                    AbortTurnOutcome::DeferredStart
+                } else {
+                    AbortTurnOutcome::Starting
+                };
+            }
         };
 
         let turn_context = Arc::clone(&detached.task.turn_context);
         let reserved_turn_state = Arc::clone(&detached.turn_state);
+        let terminalization_identity = Arc::clone(&detached.terminalization_identity);
+        let task_identity = Arc::clone(&detached.task.task);
+        let task_epoch = detached.task.attach_epoch;
         let abort_outcome = self
             .handle_task_abort(
                 detached.task,
@@ -1820,7 +2314,17 @@ impl Session {
         self.input_queue
             .clear_pending_for_turn_state(reserved_turn_state.as_ref())
             .await;
-        self.clear_reserved_idle_turn(&reserved_turn_state).await;
+        let mut active = self.active_turn.lock().await;
+        let cleared_completion = Self::clear_task_terminalization_if_current_locked(
+            &mut active,
+            &terminalization_identity,
+            TaskTerminalizationKind::Abort,
+            &reserved_turn_state,
+            &task_identity,
+            &turn_context,
+            task_epoch,
+        );
+        drop(active);
 
         self.publish_recovery_seed_after_terminal(
             abort_outcome.recovery_seed,
@@ -1829,8 +2333,14 @@ impl Session {
         )
         .await;
 
-        if reason == TurnAbortReason::Interrupted {
-            self.maybe_start_turn_for_pending_work().await;
+        if let Some(completion) = cleared_completion.as_ref() {
+            if reason == TurnAbortReason::Interrupted {
+                self.maybe_start_turn_for_pending_work_after_terminalization(
+                    Arc::clone(&terminalization_identity),
+                )
+                .await;
+            }
+            self.finish_task_terminalization(&terminalization_identity, completion);
         }
 
         AbortTurnOutcome::Running
@@ -1847,7 +2357,16 @@ impl Session {
             }
             Ok(_) | Err(_) => None,
         };
-        let task_state = {
+        // Claim the exact task before the first recovery await. The active
+        // slot remains occupied by the typed marker, while the lock itself is
+        // released so unrelated state readers and shutdown can make progress.
+        let Some((
+            terminalization_identity,
+            turn_state,
+            recovery_seed,
+            recovery_authority,
+        )) = ({
+            let _claim_lock = self.terminalization_claim_lock.lock().await;
             let mut active = self.active_turn.lock().await;
             let Some(active_turn) = active.as_mut() else {
                 return;
@@ -1855,30 +2374,78 @@ impl Session {
             let Some(task) = active_turn.task.as_ref() else {
                 return;
             };
-            if !Arc::ptr_eq(&task.turn_context, &turn_context) {
+            if !Arc::ptr_eq(&task.turn_context, &turn_context)
+                || active_turn.task_terminalization.is_some()
+            {
                 return;
             }
-            // Keep active -> authority/rollout ordering while revoking Ready,
-            // then remove the task. No flush, warning, error lifecycle, or
-            // protocol event may become observable while a first-event Ready
-            // marker still authorizes cold recovery.
             let recovery_seed = Self::recovery_seed_for_task(task, abort_reason_hint.as_ref());
             let recovery_authority = task.recovery_authority.clone();
-            let recovery_seed = self
-                .prepare_recovery_seed_for_controlled_detach(
-                    &turn_context.sub_id,
-                    recovery_authority.as_ref(),
-                    recovery_seed,
+            let task_identity = Arc::clone(&task.task);
+            let task_context = Arc::clone(&task.turn_context);
+            let task_epoch = task.attach_epoch;
+            let turn_state = Arc::clone(&active_turn.turn_state);
+            let (terminalization_identity, _terminalization_completion) =
+                self.claim_task_terminalization_locked(
+                    active_turn,
+                    &task_identity,
+                    &task_context,
+                    task_epoch,
+                    TaskTerminalizationKind::Finish,
                 )
-                .await;
-            let task = active_turn
-                .task
-                .take()
-                .expect("task remained attached while recovery authority was revoked");
-            Some((Arc::clone(&active_turn.turn_state), task, recovery_seed))
-        };
-        let Some((turn_state, task, recovery_seed)) = task_state else {
+                .expect("task terminalization claim should be unique");
+            Some((
+                terminalization_identity,
+                turn_state,
+                recovery_seed,
+                recovery_authority,
+            ))
+        }) else {
             return;
+        };
+        let recovery_seed = self
+            .prepare_recovery_seed_for_controlled_detach(
+                &turn_context.sub_id,
+                recovery_authority.as_ref(),
+                recovery_seed,
+            )
+            .await;
+        let task = {
+            let mut active = self.active_turn.lock().await;
+            let Some(active_turn) = active.as_mut() else {
+                warn!(
+                    turn_id = %turn_context.sub_id,
+                    "finish terminalizer lost active slot after recovery preparation; retaining fence"
+                );
+                return;
+            };
+            let Some(task_ref) = active_turn.task.as_ref() else {
+                warn!(
+                    turn_id = %turn_context.sub_id,
+                    "finish terminalizer lost task after recovery preparation; retaining fence"
+                );
+                return;
+            };
+            if !Arc::ptr_eq(&task_ref.turn_context, &turn_context)
+                || !Self::task_terminalization_matches_locked(
+                    active_turn,
+                    &terminalization_identity,
+                    task_ref,
+                    TaskTerminalizationKind::Finish,
+                )
+            {
+                warn!(
+                    turn_id = %turn_context.sub_id,
+                    "finish terminalizer identity changed after recovery preparation; retaining fence"
+                );
+                return;
+            }
+            Self::take_task_for_terminalization_locked(
+                active_turn,
+                &terminalization_identity,
+                TaskTerminalizationKind::Finish,
+            )
+            .expect("claimed finish task should remain attached")
         };
         turn_context
             .turn_metadata_state
@@ -2135,31 +2702,37 @@ impl Session {
             .await
             .clear_turn(&turn_context.sub_id);
 
-        let cleared_active_turn = {
+        let cleared_completion = {
             let mut active = self.active_turn.lock().await;
-            if let Some(active_turn) = active.as_ref()
-                && active_turn.task.is_none()
-                && active_turn.start_reservation.is_none()
-                && active_turn.start_transition.is_none()
-                && Arc::ptr_eq(&active_turn.turn_state, &turn_state)
-            {
-                *active = None;
-                true
-            } else {
-                false
-            }
+            Self::clear_task_terminalization_if_current_locked(
+                &mut active,
+                &terminalization_identity,
+                TaskTerminalizationKind::Finish,
+                &turn_state,
+                &task.task,
+                &turn_context,
+                task.attach_epoch,
+            )
         };
-        if cleared_active_turn {
-            self.emit_thread_idle_lifecycle_if_idle(idle_cause).await;
-        }
         self.publish_recovery_seed_after_terminal(
             recovery_seed,
             /*task_quiesced*/ true,
             terminal_persistence_generation,
         )
         .await;
-        if cleared_active_turn {
-            self.maybe_start_turn_for_pending_work().await;
+        if cleared_completion.is_some() {
+            if let Some(completion) = cleared_completion.as_ref() {
+                self.emit_thread_idle_lifecycle_if_idle_for_terminalization(
+                    idle_cause,
+                    Some(&terminalization_identity),
+                )
+                .await;
+                self.maybe_start_turn_for_pending_work_after_terminalization(
+                    Arc::clone(&terminalization_identity),
+                )
+                .await;
+                self.finish_task_terminalization(&terminalization_identity, completion);
+            }
         }
     }
 
@@ -2168,10 +2741,6 @@ impl Session {
     /// host-owned start transition. Starts and injections therefore cannot
     /// observe an idle session until the old task is quiescent and its terminal
     /// is durable (or the start owner has completed its deferred handoff).
-    #[expect(
-        clippy::await_holding_invalid_type,
-        reason = "active -> recovery authority/rollout ordering is the serialization boundary"
-    )]
     async fn detach_active_task_for_abort(
         &self,
         reason: &TurnAbortReason,
@@ -2179,78 +2748,144 @@ impl Session {
         expected_turn_state: Option<&Arc<Mutex<TurnState>>>,
         deferred_idle_cause: Option<ThreadIdleCause>,
     ) -> Option<ActiveTurnAbortTarget> {
-        let mut active = self.active_turn.lock().await;
-        let active_turn = active.as_mut()?;
-        if expected_turn_state
-            .is_some_and(|expected| !Arc::ptr_eq(&active_turn.turn_state, expected))
-        {
-            return None;
-        }
-        let Some(task) = active_turn.task.as_ref() else {
-            if let Some(transition) = active_turn.start_transition.as_mut() {
-                if expected_turn_id.is_some_and(|expected| transition.turn_id != expected) {
+        let (
+            terminalization_identity,
+            turn_state,
+            task_context,
+            recovery_seed,
+            recovery_authority,
+            attach_epoch,
+        ) = {
+            let _claim_lock = self.terminalization_claim_lock.lock().await;
+            let mut active = self.active_turn.lock().await;
+            let active_turn = active.as_mut()?;
+            if expected_turn_state
+                .is_some_and(|expected| !Arc::ptr_eq(&active_turn.turn_state, expected))
+            {
+                return None;
+            }
+            if let Some(marker) = active_turn.task_terminalization.as_ref() {
+                if expected_turn_id.is_some_and(|expected| marker.turn_context.sub_id != expected)
+                {
                     return None;
                 }
-                let accepted = transition.request_abort(reason.clone());
-                if accepted {
-                    if matches!(
-                        reason,
-                        TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
-                    ) {
+                return Some(ActiveTurnAbortTarget::Terminalizing);
+            }
+            let Some(task) = active_turn.task.as_ref() else {
+                if let Some(transition) = active_turn.start_transition.as_mut() {
+                    if expected_turn_id.is_some_and(|expected| transition.turn_id != expected) {
+                        return None;
+                    }
+                    let accepted = transition.request_abort(reason.clone());
+                    if accepted {
+                        if matches!(
+                            reason,
+                            TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
+                        ) {
+                            self.mark_interrupted();
+                        }
+                        if let Some(cause) = deferred_idle_cause {
+                            transition.request_deferred_idle(cause);
+                        }
+                    }
+                    return Some(ActiveTurnAbortTarget::Starting {
+                        deferred_idle: accepted && deferred_idle_cause.is_some(),
+                    });
+                }
+                if let Some(reservation) = active_turn.start_reservation.as_mut() {
+                    if expected_turn_id.is_some_and(|expected| reservation.turn_id != expected) {
+                        return None;
+                    }
+                    if reservation.request_abort(reason.clone())
+                        && matches!(
+                            reason,
+                            TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
+                        )
+                    {
                         self.mark_interrupted();
                     }
-                    if let Some(cause) = deferred_idle_cause {
-                        transition.request_deferred_idle(cause);
-                    }
+                    return Some(ActiveTurnAbortTarget::Starting {
+                        deferred_idle: false,
+                    });
                 }
-                return Some(ActiveTurnAbortTarget::Starting {
-                    deferred_idle: accepted && deferred_idle_cause.is_some(),
-                });
+                return None;
+            };
+            if expected_turn_id.is_some_and(|expected| task.turn_context.sub_id != expected) {
+                return None;
             }
-            if let Some(reservation) = active_turn.start_reservation.as_mut() {
-                if expected_turn_id.is_some_and(|expected| reservation.turn_id != expected) {
-                    return None;
-                }
-                if reservation.request_abort(reason.clone())
-                    && matches!(
-                        reason,
-                        TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
-                    )
-                {
-                    self.mark_interrupted();
-                }
-                return Some(ActiveTurnAbortTarget::Starting {
-                    deferred_idle: false,
-                });
+            if matches!(
+                reason,
+                TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
+            ) {
+                self.mark_interrupted();
             }
-            return None;
+            let recovery_seed = Self::recovery_seed_for_task(task, Some(reason));
+            let recovery_authority = task.recovery_authority.clone();
+            let task_context = Arc::clone(&task.turn_context);
+            let task_identity = Arc::clone(&task.task);
+            let turn_state = Arc::clone(&active_turn.turn_state);
+            let attach_epoch = task.attach_epoch;
+            let (terminalization_identity, _terminalization_completion) =
+                self.claim_task_terminalization_locked(
+                active_turn,
+                &task_identity,
+                &task_context,
+                attach_epoch,
+                TaskTerminalizationKind::Abort,
+            )
+            .expect("task terminalization claim should be unique");
+            (
+                terminalization_identity,
+                turn_state,
+                task_context,
+                recovery_seed,
+                recovery_authority,
+                attach_epoch,
+            )
         };
-        if expected_turn_id.is_some_and(|expected| task.turn_context.sub_id != expected) {
-            return None;
-        }
-        if matches!(
-            reason,
-            TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
-        ) {
-            self.mark_interrupted();
-        }
-        let recovery_seed = Self::recovery_seed_for_task(task, Some(reason));
-        let recovery_authority = task.recovery_authority.clone();
-        let turn_id = task.turn_context.sub_id.clone();
         let recovery_seed = self
             .prepare_recovery_seed_for_controlled_detach(
-                &turn_id,
+                &task_context.sub_id,
                 recovery_authority.as_ref(),
                 recovery_seed,
             )
             .await;
-        let task = active_turn
-            .task
-            .take()
-            .expect("task remained attached while recovery authority was revoked");
+        let task = {
+            let mut active = self.active_turn.lock().await;
+            let Some(active_turn) = active.as_mut() else {
+                warn!("abort terminalizer lost active slot after recovery preparation; retaining fence");
+                return None;
+            };
+            let Some(task_ref) = active_turn.task.as_ref() else {
+                warn!("abort terminalizer lost task after recovery preparation; retaining fence");
+                return None;
+            };
+            if !Arc::ptr_eq(&task_ref.turn_context, &task_context)
+                || task_ref.attach_epoch != attach_epoch
+                || !Self::task_terminalization_matches_locked(
+                    active_turn,
+                    &terminalization_identity,
+                    task_ref,
+                    TaskTerminalizationKind::Abort,
+                )
+            {
+                warn!(
+                    turn_id = %task_context.sub_id,
+                    "abort terminalizer identity changed after recovery preparation; retaining fence"
+                );
+                return None;
+            }
+            Self::take_task_for_terminalization_locked(
+                active_turn,
+                &terminalization_identity,
+                TaskTerminalizationKind::Abort,
+            )
+            .expect("claimed abort task should remain attached")
+        };
         Some(ActiveTurnAbortTarget::Running(DetachedTaskForAbort {
             task,
-            turn_state: Arc::clone(&active_turn.turn_state),
+            turn_state,
+            terminalization_identity,
             recovery_seed,
             recovery_authority,
         }))
@@ -2340,7 +2975,11 @@ impl Session {
             return false;
         };
         if let Some(cause) = deferred_idle_cause {
-            self.emit_thread_idle_lifecycle_if_idle(cause).await;
+            self.emit_thread_idle_lifecycle_if_idle_after_start_transition(
+                cause,
+                &transition_identity,
+            )
+            .await;
         }
         self.publish_recovery_seed_after_terminal(
             abort_outcome.recovery_seed,
@@ -2370,6 +3009,7 @@ impl Session {
             };
             if active_turn.task.is_some()
                 || active_turn.start_reservation.is_some()
+                || active_turn.task_terminalization.is_some()
                 || !Arc::ptr_eq(&active_turn.turn_state, &cleanup.turn_state)
                 || !active_turn
                     .start_transition
@@ -2439,6 +3079,7 @@ impl Session {
         let still_current = active.as_ref().is_some_and(|active_turn| {
             active_turn.task.is_none()
                 && active_turn.start_reservation.is_none()
+                && active_turn.task_terminalization.is_none()
                 && Arc::ptr_eq(&active_turn.turn_state, turn_state)
                 && active_turn
                     .start_transition
@@ -2472,6 +3113,7 @@ impl Session {
         };
         let current = active_turn.task.is_none()
             && active_turn.start_reservation.is_none()
+            && active_turn.task_terminalization.is_none()
             && turn_state.is_none_or(|expected| Arc::ptr_eq(&active_turn.turn_state, expected))
             && active_turn
                 .start_transition
@@ -2505,6 +3147,7 @@ impl Session {
         };
         if active_turn.task.is_some()
             || active_turn.start_reservation.is_some()
+            || active_turn.task_terminalization.is_some()
             || !Arc::ptr_eq(&active_turn.turn_state, turn_state)
             || !active_turn
                 .start_transition
@@ -2544,7 +3187,10 @@ impl Session {
         let Some(active_turn) = active.as_mut() else {
             return StartReservationRelease::Stale;
         };
-        if active_turn.task.is_some() || active_turn.start_transition.is_some() {
+        if active_turn.task.is_some()
+            || active_turn.start_transition.is_some()
+            || active_turn.task_terminalization.is_some()
+        {
             return StartReservationRelease::Stale;
         }
         let Some(reservation) = active_turn.start_reservation.as_ref() else {
@@ -2637,6 +3283,18 @@ impl Session {
         session_task
             .abort(Arc::clone(self), Arc::clone(&task.turn_context))
             .await;
+
+        // The task runner deliberately skips `on_task_finished` after the
+        // cancellation token is set.  That is the right ownership boundary
+        // for an abort, but it also means the runner's ordinary pre-terminal
+        // rollout barrier is no longer available to persist output produced
+        // immediately before cancellation.  Recovery authority has already
+        // been revoked by the caller before entering this method, so this
+        // barrier is now safe and preserves the normal abort durability
+        // ordering: task output, interrupted marker, then TurnAborted.
+        if let Err(err) = self.flush_rollout().await {
+            warn!("failed to flush rollout before terminalizing aborted turn: {err}");
+        }
 
         if reason == TurnAbortReason::Interrupted
             && let Some(marker) = interrupted_turn_history_marker(
