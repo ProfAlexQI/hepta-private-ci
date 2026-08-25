@@ -387,6 +387,50 @@ async fn reopen_recomputes_current_projection_digests_and_exact_fts_rows() {
 }
 
 #[tokio::test]
+async fn reopen_rejects_0008_migration_checksum_drift_without_repair() {
+    let temp = TempDir::new().expect("migration checksum temp dir");
+    let owner = agent_id(85);
+    let agent_layout = layout(&temp, &owner);
+    let store = CognitiveStore::open(&agent_layout)
+        .await
+        .expect("open cognitive store");
+
+    let original_checksum: Vec<u8> =
+        sqlx::query_scalar("SELECT checksum FROM _sqlx_migrations WHERE version = 8")
+            .fetch_one(&store.pool)
+            .await
+            .expect("read migration 0008 checksum");
+    assert_eq!(
+        original_checksum.len(),
+        48,
+        "SQLx 0.9 migration checksums are SHA-384"
+    );
+
+    sqlx::query("UPDATE _sqlx_migrations SET checksum = ? WHERE version = 8")
+        .bind(vec![0_u8; 48])
+        .execute(&store.pool)
+        .await
+        .expect("tamper migration 0008 checksum in isolated fixture");
+
+    let error = match CognitiveStore::open(&agent_layout).await {
+        Ok(_) => panic!("migration 0008 checksum drift must fail closed"),
+        Err(error) => error,
+    };
+    expect_corrupt_with(
+        error,
+        "migration 8 was previously applied but has been modified",
+    );
+
+    let checksum_after_failed_open: Vec<u8> =
+        sqlx::query_scalar("SELECT checksum FROM _sqlx_migrations WHERE version = 8")
+            .fetch_one(&store.pool)
+            .await
+            .expect("read migration checksum after failed reopen");
+    assert_eq!(checksum_after_failed_open, vec![0_u8; 48]);
+    store.pool.close().await;
+}
+
+#[tokio::test]
 async fn v2_fixture_migrates_forward_preserving_memory_and_revoking_legacy_projection() {
     let temp = TempDir::new().expect("migration temp dir");
     let owner = agent_id(84);

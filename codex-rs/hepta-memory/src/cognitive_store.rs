@@ -198,10 +198,7 @@ impl CognitiveStore {
             .open_durable_evidence_pool(&path)
             .await
             .map_err(unavailable)?;
-        MIGRATOR
-            .run(&pool)
-            .await
-            .map_err(|error| CognitiveStoreError::Unavailable(error.to_string()))?;
+        MIGRATOR.run(&pool).await.map_err(classify_migrate_error)?;
         protect_database_file(&path)?;
         sqlx::query(
             "INSERT INTO cognitive_meta (singleton, schema_version, owner_agent_id)
@@ -379,7 +376,7 @@ pub(crate) async fn open_v2_test_pool(
     MIGRATOR
         .run_to(2, &pool)
         .await
-        .map_err(|error| CognitiveStoreError::Unavailable(error.to_string()))?;
+        .map_err(classify_migrate_error)?;
     protect_database_file(&path)?;
     sqlx::query(
         "INSERT INTO cognitive_meta (singleton, schema_version, owner_agent_id)
@@ -395,6 +392,17 @@ pub(crate) async fn open_v2_test_pool(
 
 pub(crate) fn unavailable(error: impl std::fmt::Display) -> CognitiveStoreError {
     CognitiveStoreError::Unavailable(error.to_string())
+}
+
+fn classify_migrate_error(error: sqlx::migrate::MigrateError) -> CognitiveStoreError {
+    let detail = error.to_string();
+    match error {
+        sqlx::migrate::MigrateError::VersionMissing(_)
+        | sqlx::migrate::MigrateError::VersionMismatch(_)
+        | sqlx::migrate::MigrateError::VersionNotPresent(_)
+        | sqlx::migrate::MigrateError::Dirty(_) => CognitiveStoreError::Corrupt(detail),
+        _ => CognitiveStoreError::Unavailable(detail),
+    }
 }
 
 fn now_unix_seconds() -> Result<i64, CognitiveStoreError> {
@@ -425,38 +433,7 @@ async fn verify_store(pool: &SqlitePool, owner: &AgentId) -> Result<(), Cognitiv
             "SQLite foreign_key_check rejected the cognitive store".to_string(),
         ));
     }
-    let migration_rows =
-        sqlx::query("SELECT version, success FROM _sqlx_migrations ORDER BY version")
-            .fetch_all(pool)
-            .await
-            .map_err(unavailable)?;
-    let migrations = migration_rows
-        .iter()
-        .map(|row| {
-            Ok((
-                row.try_get::<i64, _>("version").map_err(unavailable)?,
-                row.try_get::<bool, _>("success").map_err(unavailable)?,
-            ))
-        })
-        .collect::<Result<Vec<_>, CognitiveStoreError>>()?;
-    if migrations
-        != [
-            (1, true),
-            (2, true),
-            (3, true),
-            (4, true),
-            (5, true),
-            (6, true),
-            (7, true),
-            (8, true),
-            (9, true),
-            (10, true),
-        ]
-    {
-        return Err(CognitiveStoreError::Corrupt(format!(
-            "cognitive migration ledger is not the exact successful 0001/0002/0003/0004/0005/0006/0007/0008/0009/0010 set: {migrations:?}"
-        )));
-    }
+    verify_migration_ledger(pool).await?;
     let mut schema_oracle_parts = Vec::with_capacity(REQUIRED_SCHEMA_OBJECTS.len());
     for (name, expected_type) in REQUIRED_SCHEMA_OBJECTS {
         let object = sqlx::query("SELECT type, sql FROM sqlite_schema WHERE name = ?")
@@ -680,6 +657,79 @@ async fn verify_store(pool: &SqlitePool, owner: &AgentId) -> Result<(), Cognitiv
     crate::logical_turn_registry::verify_logical_turn_registry(pool, owner).await?;
     crate::local_lease_outbox::verify_local_lease_outbox(pool, owner).await?;
     crate::local_compact_executor::verify_local_compact_events(pool, owner).await?;
+    Ok(())
+}
+
+async fn verify_migration_ledger(pool: &SqlitePool) -> Result<(), CognitiveStoreError> {
+    let ledger_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_schema
+         WHERE type = 'table' AND name = '_sqlx_migrations'",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(unavailable)?;
+    if ledger_count != 1 {
+        return Err(CognitiveStoreError::Corrupt(
+            "cognitive migration ledger is missing".to_string(),
+        ));
+    }
+
+    let rows = sqlx::query(
+        "SELECT version, description, success, checksum
+         FROM _sqlx_migrations ORDER BY version",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(unavailable)?;
+    if rows.len() != MIGRATOR.migrations.len() {
+        return Err(CognitiveStoreError::Corrupt(
+            "cognitive migration ledger is incomplete or has unknown entries".to_string(),
+        ));
+    }
+
+    let migrations = rows
+        .iter()
+        .map(|row| {
+            Ok((
+                row.try_get::<i64, _>("version").map_err(unavailable)?,
+                row.try_get::<bool, _>("success").map_err(unavailable)?,
+            ))
+        })
+        .collect::<Result<Vec<_>, CognitiveStoreError>>()?;
+    if migrations
+        != [
+            (1, true),
+            (2, true),
+            (3, true),
+            (4, true),
+            (5, true),
+            (6, true),
+            (7, true),
+            (8, true),
+            (9, true),
+            (10, true),
+        ]
+    {
+        return Err(CognitiveStoreError::Corrupt(format!(
+            "cognitive migration ledger is not the exact successful 0001/0002/0003/0004/0005/0006/0007/0008/0009/0010 set: {migrations:?}"
+        )));
+    }
+
+    for (row, migration) in rows.iter().zip(MIGRATOR.migrations.iter()) {
+        let version: i64 = row.try_get("version").map_err(unavailable)?;
+        let description: String = row.try_get("description").map_err(unavailable)?;
+        let success: bool = row.try_get("success").map_err(unavailable)?;
+        let checksum: Vec<u8> = row.try_get("checksum").map_err(unavailable)?;
+        if version != migration.version
+            || description != migration.description.as_ref()
+            || !success
+            || checksum.as_slice() != migration.checksum.as_ref()
+        {
+            return Err(CognitiveStoreError::Corrupt(format!(
+                "cognitive migration ledger entry {version} does not match the current lineage"
+            )));
+        }
+    }
     Ok(())
 }
 
