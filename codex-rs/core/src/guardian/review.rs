@@ -820,7 +820,19 @@ pub(crate) fn spawn_approval_request_review(
 ) -> oneshot::Receiver<ReviewDecision> {
     let context = context.into();
     let (tx, rx) = oneshot::channel();
-    let runtime = session.services.runtime_handle.clone();
+    // A Session can outlive the runtime that constructed it (for example in
+    // tests or host handoff paths).  The stored handle is not a liveness
+    // witness: `Handle::block_on` on a shut-down scheduler can panic or leave
+    // the review worker unable to make progress.  Capture the caller's live
+    // runtime instead; when this synchronous wrapper is invoked off-runtime,
+    // fail closed by dropping the sender and letting the caller's oneshot
+    // fallback produce a denial.
+    let Some(runtime) = tokio::runtime::Handle::try_current().ok() else {
+        tracing::warn!(
+            "automatic approval review cannot start without a live Tokio runtime"
+        );
+        return rx;
+    };
     let spawn_result = std::thread::Builder::new()
         .name("codex-approval-review".to_string())
         .spawn(move || {
