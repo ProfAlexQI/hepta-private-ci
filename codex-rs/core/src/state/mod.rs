@@ -16,6 +16,7 @@ pub(crate) use turn::MailboxDeliveryPhase;
 pub(crate) use turn::PendingRequestPermissions;
 pub(crate) use turn::RecoveryAuthorityState;
 pub(crate) use turn::RunningTask;
+pub(crate) use turn::StartReservationHandle;
 pub(crate) use turn::StartTransition;
 pub(crate) use turn::TaskKind;
 pub(crate) use turn::TurnRecoveryAuthority;

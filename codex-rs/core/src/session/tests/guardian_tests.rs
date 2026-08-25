@@ -412,8 +412,25 @@ async fn guardian_allows_exec_command_additional_permissions_requests_past_polic
     assert!(output.contains("hi"));
 }
 
-#[tokio::test]
-async fn strict_auto_review_turn_grant_forces_guardian_for_exec_command_policy_skip() {
+#[test]
+fn strict_auto_review_turn_grant_forces_guardian_for_exec_command_policy_skip() {
+    const TEST_STACK_SIZE_BYTES: usize = 8 * 1024 * 1024;
+    std::thread::Builder::new()
+        .name("strict_auto_review_turn_grant_forces_guardian".to_string())
+        .stack_size(TEST_STACK_SIZE_BYTES)
+        .spawn(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("test runtime should build");
+            runtime.block_on(strict_auto_review_turn_grant_forces_guardian_inner());
+        })
+        .expect("test thread should spawn")
+        .join()
+        .expect("test thread should complete");
+}
+
+async fn strict_auto_review_turn_grant_forces_guardian_inner() {
     let server = start_mock_server().await;
     let guardian_request_log = mount_sse_once(
         &server,
@@ -435,8 +452,11 @@ async fn strict_auto_review_turn_grant_forces_guardian_for_exec_command_policy_s
     .await;
 
     let (mut session, mut turn_context_raw) = make_session_and_context().await;
-    let active_turn = crate::state::ActiveTurn::default();
+    let mut active_turn = crate::state::ActiveTurn::default();
     let originating_turn_state = Arc::clone(&active_turn.turn_state);
+    let start_reservation = active_turn
+        .reserve_start(turn_context_raw.sub_id.clone())
+        .expect("test turn should reserve its start slot");
     *session.active_turn.lock().await = Some(active_turn);
     session
         .record_granted_request_permissions_for_turn(
@@ -488,17 +508,21 @@ async fn strict_auto_review_turn_grant_forces_guardian_for_exec_command_policy_s
     );
     let session = Arc::new(session);
     let turn_context = Arc::new(turn_context_raw);
-    session
-        .start_task(
-            Arc::clone(&turn_context),
-            Vec::new(),
-            super::NeverEndingTask {
-                kind: crate::state::TaskKind::Regular,
-                listen_to_cancellation_token: true,
-            },
-            crate::tasks::MailboxParentProvenance::Ignore,
-        )
-        .await;
+    assert_eq!(
+        session
+            .start_task_owned(
+                Arc::clone(&turn_context),
+                Vec::new(),
+                super::NeverEndingTask {
+                    kind: crate::state::TaskKind::Regular,
+                    listen_to_cancellation_token: true,
+                },
+                crate::tasks::MailboxParentProvenance::Ignore,
+                start_reservation,
+            )
+            .await,
+        crate::tasks::StartTaskOutcome::Attached
+    );
 
     let handler = crate::tools::handlers::ExecCommandHandler::default();
     #[allow(deprecated)]

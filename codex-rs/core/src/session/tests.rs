@@ -891,6 +891,120 @@ async fn abort_during_turn_start_transition_is_fenced_before_task_attach() {
     assert!(session.active_turn.lock().await.is_none());
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn abort_during_spawn_reservation_preamble_is_fenced_before_start_task() {
+    struct SpawnPreambleProbe {
+        runs: Arc<std::sync::atomic::AtomicUsize>,
+        aborts: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl SessionTask for SpawnPreambleProbe {
+        fn kind(&self) -> TaskKind {
+            TaskKind::Regular
+        }
+
+        fn span_name(&self) -> &'static str {
+            "session_task.spawn_preamble_abort_probe"
+        }
+
+        async fn run(
+            self: Arc<Self>,
+            _session: Arc<Session>,
+            _ctx: Arc<TurnContext>,
+            _input: Vec<TurnInput>,
+            _cancellation_token: CancellationToken,
+        ) -> SessionTaskResult {
+            self.runs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(None)
+        }
+
+        async fn abort(&self, _session: Arc<Session>, _ctx: Arc<TurnContext>) {
+            self.aborts
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    let (session, turn_context, rx) = make_session_and_context_with_rx().await;
+    // `spawn_task` installs its caller-owned reservation before clearing
+    // connector selection. Hold the state lock so the reservation is
+    // observable while that preamble is waiting, then release it only after
+    // abort wins.
+    let state_guard = session.state.lock().await;
+    let runs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let aborts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let start = tokio::spawn({
+        let session = Arc::clone(&session);
+        let turn_context = Arc::clone(&turn_context);
+        let runs = Arc::clone(&runs);
+        let aborts = Arc::clone(&aborts);
+        async move {
+            session
+                .spawn_task(
+                    turn_context,
+                    Vec::new(),
+                    SpawnPreambleProbe { runs, aborts },
+                )
+                .await
+                .expect("spawn reservation should be accepted");
+        }
+    });
+
+    timeout(Duration::from_secs(2), async {
+        loop {
+            if session
+                .active_turn
+                .lock()
+                .await
+                .as_ref()
+                .is_some_and(|active| {
+                    active.task.is_none()
+                        && active.start_reservation.is_some()
+                        && active.start_transition.is_none()
+                })
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("spawn preamble should install its start marker");
+    assert!(
+        session
+            .abort_turn_if_active(&turn_context.sub_id, TurnAbortReason::Interrupted)
+            .await
+    );
+    drop(state_guard);
+    start.await.expect("spawn task should join");
+
+    assert_eq!(0, runs.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(1, aborts.load(std::sync::atomic::Ordering::SeqCst));
+    let mut saw_turn_started = false;
+    let mut saw_turn_aborted = false;
+    for _ in 0..16 {
+        let event = timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("expected spawn preamble terminal event")
+            .expect("event channel open");
+        match event.msg {
+            EventMsg::TurnStarted(_) => saw_turn_started = true,
+            EventMsg::TurnAborted(event) => {
+                assert_eq!(Some(turn_context.sub_id.clone()), event.turn_id);
+                assert_eq!(TurnAbortReason::Interrupted, event.reason);
+                saw_turn_aborted = true;
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        !saw_turn_started,
+        "pre-start abort must not emit TurnStarted"
+    );
+    assert!(saw_turn_aborted, "pre-start abort must publish TurnAborted");
+    assert!(session.active_turn.lock().await.is_none());
+}
+
 #[tokio::test]
 async fn request_mcp_server_elicitation_auto_accepts_when_auto_deny_is_enabled() {
     let (session, turn_context, rx) = make_session_and_context_with_rx().await;

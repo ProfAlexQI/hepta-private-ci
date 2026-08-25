@@ -15,10 +15,13 @@ use super::thread_settings;
 use super::turn::TurnRunOrigin;
 use super::turn_context::TurnContext;
 use crate::state::ActiveTurn;
+use crate::state::StartReservationHandle;
 use crate::state::TurnState;
 use crate::tasks::MailboxParentProvenance;
 use crate::tasks::RecoveryHistoryTransition;
 use crate::tasks::RegularTask;
+use crate::tasks::StartReservationRelease;
+use crate::tasks::StartTaskOutcome;
 use codex_features::Feature;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::error::CodexErr;
@@ -44,6 +47,20 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use uuid::Uuid;
+
+/// Releases a caller-owned start reservation after a pre-context failure.
+/// The release is identity-fenced; both the ordinary cleanup path and an
+/// accepted pre-context abort must settle a consumed recovery candidate.
+async fn release_start_reservation_after_error(
+    session: &Arc<Session>,
+    handle: &StartReservationHandle,
+) -> StartReservationRelease {
+    let release = session.release_start_reservation_if_current(handle).await;
+    if !matches!(release, StartReservationRelease::Stale) {
+        session.settle_consumed_recovery_status();
+    }
+    release
+}
 
 #[cfg(test)]
 #[path = "turn_input_tests.rs"]
@@ -238,7 +255,7 @@ async fn start_or_steer(
             Ok(TurnInputSubmission::Steered { turn_id })
         }
         Err(NotSubmittedReason::NoActiveTurn) => {
-            let turn_state = {
+            let start_reservation = {
                 let mut active_turn = session.active_turn.lock().await;
                 if active_turn.is_some() {
                     return Ok(TurnInputSubmission::NotSubmitted {
@@ -255,14 +272,15 @@ async fn start_or_steer(
                     });
                 }
                 let active_turn = active_turn.get_or_insert_with(ActiveTurn::default);
-                Arc::clone(&active_turn.turn_state)
+                let start_reservation = active_turn
+                    .reserve_start(submission_id.clone())
+                    .expect("idle slot should accept one start reservation");
+                start_reservation
             };
             let turn_context = match settings.apply_started(session, submission_id.clone()).await {
                 Ok(turn_context) => turn_context,
                 Err(error) => {
-                    session
-                        .settle_and_clear_reserved_idle_turn(&turn_state)
-                        .await;
+                    release_start_reservation_after_error(session, &start_reservation).await;
                     return Err(error);
                 }
             };
@@ -292,14 +310,23 @@ async fn start_or_steer(
                     client_id,
                 });
             }
-            session
-                .start_task(
+            let start_outcome = session
+                .start_task_owned(
                     Arc::clone(&turn_context),
                     task_input,
                     RegularTask::new(TurnRunOrigin::NewTurn),
                     MailboxParentProvenance::Ignore,
+                    start_reservation,
                 )
                 .await;
+            if start_outcome != StartTaskOutcome::Attached {
+                session
+                    .pending_user_message_admissions
+                    .complete_task_end(&submission_id);
+                return Ok(TurnInputSubmission::NotSubmitted {
+                    reason: NotSubmittedReason::NotIdle,
+                });
+            }
             session
                 .pending_user_message_admissions
                 .complete_started(&submission_id, turn_context);
@@ -352,7 +379,7 @@ async fn start_if_idle(
     let mut recovery_restart = None;
     let mut recovery_history_snapshot = None;
     let mut recovery_expected_context = None;
-    let turn_state = {
+    let (turn_state, start_reservation) = {
         let mut active_turn = session.active_turn.lock().await;
         if active_turn.is_some() {
             return Ok(TurnInputSubmission::NotSubmitted {
@@ -455,13 +482,14 @@ async fn start_if_idle(
             });
         }
         let active_turn = active_turn.get_or_insert_with(ActiveTurn::default);
-        Arc::clone(&active_turn.turn_state)
+        let start_reservation = active_turn
+            .reserve_start(submission_id.clone())
+            .expect("idle slot should accept one start reservation");
+        (Arc::clone(&active_turn.turn_state), start_reservation)
     };
 
     if session.input_queue.has_trigger_turn_mailbox_items().await {
-        session
-            .settle_and_clear_reserved_idle_turn(&turn_state)
-            .await;
+        release_start_reservation_after_error(session, &start_reservation).await;
         session.maybe_start_turn_for_pending_work().await;
         return Ok(TurnInputSubmission::NotSubmitted {
             reason: NotSubmittedReason::PendingTriggerTurn,
@@ -471,18 +499,14 @@ async fn start_if_idle(
     let settings = match PreparedTurnInputSettings::prepare(session, thread_settings, start).await {
         Ok(settings) => settings,
         Err(error) => {
-            session
-                .settle_and_clear_reserved_idle_turn(&turn_state)
-                .await;
+            release_start_reservation_after_error(session, &start_reservation).await;
             return Err(error);
         }
     };
     // Automatic work must not use persistent settings to start a turn
     // whose effective collaboration mode is Plan.
     if is_automatic_idle_work && settings.would_enter_plan_mode() {
-        session
-            .settle_and_clear_reserved_idle_turn(&turn_state)
-            .await;
+        release_start_reservation_after_error(session, &start_reservation).await;
         return Ok(TurnInputSubmission::NotSubmitted {
             reason: NotSubmittedReason::PlanMode,
         });
@@ -491,9 +515,7 @@ async fn start_if_idle(
     let mut turn_context = match settings.apply_started(session, submission_id.clone()).await {
         Ok(turn_context) => turn_context,
         Err(error) => {
-            session
-                .settle_and_clear_reserved_idle_turn(&turn_state)
-                .await;
+            release_start_reservation_after_error(session, &start_reservation).await;
             return Err(error);
         }
     };
@@ -507,9 +529,7 @@ async fn start_if_idle(
             .as_ref()
             .expect("validated recovery context captured before candidate consumption");
         let Some(turn_context) = Arc::get_mut(&mut turn_context) else {
-            session
-                .settle_and_clear_reserved_idle_turn(&turn_state)
-                .await;
+            release_start_reservation_after_error(session, &start_reservation).await;
             return Err(CodexErr::Fatal(
                 "turn recovery context became shared before replay was applied".to_string(),
             ));
@@ -528,10 +548,7 @@ async fn start_if_idle(
                 .as_ref()
                 != Some(&replay.environments)
         {
-            session
-                .settle_and_clear_reserved_idle_turn(&turn_state)
-                .await;
-            session.settle_consumed_recovery_status();
+            release_start_reservation_after_error(session, &start_reservation).await;
             return Ok(TurnInputSubmission::NotSubmitted {
                 reason: NotSubmittedReason::RecoveryStateChanged,
             });
@@ -551,17 +568,11 @@ async fn start_if_idle(
             )
             .await
         {
-            session
-                .settle_and_clear_reserved_idle_turn(&turn_state)
-                .await;
-            session.settle_consumed_recovery_status();
+            release_start_reservation_after_error(session, &start_reservation).await;
             return Err(error);
         }
         let Some(history) = recovery_history_snapshot.take() else {
-            session
-                .settle_and_clear_reserved_idle_turn(&turn_state)
-                .await;
-            session.settle_consumed_recovery_status();
+            release_start_reservation_after_error(session, &start_reservation).await;
             return Err(CodexErr::Fatal(
                 "turn recovery history snapshot disappeared before installation".to_string(),
             ));
@@ -615,15 +626,26 @@ async fn start_if_idle(
     } else {
         None
     };
-    session
-        .start_task_with_recovery(
+    let start_outcome = session
+        .start_task_with_recovery_owned(
             Arc::clone(&turn_context),
             task_input,
             regular_task,
             MailboxParentProvenance::Ignore,
             recovery_history_transition,
+            start_reservation,
         )
         .await;
+    if start_outcome != StartTaskOutcome::Attached {
+        if has_user_input && !is_recovery {
+            session
+                .pending_user_message_admissions
+                .complete_task_end(&submission_id);
+        }
+        return Ok(TurnInputSubmission::NotSubmitted {
+            reason: NotSubmittedReason::NotIdle,
+        });
+    }
     if has_user_input && !is_recovery {
         session
             .pending_user_message_admissions
@@ -769,6 +791,7 @@ impl Session {
         let mut active_turn_guard = self.active_turn.lock().await;
         if let Some(active_turn) = active_turn_guard.as_ref()
             && active_turn.task.is_none()
+            && active_turn.start_reservation.is_none()
             && active_turn.start_transition.is_none()
             && Arc::ptr_eq(&active_turn.turn_state, turn_state)
         {
@@ -787,6 +810,7 @@ impl Session {
         let mut active_turn_guard = self.active_turn.lock().await;
         if let Some(active_turn) = active_turn_guard.as_ref()
             && active_turn.task.is_none()
+            && active_turn.start_reservation.is_none()
             && active_turn.start_transition.is_none()
             && Arc::ptr_eq(&active_turn.turn_state, turn_state)
         {

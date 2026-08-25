@@ -40,6 +40,7 @@ use crate::session::turn_context::TurnContext;
 use crate::state::ActiveTurn;
 use crate::state::DurableRecoveryState;
 use crate::state::RunningTask;
+use crate::state::StartReservationHandle;
 use crate::state::StartTransition;
 use crate::state::TaskKind;
 use crate::state::TurnRecoveryAuthority;
@@ -127,6 +128,24 @@ struct DetachedTaskForAbort {
 enum ActiveTurnAbortTarget {
     Running(DetachedTaskForAbort),
     Starting,
+}
+
+#[derive(Debug)]
+pub(crate) enum StartReservationRelease {
+    Released,
+    AbortRequested(TurnAbortReason),
+    Stale,
+}
+
+/// Result of handing a materialized turn context to the host start state
+/// machine.  Owned callers use this to avoid reporting `Started` after a
+/// caller reservation was fenced by an abort or replacement; legacy direct
+/// callers may ignore the value.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum StartTaskOutcome {
+    Attached,
+    Aborted,
+    Stale,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -767,7 +786,7 @@ impl Session {
         task: T,
     ) -> CodexResult<()> {
         self.abort_all_tasks(TurnAbortReason::Replaced).await;
-        {
+        let start_reservation = {
             let mut active_turn = self.active_turn.lock().await;
             if active_turn.is_some() {
                 return Err(CodexErr::InvalidRequest(
@@ -776,12 +795,27 @@ impl Session {
                 ));
             }
             self.consume_recovery_candidate_for_mutation().await?;
-            *active_turn = Some(ActiveTurn::default());
-        }
+            let active = active_turn.get_or_insert_with(ActiveTurn::default);
+            active
+                .reserve_start(turn_context.sub_id.clone())
+                .expect("idle slot should accept one start reservation")
+        };
         self.clear_connector_selection().await;
-        self.start_task(turn_context, input, task, MailboxParentProvenance::Ignore)
+        let start_outcome = self
+            .start_task_owned(
+                turn_context,
+                input,
+                task,
+                MailboxParentProvenance::Ignore,
+                start_reservation,
+            )
             .await;
-        Ok(())
+        match start_outcome {
+            StartTaskOutcome::Attached | StartTaskOutcome::Aborted => Ok(()),
+            StartTaskOutcome::Stale => Err(CodexErr::InvalidRequest(
+                "start reservation became stale before task attachment".to_string(),
+            )),
+        }
     }
 
     pub(crate) async fn start_task<T: SessionTask>(
@@ -791,8 +825,15 @@ impl Session {
         task: T,
         mailbox_parent_provenance: MailboxParentProvenance,
     ) {
-        self.start_task_with_recovery(turn_context, input, task, mailbox_parent_provenance, None)
-            .await;
+        self.start_task_with_options(
+            turn_context,
+            input,
+            task,
+            mailbox_parent_provenance,
+            None,
+            None,
+        )
+        .await;
     }
 
     pub(crate) async fn start_task_with_recovery<T: SessionTask>(
@@ -803,6 +844,65 @@ impl Session {
         mailbox_parent_provenance: MailboxParentProvenance,
         recovery_history: Option<RecoveryHistoryTransition>,
     ) {
+        self.start_task_with_options(
+            turn_context,
+            input,
+            task,
+            mailbox_parent_provenance,
+            recovery_history,
+            None,
+        )
+        .await;
+    }
+
+    pub(crate) async fn start_task_owned<T: SessionTask>(
+        self: &Arc<Self>,
+        turn_context: Arc<TurnContext>,
+        input: Vec<TurnInput>,
+        task: T,
+        mailbox_parent_provenance: MailboxParentProvenance,
+        start_reservation: StartReservationHandle,
+    ) -> StartTaskOutcome {
+        self.start_task_with_options(
+            turn_context,
+            input,
+            task,
+            mailbox_parent_provenance,
+            None,
+            Some(start_reservation),
+        )
+        .await
+    }
+
+    pub(crate) async fn start_task_with_recovery_owned<T: SessionTask>(
+        self: &Arc<Self>,
+        turn_context: Arc<TurnContext>,
+        input: Vec<TurnInput>,
+        task: T,
+        mailbox_parent_provenance: MailboxParentProvenance,
+        recovery_history: Option<RecoveryHistoryTransition>,
+        start_reservation: StartReservationHandle,
+    ) -> StartTaskOutcome {
+        self.start_task_with_options(
+            turn_context,
+            input,
+            task,
+            mailbox_parent_provenance,
+            recovery_history,
+            Some(start_reservation),
+        )
+        .await
+    }
+
+    async fn start_task_with_options<T: SessionTask>(
+        self: &Arc<Self>,
+        turn_context: Arc<TurnContext>,
+        input: Vec<TurnInput>,
+        task: T,
+        mailbox_parent_provenance: MailboxParentProvenance,
+        recovery_history: Option<RecoveryHistoryTransition>,
+        start_reservation: Option<StartReservationHandle>,
+    ) -> StartTaskOutcome {
         let task: Arc<dyn AnySessionTask> = Arc::new(task);
         let task_kind = task.kind();
         // Mark the host-owned async start transition before any subsequent
@@ -812,23 +912,42 @@ impl Session {
         // instead of silently returning as if the session were idle.  The
         // caller-owned reservation preamble before entering `start_task`
         // remains a separate, inert reservation by design.
-        let start_transition_identity = Arc::new(());
+        let start_transition_identity;
         {
             let mut active = self.active_turn.lock().await;
-            let turn = active.get_or_insert_with(ActiveTurn::default);
-            debug_assert!(turn.task.is_none());
-            debug_assert!(turn.start_transition.is_none());
-            if turn.task.is_some() || turn.start_transition.is_some() {
-                warn!(
-                    turn_id = %turn_context.sub_id,
-                    "refusing to overwrite an existing turn start transition"
+            if let Some(start_reservation) = start_reservation.as_ref() {
+                let Some(turn) = active.as_mut() else {
+                    warn!(turn_id = %turn_context.sub_id, "start reservation lost before promotion");
+                    return StartTaskOutcome::Stale;
+                };
+                if start_reservation.turn_id != turn_context.sub_id
+                    || !turn.promote_start(start_reservation)
+                {
+                    warn!(turn_id = %turn_context.sub_id, "start reservation failed identity promotion");
+                    return StartTaskOutcome::Stale;
+                }
+                start_transition_identity = Arc::clone(
+                    &turn
+                        .start_transition
+                        .as_ref()
+                        .expect("promotion installs start transition")
+                        .identity,
                 );
-                return;
+            } else {
+                if active.is_some() {
+                    warn!(
+                        turn_id = %turn_context.sub_id,
+                        "refusing to steal an existing idle or caller reservation"
+                    );
+                    return StartTaskOutcome::Stale;
+                }
+                let turn = active.get_or_insert_with(ActiveTurn::default);
+                start_transition_identity = Arc::new(());
+                turn.start_transition = Some(StartTransition::new(
+                    turn_context.sub_id.clone(),
+                    Arc::clone(&start_transition_identity),
+                ));
             }
-            turn.start_transition = Some(StartTransition::new(
-                turn_context.sub_id.clone(),
-                Arc::clone(&start_transition_identity),
-            ));
         }
         let mut recovery_history_restore = if let Some(recovery_history) = recovery_history {
             self.install_recovery_history_snapshot(recovery_history.install)
@@ -941,7 +1060,7 @@ impl Session {
                     &mut recovery_history_restore,
                 )
                 .await;
-                return;
+                return StartTaskOutcome::Stale;
             };
             debug_assert!(turn.task.is_none());
             let Some(transition) = turn.start_transition.as_ref() else {
@@ -952,7 +1071,7 @@ impl Session {
                     &mut recovery_history_restore,
                 )
                 .await;
-                return;
+                return StartTaskOutcome::Stale;
             };
             if !Arc::ptr_eq(&transition.identity, &start_transition_identity) {
                 drop(active);
@@ -962,7 +1081,7 @@ impl Session {
                     &mut recovery_history_restore,
                 )
                 .await;
-                return;
+                return StartTaskOutcome::Stale;
             }
             Arc::clone(&turn.turn_state)
         };
@@ -986,7 +1105,7 @@ impl Session {
                 &mut recovery_history_restore,
             )
             .await;
-            return;
+            return StartTaskOutcome::Stale;
         };
         debug_assert!(turn.task.is_none());
         let Some(transition) = turn.start_transition.as_ref() else {
@@ -997,7 +1116,7 @@ impl Session {
                 &mut recovery_history_restore,
             )
             .await;
-            return;
+            return StartTaskOutcome::Stale;
         };
         if !Arc::ptr_eq(&transition.identity, &start_transition_identity) {
             drop(active);
@@ -1007,7 +1126,7 @@ impl Session {
                 &mut recovery_history_restore,
             )
             .await;
-            return;
+            return StartTaskOutcome::Stale;
         }
         if let Some(reason) = transition.abort_reason.clone() {
             // Keep the marker installed while terminalization awaits.  The
@@ -1025,7 +1144,7 @@ impl Session {
                 reason,
             )
             .await;
-            return;
+            return StartTaskOutcome::Aborted;
         }
         let agent_execution_guard = self.services.agent_control.execution_guard(
             turn_context.multi_agent_version,
@@ -1118,6 +1237,7 @@ impl Session {
         };
         turn.task = Some(running_task);
         turn.start_transition = None;
+        StartTaskOutcome::Attached
     }
 
     /// Returns whether an extension has marked this thread as durably asleep.
@@ -1160,7 +1280,7 @@ impl Session {
             return;
         }
 
-        {
+        let start_reservation = {
             let mut active_turn = self.active_turn.lock().await;
             if active_turn.is_some() {
                 return;
@@ -1176,17 +1296,21 @@ impl Session {
                 // explicit user action that consumes the interrupted tail.
                 return;
             }
-            *active_turn = Some(ActiveTurn::default());
-        }
+            let active = active_turn.get_or_insert_with(ActiveTurn::default);
+            active
+                .reserve_start(sub_id.clone())
+                .expect("idle slot should accept one start reservation")
+        };
 
         let turn_context = self.new_default_turn_with_sub_id(sub_id).await;
         self.maybe_emit_model_warnings_for_turn(turn_context.as_ref())
             .await;
-        self.start_task(
+        self.start_task_owned(
             turn_context,
             Vec::new(),
             RegularTask::new(TurnRunOrigin::NewTurn),
             MailboxParentProvenance::Attribute,
+            start_reservation,
         )
         .await;
     }
@@ -1595,6 +1719,7 @@ impl Session {
             let mut active = self.active_turn.lock().await;
             if let Some(active_turn) = active.as_ref()
                 && active_turn.task.is_none()
+                && active_turn.start_reservation.is_none()
                 && active_turn.start_transition.is_none()
                 && Arc::ptr_eq(&active_turn.turn_state, &turn_state)
             {
@@ -1619,10 +1744,10 @@ impl Session {
     }
 
     /// Revokes task-owned recovery authority while the active slot is locked,
-    /// then either detaches a running task or fences the host-owned start
-    /// transition. Starts and injections therefore cannot observe an idle
-    /// session until the old task is quiescent and its terminal is durable (or
-    /// the start owner has completed its deferred terminalization).
+    /// then either detaches a running task or fences a caller reservation / the
+    /// host-owned start transition. Starts and injections therefore cannot
+    /// observe an idle session until the old task is quiescent and its terminal
+    /// is durable (or the start owner has completed its deferred handoff).
     #[expect(
         clippy::await_holding_invalid_type,
         reason = "active -> recovery authority/rollout ordering is the serialization boundary"
@@ -1635,19 +1760,35 @@ impl Session {
         let mut active = self.active_turn.lock().await;
         let active_turn = active.as_mut()?;
         let Some(task) = active_turn.task.as_ref() else {
-            let transition = active_turn.start_transition.as_mut()?;
-            if expected_turn_id.is_some_and(|expected| transition.turn_id != expected) {
-                return None;
+            if let Some(transition) = active_turn.start_transition.as_mut() {
+                if expected_turn_id.is_some_and(|expected| transition.turn_id != expected) {
+                    return None;
+                }
+                if transition.request_abort(reason.clone())
+                    && matches!(
+                        reason,
+                        TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
+                    )
+                {
+                    self.mark_interrupted();
+                }
+                return Some(ActiveTurnAbortTarget::Starting);
             }
-            if transition.request_abort(reason.clone())
-                && matches!(
-                    reason,
-                    TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
-                )
-            {
-                self.mark_interrupted();
+            if let Some(reservation) = active_turn.start_reservation.as_mut() {
+                if expected_turn_id.is_some_and(|expected| reservation.turn_id != expected) {
+                    return None;
+                }
+                if reservation.request_abort(reason.clone())
+                    && matches!(
+                        reason,
+                        TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
+                    )
+                {
+                    self.mark_interrupted();
+                }
+                return Some(ActiveTurnAbortTarget::Starting);
             }
-            return Some(ActiveTurnAbortTarget::Starting);
+            return None;
         };
         if expected_turn_id.is_some_and(|expected| task.turn_context.sub_id != expected) {
             return None;
@@ -1789,6 +1930,7 @@ impl Session {
             return false;
         };
         let current = active_turn.task.is_none()
+            && active_turn.start_reservation.is_none()
             && turn_state.is_none_or(|expected| Arc::ptr_eq(&active_turn.turn_state, expected))
             && active_turn
                 .start_transition
@@ -1821,6 +1963,7 @@ impl Session {
             return false;
         };
         if active_turn.task.is_some()
+            || active_turn.start_reservation.is_some()
             || !Arc::ptr_eq(&active_turn.turn_state, turn_state)
             || !active_turn
                 .start_transition
@@ -1833,6 +1976,41 @@ impl Session {
         // have completed; only this final identity check may release it.
         *active = None;
         true
+    }
+
+    /// Releases a caller-owned reservation only through its exact handle. An
+    /// accepted abort is returned to the owner instead of being silently
+    /// dropped; there is no valid turn context yet, so the owner must take the
+    /// explicit cancelled-before-context branch.
+    pub(crate) async fn release_start_reservation_if_current(
+        &self,
+        handle: &StartReservationHandle,
+    ) -> StartReservationRelease {
+        let mut active = self.active_turn.lock().await;
+        let Some(active_turn) = active.as_mut() else {
+            return StartReservationRelease::Stale;
+        };
+        if active_turn.task.is_some() || active_turn.start_transition.is_some() {
+            return StartReservationRelease::Stale;
+        }
+        let Some(reservation) = active_turn.start_reservation.as_ref() else {
+            return StartReservationRelease::Stale;
+        };
+        if reservation.turn_id != handle.turn_id
+            || !Arc::ptr_eq(&reservation.identity, &handle.identity)
+            || !Arc::ptr_eq(&active_turn.turn_state, &handle.turn_state)
+        {
+            return StartReservationRelease::Stale;
+        }
+        let reservation = active_turn
+            .start_reservation
+            .take()
+            .expect("reservation remained present after identity check");
+        *active = None;
+        match reservation.abort_reason {
+            Some(reason) => StartReservationRelease::AbortRequested(reason),
+            None => StartReservationRelease::Released,
+        }
     }
 
     async fn handle_task_abort(

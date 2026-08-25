@@ -34,12 +34,27 @@ use codex_protocol::protocol::TurnAbortReason;
 pub(crate) struct ActiveTurn {
     pub(crate) task: Option<RunningTask>,
     pub(crate) turn_state: Arc<Mutex<TurnState>>,
-    /// Host-owned reservation for the async start transition before a
-    /// `RunningTask` can be attached.  This is deliberately distinct from a
-    /// plain idle reservation: only `Session::start_task` installs it, so an
-    /// abort can fence this exact continuation without stealing an unrelated
-    /// caller-owned reservation.
+    /// Caller-owned reservation made before a turn context exists. It is
+    /// abortable, but cannot itself emit terminal events; the owner must
+    /// promote it to `start_transition` once a context is materialized.
+    pub(crate) start_reservation: Option<StartReservation>,
+    /// Host-owned transition after a context exists and before a
+    /// `RunningTask` can be attached. This is deliberately distinct from both
+    /// a caller reservation and a plain idle/mutation reservation.
     pub(crate) start_transition: Option<StartTransition>,
+}
+
+#[derive(Clone)]
+pub(crate) struct StartReservationHandle {
+    pub(crate) identity: Arc<()>,
+    pub(crate) turn_id: String,
+    pub(crate) turn_state: Arc<Mutex<TurnState>>,
+}
+
+pub(crate) struct StartReservation {
+    pub(crate) identity: Arc<()>,
+    pub(crate) turn_id: String,
+    pub(crate) abort_reason: Option<TurnAbortReason>,
 }
 
 pub(crate) struct StartTransition {
@@ -61,6 +76,14 @@ impl StartTransition {
         }
     }
 
+    fn from_reservation(reservation: StartReservation) -> Self {
+        Self {
+            identity: reservation.identity,
+            turn_id: reservation.turn_id,
+            abort_reason: reservation.abort_reason,
+        }
+    }
+
     /// Records only the first abort reason.  The active-turn mutex provides
     /// the serialization boundary for concurrent abort callers.
     pub(crate) fn request_abort(&mut self, reason: TurnAbortReason) -> bool {
@@ -68,6 +91,61 @@ impl StartTransition {
             return false;
         }
         self.abort_reason = Some(reason);
+        true
+    }
+}
+
+impl StartReservation {
+    pub(crate) fn request_abort(&mut self, reason: TurnAbortReason) -> bool {
+        if self.abort_reason.is_some() {
+            return false;
+        }
+        self.abort_reason = Some(reason);
+        true
+    }
+}
+
+impl ActiveTurn {
+    /// Reserves an idle slot for one host-owned start caller. The returned
+    /// handle is the only authority allowed to promote or release it.
+    pub(crate) fn reserve_start(&mut self, turn_id: String) -> Option<StartReservationHandle> {
+        if self.task.is_some()
+            || self.start_reservation.is_some()
+            || self.start_transition.is_some()
+        {
+            return None;
+        }
+        let identity = Arc::new(());
+        let handle = StartReservationHandle {
+            identity: Arc::clone(&identity),
+            turn_id: turn_id.clone(),
+            turn_state: Arc::clone(&self.turn_state),
+        };
+        self.start_reservation = Some(StartReservation {
+            identity,
+            turn_id,
+            abort_reason: None,
+        });
+        Some(handle)
+    }
+
+    /// Promotes a caller reservation to the host-owned transition under the
+    /// same active-turn lock. A stale handle cannot consume a later attempt.
+    pub(crate) fn promote_start(&mut self, handle: &StartReservationHandle) -> bool {
+        if self.task.is_some() || self.start_transition.is_some() {
+            return false;
+        }
+        let Some(reservation) = self.start_reservation.take() else {
+            return false;
+        };
+        let matches = reservation.turn_id == handle.turn_id
+            && Arc::ptr_eq(&reservation.identity, &handle.identity)
+            && Arc::ptr_eq(&self.turn_state, &handle.turn_state);
+        if !matches {
+            self.start_reservation = Some(reservation);
+            return false;
+        }
+        self.start_transition = Some(StartTransition::from_reservation(reservation));
         true
     }
 }
@@ -98,6 +176,7 @@ impl Default for ActiveTurn {
         Self {
             task: None,
             turn_state: Arc::new(Mutex::new(TurnState::default())),
+            start_reservation: None,
             start_transition: None,
         }
     }
@@ -374,6 +453,7 @@ impl TurnState {
 
 #[cfg(test)]
 mod tests {
+    use super::ActiveTurn;
     use super::StartTransition;
     use codex_protocol::protocol::TurnAbortReason;
     use std::sync::Arc;
@@ -386,5 +466,51 @@ mod tests {
         assert!(transition.request_abort(TurnAbortReason::Replaced));
         assert!(!transition.request_abort(TurnAbortReason::Interrupted));
         assert_eq!(transition.abort_reason, Some(TurnAbortReason::Replaced));
+    }
+
+    #[test]
+    fn start_reservation_promotes_with_first_abort_reason() {
+        let mut active = ActiveTurn::default();
+        let handle = active
+            .reserve_start("turn-1".to_string())
+            .expect("idle slot should reserve");
+        assert!(
+            active
+                .start_reservation
+                .as_mut()
+                .expect("reservation installed")
+                .request_abort(TurnAbortReason::Replaced)
+        );
+        assert!(
+            !active
+                .start_reservation
+                .as_mut()
+                .expect("reservation installed")
+                .request_abort(TurnAbortReason::Interrupted)
+        );
+
+        assert!(active.promote_start(&handle));
+        let transition = active
+            .start_transition
+            .as_ref()
+            .expect("promotion installs transition");
+        assert_eq!(transition.abort_reason, Some(TurnAbortReason::Replaced));
+        assert!(active.start_reservation.is_none());
+    }
+
+    #[test]
+    fn stale_start_reservation_cannot_promote_a_later_owner() {
+        let mut active = ActiveTurn::default();
+        let stale = active
+            .reserve_start("turn-1".to_string())
+            .expect("first reservation");
+        active.start_reservation = None;
+        let current = active
+            .reserve_start("turn-1".to_string())
+            .expect("second reservation");
+
+        assert!(!active.promote_start(&stale));
+        assert!(active.start_transition.is_none());
+        assert!(active.promote_start(&current));
     }
 }
