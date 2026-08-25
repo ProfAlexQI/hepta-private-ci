@@ -13112,6 +13112,75 @@ async fn cancelled_finish_owner_keeps_terminalizer_alive() {
     task_release.notify_one();
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn panicking_finish_terminalizer_retains_fence() {
+    struct PanickingThreadStop;
+
+    impl codex_extension_api::TurnLifecycleContributor for PanickingThreadStop {
+        fn on_turn_stop<'a>(
+            &'a self,
+            _input: codex_extension_api::TurnStopInput<'a>,
+        ) -> codex_extension_api::ExtensionFuture<'a, ()> {
+            Box::pin(async {
+                panic!("intentional finish terminalizer panic for fencing regression");
+            })
+        }
+    }
+
+    let (mut session, turn_context, rx) = make_session_and_context_with_rx().await;
+    let mut builder = codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+    builder.turn_lifecycle_contributor(Arc::new(PanickingThreadStop));
+    Arc::get_mut(&mut session)
+        .expect("session should have a unique test owner")
+        .services
+        .extensions = Arc::new(builder.build());
+    let session = Arc::new(session);
+    session
+        .spawn_task(
+            Arc::clone(&turn_context),
+            Vec::new(),
+            NeverEndingTask {
+                kind: TaskKind::Regular,
+                listen_to_cancellation_token: false,
+            },
+        )
+        .await
+        .expect("finish panic task should start");
+
+    session
+        .on_task_finished(Arc::clone(&turn_context), Ok(None))
+        .await;
+
+    // The detached driver catches the contributor panic, but its advanced
+    // handoff phase is not replayable.  Keep the exact marker and registry
+    // fence rather than making the turn look idle or synthesizing a terminal
+    // event on a later shutdown drain.
+    assert!(session.has_pending_task_terminalization());
+    assert!(
+        session
+            .active_turn
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|active_turn| {
+                active_turn.task.is_none() && active_turn.task_terminalization.is_some()
+            })
+    );
+    assert!(
+        rx.try_recv().is_err(),
+        "panic must not publish TurnComplete"
+    );
+    assert!(
+        timeout(
+            StdDuration::from_millis(100),
+            session.drain_task_terminalizations_for_shutdown_except(None),
+        )
+        .await
+        .is_err(),
+        "an advanced finish panic must leave shutdown fail-closed"
+    );
+}
+
 #[tokio::test]
 async fn thread_idle_lifecycle_waits_for_trigger_turn_mailbox_work() {
     struct ThreadIdleRecorder {
