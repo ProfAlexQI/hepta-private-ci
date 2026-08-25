@@ -169,6 +169,96 @@ struct DetachedTaskForAbort {
     slot: TaskAbortHandoffSlot,
 }
 
+/// Progress points for a normal task-finish handoff.  A finish witness is
+/// retryable only before its detached driver has been polled.  Once recovery,
+/// rollout, lifecycle, or marker publication begins, cancellation is retained
+/// fail-closed rather than replaying any of those side effects.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TaskFinishHandoffPhase {
+    Claimed,
+    RecoveryRevoking,
+    RolloutFlushing,
+    InputClearing,
+    PersistencePublishing,
+    LifecyclePublishing,
+    MarkerReleasing,
+    RecoveryPublishing,
+    PendingWorkStarting,
+    Complete,
+}
+
+/// Full witness for one ordinary task finish.  The task is detached from its
+/// runner before this value is published, so a scheduler that drops the first
+/// continuation poll cannot abort the runner or lose the terminalization
+/// fence.  Shutdown can adopt a still-`Claimed` witness from the registry.
+pub(crate) struct TaskFinishHandoff {
+    task: Option<RunningTask>,
+    turn_context: Arc<TurnContext>,
+    task_result: Option<SessionTaskResult>,
+    turn_state: Arc<Mutex<TurnState>>,
+    terminalization_identity: Arc<()>,
+    completion: Arc<StartTransitionCompletion>,
+    recovery_seed: Option<RecoverySeed>,
+    recovery_authority: Option<Arc<TurnRecoveryAuthority>>,
+    phase: TaskFinishHandoffPhase,
+    failed_closed: bool,
+}
+
+pub(crate) type TaskFinishHandoffSlot = Arc<std::sync::Mutex<Option<TaskFinishHandoff>>>;
+
+struct TaskFinishHandoffOwner {
+    slot: TaskFinishHandoffSlot,
+    handoff: Option<TaskFinishHandoff>,
+}
+
+impl TaskFinishHandoffOwner {
+    fn new(slot: TaskFinishHandoffSlot, handoff: TaskFinishHandoff) -> Self {
+        Self {
+            slot,
+            handoff: Some(handoff),
+        }
+    }
+
+    fn handoff_mut(&mut self) -> &mut TaskFinishHandoff {
+        self.handoff
+            .as_mut()
+            .expect("finish handoff owner remains armed")
+    }
+
+    fn is_complete(&self) -> bool {
+        self.handoff
+            .as_ref()
+            .is_some_and(|handoff| handoff.completion.is_complete())
+    }
+
+    fn disarm(&mut self) {
+        self.handoff.take();
+    }
+}
+
+impl Drop for TaskFinishHandoffOwner {
+    fn drop(&mut self) {
+        let Some(mut handoff) = self.handoff.take() else {
+            return;
+        };
+        if handoff.completion.is_complete() {
+            return;
+        }
+        if handoff.phase != TaskFinishHandoffPhase::Claimed {
+            handoff.failed_closed = true;
+        }
+        let mut slot = self
+            .slot
+            .lock()
+            .expect("task finish handoff slot mutex poisoned");
+        if slot.is_none() {
+            *slot = Some(handoff);
+        } else {
+            warn!("task finish handoff witness already reclaimed during owner drop");
+        }
+    }
+}
+
 /// Exact task witness owned by root-turn suspension.  Suspension is not a
 /// terminal protocol outcome, but it still has to keep the active slot fenced
 /// while cancellation and persistence drain; the typed marker prevents a
@@ -674,6 +764,7 @@ impl Session {
         kind: TaskTerminalizationKind,
         suspension_handoff: Option<SuspensionHandoffSlot>,
         abort_handoff: Option<TaskAbortHandoffSlot>,
+        finish_handoff: Option<TaskFinishHandoffSlot>,
     ) {
         self.pending_task_terminalization_completions
             .lock()
@@ -684,6 +775,7 @@ impl Session {
                 kind,
                 suspension_handoff,
                 abort_handoff,
+                finish_handoff,
             ));
     }
 
@@ -699,16 +791,18 @@ impl Session {
             .lock()
             .expect("task terminalization completion registry mutex poisoned")
             .iter()
-            .filter_map(|(identity, _, kind, handoff, _abort_handoff)| {
-                if *kind != TaskTerminalizationKind::Suspend
-                    || excluded_identity.is_some_and(|excluded| Arc::ptr_eq(identity, excluded))
-                {
-                    return None;
-                }
-                handoff
-                    .as_ref()
-                    .map(|slot| (Arc::clone(identity), Arc::clone(slot)))
-            })
+            .filter_map(
+                |(identity, _, kind, handoff, _abort_handoff, _finish_handoff)| {
+                    if *kind != TaskTerminalizationKind::Suspend
+                        || excluded_identity.is_some_and(|excluded| Arc::ptr_eq(identity, excluded))
+                    {
+                        return None;
+                    }
+                    handoff
+                        .as_ref()
+                        .map(|slot| (Arc::clone(identity), Arc::clone(slot)))
+                },
+            )
             .collect()
     }
 
@@ -729,7 +823,14 @@ impl Session {
             .expect("task terminalization completion registry mutex poisoned")
             .iter()
             .filter_map(
-                |(identity, completion, kind, _suspension_handoff, abort_handoff)| {
+                |(
+                    identity,
+                    completion,
+                    kind,
+                    _suspension_handoff,
+                    abort_handoff,
+                    _finish_handoff,
+                )| {
                     if *kind != TaskTerminalizationKind::Abort
                         || excluded_identity.is_some_and(|excluded| Arc::ptr_eq(identity, excluded))
                     {
@@ -740,6 +841,47 @@ impl Session {
                             Arc::clone(identity),
                             // Shutdown adoption must validate the witness fence,
                             // not merely the logical identity.
+                            Arc::clone(completion),
+                            Arc::clone(slot),
+                        )
+                    })
+                },
+            )
+            .collect()
+    }
+
+    /// Returns queued ordinary finish witnesses. A live detached owner has
+    /// taken its slot; a scheduler that drops the first poll leaves the full
+    /// witness here for the shutdown drain to adopt.
+    fn pending_finish_handoffs_except(
+        &self,
+        excluded_identity: Option<&Arc<()>>,
+    ) -> Vec<(
+        Arc<()>,
+        Arc<StartTransitionCompletion>,
+        TaskFinishHandoffSlot,
+    )> {
+        self.pending_task_terminalization_completions
+            .lock()
+            .expect("task terminalization completion registry mutex poisoned")
+            .iter()
+            .filter_map(
+                |(
+                    identity,
+                    completion,
+                    kind,
+                    _suspension_handoff,
+                    _abort_handoff,
+                    finish_handoff,
+                )| {
+                    if *kind != TaskTerminalizationKind::Finish
+                        || excluded_identity.is_some_and(|excluded| Arc::ptr_eq(identity, excluded))
+                    {
+                        return None;
+                    }
+                    finish_handoff.as_ref().map(|slot| {
+                        (
+                            Arc::clone(identity),
                             Arc::clone(completion),
                             Arc::clone(slot),
                         )
@@ -762,7 +904,14 @@ impl Session {
             .lock()
             .expect("task terminalization completion registry mutex poisoned");
         pending.retain(
-            |(current_identity, current_completion, _kind, _handoff, _abort_handoff)| {
+            |(
+                current_identity,
+                current_completion,
+                _kind,
+                _handoff,
+                _abort_handoff,
+                _finish_handoff,
+            )| {
                 !(Arc::ptr_eq(current_identity, identity)
                     && Arc::ptr_eq(current_completion, completion))
             },
@@ -779,10 +928,10 @@ impl Session {
             .lock()
             .expect("task terminalization completion registry mutex poisoned")
             .iter()
-            .filter(|(identity, _, _, _, _)| {
+            .filter(|(identity, _, _, _, _, _)| {
                 excluded_identity.map_or(true, |excluded| !Arc::ptr_eq(identity, excluded))
             })
-            .map(|(_, completion, _, _, _)| Arc::clone(completion))
+            .map(|(_, completion, _, _, _, _)| Arc::clone(completion))
             .collect()
     }
 
@@ -796,6 +945,27 @@ impl Session {
     ) {
         loop {
             let mut adopted = false;
+            for (identity, completion, slot) in
+                self.pending_finish_handoffs_except(excluded_identity)
+            {
+                let Some(handoff) = Self::take_finish_handoff(&slot) else {
+                    continue;
+                };
+                if handoff.failed_closed || handoff.phase != TaskFinishHandoffPhase::Claimed {
+                    Self::retain_finish_handoff(&slot, handoff);
+                    continue;
+                }
+                if !Arc::ptr_eq(&handoff.terminalization_identity, &identity)
+                    || !Arc::ptr_eq(&handoff.completion, &completion)
+                {
+                    let mut handoff = handoff;
+                    handoff.failed_closed = true;
+                    Self::retain_finish_handoff(&slot, handoff);
+                    continue;
+                }
+                adopted = true;
+                self.drive_finish_handoff_taken(slot, handoff).await;
+            }
             for (identity, completion, slot) in
                 self.pending_abort_handoffs_except(excluded_identity)
             {
@@ -869,7 +1039,7 @@ impl Session {
             .lock()
             .expect("task terminalization completion registry mutex poisoned")
             .iter()
-            .any(|(identity, _, _, _, _)| {
+            .any(|(identity, _, _, _, _, _)| {
                 ignored_identity.map_or(true, |ignored| !Arc::ptr_eq(identity, ignored))
             })
     }
@@ -1215,6 +1385,7 @@ impl Session {
         kind: TaskTerminalizationKind,
         suspension_handoff: Option<SuspensionHandoffSlot>,
         abort_handoff: Option<TaskAbortHandoffSlot>,
+        finish_handoff: Option<TaskFinishHandoffSlot>,
     ) -> Option<(Arc<()>, Arc<StartTransitionCompletion>)> {
         if active_turn.task_terminalization.is_some() {
             return None;
@@ -1241,6 +1412,7 @@ impl Session {
             kind,
             suspension_handoff,
             abort_handoff,
+            finish_handoff,
         );
         Some((identity, completion))
     }
@@ -1362,6 +1534,7 @@ impl Session {
                 attach_epoch,
                 TaskTerminalizationKind::Suspend,
                 Some(Arc::clone(&handoff_slot)),
+                None,
                 None,
             )?;
         let task = Self::take_task_for_terminalization_locked(
@@ -2842,22 +3015,127 @@ impl Session {
         }
     }
 
+    /// Claims a normal task finish before scheduling any detached work.  The
+    /// exact task, result, recovery witness, and completion fence are moved
+    /// into the registry while the active-turn lock is held.  This closes the
+    /// construction-runtime race where a stored Tokio handle accepts a spawn
+    /// after its runtime has already stopped polling it.
+    async fn claim_task_for_finish(
+        &self,
+        turn_context: &Arc<TurnContext>,
+        task_result: SessionTaskResult,
+    ) -> Option<TaskFinishHandoffSlot> {
+        let abort_reason_hint = match &task_result {
+            Err(err) if matches!(err.details(), CodexErrorDetails::TurnAborted) => {
+                Some(TurnAbortReason::Interrupted)
+            }
+            Ok(_) | Err(_) => None,
+        };
+        let _claim_lock = self.terminalization_claim_lock.lock().await;
+        let mut active = self.active_turn.lock().await;
+        let active_turn = active.as_mut()?;
+        let task_ref = active_turn.task.as_ref()?;
+        if !Arc::ptr_eq(&task_ref.turn_context, turn_context)
+            || active_turn.task_terminalization.is_some()
+        {
+            return None;
+        }
+        let task_identity = Arc::clone(&task_ref.task);
+        let task_context = Arc::clone(&task_ref.turn_context);
+        let attach_epoch = task_ref.attach_epoch;
+        let turn_state = Arc::clone(&active_turn.turn_state);
+        let recovery_seed = Self::recovery_seed_for_task(task_ref, abort_reason_hint.as_ref());
+        let recovery_authority = task_ref.recovery_authority.clone();
+        let slot: TaskFinishHandoffSlot = Arc::new(std::sync::Mutex::new(None));
+        // Keep the cell locked across registry publication, task take, and
+        // witness fill.  Shutdown snapshots the registry without holding its
+        // lock while it takes the slot, so it cannot observe an empty witness.
+        let mut slot_guard = slot
+            .lock()
+            .expect("task finish handoff slot mutex poisoned");
+        let (terminalization_identity, completion) = self
+            .claim_task_terminalization_locked(
+                active_turn,
+                &task_identity,
+                &task_context,
+                attach_epoch,
+                TaskTerminalizationKind::Finish,
+                None,
+                None,
+                Some(Arc::clone(&slot)),
+            )
+            .expect("task terminalization claim should be unique");
+        let mut task = Self::take_task_for_terminalization_locked(
+            active_turn,
+            &terminalization_identity,
+            TaskTerminalizationKind::Finish,
+        )
+        .expect("claimed finish task should remain attached");
+        // The callback is running from this very task's future.  Detach its
+        // AbortOnDropHandle before publishing the witness so dropping the
+        // caller/runtime cannot abort the task that owns the terminalizer.
+        // `AbortOnDropHandle::detach` consumes the field. Keep the rest of
+        // `RunningTask` (guards/timing metadata) alive through the finish
+        // body by replacing it with an already-complete inert handle.
+        let detached_handle = std::mem::replace(
+            &mut task.handle,
+            AbortOnDropHandle::new(tokio::spawn(std::future::ready(()))),
+        );
+        detached_handle.detach();
+        *slot_guard = Some(TaskFinishHandoff {
+            task: Some(task),
+            turn_context: task_context,
+            task_result: Some(task_result),
+            turn_state,
+            terminalization_identity,
+            completion,
+            recovery_seed,
+            recovery_authority,
+            phase: TaskFinishHandoffPhase::Claimed,
+            failed_closed: false,
+        });
+        drop(slot_guard);
+        Some(slot)
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn claim_finish_handoff_for_test(
+        &self,
+        turn_context: Arc<TurnContext>,
+        task_result: SessionTaskResult,
+    ) -> Option<TaskFinishHandoffSlot> {
+        self.claim_task_for_finish(&turn_context, task_result).await
+    }
+
     /// Keeps the task's terminal owner alive if the task runner/caller is
     /// cancelled while recovery, persistence, or lifecycle callbacks await.
-    /// The inner job owns the exact task context and marker CAS; dropping this
-    /// JoinHandle detaches it rather than aborting the terminalizer.
+    /// The detached driver is scheduled on the current runtime, never on the
+    /// runtime captured when the Session was constructed.
     pub async fn on_task_finished(
         self: &Arc<Self>,
         turn_context: Arc<TurnContext>,
         task_result: SessionTaskResult,
     ) {
+        let Ok(Some(slot)) =
+            AssertUnwindSafe(self.claim_task_for_finish(&turn_context, task_result))
+                .catch_unwind()
+                .await
+        else {
+            return;
+        };
+        let Some(runtime_handle) = tokio::runtime::Handle::try_current().ok() else {
+            warn!(
+                turn_id = %turn_context.sub_id,
+                "finish terminalizer cannot be scheduled without a live Tokio runtime; retaining its completion fence"
+            );
+            return;
+        };
         let session = Arc::clone(self);
-        let join = self.services.runtime_handle.spawn(
+        let join = runtime_handle.spawn(
             async move {
-                let result =
-                    AssertUnwindSafe(session.on_task_finished_inner(turn_context, task_result))
-                        .catch_unwind()
-                        .await;
+                let result = AssertUnwindSafe(session.drive_finish_handoff(slot))
+                    .catch_unwind()
+                    .await;
                 if result.is_err() {
                     warn!("finish terminalizer panicked; retaining its completion fence");
                 }
@@ -2869,108 +3147,29 @@ impl Session {
         }
     }
 
-    async fn on_task_finished_inner(
-        self: &Arc<Self>,
-        turn_context: Arc<TurnContext>,
-        task_result: SessionTaskResult,
-    ) {
-        let abort_reason_hint = match &task_result {
-            Err(err) if matches!(err.details(), CodexErrorDetails::TurnAborted) => {
-                Some(TurnAbortReason::Interrupted)
-            }
-            Ok(_) | Err(_) => None,
-        };
-        // Claim the exact task before the first recovery await. The active
-        // slot remains occupied by the typed marker, while the lock itself is
-        // released so unrelated state readers and shutdown can make progress.
-        let Some((terminalization_identity, turn_state, recovery_seed, recovery_authority)) = ({
-            let _claim_lock = self.terminalization_claim_lock.lock().await;
-            let mut active = self.active_turn.lock().await;
-            let Some(active_turn) = active.as_mut() else {
+    async fn run_finish_handoff(self: &Arc<Self>, handoff: &mut TaskFinishHandoff) {
+        let (task_identity, task_epoch) = {
+            let Some(task) = handoff.task.as_ref() else {
+                handoff.failed_closed = true;
                 return;
             };
-            let Some(task) = active_turn.task.as_ref() else {
-                return;
-            };
-            if !Arc::ptr_eq(&task.turn_context, &turn_context)
-                || active_turn.task_terminalization.is_some()
-            {
-                return;
-            }
-            let recovery_seed = Self::recovery_seed_for_task(task, abort_reason_hint.as_ref());
-            let recovery_authority = task.recovery_authority.clone();
-            let task_identity = Arc::clone(&task.task);
-            let task_context = Arc::clone(&task.turn_context);
-            let task_epoch = task.attach_epoch;
-            let turn_state = Arc::clone(&active_turn.turn_state);
-            let (terminalization_identity, _terminalization_completion) = self
-                .claim_task_terminalization_locked(
-                    active_turn,
-                    &task_identity,
-                    &task_context,
-                    task_epoch,
-                    TaskTerminalizationKind::Finish,
-                    None,
-                    None,
-                )
-                .expect("task terminalization claim should be unique");
-            Some((
-                terminalization_identity,
-                turn_state,
-                recovery_seed,
-                recovery_authority,
-            ))
-        }) else {
-            return;
+            (Arc::clone(&task.task), task.attach_epoch)
         };
+        let turn_context = Arc::clone(&handoff.turn_context);
+        let turn_state = Arc::clone(&handoff.turn_state);
+        handoff.phase = TaskFinishHandoffPhase::RecoveryRevoking;
         let recovery_seed = self
             .prepare_recovery_seed_for_controlled_detach(
                 &turn_context.sub_id,
-                recovery_authority.as_ref(),
-                recovery_seed,
+                handoff.recovery_authority.as_ref(),
+                handoff.recovery_seed.clone(),
             )
             .await;
-        let task = {
-            let mut active = self.active_turn.lock().await;
-            let Some(active_turn) = active.as_mut() else {
-                warn!(
-                    turn_id = %turn_context.sub_id,
-                    "finish terminalizer lost active slot after recovery preparation; retaining fence"
-                );
-                return;
-            };
-            let Some(task_ref) = active_turn.task.as_ref() else {
-                warn!(
-                    turn_id = %turn_context.sub_id,
-                    "finish terminalizer lost task after recovery preparation; retaining fence"
-                );
-                return;
-            };
-            if !Arc::ptr_eq(&task_ref.turn_context, &turn_context)
-                || !Self::task_terminalization_matches_locked(
-                    active_turn,
-                    &terminalization_identity,
-                    task_ref,
-                    TaskTerminalizationKind::Finish,
-                )
-            {
-                warn!(
-                    turn_id = %turn_context.sub_id,
-                    "finish terminalizer identity changed after recovery preparation; retaining fence"
-                );
-                return;
-            }
-            Self::take_task_for_terminalization_locked(
-                active_turn,
-                &terminalization_identity,
-                TaskTerminalizationKind::Finish,
-            )
-            .expect("claimed finish task should remain attached")
-        };
+        handoff.recovery_seed = recovery_seed;
         turn_context
             .turn_metadata_state
             .cancel_git_enrichment_task();
-        task.handle.detach();
+        handoff.phase = TaskFinishHandoffPhase::RolloutFlushing;
         if let Err(err) = self.flush_rollout().await {
             warn!("failed to flush rollout before completing turn: {err}");
             self.send_event(
@@ -2983,6 +3182,13 @@ impl Session {
             )
             .await;
         }
+        // Taking the result is the first irreversible interpretation of the
+        // task outcome; mark the witness advanced before doing so.
+        handoff.phase = TaskFinishHandoffPhase::PersistencePublishing;
+        let task_result = handoff
+            .task_result
+            .take()
+            .expect("claimed finish handoff has task result");
         let (last_agent_message, abort_reason) = match task_result {
             Ok(last_agent_message) => (last_agent_message, None),
             Err(err) if matches!(err.details(), CodexErrorDetails::TurnAborted) => {
@@ -2990,6 +3196,7 @@ impl Session {
             }
             Err(err) => {
                 warn!(%err, "session task returned an unexpected error");
+                handoff.phase = TaskFinishHandoffPhase::LifecyclePublishing;
                 self.emit_turn_error_lifecycle(
                     turn_context.as_ref(),
                     err.to_codex_protocol_error(),
@@ -3004,6 +3211,7 @@ impl Session {
                 (None, None)
             }
         };
+        handoff.phase = TaskFinishHandoffPhase::InputClearing;
         let pending_input = self
             .input_queue
             .take_pending_input_for_turn_state(turn_state.as_ref())
@@ -3185,6 +3393,7 @@ impl Session {
         } else {
             ThreadIdleCause::Completed
         };
+        handoff.phase = TaskFinishHandoffPhase::LifecyclePublishing;
         let event = if let Some(reason) = abort_reason {
             self.emit_turn_abort_lifecycle(reason.clone(), turn_context.extension_data.as_ref())
                 .await;
@@ -3213,6 +3422,7 @@ impl Session {
                 time_to_first_token_ms,
             })
         };
+        handoff.phase = TaskFinishHandoffPhase::PersistencePublishing;
         let terminal_persistence_generation = self
             .send_terminal_event_and_flush(turn_context.as_ref(), event)
             .await;
@@ -3222,36 +3432,96 @@ impl Session {
             .await
             .clear_turn(&turn_context.sub_id);
 
+        handoff.phase = TaskFinishHandoffPhase::MarkerReleasing;
         let cleared_completion = {
             let mut active = self.active_turn.lock().await;
             Self::clear_task_terminalization_if_current_locked(
                 &mut active,
-                &terminalization_identity,
+                &handoff.terminalization_identity,
                 TaskTerminalizationKind::Finish,
                 &turn_state,
-                &task.task,
+                &task_identity,
                 &turn_context,
-                task.attach_epoch,
+                task_epoch,
             )
         };
+        if cleared_completion.is_none() {
+            handoff.failed_closed = true;
+            return;
+        }
+        handoff.phase = TaskFinishHandoffPhase::RecoveryPublishing;
         self.publish_recovery_seed_after_terminal(
-            recovery_seed,
+            handoff.recovery_seed.take(),
             /*task_quiesced*/ true,
             terminal_persistence_generation,
         )
         .await;
-        if cleared_completion.is_some() {
-            if let Some(completion) = cleared_completion.as_ref() {
-                self.emit_thread_idle_lifecycle_if_idle_for_terminalization(
-                    idle_cause,
-                    Some(&terminalization_identity),
-                )
-                .await;
-                self.maybe_start_turn_for_pending_work_after_terminalization(Arc::clone(
-                    &terminalization_identity,
-                ))
-                .await;
-                self.finish_task_terminalization(&terminalization_identity, completion);
+        handoff.phase = TaskFinishHandoffPhase::PendingWorkStarting;
+        if let Some(completion) = cleared_completion.as_ref() {
+            self.emit_thread_idle_lifecycle_if_idle_for_terminalization(
+                idle_cause,
+                Some(&handoff.terminalization_identity),
+            )
+            .await;
+            self.maybe_start_turn_for_pending_work_after_terminalization(Arc::clone(
+                &handoff.terminalization_identity,
+            ))
+            .await;
+            self.finish_task_terminalization(&handoff.terminalization_identity, completion);
+            handoff.phase = TaskFinishHandoffPhase::Complete;
+            handoff.task.take();
+        }
+    }
+
+    fn take_finish_handoff(slot: &TaskFinishHandoffSlot) -> Option<TaskFinishHandoff> {
+        slot.lock()
+            .expect("task finish handoff slot mutex poisoned")
+            .take()
+    }
+
+    fn retain_finish_handoff(slot: &TaskFinishHandoffSlot, handoff: TaskFinishHandoff) {
+        let mut current = slot
+            .lock()
+            .expect("task finish handoff slot mutex poisoned");
+        if current.is_none() {
+            *current = Some(handoff);
+        } else {
+            warn!("task finish handoff slot already contains a witness");
+        }
+    }
+
+    /// Drives one complete finish witness. The owner keeps the detached task,
+    /// result, and exact identity alive across every await; cancellation after
+    /// the first phase retains the fence and never replays side effects.
+    async fn drive_finish_handoff(self: &Arc<Self>, slot: TaskFinishHandoffSlot) {
+        let Some(handoff) = Self::take_finish_handoff(&slot) else {
+            return;
+        };
+        self.drive_finish_handoff_taken(slot, handoff).await;
+    }
+
+    async fn drive_finish_handoff_taken(
+        self: &Arc<Self>,
+        slot: TaskFinishHandoffSlot,
+        handoff: TaskFinishHandoff,
+    ) {
+        if handoff.failed_closed || handoff.phase != TaskFinishHandoffPhase::Claimed {
+            Self::retain_finish_handoff(&slot, handoff);
+            return;
+        }
+        let mut owner = TaskFinishHandoffOwner::new(Arc::clone(&slot), handoff);
+        let result = AssertUnwindSafe(self.run_finish_handoff(owner.handoff_mut()))
+            .catch_unwind()
+            .await;
+        match result {
+            Ok(()) => {
+                if owner.is_complete() {
+                    owner.disarm();
+                }
+            }
+            Err(_) => {
+                warn!("finish handoff panicked; retaining its completion fence");
+                owner.handoff_mut().failed_closed = true;
             }
         }
     }
@@ -3502,6 +3772,7 @@ impl Session {
                 TaskTerminalizationKind::Abort,
                 None,
                 Some(Arc::clone(&slot)),
+                None,
             )
             .expect("task terminalization claim should be unique");
         let task = Self::take_task_for_terminalization_locked(

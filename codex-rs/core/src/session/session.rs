@@ -90,6 +90,7 @@ pub(crate) struct Session {
             TaskTerminalizationKind,
             Option<crate::tasks::SuspensionHandoffSlot>,
             Option<crate::tasks::TaskAbortHandoffSlot>,
+            Option<crate::tasks::TaskFinishHandoffSlot>,
         )>,
     >,
     /// Once teardown begins, no new host-owned start transition may be

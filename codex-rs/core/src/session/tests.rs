@@ -949,8 +949,7 @@ async fn shutdown_begin_wins_before_turn_start_transition_attach() {
             _input: Vec<TurnInput>,
             _cancellation_token: CancellationToken,
         ) -> SessionTaskResult {
-            self.runs
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.runs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(None)
         }
     }
@@ -1966,7 +1965,9 @@ async fn shutdown_drain_releases_live_caller_reservation_before_context() {
     assert!(session.active_turn.lock().await.is_none());
 
     drop(state_guard);
-    start.await.expect("caller owner should eventually leave its preamble");
+    start
+        .await
+        .expect("caller owner should eventually leave its preamble");
     assert!(session.active_turn.lock().await.is_none());
 }
 
@@ -12561,7 +12562,10 @@ async fn suspend_turn_handoff_closes_writer_before_releasing_fence() {
     );
 
     let calls = store.calls().await;
-    assert!(calls.flush_thread >= 2, "pre-claim and final flush must run");
+    assert!(
+        calls.flush_thread >= 2,
+        "pre-claim and final flush must run"
+    );
     assert_eq!(calls.shutdown_thread, 1, "writer must close exactly once");
     assert!(sess.active_turn.lock().await.is_none());
     assert!(!sess.has_pending_task_terminalization());
@@ -12582,9 +12586,7 @@ async fn cancelled_suspend_caller_keeps_writer_handoff_alive() {
         release: Arc<Notify>,
     }
 
-    impl codex_extension_api::ThreadLifecycleContributor<crate::config::Config>
-        for BlockingThreadStop
-    {
+    impl codex_extension_api::ThreadLifecycleContributor<crate::config::Config> for BlockingThreadStop {
         fn on_thread_stop<'a>(
             &'a self,
             _input: codex_extension_api::ThreadStopInput<'a>,
@@ -12649,9 +12651,7 @@ async fn cancelled_suspend_caller_keeps_writer_handoff_alive() {
     release.notify_one();
     timeout(StdDuration::from_secs(2), async {
         loop {
-            if sess.active_turn.lock().await.is_none()
-                && !sess.has_pending_task_terminalization()
-            {
+            if sess.active_turn.lock().await.is_none() && !sess.has_pending_task_terminalization() {
                 break;
             }
             sleep(Duration::from_millis(10)).await;
@@ -13570,6 +13570,130 @@ async fn closed_construction_runtime_abort_claims_before_detached_spawn() {
         aborts.load(std::sync::atomic::Ordering::SeqCst),
         1,
         "abort hook must run even after the construction runtime is closed"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn closed_construction_runtime_finish_claims_before_detached_spawn() {
+    struct ClosedConstructionRuntimeFinishTask;
+
+    impl SessionTask for ClosedConstructionRuntimeFinishTask {
+        fn kind(&self) -> TaskKind {
+            TaskKind::Regular
+        }
+
+        fn span_name(&self) -> &'static str {
+            "session_task.closed_construction_runtime_finish"
+        }
+
+        async fn run(
+            self: Arc<Self>,
+            _session: Arc<Session>,
+            _ctx: Arc<TurnContext>,
+            _input: Vec<TurnInput>,
+            _cancellation_token: CancellationToken,
+        ) -> SessionTaskResult {
+            std::future::pending().await
+        }
+    }
+
+    let (session_tx, session_rx) = std::sync::mpsc::sync_channel(1);
+    let owner_thread = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("construction runtime should build");
+        let (session, turn_context, rx) = runtime.block_on(async move {
+            let (session, turn_context, rx) = make_session_and_context_with_rx().await;
+            let session = Arc::new(session);
+            session
+                .spawn_task(
+                    Arc::clone(&turn_context),
+                    Vec::new(),
+                    ClosedConstructionRuntimeFinishTask,
+                )
+                .await
+                .expect("task should attach on construction runtime");
+            (session, turn_context, rx)
+        });
+        session_tx
+            .send((session, turn_context, rx))
+            .expect("session handoff should remain open");
+        // The construction-time handle is intentionally made unusable before
+        // Runtime B invokes the finish callback. A stale stored spawn would be
+        // dropped before its first poll and strand the active task/fence.
+        runtime.shutdown_background();
+    });
+
+    let (session, turn_context, rx) = tokio::task::spawn_blocking(move || {
+        session_rx
+            .recv_timeout(StdDuration::from_secs(5))
+            .expect("construction runtime should hand back the session")
+    })
+    .await
+    .expect("session handoff task should join");
+    tokio::task::spawn_blocking(move || owner_thread.join().expect("owner thread should exit"))
+        .await
+        .expect("owner thread join should complete");
+
+    session
+        .on_task_finished(Arc::clone(&turn_context), Ok(None))
+        .await;
+    let event = recv_terminal_event(&rx, TerminalEventKind::TurnComplete).await;
+    assert!(matches!(event.msg, EventMsg::TurnComplete(_)));
+    timeout(Duration::from_secs(2), async {
+        loop {
+            if session.active_turn.lock().await.is_none()
+                && !session.has_pending_task_terminalization()
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("caller runtime must drive the pre-claimed finish witness");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shutdown_adopts_queued_finish_handoff_before_first_poll() {
+    let (session, turn_context, rx) = make_session_and_context_with_rx().await;
+    session
+        .spawn_task(
+            Arc::clone(&turn_context),
+            Vec::new(),
+            NeverEndingTask {
+                kind: TaskKind::Regular,
+                listen_to_cancellation_token: false,
+            },
+        )
+        .await
+        .expect("finish adoption task should start");
+
+    let slot = session
+        .claim_finish_handoff_for_test(Arc::clone(&turn_context), Ok(None))
+        .await
+        .expect("finish claim should publish a queued witness");
+    assert!(session.has_pending_task_terminalization());
+    assert!(
+        slot.lock()
+            .expect("finish handoff slot mutex should be healthy")
+            .is_some()
+    );
+
+    session.begin_shutdown();
+    session
+        .drain_task_terminalizations_for_shutdown_except(None)
+        .await;
+
+    let event = recv_terminal_event(&rx, TerminalEventKind::TurnComplete).await;
+    assert!(matches!(event.msg, EventMsg::TurnComplete(_)));
+    assert!(session.active_turn.lock().await.is_none());
+    assert!(!session.has_pending_task_terminalization());
+    assert!(
+        slot.lock()
+            .expect("finish handoff slot mutex should be healthy")
+            .is_none()
     );
 }
 
