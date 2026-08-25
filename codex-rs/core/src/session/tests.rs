@@ -11545,6 +11545,33 @@ struct BlockingAbortCleanupTask {
     release_abort: Arc<Notify>,
 }
 
+#[derive(Clone, Copy)]
+struct PanickingAbortTask;
+
+impl SessionTask for PanickingAbortTask {
+    fn kind(&self) -> TaskKind {
+        TaskKind::Regular
+    }
+
+    fn span_name(&self) -> &'static str {
+        "session_task.panicking_abort"
+    }
+
+    async fn run(
+        self: Arc<Self>,
+        _session: Arc<Session>,
+        _ctx: Arc<TurnContext>,
+        _input: Vec<TurnInput>,
+        _cancellation_token: CancellationToken,
+    ) -> SessionTaskResult {
+        std::future::pending().await
+    }
+
+    async fn abort(&self, _session: Arc<Session>, _ctx: Arc<TurnContext>) {
+        panic!("intentional terminalizer panic for fencing regression");
+    }
+}
+
 impl SessionTask for BlockingAbortCleanupTask {
     fn kind(&self) -> TaskKind {
         TaskKind::Regular
@@ -12419,6 +12446,29 @@ async fn cancelled_abort_owner_keeps_terminalizer_alive() {
     })
     .await
     .expect("detached abort terminalizer should clear its exact fence");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn panicking_abort_terminalizer_retains_fence() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    session
+        .spawn_task(Arc::clone(&turn_context), Vec::new(), PanickingAbortTask)
+        .await
+        .expect("panicking abort task should start");
+
+    // The detached owner catches the panic for observability, but must not
+    // signal or clear the completion fence: a failed terminalizer cannot make
+    // the session look idle or permit a replacement writer.
+    session.abort_all_tasks(TurnAbortReason::Replaced).await;
+    assert!(session.has_pending_task_terminalization());
+    assert!(
+        session
+            .active_turn
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|active_turn| active_turn.task_terminalization.is_some())
+    );
 }
 
 async fn set_total_token_usage(sess: &Session, total_token_usage: TokenUsage) {

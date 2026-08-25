@@ -323,10 +323,18 @@ impl StartTransitionOwner {
         };
         self.cleanup_spawned = true;
         let session = Arc::clone(&cleanup.session);
+        let turn_id = cleanup.turn_context.sub_id.clone();
         Some(runtime_handle.spawn(async move {
-            session
-                .abort_dropped_start_transition(cleanup, fallback_reason)
-                .await;
+            let result =
+                AssertUnwindSafe(session.abort_dropped_start_transition(cleanup, fallback_reason))
+                    .catch_unwind()
+                    .await;
+            if result.is_err() {
+                warn!(
+                    %turn_id,
+                    "start-transition terminalizer panicked; retaining its completion fence"
+                );
+            }
         }))
     }
 
@@ -2112,7 +2120,12 @@ impl Session {
         let session = Arc::clone(self);
         let join = self.services.runtime_handle.spawn(
             async move {
-                session.abort_all_tasks_inner(reason).await;
+                let result = AssertUnwindSafe(session.abort_all_tasks_inner(reason))
+                    .catch_unwind()
+                    .await;
+                if result.is_err() {
+                    warn!("abort-all terminalizer panicked; retaining its completion fence");
+                }
             }
             .in_current_span(),
         );
@@ -2291,23 +2304,37 @@ impl Session {
         let expected_turn_state = expected_turn_state.cloned();
         let join = self.services.runtime_handle.spawn(
             async move {
-                let outcome = session
-                    .abort_turn_if_active_inner(
-                        &turn_id,
-                        expected_turn_state.as_ref(),
-                        reason,
-                        deferred_idle_cause,
-                    )
-                    .await;
-                if matches!(outcome, AbortTurnOutcome::Running)
-                    && let Some(cause) = deferred_idle_cause
-                {
-                    // Guardian's running-task abort bypasses the ordinary finish
-                    // lifecycle. Keep this callback inside the detached owner so
-                    // cancellation of the guardian caller cannot lose it.
-                    session.emit_thread_idle_lifecycle_if_idle(cause).await;
+                let result = AssertUnwindSafe(async {
+                    let outcome = session
+                        .abort_turn_if_active_inner(
+                            &turn_id,
+                            expected_turn_state.as_ref(),
+                            reason,
+                            deferred_idle_cause,
+                        )
+                        .await;
+                    if matches!(outcome, AbortTurnOutcome::Running)
+                        && let Some(cause) = deferred_idle_cause
+                    {
+                        // Guardian's running-task abort bypasses the ordinary finish
+                        // lifecycle. Keep this callback inside the detached owner so
+                        // cancellation of the guardian caller cannot lose it.
+                        session.emit_thread_idle_lifecycle_if_idle(cause).await;
+                    }
+                    outcome
+                })
+                .catch_unwind()
+                .await;
+                match result {
+                    Ok(outcome) => outcome,
+                    Err(_) => {
+                        warn!(
+                            %turn_id,
+                            "abort terminalizer panicked; retaining its completion fence"
+                        );
+                        AbortTurnOutcome::Terminalizing
+                    }
                 }
-                outcome
             }
             .in_current_span(),
         );
@@ -2419,9 +2446,13 @@ impl Session {
         let session = Arc::clone(self);
         let join = self.services.runtime_handle.spawn(
             async move {
-                session
-                    .on_task_finished_inner(turn_context, task_result)
-                    .await;
+                let result =
+                    AssertUnwindSafe(session.on_task_finished_inner(turn_context, task_result))
+                        .catch_unwind()
+                        .await;
+                if result.is_err() {
+                    warn!("finish terminalizer panicked; retaining its completion fence");
+                }
             }
             .in_current_span(),
         );
