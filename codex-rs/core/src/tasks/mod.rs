@@ -291,6 +291,12 @@ pub(crate) trait SessionTask: Send + Sync + 'static {
     /// Returns the tracing name for a spawned task span.
     fn span_name(&self) -> &'static str;
 
+    /// Lifecycle origin exposed to extension contributors before the task
+    /// reaches the provider boundary.
+    fn turn_start_origin(&self) -> codex_extension_api::TurnStartOrigin {
+        codex_extension_api::TurnStartOrigin::NewTurn
+    }
+
     /// Executes the task until completion or cancellation.
     ///
     /// Implementations typically stream protocol events using `session` and
@@ -334,6 +340,8 @@ pub(crate) trait AnySessionTask: Send + Sync + 'static {
 
     fn span_name(&self) -> &'static str;
 
+    fn turn_start_origin(&self) -> codex_extension_api::TurnStartOrigin;
+
     fn run(
         self: Arc<Self>,
         session: Arc<Session>,
@@ -363,6 +371,10 @@ where
 
     fn span_name(&self) -> &'static str {
         SessionTask::span_name(self)
+    }
+
+    fn turn_start_origin(&self) -> codex_extension_api::TurnStartOrigin {
+        SessionTask::turn_start_origin(self)
     }
 
     fn run(
@@ -867,8 +879,12 @@ impl Session {
         self.input_queue
             .extend_pending_input_for_turn_state(turn_state.as_ref(), pending_items)
             .await;
-        self.emit_turn_start_lifecycle(turn_context.as_ref(), &token_usage_at_turn_start)
-            .await;
+        self.emit_turn_start_lifecycle(
+            turn_context.as_ref(),
+            &token_usage_at_turn_start,
+            task.turn_start_origin(),
+        )
+        .await;
 
         let mut active = self.active_turn.lock().await;
         let turn = active.get_or_insert_with(ActiveTurn::default);
@@ -904,13 +920,27 @@ impl Session {
         let handle = tokio::spawn(
             async move {
                 let ctx_for_finish = Arc::clone(&ctx);
-                let task_result = task_for_run
-                    .run(
-                        Arc::clone(&session),
-                        ctx,
-                        task_input,
-                        task_cancellation_token.child_token(),
-                    )
+                // Enforce the host-owned gate for every task kind at the
+                // common spawn boundary.  RegularTask repeats the check
+                // before TurnStarted; this common check also protects review,
+                // compact, and shell tasks if a gate is ever attached there.
+                let task_result = async {
+                    if let Some(gate) = ctx
+                        .extension_data
+                        .get::<codex_extension_api::TurnStartGate>()
+                        && !gate.is_allowed()
+                    {
+                        return Err(CodexErr::TurnAborted);
+                    }
+                    task_for_run
+                        .run(
+                            Arc::clone(&session),
+                            ctx,
+                            task_input,
+                            task_cancellation_token.child_token(),
+                        )
+                        .await
+                }
                     .instrument(trace_span!("session_task.run"))
                     .await;
                 let sess = Arc::clone(&session);
@@ -1638,6 +1668,12 @@ fn qualification_admission_identity(
 ) -> Option<QualificationTurnAdmissionIdentity> {
     let mut user_input = None;
     for item in input {
+        if matches!(item, TurnInput::InterAgentCommunication(_)) {
+            // A user message mixed with mailbox/inter-agent input is not a
+            // single client admission.  Keep qualification identity inert
+            // rather than binding the wrong source to the provider turn.
+            return None;
+        }
         let TurnInput::UserInput { content, client_id } = item else {
             continue;
         };

@@ -66,6 +66,13 @@ impl SessionTask for RegularTask {
         "session_task.turn"
     }
 
+    fn turn_start_origin(&self) -> codex_extension_api::TurnStartOrigin {
+        match self.run_origin {
+            TurnRunOrigin::NewTurn => codex_extension_api::TurnStartOrigin::NewTurn,
+            TurnRunOrigin::Recovery => codex_extension_api::TurnStartOrigin::Recovery,
+        }
+    }
+
     async fn run(
         self: Arc<Self>,
         sess: Arc<Session>,
@@ -73,6 +80,16 @@ impl SessionTask for RegularTask {
         input: Vec<TurnInput>,
         cancellation_token: CancellationToken,
     ) -> SessionTaskResult {
+        // Lifecycle contributors finish before this task is spawned.  Keep
+        // this check before TurnStarted/prewarm so a failed qualification
+        // prepare cannot reach any provider-facing work.
+        if let Some(gate) = ctx
+            .extension_data
+            .get::<codex_extension_api::TurnStartGate>()
+            && !gate.is_allowed()
+        {
+            return Err(codex_protocol::error::CodexErr::TurnAborted);
+        }
         let run_turn_span = trace_span!("run_turn");
         let persistence_failure_baseline = sess.rollout_persistence_failure_generation();
         // Regular turns emit `TurnStarted` inline so first-turn lifecycle does

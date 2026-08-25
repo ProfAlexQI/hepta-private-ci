@@ -416,6 +416,7 @@ mod tests {
     ) -> TurnStartInput<'a> {
         TurnStartInput {
             turn_id,
+            origin: codex_extension_api::TurnStartOrigin::NewTurn,
             collaboration_mode: mode,
             token_usage_at_turn_start: usage,
             session_store,

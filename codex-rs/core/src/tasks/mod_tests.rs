@@ -8,7 +8,9 @@ use codex_otel::MetricsConfig;
 use codex_otel::SessionTelemetry;
 use codex_otel::TURN_MEMORY_METRIC;
 use codex_otel::TURN_NETWORK_PROXY_METRIC;
+use codex_protocol::AgentPath;
 use codex_protocol::ThreadId;
+use codex_protocol::protocol::InterAgentCommunication;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::user_input::UserInput;
 use opentelemetry::KeyValue;
@@ -65,6 +67,27 @@ fn qualification_admission_identity_requires_one_client_bound_user_input() {
         },
     ];
     assert!(qualification_admission_identity("thread-1", &duplicate).is_none());
+
+    let mixed_mailbox = vec![
+        TurnInput::InterAgentCommunication(InterAgentCommunication::new(
+            AgentPath::root(),
+            AgentPath::root(),
+            Vec::new(),
+            "mailbox payload".to_string(),
+            /*trigger_turn*/ true,
+        )),
+        TurnInput::UserInput {
+            content: vec![UserInput::Text {
+                text: "hello after mailbox".to_string(),
+                text_elements: Vec::new(),
+            }],
+            client_id: Some("client-3".to_string()),
+        },
+    ];
+    assert!(
+        qualification_admission_identity("thread-1", &mixed_mailbox).is_none(),
+        "mixed mailbox and user input must remain outside qualification admission"
+    );
 }
 
 fn test_session_telemetry() -> SessionTelemetry {

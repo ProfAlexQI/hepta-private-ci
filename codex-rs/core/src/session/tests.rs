@@ -684,6 +684,41 @@ async fn regular_turn_emits_turn_started_with_trace_id_without_waiting_for_start
 }
 
 #[tokio::test]
+async fn blocked_turn_start_gate_aborts_before_turn_started() {
+    let (sess, tc, rx) = make_session_and_context_with_rx().await;
+    let gate = codex_extension_api::TurnStartGate::new();
+    gate.block("qualification_prepare_failed");
+    tc.extension_data.insert(gate);
+
+    sess.spawn_task(
+        Arc::clone(&tc),
+        Vec::new(),
+        crate::tasks::RegularTask::new(crate::session::turn::TurnRunOrigin::NewTurn),
+    )
+    .await
+    .expect("blocked gate should still produce a terminal task result");
+
+    let mut saw_aborted = false;
+    for _ in 0..8 {
+        let event = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("expected a terminal event")
+            .expect("event channel open");
+        match event.msg {
+            EventMsg::TurnStarted(_) => {
+                panic!("a blocked turn-start gate must not emit TurnStarted")
+            }
+            EventMsg::TurnAborted(_) => {
+                saw_aborted = true;
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert!(saw_aborted, "blocked gate must terminate the turn as aborted");
+}
+
+#[tokio::test]
 async fn request_mcp_server_elicitation_auto_accepts_when_auto_deny_is_enabled() {
     let (session, turn_context, rx) = make_session_and_context_with_rx().await;
     session

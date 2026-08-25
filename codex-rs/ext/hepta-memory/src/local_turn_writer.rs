@@ -31,7 +31,9 @@ use codex_extension_api::ThreadStartInput;
 use codex_extension_api::TurnAbortInput;
 use codex_extension_api::TurnErrorInput;
 use codex_extension_api::TurnLifecycleContributor;
+use codex_extension_api::TurnStartGate;
 use codex_extension_api::TurnStartInput;
+use codex_extension_api::TurnStartOrigin;
 use codex_extension_api::TurnStopInput;
 use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_memory::H7TrajectoryEventKind;
@@ -842,7 +844,11 @@ impl QualificationTurnLifecycleContributor {
         Ok(())
     }
 
-    async fn start_one(&self, input: QualificationTurnWriterInput, turn_store: &ExtensionData) {
+    async fn start_one(
+        &self,
+        input: QualificationTurnWriterInput,
+        turn_store: &ExtensionData,
+    ) -> bool {
         let result = tokio::time::timeout(IO_TIMEOUT, Self::admit(&input)).await;
         let active = match result {
             Ok(Ok(Some(receipt))) => {
@@ -869,9 +875,10 @@ impl QualificationTurnLifecycleContributor {
             }
             _ => None,
         };
+        let mut dispatchable = active.is_some();
         let terminal = {
             let state = turn_store.get::<Mutex<TurnWriterState>>();
-            let Some(state) = state else { return };
+            let Some(state) = state else { return false };
             let mut guard = state.lock().unwrap_or_else(PoisonError::into_inner);
             guard.starting = false;
             if let Some(active) = active.clone() {
@@ -883,6 +890,7 @@ impl QualificationTurnLifecycleContributor {
                 .map(|action| (action, active))
         };
         if let Some((action, Some(active))) = terminal {
+            dispatchable = false;
             let completed = tokio::time::timeout(IO_TIMEOUT, Self::complete(&active, action))
                 .await
                 .is_ok_and(|result| result.is_ok());
@@ -896,6 +904,7 @@ impl QualificationTurnLifecycleContributor {
                 }
             }
         }
+        dispatchable
     }
 
     async fn finish(&self, turn_store: &ExtensionData, action: TerminalAction) {
@@ -947,21 +956,39 @@ impl<C: Sync> ThreadLifecycleContributor<C> for QualificationTurnLifecycleContri
 impl TurnLifecycleContributor for QualificationTurnLifecycleContributor {
     fn on_turn_start<'a>(&'a self, input: TurnStartInput<'a>) -> ExtensionFuture<'a, ()> {
         Box::pin(async move {
-            let host_input = if let Some(host_input) =
-                input.turn_store.get::<QualificationTurnWriterInput>()
+            let attached_input = input.turn_store.get::<QualificationTurnWriterInput>();
+            let has_admission_identity = input
+                .turn_store
+                .get::<QualificationTurnAdmissionIdentity>()
+                .is_some();
+            let host = input
+                .thread_store
+                .get::<QualificationTurnWriterHost>()
+                .map(|host| (*host).clone())
+                .or_else(|| self.host.clone());
+            // Recovery/automatic turns intentionally remain inert until a
+            // dedicated recovery identity protocol exists. Only a fresh turn
+            // with an explicit client-bound identity or an explicitly
+            // attached writer input can authorize this gate.
+            let gate = if input.origin == TurnStartOrigin::NewTurn
+                && (attached_input.is_some() || has_admission_identity)
             {
+                input.turn_store.get_or_init(TurnStartGate::new)
+            } else {
+                // This contributor is inert for recovery/automatic/direct
+                // turns.  Leave any gate owned by another contributor intact;
+                // Core owns the turn scope and must decide stale-gate cleanup.
+                return;
+            };
+            let host_input = if let Some(host_input) = attached_input {
                 host_input
             } else {
                 // Prefer the host capability seeded into the exact thread
                 // scope.  The contributor's captured host is a fallback for
                 // resumed/forked threads whose initializer was reconstructed
                 // by Core without the embedding's optional seed.
-                let host = input
-                    .thread_store
-                    .get::<QualificationTurnWriterHost>()
-                    .map(|host| (*host).clone())
-                    .or_else(|| self.host.clone());
                 let Some(host) = host else {
+                    gate.block("qualification_host_missing");
                     return;
                 };
                 let prepared = if let Some(identity) = input
@@ -980,13 +1007,16 @@ impl TurnLifecycleContributor for QualificationTurnLifecycleContributor {
                     tokio::time::timeout(IO_TIMEOUT, host.prepare(input.turn_id)).await
                 };
                 let Ok(Ok(prepared)) = prepared else {
+                    gate.block("qualification_prepare_failed");
                     return;
                 };
                 if !attach_qualification_turn_writer(input.turn_store, prepared) {
+                    gate.block("qualification_input_already_bound");
                     return;
                 }
                 let Some(host_input) = input.turn_store.get::<QualificationTurnWriterInput>()
                 else {
+                    gate.block("qualification_input_missing_after_prepare");
                     return;
                 };
                 host_input
@@ -994,19 +1024,27 @@ impl TurnLifecycleContributor for QualificationTurnLifecycleContributor {
             if host_input.validate_for_turn(input.turn_id).is_err()
                 || input.turn_store.level_id() != input.turn_id
             {
+                gate.block("qualification_input_invalid");
                 return;
             }
             let state = self.state(input.turn_store);
             {
                 let mut guard = state.lock().unwrap_or_else(PoisonError::into_inner);
                 if guard.attempted {
+                    gate.block("qualification_duplicate_start");
                     return;
                 }
                 guard.attempted = true;
                 guard.starting = true;
             }
-            self.start_one((*host_input).clone(), input.turn_store)
-                .await;
+            if self
+                .start_one((*host_input).clone(), input.turn_store)
+                .await
+            {
+                gate.allow();
+            } else {
+                gate.block("qualification_turn_not_dispatchable");
+            }
         })
     }
 
@@ -1143,8 +1181,27 @@ mod tests {
         mode: &'a CollaborationMode,
         usage: &'a TokenUsage,
     ) -> TurnStartInput<'a> {
+        start_input_with_origin(
+            turn_store,
+            thread_store,
+            session_store,
+            mode,
+            usage,
+            TurnStartOrigin::NewTurn,
+        )
+    }
+
+    fn start_input_with_origin<'a>(
+        turn_store: &'a ExtensionData,
+        thread_store: &'a ExtensionData,
+        session_store: &'a ExtensionData,
+        mode: &'a CollaborationMode,
+        usage: &'a TokenUsage,
+        origin: TurnStartOrigin,
+    ) -> TurnStartInput<'a> {
         TurnStartInput {
             turn_id: TURN_ID,
+            origin,
             collaboration_mode: mode,
             token_usage_at_turn_start: usage,
             session_store,
@@ -1176,6 +1233,13 @@ mod tests {
                 &usage,
             ))
             .await;
+        assert_eq!(
+            turn_store
+                .get::<TurnStartGate>()
+                .expect("turn-start gate")
+                .disposition(),
+            codex_extension_api::TurnStartGateDisposition::Allowed
+        );
         contributor
             .on_turn_start(start_input(
                 &turn_store,
@@ -1246,6 +1310,17 @@ mod tests {
                 &usage,
             ))
             .await;
+        let gate = turn_store
+            .get::<TurnStartGate>()
+            .expect("locked start must publish a gate");
+        assert_eq!(
+            gate.disposition(),
+            codex_extension_api::TurnStartGateDisposition::Blocked
+        );
+        assert_eq!(
+            gate.reason_code().as_deref(),
+            Some("qualification_turn_not_dispatchable")
+        );
         assert!(
             started.elapsed() < Duration::from_secs(3),
             "locked start cleanup must remain bounded"
@@ -1259,6 +1334,58 @@ mod tests {
             .expect("inspect locked-start witness");
         assert_eq!(inspection.disposition, LocalLeaseHeadDisposition::Active);
         blocker_pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn recovery_turn_stays_inert_without_a_recovery_identity() {
+        let (_temp, _store, input) = prepared().await;
+        let turn_store = ExtensionData::new(TURN_ID);
+        let thread_store = ExtensionData::new("thread:writer-e26");
+        let session_store = ExtensionData::new("session:writer-e26");
+        assert!(attach_qualification_turn_writer(&turn_store, input.clone()));
+        let contributor = QualificationTurnLifecycleContributor::new();
+        let mode = mode();
+        let usage = TokenUsage::default();
+
+        contributor
+            .on_turn_start(start_input_with_origin(
+                &turn_store,
+                &thread_store,
+                &session_store,
+                &mode,
+                &usage,
+                TurnStartOrigin::Recovery,
+            ))
+            .await;
+
+        assert!(
+            turn_store.get::<TurnStartGate>().is_none(),
+            "recovery must not manufacture a fresh provider gate"
+        );
+        let counts = input.lease.snapshot_counts().await.expect("counts");
+        assert_eq!(counts.event_rows, 0);
+        assert_eq!(counts.outbox_rows, 0);
+
+        let other_gate = TurnStartGate::new();
+        other_gate.block("other_contributor_failed");
+        turn_store.insert(other_gate);
+        contributor
+            .on_turn_start(start_input_with_origin(
+                &turn_store,
+                &thread_store,
+                &session_store,
+                &mode,
+                &usage,
+                TurnStartOrigin::Recovery,
+            ))
+            .await;
+        assert_eq!(
+            turn_store
+                .get::<TurnStartGate>()
+                .expect("inert contributor must preserve another gate")
+                .disposition(),
+            codex_extension_api::TurnStartGateDisposition::Blocked
+        );
     }
 
     #[tokio::test]
@@ -1303,6 +1430,14 @@ mod tests {
                 .expect("thread host capability")
                 .capability_id(),
             "qualification-test-host"
+        );
+        turn_store.insert(
+            QualificationTurnAdmissionIdentity::new(
+                "thread:writer-e26",
+                "client:writer-e26",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+            )
+            .expect("durable admission identity"),
         );
 
         let mode = mode();

@@ -26,6 +26,7 @@ use codex_extension_api::ToolFinishInput;
 use codex_extension_api::ToolPayload;
 use codex_extension_api::TurnErrorInput;
 use codex_extension_api::TurnStartInput;
+use codex_extension_api::TurnStartOrigin;
 use codex_extension_api::TurnStopInput;
 use codex_goal_extension::GoalExtensionConfig;
 use codex_goal_extension::GoalObjectiveUpdate;
@@ -1368,6 +1369,7 @@ impl GoalExtensionHarness {
             contributor
                 .on_turn_start(TurnStartInput {
                     turn_id,
+                    origin: TurnStartOrigin::NewTurn,
                     collaboration_mode: &collaboration_mode,
                     token_usage_at_turn_start: usage,
                     session_store: &self.session_store,

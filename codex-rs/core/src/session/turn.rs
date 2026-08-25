@@ -77,6 +77,7 @@ use codex_connectors::AppToolPolicyEvaluator;
 use codex_core_plugins::RecommendedPluginCandidatesInput;
 use codex_extension_api::ExtensionData;
 use codex_extension_api::ModelProviderRequestKind;
+use codex_extension_api::TurnStartGate;
 use codex_extension_api::TurnInputContext;
 use codex_extension_api::TurnInputEnvironment;
 use codex_features::Feature;
@@ -330,6 +331,13 @@ pub(crate) async fn run_turn(
     mut expected_recovery_fingerprint_sha256: Option<String>,
     cancellation_token: CancellationToken,
 ) -> CodexResult<Option<String>> {
+    // Defense in depth for direct/retry calls; the RegularTask boundary also
+    // checks before TurnStarted and provider prewarm.
+    if let Some(gate) = turn_context.extension_data.get::<TurnStartGate>()
+        && !gate.is_allowed()
+    {
+        return Err(CodexErr::TurnAborted);
+    }
     let hepta_turn_recovery_enabled = turn_context
         .config
         .features

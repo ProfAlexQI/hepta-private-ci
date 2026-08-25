@@ -5,6 +5,8 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use codex_extension_api::ExtensionData;
+use codex_extension_api::TurnStartGate;
+use codex_extension_api::TurnStartGateDisposition;
 use pretty_assertions::assert_eq;
 
 #[test]
@@ -137,4 +139,27 @@ fn store_remains_usable_after_panicking_initializer() {
 
     assert!(result.is_err());
     assert_eq!(*data.get_or_init(|| 99_u64), 99);
+}
+
+#[test]
+fn turn_start_gate_is_monotonic_and_fail_closed_until_allowed() {
+    let gate = TurnStartGate::new();
+    assert_eq!(gate.disposition(), TurnStartGateDisposition::Pending);
+    assert!(!gate.is_allowed());
+
+    gate.allow();
+    assert_eq!(gate.disposition(), TurnStartGateDisposition::Allowed);
+    assert!(gate.is_allowed());
+
+    // A later contributor can still revoke an authorization before the
+    // provider boundary is checked; a fresh turn gets a fresh gate.
+    gate.block("late_failure");
+    assert_eq!(gate.disposition(), TurnStartGateDisposition::Blocked);
+
+    let blocked = TurnStartGate::new();
+    blocked.block("sqlite_locked");
+    assert_eq!(blocked.disposition(), TurnStartGateDisposition::Blocked);
+    assert_eq!(blocked.reason_code().as_deref(), Some("sqlite_locked"));
+    blocked.allow();
+    assert_eq!(blocked.disposition(), TurnStartGateDisposition::Blocked);
 }
