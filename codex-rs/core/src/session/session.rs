@@ -89,6 +89,7 @@ pub(crate) struct Session {
             Arc<StartTransitionCompletion>,
             TaskTerminalizationKind,
             Option<crate::tasks::SuspensionHandoffSlot>,
+            Option<crate::tasks::TaskAbortHandoffSlot>,
         )>,
     >,
     /// Once teardown begins, no new host-owned start transition may be
