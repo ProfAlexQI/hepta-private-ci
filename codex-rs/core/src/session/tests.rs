@@ -13698,6 +13698,85 @@ async fn shutdown_adopts_queued_finish_handoff_before_first_poll() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn guardian_denial_uses_caller_runtime_after_construction_runtime_shutdown() {
+    let (session_tx, session_rx) = std::sync::mpsc::sync_channel(1);
+    let owner_thread = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("construction runtime should build");
+        let (session, turn_context, rx) = runtime.block_on(async move {
+            let (session, turn_context, rx) = make_session_and_context_with_rx().await;
+            let session = Arc::new(session);
+            session
+                .spawn_task(
+                    Arc::clone(&turn_context),
+                    Vec::new(),
+                    NeverEndingTask {
+                        kind: TaskKind::Regular,
+                        listen_to_cancellation_token: true,
+                    },
+                )
+                .await
+                .expect("guardian denial task should attach on construction runtime");
+            (session, turn_context, rx)
+        });
+        session_tx
+            .send((session, turn_context, rx))
+            .expect("session handoff should remain open");
+        // Guardian review is intentionally resumed on Runtime B after the
+        // construction runtime has stopped. A stored runtime spawn here would
+        // be accepted and dropped before its first poll, leaving the turn
+        // active after the denial circuit breaker trips.
+        runtime.shutdown_background();
+    });
+
+    let (session, turn_context, rx) = tokio::task::spawn_blocking(move || {
+        session_rx
+            .recv_timeout(StdDuration::from_secs(5))
+            .expect("construction runtime should hand back the guardian session")
+    })
+    .await
+    .expect("session handoff task should join");
+    tokio::task::spawn_blocking(move || owner_thread.join().expect("owner thread should exit"))
+        .await
+        .expect("owner thread join should complete");
+
+    for _ in 0..3 {
+        crate::guardian::record_guardian_denial_for_test(
+            &session,
+            &turn_context,
+            &turn_context.sub_id,
+        )
+        .await;
+    }
+
+    let aborted = timeout(StdDuration::from_secs(2), async {
+        loop {
+            let event = rx.recv().await.expect("event channel should remain open");
+            if let EventMsg::TurnAborted(event) = event.msg {
+                break event;
+            }
+        }
+    })
+    .await
+    .expect("guardian denial should interrupt on the caller runtime");
+    assert_eq!(aborted.reason, TurnAbortReason::Interrupted);
+    timeout(StdDuration::from_secs(2), async {
+        loop {
+            if session.active_turn.lock().await.is_none()
+                && !session.has_pending_task_terminalization()
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("guardian interruption should clear its terminalization fence");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn panicking_abort_terminalizer_retains_fence() {
     let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
     session

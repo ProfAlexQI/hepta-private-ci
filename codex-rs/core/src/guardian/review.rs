@@ -27,6 +27,7 @@ use tokio::sync::oneshot;
 use tokio::time::Instant;
 use tokio::time::sleep_until;
 use tokio_util::sync::CancellationToken;
+use tracing::warn;
 
 use crate::codex_thread::GuardianAuthorizationVersion;
 use crate::context::GuardianReviewEvidence;
@@ -291,21 +292,35 @@ async fn record_guardian_denial(session: &Arc<Session>, turn: &Arc<TurnContext>,
         return;
     };
 
-    let runtime_handle = session.services.runtime_handle.clone();
+    let Some(runtime_handle) = tokio::runtime::Handle::try_current().ok() else {
+        warn!(
+            turn_id,
+            "guardian denial cannot schedule turn interruption without a live Tokio runtime; retaining the active-turn fence"
+        );
+        return;
+    };
     let session = Arc::clone(session);
     let turn_id = turn_id.to_string();
-    let _abort_task = runtime_handle.spawn(async move {
+    let turn_id_for_task = turn_id.clone();
+    let abort_task = runtime_handle.spawn(async move {
         // `abort_turn_if_active_for_guardian` owns the detached abort and its
         // running-task idle callback. Keeping both in that job prevents a
         // cancelled guardian caller from losing the lifecycle handoff.
         session
             .abort_turn_if_active_for_guardian(
-                &turn_id,
+                &turn_id_for_task,
                 &expected_turn_state,
                 TurnAbortReason::Interrupted,
             )
             .await;
     });
+    if let Err(error) = abort_task.await {
+        warn!(
+            %turn_id,
+            ?error,
+            "guardian denial interruption job did not complete; retaining its terminalization fence"
+        );
+    }
 }
 
 #[cfg(test)]
