@@ -88,10 +88,13 @@ use tracing::Span;
 use crate::connectors::AppInfo;
 use crate::rollout::recorder::RolloutRecorder;
 use crate::state::ActiveTurn;
+use crate::state::StartTransition;
 use crate::state::TaskKind;
 use crate::tasks::SessionTask;
 use crate::tasks::SessionTaskResult;
 use crate::tasks::StartReservationOwner;
+use crate::tasks::StartTransitionCleanup;
+use crate::tasks::StartTransitionOwner;
 use crate::tasks::UserShellCommandMode;
 use crate::tasks::execute_user_shell_command;
 use crate::tools::ToolRouter;
@@ -1365,6 +1368,231 @@ async fn stale_runtime_reservation_drop_releases_off_runtime() {
     })
     .await
     .expect("stale runtime handle must not strand the reservation");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stale_runtime_start_transition_drop_retains_witness_for_shutdown_drain() {
+    let (session, turn_context, rx) = make_session_and_context_with_rx().await;
+    let transition_identity = Arc::new(());
+    let (turn_state, completion) = {
+        let mut active = ActiveTurn::default();
+        let turn_state = Arc::clone(&active.turn_state);
+        let transition = StartTransition::new(
+            turn_context.sub_id.clone(),
+            Arc::clone(&transition_identity),
+        );
+        let completion = Arc::clone(&transition.completion);
+        active.start_transition = Some(transition);
+        *session.active_turn.lock().await = Some(active);
+        (turn_state, completion)
+    };
+    let aborts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let cleanup_slot = Arc::new(std::sync::Mutex::new(Some(StartTransitionCleanup::new(
+        &session,
+        Arc::new(StartTransitionAbortProbe {
+            aborts: Arc::clone(&aborts),
+        }),
+        Arc::clone(&turn_context),
+        turn_state,
+        Arc::clone(&transition_identity),
+        Arc::clone(&completion),
+        None,
+    ))));
+    session
+        .pending_start_transition_completions
+        .lock()
+        .expect("start transition registry mutex should be healthy")
+        .push((
+            transition_identity,
+            Arc::clone(&completion),
+            Arc::clone(&cleanup_slot),
+        ));
+
+    // Build the owner in Runtime A, shut that runtime down, and then destroy
+    // the owner on a plain thread.  No live runtime is available to Drop, so
+    // the registry cell must retain the complete async witness for the later
+    // shutdown drain rather than clearing only the active marker.
+    let owner_slot = Arc::clone(&cleanup_slot);
+    let owner_thread = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("owner runtime should build");
+        let owner = runtime.block_on(async { StartTransitionOwner::new(owner_slot) });
+        runtime.shutdown_background();
+        drop(owner);
+    });
+    tokio::task::spawn_blocking(move || owner_thread.join().expect("owner thread should exit"))
+        .await
+        .expect("owner join should complete");
+
+    assert_eq!(aborts.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert!(
+        cleanup_slot_is_populated(&session),
+        "stale runtime Drop must retain the full cleanup witness"
+    );
+    assert!(
+        timeout(Duration::from_millis(100), completion.wait())
+            .await
+            .is_err(),
+        "stale runtime Drop must not signal the completion fence"
+    );
+    assert!(
+        session.active_turn.lock().await.is_some(),
+        "stale runtime Drop must not clear the active transition synchronously"
+    );
+
+    session.begin_shutdown();
+    timeout(
+        Duration::from_secs(5),
+        session.drain_start_transition_for_shutdown(),
+    )
+    .await
+    .expect("shutdown drain should recover the retained witness");
+    assert_eq!(aborts.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(session.active_turn.lock().await.is_none());
+    assert!(
+        session
+            .pending_start_transition_completions
+            .lock()
+            .expect("start transition registry mutex should be healthy")
+            .is_empty()
+    );
+
+    let mut saw_abort = false;
+    while let Ok(event) = rx.try_recv() {
+        if matches!(event.msg, EventMsg::TurnAborted(_)) {
+            saw_abort = true;
+            break;
+        }
+    }
+    assert!(
+        saw_abort,
+        "shutdown drain must preserve TurnAborted ordering"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn queued_start_transition_cleanup_not_polled_before_runtime_shutdown_retains_witness() {
+    let (session, turn_context, rx) = make_session_and_context_with_rx().await;
+    let transition_identity = Arc::new(());
+    let (turn_state, completion) = {
+        let mut active = ActiveTurn::default();
+        let turn_state = Arc::clone(&active.turn_state);
+        let transition = StartTransition::new(
+            turn_context.sub_id.clone(),
+            Arc::clone(&transition_identity),
+        );
+        let completion = Arc::clone(&transition.completion);
+        active.start_transition = Some(transition);
+        *session.active_turn.lock().await = Some(active);
+        (turn_state, completion)
+    };
+    let aborts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let cleanup_slot = Arc::new(std::sync::Mutex::new(Some(StartTransitionCleanup::new(
+        &session,
+        Arc::new(StartTransitionAbortProbe {
+            aborts: Arc::clone(&aborts),
+        }),
+        Arc::clone(&turn_context),
+        turn_state,
+        Arc::clone(&transition_identity),
+        Arc::clone(&completion),
+        None,
+    ))));
+    session
+        .pending_start_transition_completions
+        .lock()
+        .expect("start transition registry mutex should be healthy")
+        .push((
+            transition_identity,
+            Arc::clone(&completion),
+            Arc::clone(&cleanup_slot),
+        ));
+
+    // Drop the owner while a live current-thread runtime is executing its
+    // root future.  `spawn_cleanup` therefore accepts the detached task, but
+    // the root future returns without yielding; shutting the runtime down
+    // immediately discards that queued task before its first poll.  The
+    // registry cell must retain the complete witness for shutdown drain.
+    let owner_slot = Arc::clone(&cleanup_slot);
+    let owner_thread = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("owner runtime should build");
+        runtime.block_on(async move {
+            let owner = StartTransitionOwner::new(owner_slot);
+            drop(owner);
+        });
+        runtime.shutdown_background();
+    });
+    tokio::task::spawn_blocking(move || owner_thread.join().expect("owner thread should exit"))
+        .await
+        .expect("owner join should complete");
+
+    assert_eq!(
+        aborts.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "queued cleanup must not be polled before its runtime shuts down"
+    );
+    assert!(
+        cleanup_slot_is_populated(&session),
+        "scheduler shutdown must retain the full cleanup witness"
+    );
+    assert!(
+        timeout(Duration::from_millis(100), completion.wait())
+            .await
+            .is_err(),
+        "scheduler shutdown must not signal the completion fence"
+    );
+    assert!(
+        session.active_turn.lock().await.is_some(),
+        "scheduler shutdown must not clear the active transition before drain"
+    );
+
+    session.begin_shutdown();
+    timeout(
+        Duration::from_secs(5),
+        session.drain_start_transition_for_shutdown(),
+    )
+    .await
+    .expect("shutdown drain should recover the queued witness");
+    assert_eq!(aborts.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(session.active_turn.lock().await.is_none());
+    assert!(
+        session
+            .pending_start_transition_completions
+            .lock()
+            .expect("start transition registry mutex should be healthy")
+            .is_empty()
+    );
+
+    let mut saw_abort = false;
+    while let Ok(event) = rx.try_recv() {
+        if matches!(event.msg, EventMsg::TurnAborted(_)) {
+            saw_abort = true;
+            break;
+        }
+    }
+    assert!(
+        saw_abort,
+        "shutdown drain must preserve TurnAborted ordering"
+    );
+}
+
+fn cleanup_slot_is_populated(session: &Arc<Session>) -> bool {
+    session
+        .pending_start_transition_completions
+        .lock()
+        .expect("start transition registry mutex should be healthy")
+        .iter()
+        .any(|(_, _, cleanup)| {
+            cleanup
+                .lock()
+                .expect("start transition cleanup slot mutex should be healthy")
+                .is_some()
+        })
 }
 
 #[tokio::test]
@@ -11394,6 +11622,35 @@ impl SessionTask for CompletingTask {
         _cancellation_token: CancellationToken,
     ) -> SessionTaskResult {
         Ok(None)
+    }
+}
+
+struct StartTransitionAbortProbe {
+    aborts: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl SessionTask for StartTransitionAbortProbe {
+    fn kind(&self) -> TaskKind {
+        TaskKind::Regular
+    }
+
+    fn span_name(&self) -> &'static str {
+        "session_task.start_transition_abort_probe"
+    }
+
+    async fn run(
+        self: Arc<Self>,
+        _session: Arc<Session>,
+        _ctx: Arc<TurnContext>,
+        _input: Vec<TurnInput>,
+        _cancellation_token: CancellationToken,
+    ) -> SessionTaskResult {
+        panic!("start-transition abort probe must not run");
+    }
+
+    async fn abort(&self, _session: Arc<Session>, _ctx: Arc<TurnContext>) {
+        self.aborts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 }
 

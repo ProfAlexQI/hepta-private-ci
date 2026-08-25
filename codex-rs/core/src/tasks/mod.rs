@@ -239,7 +239,7 @@ impl Drop for StartReservationOwner {
 /// host-owned start transition.  The owner future is allowed to disappear at
 /// any cancellation point after promotion; this witness gives the cleanup
 /// continuation enough identity to terminalize only that transition.
-struct StartTransitionCleanup {
+pub(crate) struct StartTransitionCleanup {
     session: Arc<Session>,
     task: Arc<dyn AnySessionTask>,
     turn_context: Arc<TurnContext>,
@@ -249,26 +249,10 @@ struct StartTransitionCleanup {
     recovery_history_restore: Option<ContextManager>,
 }
 
-/// Keeps a host-owned start transition live independently of its caller while
-/// the Tokio runtime is still able to schedule a cleanup continuation.
-///
-/// A caller-owned reservation is released by [`StartReservationOwner`], but
-/// promotion changes the state machine: the transition now owns lifecycle and
-/// terminal ordering.  If the owner future is cancelled after that point, a
-/// detached placeholder terminalizer finishes the same abort path instead of
-/// leaving `active_turn.start_transition` installed forever.  Panic/hang
-/// handling in the terminalizer itself remains a separate watchdog slice.  If
-/// the runtime has already shut down, this guard deliberately preserves the
-/// marker and fails closed; a future session-shutdown drain must own that
-/// terminalization rather than silently dropping durable/lifecycle state.
-struct StartTransitionOwner {
-    cleanup: Option<StartTransitionCleanup>,
-    runtime_handle: Option<tokio::runtime::Handle>,
-    cleanup_spawned: bool,
-}
+pub(crate) type StartTransitionCleanupSlot = Arc<std::sync::Mutex<Option<StartTransitionCleanup>>>;
 
-impl StartTransitionOwner {
-    fn new(
+impl StartTransitionCleanup {
+    pub(crate) fn new(
         session: &Arc<Session>,
         task: Arc<dyn AnySessionTask>,
         turn_context: Arc<TurnContext>,
@@ -278,16 +262,39 @@ impl StartTransitionOwner {
         recovery_history_restore: Option<ContextManager>,
     ) -> Self {
         Self {
-            cleanup: Some(StartTransitionCleanup {
-                session: Arc::clone(session),
-                task,
-                turn_context,
-                turn_state,
-                transition_identity,
-                completion,
-                recovery_history_restore,
-            }),
-            runtime_handle: tokio::runtime::Handle::try_current().ok(),
+            session: Arc::clone(session),
+            task,
+            turn_context,
+            turn_state,
+            transition_identity,
+            completion,
+            recovery_history_restore,
+        }
+    }
+}
+
+/// Keeps a host-owned start transition live independently of its caller while
+/// retaining a full cleanup witness even if Tokio cannot schedule the first
+/// continuation poll.
+///
+/// A caller-owned reservation is released by [`StartReservationOwner`], but
+/// promotion changes the state machine: the transition now owns lifecycle and
+/// terminal ordering.  If the owner future is cancelled after that point, a
+/// detached placeholder terminalizer finishes the same abort path instead of
+/// leaving `active_turn.start_transition` installed forever.  Panic/hang
+/// handling in the terminalizer itself remains a separate watchdog slice.  If
+/// the runtime has already shut down, the registry cell preserves the marker
+/// and full witness for a later session-shutdown drain rather than silently
+/// dropping durable/lifecycle state.
+pub(crate) struct StartTransitionOwner {
+    cleanup: Option<StartTransitionCleanupSlot>,
+    cleanup_spawned: bool,
+}
+
+impl StartTransitionOwner {
+    pub(crate) fn new(cleanup: StartTransitionCleanupSlot) -> Self {
+        Self {
+            cleanup: Some(cleanup),
             cleanup_spawned: false,
         }
     }
@@ -302,24 +309,31 @@ impl StartTransitionOwner {
         if self.cleanup_spawned {
             return None;
         }
-        let cleanup = self.cleanup.take()?;
-        let Some(runtime_handle) = self.runtime_handle.take() else {
+        let cleanup_slot = self.cleanup.as_ref()?.clone();
+        let Some(runtime_handle) = tokio::runtime::Handle::try_current().ok() else {
             warn!(
-                turn_id = %cleanup.turn_context.sub_id,
-                "start transition cleanup cannot be scheduled because no Tokio runtime is available; preserving its fence"
+                "start transition cleanup cannot be scheduled because no Tokio runtime is available; preserving its full witness"
             );
-            // No runtime exists on which a durable terminalizer could run.
-            // Keep the cleanup payload attached to the owner and leave the
-            // completion unresolved so teardown fails closed instead of
-            // silently losing the transition's terminal work.
-            self.cleanup = Some(cleanup);
+            // The completion registry retains `cleanup_slot`, so shutdown can
+            // recover and execute the full witness once a live runtime owns
+            // teardown.  Do not attempt a synchronous transition cleanup:
+            // it crosses durable/lifecycle awaits and would violate the
+            // writer and recovery ordering fences.
             self.cleanup_spawned = true;
             return None;
         };
+        self.cleanup = None;
         self.cleanup_spawned = true;
-        let session = Arc::clone(&cleanup.session);
-        let turn_id = cleanup.turn_context.sub_id.clone();
         Some(runtime_handle.spawn(async move {
+            let Some(cleanup) = cleanup_slot
+                .lock()
+                .expect("start transition cleanup slot mutex poisoned")
+                .take()
+            else {
+                return;
+            };
+            let turn_id = cleanup.turn_context.sub_id.clone();
+            let session = Arc::clone(&cleanup.session);
             let result =
                 AssertUnwindSafe(session.abort_dropped_start_transition(cleanup, fallback_reason))
                     .catch_unwind()
@@ -335,7 +349,12 @@ impl StartTransitionOwner {
 
     /// Mark a successfully attached or already-stale transition as complete.
     fn disarm(&mut self) {
-        if let Some(cleanup) = self.cleanup.take() {
+        if let Some(cleanup_slot) = self.cleanup.take()
+            && let Some(cleanup) = cleanup_slot
+                .lock()
+                .expect("start transition cleanup slot mutex poisoned")
+                .take()
+        {
             cleanup
                 .session
                 .finish_start_transition(&cleanup.transition_identity, &cleanup.completion);
@@ -362,11 +381,12 @@ impl Session {
         &self,
         transition_identity: Arc<()>,
         completion: Arc<StartTransitionCompletion>,
+        cleanup: StartTransitionCleanupSlot,
     ) {
         self.pending_start_transition_completions
             .lock()
             .expect("start transition completion registry mutex poisoned")
-            .push((transition_identity, completion));
+            .push((transition_identity, completion, cleanup));
     }
 
     /// Removes one exact fence before signalling it.  Identity and completion
@@ -381,7 +401,7 @@ impl Session {
             .pending_start_transition_completions
             .lock()
             .expect("start transition completion registry mutex poisoned");
-        pending.retain(|(identity, current)| {
+        pending.retain(|(identity, current, _cleanup)| {
             !(Arc::ptr_eq(identity, transition_identity) && Arc::ptr_eq(current, completion))
         });
         drop(pending);
@@ -393,7 +413,16 @@ impl Session {
             .lock()
             .expect("start transition completion registry mutex poisoned")
             .iter()
-            .map(|(_, completion)| Arc::clone(completion))
+            .map(|(_, completion, _cleanup)| Arc::clone(completion))
+            .collect()
+    }
+
+    fn pending_start_transition_cleanup_slots(&self) -> Vec<StartTransitionCleanupSlot> {
+        self.pending_start_transition_completions
+            .lock()
+            .expect("start transition completion registry mutex poisoned")
+            .iter()
+            .map(|(_, _, cleanup)| Arc::clone(cleanup))
             .collect()
     }
 
@@ -481,7 +510,7 @@ impl Session {
             .lock()
             .expect("start transition completion registry mutex poisoned")
             .iter()
-            .any(|(identity, _)| {
+            .any(|(identity, _, _cleanup)| {
                 ignored_identity.map_or(true, |ignored| !Arc::ptr_eq(identity, ignored))
             })
     }
@@ -1568,14 +1597,17 @@ impl Session {
         // instead of silently returning as if the session were idle.  The
         // caller-owned reservation preamble before entering `start_task`
         // remains a separate, inert reservation by design.
+        let recovery_history_restore_witness = recovery_history
+            .as_ref()
+            .map(|history| history.restore.clone());
         let start_transition_identity;
         let transition_turn_state;
         let transition_completion;
+        let cleanup_slot;
         {
             let mut active = self.active_turn.lock().await;
             if self.shutdown_started()
-                || self
-                    .has_pending_admission_fence_except(terminalization_owner.as_ref())
+                || self.has_pending_admission_fence_except(terminalization_owner.as_ref())
             {
                 return StartTaskOutcome::Stale;
             }
@@ -1628,26 +1660,29 @@ impl Session {
                         .completion,
                 );
             }
+            // Keep the complete terminal witness in a cell shared by the
+            // owner and the registry.  The cell is installed before the
+            // active-turn lock is released, so a concurrent shutdown drain
+            // can never observe a completion fence without its payload.
+            cleanup_slot = Arc::new(std::sync::Mutex::new(Some(StartTransitionCleanup::new(
+                self,
+                Arc::clone(&task),
+                Arc::clone(&turn_context),
+                Arc::clone(&transition_turn_state),
+                Arc::clone(&start_transition_identity),
+                Arc::clone(&transition_completion),
+                recovery_history_restore_witness,
+            ))));
             // Register while the active-turn lock is still held.  Shutdown
             // can begin concurrently, so publishing the marker and its
             // completion fence must be one serialization unit.
             self.register_start_transition(
                 Arc::clone(&start_transition_identity),
                 Arc::clone(&transition_completion),
+                Arc::clone(&cleanup_slot),
             );
         }
-        let recovery_history_restore_witness = recovery_history
-            .as_ref()
-            .map(|history| history.restore.clone());
-        let mut start_transition_owner = StartTransitionOwner::new(
-            self,
-            Arc::clone(&task),
-            Arc::clone(&turn_context),
-            Arc::clone(&transition_turn_state),
-            Arc::clone(&start_transition_identity),
-            transition_completion,
-            recovery_history_restore_witness,
-        );
+        let mut start_transition_owner = StartTransitionOwner::new(cleanup_slot);
         let mut recovery_history_restore = if let Some(recovery_history) = recovery_history {
             self.install_recovery_history_snapshot(recovery_history.install)
                 .await;
@@ -2242,6 +2277,33 @@ impl Session {
     /// teardown fail-closed instead of publishing thread-stop out of order.
     pub(crate) async fn drain_start_transition_for_shutdown(self: &Arc<Self>) {
         loop {
+            // A detached owner may have been dropped after its construction
+            // runtime closed, or its first spawn may have been accepted by a
+            // scheduler that was already shutting down.  In both cases the
+            // full witness remains in its registry cell.  Claiming the cell
+            // here is the only safe retry: if a live detached owner already
+            // took it, the completion fence below remains the authority.
+            for cleanup_slot in self.pending_start_transition_cleanup_slots() {
+                let Some(cleanup) = cleanup_slot
+                    .lock()
+                    .expect("start transition cleanup slot mutex poisoned")
+                    .take()
+                else {
+                    continue;
+                };
+                let turn_id = cleanup.turn_context.sub_id.clone();
+                let result = AssertUnwindSafe(
+                    self.abort_dropped_start_transition(cleanup, TurnAbortReason::Interrupted),
+                )
+                .catch_unwind()
+                .await;
+                if result.is_err() {
+                    warn!(
+                        %turn_id,
+                        "shutdown start-transition terminalizer panicked; retaining its completion fence"
+                    );
+                }
+            }
             let completions = self.pending_start_transition_completions();
             if completions.is_empty() {
                 return;

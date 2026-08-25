@@ -12,6 +12,7 @@ use crate::shell_snapshot::ShellSnapshot;
 use crate::state::ActiveTurn;
 use crate::state::StartTransitionCompletion;
 use crate::state::TaskTerminalizationKind;
+use crate::tasks::StartTransitionCleanupSlot;
 use codex_extension_api::ExtensionDataInit;
 use codex_http_client::ClientRouteClass;
 use codex_http_client::RouteAwareClientPool;
@@ -71,8 +72,13 @@ pub(crate) struct Session {
     /// Completion fences for materialized start transitions whose terminal
     /// side effects may outlive the active-turn marker.  Shutdown drains this
     /// registry instead of inferring liveness from `active_turn` alone.
-    pub(crate) pending_start_transition_completions:
-        std::sync::Mutex<Vec<(Arc<()>, Arc<StartTransitionCompletion>)>>,
+    pub(crate) pending_start_transition_completions: std::sync::Mutex<
+        Vec<(
+            Arc<()>,
+            Arc<StartTransitionCompletion>,
+            StartTransitionCleanupSlot,
+        )>,
+    >,
     /// Completion fences for task finish/abort terminalizers.  The active-turn
     /// marker is intentionally cleared before a replacement turn may be
     /// admitted, so shutdown must retain an independent registry until the
