@@ -1496,7 +1496,7 @@ impl LocalLeaseOutbox {
         ensure_current_active(&lease, self)?;
         verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        let _admission = find_admission(
+        let admission = find_admission(
             &mut transaction,
             &self.lease_id,
             &occurrence_key,
@@ -1508,7 +1508,7 @@ impl LocalLeaseOutbox {
                 "occurrence {occurrence_key} has no admitted event"
             ))
         })?;
-        let _outbox = find_outbox(
+        let outbox = find_outbox(
             &mut transaction,
             &self.lease_id,
             &occurrence_key,
@@ -1516,6 +1516,13 @@ impl LocalLeaseOutbox {
         )
         .await?
         .ok_or_else(|| corrupt("event admission has no paired outbox row"))?;
+        // Outcomes are attempt-scoped just like admissions.  A lease may be
+        // reacquired under a newer generation after the original attempt
+        // released, but that newer owner must never append a transition for
+        // the historical occurrence.  Without this check the transition
+        // would be journaled under the new fence and could make an old
+        // occurrence appear to have been handled by the new attempt.
+        ensure_current_occurrence_fence(self, &admission, &outbox)?;
         let current = current_outcome(
             &mut transaction,
             &self.lease_id,
@@ -2835,6 +2842,31 @@ fn queued_receipt(
         payload_sha256: event.payload_sha256.clone(),
         external_effect: false,
     })
+}
+
+fn ensure_current_occurrence_fence(
+    handle: &LocalLeaseOutbox,
+    event: &EventRow,
+    outbox: &OutboxRow,
+) -> Result<(), LocalLeaseOutboxError> {
+    if event.event_id != outbox.event_id
+        || event.occurrence_key != outbox.occurrence_key
+        || event.owner_agent_id != handle.owner_agent_id
+        || outbox.owner_agent_id != handle.owner_agent_id
+    {
+        return Err(corrupt("event/outbox outcome fence binding mismatch"));
+    }
+    if event.generation != handle.generation
+        || event.fencing_token != handle.fencing_token
+        || outbox.generation != handle.generation
+        || outbox.fencing_token != handle.fencing_token
+    {
+        return Err(LocalLeaseOutboxError::StaleFence(format!(
+            "occurrence was admitted under generation {} and cannot be transitioned by generation {}",
+            event.generation, handle.generation
+        )));
+    }
+    Ok(())
 }
 
 fn ensure_current_active(

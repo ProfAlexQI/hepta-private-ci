@@ -673,6 +673,25 @@ async fn new_generation_retry_of_old_occurrence_is_stale_not_corrupt() {
         next.admit("occurrence:old", "topic", "payload").await,
         Err(LocalLeaseOutboxError::StaleFence(_))
     ));
+    assert!(matches!(
+        next.mark_indeterminate("occurrence:old", "late ack").await,
+        Err(LocalLeaseOutboxError::StaleFence(_))
+    ));
+    assert!(matches!(
+        next.rollback_occurrence("occurrence:old", "late rollback")
+            .await,
+        Err(LocalLeaseOutboxError::StaleFence(_))
+    ));
+    assert_eq!(
+        next.snapshot_counts()
+            .await
+            .expect("counts after stale outcomes"),
+        crate::LocalLeaseOutboxCounts {
+            lease_rows: 3,
+            event_rows: 1,
+            outbox_rows: 1,
+        }
+    );
 }
 
 #[tokio::test]
