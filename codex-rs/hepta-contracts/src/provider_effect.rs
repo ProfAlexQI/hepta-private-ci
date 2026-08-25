@@ -11,6 +11,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
 
 use crate::RequestBindingId;
@@ -360,13 +361,12 @@ pub enum ProviderEffectAppendDisposition {
 /// that need to validate and bind an ACK before handing it to a durable store;
 /// [`codex_hepta_evidence::HeptaEvidenceStore`] provides the production SQLite
 /// persistence layer.  A journal never turns an unknown result into a retry.
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct ProviderEffectJournal {
     intents: BTreeMap<String, ProviderEffectIntent>,
     acknowledgements: BTreeMap<String, Vec<ProviderEffectAck>>,
     /// Source is kept separately from the provider ACK payload because it is
     /// a local observation about how that payload was obtained.
-    #[serde(default)]
     ack_sources: BTreeMap<String, Vec<ProviderEffectAckSource>>,
     #[serde(default)]
     uncertainties: BTreeMap<String, Vec<ProviderEffectUncertainty>>,
@@ -374,11 +374,95 @@ pub struct ProviderEffectJournal {
     quarantined: BTreeMap<String, bool>,
 }
 
+/// Wire representation used to keep old journals that contain no ACKs
+/// readable while refusing to infer provenance for any persisted ACK.
+///
+/// `ack_sources` is optional only for that empty-ACK compatibility case.  A
+/// journal with one or more acknowledgements must carry an exact source vector
+/// for every acknowledgement; otherwise a caller could deserialize a
+/// terminal-looking ACK and accidentally treat it as authoritative.
+#[derive(Deserialize)]
+struct ProviderEffectJournalWire {
+    intents: BTreeMap<String, ProviderEffectIntent>,
+    acknowledgements: BTreeMap<String, Vec<ProviderEffectAck>>,
+    #[serde(default)]
+    ack_sources: Option<BTreeMap<String, Vec<ProviderEffectAckSource>>>,
+    #[serde(default)]
+    uncertainties: BTreeMap<String, Vec<ProviderEffectUncertainty>>,
+    #[serde(default)]
+    quarantined: BTreeMap<String, bool>,
+}
+
+impl<'de> Deserialize<'de> for ProviderEffectJournal {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = ProviderEffectJournalWire::deserialize(deserializer)?;
+        let ack_sources = wire.ack_sources.unwrap_or_default();
+        validate_ack_provenance_maps(&wire.acknowledgements, &ack_sources).map_err(|error| {
+            serde::de::Error::custom(format!("invalid ACK provenance: {error:?}"))
+        })?;
+        Ok(Self {
+            intents: wire.intents,
+            acknowledgements: wire.acknowledgements,
+            ack_sources,
+            uncertainties: wire.uncertainties,
+            quarantined: wire.quarantined,
+        })
+    }
+}
+
+fn validate_ack_provenance_maps(
+    acknowledgements: &BTreeMap<String, Vec<ProviderEffectAck>>,
+    ack_sources: &BTreeMap<String, Vec<ProviderEffectAckSource>>,
+) -> Result<(), ProviderEffectBindingError> {
+    // Empty journals are backward-compatible: an older serialized journal
+    // had no source map because it had no ACK observations to explain.
+    if acknowledgements.values().all(Vec::is_empty) {
+        if ack_sources.is_empty() {
+            return Ok(());
+        }
+        return Err(ProviderEffectBindingError::AckConflict);
+    }
+
+    if acknowledgements.len() != ack_sources.len() {
+        return Err(ProviderEffectBindingError::AckConflict);
+    }
+    for (key, acknowledgements) in acknowledgements {
+        if acknowledgements.is_empty() {
+            return Err(ProviderEffectBindingError::AckConflict);
+        }
+        let Some(sources) = ack_sources.get(key) else {
+            return Err(ProviderEffectBindingError::AckConflict);
+        };
+        if sources.len() != acknowledgements.len() {
+            return Err(ProviderEffectBindingError::AckConflict);
+        }
+    }
+    if ack_sources
+        .keys()
+        .any(|key| !acknowledgements.contains_key(key))
+    {
+        return Err(ProviderEffectBindingError::AckConflict);
+    }
+    Ok(())
+}
+
 impl ProviderEffectJournal {
+    /// Verifies that every durable ACK observation has a one-to-one local
+    /// provenance entry.  This is intentionally separate from provider ACK
+    /// payload validation: source is process-local evidence, not provider
+    /// data, and must never be inferred from an old journal.
+    pub fn validate(&self) -> Result<(), ProviderEffectBindingError> {
+        validate_ack_provenance_maps(&self.acknowledgements, &self.ack_sources)
+    }
+
     pub fn record_intent(
         &mut self,
         intent: ProviderEffectIntent,
     ) -> Result<ProviderEffectAppendDisposition, ProviderEffectBindingError> {
+        self.validate()?;
         intent.validate()?;
         let key = intent.key.as_str().to_string();
         if let Some(existing) = self.intents.get(&key) {
@@ -406,6 +490,7 @@ impl ProviderEffectJournal {
         ack: ProviderEffectAck,
         source: ProviderEffectAckSource,
     ) -> Result<ProviderEffectAppendDisposition, ProviderEffectBindingError> {
+        self.validate()?;
         let key = ack.key.as_str().to_string();
         let intent = self
             .intents
@@ -452,6 +537,7 @@ impl ProviderEffectJournal {
         key: &ProviderEffectKey,
         reason_code: impl Into<String>,
     ) -> Result<ProviderEffectAppendDisposition, ProviderEffectBindingError> {
+        self.validate()?;
         let reason_code = reason_code.into();
         validate_reason_code(&reason_code)?;
         let intent = self
@@ -483,6 +569,12 @@ impl ProviderEffectJournal {
     }
 
     pub fn state(&self, key: &ProviderEffectKey) -> Option<ProviderEffectState> {
+        if self.validate().is_err() {
+            // The API predates fallible state reads.  Preserve that API while
+            // making malformed provenance fail closed rather than exposing a
+            // terminal-looking ACK.
+            return Some(ProviderEffectState::Indeterminate);
+        }
         let intent = self.intents.get(key.as_str())?;
         if self.quarantined.get(key.as_str()).copied().unwrap_or(false) {
             return Some(ProviderEffectState::Indeterminate);
@@ -501,12 +593,18 @@ impl ProviderEffectJournal {
     }
 
     pub fn acknowledgements(&self, key: &ProviderEffectKey) -> &[ProviderEffectAck] {
+        if self.validate().is_err() {
+            return &[];
+        }
         self.acknowledgements
             .get(key.as_str())
             .map_or(&[], Vec::as_slice)
     }
 
     pub fn acknowledgement_sources(&self, key: &ProviderEffectKey) -> &[ProviderEffectAckSource] {
+        if self.validate().is_err() {
+            return &[];
+        }
         self.ack_sources
             .get(key.as_str())
             .map_or(&[], Vec::as_slice)
@@ -524,6 +622,7 @@ impl ProviderEffectJournal {
         key: &ProviderEffectKey,
         lookup: ProviderEffectLookup,
     ) -> Result<ProviderEffectState, ProviderEffectBindingError> {
+        self.validate()?;
         let intent = self
             .intents
             .get(key.as_str())
@@ -737,6 +836,7 @@ where
         &mut self,
         intent: ProviderEffectIntent,
     ) -> Result<ProviderEffectDispatchReceipt, ProviderEffectCoordinatorError> {
+        self.journal.validate()?;
         let key = intent.key.clone();
         self.journal.record_intent(intent.clone())?;
         let current = self
@@ -797,6 +897,7 @@ where
         &mut self,
         key: &ProviderEffectKey,
     ) -> Result<ProviderEffectState, ProviderEffectCoordinatorError> {
+        self.journal.validate()?;
         if let Some(state) = self.journal.state(key)
             && state.is_terminal()
         {
@@ -1228,6 +1329,114 @@ mod tests {
             serde_json::from_slice(&encoded).expect("deserialize journal");
         assert_eq!(decoded.state(&key), Some(ProviderEffectState::Completed));
         assert_eq!(decoded, journal);
+    }
+
+    #[test]
+    fn journal_without_ack_sources_remains_compatible_when_empty() {
+        let journal = ProviderEffectJournal::default();
+        let mut encoded = serde_json::to_value(&journal).expect("serialize empty journal");
+        encoded
+            .as_object_mut()
+            .expect("journal object")
+            .remove("ack_sources");
+        let decoded: ProviderEffectJournal =
+            serde_json::from_value(encoded).expect("empty legacy journal remains readable");
+        assert_eq!(decoded, journal);
+    }
+
+    #[test]
+    fn journal_with_ack_requires_exact_ack_source_provenance() {
+        let intent = intent(b"legacy-ack-payload");
+        let key = intent.key.clone();
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent.clone()).expect("intent");
+        journal
+            .record_ack(ack(&intent, b"legacy-ack-payload"))
+            .expect("ACK");
+
+        let encoded = serde_json::to_value(&journal).expect("serialize journal");
+        let mut missing_sources = encoded.clone();
+        missing_sources
+            .as_object_mut()
+            .expect("journal object")
+            .remove("ack_sources");
+        assert!(serde_json::from_value::<ProviderEffectJournal>(missing_sources).is_err());
+
+        let mut misaligned_sources = encoded;
+        misaligned_sources
+            .get_mut("ack_sources")
+            .and_then(|sources| sources.get_mut(key.as_str()))
+            .and_then(serde_json::Value::as_array_mut)
+            .expect("source vector")
+            .clear();
+        assert!(serde_json::from_value::<ProviderEffectJournal>(misaligned_sources).is_err());
+
+        let mut unknown_source = serde_json::to_value(&journal).expect("serialize journal");
+        *unknown_source
+            .get_mut("ack_sources")
+            .and_then(|sources| sources.get_mut(key.as_str()))
+            .and_then(serde_json::Value::as_array_mut)
+            .and_then(|sources| sources.first_mut())
+            .expect("source vector entry") = serde_json::Value::String("forged_source".into());
+        assert!(serde_json::from_value::<ProviderEffectJournal>(unknown_source).is_err());
+    }
+
+    #[test]
+    fn malformed_in_memory_ack_provenance_fails_closed_before_state_or_record() {
+        let intent = intent(b"in-memory-provenance-payload");
+        let key = intent.key.clone();
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent.clone()).expect("intent");
+        journal
+            .record_ack(ack(&intent, b"in-memory-provenance-payload"))
+            .expect("ACK");
+        journal
+            .ack_sources
+            .get_mut(key.as_str())
+            .expect("source vector")
+            .clear();
+
+        assert_eq!(
+            journal.state(&key),
+            Some(ProviderEffectState::Indeterminate)
+        );
+        assert_eq!(journal.acknowledgements(&key), &[]);
+        assert_eq!(
+            journal.record_intent(intent),
+            Err(ProviderEffectBindingError::AckConflict)
+        );
+    }
+
+    #[tokio::test]
+    async fn coordinator_rejects_malformed_ack_provenance_before_adapter_call() {
+        let intent = intent(b"coordinator-provenance-payload");
+        let key = intent.key.clone();
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent.clone()).expect("intent");
+        journal
+            .record_ack(ack(&intent, b"coordinator-provenance-payload"))
+            .expect("ACK");
+        journal
+            .ack_sources
+            .get_mut(key.as_str())
+            .expect("source vector")
+            .clear();
+
+        let mut coordinator =
+            ProviderEffectCoordinator::with_journal(ScriptedAdapter::default(), journal);
+        assert_eq!(
+            coordinator.dispatch_once(intent).await,
+            Err(ProviderEffectCoordinatorError::Binding(
+                ProviderEffectBindingError::AckConflict
+            ))
+        );
+        assert_eq!(
+            coordinator
+                .adapter()
+                .dispatches
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
     }
 
     #[derive(Default)]
