@@ -152,6 +152,71 @@ pub(crate) enum StartReservationRelease {
     Stale,
 }
 
+/// Owns a caller-owned start reservation across the asynchronous preparation
+/// preamble.  The reservation must not outlive the future that installed it:
+/// cancellation can happen at any of the awaits before `start_task_owned`
+/// promotes it to a host-owned transition.  Normal callers disarm this guard
+/// after the owned start outcome is known; `Drop` supplies the cancellation
+/// path and uses the same identity CAS as explicit cleanup.
+pub(crate) struct StartReservationOwner {
+    session: Arc<Session>,
+    handle: Option<StartReservationHandle>,
+    runtime_handle: Option<tokio::runtime::Handle>,
+}
+
+impl StartReservationOwner {
+    pub(crate) fn new(session: &Arc<Session>, handle: StartReservationHandle) -> Self {
+        Self {
+            session: Arc::clone(session),
+            handle: Some(handle),
+            runtime_handle: tokio::runtime::Handle::try_current().ok(),
+        }
+    }
+
+    pub(crate) fn handle(&self) -> &StartReservationHandle {
+        self.handle
+            .as_ref()
+            .expect("start reservation owner remains armed until completion")
+    }
+
+    pub(crate) fn disarm(&mut self) {
+        self.handle = None;
+    }
+}
+
+impl Drop for StartReservationOwner {
+    fn drop(&mut self) {
+        let Some(handle) = self.handle.take() else {
+            return;
+        };
+        let session = Arc::clone(&self.session);
+        let Some(runtime_handle) = self.runtime_handle.take() else {
+            let release = match session.active_turn.try_lock() {
+                Ok(mut active) => {
+                    Session::release_start_reservation_if_current_locked(&mut active, &handle)
+                }
+                Err(_) => {
+                    warn!(
+                        turn_id = %handle.turn_id,
+                        "caller-owned start reservation dropped outside a Tokio runtime while active state was busy"
+                    );
+                    return;
+                }
+            };
+            if !matches!(release, StartReservationRelease::Stale) {
+                session.settle_consumed_recovery_status();
+            }
+            return;
+        };
+        runtime_handle.spawn(async move {
+            let release = session.release_start_reservation_if_current(&handle).await;
+            if !matches!(release, StartReservationRelease::Stale) {
+                session.settle_consumed_recovery_status();
+            }
+        });
+    }
+}
+
 /// Result of handing a materialized turn context to the host start state
 /// machine.  Owned callers use this to avoid reporting `Started` after a
 /// caller reservation was fenced by an abort or replacement; legacy direct
@@ -815,6 +880,7 @@ impl Session {
                 .reserve_start(turn_context.sub_id.clone())
                 .expect("idle slot should accept one start reservation")
         };
+        let mut start_reservation_owner = StartReservationOwner::new(self, start_reservation);
         self.clear_connector_selection().await;
         let start_outcome = self
             .start_task_owned(
@@ -822,11 +888,14 @@ impl Session {
                 input,
                 task,
                 MailboxParentProvenance::Ignore,
-                start_reservation,
+                start_reservation_owner.handle().clone(),
             )
             .await;
         match start_outcome {
-            StartTaskOutcome::Attached | StartTaskOutcome::Aborted => Ok(()),
+            StartTaskOutcome::Attached | StartTaskOutcome::Aborted => {
+                start_reservation_owner.disarm();
+                Ok(())
+            }
             StartTaskOutcome::Stale => Err(CodexErr::InvalidRequest(
                 "start reservation became stale before task attachment".to_string(),
             )),
@@ -1317,17 +1386,22 @@ impl Session {
                 .expect("idle slot should accept one start reservation")
         };
 
+        let mut start_reservation_owner = StartReservationOwner::new(self, start_reservation);
         let turn_context = self.new_default_turn_with_sub_id(sub_id).await;
         self.maybe_emit_model_warnings_for_turn(turn_context.as_ref())
             .await;
-        self.start_task_owned(
-            turn_context,
-            Vec::new(),
-            RegularTask::new(TurnRunOrigin::NewTurn),
-            MailboxParentProvenance::Attribute,
-            start_reservation,
-        )
-        .await;
+        let start_outcome = self
+            .start_task_owned(
+                turn_context,
+                Vec::new(),
+                RegularTask::new(TurnRunOrigin::NewTurn),
+                MailboxParentProvenance::Attribute,
+                start_reservation_owner.handle().clone(),
+            )
+            .await;
+        if start_outcome != StartTaskOutcome::Stale {
+            start_reservation_owner.disarm();
+        }
     }
 
     pub async fn abort_all_tasks(self: &Arc<Self>, reason: TurnAbortReason) {
@@ -2079,6 +2153,13 @@ impl Session {
         handle: &StartReservationHandle,
     ) -> StartReservationRelease {
         let mut active = self.active_turn.lock().await;
+        Self::release_start_reservation_if_current_locked(&mut active, handle)
+    }
+
+    fn release_start_reservation_if_current_locked(
+        active: &mut Option<ActiveTurn>,
+        handle: &StartReservationHandle,
+    ) -> StartReservationRelease {
         let Some(active_turn) = active.as_mut() else {
             return StartReservationRelease::Stale;
         };

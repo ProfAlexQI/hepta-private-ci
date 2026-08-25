@@ -1005,6 +1005,62 @@ async fn abort_during_spawn_reservation_preamble_is_fenced_before_start_task() {
     assert!(session.active_turn.lock().await.is_none());
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelled_spawn_reservation_owner_releases_before_context() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    // Hold the state lock so `spawn_task` is parked in its pre-context
+    // preamble after installing the caller-owned reservation.  Cancelling
+    // that owner must not leave the session permanently busy.
+    let state_guard = session.state.lock().await;
+    let start = tokio::spawn({
+        let session = Arc::clone(&session);
+        let turn_context = Arc::clone(&turn_context);
+        async move {
+            let _ = session
+                .spawn_task(turn_context, Vec::new(), CompletingTask)
+                .await;
+        }
+    });
+
+    timeout(Duration::from_secs(2), async {
+        loop {
+            if session
+                .active_turn
+                .lock()
+                .await
+                .as_ref()
+                .is_some_and(|active| {
+                    active.task.is_none()
+                        && active.start_reservation.is_some()
+                        && active.start_transition.is_none()
+                })
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("spawn preamble should install its start reservation");
+
+    start.abort();
+    start
+        .await
+        .expect_err("the owner future should be cancelled");
+    drop(state_guard);
+
+    timeout(Duration::from_secs(2), async {
+        loop {
+            if session.active_turn.lock().await.is_none() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("cancelling the owner should release its reservation");
+}
+
 #[tokio::test]
 async fn request_mcp_server_elicitation_auto_accepts_when_auto_deny_is_enabled() {
     let (session, turn_context, rx) = make_session_and_context_with_rx().await;

@@ -20,6 +20,7 @@ use crate::state::TurnState;
 use crate::tasks::MailboxParentProvenance;
 use crate::tasks::RecoveryHistoryTransition;
 use crate::tasks::RegularTask;
+use crate::tasks::StartReservationOwner;
 use crate::tasks::StartReservationRelease;
 use crate::tasks::StartTaskOutcome;
 use codex_features::Feature;
@@ -277,10 +278,16 @@ async fn start_or_steer(
                     .expect("idle slot should accept one start reservation");
                 start_reservation
             };
+            let mut start_reservation_owner =
+                StartReservationOwner::new(session, start_reservation);
             let turn_context = match settings.apply_started(session, submission_id.clone()).await {
                 Ok(turn_context) => turn_context,
                 Err(error) => {
-                    release_start_reservation_after_error(session, &start_reservation).await;
+                    release_start_reservation_after_error(
+                        session,
+                        start_reservation_owner.handle(),
+                    )
+                    .await;
                     return Err(error);
                 }
             };
@@ -316,9 +323,12 @@ async fn start_or_steer(
                     task_input,
                     RegularTask::new(TurnRunOrigin::NewTurn),
                     MailboxParentProvenance::Ignore,
-                    start_reservation,
+                    start_reservation_owner.handle().clone(),
                 )
                 .await;
+            if start_outcome != StartTaskOutcome::Stale {
+                start_reservation_owner.disarm();
+            }
             if start_outcome != StartTaskOutcome::Attached {
                 session
                     .pending_user_message_admissions
@@ -487,9 +497,10 @@ async fn start_if_idle(
             .expect("idle slot should accept one start reservation");
         (Arc::clone(&active_turn.turn_state), start_reservation)
     };
+    let mut start_reservation_owner = StartReservationOwner::new(session, start_reservation);
 
     if session.input_queue.has_trigger_turn_mailbox_items().await {
-        release_start_reservation_after_error(session, &start_reservation).await;
+        release_start_reservation_after_error(session, start_reservation_owner.handle()).await;
         session.maybe_start_turn_for_pending_work().await;
         return Ok(TurnInputSubmission::NotSubmitted {
             reason: NotSubmittedReason::PendingTriggerTurn,
@@ -499,14 +510,14 @@ async fn start_if_idle(
     let settings = match PreparedTurnInputSettings::prepare(session, thread_settings, start).await {
         Ok(settings) => settings,
         Err(error) => {
-            release_start_reservation_after_error(session, &start_reservation).await;
+            release_start_reservation_after_error(session, start_reservation_owner.handle()).await;
             return Err(error);
         }
     };
     // Automatic work must not use persistent settings to start a turn
     // whose effective collaboration mode is Plan.
     if is_automatic_idle_work && settings.would_enter_plan_mode() {
-        release_start_reservation_after_error(session, &start_reservation).await;
+        release_start_reservation_after_error(session, start_reservation_owner.handle()).await;
         return Ok(TurnInputSubmission::NotSubmitted {
             reason: NotSubmittedReason::PlanMode,
         });
@@ -515,7 +526,7 @@ async fn start_if_idle(
     let mut turn_context = match settings.apply_started(session, submission_id.clone()).await {
         Ok(turn_context) => turn_context,
         Err(error) => {
-            release_start_reservation_after_error(session, &start_reservation).await;
+            release_start_reservation_after_error(session, start_reservation_owner.handle()).await;
             return Err(error);
         }
     };
@@ -529,7 +540,7 @@ async fn start_if_idle(
             .as_ref()
             .expect("validated recovery context captured before candidate consumption");
         let Some(turn_context) = Arc::get_mut(&mut turn_context) else {
-            release_start_reservation_after_error(session, &start_reservation).await;
+            release_start_reservation_after_error(session, start_reservation_owner.handle()).await;
             return Err(CodexErr::Fatal(
                 "turn recovery context became shared before replay was applied".to_string(),
             ));
@@ -548,7 +559,7 @@ async fn start_if_idle(
                 .as_ref()
                 != Some(&replay.environments)
         {
-            release_start_reservation_after_error(session, &start_reservation).await;
+            release_start_reservation_after_error(session, start_reservation_owner.handle()).await;
             return Ok(TurnInputSubmission::NotSubmitted {
                 reason: NotSubmittedReason::RecoveryStateChanged,
             });
@@ -568,11 +579,11 @@ async fn start_if_idle(
             )
             .await
         {
-            release_start_reservation_after_error(session, &start_reservation).await;
+            release_start_reservation_after_error(session, start_reservation_owner.handle()).await;
             return Err(error);
         }
         let Some(history) = recovery_history_snapshot.take() else {
-            release_start_reservation_after_error(session, &start_reservation).await;
+            release_start_reservation_after_error(session, start_reservation_owner.handle()).await;
             return Err(CodexErr::Fatal(
                 "turn recovery history snapshot disappeared before installation".to_string(),
             ));
@@ -633,9 +644,12 @@ async fn start_if_idle(
             regular_task,
             MailboxParentProvenance::Ignore,
             recovery_history_transition,
-            start_reservation,
+            start_reservation_owner.handle().clone(),
         )
         .await;
+    if start_outcome != StartTaskOutcome::Stale {
+        start_reservation_owner.disarm();
+    }
     if start_outcome != StartTaskOutcome::Attached {
         if has_user_input && !is_recovery {
             session
