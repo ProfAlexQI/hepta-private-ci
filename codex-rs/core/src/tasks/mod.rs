@@ -183,7 +183,6 @@ pub(crate) enum StartReservationRelease {
 pub(crate) struct StartReservationOwner {
     session: Arc<Session>,
     handle: Option<StartReservationHandle>,
-    runtime_handle: Option<tokio::runtime::Handle>,
 }
 
 impl StartReservationOwner {
@@ -191,7 +190,6 @@ impl StartReservationOwner {
         Self {
             session: Arc::clone(session),
             handle: Some(handle),
-            runtime_handle: tokio::runtime::Handle::try_current().ok(),
         }
     }
 
@@ -212,17 +210,14 @@ impl Drop for StartReservationOwner {
             return;
         };
         let session = Arc::clone(&self.session);
-        // The owner can be constructed on a non-runtime thread and later be
-        // dropped from a runtime callback (or vice versa). Prefer the handle
-        // captured at construction, but rediscover a live runtime before
-        // falling back to a synchronous lock. This keeps the synchronous path
-        // strictly outside Tokio and avoids the old try_lock leak when the
-        // active slot was briefly held by another task.
-        let runtime_handle = self
-            .runtime_handle
-            .take()
-            .or_else(|| tokio::runtime::Handle::try_current().ok());
-        let Some(runtime_handle) = runtime_handle else {
+        // A construction-time runtime handle is not a liveness witness:
+        // Tokio silently shuts down a future submitted through a closed
+        // `OwnedTasks` list.  Only use the thread-local current runtime for
+        // the asynchronous path.  When Drop runs off-runtime (including
+        // after the construction runtime has shut down), perform the exact
+        // identity CAS synchronously; this reservation release has no async
+        // persistence or lifecycle ordering to preserve.
+        let Some(runtime_handle) = tokio::runtime::Handle::try_current().ok() else {
             let mut active = session.active_turn.blocking_lock();
             let release =
                 Session::release_start_reservation_if_current_locked(&mut active, &handle);

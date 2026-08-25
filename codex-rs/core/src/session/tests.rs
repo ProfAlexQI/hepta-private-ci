@@ -1325,6 +1325,48 @@ async fn non_runtime_reservation_drop_waits_for_busy_active_slot() {
     .expect("non-runtime reservation drop must release the slot");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stale_runtime_reservation_drop_releases_off_runtime() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    let start_reservation = {
+        let mut active = session.active_turn.lock().await;
+        active
+            .get_or_insert_with(ActiveTurn::default)
+            .reserve_start(turn_context.sub_id.clone())
+            .expect("idle slot should accept a reservation")
+    };
+
+    // Construct the owner inside a short-lived runtime, then destroy it on a
+    // plain thread after that runtime has shut down.  A captured Tokio handle
+    // is stale here; the off-runtime Drop path must use the exact synchronous
+    // CAS instead of submitting a future that Tokio silently discards.
+    let owner_session = Arc::clone(&session);
+    let owner_thread = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("owner runtime should build");
+        let owner = runtime
+            .block_on(async { StartReservationOwner::new(&owner_session, start_reservation) });
+        runtime.shutdown_background();
+        drop(owner);
+    });
+    tokio::task::spawn_blocking(move || owner_thread.join().expect("owner thread should exit"))
+        .await
+        .expect("owner join should complete");
+
+    timeout(Duration::from_secs(2), async {
+        loop {
+            if session.active_turn.lock().await.is_none() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("stale runtime handle must not strand the reservation");
+}
+
 #[tokio::test]
 async fn request_mcp_server_elicitation_auto_accepts_when_auto_deny_is_enabled() {
     let (session, turn_context, rx) = make_session_and_context_with_rx().await;
