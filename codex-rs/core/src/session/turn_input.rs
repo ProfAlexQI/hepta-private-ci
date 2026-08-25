@@ -872,6 +872,22 @@ impl Session {
             return Err(NotSubmittedReason::NoActiveTurn);
         };
 
+        // Establish the steer admission order against shutdown.  The active
+        // turn lock is taken first, matching start publication; the short
+        // gate makes `begin_shutdown` either win before this check (rejecting
+        // the input) or observe this steer as admitted before sealing.  Do
+        // not hold the synchronous gate across the async input/persistence
+        // work below.
+        {
+            let _admission_gate = self
+                .start_admission_gate
+                .lock()
+                .expect("start admission gate mutex poisoned");
+            if self.shutdown_started() {
+                return Err(NotSubmittedReason::NotIdle);
+            }
+        }
+
         if active_turn.task_terminalization.is_some() {
             return Err(NotSubmittedReason::NotIdle);
         }

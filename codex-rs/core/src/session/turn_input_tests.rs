@@ -386,6 +386,60 @@ async fn start_only_rejects_active_turn_without_injecting() {
 }
 
 #[tokio::test]
+async fn steer_rejects_after_shutdown_without_injecting() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    session
+        .spawn_task(
+            Arc::clone(&turn_context),
+            Vec::new(),
+            NeverEndingTask {
+                kind: TaskKind::Regular,
+                listen_to_cancellation_token: true,
+            },
+        )
+        .await
+        .expect("active task should start");
+
+    session.begin_shutdown();
+    let steer_input = vec![UserInput::Text {
+        text: "shutdown steer".to_string(),
+        text_elements: Vec::new(),
+    }];
+    let steer_submission =
+        submit_steer_only(&session, steer_input.clone(), &turn_context.sub_id).await;
+    assert_eq!(
+        TurnInputSubmission::NotSubmitted {
+            reason: NotSubmittedReason::NotIdle,
+        },
+        steer_submission
+    );
+
+    let start_or_steer_submission = handle(
+        &session,
+        TurnInputRequest::user_input(steer_input),
+        TurnInputMode::StartOrSteer,
+        "shutdown-steer-submission".to_string(),
+    )
+    .await
+    .expect("start-or-steer submission should be valid");
+    assert_eq!(
+        TurnInputSubmission::NotSubmitted {
+            reason: NotSubmittedReason::NotIdle,
+        },
+        start_or_steer_submission
+    );
+    assert_eq!(
+        (Vec::<TurnInput>::new(), None, None),
+        session
+            .input_queue
+            .get_pending_input(&session.active_turn)
+            .await
+    );
+
+    session.abort_all_tasks(TurnAbortReason::Interrupted).await;
+}
+
+#[tokio::test]
 async fn recovery_rejects_active_turn_without_injecting_or_applying_settings() {
     let (session, turn_context, _rx) = make_turn_recovery_session_and_context_with_rx().await;
     let original_approval_policy = session
