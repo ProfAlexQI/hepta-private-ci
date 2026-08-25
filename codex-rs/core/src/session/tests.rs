@@ -13353,6 +13353,129 @@ async fn cancelled_abort_owner_keeps_terminalizer_alive() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stale_runtime_abort_after_claim_take_retains_fail_closed_fence() {
+    struct StaleAbortTask {
+        entered: async_channel::Sender<()>,
+        release: Arc<Notify>,
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl SessionTask for StaleAbortTask {
+        fn kind(&self) -> TaskKind {
+            TaskKind::Regular
+        }
+
+        fn span_name(&self) -> &'static str {
+            "session_task.stale_runtime_abort"
+        }
+
+        async fn run(
+            self: Arc<Self>,
+            _session: Arc<Session>,
+            _ctx: Arc<TurnContext>,
+            _input: Vec<TurnInput>,
+            _cancellation_token: CancellationToken,
+        ) -> SessionTaskResult {
+            std::future::pending().await
+        }
+
+        async fn abort(&self, _session: Arc<Session>, _ctx: Arc<TurnContext>) {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.entered
+                .send(())
+                .await
+                .expect("stale-runtime abort receiver should remain open");
+            self.release.notified().await;
+        }
+    }
+
+    let (session_tx, session_rx) = std::sync::mpsc::sync_channel(1);
+    let (entered_tx, entered_rx) = async_channel::bounded(1);
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let calls_for_task = Arc::clone(&calls);
+    let owner_thread = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("owner runtime should build");
+        let session = runtime.block_on(async move {
+            let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+            session
+                .spawn_task(
+                    Arc::clone(&turn_context),
+                    Vec::new(),
+                    StaleAbortTask {
+                        entered: entered_tx,
+                        release: Arc::new(Notify::new()),
+                        calls: calls_for_task,
+                    },
+                )
+                .await
+                .expect("stale-runtime abort task should start");
+
+            // Invoke the public owner on Runtime A. Cancelling this caller
+            // future drops only its await handle; the nested terminalizer is
+            // then exposed to the runtime teardown after claim+take.
+            let owner = tokio::spawn({
+                let session = Arc::clone(&session);
+                async move {
+                    session.abort_all_tasks(TurnAbortReason::Replaced).await;
+                }
+            });
+            timeout(StdDuration::from_secs(2), entered_rx.recv())
+                .await
+                .expect("abort owner should reach the task hook")
+                .expect("abort entered channel should remain open");
+
+            // The hook is deliberately awaiting a release that never arrives.
+            // Cancelling the owner and shutting down its runtime leaves the
+            // typed marker and registry completion as the only safe evidence.
+            owner.abort();
+            let _ = owner.await;
+            session
+        });
+        runtime.shutdown_background();
+        session_tx
+            .send(session)
+            .expect("session handoff should remain open");
+    });
+
+    let session = tokio::task::spawn_blocking(move || {
+        session_rx
+            .recv_timeout(StdDuration::from_secs(5))
+            .expect("owner runtime should hand back the fenced session")
+    })
+    .await
+    .expect("session handoff task should join");
+    tokio::task::spawn_blocking(move || owner_thread.join().expect("owner thread should exit"))
+        .await
+        .expect("owner thread join should complete");
+
+    assert_eq!(
+        calls.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "runtime teardown must not replay the task-specific abort side effect"
+    );
+    assert!(session.has_pending_task_terminalization());
+    assert!(
+        timeout(
+            StdDuration::from_millis(100),
+            session.drain_task_terminalizations_for_shutdown_except(None),
+        )
+        .await
+        .is_err(),
+        "an abandoned owner must leave shutdown fail-closed"
+    );
+    let active = session.active_turn.lock().await;
+    assert!(
+        active.as_ref().is_some_and(|active_turn| {
+            active_turn.task.is_none() && active_turn.task_terminalization.is_some()
+        }),
+        "claim+take teardown must retain the typed active-turn fence"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn panicking_abort_terminalizer_retains_fence() {
     let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
     session
