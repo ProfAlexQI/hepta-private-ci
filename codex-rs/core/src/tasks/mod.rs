@@ -2277,6 +2277,16 @@ impl Session {
     /// teardown fail-closed instead of publishing thread-stop out of order.
     pub(crate) async fn drain_start_transition_for_shutdown(self: &Arc<Self>) {
         loop {
+            // Start-transition publication is serialized by the active-turn
+            // lock: start_task_with_options checks shutdown and installs the
+            // marker, cleanup cell, and registry entry before releasing it.
+            // Acquire/release that same lock before taking the registry
+            // snapshot so a concurrent shutdown cannot observe an empty
+            // registry in the check-to-register window.  begin_shutdown must
+            // remain lock-free because suspension can call it while holding
+            // the active-turn lock.
+            let active = self.active_turn.lock().await;
+            drop(active);
             // A detached owner may have been dropped after its construction
             // runtime closed, or its first spawn may have been accepted by a
             // scheduler that was already shutting down.  In both cases the

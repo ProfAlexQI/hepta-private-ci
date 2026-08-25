@@ -1581,6 +1581,36 @@ async fn queued_start_transition_cleanup_not_polled_before_runtime_shutdown_reta
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shutdown_transition_drain_serializes_with_start_publication() {
+    let (session, _turn_context, _rx) = make_session_and_context_with_rx().await;
+
+    // A start transition publishes its marker, cleanup cell, and registry
+    // entry while holding active_turn.  Keep that publication critical
+    // section occupied while shutdown begins; the drain must not take an
+    // empty registry snapshot and return before the publisher has resolved
+    // the shutdown check.
+    let active = session.active_turn.lock().await;
+    session.begin_shutdown();
+    let mut drain = tokio::spawn({
+        let session = Arc::clone(&session);
+        async move { session.drain_start_transition_for_shutdown().await }
+    });
+
+    assert!(
+        timeout(StdDuration::from_millis(100), &mut drain)
+            .await
+            .is_err(),
+        "shutdown drain must wait for the start-publication barrier"
+    );
+
+    drop(active);
+    timeout(StdDuration::from_secs(2), &mut drain)
+        .await
+        .expect("shutdown drain should finish after the publication lock is released")
+        .expect("shutdown drain task should not panic");
+}
+
 fn cleanup_slot_is_populated(session: &Arc<Session>) -> bool {
     session
         .pending_start_transition_completions
