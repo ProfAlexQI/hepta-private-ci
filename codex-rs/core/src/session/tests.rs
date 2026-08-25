@@ -1728,6 +1728,141 @@ async fn queued_start_transition_cleanup_not_polled_before_runtime_shutdown_reta
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelled_start_transition_terminalizer_retains_failed_closed_witness() {
+    struct BlockingAbortProbe {
+        entered: Arc<Notify>,
+        release: Arc<Notify>,
+        aborts: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl SessionTask for BlockingAbortProbe {
+        fn kind(&self) -> TaskKind {
+            TaskKind::Regular
+        }
+
+        fn span_name(&self) -> &'static str {
+            "session_task.blocking_start_transition_abort_probe"
+        }
+
+        async fn run(
+            self: Arc<Self>,
+            _session: Arc<Session>,
+            _ctx: Arc<TurnContext>,
+            _input: Vec<TurnInput>,
+            _cancellation_token: CancellationToken,
+        ) -> SessionTaskResult {
+            panic!("blocking start-transition abort probe must not run");
+        }
+
+        async fn abort(&self, _session: Arc<Session>, _ctx: Arc<TurnContext>) {
+            self.aborts
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.entered.notify_one();
+            self.release.notified().await;
+        }
+    }
+
+    let (session, turn_context, rx) = make_session_and_context_with_rx().await;
+    let transition_identity = Arc::new(());
+    let (turn_state, completion) = {
+        let mut active = ActiveTurn::default();
+        let turn_state = Arc::clone(&active.turn_state);
+        let transition = StartTransition::new(
+            turn_context.sub_id.clone(),
+            Arc::clone(&transition_identity),
+        );
+        let completion = Arc::clone(&transition.completion);
+        active.start_transition = Some(transition);
+        *session.active_turn.lock().await = Some(active);
+        (turn_state, completion)
+    };
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let aborts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let cleanup_slot = Arc::new(std::sync::Mutex::new(Some(StartTransitionCleanup::new(
+        &session,
+        Arc::new(BlockingAbortProbe {
+            entered: Arc::clone(&entered),
+            release: Arc::clone(&release),
+            aborts: Arc::clone(&aborts),
+        }),
+        Arc::clone(&turn_context),
+        turn_state,
+        Arc::clone(&transition_identity),
+        Arc::clone(&completion),
+        None,
+    ))));
+    session
+        .pending_start_transition_completions
+        .lock()
+        .expect("start transition registry mutex should be healthy")
+        .push((
+            transition_identity,
+            Arc::clone(&completion),
+            Arc::clone(&cleanup_slot),
+        ));
+
+    // Run the detached terminalizer far enough to enter the task abort
+    // callback, then cancel that exact JoinHandle.  This is the dangerous
+    // window: the callback may already have observable side effects, so the
+    // witness must be retained as failed-closed rather than replayed.
+    let mut owner = StartTransitionOwner::new(Arc::clone(&cleanup_slot));
+    let terminalizer = owner
+        .spawn_cleanup_for_test(TurnAbortReason::Interrupted)
+        .expect("live runtime should accept detached cleanup");
+    drop(owner);
+    timeout(StdDuration::from_secs(2), entered.notified())
+        .await
+        .expect("terminalizer should reach the abort side effect");
+    terminalizer.abort();
+    terminalizer
+        .await
+        .expect_err("cancelling the detached terminalizer should be observable");
+    release.notify_waiters();
+
+    assert_eq!(aborts.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(
+        cleanup_slot_is_populated(&session),
+        "cancelled terminalizer must return its failed-closed witness"
+    );
+    assert!(
+        timeout(Duration::from_millis(100), completion.wait())
+            .await
+            .is_err(),
+        "cancelled terminalizer must not signal the completion fence"
+    );
+    assert!(
+        session.active_turn.lock().await.is_some(),
+        "cancelled terminalizer must leave the active transition fenced"
+    );
+
+    // Shutdown may inspect the retained witness, but it must not replay the
+    // non-idempotent abort callback or clear the unresolved fence.
+    session.begin_shutdown();
+    let mut drain = tokio::spawn({
+        let session = Arc::clone(&session);
+        async move { session.drain_start_transition_for_shutdown().await }
+    });
+    assert!(
+        timeout(StdDuration::from_millis(100), &mut drain)
+            .await
+            .is_err(),
+        "failed-closed witness must keep shutdown drain fenced"
+    );
+    drain.abort();
+    let _ = drain.await;
+    assert_eq!(aborts.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    let turn_aborted_events = std::iter::from_fn(|| rx.try_recv().ok())
+        .filter(|event| matches!(event.msg, EventMsg::TurnAborted(_)))
+        .count();
+    assert!(
+        turn_aborted_events <= 1,
+        "cancelled terminalizer must not duplicate TurnAborted"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shutdown_transition_drain_serializes_with_start_publication() {
     let (session, _turn_context, _rx) = make_session_and_context_with_rx().await;
 

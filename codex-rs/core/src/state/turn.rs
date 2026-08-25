@@ -88,6 +88,10 @@ impl StartTransitionCompletion {
         self.notify.notify_waiters();
     }
 
+    pub(crate) fn is_complete(&self) -> bool {
+        self.done.load(std::sync::atomic::Ordering::Acquire)
+    }
+
     pub(crate) async fn wait(&self) {
         while !self.done.load(std::sync::atomic::Ordering::Acquire) {
             // Register the waiter before the second state check. Without

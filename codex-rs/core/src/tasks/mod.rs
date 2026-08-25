@@ -286,6 +286,11 @@ pub(crate) struct StartTransitionCleanup {
     transition_identity: Arc<()>,
     completion: Arc<StartTransitionCompletion>,
     recovery_history_restore: Option<ContextManager>,
+    /// Set once the detached terminalizer has crossed into the non-idempotent
+    /// abort path.  A witness with this bit set is never retried: shutdown
+    /// keeps it in the registry so the unresolved completion fence remains
+    /// fail-closed rather than replaying lifecycle/durable side effects.
+    failed_closed: bool,
 }
 
 pub(crate) type StartTransitionCleanupSlot = Arc<std::sync::Mutex<Option<StartTransitionCleanup>>>;
@@ -308,6 +313,83 @@ impl StartTransitionCleanup {
             transition_identity,
             completion,
             recovery_history_restore,
+            failed_closed: false,
+        }
+    }
+}
+
+/// Owns one cleanup witness while the detached terminalizer is running.
+///
+/// The registry cell is the durable handoff point.  If Tokio cancels or
+/// unwinds the terminalizer before it begins side effects, this guard returns
+/// the witness to the cell for a later shutdown retry.  Once the abort path
+/// has crossed its first non-idempotent await, the guard returns a
+/// `failed_closed` witness instead; no caller may replay that path or clear
+/// the completion fence speculatively.
+struct StartTransitionCleanupOwner {
+    slot: StartTransitionCleanupSlot,
+    cleanup: Option<StartTransitionCleanup>,
+    side_effects_started: bool,
+}
+
+impl StartTransitionCleanupOwner {
+    fn new(slot: StartTransitionCleanupSlot, cleanup: StartTransitionCleanup) -> Self {
+        Self {
+            slot,
+            cleanup: Some(cleanup),
+            side_effects_started: false,
+        }
+    }
+
+    fn cleanup(&self) -> &StartTransitionCleanup {
+        self.cleanup
+            .as_ref()
+            .expect("start transition cleanup owner must retain its witness")
+    }
+
+    fn mark_side_effects_started(&mut self) {
+        self.side_effects_started = true;
+    }
+
+    /// Normal completion has already retired the exact completion fence in
+    /// `abort_dropped_start_transition`; dropping the witness here must not
+    /// put it back in the registry.
+    fn disarm(&mut self) {
+        self.cleanup.take();
+    }
+
+    fn is_complete(&self) -> bool {
+        self.cleanup
+            .as_ref()
+            .is_some_and(|cleanup| cleanup.completion.is_complete())
+    }
+}
+
+impl Drop for StartTransitionCleanupOwner {
+    fn drop(&mut self) {
+        let Some(mut cleanup) = self.cleanup.take() else {
+            return;
+        };
+        // A terminalizer may have completed the exact fence and then been
+        // cancelled while doing a post-completion mailbox wake.  Do not
+        // resurrect an already-retired witness in that case.
+        if cleanup.completion.is_complete() {
+            return;
+        }
+        if self.side_effects_started {
+            cleanup.failed_closed = true;
+        }
+        let mut slot = self
+            .slot
+            .lock()
+            .expect("start transition cleanup slot mutex poisoned");
+        if slot.is_none() {
+            *slot = Some(cleanup);
+        } else {
+            // A concurrent shutdown drain or owner can only safely win the
+            // cell once.  Keep the already-published witness and leave the
+            // completion fence authoritative rather than overwriting it.
+            warn!("start transition cleanup witness already reclaimed during owner drop");
         }
     }
 }
@@ -371,19 +453,43 @@ impl StartTransitionOwner {
             else {
                 return;
             };
+            if cleanup.failed_closed {
+                // A shutdown drain may have re-published a witness whose
+                // detached owner was already cancelled after side effects
+                // began.  Do not let a late scheduler poll replay it.
+                cleanup_slot
+                    .lock()
+                    .expect("start transition cleanup slot mutex poisoned")
+                    .replace(cleanup);
+                return;
+            }
             let turn_id = cleanup.turn_context.sub_id.clone();
             let session = Arc::clone(&cleanup.session);
+            let mut cleanup_owner =
+                StartTransitionCleanupOwner::new(Arc::clone(&cleanup_slot), cleanup);
             let result =
-                AssertUnwindSafe(session.abort_dropped_start_transition(cleanup, fallback_reason))
-                    .catch_unwind()
-                    .await;
+                AssertUnwindSafe(
+                    session.abort_dropped_start_transition(&mut cleanup_owner, fallback_reason),
+                )
+                .catch_unwind()
+                .await;
             if result.is_err() {
                 warn!(
                     %turn_id,
                     "start-transition terminalizer panicked; retaining its completion fence"
                 );
+            } else if cleanup_owner.is_complete() {
+                cleanup_owner.disarm();
             }
         }))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn spawn_cleanup_for_test(
+        &mut self,
+        fallback_reason: TurnAbortReason,
+    ) -> Option<tokio::task::JoinHandle<()>> {
+        self.spawn_cleanup(fallback_reason)
     }
 
     /// Mark a successfully attached or already-stale transition as complete.
@@ -2475,9 +2581,27 @@ impl Session {
                 else {
                     continue;
                 };
+                if cleanup.failed_closed {
+                    // The detached owner crossed into non-idempotent abort
+                    // work before it was cancelled.  Replaying the witness
+                    // could duplicate lifecycle/durable effects, while
+                    // clearing the fence would publish teardown out of
+                    // order.  Keep it registered and fail closed.
+                    cleanup_slot
+                        .lock()
+                        .expect("start transition cleanup slot mutex poisoned")
+                        .replace(cleanup);
+                    continue;
+                }
                 let turn_id = cleanup.turn_context.sub_id.clone();
+                let session = Arc::clone(self);
+                let mut cleanup_owner =
+                    StartTransitionCleanupOwner::new(Arc::clone(&cleanup_slot), cleanup);
                 let result = AssertUnwindSafe(
-                    self.abort_dropped_start_transition(cleanup, TurnAbortReason::Interrupted),
+                    session.abort_dropped_start_transition(
+                        &mut cleanup_owner,
+                        TurnAbortReason::Interrupted,
+                    ),
                 )
                 .catch_unwind()
                 .await;
@@ -2486,6 +2610,8 @@ impl Session {
                         %turn_id,
                         "shutdown start-transition terminalizer panicked; retaining its completion fence"
                     );
+                } else if cleanup_owner.is_complete() {
+                    cleanup_owner.disarm();
                 }
             }
             let completions = self.pending_start_transition_completions();
@@ -3353,12 +3479,19 @@ impl Session {
     /// stronger reason; otherwise cancellation is represented as Interrupted.
     async fn abort_dropped_start_transition(
         self: &Arc<Self>,
-        cleanup: StartTransitionCleanup,
+        cleanup_owner: &mut StartTransitionCleanupOwner,
         fallback_reason: TurnAbortReason,
     ) {
+        // Clone every witness field before the first await.  The owner guard
+        // must retain the original payload so cancellation can put it back in
+        // the registry cell without borrowing across an await.
+        let cleanup = cleanup_owner.cleanup();
         let completion = Arc::clone(&cleanup.completion);
         let turn_state = Arc::clone(&cleanup.turn_state);
         let transition_identity = Arc::clone(&cleanup.transition_identity);
+        let task = Arc::clone(&cleanup.task);
+        let turn_context = Arc::clone(&cleanup.turn_context);
+        let recovery_history_restore = cleanup.recovery_history_restore.clone();
         let reason = {
             let mut active = self.active_turn.lock().await;
             let Some(active_turn) = active.as_mut() else {
@@ -3368,12 +3501,12 @@ impl Session {
             if active_turn.task.is_some()
                 || active_turn.start_reservation.is_some()
                 || active_turn.task_terminalization.is_some()
-                || !Arc::ptr_eq(&active_turn.turn_state, &cleanup.turn_state)
+                || !Arc::ptr_eq(&active_turn.turn_state, &turn_state)
                 || !active_turn
                     .start_transition
                     .as_ref()
                     .is_some_and(|transition| {
-                        Arc::ptr_eq(&transition.identity, &cleanup.transition_identity)
+                        Arc::ptr_eq(&transition.identity, &transition_identity)
                     })
             {
                 self.finish_start_transition(&transition_identity, &completion);
@@ -3399,13 +3532,18 @@ impl Session {
                 .expect("dropped transition cleanup stores an abort reason")
         };
 
+        // `abort_unstarted_turn` performs durable/lifecycle writes and awaits
+        // several non-idempotent contributors.  Once entered, cancellation
+        // may only leave a failed-closed witness for shutdown; it must never
+        // replay the path or clear the completion fence speculatively.
+        cleanup_owner.mark_side_effects_started();
         let terminalized = self
             .abort_unstarted_turn(
-                cleanup.task,
-                cleanup.turn_context,
-                cleanup.turn_state,
-                cleanup.transition_identity,
-                cleanup.recovery_history_restore,
+                task,
+                turn_context,
+                Arc::clone(&turn_state),
+                Arc::clone(&transition_identity),
+                recovery_history_restore,
                 reason.clone(),
             )
             .await;
