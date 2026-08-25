@@ -554,6 +554,10 @@ impl Session {
     }
 
     pub(crate) fn begin_shutdown(&self) {
+        let _admission_gate = self
+            .start_admission_gate
+            .lock()
+            .expect("start admission gate mutex poisoned");
         self.shutdown_started.store(true, Ordering::Release);
     }
 
@@ -1606,6 +1610,10 @@ impl Session {
         let cleanup_slot;
         {
             let mut active = self.active_turn.lock().await;
+            let _admission_gate = self
+                .start_admission_gate
+                .lock()
+                .expect("start admission gate mutex poisoned");
             if self.shutdown_started()
                 || self.has_pending_admission_fence_except(terminalization_owner.as_ref())
             {
@@ -1866,35 +1874,62 @@ impl Session {
             start_transition_owner.disarm();
             return StartTaskOutcome::Stale;
         }
-        let Some(transition) = turn.start_transition.as_ref() else {
-            drop(active);
-            self.restore_recovery_history_if_current(
-                None,
-                &start_transition_identity,
-                &mut recovery_history_restore,
-            )
-            .await;
-            start_transition_owner.disarm();
-            return StartTaskOutcome::Stale;
-        };
-        if !Arc::ptr_eq(&transition.identity, &start_transition_identity) {
-            drop(active);
-            self.restore_recovery_history_if_current(
-                None,
-                &start_transition_identity,
-                &mut recovery_history_restore,
-            )
-            .await;
-            start_transition_owner.disarm();
-            return StartTaskOutcome::Stale;
+        {
+            let Some(transition) = turn.start_transition.as_ref() else {
+                drop(active);
+                self.restore_recovery_history_if_current(
+                    None,
+                    &start_transition_identity,
+                    &mut recovery_history_restore,
+                )
+                .await;
+                start_transition_owner.disarm();
+                return StartTaskOutcome::Stale;
+            };
+            if !Arc::ptr_eq(&transition.identity, &start_transition_identity) {
+                drop(active);
+                self.restore_recovery_history_if_current(
+                    None,
+                    &start_transition_identity,
+                    &mut recovery_history_restore,
+                )
+                .await;
+                start_transition_owner.disarm();
+                return StartTaskOutcome::Stale;
+            }
         }
-        if let Some(reason) = transition.abort_reason.clone() {
+
+        // Linearize the final attach against the shutdown seal.  The earlier
+        // identity checks only prove that this is still our transition; a
+        // concurrent `begin_shutdown` could otherwise set the atomic between
+        // that check and publication of `turn.task`.  Both sides use the
+        // short admission gate while the active-turn lock is held, so the
+        // resulting order is unambiguous: either shutdown wins and this
+        // transition is aborted, or this attach wins and shutdown observes a
+        // fully published running task.
+        let admission_gate = self
+            .start_admission_gate
+            .lock()
+            .expect("start admission gate mutex poisoned");
+        if self.shutdown_started()
+            && let Some(transition) = turn.start_transition.as_mut()
+            && transition.abort_reason.is_none()
+            && transition.request_abort(TurnAbortReason::Interrupted)
+        {
+            self.mark_interrupted();
+        }
+        let abort_reason = turn
+            .start_transition
+            .as_ref()
+            .and_then(|transition| transition.abort_reason.clone());
+        if let Some(reason) = abort_reason {
             // Keep the marker installed while terminalization awaits.  The
             // abort side records the reason but never emits lifecycle or
             // terminal events concurrently with an in-flight on_turn_start;
             // retaining the marker also prevents a concurrent reservation
             // clearer or replacement start from stealing this turn state.
             drop(active);
+            drop(admission_gate);
             if let Some(cleanup) = start_transition_owner.spawn_cleanup(reason) {
                 if let Err(error) = cleanup.await {
                     // A panic or runtime teardown in the detached path must
@@ -2019,6 +2054,7 @@ impl Session {
         };
         turn.task = Some(running_task);
         turn.start_transition = None;
+        drop(admission_gate);
         start_transition_owner.disarm();
         StartTaskOutcome::Attached
     }

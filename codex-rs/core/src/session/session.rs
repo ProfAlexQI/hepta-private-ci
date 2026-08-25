@@ -89,6 +89,11 @@ pub(crate) struct Session {
     /// admitted.  This prevents pending-mailbox wakeups from racing the
     /// shutdown completion drain.
     pub(crate) shutdown_started: AtomicBool,
+    /// Serializes the short start-publication/attach admission windows with
+    /// the shutdown seal.  Start paths take `active_turn` first and then this
+    /// gate; shutdown takes only this gate, so suspension may safely call
+    /// `begin_shutdown` while holding `active_turn`.
+    pub(crate) start_admission_gate: std::sync::Mutex<()>,
     /// Monotonically changes whenever a real task is attached to the active turn.
     pub(crate) turn_epoch: AtomicU64,
     /// Exact idle model turn that may be resumed at `epoch`.
@@ -1555,6 +1560,7 @@ impl Session {
                 pending_start_transition_completions: std::sync::Mutex::new(Vec::new()),
                 pending_task_terminalization_completions: std::sync::Mutex::new(Vec::new()),
                 shutdown_started: AtomicBool::new(false),
+                start_admission_gate: std::sync::Mutex::new(()),
                 turn_epoch: AtomicU64::new(0),
                 recovery_candidate: std::sync::Mutex::new(None),
                 rollout_persistence_failure_generation: AtomicU64::new(0),
