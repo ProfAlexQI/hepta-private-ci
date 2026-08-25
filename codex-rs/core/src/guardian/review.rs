@@ -284,14 +284,26 @@ async fn record_guardian_denial(session: &Arc<Session>, turn: &Arc<TurnContext>,
         )
         .await;
 
+    let Some(expected_turn_state) = session
+        .input_queue
+        .turn_state_for_sub_id(&session.active_turn, turn_id)
+        .await
+    else {
+        return;
+    };
+
     let runtime_handle = session.services.runtime_handle.clone();
     let session = Arc::clone(session);
     let turn_id = turn_id.to_string();
     let _abort_task = runtime_handle.spawn(async move {
-        let aborted = session
-            .abort_turn_if_active(&turn_id, TurnAbortReason::Interrupted)
+        let outcome = session
+            .abort_turn_if_active_for_guardian(
+                &turn_id,
+                &expected_turn_state,
+                TurnAbortReason::Interrupted,
+            )
             .await;
-        if aborted {
+        if matches!(outcome, crate::tasks::AbortTurnOutcome::Running) {
             // Guardian aborts bypass normal task completion, so emit its idle lifecycle here.
             // User interrupts deliberately do not take this path.
             session

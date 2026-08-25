@@ -127,7 +127,22 @@ struct DetachedTaskForAbort {
 
 enum ActiveTurnAbortTarget {
     Running(DetachedTaskForAbort),
+    Starting { deferred_idle: bool },
+}
+
+enum StartTransitionClearOutcome {
+    Stale,
+    Cleared {
+        deferred_idle_cause: Option<ThreadIdleCause>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AbortTurnOutcome {
+    NotActive,
+    Running,
     Starting,
+    DeferredStart,
 }
 
 #[derive(Debug)]
@@ -1321,7 +1336,10 @@ impl Session {
         let mut turn_context = None;
         let mut abort_outcome = TaskAbortOutcome::default();
         if let Some(target) = self
-            .detach_active_task_for_abort(&reason, /*expected_turn_id*/ None)
+            .detach_active_task_for_abort(
+                &reason, /*expected_turn_id*/ None, /*expected_turn_state*/ None,
+                /*deferred_idle_cause*/ None,
+            )
             .await
         {
             let ActiveTurnAbortTarget::Running(detached) = target else {
@@ -1371,16 +1389,63 @@ impl Session {
         turn_id: &str,
         reason: TurnAbortReason,
     ) -> bool {
+        !matches!(
+            self.abort_turn_if_active_impl(
+                turn_id, /*expected_turn_state*/ None, reason,
+                /*deferred_idle_cause*/ None,
+            )
+            .await,
+            AbortTurnOutcome::NotActive
+        )
+    }
+
+    /// Guardian-specific abort binding. The state identity is captured with
+    /// the review request, so a delayed callback cannot target a later attempt
+    /// that happens to reuse the same protocol turn id. A start transition
+    /// owns the deferred idle callback; the guardian caller must not emit one
+    /// for `DeferredStart` or it could race and double-publish.
+    pub(crate) async fn abort_turn_if_active_for_guardian(
+        self: &Arc<Self>,
+        turn_id: &str,
+        expected_turn_state: &Arc<Mutex<TurnState>>,
+        reason: TurnAbortReason,
+    ) -> AbortTurnOutcome {
+        self.abort_turn_if_active_impl(
+            turn_id,
+            Some(expected_turn_state),
+            reason,
+            Some(ThreadIdleCause::Interrupted),
+        )
+        .await
+    }
+
+    async fn abort_turn_if_active_impl(
+        self: &Arc<Self>,
+        turn_id: &str,
+        expected_turn_state: Option<&Arc<Mutex<TurnState>>>,
+        reason: TurnAbortReason,
+        deferred_idle_cause: Option<ThreadIdleCause>,
+    ) -> AbortTurnOutcome {
         let Some(target) = self
-            .detach_active_task_for_abort(&reason, Some(turn_id))
+            .detach_active_task_for_abort(
+                &reason,
+                Some(turn_id),
+                expected_turn_state,
+                deferred_idle_cause,
+            )
             .await
         else {
-            return false;
+            return AbortTurnOutcome::NotActive;
         };
         let ActiveTurnAbortTarget::Running(detached) = target else {
-            // The start owner will perform terminalization once its lifecycle
-            // callback has returned; the abort request itself was accepted.
-            return true;
+            let ActiveTurnAbortTarget::Starting { deferred_idle } = target else {
+                unreachable!("non-running abort target must be starting")
+            };
+            return if deferred_idle {
+                AbortTurnOutcome::DeferredStart
+            } else {
+                AbortTurnOutcome::Starting
+            };
         };
 
         let turn_context = Arc::clone(&detached.task.turn_context);
@@ -1413,7 +1478,7 @@ impl Session {
             self.maybe_start_turn_for_pending_work().await;
         }
 
-        true
+        AbortTurnOutcome::Running
     }
 
     pub async fn on_task_finished(
@@ -1756,23 +1821,36 @@ impl Session {
         &self,
         reason: &TurnAbortReason,
         expected_turn_id: Option<&str>,
+        expected_turn_state: Option<&Arc<Mutex<TurnState>>>,
+        deferred_idle_cause: Option<ThreadIdleCause>,
     ) -> Option<ActiveTurnAbortTarget> {
         let mut active = self.active_turn.lock().await;
         let active_turn = active.as_mut()?;
+        if expected_turn_state
+            .is_some_and(|expected| !Arc::ptr_eq(&active_turn.turn_state, expected))
+        {
+            return None;
+        }
         let Some(task) = active_turn.task.as_ref() else {
             if let Some(transition) = active_turn.start_transition.as_mut() {
                 if expected_turn_id.is_some_and(|expected| transition.turn_id != expected) {
                     return None;
                 }
-                if transition.request_abort(reason.clone())
-                    && matches!(
+                let accepted = transition.request_abort(reason.clone());
+                if accepted {
+                    if matches!(
                         reason,
                         TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
-                    )
-                {
-                    self.mark_interrupted();
+                    ) {
+                        self.mark_interrupted();
+                    }
+                    if let Some(cause) = deferred_idle_cause {
+                        transition.request_deferred_idle(cause);
+                    }
                 }
-                return Some(ActiveTurnAbortTarget::Starting);
+                return Some(ActiveTurnAbortTarget::Starting {
+                    deferred_idle: accepted && deferred_idle_cause.is_some(),
+                });
             }
             if let Some(reservation) = active_turn.start_reservation.as_mut() {
                 if expected_turn_id.is_some_and(|expected| reservation.turn_id != expected) {
@@ -1786,7 +1864,9 @@ impl Session {
                 {
                     self.mark_interrupted();
                 }
-                return Some(ActiveTurnAbortTarget::Starting);
+                return Some(ActiveTurnAbortTarget::Starting {
+                    deferred_idle: false,
+                });
             }
             return None;
         };
@@ -1893,13 +1973,19 @@ impl Session {
         self.input_queue
             .clear_pending_for_turn_state(turn_state.as_ref())
             .await;
-        let cleared = self
+        let clear_outcome = self
             .clear_start_transition_after_abort(&turn_state, &transition_identity)
             .await;
-        if !cleared {
+        let StartTransitionClearOutcome::Cleared {
+            deferred_idle_cause,
+        } = clear_outcome
+        else {
             // A stale start future must not publish recovery or wake another
             // turn after its reservation has been replaced or fenced.
             return;
+        };
+        if let Some(cause) = deferred_idle_cause {
+            self.emit_thread_idle_lifecycle_if_idle(cause).await;
         }
         self.publish_recovery_seed_after_terminal(
             abort_outcome.recovery_seed,
@@ -1957,10 +2043,10 @@ impl Session {
         &self,
         turn_state: &Arc<Mutex<TurnState>>,
         transition_identity: &Arc<()>,
-    ) -> bool {
+    ) -> StartTransitionClearOutcome {
         let mut active = self.active_turn.lock().await;
-        let Some(active_turn) = active.as_ref() else {
-            return false;
+        let Some(active_turn) = active.as_mut() else {
+            return StartTransitionClearOutcome::Stale;
         };
         if active_turn.task.is_some()
             || active_turn.start_reservation.is_some()
@@ -1970,12 +2056,18 @@ impl Session {
                 .as_ref()
                 .is_some_and(|transition| Arc::ptr_eq(&transition.identity, transition_identity))
         {
-            return false;
+            return StartTransitionClearOutcome::Stale;
         }
+        let deferred_idle_cause = active_turn
+            .start_transition
+            .as_mut()
+            .and_then(|transition| transition.take_deferred_idle());
         // Keep the marker installed until all terminal side effects above
         // have completed; only this final identity check may release it.
         *active = None;
-        true
+        StartTransitionClearOutcome::Cleared {
+            deferred_idle_cause,
+        }
     }
 
     /// Releases a caller-owned reservation only through its exact handle. An

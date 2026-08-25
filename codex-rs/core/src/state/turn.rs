@@ -65,6 +65,10 @@ pub(crate) struct StartTransition {
     pub(crate) identity: Arc<()>,
     pub(crate) turn_id: String,
     pub(crate) abort_reason: Option<TurnAbortReason>,
+    /// A guardian abort accepted while this transition is still materializing
+    /// needs one deferred idle callback.  It lives on the exact transition so
+    /// a stale owner cannot transfer the request to a later attempt.
+    pub(crate) deferred_idle_cause: Option<codex_extension_api::ThreadIdleCause>,
 }
 
 impl StartTransition {
@@ -73,6 +77,7 @@ impl StartTransition {
             identity,
             turn_id,
             abort_reason: None,
+            deferred_idle_cause: None,
         }
     }
 
@@ -81,6 +86,7 @@ impl StartTransition {
             identity: reservation.identity,
             turn_id: reservation.turn_id,
             abort_reason: reservation.abort_reason,
+            deferred_idle_cause: None,
         }
     }
 
@@ -92,6 +98,23 @@ impl StartTransition {
         }
         self.abort_reason = Some(reason);
         true
+    }
+
+    /// Records one deferred idle callback, with an interrupted cause taking
+    /// precedence over weaker causes. The active-turn mutex is the CAS fence.
+    pub(crate) fn request_deferred_idle(&mut self, cause: codex_extension_api::ThreadIdleCause) {
+        self.deferred_idle_cause = Some(match (self.deferred_idle_cause, cause) {
+            (Some(codex_extension_api::ThreadIdleCause::Interrupted), _)
+            | (_, codex_extension_api::ThreadIdleCause::Interrupted) => {
+                codex_extension_api::ThreadIdleCause::Interrupted
+            }
+            (Some(existing), _) => existing,
+            (None, incoming) => incoming,
+        });
+    }
+
+    pub(crate) fn take_deferred_idle(&mut self) -> Option<codex_extension_api::ThreadIdleCause> {
+        self.deferred_idle_cause.take()
     }
 }
 
@@ -455,6 +478,7 @@ impl TurnState {
 mod tests {
     use super::ActiveTurn;
     use super::StartTransition;
+    use codex_extension_api::ThreadIdleCause;
     use codex_protocol::protocol::TurnAbortReason;
     use std::sync::Arc;
 
@@ -512,5 +536,26 @@ mod tests {
         assert!(!active.promote_start(&stale));
         assert!(active.start_transition.is_none());
         assert!(active.promote_start(&current));
+    }
+
+    #[test]
+    fn deferred_idle_cause_is_fenced_and_interrupted_wins() {
+        let identity = Arc::new(());
+        let mut transition = StartTransition::new("turn-1".to_string(), identity);
+
+        transition.request_deferred_idle(ThreadIdleCause::Failed);
+        transition.request_deferred_idle(ThreadIdleCause::Completed);
+        assert_eq!(
+            transition.take_deferred_idle(),
+            Some(ThreadIdleCause::Failed)
+        );
+        assert_eq!(transition.take_deferred_idle(), None);
+
+        transition.request_deferred_idle(ThreadIdleCause::Completed);
+        transition.request_deferred_idle(ThreadIdleCause::Interrupted);
+        assert_eq!(
+            transition.take_deferred_idle(),
+            Some(ThreadIdleCause::Interrupted)
+        );
     }
 }
