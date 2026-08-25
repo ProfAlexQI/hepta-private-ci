@@ -79,13 +79,28 @@ pub const PROVIDER_EFFECT_QUALIFICATION_PRODUCTION_CALLER: bool = false;
 /// no local proof that this process owns the pre-dispatch boundary.  It must
 /// be quarantined before any adapter call.
 const PROVIDER_EFFECT_IMPORTED_PENDING_REASON: &str = "provider_imported_pending";
+/// Reserved local claim written immediately before the qualification adapter
+/// crosses its dispatch boundary.  It is intentionally not accepted through
+/// the public quarantine API: only the facade that owns the process-local
+/// boundary lock may mint this witness.
+const PROVIDER_EFFECT_DISPATCH_BOUNDARY_PENDING_REASON: &str = "provider_dispatch_boundary_pending";
+
+#[derive(Clone, Debug)]
+struct DispatchBoundaryClaim {
+    key: ProviderEffectKey,
+    recorded_at_ms: i64,
+}
 
 impl StoredProviderEffect {
     pub fn state(&self) -> ProviderEffectState {
         let latest_ack = self.acknowledgements.last();
         let latest_uncertainty = self.uncertainties.last();
         match (latest_ack, latest_uncertainty) {
-            (Some(ack), Some(uncertainty)) if uncertainty.recorded_at_ms > ack.recorded_at_ms => {
+            // Equal cross-table timestamps are not an ordering witness.  A
+            // damaged/imported store must therefore remain quarantined until
+            // the startup oracle rejects it, rather than letting the ACK win
+            // an ambiguous tie.
+            (Some(ack), Some(uncertainty)) if uncertainty.recorded_at_ms >= ack.recorded_at_ms => {
                 ProviderEffectState::Indeterminate
             }
             (Some(ack), _) => ack.ack.state(),
@@ -194,11 +209,8 @@ impl HeptaEvidenceStore {
             // proof that this caller owns the physical dispatch boundary.
             // Persist quarantine first; reconciliation may still resolve a
             // later provider ACK, but blind redispatch is forbidden.
-            self.mark_provider_effect_indeterminate(
-                &key,
-                PROVIDER_EFFECT_IMPORTED_PENDING_REASON,
-            )
-            .await?;
+            self.mark_provider_effect_indeterminate(&key, PROVIDER_EFFECT_IMPORTED_PENDING_REASON)
+                .await?;
             return Ok(ProviderEffectQualificationDispatchReceipt {
                 state: ProviderEffectState::Indeterminate,
                 dispatch_claimed: false,
@@ -206,10 +218,8 @@ impl HeptaEvidenceStore {
             });
         }
 
-        let claim = self
-            .mark_provider_effect_indeterminate(&key, "provider_dispatch_boundary_pending")
-            .await?;
-        let claimed = claim == AppendDisposition::Inserted;
+        let boundary_claim = self.claim_provider_effect_dispatch_boundary(&key).await?;
+        let claimed = boundary_claim.is_some();
         let after_claim = self
             .get_provider_effect(&key)
             .await?
@@ -248,9 +258,10 @@ impl HeptaEvidenceStore {
             ProviderEffectDispatch::Ack(ack) => {
                 let ack_result = match ack.validate_for(intent) {
                     Ok(()) => {
-                        self.append_provider_effect_ack_from_source(
+                        self.append_provider_effect_ack_with_boundary_claim(
                             &ack,
                             ProviderEffectAckSource::DispatchResponse,
+                            boundary_claim.as_ref(),
                         )
                         .await
                     }
@@ -387,6 +398,16 @@ impl HeptaEvidenceStore {
         ack: &ProviderEffectAck,
         source: ProviderEffectAckSource,
     ) -> Result<AppendDisposition, EvidenceError> {
+        self.append_provider_effect_ack_with_boundary_claim(ack, source, None)
+            .await
+    }
+
+    async fn append_provider_effect_ack_with_boundary_claim(
+        &self,
+        ack: &ProviderEffectAck,
+        source: ProviderEffectAckSource,
+        boundary_claim: Option<&DispatchBoundaryClaim>,
+    ) -> Result<AppendDisposition, EvidenceError> {
         let payload = canonical_json(ack)?;
         let payload_json = String::from_utf8(payload.clone())
             .map_err(|error| EvidenceError::Serialization(error.to_string()))?;
@@ -404,8 +425,14 @@ impl HeptaEvidenceStore {
             ));
         };
         ack.validate_for(&intent.intent).map_err(binding_invalid)?;
-        validate_ack_transition_in_transaction(&mut transaction, &intent.intent, ack, source)
-            .await?;
+        validate_ack_transition_in_transaction(
+            &mut transaction,
+            &intent.intent,
+            ack,
+            source,
+            boundary_claim,
+        )
+        .await?;
         let recorded_at_ms = next_effect_recorded_at_ms(&mut transaction, &ack.key).await?;
         let insert = sqlx::query(
             "INSERT INTO provider_effect_acknowledgements (
@@ -449,6 +476,54 @@ impl HeptaEvidenceStore {
         key: &ProviderEffectKey,
         reason_code: impl Into<String>,
     ) -> Result<AppendDisposition, EvidenceError> {
+        let reason_code = reason_code.into();
+        if reason_code == PROVIDER_EFFECT_DISPATCH_BOUNDARY_PENDING_REASON {
+            return Err(EvidenceError::InvalidRecord(
+                "provider dispatch boundary claim is reserved to the qualification facade"
+                    .to_string(),
+            ));
+        }
+        self.append_provider_effect_uncertainty(key, reason_code, false)
+            .await
+            .map(|(disposition, _)| disposition)
+    }
+
+    /// Mints the one local witness that permits the dispatch facade's own
+    /// response to close its pre-dispatch boundary claim.  The reserved
+    /// reason cannot be created through the public quarantine API, so a raw
+    /// caller cannot manufacture this exception and bypass late-ACK fencing.
+    async fn claim_provider_effect_dispatch_boundary(
+        &self,
+        key: &ProviderEffectKey,
+    ) -> Result<Option<DispatchBoundaryClaim>, EvidenceError> {
+        let (disposition, recorded_at_ms) = self
+            .append_provider_effect_uncertainty(
+                key,
+                PROVIDER_EFFECT_DISPATCH_BOUNDARY_PENDING_REASON.to_string(),
+                true,
+            )
+            .await?;
+        Ok(
+            (disposition == AppendDisposition::Inserted).then(|| DispatchBoundaryClaim {
+                key: key.clone(),
+                recorded_at_ms,
+            }),
+        )
+    }
+
+    async fn append_provider_effect_uncertainty(
+        &self,
+        key: &ProviderEffectKey,
+        reason_code: String,
+        allow_reserved_reason: bool,
+    ) -> Result<(AppendDisposition, i64), EvidenceError> {
+        if !allow_reserved_reason && reason_code == PROVIDER_EFFECT_DISPATCH_BOUNDARY_PENDING_REASON
+        {
+            return Err(EvidenceError::InvalidRecord(
+                "provider dispatch boundary claim is reserved to the qualification facade"
+                    .to_string(),
+            ));
+        }
         let mut transaction = self
             .pool
             .begin_with("BEGIN IMMEDIATE")
@@ -506,7 +581,7 @@ impl HeptaEvidenceStore {
         )
         .await?;
         transaction.commit().await.map_err(classify_sqlx_error)?;
-        Ok(disposition)
+        Ok((disposition, recorded_at_ms))
     }
 
     pub async fn get_provider_effect(
@@ -669,10 +744,26 @@ pub(crate) async fn verify_provider_effect_rows(pool: &SqlitePool) -> Result<(),
         let mut terminal_ack: Option<StoredProviderEffectAck> = None;
         for row in ack_rows {
             let ack = decode_effect_ack_row(&row, &intent.intent)?;
+            if uncertainty_rows.iter().any(|uncertainty_row| {
+                uncertainty_row.get::<i64, _>("recorded_at_ms") == ack.recorded_at_ms
+            }) {
+                return Err(EvidenceError::Corrupt(
+                    "provider effect ACK and uncertainty share an ambiguous timestamp".to_string(),
+                ));
+            }
+            let boundary_dispatch_ack = previous_ack.is_none()
+                && ack.source == ProviderEffectAckSource::DispatchResponse
+                && uncertainty_rows.len() == 1
+                && uncertainty_rows[0].get::<String, _>("reason_code")
+                    == PROVIDER_EFFECT_DISPATCH_BOUNDARY_PENDING_REASON
+                && uncertainty_rows[0].get::<i64, _>("recorded_at_ms") < ack.recorded_at_ms;
             let uncertainty_before = uncertainty_rows.iter().any(|uncertainty_row| {
                 uncertainty_row.get::<i64, _>("recorded_at_ms") < ack.recorded_at_ms
             });
-            if uncertainty_before && ack.source != ProviderEffectAckSource::StatusLookup {
+            if uncertainty_before
+                && ack.source != ProviderEffectAckSource::StatusLookup
+                && !boundary_dispatch_ack
+            {
                 return Err(EvidenceError::Corrupt(
                     "provider effect dispatch ACK follows an uncertainty quarantine".to_string(),
                 ));
@@ -702,8 +793,7 @@ pub(crate) async fn verify_provider_effect_rows(pool: &SqlitePool) -> Result<(),
                 let legal = if uncertainty_between {
                     // An uncertainty can justify rebinding the provider
                     // operation id, but never permits Accepted -> Rejected.
-                    ack.source == ProviderEffectAckSource::StatusLookup
-                        && legal_status_transition
+                    ack.source == ProviderEffectAckSource::StatusLookup && legal_status_transition
                 } else {
                     legal_status_transition && !operation_rebound
                 };
@@ -730,7 +820,7 @@ pub(crate) async fn verify_provider_effect_rows(pool: &SqlitePool) -> Result<(),
                 // The per-key recorded timestamp is the only cross-table
                 // ordering witness; public append paths make it strictly
                 // increasing.
-                let follows_terminal = uncertainty.recorded_at_ms > terminal.recorded_at_ms;
+                let follows_terminal = uncertainty.recorded_at_ms >= terminal.recorded_at_ms;
                 if follows_terminal {
                     return Err(EvidenceError::Corrupt(
                         "provider effect uncertainty follows terminal ACK".to_string(),
@@ -797,18 +887,14 @@ fn decode_effect_ack_row(
         .map_err(|error| EvidenceError::Corrupt(error.to_string()))?;
     ack.validate_for(intent).map_err(binding_corrupt)?;
     let status: String = row.get("status");
-    let source: Option<String> = row
-        .try_get("source")
-        .map_err(classify_sqlx_error)?;
+    let source: Option<String> = row.try_get("source").map_err(classify_sqlx_error)?;
     let source = source
         .ok_or_else(|| {
             EvidenceError::Corrupt(
                 "provider effect acknowledgement source provenance is missing".to_string(),
             )
         })
-        .and_then(|source| {
-            ProviderEffectAckSource::parse(&source).map_err(binding_corrupt)
-        })?;
+        .and_then(|source| ProviderEffectAckSource::parse(&source).map_err(binding_corrupt))?;
     if row.get::<String, _>("effect_key") != ack.key.as_str()
         || row.get::<String, _>("payload_sha256") != ack.payload_sha256.as_str()
         || row.get::<String, _>("provider_operation_id_sha256")
@@ -987,8 +1073,9 @@ async fn validate_ack_transition_in_transaction(
     intent: &ProviderEffectIntent,
     next: &ProviderEffectAck,
     source: ProviderEffectAckSource,
+    boundary_claim: Option<&DispatchBoundaryClaim>,
 ) -> Result<(), EvidenceError> {
-    let rows = sqlx::query(
+    let ack_rows = sqlx::query(
         "SELECT seq, effect_key, payload_sha256,
                 provider_operation_id_sha256, status, source, schema_version,
                 payload_json, record_sha256, recorded_at_ms
@@ -1000,19 +1087,63 @@ async fn validate_ack_transition_in_transaction(
     .await
     .map_err(classify_sqlx_error)?;
     let mut previous = None;
-    for row in rows {
+    for row in ack_rows {
         previous = Some(decode_effect_ack_row(&row, intent)?);
     }
-    let uncertainty_recorded_at_ms: Option<i64> = sqlx::query_scalar(
-        "SELECT MAX(recorded_at_ms) FROM provider_effect_uncertainties
-         WHERE effect_key = ?",
+    let uncertainty_rows = sqlx::query(
+        "SELECT seq, effect_key, payload_sha256, reason_code,
+                schema_version, payload_json, record_sha256, recorded_at_ms
+         FROM provider_effect_uncertainties
+         WHERE effect_key = ? ORDER BY recorded_at_ms ASC, seq ASC",
     )
     .bind(next.key.as_str())
-    .fetch_one(&mut **transaction)
+    .fetch_all(&mut **transaction)
     .await
     .map_err(classify_sqlx_error)?;
-    if uncertainty_recorded_at_ms.is_some()
+    let mut uncertainties = Vec::with_capacity(uncertainty_rows.len());
+    for row in &uncertainty_rows {
+        uncertainties.push(decode_effect_uncertainty_row(row, intent)?);
+    }
+    if uncertainties.iter().any(|uncertainty| {
+        previous
+            .as_ref()
+            .is_some_and(|ack| uncertainty.recorded_at_ms == ack.recorded_at_ms)
+    }) {
+        return Err(EvidenceError::Corrupt(
+            "provider effect ACK and uncertainty share an ambiguous timestamp".to_string(),
+        ));
+    }
+    let boundary_claim_matches = boundary_claim.is_some_and(|claim| {
+        source == ProviderEffectAckSource::DispatchResponse
+            && claim.key == next.key
+            && previous.is_none()
+            && uncertainties.len() == 1
+            && uncertainties[0].uncertainty.reason_code
+                == PROVIDER_EFFECT_DISPATCH_BOUNDARY_PENDING_REASON
+            && uncertainties[0].recorded_at_ms == claim.recorded_at_ms
+    });
+    if boundary_claim.is_some() && !boundary_claim_matches {
+        return Err(EvidenceError::IdempotencyConflict {
+            record_id: next.key.as_str().to_string(),
+        });
+    }
+    if let Some(previous) = previous.as_ref()
+        && previous.ack == *next
+    {
+        // Exact replays are idempotent even when the durable boundary marker
+        // remains in the journal, but a raw dispatch replay after any
+        // uncertainty is still forbidden.  A status lookup is an
+        // authoritative observation and may repeat the same ACK.
+        if uncertainties.is_empty() || source == ProviderEffectAckSource::StatusLookup {
+            return Ok(());
+        }
+        return Err(EvidenceError::IdempotencyConflict {
+            record_id: next.key.as_str().to_string(),
+        });
+    }
+    if !uncertainties.is_empty()
         && source != ProviderEffectAckSource::StatusLookup
+        && !boundary_claim_matches
     {
         return Err(EvidenceError::IdempotencyConflict {
             record_id: next.key.as_str().to_string(),
@@ -1021,10 +1152,10 @@ async fn validate_ack_transition_in_transaction(
     let Some(previous) = previous else {
         return Ok(());
     };
-    if previous.ack == *next {
-        return Ok(());
-    }
-    if uncertainty_recorded_at_ms.is_some_and(|timestamp| timestamp > previous.recorded_at_ms) {
+    if uncertainties
+        .iter()
+        .any(|uncertainty| uncertainty.recorded_at_ms > previous.recorded_at_ms)
+    {
         if previous.ack.state().is_terminal() {
             return Err(EvidenceError::IdempotencyConflict {
                 record_id: next.key.as_str().to_string(),

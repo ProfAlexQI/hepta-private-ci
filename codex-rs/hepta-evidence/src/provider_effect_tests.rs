@@ -268,7 +268,53 @@ async fn late_dispatch_ack_after_quarantine_requires_status_lookup_source() {
         .await
         .expect("read effect")
         .expect("effect");
-    assert_eq!(stored.acknowledgements[0].source, ProviderEffectAckSource::StatusLookup);
+    assert_eq!(
+        stored.acknowledgements[0].source,
+        ProviderEffectAckSource::StatusLookup
+    );
+}
+
+#[tokio::test]
+async fn duplicate_dispatch_ack_after_quarantine_requires_status_lookup_source() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"duplicate-after-quarantine-payload");
+    store
+        .append_provider_effect_intent(&intent)
+        .await
+        .expect("intent");
+    let accepted = ProviderEffectAck::new(
+        intent.key.clone(),
+        intent.payload_sha256.clone(),
+        Sha256Digest::for_bytes(b"accepted-before-quarantine"),
+        ProviderEffectAckStatus::Accepted,
+    );
+    store
+        .append_provider_effect_ack(&accepted)
+        .await
+        .expect("accepted ACK");
+    store
+        .mark_provider_effect_indeterminate(&intent.key, "late_network_unknown")
+        .await
+        .expect("quarantine");
+
+    let replay = store
+        .append_provider_effect_ack(&accepted)
+        .await
+        .expect_err("raw duplicate ACK must remain fenced");
+    assert!(matches!(replay, EvidenceError::IdempotencyConflict { .. }));
+    assert_eq!(
+        store
+            .append_provider_effect_ack_from_source(
+                &accepted,
+                ProviderEffectAckSource::StatusLookup
+            )
+            .await
+            .expect("status lookup duplicate is idempotent"),
+        AppendDisposition::AlreadyPresent
+    );
 }
 
 #[tokio::test]
@@ -311,6 +357,64 @@ async fn reopen_rejects_missing_provider_ack_source_provenance() {
 
     let reopen = HeptaEvidenceStore::open(&sqlite).await;
     assert!(matches!(reopen, Err(EvidenceError::Corrupt(_))));
+}
+
+#[tokio::test]
+async fn qualification_dispatch_ack_is_persisted_with_source_and_reopens() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"qualification-dispatch-completed");
+    let ack = completed_ack(&intent, b"qualification-dispatch-operation");
+    let adapter = scripted_adapter(
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+        ProviderEffectDispatch::Ack(ack.clone()),
+        ProviderEffectLookup::Ack(ack.clone()),
+    );
+
+    let receipt = store
+        .dispatch_provider_effect_qualification(&adapter, &intent)
+        .await
+        .expect("dispatch ACK");
+    assert_eq!(receipt.state, ProviderEffectState::Completed);
+    assert!(receipt.dispatch_claimed);
+    assert!(receipt.dispatch_attempted);
+    assert_eq!(adapter.dispatches.load(Ordering::Relaxed), 1);
+    let stored = store
+        .get_provider_effect(&intent.key)
+        .await
+        .expect("read dispatched effect")
+        .expect("effect");
+    assert_eq!(stored.state(), ProviderEffectState::Completed);
+    assert_eq!(stored.acknowledgements.len(), 1);
+    assert_eq!(
+        stored.acknowledgements[0].source,
+        ProviderEffectAckSource::DispatchResponse
+    );
+    assert_eq!(stored.uncertainties.len(), 1);
+    assert_eq!(
+        stored.uncertainties[0].uncertainty.reason_code,
+        "provider_dispatch_boundary_pending"
+    );
+
+    drop(store);
+    let reopened = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("reopen successful dispatch");
+    let replay_adapter = scripted_adapter(
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+        ProviderEffectDispatch::Ack(ack.clone()),
+        ProviderEffectLookup::Ack(ack.clone()),
+    );
+    let replay = reopened
+        .dispatch_provider_effect_qualification(&replay_adapter, &intent)
+        .await
+        .expect("terminal replay");
+    assert_eq!(replay.state, ProviderEffectState::Completed);
+    assert!(!replay.dispatch_attempted);
+    assert_eq!(replay_adapter.dispatches.load(Ordering::Relaxed), 0);
 }
 
 #[tokio::test]
@@ -1026,6 +1130,71 @@ async fn reopen_rejects_late_uncertainty_after_terminal_ack() {
         reopen,
         Err(EvidenceError::Corrupt(detail))
             if detail.contains("uncertainty follows terminal ACK")
+    ));
+}
+
+#[tokio::test]
+async fn reopen_rejects_ack_uncertainty_timestamp_tie() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"timestamp-tie-payload");
+    let key = intent.key.clone();
+    store
+        .append_provider_effect_intent(&intent)
+        .await
+        .expect("intent");
+    let accepted = ProviderEffectAck::new(
+        key.clone(),
+        intent.payload_sha256.clone(),
+        Sha256Digest::for_bytes(b"timestamp-tie-operation"),
+        ProviderEffectAckStatus::Accepted,
+    );
+    store
+        .append_provider_effect_ack(&accepted)
+        .await
+        .expect("accepted ACK");
+    let ack_recorded_at_ms: i64 = sqlx::query_scalar(
+        "SELECT recorded_at_ms FROM provider_effect_acknowledgements
+         WHERE effect_key = ?",
+    )
+    .bind(key.as_str())
+    .fetch_one(&store.pool)
+    .await
+    .expect("read ACK timestamp");
+    let uncertainty = ProviderEffectUncertainty::new(
+        key.clone(),
+        intent.payload_sha256.clone(),
+        "imported_timestamp_tie",
+    );
+    let uncertainty_bytes = crate::canonical::canonical_json(&uncertainty).expect("canonical");
+    let uncertainty_json = String::from_utf8(uncertainty_bytes.clone()).expect("JSON");
+    let uncertainty_record_sha = Sha256Digest::for_bytes(&uncertainty_bytes);
+    sqlx::query(
+        "INSERT INTO provider_effect_uncertainties (
+            effect_key, payload_sha256, reason_code, schema_version,
+            payload_json, record_sha256, recorded_at_ms
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(key.as_str())
+    .bind(uncertainty.payload_sha256.as_str())
+    .bind(&uncertainty.reason_code)
+    .bind(i64::from(uncertainty.schema_version))
+    .bind(&uncertainty_json)
+    .bind(uncertainty_record_sha.as_str())
+    .bind(ack_recorded_at_ms)
+    .execute(&store.pool)
+    .await
+    .expect("insert tied uncertainty");
+    drop(store);
+
+    let reopen = HeptaEvidenceStore::open(&sqlite).await;
+    assert!(matches!(
+        reopen,
+        Err(EvidenceError::Corrupt(detail))
+            if detail.contains("ambiguous timestamp")
     ));
 }
 
