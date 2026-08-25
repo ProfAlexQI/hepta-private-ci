@@ -11,6 +11,7 @@ mod cognitive_runtime;
 mod cognitive_store;
 mod compact_persistence;
 mod framing;
+mod h7_feedback;
 mod h7_runtime;
 mod h7_trajectory_store;
 mod intuition_shadow;
@@ -114,6 +115,31 @@ pub use compact_persistence::CompactReconcileOutcome;
 pub use compact_persistence::CompactRehydrationRecord;
 pub use compact_persistence::checkpoint_digest;
 pub use framing::workspace_binding_digest;
+pub use h7_feedback::H7_FEEDBACK_BPS_SCALE;
+pub use h7_feedback::H7_FEEDBACK_DEFAULT_WEIGHT_CAP_SCALED;
+pub use h7_feedback::H7_FEEDBACK_EXTERNAL_EFFECTS;
+pub use h7_feedback::H7_FEEDBACK_KG_WRITE_AUTHORITY;
+pub use h7_feedback::H7_FEEDBACK_MAX_RECORDS;
+pub use h7_feedback::H7_FEEDBACK_MAX_TEXT_BYTES;
+pub use h7_feedback::H7_FEEDBACK_MAX_WEIGHT_CAP_SCALED;
+pub use h7_feedback::H7_FEEDBACK_NAMESPACE;
+pub use h7_feedback::H7_FEEDBACK_PRODUCTION_AUTHORITY;
+pub use h7_feedback::H7_FEEDBACK_PRODUCTION_CALLER;
+pub use h7_feedback::H7_FEEDBACK_REPLAY_ONLY;
+pub use h7_feedback::H7_FEEDBACK_SCALE;
+pub use h7_feedback::H7_FEEDBACK_SCHEMA_VERSION;
+pub use h7_feedback::H7AttemptLeaseScope;
+pub use h7_feedback::H7CreditLedger;
+pub use h7_feedback::H7FeedbackAppend;
+pub use h7_feedback::H7FeedbackBinding;
+pub use h7_feedback::H7FeedbackError;
+pub use h7_feedback::H7FeedbackKey;
+pub use h7_feedback::H7FeedbackOracle;
+pub use h7_feedback::H7FeedbackRecord;
+pub use h7_feedback::H7OfflineEvaluation;
+pub use h7_feedback::H7PolicyAction;
+pub use h7_feedback::H7Propensity;
+pub use h7_feedback::H7Support;
 pub use h7_runtime::H7_QUALIFICATION_RUNTIME_EXTERNAL_EFFECTS;
 pub use h7_runtime::H7_QUALIFICATION_RUNTIME_NAMESPACE;
 pub use h7_runtime::H7_QUALIFICATION_RUNTIME_PRODUCTION_AUTHORITY;
@@ -320,6 +346,10 @@ mod h7_artifact_qualification_tests;
 #[cfg(test)]
 #[path = "h7_trajectory_store_tests.rs"]
 mod h7_trajectory_store_tests;
+
+#[cfg(test)]
+#[path = "h7_feedback_tests.rs"]
+mod h7_feedback_tests;
 
 #[cfg(test)]
 mod cognitive_test_support;
