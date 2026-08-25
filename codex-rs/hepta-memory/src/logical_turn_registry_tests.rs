@@ -9,6 +9,8 @@ use crate::LogicalTurnAttemptRequest;
 use crate::LogicalTurnRegistryError;
 use crate::LogicalTurnRequest;
 use crate::LogicalTurnReservation;
+use crate::LogicalTurnInspectionDisposition;
+use crate::LocalLeaseState;
 use crate::cognitive_test_support::agent_id;
 use crate::cognitive_test_support::layout;
 
@@ -93,6 +95,216 @@ async fn reserve_and_exact_replay_are_one_row() {
             .expect("attempt count");
     assert_eq!(identity_rows, 1);
     assert_eq!(attempt_rows, 1);
+}
+
+#[tokio::test]
+async fn logical_turn_inspection_missing_is_read_only() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 191).await;
+    let request = logical_request();
+    let before_identities: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turns")
+            .fetch_one(&store.pool)
+            .await
+            .expect("identity count before");
+    let before_attempts: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turn_attempts")
+            .fetch_one(&store.pool)
+            .await
+            .expect("attempt count before");
+    let inspection = store
+        .inspect_logical_turn(request)
+        .await
+        .expect("missing inspection");
+    assert_eq!(
+        inspection.disposition,
+        LogicalTurnInspectionDisposition::Missing
+    );
+    assert!(inspection.head.is_none());
+    assert!(inspection.lease_head.is_none());
+    assert!(inspection.evidence.is_empty());
+    let after_identities: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turns")
+            .fetch_one(&store.pool)
+            .await
+            .expect("identity count after");
+    let after_attempts: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turn_attempts")
+            .fetch_one(&store.pool)
+            .await
+            .expect("attempt count after");
+    assert_eq!(before_identities, after_identities);
+    assert_eq!(before_attempts, after_attempts);
+}
+
+#[tokio::test]
+async fn logical_turn_inspection_classifies_active_and_expired_evidence() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 192).await;
+    let request = logical_request();
+    let active = attempt("inspect-active", "inspect-active", 1, now() + 3_600);
+    store
+        .reserve_or_replay_logical_turn(request.clone(), active.clone())
+        .await
+        .expect("active reservation");
+    let active_inspection = store
+        .inspect_logical_turn(request.clone())
+        .await
+        .expect("active inspection");
+    assert_eq!(
+        active_inspection.disposition,
+        LogicalTurnInspectionDisposition::Active
+    );
+    assert_eq!(
+        active_inspection
+            .head
+            .as_ref()
+            .expect("active head")
+            .attempt_id,
+        active.attempt_id
+    );
+    assert_eq!(
+        active_inspection.lease_head.as_ref().expect("lease head").state,
+        LocalLeaseState::Active
+    );
+    assert!(active_inspection.evidence.is_empty());
+
+    let temp_expired = TempDir::new().expect("expired temp dir");
+    let expired_store = opened_store(&temp_expired, 193).await;
+    let expired = attempt("inspect-expired", "inspect-expired", 1, 1);
+    expired_store
+        .reserve_or_replay_logical_turn(request.clone(), expired.clone())
+        .await
+        .expect("expired reservation");
+    let zero = expired_store
+        .inspect_logical_turn(request.clone())
+        .await
+        .expect("zero-evidence inspection");
+    assert_eq!(
+        zero.disposition,
+        LogicalTurnInspectionDisposition::ExpiredZeroEvidence
+    );
+    sqlx::query(
+        "INSERT INTO cognitive_local_events (
+            lease_id, event_sequence, event_id, occurrence_key, owner_agent_id,
+            generation, fencing_token, event_kind, payload_json, payload_sha256,
+            previous_sha256, event_sha256, recorded_at_unix_seconds
+         ) VALUES (?, 1, ?, ?, ?, 1, ?, 'admitted', '{}', ?, ?, ?, 0)",
+    )
+    .bind(&expired.lease_id)
+    .bind("event:inspect-evidence")
+    .bind(&expired.occurrence_key)
+    .bind(expired_store.owner_agent_id().as_str())
+    .bind(&expired.fencing_token)
+    .bind("0000000000000000000000000000000000000000000000000000000000000000")
+    .bind("0000000000000000000000000000000000000000000000000000000000000000")
+    .bind("0000000000000000000000000000000000000000000000000000000000000000")
+    .execute(&expired_store.pool)
+    .await
+    .expect("evidence row");
+    let with_evidence = expired_store
+        .inspect_logical_turn(request)
+        .await
+        .expect("evidence inspection");
+    assert_eq!(
+        with_evidence.disposition,
+        LogicalTurnInspectionDisposition::ExpiredWithEvidence
+    );
+    assert_eq!(with_evidence.evidence.event_rows, 1);
+}
+
+#[tokio::test]
+async fn logical_turn_inspection_reports_conflict_and_terminal_lease() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 194).await;
+    let request = logical_request();
+    let physical = attempt("inspect-terminal", "inspect-terminal", 1, now() + 3_600);
+    store
+        .reserve_or_replay_logical_turn(request.clone(), physical.clone())
+        .await
+        .expect("reservation");
+    let conflicting = LogicalTurnRequest::new(
+        request.logical_turn_id.clone(),
+        request.scope_key.clone(),
+        Sha256Digest::for_bytes(b"different-inspection-binding"),
+    )
+    .expect("conflicting request");
+    let conflict = store
+        .inspect_logical_turn(conflicting)
+        .await
+        .expect("conflict inspection");
+    assert_eq!(
+        conflict.disposition,
+        LogicalTurnInspectionDisposition::Conflict
+    );
+    assert_eq!(conflict.stored_scope_key.as_deref(), Some(request.scope_key.as_str()));
+    assert!(conflict.stored_binding_sha256.is_some());
+    assert!(conflict.head.is_none());
+
+    let lease_head = store
+        .inspect_local_lease_head(&physical.lease_id)
+        .await
+        .expect("lease inspection")
+        .head
+        .expect("lease head");
+    let lease = store
+        .reopen_host_bound_lease(
+            lease_head,
+            physical.authority_epoch,
+            physical.owner_epoch,
+            physical.lease_expires_at_unix_seconds,
+        )
+        .await
+        .expect("reopen lease");
+    lease.release().await.expect("release lease");
+    let terminal = store
+        .inspect_logical_turn(request)
+        .await
+        .expect("terminal inspection");
+    assert_eq!(
+        terminal.disposition,
+        LogicalTurnInspectionDisposition::TerminalPhysicalLease
+    );
+    assert_eq!(
+        terminal.lease_head.as_ref().expect("terminal lease").state,
+        LocalLeaseState::Released
+    );
+}
+
+#[tokio::test]
+async fn logical_turn_inspection_observes_fresh_head_after_takeover() {
+    let temp = TempDir::new().expect("temp dir");
+    let left = opened_store(&temp, 195).await;
+    let right = opened_store(&temp, 195).await;
+    let request = logical_request();
+    let old = attempt("inspect-old", "inspect-old", 1, 1);
+    left.reserve_or_replay_logical_turn(request.clone(), old.clone())
+        .await
+        .expect("old reservation");
+    let before = right
+        .inspect_logical_turn(request.clone())
+        .await
+        .expect("old inspection");
+    assert_eq!(
+        before.disposition,
+        LogicalTurnInspectionDisposition::ExpiredZeroEvidence
+    );
+    let successor = attempt_with_owner_epoch("inspect-new", "inspect-new", 1, 1, now() + 3_600);
+    left.reserve_or_replay_logical_turn(request.clone(), successor.clone())
+        .await
+        .expect("takeover");
+    // The prior read witness is intentionally stale; a fresh read sees the
+    // new physical attempt and never authorizes the old handle.
+    let after = right
+        .inspect_logical_turn(request)
+        .await
+        .expect("new inspection");
+    assert_eq!(after.disposition, LogicalTurnInspectionDisposition::Active);
+    assert_eq!(after.head.expect("new head").attempt_id, successor.attempt_id);
+    assert_eq!(
+        before.head.expect("old head").attempt_id,
+        old.attempt_id
+    );
 }
 
 #[tokio::test]

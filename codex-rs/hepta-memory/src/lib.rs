@@ -222,6 +222,8 @@ pub use logical_turn_registry::LogicalTurnAttempt;
 pub use logical_turn_registry::LogicalTurnAttemptRequest;
 pub use logical_turn_registry::LogicalTurnAttemptTransition;
 pub use logical_turn_registry::LogicalTurnEvidence;
+pub use logical_turn_registry::LogicalTurnInspection;
+pub use logical_turn_registry::LogicalTurnInspectionDisposition;
 pub use logical_turn_registry::LogicalTurnRegistryError;
 pub use logical_turn_registry::LogicalTurnRequest;
 pub use logical_turn_registry::LogicalTurnReservation;

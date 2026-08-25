@@ -273,6 +273,42 @@ pub struct LogicalTurnEvidence {
     pub trajectory_rows: u64,
 }
 
+/// Read-only classification of one stable logical-turn registry head.
+///
+/// The classification is a snapshot witness only.  In particular,
+/// `ExpiredZeroEvidence` does not authorize takeover, release, or renewal;
+/// callers must still use the serialized reservation CAS with a fresh
+/// attempt-scoped physical identity.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LogicalTurnInspectionDisposition {
+    Missing,
+    Conflict,
+    Active,
+    ExpiredZeroEvidence,
+    ExpiredWithEvidence,
+    TerminalPhysicalLease,
+}
+
+/// Read-only snapshot of a logical-turn identity, its verified attempt head,
+/// current physical lease head, and any local evidence bound to that attempt.
+/// No raw prompt or provider payload is retained here; the request contains
+/// only the caller-supplied scope and digest binding.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LogicalTurnInspection {
+    pub request: LogicalTurnRequest,
+    pub identity_sha256: Sha256Digest,
+    pub stored_scope_key: Option<String>,
+    pub stored_binding_sha256: Option<Sha256Digest>,
+    pub head: Option<LogicalTurnAttempt>,
+    pub lease_head: Option<LocalLease>,
+    /// Conservative counts of rows bound to the observed attempt.  They are
+    /// diagnostic evidence only; a non-empty count never authorizes a
+    /// takeover, and a later CAS must recheck the complete chains.
+    pub evidence: LogicalTurnEvidence,
+    pub disposition: LogicalTurnInspectionDisposition,
+    pub observed_at_unix_seconds: u64,
+}
+
 impl LogicalTurnEvidence {
     pub fn is_empty(&self) -> bool {
         self.event_rows == 0
@@ -660,6 +696,159 @@ impl CognitiveStore {
             LogicalTurnReservation::Acquired { attempt: active },
         )
         .await?)
+    }
+
+    /// Inspect one stable logical turn without inserting or changing any
+    /// registry, lease, event, outbox, compact, or H7 row.  The read
+    /// transaction verifies the immutable identity, complete attempt chain,
+    /// historical lease witnesses, current lease head, and conservative
+    /// counts of evidence rows bound to the attempt.
+    /// The result is a snapshot and may become stale immediately; callers
+    /// must not treat it as takeover or dispatch authority.
+    pub async fn inspect_logical_turn(
+        &self,
+        request: LogicalTurnRequest,
+    ) -> Result<LogicalTurnInspection, LogicalTurnRegistryError> {
+        request.validate()?;
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let identity_sha256 = logical_identity_digest(
+            self.owner_agent_id(),
+            &request.logical_turn_id,
+            &request.scope_key,
+            &request.logical_binding_sha256,
+        );
+        let identity = sqlx::query(
+            "SELECT scope_key, logical_binding_sha256, identity_sha256
+             FROM cognitive_logical_turns
+             WHERE owner_agent_id = ? AND logical_turn_id = ?",
+        )
+        .bind(self.owner_agent_id().as_str())
+        .bind(&request.logical_turn_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+        let observed_at_unix_seconds = now_unix_seconds()?;
+        let Some(identity) = identity else {
+            transaction
+                .commit()
+                .await
+                .map_err(crate::cognitive_store::unavailable)?;
+            return Ok(LogicalTurnInspection {
+                request,
+                identity_sha256,
+                stored_scope_key: None,
+                stored_binding_sha256: None,
+                head: None,
+                lease_head: None,
+                evidence: empty_logical_turn_evidence(),
+                disposition: LogicalTurnInspectionDisposition::Missing,
+                observed_at_unix_seconds,
+            });
+        };
+        let stored_scope_key: String = identity
+            .try_get("scope_key")
+            .map_err(crate::cognitive_store::unavailable)?;
+        let stored_binding_text: String = identity
+            .try_get("logical_binding_sha256")
+            .map_err(crate::cognitive_store::unavailable)?;
+        let stored_binding_sha256 = Sha256Digest::parse(&stored_binding_text)
+            .map_err(|error| corrupt(format!("invalid stored logical binding: {error}")))?;
+        let stored_identity_text: String = identity
+            .try_get("identity_sha256")
+            .map_err(crate::cognitive_store::unavailable)?;
+        let stored_identity_sha256 = Sha256Digest::parse(&stored_identity_text)
+            .map_err(|error| corrupt(format!("invalid stored logical identity: {error}")))?;
+        let expected_stored_identity = logical_identity_digest(
+            self.owner_agent_id(),
+            &request.logical_turn_id,
+            &stored_scope_key,
+            &stored_binding_sha256,
+        );
+        if stored_identity_sha256 != expected_stored_identity {
+            return Err(corrupt(
+                "logical identity digest does not match immutable fields",
+            ));
+        }
+        if stored_scope_key != request.scope_key
+            || stored_binding_sha256 != request.logical_binding_sha256
+            || stored_identity_sha256 != identity_sha256
+        {
+            transaction
+                .commit()
+                .await
+                .map_err(crate::cognitive_store::unavailable)?;
+            return Ok(LogicalTurnInspection {
+                request,
+                identity_sha256,
+                stored_scope_key: Some(stored_scope_key),
+                stored_binding_sha256: Some(stored_binding_sha256),
+                head: None,
+                lease_head: None,
+                evidence: empty_logical_turn_evidence(),
+                disposition: LogicalTurnInspectionDisposition::Conflict,
+                observed_at_unix_seconds,
+            });
+        }
+
+        let attempts = load_attempt_chain(
+            &mut transaction,
+            self.owner_agent_id(),
+            &request.logical_turn_id,
+            &request.logical_binding_sha256,
+        )
+        .await?;
+        let head = attempts
+            .last()
+            .cloned()
+            .ok_or_else(|| corrupt("durable logical-turn identity has no attempt chain"))?;
+        let (lease_head, _) =
+            load_lease_chain(&mut transaction, &head.lease_id, self.owner_agent_id()).await?;
+        let lease_head = lease_head
+            .ok_or_else(|| corrupt("logical-turn registry head has no lease journal"))?;
+        let evidence = evidence_for_attempt(&mut transaction, &head).await?;
+        let disposition = match lease_head.state {
+            LocalLeaseState::Released | LocalLeaseState::RolledBack => {
+                LogicalTurnInspectionDisposition::TerminalPhysicalLease
+            }
+            LocalLeaseState::Active => {
+                let expired = head.is_expired_at(observed_at_unix_seconds);
+                if !expired {
+                    LogicalTurnInspectionDisposition::Active
+                } else if evidence.is_empty() {
+                    LogicalTurnInspectionDisposition::ExpiredZeroEvidence
+                } else {
+                    LogicalTurnInspectionDisposition::ExpiredWithEvidence
+                }
+            }
+        };
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(LogicalTurnInspection {
+            request,
+            identity_sha256,
+            stored_scope_key: Some(stored_scope_key),
+            stored_binding_sha256: Some(stored_binding_sha256),
+            head: Some(head),
+            lease_head: Some(lease_head),
+            evidence,
+            disposition,
+            observed_at_unix_seconds,
+        })
+    }
+}
+
+fn empty_logical_turn_evidence() -> LogicalTurnEvidence {
+    LogicalTurnEvidence {
+        event_rows: 0,
+        outbox_rows: 0,
+        compact_rows: 0,
+        trajectory_rows: 0,
     }
 }
 
