@@ -151,7 +151,15 @@ fn spawn_suspension_handoff(
         let Some(handoff) = take_suspension_handoff(&slot) else {
             return;
         };
-        drive_suspension_handoff(session, identity, slot, handoff).await;
+        if tokio::time::timeout(
+            crate::tasks::TERMINALIZER_WATCHDOG_TIMEOUT,
+            drive_suspension_handoff(session, identity, slot, handoff),
+        )
+        .await
+        .is_err()
+        {
+            warn!("suspension handoff watchdog expired; retaining its completion fence");
+        }
     });
     Some(started_rx)
 }

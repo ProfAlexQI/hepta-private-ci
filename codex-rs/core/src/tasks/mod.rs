@@ -86,6 +86,14 @@ pub(crate) use user_shell::UserShellCommandTask;
 pub(crate) use user_shell::execute_user_shell_command;
 
 pub(crate) const GRACEFULL_INTERRUPTION_TIMEOUT_MS: u64 = 100;
+/// Bounds one detached terminalizer owner. A timeout cancels the owner
+/// future itself; its Drop implementation returns the exact witness to the
+/// registry and leaves the completion fence unresolved.
+#[cfg(not(test))]
+pub(crate) const TERMINALIZER_WATCHDOG_TIMEOUT: Duration = Duration::from_secs(30);
+#[cfg(test)]
+pub(crate) const TERMINALIZER_WATCHDOG_TIMEOUT: Duration = Duration::from_secs(2);
+
 const TASK_COMPACT_METRIC: &str = "codex.task.compact";
 static ACTIVE_TURNS: Gauge = Gauge::new("core.turns.active");
 
@@ -649,18 +657,25 @@ impl StartTransitionOwner {
             let session = Arc::clone(&cleanup.session);
             let mut cleanup_owner =
                 StartTransitionCleanupOwner::new(Arc::clone(&cleanup_slot), cleanup);
-            let result = AssertUnwindSafe(
-                session.abort_dropped_start_transition(&mut cleanup_owner, fallback_reason),
+            let result = tokio::time::timeout(
+                TERMINALIZER_WATCHDOG_TIMEOUT,
+                AssertUnwindSafe(
+                    session.abort_dropped_start_transition(&mut cleanup_owner, fallback_reason),
+                )
+                .catch_unwind(),
             )
-            .catch_unwind()
             .await;
-            if result.is_err() {
-                warn!(
+            match result {
+                Ok(Err(_)) => warn!(
                     %turn_id,
                     "start-transition terminalizer panicked; retaining its completion fence"
-                );
-            } else if cleanup_owner.is_complete() {
-                cleanup_owner.disarm();
+                ),
+                Err(_) => warn!(
+                    %turn_id,
+                    "start-transition terminalizer watchdog expired; retaining its completion fence"
+                ),
+                Ok(Ok(())) if cleanup_owner.is_complete() => cleanup_owner.disarm(),
+                Ok(Ok(())) => {}
             }
         }))
     }
@@ -2874,19 +2889,26 @@ impl Session {
                 let session = Arc::clone(self);
                 let mut cleanup_owner =
                     StartTransitionCleanupOwner::new(Arc::clone(&cleanup_slot), cleanup);
-                let result = AssertUnwindSafe(session.abort_dropped_start_transition(
-                    &mut cleanup_owner,
-                    TurnAbortReason::Interrupted,
-                ))
-                .catch_unwind()
+                let result = tokio::time::timeout(
+                    TERMINALIZER_WATCHDOG_TIMEOUT,
+                    AssertUnwindSafe(session.abort_dropped_start_transition(
+                        &mut cleanup_owner,
+                        TurnAbortReason::Interrupted,
+                    ))
+                    .catch_unwind(),
+                )
                 .await;
-                if result.is_err() {
-                    warn!(
+                match result {
+                    Ok(Err(_)) => warn!(
                         %turn_id,
                         "shutdown start-transition terminalizer panicked; retaining its completion fence"
-                    );
-                } else if cleanup_owner.is_complete() {
-                    cleanup_owner.disarm();
+                    ),
+                    Err(_) => warn!(
+                        %turn_id,
+                        "shutdown start-transition terminalizer watchdog expired; retaining its completion fence"
+                    ),
+                    Ok(Ok(())) if cleanup_owner.is_complete() => cleanup_owner.disarm(),
+                    Ok(Ok(())) => {}
                 }
             }
             let completions = self.pending_start_transition_completions();
@@ -3523,18 +3545,23 @@ impl Session {
             return;
         }
         let mut owner = TaskFinishHandoffOwner::new(Arc::clone(&slot), handoff);
-        let result = AssertUnwindSafe(self.run_finish_handoff(owner.handoff_mut()))
-            .catch_unwind()
-            .await;
+        let result = tokio::time::timeout(
+            TERMINALIZER_WATCHDOG_TIMEOUT,
+            AssertUnwindSafe(self.run_finish_handoff(owner.handoff_mut())).catch_unwind(),
+        )
+        .await;
         match result {
-            Ok(()) => {
+            Ok(Ok(())) => {
                 if owner.is_complete() {
                     owner.disarm();
                 }
             }
-            Err(_) => {
+            Ok(Err(_)) => {
                 warn!("finish handoff panicked; retaining its completion fence");
                 owner.handoff_mut().failed_closed = true;
+            }
+            Err(_) => {
+                warn!("finish handoff watchdog expired; retaining its completion fence");
             }
         }
     }
@@ -3575,19 +3602,25 @@ impl Session {
             return AbortTurnOutcome::Terminalizing;
         }
         let mut owner = TaskAbortHandoffOwner::new(Arc::clone(&slot), handoff);
-        let result = AssertUnwindSafe(self.run_abort_handoff(owner.handoff_mut()))
-            .catch_unwind()
-            .await;
+        let result = tokio::time::timeout(
+            TERMINALIZER_WATCHDOG_TIMEOUT,
+            AssertUnwindSafe(self.run_abort_handoff(owner.handoff_mut())).catch_unwind(),
+        )
+        .await;
         match result {
-            Ok(outcome) => {
+            Ok(Ok(outcome)) => {
                 if owner.is_complete() {
                     owner.disarm();
                 }
                 outcome
             }
-            Err(_) => {
+            Ok(Err(_)) => {
                 warn!("abort handoff panicked; retaining its completion fence");
                 owner.handoff_mut().failed_closed = true;
+                AbortTurnOutcome::Terminalizing
+            }
+            Err(_) => {
+                warn!("abort handoff watchdog expired; retaining its completion fence");
                 AbortTurnOutcome::Terminalizing
             }
         }

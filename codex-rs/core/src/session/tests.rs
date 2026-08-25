@@ -13263,6 +13263,84 @@ async fn panicking_finish_terminalizer_retains_fence() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn hung_finish_terminalizer_watchdog_retains_fence() {
+    struct HungThreadStop {
+        entered: Arc<Notify>,
+    }
+
+    impl codex_extension_api::TurnLifecycleContributor for HungThreadStop {
+        fn on_turn_stop<'a>(
+            &'a self,
+            _input: codex_extension_api::TurnStopInput<'a>,
+        ) -> codex_extension_api::ExtensionFuture<'a, ()> {
+            Box::pin(async move {
+                self.entered.notify_one();
+                std::future::pending::<()>().await;
+            })
+        }
+    }
+
+    let (mut session, turn_context, rx) = make_session_and_context_with_rx().await;
+    let entered = Arc::new(Notify::new());
+    let mut builder = codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+    builder.turn_lifecycle_contributor(Arc::new(HungThreadStop {
+        entered: Arc::clone(&entered),
+    }));
+    Arc::get_mut(&mut session)
+        .expect("session should have a unique test owner")
+        .services
+        .extensions = Arc::new(builder.build());
+    let session = Arc::new(session);
+    session
+        .spawn_task(
+            Arc::clone(&turn_context),
+            Vec::new(),
+            NeverEndingTask {
+                kind: TaskKind::Regular,
+                listen_to_cancellation_token: false,
+            },
+        )
+        .await
+        .expect("hung finish watchdog task should start");
+
+    let started = tokio::time::Instant::now();
+    let finish_owner = tokio::spawn({
+        let session = Arc::clone(&session);
+        let turn_context = Arc::clone(&turn_context);
+        async move {
+            session.on_task_finished(turn_context, Ok(None)).await;
+        }
+    });
+    // Confirm that the owner reached the non-idempotent lifecycle await before
+    // measuring the watchdog; the future itself never becomes ready.
+    timeout(StdDuration::from_secs(1), entered.notified())
+        .await
+        .expect("hung finish terminalizer should reach lifecycle callback");
+    let _ = timeout(StdDuration::from_secs(4), finish_owner)
+        .await
+        .expect("finish owner watchdog should return");
+    assert!(
+        started.elapsed() >= crate::tasks::TERMINALIZER_WATCHDOG_TIMEOUT,
+        "finish owner returned before its bounded watchdog elapsed"
+    );
+    assert!(session.has_pending_task_terminalization());
+    assert!(
+        session
+            .active_turn
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|active_turn| {
+                active_turn.task.is_none() && active_turn.task_terminalization.is_some()
+            })
+    );
+    assert!(
+        rx.try_recv().is_err(),
+        "a hung terminalizer must not publish a terminal event"
+    );
+}
+
 #[tokio::test]
 async fn thread_idle_lifecycle_waits_for_trigger_turn_mailbox_work() {
     struct ThreadIdleRecorder {
