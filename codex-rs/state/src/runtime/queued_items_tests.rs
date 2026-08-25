@@ -500,6 +500,29 @@ async fn binding_schema_rejects_malformed_digest_owner_revision_turn_and_time() 
 }
 
 #[tokio::test]
+async fn raw_enqueue_without_exact_binding_succeeds() {
+    let (runtime, thread_id) = runtime_with_thread().await;
+    let payload = bound_payload("compatibility-client", "legacy queue input");
+
+    let record = runtime
+        .thread_queue()
+        .enqueue(thread_id, &payload)
+        .await
+        .expect("raw enqueue must remain available before exact reconciliation");
+
+    assert_eq!(record.thread_id, thread_id);
+    assert_eq!(record.payload, payload);
+    assert_eq!(
+        vec![record],
+        runtime
+            .thread_queue()
+            .list_page(thread_id, 0, MAX_QUEUE_ITEMS)
+            .await
+            .expect("raw queue row should be readable")
+    );
+}
+
+#[tokio::test]
 async fn raw_enqueue_cannot_cross_an_exact_reservation() {
     let (runtime, thread_id) = runtime_with_thread().await;
     let other = StateRuntime::init(runtime.sqlite().clone(), "test-provider".to_string())
