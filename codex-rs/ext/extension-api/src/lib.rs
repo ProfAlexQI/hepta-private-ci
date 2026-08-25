@@ -1,5 +1,6 @@
 mod capabilities;
 mod contributors;
+mod qualification;
 mod registry;
 mod state;
 mod user_instructions;
@@ -106,6 +107,7 @@ pub use contributors::TurnInputEnvironment;
 pub use contributors::TurnItemContributor;
 pub use contributors::TurnLifecycleContributor;
 pub use contributors::TurnStartInput;
+pub use qualification::QualificationTurnAdmissionIdentity;
 pub use contributors::TurnStopInput;
 pub use contributors::WorldStateContributionInput;
 pub use contributors::WorldStateSectionContribution;

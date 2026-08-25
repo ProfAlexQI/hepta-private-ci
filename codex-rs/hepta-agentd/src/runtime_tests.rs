@@ -22,6 +22,10 @@ use codex_hepta_memory::CognitiveRuntime;
 #[cfg(feature = "qualification-cognitive-write")]
 use codex_hepta_memory::CognitiveStore;
 #[cfg(feature = "qualification-cognitive-write")]
+use codex_hepta_memory::LogicalTurnAttemptRequest;
+#[cfg(feature = "qualification-cognitive-write")]
+use codex_hepta_memory::LogicalTurnRequest;
+#[cfg(feature = "qualification-cognitive-write")]
 use codex_hepta_memory::CompactFence;
 #[cfg(feature = "qualification-cognitive-write")]
 use codex_hepta_memory::H7TrajectoryAppend;
@@ -344,7 +348,7 @@ async fn qualification_host_binds_one_local_turn_and_replays_exactly_once() {
 
 #[cfg(feature = "qualification-cognitive-write")]
 #[tokio::test]
-async fn qualification_prepare_leaves_expired_head_without_reacquire_or_input() {
+async fn qualification_prepare_takes_over_expired_registry_head_without_evidence() {
     let fixture = runtime_fixture();
     fixture
         .registry
@@ -361,94 +365,60 @@ async fn qualification_prepare_leaves_expired_head_without_reacquire_or_input() 
             .await
             .expect("open cognitive store"),
     );
+    let turn_id = "turn:agentd-expired-qualification";
+    let spawn_generation = fixture.identity.spawn_generation;
     let fleet_generation = fixture
         .state
         .qualification_turn_authority()
         .expect("qualification authority");
-    let turn_id = "turn:agentd-expired-qualification";
-    let spawn_generation = fixture.identity.spawn_generation;
-    let lease_id = format!("qualification-turn:{spawn_generation}:{turn_id}");
-    let fencing_token = Sha256Digest::for_bytes(
-        format!(
-            "hepta-agentd:qualification-turn-fence:v1:{}:{fleet_generation}:{spawn_generation}:{turn_id}",
-            fixture.identity.agent_id.as_str()
-        )
-        .as_bytes(),
+    let logical = LogicalTurnRequest::new(
+        format!("qualification:logical:{turn_id}"),
+        "qualification:local",
+        Sha256Digest::for_bytes(
+            format!("qualification:logical-binding:v1:{turn_id}").as_bytes(),
+        ),
     )
-    .as_str()
-    .to_string();
-    let expired_at = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("clock")
-        .as_secs()
-        .saturating_sub(1);
-    let expired_lease = store
-        .acquire_host_bound_lease(
-            lease_id.clone(),
-            1,
-            fleet_generation,
-            1,
-            fencing_token,
-            expired_at,
-        )
+    .expect("logical request");
+    let old = LogicalTurnAttemptRequest::new(
+        "seed-expired-attempt",
+        "seed-expired-lease",
+        "seed-expired-journal",
+        "seed-expired-trajectory",
+        "seed-expired-occurrence",
+        1,
+        fleet_generation,
+        1,
+        "seed-expired-fence",
+        1,
+    )
+    .expect("expired attempt request");
+    store
+        .reserve_or_replay_logical_turn(logical, old.clone())
         .await
-        .expect("seed expired active lease")
-        .into_handle();
-    let before = expired_lease
-        .snapshot_counts()
-        .await
-        .expect("counts before recovery");
+        .expect("seed expired registry attempt");
 
-    let first = prepare_qualification_turn_writer_input(
+    let input = prepare_qualification_turn_writer_input(
         Arc::clone(&fixture.state),
         Arc::clone(&store),
         fixture.identity.agent_id.clone(),
         spawn_generation,
         turn_id.to_string(),
     )
-    .await;
-    assert!(first.is_err(), "expired prepare must fail closed");
-
-    let inspected = store
-        .inspect_local_lease_head(&lease_id)
+    .await
+    .expect("expired zero-evidence attempt is taken over");
+    assert_ne!(input.lease.lease_id(), old.lease_id);
+    assert_ne!(input.trajectory_id, old.trajectory_id);
+    let old_head = store
+        .inspect_local_lease_head(old.lease_id)
         .await
-        .expect("inspect post-expiry recovery");
-    assert_eq!(
-        inspected.disposition,
-        LocalLeaseHeadDisposition::ExpiredActive,
-        "prepare must leave an expired head for head-scoped H7 recovery"
-    );
-    let after_first = expired_lease
-        .snapshot_counts()
-        .await
-        .expect("counts after recovery");
-    assert_eq!(after_first.lease_rows, before.lease_rows);
-    assert_eq!(after_first.event_rows, before.event_rows);
-    assert_eq!(after_first.outbox_rows, before.outbox_rows);
-
-    // A retry observes the same expired head and must not acquire generation
-    // two, expire it without H7 proof, or return an executor-backed input.
-    let second = prepare_qualification_turn_writer_input(
-        Arc::clone(&fixture.state),
-        Arc::clone(&store),
-        fixture.identity.agent_id.clone(),
-        spawn_generation,
-        turn_id.to_string(),
-    )
-    .await;
-    assert!(second.is_err(), "expired retry must remain fenced");
-    let after_second = expired_lease
-        .snapshot_counts()
-        .await
-        .expect("counts after fenced retry");
-    assert_eq!(after_second.lease_rows, after_first.lease_rows);
-    assert_eq!(after_second.event_rows, after_first.event_rows);
-    assert_eq!(after_second.outbox_rows, after_first.outbox_rows);
+        .expect("inspect superseded lease");
+    assert_eq!(old_head.disposition, LocalLeaseHeadDisposition::RolledBack);
+    input.lease.release().await.expect("release takeover test lease");
 }
 
 #[cfg(feature = "qualification-cognitive-write")]
 #[tokio::test]
-async fn qualification_prepare_expires_only_verified_terminal_after_restart() {
+async fn qualification_prepare_quarantines_expired_registry_attempt_with_h7_evidence() {
     let fixture = runtime_fixture();
     fixture
         .registry
@@ -471,59 +441,87 @@ async fn qualification_prepare_expires_only_verified_terminal_after_restart() {
         .expect("qualification authority");
     let turn_id = "turn:agentd-expired-terminal";
     let spawn_generation = fixture.identity.spawn_generation;
-    let lease_id = format!("qualification-turn:{spawn_generation}:{turn_id}");
-    let journal_id = format!("qualification-turn-journal:{spawn_generation}:{turn_id}");
-    let occurrence_key = format!("qualification-turn-start:{spawn_generation}:{turn_id}");
-    let fencing_token = Sha256Digest::for_bytes(
-        format!(
-            "hepta-agentd:qualification-turn-fence:v1:{}:{fleet_generation}:{spawn_generation}:{turn_id}",
-            fixture.identity.agent_id.as_str()
-        )
-        .as_bytes(),
+    let logical = LogicalTurnRequest::new(
+        format!("qualification:logical:{turn_id}"),
+        "qualification:local",
+        Sha256Digest::for_bytes(
+            format!("qualification:logical-binding:v1:{turn_id}").as_bytes(),
+        ),
     )
-    .as_str()
-    .to_string();
+    .expect("logical request");
     let expires_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_secs()
         + 1;
+    let old = LogicalTurnAttemptRequest::new(
+        "seed-terminal-attempt",
+        "seed-terminal-lease",
+        "seed-terminal-journal",
+        "seed-terminal-trajectory",
+        "seed-terminal-occurrence",
+        1,
+        fleet_generation,
+        1,
+        "seed-terminal-fence",
+        expires_at,
+    )
+    .expect("terminal attempt request");
+    let reservation = store
+        .reserve_or_replay_logical_turn(logical, old)
+        .await
+        .expect("seed registry attempt");
+    let codex_hepta_memory::LogicalTurnReservation::Acquired { attempt } = reservation else {
+        panic!("seed must acquire registry attempt")
+    };
+    let head = store
+        .inspect_local_lease_head(&attempt.lease_id)
+        .await
+        .expect("inspect seeded head")
+        .head
+        .expect("seeded head");
     let lease = store
-        .acquire_host_bound_lease(
-            lease_id,
-            1,
-            fleet_generation,
-            1,
-            fencing_token.clone(),
-            expires_at,
+        .reopen_host_bound_lease(
+            head,
+            attempt.authority_epoch,
+            attempt.owner_epoch,
+            attempt.lease_expires_at_unix_seconds,
         )
         .await
-        .expect("seed expiring lease")
-        .into_handle();
-    let fence = CompactFence::new(1, fleet_generation, 1, fencing_token.clone())
+        .expect("reopen seeded lease");
+    let fence = CompactFence::new(
+        attempt.authority_epoch,
+        attempt.owner_epoch,
+        attempt.generation,
+        attempt.fencing_token.clone(),
+    )
         .expect("compact fence");
     let executor = store
-        .open_local_compact_executor_bound(journal_id, fence, &lease)
+        .open_local_compact_executor_bound(attempt.journal_id.clone(), fence, &lease)
         .await
         .expect("open compact executor");
     let binding = LocalTurnLifecycleBinding::from_handles(turn_id, &lease, &executor)
         .expect("binding");
     let payload = r#"{"schema_version":1,"external_effect":false,"kg_write_authority":false,"production_caller":false}"#;
     let receipt = match lease
-        .admit(occurrence_key.clone(), "codex.turn.qualification.start.v1", payload)
+        .admit(
+            attempt.occurrence_key.clone(),
+            "codex.turn.qualification.start.v1",
+            payload,
+        )
         .await
         .expect("admit local intent")
     {
         LocalAdmission::Queued(receipt) | LocalAdmission::Replay(receipt) => receipt,
     };
-    let trajectory_id = format!("qualification:trajectory:{turn_id}");
+    let trajectory_id = attempt.trajectory_id.clone();
     let start = H7TrajectoryRecord::new(
         trajectory_id.clone(),
         1,
         format!("{trajectory_id}:event:turn-start"),
         H7TrajectoryEventKind::TurnStart,
         turn_id,
-        occurrence_key.clone(),
+        attempt.occurrence_key.clone(),
         None,
         None,
         Sha256Digest::for_bytes(payload.as_bytes()),
@@ -547,11 +545,11 @@ async fn qualification_prepare_expires_only_verified_terminal_after_restart() {
         panic!("start must be inserted")
     };
     let terminal = H7TrajectoryRecord::terminal(
-        trajectory_id,
+        trajectory_id.clone(),
         2,
-        format!("qualification:trajectory:{turn_id}:event:terminal:stop"),
+        format!("{trajectory_id}:event:terminal:stop"),
         turn_id,
-        format!("{occurrence_key}:terminal"),
+        format!("{}:terminal", attempt.occurrence_key),
         1,
         parent,
         Sha256Digest::for_bytes(b"terminal-state"),
@@ -581,22 +579,14 @@ async fn qualification_prepare_expires_only_verified_terminal_after_restart() {
     .await;
     assert!(result.is_err(), "terminal recovery returns no writable input");
     let inspected = store
-        .inspect_local_lease_head(&format!("qualification-turn:{spawn_generation}:{turn_id}"))
+        .inspect_local_lease_head(&attempt.lease_id)
         .await
         .expect("inspect recovered head");
     assert_eq!(
         inspected.disposition,
-        LocalLeaseHeadDisposition::RolledBack,
-        "only a verified H7 terminal may authorize timeout closure"
+        LocalLeaseHeadDisposition::ExpiredActive,
+        "registry-backed H7 quarantine must not mutate the active registry head"
     );
-    let counts = store
-        .reopen_local_lease(
-            format!("qualification-turn:{spawn_generation}:{turn_id}"),
-            1,
-            fencing_token,
-        )
-        .await;
-    assert!(counts.is_err(), "rolled-back head must not reopen writable");
 }
 
 #[cfg(not(feature = "qualification-cognitive-write"))]

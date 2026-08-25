@@ -247,6 +247,10 @@ impl LogicalTurnAttempt {
         request: &LogicalTurnRequest,
         attempt: &LogicalTurnAttemptRequest,
     ) -> bool {
+        // Expiry is a persisted lease binding, but it is not a physical
+        // identity.  A same-process replay may cross a wall-clock second
+        // and present a newly computed TTL; the durable head below is the
+        // authoritative expiry witness.
         self.logical_turn_id == request.logical_turn_id
             && self.logical_binding_sha256 == request.logical_binding_sha256
             && self.attempt_id == attempt.attempt_id
@@ -258,7 +262,6 @@ impl LogicalTurnAttempt {
             && self.owner_epoch == attempt.owner_epoch
             && self.generation == attempt.generation
             && self.fencing_token == attempt.fencing_token
-            && self.lease_expires_at_unix_seconds == attempt.lease_expires_at_unix_seconds
     }
 }
 
@@ -392,8 +395,17 @@ impl CognitiveStore {
 
         if let Some(head) = head.as_ref() {
             if head.matches_request(&request, &attempt) {
+                let mut persisted_attempt = attempt.clone();
+                persisted_attempt.lease_expires_at_unix_seconds =
+                    head.lease_expires_at_unix_seconds;
                 let lease =
-                    verify_or_load_requested_lease(&mut transaction, self, &attempt, false).await?;
+                    verify_or_load_requested_lease(
+                        &mut transaction,
+                        self,
+                        &persisted_attempt,
+                        false,
+                    )
+                    .await?;
                 if lease.is_none() {
                     return Ok(commit_reservation(
                         transaction,
@@ -418,6 +430,27 @@ impl CognitiveStore {
                     transaction,
                     LogicalTurnReservation::Conflict {
                         reason: "logical binding differs from the durable identity".to_string(),
+                    },
+                )
+                .await?);
+            }
+
+            // The physical lease may have reached a terminal state after the
+            // observation writer completed, while the immutable registry head
+            // intentionally remains an `active` identity row.  Treat that
+            // head as a durable terminal conflict before the TTL/live branch;
+            // otherwise a future caller could misclassify it as in-flight or
+            // attempt a takeover, and a clean reopen would reject the store.
+            let (latest_lease, _) =
+                load_lease_chain(&mut transaction, &head.lease_id, self.owner_agent_id()).await?;
+            let Some(latest_lease) = latest_lease else {
+                return Err(corrupt("logical attempt lease journal is missing"));
+            };
+            if latest_lease.state != LocalLeaseState::Active {
+                return Ok(commit_reservation(
+                    transaction,
+                    LogicalTurnReservation::Conflict {
+                        reason: "logical turn already has a terminal physical lease".to_string(),
                     },
                 )
                 .await?);
@@ -478,11 +511,46 @@ impl CognitiveStore {
                 )
                 .await?);
             }
+            if attempt.authority_epoch != head.authority_epoch {
+                return Ok(commit_reservation(
+                    transaction,
+                    LogicalTurnReservation::Conflict {
+                        reason: "takeover authority epoch must match the historical local authority"
+                            .to_string(),
+                    },
+                )
+                .await?);
+            }
+            if attempt.owner_epoch < head.owner_epoch {
+                return Ok(commit_reservation(
+                    transaction,
+                    LogicalTurnReservation::Conflict {
+                        reason: "takeover owner epoch must not regress below the expired attempt"
+                            .to_string(),
+                    },
+                )
+                .await?);
+            }
+            // Equality is intentional: a same-generation retry may have no
+            // stronger lifecycle epoch to present.  It is safe only because
+            // the locked path above has already proved expiry, zero local
+            // evidence, and a fresh physical identity; lower epochs remain
+            // fenced as stale callers.
             if attempt.lease_expires_at_unix_seconds <= now {
                 return Ok(commit_reservation(
                     transaction,
                     LogicalTurnReservation::Conflict {
                         reason: "takeover lease must have a future expiry".to_string(),
+                    },
+                )
+                .await?);
+            }
+            if physical_identity_is_reused(&mut transaction, &attempt).await? {
+                return Ok(commit_reservation(
+                    transaction,
+                    LogicalTurnReservation::Conflict {
+                        reason: "takeover attempt-scoped identity is already bound elsewhere"
+                            .to_string(),
                     },
                 )
                 .await?);
@@ -550,6 +618,29 @@ impl CognitiveStore {
             .await?);
         }
 
+        if physical_identity_is_reused(&mut transaction, &attempt).await? {
+            if identity_disposition == IdentityDisposition::Inserted {
+                // Do not commit an orphan immutable identity when the first
+                // physical reservation is rejected by a legacy/cross-logical
+                // collision.  Roll back the whole transaction, then preserve
+                // the typed conflict result for the caller.
+                return rollback_reservation(
+                    transaction,
+                    LogicalTurnReservation::Conflict {
+                        reason: "attempt-scoped identity is already bound elsewhere"
+                            .to_string(),
+                    },
+                )
+                .await;
+            }
+            return Ok(commit_reservation(
+                transaction,
+                LogicalTurnReservation::Conflict {
+                    reason: "attempt-scoped identity is already bound elsewhere".to_string(),
+                },
+            )
+            .await?);
+        }
         let _lease = ensure_requested_lease(&mut transaction, self, &attempt).await?;
         let active = append_attempt(
             &mut transaction,
@@ -578,6 +669,17 @@ async fn commit_reservation(
 ) -> Result<LogicalTurnReservation, LogicalTurnRegistryError> {
     transaction
         .commit()
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+    Ok(reservation)
+}
+
+async fn rollback_reservation(
+    transaction: Transaction<'_, Sqlite>,
+    reservation: LogicalTurnReservation,
+) -> Result<LogicalTurnReservation, LogicalTurnRegistryError> {
+    transaction
+        .rollback()
         .await
         .map_err(crate::cognitive_store::unavailable)?;
     Ok(reservation)
@@ -720,6 +822,89 @@ async fn ensure_requested_lease(
         Some(&binding),
     )
     .await?)
+}
+
+/// Reject a caller that tries to reuse any physical attempt identity already
+/// present in this Agent-local database.  The registry API is public to local
+/// qualification callers, so the Agentd hash construction is not the only
+/// boundary that must prevent cross-logical aliasing.  Legacy rows are also
+/// included: an upgrade must not silently bind a new logical turn to an old
+/// lease, compact journal, H7 trajectory, or admitted occurrence.
+async fn physical_identity_is_reused(
+    transaction: &mut Transaction<'_, Sqlite>,
+    attempt: &LogicalTurnAttemptRequest,
+) -> Result<bool, LogicalTurnRegistryError> {
+    let registry_rows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cognitive_logical_turn_attempts
+         WHERE attempt_id = ? OR lease_id = ? OR journal_id = ?
+            OR trajectory_id = ? OR occurrence_key = ?",
+    )
+    .bind(&attempt.attempt_id)
+    .bind(&attempt.lease_id)
+    .bind(&attempt.journal_id)
+    .bind(&attempt.trajectory_id)
+    .bind(&attempt.occurrence_key)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    if registry_rows > 0 {
+        return Ok(true);
+    }
+
+    let lease_rows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cognitive_local_leases WHERE lease_id = ?",
+    )
+    .bind(&attempt.lease_id)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    if lease_rows > 0 {
+        return Ok(true);
+    }
+
+    let event_or_outbox_rows: i64 = sqlx::query_scalar(
+        "SELECT (
+            (SELECT COUNT(*) FROM cognitive_local_events
+             WHERE lease_id = ? OR occurrence_key = ?) +
+            (SELECT COUNT(*) FROM cognitive_local_outbox
+             WHERE lease_id = ? OR occurrence_key = ?)
+        )",
+    )
+    .bind(&attempt.lease_id)
+    .bind(&attempt.occurrence_key)
+    .bind(&attempt.lease_id)
+    .bind(&attempt.occurrence_key)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    if event_or_outbox_rows > 0 {
+        return Ok(true);
+    }
+
+    let compact_rows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cognitive_compact_events
+         WHERE journal_id = ? OR lease_id = ?",
+    )
+    .bind(&attempt.journal_id)
+    .bind(&attempt.lease_id)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    if compact_rows > 0 {
+        return Ok(true);
+    }
+
+    let trajectory_rows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cognitive_h7_trajectory_events
+         WHERE lease_id = ? OR trajectory_id = ? OR occurrence_key = ?",
+    )
+    .bind(&attempt.lease_id)
+    .bind(&attempt.trajectory_id)
+    .bind(&attempt.occurrence_key)
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    Ok(trajectory_rows > 0)
 }
 
 async fn verify_or_load_requested_lease(

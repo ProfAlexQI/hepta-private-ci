@@ -11,6 +11,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use codex_diagnostics::Gauge;
+use codex_extension_api::QualificationTurnAdmissionIdentity;
 use codex_extension_api::ThreadIdleCause;
 use futures::future::BoxFuture;
 use tokio::select;
@@ -59,6 +60,7 @@ use codex_protocol::protocol::TurnAbortReason;
 use codex_protocol::protocol::TurnAbortedEvent;
 use codex_protocol::protocol::TurnCompleteEvent;
 use codex_protocol::protocol::WarningEvent;
+use codex_protocol::user_input::user_input_payload_sha256;
 use codex_thread_store::PersistContext;
 
 use codex_features::Feature;
@@ -792,6 +794,41 @@ impl Session {
 
         let (pending_items, parent_turn_id, root_turn_id) =
             self.input_queue.get_pending_input(&self.active_turn).await;
+        // Preserve the durable client/input identity in the turn scope before
+        // any qualification contributor runs.  The extension API remains
+        // inert for mailbox/automatic turns and for direct inputs that lack a
+        // client message id; those paths cannot honestly claim cross-spawn
+        // replay.
+        if let Some(identity) =
+            qualification_admission_identity(self.thread_id.to_string().as_str(), &input)
+        {
+            // A host may have supplied an identity through the turn scope.
+            // Preserve that authority instead of replacing it with a
+            // newly-derived value after the scope was initialized.
+            let attached = turn_context
+                .extension_data
+                .insert_if(identity.clone(), |existing| existing.is_none());
+            if !attached
+                && turn_context
+                    .extension_data
+                    .get::<QualificationTurnAdmissionIdentity>()
+                    .is_some_and(|existing| *existing != identity)
+            {
+                // A mismatched pre-seeded value is not allowed to become a
+                // qualification authority for this accepted input.  Remove
+                // it so the extension remains inert rather than binding the
+                // wrong logical turn.
+                turn_context
+                    .extension_data
+                    .remove::<QualificationTurnAdmissionIdentity>();
+            }
+        } else {
+            // Do not let a reused turn context carry a prior user's durable
+            // identity into an automatic/mailbox/direct turn.
+            turn_context
+                .extension_data
+                .remove::<QualificationTurnAdmissionIdentity>();
+        }
         if let MailboxParentProvenance::Attribute = mailbox_parent_provenance {
             if let Some(id) = parent_turn_id {
                 if let Some(initiating_agent_path) = pending_items.iter().find_map(|item| {
@@ -1593,6 +1630,31 @@ impl Session {
             recovery_seed,
         }
     }
+}
+
+fn qualification_admission_identity(
+    thread_scope_key: &str,
+    input: &[TurnInput],
+) -> Option<QualificationTurnAdmissionIdentity> {
+    let mut user_input = None;
+    for item in input {
+        let TurnInput::UserInput { content, client_id } = item else {
+            continue;
+        };
+        if content.is_empty() || client_id.is_none() || user_input.is_some() {
+            return None;
+        }
+        user_input = Some((content.as_slice(), client_id.as_deref()?));
+    }
+    let Some((content, client_id)) = user_input else {
+        return None;
+    };
+    let payload_sha256 = user_input_payload_sha256(content).ok()?;
+    QualificationTurnAdmissionIdentity::new(
+        thread_scope_key.to_string(),
+        client_id.to_string(),
+        payload_sha256,
+    )
 }
 
 #[cfg(test)]

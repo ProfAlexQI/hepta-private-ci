@@ -2,6 +2,7 @@ use super::TASK_COMPACT_METRIC;
 use super::emit_compact_metric;
 use super::emit_turn_memory_metric;
 use super::emit_turn_network_proxy_metric;
+use super::qualification_admission_identity;
 use codex_otel::MetricsClient;
 use codex_otel::MetricsConfig;
 use codex_otel::SessionTelemetry;
@@ -9,6 +10,7 @@ use codex_otel::TURN_MEMORY_METRIC;
 use codex_otel::TURN_NETWORK_PROXY_METRIC;
 use codex_protocol::ThreadId;
 use codex_protocol::protocol::SessionSource;
+use codex_protocol::user_input::UserInput;
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::metrics::InMemoryMetricExporter;
 use opentelemetry_sdk::metrics::data::AggregatedMetrics;
@@ -17,6 +19,53 @@ use opentelemetry_sdk::metrics::data::MetricData;
 use opentelemetry_sdk::metrics::data::ResourceMetrics;
 use pretty_assertions::assert_eq;
 use std::collections::BTreeMap;
+
+use super::TurnInput;
+
+#[test]
+fn qualification_admission_identity_requires_one_client_bound_user_input() {
+    let content = vec![UserInput::Text {
+        text: "hello".to_string(),
+        text_elements: Vec::new(),
+    }];
+    let input = vec![TurnInput::UserInput {
+        content: content.clone(),
+        client_id: Some("client-1".to_string()),
+    }];
+    let identity =
+        qualification_admission_identity("thread-1", &input).expect("durable identity");
+    assert_eq!(identity.thread_scope_key, "thread-1");
+    assert_eq!(identity.client_user_message_id, "client-1");
+    assert_eq!(
+        identity.payload_sha256,
+        codex_protocol::user_input::user_input_payload_sha256(&content)
+            .expect("payload digest")
+    );
+
+    let without_client = vec![TurnInput::UserInput {
+        content: content.clone(),
+        client_id: None,
+    }];
+    assert!(qualification_admission_identity("thread-1", &without_client).is_none());
+
+    let empty = vec![TurnInput::UserInput {
+        content: Vec::new(),
+        client_id: Some("client-1".to_string()),
+    }];
+    assert!(qualification_admission_identity("thread-1", &empty).is_none());
+
+    let duplicate = vec![
+        TurnInput::UserInput {
+            content: content.clone(),
+            client_id: Some("client-1".to_string()),
+        },
+        TurnInput::UserInput {
+            content,
+            client_id: Some("client-2".to_string()),
+        },
+    ];
+    assert!(qualification_admission_identity("thread-1", &duplicate).is_none());
+}
 
 fn test_session_telemetry() -> SessionTelemetry {
     let exporter = InMemoryMetricExporter::default();

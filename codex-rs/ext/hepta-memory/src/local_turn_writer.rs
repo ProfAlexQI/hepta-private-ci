@@ -25,6 +25,7 @@ use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::ExtensionFuture;
 use codex_extension_api::ExtensionRegistryBuilder;
+use codex_extension_api::QualificationTurnAdmissionIdentity;
 use codex_extension_api::ThreadLifecycleContributor;
 use codex_extension_api::ThreadStartInput;
 use codex_extension_api::TurnAbortInput;
@@ -133,8 +134,104 @@ pub type QualificationTurnWriterPrepareFuture = Pin<
     >,
 >;
 
-type QualificationTurnWriterPrepareFn =
-    dyn Fn(String) -> QualificationTurnWriterPrepareFuture + Send + Sync + 'static;
+type QualificationTurnWriterPrepareFn = dyn Fn(
+        QualificationTurnWriterPrepareRequest,
+    ) -> QualificationTurnWriterPrepareFuture
+    + Send
+    + Sync
+    + 'static;
+
+/// Stable host-supplied identity material for one qualification turn.
+///
+/// `turn_id` is the physical callback key.  The other fields are deliberately
+/// supplied by the embedding so a future spawn can present the same logical
+/// identity while minting fresh attempt-scoped lease/journal/trajectory IDs.
+/// The default constructor is only a compatibility bridge for older
+/// embeddings; the Agentd qualification host replaces these values with its
+/// canonical local contract before reserving the registry entry.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QualificationTurnWriterPrepareRequest {
+    pub turn_id: String,
+    pub logical_turn_id: String,
+    pub logical_scope_key: String,
+    pub logical_binding_sha256: Sha256Digest,
+    /// `true` only when Core supplied a durable client/input admission
+    /// identity.  Legacy direct/recovery callers may still use `for_turn`,
+    /// but Agentd's runtime host refuses to treat that fallback as a
+    /// cross-spawn identity.
+    pub durable_admission: bool,
+}
+
+impl QualificationTurnWriterPrepareRequest {
+    pub fn for_turn(turn_id: impl Into<String>) -> Self {
+        let turn_id = turn_id.into();
+        Self {
+            logical_turn_id: format!("qualification:logical:{turn_id}"),
+            logical_scope_key: "qualification:local".to_string(),
+            logical_binding_sha256: Sha256Digest::for_bytes(
+                format!("qualification:logical-binding:v1:{turn_id}").as_bytes(),
+            ),
+            turn_id,
+            durable_admission: false,
+        }
+    }
+
+    pub fn from_admission(
+        turn_id: impl Into<String>,
+        identity: &QualificationTurnAdmissionIdentity,
+    ) -> Self {
+        let turn_id = turn_id.into();
+        // Length-frame each component so caller-controlled scope/message IDs
+        // cannot alias one another through delimiter ambiguity (for example,
+        // `a:b` + `c` versus `a` + `b:c`).  The payload digest remains in the
+        // immutable binding, while the stable logical ID is intentionally
+        // content-independent so a retry with a changed payload is a durable
+        // conflict rather than a new logical turn.
+        let stable_suffix = qualification_identity_digest(
+            b"hepta-agentd:qualification-logical:v3",
+            &[
+                identity.thread_scope_key.as_str(),
+                identity.client_user_message_id.as_str(),
+            ],
+        );
+        let binding = qualification_identity_digest(
+            b"hepta-agentd:qualification-binding:v3",
+            &[
+                identity.thread_scope_key.as_str(),
+                identity.client_user_message_id.as_str(),
+                identity.payload_sha256.as_str(),
+            ],
+        );
+        let scope_suffix = qualification_identity_digest(
+            b"hepta-agentd:qualification-scope:v3",
+            &[identity.thread_scope_key.as_str()],
+        );
+        Self {
+            logical_turn_id: format!("qualification:logical:{}", stable_suffix.as_str()),
+            logical_scope_key: format!("qualification:thread:{}", scope_suffix.as_str()),
+            logical_binding_sha256: binding,
+            turn_id,
+            durable_admission: true,
+        }
+    }
+}
+
+fn qualification_identity_digest(domain: &[u8], parts: &[&str]) -> Sha256Digest {
+    let mut bytes = Vec::with_capacity(
+        domain.len()
+            + parts
+                .iter()
+                .map(|part| std::mem::size_of::<u64>() + part.len())
+                .sum::<usize>(),
+    );
+    bytes.extend_from_slice(&(domain.len() as u64).to_be_bytes());
+    bytes.extend_from_slice(domain);
+    for part in parts {
+        bytes.extend_from_slice(&(part.len() as u64).to_be_bytes());
+        bytes.extend_from_slice(part.as_bytes());
+    }
+    Sha256Digest::for_bytes(&bytes)
+}
 
 /// Explicit host capability for preparing one fully bound local turn input.
 ///
@@ -180,7 +277,22 @@ impl QualificationTurnWriterHost {
     {
         Self {
             capability_id: Arc::from(capability_id.into()),
-            prepare: Arc::new(move |turn_id| Box::pin(prepare(turn_id))),
+            prepare: Arc::new(move |request| Box::pin(prepare(request.turn_id))),
+        }
+    }
+
+    /// Build a host capability whose callback receives the stable logical
+    /// identity supplied by the embedding.
+    pub fn from_request_fn<F, Fut>(capability_id: impl Into<String>, prepare: F) -> Self
+    where
+        F: Fn(QualificationTurnWriterPrepareRequest) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<QualificationTurnWriterInput, QualificationTurnWriterInputError>>
+            + Send
+            + 'static,
+    {
+        Self {
+            capability_id: Arc::from(capability_id.into()),
+            prepare: Arc::new(move |request| Box::pin(prepare(request))),
         }
     }
 
@@ -192,8 +304,17 @@ impl QualificationTurnWriterHost {
         &self,
         turn_id: &str,
     ) -> Result<QualificationTurnWriterInput, QualificationTurnWriterInputError> {
-        let input = (self.prepare)(turn_id.to_owned()).await?;
-        input.validate_for_turn(turn_id)?;
+        self.prepare_with_request(QualificationTurnWriterPrepareRequest::for_turn(turn_id))
+            .await
+    }
+
+    async fn prepare_with_request(
+        &self,
+        request: QualificationTurnWriterPrepareRequest,
+    ) -> Result<QualificationTurnWriterInput, QualificationTurnWriterInputError> {
+        let turn_id = request.turn_id.clone();
+        let input = (self.prepare)(request).await?;
+        input.validate_for_turn(&turn_id)?;
         Ok(input)
     }
 }
@@ -218,6 +339,10 @@ pub fn insert_qualification_turn_writer_host(
 pub struct QualificationTurnWriterInput {
     pub schema_version: u32,
     pub turn_id: String,
+    /// Attempt-scoped H7 trajectory identity.  It must not be reconstructed
+    /// from the stable turn id when a logical turn is taken over by a new
+    /// Agentd spawn.
+    pub trajectory_id: String,
     pub binding: LocalTurnLifecycleBinding,
     pub occurrence_key: String,
     pub payload_json: String,
@@ -237,6 +362,33 @@ impl QualificationTurnWriterInput {
         payload_json: impl Into<String>,
     ) -> Result<Self, QualificationTurnWriterInputError> {
         let turn_id = turn_id.into();
+        let trajectory_id = format!("qualification:trajectory:{turn_id}");
+        Self::new_with_trajectory(
+            turn_id,
+            trajectory_id,
+            binding,
+            lease,
+            executor,
+            occurrence_key,
+            payload_json,
+        )
+    }
+
+    /// Build an input with an explicit physical-attempt trajectory identity.
+    /// The legacy [`Self::new`] constructor remains available for standalone
+    /// extension tests, while Agentd's stable logical registry always uses
+    /// this constructor.
+    pub fn new_with_trajectory(
+        turn_id: impl Into<String>,
+        trajectory_id: impl Into<String>,
+        binding: LocalTurnLifecycleBinding,
+        lease: LocalLeaseOutbox,
+        executor: LocalCompactExecutor,
+        occurrence_key: impl Into<String>,
+        payload_json: impl Into<String>,
+    ) -> Result<Self, QualificationTurnWriterInputError> {
+        let turn_id = turn_id.into();
+        let trajectory_id = trajectory_id.into();
         let occurrence_key = occurrence_key.into();
         let payload_json = payload_json.into();
         binding.validate()?;
@@ -253,6 +405,14 @@ impl QualificationTurnWriterInput {
                 "occurrence key must contain 1..=512 non-NUL bytes".to_string(),
             ));
         }
+        if trajectory_id.trim().is_empty()
+            || trajectory_id.len() > MAX_OCCURRENCE_KEY_BYTES
+            || trajectory_id.as_bytes().contains(&0)
+        {
+            return Err(QualificationTurnWriterInputError::Invalid(
+                "trajectory id must contain 1..=512 non-NUL bytes".to_string(),
+            ));
+        }
         if payload_json.trim().is_empty()
             || payload_json.len() > 65_536
             || payload_json.as_bytes().contains(&0)
@@ -264,6 +424,7 @@ impl QualificationTurnWriterInput {
         Ok(Self {
             schema_version: QUALIFICATION_TURN_WRITER_SCHEMA_VERSION,
             turn_id,
+            trajectory_id,
             binding,
             occurrence_key,
             payload_json,
@@ -284,6 +445,30 @@ impl QualificationTurnWriterInput {
             ));
         }
         self.binding.validate()?;
+        if self.trajectory_id.trim().is_empty()
+            || self.trajectory_id.len() > MAX_OCCURRENCE_KEY_BYTES
+            || self.trajectory_id.as_bytes().contains(&0)
+        {
+            return Err(QualificationTurnWriterInputError::Invalid(
+                "trajectory id must contain 1..=512 non-NUL bytes".to_string(),
+            ));
+        }
+        if self.occurrence_key.trim().is_empty()
+            || self.occurrence_key.len() > MAX_OCCURRENCE_KEY_BYTES
+            || self.occurrence_key.as_bytes().contains(&0)
+        {
+            return Err(QualificationTurnWriterInputError::Invalid(
+                "occurrence key must contain 1..=512 non-NUL bytes".to_string(),
+            ));
+        }
+        if self.payload_json.trim().is_empty()
+            || self.payload_json.len() > 65_536
+            || self.payload_json.as_bytes().contains(&0)
+        {
+            return Err(QualificationTurnWriterInputError::Invalid(
+                "payload must contain 1..=65536 non-NUL bytes".to_string(),
+            ));
+        }
         Ok(())
     }
 }
@@ -384,12 +569,11 @@ impl QualificationTurnLifecycleContributor {
     async fn admit(
         input: &QualificationTurnWriterInput,
     ) -> Result<Option<QueuedReceipt>, QualificationTurnWriterInputError> {
-        let trajectory_id = format!("qualification:trajectory:{}", input.turn_id);
         let recovery = read_h7_trajectory_bound_for_recovery(
             &input.lease,
             &input.executor,
             &input.binding,
-            trajectory_id,
+            input.trajectory_id.clone(),
         )
         .await
         .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?;
@@ -474,7 +658,7 @@ impl QualificationTurnLifecycleContributor {
         input: &QualificationTurnWriterInput,
         receipt: &QueuedReceipt,
     ) -> Result<ActiveTurn, QualificationTurnWriterInputError> {
-        let trajectory_id = format!("qualification:trajectory:{}", input.turn_id);
+        let trajectory_id = input.trajectory_id.clone();
         let state_digest = Sha256Digest::for_bytes(input.payload_json.as_bytes());
         let policy_digest = Sha256Digest::for_bytes(b"qualification:observation-only-policy:v1");
         let model_receipt_digest =
@@ -771,7 +955,21 @@ impl TurnLifecycleContributor for QualificationTurnLifecycleContributor {
                 let Some(host) = host else {
                     return;
                 };
-                let prepared = tokio::time::timeout(IO_TIMEOUT, host.prepare(input.turn_id)).await;
+                let prepared = if let Some(identity) = input
+                    .turn_store
+                    .get::<QualificationTurnAdmissionIdentity>()
+                {
+                    tokio::time::timeout(
+                        IO_TIMEOUT,
+                        host.prepare_with_request(QualificationTurnWriterPrepareRequest::from_admission(
+                            input.turn_id,
+                            identity.as_ref(),
+                        )),
+                    )
+                    .await
+                } else {
+                    tokio::time::timeout(IO_TIMEOUT, host.prepare(input.turn_id)).await
+                };
                 let Ok(Ok(prepared)) = prepared else {
                     return;
                 };
@@ -1069,6 +1267,52 @@ mod tests {
                 turn_store: &turn_store,
             })
             .await;
+    }
+
+    #[test]
+    fn admission_identity_hashes_are_length_framed() {
+        let first = QualificationTurnAdmissionIdentity::new(
+            "thread:a:b",
+            "client:c",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+        )
+        .expect("first identity");
+        let second = QualificationTurnAdmissionIdentity::new(
+            "thread:a",
+            "b:client:c",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+        )
+        .expect("second identity");
+        let first_request = QualificationTurnWriterPrepareRequest::from_admission("turn", &first);
+        let second_request =
+            QualificationTurnWriterPrepareRequest::from_admission("turn", &second);
+        assert_ne!(
+            first_request.logical_turn_id,
+            second_request.logical_turn_id,
+            "delimiter-containing identities must not alias"
+        );
+        assert_ne!(
+            first_request.logical_binding_sha256,
+            second_request.logical_binding_sha256,
+            "binding digest must preserve field boundaries"
+        );
+    }
+
+    #[tokio::test]
+    async fn host_rejects_public_input_with_malformed_attempt_fields() {
+        let (_temp, _store, mut template) = prepared().await;
+        template.trajectory_id = "bad\0trajectory".to_string();
+        let host = QualificationTurnWriterHost::from_request_fn(
+            "qualification-malformed-input-test",
+            move |_request| {
+                let template = template.clone();
+                async move { Ok(template) }
+            },
+        );
+        let result = host
+            .prepare_with_request(QualificationTurnWriterPrepareRequest::for_turn(TURN_ID))
+            .await;
+        assert!(result.is_err(), "malformed host input must fail closed");
     }
 
     #[tokio::test]

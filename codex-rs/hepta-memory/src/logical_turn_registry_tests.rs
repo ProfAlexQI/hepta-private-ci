@@ -41,6 +41,16 @@ fn attempt(
     generation: u64,
     expiry: u64,
 ) -> LogicalTurnAttemptRequest {
+    attempt_with_owner_epoch(suffix, lease_suffix, 1, generation, expiry)
+}
+
+fn attempt_with_owner_epoch(
+    suffix: &str,
+    lease_suffix: &str,
+    owner_epoch: u64,
+    generation: u64,
+    expiry: u64,
+) -> LogicalTurnAttemptRequest {
     LogicalTurnAttemptRequest::new(
         format!("attempt:{suffix}"),
         format!("lease:{lease_suffix}"),
@@ -48,7 +58,7 @@ fn attempt(
         format!("trajectory:{suffix}"),
         format!("occurrence:{suffix}"),
         1,
-        1,
+        owner_epoch,
         generation,
         format!("fence:{suffix}"),
         expiry,
@@ -112,6 +122,45 @@ async fn live_different_attempt_is_existing_in_flight_without_side_effects() {
 }
 
 #[tokio::test]
+async fn physical_attempt_identity_cannot_alias_another_logical_turn() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 189).await;
+    let first_request = logical_request();
+    let first_attempt = attempt("alias-first", "alias-shared", 1, now() + 3_600);
+    store
+        .reserve_or_replay_logical_turn(first_request, first_attempt)
+        .await
+        .expect("first reservation");
+
+    let second_request = LogicalTurnRequest::new(
+        "logical-turn:other",
+        "scope:test",
+        Sha256Digest::for_bytes(b"other-binding"),
+    )
+    .expect("second logical request");
+    let result = store
+        .reserve_or_replay_logical_turn(
+            second_request,
+            attempt("alias-second", "alias-shared", 1, now() + 3_600),
+        )
+        .await
+        .expect("alias result");
+    assert!(matches!(result, LogicalTurnReservation::Conflict { .. }));
+    let identity_rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turns")
+            .fetch_one(&store.pool)
+            .await
+            .expect("identity rows");
+    let attempt_rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turn_attempts")
+            .fetch_one(&store.pool)
+            .await
+            .expect("attempt rows");
+    assert_eq!(identity_rows, 1);
+    assert_eq!(attempt_rows, 1);
+}
+
+#[tokio::test]
 async fn expired_attempt_without_evidence_has_one_takeover_winner() {
     let temp = TempDir::new().expect("temp dir");
     let store = opened_store(&temp, 182).await;
@@ -121,7 +170,9 @@ async fn expired_attempt_without_evidence_has_one_takeover_winner() {
         .reserve_or_replay_logical_turn(request.clone(), expired)
         .await
         .expect("expired reservation");
-    let successor = attempt("new", "new", 1, now() + 3_600);
+    // Equal owner epochs are permitted for a same-generation, zero-evidence
+    // retry; only a regressing epoch is rejected below.
+    let successor = attempt_with_owner_epoch("new", "new", 1, 1, now() + 3_600);
     let result = store
         .reserve_or_replay_logical_turn(request, successor)
         .await
@@ -147,6 +198,34 @@ async fn expired_attempt_without_evidence_has_one_takeover_winner() {
 }
 
 #[tokio::test]
+async fn expired_takeover_rejects_regressing_owner_epoch() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 190).await;
+    let request = logical_request();
+    store
+        .reserve_or_replay_logical_turn(
+            request.clone(),
+            attempt_with_owner_epoch("epoch-old", "epoch-old", 2, 1, 1),
+        )
+        .await
+        .expect("expired reservation");
+    let result = store
+        .reserve_or_replay_logical_turn(
+            request,
+            attempt_with_owner_epoch("epoch-new", "epoch-new", 1, 1, now() + 3_600),
+        )
+        .await
+        .expect("epoch conflict");
+    assert!(matches!(result, LogicalTurnReservation::Conflict { .. }));
+    let attempts: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_logical_turn_attempts")
+            .fetch_one(&store.pool)
+            .await
+            .expect("attempt count");
+    assert_eq!(attempts, 1);
+}
+
+#[tokio::test]
 async fn takeover_reopens_with_historical_witness_and_fences_old_handle() {
     let temp = TempDir::new().expect("temp dir");
     let store = opened_store(&temp, 185).await;
@@ -156,7 +235,8 @@ async fn takeover_reopens_with_historical_witness_and_fences_old_handle() {
         .reserve_or_replay_logical_turn(request.clone(), expired.clone())
         .await
         .expect("expired reservation");
-    let successor = attempt("reopen-new", "reopen-new", 1, now() + 3_600);
+    let successor =
+        attempt_with_owner_epoch("reopen-new", "reopen-new", 2, 1, now() + 3_600);
     let takeover = store
         .reserve_or_replay_logical_turn(request.clone(), successor.clone())
         .await
@@ -261,7 +341,7 @@ async fn takeover_fault_rolls_back_lease_and_registry_rows() {
     let failed = store
         .reserve_or_replay_logical_turn(
             request.clone(),
-            attempt("fault-new", "fault-new", 1, now() + 3_600),
+            attempt_with_owner_epoch("fault-new", "fault-new", 2, 1, now() + 3_600),
         )
         .await;
     assert!(failed.is_err());
@@ -295,7 +375,7 @@ async fn takeover_fault_rolls_back_lease_and_registry_rows() {
     let takeover = store
         .reserve_or_replay_logical_turn(
             request,
-            attempt("fault-new", "fault-new", 1, now() + 3_600),
+            attempt_with_owner_epoch("fault-new", "fault-new", 2, 1, now() + 3_600),
         )
         .await
         .expect("retry takeover");

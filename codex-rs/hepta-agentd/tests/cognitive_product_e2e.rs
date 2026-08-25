@@ -169,13 +169,18 @@ impl ProductClient {
         turn_timeout: Duration,
     ) -> Result<String> {
         let request_id = self.request_id();
+        // The qualification writer is intentionally inert without a durable
+        // client admission key.  Product E2E supplies one per user message so
+        // the test exercises the same stable logical-turn path as App Server
+        // clients instead of silently falling back to legacy turn IDs.
+        let client_user_message_id = format!("qualification-e2e-message:{request_id:?}");
         let response: TurnStartResponse = self
             .inner
             .request_typed(ClientRequest::TurnStart {
                 request_id,
                 params: TurnStartParams {
                     thread_id: thread_id.to_string(),
-                    client_user_message_id: None,
+                    client_user_message_id: Some(client_user_message_id),
                     input: vec![V2UserInput::Text {
                         text: text.to_string(),
                         text_elements: Vec::new(),
@@ -307,8 +312,11 @@ async fn real_agentd_remember_recall_correct_and_forget_revalidate_physical_send
     fleet.supervisor.kill(&agent.agent_id)?;
     wait_inactive(&mut fleet, &agent.agent_id).await?;
     let trajectory_store = CognitiveStore::open(&agent.layout).await?;
-    let remember_trajectory = trajectory_store
-        .read_h7_trajectory(format!("qualification:trajectory:{remember_turn_id}"))
+    let remember_trajectory = read_h7_trajectory_for_turn(
+        &trajectory_store,
+        &agent,
+        &remember_turn_id,
+    )
         .await?
         .context("qualification turn did not leave an H7 trajectory")?;
     ensure!(
@@ -2002,6 +2010,32 @@ fn json_sha256(value: &Value, field: &str) -> Result<String> {
         "cognitive projection returned a non-canonical {field}"
     );
     Ok(digest.to_string())
+}
+
+async fn read_h7_trajectory_for_turn(
+    store: &CognitiveStore,
+    agent: &AgentFixture,
+    turn_id: &str,
+) -> Result<Option<codex_hepta_memory::H7TrajectoryRead>> {
+    let database_path = agent.layout.cognitive_root().join("cognitive_1.sqlite3");
+    let sqlite_home = AbsolutePathBuf::from_absolute_path(agent.layout.cognitive_root())?;
+    let pool = SqliteConfig::from_sqlite_home(sqlite_home)
+        .open_read_only_pool(&database_path)
+        .await?;
+    let trajectory_id: Option<String> = sqlx::query_scalar(
+        "SELECT trajectory_id
+         FROM cognitive_h7_trajectory_events
+         WHERE turn_id = ?
+         ORDER BY recorded_at_unix_seconds DESC, event_seq DESC
+         LIMIT 1",
+    )
+    .bind(turn_id)
+    .fetch_optional(&pool)
+    .await?;
+    let Some(trajectory_id) = trajectory_id else {
+        return Ok(None);
+    };
+    Ok(store.read_h7_trajectory(trajectory_id).await?)
 }
 
 async fn read_kg_sqlite_evidence(

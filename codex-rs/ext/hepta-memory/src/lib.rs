@@ -79,6 +79,7 @@ pub use local_turn_writer::QUALIFICATION_TURN_WRITER_PRODUCTION_CALLER;
 pub use local_turn_writer::QUALIFICATION_TURN_WRITER_SCHEMA_VERSION;
 pub use local_turn_writer::QualificationTurnLifecycleContributor;
 pub use local_turn_writer::QualificationTurnWriterHost;
+pub use local_turn_writer::QualificationTurnWriterPrepareRequest;
 pub use local_turn_writer::QualificationTurnWriterInput;
 pub use local_turn_writer::QualificationTurnWriterInputError;
 pub use local_turn_writer::QualificationTurnWriterPrepareFuture;
