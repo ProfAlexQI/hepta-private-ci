@@ -187,10 +187,13 @@ impl HeptaEvidenceStore {
             .ok_or_else(|| EvidenceError::Corrupt("provider effect claim disappeared".into()))?;
         // A concurrent caller may have won the claim, or a reconciler may
         // have appended an ACK while this call was between transactions.  In
-        // either case, do not cross the adapter boundary a second time.
+        // either case, do not cross the adapter boundary a second time.  The
+        // ACK check is also needed when a separate store open bypasses the
+        // process-local mutex.
         if !claimed
             || after_claim.state() != ProviderEffectState::Indeterminate
             || after_claim.uncertainties.len() != 1
+            || !after_claim.acknowledgements.is_empty()
         {
             return Ok(ProviderEffectQualificationDispatchReceipt {
                 state: after_claim.state(),
