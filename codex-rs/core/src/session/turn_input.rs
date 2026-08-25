@@ -258,7 +258,10 @@ async fn start_or_steer(
         Err(NotSubmittedReason::NoActiveTurn) => {
             let start_reservation = {
                 let mut active_turn = session.active_turn.lock().await;
-                if active_turn.is_some() {
+                if session.shutdown_started()
+                    || session.has_pending_start_transition()
+                    || active_turn.is_some()
+                {
                     return Ok(TurnInputSubmission::NotSubmitted {
                         reason: NotSubmittedReason::NotIdle,
                     });
@@ -373,6 +376,11 @@ async fn start_if_idle(
     debug_assert_eq!(is_recovery, recovery_epoch.is_some());
     let is_automatic_idle_work = !has_user_input && !is_recovery;
     let can_start_root_turn = start.parent_turn_id.is_none() && start.root_turn_id.is_none();
+    if session.shutdown_started() || session.has_pending_start_transition() {
+        return Ok(TurnInputSubmission::NotSubmitted {
+            reason: NotSubmittedReason::NotIdle,
+        });
+    }
     if session.input_queue.has_trigger_turn_mailbox_items().await {
         return Ok(TurnInputSubmission::NotSubmitted {
             reason: NotSubmittedReason::PendingTriggerTurn,
@@ -391,7 +399,10 @@ async fn start_if_idle(
     let mut recovery_expected_context = None;
     let (turn_state, start_reservation) = {
         let mut active_turn = session.active_turn.lock().await;
-        if active_turn.is_some() {
+        if session.shutdown_started()
+            || session.has_pending_start_transition()
+            || active_turn.is_some()
+        {
             return Ok(TurnInputSubmission::NotSubmitted {
                 reason: NotSubmittedReason::NotIdle,
             });

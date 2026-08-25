@@ -82,6 +82,7 @@ use codex_protocol::turn_input::TurnInputSubmission;
 use codex_tools::ToolSpec;
 use codex_utils_path_uri::PathUri;
 use std::collections::BTreeMap;
+use std::sync::atomic::AtomicBool;
 use tracing::Span;
 
 use crate::connectors::AppInfo;
@@ -889,6 +890,206 @@ async fn abort_during_turn_start_transition_is_fenced_before_task_attach() {
     );
     assert!(saw_turn_aborted, "abort must publish a terminal event");
     assert!(session.active_turn.lock().await.is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelled_after_start_transition_promotes_detached_terminalizer() {
+    struct BlockingStartContributor {
+        entered: Arc<Notify>,
+        aborts: Arc<std::sync::atomic::AtomicUsize>,
+        idle_entered: Arc<Notify>,
+        idle_release: Arc<Notify>,
+    }
+
+    impl codex_extension_api::TurnLifecycleContributor for BlockingStartContributor {
+        fn on_turn_start<'a>(
+            &'a self,
+            input: codex_extension_api::TurnStartInput<'a>,
+        ) -> codex_extension_api::ExtensionFuture<'a, ()> {
+            Box::pin(async move {
+                let _ = input;
+                self.entered.notify_one();
+                // The owner task is cancelled by the test. Keeping this
+                // callback pending makes the post-promotion cancellation
+                // point deterministic and prevents a task attach race.
+                std::future::pending::<()>().await;
+            })
+        }
+
+        fn on_turn_abort<'a>(
+            &'a self,
+            input: codex_extension_api::TurnAbortInput<'a>,
+        ) -> codex_extension_api::ExtensionFuture<'a, ()> {
+            Box::pin(async move {
+                let _ = input;
+                self.aborts
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            })
+        }
+    }
+
+    impl codex_extension_api::ThreadLifecycleContributor<crate::config::Config>
+        for BlockingStartContributor
+    {
+        fn on_thread_idle<'a>(
+            &'a self,
+            _input: codex_extension_api::ThreadIdleInput<'a>,
+        ) -> codex_extension_api::ExtensionFuture<'a, ()> {
+            Box::pin(async move {
+                self.idle_entered.notify_one();
+                self.idle_release.notified().await;
+            })
+        }
+    }
+
+    struct CancelledStartProbe;
+
+    impl SessionTask for CancelledStartProbe {
+        fn kind(&self) -> TaskKind {
+            TaskKind::Regular
+        }
+
+        fn span_name(&self) -> &'static str {
+            "session_task.cancelled_start_transition_probe"
+        }
+
+        async fn run(
+            self: Arc<Self>,
+            _session: Arc<Session>,
+            _ctx: Arc<TurnContext>,
+            _input: Vec<TurnInput>,
+            _cancellation_token: CancellationToken,
+        ) -> SessionTaskResult {
+            Ok(None)
+        }
+    }
+
+    let (mut session, turn_context, rx) = make_session_and_context_with_rx().await;
+    let entered = Arc::new(Notify::new());
+    let aborts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let idle_entered = Arc::new(Notify::new());
+    let idle_release = Arc::new(Notify::new());
+    let mut builder = codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+    builder.turn_lifecycle_contributor(Arc::new(BlockingStartContributor {
+        entered: Arc::clone(&entered),
+        aborts: Arc::clone(&aborts),
+        idle_entered: Arc::clone(&idle_entered),
+        idle_release: Arc::clone(&idle_release),
+    }));
+    builder.thread_lifecycle_contributor(Arc::new(BlockingStartContributor {
+        entered: Arc::clone(&entered),
+        aborts: Arc::clone(&aborts),
+        idle_entered: Arc::clone(&idle_entered),
+        idle_release: Arc::clone(&idle_release),
+    }));
+    Arc::get_mut(&mut session)
+        .expect("session should have a unique test owner")
+        .services
+        .extensions = Arc::new(builder.build());
+
+    let start = tokio::spawn({
+        let session = Arc::clone(&session);
+        let turn_context = Arc::clone(&turn_context);
+        async move {
+            session
+                .spawn_task(turn_context, Vec::new(), CancelledStartProbe)
+                .await
+        }
+    });
+
+    timeout(StdDuration::from_secs(2), entered.notified())
+        .await
+        .expect("turn-start contributor should block after promotion");
+    let transition_turn_state = {
+        let active = session.active_turn.lock().await;
+        assert!(
+            active
+                .as_ref()
+                .is_some_and(|active| active.task.is_none() && active.start_transition.is_some())
+        );
+        Arc::clone(
+            &active
+                .as_ref()
+                .expect("transition remains active")
+                .turn_state,
+        )
+    };
+    session.begin_shutdown();
+    let _ = session
+        .abort_turn_if_active_for_guardian(
+            &turn_context.sub_id,
+            &transition_turn_state,
+            TurnAbortReason::Interrupted,
+        )
+        .await;
+    let mut transition_drain = tokio::spawn({
+        let session = Arc::clone(&session);
+        async move { session.drain_start_transition_for_shutdown().await }
+    });
+    assert!(
+        timeout(StdDuration::from_millis(100), &mut transition_drain)
+            .await
+            .is_err(),
+        "shutdown transition drain must wait for the owner/terminalizer fence"
+    );
+
+    start.abort();
+    start
+        .await
+        .expect_err("dropping the owner must cancel the start future");
+
+    timeout(StdDuration::from_secs(2), idle_entered.notified())
+        .await
+        .expect("detached terminalizer should reach post-clear idle lifecycle");
+    assert!(
+        timeout(StdDuration::from_millis(100), &mut transition_drain)
+            .await
+            .is_err(),
+        "shutdown drain must include post-clear lifecycle side effects"
+    );
+    idle_release.notify_waiters();
+    transition_drain
+        .await
+        .expect("shutdown transition drain should join after terminalization");
+
+    timeout(StdDuration::from_secs(2), async {
+        loop {
+            if session.active_turn.lock().await.is_none() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("detached terminalizer should clear the promoted transition");
+
+    let mut saw_turn_started = false;
+    let mut saw_turn_aborted = false;
+    for _ in 0..16 {
+        let event = timeout(StdDuration::from_secs(2), rx.recv())
+            .await
+            .expect("expected detached terminal event")
+            .expect("event channel open");
+        match event.msg {
+            EventMsg::TurnStarted(_) => saw_turn_started = true,
+            EventMsg::TurnAborted(event) => {
+                assert_eq!(Some(turn_context.sub_id.clone()), event.turn_id);
+                assert_eq!(TurnAbortReason::Interrupted, event.reason);
+                saw_turn_aborted = true;
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        !saw_turn_started,
+        "a cancelled owner must not attach a task"
+    );
+    assert!(
+        saw_turn_aborted,
+        "detached cleanup must publish TurnAborted"
+    );
+    assert_eq!(1, aborts.load(std::sync::atomic::Ordering::SeqCst));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -6969,6 +7170,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         mcp_prewarm_task: std::sync::Mutex::new(None),
         conversation: Arc::new(RealtimeConversationManager::new()),
         active_turn: Mutex::new(None),
+        pending_start_transition_completions: std::sync::Mutex::new(Vec::new()),
+        shutdown_started: AtomicBool::new(false),
         turn_epoch: AtomicU64::new(0),
         recovery_candidate: std::sync::Mutex::new(None),
         rollout_persistence_failure_generation: AtomicU64::new(0),
@@ -9187,6 +9390,8 @@ where
         mcp_prewarm_task: std::sync::Mutex::new(None),
         conversation: Arc::new(RealtimeConversationManager::new()),
         active_turn: Mutex::new(None),
+        pending_start_transition_completions: std::sync::Mutex::new(Vec::new()),
+        shutdown_started: AtomicBool::new(false),
         turn_epoch: AtomicU64::new(0),
         recovery_candidate: std::sync::Mutex::new(None),
         rollout_persistence_failure_generation: AtomicU64::new(0),

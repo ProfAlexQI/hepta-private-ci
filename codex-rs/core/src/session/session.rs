@@ -10,6 +10,7 @@ use crate::responses_metadata::CodexResponsesMetadata;
 use crate::responses_metadata::CodexResponsesRequestKind;
 use crate::shell_snapshot::ShellSnapshot;
 use crate::state::ActiveTurn;
+use crate::state::StartTransitionCompletion;
 use codex_extension_api::ExtensionDataInit;
 use codex_http_client::ClientRouteClass;
 use codex_http_client::RouteAwareClientPool;
@@ -32,6 +33,7 @@ use codex_protocol::protocol::TurnEnvironmentSelections;
 use codex_protocol::security_risk::SecurityRiskScore;
 use codex_skills::SkillError;
 use std::sync::OnceLock;
+use std::sync::atomic::AtomicBool;
 use tokio::sync::Semaphore;
 
 /// Context for an initialized model agent
@@ -61,6 +63,15 @@ pub(crate) struct Session {
     pub(super) mcp_prewarm_task: std::sync::Mutex<Option<JoinHandle<()>>>,
     pub(crate) conversation: Arc<RealtimeConversationManager>,
     pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
+    /// Completion fences for materialized start transitions whose terminal
+    /// side effects may outlive the active-turn marker.  Shutdown drains this
+    /// registry instead of inferring liveness from `active_turn` alone.
+    pub(crate) pending_start_transition_completions:
+        std::sync::Mutex<Vec<(Arc<()>, Arc<StartTransitionCompletion>)>>,
+    /// Once teardown begins, no new host-owned start transition may be
+    /// admitted.  This prevents pending-mailbox wakeups from racing the
+    /// shutdown completion drain.
+    pub(crate) shutdown_started: AtomicBool,
     /// Monotonically changes whenever a real task is attached to the active turn.
     pub(crate) turn_epoch: AtomicU64,
     /// Exact idle model turn that may be resumed at `epoch`.
@@ -1523,6 +1534,8 @@ impl Session {
                 mcp_prewarm_task: std::sync::Mutex::new(None),
                 conversation: Arc::new(RealtimeConversationManager::new()),
                 active_turn: Mutex::new(None),
+                pending_start_transition_completions: std::sync::Mutex::new(Vec::new()),
+                shutdown_started: AtomicBool::new(false),
                 turn_epoch: AtomicU64::new(0),
                 recovery_candidate: std::sync::Mutex::new(None),
                 rollout_persistence_failure_generation: AtomicU64::new(0),

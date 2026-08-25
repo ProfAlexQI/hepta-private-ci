@@ -42,6 +42,7 @@ use crate::state::DurableRecoveryState;
 use crate::state::RunningTask;
 use crate::state::StartReservationHandle;
 use crate::state::StartTransition;
+use crate::state::StartTransitionCompletion;
 use crate::state::TaskKind;
 use crate::state::TurnRecoveryAuthority;
 use crate::state::TurnState;
@@ -214,6 +215,171 @@ impl Drop for StartReservationOwner {
                 session.settle_consumed_recovery_status();
             }
         });
+    }
+}
+
+/// Payload retained by the detached cleanup continuation for one exact
+/// host-owned start transition.  The owner future is allowed to disappear at
+/// any cancellation point after promotion; this witness gives the cleanup
+/// continuation enough identity to terminalize only that transition.
+struct StartTransitionCleanup {
+    session: Arc<Session>,
+    task: Arc<dyn AnySessionTask>,
+    turn_context: Arc<TurnContext>,
+    turn_state: Arc<Mutex<TurnState>>,
+    transition_identity: Arc<()>,
+    completion: Arc<StartTransitionCompletion>,
+    recovery_history_restore: Option<ContextManager>,
+}
+
+/// Keeps a host-owned start transition live independently of its caller while
+/// the Tokio runtime is still able to schedule a cleanup continuation.
+///
+/// A caller-owned reservation is released by [`StartReservationOwner`], but
+/// promotion changes the state machine: the transition now owns lifecycle and
+/// terminal ordering.  If the owner future is cancelled after that point, a
+/// detached placeholder terminalizer finishes the same abort path instead of
+/// leaving `active_turn.start_transition` installed forever.  Panic/hang
+/// handling in the terminalizer itself remains a separate watchdog slice.  If
+/// the runtime has already shut down, this guard deliberately preserves the
+/// marker and fails closed; a future session-shutdown drain must own that
+/// terminalization rather than silently dropping durable/lifecycle state.
+struct StartTransitionOwner {
+    cleanup: Option<StartTransitionCleanup>,
+    runtime_handle: Option<tokio::runtime::Handle>,
+    cleanup_spawned: bool,
+}
+
+impl StartTransitionOwner {
+    fn new(
+        session: &Arc<Session>,
+        task: Arc<dyn AnySessionTask>,
+        turn_context: Arc<TurnContext>,
+        turn_state: Arc<Mutex<TurnState>>,
+        transition_identity: Arc<()>,
+        completion: Arc<StartTransitionCompletion>,
+        recovery_history_restore: Option<ContextManager>,
+    ) -> Self {
+        Self {
+            cleanup: Some(StartTransitionCleanup {
+                session: Arc::clone(session),
+                task,
+                turn_context,
+                turn_state,
+                transition_identity,
+                completion,
+                recovery_history_restore,
+            }),
+            runtime_handle: tokio::runtime::Handle::try_current().ok(),
+            cleanup_spawned: false,
+        }
+    }
+
+    /// Spawn exactly one detached terminalizer.  The returned handle is only
+    /// for callers that want to await normal terminal ordering; dropping the
+    /// owner after this method has been called never aborts the cleanup task.
+    fn spawn_cleanup(
+        &mut self,
+        fallback_reason: TurnAbortReason,
+    ) -> Option<tokio::task::JoinHandle<()>> {
+        if self.cleanup_spawned {
+            return None;
+        }
+        let cleanup = self.cleanup.take()?;
+        self.cleanup_spawned = true;
+        let Some(runtime_handle) = self.runtime_handle.take() else {
+            warn!(
+                turn_id = %cleanup.turn_context.sub_id,
+                "start transition cleanup preserved its marker because no Tokio runtime is available"
+            );
+            return None;
+        };
+        let session = Arc::clone(&cleanup.session);
+        Some(runtime_handle.spawn(async move {
+            session
+                .abort_dropped_start_transition(cleanup, fallback_reason)
+                .await;
+        }))
+    }
+
+    /// Mark a successfully attached or already-stale transition as complete.
+    fn disarm(&mut self) {
+        if let Some(cleanup) = self.cleanup.take() {
+            cleanup
+                .session
+                .finish_start_transition(&cleanup.transition_identity, &cleanup.completion);
+        }
+        self.cleanup_spawned = true;
+    }
+}
+
+impl Drop for StartTransitionOwner {
+    fn drop(&mut self) {
+        // A dropped owner is an implicit interruption.  The detached task is
+        // deliberately not stored in this guard, so dropping the guard cannot
+        // abort the terminalizer it just spawned while the runtime is live.
+        let _ = self.spawn_cleanup(TurnAbortReason::Interrupted);
+    }
+}
+
+impl Session {
+    /// Registers the completion fence before releasing the active-turn lock.
+    /// The registry intentionally outlives `ActiveTurn::start_transition` so
+    /// shutdown can wait through post-clear idle/recovery/pending-work side
+    /// effects.
+    fn register_start_transition(
+        &self,
+        transition_identity: Arc<()>,
+        completion: Arc<StartTransitionCompletion>,
+    ) {
+        self.pending_start_transition_completions
+            .lock()
+            .expect("start transition completion registry mutex poisoned")
+            .push((transition_identity, completion));
+    }
+
+    /// Removes one exact fence before signalling it.  Identity and completion
+    /// are both checked so a stale continuation cannot retire a later turn's
+    /// registry entry.
+    fn finish_start_transition(
+        &self,
+        transition_identity: &Arc<()>,
+        completion: &Arc<StartTransitionCompletion>,
+    ) {
+        let mut pending = self
+            .pending_start_transition_completions
+            .lock()
+            .expect("start transition completion registry mutex poisoned");
+        pending.retain(|(identity, current)| {
+            !(Arc::ptr_eq(identity, transition_identity) && Arc::ptr_eq(current, completion))
+        });
+        drop(pending);
+        completion.complete();
+    }
+
+    fn pending_start_transition_completions(&self) -> Vec<Arc<StartTransitionCompletion>> {
+        self.pending_start_transition_completions
+            .lock()
+            .expect("start transition completion registry mutex poisoned")
+            .iter()
+            .map(|(_, completion)| Arc::clone(completion))
+            .collect()
+    }
+
+    pub(crate) fn has_pending_start_transition(&self) -> bool {
+        !self
+            .pending_start_transition_completions
+            .lock()
+            .expect("start transition completion registry mutex poisoned")
+            .is_empty()
+    }
+
+    pub(crate) fn begin_shutdown(&self) {
+        self.shutdown_started.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn shutdown_started(&self) -> bool {
+        self.shutdown_started.load(Ordering::Acquire)
     }
 }
 
@@ -865,10 +1031,23 @@ impl Session {
         input: Vec<TurnInput>,
         task: T,
     ) -> CodexResult<()> {
+        if self.shutdown_started() {
+            return Err(CodexErr::InvalidRequest(
+                "cannot start a task while the session is shutting down".to_string(),
+            ));
+        }
+        if self.has_pending_start_transition() {
+            return Err(CodexErr::InvalidRequest(
+                "cannot start a task while the previous turn is terminalizing".to_string(),
+            ));
+        }
         self.abort_all_tasks(TurnAbortReason::Replaced).await;
         let start_reservation = {
             let mut active_turn = self.active_turn.lock().await;
-            if active_turn.is_some() {
+            if self.shutdown_started()
+                || self.has_pending_start_transition()
+                || active_turn.is_some()
+            {
                 return Err(CodexErr::InvalidRequest(
                     "cannot start replacement task while the previous turn is transitioning"
                         .to_string(),
@@ -997,8 +1176,13 @@ impl Session {
         // caller-owned reservation preamble before entering `start_task`
         // remains a separate, inert reservation by design.
         let start_transition_identity;
+        let transition_turn_state;
+        let transition_completion;
         {
             let mut active = self.active_turn.lock().await;
+            if self.shutdown_started() || self.has_pending_start_transition() {
+                return StartTaskOutcome::Stale;
+            }
             if let Some(start_reservation) = start_reservation.as_ref() {
                 let Some(turn) = active.as_mut() else {
                     warn!(turn_id = %turn_context.sub_id, "start reservation lost before promotion");
@@ -1017,6 +1201,14 @@ impl Session {
                         .expect("promotion installs start transition")
                         .identity,
                 );
+                transition_turn_state = Arc::clone(&turn.turn_state);
+                transition_completion = Arc::clone(
+                    &turn
+                        .start_transition
+                        .as_ref()
+                        .expect("promotion installs start transition")
+                        .completion,
+                );
             } else {
                 if active.is_some() {
                     warn!(
@@ -1031,8 +1223,35 @@ impl Session {
                     turn_context.sub_id.clone(),
                     Arc::clone(&start_transition_identity),
                 ));
+                transition_turn_state = Arc::clone(&turn.turn_state);
+                transition_completion = Arc::clone(
+                    &turn
+                        .start_transition
+                        .as_ref()
+                        .expect("direct start installs start transition")
+                        .completion,
+                );
             }
+            // Register while the active-turn lock is still held.  Shutdown
+            // can begin concurrently, so publishing the marker and its
+            // completion fence must be one serialization unit.
+            self.register_start_transition(
+                Arc::clone(&start_transition_identity),
+                Arc::clone(&transition_completion),
+            );
         }
+        let recovery_history_restore_witness = recovery_history
+            .as_ref()
+            .map(|history| history.restore.clone());
+        let mut start_transition_owner = StartTransitionOwner::new(
+            self,
+            Arc::clone(&task),
+            Arc::clone(&turn_context),
+            Arc::clone(&transition_turn_state),
+            Arc::clone(&start_transition_identity),
+            transition_completion,
+            recovery_history_restore_witness,
+        );
         let mut recovery_history_restore = if let Some(recovery_history) = recovery_history {
             self.install_recovery_history_snapshot(recovery_history.install)
                 .await;
@@ -1144,6 +1363,7 @@ impl Session {
                     &mut recovery_history_restore,
                 )
                 .await;
+                start_transition_owner.disarm();
                 return StartTaskOutcome::Stale;
             };
             debug_assert!(turn.task.is_none());
@@ -1155,6 +1375,7 @@ impl Session {
                     &mut recovery_history_restore,
                 )
                 .await;
+                start_transition_owner.disarm();
                 return StartTaskOutcome::Stale;
             };
             if !Arc::ptr_eq(&transition.identity, &start_transition_identity) {
@@ -1165,6 +1386,7 @@ impl Session {
                     &mut recovery_history_restore,
                 )
                 .await;
+                start_transition_owner.disarm();
                 return StartTaskOutcome::Stale;
             }
             Arc::clone(&turn.turn_state)
@@ -1189,6 +1411,7 @@ impl Session {
                 &mut recovery_history_restore,
             )
             .await;
+            start_transition_owner.disarm();
             return StartTaskOutcome::Stale;
         };
         debug_assert!(turn.task.is_none());
@@ -1200,6 +1423,7 @@ impl Session {
                 &mut recovery_history_restore,
             )
             .await;
+            start_transition_owner.disarm();
             return StartTaskOutcome::Stale;
         };
         if !Arc::ptr_eq(&transition.identity, &start_transition_identity) {
@@ -1210,6 +1434,7 @@ impl Session {
                 &mut recovery_history_restore,
             )
             .await;
+            start_transition_owner.disarm();
             return StartTaskOutcome::Stale;
         }
         if let Some(reason) = transition.abort_reason.clone() {
@@ -1219,15 +1444,19 @@ impl Session {
             // retaining the marker also prevents a concurrent reservation
             // clearer or replacement start from stealing this turn state.
             drop(active);
-            self.abort_unstarted_turn(
-                task,
-                turn_context,
-                turn_state,
-                start_transition_identity,
-                recovery_history_restore,
-                reason,
-            )
-            .await;
+            if let Some(cleanup) = start_transition_owner.spawn_cleanup(reason) {
+                if let Err(error) = cleanup.await {
+                    // A panic or runtime teardown in the detached path must
+                    // remain observable.  The cleanup CAS is intentionally
+                    // fail-closed, so an errored join cannot make this turn
+                    // look idle or permit a replacement start.
+                    warn!(
+                        turn_id = %turn_context.sub_id,
+                        ?error,
+                        "start transition terminalizer did not complete"
+                    );
+                }
+            }
             return StartTaskOutcome::Aborted;
         }
         let agent_execution_guard = self.services.agent_control.execution_guard(
@@ -1321,6 +1550,7 @@ impl Session {
         };
         turn.task = Some(running_task);
         turn.start_transition = None;
+        start_transition_owner.disarm();
         StartTaskOutcome::Attached
     }
 
@@ -1357,6 +1587,9 @@ impl Session {
         self: &Arc<Self>,
         sub_id: String,
     ) {
+        if self.shutdown_started() || self.has_pending_start_transition() {
+            return;
+        }
         if !self.input_queue.has_pending_mailbox_items().await
             || (!self.input_queue.has_trigger_turn_mailbox_items().await
                 && !self.has_outstanding_durable_sleep())
@@ -1366,7 +1599,10 @@ impl Session {
 
         let start_reservation = {
             let mut active_turn = self.active_turn.lock().await;
-            if active_turn.is_some() {
+            if self.shutdown_started()
+                || self.has_pending_start_transition()
+                || active_turn.is_some()
+            {
                 return;
             }
             if self.enabled(Feature::HeptaTurnRecovery)
@@ -1417,9 +1653,12 @@ impl Session {
             .await
         {
             let ActiveTurnAbortTarget::Running(detached) = target else {
-                // The start owner will perform terminalization after its
+                // The start owner performs terminalization after its
                 // in-flight lifecycle callback returns.  Finalizing here
-                // would race on_turn_start/on_turn_abort ordering.
+                // would race on_turn_start/on_turn_abort ordering.  The
+                // shutdown handler performs the separate completion drain;
+                // ordinary replacement/steer callers must remain
+                // non-blocking if a contributor is waiting on them.
                 return;
             };
             aborted_turn = true;
@@ -1455,6 +1694,27 @@ impl Session {
         .await;
         if reason == TurnAbortReason::Interrupted && aborted_turn {
             self.maybe_start_turn_for_pending_work().await;
+        }
+    }
+
+    /// Drain a materialized start transition during session teardown.
+    ///
+    /// Ordinary `abort_all_tasks` callers intentionally return immediately for
+    /// `Starting`: a lifecycle contributor may be waiting on the caller that
+    /// requested replacement/steer.  Teardown has a stronger ordering
+    /// obligation, so its handler calls this dedicated drain before emitting
+    /// thread-stop lifecycle.  A terminalizer that panics, hangs, or cannot be
+    /// scheduled leaves the completion fence unresolved and therefore keeps
+    /// teardown fail-closed instead of publishing thread-stop out of order.
+    pub(crate) async fn drain_start_transition_for_shutdown(self: &Arc<Self>) {
+        loop {
+            let completions = self.pending_start_transition_completions();
+            if completions.is_empty() {
+                return;
+            }
+            for completion in completions {
+                completion.wait().await;
+            }
         }
     }
 
@@ -1512,7 +1772,7 @@ impl Session {
             return AbortTurnOutcome::NotActive;
         };
         let ActiveTurnAbortTarget::Running(detached) = target else {
-            let ActiveTurnAbortTarget::Starting { deferred_idle } = target else {
+            let ActiveTurnAbortTarget::Starting { deferred_idle, .. } = target else {
                 unreachable!("non-running abort target must be starting")
             };
             return if deferred_idle {
@@ -2008,7 +2268,7 @@ impl Session {
         transition_identity: Arc<()>,
         mut recovery_history_restore: Option<ContextManager>,
         reason: TurnAbortReason,
-    ) {
+    ) -> bool {
         if !self
             .restore_recovery_history_if_current(
                 Some(&turn_state),
@@ -2017,7 +2277,7 @@ impl Session {
             )
             .await
         {
-            return;
+            return false;
         }
         let done = Arc::new(Notify::new());
         // `handle_task_abort` waits for the task's completion notification;
@@ -2056,7 +2316,7 @@ impl Session {
         else {
             // A stale start future must not publish recovery or wake another
             // turn after its reservation has been replaced or fenced.
-            return;
+            return false;
         };
         if let Some(cause) = deferred_idle_cause {
             self.emit_thread_idle_lifecycle_if_idle(cause).await;
@@ -2067,8 +2327,108 @@ impl Session {
             abort_outcome.terminal_persistence_generation,
         )
         .await;
-        if reason == TurnAbortReason::Interrupted {
-            self.maybe_start_turn_for_pending_work().await;
+        true
+    }
+
+    /// Claims an exact host-owned transition for detached cleanup after its
+    /// owner future disappeared.  An external abort may already have stored a
+    /// stronger reason; otherwise cancellation is represented as Interrupted.
+    async fn abort_dropped_start_transition(
+        self: &Arc<Self>,
+        cleanup: StartTransitionCleanup,
+        fallback_reason: TurnAbortReason,
+    ) {
+        let completion = Arc::clone(&cleanup.completion);
+        let turn_state = Arc::clone(&cleanup.turn_state);
+        let transition_identity = Arc::clone(&cleanup.transition_identity);
+        let reason = {
+            let mut active = self.active_turn.lock().await;
+            let Some(active_turn) = active.as_mut() else {
+                self.finish_start_transition(&transition_identity, &completion);
+                return;
+            };
+            if active_turn.task.is_some()
+                || active_turn.start_reservation.is_some()
+                || !Arc::ptr_eq(&active_turn.turn_state, &cleanup.turn_state)
+                || !active_turn
+                    .start_transition
+                    .as_ref()
+                    .is_some_and(|transition| {
+                        Arc::ptr_eq(&transition.identity, &cleanup.transition_identity)
+                    })
+            {
+                self.finish_start_transition(&transition_identity, &completion);
+                return;
+            }
+            let transition = active_turn
+                .start_transition
+                .as_mut()
+                .expect("transition identity was checked above");
+            if transition.abort_reason.is_none() {
+                if transition.request_abort(fallback_reason.clone())
+                    && matches!(
+                        fallback_reason,
+                        TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
+                    )
+                {
+                    self.mark_interrupted();
+                }
+            }
+            transition
+                .abort_reason
+                .clone()
+                .expect("dropped transition cleanup stores an abort reason")
+        };
+
+        let terminalized = self
+            .abort_unstarted_turn(
+                cleanup.task,
+                cleanup.turn_context,
+                cleanup.turn_state,
+                cleanup.transition_identity,
+                cleanup.recovery_history_restore,
+                reason.clone(),
+            )
+            .await;
+        if terminalized {
+            // Release the exact phase fence before allowing a pending mailbox
+            // wakeup to reserve a replacement turn.  Shutdown admission is
+            // already closed, so teardown will not self-wake here.
+            self.finish_start_transition(&transition_identity, &completion);
+            if reason == TurnAbortReason::Interrupted && !self.shutdown_started() {
+                self.maybe_start_turn_for_pending_work().await;
+            }
+        } else {
+            self.complete_start_transition_if_not_current(
+                &completion,
+                &turn_state,
+                &transition_identity,
+            )
+            .await;
+        }
+    }
+
+    async fn complete_start_transition_if_not_current(
+        &self,
+        completion: &Arc<StartTransitionCompletion>,
+        turn_state: &Arc<Mutex<TurnState>>,
+        transition_identity: &Arc<()>,
+    ) {
+        let active = self.active_turn.lock().await;
+        let still_current = active.as_ref().is_some_and(|active_turn| {
+            active_turn.task.is_none()
+                && active_turn.start_reservation.is_none()
+                && Arc::ptr_eq(&active_turn.turn_state, turn_state)
+                && active_turn
+                    .start_transition
+                    .as_ref()
+                    .is_some_and(|transition| {
+                        Arc::ptr_eq(&transition.identity, transition_identity)
+                    })
+        });
+        drop(active);
+        if !still_current {
+            self.finish_start_transition(transition_identity, completion);
         }
     }
 

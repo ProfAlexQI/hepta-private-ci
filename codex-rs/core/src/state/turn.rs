@@ -57,6 +57,43 @@ pub(crate) struct StartReservation {
     pub(crate) abort_reason: Option<TurnAbortReason>,
 }
 
+/// Completion fence for one materialized start transition.  Shutdown and
+/// other host-owned abort paths may request interruption while the owner is
+/// still inside a lifecycle callback; they must not proceed to thread-stop
+/// publication until the exact transition's terminalizer has finished (or
+/// failed closed without signalling this fence).
+pub(crate) struct StartTransitionCompletion {
+    done: AtomicBool,
+    notify: Notify,
+}
+
+impl StartTransitionCompletion {
+    pub(crate) fn new() -> Arc<Self> {
+        Arc::new(Self {
+            done: AtomicBool::new(false),
+            notify: Notify::new(),
+        })
+    }
+
+    pub(crate) fn complete(&self) {
+        self.done.store(true, std::sync::atomic::Ordering::Release);
+        // Keep a permit as well as waking current waiters so a waiter that is
+        // registered just after the completion cannot lose the signal.
+        self.notify.notify_one();
+        self.notify.notify_waiters();
+    }
+
+    pub(crate) async fn wait(&self) {
+        while !self.done.load(std::sync::atomic::Ordering::Acquire) {
+            let notified = self.notify.notified();
+            if self.done.load(std::sync::atomic::Ordering::Acquire) {
+                break;
+            }
+            notified.await;
+        }
+    }
+}
+
 pub(crate) struct StartTransition {
     /// Unique identity for one start continuation.  The continuation keeps
     /// this Arc and uses pointer equality at the attach CAS, so a stale
@@ -65,6 +102,10 @@ pub(crate) struct StartTransition {
     pub(crate) identity: Arc<()>,
     pub(crate) turn_id: String,
     pub(crate) abort_reason: Option<TurnAbortReason>,
+    /// Signals once the owner or detached terminalizer has finished this
+    /// exact transition.  Shutdown waits on this fence before thread-stop
+    /// lifecycle publication.
+    pub(crate) completion: Arc<StartTransitionCompletion>,
     /// A guardian abort accepted while this transition is still materializing
     /// needs one deferred idle callback.  It lives on the exact transition so
     /// a stale owner cannot transfer the request to a later attempt.
@@ -77,6 +118,7 @@ impl StartTransition {
             identity,
             turn_id,
             abort_reason: None,
+            completion: StartTransitionCompletion::new(),
             deferred_idle_cause: None,
         }
     }
@@ -86,6 +128,7 @@ impl StartTransition {
             identity: reservation.identity,
             turn_id: reservation.turn_id,
             abort_reason: reservation.abort_reason,
+            completion: StartTransitionCompletion::new(),
             deferred_idle_cause: None,
         }
     }
