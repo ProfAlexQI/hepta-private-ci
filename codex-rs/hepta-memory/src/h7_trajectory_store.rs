@@ -794,6 +794,32 @@ pub async fn inspect_expired_terminal_h7(
             .fetch_one(&mut *transaction)
             .await
             .map_err(crate::cognitive_store::unavailable)?;
+    // If this lease has a durable compact journal, the caller must name that
+    // exact journal.  Previously a guessed/mismatched `journal_id` that had
+    // no rows would skip the row-level check below, while the lease-wide
+    // audit still found the real journal and allowed recovery.  That weakens
+    // the compact fence identity at the restart gate.  Keep the existing
+    // no-compact-row case valid (some qualification trajectories intentionally
+    // have only the lease fence), but reject ambiguity or a wrong journal id
+    // whenever a bound compact journal exists.
+    let bound_journal_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT journal_id
+         FROM cognitive_compact_events
+         WHERE lease_id = ? OR lease_head_sha256 = ?
+         ORDER BY journal_id",
+    )
+    .bind(&expected_head.lease_id)
+    .bind(expected_head.lease_sha256.as_str())
+    .fetch_all(&mut *transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?;
+    if !bound_journal_ids.is_empty()
+        && (bound_journal_ids.len() != 1 || bound_journal_ids[0] != journal_id)
+    {
+        return Err(H7TrajectoryStoreError::StaleFence(
+            "expired H7 recovery compact journal identity mismatch".to_string(),
+        ));
+    }
     if journal_rows != 0 {
         let mismatched_journal_rows: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM cognitive_compact_events

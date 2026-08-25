@@ -7,7 +7,13 @@ use codex_hepta_paths::HeptaFleetRoot;
 use tempfile::TempDir;
 
 use crate::CognitiveStore;
+use crate::CompactCheckpoint;
 use crate::CompactFence;
+use crate::CompactLease;
+use crate::CompactLossReport;
+use crate::CompactParentSnapshot;
+use crate::CompactProtectedRef;
+use crate::CompactSummaryReceipt;
 use crate::H7TrajectoryAppend;
 use crate::H7TrajectoryRead;
 use crate::H7TrajectoryRecord;
@@ -20,6 +26,32 @@ use crate::read_h7_trajectory_bound_for_recovery;
 
 fn digest(label: &str) -> Sha256Digest {
     Sha256Digest::for_bytes(label.as_bytes())
+}
+
+fn compact_checkpoint(fence: CompactFence) -> (CompactCheckpoint, CompactParentSnapshot) {
+    let snapshot = CompactParentSnapshot::new(
+        "ctx:h7-recovery",
+        1,
+        2,
+        1,
+        digest("h7-recovery-parent"),
+        fence,
+    )
+    .expect("compact parent snapshot");
+    let checkpoint = CompactCheckpoint::new(
+        "checkpoint:h7-recovery",
+        CompactLease::from_snapshot(snapshot.clone()),
+        vec![CompactProtectedRef::new("ref:h7-recovery", "approval", true).expect("protected ref")],
+        CompactSummaryReceipt::new(
+            digest("summary:h7-recovery"),
+            digest("model:h7-recovery"),
+            digest("policy:h7-recovery"),
+        ),
+        CompactLossReport::new(Vec::new(), 0, Vec::new(), 0).expect("loss report"),
+        0,
+    )
+    .expect("compact checkpoint");
+    (checkpoint, snapshot)
 }
 
 async fn prepared() -> (
@@ -450,6 +482,11 @@ async fn head_scoped_expired_terminal_gate_survives_store_reopen() {
     append_h7_trajectory_event_bound(&lease, &executor, &binding, &terminal)
         .await
         .expect("append terminal");
+    let (checkpoint, snapshot) = compact_checkpoint(binding.fence.clone());
+    executor
+        .append_intent("op:h7-recovery-compact", &checkpoint, &snapshot)
+        .await
+        .expect("append bound compact witness");
     let expiry = lease
         .binding()
         .expect("binding")
@@ -475,6 +512,21 @@ async fn head_scoped_expired_terminal_gate_survives_store_reopen() {
         crate::LocalLeaseHeadDisposition::ExpiredActive
     );
     assert_eq!(head.lease_expires_at_unix_seconds, Some(expiry));
+    let wrong_journal = crate::inspect_expired_terminal_h7(
+        &reopened,
+        &head,
+        "journal:h7-trajectory-expiring:wrong",
+        trajectory_id,
+        turn_id,
+        occurrence_key,
+    )
+    .await
+    .expect_err("a bound compact journal must not be replaceable by a guessed id");
+    assert!(matches!(
+        wrong_journal,
+        H7TrajectoryStoreError::StaleFence(message)
+            if message.contains("compact journal identity mismatch")
+    ));
     let witness = crate::inspect_expired_terminal_h7(
         &reopened,
         &head,
