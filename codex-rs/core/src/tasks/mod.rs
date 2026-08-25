@@ -3025,6 +3025,19 @@ impl Session {
         turn_context: &Arc<TurnContext>,
         task_result: SessionTaskResult,
     ) -> Option<TaskFinishHandoffSlot> {
+        // The witness keeps the task's `RunningTask` alive while its original
+        // abort handle is replaced with an inert completed handle.  Creating
+        // that replacement requires a live Tokio scheduler; fail closed
+        // before publishing the marker if this callback is ever polled by a
+        // non-Tokio caller.  Otherwise a `tokio::spawn` panic could leave an
+        // empty registry slot and an unrecoverable active-turn fence.
+        if tokio::runtime::Handle::try_current().is_err() {
+            warn!(
+                turn_id = %turn_context.sub_id,
+                "finish terminalizer cannot claim a task without a live Tokio runtime; retaining the active-turn fence"
+            );
+            return None;
+        }
         let abort_reason_hint = match &task_result {
             Err(err) if matches!(err.details(), CodexErrorDetails::TurnAborted) => {
                 Some(TurnAbortReason::Interrupted)
