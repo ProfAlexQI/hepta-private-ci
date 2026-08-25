@@ -1487,6 +1487,66 @@ async fn cancelled_guardian_review_emits_terminal_abort_without_warning() {
     assert!(warnings.is_empty());
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn approval_review_uses_caller_runtime_after_construction_runtime_shutdown() {
+    let (session_tx, session_rx) = std::sync::mpsc::sync_channel(1);
+    let owner_thread = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("construction runtime should build");
+        let (session, turn) = runtime.block_on(async move {
+            let (session, turn, _rx) =
+                crate::session::tests::make_session_and_context_with_rx().await;
+            (session, turn)
+        });
+        session_tx
+            .send((session, turn))
+            .expect("guardian session handoff should remain open");
+        // The approval worker is resumed on Runtime B. A stored construction
+        // handle would be accepted by Tokio but cannot make this cancelled
+        // review reach its oneshot completion.
+        runtime.shutdown_background();
+    });
+
+    let (session, turn) = tokio::task::spawn_blocking(move || {
+        session_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("construction runtime should hand back the guardian session")
+    })
+    .await
+    .expect("guardian session handoff task should join");
+    tokio::task::spawn_blocking(move || owner_thread.join().expect("owner thread should exit"))
+        .await
+        .expect("owner thread join should complete");
+
+    let cancel_token = CancellationToken::new();
+    cancel_token.cancel();
+    let review = spawn_approval_request_review(
+        Arc::clone(&session),
+        GuardianReviewContext::from(&turn),
+        "closed-construction-guardian-review".to_string(),
+        GuardianApprovalRequest::ApplyPatch {
+            id: "patch-closed-runtime".to_string(),
+            cwd: test_path_buf("/tmp").abs(),
+            files: vec![test_path_buf("/tmp/guardian.txt").abs()],
+            patch: "*** Begin Patch\n*** Update File: guardian.txt\n@@\n+hello\n*** End Patch"
+                .to_string(),
+        },
+        ApprovalRequestReasons::default(),
+        GuardianReviewOptions {
+            plugin_attribution_override: None,
+            approval_request_source: GuardianApprovalRequestSource::MainTurn,
+            external_cancel: Some(cancel_token),
+        },
+    );
+    let decision = tokio::time::timeout(Duration::from_secs(5), review)
+        .await
+        .expect("caller runtime should drive the cancelled review worker")
+        .expect("review worker should return a decision");
+    assert_eq!(decision, ReviewDecision::Abort);
+}
+
 #[test]
 fn guardian_timeout_message_distinguishes_timeout_from_policy_denial() {
     let mut model = codex_models_manager::model_info::model_info_from_slug("acting-model");
