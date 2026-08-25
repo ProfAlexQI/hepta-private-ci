@@ -30,6 +30,7 @@ use crate::schema_validation::classify_migrate_error;
 use crate::schema_validation::classify_sqlx_error;
 use crate::schema_validation::verify_foreign_keys;
 use crate::schema_validation::verify_provider_ephemeral_input_projection;
+use crate::schema_validation::verify_provider_effect_ack_source_schema;
 use crate::schema_validation::verify_provider_host_bindings;
 use crate::schema_validation::verify_quick_check;
 use crate::schema_validation::verify_schema_manifest;
@@ -335,6 +336,7 @@ impl HeptaEvidenceStore {
 async fn verify_existing_store(pool: &SqlitePool) -> Result<(), EvidenceError> {
     verify_current_migration_ledger(pool).await?;
     verify_schema_manifest(pool).await?;
+    verify_provider_effect_ack_source_schema(pool).await?;
     verify_provider_host_bindings(pool).await?;
     verify_provider_ephemeral_input_projection(pool).await?;
     verify_provider_effect_rows(pool).await?;

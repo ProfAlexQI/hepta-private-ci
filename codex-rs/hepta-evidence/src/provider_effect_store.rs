@@ -1,4 +1,5 @@
 use codex_hepta_contracts::ProviderEffectAck;
+use codex_hepta_contracts::ProviderEffectAckSource;
 use codex_hepta_contracts::ProviderEffectAckStatus;
 use codex_hepta_contracts::ProviderEffectAdapter;
 use codex_hepta_contracts::ProviderEffectBindingError;
@@ -33,6 +34,7 @@ pub struct StoredProviderEffectIntent {
 pub struct StoredProviderEffectAck {
     pub seq: i64,
     pub ack: ProviderEffectAck,
+    pub source: ProviderEffectAckSource,
     pub recorded_at_ms: i64,
 }
 
@@ -245,7 +247,13 @@ impl HeptaEvidenceStore {
         match dispatch {
             ProviderEffectDispatch::Ack(ack) => {
                 let ack_result = match ack.validate_for(intent) {
-                    Ok(()) => self.append_provider_effect_ack(&ack).await,
+                    Ok(()) => {
+                        self.append_provider_effect_ack_from_source(
+                            &ack,
+                            ProviderEffectAckSource::DispatchResponse,
+                        )
+                        .await
+                    }
                     Err(error) => Err(binding_invalid(error)),
                 };
                 if let Err(error) = ack_result {
@@ -366,6 +374,19 @@ impl HeptaEvidenceStore {
         &self,
         ack: &ProviderEffectAck,
     ) -> Result<AppendDisposition, EvidenceError> {
+        self.append_provider_effect_ack_from_source(ack, ProviderEffectAckSource::DispatchResponse)
+            .await
+    }
+
+    /// Appends an ACK with explicit local provenance.  Callers handling a
+    /// provider status lookup must use `StatusLookup`; the compatibility
+    /// wrapper above deliberately defaults to the conservative dispatch
+    /// response source.
+    pub async fn append_provider_effect_ack_from_source(
+        &self,
+        ack: &ProviderEffectAck,
+        source: ProviderEffectAckSource,
+    ) -> Result<AppendDisposition, EvidenceError> {
         let payload = canonical_json(ack)?;
         let payload_json = String::from_utf8(payload.clone())
             .map_err(|error| EvidenceError::Serialization(error.to_string()))?;
@@ -383,19 +404,21 @@ impl HeptaEvidenceStore {
             ));
         };
         ack.validate_for(&intent.intent).map_err(binding_invalid)?;
-        validate_ack_transition_in_transaction(&mut transaction, &intent.intent, ack).await?;
+        validate_ack_transition_in_transaction(&mut transaction, &intent.intent, ack, source)
+            .await?;
         let recorded_at_ms = next_effect_recorded_at_ms(&mut transaction, &ack.key).await?;
         let insert = sqlx::query(
             "INSERT INTO provider_effect_acknowledgements (
                 effect_key, payload_sha256, provider_operation_id_sha256,
-                status, schema_version, payload_json, record_sha256, recorded_at_ms
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                status, source, schema_version, payload_json, record_sha256, recorded_at_ms
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT DO NOTHING",
         )
         .bind(ack.key.as_str())
         .bind(ack.payload_sha256.as_str())
         .bind(ack.provider_operation_id_sha256.as_str())
         .bind(ack_status_as_str(ack.status))
+        .bind(source.as_str())
         .bind(i64::from(ack.schema_version))
         .bind(&payload_json)
         .bind(record_sha256.as_str())
@@ -406,6 +429,7 @@ impl HeptaEvidenceStore {
         let disposition = verify_effect_ack(
             &mut transaction,
             ack,
+            source,
             &payload_json,
             record_sha256.as_str(),
             insert.rows_affected() == 1,
@@ -497,7 +521,7 @@ impl HeptaEvidenceStore {
         };
         let rows = sqlx::query(
             "SELECT seq, effect_key, payload_sha256,
-                    provider_operation_id_sha256, status, schema_version,
+                    provider_operation_id_sha256, status, source, schema_version,
                     payload_json, record_sha256, recorded_at_ms
              FROM provider_effect_acknowledgements
              WHERE effect_key = ? ORDER BY seq ASC",
@@ -555,7 +579,11 @@ impl HeptaEvidenceStore {
             if let ProviderEffectLookup::Ack(ack) = &lookup {
                 ack.validate_for(&stored.intent.intent)
                     .map_err(binding_invalid)?;
-                self.append_provider_effect_ack(ack).await?;
+                self.append_provider_effect_ack_from_source(
+                    ack,
+                    ProviderEffectAckSource::StatusLookup,
+                )
+                .await?;
             }
             return Ok(stored.state());
         }
@@ -574,7 +602,11 @@ impl HeptaEvidenceStore {
                     ProviderEffectLookup::Ack(ack),
                 )
                 .map_err(binding_invalid)?;
-                self.append_provider_effect_ack(&ack).await?;
+                self.append_provider_effect_ack_from_source(
+                    &ack,
+                    ProviderEffectAckSource::StatusLookup,
+                )
+                .await?;
             }
             ProviderEffectLookup::Unknown => {
                 self.mark_provider_effect_indeterminate(key, "provider_lookup_unknown")
@@ -614,7 +646,7 @@ pub(crate) async fn verify_provider_effect_rows(pool: &SqlitePool) -> Result<(),
         let intent = decode_effect_intent_row(&intent_row)?;
         let ack_rows = sqlx::query(
             "SELECT seq, effect_key, payload_sha256,
-                    provider_operation_id_sha256, status, schema_version,
+                    provider_operation_id_sha256, status, source, schema_version,
                     payload_json, record_sha256, recorded_at_ms
              FROM provider_effect_acknowledgements
              WHERE effect_key = ? ORDER BY recorded_at_ms ASC, seq ASC",
@@ -637,6 +669,14 @@ pub(crate) async fn verify_provider_effect_rows(pool: &SqlitePool) -> Result<(),
         let mut terminal_ack: Option<StoredProviderEffectAck> = None;
         for row in ack_rows {
             let ack = decode_effect_ack_row(&row, &intent.intent)?;
+            let uncertainty_before = uncertainty_rows.iter().any(|uncertainty_row| {
+                uncertainty_row.get::<i64, _>("recorded_at_ms") < ack.recorded_at_ms
+            });
+            if uncertainty_before && ack.source != ProviderEffectAckSource::StatusLookup {
+                return Err(EvidenceError::Corrupt(
+                    "provider effect dispatch ACK follows an uncertainty quarantine".to_string(),
+                ));
+            }
             if let Some(previous) = previous_ack.as_ref() {
                 let uncertainty_between = uncertainty_rows.iter().any(|uncertainty_row| {
                     let recorded_at_ms = uncertainty_row.get::<i64, _>("recorded_at_ms");
@@ -662,7 +702,8 @@ pub(crate) async fn verify_provider_effect_rows(pool: &SqlitePool) -> Result<(),
                 let legal = if uncertainty_between {
                     // An uncertainty can justify rebinding the provider
                     // operation id, but never permits Accepted -> Rejected.
-                    legal_status_transition
+                    ack.source == ProviderEffectAckSource::StatusLookup
+                        && legal_status_transition
                 } else {
                     legal_status_transition && !operation_rebound
                 };
@@ -756,6 +797,18 @@ fn decode_effect_ack_row(
         .map_err(|error| EvidenceError::Corrupt(error.to_string()))?;
     ack.validate_for(intent).map_err(binding_corrupt)?;
     let status: String = row.get("status");
+    let source: Option<String> = row
+        .try_get("source")
+        .map_err(classify_sqlx_error)?;
+    let source = source
+        .ok_or_else(|| {
+            EvidenceError::Corrupt(
+                "provider effect acknowledgement source provenance is missing".to_string(),
+            )
+        })
+        .and_then(|source| {
+            ProviderEffectAckSource::parse(&source).map_err(binding_corrupt)
+        })?;
     if row.get::<String, _>("effect_key") != ack.key.as_str()
         || row.get::<String, _>("payload_sha256") != ack.payload_sha256.as_str()
         || row.get::<String, _>("provider_operation_id_sha256")
@@ -770,6 +823,7 @@ fn decode_effect_ack_row(
     Ok(StoredProviderEffectAck {
         seq: row.get("seq"),
         ack,
+        source,
         recorded_at_ms: row.get("recorded_at_ms"),
     })
 }
@@ -836,13 +890,14 @@ async fn verify_effect_intent(
 async fn verify_effect_ack(
     transaction: &mut Transaction<'_, Sqlite>,
     ack: &ProviderEffectAck,
+    source: ProviderEffectAckSource,
     payload_json: &str,
     record_sha256: &str,
     inserted: bool,
 ) -> Result<AppendDisposition, EvidenceError> {
     let rows = sqlx::query(
         "SELECT seq, effect_key, payload_sha256,
-                provider_operation_id_sha256, status, schema_version,
+                provider_operation_id_sha256, status, source, schema_version,
                 payload_json, record_sha256, recorded_at_ms
          FROM provider_effect_acknowledgements
          WHERE effect_key = ? AND provider_operation_id_sha256 = ?
@@ -866,6 +921,7 @@ async fn verify_effect_ack(
         .ok_or_else(|| EvidenceError::Corrupt("provider effect ACK lost its intent".to_string()))?;
     let stored = decode_effect_ack_row(&rows[0], &intent.intent)?;
     if stored.ack != *ack
+        || (inserted && stored.source != source)
         || rows[0].get::<String, _>("payload_json") != payload_json
         || rows[0].get::<String, _>("record_sha256") != record_sha256
     {
@@ -930,10 +986,11 @@ async fn validate_ack_transition_in_transaction(
     transaction: &mut Transaction<'_, Sqlite>,
     intent: &ProviderEffectIntent,
     next: &ProviderEffectAck,
+    source: ProviderEffectAckSource,
 ) -> Result<(), EvidenceError> {
     let rows = sqlx::query(
         "SELECT seq, effect_key, payload_sha256,
-                provider_operation_id_sha256, status, schema_version,
+                provider_operation_id_sha256, status, source, schema_version,
                 payload_json, record_sha256, recorded_at_ms
          FROM provider_effect_acknowledgements
          WHERE effect_key = ? ORDER BY seq ASC",
@@ -954,6 +1011,13 @@ async fn validate_ack_transition_in_transaction(
     .fetch_one(&mut **transaction)
     .await
     .map_err(classify_sqlx_error)?;
+    if uncertainty_recorded_at_ms.is_some()
+        && source != ProviderEffectAckSource::StatusLookup
+    {
+        return Err(EvidenceError::IdempotencyConflict {
+            record_id: next.key.as_str().to_string(),
+        });
+    }
     let Some(previous) = previous else {
         return Ok(());
     };
@@ -983,7 +1047,7 @@ async fn validate_ack_transition_in_transaction(
                 ProviderEffectAckStatus::Completed
             )
         );
-        if legal_after_uncertainty {
+        if source == ProviderEffectAckSource::StatusLookup && legal_after_uncertainty {
             return Ok(());
         }
         return Err(EvidenceError::IdempotencyConflict {
@@ -1021,7 +1085,7 @@ async fn latest_ack_is_terminal(
 ) -> Result<bool, EvidenceError> {
     let row = sqlx::query(
         "SELECT seq, effect_key, payload_sha256,
-                provider_operation_id_sha256, status, schema_version,
+                provider_operation_id_sha256, status, source, schema_version,
                 payload_json, record_sha256, recorded_at_ms
          FROM provider_effect_acknowledgements
          WHERE effect_key = ? ORDER BY recorded_at_ms DESC, seq DESC LIMIT 1",

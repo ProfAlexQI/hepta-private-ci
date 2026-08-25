@@ -621,6 +621,48 @@ pub(crate) async fn verify_schema_manifest(pool: &SqlitePool) -> Result<(), Evid
     Ok(())
 }
 
+/// Migration 0008 adds `source` with `ALTER TABLE`; SQLite keeps the original
+/// CREATE statement in `sqlite_schema`, so the normal schema-manifest oracle
+/// cannot observe that column.  Check the projected table shape explicitly.
+pub(crate) async fn verify_provider_effect_ack_source_schema(
+    pool: &SqlitePool,
+) -> Result<(), EvidenceError> {
+    let columns = sqlx::query("PRAGMA table_info(provider_effect_acknowledgements)")
+        .fetch_all(pool)
+        .await
+        .map_err(classify_sqlx_error)?;
+    let source = columns.iter().find(|row| {
+        row.try_get::<String, _>("name")
+            .ok()
+            .is_some_and(|name| name == "source")
+    });
+    let Some(source) = source else {
+        return Err(EvidenceError::Corrupt(
+            "provider effect acknowledgement source column is missing".to_string(),
+        ));
+    };
+    let column_type: String = source.try_get("type").map_err(classify_sqlx_error)?;
+    let not_null: i64 = source.try_get("notnull").map_err(classify_sqlx_error)?;
+    if !column_type.eq_ignore_ascii_case("TEXT") || not_null != 0 {
+        return Err(EvidenceError::Corrupt(
+            "provider effect acknowledgement source column has an invalid definition".to_string(),
+        ));
+    }
+    let invalid_values: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM provider_effect_acknowledgements
+         WHERE source IS NULL OR source NOT IN ('dispatch_response', 'status_lookup')",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(classify_sqlx_error)?;
+    if invalid_values != 0 {
+        return Err(EvidenceError::Corrupt(
+            "provider effect acknowledgement source provenance is invalid".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) async fn verify_foreign_keys(pool: &SqlitePool) -> Result<(), EvidenceError> {
     let violation = sqlx::query("PRAGMA foreign_key_check")
         .fetch_optional(pool)

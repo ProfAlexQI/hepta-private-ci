@@ -4,6 +4,7 @@ use std::sync::atomic::Ordering;
 
 use codex_hepta_contracts::PROVIDER_EVIDENCE_SCHEMA_VERSION;
 use codex_hepta_contracts::ProviderEffectAck;
+use codex_hepta_contracts::ProviderEffectAckSource;
 use codex_hepta_contracts::ProviderEffectAckStatus;
 use codex_hepta_contracts::ProviderEffectAdapter;
 use codex_hepta_contracts::ProviderEffectDispatch;
@@ -205,7 +206,10 @@ async fn effect_journal_quarantines_unknown_and_reconciles_after_restart() {
 
     assert_eq!(
         store
-            .append_provider_effect_ack(&completed_ack(&intent, b"operation-after-unknown"))
+            .append_provider_effect_ack_from_source(
+                &completed_ack(&intent, b"operation-after-unknown"),
+                codex_hepta_contracts::ProviderEffectAckSource::StatusLookup,
+            )
             .await
             .expect("reconciled completion"),
         AppendDisposition::Inserted
@@ -223,6 +227,90 @@ async fn effect_journal_quarantines_unknown_and_reconciles_after_restart() {
     assert_eq!(completed.state(), ProviderEffectState::Completed);
     assert_eq!(completed.uncertainties.len(), 1);
     assert_eq!(completed.acknowledgements.len(), 1);
+}
+
+#[tokio::test]
+async fn late_dispatch_ack_after_quarantine_requires_status_lookup_source() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"source-bound-payload");
+    let key = intent.key.clone();
+    store
+        .append_provider_effect_intent(&intent)
+        .await
+        .expect("intent");
+    store
+        .mark_provider_effect_indeterminate(&key, "provider_dispatch_unknown")
+        .await
+        .expect("quarantine");
+
+    let ack = completed_ack(&intent, b"status-operation");
+    let late_dispatch = store
+        .append_provider_effect_ack(&ack)
+        .await
+        .expect_err("a raw dispatch ACK cannot close a quarantined occurrence");
+    assert!(matches!(
+        late_dispatch,
+        EvidenceError::IdempotencyConflict { .. }
+    ));
+
+    assert_eq!(
+        store
+            .append_provider_effect_ack_from_source(&ack, ProviderEffectAckSource::StatusLookup)
+            .await
+            .expect("status lookup may reconcile the quarantine"),
+        AppendDisposition::Inserted
+    );
+    let stored = store
+        .get_provider_effect(&key)
+        .await
+        .expect("read effect")
+        .expect("effect");
+    assert_eq!(stored.acknowledgements[0].source, ProviderEffectAckSource::StatusLookup);
+}
+
+#[tokio::test]
+async fn reopen_rejects_missing_provider_ack_source_provenance() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"missing-source-payload");
+    store
+        .append_provider_effect_intent(&intent)
+        .await
+        .expect("intent");
+    let ack = ProviderEffectAck::new(
+        intent.key.clone(),
+        intent.payload_sha256.clone(),
+        Sha256Digest::for_bytes(b"missing-source-operation"),
+        ProviderEffectAckStatus::Accepted,
+    );
+    let bytes = crate::canonical::canonical_json(&ack).expect("canonical ACK");
+    let payload_json = String::from_utf8(bytes.clone()).expect("ACK JSON");
+    let record_sha = Sha256Digest::for_bytes(&bytes);
+    sqlx::query(
+        "INSERT INTO provider_effect_acknowledgements (
+            effect_key, payload_sha256, provider_operation_id_sha256,
+            status, source, schema_version, payload_json, record_sha256, recorded_at_ms
+         ) VALUES (?, ?, ?, 'accepted', NULL, ?, ?, ?, 100)",
+    )
+    .bind(intent.key.as_str())
+    .bind(ack.payload_sha256.as_str())
+    .bind(ack.provider_operation_id_sha256.as_str())
+    .bind(i64::from(ack.schema_version))
+    .bind(&payload_json)
+    .bind(record_sha.as_str())
+    .execute(&store.pool)
+    .await
+    .expect("insert legacy-style NULL source row");
+    drop(store);
+
+    let reopen = HeptaEvidenceStore::open(&sqlite).await;
+    assert!(matches!(reopen, Err(EvidenceError::Corrupt(_))));
 }
 
 #[tokio::test]
@@ -980,7 +1068,10 @@ async fn reopen_orders_ack_and_uncertainty_by_per_key_time_not_cross_table_seq()
         .await
         .expect("target uncertainty");
     store
-        .append_provider_effect_ack(&completed_ack(&target, b"cross-table-seq-operation"))
+        .append_provider_effect_ack_from_source(
+            &completed_ack(&target, b"cross-table-seq-operation"),
+            codex_hepta_contracts::ProviderEffectAckSource::StatusLookup,
+        )
         .await
         .expect("target terminal ACK");
     drop(store);
@@ -1128,8 +1219,8 @@ async fn reopen_rejects_illegal_ack_even_when_late_uncertainty_exists() {
     sqlx::query(
         "INSERT INTO provider_effect_acknowledgements (
             effect_key, payload_sha256, provider_operation_id_sha256,
-            status, schema_version, payload_json, record_sha256, recorded_at_ms
-         ) VALUES (?, ?, ?, 'completed', ?, ?, ?, 200)",
+            status, source, schema_version, payload_json, record_sha256, recorded_at_ms
+         ) VALUES (?, ?, ?, 'completed', 'dispatch_response', ?, ?, ?, 200)",
     )
     .bind(key.as_str())
     .bind(illegal.payload_sha256.as_str())

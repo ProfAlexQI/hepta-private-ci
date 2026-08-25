@@ -48,6 +48,7 @@ pub use provider::ProviderTransport;
 pub use provider::RequestBindingId;
 pub use provider_effect::PROVIDER_EFFECT_SCHEMA_VERSION;
 pub use provider_effect::ProviderEffectAck;
+pub use provider_effect::ProviderEffectAckSource;
 pub use provider_effect::ProviderEffectAckStatus;
 pub use provider_effect::ProviderEffectAdapter;
 pub use provider_effect::ProviderEffectAppendDisposition;

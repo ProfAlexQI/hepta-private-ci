@@ -119,6 +119,39 @@ pub enum ProviderEffectAckStatus {
     Rejected,
 }
 
+/// Local provenance for a provider acknowledgement observation.
+///
+/// The provider payload itself does not carry this distinction: the same
+/// key-bound acknowledgement shape may be returned by the initial dispatch
+/// response or by a later authoritative status lookup.  Keeping the source
+/// at the observation boundary lets the evidence store reject a late raw
+/// dispatch response after an uncertainty quarantine.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderEffectAckSource {
+    /// The acknowledgement came from the response to the physical dispatch.
+    DispatchResponse,
+    /// The acknowledgement came from a provider-owned status lookup.
+    StatusLookup,
+}
+
+impl ProviderEffectAckSource {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::DispatchResponse => "dispatch_response",
+            Self::StatusLookup => "status_lookup",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, ProviderEffectBindingError> {
+        match value {
+            "dispatch_response" => Ok(Self::DispatchResponse),
+            "status_lookup" => Ok(Self::StatusLookup),
+            _ => Err(ProviderEffectBindingError::InvalidAckSource),
+        }
+    }
+}
+
 /// Monotonic local state for one effect occurrence.
 ///
 /// This is intentionally a *local* state machine.  `Accepted` means only that
@@ -309,6 +342,7 @@ pub enum ProviderEffectBindingError {
     Unknown,
     Conflict,
     AckConflict,
+    InvalidAckSource,
     InvalidReasonCode,
 }
 
@@ -330,6 +364,10 @@ pub enum ProviderEffectAppendDisposition {
 pub struct ProviderEffectJournal {
     intents: BTreeMap<String, ProviderEffectIntent>,
     acknowledgements: BTreeMap<String, Vec<ProviderEffectAck>>,
+    /// Source is kept separately from the provider ACK payload because it is
+    /// a local observation about how that payload was obtained.
+    #[serde(default)]
+    ack_sources: BTreeMap<String, Vec<ProviderEffectAckSource>>,
     #[serde(default)]
     uncertainties: BTreeMap<String, Vec<ProviderEffectUncertainty>>,
     #[serde(default)]
@@ -357,6 +395,17 @@ impl ProviderEffectJournal {
         &mut self,
         ack: ProviderEffectAck,
     ) -> Result<ProviderEffectAppendDisposition, ProviderEffectBindingError> {
+        self.record_ack_from_source(ack, ProviderEffectAckSource::DispatchResponse)
+    }
+
+    /// Records an acknowledgement together with the path that produced it.
+    /// A dispatch response can never close an occurrence after it has been
+    /// quarantined; only a later status lookup may do so.
+    pub fn record_ack_from_source(
+        &mut self,
+        ack: ProviderEffectAck,
+        source: ProviderEffectAckSource,
+    ) -> Result<ProviderEffectAppendDisposition, ProviderEffectBindingError> {
         let key = ack.key.as_str().to_string();
         let intent = self
             .intents
@@ -364,17 +413,31 @@ impl ProviderEffectJournal {
             .ok_or(ProviderEffectBindingError::NotFound)?;
         ack.validate_for(intent)?;
         let observations = self.acknowledgements.entry(key.clone()).or_default();
-
-        if observations.iter().any(|existing| existing == &ack) {
-            return Ok(ProviderEffectAppendDisposition::AlreadyPresent);
-        }
         let was_quarantined = self
             .quarantined
             .get(ack.key.as_str())
             .copied()
             .unwrap_or(false);
-        validate_ack_transition(observations, &ack, was_quarantined)?;
+        if was_quarantined && source != ProviderEffectAckSource::StatusLookup {
+            return Err(ProviderEffectBindingError::AckConflict);
+        }
+        let sources = self.ack_sources.entry(key.clone()).or_default();
+        if let Some(index) = observations.iter().position(|existing| existing == &ack) {
+            let Some(existing_source) = sources.get(index).copied() else {
+                // A journal serialized before provenance was introduced has
+                // no safe way to infer how an existing ACK was observed.
+                return Err(ProviderEffectBindingError::AckConflict);
+            };
+            // A duplicate observation is idempotent even when a later status
+            // lookup confirms an ACK first seen in a dispatch response.  The
+            // first stored source remains authoritative; quarantine rules
+            // above still reject a late raw dispatch ACK.
+            let _ = (existing_source, source);
+            return Ok(ProviderEffectAppendDisposition::AlreadyPresent);
+        }
+        validate_ack_transition(observations, &ack, was_quarantined, source)?;
         observations.push(ack);
+        sources.push(source);
         self.quarantined.insert(key, false);
         Ok(ProviderEffectAppendDisposition::Inserted)
     }
@@ -443,6 +506,12 @@ impl ProviderEffectJournal {
             .map_or(&[], Vec::as_slice)
     }
 
+    pub fn acknowledgement_sources(&self, key: &ProviderEffectKey) -> &[ProviderEffectAckSource] {
+        self.ack_sources
+            .get(key.as_str())
+            .map_or(&[], Vec::as_slice)
+    }
+
     pub fn uncertainties(&self, key: &ProviderEffectKey) -> &[ProviderEffectUncertainty] {
         self.uncertainties
             .get(key.as_str())
@@ -467,7 +536,7 @@ impl ProviderEffectJournal {
         match lookup {
             ProviderEffectLookup::Ack(ack) => {
                 ack.validate_for(&intent)?;
-                self.record_ack(ack)?;
+                self.record_ack_from_source(ack, ProviderEffectAckSource::StatusLookup)?;
                 Ok(self
                     .state(key)
                     .unwrap_or(ProviderEffectState::Indeterminate))
@@ -492,6 +561,7 @@ fn validate_ack_transition(
     observations: &[ProviderEffectAck],
     next: &ProviderEffectAck,
     was_quarantined: bool,
+    source: ProviderEffectAckSource,
 ) -> Result<(), ProviderEffectBindingError> {
     let Some(previous) = observations.last() else {
         return Ok(());
@@ -506,6 +576,9 @@ fn validate_ack_transition(
     // accepted -> rejected must stay fail-closed because the earlier
     // admission proves that the provider may already have applied it.
     if was_quarantined {
+        if source != ProviderEffectAckSource::StatusLookup {
+            return Err(ProviderEffectBindingError::AckConflict);
+        }
         return match (previous.status, next.status) {
             (ProviderEffectAckStatus::Accepted, ProviderEffectAckStatus::Accepted)
             | (ProviderEffectAckStatus::Accepted, ProviderEffectAckStatus::Completed) => Ok(()),
@@ -1069,10 +1142,39 @@ mod tests {
         );
         assert_eq!(journal.uncertainties(&key).len(), 1);
         assert_eq!(
-            journal.record_ack(completed),
+            journal.record_ack_from_source(completed, ProviderEffectAckSource::StatusLookup),
             Ok(ProviderEffectAppendDisposition::Inserted)
         );
         assert_eq!(journal.state(&key), Some(ProviderEffectState::Completed));
+    }
+
+    #[test]
+    fn journal_rejects_late_dispatch_ack_after_quarantine() {
+        let intent = intent(b"payload-a");
+        let key = intent.key.clone();
+        let accepted = ProviderEffectAck::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            Sha256Digest::for_bytes(b"operation-1"),
+            ProviderEffectAckStatus::Accepted,
+        );
+        let late = ProviderEffectAck::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            Sha256Digest::for_bytes(b"operation-2"),
+            ProviderEffectAckStatus::Completed,
+        );
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent).expect("intent");
+        journal.record_ack(accepted).expect("dispatch ACK");
+        journal
+            .mark_indeterminate(&key, "provider_dispatch_unknown")
+            .expect("quarantine");
+        assert_eq!(
+            journal.record_ack(late),
+            Err(ProviderEffectBindingError::AckConflict)
+        );
+        assert_eq!(journal.state(&key), Some(ProviderEffectState::Indeterminate));
     }
 
     #[test]
