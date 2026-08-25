@@ -480,6 +480,19 @@ pub(super) async fn shutdown_session_runtime_excluding(
     sess: &Arc<Session>,
     excluded_terminalization: Option<&std::sync::Arc<()>>,
 ) {
+    shutdown_session_runtime_excluding_with_suspension(
+        sess,
+        excluded_terminalization,
+        None,
+    )
+    .await;
+}
+
+pub(super) async fn shutdown_session_runtime_excluding_with_suspension(
+    sess: &Arc<Session>,
+    excluded_terminalization: Option<&std::sync::Arc<()>>,
+    excluded_suspension: Option<&std::sync::Arc<()>>,
+) {
     sess.begin_shutdown();
     if let Some(startup_prewarm) = sess.take_session_startup_prewarm().await {
         startup_prewarm.abort().await;
@@ -487,6 +500,11 @@ pub(super) async fn shutdown_session_runtime_excluding(
     let _ = sess.conversation.shutdown().await;
     sess.abort_all_tasks(TurnAbortReason::Interrupted).await;
     sess.drain_start_transition_for_shutdown().await;
+    super::turn_suspension::drain_suspension_handoffs_for_shutdown_excluding(
+        sess,
+        excluded_suspension,
+    )
+    .await;
     sess
         .drain_task_terminalizations_for_shutdown_except(excluded_terminalization)
         .await;

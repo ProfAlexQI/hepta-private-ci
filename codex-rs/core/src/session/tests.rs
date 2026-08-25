@@ -12384,6 +12384,220 @@ async fn turn_aborted_flushes_terminal_event_after_delivery() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn suspend_turn_handoff_closes_writer_before_releasing_fence() {
+    let (mut sess, tc, rx) = make_session_and_context_with_rx().await;
+    let store = attach_in_memory_thread_store(
+        Arc::get_mut(&mut sess).expect("session should be uniquely owned"),
+    )
+    .await;
+    let turn_id = tc.sub_id.clone();
+    sess.spawn_task(
+        Arc::clone(&tc),
+        vec![TurnInput::UserInput {
+            content: vec![UserInput::Text {
+                text: "preserve this unfinished turn".to_string(),
+                text_elements: Vec::new(),
+            }],
+            client_id: None,
+        }],
+        NeverEndingTask {
+            kind: TaskKind::Regular,
+            listen_to_cancellation_token: true,
+        },
+    )
+    .await
+    .expect("suspend test task should start");
+
+    let outcome = timeout(
+        StdDuration::from_secs(5),
+        super::turn_suspension::suspend_turn_and_shutdown_for_test(
+            &sess,
+            "suspend-test".to_string(),
+        ),
+    )
+    .await
+    .expect("suspension handoff should not hang")
+    .expect("suspension handoff should complete");
+    assert_eq!(
+        outcome,
+        codex_protocol::turn_input::SuspendTurnOutcome::Suspended {
+            turn_id: turn_id.clone(),
+        }
+    );
+
+    let calls = store.calls().await;
+    assert!(calls.flush_thread >= 2, "pre-claim and final flush must run");
+    assert_eq!(calls.shutdown_thread, 1, "writer must close exactly once");
+    assert!(sess.active_turn.lock().await.is_none());
+    assert!(!sess.has_pending_task_terminalization());
+    // The handoff may publish ShutdownComplete on this channel, but it must
+    // never synthesize a normal terminal turn event for the unfinished turn.
+    while let Ok(event) = rx.try_recv() {
+        assert!(!matches!(
+            event.msg,
+            EventMsg::TurnAborted(_) | EventMsg::TurnComplete(_)
+        ));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelled_suspend_caller_keeps_writer_handoff_alive() {
+    struct BlockingThreadStop {
+        entered: Arc<Notify>,
+        release: Arc<Notify>,
+    }
+
+    impl codex_extension_api::ThreadLifecycleContributor<crate::config::Config>
+        for BlockingThreadStop
+    {
+        fn on_thread_stop<'a>(
+            &'a self,
+            _input: codex_extension_api::ThreadStopInput<'a>,
+        ) -> codex_extension_api::ExtensionFuture<'a, ()> {
+            Box::pin(async move {
+                self.entered.notify_one();
+                self.release.notified().await;
+            })
+        }
+    }
+
+    let (mut sess, tc, _rx) = make_session_and_context_with_rx().await;
+    let store = attach_in_memory_thread_store(
+        Arc::get_mut(&mut sess).expect("session should be uniquely owned"),
+    )
+    .await;
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let mut builder = codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+    builder.thread_lifecycle_contributor(Arc::new(BlockingThreadStop {
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+    }));
+    Arc::get_mut(&mut sess)
+        .expect("session should still be uniquely owned")
+        .services
+        .extensions = Arc::new(builder.build());
+
+    let turn_id = tc.sub_id.clone();
+    sess.spawn_task(
+        Arc::clone(&tc),
+        Vec::new(),
+        NeverEndingTask {
+            kind: TaskKind::Regular,
+            listen_to_cancellation_token: true,
+        },
+    )
+    .await
+    .expect("suspend cancellation task should start");
+
+    let caller = tokio::spawn({
+        let sess = Arc::clone(&sess);
+        async move {
+            super::turn_suspension::suspend_turn_and_shutdown_for_test(
+                &sess,
+                "cancelled-suspend-test".to_string(),
+            )
+            .await
+        }
+    });
+    timeout(StdDuration::from_secs(2), entered.notified())
+        .await
+        .expect("detached handoff should reach thread-stop lifecycle");
+    assert!(sess.has_pending_task_terminalization());
+    assert!(sess.active_turn.lock().await.is_some());
+
+    caller.abort();
+    let _ = caller.await;
+    assert!(sess.has_pending_task_terminalization());
+    assert!(sess.active_turn.lock().await.is_some());
+
+    release.notify_one();
+    timeout(StdDuration::from_secs(2), async {
+        loop {
+            if sess.active_turn.lock().await.is_none()
+                && !sess.has_pending_task_terminalization()
+            {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("detached suspend owner should finish after caller cancellation");
+    assert_eq!(store.calls().await.shutdown_thread, 1);
+    assert_eq!(turn_id, tc.sub_id);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn suspend_turn_handoff_bounds_post_abort_reap() {
+    struct BlockingPollTask {
+        entered: async_channel::Sender<()>,
+    }
+
+    impl SessionTask for BlockingPollTask {
+        fn kind(&self) -> TaskKind {
+            TaskKind::Regular
+        }
+
+        fn span_name(&self) -> &'static str {
+            "session_task.suspension_blocking_poll"
+        }
+
+        async fn run(
+            self: Arc<Self>,
+            _session: Arc<Session>,
+            _ctx: Arc<TurnContext>,
+            _input: Vec<TurnInput>,
+            _cancellation_token: CancellationToken,
+        ) -> SessionTaskResult {
+            self.entered
+                .send(())
+                .await
+                .expect("blocking task receiver should remain open");
+            // Deliberately block a runtime worker so JoinHandle::abort cannot
+            // make this future quiescent until the poll returns.
+            std::thread::sleep(StdDuration::from_secs(1));
+            Ok(None)
+        }
+    }
+
+    let (mut sess, tc, _rx) = make_session_and_context_with_rx().await;
+    let store = attach_in_memory_thread_store(
+        Arc::get_mut(&mut sess).expect("session should be uniquely owned"),
+    )
+    .await;
+    let (entered_tx, entered_rx) = async_channel::bounded(1);
+    sess.spawn_task(
+        Arc::clone(&tc),
+        Vec::new(),
+        BlockingPollTask {
+            entered: entered_tx,
+        },
+    )
+    .await
+    .expect("blocking suspension task should start");
+    timeout(StdDuration::from_secs(2), entered_rx.recv())
+        .await
+        .expect("blocking task should begin polling")
+        .expect("blocking task sender should remain open");
+
+    let error = timeout(
+        StdDuration::from_secs(1),
+        super::turn_suspension::suspend_turn_and_shutdown_for_test(
+            &sess,
+            "blocking-suspend-test".to_string(),
+        ),
+    )
+    .await
+    .expect("post-abort reap must remain bounded")
+    .expect_err("non-cooperative task must leave suspension fail-closed");
+    assert!(error.to_string().contains("did not quiesce after abort"));
+    assert!(sess.has_pending_task_terminalization());
+    assert!(sess.active_turn.lock().await.is_some());
+    assert_eq!(store.calls().await.shutdown_thread, 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[test_log::test]
 async fn abort_regular_task_emits_marker_before_turn_aborted() {
     let (sess, tc, rx) = make_session_and_context_with_rx().await;

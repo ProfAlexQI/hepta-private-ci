@@ -83,8 +83,14 @@ pub(crate) struct Session {
     /// marker is intentionally cleared before a replacement turn may be
     /// admitted, so shutdown must retain an independent registry until the
     /// terminalizer has also published recovery and idle side effects.
-    pub(crate) pending_task_terminalization_completions:
-        std::sync::Mutex<Vec<(Arc<()>, Arc<StartTransitionCompletion>, TaskTerminalizationKind)>>,
+    pub(crate) pending_task_terminalization_completions: std::sync::Mutex<
+        Vec<(
+            Arc<()>,
+            Arc<StartTransitionCompletion>,
+            TaskTerminalizationKind,
+            Option<crate::tasks::SuspensionHandoffSlot>,
+        )>,
+    >,
     /// Once teardown begins, no new host-owned start transition may be
     /// admitted.  This prevents pending-mailbox wakeups from racing the
     /// shutdown completion drain.

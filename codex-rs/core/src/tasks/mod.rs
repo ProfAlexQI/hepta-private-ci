@@ -19,6 +19,7 @@ use futures::future::BoxFuture;
 use tokio::select;
 use tokio::sync::Mutex;
 use tokio::sync::Notify;
+use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument;
@@ -70,6 +71,7 @@ use codex_protocol::protocol::TurnAbortedEvent;
 use codex_protocol::protocol::TurnCompleteEvent;
 use codex_protocol::protocol::WarningEvent;
 use codex_protocol::user_input::user_input_payload_sha256;
+use codex_thread_store::LiveThread;
 use codex_thread_store::PersistContext;
 
 use codex_features::Feature;
@@ -144,6 +146,43 @@ pub(crate) struct DetachedTaskForSuspension {
     pub(crate) turn_context: Arc<TurnContext>,
     pub(crate) attach_epoch: u64,
 }
+
+/// Progress points for the post-claim suspension owner.  The first two
+/// phases are safe to retry after a runtime drops the detached future because
+/// the task witness is still owned by the guard.  Once shutdown or writer
+/// persistence has started, a dropped future is treated as uncertain and is
+/// retained fail-closed rather than blindly repeating a non-idempotent close.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SuspensionHandoffPhase {
+    Claimed,
+    TaskQuiescing,
+    InputClearing,
+    RuntimeStopping,
+    WriterFlushing,
+    WriterClosing,
+    LifecyclePublishing,
+    EventPublishing,
+    MarkerReleasing,
+    Complete,
+}
+
+/// Full witness for the post-claim root-turn suspension handoff.  Once a
+/// suspension claim succeeds, the caller may disappear at any await; this
+/// witness keeps the detached task, writer, exact identity, and reply alive
+/// until the final writer close and marker CAS complete.  A failed handoff is
+/// retained in its registry slot rather than being retried or made to look
+/// idle.
+pub(crate) struct SuspensionHandoff {
+    pub(crate) suspended: DetachedTaskForSuspension,
+    pub(crate) live_thread: LiveThread,
+    pub(crate) submission_id: String,
+    pub(crate) reply: Option<oneshot::Sender<CodexResult<codex_protocol::turn_input::SuspendTurnOutcome>>>,
+    pub(crate) phase: SuspensionHandoffPhase,
+    pub(crate) failed_closed: bool,
+}
+
+pub(crate) type SuspensionHandoffSlot =
+    Arc<std::sync::Mutex<Option<SuspensionHandoff>>>;
 
 enum ActiveTurnAbortTarget {
     Running(DetachedTaskForAbort),
@@ -436,11 +475,38 @@ impl Session {
         identity: Arc<()>,
         completion: Arc<StartTransitionCompletion>,
         kind: TaskTerminalizationKind,
+        suspension_handoff: Option<SuspensionHandoffSlot>,
     ) {
         self.pending_task_terminalization_completions
             .lock()
             .expect("task terminalization completion registry mutex poisoned")
-            .push((identity, completion, kind));
+            .push((identity, completion, kind, suspension_handoff));
+    }
+
+    /// Returns unclaimed suspension witnesses for shutdown recovery.  A
+    /// running detached owner has already taken its slot, so shutdown merely
+    /// waits on the completion fence; a queued/no-runtime owner leaves the
+    /// slot populated and can be adopted by the shutdown drain.
+    pub(crate) fn pending_suspension_handoffs_except(
+        &self,
+        excluded_identity: Option<&Arc<()>>,
+    ) -> Vec<(Arc<()>, SuspensionHandoffSlot)> {
+        self.pending_task_terminalization_completions
+            .lock()
+            .expect("task terminalization completion registry mutex poisoned")
+            .iter()
+            .filter_map(|(identity, _, kind, handoff)| {
+                if *kind != TaskTerminalizationKind::Suspend
+                    || excluded_identity
+                        .is_some_and(|excluded| Arc::ptr_eq(identity, excluded))
+                {
+                    return None;
+                }
+                handoff
+                    .as_ref()
+                    .map(|slot| (Arc::clone(identity), Arc::clone(slot)))
+            })
+            .collect()
     }
 
     /// Retires and signals one exact task terminalizer after all of its
@@ -455,7 +521,7 @@ impl Session {
             .pending_task_terminalization_completions
             .lock()
             .expect("task terminalization completion registry mutex poisoned");
-        pending.retain(|(current_identity, current_completion, _kind)| {
+        pending.retain(|(current_identity, current_completion, _kind, _handoff)| {
             !(Arc::ptr_eq(current_identity, identity)
                 && Arc::ptr_eq(current_completion, completion))
         });
@@ -471,11 +537,11 @@ impl Session {
             .lock()
             .expect("task terminalization completion registry mutex poisoned")
             .iter()
-            .filter(|(identity, _, _)| {
+            .filter(|(identity, _, _, _)| {
                 excluded_identity
                     .map_or(true, |excluded| !Arc::ptr_eq(identity, excluded))
             })
-            .map(|(_, completion, _)| Arc::clone(completion))
+            .map(|(_, completion, _, _)| Arc::clone(completion))
             .collect()
     }
 
@@ -532,7 +598,7 @@ impl Session {
             .lock()
             .expect("task terminalization completion registry mutex poisoned")
             .iter()
-            .any(|(identity, _, _)| {
+            .any(|(identity, _, _, _)| {
                 ignored_identity.map_or(true, |ignored| !Arc::ptr_eq(identity, ignored))
             })
     }
@@ -876,6 +942,7 @@ impl Session {
         turn_context: &Arc<TurnContext>,
         attach_epoch: u64,
         kind: TaskTerminalizationKind,
+        suspension_handoff: Option<SuspensionHandoffSlot>,
     ) -> Option<(Arc<()>, Arc<StartTransitionCompletion>)> {
         if active_turn.task_terminalization.is_some() {
             return None;
@@ -900,6 +967,7 @@ impl Session {
             Arc::clone(&identity),
             Arc::clone(&completion),
             kind,
+            suspension_handoff,
         );
         Some((identity, completion))
     }
@@ -976,13 +1044,19 @@ impl Session {
         Some(completion)
     }
 
-    /// Claims and detaches the exact regular task for root-turn suspension.
-    /// The marker remains in `active_turn` while the caller performs bounded
-    /// cancellation and closes persistence, so no start/input path can treat
-    /// the session as idle in that interval.
+    /// Claims the exact regular task for root-turn suspension and publishes
+    /// its complete handoff witness before sealing shutdown.  The caller may
+    /// disappear immediately after this future returns; the registry already
+    /// owns the task, writer, reply, and exact terminalization identity.
     pub(crate) async fn take_task_for_suspension(
         &self,
-    ) -> Option<DetachedTaskForSuspension> {
+        handoff_slot: SuspensionHandoffSlot,
+        live_thread: LiveThread,
+        submission_id: String,
+        reply: oneshot::Sender<
+            CodexResult<codex_protocol::turn_input::SuspendTurnOutcome>,
+        >,
+    ) -> Option<(Arc<()>, SuspensionHandoffSlot)> {
         if self.shutdown_started() {
             return None;
         }
@@ -1013,25 +1087,45 @@ impl Session {
                 &task_context,
                 attach_epoch,
                 TaskTerminalizationKind::Suspend,
+                Some(Arc::clone(&handoff_slot)),
             )?;
         let task = Self::take_task_for_terminalization_locked(
             active_turn,
             &terminalization_identity,
             TaskTerminalizationKind::Suspend,
         )?;
+        let suspended = DetachedTaskForSuspension {
+            task: Some(task),
+            turn_state,
+            terminalization_identity: Arc::clone(&terminalization_identity),
+            task_identity,
+            turn_context: task_context,
+            attach_epoch,
+        };
+        // The slot was registered together with the terminalization marker.
+        // Fill it while `active_turn` is still held, before shutdown is sealed
+        // or this method can return.  A shutdown drain can therefore never
+        // observe a claimed Suspend marker without its full witness.
+        {
+            let mut slot = handoff_slot
+                .lock()
+                .expect("suspension handoff slot mutex poisoned");
+            debug_assert!(slot.is_none(), "new suspension handoff slot was pre-populated");
+            *slot = Some(SuspensionHandoff {
+                suspended,
+                live_thread,
+                submission_id,
+                reply: Some(reply),
+                phase: SuspensionHandoffPhase::Claimed,
+                failed_closed: false,
+            });
+        }
         // Suspension owns the shutdown handoff from this point.  Seal it
         // before releasing the active-turn lock so a concurrent shutdown or
         // idle mutation cannot observe the detached slot as admissible.
         self.begin_shutdown();
         drop(active);
-        Some(DetachedTaskForSuspension {
-            task: Some(task),
-            turn_state,
-            terminalization_identity,
-            task_identity,
-            turn_context: task_context,
-            attach_epoch,
-        })
+        Some((terminalization_identity, handoff_slot))
     }
 
     /// Releases the suspension marker only after the caller has closed the
@@ -2654,6 +2748,7 @@ impl Session {
                     &task_context,
                     task_epoch,
                     TaskTerminalizationKind::Finish,
+                    None,
                 )
                 .expect("task terminalization claim should be unique");
             Some((
@@ -3094,6 +3189,7 @@ impl Session {
                 &task_context,
                 attach_epoch,
                 TaskTerminalizationKind::Abort,
+                None,
             )
             .expect("task terminalization claim should be unique");
             (
