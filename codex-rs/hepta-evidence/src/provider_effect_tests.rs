@@ -360,6 +360,111 @@ async fn reopen_rejects_missing_provider_ack_source_provenance() {
 }
 
 #[tokio::test]
+async fn reopen_rejects_provider_ack_source_check_drift_with_valid_rows() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"source-check-drift-payload");
+    store
+        .append_provider_effect_intent(&intent)
+        .await
+        .expect("intent");
+    store
+        .append_provider_effect_ack(&completed_ack(&intent, b"source-check-drift-operation"))
+        .await
+        .expect("ACK");
+
+    // Rebuild the ACK table through ordinary DDL, preserving a valid row but
+    // removing only the migration-0008 source CHECK.  This models a schema
+    // tamper without relying on SQLite's writable_schema escape hatch.
+    let mut schema_tx = store.pool.begin().await.expect("begin schema tamper");
+    for statement in [
+        "DROP TRIGGER provider_effect_acknowledgements_no_update",
+        "DROP TRIGGER provider_effect_acknowledgements_no_delete",
+        "DROP INDEX provider_effect_acknowledgements_key_seq",
+        "CREATE TABLE provider_effect_acknowledgements_replacement (
+            seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            effect_key TEXT NOT NULL,
+            payload_sha256 TEXT NOT NULL CHECK (
+                length(payload_sha256) = 64
+                AND payload_sha256 NOT GLOB '*[^0-9a-f]*'
+            ),
+            provider_operation_id_sha256 TEXT NOT NULL CHECK (
+                length(provider_operation_id_sha256) = 64
+                AND provider_operation_id_sha256 NOT GLOB '*[^0-9a-f]*'
+            ),
+            status TEXT NOT NULL CHECK (status IN ('accepted', 'completed', 'rejected')),
+            schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+            payload_json TEXT NOT NULL,
+            record_sha256 TEXT NOT NULL CHECK (
+                length(record_sha256) = 64
+                AND record_sha256 NOT GLOB '*[^0-9a-f]*'
+            ),
+            recorded_at_ms INTEGER NOT NULL,
+            source TEXT,
+            FOREIGN KEY(effect_key)
+                REFERENCES provider_effect_intents(effect_key)
+                ON UPDATE RESTRICT ON DELETE RESTRICT,
+            UNIQUE(effect_key, provider_operation_id_sha256, status, payload_sha256)
+        )",
+        "INSERT INTO provider_effect_acknowledgements_replacement (
+            seq, effect_key, payload_sha256, provider_operation_id_sha256,
+            status, schema_version, payload_json, record_sha256, recorded_at_ms, source
+         )
+         SELECT seq, effect_key, payload_sha256, provider_operation_id_sha256,
+            status, schema_version, payload_json, record_sha256, recorded_at_ms, source
+         FROM provider_effect_acknowledgements",
+        "DROP TABLE provider_effect_acknowledgements",
+        "ALTER TABLE provider_effect_acknowledgements_replacement
+            RENAME TO provider_effect_acknowledgements",
+        "CREATE INDEX provider_effect_acknowledgements_key_seq
+            ON provider_effect_acknowledgements(effect_key, seq)",
+        "CREATE TRIGGER provider_effect_acknowledgements_no_update
+         BEFORE UPDATE ON provider_effect_acknowledgements
+         BEGIN
+             SELECT RAISE(ABORT, 'provider effect acknowledgements are immutable');
+         END",
+        "CREATE TRIGGER provider_effect_acknowledgements_no_delete
+         BEFORE DELETE ON provider_effect_acknowledgements
+         BEGIN
+             SELECT RAISE(ABORT, 'provider effect acknowledgements are immutable');
+         END",
+    ] {
+        sqlx::query(statement)
+            .execute(&mut *schema_tx)
+            .await
+            .expect("rebuild tampered ACK schema");
+    }
+    schema_tx
+        .commit()
+        .await
+        .expect("commit tampered ACK schema");
+
+    let preserved: (i64, String) = sqlx::query_as(
+        "SELECT COUNT(*), MIN(source)
+         FROM provider_effect_acknowledgements",
+    )
+    .fetch_one(&store.pool)
+    .await
+    .expect("read preserved ACK");
+    assert_eq!(preserved, (1, "dispatch_response".to_string()));
+    let table_sql: String = sqlx::query_scalar(
+        "SELECT sql FROM sqlite_schema
+         WHERE type = 'table' AND name = 'provider_effect_acknowledgements'",
+    )
+    .fetch_one(&store.pool)
+    .await
+    .expect("read tampered schema");
+    assert!(!table_sql.to_ascii_lowercase().contains("source in"));
+
+    drop(store);
+    let reopen = HeptaEvidenceStore::open(&sqlite).await;
+    assert!(matches!(reopen, Err(EvidenceError::Corrupt(_))));
+}
+
+#[tokio::test]
 async fn qualification_dispatch_ack_is_persisted_with_source_and_reopens() {
     let temp = TempDir::new().expect("temp dir");
     let sqlite = sqlite_config(&temp);

@@ -627,6 +627,43 @@ pub(crate) async fn verify_schema_manifest(pool: &SqlitePool) -> Result<(), Evid
 pub(crate) async fn verify_provider_effect_ack_source_schema(
     pool: &SqlitePool,
 ) -> Result<(), EvidenceError> {
+    let table_sql = sqlx::query(
+        "SELECT sql FROM sqlite_schema
+         WHERE type = 'table' AND name = 'provider_effect_acknowledgements'",
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(classify_sqlx_error)?
+    .ok_or_else(|| {
+        EvidenceError::Corrupt(
+            "provider effect acknowledgement table definition is missing".to_string(),
+        )
+    })?
+    .try_get::<Option<String>, _>("sql")
+    .map_err(classify_sqlx_error)?
+    .ok_or_else(|| {
+        EvidenceError::Corrupt(
+            "provider effect acknowledgement table definition is missing".to_string(),
+        )
+    })?;
+    // `ALTER TABLE ... ADD COLUMN` is part of migration 0008, so verify the
+    // exact CHECK expression in sqlite_schema instead of relying only on
+    // PRAGMA table_info (which does not expose CHECK constraints).  Removing
+    // the constraint while leaving currently stored values valid must still
+    // fail closed before a direct SQL writer can introduce an unknown source.
+    let normalized_table_sql = table_sql
+        .chars()
+        .filter(|character| !character.is_ascii_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    const SOURCE_CHECK: &str =
+        "sourcetextcheck(sourceisnullorsourcein('dispatch_response','status_lookup'))";
+    if !normalized_table_sql.contains(SOURCE_CHECK) {
+        return Err(EvidenceError::Corrupt(
+            "provider effect acknowledgement source CHECK constraint is invalid".to_string(),
+        ));
+    }
+
     let columns = sqlx::query("PRAGMA table_info(provider_effect_acknowledgements)")
         .fetch_all(pool)
         .await
