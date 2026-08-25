@@ -9,7 +9,9 @@ use crate::CognitiveStore;
 use crate::LocalAdmission;
 use crate::LocalAdmissionFault;
 use crate::LocalLeaseAcquire;
+use crate::LocalLeaseHeadDisposition;
 use crate::LocalLeaseOutboxError;
+use crate::LocalLeaseState;
 use crate::LocalOutcomeState;
 use crate::LocalReconcileOutcome;
 use crate::LocalReplayFinalization;
@@ -36,6 +38,84 @@ fn unix_seconds() -> u64 {
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_secs()
+}
+
+#[tokio::test]
+async fn inspect_local_lease_head_is_read_only_and_classifies_fences() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 100).await;
+    let missing = store
+        .inspect_local_lease_head("lease:missing")
+        .await
+        .expect("missing inspection");
+    assert_eq!(missing.disposition, LocalLeaseHeadDisposition::Missing);
+    assert!(missing.head.is_none());
+
+    let active = acquired(
+        store
+            .acquire_local_lease("lease:inspect-active", 1, "fence:inspect-active")
+            .await
+            .expect("active acquire"),
+    );
+    let before = active
+        .snapshot_counts()
+        .await
+        .expect("counts before inspect");
+    let active_read = store
+        .inspect_local_lease_head("lease:inspect-active")
+        .await
+        .expect("active inspection");
+    assert_eq!(active_read.disposition, LocalLeaseHeadDisposition::Active);
+    let active_head = active_read.head.as_ref().expect("active head witness");
+    assert_eq!(active_head.lease_id, "lease:inspect-active");
+    assert_eq!(active_head.generation, 1);
+    assert_eq!(active_head.fencing_token, "fence:inspect-active");
+    assert_eq!(active_head.state, LocalLeaseState::Active);
+    assert_eq!(
+        active.snapshot_counts().await.expect("counts after inspect"),
+        before,
+        "inspection must not append lease/event/outbox rows"
+    );
+    active.release().await.expect("release active");
+    let released = store
+        .inspect_local_lease_head("lease:inspect-active")
+        .await
+        .expect("released inspection");
+    assert_eq!(released.disposition, LocalLeaseHeadDisposition::Released);
+
+    let expired = acquired(
+        store
+            .acquire_host_bound_lease(
+                "lease:inspect-expired",
+                1,
+                1,
+                1,
+                "fence:inspect-expired",
+                1,
+            )
+            .await
+            .expect("expired active acquire"),
+    );
+    let expired_read = store
+        .inspect_local_lease_head("lease:inspect-expired")
+        .await
+        .expect("expired inspection");
+    assert_eq!(
+        expired_read.disposition,
+        LocalLeaseHeadDisposition::ExpiredActive
+    );
+    expired
+        .expire_lease_at_unix_seconds(2)
+        .await
+        .expect("expire active");
+    let rolled_back = store
+        .inspect_local_lease_head("lease:inspect-expired")
+        .await
+        .expect("rolled back inspection");
+    assert_eq!(
+        rolled_back.disposition,
+        LocalLeaseHeadDisposition::RolledBack
+    );
 }
 
 #[tokio::test]

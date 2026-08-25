@@ -185,6 +185,8 @@ pub use local_lease_outbox::LocalAdmissionFault;
 pub use local_lease_outbox::LocalLease;
 pub use local_lease_outbox::LocalLeaseAcquire;
 pub use local_lease_outbox::LocalLeaseBinding;
+pub use local_lease_outbox::LocalLeaseHeadDisposition;
+pub use local_lease_outbox::LocalLeaseHeadInspection;
 pub use local_lease_outbox::LocalLeaseOutbox;
 pub use local_lease_outbox::LocalLeaseOutboxCounts;
 pub use local_lease_outbox::LocalLeaseOutboxError;

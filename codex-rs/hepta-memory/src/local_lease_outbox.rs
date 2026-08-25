@@ -79,6 +79,33 @@ pub enum LocalLeaseState {
     RolledBack,
 }
 
+/// Read-only classification of one Agent-local append-only lease head.
+///
+/// `ExpiredActive` is an observation, not permission to take over or mutate
+/// the lease.  A caller must still present the exact returned head to an
+/// explicit CAS/recovery API; this classifier never grants authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocalLeaseHeadDisposition {
+    Missing,
+    Active,
+    ExpiredActive,
+    Released,
+    RolledBack,
+}
+
+/// Exact read witness for a local lease head.  The full lease hash chain is
+/// verified before a non-missing head is returned, so a successor can use the
+/// value as an input witness without guessing a generation or token.  This
+/// is a snapshot and may become stale immediately; the subsequent CAS must
+/// revalidate it.  This API does not inspect or authorize logical-turn
+/// takeover.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalLeaseHeadInspection {
+    pub lease_id: String,
+    pub head: Option<LocalLease>,
+    pub disposition: LocalLeaseHeadDisposition,
+}
+
 /// Explicit authority/fence binding persisted for the E.16 lease writer.
 ///
 /// The original H8 API intentionally accepted only generation/token.  Those
@@ -1801,6 +1828,58 @@ impl LocalReconcileOutcome {
 }
 
 impl CognitiveStore {
+    /// Inspect one exact Agent-local lease head without opening a writable
+    /// handle or changing any row.  The read transaction verifies the full
+    /// append-only lease chain and returns the head witness needed by an
+    /// explicit successor CAS.  `ExpiredActive` is only a classifier: this
+    /// method never performs takeover, release, rollback, or dispatch.
+    pub async fn inspect_local_lease_head(
+        &self,
+        lease_id: impl Into<String>,
+    ) -> Result<LocalLeaseHeadInspection, LocalLeaseOutboxError> {
+        let lease_id = lease_id.into();
+        validate_text(&lease_id, "lease id", 512)?;
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let (head, _) =
+            load_lease_chain(&mut transaction, &lease_id, self.owner_agent_id()).await?;
+        let disposition = match head.as_ref() {
+            None => LocalLeaseHeadDisposition::Missing,
+            Some(lease) => match lease.state {
+                LocalLeaseState::Active => {
+                    let expired = match lease.lease_expires_at_unix_seconds {
+                        Some(expiry) => {
+                            let expiry = i64::try_from(expiry).map_err(|_| {
+                                LocalLeaseOutboxError::Clock("lease expiry overflow".to_string())
+                            })?;
+                            expiry <= now_unix_seconds()?
+                        }
+                        None => false,
+                    };
+                    if expired {
+                        LocalLeaseHeadDisposition::ExpiredActive
+                    } else {
+                        LocalLeaseHeadDisposition::Active
+                    }
+                }
+                LocalLeaseState::Released => LocalLeaseHeadDisposition::Released,
+                LocalLeaseState::RolledBack => LocalLeaseHeadDisposition::RolledBack,
+            },
+        };
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(LocalLeaseHeadInspection {
+            lease_id,
+            head,
+            disposition,
+        })
+    }
+
     /// Opens generation one of the local-only lease/outbox seam, or replays an
     /// exact active acquisition.
     pub async fn acquire_local_lease(
