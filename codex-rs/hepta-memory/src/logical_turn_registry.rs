@@ -809,6 +809,25 @@ impl CognitiveStore {
             load_lease_chain(&mut transaction, &head.lease_id, self.owner_agent_id()).await?;
         let lease_head = lease_head
             .ok_or_else(|| corrupt("logical-turn registry head has no lease journal"))?;
+        // A lease id may legally receive a later generation after a normal
+        // terminal transition.  That successor must not be mistaken for the
+        // registry head's historical physical witness; otherwise a read-only
+        // inspection could report a false Active/Expired state.  Active heads
+        // therefore require the exact sequence+digest CAS witness as well as
+        // the chain validation performed above.
+        if lease_head.state == LocalLeaseState::Active {
+            verify_attempt_lease_witness(&mut transaction, &head).await?;
+        } else if lease_head.generation != head.generation
+            || lease_head.fencing_token != head.fencing_token
+            || lease_head.authority_epoch != Some(head.authority_epoch)
+            || lease_head.owner_epoch != Some(head.owner_epoch)
+            || lease_head.lease_expires_at_unix_seconds
+                != Some(head.lease_expires_at_unix_seconds)
+        {
+            return Err(corrupt(
+                "logical-turn registry head lease identity drifted before terminal inspection",
+            ));
+        }
         let evidence = evidence_for_attempt(&mut transaction, &head).await?;
         let disposition = match lease_head.state {
             LocalLeaseState::Released | LocalLeaseState::RolledBack => {

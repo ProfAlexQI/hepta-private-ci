@@ -269,6 +269,35 @@ async fn logical_turn_inspection_reports_conflict_and_terminal_lease() {
         terminal.lease_head.as_ref().expect("terminal lease").state,
         LocalLeaseState::Released
     );
+
+    // Reusing the physical lease id for a later generation must not make the
+    // old registry head appear active.  The inspection path must fail closed
+    // on this head-digest drift rather than returning the successor lease.
+    let terminal_head = terminal.lease_head.expect("terminal head witness");
+    let successor = store
+        .acquire_host_bound_lease_after_head(
+            physical.lease_id.clone(),
+            terminal_head,
+            physical.authority_epoch,
+            physical.owner_epoch + 1,
+            physical.generation + 1,
+            "inspect-terminal-successor-fence",
+            now() + 3_600,
+        )
+        .await
+        .expect("successor lease")
+        .into_handle();
+    let drift = store.inspect_logical_turn(terminal.request).await;
+    assert!(matches!(
+        drift,
+        Err(LogicalTurnRegistryError::Corrupt(_))
+    ));
+    successor.release().await.expect("release successor lease");
+    let terminal_drift = store.inspect_logical_turn(logical_request()).await;
+    assert!(matches!(
+        terminal_drift,
+        Err(LogicalTurnRegistryError::Corrupt(_))
+    ));
 }
 
 #[tokio::test]

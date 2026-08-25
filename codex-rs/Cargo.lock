@@ -3687,6 +3687,7 @@ dependencies = [
  "codex-protocol",
  "codex-state",
  "codex-tools",
+ "codex-utils-absolute-path",
  "codex-utils-output-truncation",
  "codex-utils-path-uri",
  "serde",

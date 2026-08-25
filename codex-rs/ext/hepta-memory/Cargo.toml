@@ -27,6 +27,7 @@ tokio = { workspace = true, features = ["time"] }
 [dev-dependencies]
 chrono = { workspace = true }
 codex-hepta-paths = { workspace = true }
+codex-utils-absolute-path = { workspace = true }
 codex-utils-output-truncation = { workspace = true }
 codex-utils-path-uri = { workspace = true }
 tempfile = { workspace = true }

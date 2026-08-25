@@ -849,11 +849,20 @@ impl QualificationTurnLifecycleContributor {
                 match tokio::time::timeout(IO_TIMEOUT, Self::append_start(&input, &receipt)).await {
                     Ok(Ok(active)) => Some(active),
                     Ok(Err(_)) | Err(_) => {
-                        let _ = input
-                            .lease
-                            .mark_indeterminate(input.occurrence_key.clone(), "h7_start_failed")
-                            .await;
-                        let _ = input.lease.release().await;
+                        // Cleanup is best-effort, but it must not turn a
+                        // qualification writer fault into an unbounded
+                        // turn-start stall.  If the store is locked or
+                        // unavailable, retain the exact witness for explicit
+                        // recovery/inspection rather than weakening a fence.
+                        let lease = input.lease.clone();
+                        let occurrence_key = input.occurrence_key.clone();
+                        let _ = tokio::time::timeout(IO_TIMEOUT, async move {
+                            let _ = lease
+                                .mark_indeterminate(occurrence_key, "h7_start_failed")
+                                .await;
+                            let _ = lease.release().await;
+                        })
+                        .await;
                         None
                     }
                 }
@@ -1032,7 +1041,7 @@ impl TurnLifecycleContributor for QualificationTurnLifecycleContributor {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
     use codex_extension_api::ExtensionData;
     use codex_extension_api::ThreadStartInput;
@@ -1052,12 +1061,15 @@ mod tests {
     use codex_hepta_memory::MemoryCandidateOrigin;
     use codex_hepta_memory::MemoryCandidateState;
     use codex_hepta_memory::MemoryLifecycleState;
+    use codex_hepta_memory::LocalLeaseHeadDisposition;
     use codex_hepta_memory::RetrievalRequest;
     use codex_hepta_memory::SourceDraft;
     use codex_hepta_paths::HeptaFleetRoot;
     use codex_protocol::config_types::{CollaborationMode, ModeKind, Settings};
     use codex_protocol::protocol::SessionSource;
     use codex_protocol::protocol::TokenUsage;
+    use codex_state::SqliteConfig;
+    use codex_utils_absolute_path::AbsolutePathBuf;
     use tempfile::TempDir;
 
     use super::*;
@@ -1196,6 +1208,57 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn turn_start_is_bounded_when_sqlite_is_locked() {
+        let (_temp, store, input) = prepared().await;
+        let turn_store = ExtensionData::new(TURN_ID);
+        let thread_store = ExtensionData::new("thread:writer-e26");
+        let session_store = ExtensionData::new("session:writer-e26");
+        assert!(attach_qualification_turn_writer(&turn_store, input.clone()));
+        let sqlite_home = AbsolutePathBuf::try_from(
+            store
+                .path()
+                .parent()
+                .expect("cognitive db parent")
+                .to_path_buf(),
+        )
+        .expect("absolute sqlite home");
+        let blocker_pool = SqliteConfig::from_sqlite_home(sqlite_home)
+            .open_durable_evidence_pool(store.path())
+            .await
+            .expect("open lock pool");
+        let blocker = blocker_pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .expect("lock cognitive store");
+        let contributor = QualificationTurnLifecycleContributor::new();
+        let mode = mode();
+        let usage = TokenUsage::default();
+        let started = Instant::now();
+        contributor
+            .on_turn_start(start_input(
+                &turn_store,
+                &thread_store,
+                &session_store,
+                &mode,
+                &usage,
+            ))
+            .await;
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "locked start cleanup must remain bounded"
+        );
+        // The timeout is fail-closed: if cleanup could not acquire the lock,
+        // the exact active witness remains for explicit inspection/recovery.
+        blocker.rollback().await.expect("release lock");
+        let inspection = store
+            .inspect_local_lease_head(LEASE_ID)
+            .await
+            .expect("inspect locked-start witness");
+        assert_eq!(inspection.disposition, LocalLeaseHeadDisposition::Active);
+        blocker_pool.close().await;
     }
 
     #[tokio::test]
