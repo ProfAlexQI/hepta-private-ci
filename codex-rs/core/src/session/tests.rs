@@ -13476,6 +13476,104 @@ async fn stale_runtime_abort_after_claim_take_retains_fail_closed_fence() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn closed_construction_runtime_abort_claims_before_detached_spawn() {
+    struct ClosedConstructionRuntimeAbortTask {
+        aborts: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl SessionTask for ClosedConstructionRuntimeAbortTask {
+        fn kind(&self) -> TaskKind {
+            TaskKind::Regular
+        }
+
+        fn span_name(&self) -> &'static str {
+            "session_task.closed_construction_runtime_abort"
+        }
+
+        async fn run(
+            self: Arc<Self>,
+            _session: Arc<Session>,
+            _ctx: Arc<TurnContext>,
+            _input: Vec<TurnInput>,
+            _cancellation_token: CancellationToken,
+        ) -> SessionTaskResult {
+            std::future::pending().await
+        }
+
+        async fn abort(&self, _session: Arc<Session>, _ctx: Arc<TurnContext>) {
+            self.aborts
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    let (session_tx, session_rx) = std::sync::mpsc::sync_channel(1);
+    let aborts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let aborts_for_task = Arc::clone(&aborts);
+    let owner_thread = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("construction runtime should build");
+        let (session, turn_context, _rx) = runtime.block_on(async move {
+            let (session, turn_context, rx) = make_session_and_context_with_rx().await;
+            let session = Arc::new(session);
+            session
+                .spawn_task(
+                    Arc::clone(&turn_context),
+                    Vec::new(),
+                    ClosedConstructionRuntimeAbortTask {
+                        aborts: aborts_for_task,
+                    },
+                )
+                .await
+                .expect("task should attach on construction runtime");
+            (session, turn_context, rx)
+        });
+        session_tx
+            .send((session, turn_context))
+            .expect("session handoff should remain open");
+        // The stored Session handle now points at this runtime, which is
+        // deliberately shut down before the caller invokes abort on Runtime
+        // B.  A queued spawn through the stale handle would be dropped before
+        // its first poll and leave the task attached without a fence.
+        runtime.shutdown_background();
+    });
+
+    let (session, turn_context) = tokio::task::spawn_blocking(move || {
+        session_rx
+            .recv_timeout(StdDuration::from_secs(5))
+            .expect("construction runtime should hand back the session")
+    })
+    .await
+    .expect("session handoff task should join");
+    tokio::task::spawn_blocking(move || owner_thread.join().expect("owner thread should exit"))
+        .await
+        .expect("owner thread join should complete");
+
+    session
+        .abort_turn_if_active(&turn_context.sub_id, TurnAbortReason::Interrupted)
+        .await;
+
+    timeout(Duration::from_secs(2), async {
+        loop {
+            if session.active_turn.lock().await.is_none()
+                && !session.has_pending_task_terminalization()
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("caller runtime must drive the pre-claimed abort witness");
+    assert_eq!(
+        aborts.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "abort hook must run even after the construction runtime is closed"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn panicking_abort_terminalizer_retains_fence() {
     let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
     session

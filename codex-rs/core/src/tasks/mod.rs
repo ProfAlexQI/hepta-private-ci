@@ -2553,31 +2553,19 @@ impl Session {
     /// body; Tokio JoinHandle drop detaches the job and the registry fence
     /// remains the teardown backstop if the job itself fails.
     pub async fn abort_all_tasks(self: &Arc<Self>, reason: TurnAbortReason) {
-        let session = Arc::clone(self);
-        let join = self.services.runtime_handle.spawn(
-            async move {
-                let result = AssertUnwindSafe(session.abort_all_tasks_inner(reason))
-                    .catch_unwind()
-                    .await;
-                if result.is_err() {
-                    warn!("abort-all terminalizer panicked; retaining its completion fence");
-                }
+        let target = AssertUnwindSafe(self.detach_active_task_for_abort(
+            &reason, /*expected_turn_id*/ None, /*expected_turn_state*/ None,
+            /*deferred_idle_cause*/ None,
+        ))
+        .catch_unwind()
+        .await;
+        let Some(target) = (match target {
+            Ok(target) => target,
+            Err(_) => {
+                warn!("abort-all claim panicked; retaining any published completion fence");
+                return;
             }
-            .in_current_span(),
-        );
-        if let Err(error) = join.await {
-            warn!(?error, "abort-all terminalizer did not complete");
-        }
-    }
-
-    async fn abort_all_tasks_inner(self: &Arc<Self>, reason: TurnAbortReason) {
-        let Some(target) = self
-            .detach_active_task_for_abort(
-                &reason, /*expected_turn_id*/ None, /*expected_turn_state*/ None,
-                /*deferred_idle_cause*/ None,
-            )
-            .await
-        else {
+        }) else {
             return;
         };
         let detached = match target {
@@ -2589,7 +2577,34 @@ impl Session {
                 return;
             }
         };
-        let _ = self.drive_abort_handoff(detached.slot).await;
+        // Claim and publish the full witness before scheduling any detached
+        // continuation.  The construction-time Session handle is not a
+        // liveness witness: if that runtime has already shut down, Tokio
+        // accepts the spawn but drops the future before its first poll.  A
+        // current caller runtime may still be alive (for example a guardian
+        // callback running on a replacement runtime), so schedule there;
+        // either way the registry-backed slot remains the shutdown fallback.
+        let Some(runtime_handle) = tokio::runtime::Handle::try_current().ok() else {
+            warn!(
+                "abort-all terminalizer cannot be scheduled without a live Tokio runtime; retaining its completion fence"
+            );
+            return;
+        };
+        let session = Arc::clone(self);
+        let join = runtime_handle.spawn(
+            async move {
+                let result = AssertUnwindSafe(session.drive_abort_handoff(detached.slot))
+                    .catch_unwind()
+                    .await;
+                if result.is_err() {
+                    warn!("abort-all terminalizer panicked; retaining its completion fence");
+                }
+            }
+            .in_current_span(),
+        );
+        if let Err(error) = join.await {
+            warn!(?error, "abort-all terminalizer did not complete");
+        }
     }
 
     /// Drain caller reservations and materialized start transitions during
@@ -2753,24 +2768,55 @@ impl Session {
         reason: TurnAbortReason,
         deferred_idle_cause: Option<ThreadIdleCause>,
     ) -> AbortTurnOutcome {
-        let session = Arc::clone(self);
         let turn_id = turn_id.to_string();
         let expected_turn_state = expected_turn_state.cloned();
-        let join = self.services.runtime_handle.spawn(
+        let target = AssertUnwindSafe(self.detach_active_task_for_abort(
+            &reason,
+            Some(&turn_id),
+            expected_turn_state.as_ref(),
+            deferred_idle_cause,
+        ))
+        .catch_unwind()
+        .await;
+        let Some(target) = (match target {
+            Ok(target) => target,
+            Err(_) => {
+                warn!(
+                    %turn_id,
+                    "abort claim panicked; retaining any published completion fence"
+                );
+                return AbortTurnOutcome::Terminalizing;
+            }
+        }) else {
+            return AbortTurnOutcome::NotActive;
+        };
+        let detached = match target {
+            ActiveTurnAbortTarget::Running(detached) => detached,
+            ActiveTurnAbortTarget::Terminalizing => {
+                return AbortTurnOutcome::Terminalizing;
+            }
+            ActiveTurnAbortTarget::Starting { deferred_idle, .. } => {
+                return if deferred_idle {
+                    AbortTurnOutcome::DeferredStart
+                } else {
+                    AbortTurnOutcome::Starting
+                };
+            }
+        };
+        let Some(runtime_handle) = tokio::runtime::Handle::try_current().ok() else {
+            warn!(
+                %turn_id,
+                "abort terminalizer cannot be scheduled without a live Tokio runtime; retaining its completion fence"
+            );
+            return AbortTurnOutcome::Terminalizing;
+        };
+        let session = Arc::clone(self);
+        let join = runtime_handle.spawn(
             async move {
-                let result = AssertUnwindSafe(async {
-                    let outcome = session
-                        .abort_turn_if_active_inner(
-                            &turn_id,
-                            expected_turn_state.as_ref(),
-                            reason,
-                            deferred_idle_cause,
-                        )
+                let result =
+                    AssertUnwindSafe(async { session.drive_abort_handoff(detached.slot).await })
+                        .catch_unwind()
                         .await;
-                    outcome
-                })
-                .catch_unwind()
-                .await;
                 match result {
                     Ok(outcome) => outcome,
                     Err(_) => {
@@ -2794,41 +2840,6 @@ impl Session {
                 AbortTurnOutcome::Terminalizing
             }
         }
-    }
-
-    async fn abort_turn_if_active_inner(
-        self: &Arc<Self>,
-        turn_id: &str,
-        expected_turn_state: Option<&Arc<Mutex<TurnState>>>,
-        reason: TurnAbortReason,
-        deferred_idle_cause: Option<ThreadIdleCause>,
-    ) -> AbortTurnOutcome {
-        let Some(target) = self
-            .detach_active_task_for_abort(
-                &reason,
-                Some(turn_id),
-                expected_turn_state,
-                deferred_idle_cause,
-            )
-            .await
-        else {
-            return AbortTurnOutcome::NotActive;
-        };
-        let detached = match target {
-            ActiveTurnAbortTarget::Running(detached) => detached,
-            ActiveTurnAbortTarget::Terminalizing => {
-                return AbortTurnOutcome::Terminalizing;
-            }
-            ActiveTurnAbortTarget::Starting { deferred_idle, .. } => {
-                return if deferred_idle {
-                    AbortTurnOutcome::DeferredStart
-                } else {
-                    AbortTurnOutcome::Starting
-                };
-            }
-        };
-
-        self.drive_abort_handoff(detached.slot).await
     }
 
     /// Keeps the task's terminal owner alive if the task runner/caller is
