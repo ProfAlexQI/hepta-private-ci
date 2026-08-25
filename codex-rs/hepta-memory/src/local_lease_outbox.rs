@@ -876,6 +876,22 @@ impl LocalLeaseOutbox {
         Ok(lease)
     }
 
+    /// Verify the exact active lease identity and local journal chains for a
+    /// read-only crash-recovery observation, while deliberately allowing a
+    /// bound lease whose deadline has elapsed.  This is not a write
+    /// capability: callers must still use an explicit terminal timeout CAS
+    /// (`expire_lease`) before any post-TTL lifecycle decision.
+    pub(crate) async fn verify_current_for_recovery_in_transaction(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+    ) -> Result<LocalLease, LocalLeaseOutboxError> {
+        let lease = self.current_lease(transaction).await?;
+        ensure_current_identity(&lease, self)?;
+        verify_event_chain(transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_outbox_chain(transaction, &self.lease_id, &self.owner_agent_id).await?;
+        Ok(lease)
+    }
+
     pub(crate) fn store(&self) -> &CognitiveStore {
         &self.store
     }
@@ -2194,7 +2210,7 @@ async fn fencing_token_seen(
     Ok(count != 0)
 }
 
-async fn load_lease_chain(
+pub(crate) async fn load_lease_chain(
     transaction: &mut Transaction<'_, Sqlite>,
     lease_id: &str,
     expected_owner: &AgentId,
@@ -2536,6 +2552,16 @@ async fn verify_event_chain(
     Ok(events)
 }
 
+pub(crate) async fn verify_event_chain_integrity(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+    expected_owner: &AgentId,
+) -> Result<(), LocalLeaseOutboxError> {
+    verify_event_chain(transaction, lease_id, expected_owner)
+        .await
+        .map(|_| ())
+}
+
 async fn verify_outbox_chain(
     transaction: &mut Transaction<'_, Sqlite>,
     lease_id: &str,
@@ -2636,6 +2662,16 @@ async fn verify_outbox_chain(
         });
     }
     Ok(outbox_rows)
+}
+
+pub(crate) async fn verify_outbox_chain_integrity(
+    transaction: &mut Transaction<'_, Sqlite>,
+    lease_id: &str,
+    expected_owner: &AgentId,
+) -> Result<(), LocalLeaseOutboxError> {
+    verify_outbox_chain(transaction, lease_id, expected_owner)
+        .await
+        .map(|_| ())
 }
 
 async fn find_admission(

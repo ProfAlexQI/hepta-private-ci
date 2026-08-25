@@ -76,6 +76,7 @@ pub(crate) async fn prepare_qualification_turn_writer_input(
 
     use codex_hepta_contracts::Sha256Digest;
     use codex_hepta_memory::CompactFence;
+    use codex_hepta_memory::LocalLeaseHeadDisposition;
     use codex_hepta_memory::LocalTurnLifecycleBinding;
     use codex_hepta_memory_extension::QualificationTurnWriterInput;
     use codex_hepta_memory_extension::QualificationTurnWriterInputError;
@@ -131,24 +132,121 @@ pub(crate) async fn prepare_qualification_turn_writer_input(
     let lease_id = format!("qualification-turn:{spawn_generation}:{turn_id}");
     let journal_id = format!("qualification-turn-journal:{spawn_generation}:{turn_id}");
     let occurrence_key = format!("qualification-turn-start:{spawn_generation}:{turn_id}");
+
+    // A repeated prepare for one same-spawn turn must inspect the durable
+    // head before attempting acquisition.  In particular, the TTL is a
+    // binding field: recomputing `expires_at` and passing it to an exact
+    // replay would reject a perfectly valid active head after the wall clock
+    // crossed a second.  Missing is the only state that may mint the first
+    // lease row.  Every other state must use the exact persisted witness or
+    // fail closed.
+    let inspected = store.inspect_local_lease_head(&lease_id).await?;
+    let (lease, authority_epoch, owner_epoch, lease_generation, fencing_token) = match inspected
+        .disposition
+    {
+        LocalLeaseHeadDisposition::Missing => {
+            let lease = store
+                .acquire_host_bound_lease(
+                    lease_id.clone(),
+                    authority_epoch,
+                    owner_epoch,
+                    LOCAL_LEASE_GENERATION,
+                    fencing_token.clone(),
+                    expires_at,
+                )
+                .await?
+                .into_handle();
+            (
+                lease,
+                authority_epoch,
+                owner_epoch,
+                LOCAL_LEASE_GENERATION,
+                fencing_token,
+            )
+        }
+        LocalLeaseHeadDisposition::Active | LocalLeaseHeadDisposition::ExpiredActive => {
+            let head = inspected.head.ok_or_else(fenced)?;
+            let persisted_authority_epoch = head.authority_epoch.ok_or_else(fenced)?;
+            let persisted_owner_epoch = head.owner_epoch.ok_or_else(fenced)?;
+            let persisted_generation = head.generation;
+            let persisted_fencing_token = head.fencing_token.clone();
+            let persisted_expiry = head.lease_expires_at_unix_seconds.ok_or_else(fenced)?;
+
+            // The lease id is spawn-generation scoped by design.  A
+            // matching id with a different generation/token/authority is
+            // not an invitation to adopt that attempt; it is stale or
+            // foreign state and must remain fenced.
+            if head.owner_agent_id != agent_id
+                || head.generation != LOCAL_LEASE_GENERATION
+                || head.fencing_token != fencing_token
+                || persisted_authority_epoch != authority_epoch
+                || persisted_owner_epoch != owner_epoch
+            {
+                return Err(fenced());
+            }
+
+            if inspected.disposition == LocalLeaseHeadDisposition::ExpiredActive {
+                // An expired attempt may be closed only after the
+                // restart-safe, head-scoped H7 gate proves a complete
+                // local `turn_start -> terminal` chain.  Missing or
+                // non-terminal evidence remains untouched for explicit
+                // operator/audit handling; never blind-rollback it here.
+                let witness = codex_hepta_memory::inspect_expired_terminal_h7(
+                    &store,
+                    &head,
+                    &journal_id,
+                    format!("qualification:trajectory:{turn_id}"),
+                    &turn_id,
+                    &occurrence_key,
+                )
+                .await
+                .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?;
+                if witness.is_none() {
+                    return Err(fenced());
+                }
+                let lease = store
+                    .reopen_host_bound_lease(
+                        head,
+                        persisted_authority_epoch,
+                        persisted_owner_epoch,
+                        persisted_expiry,
+                    )
+                    .await?;
+                lease.expire_lease().await?;
+                return Err(QualificationTurnWriterInputError::Invalid(
+                    "qualification lease terminalized after verified H7 terminal".to_string(),
+                ));
+            }
+
+            let lease = store
+                .reopen_host_bound_lease(
+                    head,
+                    persisted_authority_epoch,
+                    persisted_owner_epoch,
+                    persisted_expiry,
+                )
+                .await?;
+
+            (
+                lease,
+                persisted_authority_epoch,
+                persisted_owner_epoch,
+                persisted_generation,
+                persisted_fencing_token,
+            )
+        }
+        LocalLeaseHeadDisposition::Released | LocalLeaseHeadDisposition::RolledBack => {
+            return Err(fenced());
+        }
+    };
+
     let fence = CompactFence::new(
         authority_epoch,
         owner_epoch,
-        LOCAL_LEASE_GENERATION,
+        lease_generation,
         fencing_token.clone(),
     )
     .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?;
-    let lease = store
-        .acquire_host_bound_lease(
-            lease_id,
-            authority_epoch,
-            owner_epoch,
-            LOCAL_LEASE_GENERATION,
-            fencing_token,
-            expires_at,
-        )
-        .await?
-        .into_handle();
     let executor = match store
         .open_local_compact_executor_bound(journal_id, fence, &lease)
         .await

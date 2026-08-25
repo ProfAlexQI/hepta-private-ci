@@ -22,9 +22,12 @@ use thiserror::Error;
 use crate::CognitiveStore;
 use crate::CognitiveStoreError;
 use crate::LocalCompactExecutor;
+use crate::LocalLease;
 use crate::LocalLeaseOutbox;
+use crate::LocalLeaseState;
 use crate::LocalTurnLifecycleBinding;
 use crate::LocalTurnLifecycleBindingError;
+use crate::QueuedReceipt;
 use crate::framing::frame_part;
 
 pub const H7_TRAJECTORY_SCHEMA_VERSION: u32 = 1;
@@ -313,6 +316,65 @@ pub struct H7TrajectoryRead {
     pub head_sha256: Sha256Digest,
 }
 
+impl H7TrajectoryRead {
+    /// Return whether this immutable read is exactly the local qualification
+    /// lifecycle shape `turn_start -> terminal` for one occurrence.  This is
+    /// a pure shape check; callers still need the binding, receipt, and lease
+    /// checks performed by the surrounding recovery gate before making any
+    /// timeout decision.
+    pub fn is_complete_qualification_terminal(
+        &self,
+        turn_id: &str,
+        start_occurrence_key: &str,
+        terminal_occurrence_key: &str,
+    ) -> bool {
+        let [start, terminal] = self.events.as_slice() else {
+            return false;
+        };
+        start.event_seq == 1
+            && start.event_kind == H7TrajectoryEventKind::TurnStart
+            && !start.terminal
+            && start.turn_id == turn_id
+            && start.occurrence_key == start_occurrence_key
+            && start.outcome == "turn_started"
+            && terminal.event_seq == 2
+            && terminal.event_kind == H7TrajectoryEventKind::Terminal
+            && terminal.terminal
+            && terminal.turn_id == turn_id
+            && terminal.occurrence_key == terminal_occurrence_key
+            && matches!(
+                terminal.outcome.as_str(),
+                "turn_stopped" | "turn_indeterminate"
+            )
+    }
+}
+
+/// Read-only recovery witness for a trajectory bound to an exact local lease
+/// head.  `lease_expired` is an observation only; it never authorizes a
+/// successor, a write, or a physical effect.  A caller may use the witness to
+/// choose the explicit `expire_lease` timeout CAS while preserving the old
+/// generation/fence.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct H7TrajectoryRecoveryRead {
+    pub trajectory: Option<H7TrajectoryRead>,
+    pub lease_expired: bool,
+}
+
+/// Read-only proof that one exact expired lease head has a complete local
+/// qualification trajectory ending in a terminal observation.  The witness
+/// carries no executor or writable capability; a caller may only use it as a
+/// gate for the separate exact-head `expire_lease` timeout CAS.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct H7ExpiredTerminalWitness {
+    pub lease_id: String,
+    pub lease_head_sha256: Sha256Digest,
+    pub trajectory_id: String,
+    pub terminal_event_seq: u32,
+    pub terminal_event_sha256: Sha256Digest,
+    pub outcome: String,
+    pub reason: String,
+}
+
 #[derive(Debug, Error)]
 pub enum H7TrajectoryStoreError {
     #[error(transparent)]
@@ -564,6 +626,373 @@ pub async fn read_h7_trajectory_bound(
         .await
         .map_err(crate::cognitive_store::unavailable)?;
     Ok(result)
+}
+
+/// Reopen and verify one trajectory against the exact local lease/compact
+/// binding, allowing an *active but expired* bound lease solely for
+/// read-only crash recovery.  The normal [`read_h7_trajectory_bound`] path
+/// remains deadline-strict for ordinary lifecycle work.  This function never
+/// appends, releases, renews, dispatches, or creates a successor lease.
+pub async fn read_h7_trajectory_bound_for_recovery(
+    lease: &LocalLeaseOutbox,
+    executor: &LocalCompactExecutor,
+    binding: &LocalTurnLifecycleBinding,
+    trajectory_id: impl Into<String>,
+) -> Result<H7TrajectoryRecoveryRead, H7TrajectoryStoreError> {
+    binding.validate()?;
+    if !executor.is_bound_to_lease(lease) || !lease.is_bound_to_store(executor.store()) {
+        return Err(H7TrajectoryStoreError::StaleFence(
+            "trajectory handles are not bound to one local store/lease".to_string(),
+        ));
+    }
+    let trajectory_id = trajectory_id.into();
+    validate_text(&trajectory_id, "trajectory id", MAX_TEXT_BYTES)?;
+    let store = executor.store();
+    let mut transaction = store
+        .pool
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+    let current = lease
+        .verify_current_for_recovery_in_transaction(&mut transaction)
+        .await
+        .map_err(|error| H7TrajectoryStoreError::Lease(error.to_string()))?;
+    verify_current_binding(binding, lease, executor, &current)?;
+    let expected_binding = binding_tuple(binding);
+    let trajectory = read_h7_trajectory_in_transaction(
+        &mut transaction,
+        store,
+        &trajectory_id,
+        Some(&expected_binding),
+    )
+    .await?;
+    let lease_expired = match current.lease_expires_at_unix_seconds {
+        Some(expiry) => {
+            let now = u64::try_from(now_unix_seconds()?).map_err(|_| {
+                H7TrajectoryStoreError::Clock("clock before Unix epoch".to_string())
+            })?;
+            now >= expiry
+        }
+        None => false,
+    };
+    transaction
+        .commit()
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+    Ok(H7TrajectoryRecoveryRead {
+        trajectory,
+        lease_expired,
+    })
+}
+
+/// Inspect an expired lease after a host restart without constructing a
+/// writable compact executor.  The exact persisted lease head, local
+/// event/outbox receipt, compact journal, and immutable H7 chain are checked
+/// in one read transaction.  `Some` is returned only for the qualification
+/// shape `turn_start -> terminal`; missing, non-terminal, unexpired, foreign,
+/// or corrupt evidence returns an error and performs no mutation.
+pub async fn inspect_expired_terminal_h7(
+    store: &CognitiveStore,
+    expected_head: &LocalLease,
+    journal_id: impl Into<String>,
+    trajectory_id: impl Into<String>,
+    turn_id: impl Into<String>,
+    occurrence_key: impl Into<String>,
+) -> Result<Option<H7ExpiredTerminalWitness>, H7TrajectoryStoreError> {
+    let journal_id = journal_id.into();
+    let trajectory_id = trajectory_id.into();
+    let turn_id = turn_id.into();
+    let occurrence_key = occurrence_key.into();
+    validate_text(&journal_id, "journal id", MAX_TEXT_BYTES)?;
+    validate_text(&trajectory_id, "trajectory id", MAX_TEXT_BYTES)?;
+    validate_text(&turn_id, "turn id", MAX_TEXT_BYTES)?;
+    validate_text(&occurrence_key, "occurrence key", MAX_TEXT_BYTES)?;
+    if expected_head.state != LocalLeaseState::Active
+        || expected_head.owner_agent_id != *store.owner_agent_id()
+    {
+        return Err(H7TrajectoryStoreError::StaleFence(
+            "expired H7 recovery requires the exact active Agent-local head".to_string(),
+        ));
+    }
+    let Some(expiry) = expected_head.lease_expires_at_unix_seconds else {
+        return Err(H7TrajectoryStoreError::StaleFence(
+            "expired H7 recovery requires an explicit lease expiry".to_string(),
+        ));
+    };
+    let now = u64::try_from(now_unix_seconds()?)
+        .map_err(|_| H7TrajectoryStoreError::Clock("clock before Unix epoch".to_string()))?;
+    if now < expiry {
+        return Err(H7TrajectoryStoreError::StaleFence(
+            "lease has not expired; ordinary lifecycle verification is required".to_string(),
+        ));
+    }
+    let authority_epoch = expected_head.authority_epoch.ok_or_else(|| {
+        H7TrajectoryStoreError::StaleFence(
+            "expired H7 recovery requires an authority epoch".to_string(),
+        )
+    })?;
+    let owner_epoch = expected_head.owner_epoch.ok_or_else(|| {
+        H7TrajectoryStoreError::StaleFence(
+            "expired H7 recovery requires an owner epoch".to_string(),
+        )
+    })?;
+
+    let mut transaction = store
+        .pool
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+    let (current, _) = crate::local_lease_outbox::load_lease_chain(
+        &mut transaction,
+        &expected_head.lease_id,
+        store.owner_agent_id(),
+    )
+    .await
+    .map_err(|error| H7TrajectoryStoreError::Lease(error.to_string()))?;
+    if current.as_ref() != Some(expected_head) {
+        return Err(H7TrajectoryStoreError::StaleFence(
+            "expired H7 recovery head no longer matches the append-only lease chain".to_string(),
+        ));
+    }
+    let current_expiry = current
+        .as_ref()
+        .and_then(|lease| lease.lease_expires_at_unix_seconds)
+        .ok_or_else(|| {
+            H7TrajectoryStoreError::StaleFence(
+                "expired H7 recovery head lost its explicit expiry".to_string(),
+            )
+        })?;
+    let current_now = u64::try_from(now_unix_seconds()?)
+        .map_err(|_| H7TrajectoryStoreError::Clock("clock before Unix epoch".to_string()))?;
+    if current_now < current_expiry {
+        return Err(H7TrajectoryStoreError::StaleFence(
+            "lease became live before expired H7 recovery gate".to_string(),
+        ));
+    }
+    crate::local_lease_outbox::verify_event_chain_integrity(
+        &mut transaction,
+        &expected_head.lease_id,
+        store.owner_agent_id(),
+    )
+    .await
+    .map_err(|error| H7TrajectoryStoreError::Lease(error.to_string()))?;
+    crate::local_lease_outbox::verify_outbox_chain_integrity(
+        &mut transaction,
+        &expected_head.lease_id,
+        store.owner_agent_id(),
+    )
+    .await
+    .map_err(|error| H7TrajectoryStoreError::Lease(error.to_string()))?;
+
+    // A restart recovery must validate the compact journal as well, but it
+    // must not open a live executor (which intentionally rejects expired
+    // leases).  The transaction-scoped audit uses the persisted descriptor
+    // and inert journal loader instead.
+    let journal_rows: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cognitive_compact_events WHERE journal_id = ?")
+            .bind(&journal_id)
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+    if journal_rows != 0 {
+        let mismatched_journal_rows: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM cognitive_compact_events
+             WHERE journal_id = ?
+               AND (
+                    owner_agent_id IS NULL OR owner_agent_id != ?
+                    OR lease_id IS NULL OR lease_id != ?
+                    OR lease_head_sha256 IS NULL OR lease_head_sha256 != ?
+                    OR authority_epoch IS NULL OR authority_epoch != ?
+                    OR owner_epoch IS NULL OR owner_epoch != ?
+                    OR generation IS NULL OR generation != ?
+                    OR fencing_token IS NULL OR fencing_token != ?
+               )",
+        )
+        .bind(&journal_id)
+        .bind(store.owner_agent_id().as_str())
+        .bind(&expected_head.lease_id)
+        .bind(expected_head.lease_sha256.as_str())
+        .bind(i64::try_from(authority_epoch).unwrap_or(i64::MAX))
+        .bind(i64::try_from(owner_epoch).unwrap_or(i64::MAX))
+        .bind(i64::try_from(expected_head.generation).unwrap_or(i64::MAX))
+        .bind(&expected_head.fencing_token)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+        if mismatched_journal_rows != 0 {
+            return Err(H7TrajectoryStoreError::StaleFence(
+                "expired H7 recovery compact journal binding mismatch".to_string(),
+            ));
+        }
+    }
+    crate::local_compact_executor::verify_local_compact_journals_for_lease_in_transaction(
+        store,
+        &mut transaction,
+        &expected_head.lease_id,
+    )
+    .await
+    .map_err(|error| H7TrajectoryStoreError::Lease(error.to_string()))?;
+
+    let expected_binding = BindingTuple {
+        lease_id: expected_head.lease_id.clone(),
+        lease_head_sha256: expected_head.lease_sha256.clone(),
+        authority_epoch,
+        owner_epoch,
+        generation: expected_head.generation,
+        fencing_token_sha256: fencing_token_identity_digest(&expected_head.fencing_token),
+    };
+    let Some(trajectory) = read_h7_trajectory_in_transaction(
+        &mut transaction,
+        store,
+        &trajectory_id,
+        Some(&expected_binding),
+    )
+    .await?
+    else {
+        return Err(H7TrajectoryStoreError::StaleFence(
+            "expired H7 recovery trajectory is missing".to_string(),
+        ));
+    };
+    let terminal_occurrence_key = qualification_terminal_occurrence_key(&occurrence_key);
+    if !trajectory.is_complete_qualification_terminal(
+        &turn_id,
+        &occurrence_key,
+        &terminal_occurrence_key,
+    ) {
+        return Err(H7TrajectoryStoreError::StaleFence(
+            "expired H7 recovery trajectory is not a complete qualification terminal".to_string(),
+        ));
+    }
+
+    let admission = sqlx::query(
+        "SELECT event_id, occurrence_key, owner_agent_id, generation,
+                fencing_token, payload_sha256
+         FROM cognitive_local_events
+         WHERE lease_id = ? AND owner_agent_id = ? AND occurrence_key = ?
+           AND event_kind = 'admitted'
+         ORDER BY event_sequence LIMIT 1",
+    )
+    .bind(&expected_head.lease_id)
+    .bind(store.owner_agent_id().as_str())
+    .bind(&occurrence_key)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?
+    .ok_or_else(|| {
+        H7TrajectoryStoreError::StaleFence(
+            "expired H7 recovery local admission is missing".to_string(),
+        )
+    })?;
+    let event_id: String = admission
+        .try_get("event_id")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let event_occurrence: String = admission
+        .try_get("occurrence_key")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let event_owner = admission
+        .try_get::<String, _>("owner_agent_id")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let event_generation: i64 = admission
+        .try_get("generation")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let event_token: String = admission
+        .try_get("fencing_token")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let event_payload = digest_from_row(&admission, "payload_sha256")?;
+    let outbox = sqlx::query(
+        "SELECT outbox_id, event_id, occurrence_key, owner_agent_id,
+                generation, fencing_token, payload_sha256
+         FROM cognitive_local_outbox
+         WHERE lease_id = ? AND owner_agent_id = ? AND occurrence_key = ?
+         ORDER BY outbox_sequence LIMIT 1",
+    )
+    .bind(&expected_head.lease_id)
+    .bind(store.owner_agent_id().as_str())
+    .bind(&occurrence_key)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(crate::cognitive_store::unavailable)?
+    .ok_or_else(|| {
+        H7TrajectoryStoreError::StaleFence(
+            "expired H7 recovery local outbox is missing".to_string(),
+        )
+    })?;
+    let outbox_id: String = outbox
+        .try_get("outbox_id")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let outbox_event_id: String = outbox
+        .try_get("event_id")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let outbox_occurrence: String = outbox
+        .try_get("occurrence_key")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let outbox_owner = outbox
+        .try_get::<String, _>("owner_agent_id")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let outbox_generation: i64 = outbox
+        .try_get("generation")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let outbox_token: String = outbox
+        .try_get("fencing_token")
+        .map_err(crate::cognitive_store::unavailable)?;
+    let outbox_payload = digest_from_row(&outbox, "payload_sha256")?;
+    if event_owner != store.owner_agent_id().as_str()
+        || outbox_owner != store.owner_agent_id().as_str()
+        || event_occurrence != occurrence_key
+        || outbox_occurrence != occurrence_key
+        || event_id != outbox_event_id
+        || event_generation != i64::try_from(expected_head.generation).unwrap_or(i64::MAX)
+        || outbox_generation != i64::try_from(expected_head.generation).unwrap_or(i64::MAX)
+        || event_token != expected_head.fencing_token
+        || outbox_token != expected_head.fencing_token
+        || event_payload != outbox_payload
+    {
+        return Err(H7TrajectoryStoreError::StaleFence(
+            "expired H7 recovery admission/outbox binding mismatch".to_string(),
+        ));
+    }
+    let receipt = QueuedReceipt {
+        lease_id: expected_head.lease_id.clone(),
+        occurrence_key: occurrence_key.clone(),
+        event_id,
+        outbox_id,
+        owner_agent_id: store.owner_agent_id().clone(),
+        generation: expected_head.generation,
+        fencing_token: expected_head.fencing_token.clone(),
+        payload_sha256: event_payload,
+        external_effect: false,
+    };
+    if trajectory.events[0].receipt_sha256 != h7_trajectory_local_receipt_digest(&receipt) {
+        return Err(H7TrajectoryStoreError::StaleFence(
+            "expired H7 recovery start receipt does not match local admission".to_string(),
+        ));
+    }
+    let terminal = &trajectory.events[1];
+    let witness = H7ExpiredTerminalWitness {
+        lease_id: expected_head.lease_id.clone(),
+        lease_head_sha256: expected_head.lease_sha256.clone(),
+        trajectory_id,
+        terminal_event_seq: terminal.event_seq,
+        terminal_event_sha256: trajectory.head_sha256,
+        outcome: terminal.outcome.clone(),
+        reason: terminal.reason.clone(),
+    };
+    transaction
+        .commit()
+        .await
+        .map_err(crate::cognitive_store::unavailable)?;
+    Ok(Some(witness))
+}
+
+fn qualification_terminal_occurrence_key(occurrence_key: &str) -> String {
+    const SUFFIX: &str = ":terminal";
+    if occurrence_key.len() + SUFFIX.len() <= MAX_TEXT_BYTES {
+        return format!("{occurrence_key}{SUFFIX}");
+    }
+    format!(
+        "qualification:terminal-occurrence:{}",
+        Sha256Digest::for_bytes(occurrence_key.as_bytes()).as_str()
+    )
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

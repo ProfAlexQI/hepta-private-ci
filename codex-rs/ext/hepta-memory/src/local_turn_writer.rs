@@ -46,7 +46,7 @@ use codex_hepta_memory::LocalTurnLifecycleBindingError;
 use codex_hepta_memory::QueuedReceipt;
 use codex_hepta_memory::append_h7_trajectory_event_bound;
 use codex_hepta_memory::h7_trajectory_local_receipt_digest;
-use codex_hepta_memory::read_h7_trajectory_bound;
+use codex_hepta_memory::read_h7_trajectory_bound_for_recovery;
 
 /// Schema version for the qualification-only turn writer payload.
 pub const QUALIFICATION_TURN_WRITER_SCHEMA_VERSION: u32 = 1;
@@ -341,6 +341,12 @@ struct ActiveTurn {
     event_sha256: Sha256Digest,
 }
 
+struct TerminalProjection {
+    outcome: String,
+    reason: String,
+    lease_expired: bool,
+}
+
 #[derive(Clone, Debug)]
 enum TerminalAction {
     Stop,
@@ -378,22 +384,41 @@ impl QualificationTurnLifecycleContributor {
     async fn admit(
         input: &QualificationTurnWriterInput,
     ) -> Result<Option<QueuedReceipt>, QualificationTurnWriterInputError> {
-        input
-            .binding
-            .verify_current(&input.lease, &input.executor)
-            .await?;
         let trajectory_id = format!("qualification:trajectory:{}", input.turn_id);
-        if let Some(trajectory) =
-            read_h7_trajectory_bound(&input.lease, &input.executor, &input.binding, trajectory_id)
-                .await
-                .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?
-        {
+        let recovery = read_h7_trajectory_bound_for_recovery(
+            &input.lease,
+            &input.executor,
+            &input.binding,
+            trajectory_id,
+        )
+        .await
+        .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?;
+        if let Some(trajectory) = recovery.trajectory {
             if let Some(terminal) = trajectory.events.last().filter(|event| event.terminal) {
+                let terminal_occurrence_key =
+                    bounded_terminal_occurrence_key(&input.occurrence_key);
+                if !trajectory.is_complete_qualification_terminal(
+                    &input.turn_id,
+                    &input.occurrence_key,
+                    &terminal_occurrence_key,
+                ) {
+                    return Err(QualificationTurnWriterInputError::Invalid(
+                        "durable H7 terminal does not match qualification lifecycle shape"
+                            .to_string(),
+                    ));
+                }
                 // A process may die after the H7 terminal observation commits
                 // but before the local outcome/release transaction.  The
                 // durable trajectory is authoritative for this local
                 // observation; close the leftover lease without attempting a
                 // second turn_start append.
+                if recovery.lease_expired {
+                    // Post-TTL recovery is deliberately timeout-only.  Do
+                    // not append an outcome or reopen a writable executor;
+                    // the exact old head is terminalized by the lease CAS.
+                    input.lease.expire_lease().await?;
+                    return Ok(None);
+                }
                 if terminal.outcome == "turn_indeterminate" {
                     input
                         .lease
@@ -407,6 +432,19 @@ impl QualificationTurnLifecycleContributor {
                 return Ok(None);
             }
         }
+        if recovery.lease_expired {
+            // An expired attempt without a durable H7 terminal is not safe to
+            // infer or silently close here: doing so would erase the very
+            // evidence needed to distinguish a crash before/after turn
+            // start.  Leave it for an explicit timeout/audit decision.
+            return Err(QualificationTurnWriterInputError::Invalid(
+                "qualification lease expired without a durable H7 terminal".to_string(),
+            ));
+        }
+        input
+            .binding
+            .verify_current(&input.lease, &input.executor)
+            .await?;
         let replay = input
             .lease
             .finalize_replayed_occurrence(input.occurrence_key.clone())
@@ -490,8 +528,47 @@ impl QualificationTurnLifecycleContributor {
     async fn append_terminal(
         active: &ActiveTurn,
         action: TerminalAction,
-    ) -> Result<(), QualificationTurnWriterInputError> {
+    ) -> Result<TerminalProjection, QualificationTurnWriterInputError> {
         let input = &active.input;
+        // A terminal event may already have committed before a callback
+        // crashed while projecting the local outcome/release.  Read that
+        // durable observation first so a retry with a different reason (or a
+        // different callback action) reuses the immutable terminal instead of
+        // colliding on its fixed event id.
+        let recovery = read_h7_trajectory_bound_for_recovery(
+            &input.lease,
+            &input.executor,
+            &input.binding,
+            active.trajectory_id.clone(),
+        )
+        .await
+        .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?;
+        if let Some(trajectory) = recovery.trajectory {
+            if let Some(terminal) = trajectory.events.last().filter(|event| event.terminal) {
+                let terminal_occurrence_key =
+                    bounded_terminal_occurrence_key(&input.occurrence_key);
+                if !trajectory.is_complete_qualification_terminal(
+                    &input.turn_id,
+                    &input.occurrence_key,
+                    &terminal_occurrence_key,
+                ) {
+                    return Err(QualificationTurnWriterInputError::Invalid(
+                        "durable H7 terminal does not match qualification lifecycle shape"
+                            .to_string(),
+                    ));
+                }
+                return Ok(TerminalProjection {
+                    outcome: terminal.outcome.clone(),
+                    reason: bounded_terminal_reason(&terminal.reason),
+                    lease_expired: recovery.lease_expired,
+                });
+            }
+        }
+        if recovery.lease_expired {
+            return Err(QualificationTurnWriterInputError::Invalid(
+                "qualification lease expired before H7 terminal observation".to_string(),
+            ));
+        }
         // Re-check the host-owned binding before any terminal write.  A stale
         // callback must not mark an occurrence indeterminate (or release a
         // lease) after ownership has moved to a newer epoch.
@@ -536,7 +613,7 @@ impl QualificationTurnLifecycleContributor {
             Sha256Digest::for_bytes(b"qualification:observation-only-policy:v1"),
             Sha256Digest::for_bytes(b"qualification:model-receipt:not-applicable:v1"),
             terminal_receipt,
-            outcome,
+            outcome.clone(),
             reason.clone(),
             serde_json::json!({
                 "observation_only": true,
@@ -551,7 +628,11 @@ impl QualificationTurnLifecycleContributor {
         append_h7_trajectory_event_bound(&input.lease, &input.executor, &input.binding, &record)
             .await
             .map_err(|error| QualificationTurnWriterInputError::Invalid(error.to_string()))?;
-        Ok(())
+        Ok(TerminalProjection {
+            outcome,
+            reason,
+            lease_expired: false,
+        })
     }
 
     async fn complete(
@@ -559,15 +640,18 @@ impl QualificationTurnLifecycleContributor {
         action: TerminalAction,
     ) -> Result<(), QualificationTurnWriterInputError> {
         let input = &active.input;
-        Self::append_terminal(active, action.clone()).await?;
-        let reason = match &action {
-            TerminalAction::Stop => "turn_stopped".to_string(),
-            TerminalAction::Indeterminate(reason) => bounded_terminal_reason(reason),
-        };
-        if matches!(&action, TerminalAction::Indeterminate(_)) {
+        let projection = Self::append_terminal(active, action).await?;
+        if projection.lease_expired {
+            // Once the old exact head is past TTL, only the explicit timeout
+            // CAS is allowed.  In particular, do not append a fresh local
+            // outcome under an expired fence.
+            input.lease.expire_lease().await?;
+            return Ok(());
+        }
+        if projection.outcome == "turn_indeterminate" {
             input
                 .lease
-                .mark_indeterminate(input.occurrence_key.clone(), reason.clone())
+                .mark_indeterminate(input.occurrence_key.clone(), projection.reason)
                 .await?;
         }
         input.lease.release().await?;
@@ -1157,6 +1241,47 @@ mod tests {
                 .is_err(),
             "replay must release the leftover active lease after terminal H7"
         );
+    }
+
+    #[tokio::test]
+    async fn terminal_retry_reuses_durable_reason_instead_of_fixed_event_conflict() {
+        let (_temp, store, input) = prepared().await;
+        let receipt = match input
+            .lease
+            .admit(OCCURRENCE, TURN_START_TOPIC, input.payload_json.clone())
+            .await
+            .expect("admit")
+        {
+            LocalAdmission::Queued(receipt) | LocalAdmission::Replay(receipt) => receipt,
+        };
+        let active = QualificationTurnLifecycleContributor::append_start(&input, &receipt)
+            .await
+            .expect("append start");
+
+        // Simulate a crash after the immutable H7 terminal commit but before
+        // the local outcome/release projection.  The retry intentionally has
+        // a different reason; the durable first terminal must win.
+        QualificationTurnLifecycleContributor::append_terminal(
+            &active,
+            TerminalAction::Indeterminate("first durable reason".to_string()),
+        )
+        .await
+        .expect("first terminal");
+        QualificationTurnLifecycleContributor::complete(
+            &active,
+            TerminalAction::Indeterminate("different retry reason".to_string()),
+        )
+        .await
+        .expect("terminal retry projection");
+
+        let trajectory = store
+            .read_h7_trajectory("qualification:trajectory:turn:writer-e26")
+            .await
+            .expect("read trajectory")
+            .expect("trajectory");
+        assert_eq!(trajectory.events.len(), 2);
+        assert_eq!(trajectory.events[1].reason, "first durable reason");
+        assert!(input.lease.verify_current().await.is_err());
     }
 
     /// The qualification-only admission/Saga/forget path must keep all state
