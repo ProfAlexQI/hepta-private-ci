@@ -2119,7 +2119,7 @@ struct OutboxInsert<'a> {
     outbox_sha256: &'a Sha256Digest,
 }
 
-async fn append_lease(
+pub(crate) async fn append_lease(
     transaction: &mut Transaction<'_, Sqlite>,
     lease_id: &str,
     owner: &AgentId,

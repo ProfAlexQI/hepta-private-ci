@@ -19,6 +19,7 @@ mod local_compact_executor;
 mod local_lease_outbox;
 mod local_policy;
 mod local_turn_binding;
+mod logical_turn_registry;
 mod memory_admission;
 mod neuron_proposal;
 mod recall;
@@ -212,6 +213,18 @@ pub use local_turn_binding::LOCAL_TURN_LIFECYCLE_BINDING_PRODUCTION_CALLER;
 pub use local_turn_binding::LOCAL_TURN_LIFECYCLE_BINDING_SCHEMA_VERSION;
 pub use local_turn_binding::LocalTurnLifecycleBinding;
 pub use local_turn_binding::LocalTurnLifecycleBindingError;
+pub use logical_turn_registry::LOGICAL_TURN_REGISTRY_EXTERNAL_EFFECTS;
+pub use logical_turn_registry::LOGICAL_TURN_REGISTRY_KG_WRITE_AUTHORITY;
+pub use logical_turn_registry::LOGICAL_TURN_REGISTRY_NAMESPACE;
+pub use logical_turn_registry::LOGICAL_TURN_REGISTRY_PRODUCTION_CALLER;
+pub use logical_turn_registry::LOGICAL_TURN_REGISTRY_SCHEMA_VERSION;
+pub use logical_turn_registry::LogicalTurnAttempt;
+pub use logical_turn_registry::LogicalTurnAttemptRequest;
+pub use logical_turn_registry::LogicalTurnAttemptTransition;
+pub use logical_turn_registry::LogicalTurnEvidence;
+pub use logical_turn_registry::LogicalTurnRegistryError;
+pub use logical_turn_registry::LogicalTurnRequest;
+pub use logical_turn_registry::LogicalTurnReservation;
 pub use memory_admission::MemoryAdmissionEvidence;
 pub use memory_admission::MemoryAdmissionReceipt;
 pub use memory_admission::MemoryCandidateDraft;
@@ -293,6 +306,10 @@ mod local_compact_executor_tests;
 #[cfg(test)]
 #[path = "local_lease_outbox_tests.rs"]
 mod local_lease_outbox_tests;
+
+#[cfg(test)]
+#[path = "logical_turn_registry_tests.rs"]
+mod logical_turn_registry_tests;
 
 #[cfg(test)]
 #[path = "h7_artifact_qualification_tests.rs"]

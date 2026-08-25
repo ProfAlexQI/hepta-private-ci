@@ -138,9 +138,21 @@ const REQUIRED_SCHEMA_OBJECTS: &[(&str, &str)] = &[
     ("cognitive_h7_trajectory_events_occurrence_lookup", "index"),
     ("cognitive_h7_trajectory_events_receipt_lookup", "index"),
     ("cognitive_h7_trajectory_events_kind_lookup", "index"),
+    ("cognitive_logical_turns", "table"),
+    ("cognitive_logical_turns_no_update", "trigger"),
+    ("cognitive_logical_turns_no_delete", "trigger"),
+    ("cognitive_logical_turn_attempts", "table"),
+    ("cognitive_logical_turn_attempts_no_update", "trigger"),
+    ("cognitive_logical_turn_attempts_no_delete", "trigger"),
+    ("cognitive_logical_turn_attempts_record_digest", "index"),
+    ("cognitive_logical_turn_attempts_lookup", "index"),
+    ("cognitive_logical_turn_attempts_attempt_lookup", "index"),
+    ("cognitive_logical_turn_attempts_lease_lookup", "index"),
+    ("cognitive_logical_turn_attempts_journal_lookup", "index"),
+    ("cognitive_logical_turn_attempts_trajectory_lookup", "index"),
 ];
 const REQUIRED_SCHEMA_ORACLE_SHA256: &str =
-    "76ee601dc8effbfa2d2db9dce09ab82e775b5c8556c193d24754e3768ea5c472";
+    "ae52b47126c510d36e89cf378a9df11f985527cea24111da7b2cf38b020cab6c";
 
 #[derive(Debug, thiserror::Error)]
 pub enum CognitiveStoreError {
@@ -438,10 +450,11 @@ async fn verify_store(pool: &SqlitePool, owner: &AgentId) -> Result<(), Cognitiv
             (7, true),
             (8, true),
             (9, true),
+            (10, true),
         ]
     {
         return Err(CognitiveStoreError::Corrupt(format!(
-            "cognitive migration ledger is not the exact successful 0001/0002/0003/0004/0005/0006/0007/0008/0009 set: {migrations:?}"
+            "cognitive migration ledger is not the exact successful 0001/0002/0003/0004/0005/0006/0007/0008/0009/0010 set: {migrations:?}"
         )));
     }
     let mut schema_oracle_parts = Vec::with_capacity(REQUIRED_SCHEMA_OBJECTS.len());
@@ -664,6 +677,7 @@ async fn verify_store(pool: &SqlitePool, owner: &AgentId) -> Result<(), Cognitiv
     }
     verify_revision_fact_digests(pool, owner).await?;
     verify_current_projection_contents(pool, owner).await?;
+    crate::logical_turn_registry::verify_logical_turn_registry(pool, owner).await?;
     crate::local_lease_outbox::verify_local_lease_outbox(pool, owner).await?;
     crate::local_compact_executor::verify_local_compact_events(pool, owner).await?;
     Ok(())
