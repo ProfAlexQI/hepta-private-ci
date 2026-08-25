@@ -28,11 +28,48 @@ use codex_protocol::models::AdditionalPermissionProfile;
 use codex_protocol::protocol::McpInvocation;
 use codex_protocol::protocol::ReviewDecision;
 use codex_protocol::protocol::TokenUsage;
+use codex_protocol::protocol::TurnAbortReason;
 
 /// Metadata about the currently running turn.
 pub(crate) struct ActiveTurn {
     pub(crate) task: Option<RunningTask>,
     pub(crate) turn_state: Arc<Mutex<TurnState>>,
+    /// Host-owned reservation for the async start transition before a
+    /// `RunningTask` can be attached.  This is deliberately distinct from a
+    /// plain idle reservation: only `Session::start_task` installs it, so an
+    /// abort can fence this exact continuation without stealing an unrelated
+    /// caller-owned reservation.
+    pub(crate) start_transition: Option<StartTransition>,
+}
+
+pub(crate) struct StartTransition {
+    /// Unique identity for one start continuation.  The continuation keeps
+    /// this Arc and uses pointer equality at the attach CAS, so a stale
+    /// future cannot consume a later transition that happens to reuse a turn
+    /// id or turn state.
+    pub(crate) identity: Arc<()>,
+    pub(crate) turn_id: String,
+    pub(crate) abort_reason: Option<TurnAbortReason>,
+}
+
+impl StartTransition {
+    pub(crate) fn new(turn_id: String, identity: Arc<()>) -> Self {
+        Self {
+            identity,
+            turn_id,
+            abort_reason: None,
+        }
+    }
+
+    /// Records only the first abort reason.  The active-turn mutex provides
+    /// the serialization boundary for concurrent abort callers.
+    pub(crate) fn request_abort(&mut self, reason: TurnAbortReason) -> bool {
+        if self.abort_reason.is_some() {
+            return false;
+        }
+        self.abort_reason = Some(reason);
+        true
+    }
 }
 
 /// Whether mailbox deliveries should still be folded into the current turn.
@@ -61,6 +98,7 @@ impl Default for ActiveTurn {
         Self {
             task: None,
             turn_state: Arc::new(Mutex::new(TurnState::default())),
+            start_transition: None,
         }
     }
 }
@@ -331,5 +369,22 @@ impl TurnState {
 
     pub(crate) fn strict_auto_review_enabled(&self) -> bool {
         self.strict_auto_review_enabled
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::StartTransition;
+    use codex_protocol::protocol::TurnAbortReason;
+    use std::sync::Arc;
+
+    #[test]
+    fn start_transition_keeps_first_abort_reason() {
+        let identity = Arc::new(());
+        let mut transition = StartTransition::new("turn-1".to_string(), identity);
+
+        assert!(transition.request_abort(TurnAbortReason::Replaced));
+        assert!(!transition.request_abort(TurnAbortReason::Interrupted));
+        assert_eq!(transition.abort_reason, Some(TurnAbortReason::Replaced));
     }
 }

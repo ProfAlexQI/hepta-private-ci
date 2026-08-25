@@ -966,6 +966,171 @@ async fn graceful_abort_before_ready_does_not_publish_recovery_candidate() {
     assert_eq!(session.recovery_epoch_if_idle(turn_id).await, None);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn recovery_abort_during_start_restores_pre_rewind_history() {
+    struct BlockingStartContributor {
+        entered: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+    }
+
+    impl codex_extension_api::TurnLifecycleContributor for BlockingStartContributor {
+        fn on_turn_start<'a>(
+            &'a self,
+            input: codex_extension_api::TurnStartInput<'a>,
+        ) -> codex_extension_api::ExtensionFuture<'a, ()> {
+            Box::pin(async move {
+                let _ = input;
+                self.entered.notify_one();
+                self.release.notified().await;
+            })
+        }
+    }
+
+    let (mut session, turn_context, rx) = make_turn_recovery_session_and_context_with_rx().await;
+    let store = attach_in_memory_thread_store(
+        Arc::get_mut(&mut session).expect("fresh session should remain uniquely owned"),
+    )
+    .await;
+    let turn_id = "recovery-start-abort-history";
+    let expected_epoch = seed_recovery_candidate(session.as_ref(), turn_id).await;
+    session
+        .record_conversation_items(
+            turn_context.as_ref(),
+            std::slice::from_ref(&user_message("recovery tail must survive abort")),
+        )
+        .await;
+
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let mut extensions =
+        codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+    extensions.turn_lifecycle_contributor(Arc::new(BlockingStartContributor {
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+    }));
+    Arc::get_mut(&mut session)
+        .expect("session should still have a unique test owner")
+        .services
+        .extensions = Arc::new(extensions.build());
+
+    let recovery = tokio::spawn({
+        let session = Arc::clone(&session);
+        async move {
+            handle_recovery(
+                &session,
+                expected_epoch,
+                ThreadSettingsOverrides::default(),
+                turn_id.to_string(),
+            )
+            .await
+            .expect("recovery start should be accepted before the abort");
+        }
+    });
+
+    timeout(Duration::from_secs(2), entered.notified())
+        .await
+        .expect("recovery turn-start contributor should block");
+    assert!(
+        session
+            .active_turn
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|active| active.task.is_none() && active.start_transition.is_some())
+    );
+    assert!(
+        session
+            .abort_turn_if_active(turn_id, TurnAbortReason::Interrupted)
+            .await
+    );
+    release.notify_one();
+    recovery
+        .await
+        .expect("recovery start task should join after abort");
+
+    let mut saw_turn_started = false;
+    let mut saw_turn_aborted = false;
+    for _ in 0..16 {
+        let event = timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("expected recovery terminal event")
+            .expect("event channel open");
+        match event.msg {
+            EventMsg::TurnStarted(_) => saw_turn_started = true,
+            EventMsg::TurnAborted(event) => {
+                assert_eq!(event.turn_id.as_deref(), Some(turn_id));
+                assert_eq!(event.reason, TurnAbortReason::Interrupted);
+                saw_turn_aborted = true;
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        !saw_turn_started,
+        "aborted recovery must not prove TurnStarted"
+    );
+    assert!(
+        saw_turn_aborted,
+        "recovery abort must publish a terminal event"
+    );
+    assert!(session.active_turn.lock().await.is_none());
+    assert!(session.is_interrupted());
+    assert!(
+        session
+            .recovery_candidate
+            .lock()
+            .expect("recovery candidate mutex poisoned")
+            .is_none()
+    );
+
+    let in_memory = session.clone_history().await;
+    assert!(in_memory.raw_items().any(|item| {
+        matches!(
+            item,
+            ResponseItem::Message { content, .. }
+                if content.iter().any(|content| {
+                    matches!(
+                        content,
+                        ContentItem::InputText { text }
+                            if text == "recovery tail must survive abort"
+                    )
+                })
+        )
+    }));
+    let durable = store
+        .load_history(LoadThreadHistoryParams {
+            thread_id: session.thread_id,
+            include_archived: true,
+        })
+        .await
+        .expect("load durable recovery-abort history");
+    assert!(durable.items.iter().any(|item| {
+        matches!(
+            item,
+            RolloutItem::ResponseItem(envelope)
+                if matches!(&envelope.item, ResponseItem::Message { content, .. }
+                    if content.iter().any(|content| {
+                    matches!(
+                        content,
+                        ContentItem::InputText { text }
+                            if text == "recovery tail must survive abort"
+                    )
+                }))
+        )
+    }));
+    assert!(durable.items.iter().any(|item| {
+        matches!(item, RolloutItem::TurnRecoveryRequestBinding(binding) if binding.turn_id == turn_id)
+    }));
+    assert!(!durable.items.iter().any(|item| {
+        matches!(
+            item,
+            RolloutItem::EventMsg(EventMsg::TurnStarted(started))
+                if started.turn_id == turn_id
+        )
+    }));
+}
+
 #[tokio::test]
 async fn abort_all_revalidates_ready_after_task_quiesces() {
     let (session, _turn_context, _rx) = make_turn_recovery_session_and_context_with_rx().await;

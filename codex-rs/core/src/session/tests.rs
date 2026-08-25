@@ -715,7 +715,180 @@ async fn blocked_turn_start_gate_aborts_before_turn_started() {
             _ => {}
         }
     }
-    assert!(saw_aborted, "blocked gate must terminate the turn as aborted");
+    assert!(
+        saw_aborted,
+        "blocked gate must terminate the turn as aborted"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn abort_during_turn_start_transition_is_fenced_before_task_attach() {
+    struct BlockingStartContributor {
+        entered: Arc<Notify>,
+        release: Arc<Notify>,
+        aborts: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl codex_extension_api::TurnLifecycleContributor for BlockingStartContributor {
+        fn on_turn_start<'a>(
+            &'a self,
+            input: codex_extension_api::TurnStartInput<'a>,
+        ) -> codex_extension_api::ExtensionFuture<'a, ()> {
+            Box::pin(async move {
+                let _ = input;
+                self.entered.notify_one();
+                self.release.notified().await;
+            })
+        }
+
+        fn on_turn_abort<'a>(
+            &'a self,
+            input: codex_extension_api::TurnAbortInput<'a>,
+        ) -> codex_extension_api::ExtensionFuture<'a, ()> {
+            Box::pin(async move {
+                let _ = input;
+                self.aborts
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            })
+        }
+    }
+
+    struct StartRaceProbe {
+        runs: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl SessionTask for StartRaceProbe {
+        fn kind(&self) -> TaskKind {
+            TaskKind::Regular
+        }
+
+        fn span_name(&self) -> &'static str {
+            "session_task.start_transition_abort_probe"
+        }
+
+        async fn run(
+            self: Arc<Self>,
+            _session: Arc<Session>,
+            _ctx: Arc<TurnContext>,
+            _input: Vec<TurnInput>,
+            cancellation_token: CancellationToken,
+        ) -> SessionTaskResult {
+            self.runs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            // A fenced transition must never reach this future.  Keep it
+            // alive until the test can abort an unfenced implementation.
+            tokio::select! {
+                _ = cancellation_token.cancelled() => Err(codex_protocol::error::CodexErr::TurnAborted),
+                _ = std::future::pending::<()>() => Ok(None),
+            }
+        }
+    }
+
+    let (mut session, turn_context, rx) = make_session_and_context_with_rx().await;
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let aborts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut builder = codex_extension_api::ExtensionRegistryBuilder::<crate::config::Config>::new();
+    builder.turn_lifecycle_contributor(Arc::new(BlockingStartContributor {
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+        aborts: Arc::clone(&aborts),
+    }));
+    Arc::get_mut(&mut session)
+        .expect("session should have a unique test owner")
+        .services
+        .extensions = Arc::new(builder.build());
+
+    let runs = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let start_handle = tokio::spawn({
+        let session = Arc::clone(&session);
+        let turn_context = Arc::clone(&turn_context);
+        let runs = Arc::clone(&runs);
+        async move {
+            session
+                .spawn_task(turn_context, Vec::new(), StartRaceProbe { runs })
+                .await
+                .expect("start transition should accept the task before abort");
+        }
+    });
+
+    timeout(StdDuration::from_secs(2), entered.notified())
+        .await
+        .expect("turn-start contributor should block");
+    {
+        let active = session.active_turn.lock().await;
+        assert!(active.as_ref().is_some_and(|active_turn| {
+            active_turn.task.is_none() && active_turn.start_transition.is_some()
+        }));
+    }
+    assert!(
+        !session
+            .abort_turn_if_active("wrong-turn-id", TurnAbortReason::Interrupted)
+            .await
+    );
+    assert!(
+        session
+            .abort_turn_if_active(&turn_context.sub_id, TurnAbortReason::Interrupted)
+            .await
+    );
+    session
+        .abort_all_tasks(TurnAbortReason::BudgetLimited)
+        .await;
+    assert!(
+        session
+            .active_turn
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|active_turn| {
+                active_turn
+                    .start_transition
+                    .as_ref()
+                    .and_then(|transition| transition.abort_reason.as_ref())
+                    == Some(&TurnAbortReason::Interrupted)
+            })
+    );
+
+    release.notify_one();
+    start_handle
+        .await
+        .expect("start transition task should join");
+
+    let attached_after_join = session
+        .active_turn
+        .lock()
+        .await
+        .as_ref()
+        .is_some_and(|active_turn| active_turn.task.is_some());
+    if attached_after_join {
+        session.abort_all_tasks(TurnAbortReason::Interrupted).await;
+    }
+    assert!(!attached_after_join, "abort must win before task attach");
+    assert_eq!(0, runs.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(1, aborts.load(std::sync::atomic::Ordering::SeqCst));
+    let mut saw_turn_started = false;
+    let mut saw_turn_aborted = false;
+    for _ in 0..16 {
+        let event = timeout(StdDuration::from_secs(2), rx.recv())
+            .await
+            .expect("expected pre-task terminal event")
+            .expect("event channel open");
+        match event.msg {
+            EventMsg::TurnStarted(_) => saw_turn_started = true,
+            EventMsg::TurnAborted(event) => {
+                assert_eq!(Some(turn_context.sub_id.clone()), event.turn_id);
+                assert_eq!(TurnAbortReason::Interrupted, event.reason);
+                saw_turn_aborted = true;
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        !saw_turn_started,
+        "a fenced start must not emit TurnStarted"
+    );
+    assert!(saw_turn_aborted, "abort must publish a terminal event");
+    assert!(session.active_turn.lock().await.is_none());
 }
 
 #[tokio::test]

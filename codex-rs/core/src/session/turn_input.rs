@@ -17,6 +17,7 @@ use super::turn_context::TurnContext;
 use crate::state::ActiveTurn;
 use crate::state::TurnState;
 use crate::tasks::MailboxParentProvenance;
+use crate::tasks::RecoveryHistoryTransition;
 use crate::tasks::RegularTask;
 use codex_features::Feature;
 use codex_protocol::config_types::ModeKind;
@@ -536,6 +537,7 @@ async fn start_if_idle(
             });
         }
     }
+    let mut recovery_history_to_install = None;
     if let Some((request_fingerprint_sha256, consumed_generation, source_generation, replay)) =
         recovery_restart.as_ref()
     {
@@ -564,7 +566,10 @@ async fn start_if_idle(
                 "turn recovery history snapshot disappeared before installation".to_string(),
             ));
         };
-        session.install_recovery_history_snapshot(history).await;
+        // Defer installation of the rewound snapshot until `start_task` has
+        // fenced its async transition.  Capture the original view as late as
+        // possible, after all caller-owned preparation awaits have completed.
+        recovery_history_to_install = Some(history);
     }
     if has_user_input
         && can_start_root_turn
@@ -604,12 +609,19 @@ async fn start_if_idle(
         }
         None => RegularTask::new(run_origin),
     };
+    let recovery_history_transition = if let Some(install) = recovery_history_to_install {
+        let restore = session.clone_history().await;
+        Some(RecoveryHistoryTransition { install, restore })
+    } else {
+        None
+    };
     session
-        .start_task(
+        .start_task_with_recovery(
             Arc::clone(&turn_context),
             task_input,
             regular_task,
             MailboxParentProvenance::Ignore,
+            recovery_history_transition,
         )
         .await;
     if has_user_input && !is_recovery {
@@ -757,6 +769,7 @@ impl Session {
         let mut active_turn_guard = self.active_turn.lock().await;
         if let Some(active_turn) = active_turn_guard.as_ref()
             && active_turn.task.is_none()
+            && active_turn.start_transition.is_none()
             && Arc::ptr_eq(&active_turn.turn_state, turn_state)
         {
             *active_turn_guard = None;
@@ -774,6 +787,7 @@ impl Session {
         let mut active_turn_guard = self.active_turn.lock().await;
         if let Some(active_turn) = active_turn_guard.as_ref()
             && active_turn.task.is_none()
+            && active_turn.start_transition.is_none()
             && Arc::ptr_eq(&active_turn.turn_state, turn_state)
         {
             self.settle_consumed_recovery_status();

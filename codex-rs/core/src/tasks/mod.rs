@@ -30,6 +30,7 @@ use tracing::warn;
 use crate::codex_thread::BackgroundTerminalInfo;
 use crate::config::Config;
 use crate::context::ContextualUserFragment;
+use crate::context_manager::ContextManager;
 use crate::session::TurnInput;
 use crate::session::session::RecoveryCandidate;
 use crate::session::session::Session;
@@ -39,6 +40,7 @@ use crate::session::turn_context::TurnContext;
 use crate::state::ActiveTurn;
 use crate::state::DurableRecoveryState;
 use crate::state::RunningTask;
+use crate::state::StartTransition;
 use crate::state::TaskKind;
 use crate::state::TurnRecoveryAuthority;
 use crate::state::TurnState;
@@ -85,6 +87,14 @@ pub(crate) enum MailboxParentProvenance {
     Attribute,
 }
 
+/// The two history views needed for a recovery start.  The rewound view is
+/// installed only after the host-owned start marker exists; the original view
+/// is restored if the transition is aborted before `RunningTask` attach.
+pub(crate) struct RecoveryHistoryTransition {
+    pub(crate) install: ContextManager,
+    pub(crate) restore: ContextManager,
+}
+
 /// Snapshot of one exact task's recovery authority before it is detached.
 ///
 /// The authority itself remains attached so the terminal publication path can
@@ -112,6 +122,11 @@ struct DetachedTaskForAbort {
     turn_state: Arc<Mutex<TurnState>>,
     recovery_seed: Option<RecoverySeed>,
     recovery_authority: Option<Arc<TurnRecoveryAuthority>>,
+}
+
+enum ActiveTurnAbortTarget {
+    Running(DetachedTaskForAbort),
+    Starting,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -320,6 +335,9 @@ pub(crate) trait SessionTask: Send + Sync + 'static {
     /// The default implementation is a no-op; override this if additional
     /// teardown or notifications are required once
     /// [`Session::abort_all_tasks`] cancels the task.
+    /// An accepted host-owned start transition may invoke this hook before
+    /// [`SessionTask::run`] has begun, so implementations must tolerate
+    /// pre-run cleanup as well as cancellation of a running task.
     fn abort(
         &self,
         session: Arc<Session>,
@@ -773,8 +791,52 @@ impl Session {
         task: T,
         mailbox_parent_provenance: MailboxParentProvenance,
     ) {
+        self.start_task_with_recovery(turn_context, input, task, mailbox_parent_provenance, None)
+            .await;
+    }
+
+    pub(crate) async fn start_task_with_recovery<T: SessionTask>(
+        self: &Arc<Self>,
+        turn_context: Arc<TurnContext>,
+        input: Vec<TurnInput>,
+        task: T,
+        mailbox_parent_provenance: MailboxParentProvenance,
+        recovery_history: Option<RecoveryHistoryTransition>,
+    ) {
         let task: Arc<dyn AnySessionTask> = Arc::new(task);
         let task_kind = task.kind();
+        // Mark the host-owned async start transition before any subsequent
+        // await owned by this function.  While lifecycle contributors, input
+        // preparation, or prewarm work are running there is intentionally no
+        // `RunningTask` yet, so abort must target this exact continuation
+        // instead of silently returning as if the session were idle.  The
+        // caller-owned reservation preamble before entering `start_task`
+        // remains a separate, inert reservation by design.
+        let start_transition_identity = Arc::new(());
+        {
+            let mut active = self.active_turn.lock().await;
+            let turn = active.get_or_insert_with(ActiveTurn::default);
+            debug_assert!(turn.task.is_none());
+            debug_assert!(turn.start_transition.is_none());
+            if turn.task.is_some() || turn.start_transition.is_some() {
+                warn!(
+                    turn_id = %turn_context.sub_id,
+                    "refusing to overwrite an existing turn start transition"
+                );
+                return;
+            }
+            turn.start_transition = Some(StartTransition::new(
+                turn_context.sub_id.clone(),
+                Arc::clone(&start_transition_identity),
+            ));
+        }
+        let mut recovery_history_restore = if let Some(recovery_history) = recovery_history {
+            self.install_recovery_history_snapshot(recovery_history.install)
+                .await;
+            Some(recovery_history.restore)
+        } else {
+            None
+        };
         let hepta_turn_recovery_enabled = turn_context
             .config
             .features
@@ -870,9 +932,38 @@ impl Session {
             turn_context.turn_metadata_state.mark_root_turn_ambiguous();
         }
         let turn_state = {
-            let mut active = self.active_turn.lock().await;
-            let turn = active.get_or_insert_with(ActiveTurn::default);
+            let active = self.active_turn.lock().await;
+            let Some(turn) = active.as_ref() else {
+                drop(active);
+                self.restore_recovery_history_if_current(
+                    None,
+                    &start_transition_identity,
+                    &mut recovery_history_restore,
+                )
+                .await;
+                return;
+            };
             debug_assert!(turn.task.is_none());
+            let Some(transition) = turn.start_transition.as_ref() else {
+                drop(active);
+                self.restore_recovery_history_if_current(
+                    None,
+                    &start_transition_identity,
+                    &mut recovery_history_restore,
+                )
+                .await;
+                return;
+            };
+            if !Arc::ptr_eq(&transition.identity, &start_transition_identity) {
+                drop(active);
+                self.restore_recovery_history_if_current(
+                    None,
+                    &start_transition_identity,
+                    &mut recovery_history_restore,
+                )
+                .await;
+                return;
+            }
             Arc::clone(&turn.turn_state)
         };
         turn_state.lock().await.token_usage_at_turn_start = token_usage_at_turn_start.clone();
@@ -887,8 +978,55 @@ impl Session {
         .await;
 
         let mut active = self.active_turn.lock().await;
-        let turn = active.get_or_insert_with(ActiveTurn::default);
+        let Some(turn) = active.as_mut() else {
+            drop(active);
+            self.restore_recovery_history_if_current(
+                None,
+                &start_transition_identity,
+                &mut recovery_history_restore,
+            )
+            .await;
+            return;
+        };
         debug_assert!(turn.task.is_none());
+        let Some(transition) = turn.start_transition.as_ref() else {
+            drop(active);
+            self.restore_recovery_history_if_current(
+                None,
+                &start_transition_identity,
+                &mut recovery_history_restore,
+            )
+            .await;
+            return;
+        };
+        if !Arc::ptr_eq(&transition.identity, &start_transition_identity) {
+            drop(active);
+            self.restore_recovery_history_if_current(
+                None,
+                &start_transition_identity,
+                &mut recovery_history_restore,
+            )
+            .await;
+            return;
+        }
+        if let Some(reason) = transition.abort_reason.clone() {
+            // Keep the marker installed while terminalization awaits.  The
+            // abort side records the reason but never emits lifecycle or
+            // terminal events concurrently with an in-flight on_turn_start;
+            // retaining the marker also prevents a concurrent reservation
+            // clearer or replacement start from stealing this turn state.
+            drop(active);
+            self.abort_unstarted_turn(
+                task,
+                turn_context,
+                turn_state,
+                start_transition_identity,
+                recovery_history_restore,
+                reason,
+            )
+            .await;
+            return;
+        }
         let agent_execution_guard = self.services.agent_control.execution_guard(
             turn_context.multi_agent_version,
             &turn_context.session_source,
@@ -941,8 +1079,8 @@ impl Session {
                         )
                         .await
                 }
-                    .instrument(trace_span!("session_task.run"))
-                    .await;
+                .instrument(trace_span!("session_task.run"))
+                .await;
                 let sess = Arc::clone(&session);
                 if !task_cancellation_token.is_cancelled() {
                     // Finish uniformly from the spawn site so all tasks share the same lifecycle.
@@ -979,6 +1117,7 @@ impl Session {
             _timer: timer,
         };
         turn.task = Some(running_task);
+        turn.start_transition = None;
     }
 
     /// Returns whether an extension has marked this thread as durably asleep.
@@ -1057,10 +1196,16 @@ impl Session {
         let mut reserved_turn_state = None;
         let mut turn_context = None;
         let mut abort_outcome = TaskAbortOutcome::default();
-        if let Some(detached) = self
+        if let Some(target) = self
             .detach_active_task_for_abort(&reason, /*expected_turn_id*/ None)
             .await
         {
+            let ActiveTurnAbortTarget::Running(detached) = target else {
+                // The start owner will perform terminalization after its
+                // in-flight lifecycle callback returns.  Finalizing here
+                // would race on_turn_start/on_turn_abort ordering.
+                return;
+            };
             aborted_turn = true;
             turn_context = Some(Arc::clone(&detached.task.turn_context));
             reserved_turn_state = Some(Arc::clone(&detached.turn_state));
@@ -1102,11 +1247,16 @@ impl Session {
         turn_id: &str,
         reason: TurnAbortReason,
     ) -> bool {
-        let Some(detached) = self
+        let Some(target) = self
             .detach_active_task_for_abort(&reason, Some(turn_id))
             .await
         else {
             return false;
+        };
+        let ActiveTurnAbortTarget::Running(detached) = target else {
+            // The start owner will perform terminalization once its lifecycle
+            // callback has returned; the abort request itself was accepted.
+            return true;
         };
 
         let turn_context = Arc::clone(&detached.task.turn_context);
@@ -1445,6 +1595,7 @@ impl Session {
             let mut active = self.active_turn.lock().await;
             if let Some(active_turn) = active.as_ref()
                 && active_turn.task.is_none()
+                && active_turn.start_transition.is_none()
                 && Arc::ptr_eq(&active_turn.turn_state, &turn_state)
             {
                 *active = None;
@@ -1468,9 +1619,10 @@ impl Session {
     }
 
     /// Revokes task-owned recovery authority while the active slot is locked,
-    /// then detaches only the task and leaves its turn state as an abort
-    /// reservation. Starts and injections therefore cannot observe an idle
-    /// session until the old task is quiescent and its terminal is durable.
+    /// then either detaches a running task or fences the host-owned start
+    /// transition. Starts and injections therefore cannot observe an idle
+    /// session until the old task is quiescent and its terminal is durable (or
+    /// the start owner has completed its deferred terminalization).
     #[expect(
         clippy::await_holding_invalid_type,
         reason = "active -> recovery authority/rollout ordering is the serialization boundary"
@@ -1479,10 +1631,24 @@ impl Session {
         &self,
         reason: &TurnAbortReason,
         expected_turn_id: Option<&str>,
-    ) -> Option<DetachedTaskForAbort> {
+    ) -> Option<ActiveTurnAbortTarget> {
         let mut active = self.active_turn.lock().await;
         let active_turn = active.as_mut()?;
-        let task = active_turn.task.as_ref()?;
+        let Some(task) = active_turn.task.as_ref() else {
+            let transition = active_turn.start_transition.as_mut()?;
+            if expected_turn_id.is_some_and(|expected| transition.turn_id != expected) {
+                return None;
+            }
+            if transition.request_abort(reason.clone())
+                && matches!(
+                    reason,
+                    TurnAbortReason::Interrupted | TurnAbortReason::BudgetLimited
+                )
+            {
+                self.mark_interrupted();
+            }
+            return Some(ActiveTurnAbortTarget::Starting);
+        };
         if expected_turn_id.is_some_and(|expected| task.turn_context.sub_id != expected) {
             return None;
         }
@@ -1506,12 +1672,12 @@ impl Session {
             .task
             .take()
             .expect("task remained attached while recovery authority was revoked");
-        Some(DetachedTaskForAbort {
+        Some(ActiveTurnAbortTarget::Running(DetachedTaskForAbort {
             task,
             turn_state: Arc::clone(&active_turn.turn_state),
             recovery_seed,
             recovery_authority,
-        })
+        }))
     }
 
     pub(crate) async fn close_unified_exec_processes(&self) {
@@ -1530,6 +1696,143 @@ impl Session {
             .unified_exec_manager
             .terminate_process(process_id)
             .await
+    }
+
+    /// Completes an abort accepted during the host-owned start transition.
+    ///
+    /// There is no physical `RunningTask` to detach yet, but the normal abort
+    /// path still owns important terminal semantics (admission completion,
+    /// interrupted history marker, TurnAborted rollout/event, profile and
+    /// guardian cleanup).  A pre-signalled placeholder lets that path run
+    /// without ever invoking the real task's provider-facing `run` method.
+    async fn abort_unstarted_turn(
+        self: &Arc<Self>,
+        task: Arc<dyn AnySessionTask>,
+        turn_context: Arc<TurnContext>,
+        turn_state: Arc<Mutex<TurnState>>,
+        transition_identity: Arc<()>,
+        mut recovery_history_restore: Option<ContextManager>,
+        reason: TurnAbortReason,
+    ) {
+        if !self
+            .restore_recovery_history_if_current(
+                Some(&turn_state),
+                &transition_identity,
+                &mut recovery_history_restore,
+            )
+            .await
+        {
+            return;
+        }
+        let done = Arc::new(Notify::new());
+        // `handle_task_abort` waits for the task's completion notification;
+        // pre-signal it because this placeholder never entered `run`.
+        done.notify_one();
+        let placeholder = RunningTask {
+            done,
+            kind: task.kind(),
+            recovery_eligible_model_turn: false,
+            recovery_authority: None,
+            attach_epoch: self.turn_epoch.load(Ordering::Acquire),
+            task,
+            cancellation_token: CancellationToken::new(),
+            handle: AbortOnDropHandle::new(tokio::spawn(std::future::pending::<()>())),
+            turn_context: Arc::clone(&turn_context),
+            _agent_execution_guard: None,
+            _diagnostics_guard: ACTIVE_TURNS.track(),
+            _timer: None,
+        };
+        let abort_outcome = self
+            .handle_task_abort(placeholder, reason.clone(), None, None)
+            .await;
+        self.emit_turn_abort_lifecycle(reason.clone(), turn_context.extension_data.as_ref())
+            .await;
+        // Let the same terminal ordering as a running task clear queued input
+        // only after the durable TurnAborted event has been emitted.
+        self.input_queue
+            .clear_pending_for_turn_state(turn_state.as_ref())
+            .await;
+        let cleared = self
+            .clear_start_transition_after_abort(&turn_state, &transition_identity)
+            .await;
+        if !cleared {
+            // A stale start future must not publish recovery or wake another
+            // turn after its reservation has been replaced or fenced.
+            return;
+        }
+        self.publish_recovery_seed_after_terminal(
+            abort_outcome.recovery_seed,
+            abort_outcome.task_quiesced,
+            abort_outcome.terminal_persistence_generation,
+        )
+        .await;
+        if reason == TurnAbortReason::Interrupted {
+            self.maybe_start_turn_for_pending_work().await;
+        }
+    }
+
+    /// Restores a recovery caller's pre-rewind history only while the exact
+    /// host-owned start transition still owns the active slot.  The marker is
+    /// retained across the history lock await, so a replacement cannot race
+    /// the restore; a stale continuation simply abandons its witness.
+    async fn restore_recovery_history_if_current(
+        &self,
+        turn_state: Option<&Arc<Mutex<TurnState>>>,
+        transition_identity: &Arc<()>,
+        recovery_history_restore: &mut Option<ContextManager>,
+    ) -> bool {
+        if recovery_history_restore.is_none() {
+            return true;
+        }
+        let active = self.active_turn.lock().await;
+        let Some(active_turn) = active.as_ref() else {
+            return false;
+        };
+        let current = active_turn.task.is_none()
+            && turn_state.is_none_or(|expected| Arc::ptr_eq(&active_turn.turn_state, expected))
+            && active_turn
+                .start_transition
+                .as_ref()
+                .is_some_and(|transition| Arc::ptr_eq(&transition.identity, transition_identity));
+        if !current {
+            return false;
+        }
+        drop(active);
+        let history = recovery_history_restore
+            .take()
+            .expect("recovery history witness remained present");
+        // The witness is intentionally consumed only after the identity check;
+        // the actual install is performed below without the active lock.
+        self.install_recovery_history_snapshot(history).await;
+        true
+    }
+
+    /// Clears the host-owned start-transition reservation after its deferred
+    /// terminalization has completed.  This is an identity-fenced CAS: a
+    /// stale start future must never clear a later reservation, even if the
+    /// logical turn id or turn state happens to be reused.
+    async fn clear_start_transition_after_abort(
+        &self,
+        turn_state: &Arc<Mutex<TurnState>>,
+        transition_identity: &Arc<()>,
+    ) -> bool {
+        let mut active = self.active_turn.lock().await;
+        let Some(active_turn) = active.as_ref() else {
+            return false;
+        };
+        if active_turn.task.is_some()
+            || !Arc::ptr_eq(&active_turn.turn_state, turn_state)
+            || !active_turn
+                .start_transition
+                .as_ref()
+                .is_some_and(|transition| Arc::ptr_eq(&transition.identity, transition_identity))
+        {
+            return false;
+        }
+        // Keep the marker installed until all terminal side effects above
+        // have completed; only this final identity check may release it.
+        *active = None;
+        true
     }
 
     async fn handle_task_abort(
