@@ -303,6 +303,11 @@ impl AutomationStore {
              SET state = 'pending', lease_generation = NULL, lease_token = NULL,
                  lease_expires_at_ms = NULL
              WHERE state = 'leased' AND lease_generation != ?
+               AND EXISTS (
+                   SELECT 1 FROM automation_tasks t
+                   WHERE t.task_id = automation_runs.task_id
+                     AND t.owner_agent_id = ?
+               )
                AND NOT EXISTS (
                    SELECT 1 FROM automation_dispatch_outcomes o
                    WHERE o.task_id = automation_runs.task_id
@@ -311,6 +316,7 @@ impl AutomationStore {
                )",
         )
         .bind(to_i64(current_generation)?)
+        .bind(self.owner_agent_id.as_str())
         .execute(&self.pool)
         .await
         .map_err(unavailable)?;

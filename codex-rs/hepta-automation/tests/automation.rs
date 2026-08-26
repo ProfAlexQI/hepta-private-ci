@@ -686,6 +686,98 @@ async fn unknown_provider_outcome_is_quarantined_across_store_recovery_until_rec
 }
 
 #[tokio::test]
+async fn stale_generation_recovery_is_owner_fenced() {
+    let fixture = FleetFixture::new(1);
+    let layout = &fixture.layouts[0];
+    let store = AutomationStore::open(layout).await.expect("open store");
+    let owner_task = draft(
+        "019153a4-3088-7000-a56a-9b1964f75014",
+        AutomationSchedule::Once,
+        100,
+    );
+    store
+        .create_task(&owner_task)
+        .await
+        .expect("create owner task");
+    store
+        .claim_due(100, 1, 60_000)
+        .await
+        .expect("claim owner task")
+        .expect("owner task is due");
+
+    // A malformed/imported row can appear after the opener's one-time store
+    // verification. Recovery must still fence mutations by task ownership;
+    // generation alone is not an Agent identity proof.
+    let foreign_task_id = "019153a4-3088-7000-a56a-9b1964f75015";
+    let database_path = store.path().to_path_buf();
+    let sqlite_home = AbsolutePathBuf::from_absolute_path(layout.automation_root())
+        .expect("absolute sqlite home");
+    let pool = SqliteConfig::from_sqlite_home(sqlite_home)
+        .open_durable_evidence_pool(&database_path)
+        .await
+        .expect("open inspection pool");
+    sqlx::query(
+        "INSERT INTO automation_tasks (
+             task_id, owner_agent_id, thread_id, prompt, schedule_kind, interval_ms,
+             state, next_run_at_ms, next_occurrence, created_at_ms, updated_at_ms
+         ) VALUES (?, ?, ?, ?, 'once', NULL, 'enabled', ?, 1, ?, ?)",
+    )
+    .bind(foreign_task_id)
+    .bind(AGENT_IDS[1])
+    .bind(THREAD_ID)
+    .bind("foreign task")
+    .bind(100_i64)
+    .bind(0_i64)
+    .bind(100_i64)
+    .execute(&pool)
+    .await
+    .expect("insert foreign task");
+    sqlx::query(
+        "INSERT INTO automation_runs (
+             task_id, occurrence, scheduled_for_ms, client_user_message_id, state,
+             lease_generation, lease_token, lease_expires_at_ms
+         ) VALUES (?, 1, ?, ?, 'leased', ?, ?, ?)",
+    )
+    .bind(foreign_task_id)
+    .bind(100_i64)
+    .bind("foreign-client-message")
+    .bind(1_i64)
+    .bind("foreign-lease")
+    .bind(160_i64)
+    .execute(&pool)
+    .await
+    .expect("insert foreign lease");
+    pool.close().await;
+
+    assert_eq!(
+        store
+            .recover_stale_generation(2)
+            .await
+            .expect("recover stale generation"),
+        1,
+        "only the current Agent's stale lease is recoverable"
+    );
+
+    let sqlite_home = AbsolutePathBuf::from_absolute_path(layout.automation_root())
+        .expect("absolute sqlite home");
+    let pool = SqliteConfig::from_sqlite_home(sqlite_home)
+        .open_durable_evidence_pool(&database_path)
+        .await
+        .expect("reopen inspection pool");
+    let (state, generation): (String, Option<i64>) = sqlx::query_as(
+        "SELECT state, lease_generation FROM automation_runs
+         WHERE task_id = ? AND occurrence = 1",
+    )
+    .bind(foreign_task_id)
+    .fetch_one(&pool)
+    .await
+    .expect("read foreign lease");
+    assert_eq!(state, "leased");
+    assert_eq!(generation, Some(1));
+    pool.close().await;
+}
+
+#[tokio::test]
 async fn uncertain_dispatch_requires_explicit_negative_provider_proof_before_retry() {
     let fixture = FleetFixture::new(1);
     let store = AutomationStore::open(&fixture.layouts[0])
