@@ -602,23 +602,19 @@ impl<D: ProcessDriver> Supervisor<D> {
         if matches!(intent.status, SignedIntentStatus::Committed) {
             return Ok(());
         }
-        let active = slot
-            .active_release
-            .as_ref()
-            .map(|release| release.identity());
-        if record.lifecycle.lifecycle == AgentLifecycle::Running
-            && active == Some(intent.target_release.as_str())
-        {
-            let committed = intent.with_status(SignedIntentStatus::Committed);
-            write_intent(record.layout.run_root(), &committed)
-                .map_err(|error| SupervisorError::Invalid(error.to_string()))?;
-            slot.signed_intent = Some(committed);
-            return Ok(());
-        }
-        // The durable intent says a mutation was admitted but the release
-        // state cannot prove its terminal outcome.  Fence and kill any
-        // adopted child before surfacing the recovery requirement; normal
-        // ticking must not continue an ambiguous external transition.
+        // A restart has no durable proof that an apparently matching target
+        // was produced by this exact signed mutation.  In particular, the
+        // one-file intent does not carry an independently committed source /
+        // target release-state revision, control-revision successor,
+        // lifecycle-generation transition, or continuity of the daemon's
+        // authority epoch.  Treating `Running + target` as Committed would
+        // therefore let an unrelated/manual upgrade close an old grant.
+        // Every non-terminal intent must remain fail-closed until an explicit
+        // recovery ceremony supplies those witnesses.
+        //
+        // Fence and kill any adopted child before surfacing the recovery
+        // requirement; normal ticking must not continue an ambiguous
+        // external transition.
         if let Some(runtime) = slot.runtime.as_mut() {
             // A failed fence/kill is still an unresolved signed intent.  Do
             // not downgrade it to a recoverable driver fault: the caller

@@ -9,6 +9,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::AgentManifest;
 use codex_hepta_fleet::FleetRegistry;
@@ -1181,6 +1182,83 @@ fn live_but_unhealthy_matrix_is_bounded_and_restarted_without_peer_churn()
     assert_eq!(control.matrix_spawn_count(&fleet.first), 2);
     assert_eq!(control.matrix_spawn_count(&fleet.second), 1);
     assert!(supervisor.snapshot(&fleet.second).unwrap().matrix.healthy);
+    Ok(())
+}
+
+#[test]
+fn recovery_does_not_infer_signed_commit_from_matching_target_only() -> Result<(), SupervisorError>
+{
+    let fleet = TestFleet::new()?;
+    let source = ReleaseId::parse("signed-source")?;
+    let target = ReleaseId::parse("signed-target")?;
+    for release_id in [&source, &target] {
+        fleet
+            .registry
+            .install_release(release_id.clone(), Path::new("/bin/sh"), Vec::new())?;
+        fleet.registry.allow_release(&fleet.first, release_id)?;
+    }
+
+    // Leave the durable release state looking as though the target is active,
+    // but provide no durable proof for the signed operation's source,
+    // control-revision, lifecycle-generation, or daemon authority epoch.
+    fleet.registry.compare_and_set_release_state(
+        &fleet.first,
+        0,
+        Some(target.clone()),
+        Some(source),
+    )?;
+    let starting =
+        fleet
+            .registry
+            .compare_and_transition(&fleet.first, 0, AgentLifecycle::Starting)?;
+    let running = fleet.registry.compare_and_transition(
+        &fleet.first,
+        starting.generation,
+        AgentLifecycle::Running,
+    )?;
+    let record = fleet
+        .registry
+        .load()?
+        .agent(&fleet.first)
+        .cloned()
+        .expect("registered agent");
+    assert_eq!(record.lifecycle.generation, running.generation);
+
+    let intent = crate::signed_intent::SignedSupervisorIntent::new(
+        Sha256Digest::for_bytes(b"unrelated-grant"),
+        fleet.first.to_string(),
+        crate::H7H89ProductionTransition::Upgrade,
+        "unrelated-source",
+        target.to_string(),
+        7,
+        1,
+        999,
+        crate::signed_intent::SignedIntentStatus::Queued,
+    )
+    .expect("synthetic unresolved intent");
+    crate::signed_intent::write_intent(record.layout.run_root(), &intent)
+        .expect("persist unresolved intent");
+
+    let error = match Supervisor::recover(
+        fleet.registry.clone(),
+        FakeControl::default().driver(),
+        config(),
+        Instant::now(),
+    ) {
+        Ok(_) => panic!("matching target must not infer a signed commit"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error,
+        SupervisorError::SignedIntentRecoveryRequired(agent_id) if agent_id == fleet.first
+    ));
+    assert_eq!(
+        crate::signed_intent::read_intent(record.layout.run_root())
+            .expect("read unresolved intent")
+            .expect("intent remains durable")
+            .status,
+        crate::signed_intent::SignedIntentStatus::Queued
+    );
     Ok(())
 }
 
