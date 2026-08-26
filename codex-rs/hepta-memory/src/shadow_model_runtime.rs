@@ -86,6 +86,39 @@ impl ShadowRunFence {
         }
         validate_identifier(&self.fencing_token, "fencing token")
     }
+
+    /// Return a deterministic digest of the complete fence tuple.
+    ///
+    /// A fencing token by itself is not sufficient to identify the snapshot
+    /// that it protects: authority/owner epochs, generation, and the
+    /// observed expiry are part of the local qualification boundary too.
+    /// This digest is a pure value operation; it does not acquire, renew, or
+    /// otherwise mutate a lease.
+    pub fn digest(&self) -> Result<Sha256Digest, ShadowModelRuntimeError> {
+        self.validate()?;
+        let payload = ShadowRunFenceDigest {
+            authority_epoch: self.authority_epoch,
+            owner_epoch: self.owner_epoch,
+            generation: self.generation,
+            fencing_token: &self.fencing_token,
+            lease_expires_at: self.lease_expires_at,
+        };
+        let bytes = serde_json::to_vec(&payload)
+            .map_err(|error| ShadowModelRuntimeError::Serialization(error.to_string()))?;
+        let mut hasher = Sha256::new();
+        frame_part(&mut hasher, b"hepta:shadow-run-fence:v1");
+        frame_part(&mut hasher, &bytes);
+        Ok(Sha256Digest::from_sha256_output(hasher.finalize()))
+    }
+}
+
+#[derive(Serialize)]
+struct ShadowRunFenceDigest<'a> {
+    authority_epoch: u64,
+    owner_epoch: u64,
+    generation: u64,
+    fencing_token: &'a str,
+    lease_expires_at: u64,
 }
 
 /// Bounded resource values carried by a snapshot.  These are budgets, not
@@ -385,6 +418,9 @@ impl ShadowModelRuntimeBinding {
         if self.model_receipt.graph_digest != self.snapshot.graph_digest {
             return Err(ShadowModelRuntimeError::BindingMismatch("graph digest"));
         }
+        if self.model_receipt.input_digest != self.snapshot.input_digest {
+            return Err(ShadowModelRuntimeError::BindingMismatch("input digest"));
+        }
         if self.model_receipt.policy_digest != self.snapshot.policy_digest {
             return Err(ShadowModelRuntimeError::BindingMismatch("policy digest"));
         }
@@ -395,6 +431,9 @@ impl ShadowModelRuntimeBinding {
             return Err(ShadowModelRuntimeError::BindingMismatch(
                 "calibration digest",
             ));
+        }
+        if self.model_receipt.fence_sha256 != self.snapshot.fence.digest()? {
+            return Err(ShadowModelRuntimeError::BindingMismatch("fence digest"));
         }
         if self.binding_digest != self.compute_digest()? {
             return Err(ShadowModelRuntimeError::DigestMismatch("binding"));
@@ -508,14 +547,18 @@ mod tests {
         }
     }
 
-    fn model_receipt(snapshot: &RunStartSnapshot) -> ModelReceipt {
+    fn model_receipt_with(
+        snapshot: &RunStartSnapshot,
+        input_digest: Sha256Digest,
+        fence_sha256: Sha256Digest,
+    ) -> ModelReceipt {
         ModelReceipt::qualification(
             "attempt-1",
             1,
             None,
             None,
             crate::ModelReceiptBindings {
-                input_digest: snapshot.input_digest.clone(),
+                input_digest,
                 output_digest: digest("output"),
                 artifact_sha256: snapshot.artifact_manifest_digest.clone(),
                 model_sha256: snapshot.model_digest.clone(),
@@ -525,10 +568,18 @@ mod tests {
                 evidence_digest: digest("evidence"),
                 snapshot_digest: snapshot.snapshot_digest.clone(),
                 causal_parent_sha256: None,
-                fence_sha256: digest("fence-digest"),
+                fence_sha256,
             },
         )
         .expect("model receipt")
+    }
+
+    fn model_receipt(snapshot: &RunStartSnapshot) -> ModelReceipt {
+        model_receipt_with(
+            snapshot,
+            snapshot.input_digest.clone(),
+            snapshot.fence.digest().expect("fence digest"),
+        )
     }
 
     #[test]
@@ -590,6 +641,51 @@ mod tests {
                 ModelReceiptError::DigestMismatch("receipt")
             ))
         );
+    }
+
+    #[test]
+    fn model_receipt_input_and_fence_are_exactly_bound() {
+        let snapshot =
+            RunStartSnapshot::qualification(snapshot_input("exact-binding")).expect("snapshot");
+
+        let input_tampered = model_receipt_with(
+            &snapshot,
+            digest("other-input"),
+            snapshot.fence.digest().expect("fence digest"),
+        );
+        assert_eq!(
+            ShadowModelRuntimeBinding::bind(snapshot.clone(), input_tampered),
+            Err(ShadowModelRuntimeError::BindingMismatch("input digest"))
+        );
+
+        let fence_tampered = model_receipt_with(
+            &snapshot,
+            snapshot.input_digest.clone(),
+            digest("other-fence"),
+        );
+        assert_eq!(
+            ShadowModelRuntimeBinding::bind(snapshot, fence_tampered),
+            Err(ShadowModelRuntimeError::BindingMismatch("fence digest"))
+        );
+    }
+
+    #[test]
+    fn fence_digest_changes_with_each_identity_field() {
+        let original = fence();
+        let original_digest = original.digest().expect("digest");
+
+        for (authority_epoch, owner_epoch, generation, token, expiry) in [
+            (4, 4, 5, "fence-5", 9_999),
+            (3, 5, 5, "fence-5", 9_999),
+            (3, 4, 6, "fence-5", 9_999),
+            (3, 4, 5, "fence-6", 9_999),
+            (3, 4, 5, "fence-5", 10_000),
+        ] {
+            let changed =
+                ShadowRunFence::new(authority_epoch, owner_epoch, generation, token, expiry)
+                    .expect("changed fence");
+            assert_ne!(changed.digest().expect("changed digest"), original_digest);
+        }
     }
 
     #[test]
