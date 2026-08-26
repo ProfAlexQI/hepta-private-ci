@@ -360,14 +360,14 @@ pub enum SchedulerError {
     UsageOverrun,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct Pending {
     request: SchedulerRequest,
     sequence: u64,
     wait_quanta: u64,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct Active {
     permit: SchedulerPermit,
     reserved: QuotaVector,
@@ -375,7 +375,7 @@ struct Active {
 
 /// Deterministic in-memory B4 scheduler.  It is intentionally private to the
 /// test build and has no async/runtime dependency.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LocalScheduler {
     resource: SchedulerResource,
     revision: u64,
@@ -416,6 +416,24 @@ impl LocalScheduler {
             stale_rejections: 0,
             expired_rejections: 0,
         })
+    }
+
+    /// Run one local state transition as a transaction.  The inner methods
+    /// still preflight their arithmetic, while this snapshot guard also
+    /// covers expiry/selection bookkeeping that may have happened before an
+    /// unexpected error.  It is intentionally viable here because the seam
+    /// is an in-memory test reference model, not a production persistence
+    /// implementation.
+    fn transactional<T>(
+        &mut self,
+        operation: impl FnOnce(&mut Self) -> Result<T, SchedulerError>,
+    ) -> Result<T, SchedulerError> {
+        let before = self.clone();
+        let result = operation(self);
+        if result.is_err() {
+            *self = before;
+        }
+        result
     }
 
     pub fn resource(&self) -> &SchedulerResource {
@@ -459,6 +477,10 @@ impl LocalScheduler {
     }
 
     pub fn enqueue(&mut self, request: SchedulerRequest) -> Result<(), SchedulerError> {
+        self.transactional(|scheduler| scheduler.enqueue_inner(request))
+    }
+
+    fn enqueue_inner(&mut self, request: SchedulerRequest) -> Result<(), SchedulerError> {
         request.validate(&self.resource, self.revision)?;
         if self.resource.state != ResourceState::Available {
             return Err(SchedulerError::ResourceUnavailable);
@@ -488,6 +510,14 @@ impl LocalScheduler {
         let subject_key = request.subject_key();
         let next_sequence = self
             .next_sequence
+            .checked_add(1)
+            .ok_or(SchedulerError::InvalidRequest)?;
+        // Compute every fallible counter before mutating the seen-key sets or
+        // queue.  An exhausted revision must reject atomically as well; a
+        // caller can retry after rebinding rather than observing a half
+        // enqueued request.
+        let next_revision = self
+            .revision
             .checked_add(1)
             .ok_or(SchedulerError::InvalidRequest)?;
         self.seen_requests.insert(request.request_id.clone());
@@ -522,16 +552,17 @@ impl LocalScheduler {
         } else {
             queue.push_back(pending);
         }
-        self.revision = self
-            .revision
-            .checked_add(1)
-            .ok_or(SchedulerError::InvalidRequest)?;
+        self.revision = next_revision;
         Ok(())
     }
 
     /// Grant at most one request.  The first eligible subject selected by
     /// weighted service debt wins; each subject's head is EDF ordered.
     pub fn grant_next(&mut self, now_ms: u64) -> Result<Option<SchedulerPermit>, SchedulerError> {
+        self.transactional(|scheduler| scheduler.grant_next_inner(now_ms))
+    }
+
+    fn grant_next_inner(&mut self, now_ms: u64) -> Result<Option<SchedulerPermit>, SchedulerError> {
         self.expire_pending(now_ms);
         if self.resource.state != ResourceState::Available {
             return Ok(None);
@@ -543,6 +574,48 @@ impl LocalScheduler {
             return Ok(None);
         };
         let subject_key = self.subject_order[index].clone();
+        // Inspect the head without removing it.  All fallible arithmetic is
+        // preflighted while the queue and accounting state are untouched;
+        // this is the reservation transaction's prepare phase.
+        let (estimate, safety_margin) = {
+            let queue = self
+                .queues
+                .get(&subject_key)
+                .ok_or(SchedulerError::InvalidRequest)?;
+            let pending = queue.front().ok_or(SchedulerError::InvalidRequest)?;
+            (pending.request.estimate, pending.request.safety_margin)
+        };
+        let Some(reserved) = estimate.checked_add(safety_margin) else {
+            return Err(SchedulerError::QuotaExceeded);
+        };
+        if !self
+            .resource
+            .quota
+            .can_hold(self.used, self.held, estimate, safety_margin)
+        {
+            return Ok(None);
+        }
+        let next_permit_nonce = self
+            .next_permit_nonce
+            .checked_add(1)
+            .ok_or(SchedulerError::InvalidRequest)?;
+        let next_held = self
+            .held
+            .checked_add(reserved)
+            .ok_or(SchedulerError::QuotaExceeded)?;
+        let current_grants = self
+            .grants_by_subject
+            .get(&subject_key)
+            .copied()
+            .unwrap_or_default();
+        let next_grants = current_grants
+            .checked_add(1)
+            .ok_or(SchedulerError::InvalidRequest)?;
+        let next_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(SchedulerError::InvalidRequest)?;
+
         let queue = self
             .queues
             .get_mut(&subject_key)
@@ -552,30 +625,9 @@ impl LocalScheduler {
             self.queues.remove(&subject_key);
         }
         let request = pending.request;
-        let Some(reserved) = request.estimate.checked_add(request.safety_margin) else {
-            return Err(SchedulerError::QuotaExceeded);
-        };
-        if !self.resource.quota.can_hold(
-            self.used,
-            self.held,
-            request.estimate,
-            request.safety_margin,
-        ) {
-            self.queues
-                .entry(subject_key)
-                .or_default()
-                .push_front(Pending {
-                    request,
-                    sequence: pending.sequence,
-                    wait_quanta: pending.wait_quanta,
-                });
-            return Ok(None);
-        }
+        debug_assert_eq!(request.estimate, estimate);
+        debug_assert_eq!(request.safety_margin, safety_margin);
         let permit_nonce = self.next_permit_nonce;
-        self.next_permit_nonce = self
-            .next_permit_nonce
-            .checked_add(1)
-            .ok_or(SchedulerError::InvalidRequest)?;
         let permit_id = format!(
             "permit:{}",
             Sha256Digest::for_bytes(
@@ -606,10 +658,8 @@ impl LocalScheduler {
             expires_at_ms: request.deadline_ms,
             authority: AUTHBUS_B4_AUTHORITY,
         };
-        self.held = self
-            .held
-            .checked_add(reserved)
-            .ok_or(SchedulerError::QuotaExceeded)?;
+        self.next_permit_nonce = next_permit_nonce;
+        self.held = next_held;
         self.active.insert(
             permit_id,
             Active {
@@ -617,18 +667,23 @@ impl LocalScheduler {
                 reserved,
             },
         );
-        *self.grants_by_subject.entry(subject_key).or_default() += 1;
+        self.grants_by_subject.insert(subject_key, next_grants);
         self.bump_wait_quanta(index);
-        self.revision = self
-            .revision
-            .checked_add(1)
-            .ok_or(SchedulerError::InvalidRequest)?;
+        self.revision = next_revision;
         Ok(Some(permit))
     }
 
     /// Complete a permit with an integer final quantity.  Unused estimated
     /// units (including safety margin) are released exactly once.
     pub fn complete(
+        &mut self,
+        permit: &SchedulerPermit,
+        actual: QuotaVector,
+    ) -> Result<(), SchedulerError> {
+        self.transactional(|scheduler| scheduler.complete_inner(permit, actual))
+    }
+
+    fn complete_inner(
         &mut self,
         permit: &SchedulerPermit,
         actual: QuotaVector,
@@ -648,35 +703,45 @@ impl LocalScheduler {
         {
             return Err(SchedulerError::UsageOverrun);
         }
-        let released = active
-            .reserved
+        let active_reserved = active.reserved;
+        let released = active_reserved
             .checked_sub(actual)
             .ok_or(SchedulerError::UsageOverrun)?;
-        self.held = self
+        // Prepare every fallible accounting update before changing `held`,
+        // `used`, or removing the active permit.  This keeps an exhausted
+        // usage/revision counter from producing a half-completed callback.
+        let next_held = self
             .held
-            .checked_sub(active.reserved)
+            .checked_sub(active_reserved)
             .ok_or(SchedulerError::InvalidRequest)?;
         // Concurrency is a simultaneous-operation hold, not cumulative
         // provider usage.  Keep it out of `used` so every completed call
         // returns that slot to availability.
         let mut accounted = actual;
         accounted.concurrency = 0;
-        self.used = self
+        let next_used = self
             .used
             .checked_add(accounted)
             .ok_or(SchedulerError::QuotaExceeded)?;
-        // Keep this explicit to make conservation auditable; `released` is
-        // the amount returned to availability and is not provider usage.
-        let _ = released;
-        self.active.remove(&permit.permit_id);
-        self.revision = self
+        let next_revision = self
             .revision
             .checked_add(1)
             .ok_or(SchedulerError::InvalidRequest)?;
+        // Keep this explicit to make conservation auditable; `released` is
+        // the amount returned to availability and is not provider usage.
+        let _ = released;
+        self.held = next_held;
+        self.used = next_used;
+        self.active.remove(&permit.permit_id);
+        self.revision = next_revision;
         Ok(())
     }
 
     pub fn release(&mut self, permit: &SchedulerPermit) -> Result<(), SchedulerError> {
+        self.transactional(|scheduler| scheduler.release_inner(permit))
+    }
+
+    fn release_inner(&mut self, permit: &SchedulerPermit) -> Result<(), SchedulerError> {
         let active = self
             .active
             .get(&permit.permit_id)
@@ -684,15 +749,18 @@ impl LocalScheduler {
         if active.permit != *permit || !permit.identity_matches(&self.resource) {
             return Err(SchedulerError::StaleFence);
         }
-        self.held = self
+        let active_reserved = active.reserved;
+        let next_held = self
             .held
-            .checked_sub(active.reserved)
+            .checked_sub(active_reserved)
             .ok_or(SchedulerError::InvalidRequest)?;
-        self.active.remove(&permit.permit_id);
-        self.revision = self
+        let next_revision = self
             .revision
             .checked_add(1)
             .ok_or(SchedulerError::InvalidRequest)?;
+        self.held = next_held;
+        self.active.remove(&permit.permit_id);
+        self.revision = next_revision;
         Ok(())
     }
 
@@ -722,14 +790,15 @@ impl LocalScheduler {
         if fencing_token_sha256 == self.resource.fencing_token_sha256 {
             return Err(SchedulerError::StaleFence);
         }
+        let next_revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(SchedulerError::InvalidRequest)?;
         self.resource.authority_epoch = authority_epoch;
         self.resource.owner_epoch = owner_epoch;
         self.resource.generation = generation;
         self.resource.fencing_token_sha256 = fencing_token_sha256;
-        self.revision = self
-            .revision
-            .checked_add(1)
-            .ok_or(SchedulerError::InvalidRequest)?;
+        self.revision = next_revision;
         Ok(())
     }
 
@@ -1091,6 +1160,155 @@ mod tests {
             scheduler.enqueue(denied),
             Err(SchedulerError::ResourceUnavailable)
         );
+    }
+
+    #[test]
+    fn b4_enqueue_counter_overflow_is_transactional() {
+        let mut revision_exhausted = LocalScheduler::new(resource(QuotaLimits::known(
+            QuotaVector::new(10, 10, 2, 10, 10),
+        )))
+        .expect("scheduler");
+        revision_exhausted.revision = u64::MAX;
+        let revision_request = request(&revision_exhausted, "revision-max", "a", 100);
+        let before_revision = revision_exhausted.clone();
+        assert_eq!(
+            revision_exhausted.enqueue(revision_request),
+            Err(SchedulerError::InvalidRequest)
+        );
+        assert_eq!(revision_exhausted, before_revision);
+
+        let mut sequence_exhausted = LocalScheduler::new(resource(QuotaLimits::known(
+            QuotaVector::new(10, 10, 2, 10, 10),
+        )))
+        .expect("scheduler");
+        sequence_exhausted.next_sequence = u64::MAX;
+        let sequence_request = request(&sequence_exhausted, "sequence-max", "a", 100);
+        let before_sequence = sequence_exhausted.clone();
+        assert_eq!(
+            sequence_exhausted.enqueue(sequence_request),
+            Err(SchedulerError::InvalidRequest)
+        );
+        assert_eq!(sequence_exhausted, before_sequence);
+    }
+
+    #[test]
+    fn b4_grant_counter_overflow_is_transactional() {
+        let mut nonce_exhausted = LocalScheduler::new(resource(QuotaLimits::known(
+            QuotaVector::new(10, 10, 2, 10, 10),
+        )))
+        .expect("scheduler");
+        nonce_exhausted
+            .enqueue(request(&nonce_exhausted, "nonce-max", "a", 100))
+            .expect("enqueue");
+        nonce_exhausted.next_permit_nonce = u64::MAX;
+        let before_nonce = nonce_exhausted.clone();
+        assert_eq!(
+            nonce_exhausted.grant_next(2),
+            Err(SchedulerError::InvalidRequest)
+        );
+        assert_eq!(nonce_exhausted, before_nonce);
+
+        let mut revision_exhausted = LocalScheduler::new(resource(QuotaLimits::known(
+            QuotaVector::new(10, 10, 2, 10, 10),
+        )))
+        .expect("scheduler");
+        revision_exhausted
+            .enqueue(request(&revision_exhausted, "grant-revision-max", "a", 100))
+            .expect("enqueue");
+        revision_exhausted.revision = u64::MAX;
+        let before_revision = revision_exhausted.clone();
+        assert_eq!(
+            revision_exhausted.grant_next(2),
+            Err(SchedulerError::InvalidRequest)
+        );
+        assert_eq!(revision_exhausted, before_revision);
+
+        let mut grants_exhausted = LocalScheduler::new(resource(QuotaLimits::known(
+            QuotaVector::new(10, 10, 2, 10, 10),
+        )))
+        .expect("scheduler");
+        let grant_request = request(&grants_exhausted, "grant-count-max", "a", 100);
+        let subject_key = grant_request.subject_key();
+        grants_exhausted.enqueue(grant_request).expect("enqueue");
+        grants_exhausted
+            .grants_by_subject
+            .insert(subject_key, u64::MAX);
+        let before_grants = grants_exhausted.clone();
+        assert_eq!(
+            grants_exhausted.grant_next(2),
+            Err(SchedulerError::InvalidRequest)
+        );
+        assert_eq!(grants_exhausted, before_grants);
+    }
+
+    #[test]
+    fn b4_completion_and_release_overflow_are_transactional() {
+        let mut usage_exhausted = LocalScheduler::new(resource(QuotaLimits::known(
+            QuotaVector::new(10, 10, 2, 10, 10),
+        )))
+        .expect("scheduler");
+        usage_exhausted
+            .enqueue(request(&usage_exhausted, "usage-max", "a", 100))
+            .expect("enqueue");
+        let usage_permit = usage_exhausted
+            .grant_next(2)
+            .expect("tick")
+            .expect("permit");
+        usage_exhausted.used.rpm = u64::MAX;
+        let before_usage = usage_exhausted.clone();
+        assert_eq!(
+            usage_exhausted.complete(&usage_permit, QuotaVector::new(1, 0, 0, 0, 0),),
+            Err(SchedulerError::QuotaExceeded)
+        );
+        assert_eq!(usage_exhausted, before_usage);
+
+        let mut completion_revision_exhausted = LocalScheduler::new(resource(QuotaLimits::known(
+            QuotaVector::new(10, 10, 2, 10, 10),
+        )))
+        .expect("scheduler");
+        completion_revision_exhausted
+            .enqueue(request(
+                &completion_revision_exhausted,
+                "completion-revision-max",
+                "a",
+                100,
+            ))
+            .expect("enqueue");
+        let completion_permit = completion_revision_exhausted
+            .grant_next(2)
+            .expect("tick")
+            .expect("permit");
+        completion_revision_exhausted.revision = u64::MAX;
+        let before_completion_revision = completion_revision_exhausted.clone();
+        assert_eq!(
+            completion_revision_exhausted.complete(&completion_permit, QuotaVector::default()),
+            Err(SchedulerError::InvalidRequest)
+        );
+        assert_eq!(completion_revision_exhausted, before_completion_revision);
+
+        let mut release_revision_exhausted = LocalScheduler::new(resource(QuotaLimits::known(
+            QuotaVector::new(10, 10, 2, 10, 10),
+        )))
+        .expect("scheduler");
+        release_revision_exhausted
+            .enqueue(request(
+                &release_revision_exhausted,
+                "release-revision-max",
+                "a",
+                100,
+            ))
+            .expect("enqueue");
+        let release_permit = release_revision_exhausted
+            .grant_next(2)
+            .expect("tick")
+            .expect("permit");
+        release_revision_exhausted.revision = u64::MAX;
+        let before_release_revision = release_revision_exhausted.clone();
+        assert_eq!(
+            release_revision_exhausted.release(&release_permit),
+            Err(SchedulerError::InvalidRequest)
+        );
+        assert_eq!(release_revision_exhausted, before_release_revision);
     }
 
     #[test]
