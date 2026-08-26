@@ -16,6 +16,9 @@ use sha2::Sha256;
 
 use crate::Sha256Digest;
 
+#[path = "authbus_b2.rs"]
+pub mod b2;
+
 /// Stable schema number for the first Hepta-owned AuthBus contract family.
 pub const AUTHBUS_CONTRACT_SCHEMA_VERSION: u32 = 1;
 /// Versioned namespace reserved for Hepta-owned AuthBus messages.
