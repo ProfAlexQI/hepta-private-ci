@@ -1589,7 +1589,10 @@ mod tests {
             journal.record_ack(late),
             Err(ProviderEffectBindingError::AckConflict)
         );
-        assert_eq!(journal.state(&key), Some(ProviderEffectState::Indeterminate));
+        assert_eq!(
+            journal.state(&key),
+            Some(ProviderEffectState::Indeterminate)
+        );
     }
 
     #[test]
@@ -1929,7 +1932,10 @@ mod tests {
                 .load(std::sync::atomic::Ordering::Relaxed),
             1
         );
-        assert_eq!(coordinator.reconcile(&key).await, Ok(ProviderEffectState::Completed));
+        assert_eq!(
+            coordinator.reconcile(&key).await,
+            Ok(ProviderEffectState::Completed)
+        );
         assert_eq!(
             coordinator
                 .adapter()
@@ -1954,7 +1960,10 @@ mod tests {
             .expect("local ACK can be recorded");
         assert_eq!(receipt.state, ProviderEffectState::Completed);
         // A terminal local state is not reopened by an unsupported adapter.
-        assert_eq!(coordinator.reconcile(&key).await, Ok(ProviderEffectState::Completed));
+        assert_eq!(
+            coordinator.reconcile(&key).await,
+            Ok(ProviderEffectState::Completed)
+        );
         assert_eq!(
             coordinator
                 .adapter()
@@ -2005,6 +2014,55 @@ mod tests {
         assert_eq!(
             coordinator.journal().state(&key),
             Some(ProviderEffectState::Indeterminate)
+        );
+    }
+
+    #[tokio::test]
+    async fn payload_coordinator_rejects_mismatch_before_adapter_call() {
+        let intent = intent(b"payload-a");
+        let mut coordinator = ProviderEffectCoordinator::new(ScriptedAdapter::default());
+        assert_eq!(
+            coordinator
+                .dispatch_once_with_payload(intent, b"payload-b")
+                .await,
+            Err(ProviderEffectCoordinatorError::Binding(
+                ProviderEffectBindingError::PayloadMismatch
+            ))
+        );
+        assert_eq!(
+            coordinator
+                .adapter()
+                .dispatches
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn payload_coordinator_marks_explicit_not_dispatched_without_physical_attempt() {
+        let intent = intent(b"payload-a");
+        let mut coordinator = ProviderEffectCoordinator::new(ScriptedAdapter {
+            dispatch_result: Some(ProviderEffectDispatch::NotDispatched {
+                reason_code: "provider_effect_capability_unsupported".to_string(),
+            }),
+            ..Default::default()
+        });
+        assert_eq!(
+            coordinator
+                .dispatch_once_with_payload(intent, b"payload-a")
+                .await
+                .expect("quarantine receipt"),
+            ProviderEffectDispatchReceipt {
+                state: ProviderEffectState::Indeterminate,
+                physical_dispatch_attempted: false,
+            }
+        );
+        assert_eq!(
+            coordinator
+                .adapter()
+                .dispatches
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
         );
     }
 }
