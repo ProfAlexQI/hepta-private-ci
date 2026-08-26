@@ -781,12 +781,7 @@ impl AutomationStore {
             .map_err(|_| TaskFlowError::Corrupt("definition digest column".to_string()))?;
         let definition: TaskFlowDefinition = serde_json::from_str(&json)
             .map_err(|_| TaskFlowError::Corrupt("definition JSON is invalid".to_string()))?;
-        definition.validate()?;
-        if definition.definition_digest.as_str() != stored_digest {
-            return Err(TaskFlowError::Corrupt(
-                "definition row digest mismatch".to_string(),
-            ));
-        }
+        verify_persisted_definition(&definition, &stored_digest)?;
         Ok(Some(definition))
     }
 
@@ -814,7 +809,7 @@ impl AutomationStore {
             .await
             .map_err(|_| TaskFlowError::Unavailable)?;
         let definition_row = sqlx::query(
-            "SELECT definition_json FROM taskflow_definitions
+            "SELECT definition_json, definition_digest FROM taskflow_definitions
              WHERE owner_agent_id = ? AND workflow_id = ? AND version = ?
                AND definition_digest = ?",
         )
@@ -831,11 +826,14 @@ impl AutomationStore {
         let definition_json: String = definition_row
             .try_get("definition_json")
             .map_err(|_| TaskFlowError::Corrupt("definition json column".to_string()))?;
+        let stored_definition_digest: String = definition_row
+            .try_get("definition_digest")
+            .map_err(|_| TaskFlowError::Corrupt("definition digest column".to_string()))?;
         let definition: TaskFlowDefinition =
             serde_json::from_str(&definition_json).map_err(|_| {
                 TaskFlowError::Corrupt("registered definition JSON is invalid".to_string())
             })?;
-        definition.validate()?;
+        verify_persisted_definition(&definition, &stored_definition_digest)?;
         let existing =
             sqlx::query("SELECT * FROM taskflow_runs WHERE owner_agent_id = ? AND run_id = ?")
                 .bind(self.taskflow_owner_agent_id().as_str())
@@ -1797,12 +1795,7 @@ pub(crate) async fn load_taskflow_definition_tx(
         .map_err(|_| TaskFlowError::Corrupt("definition digest column".to_string()))?;
     let definition: TaskFlowDefinition = serde_json::from_str(&json)
         .map_err(|_| TaskFlowError::Corrupt("definition JSON is invalid".to_string()))?;
-    definition.validate()?;
-    if definition.definition_digest.as_str() != stored_digest {
-        return Err(TaskFlowError::Corrupt(
-            "definition row digest mismatch".to_string(),
-        ));
-    }
+    verify_persisted_definition(&definition, &stored_digest)?;
     Ok(Some(definition))
 }
 
@@ -2118,6 +2111,7 @@ pub(crate) async fn verify_taskflow_store(
         {
             return Err(corrupt("TaskFlow definition row key or digest mismatch"));
         }
+        verify_persisted_definition(&definition, stored_digest.as_str())?;
         definitions.insert((workflow_id, version), stored_digest);
     }
 
@@ -2162,6 +2156,30 @@ fn validate_digest(digest: &Sha256Digest, label: &str) -> Result<(), TaskFlowErr
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
         return Err(invalid(format!("{label} must be lowercase sha256")));
+    }
+    Ok(())
+}
+
+/// Validate a definition loaded from durable storage against its canonical
+/// digest.  `TaskFlowDefinition::validate` intentionally accepts the
+/// construction-time sentinel so `new` can compute a digest; that sentinel
+/// must never be accepted as a persisted definition.  Checking only that the
+/// JSON field equals the database column would otherwise allow a damaged row
+/// whose two copies were changed to the same sentinel (or another
+/// self-consistent, non-canonical value) to pass reopen and mutation paths.
+fn verify_persisted_definition(
+    definition: &TaskFlowDefinition,
+    stored_digest: &str,
+) -> Result<(), TaskFlowError> {
+    definition.validate()?;
+    let canonical_digest = definition.compute_digest()?;
+    if definition.definition_digest != canonical_digest {
+        return Err(corrupt(
+            "persisted TaskFlow definition digest is not canonical",
+        ));
+    }
+    if stored_digest != canonical_digest.as_str() {
+        return Err(corrupt("definition row digest mismatch"));
     }
     Ok(())
 }

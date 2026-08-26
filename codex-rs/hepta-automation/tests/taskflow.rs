@@ -733,6 +733,52 @@ async fn automation_opener_rejects_foreign_taskflow_rows() {
 }
 
 #[tokio::test]
+async fn automation_opener_rejects_uncomputed_persisted_definition_digest() {
+    let fixture = Fixture::new();
+    let store = open_store(&fixture).await;
+    let owner = fence("owner-a", 1);
+    let definition = definition(1);
+    store
+        .register_taskflow_definition(&definition, &owner, 10)
+        .await
+        .expect("register definition");
+
+    // The constructor uses an all-zero sentinel before it computes the
+    // canonical digest.  Model a damaged database in which both durable
+    // copies were changed to that sentinel.  A field-to-column equality check
+    // alone would accept this row during reopen; persisted definitions must
+    // always be re-derived from their canonical bytes.
+    let mut tampered = serde_json::to_value(&definition).expect("definition value");
+    tampered["definition_digest"] = serde_json::Value::String("0".repeat(64));
+    let tampered_json = serde_json::to_string(&tampered).expect("tampered definition JSON");
+    let pool = inspection_pool(&fixture, &store).await;
+    sqlx::query("DROP TRIGGER taskflow_definitions_no_update")
+        .execute(&pool)
+        .await
+        .expect("drop definition immutability trigger");
+    sqlx::query(
+        "UPDATE taskflow_definitions
+         SET definition_json = ?, definition_digest = ?
+         WHERE owner_agent_id = ? AND workflow_id = ? AND version = ?",
+    )
+    .bind(tampered_json)
+    .bind("0".repeat(64))
+    .bind(AGENT_ID)
+    .bind(&definition.workflow_id)
+    .bind(i64::from(definition.version))
+    .execute(&pool)
+    .await
+    .expect("tamper persisted definition digest");
+    pool.close().await;
+    store.close().await;
+
+    assert!(matches!(
+        AutomationStore::open(&fixture.layout).await,
+        Err(AutomationError::Corrupt)
+    ));
+}
+
+#[tokio::test]
 async fn automation_opener_rejects_tampered_taskflow_event_history() {
     let fixture = Fixture::new();
     let store = open_store(&fixture).await;
