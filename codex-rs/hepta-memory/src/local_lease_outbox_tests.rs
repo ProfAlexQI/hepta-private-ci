@@ -1149,6 +1149,97 @@ async fn indeterminate_replay_is_status_aware_and_releases_without_dispatch() {
 }
 
 #[tokio::test]
+async fn replay_finalization_keeps_lease_active_when_another_occurrence_is_unresolved() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 113).await;
+    let first = acquired(
+        store
+            .acquire_local_lease("lease:replay-multiple", 1, "fence:1")
+            .await
+            .expect("acquire"),
+    );
+    let LocalAdmission::Queued(_) = first
+        .admit("occurrence:replay-indeterminate", "topic", "payload-a")
+        .await
+        .expect("first admission")
+    else {
+        panic!("first occurrence must append");
+    };
+    let LocalAdmission::Queued(_) = first
+        .admit("occurrence:replay-queued", "topic", "payload-b")
+        .await
+        .expect("second admission")
+    else {
+        panic!("second occurrence must append");
+    };
+    first
+        .mark_indeterminate(
+            "occurrence:replay-indeterminate",
+            "target-may-have-committed",
+        )
+        .await
+        .expect("mark indeterminate");
+    drop(first);
+
+    let replay = acquired(
+        store
+            .acquire_local_lease("lease:replay-multiple", 1, "fence:1")
+            .await
+            .expect("replay acquire"),
+    );
+    let error = replay
+        .finalize_replayed_occurrence("occurrence:replay-indeterminate")
+        .await
+        .expect_err("a second unresolved occurrence must block lease release");
+    assert!(matches!(
+        error,
+        LocalLeaseOutboxError::IllegalTransition(ref message)
+            if message.contains("occurrence:replay-queued")
+    ));
+    assert_eq!(
+        replay
+            .status("occurrence:replay-indeterminate")
+            .await
+            .expect("indeterminate status"),
+        LocalOutcomeState::Indeterminate
+    );
+    assert_eq!(
+        replay
+            .status("occurrence:replay-queued")
+            .await
+            .expect("queued status"),
+        LocalOutcomeState::Queued
+    );
+
+    // Once the other occurrence is explicitly settled, the original
+    // indeterminate replay may close the lease as before.
+    replay
+        .rollback_occurrence("occurrence:replay-queued", "operator-revoked")
+        .await
+        .expect("settle second occurrence");
+    let finalized = replay
+        .finalize_replayed_occurrence("occurrence:replay-indeterminate")
+        .await
+        .expect("finalize after all other occurrences settle");
+    let LocalReplayFinalization::Released {
+        outcome,
+        external_effect,
+        ..
+    } = finalized
+    else {
+        panic!("indeterminate occurrence must release after peer settles");
+    };
+    assert_eq!(outcome, LocalOutcomeState::Indeterminate);
+    assert!(!external_effect);
+    assert!(
+        store
+            .acquire_local_lease("lease:replay-multiple", 1, "fence:1")
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
 async fn queued_replay_returns_original_receipt_and_keeps_lease_active() {
     let temp = TempDir::new().expect("temp dir");
     let store = opened_store(&temp, 111).await;

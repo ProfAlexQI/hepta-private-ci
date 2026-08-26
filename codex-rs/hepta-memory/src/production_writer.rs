@@ -1182,6 +1182,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn recovery_does_not_release_production_lease_with_peer_pending() {
+        let temp = TempDir::new().unwrap();
+        let store = store(&temp).await;
+        let owner = store.owner_agent_id().clone();
+        let auth = authority(owner);
+        let writer = ProductionDurableWriter::open(
+            store,
+            auth,
+            &AllowVerifier,
+            "production:h4:recovery-peer",
+            1,
+        )
+        .await
+        .unwrap();
+        writer
+            .admit(
+                "occurrence:recovery-indeterminate",
+                "memory.write",
+                "payload-a",
+            )
+            .await
+            .unwrap();
+        writer
+            .admit("occurrence:recovery-queued", "memory.write", "payload-b")
+            .await
+            .unwrap();
+        writer
+            .mark_indeterminate(
+                "occurrence:recovery-indeterminate",
+                "target-may-have-committed",
+            )
+            .await
+            .unwrap();
+
+        let error = writer
+            .recover("occurrence:recovery-indeterminate")
+            .await
+            .expect_err("peer queued intent must block replay release");
+        assert!(matches!(
+            error,
+            ProductionWriterError::Local(LocalLeaseOutboxError::IllegalTransition(ref message))
+                if message.contains("occurrence:recovery-queued")
+        ));
+        assert_eq!(
+            writer.status("occurrence:recovery-queued").await.unwrap(),
+            LocalOutcomeState::Queued
+        );
+
+        writer
+            .rollback_occurrence("occurrence:recovery-queued", "operator-revoked")
+            .await
+            .unwrap();
+        let recovery = writer
+            .recover("occurrence:recovery-indeterminate")
+            .await
+            .unwrap();
+        assert_eq!(recovery.state, "released_indeterminate");
+        assert!(!recovery.external_effect);
+    }
+
+    #[tokio::test]
     async fn forged_queue_receipt_cannot_substitute_provider_payload_or_topic() {
         let temp = TempDir::new().unwrap();
         let store = store(&temp).await;

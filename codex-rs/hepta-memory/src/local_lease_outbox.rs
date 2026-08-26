@@ -2058,8 +2058,12 @@ impl LocalLeaseOutbox {
     /// This closes the crash window between a durable outcome transition and
     /// lease release.  A queued occurrence returns its original receipt and
     /// leaves the lease active.  An indeterminate or terminal occurrence is
-    /// released atomically after full chain/fence verification.  The outbox
-    /// remains immutable local metadata and is never dispatched here.
+    /// released atomically after full chain/fence verification, but only when
+    /// every *other* occurrence in this generation is already settled.  The
+    /// latter guard is important for a replaying writer: releasing after one
+    /// occurrence was reconciled would otherwise strand a second queued or
+    /// indeterminate outbox row behind a terminal fence.  The outbox remains
+    /// immutable local metadata and is never dispatched here.
     pub async fn finalize_replayed_occurrence(
         &self,
         occurrence_key: impl Into<String>,
@@ -2119,6 +2123,18 @@ impl LocalLeaseOutbox {
                 .map_err(crate::cognitive_store::unavailable)?;
             return Ok(LocalReplayFinalization::Queued(queued));
         }
+        // Recovery of one occurrence must not close the lease while another
+        // current-generation occurrence still needs dispatch or
+        // reconciliation.  Keep this check in the same transaction as the
+        // terminal append so a concurrent outcome transition cannot race the
+        // decision.  The occurrence being finalized is deliberately excluded
+        // because its non-queued state is the reason this replay can settle.
+        ensure_no_unresolved_outcomes_except(
+            &events,
+            self.generation,
+            &self.fencing_token,
+            Some(&occurrence_key),
+        )?;
         self.verify_bound_compact_journals(&mut transaction).await?;
         let binding = self.binding();
         let released = append_lease(
@@ -3043,6 +3059,19 @@ fn ensure_no_unresolved_outcomes(
     generation: u64,
     fencing_token: &str,
 ) -> Result<(), LocalLeaseOutboxError> {
+    ensure_no_unresolved_outcomes_except(events, generation, fencing_token, None)
+}
+
+/// Variant of [`ensure_no_unresolved_outcomes`] used while finalizing one
+/// replayed occurrence.  The requested occurrence is already known to be
+/// non-queued by the caller, so it may be excluded from the unresolved set;
+/// every other occurrence must still be terminal before the lease can close.
+fn ensure_no_unresolved_outcomes_except(
+    events: &[EventRow],
+    generation: u64,
+    fencing_token: &str,
+    excluded_occurrence: Option<&str>,
+) -> Result<(), LocalLeaseOutboxError> {
     let mut states = BTreeMap::new();
     let mut seen_kinds = BTreeSet::new();
     for event in events {
@@ -3065,8 +3094,14 @@ fn ensure_no_unresolved_outcomes(
     let unresolved = states
         .iter()
         .filter_map(|(occurrence_key, state)| {
-            matches!(state, LocalOutcomeState::Queued | LocalOutcomeState::Indeterminate)
-                .then_some(occurrence_key.as_str())
+            if excluded_occurrence.map_or(false, |excluded| excluded == occurrence_key) {
+                return None;
+            }
+            matches!(
+                state,
+                LocalOutcomeState::Queued | LocalOutcomeState::Indeterminate
+            )
+            .then_some(occurrence_key.as_str())
         })
         .collect::<Vec<_>>();
     if unresolved.is_empty() {
