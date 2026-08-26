@@ -27,6 +27,8 @@ use crate::MemoryCandidateDraft;
 use crate::MemoryCandidateOrigin;
 use crate::MemoryLifecycleState;
 use crate::MemoryRevisionRecord;
+use crate::SourceEventId;
+use crate::SourceRevisionId;
 use crate::StableMemoryId;
 
 pub const LOCAL_MEMORY_ADMISSION_SAGA_SCHEMA_VERSION: u32 = 1;
@@ -113,6 +115,26 @@ struct TombstoneCommand<'a> {
     reason_sha256: Sha256Digest,
     valid_from_unix_seconds: i64,
     origin: MemoryCandidateOrigin,
+    source_scope: &'a CognitiveScope,
+    source_observed_at_unix_seconds: i64,
+}
+
+/// Stable key for one logical tombstone attempt.  The immutable outbox
+/// payload carries the complete source binding, but source bytes/scope/time
+/// are deliberately excluded from this key so a retry with changed input hits
+/// the original occurrence and is rejected by `admit`'s payload CAS instead
+/// of silently creating a second queued command.
+#[derive(Serialize)]
+struct TombstoneOccurrence<'a> {
+    schema_version: u32,
+    kind: &'static str,
+    memory_id: &'a str,
+    expected_revision: u64,
+    reason_sha256: Sha256Digest,
+    valid_from_unix_seconds: i64,
+    origin: MemoryCandidateOrigin,
+    source_event_key: &'a str,
+    source_kind: crate::LedgerSourceKind,
 }
 
 #[derive(Clone)]
@@ -249,19 +271,31 @@ impl LocalLeaseOutbox {
                 LocalOutcomeState::Queued => {}
                 _ => {
                     return self
-                        .replay_tombstone(access, identity, state, memory_id, reason)
+                        .replay_tombstone(
+                            access,
+                            identity,
+                            state,
+                            memory_id,
+                            expected_revision,
+                            source,
+                            valid_from_unix_seconds,
+                            reason,
+                        )
                         .await;
                 }
             }
-        } else {
-            let _queued = self
-                .admit(
-                    identity.occurrence_key.clone(),
-                    TOMBSTONE_TOPIC,
-                    identity.payload_json.clone(),
-                )
-                .await?;
         }
+        // Re-run admission even when the occurrence was already queued.  The
+        // append-only writer validates the immutable payload/topic/fence on a
+        // replay; skipping it would let a caller mutate source binding inputs
+        // between reopen and target dispatch.
+        let _queued = self
+            .admit(
+                identity.occurrence_key.clone(),
+                TOMBSTONE_TOPIC,
+                identity.payload_json.clone(),
+            )
+            .await?;
         match self
             .store()
             .tombstone_memory_candidate(
@@ -299,7 +333,14 @@ impl LocalLeaseOutbox {
             }
             Err(error) => {
                 if let Some(current) = self
-                    .tombstoned_candidate(access, memory_id, &reason)
+                    .tombstoned_candidate(
+                        access,
+                        memory_id,
+                        expected_revision,
+                        source,
+                        valid_from_unix_seconds,
+                        &reason,
+                    )
                     .await?
                 {
                     return self
@@ -405,12 +446,22 @@ impl LocalLeaseOutbox {
         identity: CommandIdentity,
         state: LocalOutcomeState,
         memory_id: &StableMemoryId,
+        expected_revision: u64,
+        source: &crate::SourceDraft,
+        valid_from_unix_seconds: i64,
         reason: String,
     ) -> Result<LocalMemoryAdmissionReceipt, LocalMemoryAdmissionError> {
         match state {
             LocalOutcomeState::Committed => {
                 let current = self
-                    .tombstoned_candidate(access, memory_id, &reason)
+                    .tombstoned_candidate(
+                        access,
+                        memory_id,
+                        expected_revision,
+                        source,
+                        valid_from_unix_seconds,
+                        &reason,
+                    )
                     .await?
                     .ok_or_else(|| {
                         LocalMemoryAdmissionError::Invalid(
@@ -525,8 +576,35 @@ impl LocalLeaseOutbox {
             && current.content == draft.content
             && current.verification == crate::MemoryVerification::Provisional
             && current.lifecycle == MemoryLifecycleState::Active
+            && current.valid_from_unix_seconds == draft.observed_at_unix_seconds
         {
-            Ok(Some(current))
+            // A stable key is only the memory identity.  It is not sufficient
+            // to prove that a retry refers to the same source observation:
+            // two attempts may intentionally reuse a key while carrying a
+            // different event, timestamp, or payload.  Adopting the existing
+            // head in that case would mint a second Applied local outcome for
+            // a command whose target write was rejected.  Require the exact
+            // immutable citation and its full source bytes before treating a
+            // target-side conflict as an idempotent replay.
+            let expected = SourceRevisionId::new(SourceEventId::for_event(
+                self.store().owner_agent_id(),
+                &draft.scope,
+                draft.origin.source_kind(),
+                &draft.source_event_key,
+            ));
+            if current.citations.len() != 1 || current.citations[0] != expected {
+                return Ok(None);
+            }
+            let citation = self.store().read_citation(access, &expected).await?;
+            if citation.scope == draft.scope
+                && citation.kind == draft.origin.source_kind()
+                && citation.content == draft.content.as_bytes()
+                && citation.observed_at_unix_seconds == draft.observed_at_unix_seconds
+            {
+                Ok(Some(current))
+            } else {
+                Ok(None)
+            }
         } else {
             Ok(None)
         }
@@ -536,6 +614,9 @@ impl LocalLeaseOutbox {
         &self,
         access: &CognitiveAccess,
         memory_id: &StableMemoryId,
+        expected_revision: u64,
+        source: &crate::SourceDraft,
+        valid_from_unix_seconds: i64,
         reason: &str,
     ) -> Result<Option<MemoryRevisionRecord>, LocalMemoryAdmissionError> {
         let current = match self.store().latest_memory(access, memory_id).await {
@@ -546,9 +627,37 @@ impl LocalLeaseOutbox {
             Err(error) => return Err(error.into()),
         };
         if current.lifecycle
-            == (MemoryLifecycleState::Tombstoned {
+            != (MemoryLifecycleState::Tombstoned {
                 reason: reason.to_string(),
             })
+        {
+            return Ok(None);
+        }
+        if current.id.revision != expected_revision.saturating_add(1)
+            || current.valid_from_unix_seconds != valid_from_unix_seconds
+        {
+            return Ok(None);
+        }
+
+        // A tombstone's reason alone is not a sufficient replay witness.  The
+        // source citation is immutable and binds scope, source kind, event
+        // key, bytes, and observation time.  Without this check a different
+        // forget command could observe an already-tombstoned head and be
+        // incorrectly marked Applied after its own target write conflicted.
+        let expected = SourceRevisionId::new(SourceEventId::for_event(
+            self.store().owner_agent_id(),
+            &source.scope,
+            source.kind,
+            &source.event_key,
+        ));
+        if current.citations.len() != 1 || current.citations[0] != expected {
+            return Ok(None);
+        }
+        let citation = self.store().read_citation(access, &expected).await?;
+        if citation.scope == source.scope
+            && citation.kind == source.kind
+            && citation.content == source.content
+            && citation.observed_at_unix_seconds == source.observed_at_unix_seconds
         {
             Ok(Some(current))
         } else {
@@ -680,6 +789,8 @@ fn tombstone_identity(
         reason_sha256: Sha256Digest::for_bytes(reason.as_bytes()),
         valid_from_unix_seconds,
         origin,
+        source_scope: &source.scope,
+        source_observed_at_unix_seconds: source.observed_at_unix_seconds,
     };
     let payload_json = serde_json::to_string(&json!({
         "schema_version": LOCAL_MEMORY_ADMISSION_SAGA_SCHEMA_VERSION,
@@ -693,7 +804,20 @@ fn tombstone_identity(
         "promotion": LOCAL_MEMORY_ADMISSION_SAGA_PROMOTION,
     }))
     .map_err(|error| LocalMemoryAdmissionError::Invalid(error.to_string()))?;
-    let digest = Sha256Digest::for_bytes(payload_json.as_bytes());
+    let occurrence = TombstoneOccurrence {
+        schema_version: LOCAL_MEMORY_ADMISSION_SAGA_SCHEMA_VERSION,
+        kind: "memory_candidate_tombstone",
+        memory_id: memory_id.as_str(),
+        expected_revision,
+        reason_sha256: Sha256Digest::for_bytes(reason.as_bytes()),
+        valid_from_unix_seconds,
+        origin,
+        source_event_key: &source.event_key,
+        source_kind: source.kind,
+    };
+    let occurrence_json = serde_json::to_string(&occurrence)
+        .map_err(|error| LocalMemoryAdmissionError::Invalid(error.to_string()))?;
+    let digest = Sha256Digest::for_bytes(occurrence_json.as_bytes());
     Ok(CommandIdentity {
         command_id: format!("memcmd:v1:{}", digest.as_str()),
         occurrence_key: format!("memtomb:v1:{}", digest.as_str()),
@@ -840,6 +964,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stable_key_conflict_with_different_source_is_rejected_not_adopted() {
+        let (_temp, store, lease) = setup(216).await;
+        let owner = store.owner_agent_id().clone();
+        let access = CognitiveAccess::agent_private(owner);
+        let first = lease
+            .admit_memory_candidate_saga(&access, &draft())
+            .await
+            .expect("first candidate");
+        assert_eq!(first.state, LocalMemoryAdmissionState::Applied);
+
+        // Reusing a stable key is a target-side conflict, but changing the
+        // source event makes this a different command.  The existing head
+        // must not be adopted as if the second source had been written.
+        let mut conflicting = draft();
+        conflicting.source_event_key = "turn:event:different-source".to_string();
+        conflicting.observed_at_unix_seconds = 101;
+        let second = lease
+            .admit_memory_candidate_saga(&access, &conflicting)
+            .await
+            .expect("conflicting candidate is explicitly rejected");
+        assert_eq!(second.state, LocalMemoryAdmissionState::Rejected);
+        assert!(second.rejection_reason.is_some());
+        assert_eq!(second.candidate_id, first.candidate_id);
+        assert_eq!(second.revision, None);
+
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM memory_revisions")
+            .fetch_one(&store.pool)
+            .await
+            .expect("memory count");
+        assert_eq!(count, 1, "a source conflict must not duplicate the target");
+        assert_eq!(
+            lease.snapshot_counts().await.expect("journal counts"),
+            crate::LocalLeaseOutboxCounts {
+                lease_rows: 1,
+                event_rows: 4,
+                outbox_rows: 2,
+            }
+        );
+    }
+
+    #[tokio::test]
     async fn tombstone_target_commit_recovery_after_reopen_is_idempotent() {
         let (temp, store, lease) = setup(215).await;
         let owner = store.owner_agent_id().clone();
@@ -951,6 +1116,95 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn queued_tombstone_replay_rejects_source_binding_drift() {
+        let (_temp, store, lease) = setup(218).await;
+        let owner = store.owner_agent_id().clone();
+        let access = CognitiveAccess::agent_private(owner);
+        let candidate = lease
+            .admit_memory_candidate_saga(&access, &draft())
+            .await
+            .expect("candidate");
+        let reason = "queued source binding must remain immutable".to_string();
+        let first_source = SourceDraft {
+            scope: CognitiveScope::AgentPrivate,
+            kind: LedgerSourceKind::ExplicitMemoryDirective,
+            event_key: "forget:event:queued-binding".to_string(),
+            content: reason.as_bytes().to_vec(),
+            observed_at_unix_seconds: 101,
+        };
+        let first_identity = tombstone_identity(
+            &candidate.candidate_id,
+            1,
+            MemoryCandidateOrigin::ModelProposal,
+            &first_source,
+            &reason,
+            101,
+        )
+        .expect("first identity");
+        lease
+            .admit(
+                first_identity.occurrence_key.clone(),
+                TOMBSTONE_TOPIC,
+                first_identity.payload_json.clone(),
+            )
+            .await
+            .expect("queue first tombstone");
+
+        // Keep the logical command identity while changing only the source
+        // observation time.  The payload CAS must reject this as an input
+        // mutation instead of allowing a queued command to write under a new
+        // source witness.
+        let changed_source = SourceDraft {
+            observed_at_unix_seconds: 102,
+            ..first_source.clone()
+        };
+        let changed_identity = tombstone_identity(
+            &candidate.candidate_id,
+            1,
+            MemoryCandidateOrigin::ModelProposal,
+            &changed_source,
+            &reason,
+            101,
+        )
+        .expect("changed identity");
+        assert_eq!(
+            changed_identity.occurrence_key, first_identity.occurrence_key,
+            "source observation drift must target the original occurrence"
+        );
+        assert_ne!(changed_identity.payload_json, first_identity.payload_json);
+
+        let result = lease
+            .tombstone_memory_candidate_saga(
+                &access,
+                &candidate.candidate_id,
+                1,
+                MemoryCandidateOrigin::ModelProposal,
+                &changed_source,
+                reason,
+                101,
+            )
+            .await;
+        assert!(matches!(
+            result,
+            Err(LocalMemoryAdmissionError::Lease(
+                crate::LocalLeaseOutboxError::CasConflict(_)
+            ))
+        ));
+        assert_eq!(
+            lease
+                .inspect_occurrence(first_identity.occurrence_key)
+                .await
+                .expect("queued state"),
+            Some(LocalOutcomeState::Queued)
+        );
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM memory_revisions")
+            .fetch_one(&store.pool)
+            .await
+            .expect("memory count");
+        assert_eq!(count, 1, "input drift must not write a tombstone");
+    }
+
+    #[tokio::test]
     async fn tombstone_saga_is_append_only_and_idempotent() {
         let (_temp, store, lease) = setup(213).await;
         let owner = store.owner_agent_id().clone();
@@ -998,5 +1252,78 @@ mod tests {
             .await
             .expect("memory count");
         assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn tombstone_conflict_with_different_source_is_rejected_not_adopted() {
+        let (_temp, store, lease) = setup(217).await;
+        let owner = store.owner_agent_id().clone();
+        let access = CognitiveAccess::agent_private(owner);
+        let candidate = lease
+            .admit_memory_candidate_saga(&access, &draft())
+            .await
+            .expect("candidate");
+        let reason = "privacy erasure with source binding".to_string();
+        let first_source = SourceDraft {
+            scope: CognitiveScope::AgentPrivate,
+            kind: LedgerSourceKind::ExplicitMemoryDirective,
+            event_key: "forget:event:first-source".to_string(),
+            content: reason.as_bytes().to_vec(),
+            observed_at_unix_seconds: 101,
+        };
+        let first = lease
+            .tombstone_memory_candidate_saga(
+                &access,
+                &candidate.candidate_id,
+                1,
+                MemoryCandidateOrigin::ModelProposal,
+                &first_source,
+                reason.clone(),
+                101,
+            )
+            .await
+            .expect("first tombstone");
+        assert_eq!(first.state, LocalMemoryAdmissionState::Applied);
+
+        // The target is already tombstoned, so the second command's write
+        // conflicts.  Its different source event must keep it Rejected rather
+        // than falsely adopting the first tombstone by matching only reason.
+        let second_source = SourceDraft {
+            event_key: "forget:event:second-source".to_string(),
+            observed_at_unix_seconds: 102,
+            ..first_source.clone()
+        };
+        let second = lease
+            .tombstone_memory_candidate_saga(
+                &access,
+                &candidate.candidate_id,
+                1,
+                MemoryCandidateOrigin::ModelProposal,
+                &second_source,
+                reason,
+                102,
+            )
+            .await
+            .expect("conflicting tombstone is explicitly rejected");
+        assert_eq!(second.state, LocalMemoryAdmissionState::Rejected);
+        assert!(second.rejection_reason.is_some());
+        assert_eq!(second.revision, None);
+
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM memory_revisions")
+            .fetch_one(&store.pool)
+            .await
+            .expect("memory count");
+        assert_eq!(
+            count, 2,
+            "a tombstone source conflict must not append again"
+        );
+        assert_eq!(
+            lease.snapshot_counts().await.expect("journal counts"),
+            crate::LocalLeaseOutboxCounts {
+                lease_rows: 1,
+                event_rows: 6,
+                outbox_rows: 3,
+            }
+        );
     }
 }
