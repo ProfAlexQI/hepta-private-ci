@@ -1,6 +1,8 @@
 use pretty_assertions::assert_eq;
 use serde::Deserialize;
 use serde::Serialize;
+use sha2::Digest;
+use sha2::Sha256;
 use std::env;
 use std::fs;
 use std::fs::OpenOptions;
@@ -1139,6 +1141,137 @@ async fn tampered_child_chain_cannot_be_terminalized_by_release_or_rollback() {
             "{transition} must not append a terminal lease for tampered {child} chain"
         );
     }
+}
+
+#[tokio::test]
+async fn reopen_rejects_late_reconcile_after_terminal_outcome() {
+    let temp = TempDir::new().expect("temp dir");
+    let owner = agent_id(117);
+    let store = CognitiveStore::open(&layout(&temp, &owner))
+        .await
+        .expect("store");
+    let handle = acquired(
+        store
+            .acquire_local_lease("lease:late-reconcile", 1, "fence:late-reconcile")
+            .await
+            .expect("acquire"),
+    );
+    handle
+        .admit("occurrence:late-reconcile", "topic", "payload")
+        .await
+        .expect("admit");
+    handle
+        .mark_indeterminate("occurrence:late-reconcile", "lost local ack")
+        .await
+        .expect("mark indeterminate");
+    handle
+        .reconcile(
+            "occurrence:late-reconcile",
+            LocalReconcileOutcome::Committed,
+        )
+        .await
+        .expect("terminal reconcile");
+
+    // Model an imported/damaged store that bypassed the public transition
+    // guard. A distinct transition kind is still accepted by the schema, so
+    // the append-only verifier must reject it rather than allowing
+    // `current_outcome` to downgrade the committed result to indeterminate.
+    let previous_sha256: String = sqlx::query_scalar(
+        "SELECT event_sha256 FROM cognitive_local_events
+         WHERE lease_id = ? ORDER BY event_sequence DESC LIMIT 1",
+    )
+    .bind("lease:late-reconcile")
+    .fetch_one(&store.pool)
+    .await
+    .expect("event head");
+    let payload = "late quarantine";
+    let payload_sha256 = Sha256Digest::for_bytes(payload.as_bytes());
+    let event_sequence = 4_u64;
+    let event_id = "event:late-reconcile";
+    let kind = "reconcile_still_indeterminate";
+    let event_sha256 = test_event_digest(
+        "lease:late-reconcile",
+        event_sequence,
+        event_id,
+        "occurrence:late-reconcile",
+        &owner,
+        handle.generation(),
+        handle.fencing_token(),
+        kind,
+        &payload_sha256,
+        &Sha256Digest::parse(previous_sha256.clone()).expect("event head digest"),
+    );
+    sqlx::query(
+        "INSERT INTO cognitive_local_events (
+            lease_id, event_sequence, event_id, occurrence_key, owner_agent_id,
+            generation, fencing_token, event_kind, payload_json, payload_sha256,
+            previous_sha256, event_sha256, recorded_at_unix_seconds
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind("lease:late-reconcile")
+    .bind(i64::try_from(event_sequence).expect("event sequence"))
+    .bind(event_id)
+    .bind("occurrence:late-reconcile")
+    .bind(owner.as_str())
+    .bind(i64::try_from(handle.generation()).expect("generation"))
+    .bind(handle.fencing_token())
+    .bind(kind)
+    .bind(payload)
+    .bind(payload_sha256.as_str())
+    .bind(&previous_sha256)
+    .bind(event_sha256.as_str())
+    .bind(0_i64)
+    .execute(&store.pool)
+    .await
+    .expect("insert late transition");
+
+    assert!(matches!(
+        handle.status("occurrence:late-reconcile").await,
+        Err(LocalLeaseOutboxError::Corrupt(message))
+            if message.contains("invalid reconcile_still_indeterminate transition")
+    ));
+    drop(handle);
+    store.pool.close().await;
+    drop(store);
+
+    let reopened = CognitiveStore::open(&layout(&temp, &owner)).await;
+    assert!(matches!(
+        reopened,
+        Err(crate::CognitiveStoreError::Corrupt(message))
+            if message.contains("invalid reconcile_still_indeterminate transition")
+    ));
+}
+
+fn test_event_digest(
+    lease_id: &str,
+    sequence: u64,
+    event_id: &str,
+    occurrence_key: &str,
+    owner: &codex_hepta_contracts::AgentId,
+    generation: u64,
+    fencing_token: &str,
+    kind: &str,
+    payload_sha256: &Sha256Digest,
+    previous: &Sha256Digest,
+) -> Sha256Digest {
+    let mut hasher = Sha256::new();
+    frame_test_part(&mut hasher, b"hepta-memory:local-event:v1");
+    frame_test_part(&mut hasher, lease_id.as_bytes());
+    frame_test_part(&mut hasher, &sequence.to_be_bytes());
+    frame_test_part(&mut hasher, event_id.as_bytes());
+    frame_test_part(&mut hasher, occurrence_key.as_bytes());
+    frame_test_part(&mut hasher, owner.as_str().as_bytes());
+    frame_test_part(&mut hasher, &generation.to_be_bytes());
+    frame_test_part(&mut hasher, fencing_token.as_bytes());
+    frame_test_part(&mut hasher, kind.as_bytes());
+    frame_test_part(&mut hasher, payload_sha256.as_str().as_bytes());
+    frame_test_part(&mut hasher, previous.as_str().as_bytes());
+    Sha256Digest::from_sha256_output(hasher.finalize())
+}
+
+fn frame_test_part(hasher: &mut Sha256, part: &[u8]) {
+    hasher.update((part.len() as u64).to_be_bytes());
+    hasher.update(part);
 }
 
 #[test]

@@ -8,6 +8,7 @@
 //! receipt and no scheduler, router, KG writer, or production caller is wired
 //! here.
 
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -2693,6 +2694,14 @@ async fn verify_event_chain(
         )));
     }
     let mut previous = Sha256Digest::for_bytes(GENESIS_EVENT_SHA256);
+    // Public append APIs enforce this state machine before writing a row, but
+    // reopen-time verification must repeat the invariant for imported or
+    // otherwise damaged stores.  Without it, a late
+    // `reconcile_still_indeterminate` (or rollback) row could be appended
+    // after a terminal outcome and `current_outcome` would silently downgrade
+    // the occurrence back to a non-terminal/quarantined state.
+    let mut outcome_states = BTreeMap::new();
+    let mut seen_kinds = BTreeSet::new();
     let mut events = Vec::with_capacity(rows.len());
     for (index, row) in rows.iter().enumerate() {
         let sequence = read_u64(row, "event_sequence")?;
@@ -2750,6 +2759,7 @@ async fn verify_event_chain(
         {
             return Err(corrupt("event digest mismatch"));
         }
+        advance_outcome_state(&mut outcome_states, &mut seen_kinds, &occurrence_key, &kind)?;
         previous = event_sha256.clone();
         events.push(EventRow {
             sequence,
@@ -2776,6 +2786,66 @@ pub(crate) async fn verify_event_chain_integrity(
     verify_event_chain(transaction, lease_id, expected_owner)
         .await
         .map(|_| ())
+}
+
+/// Apply one event kind to the per-occurrence outcome state while replaying
+/// the append-only event chain.  The SQL unique indexes protect the normal
+/// writer path, but a verifier must also reject a damaged/imported chain that
+/// contains a duplicate kind or a transition after a terminal outcome.
+fn advance_outcome_state(
+    states: &mut BTreeMap<String, LocalOutcomeState>,
+    seen_kinds: &mut BTreeSet<(String, String)>,
+    occurrence_key: &str,
+    kind: &str,
+) -> Result<(), LocalLeaseOutboxError> {
+    if !seen_kinds.insert((occurrence_key.to_string(), kind.to_string())) {
+        return Err(corrupt(format!(
+            "occurrence {occurrence_key} contains duplicate {kind} transition"
+        )));
+    }
+
+    let current = states.get(occurrence_key).copied();
+    let next = match (current, kind) {
+        (None, "admitted") => LocalOutcomeState::Queued,
+        (None, _) => {
+            return Err(corrupt(format!(
+                "occurrence {occurrence_key} has {kind} transition before admission"
+            )));
+        }
+        (Some(_), "admitted") => {
+            return Err(corrupt(format!(
+                "occurrence {occurrence_key} contains a late or duplicate admission"
+            )));
+        }
+        (Some(LocalOutcomeState::Queued | LocalOutcomeState::Indeterminate), "indeterminate") => {
+            LocalOutcomeState::Indeterminate
+        }
+        (Some(LocalOutcomeState::Indeterminate), "reconcile_committed") => {
+            LocalOutcomeState::Committed
+        }
+        (Some(LocalOutcomeState::Indeterminate), "reconcile_rejected") => {
+            LocalOutcomeState::Rejected
+        }
+        (Some(LocalOutcomeState::Indeterminate), "reconcile_still_indeterminate") => {
+            LocalOutcomeState::Indeterminate
+        }
+        (
+            Some(
+                LocalOutcomeState::Queued
+                | LocalOutcomeState::Indeterminate
+                | LocalOutcomeState::RolledBack,
+            ),
+            "rolled_back",
+        ) => LocalOutcomeState::RolledBack,
+        (Some(state), _) => {
+            return Err(corrupt(format!(
+                "occurrence {occurrence_key} has invalid {kind} transition from {}",
+                state.as_str()
+            )));
+        }
+    };
+    states.insert(occurrence_key.to_string(), next);
+    Ok(())
 }
 
 async fn verify_outbox_chain(
