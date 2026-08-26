@@ -1,6 +1,10 @@
 #![forbid(unsafe_code)]
 
 mod agent_id;
+mod authbus;
+#[cfg(test)]
+#[path = "authbus_tests.rs"]
+mod authbus_tests;
 #[cfg(test)]
 mod callers_manifest_tests;
 mod canonical;
@@ -14,6 +18,38 @@ mod stable_id;
 
 pub use agent_id::AgentId;
 pub use agent_id::AgentIdParseError;
+pub use authbus::AUTHBUS_CONTRACT_NAMESPACE;
+pub use authbus::AUTHBUS_CONTRACT_SCHEMA_VERSION;
+pub use authbus::AUTHBUS_PLAN_ID;
+pub use authbus::AUTHBUS_SOURCE_MANIFEST_JSON;
+pub use authbus::AUTHBUS_SOURCE_MANIFEST_SCHEMA;
+pub use authbus::AuthBusAuthorityFlags;
+pub use authbus::AuthBusCandidateBinding;
+pub use authbus::AuthBusContractError;
+pub use authbus::AuthBusRefSet;
+pub use authbus::AuthBusSourceAttachment;
+pub use authbus::AuthBusSourceManifest;
+pub use authbus::AuthBusUpstreamPin;
+pub use authbus::AuthRequest;
+pub use authbus::AuthResource;
+pub use authbus::BASIL_LATEST_RELEASE;
+pub use authbus::BASIL_LICENSE;
+pub use authbus::BASIL_UPSTREAM_COMMIT;
+pub use authbus::BASIL_UPSTREAM_REPOSITORY;
+pub use authbus::BASIL_WORKSPACE_VERSION;
+pub use authbus::LeaseState;
+pub use authbus::Principal;
+pub use authbus::QuotaConfidence;
+pub use authbus::QuotaContract;
+pub use authbus::QuotaSnapshot;
+pub use authbus::ResourceLease;
+pub use authbus::Revoke;
+pub use authbus::SecretRef;
+pub use authbus::SubjectRef;
+pub use authbus::UsagePermit;
+pub use authbus::UsageReceipt;
+pub use authbus::UsageTerminal;
+pub use authbus::embedded_source_manifest;
 pub use identity::ActionId;
 pub use identity::DecisionId;
 pub use identity::ReceiptId;
