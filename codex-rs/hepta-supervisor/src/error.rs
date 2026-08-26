@@ -60,6 +60,8 @@ pub enum SupervisorError {
     Registry(#[from] FleetRegistryError),
     #[error("signed production authority rejected: {0}")]
     ProductionAuthority(String),
+    #[error("signed production authority feature is disabled in this build")]
+    ProductionAuthorityFeatureDisabled,
     #[error("agent {0} has an unresolved signed supervisor intent after recovery")]
     SignedIntentRecoveryRequired(AgentId),
     #[error(transparent)]

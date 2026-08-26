@@ -10,6 +10,13 @@ name = "codex_hepta_supervisor"
 path = "src/lib.rs"
 doctest = false
 
+[features]
+default = []
+# Compile the externally-authorized mutation entry point only when an
+# explicit release/qualification build opts into it.  The ordinary daemon
+# remains lifecycle-only and keeps signed mutation admission fail-closed.
+production-authority = []
+
 [[bin]]
 name = "hepta-supervisord"
 path = "src/main.rs"
@@ -19,6 +26,7 @@ test = false
 name = "hepta-authority-signer"
 path = "src/bin/hepta-authority-signer.rs"
 test = false
+required-features = ["production-authority"]
 
 [lints]
 workspace = true

@@ -119,6 +119,64 @@ zero_event_interpretation = "shadow_observations_are_turn_local_and_not_persiste
 promotion_eligible = false
 
 [[qualification]]
+slice = "E41_authority_integration_local_20260826"
+requires = [
+  "R2_intelligence_kg_closed_loop",
+  "local_h4_durable_writer_qualification",
+]
+composition = "signed_mutation_receipt_propagation_daemon_fail_closed_and_sandbox_provider_reconcile"
+qualification_base_sha = "bc45b0937a4ecdeb194d8831aa11cc37370f856b"
+qualification_base_tree = "eb83937325c9c9ea836e1b80cc0f7fa13a74eaf9"
+tested_head_before_manifest_append = "b6a6812c5f7a13d3927f52a71579460169d5c160"
+tested_tree_before_manifest_append = "431ccc77d3536e24a0aa4dfb4c596bc67c6dffd3"
+candidate_branch = "hepta/azi2-authority-integration-20260826"
+source_binding_status = "CURRENT_RECEIPT_REQUIRED_AFTER_APPEND"
+qualification_receipt = "hepta-current-rebind-<final-head>-e41-authority-integration-20260826/authority-receipt.json"
+qualification_manifest_test = "codex-rs/hepta-contracts/src/callers_manifest_tests.rs"
+qualification_callers = [
+  "codex-rs/hepta-supervisor/src/daemon.rs",
+  "codex-rs/hepta-supervisor/src/daemon_protocol.rs",
+  "codex-rs/hepta-supervisor/src/supervisor.rs",
+  "codex-rs/model-provider/src/provider_effect.rs",
+  "codex-rs/hepta-memory/src/production_writer.rs",
+  "codex-rs/hepta-agentd/src/production_writer_host.rs",
+]
+public_surfaces = [
+  "run_supervisord_with_grant_verifier",
+  "ProductionMutationReceipt",
+  "HttpProviderEffectAdapter",
+  "ProductionDurableWriter",
+  "AgentdProductionWriterHost",
+]
+feature_gate = "codex-hepta-supervisor:production-authority"
+feature_gate_default_enabled = false
+signed_mutation_requires_external_verifier = true
+daemon_recovery_unresolved_signed_intent_fail_closed = true
+mutation_receipt_propagated_to_caller = true
+sandbox_provider_status_reconcile_qualified = true
+provider_physical_sampling_exactly_once = false
+production_caller_named = false
+production_authority = false
+production_writer = false
+effect_authority = false
+external_effect = false
+operator_acceptance = false
+promotion = false
+g5_allowed = false
+evidence_class = "LOCAL_QUALIFICATION_ONLY"
+claim_status = "BOUNDED_SEMANTIC_AND_FIXTURE"
+efficacy_status = "NOT_EVALUATED"
+approval_state = "NOT_APPROVED"
+decision = "CONTINUE_PRE_RELEASE"
+release_inputs_pending = [
+  "external_trust_root",
+  "provider_owned_status_and_signed_ack",
+  "physical_power_and_media_durability",
+  "operator_acceptance_and_promotion",
+]
+promotion_eligible = false
+
+[[qualification]]
 slice = "R2_fleet_automation_bounded"
 requires = ["R2_matrix_robrix_closed_loop"]
 qualification_base_sha = "445d1cdc50c9e86d09041b17888245b8c5937bda"

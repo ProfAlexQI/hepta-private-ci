@@ -37,6 +37,7 @@ pub use authority_signer::read_request;
 pub use authority_signer::sign_request;
 pub use daemon::run_supervisord;
 pub use daemon::run_supervisord_with_grant_verifier;
+pub use daemon::PRODUCTION_AUTHORITY_FEATURE_ENABLED;
 pub use daemon_client::SupervisordClient;
 pub use daemon_protocol::ControlStateDigest;
 pub use daemon_protocol::MAX_SUPERVISORD_ROSTER;

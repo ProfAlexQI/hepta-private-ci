@@ -68,6 +68,13 @@ const TICK_INTERVAL: Duration = Duration::from_millis(25);
 const CONTROL_STATE_DIGEST_DOMAIN: &[u8] = b"hepta.supervisord.control-state.v2\0";
 const CONTROL_FENCE_IDENTITY_DOMAIN: &[u8] = b"hepta.supervisord.control-fence-identity.v2\0";
 
+/// Compile-time gate for the externally-authorized mutation entry point.
+/// Unit tests may still exercise the signed state machine as qualification
+/// fixtures, but a non-test/default daemon build cannot activate it merely by
+/// supplying a verifier at runtime.
+pub const PRODUCTION_AUTHORITY_FEATURE_ENABLED: bool =
+    cfg!(feature = "production-authority") || cfg!(test);
+
 struct DaemonState<D: ProcessDriver = UnixProcessDriver> {
     registry: FleetRegistry,
     supervisor: Mutex<Supervisor<D>>,
@@ -97,6 +104,9 @@ pub async fn run_supervisord_with_grant_verifier(
     cancellation: CancellationToken,
     verifier: H7H89ProductionGrantVerifier,
 ) -> Result<(), SupervisorError> {
+    if !PRODUCTION_AUTHORITY_FEATURE_ENABLED {
+        return Err(SupervisorError::ProductionAuthorityFeatureDisabled);
+    }
     run_supervisord_inner(fleet_root, cancellation, Some(verifier)).await
 }
 
@@ -429,6 +439,13 @@ async fn handle_signed_mutation<D: ProcessDriver>(
     grant: H7H89ProductionGrant,
     h7_envelope: codex_hepta_memory::H7SignedArtifactEnvelope,
 ) -> SupervisordPayload {
+    if !PRODUCTION_AUTHORITY_FEATURE_ENABLED {
+        return error_payload(
+            "production_authority_unavailable",
+            "signed production mutations are disabled in this build",
+            None,
+        );
+    }
     let Some(verifier) = state.production_grant_verifier.clone() else {
         return error_payload(
             "production_authority_unavailable",
@@ -904,6 +921,11 @@ fn safe_rejection(
         SupervisorError::ProductionAuthority(_) => error_payload(
             "production_authority_rejected",
             "signed production authority grant was rejected",
+            actual,
+        ),
+        SupervisorError::ProductionAuthorityFeatureDisabled => error_payload(
+            "production_authority_unavailable",
+            "signed production mutations are disabled in this build",
             actual,
         ),
         SupervisorError::SignedIntentRecoveryRequired(_) => error_payload(
