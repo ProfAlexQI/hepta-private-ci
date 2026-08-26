@@ -743,4 +743,76 @@ mod tests {
             ProviderEffectLookup::Ack(_)
         ));
     }
+
+    #[tokio::test]
+    async fn sandbox_crash_after_send_requires_status_reconcile() {
+        // A transport-level failure after the provider may have accepted bytes
+        // is deliberately represented as Unknown.  The qualification fixture
+        // then resolves the same occurrence key through provider-owned status;
+        // this is not physical exactly-once evidence.
+        let server = MockServer::start().await;
+        let effect_intent = intent();
+        let operation = Sha256Digest::for_bytes(b"reconciled-operation");
+        let ack_body = serde_json::json!({
+            "effect_key": effect_intent.key.as_str(),
+            "payload_sha256": effect_intent.payload_sha256.as_str(),
+            "provider_operation_id_sha256": operation.as_str(),
+            "status": "completed"
+        });
+        Mock::given(method("POST"))
+            .and(path("/dispatch"))
+            .and(header(
+                PROVIDER_EFFECT_IDEMPOTENCY_KEY_HEADER,
+                effect_intent.key.as_str(),
+            ))
+            .and(body_bytes(b"payload".to_vec()))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path_regex(r"/status/.+"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&ack_body))
+            .mount(&server)
+            .await;
+
+        let signing_key = SigningKey::from_bytes(&[10_u8; 32]);
+        let verifying_key = signing_key.verifying_key();
+        let contract_digest = Sha256Digest::for_bytes(b"sandbox-reconcile-contract");
+        let statement = HttpProviderEffectContractAttestation::statement_for(
+            "sandbox-reconcile-contract",
+            &contract_digest,
+            2,
+        );
+        let signature = signing_key.sign(&statement);
+        let attestation = HttpProviderEffectContractAttestation::verify_signed(
+            "sandbox-reconcile-contract",
+            contract_digest,
+            2,
+            &signature.to_bytes(),
+            &verifying_key.to_bytes(),
+        )
+        .expect("fixture attestation");
+        let adapter = HttpProviderEffectAdapter::new(HttpProviderEffectConfig {
+            dispatch_url: format!("{}/dispatch", server.uri()),
+            lookup_url_template: format!("{}/status/{{key}}", server.uri()),
+            headers: HeaderMap::new(),
+            timeout: Duration::from_secs(5),
+            contract_id: "sandbox-reconcile-contract".to_string(),
+            attestation: Some(attestation),
+        })
+        .expect("fixture adapter");
+
+        assert_eq!(
+            adapter
+                .dispatch_with_payload(&effect_intent, b"payload")
+                .await,
+            ProviderEffectDispatch::Unknown
+        );
+        let lookup = adapter.lookup(&effect_intent.key).await;
+        let ProviderEffectLookup::Ack(ack) = lookup else {
+            panic!("status lookup must resolve the indeterminate occurrence");
+        };
+        ack.validate_for(&effect_intent)
+            .expect("reconciled ACK must remain key and payload bound");
+    }
 }

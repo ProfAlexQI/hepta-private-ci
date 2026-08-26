@@ -2,6 +2,7 @@ use assert_matches::assert_matches;
 use codex_core::StartThreadOptions;
 use codex_core::SuspendTurnOutcome;
 use codex_core::TurnInputRequest;
+use codex_features::Feature;
 use codex_history::RolloutItem;
 use codex_history::RolloutLine;
 use std::sync::Arc;
@@ -86,6 +87,9 @@ async fn root_turn_suspension_preserves_unfinished_turn_history() {
     )
     .await;
     let test = test_codex()
+        .with_config(|config| {
+            let _ = config.features.enable(Feature::HeptaTurnRecovery);
+        })
         .with_model("gpt-5.4")
         .build_with_auto_env(&server)
         .await
@@ -175,16 +179,21 @@ async fn root_turn_suspension_preserves_unfinished_turn_history() {
     )
     .await;
     let resumed = test_codex()
+        .with_config(|config| {
+            let _ = config.features.enable(Feature::HeptaTurnRecovery);
+        })
         .with_model("gpt-5.4")
         .resume(&recovery_server, Arc::clone(&test.home), rollout_path)
         .await
         .expect("resume the suspended root on a replacement runtime");
-
     assert_eq!(
         resumed
             .codex
             .recover_turn_if_idle(codex_core::RecoverTurnRequest {
                 turn_id: turn_id.clone(),
+                // The suspended rollout is the initial recovery generation;
+                // no in-memory epoch is exposed until admission succeeds.
+                expected_epoch: 0,
                 thread_settings: Default::default(),
                 trace: None,
             })
