@@ -13,10 +13,12 @@ doctest = false
 workspace = true
 
 [dependencies]
+base64 = { workspace = true }
 codex-hepta-contracts = { workspace = true }
 codex-hepta-paths = { workspace = true }
 codex-state = { workspace = true }
 codex-utils-absolute-path = { workspace = true }
+ed25519-dalek = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

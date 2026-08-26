@@ -17,6 +17,7 @@ mod robrix_projection;
 mod robrix_protocol;
 mod runtime;
 mod supervisor;
+mod supervisor_qualification;
 mod tick;
 
 #[cfg(unix)]
@@ -83,6 +84,28 @@ pub use robrix_protocol::RobrixSupervisordPayload;
 pub use robrix_protocol::RobrixSupervisordRequest;
 pub use robrix_protocol::RobrixSupervisordResponse;
 pub use supervisor::Supervisor;
+pub use supervisor_qualification::H8H9PendingRollback;
+pub use supervisor_qualification::H8H9RecoveryOutcome;
+pub use supervisor_qualification::H8H9RollbackPhase;
+pub use supervisor_qualification::H8H9ShadowSupervisor;
+pub use supervisor_qualification::H8H9SupervisorError;
+pub use supervisor_qualification::H8H9SupervisorState;
+pub use supervisor_qualification::H8ShadowSupervisor;
+pub use supervisor_qualification::H9ShadowRollbackMachine;
+pub use supervisor_qualification::QualificationSupervisor;
+pub use supervisor_qualification::H8_H9_SHADOW_EXTERNAL_EFFECTS;
+pub use supervisor_qualification::H8_H9_SHADOW_EFFECT_AUTHORITY;
+pub use supervisor_qualification::H8_H9_SHADOW_EXECUTE_ALLOWED;
+pub use supervisor_qualification::H8_H9_SHADOW_G5_ALLOWED;
+pub use supervisor_qualification::H8_H9_SHADOW_GOVERNANCE_BYPASS;
+pub use supervisor_qualification::H8_H9_SHADOW_NAMESPACE;
+pub use supervisor_qualification::H8_H9_SHADOW_OPERATOR_ACCEPTANCE;
+pub use supervisor_qualification::H8_H9_SHADOW_PRODUCTION_AUTHORITY;
+pub use supervisor_qualification::H8_H9_SHADOW_PRODUCTION_CALLER;
+pub use supervisor_qualification::H8_H9_SHADOW_PRODUCTION_WRITER;
+pub use supervisor_qualification::H8_H9_SHADOW_PROMOTION;
+pub use supervisor_qualification::H8_H9_SHADOW_PROMOTION_ELIGIBLE;
+pub use supervisor_qualification::H8_H9_SHADOW_SCHEMA_VERSION;
 
 #[cfg(unix)]
 pub use unix::UnixManagedProcess;

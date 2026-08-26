@@ -16,6 +16,11 @@ use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 
+use crate::h7_feedback::H7OfflineEvaluation;
+use crate::h7_signed_artifact::H7ArtifactVerifier;
+use crate::h7_signed_artifact::H7SignedArtifactEnvelope;
+use crate::h7_signed_artifact::H7SignedArtifactTransition;
+
 pub const H7_QUALIFICATION_RUNTIME_SCHEMA_VERSION: u32 = 1;
 pub const H7_QUALIFICATION_RUNTIME_NAMESPACE: &str = "local_qualification_only";
 pub const H7_QUALIFICATION_RUNTIME_PRODUCTION_AUTHORITY: bool = false;
@@ -230,7 +235,7 @@ impl H7Evaluation {
         Ok(evaluation)
     }
 
-    fn validate(&self) -> Result<(), H7RuntimeError> {
+    pub fn validate(&self) -> Result<(), H7RuntimeError> {
         if self.schema_version != H7_QUALIFICATION_RUNTIME_SCHEMA_VERSION
             || !self.replay_only
             || self.production_effects
@@ -397,7 +402,7 @@ impl H7Artifact {
         Ok(artifact)
     }
 
-    fn validate(&self) -> Result<(), H7RuntimeError> {
+    pub fn validate(&self) -> Result<(), H7RuntimeError> {
         if self.schema_version != H7_QUALIFICATION_RUNTIME_SCHEMA_VERSION
             || self.authority != H7_QUALIFICATION_RUNTIME_NAMESPACE
             || self.phase != "shadow"
@@ -556,6 +561,47 @@ impl H7QualificationRuntime {
         )
     }
 
+    /// Applies a signed qualification artifact using an exact runtime/CAS
+    /// fence.  This path is intentionally separate from the legacy in-memory
+    /// transition helper: callers must present an independently verified
+    /// signature and the active artifact digest must match the envelope's
+    /// predecessor before any state is changed.
+    pub fn apply_signed(
+        &mut self,
+        envelope: &H7SignedArtifactEnvelope,
+        verifier: &H7ArtifactVerifier,
+        ope: Option<&H7OfflineEvaluation>,
+        now_unix_seconds: u64,
+    ) -> Result<H7RuntimeState, H7RuntimeError> {
+        self.validate()?;
+        let artifact = self
+            .artifacts
+            .get(&envelope.artifact_id)
+            .ok_or(H7RuntimeError::MissingArtifact)?
+            .clone();
+        let expected_predecessor = self.state.active_artifact_sha256.clone();
+        verifier
+            .verify(
+                envelope,
+                &artifact,
+                ope,
+                now_unix_seconds,
+                self.state.runtime_generation,
+                expected_predecessor.as_ref(),
+            )
+            .map_err(|error| H7RuntimeError::SignedArtifact(error.to_string()))?;
+        let transition = match envelope.transition {
+            H7SignedArtifactTransition::Reload => H7Transition::Reload,
+            H7SignedArtifactTransition::Rollback => H7Transition::Rollback,
+        };
+        self.transition_checked(
+            &artifact,
+            envelope.expected_runtime_generation,
+            transition,
+            expected_predecessor.as_ref(),
+        )
+    }
+
     pub fn snapshot(&self) -> Result<Vec<u8>, H7RuntimeError> {
         serde_json::to_vec(self).map_err(|error| H7RuntimeError::Serialization(error.to_string()))
     }
@@ -645,6 +691,34 @@ impl H7QualificationRuntime {
             .get(artifact_id)
             .ok_or(H7RuntimeError::UnapprovedArtifact)?;
         approval.validate_for(&artifact)?;
+        let expected_predecessor = self.state.active_artifact_sha256.clone();
+        self.transition_checked(
+            &artifact,
+            expected_runtime_generation,
+            transition,
+            expected_predecessor.as_ref(),
+        )
+    }
+
+    fn transition_checked(
+        &mut self,
+        artifact: &H7Artifact,
+        expected_runtime_generation: u64,
+        transition: H7Transition,
+        expected_predecessor: Option<&Sha256Digest>,
+    ) -> Result<H7RuntimeState, H7RuntimeError> {
+        if self.state.runtime_generation != expected_runtime_generation {
+            return Err(H7RuntimeError::GenerationFence {
+                expected: expected_runtime_generation,
+                actual: self.state.runtime_generation,
+            });
+        }
+        artifact.validate()?;
+        if transition == H7Transition::Rollback
+            && self.state.active_artifact_sha256.as_ref() != expected_predecessor
+        {
+            return Err(H7RuntimeError::PredecessorMismatch);
+        }
         match transition {
             H7Transition::Reload
                 if artifact.generation <= self.state.active_artifact_generation =>
@@ -678,8 +752,8 @@ impl H7QualificationRuntime {
             .runtime_generation
             .checked_add(1)
             .ok_or_else(|| H7RuntimeError::Invalid("runtime generation overflow".to_string()))?;
-        self.state.active_artifact_id = Some(artifact.artifact_id);
-        self.state.active_artifact_sha256 = Some(artifact.body_sha256);
+        self.state.active_artifact_id = Some(artifact.artifact_id.clone());
+        self.state.active_artifact_sha256 = Some(artifact.body_sha256.clone());
         self.state.active_artifact_generation = artifact.generation;
         self.state.previous_artifact_sha256 = previous;
         self.state.last_transition = transition;
@@ -718,6 +792,10 @@ pub enum H7RuntimeError {
     NonMonotonicReload { artifact: u64, active: u64 },
     #[error("artifact generation {target} is not older than active generation {active}")]
     InvalidRollback { target: u64, active: u64 },
+    #[error("signed H7 artifact verification failed: {0}")]
+    SignedArtifact(String),
+    #[error("signed H7 artifact predecessor CAS head mismatch")]
+    PredecessorMismatch,
     #[error("H7 snapshot serialization failed: {0}")]
     Serialization(String),
 }
