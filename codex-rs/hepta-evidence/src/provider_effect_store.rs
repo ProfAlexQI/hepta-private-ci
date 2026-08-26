@@ -271,9 +271,14 @@ impl HeptaEvidenceStore {
                 if let Err(error) = ack_result {
                     // A malformed/lost ACK must leave a durable quarantine
                     // marker before the error escapes to the caller.
-                    let _ = self
+                    if let Err(quarantine_error) = self
                         .mark_provider_effect_indeterminate(&key, "provider_dispatch_ack_invalid")
-                        .await;
+                        .await
+                    {
+                        return Err(EvidenceError::Corrupt(format!(
+                            "provider dispatch ACK failed ({error}); durable quarantine failed ({quarantine_error})"
+                        )));
+                    }
                     return Err(error);
                 }
             }

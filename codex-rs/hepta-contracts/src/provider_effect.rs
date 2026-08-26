@@ -839,16 +839,32 @@ impl ProviderEffectJournal {
         ack.validate_for(intent)?;
         let status_observation = (source == ProviderEffectAckSource::StatusLookup)
             .then(|| ProviderEffectStatusObservation::from_ack(&ack));
-        let observations = self.acknowledgements.entry(key.clone()).or_default();
         let was_quarantined = self
             .quarantined
             .get(ack.key.as_str())
             .copied()
             .unwrap_or(false);
+        // Check the quarantine fence before creating any auxiliary map
+        // entries.  A late raw dispatch ACK is rejected, but that rejection
+        // must not leave empty ACK/source vectors behind and poison the
+        // journal's provenance shape for every later reopen/reconcile.
         if was_quarantined && source != ProviderEffectAckSource::StatusLookup {
             return Err(ProviderEffectBindingError::AckConflict);
         }
-        let sources = self.ack_sources.entry(key.clone()).or_default();
+        // Inspect the existing vectors immutably until every rejection path
+        // has passed.  In particular, `validate_ack_transition` can reject a
+        // conflicting operation/status; creating empty map entries before
+        // that check would leave an otherwise valid journal with mismatched
+        // ACK/source cardinality and prevent the quarantine below from being
+        // persisted.
+        let observations = self
+            .acknowledgements
+            .get(key.as_str())
+            .map_or(&[][..], Vec::as_slice);
+        let sources = self
+            .ack_sources
+            .get(key.as_str())
+            .map_or(&[][..], Vec::as_slice);
         if let Some(index) = observations.iter().position(|existing| existing == &ack) {
             let Some(existing_source) = sources.get(index).copied() else {
                 // A journal serialized before provenance was introduced has
@@ -880,8 +896,14 @@ impl ProviderEffectJournal {
             return Err(ProviderEffectBindingError::AckConflict);
         }
         validate_ack_transition(observations, &ack, was_quarantined, source)?;
-        observations.push(ack);
-        sources.push(source);
+        self.acknowledgements
+            .entry(key.clone())
+            .or_default()
+            .push(ack);
+        self.ack_sources
+            .entry(key.clone())
+            .or_default()
+            .push(source);
         self.quarantined.insert(key.clone(), false);
         if let Some(status_observation) = status_observation {
             self.status_observations
@@ -1290,7 +1312,16 @@ where
         let dispatch = self.adapter.dispatch(&intent).await;
         let state = match dispatch {
             ProviderEffectDispatch::Ack(ack) => {
-                self.journal.record_ack(ack)?;
+                // The adapter boundary was crossed even when its response is
+                // malformed or conflicts with the durable intent.  Preserve
+                // a local quarantine before returning the binding error so a
+                // caller cannot blindly retry and send a second effect.
+                if let Err(error) = self.journal.record_ack(ack) {
+                    self.journal
+                        .mark_indeterminate(&key, "provider_dispatch_ack_invalid")
+                        .map_err(ProviderEffectCoordinatorError::from)?;
+                    return Err(ProviderEffectCoordinatorError::from(error));
+                }
                 self.journal
                     .state(&key)
                     .unwrap_or(ProviderEffectState::Indeterminate)
@@ -1372,7 +1403,15 @@ where
             .await;
         let (state, physical_dispatch_attempted) = match dispatch {
             ProviderEffectDispatch::Ack(ack) => {
-                self.journal.record_ack(ack)?;
+                // As above, an invalid ACK after a physical attempt is an
+                // unknown outcome, not a safe retry.  Persist the quarantine
+                // before exposing the binding error to the caller.
+                if let Err(error) = self.journal.record_ack(ack) {
+                    self.journal
+                        .mark_indeterminate(&key, "provider_dispatch_ack_invalid")
+                        .map_err(ProviderEffectCoordinatorError::from)?;
+                    return Err(ProviderEffectCoordinatorError::from(error));
+                }
                 (
                     self.journal
                         .state(&key)
@@ -1851,6 +1890,38 @@ mod tests {
     }
 
     #[test]
+    fn journal_late_dispatch_ack_after_pending_quarantine_is_side_effect_free() {
+        let intent = intent(b"pending-quarantine-payload");
+        let key = intent.key.clone();
+        let late_ack = ack(&intent, b"pending-quarantine-payload");
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent).expect("intent");
+        journal
+            .mark_indeterminate(&key, "provider_imported_pending")
+            .expect("quarantine");
+        let before = serde_json::to_vec(&journal).expect("serialize before late ACK");
+
+        // There is no prior ACK vector for an imported Pending intent.  A
+        // delayed raw response must be rejected without creating empty ACK or
+        // provenance entries that would make the journal permanently invalid.
+        assert_eq!(
+            journal.record_ack(late_ack),
+            Err(ProviderEffectBindingError::AckConflict)
+        );
+        assert!(journal.validate().is_ok());
+        assert_eq!(
+            serde_json::to_vec(&journal).expect("serialize after late ACK"),
+            before
+        );
+        assert_eq!(journal.acknowledgements(&key), &[]);
+        assert_eq!(journal.acknowledgement_sources(&key), &[]);
+        assert_eq!(
+            journal.state(&key),
+            Some(ProviderEffectState::Indeterminate)
+        );
+    }
+
+    #[test]
     fn status_observation_binds_exact_payload_and_requires_lookup_source() {
         let intent = intent(b"status-payload");
         let key = intent.key.clone();
@@ -2308,6 +2379,117 @@ mod tests {
             "reconcile must pass the exact durable intent to the adapter"
         );
         assert_eq!(coordinator.journal().acknowledgements(&key).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn coordinator_quarantines_malformed_dispatch_ack_before_returning_error() {
+        let intent = intent(b"malformed-dispatch-ack-payload");
+        let key = intent.key.clone();
+        let malformed = ProviderEffectAck::new(
+            key.clone(),
+            Sha256Digest::for_bytes(b"wrong-payload"),
+            Sha256Digest::for_bytes(b"operation-malformed"),
+            ProviderEffectAckStatus::Completed,
+        );
+        let adapter = ScriptedAdapter {
+            capability: ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+            dispatch_result: Some(ProviderEffectDispatch::Ack(malformed)),
+            ..Default::default()
+        };
+        let mut coordinator = ProviderEffectCoordinator::new(adapter);
+
+        assert_eq!(
+            coordinator.dispatch_once(intent.clone()).await,
+            Err(ProviderEffectCoordinatorError::Binding(
+                ProviderEffectBindingError::PayloadMismatch
+            ))
+        );
+        assert_eq!(
+            coordinator.journal().state(&key),
+            Some(ProviderEffectState::Indeterminate)
+        );
+        assert!(coordinator.journal().validate().is_ok());
+        assert_eq!(
+            coordinator
+                .adapter()
+                .dispatches
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+
+        // The failed response is an unknown physical outcome.  A replay must
+        // stay quarantined and never invoke the adapter a second time.
+        let replay = coordinator
+            .dispatch_once(intent)
+            .await
+            .expect("malformed ACK replay remains fail-closed");
+        assert_eq!(
+            replay,
+            ProviderEffectDispatchReceipt {
+                state: ProviderEffectState::Indeterminate,
+                physical_dispatch_attempted: false,
+            }
+        );
+        assert_eq!(
+            coordinator
+                .adapter()
+                .dispatches
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn payload_coordinator_quarantines_malformed_dispatch_ack_before_retry() {
+        let intent = intent(b"malformed-payload-dispatch-ack");
+        let key = intent.key.clone();
+        let malformed = ProviderEffectAck::new(
+            key.clone(),
+            Sha256Digest::for_bytes(b"wrong-payload"),
+            Sha256Digest::for_bytes(b"operation-malformed-payload"),
+            ProviderEffectAckStatus::Completed,
+        );
+        let adapter = ScriptedAdapter {
+            capability: ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+            dispatch_result: Some(ProviderEffectDispatch::Ack(malformed)),
+            ..Default::default()
+        };
+        let mut coordinator = ProviderEffectCoordinator::new(adapter);
+
+        assert_eq!(
+            coordinator
+                .dispatch_once_with_payload(intent.clone(), b"malformed-payload-dispatch-ack")
+                .await,
+            Err(ProviderEffectCoordinatorError::Binding(
+                ProviderEffectBindingError::PayloadMismatch
+            ))
+        );
+        assert_eq!(
+            coordinator.journal().state(&key),
+            Some(ProviderEffectState::Indeterminate)
+        );
+        assert!(coordinator.journal().validate().is_ok());
+        assert_eq!(
+            coordinator
+                .adapter()
+                .dispatches
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+
+        let replay = coordinator
+            .dispatch_once_with_payload(intent, b"malformed-payload-dispatch-ack")
+            .await
+            .expect("malformed payload ACK replay remains fail-closed");
+        assert!(!replay.physical_dispatch_attempted);
+        assert_eq!(replay.state, ProviderEffectState::Indeterminate);
+        assert_eq!(
+            coordinator
+                .adapter()
+                .dispatches
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
     }
 
     #[tokio::test]
