@@ -8,6 +8,28 @@ use crate::stable_id::parse_prefixed_sha256_id;
 
 pub const PROVIDER_EVIDENCE_SCHEMA_VERSION: u32 = 1;
 
+const MAX_PROVIDER_TEXT_BYTES: usize = 512;
+const MAX_PROVIDER_REASON_BYTES: usize = 128;
+
+fn validate_text(value: &str, label: &str, max_bytes: usize) -> Result<(), String> {
+    if value.trim().is_empty() || value.len() > max_bytes || value.as_bytes().contains(&0) {
+        return Err(format!(
+            "{label} must contain 1..={max_bytes} non-NUL bytes"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_digest(digest: &Sha256Digest, label: &str) -> Result<(), String> {
+    Sha256Digest::parse(digest.as_str().to_string())
+        .map(|_| ())
+        .map_err(|error| format!("{label}: {error}"))
+}
+
+fn canonical_wire_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(value).map_err(|error| format!("provider wire encoding failed: {error}"))
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct RequestBindingId(String);
@@ -160,6 +182,7 @@ impl ProviderTransport {
 /// Request bodies, prompts, authentication headers, provider tokens, and response text do not
 /// belong in this type. Their only permitted representation is a SHA-256 digest.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProviderRequestBinding {
     pub schema_version: u32,
     pub thread_id: String,
@@ -189,7 +212,66 @@ pub struct ProviderRequestBinding {
     pub generate: bool,
 }
 
+impl ProviderRequestBinding {
+    /// Validates the active B3 wire binding without inspecting any secret or
+    /// provider response body.  Historical rows may still be decoded by the
+    /// evidence projection, but an active adapter must validate before use.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_version != PROVIDER_EVIDENCE_SCHEMA_VERSION {
+            return Err("unsupported provider request schema version".to_string());
+        }
+        for (label, value) in [
+            ("provider thread id", self.thread_id.as_str()),
+            ("provider turn id", self.turn_id.as_str()),
+            ("provider id", self.provider_id.as_str()),
+            ("provider model", self.model.as_str()),
+        ] {
+            validate_text(value, label, MAX_PROVIDER_TEXT_BYTES)?;
+        }
+        for (label, digest) in [
+            (
+                "host request binding digest",
+                &self.host_request_binding_id_sha256,
+            ),
+            ("provider config digest", &self.provider_config_sha256),
+            ("provider endpoint digest", &self.endpoint_sha256),
+            ("logical request digest", &self.logical_request_sha256),
+            ("wire semantic digest", &self.wire_semantic_sha256),
+        ] {
+            validate_digest(digest, label)?;
+        }
+        if let Some(previous) = &self.previous_response_id_sha256 {
+            validate_digest(previous, "previous response digest")?;
+        }
+        match (
+            &self.ephemeral_input_sha256,
+            &self.ephemeral_input_witness_sha256,
+        ) {
+            (Some(input), Some(witness)) => {
+                validate_digest(input, "ephemeral input digest")?;
+                validate_digest(witness, "ephemeral input witness digest")?;
+            }
+            (None, None) => {}
+            _ => {
+                return Err(
+                    "ephemeral input and witness digests must be present together".to_string(),
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Encodes validated bytes for the active provider wire context.  This is
+    /// intentionally distinct from the evidence store's sorted projection
+    /// bytes and carries no authority or credential material.
+    pub fn canonical_wire_bytes(&self) -> Result<Vec<u8>, String> {
+        self.validate()?;
+        canonical_wire_bytes(self)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProviderInvocationIntent {
     pub schema_version: u32,
     pub attempt_id: ProviderAttemptId,
@@ -230,6 +312,32 @@ impl ProviderInvocationIntent {
             binding,
         }
     }
+
+    /// Validates all identity derivations before an adapter boundary is
+    /// crossed.  A deserialized or manually forged ID cannot be accepted just
+    /// because its string shape looks plausible.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_version != PROVIDER_EVIDENCE_SCHEMA_VERSION {
+            return Err("unsupported provider invocation schema version".to_string());
+        }
+        self.binding.validate()?;
+        validate_digest(&self.attempt_nonce_sha256, "attempt nonce digest")?;
+        let expected_binding = RequestBindingId::for_request(&self.binding);
+        if self.request_binding_id != expected_binding {
+            return Err("request binding id does not bind provider request semantics".to_string());
+        }
+        let expected_attempt =
+            ProviderAttemptId::for_send(&self.request_binding_id, &self.attempt_nonce_sha256);
+        if self.attempt_id != expected_attempt {
+            return Err("provider attempt id does not bind request and send nonce".to_string());
+        }
+        Ok(())
+    }
+
+    pub fn canonical_wire_bytes(&self) -> Result<Vec<u8>, String> {
+        self.validate()?;
+        canonical_wire_bytes(self)
+    }
 }
 
 /// Terminal observation for one provider send attempt.
@@ -238,6 +346,7 @@ impl ProviderInvocationIntent {
 /// effect acknowledgement and does not establish exactly-once execution.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "terminal", rename_all = "snake_case")]
+#[serde(deny_unknown_fields)]
 pub enum ProviderTerminal {
     Completed {
         response_id_sha256: Sha256Digest,
@@ -271,9 +380,50 @@ impl ProviderTerminal {
             Self::Indeterminate { .. } => "indeterminate",
         }
     }
+
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::Completed {
+                response_id_sha256,
+                response_items_sha256,
+                token_usage_sha256,
+                ..
+            } => {
+                validate_digest(response_id_sha256, "response id digest")?;
+                validate_digest(response_items_sha256, "response items digest")?;
+                validate_digest(token_usage_sha256, "token usage digest")?;
+            }
+            Self::CompletedUnary {
+                response_items_sha256,
+            } => validate_digest(response_items_sha256, "response items digest")?,
+            Self::Rejected { reason_code }
+            | Self::NotDispatched { reason_code }
+            | Self::Indeterminate { reason_code, .. } => {
+                validate_text(
+                    reason_code,
+                    "provider terminal reason code",
+                    MAX_PROVIDER_REASON_BYTES,
+                )?;
+                if let Self::Indeterminate {
+                    partial_response_sha256: Some(partial),
+                    ..
+                } = self
+                {
+                    validate_digest(partial, "partial response digest")?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn canonical_wire_bytes(&self) -> Result<Vec<u8>, String> {
+        self.validate()?;
+        canonical_wire_bytes(self)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProviderInvocationReceipt {
     pub schema_version: u32,
     pub receipt_id: ProviderReceiptId,
@@ -295,6 +445,27 @@ impl ProviderInvocationReceipt {
             intent,
             terminal,
         }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_version != PROVIDER_EVIDENCE_SCHEMA_VERSION {
+            return Err("unsupported provider receipt schema version".to_string());
+        }
+        self.intent.validate()?;
+        if self.attempt_id != self.intent.attempt_id
+            || self.request_binding_id != self.intent.request_binding_id
+        {
+            return Err("provider receipt does not bind its exact intent".to_string());
+        }
+        if self.receipt_id != ProviderReceiptId::for_attempt(&self.attempt_id) {
+            return Err("provider receipt id does not bind its attempt id".to_string());
+        }
+        self.terminal.validate()
+    }
+
+    pub fn canonical_wire_bytes(&self) -> Result<Vec<u8>, String> {
+        self.validate()?;
+        canonical_wire_bytes(self)
     }
 }
 
@@ -434,5 +605,76 @@ mod tests {
             intent.binding.host_request_binding_id_sha256.as_str(),
             "host-request-1"
         );
+    }
+
+    #[test]
+    fn active_provider_wire_rejects_unknown_fields_but_keeps_legacy_optional_decode() {
+        let value = serde_json::to_value(binding()).expect("serialize binding");
+        let mut unknown = value.clone();
+        unknown["future_field"] = serde_json::Value::Bool(true);
+        assert!(serde_json::from_value::<ProviderRequestBinding>(unknown).is_err());
+
+        let mut legacy = value;
+        let object = legacy.as_object_mut().expect("binding object");
+        object.remove("ephemeral_input_sha256");
+        object.remove("ephemeral_input_witness_sha256");
+        let decoded: ProviderRequestBinding =
+            serde_json::from_value(legacy).expect("legacy optional fields remain decodable");
+        assert!(decoded.ephemeral_input_sha256.is_none());
+        assert!(decoded.ephemeral_input_witness_sha256.is_none());
+        decoded
+            .validate()
+            .expect("decoded legacy binding validates");
+        assert!(
+            !decoded
+                .canonical_wire_bytes()
+                .expect("canonical wire bytes")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn provider_wire_validation_fences_identity_and_terminal_bindings() {
+        let binding = binding();
+        let intent = ProviderInvocationIntent::for_host_attempt_id("host-attempt-1", binding);
+        intent.validate().expect("valid intent");
+        assert!(
+            !intent
+                .canonical_wire_bytes()
+                .expect("intent wire bytes")
+                .is_empty()
+        );
+
+        let mut forged_intent = intent.clone();
+        forged_intent.binding.provider_id = "provider-forged".to_string();
+        assert!(forged_intent.validate().is_err());
+        assert!(forged_intent.canonical_wire_bytes().is_err());
+
+        let receipt = ProviderInvocationReceipt::new(
+            intent,
+            ProviderTerminal::Rejected {
+                reason_code: "invalid_grant".to_string(),
+            },
+        );
+        receipt.validate().expect("valid rejected receipt");
+        assert!(
+            !receipt
+                .canonical_wire_bytes()
+                .expect("receipt wire bytes")
+                .is_empty()
+        );
+
+        let mut forged_receipt = receipt.clone();
+        forged_receipt.attempt_id = ProviderAttemptId::for_send(
+            &forged_receipt.request_binding_id,
+            &Sha256Digest::for_bytes(b"different-attempt"),
+        );
+        assert!(forged_receipt.validate().is_err());
+
+        let mut forged_terminal = receipt;
+        forged_terminal.terminal = ProviderTerminal::Rejected {
+            reason_code: "   ".to_string(),
+        };
+        assert!(forged_terminal.validate().is_err());
     }
 }
