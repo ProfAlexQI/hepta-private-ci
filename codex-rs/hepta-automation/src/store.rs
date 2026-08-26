@@ -75,6 +75,14 @@ impl AutomationStore {
         &self.owner_agent_id
     }
 
+    pub(crate) fn taskflow_pool(&self) -> &SqlitePool {
+        &self.pool
+    }
+
+    pub(crate) fn taskflow_owner_agent_id(&self) -> &AgentId {
+        &self.owner_agent_id
+    }
+
     pub fn path(&self) -> &Path {
         &self.path
     }

@@ -9,6 +9,7 @@
 mod model;
 mod scheduler;
 mod store;
+mod taskflow;
 
 pub use model::AutomationAdmission;
 pub use model::AutomationDispatchUncertainty;
@@ -25,5 +26,24 @@ pub use scheduler::AutomationFuture;
 pub use scheduler::AutomationScheduler;
 pub use scheduler::AutomationTurnQueue;
 pub use store::AutomationStore;
+pub use taskflow::TASKFLOW_EXTERNAL_EFFECTS;
+pub use taskflow::TASKFLOW_NAMESPACE;
+pub use taskflow::TASKFLOW_PRODUCTION_CALLER;
+pub use taskflow::TASKFLOW_SCHEDULER_AUTHORITY;
+pub use taskflow::TASKFLOW_SCHEMA_VERSION;
+pub use taskflow::TaskFlowCommand;
+pub use taskflow::TaskFlowCommandResult;
+pub use taskflow::TaskFlowCommandStatus;
+pub use taskflow::TaskFlowDefinition;
+pub use taskflow::TaskFlowDefinitionReceipt;
+pub use taskflow::TaskFlowEdgeSpec;
+pub use taskflow::TaskFlowError;
+pub use taskflow::TaskFlowFence;
+pub use taskflow::TaskFlowNodeKind;
+pub use taskflow::TaskFlowNodeSpec;
+pub use taskflow::TaskFlowReconcileOutcome;
+pub use taskflow::TaskFlowRun;
+pub use taskflow::TaskFlowRunState;
+pub use taskflow::TaskFlowTransition;
 
-pub const AUTOMATION_SCHEMA_VERSION: u32 = 2;
+pub const AUTOMATION_SCHEMA_VERSION: u32 = 3;

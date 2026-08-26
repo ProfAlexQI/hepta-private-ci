@@ -889,7 +889,38 @@ async fn v1_store_migrates_atomically_to_dispatch_outcome_schema() {
         .execute(&pool)
         .await
         .expect("drop v2 table");
-    sqlx::query("DELETE FROM _sqlx_migrations WHERE version = 2")
+    // The current opener also applies the qualification-only TaskFlow
+    // migration. Remove that schema and rewind its migration ledger so this
+    // test still exercises a genuine v1 -> latest upgrade path.
+    sqlx::query("DROP TRIGGER taskflow_events_no_update")
+        .execute(&pool)
+        .await
+        .expect("drop TaskFlow event update trigger");
+    sqlx::query("DROP TRIGGER taskflow_events_no_delete")
+        .execute(&pool)
+        .await
+        .expect("drop TaskFlow event delete trigger");
+    sqlx::query("DROP TRIGGER taskflow_definitions_no_update")
+        .execute(&pool)
+        .await
+        .expect("drop TaskFlow definition update trigger");
+    sqlx::query("DROP TRIGGER taskflow_definitions_no_delete")
+        .execute(&pool)
+        .await
+        .expect("drop TaskFlow definition delete trigger");
+    sqlx::query("DROP TABLE taskflow_events")
+        .execute(&pool)
+        .await
+        .expect("drop TaskFlow events");
+    sqlx::query("DROP TABLE taskflow_runs")
+        .execute(&pool)
+        .await
+        .expect("drop TaskFlow runs");
+    sqlx::query("DROP TABLE taskflow_definitions")
+        .execute(&pool)
+        .await
+        .expect("drop TaskFlow definitions");
+    sqlx::query("DELETE FROM _sqlx_migrations WHERE version >= 2")
         .execute(&pool)
         .await
         .expect("rewind migration ledger");
@@ -955,7 +986,7 @@ async fn v1_store_migrates_atomically_to_dispatch_outcome_schema() {
             .fetch_one(&pool)
             .await
             .expect("read migrated schema version");
-    assert_eq!(schema, 2);
+    assert_eq!(schema, 3);
     let outcomes: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM automation_dispatch_outcomes WHERE task_id = ?")
             .bind(task.task_id.to_string())
