@@ -833,7 +833,7 @@ mod tests {
     async fn store(temp: &TempDir) -> CognitiveStore {
         let fleet_root = temp.path().join("fleet");
         std::fs::create_dir_all(&fleet_root).unwrap();
-        let fleet = HeptaFleetRoot::parse(fleet_root).unwrap();
+        let fleet = HeptaFleetRoot::parse(fleet_root.canonicalize().unwrap()).unwrap();
         CognitiveStore::open(&fleet.layout().agent(&agent_id(OWNER))).await.unwrap()
     }
 
