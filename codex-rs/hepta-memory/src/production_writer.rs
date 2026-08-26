@@ -541,6 +541,23 @@ impl ProductionDurableWriter {
             idempotency_key: receipt.occurrence_key.clone(),
             operation_digest: operation_digest(&self.authority, &receipt),
         };
+        // Persist a single-consumer dispatch claim before crossing the target
+        // boundary.  A crash after the target observes this request can no
+        // longer leave a replayable `Queued` row behind: reopen sees the
+        // durable `Indeterminate` marker and must status/reconcile it.  The
+        // strict claim also prevents two concurrent dispatchers that verified
+        // the same immutable receipt from both calling the target.
+        let dispatch_claim_event_id = self
+            .lease
+            .claim_dispatch(&receipt.occurrence_key, &request.operation_digest)
+            .await
+            .map_err(|error| match error {
+                LocalLeaseOutboxError::StaleFence(_)
+                | LocalLeaseOutboxError::IllegalTransition(_)
+                | LocalLeaseOutboxError::CasConflict(_) => ProductionWriterError::StaleReceipt,
+                other => ProductionWriterError::Local(other),
+            })?
+            .event_id;
         let outcome = target.dispatch(request.clone()).await;
         match outcome {
             ProductionTargetOutcome::Committed {
@@ -557,15 +574,9 @@ impl ProductionDurableWriter {
                         local_event_id: local.event_id,
                         external_effect: true,
                     }),
-                    Err(error) => {
-                        let _ = self
-                            .mark_indeterminate(
-                                &receipt.occurrence_key,
-                                "target_committed_local_receipt_write_failed",
-                            )
-                            .await;
-                        Err(error)
-                    }
+                    // The pre-dispatch claim already keeps this occurrence
+                    // indeterminate if the target ACK cannot be journaled.
+                    Err(error) => Err(error),
                 }
             }
             ProductionTargetOutcome::Rejected { reason } => {
@@ -578,18 +589,13 @@ impl ProductionDurableWriter {
                     external_effect: false,
                 })
             }
-            ProductionTargetOutcome::Indeterminate { reason } => {
-                let local = self
-                    .mark_indeterminate(&receipt.occurrence_key, &reason)
-                    .await?;
-                Ok(ProductionDispatchReceipt {
-                    request,
-                    state: LocalOutcomeState::Indeterminate,
-                    target_receipt: None,
-                    local_event_id: local.event_id,
-                    external_effect: false,
-                })
-            }
+            ProductionTargetOutcome::Indeterminate { reason: _ } => Ok(ProductionDispatchReceipt {
+                request,
+                state: LocalOutcomeState::Indeterminate,
+                target_receipt: None,
+                local_event_id: dispatch_claim_event_id,
+                external_effect: false,
+            }),
         }
     }
 }
@@ -891,7 +897,10 @@ mod tests {
     use codex_hepta_paths::HeptaFleetRoot;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
+    use std::time::Duration;
     use tempfile::TempDir;
+    use tokio::time::sleep;
+    use tokio::time::timeout;
 
     const OWNER: u8 = 222;
 
@@ -958,6 +967,39 @@ mod tests {
             self.calls.fetch_add(1, Ordering::SeqCst);
             let outcome = self.outcome.clone();
             Box::pin(async move { outcome })
+        }
+    }
+
+    struct PanicAfterSendTarget {
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl ProductionOutboxTarget for PanicAfterSendTarget {
+        fn dispatch<'a>(
+            &'a self,
+            _request: ProductionDispatchRequest,
+        ) -> ProductionDispatchFuture<'a> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async { panic!("qualification target crashed after send") })
+        }
+    }
+
+    struct SlowTarget {
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl ProductionOutboxTarget for SlowTarget {
+        fn dispatch<'a>(
+            &'a self,
+            _request: ProductionDispatchRequest,
+        ) -> ProductionDispatchFuture<'a> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async move {
+                sleep(Duration::from_millis(100)).await;
+                ProductionTargetOutcome::Indeterminate {
+                    reason: "qualification target timeout".to_string(),
+                }
+            })
         }
     }
 
@@ -1109,6 +1151,112 @@ mod tests {
         assert!(replay.replayed);
         assert_eq!(replay.event_id, queued.event_id);
         assert_eq!(replay.outbox_id, queued.outbox_id);
+    }
+
+    #[tokio::test]
+    async fn crash_after_target_send_reopens_as_indeterminate_and_cannot_redispatch() {
+        let temp = TempDir::new().unwrap();
+        let initial_store = store(&temp).await;
+        let owner = initial_store.owner_agent_id().clone();
+        let auth = authority(owner);
+        let writer = ProductionDurableWriter::open(
+            initial_store.clone(),
+            auth.clone(),
+            &AllowVerifier,
+            "production:h4:dispatch-crash",
+            1,
+        )
+        .await
+        .unwrap();
+        let queued = writer
+            .admit("occurrence:dispatch-crash", "memory.write", "payload")
+            .await
+            .unwrap();
+        let retry_receipt = queued.clone();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let target = Arc::new(PanicAfterSendTarget {
+            calls: calls.clone(),
+        });
+        let dispatcher = ProductionOutboxDispatcher::attach(target.clone());
+        let task = tokio::spawn(async move { dispatcher.dispatch(&writer, queued).await });
+        let join_error = timeout(Duration::from_secs(5), task)
+            .await
+            .expect("crash-after-send fixture must not hang")
+            .unwrap_err();
+        assert!(join_error.is_panic());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        drop(initial_store);
+
+        let reopened_store = store(&temp).await;
+        let reopened = ProductionDurableWriter::open(
+            reopened_store,
+            auth,
+            &AllowVerifier,
+            "production:h4:dispatch-crash",
+            1,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            reopened.status("occurrence:dispatch-crash").await.unwrap(),
+            LocalOutcomeState::Indeterminate
+        );
+        let retry = ProductionOutboxDispatcher::attach(target);
+        let result = retry.dispatch(&reopened, retry_receipt).await;
+        assert!(matches!(result, Err(ProductionWriterError::StaleReceipt)));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let recovery = reopened.recover("occurrence:dispatch-crash").await.unwrap();
+        assert_eq!(recovery.state, "released_indeterminate");
+        assert!(!recovery.external_effect);
+    }
+
+    #[tokio::test]
+    async fn concurrent_dispatchers_have_one_durable_claim_and_one_target_call() {
+        let temp = TempDir::new().unwrap();
+        let store = store(&temp).await;
+        let owner = store.owner_agent_id().clone();
+        let auth = authority(owner);
+        let writer = ProductionDurableWriter::open(
+            store,
+            auth,
+            &AllowVerifier,
+            "production:h4:dispatch-race",
+            1,
+        )
+        .await
+        .unwrap();
+        let queued = writer
+            .admit("occurrence:dispatch-race", "memory.write", "payload")
+            .await
+            .unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let target = Arc::new(SlowTarget {
+            calls: calls.clone(),
+        });
+        let dispatcher = ProductionOutboxDispatcher::attach(target);
+        let (first, second) = timeout(Duration::from_secs(5), async {
+            tokio::join!(
+                dispatcher.dispatch(&writer, queued.clone()),
+                dispatcher.dispatch(&writer, queued),
+            )
+        })
+        .await
+        .expect("concurrent dispatch claim fixture must not hang");
+        let first_ok = matches!(
+            &first,
+            Ok(receipt) if receipt.state == LocalOutcomeState::Indeterminate
+        );
+        let second_ok = matches!(
+            &second,
+            Ok(receipt) if receipt.state == LocalOutcomeState::Indeterminate
+        );
+        let first_stale = matches!(&first, Err(ProductionWriterError::StaleReceipt));
+        let second_stale = matches!(&second, Err(ProductionWriterError::StaleReceipt));
+        assert!(
+            (first_ok && second_stale) || (second_ok && first_stale),
+            "expected one successful claim and one stale receipt, first={first:?} second={second:?}"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

@@ -1467,6 +1467,31 @@ impl LocalLeaseOutbox {
         .await
     }
 
+    /// Claim one exact queued occurrence before a target dispatch begins.
+    ///
+    /// The claim is persisted as the existing fail-closed `Indeterminate`
+    /// state.  Unlike [`mark_indeterminate`], an identical replay is rejected:
+    /// only the transaction that changes `Queued` to `Indeterminate` may call
+    /// the target.  A concurrent dispatcher or a process that reopens after a
+    /// crash must use status/reconcile instead of dispatching the outbox row a
+    /// second time.  This is local bookkeeping only; it neither calls a target
+    /// nor proves an external effect.
+    pub(crate) async fn claim_dispatch(
+        &self,
+        occurrence_key: impl Into<String>,
+        operation_digest: &Sha256Digest,
+    ) -> Result<LocalOutcomeReceipt, LocalLeaseOutboxError> {
+        self.append_outcome_with_replay_policy(
+            occurrence_key.into(),
+            "indeterminate",
+            format!("dispatch_started_pending_ack:{}", operation_digest.as_str()),
+            &[LocalOutcomeState::Queued],
+            LocalOutcomeState::Indeterminate,
+            false,
+        )
+        .await
+    }
+
     /// Apply a local intent after its target-side qualification writer has
     /// returned a receipt.  `Queued` is the durable Pending state and
     /// `Committed` is exposed by higher-level local sagas as Applied.  The
@@ -1631,6 +1656,26 @@ impl LocalLeaseOutbox {
         allowed: &[LocalOutcomeState],
         resulting_state: LocalOutcomeState,
     ) -> Result<LocalOutcomeReceipt, LocalLeaseOutboxError> {
+        self.append_outcome_with_replay_policy(
+            occurrence_key,
+            kind,
+            payload,
+            allowed,
+            resulting_state,
+            true,
+        )
+        .await
+    }
+
+    async fn append_outcome_with_replay_policy(
+        &self,
+        occurrence_key: String,
+        kind: &str,
+        payload: String,
+        allowed: &[LocalOutcomeState],
+        resulting_state: LocalOutcomeState,
+        allow_exact_replay: bool,
+    ) -> Result<LocalOutcomeReceipt, LocalLeaseOutboxError> {
         validate_text(&occurrence_key, "occurrence key", 512)?;
         validate_text(&payload, "outcome payload", 65_536)?;
         let payload_sha256 = Sha256Digest::for_bytes(payload.as_bytes());
@@ -1680,16 +1725,18 @@ impl LocalLeaseOutbox {
         )
         .await?;
         if !allowed.contains(&current) {
-            if let Some(existing) = find_transition(
-                &mut transaction,
-                &self.lease_id,
-                &occurrence_key,
-                kind,
-                &self.owner_agent_id,
-            )
-            .await?
-            {
-                if existing.payload_sha256 == payload_sha256 {
+            match (
+                allow_exact_replay,
+                find_transition(
+                    &mut transaction,
+                    &self.lease_id,
+                    &occurrence_key,
+                    kind,
+                    &self.owner_agent_id,
+                )
+                .await?,
+            ) {
+                (true, Some(existing)) if existing.payload_sha256 == payload_sha256 => {
                     transaction
                         .commit()
                         .await
@@ -1702,6 +1749,7 @@ impl LocalLeaseOutbox {
                         external_effect: false,
                     });
                 }
+                _ => {}
             }
             return Err(LocalLeaseOutboxError::IllegalTransition(format!(
                 "occurrence is already in {} state",
@@ -1717,6 +1765,11 @@ impl LocalLeaseOutbox {
         )
         .await?
         {
+            if !allow_exact_replay {
+                return Err(LocalLeaseOutboxError::IllegalTransition(
+                    "dispatch claim was already consumed".to_string(),
+                ));
+            }
             if existing.payload_sha256 != payload_sha256 {
                 return Err(LocalLeaseOutboxError::CasConflict(
                     "outcome replay changed its reason/payload".to_string(),
