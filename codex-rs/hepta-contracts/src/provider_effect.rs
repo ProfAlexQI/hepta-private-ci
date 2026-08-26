@@ -512,6 +512,17 @@ impl<'de> Deserialize<'de> for ProviderEffectJournal {
         .map_err(|error| {
             serde::de::Error::custom(format!("invalid provider status provenance: {error:?}"))
         })?;
+        validate_journal_contents(
+            &wire.intents,
+            &wire.acknowledgements,
+            &ack_sources,
+            &wire.uncertainties,
+            &status_observations,
+            &wire.quarantined,
+        )
+        .map_err(|error| {
+            serde::de::Error::custom(format!("invalid provider journal: {error:?}"))
+        })?;
         Ok(Self {
             intents: wire.intents,
             acknowledgements: wire.acknowledgements,
@@ -605,6 +616,143 @@ fn validate_status_observation_maps(
     Ok(())
 }
 
+/// Validate the contents behind the journal's provenance shape.
+///
+/// The source-vector length check above prevents a deserializer from
+/// inventing a missing observation path, but it is not enough on its own:
+/// malformed ACKs, intents, uncertainty markers, or map keys could still be
+/// loaded and then exposed through the legacy infallible read APIs.  Keep this
+/// check independent of the journal object so both deserialization and
+/// in-memory callers share the same fail-closed boundary.
+fn validate_journal_contents(
+    intents: &BTreeMap<String, ProviderEffectIntent>,
+    acknowledgements: &BTreeMap<String, Vec<ProviderEffectAck>>,
+    ack_sources: &BTreeMap<String, Vec<ProviderEffectAckSource>>,
+    uncertainties: &BTreeMap<String, Vec<ProviderEffectUncertainty>>,
+    status_observations: &BTreeMap<String, Vec<ProviderEffectStatusObservation>>,
+    quarantined: &BTreeMap<String, bool>,
+) -> Result<(), ProviderEffectBindingError> {
+    for (map_key, intent) in intents {
+        if map_key != intent.key.as_str() || intent.validate().is_err() {
+            return Err(ProviderEffectBindingError::AckConflict);
+        }
+    }
+
+    // Every auxiliary map is keyed by a previously recorded intent.  An
+    // unknown key must not become a free-standing terminal-looking record.
+    if acknowledgements
+        .keys()
+        .chain(uncertainties.keys())
+        .chain(status_observations.keys())
+        .any(|key| !intents.contains_key(key))
+        || quarantined.keys().any(|key| !intents.contains_key(key))
+    {
+        return Err(ProviderEffectBindingError::AckConflict);
+    }
+
+    for (key, acknowledgements_for_key) in acknowledgements {
+        let Some(intent) = intents.get(key) else {
+            return Err(ProviderEffectBindingError::AckConflict);
+        };
+        let Some(sources) = ack_sources.get(key) else {
+            // The shape validator normally catches this first; retain the
+            // guard here so direct in-memory validation is equally strict.
+            if acknowledgements_for_key.is_empty() {
+                continue;
+            }
+            return Err(ProviderEffectBindingError::AckConflict);
+        };
+        if sources.len() != acknowledgements_for_key.len() {
+            return Err(ProviderEffectBindingError::AckConflict);
+        }
+
+        let uncertainty_present = uncertainties
+            .get(key)
+            .is_some_and(|entries| !entries.is_empty());
+        let mut quarantined_before = false;
+        for (index, acknowledgement) in acknowledgements_for_key.iter().enumerate() {
+            acknowledgement
+                .validate_for(intent)
+                .map_err(|_| ProviderEffectBindingError::AckConflict)?;
+            let source = sources[index];
+            // An uncertainty marker is stored out-of-band from the ACK
+            // sequence.  Treat a status-sourced ACK as following that marker
+            // so the accepted -> completed operation-id rebinding used by
+            // reconciliation remains valid during replay validation.
+            if uncertainty_present && source == ProviderEffectAckSource::StatusLookup {
+                quarantined_before = true;
+            }
+            if index > 0 {
+                validate_ack_transition(
+                    &acknowledgements_for_key[..index],
+                    acknowledgement,
+                    quarantined_before,
+                    source,
+                )?;
+            }
+        }
+    }
+
+    for (key, uncertainties_for_key) in uncertainties {
+        let Some(intent) = intents.get(key) else {
+            return Err(ProviderEffectBindingError::AckConflict);
+        };
+        for uncertainty in uncertainties_for_key {
+            uncertainty
+                .validate_for(intent)
+                .map_err(|_| ProviderEffectBindingError::AckConflict)?;
+        }
+    }
+
+    // A quarantine marker is meaningful only when backed by an uncertainty
+    // record, and a terminal ACK must clear it.  Missing false entries remain
+    // compatible with pre-provenance journals.  A status-sourced ACK is an
+    // explicit reconciliation and may clear an earlier uncertainty even when
+    // the resulting state is still `Accepted`.
+    for (key, is_quarantined) in quarantined {
+        let uncertainty_present = uncertainties
+            .get(key)
+            .is_some_and(|entries| !entries.is_empty());
+        let terminal = acknowledgements
+            .get(key)
+            .and_then(|entries| entries.last())
+            .is_some_and(|ack| ack.state().is_terminal());
+        if *is_quarantined && (!uncertainty_present || terminal) {
+            return Err(ProviderEffectBindingError::AckConflict);
+        }
+    }
+    for (key, uncertainties_for_key) in uncertainties {
+        if uncertainties_for_key.is_empty() {
+            continue;
+        }
+        let latest_source = acknowledgements
+            .get(key)
+            .and_then(|entries| entries.len().checked_sub(1))
+            .and_then(|index| ack_sources.get(key).and_then(|sources| sources.get(index)))
+            .copied();
+        let terminal = acknowledgements
+            .get(key)
+            .and_then(|entries| entries.last())
+            .is_some_and(|ack| ack.state().is_terminal());
+        let is_quarantined = quarantined.get(key).copied().unwrap_or(false);
+        if terminal {
+            // A terminal status is allowed to close an uncertainty only when
+            // it came from the provider-owned lookup path.  A dispatch
+            // terminal plus an uncertainty marker is an impossible local
+            // history and must not be trusted after deserialization.
+            if latest_source != Some(ProviderEffectAckSource::StatusLookup) {
+                return Err(ProviderEffectBindingError::AckConflict);
+            }
+        } else if !is_quarantined && latest_source != Some(ProviderEffectAckSource::StatusLookup) {
+            return Err(ProviderEffectBindingError::AckConflict);
+        }
+    }
+
+    // This call also checks each status envelope and its exact equality with
+    // the corresponding status-sourced ACK.
+    validate_status_observation_maps(acknowledgements, ack_sources, status_observations)
+}
+
 impl ProviderEffectJournal {
     /// Verifies that every durable ACK observation has a one-to-one local
     /// provenance entry.  This is intentionally separate from provider ACK
@@ -612,10 +760,13 @@ impl ProviderEffectJournal {
     /// data, and must never be inferred from an old journal.
     pub fn validate(&self) -> Result<(), ProviderEffectBindingError> {
         validate_ack_provenance_maps(&self.acknowledgements, &self.ack_sources)?;
-        validate_status_observation_maps(
+        validate_journal_contents(
+            &self.intents,
             &self.acknowledgements,
             &self.ack_sources,
+            &self.uncertainties,
             &self.status_observations,
+            &self.quarantined,
         )
     }
 
@@ -1596,6 +1747,38 @@ mod tests {
     }
 
     #[test]
+    fn journal_status_acceptance_can_close_prior_quarantine() {
+        let intent = intent(b"status-accepted-after-unknown");
+        let key = intent.key.clone();
+        let accepted_before_unknown = ProviderEffectAck::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            Sha256Digest::for_bytes(b"operation-before-unknown"),
+            ProviderEffectAckStatus::Accepted,
+        );
+        let accepted_after_unknown = ProviderEffectStatusObservation::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            Sha256Digest::for_bytes(b"operation-after-unknown"),
+            ProviderEffectAckStatus::Accepted,
+        );
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent).expect("intent");
+        journal
+            .record_ack(accepted_before_unknown)
+            .expect("accepted ACK");
+        journal
+            .mark_indeterminate(&key, "provider_dispatch_unknown")
+            .expect("quarantine");
+        assert_eq!(
+            journal.record_status_observation(accepted_after_unknown),
+            Ok(ProviderEffectAppendDisposition::Inserted)
+        );
+        assert_eq!(journal.state(&key), Some(ProviderEffectState::Accepted));
+        assert!(journal.validate().is_ok());
+    }
+
+    #[test]
     fn journal_rejects_late_dispatch_ack_after_quarantine() {
         let intent = intent(b"payload-a");
         let key = intent.key.clone();
@@ -1817,6 +2000,59 @@ mod tests {
             .and_then(|sources| sources.first_mut())
             .expect("source vector entry") = serde_json::Value::String("forged_source".into());
         assert!(serde_json::from_value::<ProviderEffectJournal>(unknown_source).is_err());
+    }
+
+    #[test]
+    fn journal_deserialization_rejects_malformed_ack_contents() {
+        let intent = intent(b"nested-ack-payload");
+        let key = intent.key.clone();
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent.clone()).expect("intent");
+        journal
+            .record_ack(ack(&intent, b"nested-ack-payload"))
+            .expect("ACK");
+
+        let mut encoded = serde_json::to_value(&journal).expect("serialize journal");
+        *encoded
+            .get_mut("acknowledgements")
+            .and_then(|acks| acks.get_mut(key.as_str()))
+            .and_then(serde_json::Value::as_array_mut)
+            .and_then(|acks| acks.first_mut())
+            .and_then(|ack| ack.get_mut("payload_sha256"))
+            .expect("ACK payload") = serde_json::Value::String(
+            Sha256Digest::for_bytes(b"forged-payload")
+                .as_str()
+                .to_string(),
+        );
+        assert!(serde_json::from_value::<ProviderEffectJournal>(encoded).is_err());
+    }
+
+    #[test]
+    fn malformed_in_memory_journal_contents_fail_closed_before_state_or_append() {
+        let intent = intent(b"in-memory-journal-payload");
+        let key = intent.key.clone();
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent.clone()).expect("intent");
+        journal
+            .record_ack(ack(&intent, b"in-memory-journal-payload"))
+            .expect("ACK");
+        journal
+            .acknowledgements
+            .get_mut(key.as_str())
+            .expect("ACK vector")
+            .first_mut()
+            .expect("ACK")
+            .payload_sha256 = Sha256Digest::for_bytes(b"forged-payload");
+
+        assert_eq!(
+            journal.state(&key),
+            Some(ProviderEffectState::Indeterminate)
+        );
+        assert_eq!(journal.acknowledgements(&key), &[]);
+        assert_eq!(
+            journal.record_intent(intent),
+            Err(ProviderEffectBindingError::AckConflict)
+        );
     }
 
     #[test]
