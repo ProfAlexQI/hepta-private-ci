@@ -9,6 +9,7 @@ use codex_hepta_contracts::ProviderEffectIntent;
 use codex_hepta_contracts::ProviderEffectKey;
 use codex_hepta_contracts::ProviderEffectLookup;
 use codex_hepta_contracts::ProviderEffectState;
+use codex_hepta_contracts::ProviderEffectStatusObservation;
 use codex_hepta_contracts::ProviderEffectUncertainty;
 use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_contracts::reconcile_provider_lookup;
@@ -402,6 +403,23 @@ impl HeptaEvidenceStore {
             .await
     }
 
+    /// Appends a provider-owned status observation as a durable qualification
+    /// receipt.  The observation is secret-free and carries explicit
+    /// `StatusLookup` provenance; no provider or network call is made here.
+    /// The ACK/source table is the durable projection, so the existing
+    /// authoritative-intent binding and monotonic transition checks apply.
+    pub async fn append_provider_effect_status_observation(
+        &self,
+        observation: &ProviderEffectStatusObservation,
+    ) -> Result<AppendDisposition, EvidenceError> {
+        observation.validate().map_err(binding_invalid)?;
+        self.append_provider_effect_ack_from_source(
+            &observation.to_ack(),
+            ProviderEffectAckSource::StatusLookup,
+        )
+        .await
+    }
+
     async fn append_provider_effect_ack_with_boundary_claim(
         &self,
         ack: &ProviderEffectAck,
@@ -698,6 +716,23 @@ impl HeptaEvidenceStore {
         }
         Ok(self
             .get_provider_effect(key)
+            .await?
+            .map(|effect| effect.state())
+            .unwrap_or(ProviderEffectState::Indeterminate))
+    }
+
+    /// Reconciles one already-obtained provider status observation without
+    /// performing a lookup.  This is a qualification-only ingestion boundary:
+    /// callers must obtain the observation through their own authorized
+    /// provider integration and pass only the signed/digest-only envelope.
+    pub async fn reconcile_provider_effect_status_observation(
+        &self,
+        observation: &ProviderEffectStatusObservation,
+    ) -> Result<ProviderEffectState, EvidenceError> {
+        self.append_provider_effect_status_observation(observation)
+            .await?;
+        Ok(self
+            .get_provider_effect(&observation.key)
             .await?
             .map(|effect| effect.state())
             .unwrap_or(ProviderEffectState::Indeterminate))
@@ -1130,6 +1165,16 @@ async fn validate_ack_transition_in_transaction(
     if let Some(previous) = previous.as_ref()
         && previous.ack == *next
     {
+        // Once a provider-owned status lookup has established the exact ACK,
+        // a later raw dispatch response cannot forge the same provenance.
+        // It must be rejected even when no uncertainty marker is present.
+        if source == ProviderEffectAckSource::DispatchResponse
+            && previous.source == ProviderEffectAckSource::StatusLookup
+        {
+            return Err(EvidenceError::IdempotencyConflict {
+                record_id: next.key.as_str().to_string(),
+            });
+        }
         // Exact replays are idempotent even when the durable boundary marker
         // remains in the journal, but a raw dispatch replay after any
         // uncertainty is still forbidden.  A status lookup is an

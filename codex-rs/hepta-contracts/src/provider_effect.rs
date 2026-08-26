@@ -303,6 +303,91 @@ impl ProviderEffectAck {
     }
 }
 
+/// Provider-owned status observation with explicit local provenance.
+///
+/// A raw [`ProviderEffectAck`] is intentionally ambiguous: it may have come
+/// from the initial dispatch response, or from a later provider-owned status
+/// lookup.  This envelope is the qualification-only seam for the latter.  It
+/// carries the exact key, payload digest, provider operation identity, and
+/// monotonic status together with a source that must be
+/// [`ProviderEffectAckSource::StatusLookup`].  No provider call or authority
+/// is implied by constructing one.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ProviderEffectStatusObservation {
+    pub schema_version: u32,
+    pub key: ProviderEffectKey,
+    pub payload_sha256: Sha256Digest,
+    pub provider_operation_id_sha256: Sha256Digest,
+    pub status: ProviderEffectAckStatus,
+    pub source: ProviderEffectAckSource,
+}
+
+impl ProviderEffectStatusObservation {
+    /// Constructs an observation from a provider status lookup.  The source
+    /// is fixed by the constructor; deserialized or manually forged values
+    /// are rechecked by [`Self::validate`].
+    pub fn new(
+        key: ProviderEffectKey,
+        payload_sha256: Sha256Digest,
+        provider_operation_id_sha256: Sha256Digest,
+        status: ProviderEffectAckStatus,
+    ) -> Self {
+        Self {
+            schema_version: PROVIDER_EFFECT_SCHEMA_VERSION,
+            key,
+            payload_sha256,
+            provider_operation_id_sha256,
+            status,
+            source: ProviderEffectAckSource::StatusLookup,
+        }
+    }
+
+    pub fn from_ack(ack: &ProviderEffectAck) -> Self {
+        Self::new(
+            ack.key.clone(),
+            ack.payload_sha256.clone(),
+            ack.provider_operation_id_sha256.clone(),
+            ack.status,
+        )
+    }
+
+    /// Converts the envelope to the provider payload carried by the durable
+    /// ACK table.  Callers must validate the envelope before using this value.
+    pub fn to_ack(&self) -> ProviderEffectAck {
+        ProviderEffectAck::new(
+            self.key.clone(),
+            self.payload_sha256.clone(),
+            self.provider_operation_id_sha256.clone(),
+            self.status,
+        )
+    }
+
+    pub fn validate(&self) -> Result<(), ProviderEffectBindingError> {
+        if self.schema_version != PROVIDER_EFFECT_SCHEMA_VERSION {
+            return Err(ProviderEffectBindingError::SchemaVersion);
+        }
+        if self.source != ProviderEffectAckSource::StatusLookup {
+            return Err(ProviderEffectBindingError::StatusObservationSourceRequired);
+        }
+        ProviderEffectKey::parse(self.key.as_str().to_string())?;
+        Sha256Digest::parse(self.payload_sha256.as_str().to_string())
+            .map_err(ProviderEffectBindingError::InvalidDigest)?;
+        Sha256Digest::parse(self.provider_operation_id_sha256.as_str().to_string())
+            .map_err(ProviderEffectBindingError::InvalidDigest)?;
+        Ok(())
+    }
+
+    /// Verifies that this status is for the exact local intent.  This binds
+    /// key, payload, operation and schema before it can advance local state.
+    pub fn validate_for(
+        &self,
+        intent: &ProviderEffectIntent,
+    ) -> Result<(), ProviderEffectBindingError> {
+        self.validate()?;
+        self.to_ack().validate_for(intent)
+    }
+}
+
 /// Result of asking a provider for the current state of a key.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "result", rename_all = "snake_case")]
@@ -344,6 +429,7 @@ pub enum ProviderEffectBindingError {
     Conflict,
     AckConflict,
     InvalidAckSource,
+    StatusObservationSourceRequired,
     InvalidReasonCode,
 }
 
@@ -370,6 +456,12 @@ pub struct ProviderEffectJournal {
     ack_sources: BTreeMap<String, Vec<ProviderEffectAckSource>>,
     #[serde(default)]
     uncertainties: BTreeMap<String, Vec<ProviderEffectUncertainty>>,
+    /// Exact envelopes for ACKs observed through a provider-owned status
+    /// lookup.  Keeping these separate from the provider payload preserves
+    /// the local provenance boundary while making the status evidence
+    /// independently auditable.
+    #[serde(default)]
+    status_observations: BTreeMap<String, Vec<ProviderEffectStatusObservation>>,
     #[serde(default)]
     quarantined: BTreeMap<String, bool>,
 }
@@ -390,6 +482,8 @@ struct ProviderEffectJournalWire {
     #[serde(default)]
     uncertainties: BTreeMap<String, Vec<ProviderEffectUncertainty>>,
     #[serde(default)]
+    status_observations: Option<BTreeMap<String, Vec<ProviderEffectStatusObservation>>>,
+    #[serde(default)]
     quarantined: BTreeMap<String, bool>,
 }
 
@@ -400,14 +494,24 @@ impl<'de> Deserialize<'de> for ProviderEffectJournal {
     {
         let wire = ProviderEffectJournalWire::deserialize(deserializer)?;
         let ack_sources = wire.ack_sources.unwrap_or_default();
+        let status_observations = wire.status_observations.unwrap_or_default();
         validate_ack_provenance_maps(&wire.acknowledgements, &ack_sources).map_err(|error| {
             serde::de::Error::custom(format!("invalid ACK provenance: {error:?}"))
+        })?;
+        validate_status_observation_maps(
+            &wire.acknowledgements,
+            &ack_sources,
+            &status_observations,
+        )
+        .map_err(|error| {
+            serde::de::Error::custom(format!("invalid provider status provenance: {error:?}"))
         })?;
         Ok(Self {
             intents: wire.intents,
             acknowledgements: wire.acknowledgements,
             ack_sources,
             uncertainties: wire.uncertainties,
+            status_observations,
             quarantined: wire.quarantined,
         })
     }
@@ -449,13 +553,64 @@ fn validate_ack_provenance_maps(
     Ok(())
 }
 
+fn validate_status_observation_maps(
+    acknowledgements: &BTreeMap<String, Vec<ProviderEffectAck>>,
+    ack_sources: &BTreeMap<String, Vec<ProviderEffectAckSource>>,
+    status_observations: &BTreeMap<String, Vec<ProviderEffectStatusObservation>>,
+) -> Result<(), ProviderEffectBindingError> {
+    let mut expected = BTreeMap::<String, Vec<&ProviderEffectAck>>::new();
+    for (key, acknowledgements) in acknowledgements {
+        let Some(sources) = ack_sources.get(key) else {
+            // The ACK/source validator reports the more precise error.
+            continue;
+        };
+        for (index, ack) in acknowledgements.iter().enumerate() {
+            if sources.get(index) == Some(&ProviderEffectAckSource::StatusLookup) {
+                expected.entry(key.clone()).or_default().push(ack);
+            }
+        }
+    }
+
+    if expected.len() != status_observations.len() {
+        return Err(ProviderEffectBindingError::AckConflict);
+    }
+    for (key, expected_acks) in expected {
+        let Some(observations) = status_observations.get(&key) else {
+            return Err(ProviderEffectBindingError::AckConflict);
+        };
+        if observations.len() != expected_acks.len() {
+            return Err(ProviderEffectBindingError::AckConflict);
+        }
+        for (ack, observation) in expected_acks.into_iter().zip(observations) {
+            observation
+                .validate()
+                .map_err(|_| ProviderEffectBindingError::AckConflict)?;
+            if observation.to_ack() != *ack {
+                return Err(ProviderEffectBindingError::AckConflict);
+            }
+        }
+    }
+    if status_observations
+        .keys()
+        .any(|key| !acknowledgements.contains_key(key))
+    {
+        return Err(ProviderEffectBindingError::AckConflict);
+    }
+    Ok(())
+}
+
 impl ProviderEffectJournal {
     /// Verifies that every durable ACK observation has a one-to-one local
     /// provenance entry.  This is intentionally separate from provider ACK
     /// payload validation: source is process-local evidence, not provider
     /// data, and must never be inferred from an old journal.
     pub fn validate(&self) -> Result<(), ProviderEffectBindingError> {
-        validate_ack_provenance_maps(&self.acknowledgements, &self.ack_sources)
+        validate_ack_provenance_maps(&self.acknowledgements, &self.ack_sources)?;
+        validate_status_observation_maps(
+            &self.acknowledgements,
+            &self.ack_sources,
+            &self.status_observations,
+        )
     }
 
     pub fn record_intent(
@@ -473,6 +628,24 @@ impl ProviderEffectJournal {
         }
         self.intents.insert(key, intent);
         Ok(ProviderEffectAppendDisposition::Inserted)
+    }
+
+    /// Records a provider-owned status observation.  The envelope is the only
+    /// qualification API that may introduce a `StatusLookup` ACK; callers
+    /// cannot silently relabel a dispatch response as authoritative status.
+    pub fn record_status_observation(
+        &mut self,
+        observation: ProviderEffectStatusObservation,
+    ) -> Result<ProviderEffectAppendDisposition, ProviderEffectBindingError> {
+        self.validate()?;
+        let key = observation.key.clone();
+        let intent = self
+            .intents
+            .get(key.as_str())
+            .cloned()
+            .ok_or(ProviderEffectBindingError::NotFound)?;
+        observation.validate_for(&intent)?;
+        self.record_ack_from_source(observation.to_ack(), ProviderEffectAckSource::StatusLookup)
     }
 
     pub fn record_ack(
@@ -497,6 +670,8 @@ impl ProviderEffectJournal {
             .get(&key)
             .ok_or(ProviderEffectBindingError::NotFound)?;
         ack.validate_for(intent)?;
+        let status_observation = (source == ProviderEffectAckSource::StatusLookup)
+            .then(|| ProviderEffectStatusObservation::from_ack(&ack));
         let observations = self.acknowledgements.entry(key.clone()).or_default();
         let was_quarantined = self
             .quarantined
@@ -513,6 +688,14 @@ impl ProviderEffectJournal {
                 // no safe way to infer how an existing ACK was observed.
                 return Err(ProviderEffectBindingError::AckConflict);
             };
+            if source == ProviderEffectAckSource::DispatchResponse
+                && existing_source == ProviderEffectAckSource::StatusLookup
+            {
+                // A raw dispatch response that arrives after a provider-owned
+                // status observation is not an authoritative replay.  Keep
+                // the first status provenance and reject the late path.
+                return Err(ProviderEffectBindingError::AckConflict);
+            }
             // A duplicate observation is idempotent even when a later status
             // lookup confirms an ACK first seen in a dispatch response.  The
             // first stored source remains authoritative; quarantine rules
@@ -523,7 +706,13 @@ impl ProviderEffectJournal {
         validate_ack_transition(observations, &ack, was_quarantined, source)?;
         observations.push(ack);
         sources.push(source);
-        self.quarantined.insert(key, false);
+        self.quarantined.insert(key.clone(), false);
+        if let Some(status_observation) = status_observation {
+            self.status_observations
+                .entry(key)
+                .or_default()
+                .push(status_observation);
+        }
         Ok(ProviderEffectAppendDisposition::Inserted)
     }
 
@@ -616,6 +805,18 @@ impl ProviderEffectJournal {
             .map_or(&[], Vec::as_slice)
     }
 
+    pub fn status_observations(
+        &self,
+        key: &ProviderEffectKey,
+    ) -> &[ProviderEffectStatusObservation] {
+        if self.validate().is_err() {
+            return &[];
+        }
+        self.status_observations
+            .get(key.as_str())
+            .map_or(&[], Vec::as_slice)
+    }
+
     pub fn reconcile(
         &mut self,
         capability: ProviderEffectIdempotencyCapability,
@@ -653,6 +854,21 @@ impl ProviderEffectJournal {
                 Ok(ProviderEffectState::Indeterminate)
             }
         }
+    }
+
+    /// Reconciles one already-observed provider status without performing a
+    /// network call.  Unknown/not-found outcomes must use [`Self::reconcile`]
+    /// and remain quarantined; this API accepts only a key/payload/operation
+    /// bound status envelope.
+    pub fn reconcile_status_observation(
+        &mut self,
+        observation: ProviderEffectStatusObservation,
+    ) -> Result<ProviderEffectState, ProviderEffectBindingError> {
+        let key = observation.key.clone();
+        self.record_status_observation(observation)?;
+        Ok(self
+            .state(&key)
+            .unwrap_or(ProviderEffectState::Indeterminate))
     }
 }
 
@@ -1276,6 +1492,95 @@ mod tests {
             Err(ProviderEffectBindingError::AckConflict)
         );
         assert_eq!(journal.state(&key), Some(ProviderEffectState::Indeterminate));
+    }
+
+    #[test]
+    fn status_observation_binds_exact_payload_and_requires_lookup_source() {
+        let intent = intent(b"status-payload");
+        let key = intent.key.clone();
+        let operation = Sha256Digest::for_bytes(b"status-operation-1");
+        let observation = ProviderEffectStatusObservation::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            operation.clone(),
+            ProviderEffectAckStatus::Accepted,
+        );
+        assert!(observation.validate_for(&intent).is_ok());
+
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent.clone()).expect("intent");
+        assert_eq!(
+            journal.record_status_observation(observation.clone()),
+            Ok(ProviderEffectAppendDisposition::Inserted)
+        );
+        assert_eq!(journal.status_observations(&key), &[observation.clone()]);
+
+        let mut forged_source = observation.clone();
+        forged_source.source = ProviderEffectAckSource::DispatchResponse;
+        assert_eq!(
+            journal.record_status_observation(forged_source),
+            Err(ProviderEffectBindingError::StatusObservationSourceRequired)
+        );
+
+        let mut forged_payload = observation.clone();
+        forged_payload.payload_sha256 = Sha256Digest::for_bytes(b"different-payload");
+        assert_eq!(
+            journal.record_status_observation(forged_payload),
+            Err(ProviderEffectBindingError::PayloadMismatch)
+        );
+
+        let mut forged_operation = observation;
+        forged_operation.provider_operation_id_sha256 =
+            Sha256Digest::for_bytes(b"status-operation-forged");
+        assert_eq!(
+            journal.record_status_observation(forged_operation),
+            Err(ProviderEffectBindingError::AckConflict)
+        );
+    }
+
+    #[test]
+    fn status_observation_is_monotonic_and_rejects_late_dispatch_or_unknown() {
+        let intent = intent(b"status-monotonic-payload");
+        let key = intent.key.clone();
+        let operation = Sha256Digest::for_bytes(b"status-monotonic-operation");
+        let accepted = ProviderEffectStatusObservation::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            operation.clone(),
+            ProviderEffectAckStatus::Accepted,
+        );
+        let completed = ProviderEffectStatusObservation::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            operation,
+            ProviderEffectAckStatus::Completed,
+        );
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent.clone()).expect("intent");
+        journal
+            .record_status_observation(accepted)
+            .expect("accepted status");
+        assert_eq!(
+            journal.reconcile_status_observation(completed.clone()),
+            Ok(ProviderEffectState::Completed)
+        );
+        assert_eq!(
+            journal.record_status_observation(completed.clone()),
+            Ok(ProviderEffectAppendDisposition::AlreadyPresent)
+        );
+        assert_eq!(
+            journal.record_ack(completed.to_ack()),
+            Err(ProviderEffectBindingError::AckConflict)
+        );
+        assert_eq!(
+            journal.reconcile(
+                ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+                &key,
+                ProviderEffectLookup::Unknown,
+            ),
+            Err(ProviderEffectBindingError::AckConflict)
+        );
+        assert_eq!(journal.status_observations(&key).len(), 2);
     }
 
     #[test]

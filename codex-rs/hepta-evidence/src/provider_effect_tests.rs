@@ -14,6 +14,7 @@ use codex_hepta_contracts::ProviderEffectIntent;
 use codex_hepta_contracts::ProviderEffectKey;
 use codex_hepta_contracts::ProviderEffectLookup;
 use codex_hepta_contracts::ProviderEffectState;
+use codex_hepta_contracts::ProviderEffectStatusObservation;
 use codex_hepta_contracts::ProviderEffectUncertainty;
 use codex_hepta_contracts::ProviderRequestBinding;
 use codex_hepta_contracts::ProviderRequestKind;
@@ -315,6 +316,151 @@ async fn duplicate_dispatch_ack_after_quarantine_requires_status_lookup_source()
             .expect("status lookup duplicate is idempotent"),
         AppendDisposition::AlreadyPresent
     );
+}
+
+#[tokio::test]
+async fn durable_status_observation_binds_payload_and_persists_lookup_provenance() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"status-observation-payload");
+    store
+        .append_provider_effect_intent(&intent)
+        .await
+        .expect("intent");
+    let accepted_ack = ProviderEffectAck::new(
+        intent.key.clone(),
+        intent.payload_sha256.clone(),
+        Sha256Digest::for_bytes(b"status-operation"),
+        ProviderEffectAckStatus::Accepted,
+    );
+    let accepted = ProviderEffectStatusObservation::from_ack(&accepted_ack);
+    assert_eq!(
+        store
+            .append_provider_effect_status_observation(&accepted)
+            .await
+            .expect("status observation"),
+        AppendDisposition::Inserted
+    );
+    assert_eq!(
+        store
+            .append_provider_effect_status_observation(&accepted)
+            .await
+            .expect("status replay"),
+        AppendDisposition::AlreadyPresent
+    );
+
+    let mut forged_source = accepted.clone();
+    forged_source.source = ProviderEffectAckSource::DispatchResponse;
+    assert!(matches!(
+        store
+            .append_provider_effect_status_observation(&forged_source)
+            .await,
+        Err(EvidenceError::InvalidRecord(_))
+    ));
+
+    let mut forged_payload = accepted.clone();
+    forged_payload.payload_sha256 = Sha256Digest::for_bytes(b"different-payload");
+    assert!(matches!(
+        store
+            .append_provider_effect_status_observation(&forged_payload)
+            .await,
+        Err(EvidenceError::InvalidRecord(_))
+    ));
+
+    let completed = ProviderEffectStatusObservation::new(
+        intent.key.clone(),
+        intent.payload_sha256.clone(),
+        accepted.provider_operation_id_sha256.clone(),
+        ProviderEffectAckStatus::Completed,
+    );
+    assert_eq!(
+        store
+            .reconcile_provider_effect_status_observation(&completed)
+            .await
+            .expect("completed status observation"),
+        ProviderEffectState::Completed
+    );
+
+    let stored = store
+        .get_provider_effect(&intent.key)
+        .await
+        .expect("read effect")
+        .expect("effect");
+    assert_eq!(stored.state(), ProviderEffectState::Completed);
+    assert_eq!(stored.acknowledgements.len(), 2);
+    assert!(
+        stored
+            .acknowledgements
+            .iter()
+            .all(|ack| ack.source == ProviderEffectAckSource::StatusLookup)
+    );
+
+    // A late raw dispatch response cannot overwrite the provider-owned
+    // provenance, even when its ACK payload is an exact replay.
+    assert!(matches!(
+        store.append_provider_effect_ack(&completed.to_ack()).await,
+        Err(EvidenceError::IdempotencyConflict { .. })
+    ));
+
+    // A terminal local state remains authoritative over a late Unknown
+    // observation; no uncertainty is appended.
+    assert_eq!(
+        store
+            .reconcile_provider_effect_lookup(
+                ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+                &intent.key,
+                ProviderEffectLookup::Unknown,
+            )
+            .await
+            .expect("late unknown is ignored after terminal"),
+        ProviderEffectState::Completed
+    );
+    let after_unknown = store
+        .get_provider_effect(&intent.key)
+        .await
+        .expect("read terminal effect")
+        .expect("effect");
+    assert!(after_unknown.uncertainties.is_empty());
+
+    drop(store);
+    let reopened = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("reopen evidence");
+    let persisted = reopened
+        .get_provider_effect(&intent.key)
+        .await
+        .expect("read persisted effect")
+        .expect("effect");
+    assert!(
+        persisted
+            .acknowledgements
+            .iter()
+            .all(|ack| ack.source == ProviderEffectAckSource::StatusLookup)
+    );
+}
+
+#[tokio::test]
+async fn durable_status_observation_rejects_unknown_intent() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = HeptaEvidenceStore::open(&sqlite_config(&temp))
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"unknown-status-observation");
+    let observation = ProviderEffectStatusObservation::new(
+        intent.key,
+        intent.payload_sha256,
+        Sha256Digest::for_bytes(b"unknown-operation"),
+        ProviderEffectAckStatus::Completed,
+    );
+    assert!(matches!(
+        store
+            .append_provider_effect_status_observation(&observation)
+            .await,
+        Err(EvidenceError::InvalidRecord(_))
+    ));
 }
 
 #[tokio::test]

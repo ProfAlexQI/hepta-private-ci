@@ -64,6 +64,7 @@ pub use provider_effect::ProviderEffectJournal;
 pub use provider_effect::ProviderEffectKey;
 pub use provider_effect::ProviderEffectLookup;
 pub use provider_effect::ProviderEffectState;
+pub use provider_effect::ProviderEffectStatusObservation;
 pub use provider_effect::ProviderEffectUncertainty;
 pub use provider_effect::reconcile_provider_lookup;
 pub use receipt::GOVERNANCE_SCHEMA_VERSION;
