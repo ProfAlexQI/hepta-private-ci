@@ -727,3 +727,57 @@ async fn automation_opener_rejects_taskflow_event_generation_drift() {
         Err(AutomationError::Corrupt)
     ));
 }
+
+#[tokio::test]
+async fn automation_opener_rejects_hash_valid_taskflow_event_fence_tamper() {
+    let fixture = Fixture::new();
+    let store = open_store(&fixture).await;
+    let owner = fence("owner-a", 1);
+    let definition = definition(1);
+    store
+        .register_taskflow_definition(&definition, &owner, 10)
+        .await
+        .expect("register definition");
+    store
+        .create_taskflow_run(
+            "run-fence-tamper",
+            &definition.workflow_id,
+            definition.version,
+            definition.definition_digest(),
+            "thread-1",
+            10,
+        )
+        .await
+        .expect("create run");
+    store
+        .claim_taskflow_run("run-fence-tamper", &owner, 20, 1_000)
+        .await
+        .expect("claim run");
+
+    // The legacy event digest intentionally covers the command/state payload,
+    // not the duplicated owner/token columns.  Bypass the immutable trigger
+    // to model a direct database edit and ensure the opener still binds those
+    // columns to the lease history and active projection.
+    let pool = inspection_pool(&fixture, &store).await;
+    sqlx::query("DROP TRIGGER taskflow_events_no_update")
+        .execute(&pool)
+        .await
+        .expect("drop event immutability trigger");
+    sqlx::query(
+        "UPDATE taskflow_events
+         SET owner_id = 'forged-owner', fencing_token = 'forged-token'
+         WHERE owner_agent_id = ? AND run_id = ? AND event_seq = 2",
+    )
+    .bind(AGENT_ID)
+    .bind("run-fence-tamper")
+    .execute(&pool)
+    .await
+    .expect("tamper event fence");
+    pool.close().await;
+    store.close().await;
+
+    assert!(matches!(
+        AutomationStore::open(&fixture.layout).await,
+        Err(AutomationError::Corrupt)
+    ));
+}

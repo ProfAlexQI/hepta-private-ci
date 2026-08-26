@@ -1823,6 +1823,14 @@ fn verify_taskflow_event_rows(
     let mut last_revision = 0_u64;
     let mut maximum_owner_epoch = None;
     let mut maximum_generation = None;
+    // Keep the lease tuple that owns the current contiguous event suffix.
+    // Event fence columns are durable provenance, but are not part of the
+    // legacy event digest.  Without this relation check a direct database
+    // edit could replace an event's owner/token while leaving its hash-valid
+    // payload untouched.  A new `lease_claimed` event is the only legal point
+    // at which the tuple may change; takeover still permits a strictly newer
+    // generation while historical events retain their prior tuple.
+    let mut current_event_fence: Option<(String, u64, u64, String)> = None;
     for (index, row) in rows.iter().enumerate() {
         let expected_seq =
             u64::try_from(index + 1).map_err(|_| corrupt("event sequence overflow"))?;
@@ -1903,8 +1911,58 @@ fn verify_taskflow_event_rows(
             {
                 return Err(corrupt("TaskFlow event fence regresses across generations"));
             }
+            let event_fence = (
+                owner_id.to_string(),
+                owner_epoch,
+                generation,
+                fencing_token.to_string(),
+            );
+            if transition == "lease_claimed" {
+                // A claim event is the sole lease-identity transition.  A
+                // replay of an unexpired claim emits no event, while a
+                // takeover must advance generation strictly.
+                if let Some((_, previous_epoch, previous_generation, _)) =
+                    current_event_fence.as_ref()
+                {
+                    if generation <= *previous_generation {
+                        return Err(corrupt("TaskFlow lease claim generation does not advance"));
+                    }
+                    if owner_epoch < *previous_epoch {
+                        return Err(corrupt("TaskFlow lease claim owner epoch regresses"));
+                    }
+                }
+                current_event_fence = Some(event_fence);
+            } else {
+                // Every command/indeterminate event is written while the
+                // lease is held.  Requiring the exact tuple prevents an
+                // owner or fencing token from being swapped in-place while
+                // preserving the old event digest.
+                if current_event_fence.as_ref() != Some(&event_fence) {
+                    return Err(corrupt("TaskFlow event fence does not match active lease"));
+                }
+            }
             maximum_owner_epoch = Some(maximum_owner_epoch.unwrap_or(0).max(owner_epoch));
             maximum_generation = Some(maximum_generation.unwrap_or(0).max(generation));
+        } else {
+            // `Resume` keeps its command/event name when sticky cancellation
+            // converts the waiting run directly to terminal `Cancelled`.
+            // That legacy shape is fence-less like the other terminal rows,
+            // but it can only be the final row of a cancelled projection.
+            let sticky_cancel_resume = transition == "resumed"
+                && index == rows.len() - 1
+                && run.state == TaskFlowRunState::Cancelled
+                && run.cancel_requested;
+            if !(matches!(
+                transition.as_str(),
+                "succeeded" | "failed" | "cancelled" | "reconciled"
+            ) || index == 0 && transition == "run_created"
+                || sticky_cancel_resume)
+            {
+                // Non-terminal transitions and lease claims must carry the fence
+                // that authorized them.  Terminal events are intentionally
+                // fence-less because the projection clears its lease atomically.
+                return Err(corrupt("TaskFlow non-terminal event is missing fence"));
+            }
         }
         let stored_previous: String = row
             .try_get("previous_event_digest")
@@ -1936,6 +1994,24 @@ fn verify_taskflow_event_rows(
     }
     if last_revision != run.revision || last_state.as_deref() != Some(run.state_digest.as_str()) {
         return Err(corrupt("TaskFlow event tail does not match run projection"));
+    }
+    if let Some(owner_id) = run.owner_id.as_deref() {
+        let expected_fence = (
+            owner_id.to_string(),
+            run.owner_epoch
+                .ok_or_else(|| corrupt("TaskFlow run owner epoch is missing"))?,
+            run.generation
+                .ok_or_else(|| corrupt("TaskFlow run generation is missing"))?,
+            run.fencing_token
+                .as_deref()
+                .ok_or_else(|| corrupt("TaskFlow run fencing token is missing"))?
+                .to_string(),
+        );
+        if current_event_fence.as_ref() != Some(&expected_fence) {
+            return Err(corrupt(
+                "TaskFlow event tail fence does not match run projection",
+            ));
+        }
     }
     Ok(())
 }

@@ -22,6 +22,8 @@ use codex_hepta_fleet::ResourceBudget;
 use codex_hepta_fleet::WorkspaceBinding;
 use codex_hepta_paths::HeptaAgentLayout;
 use codex_hepta_paths::HeptaFleetRoot;
+use codex_state::SqliteConfig;
+use codex_utils_absolute_path::AbsolutePathBuf;
 
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
@@ -309,6 +311,66 @@ async fn replay_rejects_a_hash_valid_but_non_structural_resume_target() {
     assert!(matches!(
         store.replay_taskflow_structural("invalid-structural-run").await,
         Err(TaskFlowError::Corrupt(message)) if message.contains("outgoing edge")
+    ));
+    store.close().await;
+}
+
+#[tokio::test]
+async fn structural_replay_rejects_hash_valid_taskflow_event_fence_tamper() {
+    let fixture = Fixture::new();
+    let store = AutomationStore::open(&fixture.layout)
+        .await
+        .expect("open store");
+    let owner = fence(1);
+    let definition = definition();
+    store
+        .register_taskflow_definition(&definition, &owner, 10)
+        .await
+        .expect("register definition");
+    store
+        .create_taskflow_run(
+            "structural-fence-tamper",
+            &definition.workflow_id,
+            definition.version,
+            definition.definition_digest(),
+            "thread-structural",
+            10,
+        )
+        .await
+        .expect("create run");
+    store
+        .claim_taskflow_run("structural-fence-tamper", &owner, 20, 1_000)
+        .await
+        .expect("claim run");
+
+    let sqlite_home = AbsolutePathBuf::from_absolute_path(fixture.layout.automation_root())
+        .expect("absolute sqlite home");
+    let pool = SqliteConfig::from_sqlite_home(sqlite_home)
+        .open_durable_evidence_pool(store.path())
+        .await
+        .expect("open inspection pool");
+    sqlx::query("DROP TRIGGER taskflow_events_no_update")
+        .execute(&pool)
+        .await
+        .expect("drop event immutability trigger");
+    sqlx::query(
+        "UPDATE taskflow_events
+         SET owner_id = 'forged-owner', fencing_token = 'forged-token'
+         WHERE owner_agent_id = ? AND run_id = ? AND event_seq = 2",
+    )
+    .bind(AGENT_ID)
+    .bind("structural-fence-tamper")
+    .execute(&pool)
+    .await
+    .expect("tamper event fence");
+    pool.close().await;
+
+    assert!(matches!(
+        store
+            .replay_taskflow_structural("structural-fence-tamper")
+            .await,
+        Err(TaskFlowError::Corrupt(message))
+            if message.contains("TaskFlow event tail fence does not match run projection")
     ));
     store.close().await;
 }
