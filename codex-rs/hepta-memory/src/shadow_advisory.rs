@@ -290,9 +290,7 @@ fn neuron_decision_digest(decision: &NeuronProposalDecision) -> Sha256Digest {
     Sha256Digest::from_sha256_output(hasher.finalize())
 }
 
-fn validate_neuron_decision(
-    decision: &NeuronProposalDecision,
-) -> Result<(), ShadowAdvisoryError> {
+fn validate_neuron_decision(decision: &NeuronProposalDecision) -> Result<(), ShadowAdvisoryError> {
     match decision {
         NeuronProposalDecision::Proposed(proposal) => proposal.validate().map_err(Into::into),
         NeuronProposalDecision::Abstained { input_digest, .. } => {
