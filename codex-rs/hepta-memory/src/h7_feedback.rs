@@ -807,6 +807,27 @@ impl H7FeedbackOracle {
                     actual: key.event_seq,
                 });
             }
+
+            // Once this in-memory stream has a record, the causal witness for
+            // the next record must be the exact immutable predecessor.  A
+            // contiguous sequence number alone is not sufficient: accepting
+            // an older/external parent would leave a gap in the authenticated
+            // chain while still looking like a valid replay.  The first
+            // record remains allowed to point at the durable turn-start row
+            // that is intentionally outside this pure oracle.
+            let previous = self
+                .records
+                .values()
+                .find(|candidate| candidate.event_seq == last_seq)
+                .ok_or(H7FeedbackError::BindingMismatch(
+                    "missing causal predecessor",
+                ))?;
+            if record.causal_parent_seq != previous.event_seq {
+                return Err(H7FeedbackError::BindingMismatch("causal parent sequence"));
+            }
+            if record.causal_parent_sha256 != previous.feedback_digest {
+                return Err(H7FeedbackError::BindingMismatch("causal parent digest"));
+            }
         }
 
         // Stage the complete state and validate it before publishing.  This
@@ -851,6 +872,7 @@ impl H7FeedbackOracle {
         }
         let mut observed_scope: Option<&H7AttemptLeaseScope> = None;
         let mut previous_seq: Option<u32> = None;
+        let mut previous_record: Option<&H7FeedbackRecord> = None;
         for (key, record) in &self.records {
             record.validate()?;
             if key != &record.key() || record.trajectory_id != self.trajectory_id {
@@ -871,16 +893,16 @@ impl H7FeedbackOracle {
             if self.ledger.entries.get(key) != Some(&record.credit_units) {
                 return Err(H7FeedbackError::BindingMismatch("oracle credit entry"));
             }
-            // A parent that is already present in this pure oracle must be
-            // bound by its exact record digest.  The first parent may be a
-            // durable H7 turn-start row outside this in-memory feedback
-            // slice, so absence is intentionally allowed here.
-            if let Some(parent) = self
-                .records
-                .values()
-                .find(|candidate| candidate.event_seq == record.causal_parent_seq)
-            {
-                if parent.feedback_digest != record.causal_parent_sha256 {
+            // The first parent may be a durable H7 turn-start row outside
+            // this in-memory feedback slice.  Every later record must point
+            // to the immediately preceding immutable record, by both
+            // sequence and digest; merely finding any older sequence would
+            // permit a forged causal gap.
+            if let Some(previous) = previous_record {
+                if record.causal_parent_seq != previous.event_seq {
+                    return Err(H7FeedbackError::BindingMismatch("causal parent sequence"));
+                }
+                if previous.feedback_digest != record.causal_parent_sha256 {
                     return Err(H7FeedbackError::BindingMismatch("causal parent digest"));
                 }
             }
@@ -893,6 +915,7 @@ impl H7FeedbackOracle {
             } else {
                 observed_scope = Some(&record.action.binding.scope);
             }
+            previous_record = Some(record);
         }
         match (&self.scope, observed_scope) {
             (Some(expected), Some(observed)) if expected != observed => {

@@ -655,7 +655,33 @@ impl H7QualificationRuntime {
                 .ok_or(H7RuntimeError::MissingArtifact)?;
             approval.validate_for(artifact)?;
         }
+        // The active artifact identity is a pair.  Accepting only one half
+        // would let a tampered snapshot seed `apply_signed` with a digest
+        // that has no corresponding artifact (or vice versa), weakening the
+        // predecessor CAS fence on the next transition.
+        match (
+            &self.state.active_artifact_id,
+            &self.state.active_artifact_sha256,
+        ) {
+            (Some(_), None) => {
+                return Err(H7RuntimeError::Invalid(
+                    "runtime has an active artifact without a digest".to_string(),
+                ));
+            }
+            (None, Some(_)) => {
+                return Err(H7RuntimeError::Invalid(
+                    "runtime has an artifact digest without an active artifact".to_string(),
+                ));
+            }
+            _ => {}
+        }
+
         if let Some(active_id) = &self.state.active_artifact_id {
+            if self.state.runtime_generation == 0 {
+                return Err(H7RuntimeError::Invalid(
+                    "runtime has an active artifact before its first generation".to_string(),
+                ));
+            }
             let artifact = self
                 .artifacts
                 .get(active_id)
@@ -666,9 +692,42 @@ impl H7QualificationRuntime {
             {
                 return Err(H7RuntimeError::DigestMismatch("runtime active artifact"));
             }
-        } else if self.state.active_artifact_generation != 0 {
+            if let Some(previous) = &self.state.previous_artifact_sha256 {
+                parse_digest(previous, "runtime previous artifact")?;
+            }
+            match self.state.last_transition {
+                H7Transition::Cold => {
+                    return Err(H7RuntimeError::Invalid(
+                        "runtime has an active artifact with a cold transition".to_string(),
+                    ));
+                }
+                H7Transition::Reload if self.state.rollback_from_generation.is_some() => {
+                    return Err(H7RuntimeError::Invalid(
+                        "reload state cannot carry rollback provenance".to_string(),
+                    ));
+                }
+                H7Transition::Rollback => {
+                    let Some(from_generation) = self.state.rollback_from_generation else {
+                        return Err(H7RuntimeError::Invalid(
+                            "rollback state is missing source generation".to_string(),
+                        ));
+                    };
+                    if from_generation <= self.state.active_artifact_generation {
+                        return Err(H7RuntimeError::Invalid(
+                            "rollback source generation must exceed active generation".to_string(),
+                        ));
+                    }
+                }
+                H7Transition::Reload => {}
+            }
+        } else if self.state.runtime_generation != 0
+            || self.state.active_artifact_generation != 0
+            || self.state.previous_artifact_sha256.is_some()
+            || self.state.rollback_from_generation.is_some()
+            || self.state.last_transition != H7Transition::Cold
+        {
             return Err(H7RuntimeError::Invalid(
-                "runtime has a generation without an active artifact".to_string(),
+                "runtime cold state has artifact or transition provenance".to_string(),
             ));
         }
         Ok(())
@@ -952,6 +1011,19 @@ mod tests {
             H7QualificationRuntime::rehydrate(&encoded),
             Err(H7RuntimeError::Invalid(_)) | Err(H7RuntimeError::DigestMismatch("artifact"))
         ));
+    }
+
+    #[test]
+    fn h7_runtime_rejects_orphaned_active_digest_after_rehydrate() {
+        let mut runtime = H7QualificationRuntime::new();
+        runtime.state.active_artifact_sha256 = Some(Sha256Digest::for_bytes(b"orphan"));
+        let encoded = runtime.snapshot().expect("snapshot");
+        assert_eq!(
+            H7QualificationRuntime::rehydrate(&encoded),
+            Err(H7RuntimeError::Invalid(
+                "runtime has an artifact digest without an active artifact".to_string()
+            ))
+        );
     }
 
     #[test]

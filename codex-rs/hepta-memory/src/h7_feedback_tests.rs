@@ -413,3 +413,44 @@ fn feedback_sequence_gaps_fail_closed_and_leave_oracle_unchanged() {
     );
     assert_eq!(oracle, before);
 }
+
+#[test]
+fn feedback_causal_parent_must_be_immediate_predecessor() {
+    let mut oracle = H7FeedbackOracle::new("trajectory-1").unwrap();
+    let first = record(
+        2,
+        "feedback-1",
+        1,
+        digest("turn-start"),
+        "attempt-1",
+        100,
+        1,
+        1_000_000,
+        1_000_000,
+        true,
+    );
+    oracle.append(first).unwrap();
+    let before = oracle.clone();
+
+    // Sequence three is contiguous, but its parent claims the external
+    // turn-start row rather than the immutable sequence-two record.  This
+    // must not be accepted as a valid replay chain.
+    let forged_parent = record(
+        3,
+        "feedback-2",
+        1,
+        digest("turn-start"),
+        "attempt-1",
+        100,
+        1,
+        1_000_000,
+        1_000_000,
+        true,
+    );
+    assert_eq!(
+        oracle.append(forged_parent),
+        Err(H7FeedbackError::BindingMismatch("causal parent sequence"))
+    );
+    assert_eq!(oracle, before);
+    oracle.validate().unwrap();
+}
