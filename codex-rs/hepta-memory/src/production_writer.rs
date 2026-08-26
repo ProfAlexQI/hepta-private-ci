@@ -87,6 +87,19 @@ impl ProductionAuthorityToken {
         hasher.update(self.0.as_ref());
         Sha256Digest::for_bytes(&hasher.finalize())
     }
+
+    /// Bind the local fence to both the opaque verifier token and the exact
+    /// signed grant it authorizes. Persisting only a token digest would let a
+    /// lease be reopened under a different grant that reused the same
+    /// token/epochs. The grant-bound digest makes that cross-grant reopen fail
+    /// closed without adding a mutable column to the append-only lease journal.
+    fn fencing_digest_for_grant(&self, grant_digest: &Sha256Digest) -> Sha256Digest {
+        let mut hasher = Sha256::new();
+        hasher.update(b"hepta:production-authority-token-grant:v2\0");
+        hasher.update(grant_digest.as_str().as_bytes());
+        hasher.update(self.0.as_ref());
+        Sha256Digest::for_bytes(&hasher.finalize())
+    }
 }
 
 impl fmt::Debug for ProductionAuthorityToken {
@@ -169,7 +182,7 @@ impl ProductionAuthorityLease {
     pub fn fencing_token_digest(&self) -> Result<Sha256Digest, ProductionWriterError> {
         self.token
             .as_ref()
-            .map(ProductionAuthorityToken::fencing_digest)
+            .map(|token| token.fencing_digest_for_grant(&self.grant_digest))
             .ok_or_else(|| {
                 ProductionWriterError::AuthorityRejected(
                     "deserialized authority lease has no opaque token".to_string(),
@@ -1096,6 +1109,59 @@ mod tests {
         assert!(replay.replayed);
         assert_eq!(replay.event_id, queued.event_id);
         assert_eq!(replay.outbox_id, queued.outbox_id);
+    }
+
+    #[tokio::test]
+    async fn active_lease_cannot_reopen_under_a_different_grant_with_same_token() {
+        let temp = TempDir::new().unwrap();
+        let store = store(&temp).await;
+        let owner = store.owner_agent_id().clone();
+        let original = authority(owner.clone());
+        let writer = ProductionDurableWriter::open(
+            store.clone(),
+            original.clone(),
+            &AllowVerifier,
+            "production:h4:grant-binding",
+            1,
+        )
+        .await
+        .unwrap();
+        writer
+            .admit("occurrence:grant-binding", "memory.write", "payload")
+            .await
+            .unwrap();
+
+        // A verifier may receive a fresh grant while an old active lease is
+        // still present. Reusing the same opaque token/epochs must not make
+        // the old append-only lease look valid for that new grant.
+        let rebound = ProductionAuthorityLease::from_verified_parts(
+            owner,
+            Sha256Digest::for_bytes(b"different-signed-grant"),
+            original.authority_epoch,
+            original.owner_epoch,
+            original.lease_expires_at_unix_seconds,
+            ProductionAuthorityToken::from_verified_bytes(b"opaque-supervisor-token".to_vec())
+                .unwrap(),
+        )
+        .unwrap();
+        let result = ProductionDurableWriter::open(
+            store.clone(),
+            rebound,
+            &AllowVerifier,
+            "production:h4:grant-binding",
+            1,
+        )
+        .await;
+        assert!(matches!(result, Err(ProductionWriterError::StaleReceipt)));
+        let head = store
+            .inspect_local_lease_head("production:h4:grant-binding")
+            .await
+            .unwrap();
+        assert_eq!(head.disposition, LocalLeaseHeadDisposition::Active);
+        assert_eq!(
+            head.head.unwrap().fencing_token,
+            original.fencing_token_digest().unwrap().as_str()
+        );
     }
 
     #[tokio::test]
