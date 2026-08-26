@@ -5,6 +5,8 @@ mod authbus;
 #[cfg(test)]
 mod authbus_b4;
 #[cfg(test)]
+mod authbus_b5;
+#[cfg(test)]
 #[path = "authbus_tests.rs"]
 mod authbus_tests;
 #[cfg(test)]
