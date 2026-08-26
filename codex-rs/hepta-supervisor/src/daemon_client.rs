@@ -137,10 +137,12 @@ impl SupervisordClient {
                 operation,
                 accepted_state_digest,
                 agent,
+                production_receipt,
             } => Ok(SupervisordMutationAccepted {
                 operation,
                 accepted_state_digest,
                 agent,
+                production_receipt,
             }),
             payload => unexpected(payload),
         }

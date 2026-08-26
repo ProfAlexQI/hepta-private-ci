@@ -864,6 +864,7 @@ fn corpus() -> Result<CorpusDocument> {
                 operation: SupervisordMutation::Restart,
                 accepted_state_digest: digest_control(DIGEST_A)?,
                 agent: status,
+                production_receipt: None,
             },
         },
         expectation(Some(true), false, false),

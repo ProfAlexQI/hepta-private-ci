@@ -458,7 +458,7 @@ async fn handle_signed_mutation<D: ProcessDriver>(
         );
     }
     let authority_epoch = authority_epoch_for_supervisor_epoch(state.supervisor_epoch.as_str());
-    let result = supervisor.apply_production_grant(
+    let receipt = match supervisor.apply_production_grant(
         &agent_id,
         &grant,
         &h7_envelope,
@@ -466,11 +466,14 @@ async fn handle_signed_mutation<D: ProcessDriver>(
         authority_epoch,
         unix_seconds_now(),
         Instant::now(),
-    );
+    ) {
+        Ok(receipt) => receipt,
+        Err(error) => {
+            let post = agent_status_locked(&state, &supervisor, &agent_id).ok();
+            return safe_rejection(error, post.or(Some(actual)), false);
+        }
+    };
     let post = agent_status_locked(&state, &supervisor, &agent_id).ok();
-    if let Err(error) = result {
-        return safe_rejection(error, post.or(Some(actual)), false);
-    }
     let Some(agent) = post else {
         return error_payload(
             "operation_indeterminate",
@@ -485,6 +488,7 @@ async fn handle_signed_mutation<D: ProcessDriver>(
         },
         accepted_state_digest,
         agent,
+        production_receipt: Some(receipt),
     }
 }
 
@@ -600,6 +604,7 @@ async fn handle_mutation<D: ProcessDriver>(
         operation,
         accepted_state_digest,
         agent,
+        production_receipt: None,
     }
 }
 
@@ -1296,6 +1301,71 @@ mod tests {
             assert!(!encoded.contains("raw-driver-secret"));
             assert!(!encoded.contains("--token"));
         }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn unresolved_signed_intent_blocks_daemon_startup_before_socket_bind() {
+        let temp = tempfile::tempdir().expect("create temporary fleet");
+        let fleet_root = HeptaFleetRoot::parse(temp.path().join("fleet")).expect("fleet root");
+        let registry = FleetRegistry::initialize(fleet_root.clone()).expect("initialize registry");
+        let workspace = temp.path().join("workspace");
+        std::fs::create_dir(&workspace).expect("create workspace");
+        let agent_id = AgentId::parse(AGENT_ID).expect("fixed AgentId");
+        let record = registry
+            .register(
+                AgentManifest::new(
+                    agent_id.clone(),
+                    WorkspaceBinding::new(
+                        workspace.canonicalize().expect("canonical workspace"),
+                        &fleet_root,
+                    )
+                    .expect("workspace binding"),
+                    ResourceBudget::local_default(),
+                )
+                .expect("agent manifest"),
+            )
+            .expect("register agent");
+        registry
+            .compare_and_transition(
+                &agent_id,
+                record.lifecycle.generation,
+                AgentLifecycle::Starting,
+            )
+            .expect("advance lifecycle generation");
+        let record = registry
+            .load()
+            .expect("reload transitioned agent")
+            .agent(&agent_id)
+            .cloned()
+            .expect("registered agent");
+        let intent = crate::signed_intent::SignedSupervisorIntent::new(
+            codex_hepta_contracts::Sha256Digest::for_bytes(b"unresolved-grant"),
+            agent_id.to_string(),
+            crate::H7H89ProductionTransition::Upgrade,
+            "release-v1",
+            "release-v2",
+            0,
+            record.lifecycle.generation,
+            1,
+            crate::signed_intent::SignedIntentStatus::Queued,
+        )
+        .expect("signed intent");
+        crate::signed_intent::write_intent(record.layout.run_root(), &intent)
+            .expect("persist signed intent");
+
+        let error =
+            match run_supervisord_inner(fleet_root.clone(), CancellationToken::new(), None).await {
+                Ok(_) => panic!("unresolved signed intent must stop daemon startup"),
+                Err(error) => error,
+            };
+        assert!(matches!(
+            error,
+            SupervisorError::SignedIntentRecoveryRequired(id) if id == agent_id
+        ));
+        assert!(
+            !registry.layout().supervisor_socket().exists(),
+            "daemon must not bind a control socket after fail-closed recovery"
+        );
     }
 }
 

@@ -4,13 +4,14 @@ use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::ReleaseId;
 use codex_hepta_memory::H7SignedArtifactEnvelope;
+use serde::de::Error as _;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
-use serde::de::Error as _;
 
 use crate::H7H89ProductionGrant;
+use crate::ProductionMutationReceipt;
 
 pub const SUPERVISORD_CONTROL_SCHEMA_VERSION: u32 = 2;
 pub const MAX_SUPERVISORD_CONTROL_FRAME_BYTES: u64 = 65_536;
@@ -314,6 +315,12 @@ pub enum SupervisordPayload {
         operation: SupervisordMutation,
         accepted_state_digest: ControlStateDigest,
         agent: SupervisordAgentStatus,
+        /// Present only for an externally signed lifecycle mutation.  The
+        /// ordinary local-control mutations deliberately carry no authority
+        /// receipt.  When present, the grant digest is the durable
+        /// `supervisor-signed-intent.json` witness for this operation.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        production_receipt: Option<ProductionMutationReceipt>,
     },
     Error {
         code: String,
@@ -355,6 +362,9 @@ pub struct SupervisordMutationAccepted {
     pub operation: SupervisordMutation,
     pub accepted_state_digest: ControlStateDigest,
     pub agent: SupervisordAgentStatus,
+    /// Signed mutation authority receipt, if this response came from the
+    /// externally signed upgrade/rollback RPC.
+    pub production_receipt: Option<ProductionMutationReceipt>,
 }
 
 fn hex_lower(bytes: &[u8]) -> String {
@@ -391,6 +401,9 @@ pub struct SupervisordMatrixStatus {
 
 #[cfg(test)]
 mod tests {
+    use crate::H7H89ProductionTransition;
+    use crate::ProductionMutationStatus;
+    use codex_hepta_contracts::Sha256Digest;
     use pretty_assertions::assert_eq;
     use serde_json::json;
 
@@ -461,6 +474,7 @@ mod tests {
                 operation: SupervisordMutation::Restart,
                 accepted_state_digest: ControlStateDigest::parse(DIGEST).expect("fixed digest"),
                 agent: status,
+                production_receipt: None,
             },
         };
         let encoded = serde_json::to_string(&response).expect("serialize response");
@@ -473,6 +487,54 @@ mod tests {
         assert!(!encoded.contains("program"));
         assert!(!encoded.contains("args"));
         assert!(!encoded.contains("driver"));
+    }
+
+    #[test]
+    fn signed_mutation_response_round_trips_its_bound_production_receipt() {
+        let receipt = ProductionMutationReceipt {
+            grant_sha256: Sha256Digest::for_bytes(b"grant"),
+            agent_id: AGENT_ID.to_string(),
+            transition: H7H89ProductionTransition::Upgrade,
+            source_release: "agentd-v1".to_string(),
+            target_release: "agentd-v2".to_string(),
+            control_revision: 8,
+            status: ProductionMutationStatus::Queued,
+            production_authority: true,
+            external_effects: true,
+            operator_acceptance: true,
+            promotion: true,
+        };
+        let response = SupervisordResponse {
+            schema_version: SUPERVISORD_CONTROL_SCHEMA_VERSION,
+            request_id: 45,
+            payload: SupervisordPayload::MutationAccepted {
+                operation: SupervisordMutation::Upgrade,
+                accepted_state_digest: ControlStateDigest::parse(DIGEST).expect("digest"),
+                agent: status(),
+                production_receipt: Some(receipt.clone()),
+            },
+        };
+        let encoded = serde_json::to_vec(&response).expect("serialize signed response");
+        let decoded: SupervisordResponse =
+            serde_json::from_slice(&encoded).expect("deserialize signed response");
+        assert_eq!(decoded, response);
+        let json = serde_json::from_slice::<serde_json::Value>(&encoded).expect("response JSON");
+        assert_eq!(
+            json["payload"]["production_receipt"]["grant_sha256"],
+            serde_json::Value::String(receipt.grant_sha256.as_str().to_owned())
+        );
+        assert_eq!(
+            json["payload"]["production_receipt"]["status"],
+            serde_json::Value::String("queued".to_string())
+        );
+        for field in [
+            "production_authority",
+            "external_effects",
+            "operator_acceptance",
+            "promotion",
+        ] {
+            assert_eq!(json["payload"]["production_receipt"][field], true);
+        }
     }
 
     #[test]

@@ -25,7 +25,6 @@ use crate::TickReport;
 use crate::runtime::AgentSlot;
 use crate::runtime::RuntimePhase;
 use crate::runtime::bounded_message;
-use crate::runtime::driver_error;
 use crate::signed_authority::H7H89ProductionGrant;
 use crate::signed_authority::H7H89ProductionGrantVerifier;
 use crate::signed_authority::H7H89ProductionTransition;
@@ -76,6 +75,14 @@ impl<D: ProcessDriver> Supervisor<D> {
                 supervisor.recover_signed_intent(&agent_id, slot, &record)
             });
             if let Err(error) = result {
+                // A signed lifecycle intent is an externally authorized
+                // mutation.  Recording it as an ordinary per-agent fault
+                // would still bring the daemon up and expose unrelated
+                // mutation RPCs while the outcome is unknown.  Recovery of
+                // this class is therefore a daemon-wide startup failure.
+                if matches!(&error, SupervisorError::SignedIntentRecoveryRequired(_)) {
+                    return Err(error);
+                }
                 supervisor.record_fault(&agent_id, &error, &mut report);
             }
         }
@@ -613,10 +620,11 @@ impl<D: ProcessDriver> Supervisor<D> {
         // adopted child before surfacing the recovery requirement; normal
         // ticking must not continue an ambiguous external transition.
         if let Some(runtime) = slot.runtime.as_mut() {
-            runtime
-                .process
-                .kill()
-                .map_err(|error| driver_error(agent_id, error))?;
+            // A failed fence/kill is still an unresolved signed intent.  Do
+            // not downgrade it to a recoverable driver fault: the caller
+            // must fail closed at daemon startup and require explicit
+            // operator recovery.
+            let _ = runtime.process.kill();
             runtime.fenced = true;
             runtime.phase = RuntimePhase::Killing;
         }
