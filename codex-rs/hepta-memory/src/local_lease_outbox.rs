@@ -24,9 +24,9 @@ use sqlx::SqlitePool;
 use sqlx::Transaction;
 use thiserror::Error;
 
+use crate::framing::frame_part;
 use crate::CognitiveStore;
 use crate::CognitiveStoreError;
-use crate::framing::frame_part;
 
 pub const LOCAL_LEASE_OUTBOX_NAMESPACE: &str = "local_development_only";
 pub const LOCAL_LEASE_OUTBOX_SCHEMA_VERSION: u32 = 1;
@@ -1775,6 +1775,97 @@ impl LocalLeaseOutbox {
             .await
             .map_err(crate::cognitive_store::unavailable)?;
         Ok(state)
+    }
+
+    /// Verify that a serialized queue receipt still names the exact immutable
+    /// event/outbox rows in this local journal.  Checking only the occurrence
+    /// state is insufficient: a forged or stale receipt could otherwise reuse
+    /// a queued occurrence while substituting a different topic or payload at
+    /// the provider boundary.  This helper replays both hash chains and
+    /// compares every dispatch-relevant field under one read transaction.
+    ///
+    /// The method is crate-visible because the production writer owns the
+    /// public receipt type; it grants no dispatch authority and never mutates
+    /// the journal.
+    pub(crate) async fn verify_queued_receipt_binding(
+        &self,
+        occurrence_key: &str,
+        event_id: &str,
+        outbox_id: &str,
+        topic: &str,
+        payload_json: &str,
+        payload_sha256: &Sha256Digest,
+    ) -> Result<(), LocalLeaseOutboxError> {
+        validate_text(occurrence_key, "occurrence key", 512)?;
+        validate_text(event_id, "event id", 512)?;
+        validate_text(outbox_id, "outbox id", 512)?;
+        validate_text(topic, "outbox topic", 256)?;
+        validate_text(payload_json, "event payload", 65_536)?;
+        if Sha256Digest::for_bytes(payload_json.as_bytes()) != *payload_sha256 {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "queued receipt payload digest does not match its payload".to_string(),
+            ));
+        }
+
+        let mut transaction = self
+            .store
+            .pool
+            .begin()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let lease = self.current_lease(&mut transaction).await?;
+        ensure_current_active(&lease, self)?;
+        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let event = find_admission(
+            &mut transaction,
+            &self.lease_id,
+            occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?
+        .ok_or_else(|| {
+            LocalLeaseOutboxError::StaleFence("queued receipt event is missing".to_string())
+        })?;
+        let outbox = find_outbox(
+            &mut transaction,
+            &self.lease_id,
+            occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?
+        .ok_or_else(|| {
+            LocalLeaseOutboxError::StaleFence("queued receipt outbox is missing".to_string())
+        })?;
+        ensure_current_occurrence_fence(self, &event, &outbox)?;
+        if event.event_id != event_id
+            || outbox.outbox_id != outbox_id
+            || event.occurrence_key != occurrence_key
+            || outbox.occurrence_key != occurrence_key
+            || event.event_id != outbox.event_id
+            || event.payload_json != payload_json
+            || outbox.payload_json != payload_json
+            || event.payload_sha256 != *payload_sha256
+            || outbox.payload_sha256 != *payload_sha256
+            || outbox.topic != topic
+            || current_outcome(
+                &mut transaction,
+                &self.lease_id,
+                occurrence_key,
+                &self.owner_agent_id,
+            )
+            .await?
+                != LocalOutcomeState::Queued
+        {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "queued receipt does not match the immutable local admission".to_string(),
+            ));
+        }
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(())
     }
 
     /// Reopen one already-admitted occurrence without ever re-queuing a

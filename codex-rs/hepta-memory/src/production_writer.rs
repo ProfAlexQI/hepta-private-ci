@@ -122,8 +122,14 @@ impl fmt::Debug for ProductionAuthorityLease {
             .field("grant_digest", &self.grant_digest)
             .field("authority_epoch", &self.authority_epoch)
             .field("owner_epoch", &self.owner_epoch)
-            .field("lease_expires_at_unix_seconds", &self.lease_expires_at_unix_seconds)
-            .field("token", &self.token.as_ref().map(|token| token.fencing_digest()))
+            .field(
+                "lease_expires_at_unix_seconds",
+                &self.lease_expires_at_unix_seconds,
+            )
+            .field(
+                "token",
+                &self.token.as_ref().map(|token| token.fencing_digest()),
+            )
             .finish()
     }
 }
@@ -177,7 +183,9 @@ impl ProductionAuthorityLease {
 
     fn validate_for_agent(&self, agent_id: &AgentId) -> Result<(), ProductionWriterError> {
         if &self.agent_id != agent_id {
-            return Err(ProductionWriterError::AuthorityAgentMismatch(agent_id.clone()));
+            return Err(ProductionWriterError::AuthorityAgentMismatch(
+                agent_id.clone(),
+            ));
         }
         let now = now_unix_seconds()?;
         if self.is_expired_at(now) {
@@ -266,19 +274,17 @@ impl ProductionDurableWriter {
 
         let inspection = store.inspect_local_lease_head(&lease_id).await?;
         let lease = match (inspection.disposition, inspection.head) {
-            (LocalLeaseHeadDisposition::Missing, None) => {
-                store
-                    .acquire_host_bound_lease(
-                        &lease_id,
-                        binding.0,
-                        binding.1,
-                        generation,
-                        fencing_token,
-                        binding.2,
-                    )
-                    .await?
-                    .into_handle()
-            }
+            (LocalLeaseHeadDisposition::Missing, None) => store
+                .acquire_host_bound_lease(
+                    &lease_id,
+                    binding.0,
+                    binding.1,
+                    generation,
+                    fencing_token,
+                    binding.2,
+                )
+                .await?
+                .into_handle(),
             (LocalLeaseHeadDisposition::Active, Some(head)) => {
                 if head.generation != generation
                     || head.fencing_token != authority.fencing_token_digest()?.as_str()
@@ -300,20 +306,18 @@ impl ProductionDurableWriter {
             (
                 LocalLeaseHeadDisposition::Released | LocalLeaseHeadDisposition::RolledBack,
                 Some(head),
-            ) => {
-                store
-                    .acquire_host_bound_lease_after_head(
-                        &lease_id,
-                        head,
-                        binding.0,
-                        binding.1,
-                        generation,
-                        fencing_token,
-                        binding.2,
-                    )
-                    .await?
-                    .into_handle()
-            }
+            ) => store
+                .acquire_host_bound_lease_after_head(
+                    &lease_id,
+                    head,
+                    binding.0,
+                    binding.1,
+                    generation,
+                    fencing_token,
+                    binding.2,
+                )
+                .await?
+                .into_handle(),
             (LocalLeaseHeadDisposition::Missing, Some(_)) => {
                 return Err(ProductionWriterError::StaleReceipt);
             }
@@ -353,7 +357,10 @@ impl ProductionDurableWriter {
         let occurrence_key = occurrence_key.into();
         let topic = topic.into();
         let payload_json = payload_json.into();
-        let admission = self.lease.admit(&occurrence_key, &topic, &payload_json).await?;
+        let admission = self
+            .lease
+            .admit(&occurrence_key, &topic, &payload_json)
+            .await?;
         let (receipt, replayed) = match admission {
             LocalAdmission::Queued(receipt) => (receipt, false),
             LocalAdmission::Replay(receipt) => (receipt, true),
@@ -399,7 +406,11 @@ impl ProductionDurableWriter {
         reason: impl Into<String>,
     ) -> Result<ProductionOutcomeReceipt, ProductionWriterError> {
         self.verify_authority().await?;
-        Ok(self.lease.mark_indeterminate(occurrence_key, reason).await?.into())
+        Ok(self
+            .lease
+            .mark_indeterminate(occurrence_key, reason)
+            .await?
+            .into())
     }
 
     pub async fn apply(
@@ -426,23 +437,36 @@ impl ProductionDurableWriter {
         reason: impl Into<String>,
     ) -> Result<ProductionOutcomeReceipt, ProductionWriterError> {
         self.verify_authority().await?;
-        Ok(self.lease.rollback_occurrence(occurrence_key, reason).await?.into())
+        Ok(self
+            .lease
+            .rollback_occurrence(occurrence_key, reason)
+            .await?
+            .into())
     }
 
     pub async fn release(&self) -> Result<ProductionLeaseReceipt, ProductionWriterError> {
         self.verify_authority().await?;
         let head = self.lease.release().await?;
-        Ok(ProductionLeaseReceipt::new(&self.authority, head, "released"))
+        Ok(ProductionLeaseReceipt::new(
+            &self.authority,
+            head,
+            "released",
+        ))
     }
 
     pub async fn rollback_lease(&self) -> Result<ProductionLeaseReceipt, ProductionWriterError> {
         self.verify_authority().await?;
         let head = self.lease.rollback_lease().await?;
-        Ok(ProductionLeaseReceipt::new(&self.authority, head, "rolled_back"))
+        Ok(ProductionLeaseReceipt::new(
+            &self.authority,
+            head,
+            "rolled_back",
+        ))
     }
 
     async fn verify_authority(&self) -> Result<(), ProductionWriterError> {
-        self.authority.validate_for_agent(self.store.owner_agent_id())?;
+        self.authority
+            .validate_for_agent(self.store.owner_agent_id())?;
         verify_durable_store(&self.store).await?;
         self.lease.verify_current().await?;
         Ok(())
@@ -477,9 +501,22 @@ impl ProductionDurableWriter {
     ) -> Result<ProductionDispatchReceipt, ProductionWriterError> {
         self.verify_authority().await?;
         self.validate_queued_receipt(&receipt)?;
-        if self.status(&receipt.occurrence_key).await? != LocalOutcomeState::Queued {
-            return Err(ProductionWriterError::StaleReceipt);
-        }
+        self.lease
+            .verify_queued_receipt_binding(
+                &receipt.occurrence_key,
+                &receipt.event_id,
+                &receipt.outbox_id,
+                &receipt.topic,
+                &receipt.payload_json,
+                &receipt.payload_sha256,
+            )
+            .await
+            .map_err(|error| match error {
+                LocalLeaseOutboxError::StaleFence(_)
+                | LocalLeaseOutboxError::IllegalTransition(_)
+                | LocalLeaseOutboxError::CasConflict(_) => ProductionWriterError::StaleReceipt,
+                other => ProductionWriterError::Local(other),
+            })?;
         let request = ProductionDispatchRequest {
             schema_version: PRODUCTION_DURABLE_WRITER_SCHEMA_VERSION,
             namespace: PRODUCTION_DURABLE_WRITER_NAMESPACE.to_string(),
@@ -493,8 +530,12 @@ impl ProductionDurableWriter {
         };
         let outcome = target.dispatch(request.clone()).await;
         match outcome {
-            ProductionTargetOutcome::Committed { receipt: target_receipt } => {
-                let applied = self.apply(&receipt.occurrence_key, target_receipt.clone()).await;
+            ProductionTargetOutcome::Committed {
+                receipt: target_receipt,
+            } => {
+                let applied = self
+                    .apply(&receipt.occurrence_key, target_receipt.clone())
+                    .await;
                 match applied {
                     Ok(local) => Ok(ProductionDispatchReceipt {
                         request,
@@ -525,7 +566,9 @@ impl ProductionDurableWriter {
                 })
             }
             ProductionTargetOutcome::Indeterminate { reason } => {
-                let local = self.mark_indeterminate(&receipt.occurrence_key, &reason).await?;
+                let local = self
+                    .mark_indeterminate(&receipt.occurrence_key, &reason)
+                    .await?;
                 Ok(ProductionDispatchReceipt {
                     request,
                     state: LocalOutcomeState::Indeterminate,
@@ -610,10 +653,16 @@ pub struct ProductionDispatchRequest {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProductionTargetOutcome {
-    Committed { receipt: String },
-    Rejected { reason: String },
+    Committed {
+        receipt: String,
+    },
+    Rejected {
+        reason: String,
+    },
     /// Unknown/timeout/provider ambiguity must remain quarantined.
-    Indeterminate { reason: String },
+    Indeterminate {
+        reason: String,
+    },
 }
 
 pub type ProductionDispatchFuture<'a> =
@@ -735,27 +784,26 @@ impl ProductionRecoveryReceipt {
         result: LocalReplayFinalization,
     ) -> Self {
         let (state, occurrence_key) = match result {
-            LocalReplayFinalization::NotAdmitted => {
-                ("not_admitted".to_string(), Some(requested_occurrence_key.to_string()))
-            }
+            LocalReplayFinalization::NotAdmitted => (
+                "not_admitted".to_string(),
+                Some(requested_occurrence_key.to_string()),
+            ),
             LocalReplayFinalization::Queued(receipt) => {
                 ("queued".to_string(), Some(receipt.occurrence_key))
             }
-            LocalReplayFinalization::Released { outcome, .. } => {
-                (
-                    format!(
-                        "released_{}",
-                        match outcome {
-                            LocalOutcomeState::Queued => "queued",
-                            LocalOutcomeState::Indeterminate => "indeterminate",
-                            LocalOutcomeState::Committed => "committed",
-                            LocalOutcomeState::Rejected => "rejected",
-                            LocalOutcomeState::RolledBack => "rolled_back",
-                        }
-                    ),
-                    Some(requested_occurrence_key.to_string()),
-                )
-            }
+            LocalReplayFinalization::Released { outcome, .. } => (
+                format!(
+                    "released_{}",
+                    match outcome {
+                        LocalOutcomeState::Queued => "queued",
+                        LocalOutcomeState::Indeterminate => "indeterminate",
+                        LocalOutcomeState::Committed => "committed",
+                        LocalOutcomeState::Rejected => "rejected",
+                        LocalOutcomeState::RolledBack => "rolled_back",
+                    }
+                ),
+                Some(requested_occurrence_key.to_string()),
+            ),
         };
         Self {
             schema_version: PRODUCTION_DURABLE_WRITER_SCHEMA_VERSION,
@@ -842,7 +890,9 @@ mod tests {
         let fleet_root = temp.path().join("fleet");
         std::fs::create_dir_all(&fleet_root).unwrap();
         let fleet = HeptaFleetRoot::parse(fleet_root.canonicalize().unwrap()).unwrap();
-        CognitiveStore::open(&fleet.layout().agent(&agent_id(OWNER))).await.unwrap()
+        CognitiveStore::open(&fleet.layout().agent(&agent_id(OWNER)))
+            .await
+            .unwrap()
     }
 
     fn authority(agent: AgentId) -> ProductionAuthorityLease {
@@ -852,7 +902,8 @@ mod tests {
             9,
             4,
             now_unix_seconds().unwrap() + 3_600,
-            ProductionAuthorityToken::from_verified_bytes(b"opaque-supervisor-token".to_vec()).unwrap(),
+            ProductionAuthorityToken::from_verified_bytes(b"opaque-supervisor-token".to_vec())
+                .unwrap(),
         )
         .unwrap()
     }
@@ -887,7 +938,10 @@ mod tests {
     }
 
     impl ProductionOutboxTarget for Target {
-        fn dispatch<'a>(&'a self, _request: ProductionDispatchRequest) -> ProductionDispatchFuture<'a> {
+        fn dispatch<'a>(
+            &'a self,
+            _request: ProductionDispatchRequest,
+        ) -> ProductionDispatchFuture<'a> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             let outcome = self.outcome.clone();
             Box::pin(async move { outcome })
@@ -909,22 +963,25 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(matches!(denied, ProductionWriterError::AuthorityRejected(_)));
+        assert!(matches!(
+            denied,
+            ProductionWriterError::AuthorityRejected(_)
+        ));
 
-        let writer = ProductionDurableWriter::open(
-            store,
-            auth,
-            &AllowVerifier,
-            "production:h4:test",
-            1,
-        )
-        .await
-        .unwrap();
-        let queued = writer.admit("occurrence:1", "memory.write", "{\"x\":1}").await.unwrap();
+        let writer =
+            ProductionDurableWriter::open(store, auth, &AllowVerifier, "production:h4:test", 1)
+                .await
+                .unwrap();
+        let queued = writer
+            .admit("occurrence:1", "memory.write", "{\"x\":1}")
+            .await
+            .unwrap();
         assert!(!queued.external_effect);
         let target = Arc::new(Target {
             calls: AtomicUsize::new(0),
-            outcome: ProductionTargetOutcome::Committed { receipt: "provider-ack-1".to_string() },
+            outcome: ProductionTargetOutcome::Committed {
+                receipt: "provider-ack-1".to_string(),
+            },
         });
         let dispatcher = ProductionOutboxDispatcher::attach(target.clone());
         let dispatched = dispatcher.dispatch(&writer, queued).await.unwrap();
@@ -939,27 +996,73 @@ mod tests {
         let store = store(&temp).await;
         let owner = store.owner_agent_id().clone();
         let auth = authority(owner);
+        let writer =
+            ProductionDurableWriter::open(store, auth, &AllowVerifier, "production:h4:unknown", 1)
+                .await
+                .unwrap();
+        let queued = writer
+            .admit("occurrence:unknown", "memory.write", "payload")
+            .await
+            .unwrap();
+        let target = Arc::new(Target {
+            calls: AtomicUsize::new(0),
+            outcome: ProductionTargetOutcome::Indeterminate {
+                reason: "timeout".to_string(),
+            },
+        });
+        let receipt = ProductionOutboxDispatcher::attach(target)
+            .dispatch(&writer, queued)
+            .await
+            .unwrap();
+        assert_eq!(receipt.state, LocalOutcomeState::Indeterminate);
+        assert!(!receipt.external_effect);
+        assert_eq!(
+            writer.status("occurrence:unknown").await.unwrap(),
+            LocalOutcomeState::Indeterminate
+        );
+        let recovery = writer.recover("occurrence:unknown").await.unwrap();
+        assert!(recovery.state.starts_with("released_"));
+        assert!(!recovery.physical_power_loss_claim);
+    }
+
+    #[tokio::test]
+    async fn forged_queue_receipt_cannot_substitute_provider_payload_or_topic() {
+        let temp = TempDir::new().unwrap();
+        let store = store(&temp).await;
+        let owner = store.owner_agent_id().clone();
+        let auth = authority(owner);
         let writer = ProductionDurableWriter::open(
             store,
             auth,
             &AllowVerifier,
-            "production:h4:unknown",
+            "production:h4:receipt-binding",
             1,
         )
         .await
         .unwrap();
-        let queued = writer.admit("occurrence:unknown", "memory.write", "payload").await.unwrap();
+        let queued = writer
+            .admit("occurrence:binding", "memory.write", "{\"x\":1}")
+            .await
+            .unwrap();
+        let mut forged = queued.clone();
+        forged.topic = "different.topic".to_string();
+        forged.payload_json = "{\"x\":2}".to_string();
+        forged.payload_sha256 = Sha256Digest::for_bytes(forged.payload_json.as_bytes());
         let target = Arc::new(Target {
             calls: AtomicUsize::new(0),
-            outcome: ProductionTargetOutcome::Indeterminate { reason: "timeout".to_string() },
+            outcome: ProductionTargetOutcome::Committed {
+                receipt: "must-not-be-called".to_string(),
+            },
         });
-        let receipt = ProductionOutboxDispatcher::attach(target).dispatch(&writer, queued).await.unwrap();
-        assert_eq!(receipt.state, LocalOutcomeState::Indeterminate);
-        assert!(!receipt.external_effect);
-        assert_eq!(writer.status("occurrence:unknown").await.unwrap(), LocalOutcomeState::Indeterminate);
-        let recovery = writer.recover("occurrence:unknown").await.unwrap();
-        assert!(recovery.state.starts_with("released_"));
-        assert!(!recovery.physical_power_loss_claim);
+        let result = ProductionOutboxDispatcher::attach(target.clone())
+            .dispatch(&writer, forged)
+            .await;
+        assert!(matches!(result, Err(ProductionWriterError::StaleReceipt)));
+        assert_eq!(target.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            writer.status("occurrence:binding").await.unwrap(),
+            LocalOutcomeState::Queued
+        );
     }
 
     #[tokio::test]
@@ -977,18 +1080,19 @@ mod tests {
         )
         .await
         .unwrap();
-        let queued = writer.admit("occurrence:restart", "memory.write", "payload").await.unwrap();
+        let queued = writer
+            .admit("occurrence:restart", "memory.write", "payload")
+            .await
+            .unwrap();
         drop(writer);
-        let reopened = ProductionDurableWriter::open(
-            store,
-            auth,
-            &AllowVerifier,
-            "production:h4:restart",
-            1,
-        )
-        .await
-        .unwrap();
-        let replay = reopened.admit("occurrence:restart", "memory.write", "payload").await.unwrap();
+        let reopened =
+            ProductionDurableWriter::open(store, auth, &AllowVerifier, "production:h4:restart", 1)
+                .await
+                .unwrap();
+        let replay = reopened
+            .admit("occurrence:restart", "memory.write", "payload")
+            .await
+            .unwrap();
         assert!(replay.replayed);
         assert_eq!(replay.event_id, queued.event_id);
         assert_eq!(replay.outbox_id, queued.outbox_id);
