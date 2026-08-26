@@ -22,6 +22,9 @@ pub mod b2;
 #[path = "authbus_b1.rs"]
 pub mod b1;
 
+#[path = "authbus_b3.rs"]
+pub mod b3;
+
 /// Stable schema number for the first Hepta-owned AuthBus contract family.
 pub const AUTHBUS_CONTRACT_SCHEMA_VERSION: u32 = 1;
 /// Versioned namespace reserved for Hepta-owned AuthBus messages.
