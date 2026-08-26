@@ -27,9 +27,7 @@ use serde::Serialize;
 use sha2::Digest;
 use sha2::Sha256;
 use sqlx::Row;
-#[cfg(feature = "taskflow-structural-qualification")]
 use sqlx::Sqlite;
-#[cfg(feature = "taskflow-structural-qualification")]
 use sqlx::Transaction;
 
 use crate::AutomationStore;
@@ -1073,6 +1071,19 @@ impl AutomationStore {
         // or any projection/event append.  A corrupt tail must never be
         // hidden behind `AlreadyApplied` or extended with a new event.
         verify_taskflow_event_chain_tx(&mut tx, &run).await?;
+        let definition = load_taskflow_definition_tx(
+            &mut tx,
+            self.taskflow_owner_agent_id(),
+            &run.workflow_id,
+            run.workflow_version,
+        )
+        .await?
+        .ok_or_else(|| corrupt("TaskFlow definition is missing during mutation"))?;
+        if definition.definition_digest != run.definition_digest {
+            return Err(corrupt(
+                "TaskFlow run definition digest does not match registry",
+            ));
+        }
         if let Some(previous) = sqlx::query(
             "SELECT command_digest, revision, event_seq FROM taskflow_events
              WHERE owner_agent_id = ? AND run_id = ? AND command_id = ?",
@@ -1129,7 +1140,7 @@ impl AutomationStore {
             )));
         }
         let transition_name = transition_name(&command.transition);
-        apply_transition(&mut run, &command.transition, command.now_ms)?;
+        apply_transition(&mut run, &definition, &command.transition, command.now_ms)?;
         run.revision = run
             .revision
             .checked_add(1)
@@ -1257,6 +1268,7 @@ struct RunDigestView<'a> {
 
 fn apply_transition(
     run: &mut TaskFlowRun,
+    definition: &TaskFlowDefinition,
     transition: &TaskFlowTransition,
     now_ms: u64,
 ) -> Result<(), TaskFlowError> {
@@ -1280,13 +1292,20 @@ fn apply_transition(
                 if node == &run.current_node {
                     return Err(invalid("wait resume node cannot equal current node"));
                 }
-                // The opt-in structural qualification seam projects the
-                // resume target as the durable frontier. Production/default
-                // behavior keeps the existing ledger semantics unchanged.
-                #[cfg(feature = "taskflow-structural-qualification")]
+                if !definition
+                    .edges
+                    .iter()
+                    .any(|edge| edge.from == run.current_node && edge.to == *node)
                 {
-                    run.current_node = node.clone();
+                    return Err(invalid_transition(
+                        "wait resume node is not an outgoing edge",
+                    ));
                 }
+                // The resume target is part of the durable state transition,
+                // not merely a structural replay hint. Persisting it here
+                // keeps the default writer and the opt-in replay seam on the
+                // same graph-aware projection.
+                run.current_node = node.clone();
             }
             run.state = TaskFlowRunState::Waiting;
             run.wait_token = Some(token.clone());
@@ -1748,7 +1767,6 @@ pub(crate) async fn verify_taskflow_event_chain_tx(
 /// the immutable definition, run projection, and event chain all come from a
 /// single SQLite snapshot.  It intentionally performs no mutation and grants
 /// no scheduler or effect authority.
-#[cfg(feature = "taskflow-structural-qualification")]
 pub(crate) async fn load_taskflow_definition_tx(
     tx: &mut Transaction<'_, Sqlite>,
     owner: &AgentId,

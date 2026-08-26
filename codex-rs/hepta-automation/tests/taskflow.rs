@@ -481,6 +481,107 @@ async fn invalid_transition_does_not_advance_projection_or_event_tail() {
 }
 
 #[tokio::test]
+async fn command_writer_enforces_graph_resume_target_and_advances_current_node() {
+    let fixture = Fixture::new();
+    let store = open_store(&fixture).await;
+    let owner = fence("owner-a", 1);
+    let definition = definition(1);
+    store
+        .register_taskflow_definition(&definition, &owner, 10)
+        .await
+        .expect("register definition");
+    store
+        .create_taskflow_run(
+            "run-graph-writer",
+            &definition.workflow_id,
+            definition.version,
+            definition.definition_digest(),
+            "thread-1",
+            10,
+        )
+        .await
+        .expect("create run");
+    let claimed = store
+        .claim_taskflow_run("run-graph-writer", &owner, 20, 1_000)
+        .await
+        .expect("claim run");
+    let started = store
+        .apply_taskflow_command(
+            &TaskFlowCommand::new(
+                "run-graph-writer",
+                "graph-start",
+                owner.clone(),
+                claimed.revision,
+                TaskFlowTransition::Start,
+                21,
+            )
+            .expect("start command"),
+        )
+        .await
+        .expect("start run");
+
+    let invalid = TaskFlowCommand::new(
+        "run-graph-writer",
+        "graph-invalid-wait",
+        owner.clone(),
+        started.revision,
+        TaskFlowTransition::Wait {
+            token: "invalid-target".to_string(),
+            resume_node: Some("detached".to_string()),
+        },
+        22,
+    )
+    .expect("invalid target command envelope");
+    assert!(matches!(
+        store.apply_taskflow_command(&invalid).await,
+        Err(TaskFlowError::InvalidTransition(message))
+            if message.contains("outgoing edge")
+    ));
+    let unchanged = store
+        .taskflow_run("run-graph-writer")
+        .await
+        .expect("read unchanged run")
+        .expect("run exists");
+    assert_eq!(unchanged.revision, started.revision);
+    assert_eq!(unchanged.current_node, "work");
+    assert_eq!(unchanged.state, TaskFlowRunState::Running);
+
+    let waiting = store
+        .apply_taskflow_command(
+            &TaskFlowCommand::new(
+                "run-graph-writer",
+                "graph-valid-wait",
+                owner,
+                started.revision,
+                TaskFlowTransition::Wait {
+                    token: "valid-target".to_string(),
+                    resume_node: Some("success".to_string()),
+                },
+                23,
+            )
+            .expect("valid wait command"),
+        )
+        .await
+        .expect("wait run");
+    assert_eq!(waiting.state, TaskFlowRunState::Waiting);
+    let waiting_run = store
+        .taskflow_run("run-graph-writer")
+        .await
+        .expect("read advanced run")
+        .expect("run exists");
+    assert_eq!(waiting_run.current_node, "success");
+    assert_eq!(
+        store
+            .taskflow_run("run-graph-writer")
+            .await
+            .expect("read advanced run")
+            .expect("run exists")
+            .current_node,
+        "success"
+    );
+}
+
+#[tokio::test]
 async fn taskflow_mutations_reject_corrupt_event_chain_before_replay_or_append() {
     let fixture = Fixture::new();
     let store = open_store(&fixture).await;

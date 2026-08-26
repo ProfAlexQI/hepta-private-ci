@@ -249,7 +249,7 @@ async fn durable_replay_reconstructs_current_node_and_frontier() {
 }
 
 #[tokio::test]
-async fn replay_rejects_a_hash_valid_but_non_structural_resume_target() {
+async fn command_writer_rejects_a_non_structural_resume_target_before_append() {
     let fixture = Fixture::new();
     let store = AutomationStore::open(&fixture.layout)
         .await
@@ -289,29 +289,29 @@ async fn replay_rejects_a_hash_valid_but_non_structural_resume_target() {
         )
         .await
         .expect("start run");
-    // The base ledger records the caller target; the structural replay seam
-    // is the graph-aware fail-closed check for this qualification boundary.
-    store
-        .apply_taskflow_command(
-            &TaskFlowCommand::new(
-                "invalid-structural-run",
-                "invalid-wait",
-                owner,
-                started.revision,
-                TaskFlowTransition::Wait {
-                    token: "invalid-target".to_string(),
-                    resume_node: Some("success".to_string()),
-                },
-                22,
-            )
-            .expect("wait command"),
-        )
-        .await
-        .expect("base ledger records candidate");
+    let invalid = TaskFlowCommand::new(
+        "invalid-structural-run",
+        "invalid-wait",
+        owner,
+        started.revision,
+        TaskFlowTransition::Wait {
+            token: "invalid-target".to_string(),
+            resume_node: Some("success".to_string()),
+        },
+        22,
+    )
+    .expect("wait command");
     assert!(matches!(
-        store.replay_taskflow_structural("invalid-structural-run").await,
-        Err(TaskFlowError::Corrupt(message)) if message.contains("outgoing edge")
+        store.apply_taskflow_command(&invalid).await,
+        Err(TaskFlowError::InvalidTransition(message))
+            if message.contains("outgoing edge")
     ));
+    let replay = store
+        .replay_taskflow_structural("invalid-structural-run")
+        .await
+        .expect("replay unchanged run");
+    assert_eq!(replay.state, TaskFlowRunState::Running);
+    assert_eq!(replay.current_node, "work");
     store.close().await;
 }
 
