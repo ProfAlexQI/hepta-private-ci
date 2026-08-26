@@ -1,5 +1,6 @@
 use codex_hepta_automation::AutomationError;
 use codex_hepta_fleet::FleetRegistryError;
+use codex_hepta_memory::ProductionWriterError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AgentdError {
@@ -19,4 +20,6 @@ pub enum AgentdError {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    ProductionWriter(#[from] ProductionWriterError),
 }
