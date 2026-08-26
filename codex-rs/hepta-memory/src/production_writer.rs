@@ -9,7 +9,10 @@
 //! `ProductionOutboxTarget` to dispatch a queued row.
 
 use std::fmt;
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::future::Future;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -60,6 +63,8 @@ pub enum ProductionWriterError {
     Durability(String),
     #[error("production writer receipt is stale or belongs to another authority")]
     StaleReceipt,
+    #[error("production writer already has an active owner for this local lease")]
+    WriterBusy,
 }
 
 /// Opaque authority token supplied by an external grant verifier.
@@ -245,6 +250,77 @@ pub struct ProductionDurableWriter {
     authority: ProductionAuthorityLease,
     lease: LocalLeaseOutbox,
     lease_id: Arc<str>,
+    // Retain the OS-level lock for the lifetime of the writer.  SQLite's
+    // transaction lock serializes individual mutations, but it does not
+    // establish the H4 single-writer boundary: two processes could otherwise
+    // reopen the same active lease under the same grant and interleave
+    // independent recovery decisions.  The lock is local qualification
+    // plumbing only; it grants no authority and is released automatically on
+    // process exit/drop.
+    _writer_lock: Arc<DurableWriterLock>,
+}
+
+struct DurableWriterLock {
+    _file: File,
+    _path: PathBuf,
+}
+
+impl DurableWriterLock {
+    fn acquire(store: &CognitiveStore, lease_id: &str) -> Result<Arc<Self>, ProductionWriterError> {
+        let database_path = store.path();
+        let parent = database_path.parent().ok_or_else(|| {
+            ProductionWriterError::Durability(
+                "cognitive database path has no parent for writer lock".to_string(),
+            )
+        })?;
+        let canonical_parent = parent.canonicalize().map_err(|error| {
+            ProductionWriterError::Durability(format!(
+                "cannot canonicalize writer-lock parent {}: {error}",
+                parent.display()
+            ))
+        })?;
+        if canonical_parent != parent {
+            return Err(ProductionWriterError::Durability(
+                "writer-lock parent must be canonical".to_string(),
+            ));
+        }
+
+        // Hash the lease id instead of placing caller text in a path.  The
+        // database parent is already the private Agent-local root checked by
+        // CognitiveStore, and retaining the file (rather than deleting it on
+        // drop) prevents an inode-replacement race with another opener.
+        let mut key = Vec::with_capacity(database_path.as_os_str().len() + lease_id.len() + 1);
+        key.extend_from_slice(database_path.as_os_str().as_encoded_bytes());
+        key.push(0);
+        key.extend_from_slice(lease_id.as_bytes());
+        let lock_digest = Sha256Digest::for_bytes(&key);
+        let path = parent.join(format!(
+            ".hepta-production-writer-{}.lock",
+            lock_digest.as_str()
+        ));
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&path)
+            .map_err(|error| {
+                ProductionWriterError::Durability(format!(
+                    "cannot open writer lock {}: {error}",
+                    path.display()
+                ))
+            })?;
+        match file.try_lock() {
+            Ok(()) => Ok(Arc::new(Self {
+                _file: file,
+                _path: path,
+            })),
+            Err(std::fs::TryLockError::WouldBlock) => Err(ProductionWriterError::WriterBusy),
+            Err(std::fs::TryLockError::Error(error)) => Err(ProductionWriterError::Durability(
+                format!("cannot acquire writer lock {}: {error}", path.display()),
+            )),
+        }
+    }
 }
 
 impl fmt::Debug for ProductionDurableWriter {
@@ -286,6 +362,22 @@ impl ProductionDurableWriter {
             authority.lease_expires_at_unix_seconds,
         );
 
+        // Preserve the more specific stale-grant error for an active lease,
+        // then acquire the lifetime writer lock before making any mutating
+        // lease decision.  The second inspection closes the small race
+        // between the preflight read and lock acquisition.
+        let inspection = store.inspect_local_lease_head(&lease_id).await?;
+        if let (LocalLeaseHeadDisposition::Active, Some(head)) =
+            (inspection.disposition, inspection.head.as_ref())
+            && (head.generation != generation
+                || head.fencing_token != authority.fencing_token_digest()?.as_str()
+                || head.authority_epoch != Some(binding.0)
+                || head.owner_epoch != Some(binding.1)
+                || head.lease_expires_at_unix_seconds != Some(binding.2))
+        {
+            return Err(ProductionWriterError::StaleReceipt);
+        }
+        let writer_lock = DurableWriterLock::acquire(&store, &lease_id)?;
         let inspection = store.inspect_local_lease_head(&lease_id).await?;
         let lease = match (inspection.disposition, inspection.head) {
             (LocalLeaseHeadDisposition::Missing, None) => store
@@ -342,6 +434,7 @@ impl ProductionDurableWriter {
             authority,
             lease,
             lease_id: Arc::from(lease_id),
+            _writer_lock: writer_lock,
         })
     }
 
@@ -1231,6 +1324,47 @@ mod tests {
         assert!(replay.replayed);
         assert_eq!(replay.event_id, queued.event_id);
         assert_eq!(replay.outbox_id, queued.outbox_id);
+    }
+
+    #[tokio::test]
+    async fn second_writer_open_is_rejected_until_first_owner_drops() {
+        let temp = TempDir::new().unwrap();
+        let store = store(&temp).await;
+        let owner = store.owner_agent_id().clone();
+        let auth = authority(owner);
+        let lease_id = "production:h4:single-writer";
+        let first =
+            ProductionDurableWriter::open(store.clone(), auth.clone(), &AllowVerifier, lease_id, 1)
+                .await
+                .unwrap();
+        first
+            .admit("occurrence:single-writer", "memory.write", "payload")
+            .await
+            .unwrap();
+
+        // A second process/handle with the same exact authority must not
+        // silently become a co-owner merely because SQLite serializes each
+        // individual transaction.  The writer lock is held for the lifetime
+        // of `first`, so the failed open must not append a successor lease.
+        let second =
+            ProductionDurableWriter::open(store.clone(), auth.clone(), &AllowVerifier, lease_id, 1)
+                .await;
+        assert!(matches!(second, Err(ProductionWriterError::WriterBusy)));
+        let head = store.inspect_local_lease_head(lease_id).await.unwrap();
+        assert_eq!(head.disposition, LocalLeaseHeadDisposition::Active);
+        assert_eq!(head.head.unwrap().lease_sequence, 1);
+
+        // A normal close releases the OS lock, while the append-only lease
+        // remains replayable for the next owner handle.
+        drop(first);
+        let reopened = ProductionDurableWriter::open(store, auth, &AllowVerifier, lease_id, 1)
+            .await
+            .unwrap();
+        let replay = reopened
+            .admit("occurrence:single-writer", "memory.write", "payload")
+            .await
+            .unwrap();
+        assert!(replay.replayed);
     }
 
     #[tokio::test]
