@@ -959,6 +959,22 @@ pub trait ProviderEffectAdapter: Send + Sync {
         intent: &'a ProviderEffectIntent,
     ) -> ProviderEffectFuture<'a, ProviderEffectDispatch>;
 
+    /// Dispatch the intent with the exact wire payload whose digest is bound
+    /// by `intent.payload_sha256`.
+    ///
+    /// The legacy `dispatch` method remains available for adapters that own
+    /// their payload construction. A transport adapter which sends caller
+    /// supplied bytes must override this method; the default deliberately
+    /// falls back to the legacy seam so existing qualification adapters keep
+    /// compiling without gaining an implicit send path.
+    fn dispatch_with_payload<'a>(
+        &'a self,
+        intent: &'a ProviderEffectIntent,
+        _wire_payload: &'a [u8],
+    ) -> ProviderEffectFuture<'a, ProviderEffectDispatch> {
+        self.dispatch(intent)
+    }
+
     fn lookup<'a>(
         &'a self,
         key: &'a ProviderEffectKey,
@@ -1101,6 +1117,74 @@ where
         Ok(ProviderEffectDispatchReceipt {
             state,
             physical_dispatch_attempted: true,
+        })
+    }
+
+    /// Record the intent and make at most one physical dispatch attempt using
+    /// an exact caller-supplied wire payload.
+    ///
+    /// The digest is checked before the adapter is called. A mismatch is a
+    /// local binding error and therefore cannot cross a provider boundary.
+    pub async fn dispatch_once_with_payload(
+        &mut self,
+        intent: ProviderEffectIntent,
+        wire_payload: &[u8],
+    ) -> Result<ProviderEffectDispatchReceipt, ProviderEffectCoordinatorError> {
+        intent.validate()?;
+        if Sha256Digest::for_bytes(wire_payload) != intent.payload_sha256 {
+            return Err(ProviderEffectBindingError::PayloadMismatch.into());
+        }
+        self.journal.validate()?;
+        let key = intent.key.clone();
+        self.journal.record_intent(intent.clone())?;
+        let current = self
+            .journal
+            .state(&key)
+            .unwrap_or(ProviderEffectState::Indeterminate);
+        if current != ProviderEffectState::Pending {
+            return Ok(ProviderEffectDispatchReceipt {
+                state: current,
+                physical_dispatch_attempted: false,
+            });
+        }
+
+        let dispatch = self
+            .adapter
+            .dispatch_with_payload(&intent, wire_payload)
+            .await;
+        let (state, physical_dispatch_attempted) = match dispatch {
+            ProviderEffectDispatch::Ack(ack) => {
+                self.journal.record_ack(ack)?;
+                (
+                    self.journal
+                        .state(&key)
+                        .unwrap_or(ProviderEffectState::Indeterminate),
+                    true,
+                )
+            }
+            ProviderEffectDispatch::Rejected { reason_code } => {
+                self.journal.mark_indeterminate(
+                    &key,
+                    validated_reason_code(&reason_code, "provider_dispatch_rejected"),
+                )?;
+                (ProviderEffectState::Indeterminate, true)
+            }
+            ProviderEffectDispatch::NotDispatched { reason_code } => {
+                self.journal.mark_indeterminate(
+                    &key,
+                    validated_reason_code(&reason_code, "provider_not_dispatched"),
+                )?;
+                (ProviderEffectState::Indeterminate, false)
+            }
+            ProviderEffectDispatch::Unknown => {
+                self.journal
+                    .mark_indeterminate(&key, "provider_dispatch_unknown")?;
+                (ProviderEffectState::Indeterminate, true)
+            }
+        };
+        Ok(ProviderEffectDispatchReceipt {
+            state,
+            physical_dispatch_attempted,
         })
     }
 

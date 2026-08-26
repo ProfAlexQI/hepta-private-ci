@@ -332,19 +332,59 @@ pub fn create_model_provider(
     }
 }
 
+/// Creates a configured provider with an explicitly injected effect adapter.
+///
+/// The normal factory remains fail-closed. An absent result is returned for Amazon
+/// Bedrock until its provider-owned effect contract is implemented.
+pub fn create_model_provider_with_effect_adapter(
+    provider_info: ModelProviderInfo,
+    auth_manager: Option<Arc<AuthManager>>,
+    adapter: Arc<dyn ProviderEffectAdapter>,
+) -> Option<SharedModelProvider> {
+    if provider_info.is_amazon_bedrock() {
+        return None;
+    }
+    Some(Arc::new(ConfiguredModelProvider::with_effect_adapter(provider_info, auth_manager, adapter)))
+}
+
 /// Runtime model provider backed by configured `ModelProviderInfo`.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct ConfiguredModelProvider {
     info: ModelProviderInfo,
     auth_manager: Option<Arc<AuthManager>>,
+    effect_adapter: Arc<dyn ProviderEffectAdapter>,
+}
+
+impl fmt::Debug for ConfiguredModelProvider {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ConfiguredModelProvider")
+            .field("info", &self.info)
+            .field("auth_manager", &self.auth_manager.is_some())
+            .field("effect_capability", &self.effect_adapter.capability())
+            .finish()
+    }
 }
 
 impl ConfiguredModelProvider {
     fn new(provider_info: ModelProviderInfo, auth_manager: Option<Arc<AuthManager>>) -> Self {
+        Self::with_effect_adapter(
+            provider_info,
+            auth_manager,
+            Arc::new(FailClosedProviderEffectAdapter),
+        )
+    }
+
+    fn with_effect_adapter(
+        provider_info: ModelProviderInfo,
+        auth_manager: Option<Arc<AuthManager>>,
+        effect_adapter: Arc<dyn ProviderEffectAdapter>,
+    ) -> Self {
         let auth_manager = auth_manager_for_provider(auth_manager, &provider_info);
         Self {
             info: provider_info,
             auth_manager,
+            effect_adapter,
         }
     }
 }
@@ -365,8 +405,13 @@ impl ModelProvider for ConfiguredModelProvider {
 
         ProviderCapabilities {
             remote_compaction,
+            provider_effect_idempotency: self.effect_adapter.capability(),
             ..ProviderCapabilities::default()
         }
+    }
+
+    fn provider_effect_adapter(&self) -> Arc<dyn ProviderEffectAdapter> {
+        self.effect_adapter.clone()
     }
 
     fn approval_review_preferred_model(&self) -> &'static str {
