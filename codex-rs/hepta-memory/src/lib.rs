@@ -30,6 +30,7 @@ mod neuron_proposal;
 mod production_writer;
 mod recall;
 mod shadow_advisory;
+mod shadow_model_runtime;
 
 pub use cognitive_compact::COGNITIVE_COMPACT_HOOK_NAMESPACE;
 pub use cognitive_compact::COGNITIVE_COMPACT_HOOK_SCHEMA_VERSION;
@@ -363,6 +364,17 @@ pub use shadow_advisory::ShadowAdvisoryError;
 pub use shadow_advisory::ShadowAdvisoryInput;
 pub use shadow_advisory::ShadowAdvisoryReceipt;
 pub use shadow_advisory::shadow_advisory_evaluate;
+pub use shadow_model_runtime::MODEL_RECEIPT_SCHEMA_GAPS;
+pub use shadow_model_runtime::RunStartSnapshot;
+pub use shadow_model_runtime::RunStartSnapshotInput;
+pub use shadow_model_runtime::SHADOW_MODEL_RUNTIME_NAMESPACE;
+pub use shadow_model_runtime::SHADOW_MODEL_RUNTIME_SCHEMA_VERSION;
+pub use shadow_model_runtime::ShadowExecutionScope;
+pub use shadow_model_runtime::ShadowModelRuntimeBinding;
+pub use shadow_model_runtime::ShadowModelRuntimeError;
+pub use shadow_model_runtime::ShadowPrivacyProfile;
+pub use shadow_model_runtime::ShadowResourceBudget;
+pub use shadow_model_runtime::ShadowRunFence;
 
 #[cfg(test)]
 #[path = "cognitive_store_tests.rs"]
