@@ -372,10 +372,15 @@ impl ProductionDurableWriter {
         occurrence_key: impl Into<String>,
     ) -> Result<ProductionRecoveryReceipt, ProductionWriterError> {
         self.verify_authority().await?;
-        let result = self.lease.finalize_replayed_occurrence(occurrence_key).await?;
+        let occurrence_key = occurrence_key.into();
+        let result = self
+            .lease
+            .finalize_replayed_occurrence(&occurrence_key)
+            .await?;
         Ok(ProductionRecoveryReceipt::from_local(
             &self.authority,
             self.lease_id(),
+            &occurrence_key,
             result,
         ))
     }
@@ -726,10 +731,13 @@ impl ProductionRecoveryReceipt {
     fn from_local(
         authority: &ProductionAuthorityLease,
         lease_id: &str,
+        requested_occurrence_key: &str,
         result: LocalReplayFinalization,
     ) -> Self {
         let (state, occurrence_key) = match result {
-            LocalReplayFinalization::NotAdmitted => ("not_admitted".to_string(), None),
+            LocalReplayFinalization::NotAdmitted => {
+                ("not_admitted".to_string(), Some(requested_occurrence_key.to_string()))
+            }
             LocalReplayFinalization::Queued(receipt) => {
                 ("queued".to_string(), Some(receipt.occurrence_key))
             }
@@ -745,7 +753,7 @@ impl ProductionRecoveryReceipt {
                             LocalOutcomeState::RolledBack => "rolled_back",
                         }
                     ),
-                    None,
+                    Some(requested_occurrence_key.to_string()),
                 )
             }
         };

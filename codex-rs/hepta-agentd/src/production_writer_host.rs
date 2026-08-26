@@ -52,7 +52,7 @@ impl AgentdProductionWriterHost {
     where
         V: ProductionAuthorityVerifier + ?Sized,
     {
-        let store = CognitiveStore::open(&config.identity.layout)
+        let store = CognitiveStore::open(&config.identity().layout)
             .await
             .map_err(|error| {
                 AgentdError::Protocol(format!("open production cognitive store: {error}"))
