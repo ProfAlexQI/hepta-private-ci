@@ -20,6 +20,12 @@ use crate::stable_id::parse_prefixed_sha256_id;
 
 pub const PROVIDER_EFFECT_SCHEMA_VERSION: u32 = 1;
 
+/// A pending intent that predates the coordinator call has no local witness
+/// proving that this process owns the physical dispatch boundary.  Treat it
+/// as an imported crash-window record and require status reconciliation before
+/// any adapter call.
+const PROVIDER_EFFECT_IMPORTED_PENDING_REASON: &str = "provider_imported_pending";
+
 /// Provider capability required before a physical effect can be retried or
 /// reconciled by key.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -1062,7 +1068,10 @@ where
     /// Pending is the only state that permits a send.  Accepted and
     /// Indeterminate are quarantined until [`Self::reconcile`] obtains a
     /// provider lookup; terminal states are returned without touching the
-    /// adapter.  A provider response that cannot be bound to the exact intent
+    /// adapter.  A Pending intent already present in a restored journal is
+    /// treated as an imported crash-window record and is quarantined before
+    /// the adapter can be called.
+    /// A provider response that cannot be bound to the exact intent
     /// is an error and never advances the journal.
     pub async fn dispatch_once(
         &mut self,
@@ -1070,11 +1079,21 @@ where
     ) -> Result<ProviderEffectDispatchReceipt, ProviderEffectCoordinatorError> {
         self.journal.validate()?;
         let key = intent.key.clone();
-        self.journal.record_intent(intent.clone())?;
+        let intent_disposition = self.journal.record_intent(intent.clone())?;
         let current = self
             .journal
             .state(&key)
             .unwrap_or(ProviderEffectState::Indeterminate);
+        if current == ProviderEffectState::Pending
+            && intent_disposition == ProviderEffectAppendDisposition::AlreadyPresent
+        {
+            self.journal
+                .mark_indeterminate(&key, PROVIDER_EFFECT_IMPORTED_PENDING_REASON)?;
+            return Ok(ProviderEffectDispatchReceipt {
+                state: ProviderEffectState::Indeterminate,
+                physical_dispatch_attempted: false,
+            });
+        }
         if current != ProviderEffectState::Pending {
             return Ok(ProviderEffectDispatchReceipt {
                 state: current,
@@ -1124,7 +1143,10 @@ where
     /// an exact caller-supplied wire payload.
     ///
     /// The digest is checked before the adapter is called. A mismatch is a
-    /// local binding error and therefore cannot cross a provider boundary.
+    /// local binding error and therefore cannot cross a provider boundary. A
+    /// Pending intent already present in a restored journal is treated as an
+    /// imported crash-window record and is quarantined before the adapter can
+    /// be called.
     pub async fn dispatch_once_with_payload(
         &mut self,
         intent: ProviderEffectIntent,
@@ -1136,11 +1158,21 @@ where
         }
         self.journal.validate()?;
         let key = intent.key.clone();
-        self.journal.record_intent(intent.clone())?;
+        let intent_disposition = self.journal.record_intent(intent.clone())?;
         let current = self
             .journal
             .state(&key)
             .unwrap_or(ProviderEffectState::Indeterminate);
+        if current == ProviderEffectState::Pending
+            && intent_disposition == ProviderEffectAppendDisposition::AlreadyPresent
+        {
+            self.journal
+                .mark_indeterminate(&key, PROVIDER_EFFECT_IMPORTED_PENDING_REASON)?;
+            return Ok(ProviderEffectDispatchReceipt {
+                state: ProviderEffectState::Indeterminate,
+                physical_dispatch_attempted: false,
+            });
+        }
         if current != ProviderEffectState::Pending {
             return Ok(ProviderEffectDispatchReceipt {
                 state: current,
@@ -1944,6 +1976,126 @@ mod tests {
             1
         );
         assert_eq!(coordinator.journal().acknowledgements(&key).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn coordinator_restored_pending_is_quarantined_before_dispatch() {
+        let intent = intent(b"restored-pending-payload");
+        let key = intent.key.clone();
+        let mut journal = ProviderEffectJournal::default();
+        journal
+            .record_intent(intent.clone())
+            .expect("persist intent before simulated crash");
+
+        // Round-tripping the journal models a process restart after the
+        // intent was durable but before the coordinator could record its
+        // dispatch-boundary witness.  The restored Pending state is therefore
+        // not proof that this coordinator owns a safe physical send.
+        let encoded = serde_json::to_vec(&journal).expect("serialize pending journal");
+        let restored: ProviderEffectJournal =
+            serde_json::from_slice(&encoded).expect("restore pending journal");
+        let completion = ack(&intent, b"restored-pending-payload");
+        let adapter = ScriptedAdapter {
+            capability: ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+            dispatch_result: Some(ProviderEffectDispatch::Ack(completion.clone())),
+            lookup_result: Some(ProviderEffectLookup::Ack(completion)),
+            ..Default::default()
+        };
+        let mut coordinator = ProviderEffectCoordinator::with_journal(adapter, restored);
+
+        let dispatch = coordinator
+            .dispatch_once(intent.clone())
+            .await
+            .expect("restored pending must quarantine");
+        assert_eq!(
+            dispatch,
+            ProviderEffectDispatchReceipt {
+                state: ProviderEffectState::Indeterminate,
+                physical_dispatch_attempted: false,
+            }
+        );
+        assert_eq!(
+            coordinator
+                .adapter()
+                .dispatches
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "a restored Pending intent must never be blindly resent"
+        );
+        assert_eq!(
+            coordinator.journal().uncertainties(&key),
+            &[ProviderEffectUncertainty::new(
+                key.clone(),
+                intent.payload_sha256.clone(),
+                PROVIDER_EFFECT_IMPORTED_PENDING_REASON,
+            )]
+        );
+
+        // Reconciliation remains the only path that may close the imported
+        // occurrence, and it must retain the adapter's status provenance.
+        assert_eq!(
+            coordinator.reconcile(&key).await,
+            Ok(ProviderEffectState::Completed)
+        );
+        assert_eq!(
+            coordinator
+                .adapter()
+                .dispatches
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
+        assert_eq!(
+            coordinator
+                .adapter()
+                .lookups
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
+        assert_eq!(
+            coordinator.journal().acknowledgement_sources(&key),
+            &[ProviderEffectAckSource::StatusLookup]
+        );
+    }
+
+    #[tokio::test]
+    async fn coordinator_restored_pending_payload_path_is_quarantined_before_dispatch() {
+        let intent = intent(b"restored-pending-payload-path");
+        let mut journal = ProviderEffectJournal::default();
+        journal
+            .record_intent(intent.clone())
+            .expect("persist intent before simulated crash");
+        let encoded = serde_json::to_vec(&journal).expect("serialize pending journal");
+        let restored: ProviderEffectJournal =
+            serde_json::from_slice(&encoded).expect("restore pending journal");
+        let adapter = ScriptedAdapter {
+            capability: ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+            dispatch_result: Some(ProviderEffectDispatch::Ack(ack(
+                &intent,
+                b"restored-pending-payload-path",
+            ))),
+            ..Default::default()
+        };
+        let mut coordinator = ProviderEffectCoordinator::with_journal(adapter, restored);
+
+        let dispatch = coordinator
+            .dispatch_once_with_payload(intent, b"restored-pending-payload-path")
+            .await
+            .expect("restored pending payload path must quarantine");
+        assert_eq!(
+            dispatch,
+            ProviderEffectDispatchReceipt {
+                state: ProviderEffectState::Indeterminate,
+                physical_dispatch_attempted: false,
+            }
+        );
+        assert_eq!(
+            coordinator
+                .adapter()
+                .dispatches
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "payload dispatch must not bypass imported Pending quarantine"
+        );
     }
 
     #[tokio::test]
