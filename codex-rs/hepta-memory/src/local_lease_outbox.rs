@@ -1426,6 +1426,112 @@ impl LocalLeaseOutbox {
         .await
     }
 
+    /// Apply a local intent after its target-side qualification writer has
+    /// returned a receipt.  `Queued` is the durable Pending state and
+    /// `Committed` is exposed by higher-level local sagas as Applied.  The
+    /// transition is still append-only metadata: it never dispatches the
+    /// outbox or claims an external effect.
+    pub async fn apply(
+        &self,
+        occurrence_key: impl Into<String>,
+        receipt: impl Into<String>,
+    ) -> Result<LocalOutcomeReceipt, LocalLeaseOutboxError> {
+        self.append_outcome(
+            occurrence_key.into(),
+            "reconcile_committed",
+            receipt.into(),
+            &[LocalOutcomeState::Queued, LocalOutcomeState::Indeterminate],
+            LocalOutcomeState::Committed,
+        )
+        .await
+    }
+
+    /// Reject a local intent after its target-side qualification writer has
+    /// failed validation or CAS.  This is the explicit Rejected terminal
+    /// state used by the local MemoryAdmission/compact sagas.
+    pub async fn reject(
+        &self,
+        occurrence_key: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Result<LocalOutcomeReceipt, LocalLeaseOutboxError> {
+        self.append_outcome(
+            occurrence_key.into(),
+            "reconcile_rejected",
+            reason.into(),
+            &[LocalOutcomeState::Queued, LocalOutcomeState::Indeterminate],
+            LocalOutcomeState::Rejected,
+        )
+        .await
+    }
+
+    /// Revoke a still-pending local intent.  This is the local append-only
+    /// equivalent of a revoked outbox command; it never deletes the original
+    /// event/outbox row and never claims that a target-side effect was undone.
+    pub async fn revoke(
+        &self,
+        occurrence_key: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Result<LocalOutcomeReceipt, LocalLeaseOutboxError> {
+        self.rollback_occurrence(occurrence_key, reason).await
+    }
+
+    /// Inspect an occurrence without changing its lease or outcome.  Unlike
+    /// [`status`], a missing admission is represented as `None`, which lets a
+    /// local saga distinguish its first attempt from an idempotent replay
+    /// without parsing an error string or releasing the lease.
+    pub async fn inspect_occurrence(
+        &self,
+        occurrence_key: impl Into<String>,
+    ) -> Result<Option<LocalOutcomeState>, LocalLeaseOutboxError> {
+        let occurrence_key = occurrence_key.into();
+        validate_text(&occurrence_key, "occurrence key", 512)?;
+        let mut transaction = self
+            .store
+            .pool
+            .begin()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let lease = self.current_lease(&mut transaction).await?;
+        ensure_current_active(&lease, self)?;
+        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let Some(admission) = find_admission(
+            &mut transaction,
+            &self.lease_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?
+        else {
+            transaction
+                .commit()
+                .await
+                .map_err(crate::cognitive_store::unavailable)?;
+            return Ok(None);
+        };
+        let outbox = find_outbox(
+            &mut transaction,
+            &self.lease_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?
+        .ok_or_else(|| corrupt("event admission has no paired outbox row"))?;
+        ensure_current_occurrence_fence(self, &admission, &outbox)?;
+        let state = current_outcome(
+            &mut transaction,
+            &self.lease_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?;
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(Some(state))
+    }
+
     /// Reconcile an indeterminate local intent.  `StillIndeterminate` keeps
     /// the quarantine state and can itself be replayed idempotently.
     pub async fn reconcile(
