@@ -138,6 +138,14 @@ impl ShadowAdvisoryReceipt {
         {
             return Err(ShadowAdvisoryError::AuthorityBoundary);
         }
+        // A receipt can be deserialized and consumed without the original
+        // input.  Validate both nested shadows here as well as in
+        // `validate_against`; otherwise a caller could mutate a nested
+        // authority bit, recompute only the outer digest, and make a receipt
+        // that appears valid while carrying an executable neuron or runtime
+        // intuition result.
+        validate_neuron_decision(&self.neuron)?;
+        self.intuition.validate()?;
         if self.receipt_digest != receipt_digest(self) {
             return Err(ShadowAdvisoryError::DigestMismatch);
         }
@@ -282,6 +290,17 @@ fn neuron_decision_digest(decision: &NeuronProposalDecision) -> Sha256Digest {
     Sha256Digest::from_sha256_output(hasher.finalize())
 }
 
+fn validate_neuron_decision(
+    decision: &NeuronProposalDecision,
+) -> Result<(), ShadowAdvisoryError> {
+    match decision {
+        NeuronProposalDecision::Proposed(proposal) => proposal.validate().map_err(Into::into),
+        NeuronProposalDecision::Abstained { input_digest, .. } => {
+            validate_digest(input_digest, "abstained neuron input digest")
+        }
+    }
+}
+
 fn validate_digest(digest: &Sha256Digest, label: &str) -> Result<(), ShadowAdvisoryError> {
     if Sha256Digest::parse(digest.as_str().to_string()).is_err() {
         return Err(ShadowAdvisoryError::Invalid(format!(
@@ -411,5 +430,36 @@ mod tests {
             receipt.validate(),
             Err(ShadowAdvisoryError::AuthorityBoundary)
         );
+    }
+
+    #[test]
+    fn standalone_validation_rejects_tampered_nested_authority() {
+        let input = input();
+        let mut neuron_tampered = shadow_advisory_evaluate(&input).expect("bundle");
+        let NeuronProposalDecision::Proposed(mut proposal) = neuron_tampered.neuron else {
+            panic!("expected proposal");
+        };
+        proposal.execute_allowed = true;
+        neuron_tampered.neuron = NeuronProposalDecision::Proposed(proposal);
+        // The outer digest intentionally commits to the decision identity,
+        // not mutable authority metadata.  Standalone validation must still
+        // inspect the nested proposal before accepting this value.
+        neuron_tampered.receipt_digest = super::receipt_digest(&neuron_tampered);
+        assert!(matches!(
+            neuron_tampered.validate(),
+            Err(ShadowAdvisoryError::Neuron(
+                crate::NeuronProposalError::AuthorityBoundary
+            ))
+        ));
+
+        let mut intuition_tampered = shadow_advisory_evaluate(&input).expect("bundle");
+        intuition_tampered.intuition.runtime_consumer = true;
+        intuition_tampered.receipt_digest = super::receipt_digest(&intuition_tampered);
+        assert!(matches!(
+            intuition_tampered.validate(),
+            Err(ShadowAdvisoryError::Intuition(
+                crate::IntuitionShadowError::AuthorityBoundary
+            ))
+        ));
     }
 }
