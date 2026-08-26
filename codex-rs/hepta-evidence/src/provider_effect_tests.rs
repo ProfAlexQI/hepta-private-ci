@@ -46,6 +46,51 @@ struct BlockingLookupAdapter {
     release_lookup: Arc<Notify>,
 }
 
+/// Test-only adapter that models the dangerous provider boundary where the
+/// request has been handed to the provider but the local process dies before
+/// a response can be observed.  The durable facade must have already written
+/// its boundary claim at this point; a reopened store must therefore reconcile
+/// by status and never invoke `dispatch` again.
+#[derive(Clone)]
+struct CrashAfterSendAdapter {
+    dispatches: Arc<AtomicUsize>,
+    send_started: Arc<Notify>,
+    hold_response: Arc<Notify>,
+}
+
+impl ProviderEffectAdapter for CrashAfterSendAdapter {
+    fn capability(&self) -> ProviderEffectIdempotencyCapability {
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup
+    }
+
+    fn dispatch<'a>(
+        &'a self,
+        _intent: &'a ProviderEffectIntent,
+    ) -> ProviderEffectFuture<'a, ProviderEffectDispatch> {
+        let dispatches = self.dispatches.clone();
+        let send_started = self.send_started.clone();
+        let hold_response = self.hold_response.clone();
+        Box::pin(async move {
+            // This increment is the only local witness that the provider
+            // boundary was crossed.  Holding the response lets the test abort
+            // this task, modelling process death after send and before a
+            // response/ACK is durable locally, without poisoning the test
+            // process with an intentional panic.
+            dispatches.fetch_add(1, Ordering::Relaxed);
+            send_started.notify_one();
+            hold_response.notified().await;
+            ProviderEffectDispatch::Unknown
+        })
+    }
+
+    fn lookup<'a>(
+        &'a self,
+        _key: &'a ProviderEffectKey,
+    ) -> ProviderEffectFuture<'a, ProviderEffectLookup> {
+        Box::pin(async { ProviderEffectLookup::Unknown })
+    }
+}
+
 impl ProviderEffectAdapter for BlockingLookupAdapter {
     fn capability(&self) -> ProviderEffectIdempotencyCapability {
         ProviderEffectIdempotencyCapability::KeyAndStatusLookup
@@ -726,6 +771,94 @@ async fn qualification_dispatch_claim_survives_reopen_without_redispatch() {
     assert_eq!(effect.state(), ProviderEffectState::Completed);
     assert_eq!(effect.acknowledgements.len(), 1);
     assert_eq!(effect.uncertainties.len(), 2);
+}
+
+#[tokio::test]
+async fn qualification_crash_after_send_reopen_reconciles_without_redispatch() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"qualification-crash-after-send");
+    let key = intent.key.clone();
+    let crash_adapter = CrashAfterSendAdapter {
+        dispatches: Arc::new(AtomicUsize::new(0)),
+        send_started: Arc::new(Notify::new()),
+        hold_response: Arc::new(Notify::new()),
+    };
+    let crash_dispatches = crash_adapter.dispatches.clone();
+
+    // Run the adapter call in a task so the simulated process crash becomes a
+    // durable task failure.  The facade has committed its dispatch-boundary
+    // claim before crossing into the adapter, so the SQLite journal remains
+    // reopenable even though no response was returned.
+    let crash_task = tokio::spawn({
+        let store = store.clone();
+        let adapter = crash_adapter.clone();
+        let intent = intent.clone();
+        async move {
+            store
+                .dispatch_provider_effect_qualification(&adapter, &intent)
+                .await
+        }
+    });
+    crash_adapter.send_started.notified().await;
+    crash_task.abort();
+    let crashed = crash_task.await;
+    assert!(
+        crashed.is_err(),
+        "simulated process death must abort the task"
+    );
+    assert_eq!(crash_dispatches.load(Ordering::Relaxed), 1);
+
+    // Drop/reopen is the crash boundary.  A replay through the dispatch
+    // facade must observe the durable uncertainty and must not send again.
+    drop(store);
+    let reopened = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("reopen after crash-after-send");
+    let completion = completed_ack(&intent, b"status-after-crash-operation");
+    let status_adapter = scripted_adapter(
+        ProviderEffectIdempotencyCapability::KeyAndStatusLookup,
+        ProviderEffectDispatch::Ack(completion.clone()),
+        ProviderEffectLookup::Ack(completion),
+    );
+    let replay = reopened
+        .dispatch_provider_effect_qualification(&status_adapter, &intent)
+        .await
+        .expect("replay must remain quarantined");
+    assert_eq!(replay.state, ProviderEffectState::Indeterminate);
+    assert!(!replay.dispatch_attempted);
+    assert_eq!(status_adapter.dispatches.load(Ordering::Relaxed), 0);
+
+    // Only the provider-owned status path may close the uncertainty.  The
+    // resulting durable ACK must retain explicit StatusLookup provenance.
+    assert_eq!(
+        reopened
+            .reconcile_provider_effect_with_adapter(&status_adapter, &key)
+            .await
+            .expect("status reconciliation"),
+        ProviderEffectState::Completed
+    );
+    assert_eq!(status_adapter.dispatches.load(Ordering::Relaxed), 0);
+    assert_eq!(status_adapter.lookups.load(Ordering::Relaxed), 1);
+    let effect = reopened
+        .get_provider_effect(&key)
+        .await
+        .expect("read reconciled effect")
+        .expect("effect");
+    assert_eq!(effect.state(), ProviderEffectState::Completed);
+    assert_eq!(effect.acknowledgements.len(), 1);
+    assert_eq!(
+        effect.acknowledgements[0].source,
+        ProviderEffectAckSource::StatusLookup
+    );
+    assert_eq!(effect.uncertainties.len(), 1);
+    assert_eq!(
+        effect.uncertainties[0].uncertainty.reason_code,
+        "provider_dispatch_boundary_pending"
+    );
 }
 
 #[tokio::test]
