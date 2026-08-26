@@ -10,6 +10,13 @@ name = "codex_hepta_automation"
 path = "src/lib.rs"
 doctest = false
 
+[features]
+default = []
+# Opt-in structural TaskFlow replay/frontier qualification.  This feature is
+# intentionally excluded from the default/production profile and never owns
+# scheduling, provider, model, or external-effect authority.
+taskflow-structural-qualification = []
+
 [lints]
 workspace = true
 

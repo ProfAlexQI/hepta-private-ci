@@ -10,6 +10,8 @@ mod model;
 mod scheduler;
 mod store;
 mod taskflow;
+#[cfg(feature = "taskflow-structural-qualification")]
+mod taskflow_kernel;
 
 pub use model::AutomationAdmission;
 pub use model::AutomationDispatchUncertainty;
@@ -45,5 +47,19 @@ pub use taskflow::TaskFlowReconcileOutcome;
 pub use taskflow::TaskFlowRun;
 pub use taskflow::TaskFlowRunState;
 pub use taskflow::TaskFlowTransition;
+#[cfg(feature = "taskflow-structural-qualification")]
+pub use taskflow_kernel::TASKFLOW_STRUCTURAL_EFFECTS;
+#[cfg(feature = "taskflow-structural-qualification")]
+pub use taskflow_kernel::TASKFLOW_STRUCTURAL_PRODUCTION_CALLER;
+#[cfg(feature = "taskflow-structural-qualification")]
+pub use taskflow_kernel::TASKFLOW_STRUCTURAL_QUALIFICATION_ENABLED;
+#[cfg(feature = "taskflow-structural-qualification")]
+pub use taskflow_kernel::TASKFLOW_STRUCTURAL_SCHEDULER_AUTHORITY;
+#[cfg(feature = "taskflow-structural-qualification")]
+pub use taskflow_kernel::TaskFlowFrontier;
+#[cfg(feature = "taskflow-structural-qualification")]
+pub use taskflow_kernel::TaskFlowReplayReport;
+#[cfg(feature = "taskflow-structural-qualification")]
+pub use taskflow_kernel::TaskFlowStructuralPreview;
 
 pub const AUTOMATION_SCHEMA_VERSION: u32 = 3;

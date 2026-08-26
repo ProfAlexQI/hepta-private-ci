@@ -1276,6 +1276,13 @@ fn apply_transition(
                 if node == &run.current_node {
                     return Err(invalid("wait resume node cannot equal current node"));
                 }
+                // The opt-in structural qualification seam projects the
+                // resume target as the durable frontier. Production/default
+                // behavior keeps the existing ledger semantics unchanged.
+                #[cfg(feature = "taskflow-structural-qualification")]
+                {
+                    run.current_node = node.clone();
+                }
             }
             run.state = TaskFlowRunState::Waiting;
             run.wait_token = Some(token.clone());
