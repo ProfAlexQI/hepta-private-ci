@@ -696,6 +696,60 @@ async fn taskflow_mutations_reject_corrupt_event_chain_before_replay_or_append()
 }
 
 #[tokio::test]
+async fn taskflow_read_rejects_tampered_event_history() {
+    let fixture = Fixture::new();
+    let store = open_store(&fixture).await;
+    let owner = fence("owner-a", 1);
+    let definition = definition(1);
+    store
+        .register_taskflow_definition(&definition, &owner, 10)
+        .await
+        .expect("register definition");
+    store
+        .create_taskflow_run(
+            "run-read-tamper",
+            &definition.workflow_id,
+            definition.version,
+            definition.definition_digest(),
+            "thread-1",
+            10,
+        )
+        .await
+        .expect("create run");
+    store
+        .claim_taskflow_run("run-read-tamper", &owner, 20, 1_000)
+        .await
+        .expect("claim run");
+
+    // Model a damaged local database after the opener has completed.  The
+    // ordinary read path must fail closed just like mutation and reopen paths.
+    // It now loads the projection and verifies its immutable history from one
+    // transaction-scoped snapshot.
+    let pool = inspection_pool(&fixture, &store).await;
+    sqlx::query("DROP TRIGGER taskflow_events_no_update")
+        .execute(&pool)
+        .await
+        .expect("drop event immutability trigger");
+    sqlx::query(
+        "UPDATE taskflow_events
+         SET payload_json = 'tampered'
+         WHERE owner_agent_id = ? AND run_id = ? AND event_seq = 1",
+    )
+    .bind(AGENT_ID)
+    .bind("run-read-tamper")
+    .execute(&pool)
+    .await
+    .expect("tamper event payload");
+    pool.close().await;
+
+    assert!(matches!(
+        store.taskflow_run("run-read-tamper").await,
+        Err(TaskFlowError::Corrupt(message))
+            if message.contains("TaskFlow event digest mismatch")
+    ));
+}
+
+#[tokio::test]
 async fn automation_opener_rejects_foreign_taskflow_rows() {
     let fixture = Fixture::new();
     let store = open_store(&fixture).await;

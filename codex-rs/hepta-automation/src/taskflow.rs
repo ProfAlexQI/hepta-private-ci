@@ -923,19 +923,23 @@ impl AutomationStore {
 
     pub async fn taskflow_run(&self, run_id: &str) -> Result<Option<TaskFlowRun>, TaskFlowError> {
         validate_text(run_id, "run_id", MAX_ID_BYTES)?;
-        let row =
-            sqlx::query("SELECT * FROM taskflow_runs WHERE owner_agent_id = ? AND run_id = ?")
-                .bind(self.taskflow_owner_agent_id().as_str())
-                .bind(run_id)
-                .fetch_optional(self.taskflow_pool())
-                .await
-                .map_err(|_| TaskFlowError::Unavailable)?;
-        let Some(row) = row else {
-            return Ok(None);
-        };
-        let run = taskflow_run_from_row(&row, self.taskflow_owner_agent_id())?;
-        verify_taskflow_event_chain(self.taskflow_pool(), &run).await?;
-        Ok(Some(run))
+        // Read the projection and its immutable event chain from one SQLite
+        // snapshot.  Separate pool queries can observe a projection/event
+        // pair that never existed durably when a writer commits between the
+        // two reads.  The transaction is read-only and grants no scheduler or
+        // effect authority.
+        let mut transaction = self
+            .taskflow_pool()
+            .begin()
+            .await
+            .map_err(|_| TaskFlowError::Unavailable)?;
+        let run =
+            load_taskflow_run_tx(&mut transaction, self.taskflow_owner_agent_id(), run_id).await?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| TaskFlowError::Unavailable)?;
+        Ok(run)
     }
 
     /// Claims a single run's wakeup lease.  No background task is created;
@@ -1734,19 +1738,6 @@ const TASKFLOW_EVENT_CHAIN_QUERY: &str =
             owner_id, owner_epoch, generation, fencing_token
      FROM taskflow_events WHERE owner_agent_id = ? AND run_id = ? ORDER BY event_seq";
 
-async fn verify_taskflow_event_chain(
-    pool: &sqlx::SqlitePool,
-    run: &TaskFlowRun,
-) -> Result<(), TaskFlowError> {
-    let rows = sqlx::query(TASKFLOW_EVENT_CHAIN_QUERY)
-        .bind(run.owner_agent_id.as_str())
-        .bind(&run.run_id)
-        .fetch_all(pool)
-        .await
-        .map_err(|_| TaskFlowError::Unavailable)?;
-    verify_taskflow_event_rows(run, &rows)
-}
-
 pub(crate) async fn verify_taskflow_event_chain_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     run: &TaskFlowRun,
@@ -1803,7 +1794,6 @@ pub(crate) async fn load_taskflow_definition_tx(
 /// holding the caller's transaction.  Keeping this operation transaction
 /// scoped closes the replay race where a run projection and its event rows
 /// could otherwise be observed from different snapshots.
-#[cfg(feature = "taskflow-structural-qualification")]
 pub(crate) async fn load_taskflow_run_tx(
     tx: &mut Transaction<'_, Sqlite>,
     owner: &AgentId,
