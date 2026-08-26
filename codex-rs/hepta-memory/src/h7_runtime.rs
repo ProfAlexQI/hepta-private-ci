@@ -128,6 +128,9 @@ impl H7Trajectory {
             {
                 return Err(H7RuntimeError::FenceRegression);
             }
+            if !same_trajectory_fence(&event, previous) {
+                return Err(H7RuntimeError::FenceMismatch);
+            }
         }
         self.events.push(event);
         self.trajectory_sha256 = Some(self.compute_digest()?);
@@ -165,6 +168,9 @@ impl H7Trajectory {
                     )
                 {
                     return Err(H7RuntimeError::FenceRegression);
+                }
+                if !same_trajectory_fence(event, previous) {
+                    return Err(H7RuntimeError::FenceMismatch);
                 }
             }
             previous = Some(event);
@@ -772,6 +778,8 @@ pub enum H7RuntimeError {
     NonContiguousTrajectory { expected: u32, actual: u32 },
     #[error("trajectory host fence regressed")]
     FenceRegression,
+    #[error("trajectory host fence changed within one immutable trajectory")]
+    FenceMismatch,
     #[error("trajectory is empty")]
     EmptyTrajectory,
     #[error("trajectory is missing")]
@@ -813,6 +821,13 @@ fn parse_digest(digest: &Sha256Digest, label: &'static str) -> Result<(), H7Runt
     Sha256Digest::parse(digest.as_str().to_string())
         .map(|_| ())
         .map_err(|_| H7RuntimeError::DigestMismatch(label))
+}
+
+fn same_trajectory_fence(left: &H7TrajectoryEvent, right: &H7TrajectoryEvent) -> bool {
+    left.authority_epoch == right.authority_epoch
+        && left.owner_epoch == right.owner_epoch
+        && left.generation == right.generation
+        && left.fence_sha256 == right.fence_sha256
 }
 
 fn digest_serialized<T: Serialize>(value: &T) -> Result<Sha256Digest, H7RuntimeError> {
@@ -937,5 +952,50 @@ mod tests {
             H7QualificationRuntime::rehydrate(&encoded),
             Err(H7RuntimeError::Invalid(_)) | Err(H7RuntimeError::DigestMismatch("artifact"))
         ));
+    }
+
+    #[test]
+    fn h7_runtime_rejects_mixed_generation_or_fence_within_one_trajectory() {
+        let mut runtime = H7QualificationRuntime::new();
+        runtime
+            .append_trajectory_event(event(1, 1))
+            .expect("event one");
+
+        let mixed_generation = event(2, 2);
+        assert_eq!(
+            runtime.append_trajectory_event(mixed_generation),
+            Err(H7RuntimeError::FenceMismatch)
+        );
+
+        let mut mixed_fence = event(2, 1);
+        mixed_fence.fence_sha256 = fence(8);
+        assert_eq!(
+            runtime.append_trajectory_event(mixed_fence),
+            Err(H7RuntimeError::FenceMismatch)
+        );
+
+        // Rejection is atomic: the valid same-fence successor still occupies
+        // sequence two and the resulting trajectory remains verifiable.
+        runtime
+            .append_trajectory_event(event(2, 1))
+            .expect("same-fence event two");
+        runtime
+            .trajectories
+            .get("trajectory:h7:runtime")
+            .expect("trajectory")
+            .validate()
+            .expect("trajectory validates");
+
+        // Rehydration must apply the same exact-fence rule; recomputing the
+        // outer trajectory digest must not make a mixed-generation chain
+        // acceptable.
+        let mut forged = runtime
+            .trajectories
+            .get("trajectory:h7:runtime")
+            .expect("trajectory")
+            .clone();
+        forged.events[1].generation = 2;
+        forged.trajectory_sha256 = Some(forged.compute_digest().expect("forged digest"));
+        assert_eq!(forged.validate(), Err(H7RuntimeError::FenceMismatch));
     }
 }
