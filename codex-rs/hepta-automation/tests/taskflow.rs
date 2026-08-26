@@ -3,6 +3,7 @@
     reason = "TaskFlow integration fixtures should fail loudly"
 )]
 
+use codex_hepta_automation::AutomationError;
 use codex_hepta_automation::AutomationStore;
 use codex_hepta_automation::TaskFlowCommand;
 use codex_hepta_automation::TaskFlowCommandStatus;
@@ -27,6 +28,7 @@ use codex_state::SqliteConfig;
 use codex_utils_absolute_path::AbsolutePathBuf;
 
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
+const FOREIGN_AGENT_ID: &str = "019153a4-3088-7e03-a56a-9b1964f75dd4";
 
 struct Fixture {
     _temp: tempfile::TempDir,
@@ -91,6 +93,15 @@ async fn open_store(fixture: &Fixture) -> AutomationStore {
     AutomationStore::open(&fixture.layout)
         .await
         .expect("open automation store")
+}
+
+async fn inspection_pool(fixture: &Fixture, store: &AutomationStore) -> sqlx::SqlitePool {
+    let sqlite_home = AbsolutePathBuf::from_absolute_path(fixture.layout.automation_root())
+        .expect("absolute sqlite home");
+    SqliteConfig::from_sqlite_home(sqlite_home)
+        .open_durable_evidence_pool(store.path())
+        .await
+        .expect("open inspection pool")
 }
 
 #[test]
@@ -581,4 +592,138 @@ async fn taskflow_mutations_reject_corrupt_event_chain_before_replay_or_append()
     .expect("event count");
     assert_eq!(event_count, 2, "corrupt history must not be extended");
     pool.close().await;
+}
+
+#[tokio::test]
+async fn automation_opener_rejects_foreign_taskflow_rows() {
+    let fixture = Fixture::new();
+    let store = open_store(&fixture).await;
+    let owner = fence("owner-a", 1);
+    let definition = definition(1);
+    store
+        .register_taskflow_definition(&definition, &owner, 10)
+        .await
+        .expect("register definition");
+    let pool = inspection_pool(&fixture, &store).await;
+    let definition_json = serde_json::to_string(&definition).expect("definition JSON");
+    sqlx::query(
+        "INSERT INTO taskflow_definitions (
+             owner_agent_id, workflow_id, version, definition_digest,
+             definition_json, registered_generation, registered_at_ms
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(FOREIGN_AGENT_ID)
+    .bind(&definition.workflow_id)
+    .bind(i64::from(definition.version))
+    .bind(definition.definition_digest().as_str())
+    .bind(definition_json)
+    .bind(1_i64)
+    .bind(10_i64)
+    .execute(&pool)
+    .await
+    .expect("insert foreign TaskFlow definition");
+    pool.close().await;
+    store.close().await;
+
+    assert!(matches!(
+        AutomationStore::open(&fixture.layout).await,
+        Err(AutomationError::AccessDenied)
+    ));
+}
+
+#[tokio::test]
+async fn automation_opener_rejects_tampered_taskflow_event_history() {
+    let fixture = Fixture::new();
+    let store = open_store(&fixture).await;
+    let owner = fence("owner-a", 1);
+    let definition = definition(1);
+    store
+        .register_taskflow_definition(&definition, &owner, 10)
+        .await
+        .expect("register definition");
+    store
+        .create_taskflow_run(
+            "run-opener-tamper",
+            &definition.workflow_id,
+            definition.version,
+            definition.definition_digest(),
+            "thread-1",
+            10,
+        )
+        .await
+        .expect("create run");
+    store
+        .claim_taskflow_run("run-opener-tamper", &owner, 20, 1_000)
+        .await
+        .expect("claim run");
+    let pool = inspection_pool(&fixture, &store).await;
+    sqlx::query("DROP TRIGGER taskflow_events_no_update")
+        .execute(&pool)
+        .await
+        .expect("drop event immutability trigger");
+    sqlx::query(
+        "UPDATE taskflow_events
+         SET payload_json = 'tampered'
+         WHERE owner_agent_id = ? AND run_id = ? AND event_seq = 1",
+    )
+    .bind(AGENT_ID)
+    .bind("run-opener-tamper")
+    .execute(&pool)
+    .await
+    .expect("tamper event payload");
+    pool.close().await;
+    store.close().await;
+
+    assert!(matches!(
+        AutomationStore::open(&fixture.layout).await,
+        Err(AutomationError::Corrupt)
+    ));
+}
+
+#[tokio::test]
+async fn automation_opener_rejects_taskflow_event_generation_drift() {
+    let fixture = Fixture::new();
+    let store = open_store(&fixture).await;
+    let owner = fence("owner-a", 1);
+    let definition = definition(1);
+    store
+        .register_taskflow_definition(&definition, &owner, 10)
+        .await
+        .expect("register definition");
+    store
+        .create_taskflow_run(
+            "run-generation-drift",
+            &definition.workflow_id,
+            definition.version,
+            definition.definition_digest(),
+            "thread-1",
+            10,
+        )
+        .await
+        .expect("create run");
+    store
+        .claim_taskflow_run("run-generation-drift", &owner, 20, 1_000)
+        .await
+        .expect("claim run");
+    let pool = inspection_pool(&fixture, &store).await;
+    sqlx::query("DROP TRIGGER taskflow_events_no_update")
+        .execute(&pool)
+        .await
+        .expect("drop event immutability trigger");
+    sqlx::query(
+        "UPDATE taskflow_events SET generation = 2
+         WHERE owner_agent_id = ? AND run_id = ? AND event_seq = 2",
+    )
+    .bind(AGENT_ID)
+    .bind("run-generation-drift")
+    .execute(&pool)
+    .await
+    .expect("tamper event generation");
+    pool.close().await;
+    store.close().await;
+
+    assert!(matches!(
+        AutomationStore::open(&fixture.layout).await,
+        Err(AutomationError::Corrupt)
+    ));
 }

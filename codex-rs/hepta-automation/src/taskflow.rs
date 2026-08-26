@@ -1702,7 +1702,8 @@ fn taskflow_run_from_row(
 
 const TASKFLOW_EVENT_CHAIN_QUERY: &str =
     "SELECT event_seq, command_id, command_digest, transition, payload_json,
-            revision, state_digest, previous_event_digest, event_digest
+            revision, state_digest, previous_event_digest, event_digest,
+            owner_id, owner_epoch, generation, fencing_token
      FROM taskflow_events WHERE owner_agent_id = ? AND run_id = ? ORDER BY event_seq";
 
 async fn verify_taskflow_event_chain(
@@ -1741,6 +1742,8 @@ fn verify_taskflow_event_rows(
     let mut previous = ZERO_DIGEST.to_string();
     let mut last_state = None;
     let mut last_revision = 0_u64;
+    let mut maximum_owner_epoch = None;
+    let mut maximum_generation = None;
     for (index, row) in rows.iter().enumerate() {
         let expected_seq =
             u64::try_from(index + 1).map_err(|_| corrupt("event sequence overflow"))?;
@@ -1773,6 +1776,57 @@ fn verify_taskflow_event_rows(
         let state_digest: String = row
             .try_get("state_digest")
             .map_err(|_| corrupt("event state digest column"))?;
+        let owner_id: Option<String> = row
+            .try_get("owner_id")
+            .map_err(|_| corrupt("event owner id column"))?;
+        let owner_epoch = row
+            .try_get::<Option<i64>, _>("owner_epoch")
+            .map_err(|_| corrupt("event owner epoch column"))?
+            .map(to_u64)
+            .transpose()?;
+        let generation = row
+            .try_get::<Option<i64>, _>("generation")
+            .map_err(|_| corrupt("event generation column"))?
+            .map(to_u64)
+            .transpose()?;
+        let fencing_token: Option<String> = row
+            .try_get("fencing_token")
+            .map_err(|_| corrupt("event fencing token column"))?;
+        let has_fence = owner_id.is_some()
+            || owner_epoch.is_some()
+            || generation.is_some()
+            || fencing_token.is_some();
+        if has_fence {
+            let owner_id = owner_id
+                .as_deref()
+                .ok_or_else(|| corrupt("TaskFlow event fence tuple is incomplete"))?;
+            validate_text(owner_id, "event owner id", MAX_ID_BYTES)?;
+            let owner_epoch =
+                owner_epoch.ok_or_else(|| corrupt("TaskFlow event fence tuple is incomplete"))?;
+            let generation =
+                generation.ok_or_else(|| corrupt("TaskFlow event fence tuple is incomplete"))?;
+            let fencing_token = fencing_token
+                .as_deref()
+                .ok_or_else(|| corrupt("TaskFlow event fence tuple is incomplete"))?;
+            if owner_epoch == 0 || generation == 0 {
+                return Err(corrupt("TaskFlow event fence contains zero epoch"));
+            }
+            if run.owner_epoch.is_some_and(|current| owner_epoch > current)
+                || run.generation.is_some_and(|current| generation > current)
+            {
+                return Err(corrupt(
+                    "TaskFlow event fence is newer than the run projection",
+                ));
+            }
+            validate_text(fencing_token, "event fencing token", MAX_ID_BYTES)?;
+            if maximum_owner_epoch.is_some_and(|previous| owner_epoch < previous)
+                || maximum_generation.is_some_and(|previous| generation < previous)
+            {
+                return Err(corrupt("TaskFlow event fence regresses across generations"));
+            }
+            maximum_owner_epoch = Some(maximum_owner_epoch.unwrap_or(0).max(owner_epoch));
+            maximum_generation = Some(maximum_generation.unwrap_or(0).max(generation));
+        }
         let stored_previous: String = row
             .try_get("previous_event_digest")
             .map_err(|_| corrupt("event predecessor column"))?;
@@ -1804,6 +1858,117 @@ fn verify_taskflow_event_rows(
     if last_revision != run.revision || last_state.as_deref() != Some(run.state_digest.as_str()) {
         return Err(corrupt("TaskFlow event tail does not match run projection"));
     }
+    Ok(())
+}
+
+/// Audits every TaskFlow row during automation-store open.  The regular
+/// `taskflow_run` read path verifies only the requested run; an opener must
+/// also reject foreign-owner rows and damaged definitions/runs that could be
+/// hidden until a later, selective lookup.  All checks share one read
+/// transaction so the snapshot is internally consistent.
+pub(crate) async fn verify_taskflow_store(
+    pool: &sqlx::SqlitePool,
+    expected_owner: &AgentId,
+) -> Result<(), TaskFlowError> {
+    let mut tx = pool.begin().await.map_err(|_| TaskFlowError::Unavailable)?;
+
+    let foreign_definitions: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM taskflow_definitions WHERE owner_agent_id != ?")
+            .bind(expected_owner.as_str())
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|_| TaskFlowError::Unavailable)?;
+    let foreign_runs: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM taskflow_runs WHERE owner_agent_id != ?")
+            .bind(expected_owner.as_str())
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|_| TaskFlowError::Unavailable)?;
+    let foreign_events: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM taskflow_events WHERE owner_agent_id != ?")
+            .bind(expected_owner.as_str())
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|_| TaskFlowError::Unavailable)?;
+    if foreign_definitions != 0 || foreign_runs != 0 || foreign_events != 0 {
+        return Err(TaskFlowError::StaleFence);
+    }
+
+    let definition_rows = sqlx::query(
+        "SELECT workflow_id, version, definition_digest, definition_json,
+                registered_generation, registered_at_ms
+         FROM taskflow_definitions
+         WHERE owner_agent_id = ? ORDER BY workflow_id, version",
+    )
+    .bind(expected_owner.as_str())
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|_| TaskFlowError::Unavailable)?;
+    let mut definitions = BTreeMap::new();
+    for row in definition_rows {
+        let workflow_id: String = row
+            .try_get("workflow_id")
+            .map_err(|_| corrupt("TaskFlow definition workflow id column"))?;
+        let version = to_u32(
+            row.try_get("version")
+                .map_err(|_| corrupt("TaskFlow definition version column"))?,
+        )?;
+        let stored_digest = parse_digest(
+            row.try_get("definition_digest")
+                .map_err(|_| corrupt("TaskFlow definition digest column"))?,
+            "TaskFlow definition digest",
+        )?;
+        let json: String = row
+            .try_get("definition_json")
+            .map_err(|_| corrupt("TaskFlow definition JSON column"))?;
+        let registered_generation = to_u64(
+            row.try_get("registered_generation")
+                .map_err(|_| corrupt("TaskFlow definition generation column"))?,
+        )?;
+        if registered_generation == 0 {
+            return Err(corrupt(
+                "TaskFlow definition registration generation is zero",
+            ));
+        }
+        // Read the timestamp as well so a negative/directly tampered value is
+        // rejected even when SQLite's CHECK constraints were bypassed.
+        to_u64(
+            row.try_get("registered_at_ms")
+                .map_err(|_| corrupt("TaskFlow definition timestamp column"))?,
+        )?;
+        let definition: TaskFlowDefinition = serde_json::from_str(&json)
+            .map_err(|_| corrupt("TaskFlow definition JSON is invalid"))?;
+        definition.validate()?;
+        if definition.workflow_id != workflow_id
+            || definition.version != version
+            || definition.definition_digest != stored_digest
+        {
+            return Err(corrupt("TaskFlow definition row key or digest mismatch"));
+        }
+        definitions.insert((workflow_id, version), stored_digest);
+    }
+
+    let run_rows = sqlx::query(
+        "SELECT * FROM taskflow_runs
+         WHERE owner_agent_id = ? ORDER BY run_id",
+    )
+    .bind(expected_owner.as_str())
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|_| TaskFlowError::Unavailable)?;
+    for row in run_rows {
+        let run = taskflow_run_from_row(&row, expected_owner)?;
+        let definition_digest = definitions
+            .get(&(run.workflow_id.clone(), run.workflow_version))
+            .ok_or_else(|| corrupt("TaskFlow run references a missing definition"))?;
+        if definition_digest != &run.definition_digest {
+            return Err(corrupt(
+                "TaskFlow run definition digest does not match registry",
+            ));
+        }
+        verify_taskflow_event_chain_tx(&mut tx, &run).await?;
+    }
+    tx.commit().await.map_err(|_| TaskFlowError::Unavailable)?;
     Ok(())
 }
 

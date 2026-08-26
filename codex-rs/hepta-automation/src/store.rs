@@ -20,6 +20,8 @@ use crate::AutomationTaskDraft;
 use crate::AutomationTaskId;
 use crate::AutomationTaskState;
 use crate::model::client_message_id;
+use crate::taskflow::TaskFlowError;
+use crate::taskflow::verify_taskflow_store;
 
 const AUTOMATION_DB_FILENAME: &str = "automation_1.sqlite3";
 const MAX_TASK_PAGE: usize = 1_024;
@@ -1061,7 +1063,21 @@ async fn verify_store(pool: &SqlitePool, owner_agent_id: &AgentId) -> Result<(),
     if invalid_outcomes != 0 {
         return Err(AutomationError::Corrupt);
     }
+    verify_taskflow_store(pool, owner_agent_id)
+        .await
+        .map_err(map_taskflow_verify_error)?;
     Ok(())
+}
+
+fn map_taskflow_verify_error(error: TaskFlowError) -> AutomationError {
+    match error {
+        TaskFlowError::Unavailable => AutomationError::Unavailable,
+        TaskFlowError::StaleFence => AutomationError::AccessDenied,
+        TaskFlowError::Invalid(_)
+        | TaskFlowError::Conflict(_)
+        | TaskFlowError::Corrupt(_)
+        | TaskFlowError::InvalidTransition(_) => AutomationError::Corrupt,
+    }
 }
 
 fn is_constraint(error: &sqlx::Error) -> bool {
