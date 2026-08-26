@@ -188,15 +188,14 @@ impl AgentControl {
     ) -> CodexResult<String> {
         let state = self.upgrade()?;
         let thread = state.get_thread(agent_id).await?;
-        let result = match thread
-            .start_or_steer_turn(
-                TurnInputRequest::user_input(input).on_start(TurnStartOptions {
-                    parent_turn_id,
-                    root_turn_id,
-                    ..Default::default()
-                }),
-            )
-            .await
+        let result = match Box::pin(thread.start_or_steer_turn(
+            TurnInputRequest::user_input(input).on_start(TurnStartOptions {
+                parent_turn_id,
+                root_turn_id,
+                ..Default::default()
+            }),
+        ))
+        .await
         {
             Ok(TurnInputSubmission::Started { turn_id }) => Ok(turn_id),
             Ok(TurnInputSubmission::Steered { .. }) => {

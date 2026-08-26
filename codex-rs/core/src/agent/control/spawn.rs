@@ -17,6 +17,7 @@ use codex_extension_api::ExtensionDataInit;
 use codex_protocol::intersect_effective_permission_profiles;
 use codex_protocol::protocol::EnvironmentConfigState;
 use codex_utils_path_uri::PathUri;
+use futures::future::BoxFuture;
 
 const AGENT_NAMES: &str = include_str!("../agent_names.txt");
 
@@ -292,7 +293,16 @@ impl AgentControl {
     }
 
     /// A provided parent enables owner-validated reloads; `None` preserves sender-driven reloads.
-    pub(crate) async fn ensure_v2_agent_loaded(
+    pub(crate) fn ensure_v2_agent_loaded(
+        &self,
+        config: Config,
+        thread_id: ThreadId,
+        parent: Option<Arc<CodexThread>>,
+    ) -> BoxFuture<'_, CodexResult<()>> {
+        Box::pin(self.ensure_v2_agent_loaded_inner(config, thread_id, parent))
+    }
+
+    async fn ensure_v2_agent_loaded_inner(
         &self,
         mut config: Config,
         thread_id: ThreadId,
@@ -744,12 +754,12 @@ impl AgentControl {
 
         match initial_input {
             SpawnInitialInput::UserInput(input) => {
-                self.send_input(
+                Box::pin(self.send_input(
                     new_thread.thread_id,
                     input,
                     options.parent_turn_id,
                     options.root_turn_id,
-                )
+                ))
                 .await?;
             }
             SpawnInitialInput::InterAgentCommunication(communication, context) => {

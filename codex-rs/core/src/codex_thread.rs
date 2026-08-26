@@ -356,8 +356,7 @@ impl CodexThread {
         &self,
         request: TurnInputRequest,
     ) -> CodexResult<TurnInputSubmission> {
-        self.submit_turn_input_with_mode(request, TurnInputMode::StartOrSteer)
-            .await
+        Box::pin(self.submit_turn_input_with_mode(request, TurnInputMode::StartOrSteer)).await
     }
 
     /// Submits Start-or-Steer input while retaining the exact turn context
