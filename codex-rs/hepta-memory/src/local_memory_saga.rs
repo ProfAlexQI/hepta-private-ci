@@ -234,21 +234,34 @@ impl LocalLeaseOutbox {
             &reason,
             valid_from_unix_seconds,
         )?;
+        // A tombstone target can commit in the same crash window as a
+        // candidate admission: the CognitiveStore revision may be durable
+        // while the local Applied outcome has not been appended yet.  Keep a
+        // queued local command on the retry path so the target call below can
+        // either finish the tombstone or discover and adopt the already
+        // committed target revision.  Replaying a queued command as a
+        // terminal error would strand that durable tombstone forever.
         if let Some(state) = self
             .inspect_occurrence(identity.occurrence_key.clone())
             .await?
         {
-            return self
-                .replay_tombstone(access, identity, state, memory_id, reason)
-                .await;
+            match state {
+                LocalOutcomeState::Queued => {}
+                _ => {
+                    return self
+                        .replay_tombstone(access, identity, state, memory_id, reason)
+                        .await;
+                }
+            }
+        } else {
+            let _queued = self
+                .admit(
+                    identity.occurrence_key.clone(),
+                    TOMBSTONE_TOPIC,
+                    identity.payload_json.clone(),
+                )
+                .await?;
         }
-        let _queued = self
-            .admit(
-                identity.occurrence_key.clone(),
-                TOMBSTONE_TOPIC,
-                identity.payload_json.clone(),
-            )
-            .await?;
         match self
             .store()
             .tombstone_memory_candidate(
@@ -824,6 +837,117 @@ mod tests {
             .await
             .expect("memory count");
         assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn tombstone_target_commit_recovery_after_reopen_is_idempotent() {
+        let (temp, store, lease) = setup(215).await;
+        let owner = store.owner_agent_id().clone();
+        let access = CognitiveAccess::agent_private(owner.clone());
+        let candidate = lease
+            .admit_memory_candidate_saga(&access, &draft())
+            .await
+            .expect("candidate");
+        let source = SourceDraft {
+            scope: CognitiveScope::AgentPrivate,
+            kind: LedgerSourceKind::ExplicitMemoryDirective,
+            event_key: "forget:event:reopen".to_string(),
+            content: b"privacy erasure after reopen".to_vec(),
+            observed_at_unix_seconds: 101,
+        };
+        let reason = "privacy erasure after reopen".to_string();
+        let identity = tombstone_identity(
+            &candidate.candidate_id,
+            1,
+            MemoryCandidateOrigin::ModelProposal,
+            &source,
+            &reason,
+            101,
+        )
+        .expect("tombstone identity");
+
+        // Model the crash window after the target revision commits but before
+        // the local Applied outcome is appended.  The queued command remains
+        // durable in the outbox while the target is already tombstoned.
+        lease
+            .admit(
+                identity.occurrence_key.clone(),
+                TOMBSTONE_TOPIC,
+                identity.payload_json.clone(),
+            )
+            .await
+            .expect("queued tombstone");
+        let direct = store
+            .tombstone_memory_candidate(
+                &access,
+                &candidate.candidate_id,
+                1,
+                MemoryCandidateOrigin::ModelProposal,
+                &source,
+                reason.clone(),
+                101,
+            )
+            .await
+            .expect("target tombstone");
+        assert_eq!(direct.revision, 2);
+
+        // Reopen the Agent-local database as a fresh process would.  The
+        // retry must adopt the existing target revision, append exactly one
+        // local Applied outcome, and never create a third memory revision.
+        drop(lease);
+        store.pool.close().await;
+        drop(store);
+        let reopened_store = CognitiveStore::open(&layout(&temp, &owner))
+            .await
+            .expect("reopen store");
+        let reopened = match reopened_store
+            .acquire_local_lease("lease:memory-saga", 1, "fence:memory-saga")
+            .await
+            .expect("replay lease")
+        {
+            LocalLeaseAcquire::Replay(lease) => lease,
+            LocalLeaseAcquire::Acquired(_) => panic!("reopen must replay active lease"),
+        };
+        let recovered = reopened
+            .tombstone_memory_candidate_saga(
+                &CognitiveAccess::agent_private(owner.clone()),
+                &candidate.candidate_id,
+                1,
+                MemoryCandidateOrigin::ModelProposal,
+                &source,
+                reason,
+                101,
+            )
+            .await
+            .expect("recover tombstone after reopen");
+        assert_eq!(recovered.state, LocalMemoryAdmissionState::Applied);
+        assert_eq!(recovered.revision, Some(2));
+        assert!(recovered.admission.is_none());
+        assert!(!recovered.external_effects);
+        assert!(!recovered.kg_write_authority);
+        assert!(!recovered.production_caller);
+        assert!(!recovered.promotion);
+
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM memory_revisions")
+            .fetch_one(&reopened_store.pool)
+            .await
+            .expect("memory count");
+        assert_eq!(count, 2, "recovery must not append a duplicate tombstone");
+        assert_eq!(
+            reopened.snapshot_counts().await.expect("journal counts"),
+            crate::LocalLeaseOutboxCounts {
+                lease_rows: 1,
+                event_rows: 4,
+                outbox_rows: 2,
+            }
+        );
+        assert_eq!(
+            reopened
+                .inspect_occurrence(identity.occurrence_key)
+                .await
+                .expect("tombstone outcome"),
+            Some(LocalOutcomeState::Committed)
+        );
     }
 
     #[tokio::test]
