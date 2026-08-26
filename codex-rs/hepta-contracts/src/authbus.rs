@@ -408,6 +408,11 @@ impl AuthRequest {
         }
         validate_text(&self.request_id, "request id", MAX_TEXT_BYTES)?;
         self.subject.validate()?;
+        if self.subject.generation != self.generation {
+            return Err(AuthBusContractError::new(
+                "request subject generation does not match request generation",
+            ));
+        }
         validate_digest(&self.resource_sha256, "request resource")?;
         validate_digest(&self.payload_sha256, "request payload")?;
         if let Some(model) = &self.model_sha256 {

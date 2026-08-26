@@ -114,6 +114,15 @@ fn auth_request_has_stable_versioned_golden_bytes() {
 }
 
 #[test]
+fn auth_request_fences_subject_generation() {
+    let mut request = request();
+    request.generation += 1;
+    assert!(request.validate().is_err());
+    assert!(request.canonical_bytes().is_err());
+    assert!(request.digest().is_err());
+}
+
+#[test]
 fn lease_cas_epoch_and_permit_binding_are_strict() {
     let pending = pending_lease();
     assert!(pending.transition(0, 9, LeaseState::Active).is_err());
