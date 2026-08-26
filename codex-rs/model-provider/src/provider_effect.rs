@@ -537,6 +537,14 @@ mod tests {
     use codex_hepta_contracts::Sha256Digest;
     use ed25519_dalek::Signer;
     use ed25519_dalek::SigningKey;
+    use wiremock::Mock;
+    use wiremock::MockServer;
+    use wiremock::ResponseTemplate;
+    use wiremock::matchers::body_bytes;
+    use wiremock::matchers::header;
+    use wiremock::matchers::method;
+    use wiremock::matchers::path;
+    use wiremock::matchers::path_regex;
 
     fn intent() -> ProviderEffectIntent {
         let binding = ProviderRequestBinding {
@@ -665,5 +673,74 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn attested_http_adapter_binds_dispatch_and_lookup_on_fixture() {
+        let server = MockServer::start().await;
+        let effect_intent = intent();
+        let operation = Sha256Digest::for_bytes(b"fixture-operation");
+        let ack_body = serde_json::json!({
+            "effect_key": effect_intent.key.as_str(),
+            "payload_sha256": effect_intent.payload_sha256.as_str(),
+            "provider_operation_id_sha256": operation.as_str(),
+            "status": "completed"
+        });
+        Mock::given(method("POST"))
+            .and(path("/dispatch"))
+            .and(header(
+                PROVIDER_EFFECT_IDEMPOTENCY_KEY_HEADER,
+                effect_intent.key.as_str(),
+            ))
+            .and(body_bytes(b"payload".to_vec()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&ack_body))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path_regex(r"/status/.+"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&ack_body))
+            .mount(&server)
+            .await;
+
+        let signing_key = SigningKey::from_bytes(&[9_u8; 32]);
+        let verifying_key = signing_key.verifying_key();
+        let contract_digest = Sha256Digest::for_bytes(b"fixture-contract");
+        let statement = HttpProviderEffectContractAttestation::statement_for(
+            "fixture-contract",
+            &contract_digest,
+            1,
+        );
+        let signature = signing_key.sign(&statement);
+        let attestation = HttpProviderEffectContractAttestation::verify_signed(
+            "fixture-contract",
+            contract_digest,
+            1,
+            &signature.to_bytes(),
+            &verifying_key.to_bytes(),
+        )
+        .expect("fixture attestation");
+        let adapter = HttpProviderEffectAdapter::new(HttpProviderEffectConfig {
+            dispatch_url: format!("{}/dispatch", server.uri()),
+            lookup_url_template: format!("{}/status/{{key}}", server.uri()),
+            headers: HeaderMap::new(),
+            timeout: Duration::from_secs(5),
+            contract_id: "fixture-contract".to_string(),
+            attestation: Some(attestation),
+        })
+        .expect("fixture adapter");
+        assert_eq!(
+            adapter.capability(),
+            ProviderEffectIdempotencyCapability::KeyAndStatusLookup
+        );
+        assert!(matches!(
+            adapter
+                .dispatch_with_payload(&effect_intent, b"payload")
+                .await,
+            ProviderEffectDispatch::Ack(_)
+        ));
+        assert!(matches!(
+            adapter.lookup(&effect_intent.key).await,
+            ProviderEffectLookup::Ack(_)
+        ));
     }
 }
