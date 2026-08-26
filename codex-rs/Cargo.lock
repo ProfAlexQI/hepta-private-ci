@@ -4238,6 +4238,7 @@ dependencies = [
  "codex-protocol",
  "codex-response-debug-context",
  "codex-utils-redacted-string",
+ "ed25519-dalek",
  "http 1.4.0",
  "pretty_assertions",
  "serde",

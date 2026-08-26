@@ -11,9 +11,9 @@ use std::fmt;
 use std::net::IpAddr;
 use std::time::Duration;
 
-use codex_hepta_contracts::ProviderEffectAdapter;
 use codex_hepta_contracts::ProviderEffectAck;
 use codex_hepta_contracts::ProviderEffectAckStatus;
+use codex_hepta_contracts::ProviderEffectAdapter;
 use codex_hepta_contracts::ProviderEffectBindingError;
 use codex_hepta_contracts::ProviderEffectDispatch;
 use codex_hepta_contracts::ProviderEffectFuture;
@@ -26,6 +26,9 @@ use codex_http_client::ClientRouteClass;
 use codex_http_client::HttpClient;
 use codex_http_client::HttpClientFactory;
 use codex_http_client::OutboundProxyPolicy;
+use ed25519_dalek::Signature;
+use ed25519_dalek::Verifier;
+use ed25519_dalek::VerifyingKey;
 use http::HeaderMap;
 use http::HeaderName;
 use http::HeaderValue;
@@ -106,11 +109,89 @@ pub struct HttpProviderEffectConfig {
     pub attestation: Option<HttpProviderEffectContractAttestation>,
 }
 
+/// An externally verified provider contract statement.
+///
+/// The fields are private on purpose: callers cannot construct an attestation
+/// by filling in a digest/epoch and thereby make an adapter claim support.
+/// Use [`Self::verify_signed`] with a pinned external Ed25519 key.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HttpProviderEffectContractAttestation {
-    pub contract_id: String,
-    pub contract_sha256: Sha256Digest,
-    pub authority_epoch: u64,
+    contract_id: String,
+    contract_sha256: Sha256Digest,
+    authority_epoch: u64,
+    verified: bool,
+}
+
+impl HttpProviderEffectContractAttestation {
+    pub const SIGNING_DOMAIN: &'static str = "hepta-provider-effect-attestation-v1";
+
+    /// Returns the exact bytes an external authority must sign.
+    pub fn statement_for(
+        contract_id: &str,
+        contract_sha256: &Sha256Digest,
+        authority_epoch: u64,
+    ) -> Vec<u8> {
+        format!(
+            "{}\ncontract_id={}\ncontract_sha256={}\nauthority_epoch={}\n",
+            Self::SIGNING_DOMAIN,
+            contract_id,
+            contract_sha256.as_str(),
+            authority_epoch,
+        )
+        .into_bytes()
+    }
+
+    /// Verifies a signature made by the externally pinned authority.
+    pub fn verify_signed(
+        contract_id: impl Into<String>,
+        contract_sha256: Sha256Digest,
+        authority_epoch: u64,
+        signature: &[u8],
+        pinned_key: &[u8; 32],
+    ) -> Result<Self, String> {
+        let contract_id = contract_id.into();
+        if contract_id.trim().is_empty() || contract_id.len() > 128 {
+            return Err("contract_id must be 1..=128 bytes".to_string());
+        }
+        if authority_epoch == 0 {
+            return Err("authority_epoch must be non-zero".to_string());
+        }
+        Sha256Digest::parse(contract_sha256.as_str().to_string())
+            .map_err(|error| format!("invalid contract digest: {error}"))?;
+        let statement = Self::statement_for(&contract_id, &contract_sha256, authority_epoch);
+        let verifying_key = VerifyingKey::from_bytes(pinned_key)
+            .map_err(|error| format!("invalid pinned Ed25519 key: {error}"))?;
+        if verifying_key.is_weak() {
+            return Err("pinned Ed25519 key is weak".to_string());
+        }
+        let signature = Signature::from_slice(signature)
+            .map_err(|error| format!("invalid Ed25519 signature: {error}"))?;
+        verifying_key
+            .verify(&statement, &signature)
+            .map_err(|_| "provider contract attestation signature mismatch".to_string())?;
+        Ok(Self {
+            contract_id,
+            contract_sha256,
+            authority_epoch,
+            verified: true,
+        })
+    }
+
+    pub fn contract_id(&self) -> &str {
+        &self.contract_id
+    }
+
+    pub fn contract_sha256(&self) -> &Sha256Digest {
+        &self.contract_sha256
+    }
+
+    pub fn authority_epoch(&self) -> u64 {
+        self.authority_epoch
+    }
+
+    pub fn is_verified(&self) -> bool {
+        self.verified
+    }
 }
 
 impl fmt::Debug for HttpProviderEffectConfig {
@@ -160,18 +241,20 @@ impl HttpProviderEffectAdapter {
             .attestation
             .as_ref()
             .ok_or_else(|| "external contract attestation is required".to_string())?;
-        if attestation.contract_id != config.contract_id || attestation.authority_epoch == 0 {
+        if !attestation.is_verified()
+            || attestation.contract_id() != config.contract_id
+            || attestation.authority_epoch() == 0
+        {
             return Err("contract attestation binding is invalid".to_string());
         }
-        Sha256Digest::parse(attestation.contract_sha256.as_str().to_string())
+        Sha256Digest::parse(attestation.contract_sha256().as_str().to_string())
             .map_err(|error| format!("invalid contract digest: {error}"))?;
         if config.timeout.is_zero() || config.timeout > Duration::from_secs(300) {
             return Err("timeout must be between 1ms and 300s".to_string());
         }
         let dispatch_endpoint = validate_effect_endpoint(&config.dispatch_url)?;
-        let lookup_endpoint = validate_effect_endpoint(
-            &config.lookup_url_template.replace("{key}", "hepta-key"),
-        )?;
+        let lookup_endpoint =
+            validate_effect_endpoint(&config.lookup_url_template.replace("{key}", "hepta-key"))?;
         if dispatch_endpoint.scheme() != lookup_endpoint.scheme()
             || dispatch_endpoint.host_str() != lookup_endpoint.host_str()
             || dispatch_endpoint.port_or_known_default() != lookup_endpoint.port_or_known_default()
@@ -204,7 +287,7 @@ impl HttpProviderEffectAdapter {
             Err(_) => {
                 return ProviderEffectDispatch::NotDispatched {
                     reason_code: "provider_effect_payload_binding_invalid".to_string(),
-                }
+                };
             }
         };
         let mut headers = self.config.headers.clone();
@@ -231,7 +314,9 @@ impl HttpProviderEffectAdapter {
             None => return ProviderEffectDispatch::Unknown,
         };
         match parse_wire_ack(&body).and_then(|ack| {
-            ack.validate_for(intent).map(|_| ack).map_err(|error| format!("{error:?}"))
+            ack.validate_for(intent)
+                .map(|_| ack)
+                .map_err(|error| format!("{error:?}"))
         }) {
             Ok(ack) => ProviderEffectDispatch::Ack(ack),
             Err(_) => ProviderEffectDispatch::Unknown,
@@ -245,7 +330,10 @@ impl HttpProviderEffectAdapter {
             .replace("{key}", &encode_path_segment(key.as_str()));
         let mut headers = self.config.headers.clone();
         if let Ok(value) = HeaderValue::from_str(key.as_str()) {
-            headers.insert(HeaderName::from_static(PROVIDER_EFFECT_IDEMPOTENCY_KEY_HEADER), value);
+            headers.insert(
+                HeaderName::from_static(PROVIDER_EFFECT_IDEMPOTENCY_KEY_HEADER),
+                value,
+            );
         }
         headers.insert(
             HeaderName::from_static(PROVIDER_EFFECT_SCHEMA_VERSION_HEADER),
@@ -284,7 +372,12 @@ impl HttpProviderEffectAdapter {
 
 impl ProviderEffectAdapter for HttpProviderEffectAdapter {
     fn capability(&self) -> ProviderEffectIdempotencyCapability {
-        if self.config.attestation.is_some() {
+        if self
+            .config
+            .attestation
+            .as_ref()
+            .is_some_and(HttpProviderEffectContractAttestation::is_verified)
+        {
             ProviderEffectIdempotencyCapability::KeyAndStatusLookup
         } else {
             ProviderEffectIdempotencyCapability::Unsupported
@@ -344,7 +437,12 @@ fn parse_wire_ack(body: &[u8]) -> Result<ProviderEffectAck, String> {
         "rejected" => ProviderEffectAckStatus::Rejected,
         _ => return Err("unknown provider status".to_string()),
     };
-    Ok(ProviderEffectAck::new(key, payload_sha256, operation, status))
+    Ok(ProviderEffectAck::new(
+        key,
+        payload_sha256,
+        operation,
+        status,
+    ))
 }
 
 fn parse_wire_conflict_digest(body: &[u8]) -> Option<Sha256Digest> {
@@ -430,6 +528,8 @@ mod tests {
     use codex_hepta_contracts::ProviderTransport;
     use codex_hepta_contracts::RequestBindingId;
     use codex_hepta_contracts::Sha256Digest;
+    use ed25519_dalek::Signer;
+    use ed25519_dalek::SigningKey;
 
     fn intent() -> ProviderEffectIntent {
         let binding = ProviderRequestBinding {
@@ -518,6 +618,45 @@ mod tests {
         assert_eq!(
             adapter.lookup(&intent().key).await,
             ProviderEffectLookup::Unknown
+        );
+    }
+
+    #[test]
+    fn provider_contract_attestation_requires_pinned_signature() {
+        let signing_key = SigningKey::from_bytes(&[7_u8; 32]);
+        let verifying_key = signing_key.verifying_key();
+        let digest = Sha256Digest::for_bytes(b"provider-contract-v1");
+        let statement = HttpProviderEffectContractAttestation::statement_for(
+            "provider-contract-v1",
+            &digest,
+            3,
+        );
+        let signature = signing_key.sign(&statement);
+        let attestation = HttpProviderEffectContractAttestation::verify_signed(
+            "provider-contract-v1",
+            digest.clone(),
+            3,
+            &signature.to_bytes(),
+            &verifying_key.to_bytes(),
+        )
+        .expect("pinned signature");
+        assert!(attestation.is_verified());
+        assert_eq!(attestation.contract_id(), "provider-contract-v1");
+        assert_eq!(attestation.contract_sha256(), &digest);
+        assert_eq!(attestation.authority_epoch(), 3);
+
+        let mut tampered = statement;
+        tampered.push(b'!');
+        let tampered_signature = signing_key.sign(&tampered);
+        assert!(
+            HttpProviderEffectContractAttestation::verify_signed(
+                "provider-contract-v1",
+                digest,
+                3,
+                &tampered_signature.to_bytes(),
+                &[8_u8; 32],
+            )
+            .is_err()
         );
     }
 }

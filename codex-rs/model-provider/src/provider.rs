@@ -344,7 +344,11 @@ pub fn create_model_provider_with_effect_adapter(
     if provider_info.is_amazon_bedrock() {
         return None;
     }
-    Some(Arc::new(ConfiguredModelProvider::with_effect_adapter(provider_info, auth_manager, adapter)))
+    Some(Arc::new(ConfiguredModelProvider::with_effect_adapter(
+        provider_info,
+        auth_manager,
+        adapter,
+    )))
 }
 
 /// Runtime model provider backed by configured `ModelProviderInfo`.

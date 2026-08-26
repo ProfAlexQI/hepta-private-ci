@@ -25,6 +25,7 @@ codex-models-manager = { workspace = true }
 codex-otel = { workspace = true }
 codex-protocol = { workspace = true }
 codex-response-debug-context = { workspace = true }
+ed25519-dalek = { workspace = true }
 http = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
