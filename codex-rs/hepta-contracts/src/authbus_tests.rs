@@ -158,6 +158,32 @@ fn lease_cas_epoch_and_permit_binding_are_strict() {
 }
 
 #[test]
+fn usage_permit_rejects_subject_generation_mismatch() {
+    let active = active_lease();
+    let mut permit =
+        UsagePermit::from_lease(&active, "permit:qualification-generation", digest("fence"))
+            .expect("permit");
+    permit.subject.generation += 1;
+
+    assert!(permit.validate().is_err());
+    assert!(permit.canonical_bytes().is_err());
+    assert!(permit.digest().is_err());
+
+    let mut encoded = serde_json::to_value(
+        UsagePermit::from_lease(
+            &active,
+            "permit:qualification-generation-wire",
+            digest("fence-wire"),
+        )
+        .expect("permit"),
+    )
+    .expect("permit json");
+    encoded["subject"]["generation"] = serde_json::Value::Number(serde_json::Number::from(8));
+    let forged: UsagePermit = serde_json::from_value(encoded).expect("wire shape");
+    assert!(forged.validate().is_err());
+}
+
+#[test]
 fn usage_receipt_binds_permit_and_preserves_indeterminate() {
     let active = active_lease();
     let permit = UsagePermit::from_lease(&active, "permit:qualification-1", digest("fence"))

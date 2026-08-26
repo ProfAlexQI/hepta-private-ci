@@ -665,6 +665,11 @@ impl UsagePermit {
         validate_text(&self.permit_id, "permit id", MAX_TEXT_BYTES)?;
         validate_text(&self.lease_id, "permit lease id", MAX_TEXT_BYTES)?;
         self.subject.validate()?;
+        if self.subject.generation != self.generation {
+            return Err(AuthBusContractError::new(
+                "permit subject generation does not match permit generation",
+            ));
+        }
         validate_digest(&self.resource_sha256, "permit resource")?;
         validate_digest(&self.payload_sha256, "permit payload")?;
         if let Some(model) = &self.model_sha256 {
