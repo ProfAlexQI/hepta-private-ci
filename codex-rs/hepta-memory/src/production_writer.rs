@@ -32,6 +32,7 @@ use crate::LocalOutcomeReceipt;
 use crate::LocalOutcomeState;
 use crate::LocalReplayFinalization;
 use crate::QueuedReceipt;
+use crate::local_lease_outbox::dispatch_operation_digest;
 
 /// Schema version of the externally-authorized H4 writer boundary.
 pub const PRODUCTION_DURABLE_WRITER_SCHEMA_VERSION: u32 = 1;
@@ -549,7 +550,11 @@ impl ProductionDurableWriter {
         // the same immutable receipt from both calling the target.
         let dispatch_claim_event_id = self
             .lease
-            .claim_dispatch(&receipt.occurrence_key, &request.operation_digest)
+            .claim_dispatch(
+                &receipt.occurrence_key,
+                &self.authority.grant_digest,
+                &request.operation_digest,
+            )
             .await
             .map_err(|error| match error {
                 LocalLeaseOutboxError::StaleFence(_)
@@ -571,6 +576,7 @@ impl ProductionDurableWriter {
                         request,
                         state: LocalOutcomeState::Committed,
                         target_receipt: Some(target_receipt),
+                        target_reason: None,
                         local_event_id: local.event_id,
                         external_effect: true,
                     }),
@@ -585,14 +591,16 @@ impl ProductionDurableWriter {
                     request,
                     state: LocalOutcomeState::Rejected,
                     target_receipt: None,
+                    target_reason: Some(reason),
                     local_event_id: local.event_id,
                     external_effect: false,
                 })
             }
-            ProductionTargetOutcome::Indeterminate { reason: _ } => Ok(ProductionDispatchReceipt {
+            ProductionTargetOutcome::Indeterminate { reason } => Ok(ProductionDispatchReceipt {
                 request,
                 state: LocalOutcomeState::Indeterminate,
                 target_receipt: None,
+                target_reason: Some(reason),
                 local_event_id: dispatch_claim_event_id,
                 external_effect: false,
             }),
@@ -724,6 +732,11 @@ pub struct ProductionDispatchReceipt {
     pub request: ProductionDispatchRequest,
     pub state: LocalOutcomeState,
     pub target_receipt: Option<String>,
+    /// Provider-side reason is returned verbatim for status/reconcile
+    /// qualification. It is not an authority receipt; committed outcomes
+    /// leave this field absent.
+    #[serde(default)]
+    pub target_reason: Option<String>,
     pub local_event_id: String,
     pub external_effect: bool,
 }
@@ -841,19 +854,13 @@ fn operation_digest(
     authority: &ProductionAuthorityLease,
     receipt: &ProductionQueuedReceipt,
 ) -> Sha256Digest {
-    let mut bytes = Vec::new();
-    for part in [
-        b"hepta:production-outbox-operation:v1".as_slice(),
-        authority.grant_digest.as_str().as_bytes(),
-        receipt.lease_id.as_bytes(),
-        receipt.occurrence_key.as_bytes(),
-        receipt.topic.as_bytes(),
-        receipt.payload_sha256.as_str().as_bytes(),
-    ] {
-        bytes.extend_from_slice(&(part.len() as u64).to_be_bytes());
-        bytes.extend_from_slice(part);
-    }
-    Sha256Digest::for_bytes(&bytes)
+    dispatch_operation_digest(
+        &authority.grant_digest,
+        &receipt.lease_id,
+        &receipt.occurrence_key,
+        &receipt.topic,
+        &receipt.payload_sha256,
+    )
 }
 
 async fn verify_durable_store(store: &CognitiveStore) -> Result<(), ProductionWriterError> {
@@ -1070,6 +1077,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(receipt.state, LocalOutcomeState::Indeterminate);
+        assert_eq!(receipt.target_reason.as_deref(), Some("timeout"));
         assert!(!receipt.external_effect);
         assert_eq!(
             writer.status("occurrence:unknown").await.unwrap(),
@@ -1117,6 +1125,78 @@ mod tests {
         assert_eq!(
             writer.status("occurrence:binding").await.unwrap(),
             LocalOutcomeState::Queued
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_claim_rejects_unbound_or_malformed_operation_digest() {
+        let temp = TempDir::new().unwrap();
+        let store = store(&temp).await;
+        let owner = store.owner_agent_id().clone();
+        let auth = authority(owner);
+        let writer = ProductionDurableWriter::open(
+            store,
+            auth,
+            &AllowVerifier,
+            "production:h4:claim-binding",
+            1,
+        )
+        .await
+        .unwrap();
+        let queued = writer
+            .admit("occurrence:claim-binding", "memory.write", "payload")
+            .await
+            .unwrap();
+        let malformed: Sha256Digest = serde_json::from_str("\"not-a-sha256\"").unwrap();
+        let malformed_result = writer
+            .lease
+            .claim_dispatch(
+                &queued.occurrence_key,
+                &writer.authority.grant_digest,
+                &malformed,
+            )
+            .await;
+        assert!(matches!(
+            malformed_result,
+            Err(LocalLeaseOutboxError::Invalid(_))
+        ));
+        assert_eq!(
+            writer.status("occurrence:claim-binding").await.unwrap(),
+            LocalOutcomeState::Queued
+        );
+
+        let unbound = Sha256Digest::for_bytes(b"different-operation");
+        let unbound_result = writer
+            .lease
+            .claim_dispatch(
+                &queued.occurrence_key,
+                &writer.authority.grant_digest,
+                &unbound,
+            )
+            .await;
+        assert!(matches!(
+            unbound_result,
+            Err(LocalLeaseOutboxError::StaleFence(_))
+        ));
+        assert_eq!(
+            writer.status("occurrence:claim-binding").await.unwrap(),
+            LocalOutcomeState::Queued
+        );
+
+        let expected = operation_digest(&writer.authority, &queued);
+        let claim = writer
+            .lease
+            .claim_dispatch(
+                &queued.occurrence_key,
+                &writer.authority.grant_digest,
+                &expected,
+            )
+            .await
+            .unwrap();
+        assert_eq!(claim.state, LocalOutcomeState::Indeterminate);
+        assert_eq!(
+            writer.status("occurrence:claim-binding").await.unwrap(),
+            LocalOutcomeState::Indeterminate
         );
     }
 

@@ -1479,10 +1479,14 @@ impl LocalLeaseOutbox {
     pub(crate) async fn claim_dispatch(
         &self,
         occurrence_key: impl Into<String>,
+        grant_digest: &Sha256Digest,
         operation_digest: &Sha256Digest,
     ) -> Result<LocalOutcomeReceipt, LocalLeaseOutboxError> {
+        let occurrence_key = occurrence_key.into();
+        self.verify_dispatch_operation_binding(&occurrence_key, grant_digest, operation_digest)
+            .await?;
         self.append_outcome_with_replay_policy(
-            occurrence_key.into(),
+            occurrence_key,
             "indeterminate",
             format!("dispatch_started_pending_ack:{}", operation_digest.as_str()),
             &[LocalOutcomeState::Queued],
@@ -1490,6 +1494,76 @@ impl LocalLeaseOutbox {
             false,
         )
         .await
+    }
+
+    /// Verify that a dispatch claim digest is canonical and derives from the
+    /// exact immutable admission/outbox pair.  This read transaction is
+    /// followed by the claim's fenced `BEGIN IMMEDIATE` append; the append
+    /// rechecks the current lease and occurrence fence, so a transition or
+    /// successor generation between the two steps fails closed.
+    async fn verify_dispatch_operation_binding(
+        &self,
+        occurrence_key: &str,
+        grant_digest: &Sha256Digest,
+        operation_digest: &Sha256Digest,
+    ) -> Result<(), LocalLeaseOutboxError> {
+        Sha256Digest::parse(grant_digest.as_str())
+            .map_err(LocalLeaseOutboxError::Invalid)
+            .map(|_| ())?;
+        Sha256Digest::parse(operation_digest.as_str())
+            .map_err(LocalLeaseOutboxError::Invalid)
+            .map(|_| ())?;
+        let mut transaction = self
+            .store
+            .pool
+            .begin()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        let lease = self.current_lease(&mut transaction).await?;
+        ensure_current_active(&lease, self)?;
+        let events =
+            verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox_rows =
+            verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_event_outbox_pairing(&events, &outbox_rows)?;
+        let admission = find_admission(
+            &mut transaction,
+            &self.lease_id,
+            occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?
+        .ok_or_else(|| {
+            LocalLeaseOutboxError::StaleFence("dispatch claim admission is missing".to_string())
+        })?;
+        let outbox = find_outbox(
+            &mut transaction,
+            &self.lease_id,
+            occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?
+        .ok_or_else(|| {
+            LocalLeaseOutboxError::StaleFence("dispatch claim outbox is missing".to_string())
+        })?;
+        ensure_current_occurrence_fence(self, &admission, &outbox)?;
+        let expected = dispatch_operation_digest(
+            grant_digest,
+            &self.lease_id,
+            occurrence_key,
+            &outbox.topic,
+            &outbox.payload_sha256,
+        );
+        if expected != *operation_digest {
+            return Err(LocalLeaseOutboxError::StaleFence(
+                "dispatch claim operation digest is not bound to the immutable outbox".to_string(),
+            ));
+        }
+        transaction
+            .commit()
+            .await
+            .map_err(crate::cognitive_store::unavailable)?;
+        Ok(())
     }
 
     /// Apply a local intent after its target-side qualification writer has
@@ -3533,6 +3607,32 @@ fn outbox_digest(
             previous.as_str().as_bytes(),
         ],
     )
+}
+
+/// Derive the exact provider operation identity from the signed grant and the
+/// immutable local admission/outbox fields.  The production writer and the
+/// local claim verifier share this framing so a caller cannot substitute an
+/// arbitrary digest for a different payload or topic.
+pub(crate) fn dispatch_operation_digest(
+    grant_digest: &Sha256Digest,
+    lease_id: &str,
+    occurrence_key: &str,
+    topic: &str,
+    payload_sha256: &Sha256Digest,
+) -> Sha256Digest {
+    let mut bytes = Vec::new();
+    for part in [
+        b"hepta:production-outbox-operation:v1".as_slice(),
+        grant_digest.as_str().as_bytes(),
+        lease_id.as_bytes(),
+        occurrence_key.as_bytes(),
+        topic.as_bytes(),
+        payload_sha256.as_str().as_bytes(),
+    ] {
+        bytes.extend_from_slice(&(part.len() as u64).to_be_bytes());
+        bytes.extend_from_slice(part);
+    }
+    Sha256Digest::for_bytes(&bytes)
 }
 
 /// Build a stable journal row id without allowing a maximum-length lease id
