@@ -24,6 +24,7 @@ use codex_hepta_contracts::ProviderEffectLookup;
 use codex_hepta_contracts::Sha256Digest;
 use codex_http_client::ClientRouteClass;
 use codex_http_client::HttpClient;
+use codex_http_client::HttpClientBuilder;
 use codex_http_client::HttpClientFactory;
 use codex_http_client::OutboundProxyPolicy;
 use ed25519_dalek::Signature;
@@ -262,8 +263,14 @@ impl HttpProviderEffectAdapter {
             return Err("dispatch and lookup endpoints must share one origin".to_string());
         }
         let factory = HttpClientFactory::new(OutboundProxyPolicy::ReqwestDefault);
-        let client = factory
-            .build_client_without_request_logging(&config.dispatch_url, ClientRouteClass::Api)
+        let client = HttpClientBuilder::new()
+            .without_redirects()
+            .without_request_logging()
+            .build_respecting_outbound_proxy_policy(
+                &factory,
+                &config.dispatch_url,
+                ClientRouteClass::Api,
+            )
             .map_err(|error| format!("invalid dispatch endpoint: {error}"))?;
         Ok(Self { client, config })
     }
