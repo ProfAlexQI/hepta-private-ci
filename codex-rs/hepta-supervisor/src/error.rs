@@ -58,6 +58,10 @@ pub enum SupervisorError {
     },
     #[error(transparent)]
     Registry(#[from] FleetRegistryError),
+    #[error("signed production authority rejected: {0}")]
+    ProductionAuthority(String),
+    #[error("agent {0} has an unresolved signed supervisor intent after recovery")]
+    SignedIntentRecoveryRequired(AgentId),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }

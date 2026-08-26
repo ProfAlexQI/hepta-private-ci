@@ -3776,13 +3776,16 @@ name = "codex-hepta-supervisor"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "codex-hepta-agent-protocol",
  "codex-hepta-contracts",
  "codex-hepta-fleet",
  "codex-hepta-matrix-protocol",
+ "codex-hepta-memory",
  "codex-hepta-paths",
  "codex-uds",
  "constant_time_eq",
+ "ed25519-dalek",
  "jsonschema",
  "libc",
  "pretty_assertions",

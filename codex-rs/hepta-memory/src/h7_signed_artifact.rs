@@ -9,8 +9,8 @@
 //! explicitly false, so this module cannot be used as a production promotion
 //! path.
 
-use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
 use codex_hepta_contracts::Sha256Digest;
 use ed25519_dalek::Signature;
 use ed25519_dalek::Signer as _;
@@ -267,6 +267,44 @@ impl H7ArtifactVerifier {
         self.signer_epoch
     }
 
+    /// Verifies the detached Ed25519 signature and validity window without
+    /// requiring the artifact/OPE bodies to be present.  Production control
+    /// planes use this when an artifact registry is owned by a separate
+    /// process; digest and policy binding still remain in the envelope and
+    /// are checked by the caller.
+    pub fn verify_envelope_signature(
+        &self,
+        envelope: &H7SignedArtifactEnvelope,
+        now_unix_seconds: u64,
+    ) -> Result<(), H7SignedArtifactError> {
+        envelope.validate_shape()?;
+        if envelope.signer_id != self.signer_id {
+            return Err(H7SignedArtifactError::SignerMismatch);
+        }
+        if envelope.signer_epoch != self.signer_epoch {
+            return Err(H7SignedArtifactError::EpochMismatch);
+        }
+        if now_unix_seconds < envelope.issued_at_unix_seconds {
+            return Err(H7SignedArtifactError::NotYetValid);
+        }
+        if now_unix_seconds >= envelope.expires_at_unix_seconds {
+            return Err(H7SignedArtifactError::Expired);
+        }
+        let signature_bytes = STANDARD
+            .decode(&envelope.signature_base64)
+            .map_err(|_| H7SignedArtifactError::SignatureMalformed)?;
+        if STANDARD.encode(&signature_bytes) != envelope.signature_base64
+            || signature_bytes.len() != 64
+        {
+            return Err(H7SignedArtifactError::SignatureMalformed);
+        }
+        let signature = Signature::from_slice(&signature_bytes)
+            .map_err(|_| H7SignedArtifactError::SignatureMalformed)?;
+        self.verifying_key
+            .verify(&envelope.signing_bytes(), &signature)
+            .map_err(|_| H7SignedArtifactError::SignatureInvalid)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn verify(
         &self,
@@ -300,12 +338,6 @@ impl H7ArtifactVerifier {
             }
             _ => return Err(H7SignedArtifactError::OpeBinding),
         }
-        if envelope.signer_id != self.signer_id {
-            return Err(H7SignedArtifactError::SignerMismatch);
-        }
-        if envelope.signer_epoch != self.signer_epoch {
-            return Err(H7SignedArtifactError::EpochMismatch);
-        }
         if envelope.expected_runtime_generation != expected_runtime_generation {
             return Err(H7SignedArtifactError::GenerationFence {
                 expected: expected_runtime_generation,
@@ -315,26 +347,7 @@ impl H7ArtifactVerifier {
         if envelope.predecessor_artifact_sha256.as_ref() != expected_predecessor_artifact_sha256 {
             return Err(H7SignedArtifactError::PredecessorMismatch);
         }
-        if now_unix_seconds < envelope.issued_at_unix_seconds {
-            return Err(H7SignedArtifactError::NotYetValid);
-        }
-        if now_unix_seconds >= envelope.expires_at_unix_seconds {
-            return Err(H7SignedArtifactError::Expired);
-        }
-        let signature_bytes = STANDARD
-            .decode(&envelope.signature_base64)
-            .map_err(|_| H7SignedArtifactError::SignatureMalformed)?;
-        if STANDARD.encode(&signature_bytes) != envelope.signature_base64
-            || signature_bytes.len() != 64
-        {
-            return Err(H7SignedArtifactError::SignatureMalformed);
-        }
-        let signature = Signature::from_slice(&signature_bytes)
-            .map_err(|_| H7SignedArtifactError::SignatureMalformed)?;
-        self.verifying_key
-            .verify(&envelope.signing_bytes(), &signature)
-            .map_err(|_| H7SignedArtifactError::SignatureInvalid)?;
-        Ok(())
+        self.verify_envelope_signature(envelope, now_unix_seconds)
     }
 
     /// Convenience spelling for OPE gate callers.
@@ -540,7 +553,9 @@ pub enum H7SignedArtifactError {
     SignatureMalformed,
     #[error("signed H7 artifact signature verification failed")]
     SignatureInvalid,
-    #[error("signed H7 artifact expected-runtime-generation fence mismatch: expected {expected}, actual {actual}")]
+    #[error(
+        "signed H7 artifact expected-runtime-generation fence mismatch: expected {expected}, actual {actual}"
+    )]
     GenerationFence { expected: u64, actual: u64 },
     #[error("signed H7 artifact rollback predecessor does not match the active CAS head")]
     PredecessorMismatch,
@@ -636,6 +651,64 @@ mod tests {
             Err(H7SignedArtifactError::ProductionBoundary)
                 | Err(H7SignedArtifactError::DigestMismatch(_))
         ));
+    }
+
+    #[test]
+    fn detached_signature_verification_is_body_independent_and_fail_closed() {
+        let artifact = artifact();
+        let signer =
+            H7ArtifactSigner::new("detached-signer", 9, SigningKey::from_bytes(&[6; 32]))
+                .expect("signer");
+        let envelope = signer
+            .sign(
+                &artifact,
+                None,
+                H7SignedArtifactTransition::Reload,
+                4,
+                None,
+                100,
+                200,
+            )
+            .expect("sign");
+        let verifier = signer.verifier();
+
+        // The detached path only needs the envelope and pinned public key;
+        // artifact/OPE bodies are deliberately absent here.
+        verifier
+            .verify_envelope_signature(&envelope, 150)
+            .expect("detached signature");
+
+        let mut tampered_signature = envelope.clone();
+        let mut signature_bytes = STANDARD
+            .decode(&tampered_signature.signature_base64)
+            .expect("signature encoding");
+        signature_bytes[0] ^= 0x01;
+        tampered_signature.signature_base64 = STANDARD.encode(signature_bytes);
+        assert_eq!(
+            verifier.verify_envelope_signature(&tampered_signature, 150),
+            Err(H7SignedArtifactError::SignatureInvalid)
+        );
+
+        let mut malformed_signature = envelope.clone();
+        malformed_signature.signature_base64 = "not-base64".to_string();
+        assert_eq!(
+            verifier.verify_envelope_signature(&malformed_signature, 150),
+            Err(H7SignedArtifactError::SignatureMalformed)
+        );
+        assert_eq!(
+            verifier.verify_envelope_signature(&envelope, 200),
+            Err(H7SignedArtifactError::Expired)
+        );
+        let wrong_epoch = H7ArtifactVerifier::new(
+            "detached-signer",
+            10,
+            signer.verifying_key(),
+        )
+        .expect("wrong-epoch verifier");
+        assert_eq!(
+            wrong_epoch.verify_envelope_signature(&envelope, 150),
+            Err(H7SignedArtifactError::EpochMismatch)
+        );
     }
 
     #[test]

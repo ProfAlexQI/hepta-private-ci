@@ -120,9 +120,13 @@ pub enum H8H9SupervisorError {
     Invalid(String),
     #[error("H8/H9 qualification supervisor state digest mismatch")]
     StateDigestMismatch,
-    #[error("H8/H9 qualification supervisor revision fence mismatch: expected {expected}, actual {actual}")]
+    #[error(
+        "H8/H9 qualification supervisor revision fence mismatch: expected {expected}, actual {actual}"
+    )]
     RevisionFence { expected: u64, actual: u64 },
-    #[error("H8/H9 qualification supervisor authority epoch mismatch: expected {expected}, actual {actual}")]
+    #[error(
+        "H8/H9 qualification supervisor authority epoch mismatch: expected {expected}, actual {actual}"
+    )]
     AuthorityEpochFence { expected: u64, actual: u64 },
     #[error("H8/H9 qualification supervisor callback owner is stale")]
     StaleOwner,

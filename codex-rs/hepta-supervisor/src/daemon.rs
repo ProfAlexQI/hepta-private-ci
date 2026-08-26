@@ -37,6 +37,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::AgentRelease;
 use crate::AgentSupervisorSnapshot;
+use crate::H7H89ProductionGrant;
+use crate::H7H89ProductionGrantVerifier;
+use crate::H7H89ProductionTransition;
 use crate::ProcessDriver;
 use crate::Supervisor;
 use crate::SupervisorConfig;
@@ -57,6 +60,7 @@ use crate::daemon_protocol::SupervisordPayload;
 use crate::daemon_protocol::SupervisordRequest;
 use crate::daemon_protocol::SupervisordRequestValidationError;
 use crate::daemon_protocol::SupervisordResponse;
+use crate::signed_authority::authority_epoch_for_supervisor_epoch;
 
 const CONNECTION_CAPACITY: usize = 64;
 const IO_TIMEOUT: Duration = Duration::from_secs(2);
@@ -68,6 +72,7 @@ struct DaemonState<D: ProcessDriver = UnixProcessDriver> {
     registry: FleetRegistry,
     supervisor: Mutex<Supervisor<D>>,
     supervisor_epoch: SupervisorEpoch,
+    production_grant_verifier: Option<H7H89ProductionGrantVerifier>,
     observed_faults: AtomicU64,
 }
 
@@ -79,6 +84,26 @@ struct DaemonState<D: ProcessDriver = UnixProcessDriver> {
 pub async fn run_supervisord(
     fleet_root: HeptaFleetRoot,
     cancellation: CancellationToken,
+) -> Result<(), SupervisorError> {
+    run_supervisord_inner(fleet_root, cancellation, None).await
+}
+
+/// Production entry point for a daemon whose trust root was pinned by an
+/// external authority/configuration ceremony.  The verifier is intentionally
+/// a parameter: the daemon never reads a public key from a mutation request
+/// and the legacy entry point keeps signed mutations disabled.
+pub async fn run_supervisord_with_grant_verifier(
+    fleet_root: HeptaFleetRoot,
+    cancellation: CancellationToken,
+    verifier: H7H89ProductionGrantVerifier,
+) -> Result<(), SupervisorError> {
+    run_supervisord_inner(fleet_root, cancellation, Some(verifier)).await
+}
+
+async fn run_supervisord_inner(
+    fleet_root: HeptaFleetRoot,
+    cancellation: CancellationToken,
+    production_grant_verifier: Option<H7H89ProductionGrantVerifier>,
 ) -> Result<(), SupervisorError> {
     let registry = FleetRegistry::open_existing(fleet_root)?;
     let snapshot = registry.load()?;
@@ -102,6 +127,7 @@ pub async fn run_supervisord(
         registry,
         supervisor: Mutex::new(supervisor),
         supervisor_epoch: SupervisorEpoch::new(),
+        production_grant_verifier,
         observed_faults: AtomicU64::new(recovery.faults.len() as u64),
     });
     let server = SupervisordServer::bind(
@@ -365,7 +391,108 @@ async fn handle_request<D: ProcessDriver>(
         SupervisordMethod::Rollback { fence } => {
             handle_mutation(state, SupervisordMutation::Rollback, fence, None).await
         }
+        SupervisordMethod::SignedUpgrade {
+            fence,
+            grant,
+            h7_envelope,
+        } => {
+            handle_signed_mutation(
+                state,
+                H7H89ProductionTransition::Upgrade,
+                fence,
+                grant,
+                h7_envelope,
+            )
+            .await
+        }
+        SupervisordMethod::SignedRollback {
+            fence,
+            grant,
+            h7_envelope,
+        } => {
+            handle_signed_mutation(
+                state,
+                H7H89ProductionTransition::Rollback,
+                fence,
+                grant,
+                h7_envelope,
+            )
+            .await
+        }
     }
+}
+
+async fn handle_signed_mutation<D: ProcessDriver>(
+    state: Arc<DaemonState<D>>,
+    transition: H7H89ProductionTransition,
+    fence: SupervisordControlFence,
+    grant: H7H89ProductionGrant,
+    h7_envelope: codex_hepta_memory::H7SignedArtifactEnvelope,
+) -> SupervisordPayload {
+    let Some(verifier) = state.production_grant_verifier.clone() else {
+        return error_payload(
+            "production_authority_unavailable",
+            "signed production mutations require an externally pinned verifier",
+            None,
+        );
+    };
+    if grant.transition != transition {
+        return error_payload(
+            "production_authority_rejected",
+            "signed operation transition does not match the requested RPC method",
+            None,
+        );
+    }
+    let agent_id = fence.agent_id.clone();
+    let accepted_state_digest = fence.state_digest.clone();
+    let mut supervisor = state.supervisor.lock().await;
+    let actual = match agent_status_locked(&state, &supervisor, &agent_id) {
+        Ok(actual) => actual,
+        Err(error) => return safe_rejection(error, None, false),
+    };
+    if !control_fence_matches(&fence, &actual.control_fence) {
+        return error_payload(
+            "stale_control_fence",
+            "selected Agent changed; refresh before retry",
+            Some(actual),
+        );
+    }
+    let authority_epoch = authority_epoch_for_supervisor_epoch(state.supervisor_epoch.as_str());
+    let result = supervisor.apply_production_grant(
+        &agent_id,
+        &grant,
+        &h7_envelope,
+        &verifier,
+        authority_epoch,
+        unix_seconds_now(),
+        Instant::now(),
+    );
+    let post = agent_status_locked(&state, &supervisor, &agent_id).ok();
+    if let Err(error) = result {
+        return safe_rejection(error, post.or(Some(actual)), false);
+    }
+    let Some(agent) = post else {
+        return error_payload(
+            "operation_indeterminate",
+            "signed operation outcome is indeterminate; refresh before retry",
+            None,
+        );
+    };
+    SupervisordPayload::MutationAccepted {
+        operation: match transition {
+            H7H89ProductionTransition::Upgrade => SupervisordMutation::Upgrade,
+            H7H89ProductionTransition::Rollback => SupervisordMutation::Rollback,
+        },
+        accepted_state_digest,
+        agent,
+    }
+}
+
+fn unix_seconds_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
 }
 
 async fn handle_mutation<D: ProcessDriver>(
@@ -767,6 +894,16 @@ fn safe_rejection(
         SupervisorError::Driver { .. } => error_payload(
             "control_state_unavailable",
             "Agent control state is unavailable; refresh before retry",
+            actual,
+        ),
+        SupervisorError::ProductionAuthority(_) => error_payload(
+            "production_authority_rejected",
+            "signed production authority grant was rejected",
+            actual,
+        ),
+        SupervisorError::SignedIntentRecoveryRequired(_) => error_payload(
+            "signed_intent_recovery_required",
+            "a prior signed lifecycle operation requires recovery",
             actual,
         ),
         SupervisorError::CorruptLease(_)

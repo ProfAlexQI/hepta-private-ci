@@ -112,7 +112,8 @@ impl<D: ProcessDriver> Supervisor<D> {
                 }
             }
         }
-        self.persist_release_state(agent_id, slot)
+        self.persist_release_state(agent_id, slot)?;
+        self.commit_signed_intent_if_target(agent_id, slot)
     }
 
     pub(crate) fn persist_release_state(

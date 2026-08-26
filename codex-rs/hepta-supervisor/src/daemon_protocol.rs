@@ -3,11 +3,14 @@ use std::fmt;
 use codex_hepta_contracts::AgentId;
 use codex_hepta_fleet::AgentLifecycle;
 use codex_hepta_fleet::ReleaseId;
+use codex_hepta_memory::H7SignedArtifactEnvelope;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
 use serde::de::Error as _;
+
+use crate::H7H89ProductionGrant;
 
 pub const SUPERVISORD_CONTROL_SCHEMA_VERSION: u32 = 2;
 pub const MAX_SUPERVISORD_CONTROL_FRAME_BYTES: u64 = 65_536;
@@ -52,7 +55,9 @@ impl SupervisordRequest {
             | SupervisordMethod::Kill { fence }
             | SupervisordMethod::Restart { fence }
             | SupervisordMethod::Upgrade { fence, .. }
-            | SupervisordMethod::Rollback { fence } => fence.validate(),
+            | SupervisordMethod::Rollback { fence }
+            | SupervisordMethod::SignedUpgrade { fence, .. }
+            | SupervisordMethod::SignedRollback { fence, .. } => fence.validate(),
         }
     }
 }
@@ -99,6 +104,19 @@ pub enum SupervisordMethod {
     },
     Rollback {
         fence: SupervisordControlFence,
+    },
+    /// A production mutation must carry both the H7 envelope and an
+    /// independent authority grant.  The daemon's verifier is injected out
+    /// of band; no request can choose its own trust root.
+    SignedUpgrade {
+        fence: SupervisordControlFence,
+        grant: H7H89ProductionGrant,
+        h7_envelope: H7SignedArtifactEnvelope,
+    },
+    SignedRollback {
+        fence: SupervisordControlFence,
+        grant: H7H89ProductionGrant,
+        h7_envelope: H7SignedArtifactEnvelope,
     },
 }
 
