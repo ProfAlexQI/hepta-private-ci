@@ -225,6 +225,28 @@ fn receipt_path(root: &Path) -> PathBuf {
     root.join("h4-persistent-recover.json")
 }
 
+fn validate_prepare_root(root: &Path) -> HarnessResult<()> {
+    let marker = marker_path(root);
+    if marker.exists() {
+        return Err(boxed_error(format!(
+            "prepare marker already exists: {}; use a fresh H4_PERSISTENT_ROOT",
+            marker.display()
+        )));
+    }
+    // A missing marker is not enough to establish a fresh qualification
+    // database: an operator could have removed it while leaving the old
+    // `fleet-v1` store behind.  Mixing old rows with a new run would make
+    // replay/count evidence ambiguous, so require an entirely empty root.
+    let mut entries = fs::read_dir(root)?;
+    if let Some(entry) = entries.next().transpose()? {
+        return Err(boxed_error(format!(
+            "H4_PERSISTENT_ROOT must be empty for prepare; found {}",
+            entry.path().display()
+        )));
+    }
+    Ok(())
+}
+
 fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> HarnessResult<()> {
     let parent = path
         .parent()
@@ -244,9 +266,13 @@ fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> HarnessResult<()> 
         file.write_all(&bytes)?;
         file.sync_all()?;
         fs::rename(&temporary, path)?;
-        if let Ok(directory) = File::open(parent) {
-            let _ = directory.sync_all();
-        }
+        // The file fsync makes the JSON bytes durable, while the directory
+        // fsync makes the rename durable.  A qualification marker is the
+        // witness that permits a later recovery process to proceed; silently
+        // ignoring a directory-sync failure would turn an unproven marker
+        // into an apparent crash/power-cut result, so fail closed instead.
+        let directory = File::open(parent)?;
+        directory.sync_all()?;
         Ok(())
     })();
     if result.is_err() {
@@ -421,13 +447,8 @@ async fn wait_for_continue(root: &Path) -> HarnessResult<()> {
 }
 
 async fn prepare(root: &Path) -> HarnessResult<()> {
+    validate_prepare_root(root)?;
     let marker_path = marker_path(root);
-    if marker_path.exists() {
-        return Err(boxed_error(format!(
-            "prepare marker already exists: {}; use a fresh H4_PERSISTENT_ROOT",
-            marker_path.display()
-        )));
-    }
     let agent_id = AgentId::parse(AGENT_ID_TEXT).map_err(|error| boxed_error(error.to_string()))?;
     let authority = authority_for(agent_id.clone(), None)?;
     let generation = parse_u64_env("H4_GENERATION", 1)?;
@@ -607,5 +628,159 @@ async fn main() -> HarnessResult<()> {
         "prepare" => prepare(&root).await,
         "recover" => recover(&root).await,
         _ => Err(boxed_error("phase must be prepare or recover")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use codex_hepta_memory::{
+        ProductionDispatchFuture, ProductionDispatchRequest, ProductionOutboxTarget,
+        ProductionTargetOutcome,
+    };
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tempfile::TempDir;
+    use tokio::sync::Notify;
+    use tokio::time::{Duration, timeout};
+
+    /// Target fixture that is entered only after `claim_dispatch` has
+    /// committed.  Aborting the task while this future is pending models a
+    /// process crash in the claim→target window without invoking a provider
+    /// effect; a fresh writer must observe the durable indeterminate claim.
+    struct ClaimThenBlockTarget {
+        calls: Arc<AtomicUsize>,
+        entered: Arc<Notify>,
+    }
+
+    impl ProductionOutboxTarget for ClaimThenBlockTarget {
+        fn dispatch<'a>(
+            &'a self,
+            _request: ProductionDispatchRequest,
+        ) -> ProductionDispatchFuture<'a> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let entered = Arc::clone(&self.entered);
+            Box::pin(async move {
+                entered.notify_one();
+                std::future::pending::<ProductionTargetOutcome>().await
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn claim_before_target_abort_reopens_indeterminate_without_redispatch() {
+        let temp = TempDir::new().expect("H4 claim/reopen temp dir");
+        let root = temp.path().join("claim-reopen");
+        let agent_id = AgentId::parse(AGENT_ID_TEXT).expect("H4 claim/reopen agent");
+        let authority = authority_for(agent_id.clone(), None).expect("H4 claim/reopen authority");
+        let store = open_store(&root, &agent_id)
+            .await
+            .expect("H4 claim/reopen store");
+        let host = AgentdProductionWriterHost::open_with_store(
+            store.clone(),
+            authority.clone(),
+            &QualificationVerifier,
+            "production:h4:claim-reopen",
+            1,
+        )
+        .await
+        .expect("H4 claim/reopen writer");
+        let writer = host.writer();
+        let queued = writer
+            .admit("occurrence:h4:claim-reopen", "h4.claim", "payload")
+            .await
+            .expect("H4 claim/reopen admission");
+        let retry_receipt = queued.clone();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let entered = Arc::new(Notify::new());
+        let target = Arc::new(ClaimThenBlockTarget {
+            calls: Arc::clone(&calls),
+            entered: Arc::clone(&entered),
+        });
+        let dispatch_host = host.attach_target(target);
+        let dispatch_task = tokio::spawn(async move { dispatch_host.dispatch(queued).await });
+
+        timeout(Duration::from_secs(5), entered.notified())
+            .await
+            .expect("target must be entered after durable claim");
+        dispatch_task.abort();
+        let join_error = dispatch_task
+            .await
+            .expect_err("aborted claim/target task must not return normally");
+        assert!(join_error.is_cancelled());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // Close every handle from the crashed generation before reopening a
+        // fresh pool, matching the process boundary of the real harness.
+        drop(writer);
+        drop(store);
+        let reopened_store = open_store(&root, &agent_id)
+            .await
+            .expect("H4 claim/reopen fresh store");
+        let reopened_host = AgentdProductionWriterHost::open_with_store(
+            reopened_store,
+            authority,
+            &QualificationVerifier,
+            "production:h4:claim-reopen",
+            1,
+        )
+        .await
+        .expect("H4 claim/reopen fresh writer");
+        let reopened_writer = reopened_host.writer();
+        assert_eq!(
+            reopened_writer
+                .status("occurrence:h4:claim-reopen")
+                .await
+                .expect("H4 claim/reopen status"),
+            LocalOutcomeState::Indeterminate
+        );
+
+        let retry_calls = Arc::new(AtomicUsize::new(0));
+        let retry_target = Arc::new(ClaimThenBlockTarget {
+            calls: Arc::clone(&retry_calls),
+            entered: Arc::new(Notify::new()),
+        });
+        let retry_result = reopened_host
+            .attach_target(retry_target)
+            .dispatch(retry_receipt)
+            .await;
+        assert!(matches!(
+            retry_result,
+            Err(codex_hepta_agentd::AgentdError::ProductionWriter(
+                codex_hepta_memory::ProductionWriterError::StaleReceipt
+            ))
+        ));
+        assert_eq!(retry_calls.load(Ordering::SeqCst), 0);
+
+        let recovery = reopened_writer
+            .recover("occurrence:h4:claim-reopen")
+            .await
+            .expect("H4 claim/reopen explicit recovery");
+        assert_eq!(recovery.state, "released_indeterminate");
+        assert!(!recovery.external_effect);
+        assert!(!recovery.physical_power_loss_claim);
+        // `recover` appends the released lease witness atomically; a second
+        // release on this handle must not be attempted after terminalization.
+    }
+
+    #[test]
+    fn prepare_rejects_stale_marker_and_existing_database_root() {
+        let temp = TempDir::new().expect("H4 prepare-root temp dir");
+        let root = temp.path().join("prepare-root");
+        fs::create_dir_all(&root).expect("H4 prepare-root directory");
+        validate_prepare_root(&root).expect("empty H4 prepare root");
+
+        fs::create_dir(root.join("fleet-v1")).expect("stale H4 fleet directory");
+        let stale_database = validate_prepare_root(&root).expect_err("stale H4 root rejected");
+        assert!(stale_database.to_string().contains("must be empty"));
+        fs::remove_dir(root.join("fleet-v1")).expect("remove stale H4 fleet directory");
+
+        fs::write(marker_path(&root), b"stale marker").expect("stale H4 marker");
+        let stale_marker = validate_prepare_root(&root).expect_err("stale H4 marker rejected");
+        assert!(
+            stale_marker
+                .to_string()
+                .contains("prepare marker already exists")
+        );
     }
 }
