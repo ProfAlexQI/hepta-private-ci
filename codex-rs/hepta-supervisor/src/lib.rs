@@ -2,6 +2,7 @@
 //!
 //! The supervisor does not execute turns or forward messages, models, or tokens.
 
+mod authority_signer;
 mod control;
 mod daemon;
 mod daemon_client;
@@ -25,6 +26,15 @@ mod tick;
 #[cfg(unix)]
 mod unix;
 
+pub use authority_signer::ExternalSignerError;
+pub use authority_signer::MAX_SIGNING_KEY_INPUT_BYTES;
+pub use authority_signer::MAX_SIGNING_REQUEST_BYTES;
+pub use authority_signer::SignRequest;
+pub use authority_signer::SignResponse;
+pub use authority_signer::load_signing_key_from_fd;
+pub use authority_signer::load_signing_key_from_path;
+pub use authority_signer::read_request;
+pub use authority_signer::sign_request;
 pub use daemon::run_supervisord;
 pub use daemon::run_supervisord_with_grant_verifier;
 pub use daemon_client::SupervisordClient;
