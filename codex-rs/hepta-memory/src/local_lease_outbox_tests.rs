@@ -1,4 +1,19 @@
 use pretty_assertions::assert_eq;
+use serde::Deserialize;
+use serde::Serialize;
+use std::env;
+use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Child;
+use std::process::Command;
+use std::process::ExitStatus;
+use std::process::Stdio;
+use std::thread;
+use std::time::Duration;
+use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use tempfile::TempDir;
@@ -11,6 +26,7 @@ use crate::LocalAdmissionFault;
 use crate::LocalLeaseAcquire;
 use crate::LocalLeaseHeadDisposition;
 use crate::LocalLeaseOutboxError;
+use crate::LocalLeaseOutboxCounts;
 use crate::LocalLeaseState;
 use crate::LocalOutcomeState;
 use crate::LocalReconcileOutcome;
@@ -19,6 +35,7 @@ use crate::LOCAL_LEASE_OUTBOX_EXTERNAL_EFFECTS;
 use crate::LOCAL_LEASE_OUTBOX_KG_WRITE_AUTHORITY;
 use crate::LOCAL_LEASE_OUTBOX_PRODUCTION_CALLER;
 use codex_hepta_contracts::Sha256Digest;
+use codex_hepta_paths::HeptaFleetRoot;
 
 async fn opened_store(temp: &TempDir, number: u8) -> CognitiveStore {
     let owner = agent_id(number);
@@ -1125,4 +1142,648 @@ fn local_lease_outbox_has_no_production_authority() {
     assert!(!LOCAL_LEASE_OUTBOX_EXTERNAL_EFFECTS);
     assert!(!LOCAL_LEASE_OUTBOX_KG_WRITE_AUTHORITY);
     assert!(!LOCAL_LEASE_OUTBOX_PRODUCTION_CALLER);
+}
+
+// H4 qualification probe constants. These are test-only and deliberately
+// use the same Agent-local SQLite lease/event/outbox tables as the explicit
+// qualification writer; no production path reads these environment values.
+const H4_PROBE_MODE_ENV: &str = "HEPTA_MEMORY_H4_CRASH_PROBE_MODE";
+const H4_PROBE_FLEET_ROOT_ENV: &str = "HEPTA_MEMORY_H4_CRASH_PROBE_FLEET_ROOT";
+const H4_PROBE_MARKER_DIR_ENV: &str = "HEPTA_MEMORY_H4_CRASH_PROBE_MARKER_DIR";
+const H4_PROBE_HELPER_TEST: &str =
+    "local_lease_outbox_tests::qualification_durable_writer_crash_helper";
+const H4_PROBE_OWNER_NUMBER: u8 = 240;
+const H4_PROBE_LEASE_ID: &str = "lease:h4-crash-probe";
+const H4_PROBE_OCCURRENCE_KEY: &str = "occurrence:h4-crash-probe";
+const H4_PROBE_TOPIC: &str = "qualification.h4.crash.v1";
+const H4_PROBE_PAYLOAD: &str =
+    r#"{"schema_version":1,"external_effect":false,"kg_write_authority":false,"production_caller":false}"#;
+const H4_PROBE_AUTHORITY_EPOCH: u64 = 7;
+const H4_PROBE_INITIAL_OWNER_EPOCH: u64 = 11;
+const H4_PROBE_SUCCESSOR_OWNER_EPOCH: u64 = 12;
+const H4_PROBE_INITIAL_GENERATION: u64 = 1;
+const H4_PROBE_SUCCESSOR_GENERATION: u64 = 2;
+const H4_PROBE_INITIAL_TOKEN: &str = "h4-crash-probe:fence:1";
+const H4_PROBE_SUCCESSOR_TOKEN: &str = "h4-crash-probe:fence:2";
+const H4_PROBE_LEASE_TTL_SECONDS: u64 = 3_600;
+const H4_PROBE_SCHEMA_VERSION: u32 = 1;
+const H4_PROBE_NAMESPACE: &str = "local_development_only";
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct H4ProbeChildMarker {
+    phase: String,
+    lease_rows: u64,
+    event_rows: u64,
+    outbox_rows: u64,
+    lease_state: String,
+    lease_expires_at_unix_seconds: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LocalLeaseOutboxCountsReceipt {
+    lease_rows: u64,
+    event_rows: u64,
+    outbox_rows: u64,
+}
+
+impl From<LocalLeaseOutboxCounts> for LocalLeaseOutboxCountsReceipt {
+    fn from(counts: LocalLeaseOutboxCounts) -> Self {
+        Self {
+            lease_rows: counts.lease_rows,
+            event_rows: counts.event_rows,
+            outbox_rows: counts.outbox_rows,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct H4CrashReopenReceipt {
+    schema_version: u32,
+    namespace: String,
+    journal_mode: String,
+    synchronous: i64,
+    rollback: H4ProbeChildMarker,
+    crash: H4ProbeChildMarker,
+    counts_after_reopen: LocalLeaseOutboxCountsReceipt,
+    counts_after_retry: LocalLeaseOutboxCountsReceipt,
+    counts_after_terminal: LocalLeaseOutboxCountsReceipt,
+    retry_disposition: String,
+    terminal_transition: String,
+    final_lease_state: String,
+    external_effect: bool,
+    kg_write_authority: bool,
+    production_caller: bool,
+    physical_power_loss_claim: bool,
+}
+
+impl H4CrashReopenReceipt {
+    fn validate(&self) -> Result<(), String> {
+        if self.schema_version != H4_PROBE_SCHEMA_VERSION
+            || self.namespace != H4_PROBE_NAMESPACE
+        {
+            return Err("unsupported H4 receipt schema or namespace".to_string());
+        }
+        if self.journal_mode.to_ascii_lowercase() != "wal" || self.synchronous != 2 {
+            return Err(format!(
+                "H4 receipt did not observe WAL/FULL (journal_mode={}, synchronous={})",
+                self.journal_mode, self.synchronous
+            ));
+        }
+        if self.rollback.phase != "rollback"
+            || self.rollback.event_rows != 0
+            || self.rollback.outbox_rows != 0
+            || self.rollback.lease_rows != 2
+            || self.rollback.lease_state != "rolled_back"
+        {
+            return Err("rollback child did not leave only the terminal lease witness".to_string());
+        }
+        if self.crash.phase != "crash_after_admission"
+            || self.crash.event_rows != 1
+            || self.crash.outbox_rows != 1
+            || self.crash.lease_rows != 3
+            || self.crash.lease_state != "active"
+        {
+            return Err("crash child marker does not describe one admitted active attempt".to_string());
+        }
+        if self.counts_after_reopen.lease_rows != 3
+            || self.counts_after_reopen.event_rows != 1
+            || self.counts_after_reopen.outbox_rows != 1
+            || self.counts_after_retry.lease_rows != 3
+            || self.counts_after_retry.event_rows != 1
+            || self.counts_after_retry.outbox_rows != 1
+            || self.counts_after_terminal.lease_rows != 4
+            || self.counts_after_terminal.event_rows != 3
+            || self.counts_after_terminal.outbox_rows != 1
+        {
+            return Err("H4 reopen/retry/terminal counts are inconsistent".to_string());
+        }
+        if self.retry_disposition != "replay"
+            || self.terminal_transition != "mark_indeterminate_then_rollback_occurrence_then_release"
+            || self.final_lease_state != "released"
+        {
+            return Err("H4 retry/rollback transition receipt is incomplete".to_string());
+        }
+        if self.external_effect || self.kg_write_authority || self.production_caller {
+            return Err("H4 receipt crossed the qualification-only authority boundary".to_string());
+        }
+        if self.physical_power_loss_claim {
+            return Err("H4 child kill must not claim physical power-loss durability".to_string());
+        }
+        Ok(())
+    }
+}
+
+fn h4_publish_synced(path: &Path, bytes: &[u8]) {
+    let parent = path.parent().expect("H4 marker parent");
+    fs::create_dir_all(parent).expect("create H4 marker parent");
+    let name = path
+        .file_name()
+        .expect("H4 marker filename")
+        .to_string_lossy();
+    let temporary = parent.join(format!(".{name}.tmp-{}", std::process::id()));
+    let mut file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&temporary)
+        .expect("create H4 marker temporary");
+    file.write_all(bytes).expect("write H4 marker");
+    file.sync_all().expect("sync H4 marker");
+    drop(file);
+    fs::rename(&temporary, path).expect("publish H4 marker");
+}
+
+fn h4_publish_marker(path: &Path, marker: &H4ProbeChildMarker) {
+    h4_publish_synced(
+        path,
+        serde_json::to_string(marker)
+            .expect("serialize H4 child marker")
+            .as_bytes(),
+    );
+}
+
+async fn h4_open_store(fleet_root: &Path) -> CognitiveStore {
+    let canonical_root = fleet_root
+        .canonicalize()
+        .expect("H4 canonical fleet root");
+    let fleet = HeptaFleetRoot::parse(canonical_root).expect("H4 fleet root");
+    let owner = agent_id(H4_PROBE_OWNER_NUMBER);
+    CognitiveStore::open(&fleet.layout().agent(&owner))
+        .await
+        .expect("H4 cognitive store")
+}
+
+async fn h4_counts(store: &CognitiveStore) -> LocalLeaseOutboxCounts {
+    let lease_rows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cognitive_local_leases WHERE lease_id = ?",
+    )
+    .bind(H4_PROBE_LEASE_ID)
+    .fetch_one(&store.pool)
+    .await
+    .expect("H4 lease row count");
+    let event_rows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cognitive_local_events WHERE lease_id = ?",
+    )
+    .bind(H4_PROBE_LEASE_ID)
+    .fetch_one(&store.pool)
+    .await
+    .expect("H4 event row count");
+    let outbox_rows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cognitive_local_outbox WHERE lease_id = ?",
+    )
+    .bind(H4_PROBE_LEASE_ID)
+    .fetch_one(&store.pool)
+    .await
+    .expect("H4 outbox row count");
+    LocalLeaseOutboxCounts {
+        lease_rows: u64::try_from(lease_rows).expect("non-negative H4 lease count"),
+        event_rows: u64::try_from(event_rows).expect("non-negative H4 event count"),
+        outbox_rows: u64::try_from(outbox_rows).expect("non-negative H4 outbox count"),
+    }
+}
+
+async fn h4_pragma_durability(store: &CognitiveStore) -> (String, i64) {
+    let journal_mode: String = sqlx::query_scalar("PRAGMA journal_mode")
+        .fetch_one(&store.pool)
+        .await
+        .expect("H4 journal mode");
+    let synchronous: i64 = sqlx::query_scalar("PRAGMA synchronous")
+        .fetch_one(&store.pool)
+        .await
+        .expect("H4 synchronous mode");
+    (journal_mode, synchronous)
+}
+
+fn h4_initial_expiry() -> u64 {
+    unix_seconds()
+        .checked_add(H4_PROBE_LEASE_TTL_SECONDS)
+        .expect("H4 expiry overflow")
+}
+
+fn h4_probe_command(
+    executable: &Path,
+    mode: &str,
+    fleet_root: &Path,
+    marker_dir: &Path,
+) -> Command {
+    let mut command = Command::new(executable);
+    command
+        .arg("--exact")
+        .arg(H4_PROBE_HELPER_TEST)
+        .arg("--nocapture")
+        .env(H4_PROBE_MODE_ENV, mode)
+        .env(H4_PROBE_FLEET_ROOT_ENV, fleet_root)
+        .env(H4_PROBE_MARKER_DIR_ENV, marker_dir)
+        .env("RUST_BACKTRACE", "1")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    command
+}
+
+struct H4ProbeChild {
+    child: Option<Child>,
+}
+
+impl H4ProbeChild {
+    fn spawn(mut command: Command) -> Self {
+        Self {
+            child: Some(command.spawn().expect("spawn H4 probe child")),
+        }
+    }
+
+    fn wait_for_marker(&mut self, marker: &Path, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if marker.is_file() {
+                return;
+            }
+            if let Some(status) = self
+                .child
+                .as_mut()
+                .expect("H4 probe child handle")
+                .try_wait()
+                .expect("poll H4 probe child")
+            {
+                panic!(
+                    "H4 probe child exited before marker {}: {status}",
+                    marker.display()
+                );
+            }
+            assert!(
+                Instant::now() < deadline,
+                "H4 probe child did not publish marker {} within {:?}",
+                marker.display(),
+                timeout
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn wait(&mut self, timeout: Duration) -> ExitStatus {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if let Some(status) = self
+                .child
+                .as_mut()
+                .expect("H4 probe child handle")
+                .try_wait()
+                .expect("poll H4 probe child")
+            {
+                self.child.take();
+                return status;
+            }
+            if Instant::now() >= deadline {
+                let _ = self
+                    .child
+                    .as_mut()
+                    .expect("H4 probe child handle")
+                    .kill();
+                let status = self
+                    .child
+                    .as_mut()
+                    .expect("H4 probe child handle")
+                    .wait()
+                    .expect("wait timed-out H4 probe child");
+                self.child.take();
+                panic!("H4 probe child timed out after {:?}: {status}", timeout);
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn kill_and_wait(&mut self) -> ExitStatus {
+        let _ = self
+            .child
+            .as_mut()
+            .expect("H4 probe child handle")
+            .kill();
+        let status = self
+            .child
+            .as_mut()
+            .expect("H4 probe child handle")
+            .wait()
+            .expect("wait killed H4 probe child");
+        self.child.take();
+        status
+    }
+}
+
+impl Drop for H4ProbeChild {
+    fn drop(&mut self) {
+        let Some(mut child) = self.child.take() else {
+            return;
+        };
+        if child.try_wait().ok().flatten().is_none() {
+            let _ = child.kill();
+        }
+        let _ = child.wait();
+    }
+}
+
+/// Child entrypoint for [`qualification_durable_writer_crash_reopen_probe`].
+/// It is inert during ordinary test runs and is activated only by the
+/// parent-side ignored qualification harness below.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn qualification_durable_writer_crash_helper() {
+    let Some(mode) = env::var(H4_PROBE_MODE_ENV).ok() else {
+        return;
+    };
+    let fleet_root = PathBuf::from(
+        env::var(H4_PROBE_FLEET_ROOT_ENV).expect("H4 fleet root environment"),
+    );
+    let marker_dir = PathBuf::from(
+        env::var(H4_PROBE_MARKER_DIR_ENV).expect("H4 marker directory environment"),
+    );
+    let store = h4_open_store(&fleet_root).await;
+    match mode.as_str() {
+        "rollback" => {
+            let lease = acquired(
+                store
+                    .acquire_host_bound_lease(
+                        H4_PROBE_LEASE_ID,
+                        H4_PROBE_AUTHORITY_EPOCH,
+                        H4_PROBE_INITIAL_OWNER_EPOCH,
+                        H4_PROBE_INITIAL_GENERATION,
+                        H4_PROBE_INITIAL_TOKEN,
+                        h4_initial_expiry(),
+                    )
+                    .await
+                    .expect("H4 initial host-bound lease"),
+            );
+            assert!(matches!(
+                lease
+                    .admit_with_fault(
+                        H4_PROBE_OCCURRENCE_KEY,
+                        H4_PROBE_TOPIC,
+                        H4_PROBE_PAYLOAD,
+                        LocalAdmissionFault::AfterOutboxBeforeCommit,
+                    )
+                    .await,
+                Err(LocalLeaseOutboxError::TransactionAborted(_))
+            ));
+            let after_fault = lease.snapshot_counts().await.expect("H4 rollback counts");
+            assert_eq!(
+                after_fault,
+                LocalLeaseOutboxCounts {
+                    lease_rows: 1,
+                    event_rows: 0,
+                    outbox_rows: 0,
+                }
+            );
+            let terminal = lease.rollback_lease().await.expect("H4 rollback lease");
+            assert_eq!(terminal.state, LocalLeaseState::RolledBack);
+            let counts = lease.snapshot_counts().await.expect("H4 rollback terminal counts");
+            h4_publish_marker(
+                &marker_dir.join("rollback-complete"),
+                &H4ProbeChildMarker {
+                    phase: "rollback".to_string(),
+                    lease_rows: counts.lease_rows,
+                    event_rows: counts.event_rows,
+                    outbox_rows: counts.outbox_rows,
+                    lease_state: "rolled_back".to_string(),
+                    lease_expires_at_unix_seconds: terminal.lease_expires_at_unix_seconds,
+                },
+            );
+        }
+        "crash" => {
+            let inspection = store
+                .inspect_local_lease_head(H4_PROBE_LEASE_ID)
+                .await
+                .expect("H4 rollback head inspection");
+            assert_eq!(inspection.disposition, LocalLeaseHeadDisposition::RolledBack);
+            let previous = inspection.head.expect("H4 rollback head");
+            let lease = acquired(
+                store
+                    .acquire_host_bound_lease_after_head(
+                        H4_PROBE_LEASE_ID,
+                        previous,
+                        H4_PROBE_AUTHORITY_EPOCH,
+                        H4_PROBE_SUCCESSOR_OWNER_EPOCH,
+                        H4_PROBE_SUCCESSOR_GENERATION,
+                        H4_PROBE_SUCCESSOR_TOKEN,
+                        h4_initial_expiry(),
+                    )
+                    .await
+                    .expect("H4 successor host-bound lease"),
+            );
+            let LocalAdmission::Queued(receipt) = lease
+                .admit(H4_PROBE_OCCURRENCE_KEY, H4_PROBE_TOPIC, H4_PROBE_PAYLOAD)
+                .await
+                .expect("H4 crash admission")
+            else {
+                panic!("H4 crash child admission unexpectedly replayed");
+            };
+            assert!(!receipt.external_effect);
+            let counts = lease.snapshot_counts().await.expect("H4 crash counts");
+            let head = lease.head_witness().await.expect("H4 crash active head");
+            h4_publish_marker(
+                &marker_dir.join("crash-after-admission"),
+                &H4ProbeChildMarker {
+                    phase: "crash_after_admission".to_string(),
+                    lease_rows: counts.lease_rows,
+                    event_rows: counts.event_rows,
+                    outbox_rows: counts.outbox_rows,
+                    lease_state: "active".to_string(),
+                    lease_expires_at_unix_seconds: head.lease_expires_at_unix_seconds,
+                },
+            );
+            // The parent sends an OS-level kill after the fsync'd marker. A
+            // pending future keeps this a real child-process crash boundary
+            // rather than an ordinary clean shutdown.
+            std::future::pending::<()>().await;
+        }
+        other => panic!("unknown H4 probe mode {other}"),
+    }
+    store.pool.close().await;
+}
+
+/// Qualification-only child crash/reopen probe for H4's durable writer and
+/// local outbox. The rollback child injects a failure before COMMIT and
+/// proves that event+outbox rows are absent; the crash child commits an
+/// admission, publishes an fsync'd marker, and is then terminated by the
+/// parent. A fresh process reopens the WAL/FULL database, verifies the exact
+/// lease head and immutable chains, replays without a second outbox row, then
+/// marks the unknown outcome, rolls the occurrence back, and releases the
+/// lease. The emitted receipt is local qualification evidence only: the
+/// child kill is not an interruption inside a SQLite syscall and makes no
+/// physical host/VM power-loss durability claim.
+#[test]
+#[ignore = "qualification: child-process crash/reopen probe"]
+fn qualification_durable_writer_crash_reopen_probe() {
+    let temp = TempDir::new().expect("H4 qualification temp dir");
+    let fleet_root = temp.path().join("fleet");
+    let marker_dir = temp.path().join("markers");
+    fs::create_dir_all(&fleet_root).expect("H4 fleet root");
+    fs::create_dir_all(&marker_dir).expect("H4 marker root");
+    let executable = env::current_exe().expect("H4 qualification test executable");
+    let timeout = Duration::from_secs(30);
+    let runtime = tokio::runtime::Runtime::new().expect("H4 qualification runtime");
+
+    let mut rollback = H4ProbeChild::spawn(h4_probe_command(
+        &executable,
+        "rollback",
+        &fleet_root,
+        &marker_dir,
+    ));
+    let rollback_status = rollback.wait(timeout);
+    assert!(
+        rollback_status.success(),
+        "H4 rollback child failed: {rollback_status}"
+    );
+    let rollback_marker: H4ProbeChildMarker = serde_json::from_slice(
+        &fs::read(marker_dir.join("rollback-complete")).expect("H4 rollback marker"),
+    )
+    .expect("decode H4 rollback marker");
+    assert_eq!(rollback_marker.phase, "rollback");
+    assert_eq!(rollback_marker.lease_rows, 2);
+    assert_eq!(rollback_marker.event_rows, 0);
+    assert_eq!(rollback_marker.outbox_rows, 0);
+    assert_eq!(rollback_marker.lease_state, "rolled_back");
+
+    let (journal_mode, synchronous) = runtime.block_on(async {
+        let store = h4_open_store(&fleet_root).await;
+        let pragma = h4_pragma_durability(&store).await;
+        assert_eq!(
+            h4_counts(&store).await,
+            LocalLeaseOutboxCounts {
+                lease_rows: 2,
+                event_rows: 0,
+                outbox_rows: 0,
+            }
+        );
+        store.pool.close().await;
+        pragma
+    });
+    assert_eq!(journal_mode.to_ascii_lowercase(), "wal");
+    assert_eq!(synchronous, 2, "qualification evidence requires SQLite FULL");
+
+    let mut crash = H4ProbeChild::spawn(h4_probe_command(
+        &executable,
+        "crash",
+        &fleet_root,
+        &marker_dir,
+    ));
+    crash.wait_for_marker(&marker_dir.join("crash-after-admission"), timeout);
+    let crash_status = crash.kill_and_wait();
+    assert!(
+        !crash_status.success(),
+        "H4 crash child unexpectedly exited cleanly: {crash_status}"
+    );
+    let crash_marker: H4ProbeChildMarker = serde_json::from_slice(
+        &fs::read(marker_dir.join("crash-after-admission")).expect("H4 crash marker"),
+    )
+    .expect("decode H4 crash marker");
+    assert_eq!(crash_marker.phase, "crash_after_admission");
+    assert_eq!(crash_marker.lease_rows, 3);
+    assert_eq!(crash_marker.event_rows, 1);
+    assert_eq!(crash_marker.outbox_rows, 1);
+    assert_eq!(crash_marker.lease_state, "active");
+
+    let (receipt, reopened_counts) = runtime.block_on(async {
+        let store = h4_open_store(&fleet_root).await;
+        let (reopened_journal_mode, reopened_synchronous) = h4_pragma_durability(&store).await;
+        assert_eq!(reopened_journal_mode.to_ascii_lowercase(), "wal");
+        assert_eq!(reopened_synchronous, 2);
+        let inspection = store
+            .inspect_local_lease_head(H4_PROBE_LEASE_ID)
+            .await
+            .expect("H4 crash active head inspection");
+        assert_eq!(inspection.disposition, LocalLeaseHeadDisposition::Active);
+        let head = inspection.head.expect("H4 crash active head");
+        let expiry = head
+            .lease_expires_at_unix_seconds
+            .expect("H4 crash expiry binding");
+        let lease = store
+            .reopen_host_bound_lease(
+                head,
+                H4_PROBE_AUTHORITY_EPOCH,
+                H4_PROBE_SUCCESSOR_OWNER_EPOCH,
+                expiry,
+            )
+            .await
+            .expect("H4 exact host-bound reopen");
+        let counts_after_reopen = lease.snapshot_counts().await.expect("H4 reopen counts");
+        assert_eq!(
+            counts_after_reopen,
+            LocalLeaseOutboxCounts {
+                lease_rows: 3,
+                event_rows: 1,
+                outbox_rows: 1,
+            }
+        );
+        let replay = lease
+            .admit(H4_PROBE_OCCURRENCE_KEY, H4_PROBE_TOPIC, H4_PROBE_PAYLOAD)
+            .await
+            .expect("H4 admission replay");
+        assert!(matches!(replay, LocalAdmission::Replay(_)));
+        let counts_after_retry = lease.snapshot_counts().await.expect("H4 retry counts");
+        assert_eq!(counts_after_retry, counts_after_reopen);
+        lease
+            .mark_indeterminate(H4_PROBE_OCCURRENCE_KEY, "child_process_killed_after_commit")
+            .await
+            .expect("H4 indeterminate marker");
+        lease
+            .rollback_occurrence(H4_PROBE_OCCURRENCE_KEY, "qualification_recovery_rollback")
+            .await
+            .expect("H4 occurrence rollback");
+        let terminal = lease.release().await.expect("H4 release after rollback");
+        assert_eq!(terminal.state, LocalLeaseState::Released);
+        let counts_after_terminal = lease.snapshot_counts().await.expect("H4 terminal counts");
+        assert_eq!(
+            counts_after_terminal,
+            LocalLeaseOutboxCounts {
+                lease_rows: 4,
+                event_rows: 3,
+                outbox_rows: 1,
+            }
+        );
+        store.pool.close().await;
+        drop(lease);
+        drop(store);
+        // A second fresh open makes the reopen-time chain verifier part of the
+        // probe rather than relying only on the active handle's counts.
+        let final_store = h4_open_store(&fleet_root).await;
+        let final_counts = h4_counts(&final_store).await;
+        assert_eq!(final_counts, counts_after_terminal);
+        final_store.pool.close().await;
+        let receipt = H4CrashReopenReceipt {
+            schema_version: H4_PROBE_SCHEMA_VERSION,
+            namespace: H4_PROBE_NAMESPACE.to_string(),
+            journal_mode: reopened_journal_mode,
+            synchronous: reopened_synchronous,
+            rollback: rollback_marker.clone(),
+            crash: crash_marker.clone(),
+            counts_after_reopen: counts_after_reopen.into(),
+            counts_after_retry: counts_after_retry.into(),
+            counts_after_terminal: counts_after_terminal.into(),
+            retry_disposition: "replay".to_string(),
+            terminal_transition:
+                "mark_indeterminate_then_rollback_occurrence_then_release".to_string(),
+            final_lease_state: "released".to_string(),
+            external_effect: false,
+            kg_write_authority: false,
+            production_caller: false,
+            physical_power_loss_claim: false,
+        };
+        (receipt, final_counts)
+    });
+    receipt.validate().expect("self-validating H4 receipt");
+    assert_eq!(reopened_counts.lease_rows, 4);
+    assert_eq!(reopened_counts.event_rows, 3);
+    assert_eq!(reopened_counts.outbox_rows, 1);
+    let receipt_path = marker_dir.join("h4-durable-writer-crash-reopen-receipt.json");
+    h4_publish_synced(
+        &receipt_path,
+        &serde_json::to_vec_pretty(&receipt).expect("serialize H4 receipt"),
+    );
+    let decoded: H4CrashReopenReceipt =
+        serde_json::from_slice(&fs::read(&receipt_path).expect("read H4 receipt"))
+            .expect("decode H4 receipt");
+    decoded.validate().expect("persisted H4 receipt validation");
+    eprintln!(
+        "H4 qualification durable writer crash/reopen receipt: {}",
+        serde_json::to_string(&decoded).expect("render H4 receipt")
+    );
 }
