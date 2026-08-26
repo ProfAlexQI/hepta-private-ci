@@ -23,6 +23,8 @@ use codex_hepta_fleet::ResourceBudget;
 use codex_hepta_fleet::WorkspaceBinding;
 use codex_hepta_paths::HeptaAgentLayout;
 use codex_hepta_paths::HeptaFleetRoot;
+use codex_state::SqliteConfig;
+use codex_utils_absolute_path::AbsolutePathBuf;
 
 const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
@@ -465,4 +467,118 @@ async fn invalid_transition_does_not_advance_projection_or_event_tail() {
         .expect("read after")
         .expect("run after");
     assert_eq!(after, before);
+}
+
+#[tokio::test]
+async fn taskflow_mutations_reject_corrupt_event_chain_before_replay_or_append() {
+    let fixture = Fixture::new();
+    let store = open_store(&fixture).await;
+    let owner = fence("owner-a", 1);
+    let definition = definition(1);
+    store
+        .register_taskflow_definition(&definition, &owner, 10)
+        .await
+        .expect("register definition");
+    let created = store
+        .create_taskflow_run(
+            "run-corrupt-events",
+            &definition.workflow_id,
+            definition.version,
+            definition.definition_digest(),
+            "thread-1",
+            10,
+        )
+        .await
+        .expect("create run");
+    let claimed = store
+        .claim_taskflow_run("run-corrupt-events", &owner, 20, 1_000)
+        .await
+        .expect("claim run");
+    assert_eq!(claimed.revision, created.revision + 1);
+
+    // Bypass the immutable test trigger to model a damaged local database
+    // discovered after the opener's initial verification.  Mutating paths
+    // must validate the append-only event chain while holding their write
+    // transaction, before returning a replay or appending another event.
+    let database_path = store.path().to_path_buf();
+    let sqlite_home = AbsolutePathBuf::from_absolute_path(fixture.layout.automation_root())
+        .expect("absolute sqlite home");
+    let pool = SqliteConfig::from_sqlite_home(sqlite_home)
+        .open_durable_evidence_pool(&database_path)
+        .await
+        .expect("open inspection pool");
+    sqlx::query("DROP TRIGGER taskflow_events_no_update")
+        .execute(&pool)
+        .await
+        .expect("drop event immutability trigger");
+    sqlx::query(
+        "UPDATE taskflow_events
+         SET payload_json = 'tampered'
+         WHERE owner_agent_id = ? AND run_id = ? AND event_seq = 1",
+    )
+    .bind(AGENT_ID)
+    .bind("run-corrupt-events")
+    .execute(&pool)
+    .await
+    .expect("tamper event payload");
+    pool.close().await;
+
+    let replay_create = store
+        .create_taskflow_run(
+            "run-corrupt-events",
+            &definition.workflow_id,
+            definition.version,
+            definition.definition_digest(),
+            "thread-1",
+            11,
+        )
+        .await;
+    assert!(matches!(
+        replay_create,
+        Err(TaskFlowError::Corrupt(message))
+            if message.contains("TaskFlow event digest mismatch")
+    ));
+
+    let replay_claim = store
+        .claim_taskflow_run("run-corrupt-events", &owner, 21, 1_000)
+        .await;
+    assert!(matches!(
+        replay_claim,
+        Err(TaskFlowError::Corrupt(message))
+            if message.contains("TaskFlow event digest mismatch")
+    ));
+
+    let command = TaskFlowCommand::new(
+        "run-corrupt-events",
+        "start-corrupt-events",
+        owner,
+        claimed.revision,
+        TaskFlowTransition::Start,
+        22,
+    )
+    .expect("start command");
+    let append_attempt = store.apply_taskflow_command(&command).await;
+    assert!(matches!(
+        append_attempt,
+        Err(TaskFlowError::Corrupt(message))
+            if message.contains("TaskFlow event digest mismatch")
+    ));
+
+    let sqlite_home = AbsolutePathBuf::from_absolute_path(fixture.layout.automation_root())
+        .expect("absolute sqlite home");
+    let pool = SqliteConfig::from_sqlite_home(sqlite_home)
+        .open_durable_evidence_pool(&database_path)
+        .await
+        .expect("reopen inspection pool");
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM taskflow_events
+         WHERE owner_agent_id = ? AND run_id = ?",
+    )
+    .bind(AGENT_ID)
+    .bind("run-corrupt-events")
+    .fetch_one(&pool)
+    .await
+    .expect("event count");
+    assert_eq!(event_count, 2, "corrupt history must not be extended");
+    pool.close().await;
 }

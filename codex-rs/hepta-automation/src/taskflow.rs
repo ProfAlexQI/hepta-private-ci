@@ -852,6 +852,10 @@ impl AutomationStore {
                     "run id is bound to another definition/input".to_string(),
                 ));
             }
+            // An idempotent run creation is also a reopen boundary.  Do not
+            // return a writable/replayable projection when its immutable
+            // event history has been damaged since the opener verified it.
+            verify_taskflow_event_chain_tx(&mut tx, &current).await?;
             tx.commit().await.map_err(|_| TaskFlowError::Unavailable)?;
             return Ok(current);
         }
@@ -967,6 +971,11 @@ impl AutomationStore {
                     TaskFlowError::Conflict("TaskFlow run does not exist".to_string())
                 })?;
         let mut run = taskflow_run_from_row(&row, self.taskflow_owner_agent_id())?;
+        // Lease replay/takeover must not extend a damaged append-only history.
+        // Keep this audit in the same transaction as the projection update so
+        // no concurrent writer can alter the chain between verification and
+        // the eventual append.
+        verify_taskflow_event_chain_tx(&mut tx, &run).await?;
         if run.state.terminal() {
             return Err(TaskFlowError::Conflict(
                 "terminal TaskFlow run cannot be claimed".to_string(),
@@ -1056,6 +1065,10 @@ impl AutomationStore {
                     TaskFlowError::Conflict("TaskFlow run does not exist".to_string())
                 })?;
         let mut run = taskflow_run_from_row(&row, self.taskflow_owner_agent_id())?;
+        // Validate the complete immutable history before command de-duplication
+        // or any projection/event append.  A corrupt tail must never be
+        // hidden behind `AlreadyApplied` or extended with a new event.
+        verify_taskflow_event_chain_tx(&mut tx, &run).await?;
         if let Some(previous) = sqlx::query(
             "SELECT command_digest, revision, event_seq FROM taskflow_events
              WHERE owner_agent_id = ? AND run_id = ? AND command_id = ?",
@@ -1687,20 +1700,41 @@ fn taskflow_run_from_row(
     Ok(run)
 }
 
+const TASKFLOW_EVENT_CHAIN_QUERY: &str =
+    "SELECT event_seq, command_id, command_digest, transition, payload_json,
+            revision, state_digest, previous_event_digest, event_digest
+     FROM taskflow_events WHERE owner_agent_id = ? AND run_id = ? ORDER BY event_seq";
+
 async fn verify_taskflow_event_chain(
     pool: &sqlx::SqlitePool,
     run: &TaskFlowRun,
 ) -> Result<(), TaskFlowError> {
-    let rows = sqlx::query(
-        "SELECT event_seq, command_id, command_digest, transition, payload_json,
-                revision, state_digest, previous_event_digest, event_digest
-         FROM taskflow_events WHERE owner_agent_id = ? AND run_id = ? ORDER BY event_seq",
-    )
-    .bind(run.owner_agent_id.as_str())
-    .bind(&run.run_id)
-    .fetch_all(pool)
-    .await
-    .map_err(|_| TaskFlowError::Unavailable)?;
+    let rows = sqlx::query(TASKFLOW_EVENT_CHAIN_QUERY)
+        .bind(run.owner_agent_id.as_str())
+        .bind(&run.run_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|_| TaskFlowError::Unavailable)?;
+    verify_taskflow_event_rows(run, &rows)
+}
+
+async fn verify_taskflow_event_chain_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    run: &TaskFlowRun,
+) -> Result<(), TaskFlowError> {
+    let rows = sqlx::query(TASKFLOW_EVENT_CHAIN_QUERY)
+        .bind(run.owner_agent_id.as_str())
+        .bind(&run.run_id)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(|_| TaskFlowError::Unavailable)?;
+    verify_taskflow_event_rows(run, &rows)
+}
+
+fn verify_taskflow_event_rows(
+    run: &TaskFlowRun,
+    rows: &[sqlx::sqlite::SqliteRow],
+) -> Result<(), TaskFlowError> {
     if rows.is_empty() {
         return Err(corrupt("TaskFlow run has no event history"));
     }
