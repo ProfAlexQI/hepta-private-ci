@@ -281,12 +281,25 @@ impl QualificationClient {
                         "queued dispatch appeared before the preceding turn in persisted history"
                     );
                     if response.thread.turns[preceding_index].status == TurnStatus::Completed {
-                        ensure!(
-                            queued_turn.status == TurnStatus::Completed,
-                            "queued turn appeared before reaching terminal state: {:#?}",
-                            queued_turn
-                        );
-                        return Ok::<String, anyhow::Error>(queued_turn.id.clone());
+                        // A completed turn emits the queue extension's idle
+                        // callback, so the worker may win the explicit
+                        // `thread/queue/start` race and expose the queued
+                        // turn as InProgress before its provider response is
+                        // persisted.  Keep polling until that same durable
+                        // turn reaches a terminal state; treating this
+                        // transient state as a failure makes the qualification
+                        // helper race the documented auto-dispatch path.
+                        match &queued_turn.status {
+                            TurnStatus::Completed => {
+                                return Ok::<String, anyhow::Error>(queued_turn.id.clone());
+                            }
+                            TurnStatus::InProgress => {}
+                            terminal_status => {
+                                bail!(
+                                    "queued turn reached unexpected terminal state {terminal_status:?}: {queued_turn:#?}"
+                                );
+                            }
+                        }
                     }
                 }
                 sleep(Duration::from_millis(20)).await;
