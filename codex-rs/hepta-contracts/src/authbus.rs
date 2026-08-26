@@ -1,6 +1,6 @@
 //! Versioned, secret-free contracts for the Hepta AuthBus capability plane.
 //!
-//! This module is deliberately limited to the B0/B3 qualification slice.  It
+//! This module is deliberately limited to the B0--B3 qualification slice.  It
 //! does not open a listener, call a provider, mint a credential, or grant
 //! production authority.  The wire namespace is independent from Basil's
 //! `basil.broker.v1` namespace; an adapter may translate between the two only
@@ -18,6 +18,9 @@ use crate::Sha256Digest;
 
 #[path = "authbus_b2.rs"]
 pub mod b2;
+
+#[path = "authbus_b1.rs"]
+pub mod b1;
 
 /// Stable schema number for the first Hepta-owned AuthBus contract family.
 pub const AUTHBUS_CONTRACT_SCHEMA_VERSION: u32 = 1;
