@@ -2820,12 +2820,25 @@ fn advance_outcome_state(
         (Some(LocalOutcomeState::Queued | LocalOutcomeState::Indeterminate), "indeterminate") => {
             LocalOutcomeState::Indeterminate
         }
-        (Some(LocalOutcomeState::Indeterminate), "reconcile_committed") => {
-            LocalOutcomeState::Committed
-        }
-        (Some(LocalOutcomeState::Indeterminate), "reconcile_rejected") => {
-            LocalOutcomeState::Rejected
-        }
+        // Higher-level qualification sagas may learn that the target-side
+        // write already committed while the local occurrence is still in its
+        // durable Queued state.  They record that fact as a single
+        // `reconcile_committed` event (the `apply` path).  Replay must accept
+        // this direct terminal transition just as it accepts the usual
+        // Indeterminate -> Committed recovery path.
+        (
+            Some(LocalOutcomeState::Queued | LocalOutcomeState::Indeterminate),
+            "reconcile_committed",
+        ) => LocalOutcomeState::Committed,
+        // The corresponding `reject` path can also settle a still-queued
+        // qualification without first manufacturing an indeterminate marker.
+        // It is terminal and one-shot; later transitions remain rejected by
+        // the terminal-state arm below (and duplicate kinds are rejected
+        // above).
+        (
+            Some(LocalOutcomeState::Queued | LocalOutcomeState::Indeterminate),
+            "reconcile_rejected",
+        ) => LocalOutcomeState::Rejected,
         (Some(LocalOutcomeState::Indeterminate), "reconcile_still_indeterminate") => {
             LocalOutcomeState::Indeterminate
         }

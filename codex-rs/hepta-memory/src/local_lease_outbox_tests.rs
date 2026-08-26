@@ -1242,6 +1242,213 @@ async fn reopen_rejects_late_reconcile_after_terminal_outcome() {
     ));
 }
 
+#[tokio::test]
+async fn verifier_accepts_direct_queued_apply_and_reject_after_reopen() {
+    let temp = TempDir::new().expect("temp dir");
+    let owner = agent_id(118);
+    let store = CognitiveStore::open(&layout(&temp, &owner))
+        .await
+        .expect("store");
+    let handle = acquired(
+        store
+            .acquire_local_lease("lease:direct-terminal", 1, "fence:direct-terminal")
+            .await
+            .expect("acquire"),
+    );
+
+    // `apply` and `reject` are the higher-level saga names for these two
+    // direct queued terminal events.  This H4 lane predates those wrappers,
+    // so insert their exact immutable event representation as a test-only
+    // imported chain and exercise the same reopen verifier they use.
+    handle
+        .admit("occurrence:direct-apply", "topic", "apply-payload")
+        .await
+        .expect("apply admission");
+    handle
+        .admit("occurrence:direct-reject", "topic", "reject-payload")
+        .await
+        .expect("reject admission");
+    insert_test_transition(
+        &store,
+        "lease:direct-terminal",
+        "occurrence:direct-apply",
+        &owner,
+        handle.generation(),
+        handle.fencing_token(),
+        "event:direct-apply",
+        "reconcile_committed",
+        "target already committed",
+    )
+    .await;
+    insert_test_transition(
+        &store,
+        "lease:direct-terminal",
+        "occurrence:direct-reject",
+        &owner,
+        handle.generation(),
+        handle.fencing_token(),
+        "event:direct-reject",
+        "reconcile_rejected",
+        "target rejected",
+    )
+    .await;
+
+    assert_eq!(
+        handle
+            .status("occurrence:direct-apply")
+            .await
+            .expect("direct apply status"),
+        LocalOutcomeState::Committed
+    );
+    assert_eq!(
+        handle
+            .status("occurrence:direct-reject")
+            .await
+            .expect("direct reject status"),
+        LocalOutcomeState::Rejected
+    );
+
+    // A terminal direct result is one-shot.  Neither an indeterminate marker
+    // nor a rollback may be appended after it, even though both are valid
+    // transitions from Queued in the ordinary recovery path.  The public
+    // writer rejects these before inserting a row.
+    let late_marker = handle
+        .mark_indeterminate("occurrence:direct-apply", "late marker")
+        .await;
+    assert!(matches!(
+        late_marker,
+        Err(LocalLeaseOutboxError::IllegalTransition(message))
+            if message.contains("already in committed state")
+    ));
+    assert!(matches!(
+        handle
+            .rollback_occurrence("occurrence:direct-reject", "late rollback")
+            .await,
+        Err(LocalLeaseOutboxError::IllegalTransition(message))
+            if message.contains("already in rejected state")
+    ));
+
+    drop(handle);
+    store.pool.close().await;
+    drop(store);
+
+    let reopened_store = CognitiveStore::open(&layout(&temp, &owner))
+        .await
+        .expect("reopen store");
+    let reopened = acquired(
+        reopened_store
+            .acquire_local_lease("lease:direct-terminal", 1, "fence:direct-terminal")
+            .await
+            .expect("replay lease"),
+    );
+    assert_eq!(
+        reopened
+            .status("occurrence:direct-apply")
+            .await
+            .expect("reopened direct apply status"),
+        LocalOutcomeState::Committed
+    );
+    assert_eq!(
+        reopened
+            .status("occurrence:direct-reject")
+            .await
+            .expect("reopened direct reject status"),
+        LocalOutcomeState::Rejected
+    );
+
+    // A validly hashed imported row can bypass the public guard.  The
+    // reopen/status verifier must still fail closed when that row attempts a
+    // late rollback after the direct Rejected terminal result.
+    insert_test_transition(
+        &reopened_store,
+        "lease:direct-terminal",
+        "occurrence:direct-reject",
+        &owner,
+        reopened.generation(),
+        reopened.fencing_token(),
+        "event:late-direct-rollback",
+        "rolled_back",
+        "late imported rollback",
+    )
+    .await;
+    assert!(matches!(
+        reopened
+            .status("occurrence:direct-reject")
+            .await,
+        Err(LocalLeaseOutboxError::Corrupt(message))
+            if message.contains("invalid rolled_back transition from rejected")
+    ));
+}
+
+/// Insert one validly hashed event after a normal admission.  This models a
+/// higher-level apply/reject writer that shares the append-only event table
+/// but is not present in this qualification-only branch.
+async fn insert_test_transition(
+    store: &CognitiveStore,
+    lease_id: &str,
+    occurrence_key: &str,
+    owner: &codex_hepta_contracts::AgentId,
+    generation: u64,
+    fencing_token: &str,
+    event_id: &str,
+    kind: &str,
+    payload: &str,
+) {
+    let previous_sha256: String = sqlx::query_scalar(
+        "SELECT event_sha256 FROM cognitive_local_events
+         WHERE lease_id = ? ORDER BY event_sequence DESC LIMIT 1",
+    )
+    .bind(lease_id)
+    .fetch_one(&store.pool)
+    .await
+    .expect("event head");
+    let event_sequence: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(event_sequence), 0) + 1
+         FROM cognitive_local_events WHERE lease_id = ?",
+    )
+    .bind(lease_id)
+    .fetch_one(&store.pool)
+    .await
+    .expect("next event sequence");
+    let event_sequence = u64::try_from(event_sequence).expect("event sequence fits");
+    let payload_sha256 = Sha256Digest::for_bytes(payload.as_bytes());
+    let event_sha256 = test_event_digest(
+        lease_id,
+        event_sequence,
+        event_id,
+        occurrence_key,
+        owner,
+        generation,
+        fencing_token,
+        kind,
+        &payload_sha256,
+        &Sha256Digest::parse(previous_sha256.clone()).expect("event head digest"),
+    );
+    sqlx::query(
+        "INSERT INTO cognitive_local_events (
+            lease_id, event_sequence, event_id, occurrence_key, owner_agent_id,
+            generation, fencing_token, event_kind, payload_json, payload_sha256,
+            previous_sha256, event_sha256, recorded_at_unix_seconds
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(lease_id)
+    .bind(i64::try_from(event_sequence).expect("event sequence"))
+    .bind(event_id)
+    .bind(occurrence_key)
+    .bind(owner.as_str())
+    .bind(i64::try_from(generation).expect("generation"))
+    .bind(fencing_token)
+    .bind(kind)
+    .bind(payload)
+    .bind(payload_sha256.as_str())
+    .bind(previous_sha256)
+    .bind(event_sha256.as_str())
+    .bind(0_i64)
+    .execute(&store.pool)
+    .await
+    .expect("insert direct terminal transition");
+}
+
 fn test_event_digest(
     lease_id: &str,
     sequence: u64,
