@@ -458,10 +458,13 @@ impl LocalLeaseOutbox {
                     // a damaged child chain can be hidden behind a successful
                     // `Replay` result until a later operation (or, worse,
                     // mistaken as a fresh writer by a host).
-                    verify_event_chain(&mut transaction, &lease_id, store.owner_agent_id())
-                        .await?;
-                    verify_outbox_chain(&mut transaction, &lease_id, store.owner_agent_id())
-                        .await?;
+                    let events =
+                        verify_event_chain(&mut transaction, &lease_id, store.owner_agent_id())
+                            .await?;
+                    let outbox =
+                        verify_outbox_chain(&mut transaction, &lease_id, store.owner_agent_id())
+                            .await?;
+                    verify_event_outbox_pairing(&events, &outbox)?;
                     (previous, true)
                 } else {
                     if generation <= previous.generation {
@@ -505,10 +508,13 @@ impl LocalLeaseOutbox {
                     // child journals under this lease id.  Validate them
                     // before appending a new head so takeover cannot bury a
                     // corrupt historical event/outbox chain.
-                    verify_event_chain(&mut transaction, &lease_id, store.owner_agent_id())
-                        .await?;
-                    verify_outbox_chain(&mut transaction, &lease_id, store.owner_agent_id())
-                        .await?;
+                    let events =
+                        verify_event_chain(&mut transaction, &lease_id, store.owner_agent_id())
+                            .await?;
+                    let outbox =
+                        verify_outbox_chain(&mut transaction, &lease_id, store.owner_agent_id())
+                            .await?;
+                    verify_event_outbox_pairing(&events, &outbox)?;
                     let lease = append_lease(
                         &mut transaction,
                         &lease_id,
@@ -891,8 +897,9 @@ impl LocalLeaseOutbox {
     ) -> Result<LocalLease, LocalLeaseOutboxError> {
         let lease = self.current_lease(transaction).await?;
         ensure_current_active(&lease, self)?;
-        verify_event_chain(transaction, &self.lease_id, &self.owner_agent_id).await?;
-        verify_outbox_chain(transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events = verify_event_chain(transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox = verify_outbox_chain(transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_event_outbox_pairing(&events, &outbox)?;
         Ok(lease)
     }
 
@@ -907,8 +914,9 @@ impl LocalLeaseOutbox {
     ) -> Result<LocalLease, LocalLeaseOutboxError> {
         let lease = self.current_lease(transaction).await?;
         ensure_current_identity(&lease, self)?;
-        verify_event_chain(transaction, &self.lease_id, &self.owner_agent_id).await?;
-        verify_outbox_chain(transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events = verify_event_chain(transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox = verify_outbox_chain(transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_event_outbox_pairing(&events, &outbox)?;
         Ok(lease)
     }
 
@@ -950,8 +958,9 @@ impl LocalLeaseOutbox {
                 "reopened local lease fence is no longer current".to_string(),
             ));
         }
-        verify_event_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
-        verify_outbox_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
+        let events = verify_event_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
+        let outbox = verify_outbox_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
+        verify_event_outbox_pairing(&events, &outbox)?;
         transaction
             .commit()
             .await
@@ -1013,18 +1022,19 @@ impl LocalLeaseOutbox {
                 "expected host-bound lease head no longer matches the append-only head".to_string(),
             ));
         }
-        verify_event_chain(
+        let events = verify_event_chain(
             &mut transaction,
             &expected_head.lease_id,
             store.owner_agent_id(),
         )
         .await?;
-        verify_outbox_chain(
+        let outbox = verify_outbox_chain(
             &mut transaction,
             &expected_head.lease_id,
             store.owner_agent_id(),
         )
         .await?;
+        verify_event_outbox_pairing(&events, &outbox)?;
         transaction
             .commit()
             .await
@@ -1121,8 +1131,9 @@ impl LocalLeaseOutbox {
         // expiry must not become a way to hide a damaged event or outbox
         // chain.  These reads remain inside the write transaction, so the
         // checked head is the one immediately preceding the terminal row.
-        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_event_outbox_pairing(&events, &outbox)?;
         self.verify_bound_compact_journals(&mut transaction).await?;
 
         let now = match now_override {
@@ -1191,8 +1202,9 @@ impl LocalLeaseOutbox {
         // write transaction, immediately before appending the terminal
         // lease row, so a concurrent writer cannot change the checked heads
         // between validation and commit.
-        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_event_outbox_pairing(&events, &outbox)?;
         self.verify_bound_compact_journals(&mut transaction).await?;
         let binding = self.binding();
         let lease = append_lease(
@@ -1266,8 +1278,9 @@ impl LocalLeaseOutbox {
             .map_err(crate::cognitive_store::unavailable)?;
         let lease = self.current_lease(&mut transaction).await?;
         ensure_current_active(&lease, self)?;
-        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox_rows = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_event_outbox_pairing(&events, &outbox_rows)?;
 
         if let Some(existing) = find_admission(
             &mut transaction,
@@ -1513,8 +1526,9 @@ impl LocalLeaseOutbox {
             .map_err(crate::cognitive_store::unavailable)?;
         let lease = self.current_lease(&mut transaction).await?;
         ensure_current_active(&lease, self)?;
-        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox_rows = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_event_outbox_pairing(&events, &outbox_rows)?;
         let Some(admission) = find_admission(
             &mut transaction,
             &self.lease_id,
@@ -1620,8 +1634,9 @@ impl LocalLeaseOutbox {
             .map_err(crate::cognitive_store::unavailable)?;
         let lease = self.current_lease(&mut transaction).await?;
         ensure_current_active(&lease, self)?;
-        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox_rows = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_event_outbox_pairing(&events, &outbox_rows)?;
         let admission = find_admission(
             &mut transaction,
             &self.lease_id,
@@ -1771,8 +1786,9 @@ impl LocalLeaseOutbox {
             .map_err(crate::cognitive_store::unavailable)?;
         let lease = self.current_lease(&mut transaction).await?;
         ensure_current_active(&lease, self)?;
-        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox_rows = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_event_outbox_pairing(&events, &outbox_rows)?;
         let admission = find_admission(
             &mut transaction,
             &self.lease_id,
@@ -1847,8 +1863,9 @@ impl LocalLeaseOutbox {
             .map_err(crate::cognitive_store::unavailable)?;
         let lease = self.current_lease(&mut transaction).await?;
         ensure_current_active(&lease, self)?;
-        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox_rows = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_event_outbox_pairing(&events, &outbox_rows)?;
         let event = find_admission(
             &mut transaction,
             &self.lease_id,
@@ -1922,8 +1939,9 @@ impl LocalLeaseOutbox {
             .map_err(crate::cognitive_store::unavailable)?;
         let lease = self.current_lease(&mut transaction).await?;
         ensure_current_active(&lease, self)?;
-        verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox_rows = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        verify_event_outbox_pairing(&events, &outbox_rows)?;
         let admission = find_admission(
             &mut transaction,
             &self.lease_id,
@@ -2982,6 +3000,71 @@ async fn verify_outbox_chain(
     Ok(outbox_rows)
 }
 
+/// Verify the one-to-one relationship between admitted events and outbox
+/// intents for a lease.
+///
+/// The outbox table has a foreign key in the event direction, but no reverse
+/// constraint can require every admitted event to have exactly one intent.
+/// The normal admission transaction creates the pair together; this helper
+/// repeats that invariant for terminal/recovery transactions so a damaged or
+/// imported journal cannot be hidden by releasing the lease.  Both input
+/// chains have already been hash-checked by their callers.
+fn verify_event_outbox_pairing(
+    events: &[EventRow],
+    outbox_rows: &[OutboxRow],
+) -> Result<(), LocalLeaseOutboxError> {
+    let mut admissions = BTreeMap::new();
+    for event in events.iter().filter(|event| event.kind == "admitted") {
+        if admissions
+            .insert(event.occurrence_key.as_str(), event)
+            .is_some()
+        {
+            return Err(corrupt(format!(
+                "occurrence {} has more than one admitted event",
+                event.occurrence_key
+            )));
+        }
+    }
+
+    let mut paired_occurrences = BTreeSet::new();
+    for outbox in outbox_rows {
+        let Some(event) = admissions.get(outbox.occurrence_key.as_str()) else {
+            return Err(corrupt(format!(
+                "local outbox row is not paired with the exact admitted event (outbox {})",
+                outbox.outbox_id
+            )));
+        };
+        if !paired_occurrences.insert(outbox.occurrence_key.as_str()) {
+            return Err(corrupt(format!(
+                "occurrence {} has more than one outbox intent",
+                outbox.occurrence_key
+            )));
+        }
+        if event.event_id != outbox.event_id
+            || event.occurrence_key != outbox.occurrence_key
+            || event.owner_agent_id != outbox.owner_agent_id
+            || event.generation != outbox.generation
+            || event.fencing_token != outbox.fencing_token
+            || event.payload_json != outbox.payload_json
+            || event.payload_sha256 != outbox.payload_sha256
+        {
+            return Err(corrupt(format!(
+                "local outbox row is not paired with the exact admitted event (outbox {})",
+                outbox.outbox_id
+            )));
+        }
+    }
+
+    if admissions.len() != outbox_rows.len() || paired_occurrences.len() != admissions.len() {
+        return Err(corrupt(format!(
+            "local event/outbox admission cardinality mismatch (events {}, outbox {})",
+            admissions.len(),
+            outbox_rows.len()
+        )));
+    }
+    Ok(())
+}
+
 pub(crate) async fn verify_outbox_chain_integrity(
     transaction: &mut Transaction<'_, Sqlite>,
     lease_id: &str,
@@ -3500,31 +3583,8 @@ pub(crate) async fn verify_local_lease_outbox(
         let outbox = verify_outbox_chain(&mut transaction, &lease_id, owner)
             .await
             .map_err(|error| CognitiveStoreError::Corrupt(error.to_string()))?;
-        for row in &outbox {
-            if !events.iter().any(|event| {
-                event.event_id == row.event_id
-                    && event.occurrence_key == row.occurrence_key
-                    && event.kind == "admitted"
-                    && event.owner_agent_id == row.owner_agent_id
-                    && event.generation == row.generation
-                    && event.fencing_token == row.fencing_token
-                    && event.payload_sha256 == row.payload_sha256
-            }) {
-                return Err(CognitiveStoreError::Corrupt(
-                    "local outbox row is not paired with the exact admitted event".to_string(),
-                ));
-            }
-        }
-        let admitted: std::collections::BTreeSet<_> = events
-            .iter()
-            .filter(|event| event.kind == "admitted")
-            .map(|event| event.occurrence_key.as_str())
-            .collect();
-        if admitted.len() != outbox.len() {
-            return Err(CognitiveStoreError::Corrupt(
-                "local event/outbox admission cardinality mismatch".to_string(),
-            ));
-        }
+        verify_event_outbox_pairing(&events, &outbox)
+            .map_err(|error| CognitiveStoreError::Corrupt(error.to_string()))?;
     }
     let orphan_event_rows: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM cognitive_local_events AS e

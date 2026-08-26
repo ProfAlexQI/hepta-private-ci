@@ -1193,6 +1193,137 @@ async fn tampered_child_chain_cannot_be_terminalized_by_release_or_rollback() {
 }
 
 #[tokio::test]
+async fn terminal_recovery_rejects_missing_event_outbox_pair_without_appending_lease() {
+    // The outbox has a foreign key to an event, but no reverse constraint that
+    // keeps every admitted event paired.  Simulate an imported/damaged store
+    // by bypassing the immutable delete trigger and remove the intent.  A
+    // terminal lease mutation must fail closed while the event-only history is
+    // still observable for forensic recovery.
+    for (index, transition) in ["release", "rollback"].into_iter().enumerate() {
+        let temp = TempDir::new().expect("temp dir");
+        let store = opened_store(&temp, 119 + index as u8).await;
+        let lease = acquired(
+            store
+                .acquire_local_lease(
+                    format!("lease:pairing-{transition}"),
+                    1,
+                    format!("fence:pairing-{transition}"),
+                )
+                .await
+                .expect("acquire"),
+        );
+        lease
+            .admit("occurrence:pairing", "topic", "payload")
+            .await
+            .expect("admit");
+        sqlx::query("DROP TRIGGER cognitive_local_outbox_no_delete")
+            .execute(&store.pool)
+            .await
+            .expect("drop outbox delete trigger");
+        sqlx::query("DELETE FROM cognitive_local_outbox WHERE lease_id = ?")
+            .bind(lease.lease_id())
+            .execute(&store.pool)
+            .await
+            .expect("delete damaged outbox intent");
+
+        let before = lease.snapshot_counts().await.expect("counts before terminal");
+        assert_eq!(before.outbox_rows, 0);
+        let result = match transition {
+            "release" => lease.release().await,
+            "rollback" => lease.rollback_lease().await,
+            _ => unreachable!("test transition"),
+        };
+        assert!(
+            matches!(result, Err(LocalLeaseOutboxError::Corrupt(ref message)) if message.contains("cardinality mismatch")),
+            "{transition} must reject an unpaired admitted event: {result:?}"
+        );
+        assert_eq!(
+            lease.snapshot_counts().await.expect("counts after terminal"),
+            before,
+            "{transition} must not append a terminal lease over damaged history"
+        );
+    }
+}
+
+#[tokio::test]
+async fn expiry_and_replay_finalization_reject_missing_outbox_pair() {
+    // Exercise the two other lease-terminal paths that run in a caller-owned
+    // BEGIN IMMEDIATE transaction.  Both must share the same reverse-pair
+    // invariant as release/rollback.
+    for (index, path) in ["expiry", "replay"].into_iter().enumerate() {
+        let temp = TempDir::new().expect("temp dir");
+        let store = opened_store(&temp, 121 + index as u8).await;
+        let expiry_deadline = unix_seconds() + 3_600;
+        let lease = if path == "expiry" {
+            acquired(
+                store
+                    .acquire_host_bound_lease(
+                        "lease:pairing-expiry",
+                        1,
+                        1,
+                        1,
+                        "fence:pairing-expiry",
+                        expiry_deadline,
+                    )
+                    .await
+                    .expect("bound acquire"),
+            )
+        } else {
+            acquired(
+                store
+                    .acquire_local_lease(
+                        "lease:pairing-replay",
+                        1,
+                        "fence:pairing-replay",
+                    )
+                    .await
+                    .expect("acquire"),
+            )
+        };
+        lease
+            .admit("occurrence:pairing", "topic", "payload")
+            .await
+            .expect("admit");
+        if path == "replay" {
+            lease
+                .mark_indeterminate("occurrence:pairing", "qualification crash")
+                .await
+                .expect("mark indeterminate");
+        }
+        sqlx::query("DROP TRIGGER cognitive_local_outbox_no_delete")
+            .execute(&store.pool)
+            .await
+            .expect("drop outbox delete trigger");
+        sqlx::query("DELETE FROM cognitive_local_outbox WHERE lease_id = ?")
+            .bind(lease.lease_id())
+            .execute(&store.pool)
+            .await
+            .expect("delete damaged outbox intent");
+        let before = lease.snapshot_counts().await.expect("counts before recovery");
+        let result = if path == "expiry" {
+            lease
+                .expire_lease_at_unix_seconds(expiry_deadline)
+                .await
+                .map(|_| ())
+        } else {
+            lease
+                .finalize_replayed_occurrence("occurrence:pairing")
+                .await
+                .map(|_| ())
+        };
+        assert!(
+            matches!(result, Err(LocalLeaseOutboxError::Corrupt(ref message)) if message.contains("cardinality mismatch")),
+            "{path} must reject an unpaired admitted event: {result:?}"
+        );
+        assert_eq!(
+            lease.snapshot_counts().await.expect("counts after recovery"),
+            before,
+            "{path} must not append over damaged history"
+        );
+    }
+}
+
+#[tokio::test]
 async fn reopen_rejects_late_reconcile_after_terminal_outcome() {
     let temp = TempDir::new().expect("temp dir");
     let owner = agent_id(117);
