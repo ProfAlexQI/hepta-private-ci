@@ -1155,6 +1155,22 @@ pub trait ProviderEffectAdapter: Send + Sync {
         &'a self,
         key: &'a ProviderEffectKey,
     ) -> ProviderEffectFuture<'a, ProviderEffectLookup>;
+
+    /// Ask for the status of an exact durable intent.
+    ///
+    /// The legacy key-only method remains available for compatibility with
+    /// adapters that predate payload-bound status queries.  New coordinators
+    /// call this intent-bound seam so a provider can receive the exact
+    /// payload digest along with the occurrence key and reject a key collision
+    /// before returning an acknowledgement.  The default delegates to the
+    /// legacy method, preserving existing qualification adapters while making
+    /// the stronger binding opt-in for transports that support it.
+    fn lookup_for_intent<'a>(
+        &'a self,
+        intent: &'a ProviderEffectIntent,
+    ) -> ProviderEffectFuture<'a, ProviderEffectLookup> {
+        self.lookup(&intent.key)
+    }
 }
 
 /// Error returned by the local dispatch/reconcile coordinator.
@@ -1419,7 +1435,12 @@ where
                 .reconcile(capability, key, ProviderEffectLookup::Unknown)
                 .map_err(ProviderEffectCoordinatorError::from);
         }
-        let lookup = self.adapter.lookup(key).await;
+        let intent = self
+            .journal
+            .intent(key)
+            .cloned()
+            .ok_or(ProviderEffectBindingError::NotFound)?;
+        let lookup = self.adapter.lookup_for_intent(&intent).await;
         self.journal
             .reconcile(capability, key, lookup)
             .map_err(ProviderEffectCoordinatorError::from)
@@ -2175,6 +2196,7 @@ mod tests {
         capability: ProviderEffectIdempotencyCapability,
         dispatches: std::sync::atomic::AtomicU32,
         lookups: std::sync::atomic::AtomicU32,
+        intent_lookups: std::sync::atomic::AtomicU32,
         dispatch_result: Option<ProviderEffectDispatch>,
         lookup_result: Option<ProviderEffectLookup>,
     }
@@ -2208,6 +2230,15 @@ mod tests {
                 .clone()
                 .unwrap_or(ProviderEffectLookup::Unknown);
             Box::pin(std::future::ready(result))
+        }
+
+        fn lookup_for_intent<'a>(
+            &'a self,
+            intent: &'a ProviderEffectIntent,
+        ) -> ProviderEffectFuture<'a, ProviderEffectLookup> {
+            self.intent_lookups
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.lookup(&intent.key)
         }
     }
 
@@ -2267,6 +2298,14 @@ mod tests {
                 .dispatches
                 .load(std::sync::atomic::Ordering::Relaxed),
             1
+        );
+        assert_eq!(
+            coordinator
+                .adapter()
+                .intent_lookups
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1,
+            "reconcile must pass the exact durable intent to the adapter"
         );
         assert_eq!(coordinator.journal().acknowledgements(&key).len(), 1);
     }

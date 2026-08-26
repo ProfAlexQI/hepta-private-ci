@@ -330,7 +330,11 @@ impl HttpProviderEffectAdapter {
         }
     }
 
-    async fn lookup_http(&self, key: &ProviderEffectKey) -> ProviderEffectLookup {
+    async fn lookup_http(
+        &self,
+        key: &ProviderEffectKey,
+        payload_sha256: Option<&Sha256Digest>,
+    ) -> ProviderEffectLookup {
         let url = self
             .config
             .lookup_url_template
@@ -339,6 +343,14 @@ impl HttpProviderEffectAdapter {
         if let Ok(value) = HeaderValue::from_str(key.as_str()) {
             headers.insert(
                 HeaderName::from_static(PROVIDER_EFFECT_IDEMPOTENCY_KEY_HEADER),
+                value,
+            );
+        }
+        if let Some(payload_sha256) = payload_sha256
+            && let Ok(value) = HeaderValue::from_str(payload_sha256.as_str())
+        {
+            headers.insert(
+                HeaderName::from_static(PROVIDER_EFFECT_PAYLOAD_SHA256_HEADER),
                 value,
             );
         }
@@ -377,7 +389,8 @@ impl HttpProviderEffectAdapter {
         // the higher-level coordinator.  A provider response for another
         // occurrence is malformed/ambiguous and must not be surfaced as a
         // usable status observation.
-        if ack.key != *key {
+        if ack.key != *key || payload_sha256.is_some_and(|expected| ack.payload_sha256 != *expected)
+        {
             return ProviderEffectLookup::Unknown;
         }
         ProviderEffectLookup::Ack(ack)
@@ -421,7 +434,20 @@ impl ProviderEffectAdapter for HttpProviderEffectAdapter {
         &'a self,
         key: &'a ProviderEffectKey,
     ) -> ProviderEffectFuture<'a, ProviderEffectLookup> {
-        Box::pin(async move { self.lookup_http(key).await })
+        Box::pin(async move { self.lookup_http(key, None).await })
+    }
+
+    fn lookup_for_intent<'a>(
+        &'a self,
+        intent: &'a ProviderEffectIntent,
+    ) -> ProviderEffectFuture<'a, ProviderEffectLookup> {
+        Box::pin(async move {
+            if intent.validate().is_err() {
+                return ProviderEffectLookup::Unknown;
+            }
+            self.lookup_http(&intent.key, Some(&intent.payload_sha256))
+                .await
+        })
     }
 }
 
@@ -705,6 +731,14 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path_regex(r"/status/.+"))
+            .and(header(
+                PROVIDER_EFFECT_IDEMPOTENCY_KEY_HEADER,
+                effect_intent.key.as_str(),
+            ))
+            .and(header(
+                PROVIDER_EFFECT_PAYLOAD_SHA256_HEADER,
+                effect_intent.payload_sha256.as_str(),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(&ack_body))
             .mount(&server)
             .await;
@@ -746,7 +780,7 @@ mod tests {
             ProviderEffectDispatch::Ack(_)
         ));
         assert!(matches!(
-            adapter.lookup(&effect_intent.key).await,
+            adapter.lookup_for_intent(&effect_intent).await,
             ProviderEffectLookup::Ack(_)
         ));
     }
@@ -778,6 +812,14 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path_regex(r"/status/.+"))
+            .and(header(
+                PROVIDER_EFFECT_IDEMPOTENCY_KEY_HEADER,
+                effect_intent.key.as_str(),
+            ))
+            .and(header(
+                PROVIDER_EFFECT_PAYLOAD_SHA256_HEADER,
+                effect_intent.payload_sha256.as_str(),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(&ack_body))
             .mount(&server)
             .await;
@@ -815,7 +857,7 @@ mod tests {
                 .await,
             ProviderEffectDispatch::Unknown
         );
-        let lookup = adapter.lookup(&effect_intent.key).await;
+        let lookup = adapter.lookup_for_intent(&effect_intent).await;
         let ProviderEffectLookup::Ack(ack) = lookup else {
             panic!("status lookup must resolve the indeterminate occurrence");
         };
@@ -838,6 +880,14 @@ mod tests {
         });
         Mock::given(method("GET"))
             .and(path_regex(r"/status/.+"))
+            .and(header(
+                PROVIDER_EFFECT_IDEMPOTENCY_KEY_HEADER,
+                effect_intent.key.as_str(),
+            ))
+            .and(header(
+                PROVIDER_EFFECT_PAYLOAD_SHA256_HEADER,
+                effect_intent.payload_sha256.as_str(),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(&wrong_key_body))
             .mount(&server)
             .await;
@@ -873,7 +923,67 @@ mod tests {
         // the exact key requested by the lookup.  Unknown is conservative;
         // the evidence coordinator will quarantine it for reconciliation.
         assert_eq!(
-            adapter.lookup(&effect_intent.key).await,
+            adapter.lookup_for_intent(&effect_intent).await,
+            ProviderEffectLookup::Unknown
+        );
+    }
+
+    #[tokio::test]
+    async fn sandbox_status_lookup_rejects_ack_for_different_payload_digest() {
+        let server = MockServer::start().await;
+        let effect_intent = intent();
+        let wrong_payload = Sha256Digest::for_bytes(b"different-payload");
+        let response_body = serde_json::json!({
+            "effect_key": effect_intent.key.as_str(),
+            "payload_sha256": wrong_payload.as_str(),
+            "provider_operation_id_sha256": Sha256Digest::for_bytes(b"wrong-payload-operation").as_str(),
+            "status": "completed"
+        });
+        Mock::given(method("GET"))
+            .and(path_regex(r"/status/.+"))
+            .and(header(
+                PROVIDER_EFFECT_IDEMPOTENCY_KEY_HEADER,
+                effect_intent.key.as_str(),
+            ))
+            .and(header(
+                PROVIDER_EFFECT_PAYLOAD_SHA256_HEADER,
+                effect_intent.payload_sha256.as_str(),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&response_body))
+            .mount(&server)
+            .await;
+
+        let signing_key = SigningKey::from_bytes(&[12_u8; 32]);
+        let verifying_key = signing_key.verifying_key();
+        let contract_digest = Sha256Digest::for_bytes(b"sandbox-wrong-payload-contract");
+        let statement = HttpProviderEffectContractAttestation::statement_for(
+            "sandbox-wrong-payload-contract",
+            &contract_digest,
+            4,
+        );
+        let signature = signing_key.sign(&statement);
+        let attestation = HttpProviderEffectContractAttestation::verify_signed(
+            "sandbox-wrong-payload-contract",
+            contract_digest,
+            4,
+            &signature.to_bytes(),
+            &verifying_key.to_bytes(),
+        )
+        .expect("fixture attestation");
+        let adapter = HttpProviderEffectAdapter::new(HttpProviderEffectConfig {
+            dispatch_url: format!("{}/dispatch", server.uri()),
+            lookup_url_template: format!("{}/status/{{key}}", server.uri()),
+            headers: HeaderMap::new(),
+            timeout: Duration::from_secs(5),
+            contract_id: "sandbox-wrong-payload-contract".to_string(),
+            attestation: Some(attestation),
+        })
+        .expect("fixture adapter");
+
+        // A matching key is insufficient: the intent-bound query must reject
+        // a provider response for a different payload before reconciliation.
+        assert_eq!(
+            adapter.lookup_for_intent(&effect_intent).await,
             ProviderEffectLookup::Unknown
         );
     }

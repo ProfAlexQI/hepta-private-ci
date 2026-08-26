@@ -335,7 +335,11 @@ impl HeptaEvidenceStore {
                 .reconcile_provider_effect_lookup(capability, key, ProviderEffectLookup::Unknown)
                 .await;
         }
-        let lookup = adapter.lookup(key).await;
+        // Pass the authoritative intent, not only its occurrence key, so a
+        // transport that supports it can bind the status query to the exact
+        // payload digest before returning an ACK.  The trait's compatibility
+        // default still serves older qualification adapters.
+        let lookup = adapter.lookup_for_intent(&stored.intent.intent).await;
         match lookup {
             ProviderEffectLookup::Ack(ack) => {
                 match self
