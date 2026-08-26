@@ -22,6 +22,8 @@ use crate::TaskFlowReconcileOutcome;
 use crate::TaskFlowRun;
 use crate::TaskFlowRunState;
 use crate::TaskFlowTransition;
+use crate::taskflow::load_taskflow_definition_tx;
+use crate::taskflow::load_taskflow_run_tx;
 
 /// This module is only compiled by an explicit qualification build.
 pub const TASKFLOW_STRUCTURAL_QUALIFICATION_ENABLED: bool = true;
@@ -145,14 +147,29 @@ impl AutomationStore {
         &self,
         run_id: &str,
     ) -> Result<TaskFlowReplayReport, TaskFlowError> {
-        let run = self
-            .taskflow_run(run_id)
+        // Keep the run projection, immutable definition, and event rows in
+        // one SQLite snapshot.  Calling the public readers separately would
+        // let a concurrent writer commit between reads, producing a report
+        // that was never a durable state (or, worse, validating a run against
+        // a different definition version).  This is still read-only: a
+        // malformed or racing history is rejected and the transaction is
+        // rolled back on every error.
+        let mut transaction = self
+            .taskflow_pool()
+            .begin()
+            .await
+            .map_err(|_| TaskFlowError::Unavailable)?;
+        let run = load_taskflow_run_tx(&mut transaction, self.taskflow_owner_agent_id(), run_id)
             .await?
             .ok_or_else(|| TaskFlowError::Conflict("TaskFlow run does not exist".to_string()))?;
-        let definition = self
-            .taskflow_definition(&run.workflow_id, run.workflow_version)
-            .await?
-            .ok_or_else(|| corrupt("TaskFlow definition is missing during replay"))?;
+        let definition = load_taskflow_definition_tx(
+            &mut transaction,
+            self.taskflow_owner_agent_id(),
+            &run.workflow_id,
+            run.workflow_version,
+        )
+        .await?
+        .ok_or_else(|| corrupt("TaskFlow definition is missing during replay"))?;
         let rows = sqlx::query(
             "SELECT event_seq, command_id, transition, payload_json, revision,
                     state_digest, recorded_at_ms
@@ -160,12 +177,20 @@ impl AutomationStore {
              WHERE owner_agent_id = ? AND run_id = ?
              ORDER BY event_seq",
         )
-        .bind(self.owner_agent_id().as_str())
+        .bind(self.taskflow_owner_agent_id().as_str())
         .bind(run_id)
-        .fetch_all(self.taskflow_pool())
+        .fetch_all(&mut *transaction)
         .await
         .map_err(|_| TaskFlowError::Unavailable)?;
-        replay_rows(&run, &definition, &rows)
+        // The query above must use the same transaction, not the pool, or the
+        // snapshot guarantee is lost.  (The explicit transaction handle is
+        // passed through sqlx's executor implementation.)
+        let report = replay_rows(&run, &definition, &rows)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| TaskFlowError::Unavailable)?;
+        Ok(report)
     }
 }
 

@@ -27,6 +27,10 @@ use serde::Serialize;
 use sha2::Digest;
 use sha2::Sha256;
 use sqlx::Row;
+#[cfg(feature = "taskflow-structural-qualification")]
+use sqlx::Sqlite;
+#[cfg(feature = "taskflow-structural-qualification")]
+use sqlx::Transaction;
 
 use crate::AutomationStore;
 
@@ -1726,7 +1730,7 @@ async fn verify_taskflow_event_chain(
     verify_taskflow_event_rows(run, &rows)
 }
 
-async fn verify_taskflow_event_chain_tx(
+pub(crate) async fn verify_taskflow_event_chain_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     run: &TaskFlowRun,
 ) -> Result<(), TaskFlowError> {
@@ -1737,6 +1741,74 @@ async fn verify_taskflow_event_chain_tx(
         .await
         .map_err(|_| TaskFlowError::Unavailable)?;
     verify_taskflow_event_rows(run, &rows)
+}
+
+/// Load and verify one TaskFlow definition inside a caller-owned read
+/// transaction.  The transaction-scoped form is used by structural replay so
+/// the immutable definition, run projection, and event chain all come from a
+/// single SQLite snapshot.  It intentionally performs no mutation and grants
+/// no scheduler or effect authority.
+#[cfg(feature = "taskflow-structural-qualification")]
+pub(crate) async fn load_taskflow_definition_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    owner: &AgentId,
+    workflow_id: &str,
+    version: u32,
+) -> Result<Option<TaskFlowDefinition>, TaskFlowError> {
+    validate_text(workflow_id, "workflow_id", MAX_ID_BYTES)?;
+    if version == 0 {
+        return Err(invalid("workflow version must be non-zero"));
+    }
+    let row = sqlx::query(
+        "SELECT definition_json, definition_digest
+         FROM taskflow_definitions
+         WHERE owner_agent_id = ? AND workflow_id = ? AND version = ?",
+    )
+    .bind(owner.as_str())
+    .bind(workflow_id)
+    .bind(i64::from(version))
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(|_| TaskFlowError::Unavailable)?;
+    let Some(row) = row else { return Ok(None) };
+    let json: String = row
+        .try_get("definition_json")
+        .map_err(|_| TaskFlowError::Corrupt("definition json column".to_string()))?;
+    let stored_digest: String = row
+        .try_get("definition_digest")
+        .map_err(|_| TaskFlowError::Corrupt("definition digest column".to_string()))?;
+    let definition: TaskFlowDefinition = serde_json::from_str(&json)
+        .map_err(|_| TaskFlowError::Corrupt("definition JSON is invalid".to_string()))?;
+    definition.validate()?;
+    if definition.definition_digest.as_str() != stored_digest {
+        return Err(TaskFlowError::Corrupt(
+            "definition row digest mismatch".to_string(),
+        ));
+    }
+    Ok(Some(definition))
+}
+
+/// Load one TaskFlow run and verify its complete immutable event history while
+/// holding the caller's transaction.  Keeping this operation transaction
+/// scoped closes the replay race where a run projection and its event rows
+/// could otherwise be observed from different snapshots.
+#[cfg(feature = "taskflow-structural-qualification")]
+pub(crate) async fn load_taskflow_run_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    owner: &AgentId,
+    run_id: &str,
+) -> Result<Option<TaskFlowRun>, TaskFlowError> {
+    validate_text(run_id, "run_id", MAX_ID_BYTES)?;
+    let row = sqlx::query("SELECT * FROM taskflow_runs WHERE owner_agent_id = ? AND run_id = ?")
+        .bind(owner.as_str())
+        .bind(run_id)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|_| TaskFlowError::Unavailable)?;
+    let Some(row) = row else { return Ok(None) };
+    let run = taskflow_run_from_row(&row, owner)?;
+    verify_taskflow_event_chain_tx(tx, &run).await?;
+    Ok(Some(run))
 }
 
 fn verify_taskflow_event_rows(
