@@ -374,3 +374,42 @@ fn ledger_and_oracle_cardinality_are_fail_closed_and_atomic() {
     );
     assert_eq!(oracle, before);
 }
+
+#[test]
+fn feedback_sequence_gaps_fail_closed_and_leave_oracle_unchanged() {
+    let mut oracle = H7FeedbackOracle::new("trajectory-1").unwrap();
+    let first = record(
+        2,
+        "feedback-1",
+        1,
+        digest("turn-start"),
+        "attempt-1",
+        100,
+        1,
+        1_000_000,
+        1_000_000,
+        true,
+    );
+    oracle.append(first.clone()).unwrap();
+    let before = oracle.clone();
+    let gap = record(
+        4,
+        "feedback-3",
+        3,
+        digest("missing-feedback-2"),
+        "attempt-1",
+        100,
+        1,
+        1_000_000,
+        1_000_000,
+        true,
+    );
+    assert_eq!(
+        oracle.append(gap),
+        Err(H7FeedbackError::NonContiguousSequence {
+            expected: 3,
+            actual: 4,
+        })
+    );
+    assert_eq!(oracle, before);
+}

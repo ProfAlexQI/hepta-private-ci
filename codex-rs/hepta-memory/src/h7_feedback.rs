@@ -87,6 +87,8 @@ pub enum H7FeedbackError {
     EmptyLedger,
     #[error("H7 feedback record count exceeds {0}")]
     TooManyRecords(usize),
+    #[error("H7 feedback sequence is not contiguous (expected {expected}, got {actual})")]
+    NonContiguousSequence { expected: u32, actual: u32 },
 }
 
 /// Attempt-scoped lease and compact fencing witness.  These values are
@@ -790,6 +792,23 @@ impl H7FeedbackOracle {
             )));
         }
 
+        // Feedback records are an append-only causal stream.  The first
+        // record may start after a durable turn-start row that lives outside
+        // this in-memory oracle, but every subsequent record must occupy the
+        // next sequence.  Without this check a forged gap could make its
+        // missing causal parent look like an intentionally external witness.
+        if let Some(last_seq) = self.records.keys().map(|key| key.event_seq).max() {
+            let expected = last_seq.checked_add(1).ok_or_else(|| {
+                H7FeedbackError::Invalid("feedback sequence overflow".to_string())
+            })?;
+            if key.event_seq != expected {
+                return Err(H7FeedbackError::NonContiguousSequence {
+                    expected,
+                    actual: key.event_seq,
+                });
+            }
+        }
+
         // Stage the complete state and validate it before publishing.  This
         // keeps append atomic even if a newly added invariant rejects the
         // candidate: callers never observe a half-updated records/ledger/
@@ -831,11 +850,24 @@ impl H7FeedbackOracle {
             ));
         }
         let mut observed_scope: Option<&H7AttemptLeaseScope> = None;
+        let mut previous_seq: Option<u32> = None;
         for (key, record) in &self.records {
             record.validate()?;
             if key != &record.key() || record.trajectory_id != self.trajectory_id {
                 return Err(H7FeedbackError::BindingMismatch("oracle record key"));
             }
+            if let Some(previous) = previous_seq {
+                let expected = previous.checked_add(1).ok_or_else(|| {
+                    H7FeedbackError::Invalid("feedback sequence overflow".to_string())
+                })?;
+                if key.event_seq != expected {
+                    return Err(H7FeedbackError::NonContiguousSequence {
+                        expected,
+                        actual: key.event_seq,
+                    });
+                }
+            }
+            previous_seq = Some(key.event_seq);
             if self.ledger.entries.get(key) != Some(&record.credit_units) {
                 return Err(H7FeedbackError::BindingMismatch("oracle credit entry"));
             }
