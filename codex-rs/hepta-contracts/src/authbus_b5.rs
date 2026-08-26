@@ -58,6 +58,7 @@ fn valid_digest(value: &Sha256Digest) -> bool {
 
 /// The owner/generation fence copied onto every B5 WAL record.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct B5Fence {
     pub authority_epoch: u64,
     pub owner_epoch: u64,
@@ -81,6 +82,7 @@ impl B5Fence {
 /// the existing provider-effect key; no payload or credential bytes enter the
 /// model.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct B5Intent {
     pub effect_key: ProviderEffectKey,
     pub idempotency_key: String,
@@ -102,6 +104,7 @@ impl B5Intent {
 /// A typed bridge delivery.  The same idempotency key may be retried only
 /// with the same payload digest.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct B5OutboxDelivery {
     pub outbox_id: String,
     pub event_id: String,
@@ -128,6 +131,7 @@ impl B5OutboxDelivery {
 /// Internal WAL records.  `DispatchAttemptStarted` and the response marker
 /// are intentionally not public EffectReceipt statuses.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 enum B5RecordKind {
     EffectIntentDurable {
         intent: B5Intent,
@@ -184,6 +188,7 @@ enum B5RecordKind {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 struct B5FsyncWitness {
     source_owner: String,
     wal_seq: u64,
@@ -207,6 +212,7 @@ impl B5FsyncWitness {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 struct B5Record {
     seq: u64,
     prev_digest: Option<Sha256Digest>,
@@ -624,6 +630,12 @@ impl LocalB5Wal {
             if existing == &delivery {
                 return Ok(B5AppendDisposition::AlreadyPresent);
             }
+            if existing.idempotency_key == delivery.idempotency_key
+                && existing.payload_sha256 == delivery.payload_sha256
+                && existing.fence != delivery.fence
+            {
+                return Err(B5Error::StaleFence);
+            }
             return Err(B5Error::OutboxConflict);
         }
         if let Some(existing) = self
@@ -631,10 +643,16 @@ impl LocalB5Wal {
             .values()
             .find(|existing| existing.idempotency_key == delivery.idempotency_key)
         {
-            if existing.payload_sha256 == delivery.payload_sha256 {
+            if existing.payload_sha256 == delivery.payload_sha256
+                && existing.fence == delivery.fence
+            {
                 return Ok(B5AppendDisposition::AlreadyPresent);
             }
-            return Err(B5Error::OutboxConflict);
+            return Err(if existing.fence != delivery.fence {
+                B5Error::StaleFence
+            } else {
+                B5Error::OutboxConflict
+            });
         }
         self.append(B5RecordKind::OutboxEnqueued {
             delivery: delivery.clone(),
@@ -877,6 +895,12 @@ impl LocalB5Wal {
                 delivery.validate()?;
                 if let Some(existing) = self.outbox.get(&delivery.outbox_id) {
                     if existing != delivery {
+                        if existing.idempotency_key == delivery.idempotency_key
+                            && existing.payload_sha256 == delivery.payload_sha256
+                            && existing.fence != delivery.fence
+                        {
+                            return Err(B5Error::StaleFence);
+                        }
                         return Err(B5Error::OutboxConflict);
                     }
                     return Ok(());
@@ -888,6 +912,9 @@ impl LocalB5Wal {
                 {
                     if existing.payload_sha256 != delivery.payload_sha256 {
                         return Err(B5Error::OutboxConflict);
+                    }
+                    if existing.fence != delivery.fence {
+                        return Err(B5Error::StaleFence);
                     }
                     return Ok(());
                 }
@@ -1020,6 +1047,20 @@ impl LocalB5Wal {
         let records: Vec<B5Record> =
             serde_json::from_slice(snapshot).map_err(|_| B5Error::CorruptWal)?;
         Self::reopen(records)
+    }
+
+    /// Resolve a crash snapshot without exposing partially rebuilt state.
+    /// Parse, chain, witness, and intent failures all become a safe stop;
+    /// only a fully reopened log may return the normal lookup-only plan.
+    pub fn recover_snapshot(snapshot: &[u8]) -> B5RecoveryAction {
+        let records: Vec<B5Record> = match serde_json::from_slice(snapshot) {
+            Ok(records) => records,
+            Err(_) => return B5RecoveryAction::SafeStop(B5Error::CorruptWal),
+        };
+        match Self::reopen(records) {
+            Ok(reopened) => reopened.recover(),
+            Err(error) => B5RecoveryAction::SafeStop(error),
+        }
     }
 }
 
@@ -1325,6 +1366,11 @@ mod tests {
         );
         assert_eq!(wal.durable_record_count(), count);
 
+        let mut stale_fence = first.clone();
+        stale_fence.fence = fence(12);
+        assert_eq!(wal.enqueue_outbox(stale_fence), Err(B5Error::StaleFence));
+        assert_eq!(wal.durable_record_count(), count);
+
         let ack = digest("ack");
         assert_eq!(
             wal.ack_outbox(
@@ -1368,6 +1414,49 @@ mod tests {
         assert_eq!(
             LocalB5Wal::reopen_snapshot(&no_witness),
             Err(B5Error::FsyncRequired)
+        );
+
+        let mut unknown_field: serde_json::Value =
+            serde_json::from_slice(&wal.durable_snapshot()).expect("snapshot json");
+        unknown_field[0]["unexpected"] = serde_json::Value::Bool(true);
+        let unknown_field = serde_json::to_vec(&unknown_field).expect("unknown field json");
+        assert_eq!(
+            LocalB5Wal::recover_snapshot(&unknown_field),
+            B5RecoveryAction::SafeStop(B5Error::CorruptWal)
+        );
+    }
+
+    #[test]
+    fn b5_recovery_snapshot_maps_unknown_intent_to_safe_stop() {
+        let original = intent("missing-intent", 11);
+        let mut wal = LocalB5Wal::new();
+        wal.append_intent(original.clone()).expect("intent");
+        wal.crash_after_call(&original.effect_key, 1, original.fence)
+            .expect("crash");
+
+        let mut snapshot: serde_json::Value =
+            serde_json::from_slice(&wal.durable_snapshot()).expect("snapshot json");
+        let unknown_key = key("not-in-intents");
+        snapshot[1]["kind"]["DispatchAttemptStarted"]["effect_key"] =
+            serde_json::Value::String(unknown_key.as_str().to_string());
+        let kind: B5RecordKind =
+            serde_json::from_value(snapshot[1]["kind"].clone()).expect("marker kind");
+        let previous = Sha256Digest::parse(
+            snapshot[0]["record_digest"]
+                .as_str()
+                .expect("previous digest")
+                .to_string(),
+        )
+        .expect("previous digest parses");
+        let record_digest = digest_record(2, Some(&previous), &kind);
+        let record_digest_text = record_digest.as_str().to_string();
+        snapshot[1]["record_digest"] = serde_json::Value::String(record_digest_text.clone());
+        snapshot[1]["fsync_witness"]["commit_digest"] =
+            serde_json::Value::String(record_digest_text);
+        let tampered = serde_json::to_vec(&snapshot).expect("unknown intent json");
+        assert_eq!(
+            LocalB5Wal::recover_snapshot(&tampered),
+            B5RecoveryAction::SafeStop(B5Error::UnknownIntent)
         );
     }
 
