@@ -1067,6 +1067,55 @@ async fn tampered_event_chain_is_rejected_on_reopen() {
 }
 
 #[tokio::test]
+async fn replay_acquisition_rejects_corrupt_child_chain_before_returning_handle() {
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 106).await;
+    let handle = acquired(
+        store
+            .acquire_local_lease("lease:replay-child-corrupt", 1, "fence:replay-child-corrupt")
+            .await
+            .expect("acquire"),
+    );
+    handle
+        .admit("occurrence:replay-child-corrupt", "topic", "payload")
+        .await
+        .expect("admit");
+
+    // Simulate a damaged store discovered on process restart.  The normal
+    // reopen API already audits child chains; the acquisition/replay API must
+    // enforce the same boundary before returning `LocalLeaseAcquire::Replay`.
+    sqlx::query("DROP TRIGGER cognitive_local_events_no_update")
+        .execute(&store.pool)
+        .await
+        .expect("drop test trigger");
+    sqlx::query(
+        "UPDATE cognitive_local_events
+         SET payload_json = 'changed'
+         WHERE lease_id = 'lease:replay-child-corrupt'",
+    )
+    .execute(&store.pool)
+    .await
+    .expect("tamper event");
+
+    let replay = store
+        .acquire_local_lease("lease:replay-child-corrupt", 1, "fence:replay-child-corrupt")
+        .await;
+    assert!(matches!(
+        replay,
+        Err(LocalLeaseOutboxError::Corrupt(message))
+            if message.contains("event payload digest mismatch")
+    ));
+    let lease_rows: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cognitive_local_leases
+         WHERE lease_id = 'lease:replay-child-corrupt'",
+    )
+    .fetch_one(&store.pool)
+    .await
+    .expect("lease row count");
+    assert_eq!(lease_rows, 1, "corrupt replay must not append a lease head");
+}
+
+#[tokio::test]
 async fn tampered_child_chain_cannot_be_terminalized_by_release_or_rollback() {
     // Exercise both host terminal decisions against each append-only child
     // journal.  A corrupt child must fail before the lease terminal row is

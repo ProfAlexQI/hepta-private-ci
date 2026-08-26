@@ -451,6 +451,17 @@ impl LocalLeaseOutbox {
                             .as_ref()
                             .map(|value| value.lease_expires_at_unix_seconds)
                 {
+                    // Replaying an active acquisition is a reopen boundary:
+                    // do not hand a caller a writable handle until the
+                    // historical event and outbox journals have both been
+                    // verified under this same write transaction.  Otherwise
+                    // a damaged child chain can be hidden behind a successful
+                    // `Replay` result until a later operation (or, worse,
+                    // mistaken as a fresh writer by a host).
+                    verify_event_chain(&mut transaction, &lease_id, store.owner_agent_id())
+                        .await?;
+                    verify_outbox_chain(&mut transaction, &lease_id, store.owner_agent_id())
+                        .await?;
                     (previous, true)
                 } else {
                     if generation <= previous.generation {
@@ -490,6 +501,14 @@ impl LocalLeaseOutbox {
                         })?;
                         binding.validate_host_successor(Some(&previous_binding))?;
                     }
+                    // A successor generation carries the same append-only
+                    // child journals under this lease id.  Validate them
+                    // before appending a new head so takeover cannot bury a
+                    // corrupt historical event/outbox chain.
+                    verify_event_chain(&mut transaction, &lease_id, store.owner_agent_id())
+                        .await?;
+                    verify_outbox_chain(&mut transaction, &lease_id, store.owner_agent_id())
+                        .await?;
                     let lease = append_lease(
                         &mut transaction,
                         &lease_id,
