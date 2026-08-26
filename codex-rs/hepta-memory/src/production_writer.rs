@@ -1097,4 +1097,81 @@ mod tests {
         assert_eq!(replay.event_id, queued.event_id);
         assert_eq!(replay.outbox_id, queued.outbox_id);
     }
+
+    #[tokio::test]
+    async fn expired_or_rebound_authority_cannot_open_a_writer() {
+        let temp = TempDir::new().unwrap();
+        let store = store(&temp).await;
+        let owner = store.owner_agent_id().clone();
+        let expired = ProductionAuthorityLease::from_verified_parts(
+            owner.clone(),
+            Sha256Digest::for_bytes(b"expired-grant"),
+            9,
+            4,
+            now_unix_seconds().unwrap().saturating_sub(1),
+            ProductionAuthorityToken::from_verified_bytes(b"expired-token".to_vec()).unwrap(),
+        )
+        .unwrap();
+        let expired_result = ProductionDurableWriter::open(
+            store.clone(),
+            expired,
+            &AllowVerifier,
+            "production:h4:expired-open",
+            1,
+        )
+        .await;
+        assert!(matches!(
+            expired_result,
+            Err(ProductionWriterError::AuthorityExpired { .. })
+        ));
+        assert_eq!(
+            store
+                .inspect_local_lease_head("production:h4:expired-open")
+                .await
+                .unwrap()
+                .disposition,
+            LocalLeaseHeadDisposition::Missing,
+            "an expired authority must not create a lease while opening"
+        );
+
+        let original = authority(owner.clone());
+        let lease_id = "production:h4:reopen-binding";
+        let writer = ProductionDurableWriter::open(
+            store.clone(),
+            original.clone(),
+            &AllowVerifier,
+            lease_id,
+            1,
+        )
+        .await
+        .unwrap();
+        writer
+            .admit("occurrence:reopen-binding", "memory.write", "payload")
+            .await
+            .unwrap();
+
+        // An active lease cannot be reopened under a changed owner epoch,
+        // even when the Agent and grant verifier are otherwise valid. The
+        // successor must first observe/release the exact current head.
+        let rebound = ProductionAuthorityLease::from_verified_parts(
+            owner,
+            original.grant_digest.clone(),
+            original.authority_epoch,
+            original.owner_epoch + 1,
+            original.lease_expires_at_unix_seconds,
+            ProductionAuthorityToken::from_verified_bytes(b"opaque-supervisor-token".to_vec())
+                .unwrap(),
+        )
+        .unwrap();
+        let rebound_result =
+            ProductionDurableWriter::open(store.clone(), rebound, &AllowVerifier, lease_id, 1)
+                .await;
+        assert!(matches!(
+            rebound_result,
+            Err(ProductionWriterError::StaleReceipt)
+        ));
+        let head = store.inspect_local_lease_head(lease_id).await.unwrap();
+        assert_eq!(head.disposition, LocalLeaseHeadDisposition::Active);
+        assert_eq!(head.head.unwrap().owner_epoch, Some(original.owner_epoch));
+    }
 }
