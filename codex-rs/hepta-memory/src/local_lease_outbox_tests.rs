@@ -779,6 +779,88 @@ async fn lease_terminalization_rejects_unresolved_outbox_until_occurrence_is_set
 }
 
 #[tokio::test]
+async fn successor_terminalization_ignores_unresolved_expired_generation() {
+    // Expiry is the explicit quarantine path for an old generation.  Its
+    // queued child can no longer be reconciled by a successor because every
+    // outcome append is fenced to the original generation/token.  A later
+    // generation must therefore be allowed to terminalize when *its own*
+    // occurrences are settled, while still rejecting a queued occurrence
+    // belonging to that current generation.
+    let temp = TempDir::new().expect("temp dir");
+    let store = opened_store(&temp, 117).await;
+    let now = unix_seconds();
+    let old_expires_at = now.saturating_add(3_600);
+    let old = acquired(
+        store
+            .acquire_local_lease_bound(
+                "lease:expired-unresolved-successor",
+                3,
+                8,
+                1,
+                "fence:expired-unresolved-1",
+                old_expires_at,
+            )
+            .await
+            .expect("old bound acquire"),
+    );
+    old.admit("occurrence:expired-unresolved", "topic", "payload")
+        .await
+        .expect("old queued admission");
+    let expired = old
+        .expire_lease_at_unix_seconds(old_expires_at)
+        .await
+        .expect("explicit expiry quarantine");
+
+    let next = acquired(
+        store
+            .acquire_local_lease_after_head_bound(
+                "lease:expired-unresolved-successor",
+                expired,
+                3,
+                8,
+                2,
+                "fence:expired-unresolved-2",
+                old_expires_at.saturating_add(3_600),
+            )
+            .await
+            .expect("successor acquire"),
+    );
+    next.admit("occurrence:successor", "topic", "payload")
+        .await
+        .expect("successor queued admission");
+    assert!(matches!(
+        next.release().await,
+        Err(LocalLeaseOutboxError::IllegalTransition(message))
+            if message.contains("occurrence:successor")
+    ));
+    next.rollback_occurrence("occurrence:successor", "settle successor")
+        .await
+        .expect("settle successor occurrence");
+
+    // The unresolved old-generation row is intentionally ignored by the
+    // normal terminalization guard; no old row is rewritten or deleted.
+    let released = next
+        .release()
+        .await
+        .expect("successor release despite quarantined history");
+    assert_eq!(released.generation, 2);
+    assert_eq!(released.state, LocalLeaseState::Released);
+    assert!(matches!(
+        old.rollback_occurrence("occurrence:expired-unresolved", "late old rollback")
+            .await,
+        Err(LocalLeaseOutboxError::StaleFence(_))
+    ));
+    assert_eq!(
+        next.snapshot_counts().await.expect("final counts"),
+        LocalLeaseOutboxCounts {
+            lease_rows: 4,
+            event_rows: 3,
+            outbox_rows: 2,
+        }
+    );
+}
+
+#[tokio::test]
 async fn new_generation_retry_of_old_occurrence_is_stale_not_corrupt() {
     let temp = TempDir::new().expect("temp dir");
     let store = opened_store(&temp, 107).await;

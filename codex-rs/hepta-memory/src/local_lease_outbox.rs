@@ -1212,7 +1212,7 @@ impl LocalLeaseOutbox {
         // from a rejected/rolled-back one.  Keep this check in the same
         // BEGIN IMMEDIATE transaction as the terminal append so a concurrent
         // outcome writer cannot race the decision.
-        ensure_no_unresolved_outcomes(&events)?;
+        ensure_no_unresolved_outcomes(&events, self.generation, &self.fencing_token)?;
         self.verify_bound_compact_journals(&mut transaction).await?;
         let binding = self.binding();
         let lease = append_lease(
@@ -2911,10 +2911,23 @@ fn advance_outcome_state(
 /// separate timeout path: expiry is an explicit quarantine decision after a
 /// deadline, whereas a host release/rollback before that deadline must first
 /// settle each local intent (reconcile, reject, or occurrence rollback).
-fn ensure_no_unresolved_outcomes(events: &[EventRow]) -> Result<(), LocalLeaseOutboxError> {
+fn ensure_no_unresolved_outcomes(
+    events: &[EventRow],
+    generation: u64,
+    fencing_token: &str,
+) -> Result<(), LocalLeaseOutboxError> {
     let mut states = BTreeMap::new();
     let mut seen_kinds = BTreeSet::new();
     for event in events {
+        // Historical generations remain part of the verified append-only
+        // chain, but their unresolved outcomes are no longer writable by a
+        // successor (the exact generation/fence is required for every
+        // outcome append).  Only the handle's current generation may block a
+        // normal release/rollback; expiry is the explicit quarantine path
+        // for an older generation.
+        if event.generation != generation || event.fencing_token != fencing_token {
+            continue;
+        }
         advance_outcome_state(
             &mut states,
             &mut seen_kinds,
