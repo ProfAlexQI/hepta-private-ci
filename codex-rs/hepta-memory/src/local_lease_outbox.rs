@@ -1753,7 +1753,7 @@ impl LocalLeaseOutbox {
         ensure_current_active(&lease, self)?;
         verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        let _ = find_admission(
+        let admission = find_admission(
             &mut transaction,
             &self.lease_id,
             &occurrence_key,
@@ -1763,6 +1763,18 @@ impl LocalLeaseOutbox {
         .ok_or_else(|| {
             LocalLeaseOutboxError::IllegalTransition("occurrence not found".to_string())
         })?;
+        let outbox = find_outbox(
+            &mut transaction,
+            &self.lease_id,
+            &occurrence_key,
+            &self.owner_agent_id,
+        )
+        .await?
+        .ok_or_else(|| corrupt("event admission has no paired outbox row"))?;
+        // Status is read-only, but it still has to be scoped to the exact
+        // admitted attempt. A newer generation must not observe or report
+        // the state of an occurrence admitted under an older fence.
+        ensure_current_occurrence_fence(self, &admission, &outbox)?;
         let state = current_outcome(
             &mut transaction,
             &self.lease_id,

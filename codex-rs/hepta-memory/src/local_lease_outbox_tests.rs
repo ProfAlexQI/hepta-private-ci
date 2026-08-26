@@ -699,6 +699,10 @@ async fn new_generation_retry_of_old_occurrence_is_stale_not_corrupt() {
             .await,
         Err(LocalLeaseOutboxError::StaleFence(_))
     ));
+    assert!(matches!(
+        next.status("occurrence:old").await,
+        Err(LocalLeaseOutboxError::StaleFence(_))
+    ));
     assert_eq!(
         next.snapshot_counts()
             .await
