@@ -1205,6 +1205,14 @@ impl LocalLeaseOutbox {
         let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         let outbox = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         verify_event_outbox_pairing(&events, &outbox)?;
+        // A host terminal decision must not strand a queued or indeterminate
+        // outbox intent behind a terminal lease fence.  Once the lease is
+        // closed, the exact generation/token can no longer append the
+        // reconcile marker needed to distinguish a committed target write
+        // from a rejected/rolled-back one.  Keep this check in the same
+        // BEGIN IMMEDIATE transaction as the terminal append so a concurrent
+        // outcome writer cannot race the decision.
+        ensure_no_unresolved_outcomes(&events)?;
         self.verify_bound_compact_journals(&mut transaction).await?;
         let binding = self.binding();
         let lease = append_lease(
@@ -2896,6 +2904,38 @@ fn advance_outcome_state(
     };
     states.insert(occurrence_key.to_string(), next);
     Ok(())
+}
+
+/// Reject a normal release/rollback while any admitted local occurrence is
+/// still awaiting an outcome.  `expire_lease` intentionally remains a
+/// separate timeout path: expiry is an explicit quarantine decision after a
+/// deadline, whereas a host release/rollback before that deadline must first
+/// settle each local intent (reconcile, reject, or occurrence rollback).
+fn ensure_no_unresolved_outcomes(events: &[EventRow]) -> Result<(), LocalLeaseOutboxError> {
+    let mut states = BTreeMap::new();
+    let mut seen_kinds = BTreeSet::new();
+    for event in events {
+        advance_outcome_state(
+            &mut states,
+            &mut seen_kinds,
+            &event.occurrence_key,
+            &event.kind,
+        )?;
+    }
+    let unresolved = states
+        .iter()
+        .filter_map(|(occurrence_key, state)| {
+            matches!(state, LocalOutcomeState::Queued | LocalOutcomeState::Indeterminate)
+                .then_some(occurrence_key.as_str())
+        })
+        .collect::<Vec<_>>();
+    if unresolved.is_empty() {
+        return Ok(());
+    }
+    Err(LocalLeaseOutboxError::IllegalTransition(format!(
+        "cannot terminalize lease with unresolved local occurrences: {}",
+        unresolved.join(", ")
+    )))
 }
 
 async fn verify_outbox_chain(

@@ -669,6 +669,116 @@ async fn terminal_or_indeterminate_occurrence_never_replays_as_queued() {
 }
 
 #[tokio::test]
+async fn lease_terminalization_rejects_unresolved_outbox_until_occurrence_is_settled() {
+    // A queued or indeterminate child intent still needs the exact active
+    // generation/fence to append its reconcile decision.  Closing the lease
+    // first would make that recovery impossible and could strand an unknown
+    // target-side result forever.  Both normal terminal decisions therefore
+    // fail closed without appending a lease row until the occurrence is
+    // explicitly rolled back (or otherwise reconciled).
+    for (index, transition) in ["release", "rollback"].into_iter().enumerate() {
+        let temp = TempDir::new().expect("temp dir");
+        let store = opened_store(&temp, 108 + index as u8).await;
+        let lease = acquired(
+            store
+                .acquire_local_lease(
+                    format!("lease:unresolved-terminal-{transition}"),
+                    1,
+                    format!("fence:unresolved-terminal-{transition}"),
+                )
+                .await
+                .expect("acquire"),
+        );
+        lease
+            .admit("occurrence:unresolved", "topic", "payload")
+            .await
+            .expect("admit queued occurrence");
+
+        let before = lease.snapshot_counts().await.expect("counts before terminal");
+        let head_before = lease.head_witness().await.expect("head before terminal");
+        let first = match transition {
+            "release" => lease.release().await,
+            "rollback" => lease.rollback_lease().await,
+            _ => unreachable!("test transition"),
+        };
+        assert!(
+            matches!(
+                &first,
+                Err(LocalLeaseOutboxError::IllegalTransition(message))
+                    if message.contains("unresolved local occurrences")
+            ),
+            "{transition} must reject a queued occurrence: {first:?}"
+        );
+        assert_eq!(
+            lease.snapshot_counts().await.expect("counts after queued rejection"),
+            before,
+            "{transition} must not append a terminal lease for a queued occurrence"
+        );
+        assert_eq!(
+            lease.head_witness().await.expect("head after queued rejection"),
+            head_before,
+            "{transition} must preserve the active head after a queued rejection"
+        );
+
+        lease
+            .mark_indeterminate("occurrence:unresolved", "qualification unknown outcome")
+            .await
+            .expect("mark indeterminate");
+        let after_indeterminate = lease
+            .snapshot_counts()
+            .await
+            .expect("counts after indeterminate");
+        assert_eq!(after_indeterminate.lease_rows, before.lease_rows);
+        assert_eq!(after_indeterminate.event_rows, before.event_rows + 1);
+        assert_eq!(after_indeterminate.outbox_rows, before.outbox_rows);
+
+        let second = match transition {
+            "release" => lease.release().await,
+            "rollback" => lease.rollback_lease().await,
+            _ => unreachable!("test transition"),
+        };
+        assert!(
+            matches!(
+                &second,
+                Err(LocalLeaseOutboxError::IllegalTransition(message))
+                    if message.contains("unresolved local occurrences")
+            ),
+            "{transition} must reject an indeterminate occurrence: {second:?}"
+        );
+        assert_eq!(
+            lease.snapshot_counts().await.expect("counts after indeterminate rejection"),
+            after_indeterminate,
+            "{transition} must not append a terminal lease for an indeterminate occurrence"
+        );
+
+        lease
+            .rollback_occurrence("occurrence:unresolved", "qualification recovery rollback")
+            .await
+            .expect("settle occurrence");
+        let terminal = match transition {
+            "release" => lease.release().await,
+            "rollback" => lease.rollback_lease().await,
+            _ => unreachable!("test transition"),
+        }
+        .expect("terminalize settled lease");
+        let expected_state = if transition == "release" {
+            LocalLeaseState::Released
+        } else {
+            LocalLeaseState::RolledBack
+        };
+        assert_eq!(terminal.state, expected_state);
+        assert_eq!(
+            lease.snapshot_counts().await.expect("counts after settled terminal"),
+            LocalLeaseOutboxCounts {
+                lease_rows: 2,
+                event_rows: 3,
+                outbox_rows: 1,
+            }
+        );
+    }
+}
+
+#[tokio::test]
 async fn new_generation_retry_of_old_occurrence_is_stale_not_corrupt() {
     let temp = TempDir::new().expect("temp dir");
     let store = opened_store(&temp, 107).await;
@@ -681,6 +791,9 @@ async fn new_generation_retry_of_old_occurrence_is_stale_not_corrupt() {
     old.admit("occurrence:old", "topic", "payload")
         .await
         .expect("old admission");
+    old.rollback_occurrence("occurrence:old", "finish generation before retry")
+        .await
+        .expect("settle old occurrence");
     let released = old.release().await.expect("release");
     let next = acquired(
         store
@@ -711,7 +824,7 @@ async fn new_generation_retry_of_old_occurrence_is_stale_not_corrupt() {
             .expect("counts after stale outcomes"),
         crate::LocalLeaseOutboxCounts {
             lease_rows: 3,
-            event_rows: 1,
+            event_rows: 2,
             outbox_rows: 1,
         }
     );
