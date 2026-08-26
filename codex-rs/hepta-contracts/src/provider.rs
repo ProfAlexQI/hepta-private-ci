@@ -614,6 +614,29 @@ mod tests {
         unknown["future_field"] = serde_json::Value::Bool(true);
         assert!(serde_json::from_value::<ProviderRequestBinding>(unknown).is_err());
 
+        let intent =
+            ProviderInvocationIntent::for_host_attempt_id("host-attempt-unknown-field", binding());
+        let mut unknown_intent = serde_json::to_value(&intent).expect("serialize intent");
+        unknown_intent["future_field"] = serde_json::Value::Bool(true);
+        assert!(serde_json::from_value::<ProviderInvocationIntent>(unknown_intent).is_err());
+
+        let mut unknown_terminal = serde_json::to_value(ProviderTerminal::Rejected {
+            reason_code: "invalid_grant".to_string(),
+        })
+        .expect("serialize terminal");
+        unknown_terminal["future_field"] = serde_json::Value::Bool(true);
+        assert!(serde_json::from_value::<ProviderTerminal>(unknown_terminal).is_err());
+
+        let mut unknown_receipt = serde_json::to_value(ProviderInvocationReceipt::new(
+            intent,
+            ProviderTerminal::Rejected {
+                reason_code: "invalid_grant".to_string(),
+            },
+        ))
+        .expect("serialize receipt");
+        unknown_receipt["future_field"] = serde_json::Value::Bool(true);
+        assert!(serde_json::from_value::<ProviderInvocationReceipt>(unknown_receipt).is_err());
+
         let mut legacy = value;
         let object = legacy.as_object_mut().expect("binding object");
         object.remove("ephemeral_input_sha256");
