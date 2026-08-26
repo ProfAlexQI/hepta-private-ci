@@ -1119,9 +1119,23 @@ where
         {
             return Ok(state);
         }
+        // Capability is a local contract gate, not a result of a provider
+        // call.  An adapter that cannot prove key-based status lookup must be
+        // quarantined without touching its lookup path; otherwise a caller
+        // could perform an unsupported remote read and only then discover
+        // that the result is unusable.  Feed an inert Unknown observation to
+        // the journal so it records the same fail-closed Indeterminate state
+        // and typed UnsupportedCapability error as the old path.
+        let capability = self.adapter.capability();
+        if capability == ProviderEffectIdempotencyCapability::Unsupported {
+            return self
+                .journal
+                .reconcile(capability, key, ProviderEffectLookup::Unknown)
+                .map_err(ProviderEffectCoordinatorError::from);
+        }
         let lookup = self.adapter.lookup(key).await;
         self.journal
-            .reconcile(self.adapter.capability(), key, lookup)
+            .reconcile(capability, key, lookup)
             .map_err(ProviderEffectCoordinatorError::from)
     }
 }
@@ -1748,6 +1762,7 @@ mod tests {
     struct ScriptedAdapter {
         capability: ProviderEffectIdempotencyCapability,
         dispatches: std::sync::atomic::AtomicU32,
+        lookups: std::sync::atomic::AtomicU32,
         dispatch_result: Option<ProviderEffectDispatch>,
         lookup_result: Option<ProviderEffectLookup>,
     }
@@ -1774,6 +1789,8 @@ mod tests {
             &'a self,
             _key: &'a ProviderEffectKey,
         ) -> ProviderEffectFuture<'a, ProviderEffectLookup> {
+            self.lookups
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let result = self
                 .lookup_result
                 .clone()
@@ -1860,6 +1877,50 @@ mod tests {
                 .dispatches
                 .load(std::sync::atomic::Ordering::Relaxed),
             1
+        );
+    }
+
+    #[tokio::test]
+    async fn coordinator_unsupported_capability_never_calls_lookup() {
+        let intent = intent(b"unsupported-lookup-payload");
+        let key = intent.key.clone();
+        let adapter = ScriptedAdapter {
+            capability: ProviderEffectIdempotencyCapability::Unsupported,
+            dispatch_result: Some(ProviderEffectDispatch::Unknown),
+            // If the unsupported lookup were incorrectly called, this ACK
+            // would appear to close the effect.  The capability pre-gate must
+            // prevent that path entirely.
+            lookup_result: Some(ProviderEffectLookup::Ack(ack(
+                &intent,
+                b"unsupported-lookup-payload",
+            ))),
+            ..Default::default()
+        };
+        let mut coordinator = ProviderEffectCoordinator::new(adapter);
+        assert_eq!(
+            coordinator
+                .dispatch_once(intent)
+                .await
+                .expect("dispatch quarantine")
+                .state,
+            ProviderEffectState::Indeterminate
+        );
+        assert_eq!(
+            coordinator.reconcile(&key).await,
+            Err(ProviderEffectCoordinatorError::Binding(
+                ProviderEffectBindingError::UnsupportedCapability
+            ))
+        );
+        assert_eq!(
+            coordinator
+                .adapter()
+                .lookups
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
+        assert_eq!(
+            coordinator.journal().state(&key),
+            Some(ProviderEffectState::Indeterminate)
         );
     }
 }
