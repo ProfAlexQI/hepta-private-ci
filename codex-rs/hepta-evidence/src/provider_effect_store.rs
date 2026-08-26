@@ -1186,6 +1186,19 @@ async fn validate_ack_transition_in_transaction(
             record_id: next.key.as_str().to_string(),
         });
     }
+    // A provider-owned status lookup is the authoritative observation path.
+    // A dispatch response arriving after it may be a delayed response from
+    // the original call; it must not advance Accepted -> Completed (or any
+    // other state) merely because the operation id happens to match.
+    if source == ProviderEffectAckSource::DispatchResponse
+        && previous
+            .as_ref()
+            .is_some_and(|ack| ack.source == ProviderEffectAckSource::StatusLookup)
+    {
+        return Err(EvidenceError::IdempotencyConflict {
+            record_id: next.key.as_str().to_string(),
+        });
+    }
     if !uncertainties.is_empty()
         && source != ProviderEffectAckSource::StatusLookup
         && !boundary_claim_matches

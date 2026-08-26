@@ -683,6 +683,16 @@ fn validate_journal_contents(
                 quarantined_before = true;
             }
             if index > 0 {
+                // Once a provider-owned status lookup has been observed, a
+                // later raw dispatch response is not an authoritative
+                // continuation.  It may be a delayed response from the
+                // original call and must not advance the local state machine
+                // even when its operation id and status look monotonic.
+                if source == ProviderEffectAckSource::DispatchResponse
+                    && sources.get(index - 1) == Some(&ProviderEffectAckSource::StatusLookup)
+                {
+                    return Err(ProviderEffectBindingError::AckConflict);
+                }
                 validate_ack_transition(
                     &acknowledgements_for_key[..index],
                     acknowledgement,
@@ -859,6 +869,15 @@ impl ProviderEffectJournal {
             // above still reject a late raw dispatch ACK.
             let _ = (existing_source, source);
             return Ok(ProviderEffectAppendDisposition::AlreadyPresent);
+        }
+        // A status lookup is the only authoritative observation after the
+        // provider boundary becomes uncertain.  Do not let a delayed raw
+        // dispatch response advance an Accepted status to Completed after
+        // that lookup has already been recorded.
+        if source == ProviderEffectAckSource::DispatchResponse
+            && sources.last() == Some(&ProviderEffectAckSource::StatusLookup)
+        {
+            return Err(ProviderEffectBindingError::AckConflict);
         }
         validate_ack_transition(observations, &ack, was_quarantined, source)?;
         observations.push(ack);
@@ -1897,6 +1916,44 @@ mod tests {
             Err(ProviderEffectBindingError::AckConflict)
         );
         assert_eq!(journal.status_observations(&key).len(), 2);
+    }
+
+    #[test]
+    fn status_accepted_fences_late_dispatch_transition() {
+        let intent = intent(b"status-accepted-late-dispatch");
+        let key = intent.key.clone();
+        let operation = Sha256Digest::for_bytes(b"status-accepted-operation");
+        let accepted = ProviderEffectStatusObservation::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            operation.clone(),
+            ProviderEffectAckStatus::Accepted,
+        );
+        let late_completed = ProviderEffectAck::new(
+            key.clone(),
+            intent.payload_sha256.clone(),
+            operation,
+            ProviderEffectAckStatus::Completed,
+        );
+        let mut journal = ProviderEffectJournal::default();
+        journal.record_intent(intent).expect("intent");
+        journal
+            .record_status_observation(accepted)
+            .expect("status Accepted");
+
+        // The response may be a delayed result from the original dispatch.
+        // Even with the same operation id and a monotonic status, it cannot
+        // supersede the provider-owned status observation.
+        assert_eq!(
+            journal.record_ack(late_completed),
+            Err(ProviderEffectBindingError::AckConflict)
+        );
+        assert_eq!(journal.state(&key), Some(ProviderEffectState::Accepted));
+        assert_eq!(
+            journal.acknowledgement_sources(&key),
+            &[ProviderEffectAckSource::StatusLookup]
+        );
+        assert!(journal.validate().is_ok());
     }
 
     #[test]

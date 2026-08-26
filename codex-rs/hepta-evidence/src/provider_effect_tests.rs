@@ -488,6 +488,53 @@ async fn durable_status_observation_binds_payload_and_persists_lookup_provenance
 }
 
 #[tokio::test]
+async fn durable_status_accepted_fences_late_dispatch_transition() {
+    let temp = TempDir::new().expect("temp dir");
+    let sqlite = sqlite_config(&temp);
+    let store = HeptaEvidenceStore::open(&sqlite)
+        .await
+        .expect("open evidence");
+    let intent = effect_intent(b"status-accepted-late-dispatch");
+    let operation = Sha256Digest::for_bytes(b"status-accepted-operation");
+    store
+        .append_provider_effect_intent(&intent)
+        .await
+        .expect("intent");
+    let accepted = ProviderEffectStatusObservation::new(
+        intent.key.clone(),
+        intent.payload_sha256.clone(),
+        operation.clone(),
+        ProviderEffectAckStatus::Accepted,
+    );
+    store
+        .append_provider_effect_status_observation(&accepted)
+        .await
+        .expect("status Accepted");
+
+    let late_completed = ProviderEffectAck::new(
+        intent.key.clone(),
+        intent.payload_sha256.clone(),
+        operation,
+        ProviderEffectAckStatus::Completed,
+    );
+    assert!(matches!(
+        store.append_provider_effect_ack(&late_completed).await,
+        Err(EvidenceError::IdempotencyConflict { .. })
+    ));
+    let stored = store
+        .get_provider_effect(&intent.key)
+        .await
+        .expect("read effect")
+        .expect("effect");
+    assert_eq!(stored.state(), ProviderEffectState::Accepted);
+    assert_eq!(stored.acknowledgements.len(), 1);
+    assert_eq!(
+        stored.acknowledgements[0].source,
+        ProviderEffectAckSource::StatusLookup
+    );
+}
+
+#[tokio::test]
 async fn durable_status_observation_rejects_unknown_intent() {
     let temp = TempDir::new().expect("temp dir");
     let store = HeptaEvidenceStore::open(&sqlite_config(&temp))

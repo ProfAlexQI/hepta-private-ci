@@ -370,10 +370,17 @@ impl HttpProviderEffectAdapter {
         if !(200..300).contains(&status) {
             return ProviderEffectLookup::Unknown;
         }
-        body.as_deref()
-            .and_then(|bytes| parse_wire_ack(bytes).ok())
-            .map(ProviderEffectLookup::Ack)
-            .unwrap_or(ProviderEffectLookup::Unknown)
+        let Some(ack) = body.as_deref().and_then(|bytes| parse_wire_ack(bytes).ok()) else {
+            return ProviderEffectLookup::Unknown;
+        };
+        // Keep the adapter boundary key-bound even when a caller bypasses
+        // the higher-level coordinator.  A provider response for another
+        // occurrence is malformed/ambiguous and must not be surfaced as a
+        // usable status observation.
+        if ack.key != *key {
+            return ProviderEffectLookup::Unknown;
+        }
+        ProviderEffectLookup::Ack(ack)
     }
 }
 
@@ -814,5 +821,60 @@ mod tests {
         };
         ack.validate_for(&effect_intent)
             .expect("reconciled ACK must remain key and payload bound");
+    }
+
+    #[tokio::test]
+    async fn sandbox_status_lookup_rejects_ack_for_different_effect_key() {
+        let server = MockServer::start().await;
+        let effect_intent = intent();
+        let operation = Sha256Digest::for_bytes(b"wrong-key-operation");
+        let wrong_key = format!("provider-effect:v1:{}", "a".repeat(64));
+        assert_ne!(wrong_key, effect_intent.key.as_str());
+        let wrong_key_body = serde_json::json!({
+            "effect_key": wrong_key,
+            "payload_sha256": effect_intent.payload_sha256.as_str(),
+            "provider_operation_id_sha256": operation.as_str(),
+            "status": "completed"
+        });
+        Mock::given(method("GET"))
+            .and(path_regex(r"/status/.+"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&wrong_key_body))
+            .mount(&server)
+            .await;
+
+        let signing_key = SigningKey::from_bytes(&[11_u8; 32]);
+        let verifying_key = signing_key.verifying_key();
+        let contract_digest = Sha256Digest::for_bytes(b"sandbox-wrong-key-contract");
+        let statement = HttpProviderEffectContractAttestation::statement_for(
+            "sandbox-wrong-key-contract",
+            &contract_digest,
+            3,
+        );
+        let signature = signing_key.sign(&statement);
+        let attestation = HttpProviderEffectContractAttestation::verify_signed(
+            "sandbox-wrong-key-contract",
+            contract_digest,
+            3,
+            &signature.to_bytes(),
+            &verifying_key.to_bytes(),
+        )
+        .expect("fixture attestation");
+        let adapter = HttpProviderEffectAdapter::new(HttpProviderEffectConfig {
+            dispatch_url: format!("{}/dispatch", server.uri()),
+            lookup_url_template: format!("{}/status/{{key}}", server.uri()),
+            headers: HeaderMap::new(),
+            timeout: Duration::from_secs(5),
+            contract_id: "sandbox-wrong-key-contract".to_string(),
+            attestation: Some(attestation),
+        })
+        .expect("fixture adapter");
+
+        // A 2xx response is not sufficient: the returned ACK must bind to
+        // the exact key requested by the lookup.  Unknown is conservative;
+        // the evidence coordinator will quarantine it for reconciliation.
+        assert_eq!(
+            adapter.lookup(&effect_intent.key).await,
+            ProviderEffectLookup::Unknown
+        );
     }
 }
