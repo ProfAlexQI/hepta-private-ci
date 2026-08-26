@@ -66,11 +66,11 @@ fn source_manifest_fixture_is_pinned_and_fail_closed() {
     assert_eq!(manifest.upstream.native_build_status, "NOT_RUN");
     assert_eq!(
         manifest.candidate.commit,
-        "4bb37a2497c38b752e7ec4e44b4d13af1fb749b2"
+        "983470042b76becd76ffcc5a23f5b711a04823e8"
     );
     assert_eq!(
         manifest.candidate.tree,
-        "ab2e086df22f07642822e9409650768fba1d65fa"
+        "dd852801437c0631706e5c88045d00617fb5b587"
     );
     assert_eq!(manifest.attachments.len(), 6);
     assert_eq!(
@@ -81,7 +81,7 @@ fn source_manifest_fixture_is_pinned_and_fail_closed() {
     assert!(manifest.authority.all_false());
     assert_eq!(
         manifest.digest().expect("manifest digest").as_str(),
-        "d75aca373af0879d26f75eff7e9c675a28bf14fb149d061c29cc6c634837284d"
+        "bac4cda2391d82b1796ace0b0f95cb72eea3de4086bb68c2f26f5eca1610cd0b"
     );
 }
 

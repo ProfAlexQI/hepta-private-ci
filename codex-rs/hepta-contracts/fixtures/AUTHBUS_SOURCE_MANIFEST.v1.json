@@ -16,8 +16,8 @@
   },
   "candidate": {
     "branch": "hepta/vnext-main-integration-20260811",
-    "commit": "4bb37a2497c38b752e7ec4e44b4d13af1fb749b2",
-    "tree": "ab2e086df22f07642822e9409650768fba1d65fa",
+    "commit": "983470042b76becd76ffcc5a23f5b711a04823e8",
+    "tree": "dd852801437c0631706e5c88045d00617fb5b587",
     "lane": "authbus-b0-b3-20260826"
   },
   "refs": {
