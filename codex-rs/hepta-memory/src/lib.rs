@@ -25,6 +25,7 @@ mod local_policy;
 mod local_turn_binding;
 mod logical_turn_registry;
 mod memory_admission;
+mod model_receipt;
 mod neuron_proposal;
 mod production_writer;
 mod recall;
@@ -312,6 +313,28 @@ pub use memory_admission::MemoryAdmissionReceipt;
 pub use memory_admission::MemoryCandidateDraft;
 pub use memory_admission::MemoryCandidateOrigin;
 pub use memory_admission::MemoryCandidateState;
+pub use model_receipt::MODEL_RECEIPT_EXECUTE_ALLOWED;
+pub use model_receipt::MODEL_RECEIPT_EFFECT_AUTHORITY;
+pub use model_receipt::MODEL_RECEIPT_EXTERNAL_EFFECTS;
+pub use model_receipt::MODEL_RECEIPT_G5_ALLOWED;
+pub use model_receipt::MODEL_RECEIPT_NAMESPACE;
+pub use model_receipt::MODEL_RECEIPT_OPERATOR_ACCEPTANCE;
+pub use model_receipt::MODEL_RECEIPT_PRODUCTION_AUTHORITY;
+pub use model_receipt::MODEL_RECEIPT_PRODUCTION_CALLER;
+pub use model_receipt::MODEL_RECEIPT_PRODUCTION_WRITER;
+pub use model_receipt::MODEL_RECEIPT_PROMOTION;
+pub use model_receipt::MODEL_RECEIPT_RUNTIME_AUTHORITY;
+pub use model_receipt::MODEL_RECEIPT_SCHEMA_VERSION;
+pub use model_receipt::MODEL_RECEIPT_SHADOW_ONLY;
+pub use model_receipt::ModelApprovalState;
+pub use model_receipt::ModelClaimLevel;
+pub use model_receipt::ModelEfficacyStatus;
+pub use model_receipt::ModelEvidenceClass;
+pub use model_receipt::ModelEvidenceStatus;
+pub use model_receipt::ModelReceipt;
+pub use model_receipt::ModelReceiptBindings;
+pub use model_receipt::ModelReceiptChain;
+pub use model_receipt::ModelReceiptError;
 pub use neuron_proposal::H5_NEURON_PROPOSAL_SCHEMA_VERSION;
 pub use neuron_proposal::MAX_NEURON_FEATURE_KEY_BYTES;
 pub use neuron_proposal::MAX_NEURON_FEATURES;
@@ -404,6 +427,10 @@ mod h7_trajectory_store_tests;
 #[cfg(test)]
 #[path = "h7_feedback_tests.rs"]
 mod h7_feedback_tests;
+
+#[cfg(test)]
+#[path = "model_receipt_tests.rs"]
+mod model_receipt_tests;
 
 #[cfg(test)]
 mod cognitive_test_support;
