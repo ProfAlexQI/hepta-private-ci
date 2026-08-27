@@ -1,0 +1,113 @@
+name: hepta-servo build preflight contract
+
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - "scripts/hepta-servo-build-preflight.py"
+      - "scripts/hepta-servo-build-preflight-v2.py"
+      - "scripts/verify-hepta-servo-build-preflight-contract.py"
+      - "scripts/tests/test_hepta_servo_build_preflight.py"
+      - "scripts/tests/test_hepta_servo_build_preflight_v2.py"
+      - "docs/hepta-vnext/browser/C1_BUILD_PREFLIGHT.md"
+      - "docs/hepta-vnext/browser/C1_BUILD_PREFLIGHT_PROGRESS.json"
+      - "docs/hepta-vnext/browser/hepta.servo.build_preflight.v1.schema.json"
+      - ".github/workflows/hepta-servo-build-preflight-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Linux build preflight contract (fixtures only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Initialize negative-authority posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-build-preflight-contract"
+          mkdir -p "$evidence_dir"
+          {
+            echo "hepta_commit=$(git rev-parse HEAD)"
+            echo "hepta_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "canonical_preflight=scripts/hepta-servo-build-preflight-v2.py"
+            echo "external_network=false"
+            echo "actual_source_receipt=false"
+            echo "actual_toolchain_receipt=false"
+            echo "actual_build_recipe=false"
+            echo "actual_build_input_manifest=false"
+            echo "actual_preflight_receipt=false"
+            echo "build_run=false"
+            echo "artifact_created=false"
+            echo "sbom_created=false"
+            echo "servo_runtime_qualified=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Compile build-preflight tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-servo-build-preflight.py \
+            scripts/hepta-servo-build-preflight-v2.py \
+            scripts/verify-hepta-servo-build-preflight-contract.py \
+            scripts/tests/test_hepta_servo_build_preflight.py \
+            scripts/tests/test_hepta_servo_build_preflight_v2.py
+
+      - name: Run cross-binding and filesystem fixture tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-build-preflight-contract"
+          python3 scripts/tests/test_hepta_servo_build_preflight.py 2>&1 | tee "$evidence_dir/core-tests.log"
+          python3 scripts/tests/test_hepta_servo_build_preflight_v2.py 2>&1 | tee "$evidence_dir/v2-tests.log"
+          echo "fixture_tests=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Verify repository-native preflight contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-build-preflight-contract"
+          python3 scripts/verify-hepta-servo-build-preflight-contract.py 2>&1 | tee "$evidence_dir/static-contract.log"
+          echo "static_contract=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-build-preflight-contract"
+          echo "job_status=${{ job.status }}" >> "$evidence_dir/posture.txt"
+          {
+            echo "### Servo Linux build-preflight contract"
+            echo
+            echo "This job uses synthetic receipts, source bytes and toolchain binaries only."
+            echo "It does not run a real preflight, invoke Cargo, or create an artifact."
+            echo
+            sed 's/^/- /' "$evidence_dir/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload preflight contract evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-servo-build-preflight-contract
+          path: ${{ runner.temp }}/hepta-servo-build-preflight-contract
+          if-no-files-found: error
+
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
