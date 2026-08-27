@@ -1,0 +1,32 @@
+{
+  "schema": "hepta.ui.ci-blocker.v1",
+  "observedAt": "2026-08-27T12:43:07+08:00",
+  "workflow": "hepta-ui-v4",
+  "runId": 33070853937,
+  "headSha": "5509ee68a199530367d31210a5fa69f4df378c4b",
+  "status": "BLOCKED_RUNNER_NOT_ASSIGNED",
+  "classification": "INFRASTRUCTURE_SCHEDULING_NOT_TEST_FAILURE",
+  "evidence": {
+    "runnerId": 0,
+    "steps": [],
+    "jobs": [
+      { "id": 98512414311, "name": "Native v4 contract compile" },
+      { "id": 98512414517, "name": "UI v4 static contract" }
+    ],
+    "logsAvailable": false
+  },
+  "claims": {
+    "staticGatePassed": false,
+    "nativeCompilePassed": false,
+    "browserPassed": false,
+    "devicePassed": false,
+    "production": false,
+    "effect": false,
+    "promotion": false
+  },
+  "recovery": [
+    "restore an eligible GitHub Actions runner or account execution capacity",
+    "rerun the exact source-bound workflow",
+    "do not reinterpret runner failure as test failure or pass"
+  ]
+}
