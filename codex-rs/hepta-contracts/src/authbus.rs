@@ -1173,6 +1173,35 @@ impl AuthBusSourceManifest {
         Ok(())
     }
 
+    /// Validate this manifest against the exact candidate checkout observed by
+    /// the caller.  `validate` only checks the wire shape and the qualification
+    /// policy; it cannot know which git checkout is currently under test.  A
+    /// consumer must therefore supply the observed commit and tree and use this
+    /// guard before treating the manifest as evidence for that checkout.
+    ///
+    /// This remains a provenance check only.  It never enables an authority,
+    /// effect, listener, or promotion boundary.
+    pub fn validate_for_candidate(
+        &self,
+        expected_commit: &str,
+        expected_tree: &str,
+    ) -> Result<(), AuthBusContractError> {
+        self.validate()?;
+        validate_lowercase_hex(expected_commit, "expected candidate commit", 40)?;
+        validate_lowercase_hex(expected_tree, "expected candidate tree", 40)?;
+        if self.candidate.commit != expected_commit {
+            return Err(AuthBusContractError::new(
+                "source manifest candidate commit does not match observed checkout",
+            ));
+        }
+        if self.candidate.tree != expected_tree {
+            return Err(AuthBusContractError::new(
+                "source manifest candidate tree does not match observed checkout",
+            ));
+        }
+        Ok(())
+    }
+
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, AuthBusContractError> {
         self.validate()?;
         canonical_json(self)
@@ -1195,5 +1224,16 @@ pub const AUTHBUS_SOURCE_MANIFEST_JSON: &str =
 pub fn embedded_source_manifest() -> Result<AuthBusSourceManifest, AuthBusContractError> {
     let manifest: AuthBusSourceManifest = serde_json::from_str(AUTHBUS_SOURCE_MANIFEST_JSON)?;
     manifest.validate()?;
+    Ok(manifest)
+}
+
+/// Parse the embedded manifest and require an exact observed candidate
+/// commit/tree binding before returning it to a consumer.
+pub fn embedded_source_manifest_for_candidate(
+    expected_commit: &str,
+    expected_tree: &str,
+) -> Result<AuthBusSourceManifest, AuthBusContractError> {
+    let manifest = embedded_source_manifest()?;
+    manifest.validate_for_candidate(expected_commit, expected_tree)?;
     Ok(manifest)
 }

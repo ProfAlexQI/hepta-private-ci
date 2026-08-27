@@ -103,6 +103,7 @@ pub use authbus::b3::SecretRefOutcome;
 pub use authbus::b3::SecretRefState;
 pub use authbus::b3::SecretRefBinding;
 pub use authbus::embedded_source_manifest;
+pub use authbus::embedded_source_manifest_for_candidate;
 pub use identity::ActionId;
 pub use identity::DecisionId;
 pub use identity::ReceiptId;

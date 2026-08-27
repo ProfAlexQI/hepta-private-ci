@@ -100,6 +100,47 @@ fn source_manifest_rejects_authority_and_unknown_fields() {
 }
 
 #[test]
+fn source_manifest_requires_exact_observed_candidate_binding() {
+    let manifest = embedded_source_manifest().expect("embedded manifest");
+
+    // The checked-in fixture predates the current canonical qualification
+    // checkout.  It must not be accepted as evidence for that checkout.
+    let error = manifest
+        .validate_for_candidate(
+            "4d5b0b2d082ddbe0abb6d2fc880d9d9448434ab2",
+            "a3988c2d4624437080a2cdb65185ce74e7cee488",
+        )
+        .expect_err("stale candidate binding must fail closed");
+    assert!(error.to_string().contains("candidate commit"));
+    assert!(embedded_source_manifest_for_candidate(
+        "4d5b0b2d082ddbe0abb6d2fc880d9d9448434ab2",
+        "a3988c2d4624437080a2cdb65185ce74e7cee488",
+    )
+    .is_err());
+}
+
+#[test]
+fn source_manifest_accepts_matching_observed_candidate_binding() {
+    let manifest = embedded_source_manifest().expect("embedded manifest");
+    let commit = manifest.candidate.commit.clone();
+    let tree = manifest.candidate.tree.clone();
+
+    assert!(manifest.validate_for_candidate(&commit, &tree).is_ok());
+    assert!(embedded_source_manifest_for_candidate(&commit, &tree).is_ok());
+}
+
+#[test]
+fn source_manifest_rejects_malformed_expected_candidate_binding() {
+    let manifest = embedded_source_manifest().expect("embedded manifest");
+    assert!(manifest
+        .validate_for_candidate("not-a-commit", &manifest.candidate.tree)
+        .is_err());
+    assert!(manifest
+        .validate_for_candidate(&manifest.candidate.commit, "not-a-tree")
+        .is_err());
+}
+
+#[test]
 fn auth_request_has_stable_versioned_golden_bytes() {
     let request = request();
     let bytes = request.canonical_bytes().expect("request bytes");
