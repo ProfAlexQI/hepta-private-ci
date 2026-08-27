@@ -5,25 +5,35 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "scripts/hepta-servo-worker-build-inputs.py"
       - "scripts/hepta-servo-worker-build-manifest.py"
+      - "scripts/verify-hepta-focused-gates.py"
       - "scripts/verify-hepta-servo-worker-build-inputs-contract.py"
       - "scripts/tests/test_hepta_servo_worker_build_manifest.py"
+      - "scripts/tests/test_hepta_servo_worker_build_policy.py"
       - "docs/hepta-vnext/browser/C1_BUILD_*"
       - "docs/hepta-vnext/browser/hepta.servo.worker_build_*"
-      - ".github/workflows/hepta-servo-worker-build-inputs-contract.yml"
+      - ".github/CODEOWNERS"
+      - ".github/workflows/hepta-*.yml"
       - ".github/workflows/blocking-ci.yml"
+      - "tools/hepta-browser-c1-protocol/Cargo.toml"
   push:
     branches:
       - integration/vnext-main-20260811
       - "codex/hepta-*"
     paths:
+      - "scripts/hepta-servo-worker-build-inputs.py"
       - "scripts/hepta-servo-worker-build-manifest.py"
+      - "scripts/verify-hepta-focused-gates.py"
       - "scripts/verify-hepta-servo-worker-build-inputs-contract.py"
       - "scripts/tests/test_hepta_servo_worker_build_manifest.py"
+      - "scripts/tests/test_hepta_servo_worker_build_policy.py"
       - "docs/hepta-vnext/browser/C1_BUILD_*"
       - "docs/hepta-vnext/browser/hepta.servo.worker_build_*"
-      - ".github/workflows/hepta-servo-worker-build-inputs-contract.yml"
+      - ".github/CODEOWNERS"
+      - ".github/workflows/hepta-*.yml"
       - ".github/workflows/blocking-ci.yml"
+      - "tools/hepta-browser-c1-protocol/Cargo.toml"
 
 permissions:
   contents: read
@@ -48,6 +58,7 @@ jobs:
           {
             echo "commit=$(git rev-parse HEAD)"
             echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "canonical_entrypoint=scripts/hepta-servo-worker-build-inputs.py"
             echo "canonical_servo_source_bundle_present=false"
             echo "worker_artifact_built=false"
             echo "runtime_qualified=false"
@@ -69,9 +80,14 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m py_compile \
+            scripts/hepta-servo-worker-build-inputs.py \
             scripts/hepta-servo-worker-build-manifest.py \
+            scripts/verify-hepta-focused-gates.py \
             scripts/verify-hepta-servo-worker-build-inputs-contract.py \
-            scripts/tests/test_hepta_servo_worker_build_manifest.py
+            scripts/tests/test_hepta_servo_worker_build_manifest.py \
+            scripts/tests/test_hepta_servo_worker_build_policy.py
+          python3 scripts/verify-hepta-focused-gates.py \
+            2>&1 | tee "$HEPTA_BUILD_INPUTS_EVIDENCE_DIR/focused-gates.log"
           python3 scripts/verify-hepta-servo-worker-build-inputs-contract.py \
             2>&1 | tee "$HEPTA_BUILD_INPUTS_EVIDENCE_DIR/contract.log"
           python3 -m json.tool \
@@ -81,12 +97,36 @@ jobs:
             docs/hepta-vnext/browser/hepta.servo.worker_build_manifest.v1.schema.json \
             >/dev/null
 
-      - name: Run local fixture tests
+      - name: Run build-input engine fixture tests
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/tests/test_hepta_servo_worker_build_manifest.py -v \
-            2>&1 | tee "$HEPTA_BUILD_INPUTS_EVIDENCE_DIR/tests.log"
+            2>&1 | tee "$HEPTA_BUILD_INPUTS_EVIDENCE_DIR/engine-tests.log"
+
+      - name: Run strict command and environment policy tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_hepta_servo_worker_build_policy.py -v \
+            2>&1 | tee "$HEPTA_BUILD_INPUTS_EVIDENCE_DIR/policy-tests.log"
+
+      - name: Verify clean governed paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- \
+            scripts/hepta-servo-worker-build-inputs.py \
+            scripts/hepta-servo-worker-build-manifest.py \
+            scripts/verify-hepta-focused-gates.py \
+            scripts/verify-hepta-servo-worker-build-inputs-contract.py \
+            scripts/tests/test_hepta_servo_worker_build_manifest.py \
+            scripts/tests/test_hepta_servo_worker_build_policy.py \
+            docs/hepta-vnext/browser \
+            tools/hepta-browser-c1-protocol/Cargo.toml \
+            .github/CODEOWNERS \
+            .github/workflows \
+            2>&1 | tee "$HEPTA_BUILD_INPUTS_EVIDENCE_DIR/clean-worktree.log"
 
       - name: Record fixture-only result
         if: always()
