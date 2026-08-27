@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.invalid/schema/hepta.servo.source_bundle_verification.v1.schema.json",
+  "title": "Hepta Servo source bundle verification receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "source",
+    "bundle_receipt_sha256",
+    "fetch_receipt_sha256",
+    "compressed_archive_sha256",
+    "tar_sha256",
+    "license_packet_sha256",
+    "verification",
+    "machine_local_paths_included",
+    "authority"
+  ],
+  "properties": {
+    "schema": {"const": "hepta.browser.servo_source_bundle_verification.v1"},
+    "schema_version": {"const": 1},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "commit", "tree", "tree_manifest_sha256", "recomputed_tree"],
+      "properties": {
+        "repository": {"const": "servo/servo"},
+        "commit": {"const": "0a48e298482659817eb50097df23841f2b8e3044"},
+        "tree": {"const": "b04d2f75b3217374d079d579c270177b57fa1389"},
+        "tree_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "recomputed_tree": {"const": "b04d2f75b3217374d079d579c270177b57fa1389"}
+      }
+    },
+    "bundle_receipt_sha256": {"$ref": "#/$defs/sha256"},
+    "fetch_receipt_sha256": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {"$ref": "#/$defs/sha256"}
+    },
+    "compressed_archive_sha256": {"$ref": "#/$defs/sha256"},
+    "tar_sha256": {"$ref": "#/$defs/sha256"},
+    "license_packet_sha256": {"$ref": "#/$defs/sha256"},
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_json",
+        "no_machine_local_paths",
+        "two_distinct_acquisition_nonces",
+        "gzip_single_member_mtime_zero",
+        "archive_paths_safe",
+        "git_tree_recomputed",
+        "pinned_tree_matched",
+        "license_matched",
+        "servo_built",
+        "servo_runtime_qualified",
+        "release_qualified"
+      ],
+      "properties": {
+        "canonical_json": {"const": true},
+        "no_machine_local_paths": {"const": true},
+        "two_distinct_acquisition_nonces": {"const": true},
+        "gzip_single_member_mtime_zero": {"const": true},
+        "archive_paths_safe": {"const": true},
+        "git_tree_recomputed": {"const": true},
+        "pinned_tree_matched": {"const": true},
+        "license_matched": {"const": true},
+        "servo_built": {"const": false},
+        "servo_runtime_qualified": {"const": false},
+        "release_qualified": {"const": false}
+      }
+    },
+    "machine_local_paths_included": {"const": false},
+    "authority": {"$ref": "#/$defs/authority"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_authority",
+        "effect_authority",
+        "production_caller",
+        "production_writer",
+        "runtime_external_network",
+        "raw_cookie_export",
+        "credential_export",
+        "operator_acceptance",
+        "promotion",
+        "release_qualified"
+      ],
+      "properties": {
+        "runtime_authority": {"const": false},
+        "effect_authority": {"const": false},
+        "production_caller": {"const": false},
+        "production_writer": {"const": false},
+        "runtime_external_network": {"const": false},
+        "raw_cookie_export": {"const": false},
+        "credential_export": {"const": false},
+        "operator_acceptance": {"const": false},
+        "promotion": {"const": false},
+        "release_qualified": {"const": false}
+      }
+    }
+  }
+}
