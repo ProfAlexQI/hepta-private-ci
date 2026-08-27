@@ -1,0 +1,52 @@
+{
+  "schema": "hepta.servo.source_bundle_status.v1",
+  "schema_version": 1,
+  "updated_at_utc": "2026-08-27T14:00:00Z",
+  "phase": "DEVELOPMENT",
+  "plan": "WEB-PLAN-2026-08-27E",
+  "lane": "WEB_C1_SERVO_BOOTSTRAP",
+  "implementation": {
+    "independent_source_comparison": "IMPLEMENTED_FIXTURE_TESTED_EXACT_SERVO_EVIDENCE_PENDING",
+    "deterministic_source_archive": "IMPLEMENTED_FIXTURE_TESTED_EXACT_SERVO_EVIDENCE_PENDING",
+    "archive_reproducibility_comparison": "IMPLEMENTED_FIXTURE_TESTED_EXACT_SERVO_EVIDENCE_PENDING",
+    "mpl_license_packet": "IMPLEMENTED_FIXTURE_TESTED_EXACT_SERVO_EVIDENCE_PENDING",
+    "governed_patch_inventory_transform": "IMPLEMENTED_FIXTURE_TESTED_EXACT_SERVO_EVIDENCE_PENDING",
+    "complete_bundle_recomputation": "IMPLEMENTED_FIXTURE_TESTED_EXACT_SERVO_EVIDENCE_PENDING",
+    "manual_two_fetch_workflow": "IMPLEMENTED_NOT_RUN",
+    "servo_worker_build": "NOT_IMPLEMENTED",
+    "servo_runtime": "NOT_INTEGRATED"
+  },
+  "evidence": {
+    "local_fixture_test_count": 7,
+    "local_fixture_status": "PASS_LOCAL_FIXTURE_ONLY",
+    "github_exact_head_contract_status": "PENDING",
+    "canonical_servo_fetches_completed": 0,
+    "canonical_source_receipts_sealed": 0,
+    "canonical_source_archives_sealed": 0,
+    "canonical_distribution_packets_sealed": 0
+  },
+  "open_gates": [
+    "run the manual network-acquisition workflow twice on independent GitHub-hosted jobs",
+    "seal and independently compare two exact Servo source receipts",
+    "seal and independently compare two deterministic source archives",
+    "seal the MPL-2.0 packet and governed patch inventory",
+    "recompute the full source bundle from downloaded artifacts",
+    "freeze real worker build inputs only after the canonical source bundle passes",
+    "build, inspect, reproduce, sandbox and qualify a real Servo worker",
+    "retain operator acceptance, promotion and release as separate later ceremonies"
+  ],
+  "authority": {
+    "machine_authority": false,
+    "runtime_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "external_effect": false,
+    "external_network_allowed": false,
+    "credential_export_allowed": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  },
+  "merge_authorized": false
+}
