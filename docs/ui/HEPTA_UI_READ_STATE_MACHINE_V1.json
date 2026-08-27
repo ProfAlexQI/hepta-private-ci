@@ -1,0 +1,63 @@
+{
+  "schema": "hepta.ui.read-state-machine.v1",
+  "version": 1,
+  "status": "SOURCE_CONTRACT_NO_RUNTIME_OR_RELEASE_AUTHORITY",
+  "states": {
+    "idle": {
+      "terminal": false,
+      "dataUsable": false
+    },
+    "loading": {
+      "terminal": false,
+      "dataUsable": false,
+      "ariaBusy": true
+    },
+    "fresh": {
+      "terminal": true,
+      "dataUsable": true
+    },
+    "stale": {
+      "terminal": true,
+      "dataUsable": true,
+      "warningRequired": true
+    },
+    "partial": {
+      "terminal": true,
+      "dataUsable": true,
+      "warningRequired": true
+    },
+    "offline": {
+      "terminal": true,
+      "dataUsable": "cached-only",
+      "warningRequired": true
+    },
+    "error": {
+      "terminal": true,
+      "dataUsable": false,
+      "alertRequired": true
+    }
+  },
+  "transitions": {
+    "idle": ["loading"],
+    "loading": ["fresh", "stale", "partial", "offline", "error"],
+    "fresh": ["loading", "stale", "offline"],
+    "stale": ["loading", "fresh", "partial", "offline", "error"],
+    "partial": ["loading", "fresh", "stale", "offline", "error"],
+    "offline": ["loading", "fresh", "stale", "error"],
+    "error": ["loading", "offline"]
+  },
+  "authority": {
+    "networkAuthority": false,
+    "mutationAuthority": false,
+    "effectAuthority": false,
+    "productionAuthority": false,
+    "promotion": false
+  },
+  "binding": {
+    "canonicalSource": "apps/hepta-control-ui/control-ui-v4-runtime.js",
+    "runtimeCss": "apps/hepta-control-ui/styles.v4.runtime.css",
+    "boundIntoRustServedControlUiJs": false,
+    "bindingMarkerStart": "HEPTA_UI_V4_RUNTIME_BEGIN",
+    "bindingMarkerEnd": "HEPTA_UI_V4_RUNTIME_END"
+  }
+}
