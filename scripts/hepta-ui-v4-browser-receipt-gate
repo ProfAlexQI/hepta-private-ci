@@ -1,0 +1,125 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "pathname"
+
+abort("usage: #{File.basename($PROGRAM_NAME)} <browser-receipt.json>") unless ARGV.length == 1
+receipt_path = Pathname.new(ARGV.fetch(0)).expand_path
+abort("receipt not found: #{receipt_path}") unless receipt_path.file?
+
+receipt = JSON.parse(receipt_path.read)
+failures = []
+check = lambda do |condition, message|
+  failures << message unless condition
+end
+
+check.call(receipt["schema"] == "hepta.ui.v4.browser-qualification.v1", "unexpected schema")
+check.call(
+  %w[PASS_BROWSER_MATRIX FAIL_BROWSER_MATRIX BLOCKED_BROWSER_MATRIX].include?(receipt["status"]),
+  "unexpected status"
+)
+check.call(
+  %w[SOURCE_STATIC_SERVER_BROWSER_ONLY RUST_SERVED_BROWSER_ONLY].include?(receipt["scope"]),
+  "unexpected scope"
+)
+
+candidate = receipt.fetch("candidate", {})
+check.call(candidate["commit"].to_s.match?(/\A[0-9a-f]{40}\z/), "candidate commit is not source-bound")
+check.call(candidate["tree"].to_s.match?(/\A[0-9a-f]{40}\z/), "candidate tree is not source-bound")
+check.call(!candidate["branch"].to_s.empty?, "candidate branch missing")
+
+%w[chromeExecutableSha256 materialContractSha256 runtimeSourceSha256].each do |key|
+  check.call(receipt[key].to_s.match?(/\A[0-9a-f]{64}\z/), "#{key} is not a SHA-256")
+end
+
+results = receipt.fetch("results", [])
+check.call(receipt["resultCount"] == results.length, "resultCount mismatch")
+check.call(results.length >= 8, "browser matrix must contain at least eight scenarios")
+check.call(results.map { |item| item["id"] }.uniq.length == results.length, "duplicate scenario ids")
+
+passed = 0
+failed = 0
+results.each do |result|
+  id = result["id"].to_s
+  status = result["status"]
+  check.call(%w[PASS FAIL BLOCKED].include?(status), "#{id}: invalid status")
+  if status == "PASS"
+    passed += 1
+    screenshot = result.fetch("screenshot", {})
+    screenshot_path = Pathname.new(screenshot["path"].to_s)
+    check.call(screenshot_path.file?, "#{id}: screenshot missing")
+    if screenshot_path.file?
+      actual_sha = Digest::SHA256.file(screenshot_path).hexdigest
+      check.call(actual_sha == screenshot["sha256"], "#{id}: screenshot digest mismatch")
+      check.call(screenshot_path.size == screenshot["bytes"], "#{id}: screenshot byte count mismatch")
+    end
+    check.call(result.fetch("failures", []).empty?, "#{id}: PASS contains failures")
+    metrics = result.fetch("metrics", {})
+    check.call(metrics["runtimeReady"] == true, "#{id}: v4 runtime not ready")
+    check.call(metrics["runtimeNetworkNone"] == true, "#{id}: runtime owns network capability")
+    check.call(metrics["readApiReady"] == true, "#{id}: read-state API missing")
+    check.call(metrics["readStateReady"] == true, "#{id}: read-state transition failed")
+    check.call(metrics["horizontalOverflow"] == false, "#{id}: horizontal overflow")
+    check.call(metrics["bodyFontPx"].to_f >= 15.0, "#{id}: body font below 15px")
+    check.call(metrics["messageFontPx"].to_f >= 15.0, "#{id}: message font below 15px")
+    check.call(metrics["metadataFontPx"].to_f >= 12.0, "#{id}: metadata font below 12px")
+    check.call(metrics.fetch("controlFailures", []).empty?, "#{id}: control target failure")
+    check.call(metrics.fetch("stableBlurFailures", []).empty?, "#{id}: stable content blur failure")
+    check.call(metrics.fetch("under12", []).empty?, "#{id}: visible text below 12px")
+    check.call(metrics["openTransientCount"].to_i <= 1, "#{id}: transient budget exceeded")
+    request_audit = result.fetch("requestAudit", {})
+    check.call(request_audit.fetch("crossOriginRequests", []).empty?, "#{id}: cross-origin request")
+    check.call(request_audit.fetch("nonGetRequests", []).empty?, "#{id}: non-GET request")
+    check.call(result.fetch("consoleErrors", []).empty?, "#{id}: browser console errors")
+  else
+    failed += 1
+    check.call(!result.fetch("failures", []).empty?, "#{id}: non-PASS result lacks blocker/failure")
+  end
+end
+
+check.call(receipt["passedCount"] == passed, "passedCount mismatch")
+check.call(receipt["failedCount"] == failed, "failedCount mismatch")
+
+receipt.fetch("authority", {}).each do |key, value|
+  check.call(value == false, "authority.#{key} must remain false")
+end
+
+claims = receipt.fetch("claims", {})
+if receipt["scope"] == "SOURCE_STATIC_SERVER_BROWSER_ONLY"
+  %w[
+    rustServedAssetValidated
+    nativeCompileValidated
+    deviceValidated
+    platformSystemMaterialValidated
+  ].each do |key|
+    check.call(claims[key] == false, "source-static receipt may not claim #{key}")
+  end
+end
+
+if receipt["status"] == "PASS_BROWSER_MATRIX"
+  check.call(failed.zero?, "PASS_BROWSER_MATRIX contains failed results")
+  check.call(passed == results.length, "PASS_BROWSER_MATRIX did not pass every scenario")
+else
+  check.call(failed.positive?, "non-PASS browser receipt must contain a failed or blocked scenario")
+end
+
+result = {
+  schema: "hepta.ui.v4.browser-receipt-gate-result.v1",
+  status: failures.empty? ? "PASS_RECEIPT_GATE" : "FAIL_RECEIPT_GATE",
+  receipt: receipt_path.to_s,
+  receipt_sha256: Digest::SHA256.file(receipt_path).hexdigest,
+  failures: failures,
+  production_authority: false,
+  effect_authority: false,
+  promotion: false
+}
+
+output = JSON.pretty_generate(result)
+if failures.empty?
+  puts output
+  exit 0
+end
+warn output
+exit 1
