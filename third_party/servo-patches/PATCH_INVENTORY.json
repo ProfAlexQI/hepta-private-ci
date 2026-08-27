@@ -1,0 +1,20 @@
+{
+  "schema": "hepta.browser.servo_patch_inventory.v1",
+  "schema_version": 1,
+  "status": "EMPTY_NO_SOURCE_IMPORTED",
+  "servo_commit": "0a48e298482659817eb50097df23841f2b8e3044",
+  "servo_tree": "b04d2f75b3217374d079d579c270177b57fa1389",
+  "maximum_initial_patches": 8,
+  "patches": [],
+  "next_expected_patch": {
+    "patch_id": "SERVO-HEPTA-0001",
+    "purpose": "private inherited-channel worker entrypoint without WebDriver HTTP listener",
+    "status": "NOT_CREATED"
+  },
+  "policy": {
+    "unrecorded_patch_allowed": false,
+    "patch_without_test_allowed": false,
+    "patch_without_deletion_condition_allowed": false,
+    "production_authority": false
+  }
+}
