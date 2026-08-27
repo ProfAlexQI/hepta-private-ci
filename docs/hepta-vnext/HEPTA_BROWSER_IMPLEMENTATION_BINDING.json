@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "hepta.browser.implementation-binding.v1",
+  "plan_id": "WEB-PLAN-2026-08-27E",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "branch": "codex/hepta-vnext-plan-browser-c0-c3-20260827",
+  "baseline_commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+  "baseline_tree": "636341eb865b7c6d669958a96e7959de74fee020",
+  "candidate_commit": "bd416fe195003403c59b0a419d26a91be4dc20b2",
+  "candidate_tree": "e95453fb9c14e36c8c3b586028dbfec0eeb62feb",
+  "binding_role": "successor_binding_for_pre_binding_candidate",
+  "qualification_status": "PENDING_CI",
+  "integrated_servo_status": "NOT_IMPLEMENTED",
+  "authority": {
+    "qualification_only": true,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "external_effect": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false
+  }
+}
