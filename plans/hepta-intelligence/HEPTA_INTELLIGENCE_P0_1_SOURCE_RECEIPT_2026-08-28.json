@@ -1,0 +1,104 @@
+{
+  "schema": "hepta_intelligence_p0_1_source_receipt_v1",
+  "recorded_at": "2026-08-28",
+  "status": "PASS_FACT_GROUNDING_SOURCE_CONTRACT_ONLY",
+  "qualification_scope": "P0_1_QUALIFICATION_SOURCE_CONTRACT_ONLY",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "pull_request": 7,
+  "branch": "codex/hepta-intelligence-grounding-v2-20260828",
+  "base_commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+  "source_candidate": {
+    "commit": "fd120f15b4ef4d43a88e49ec3e545d5fdac60aee",
+    "tree": "a640e3bd5bb63f93e7dd237c56c909ed213cf158",
+    "parent": "9e105a5c6e282978bd09ab88926949f0102546b4",
+    "signed_commit": false
+  },
+  "bound_files": [
+    {
+      "path": "codex-rs/hepta-memory/src/fact_grounding.rs",
+      "git_blob_sha": "4fff46e12bfd9f5081537a54c182ff511c45b367",
+      "sha256": "606c6dbb0940afb11d86a8f01b2824c2e7a9a093f1d8162219ce7061c71d393f"
+    },
+    {
+      "path": "codex-rs/hepta-memory/src/lib.rs",
+      "git_blob_sha": "6f110271545efa43901c7cba63161de04a70ea8c",
+      "sha256": "9e62f91112e802ddd0dc3a2ea3676b865289b5e06a905ea444c9c5d32defb61d"
+    },
+    {
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28.md",
+      "git_blob_sha": "f4f117def65ccb48b5d39fd863da1b927fd2b281",
+      "sha256": "82a5f7ddb783277ba782e470c5ed8081e85310da54b7ec4fce1c856402bd9aec"
+    },
+    {
+      "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
+      "git_blob_sha": "7362846782ed19adbaeeeb7717c2d8ad1598ea3a",
+      "sha256": "4e1e686155f1e434a04be3b336c47e7365fe3cecd28fd7e2ffa709b3f27121b2"
+    },
+    {
+      "path": "scripts/verify-hepta-intelligence-fact-grounding.py",
+      "git_blob_sha": "a95f413cd3270055bcaf16987157541601b05853",
+      "sha256": "b587c0a4a768dbe76bc3359c76b39f3884fd52fc37b82ff796df2fcd5dfdab50"
+    }
+  ],
+  "source_gate": {
+    "command": "python3 scripts/verify-hepta-intelligence-fact-grounding.py",
+    "result": "PASS_FACT_GROUNDING_SOURCE_CONTRACT_ONLY",
+    "output_sha256": "0b2d48d5609af4fef7207545182283a6523cedc097aa4f18da0af60d546d04ec",
+    "failed_checks": [],
+    "checks_passed": 23,
+    "python_compile_command": "python3 -m py_compile scripts/verify-hepta-intelligence-fact-grounding.py",
+    "python_compile_result": "PASS"
+  },
+  "implemented_claims": {
+    "source_span_validation": true,
+    "per_fact_evidence_required": true,
+    "utf8_boundary_validation": true,
+    "evidence_digest_validation": true,
+    "missing_unknown_duplicate_fact_rejection": true,
+    "deterministic_textual_support_check": true,
+    "receipt_digest_binding": true,
+    "validation_before_store_mutation": true,
+    "zero_mutation_negative_test_present": true
+  },
+  "executable_qualification": {
+    "rust_format": "NOT_RUN",
+    "rust_focused_tests": "NOT_RUN",
+    "rust_crate_tests": "NOT_RUN",
+    "rust_clippy": "NOT_RUN",
+    "qualified": false,
+    "reason": "BLOCKED_RUNNER_NOT_ASSIGNED"
+  },
+  "hosted_ci": [
+    {
+      "run_id": 33110477298,
+      "name": "blocking-ci",
+      "conclusion": "failure",
+      "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
+      "job_count": 29,
+      "steps_recorded": false,
+      "commands_executed": false
+    },
+    {
+      "run_id": 33110475903,
+      "name": "v8-canary",
+      "conclusion": "failure",
+      "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
+      "steps_recorded": false,
+      "commands_executed": false
+    }
+  ],
+  "authority": {
+    "durable_persistence": false,
+    "production_projection_gate": false,
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "limitations": [
+    "This receipt proves only the fail-closed source contract and local Python gate for one exact source candidate.",
+    "No Rust compiler, formatter, test, clippy, Bazel, runtime, migration, durable persistence, projection gate, efficacy, operator, promotion, or release claim is made.",
+    "Textual grounding proves source support, not external-world truth."
+  ]
+}
