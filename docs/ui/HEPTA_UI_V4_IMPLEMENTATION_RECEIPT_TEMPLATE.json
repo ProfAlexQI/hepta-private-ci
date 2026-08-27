@@ -1,0 +1,45 @@
+{
+  "schema": "hepta.ui.v4.implementation-receipt.v1",
+  "status": "TEMPLATE_NOT_A_QUALIFICATION_RESULT",
+  "candidate": {
+    "branch": "codex/ui-light-glass-v4-20260827",
+    "commit": "REQUIRED_AFTER_CANDIDATE_FREEZE",
+    "tree": "REQUIRED_AFTER_CANDIDATE_FREEZE",
+    "parent": "647e294522a3b3341b4169e3f5a85f8f0df42cbe"
+  },
+  "bindings": {
+    "latest_plan_snapshot_commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+    "canonical_source_head": "a85612afb43af722c61b54efe73570b25e9e4031",
+    "canonical_source_tree": "71026adff61523660d953867188f094184cee2e9",
+    "material_contract_sha256": "REQUIRED",
+    "authority_matrix_sha256": "REQUIRED",
+    "visual_matrix_sha256": "REQUIRED",
+    "static_gate_result_sha256": "REQUIRED"
+  },
+  "results": {
+    "static_contract": "REQUIRED",
+    "generated_token_check": "REQUIRED",
+    "control_ui_browser": "REQUIRED_NOT_RUN",
+    "native_compile": "REQUIRED_NOT_RUN",
+    "native_desktop_window": "REQUIRED_NOT_RUN",
+    "android": "REQUIRED_NOT_RUN",
+    "ios": "REQUIRED_NOT_RUN",
+    "windows_material": "REQUIRED_NOT_RUN",
+    "macos_material": "REQUIRED_NOT_RUN"
+  },
+  "authority": {
+    "production_caller": false,
+    "production_writer": false,
+    "effect_dispatch": false,
+    "live_adapter": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  },
+  "claims": {
+    "source_implementation": true,
+    "runtime_validated": false,
+    "device_validated": false,
+    "production_ready": false
+  }
+}
