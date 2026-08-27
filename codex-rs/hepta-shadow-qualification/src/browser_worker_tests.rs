@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::io::Error as IoError;
 
 use tokio::io::AsyncWriteExt;
 
@@ -102,7 +103,7 @@ async fn browser_worker_rejects_noncanonical_and_oversized_frames() -> TestResul
 
     let oversized_length = u32::try_from(MAX_BROWSER_WORKER_FRAME_BYTES)?
         .checked_add(1)
-        .ok_or("browser worker frame bound overflowed")?;
+        .ok_or_else(|| IoError::other("browser worker frame bound overflowed"))?;
     let (mut writer, mut reader) = tokio::io::duplex(16);
     writer.write_all(&oversized_length.to_be_bytes()).await?;
     assert!(matches!(
@@ -182,7 +183,7 @@ fn browser_worker_sequence_violation_fences_the_channel() -> TestResult {
     frame.sequence = frame
         .sequence
         .checked_add(1)
-        .ok_or("browser worker test sequence overflowed")?;
+        .ok_or_else(|| IoError::other("browser worker test sequence overflowed"))?;
     assert!(matches!(
         server.accept(frame),
         Err(BrowserWorkerProtocolError::WrongSequence)
