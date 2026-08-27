@@ -1,0 +1,38 @@
+{
+  "schema": "hepta.browser.servo_upstream_pin.v1",
+  "schema_version": 1,
+  "repository": "servo/servo",
+  "repository_url": "https://github.com/servo/servo",
+  "ref": "main",
+  "commit": "0a48e298482659817eb50097df23841f2b8e3044",
+  "tree": "b04d2f75b3217374d079d579c270177b57fa1389",
+  "observed_at_utc": "2026-08-27T07:23:26Z",
+  "commit_signature_verified": true,
+  "license": "MPL-2.0",
+  "integration_status": "SOURCE_PIN_ONLY_NOT_IMPORTED",
+  "accepted_initial_platforms": [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc"
+  ],
+  "security_observations": [
+    "Servo WebDriver start_server currently binds 0.0.0.0 by default; Hepta C1 must not expose that default.",
+    "C1 must provide an authenticated private local transport or a loopback-only ephemeral listener.",
+    "No Servo source, binary, network listener, browser authority, or production caller is enabled by this pin."
+  ],
+  "required_before_import": [
+    "source and license inventory",
+    "SBOM and patch inventory",
+    "toolchain and target compatibility receipt",
+    "private transport decision ADR",
+    "sandbox and egress policy",
+    "minimal Servo API surface inventory",
+    "rollback and source update policy"
+  ],
+  "authority": {
+    "runtime_authority": false,
+    "external_network": false,
+    "production_caller": false,
+    "promotion": false
+  }
+}
