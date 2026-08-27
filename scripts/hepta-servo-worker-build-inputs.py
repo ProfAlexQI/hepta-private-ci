@@ -10,17 +10,37 @@ import importlib.util
 import pathlib
 import sys
 from types import ModuleType
-from typing import Any, Sequence
+from typing import Sequence
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ENGINE_PATH = ROOT / "scripts/hepta-servo-worker-build-manifest.py"
 FORBIDDEN_CARGO_OPERATIONS = {
-    "fetch", "generate-lockfile", "install", "login", "owner", "package",
-    "publish", "search", "update", "vendor", "yank",
+    "fetch",
+    "generate-lockfile",
+    "install",
+    "login",
+    "owner",
+    "package",
+    "publish",
+    "search",
+    "update",
+    "vendor",
+    "yank",
 }
 SECRET_KEY_MARKERS = (
-    "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "AUTH", "COOKIE",
-    "PRIVATE", "SSH", "AWS", "AZURE", "GITHUB", "OPENAI",
+    "TOKEN",
+    "SECRET",
+    "PASSWORD",
+    "PASSWD",
+    "CREDENTIAL",
+    "AUTH",
+    "COOKIE",
+    "PRIVATE",
+    "SSH",
+    "AWS",
+    "AZURE",
+    "GITHUB",
+    "OPENAI",
 )
 
 
@@ -63,7 +83,11 @@ def validate_command(engine: ModuleType, path: pathlib.Path) -> None:
     if not isinstance(arguments, list) or len(arguments) < 4:
         raise RuntimeError("build argv is incomplete")
     for item in arguments:
-        if not isinstance(item, str) or not item or any(character in item for character in "\0\n\r"):
+        if (
+            not isinstance(item, str)
+            or not item
+            or any(character in item for character in "\0\n\r")
+        ):
             raise RuntimeError("build argv contains an empty or ambiguous item")
     executable = pathlib.PurePath(arguments[0]).name.lower()
     if executable not in {"cargo", "cargo.exe"}:
@@ -87,8 +111,13 @@ def validate_environment(engine: ModuleType, path: pathlib.Path) -> None:
         raise RuntimeError("build environment variables must be an object")
     for key, item in variables.items():
         if any(marker in key for marker in SECRET_KEY_MARKERS):
-            raise RuntimeError(f"build environment key {key!r} is secret- or identity-bearing")
-        if not isinstance(item, str) or any(character in item for character in "\0\n\r"):
+            raise RuntimeError(
+                f"build environment key {key!r} is secret- or identity-bearing"
+            )
+        if (
+            not isinstance(item, str)
+            or any(character in item for character in "\0\n\r")
+        ):
             raise RuntimeError(f"build environment value for {key!r} is ambiguous")
     if variables.get("CARGO_NET_OFFLINE") not in {"true", "1"}:
         raise RuntimeError("CARGO_NET_OFFLINE must be true")
@@ -96,7 +125,10 @@ def validate_environment(engine: ModuleType, path: pathlib.Path) -> None:
         raise RuntimeError("build environment attempted to enable network access")
 
 
-def validate_invocation(argv: Sequence[str], engine: ModuleType | None = None) -> None:
+def validate_invocation(
+    argv: Sequence[str],
+    engine: ModuleType | None = None,
+) -> None:
     if not argv or argv[0] not in {"create", "verify"}:
         raise RuntimeError("command must be create or verify")
     engine = engine or load_engine()
@@ -112,10 +144,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         engine = load_engine()
         validate_invocation(arguments, engine)
-    except (OSError, RuntimeError, engine_error() if False else RuntimeError) as error:
+        return int(engine.main(arguments))
+    except (OSError, RuntimeError) as error:
         print(f"HEPTA_SERVO_WORKER_BUILD_INPUTS=FAIL: {error}", file=sys.stderr)
         return 1
-    return int(engine.main(arguments))
 
 
 if __name__ == "__main__":
