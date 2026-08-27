@@ -7,6 +7,8 @@ use std::process::Command;
 
 const CONTROL_UI_BUNDLE_BOUNDARY: &[u8] =
     b"\n/* hepta-ui-v4-runtime-bundle-boundary */\n";
+const SHA256_ABC: &str =
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
 fn main() {
     if let Err(error) = run() {
@@ -21,6 +23,8 @@ fn run() -> Result<(), Box<dyn Error>> {
     if let Some(branch) = current_branch() {
         println!("cargo:rerun-if-changed=../../.git/refs/heads/{branch}");
     }
+
+    validate_sha256_implementation()?;
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let repository_root = manifest_dir.join("../..");
@@ -48,6 +52,13 @@ fn run() -> Result<(), Box<dyn Error>> {
         .unwrap_or_else(|| "unknown".to_owned());
 
     println!("cargo:rustc-env=HEPTA_GIT_HEAD={git_head}");
+    Ok(())
+}
+
+fn validate_sha256_implementation() -> Result<(), Box<dyn Error>> {
+    if sha256_hex(b"abc") != SHA256_ABC {
+        return Err("embedded SHA-256 implementation failed its known-answer test".into());
+    }
     Ok(())
 }
 
@@ -180,7 +191,11 @@ fn sha256_hex(input: &[u8]) -> String {
         hash[7] = hash[7].wrapping_add(h);
     }
 
-    hash.iter().map(|value| format!("{value:08x}")).collect()
+    let mut output = String::with_capacity(64);
+    for value in hash {
+        output.push_str(&format!("{value:08x}"));
+    }
+    output
 }
 
 fn current_branch() -> Option<String> {
