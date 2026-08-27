@@ -57,6 +57,12 @@ jobs:
     uses: ./.github/workflows/hepta-browser-c0-c3.yml
     secrets: inherit
 
+  hepta-browser-c1-artifact-gate:
+    name: Hepta Browser C1 artifact launch gate
+    needs: runner-preflight
+    uses: ./.github/workflows/hepta-browser-c1-artifact-gate.yml
+    secrets: inherit
+
   hepta-browser-c1-protocol:
     name: Hepta Browser C1 private protocol
     needs: runner-preflight
@@ -85,6 +91,12 @@ jobs:
     name: Hepta Servo source receipt contract
     needs: runner-preflight
     uses: ./.github/workflows/hepta-servo-source-contract.yml
+    secrets: inherit
+
+  hepta-servo-worker-build-inputs-contract:
+    name: Hepta Servo worker build-input packet contract
+    needs: runner-preflight
+    uses: ./.github/workflows/hepta-servo-worker-build-inputs-contract.yml
     secrets: inherit
 
   hepta-vnext:
@@ -123,11 +135,13 @@ jobs:
       - cargo-deny
       - codespell
       - hepta-browser-c0-c3
+      - hepta-browser-c1-artifact-gate
       - hepta-browser-c1-protocol
       - hepta-servo-artifact-contract
       - hepta-servo-build-manifest-contract
       - hepta-servo-source-bundle-contract
       - hepta-servo-source-contract
+      - hepta-servo-worker-build-inputs-contract
       - hepta-vnext
       - repo-checks
       - rust-ci
