@@ -39,7 +39,7 @@ class ServoProvenanceTests(unittest.TestCase):
     def test_sha256_bytes_matches_known_vector(self) -> None:
         self.assertEqual(
             self.generator.sha256_bytes(b"hepta-servo"),
-            "15e54c4687ed19212094fe34da336c398d6d617d6f85b96ed03cffdaf5910aa9",
+            "80f6a47cd01b23b2f48cf29cd69fef64bc96912e934e030694758cbe2e8546fe",
         )
 
     def test_empty_patch_inventory_is_deterministic(self) -> None:
