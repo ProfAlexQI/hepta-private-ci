@@ -17,7 +17,7 @@ async fn qualification_worker_uses_only_private_child_pipes_and_preserves_browse
     let spec = BrowserWorkerLaunchSpec::new(program, session_id.clone(), 13)?;
     let mut worker = QualificationBrowserWorker::spawn(spec).await?;
     assert!(worker.is_ready());
-    assert!(worker.process_id().is_some());
+    assert_ne!(worker.process_id(), 0);
 
     let navigate = BrowserRequest::new(
         1,
