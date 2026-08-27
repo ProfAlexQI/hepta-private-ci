@@ -1,0 +1,63 @@
+{
+  "schema": "hepta.ui.platform-material-adapter-matrix.v1",
+  "status": "SOURCE_DECISION_LAYER_IMPLEMENTED_RUNTIME_ADAPTERS_REQUIRED",
+  "branch": "codex/ui-light-glass-v4-20260827",
+  "authority": {
+    "production": false,
+    "effect": false,
+    "liveAdapter": false,
+    "operatorAcceptance": false,
+    "promotion": false
+  },
+  "invariants": {
+    "content": "always Solid",
+    "fallback": "always Solid",
+    "maxVisibleBackdropLayers": 2,
+    "stableContentBackdropLayers": 0
+  },
+  "platforms": [
+    {
+      "id": "windows",
+      "environment": "WindowsMica",
+      "chrome": "WindowsMica",
+      "transient": "WindowsAcrylic",
+      "runtimeStatus": "REQUIRED_NOT_RUN"
+    },
+    {
+      "id": "macos",
+      "environment": "Solid",
+      "chrome": "MacSystemChrome",
+      "transient": "MacSystemPopover",
+      "runtimeStatus": "REQUIRED_NOT_RUN"
+    },
+    {
+      "id": "ios",
+      "environment": "Solid",
+      "chrome": "IosSystemGlass",
+      "transient": "IosSystemSheet",
+      "runtimeStatus": "REQUIRED_NOT_RUN"
+    },
+    {
+      "id": "android",
+      "environment": "Solid",
+      "chrome": "AndroidTonalChrome",
+      "transient": "AndroidTonalSheet",
+      "runtimeStatus": "REQUIRED_NOT_RUN"
+    },
+    {
+      "id": "web",
+      "environment": "Solid",
+      "chrome": "WebBackdropChrome",
+      "transient": "WebBackdropTransient",
+      "runtimeStatus": "SOURCE_IMPLEMENTED_BROWSER_NOT_RUN"
+    },
+    {
+      "id": "linux",
+      "environment": "Solid",
+      "chrome": "Solid",
+      "transient": "Solid",
+      "runtimeStatus": "REFERENCE_FALLBACK_NOT_RUN"
+    }
+  ],
+  "source": "apps/hepta-native/src/shared/hepta_platform_material.rs"
+}
