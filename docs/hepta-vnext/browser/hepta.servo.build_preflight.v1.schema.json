@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.invalid/schema/hepta.servo.build_preflight.v1.schema.json",
+  "title": "Hepta Servo build preflight receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "plan_id",
+    "stage",
+    "status",
+    "inputs",
+    "build",
+    "toolchain_binaries",
+    "filesystem_roots",
+    "preflight",
+    "machine_local_paths_included",
+    "authority"
+  ],
+  "properties": {
+    "schema": {"const": "hepta.browser.servo_build_preflight.v1"},
+    "schema_version": {"const": 1},
+    "plan_id": {"const": "HEPTA-BROWSER-WEB-D"},
+    "stage": {"const": "WEB_C1"},
+    "status": {"const": "READY_FOR_SEPARATE_BOUNDED_BUILD"},
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_verification_receipt_sha256",
+        "recipe_sha256",
+        "toolchain_receipt_sha256",
+        "build_input_manifest_sha256",
+        "compressed_source_archive_sha256",
+        "compressed_source_archive_bytes"
+      ],
+      "properties": {
+        "source_verification_receipt_sha256": {"$ref": "#/$defs/sha256"},
+        "recipe_sha256": {"$ref": "#/$defs/sha256"},
+        "toolchain_receipt_sha256": {"$ref": "#/$defs/sha256"},
+        "build_input_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "compressed_source_archive_sha256": {"$ref": "#/$defs/sha256"},
+        "compressed_source_archive_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "profile",
+        "package",
+        "manifest_path",
+        "artifact_path",
+        "features",
+        "jobs",
+        "canonical_command",
+        "environment",
+        "build_network",
+        "runtime_external_network"
+      ],
+      "properties": {
+        "target": {"const": "x86_64-unknown-linux-gnu"},
+        "profile": {"enum": ["release", "profiling"]},
+        "package": {"type": "string", "minLength": 1, "maxLength": 128},
+        "manifest_path": {"$ref": "#/$defs/relativePath"},
+        "artifact_path": {"$ref": "#/$defs/relativePath"},
+        "features": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 128}
+        },
+        "jobs": {"type": "integer", "minimum": 1, "maximum": 64},
+        "canonical_command": {
+          "type": "array",
+          "minItems": 14,
+          "maxItems": 40,
+          "items": {"type": "string", "minLength": 1, "maxLength": 512}
+        },
+        "environment": {
+          "const": {
+            "CARGO_NET_OFFLINE": "true",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+            "LANG": "C",
+            "LC_ALL": "C",
+            "SOURCE_DATE_EPOCH": "0",
+            "TZ": "UTC"
+          }
+        },
+        "build_network": {"const": false},
+        "runtime_external_network": {"const": false}
+      }
+    },
+    "toolchain_binaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rustc", "cargo", "linker"],
+      "properties": {
+        "rustc": {"$ref": "#/$defs/binary"},
+        "cargo": {"$ref": "#/$defs/binary"},
+        "linker": {"$ref": "#/$defs/binary"}
+      }
+    },
+    "filesystem_roots": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_root", "artifact_root"],
+      "properties": {
+        "source_root": {"$ref": "#/$defs/privateRoot"},
+        "artifact_root": {"$ref": "#/$defs/privateRoot"}
+      }
+    },
+    "preflight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_receipt_verified",
+        "source_archive_verified",
+        "recipe_verified",
+        "toolchain_receipt_verified",
+        "build_input_manifest_verified",
+        "toolchain_binaries_rehashed",
+        "private_empty_roots_verified",
+        "ready_for_separate_bounded_build",
+        "build_run",
+        "artifact_created",
+        "sbom_created",
+        "servo_runtime_qualified",
+        "operator_accepted",
+        "release_qualified"
+      ],
+      "properties": {
+        "source_receipt_verified": {"const": true},
+        "source_archive_verified": {"const": true},
+        "recipe_verified": {"const": true},
+        "toolchain_receipt_verified": {"const": true},
+        "build_input_manifest_verified": {"const": true},
+        "toolchain_binaries_rehashed": {"const": true},
+        "private_empty_roots_verified": {"const": true},
+        "ready_for_separate_bounded_build": {"const": true},
+        "build_run": {"const": false},
+        "artifact_created": {"const": false},
+        "sbom_created": {"const": false},
+        "servo_runtime_qualified": {"const": false},
+        "operator_accepted": {"const": false},
+        "release_qualified": {"const": false}
+      }
+    },
+    "machine_local_paths_included": {"const": false},
+    "authority": {"$ref": "#/$defs/authority"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000\\\\]+$"
+    },
+    "binary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha256",
+        "bytes",
+        "non_symlink",
+        "single_hardlink",
+        "group_world_writable",
+        "executable"
+      ],
+      "properties": {
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 1},
+        "non_symlink": {"const": true},
+        "single_hardlink": {"const": true},
+        "group_world_writable": {"const": false},
+        "executable": {"const": true}
+      }
+    },
+    "privateRoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "empty",
+        "owned_by_current_user",
+        "group_world_permissions",
+        "mode_octal"
+      ],
+      "properties": {
+        "empty": {"const": true},
+        "owned_by_current_user": {"const": true},
+        "group_world_permissions": {"const": false},
+        "mode_octal": {"type": "string", "pattern": "^0[0-7]{3}$"}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_authority",
+        "effect_authority",
+        "production_caller",
+        "production_writer",
+        "runtime_external_network",
+        "raw_cookie_export",
+        "credential_export",
+        "operator_acceptance",
+        "promotion",
+        "release_qualified"
+      ],
+      "properties": {
+        "runtime_authority": {"const": false},
+        "effect_authority": {"const": false},
+        "production_caller": {"const": false},
+        "production_writer": {"const": false},
+        "runtime_external_network": {"const": false},
+        "raw_cookie_export": {"const": false},
+        "credential_export": {"const": false},
+        "operator_acceptance": {"const": false},
+        "promotion": {"const": false},
+        "release_qualified": {"const": false}
+      }
+    }
+  }
+}
