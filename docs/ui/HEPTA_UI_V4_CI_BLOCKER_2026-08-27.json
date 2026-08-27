@@ -1,32 +1,45 @@
 {
   "schema": "hepta.ui.ci-blocker.v1",
-  "observedAt": "2026-08-27T12:43:07+08:00",
+  "observedAt": "2026-08-27T22:59:11+08:00",
   "workflow": "hepta-ui-v4",
-  "runId": 33070853937,
-  "headSha": "5509ee68a199530367d31210a5fa69f4df378c4b",
+  "runId": 33085288945,
+  "headSha": "e90e84b4457bac20e16c79015809e6d762d47554",
   "status": "BLOCKED_RUNNER_NOT_ASSIGNED",
   "classification": "INFRASTRUCTURE_SCHEDULING_NOT_TEST_FAILURE",
   "evidence": {
     "runnerId": 0,
     "steps": [],
     "jobs": [
-      { "id": 98512414311, "name": "Native v4 contract compile" },
-      { "id": 98512414517, "name": "UI v4 static contract" }
+      { "id": 98563164942, "name": "UI v4 source contracts", "conclusion": "failure", "steps": [] },
+      { "id": 98563165248, "name": "Native v4 contract compile", "conclusion": "failure", "steps": [] },
+      { "id": 98563166512, "name": "Chromium fixture visual qualification", "conclusion": "skipped", "steps": [] }
     ],
     "logsAvailable": false
   },
   "claims": {
     "staticGatePassed": false,
+    "nextSourceGatePassed": false,
+    "tranche3SourceGatePassed": false,
     "nativeCompilePassed": false,
-    "browserPassed": false,
+    "browserFixturePassed": false,
+    "rustServedBrowserPassed": false,
     "devicePassed": false,
     "production": false,
     "effect": false,
     "promotion": false
   },
+  "localChecks": {
+    "runtimeJavaScriptSyntax": "PASS",
+    "browserQualificationJavaScriptSyntax": "PASS",
+    "tranche3RubySyntax": "PASS",
+    "tranche3SourceGate": "PASS_TRANCHE3_SOURCE_CONTRACT_ONLY",
+    "nativeCompile": "NOT_RUN_NO_RUST_TOOLCHAIN",
+    "playwrightCapture": "NOT_RUN_PLAYWRIGHT_UNAVAILABLE"
+  },
   "recovery": [
     "restore an eligible GitHub Actions runner or account execution capacity",
     "rerun the exact source-bound workflow",
+    "manually dispatch the fixture browser qualification only after runners execute normal steps",
     "do not reinterpret runner failure as test failure or pass"
   ]
 }
