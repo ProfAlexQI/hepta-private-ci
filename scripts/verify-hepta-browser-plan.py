@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import runpy
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -89,7 +89,7 @@ def main() -> int:
     namespace: dict[str, Any] = runpy.run_path(str(VERIFIER_CORE))
     install_ci_verifier(namespace)
     verifier = namespace.get("main")
-    if not isinstance(verifier, Callable):
+    if not callable(verifier):
         raise RuntimeError("canonical Hepta browser verifier has no callable main")
     result = verifier()
     if not isinstance(result, int):
