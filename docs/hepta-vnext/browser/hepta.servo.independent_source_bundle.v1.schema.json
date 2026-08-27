@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.invalid/schema/hepta.servo.independent_source_bundle.v1.schema.json",
+  "title": "Hepta independent Servo source bundle receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "source",
+    "independence",
+    "fetch_receipts",
+    "archive",
+    "license_packet",
+    "outputs",
+    "qualification",
+    "acquisition_network_used",
+    "runtime_external_network",
+    "machine_local_paths_included",
+    "canonical",
+    "authority"
+  ],
+  "properties": {
+    "schema": {"const": "hepta.browser.servo_independent_source_bundle.v1"},
+    "schema_version": {"const": 1},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "commit",
+        "tree",
+        "object_format",
+        "path_count",
+        "blob_count",
+        "symlink_count",
+        "submodule_count",
+        "tree_manifest_sha256",
+        "license",
+        "license_sha256",
+        "license_bytes"
+      ],
+      "properties": {
+        "repository": {"const": "servo/servo"},
+        "commit": {"const": "0a48e298482659817eb50097df23841f2b8e3044"},
+        "tree": {"const": "b04d2f75b3217374d079d579c270177b57fa1389"},
+        "object_format": {"const": "sha1"},
+        "path_count": {"type": "integer", "minimum": 1},
+        "blob_count": {"type": "integer", "minimum": 1},
+        "symlink_count": {"type": "integer", "minimum": 0},
+        "submodule_count": {"type": "integer", "minimum": 0},
+        "tree_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "license": {"const": "MPL-2.0"},
+        "license_sha256": {"$ref": "#/$defs/sha256"},
+        "license_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "independence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fetch_count",
+        "roots_distinct",
+        "object_stores_distinct",
+        "source_projections_identical",
+        "source_projection_sha256"
+      ],
+      "properties": {
+        "fetch_count": {"const": 2},
+        "roots_distinct": {"const": true},
+        "object_stores_distinct": {"const": true},
+        "source_projections_identical": {"const": true},
+        "source_projection_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "fetch_receipts": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {"$ref": "#/$defs/fetchReceipt"}
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tar", "gzip"],
+      "properties": {
+        "tar": {"$ref": "#/$defs/tarRecord"},
+        "gzip": {"$ref": "#/$defs/gzipRecord"}
+      }
+    },
+    "license_packet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "bytes", "patch_inventory_sha256", "patch_count"],
+      "properties": {
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 1},
+        "patch_inventory_sha256": {"$ref": "#/$defs/sha256"},
+        "patch_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_archive", "compressed_source_archive", "fetch_receipts", "license_packet"],
+      "properties": {
+        "source_archive": {"const": "servo-source-a.tar"},
+        "compressed_source_archive": {"const": "servo-source-a.tar.gz"},
+        "fetch_receipts": {"const": ["fetch-a.receipt.json", "fetch-b.receipt.json"]},
+        "license_packet": {"const": "license-packet.json"}
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_source_acquired",
+        "independent_fetches_compared",
+        "deterministic_tar_verified",
+        "deterministic_gzip_verified",
+        "source_distribution_packet_bound",
+        "servo_built",
+        "servo_runtime_qualified",
+        "operator_accepted",
+        "release_qualified"
+      ],
+      "properties": {
+        "canonical_source_acquired": {"const": true},
+        "independent_fetches_compared": {"const": true},
+        "deterministic_tar_verified": {"const": true},
+        "deterministic_gzip_verified": {"const": true},
+        "source_distribution_packet_bound": {"const": true},
+        "servo_built": {"const": false},
+        "servo_runtime_qualified": {"const": false},
+        "operator_accepted": {"const": false},
+        "release_qualified": {"const": false}
+      }
+    },
+    "acquisition_network_used": {"const": true},
+    "runtime_external_network": {"const": false},
+    "machine_local_paths_included": {"const": false},
+    "canonical": {"const": true},
+    "authority": {"$ref": "#/$defs/authority"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "fetchReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slot", "sha256", "bytes", "canonical"],
+      "properties": {
+        "slot": {"enum": ["a", "b"]},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 1},
+        "canonical": {"const": true}
+      }
+    },
+    "tarRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "prefix",
+        "sha256",
+        "bytes",
+        "entry_count",
+        "file_count",
+        "directory_count",
+        "symlink_count",
+        "hardlink_count",
+        "unsafe_path_count"
+      ],
+      "properties": {
+        "format": {"const": "git_archive_tar"},
+        "prefix": {"const": "servo-0a48e298482659817eb50097df23841f2b8e3044/"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 1},
+        "entry_count": {"type": "integer", "minimum": 1},
+        "file_count": {"type": "integer", "minimum": 1},
+        "directory_count": {"type": "integer", "minimum": 0},
+        "symlink_count": {"type": "integer", "minimum": 0},
+        "hardlink_count": {"const": 0},
+        "unsafe_path_count": {"const": 0}
+      }
+    },
+    "gzipRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "sha256", "bytes"],
+      "properties": {
+        "format": {"const": "gzip_mtime_0_level_9_no_filename"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_authority",
+        "effect_authority",
+        "production_caller",
+        "production_writer",
+        "runtime_external_network",
+        "raw_cookie_export",
+        "credential_export",
+        "operator_acceptance",
+        "promotion",
+        "release_qualified"
+      ],
+      "properties": {
+        "runtime_authority": {"const": false},
+        "effect_authority": {"const": false},
+        "production_caller": {"const": false},
+        "production_writer": {"const": false},
+        "runtime_external_network": {"const": false},
+        "raw_cookie_export": {"const": false},
+        "credential_export": {"const": false},
+        "operator_acceptance": {"const": false},
+        "promotion": {"const": false},
+        "release_qualified": {"const": false}
+      }
+    }
+  }
+}
