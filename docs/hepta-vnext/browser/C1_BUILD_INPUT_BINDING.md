@@ -6,14 +6,18 @@ Status: **implemented as a local-fixture contract; exact Servo source bundle, re
 
 `C1-004B-1` freezes every authority-relevant input before a Servo worker build starts. The output is not a build receipt and cannot be used as evidence that a worker exists or runs. It binds one exact source receipt and one exact source-bundle verification to a deterministic command, allowlisted environment, toolchain descriptions, patch packet, license packet, and SPDX-2.3 SBOM bytes.
 
-The implementation is:
+The canonical entrypoint and implementation are:
 
 ```text
+scripts/hepta-servo-worker-build-inputs.py
 scripts/hepta-servo-worker-build-manifest.py
 scripts/tests/test_hepta_servo_worker_build_manifest.py
-scripts/verify-hepta-servo-build-manifest-contract.py
+scripts/tests/test_hepta_servo_worker_build_policy.py
+scripts/verify-hepta-servo-worker-build-inputs-contract.py
 docs/hepta-vnext/browser/hepta.servo.worker_build_input_packet.v1.schema.json
 ```
+
+`hepta-servo-worker-build-inputs.py` is the required entrypoint. It narrows command and environment semantics before delegating canonical serialization and independent recomputation to the manifest engine.
 
 ## Inputs
 
@@ -28,7 +32,7 @@ The `create` and `verify` commands require:
 - compact canonical JSON allowlisted build environment;
 - exact target triple, profile, and sorted unique Cargo features.
 
-The build command is data, not a shell fragment. Absolute paths, parent traversal, NUL, network-enabled acquisition, undeclared features, and unknown fields fail closed. Environment values are never copied into the packet; only key, UTF-8 byte length, and domain-separated digest are retained.
+The build command is data, not a shell fragment. It must invoke `cargo build` or `cargo rustc` directly and include both `--locked` and `--offline`. Registry/acquisition operations, non-Cargo executors, absolute paths, parent traversal, NUL, CR/LF ambiguity, positive network posture, duplicate features, undeclared features, secret-bearing environment keys, and unknown fields fail closed. Environment values are never copied into the packet; only key, UTF-8 byte length, and digest are retained.
 
 ## Outputs
 
@@ -67,7 +71,7 @@ A passing fixture test means only that the input-freezing contract is determinis
 
 ## Qualification cases
 
-The current standard-library test suite covers:
+The engine suite covers:
 
 - exact create/verify recomputation;
 - create-only output behavior;
@@ -77,6 +81,17 @@ The current standard-library test suite covers:
 - noncanonical supporting JSON rejection;
 - absolute-path build command rejection.
 
+The strict entrypoint suite additionally covers:
+
+- direct locked/offline Cargo build acceptance;
+- non-Cargo executor rejection;
+- registry/acquisition command rejection;
+- missing `--locked` rejection;
+- missing `--offline` rejection;
+- duplicate feature rejection;
+- newline-bearing command rejection;
+- secret or multiline environment rejection.
+
 ## Exact next use
 
-After two independent exact Servo fetches and the source-bundle receipt pass, capture build inputs into files, run `create`, independently run `verify`, then use the resulting manifest as an immutable input to the first Linux local-fixture-only worker build. Any later change to source, command, feature set, environment, toolchain, patch packet, license packet, or SBOM requires a new packet and manifest.
+After two independent exact Servo fetches and the source-bundle receipt pass, capture build inputs into files, run the strict canonical entrypoint `create`, independently run `verify`, then use the resulting manifest as an immutable input to the first Linux local-fixture-only worker build. Any later change to source, command, feature set, environment, toolchain, patch packet, license packet, or SBOM requires a new packet and manifest.
