@@ -9,6 +9,12 @@ autobins = false
 path = "src/lib.rs"
 doctest = false
 
+[[bin]]
+name = "hepta-browser-c1-process-trial"
+path = "src/bin/hepta-browser-c1-process-trial.rs"
+test = false
+bench = false
+
 [lints.rust]
 unsafe_code = "forbid"
 
