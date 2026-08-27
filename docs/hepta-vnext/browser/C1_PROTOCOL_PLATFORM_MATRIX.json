@@ -1,0 +1,76 @@
+{
+  "schema": "hepta.browser.c1_protocol_platform_matrix.v1",
+  "phase": "DEVELOPMENT",
+  "slice": "WEB-C1.3-private-worker-protocol",
+  "platforms": [
+    {
+      "id": "linux-x86_64",
+      "transport": "inherited_unix_socketpair",
+      "required_identity_evidence": [
+        "parent_child_process_binding",
+        "descriptor_inheritance_inventory",
+        "generation_epoch_binding"
+      ],
+      "required_isolation_evidence": [
+        "no_listener",
+        "no_external_egress",
+        "private_profile_root",
+        "resource_limits",
+        "descendant_reap"
+      ],
+      "current_status": "PROTOCOL_TEST_IMPLEMENTED_OS_SANDBOX_NOT_QUALIFIED"
+    },
+    {
+      "id": "macos-aarch64",
+      "transport": "inherited_unix_socketpair",
+      "required_identity_evidence": [
+        "parent_child_process_binding",
+        "descriptor_inheritance_inventory",
+        "generation_epoch_binding"
+      ],
+      "required_isolation_evidence": [
+        "no_listener",
+        "no_external_egress",
+        "sandbox_profile",
+        "private_profile_root",
+        "resource_limits",
+        "descendant_reap"
+      ],
+      "current_status": "NOT_RUN"
+    },
+    {
+      "id": "windows-x86_64",
+      "transport": "precreated_single_client_named_pipe",
+      "required_identity_evidence": [
+        "exact_allowed_sid_acl",
+        "server_process_ownership",
+        "client_process_binding",
+        "generation_epoch_binding",
+        "stale_pipe_prevention"
+      ],
+      "required_isolation_evidence": [
+        "no_listener",
+        "no_external_egress",
+        "job_object_or_equivalent",
+        "private_profile_root",
+        "resource_limits",
+        "descendant_reap"
+      ],
+      "current_status": "NOT_IMPLEMENTED"
+    }
+  ],
+  "cross_platform_invariants": {
+    "protocol_version": 1,
+    "maximum_frame_bytes": 65536,
+    "one_session_one_worker": true,
+    "reconnect_old_generation": false,
+    "tcp_listener": false,
+    "http_surface": false,
+    "external_network": false,
+    "credential_export": false,
+    "production_authority": false,
+    "effect_authority": false,
+    "operator_acceptance": false,
+    "promotion": false
+  }
+}
