@@ -9,6 +9,13 @@ name = "codex_hepta_contracts"
 path = "src/lib.rs"
 doctest = false
 
+[features]
+default = []
+# Opt-in local qualification models for AuthBus B4/B5.  The feature exposes
+# deterministic reference implementations only; it never enables a listener,
+# provider call, external effect, or production authority.
+authbus-local-qualification = []
+
 [lints]
 workspace = true
 

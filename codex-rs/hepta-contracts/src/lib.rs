@@ -2,10 +2,10 @@
 
 mod agent_id;
 mod authbus;
-#[cfg(test)]
-mod authbus_b4;
-#[cfg(test)]
-mod authbus_b5;
+#[cfg(any(test, feature = "authbus-local-qualification"))]
+pub mod authbus_b4;
+#[cfg(any(test, feature = "authbus-local-qualification"))]
+pub mod authbus_b5;
 #[cfg(test)]
 #[path = "authbus_tests.rs"]
 mod authbus_tests;
@@ -104,6 +104,22 @@ pub use authbus::b3::SecretRefState;
 pub use authbus::b3::SecretRefBinding;
 pub use authbus::embedded_source_manifest;
 pub use authbus::embedded_source_manifest_for_candidate;
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b4::{
+    AUTHBUS_B4_AUTHORITY, AUTHBUS_B4_EFFECT_AUTHORITY, AUTHBUS_B4_EXECUTE_ALLOWED,
+    AUTHBUS_B4_G5_ALLOWED, AUTHBUS_B4_OPERATOR_ACCEPTANCE, AUTHBUS_B4_PRODUCTION_CALLER,
+    AUTHBUS_B4_PRODUCTION_WRITER, AUTHBUS_B4_PROMOTION, AUTHBUS_B4_QUALIFICATION_ONLY,
+    LocalScheduler, QuotaLimits, QuotaVector, ResourceState, SchedulerError, SchedulerPermit,
+    SchedulerRequest, SchedulerResource, jain_fairness_ppm,
+};
+#[cfg(feature = "authbus-local-qualification")]
+pub use authbus_b5::{
+    AUTHBUS_B5_AUTHORITY, AUTHBUS_B5_EFFECT_AUTHORITY, AUTHBUS_B5_EXECUTE_ALLOWED,
+    AUTHBUS_B5_G5_ALLOWED, AUTHBUS_B5_OPERATOR_ACCEPTANCE, AUTHBUS_B5_PRODUCTION_CALLER,
+    AUTHBUS_B5_PRODUCTION_WRITER, AUTHBUS_B5_PROMOTION, AUTHBUS_B5_QUALIFICATION_ONLY,
+    B5AppendDisposition, B5DispatchResponse, B5DispatchTicket, B5EffectState, B5Error, B5Fence,
+    B5Intent, B5LookupOutcome, B5OutboxDelivery, B5RecoveryAction, LocalB5Wal,
+};
 pub use identity::ActionId;
 pub use identity::DecisionId;
 pub use identity::ReceiptId;

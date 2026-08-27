@@ -1,0 +1,226 @@
+#![cfg(feature = "authbus-local-qualification")]
+
+use codex_hepta_contracts::authbus_b4::{
+    LocalScheduler, QuotaLimits, QuotaVector, ResourceState, SchedulerError, SchedulerRequest,
+    SchedulerResource,
+};
+use codex_hepta_contracts::authbus_b5::{
+    B5AppendDisposition, B5Error, B5Fence, B5Intent, B5OutboxDelivery, B5RecoveryAction, LocalB5Wal,
+};
+use codex_hepta_contracts::{ProviderEffectKey, Sha256Digest, SubjectRef, authbus_b4, authbus_b5};
+
+fn digest(label: &str) -> Sha256Digest {
+    Sha256Digest::for_bytes(label.as_bytes())
+}
+
+fn scheduler_resource(quota: QuotaLimits) -> SchedulerResource {
+    SchedulerResource {
+        resource_id: "resource:qualification".to_string(),
+        resource_sha256: digest("resource:qualification"),
+        authority_epoch: 1,
+        owner_epoch: 1,
+        generation: 1,
+        fencing_token_sha256: digest("fence:1"),
+        quota,
+        state: ResourceState::Available,
+        cooldown_until_ms: 0,
+    }
+}
+
+fn scheduler_request(
+    resource: &SchedulerResource,
+    request_id: &str,
+    generation: u64,
+) -> SchedulerRequest {
+    SchedulerRequest {
+        request_id: request_id.to_string(),
+        command_id: format!("command:{request_id}"),
+        run_id: format!("run:{request_id}"),
+        aggregate_id: format!("aggregate:{request_id}"),
+        idempotency_key: format!("idempotency:{request_id}"),
+        subject: SubjectRef::new(
+            "tenant:qualification",
+            "workspace:qualification",
+            "agent:qualification",
+            "service:qualification",
+            generation,
+        )
+        .expect("subject"),
+        resource_sha256: resource.resource_sha256.clone(),
+        payload_sha256: digest(&format!("payload:{request_id}")),
+        policy_sha256: digest("policy:qualification"),
+        expected_revision: 1,
+        authority_epoch: resource.authority_epoch,
+        owner_epoch: resource.owner_epoch,
+        generation,
+        fencing_token_sha256: resource.fencing_token_sha256.clone(),
+        estimate: QuotaVector::new(1, 1, 1, 1, 1),
+        safety_margin: QuotaVector::default(),
+        enqueued_at_ms: 1,
+        deadline_ms: 100,
+        weight: 1,
+    }
+}
+
+fn effect_key(label: &str) -> ProviderEffectKey {
+    ProviderEffectKey::parse(format!("provider-effect:v1:{}", digest(label).as_str()))
+        .expect("effect key")
+}
+
+fn fence(generation: u64) -> B5Fence {
+    B5Fence {
+        authority_epoch: 3,
+        owner_epoch: 7,
+        generation,
+        fencing_token_sha256: digest(&format!("fence:{generation}")),
+    }
+}
+
+fn intent(label: &str, generation: u64) -> B5Intent {
+    B5Intent {
+        effect_key: effect_key(label),
+        idempotency_key: format!("idempotency:{label}"),
+        payload_sha256: digest(&format!("payload:{label}")),
+        fence: fence(generation),
+    }
+}
+
+fn delivery(label: &str) -> B5OutboxDelivery {
+    B5OutboxDelivery {
+        outbox_id: format!("outbox:{label}"),
+        event_id: format!("event:{label}"),
+        idempotency_key: format!("delivery:{label}"),
+        payload_sha256: digest(&format!("delivery-payload:{label}")),
+        delivery_seq: 1,
+        fence: fence(11),
+    }
+}
+
+#[test]
+fn b4_unknown_quota_and_duplicate_request_fail_closed() {
+    let unknown_resource = scheduler_resource(QuotaLimits::unknown_rpm(QuotaVector::new(
+        10, 10, 2, 10, 10,
+    )));
+    let mut unknown_scheduler = LocalScheduler::new(unknown_resource.clone()).expect("scheduler");
+    let unknown_request = scheduler_request(&unknown_resource, "unknown-quota", 1);
+    assert_eq!(
+        unknown_scheduler.enqueue(unknown_request),
+        Err(SchedulerError::UnknownQuota)
+    );
+    assert_eq!(unknown_scheduler.queued_request_count(), 0);
+
+    let resource = scheduler_resource(QuotaLimits::known(QuotaVector::new(10, 10, 2, 10, 10)));
+    let mut scheduler = LocalScheduler::new(resource.clone()).expect("scheduler");
+    let request = scheduler_request(&resource, "duplicate", 1);
+    scheduler.enqueue(request.clone()).expect("first enqueue");
+    let mut duplicate = request;
+    duplicate.expected_revision = scheduler.revision();
+    assert_eq!(
+        scheduler.enqueue(duplicate),
+        Err(SchedulerError::DuplicateRequest)
+    );
+    assert_eq!(scheduler.queued_request_count(), 1);
+}
+
+#[test]
+fn b4_stale_permit_callback_does_not_mutate_accounting() {
+    let resource = scheduler_resource(QuotaLimits::known(QuotaVector::new(10, 10, 2, 10, 10)));
+    let mut scheduler = LocalScheduler::new(resource.clone()).expect("scheduler");
+    scheduler
+        .enqueue(scheduler_request(&resource, "stale-permit", 1))
+        .expect("enqueue");
+    let permit = scheduler.grant_next(2).expect("grant").expect("permit");
+    let held_before = scheduler.held();
+    let used_before = scheduler.used();
+    let active_before = scheduler.active_permit_count();
+
+    let mut stale = permit.clone();
+    stale.generation += 1;
+    assert_eq!(
+        scheduler.complete(&stale, QuotaVector::default()),
+        Err(SchedulerError::StaleFence)
+    );
+    assert_eq!(scheduler.held(), held_before);
+    assert_eq!(scheduler.used(), used_before);
+    assert_eq!(scheduler.active_permit_count(), active_before);
+}
+
+#[test]
+fn b5_crash_after_call_recovers_lookup_only_without_a_second_call() {
+    let original = intent("crash", 11);
+    let mut wal = LocalB5Wal::new();
+    assert_eq!(
+        wal.append_intent(original.clone()),
+        Ok(B5AppendDisposition::Inserted)
+    );
+    wal.crash_after_call(&original.effect_key, 1, original.fence.clone())
+        .expect("crash boundary");
+
+    let reopened = LocalB5Wal::reopen_snapshot(&wal.durable_snapshot()).expect("reopen");
+    assert_eq!(
+        reopened.recover(),
+        B5RecoveryAction::LookupOnly {
+            effect_key: original.effect_key,
+            attempt: 1,
+        }
+    );
+    assert_eq!(reopened.adapter_calls(), 0);
+}
+
+#[test]
+fn b5_unknown_intent_is_a_safe_stop_without_dispatch() {
+    let unknown = effect_key("unknown-intent");
+    let mut wal = LocalB5Wal::new();
+    assert_eq!(
+        wal.begin_dispatch(&unknown, 1, fence(11)),
+        Err(B5Error::UnknownIntent)
+    );
+    assert_eq!(wal.durable_record_count(), 0);
+    assert_eq!(wal.adapter_calls(), 0);
+}
+
+#[test]
+fn b5_payload_conflict_and_stale_fence_do_not_append_records() {
+    let first = delivery("one");
+    let mut wal = LocalB5Wal::new();
+    assert_eq!(
+        wal.enqueue_outbox(first.clone()),
+        Ok(B5AppendDisposition::Inserted)
+    );
+    let count = wal.durable_record_count();
+
+    let mut conflict = first.clone();
+    conflict.outbox_id = "outbox:conflict".to_string();
+    conflict.payload_sha256 = digest("different-payload");
+    assert_eq!(wal.enqueue_outbox(conflict), Err(B5Error::OutboxConflict));
+    assert_eq!(wal.durable_record_count(), count);
+
+    let mut stale = first;
+    stale.outbox_id = "outbox:stale".to_string();
+    stale.fence = fence(12);
+    assert_eq!(wal.enqueue_outbox(stale), Err(B5Error::StaleFence));
+    assert_eq!(wal.durable_record_count(), count);
+}
+
+#[test]
+fn qualification_feature_keeps_b4_and_b5_authority_flags_false() {
+    assert!(authbus_b4::AUTHBUS_B4_QUALIFICATION_ONLY);
+    assert!(!authbus_b4::AUTHBUS_B4_AUTHORITY);
+    assert!(!authbus_b4::AUTHBUS_B4_PRODUCTION_CALLER);
+    assert!(!authbus_b4::AUTHBUS_B4_PRODUCTION_WRITER);
+    assert!(!authbus_b4::AUTHBUS_B4_EFFECT_AUTHORITY);
+    assert!(!authbus_b4::AUTHBUS_B4_OPERATOR_ACCEPTANCE);
+    assert!(!authbus_b4::AUTHBUS_B4_PROMOTION);
+    assert!(!authbus_b4::AUTHBUS_B4_G5_ALLOWED);
+    assert!(!authbus_b4::AUTHBUS_B4_EXECUTE_ALLOWED);
+
+    assert!(authbus_b5::AUTHBUS_B5_QUALIFICATION_ONLY);
+    assert!(!authbus_b5::AUTHBUS_B5_AUTHORITY);
+    assert!(!authbus_b5::AUTHBUS_B5_PRODUCTION_CALLER);
+    assert!(!authbus_b5::AUTHBUS_B5_PRODUCTION_WRITER);
+    assert!(!authbus_b5::AUTHBUS_B5_EFFECT_AUTHORITY);
+    assert!(!authbus_b5::AUTHBUS_B5_OPERATOR_ACCEPTANCE);
+    assert!(!authbus_b5::AUTHBUS_B5_PROMOTION);
+    assert!(!authbus_b5::AUTHBUS_B5_G5_ALLOWED);
+    assert!(!authbus_b5::AUTHBUS_B5_EXECUTE_ALLOWED);
+}

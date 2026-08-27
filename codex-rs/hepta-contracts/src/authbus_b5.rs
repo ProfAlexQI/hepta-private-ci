@@ -1,7 +1,8 @@
 //! B5 local qualification seam for AuthBus WAL and reconciliation.
 //!
-//! This module is deliberately compiled only by the test build.  It is a
-//! deterministic reference model for the ordering and recovery invariants
+//! This module is deliberately compiled only by the test build or the
+//! explicit `authbus-local-qualification` feature.  It is a deterministic
+//! reference model for the ordering and recovery invariants
 //! that a future `hepta-authbusd` must implement; it is not a daemon, socket,
 //! provider adapter, or authority writer.  In particular, the model proves
 //! the following narrow properties without crossing a physical-effect

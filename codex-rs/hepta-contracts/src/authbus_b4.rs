@@ -1,8 +1,9 @@
 //! B4 local scheduler qualification seam.
 //!
-//! This module is compiled only for tests (`lib.rs` gates it with
-//! `cfg(test)`).  It is deliberately not an AuthBus daemon, a provider
-//! adapter, or a product scheduler.  The seam exists to exercise the B4
+//! This module is compiled only for tests or the explicit
+//! `authbus-local-qualification` feature (`lib.rs` gates it accordingly).  It
+//! is deliberately not an AuthBus daemon, a provider adapter, or a product
+//! scheduler.  The seam exists to exercise the B4
 //! invariants against a deterministic in-memory model before a separate
 //! `hepta-authbus-scheduler` crate is introduced:
 //!
@@ -373,8 +374,8 @@ struct Active {
     reserved: QuotaVector,
 }
 
-/// Deterministic in-memory B4 scheduler.  It is intentionally private to the
-/// test build and has no async/runtime dependency.
+/// Deterministic in-memory B4 scheduler.  It is intentionally restricted to
+/// the test/qualification build and has no async/runtime dependency.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LocalScheduler {
     resource: SchedulerResource,
