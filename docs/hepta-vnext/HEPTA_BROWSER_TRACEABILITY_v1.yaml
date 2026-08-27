@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "hepta.browser.traceability.v1",
+  "plan_id": "WEB-PLAN-2026-08-27E",
+  "encoding": "JSON_COMPATIBLE_YAML",
+  "implementation_commit": "PENDING_SUCCESSOR_BINDING",
+  "requirements": [
+    {
+      "id": "BR-C0-001",
+      "statement": "Only WEB-C0 through WEB-C7 are active",
+      "stage": "WEB-C0",
+      "code": [],
+      "tests": [],
+      "ci": ["plan verifier"]
+    },
+    {
+      "id": "BR-C0-002",
+      "statement": "All production/effect/promotion flags are closed",
+      "stage": "WEB-C0",
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_contracts.rs:BrowserAuthorityStatus"
+      ],
+      "tests": [
+        "browser_shared_page_human_agent_round_trip",
+        "browser_external_navigation_is_denied_without_state_evidence"
+      ],
+      "ci": ["Browser C0-C3 qualification"]
+    },
+    {
+      "id": "BR-C0-003",
+      "statement": "Current default branch triggers Hepta qualification",
+      "stage": "WEB-C0",
+      "code": [".github/workflows/hepta-vnext-qualification.yml"],
+      "tests": [],
+      "ci": ["workflow trigger verifier"]
+    },
+    {
+      "id": "BR-C1-001",
+      "statement": "Servo source is immutable and not imported before receipt",
+      "stage": "WEB-C1",
+      "code": [],
+      "tests": [],
+      "ci": ["future Servo source/license/SBOM job"]
+    },
+    {
+      "id": "BR-C1-002",
+      "statement": "No upstream 0.0.0.0 WebDriver listener enters Hepta",
+      "stage": "WEB-C1",
+      "code": [],
+      "tests": [],
+      "ci": ["future no-listener negative test"]
+    },
+    {
+      "id": "BR-C2-001",
+      "statement": "Session and semantic identifiers deserialize only in canonical form",
+      "stage": "WEB-C2",
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_contracts.rs:BrowserSessionId",
+        "codex-rs/hepta-shadow-qualification/src/browser_contracts.rs:SemanticRef"
+      ],
+      "tests": ["browser_wire_identifiers_require_canonical_shape"],
+      "ci": ["Browser C0-C3 qualification"]
+    },
+    {
+      "id": "BR-C2-002",
+      "statement": "DOM-affecting mutation invalidates semantic refs",
+      "stage": "WEB-C2",
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor_support.rs:advance_page_revision"
+      ],
+      "tests": ["browser_stale_semantic_ref_is_rejected_after_mutation"],
+      "ci": ["Browser C0-C3 qualification"]
+    },
+    {
+      "id": "BR-C2-003",
+      "statement": "Sensitive and cross-tenant engine outputs fail closed",
+      "stage": "WEB-C2",
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/engine.rs:BrowserEngineExtract",
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor_support.rs:capture_snapshot"
+      ],
+      "tests": ["browser_sensitive_extract_is_denied"],
+      "ci": ["Browser C0-C3 qualification"]
+    },
+    {
+      "id": "BR-C3-001",
+      "statement": "One BrowserActor serializes Agent and human mutations",
+      "stage": "WEB-C3",
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor.rs:BrowserActor"
+      ],
+      "tests": ["browser_shared_page_human_agent_round_trip"],
+      "ci": ["Browser C0-C3 qualification"]
+    },
+    {
+      "id": "BR-C3-002",
+      "statement": "Human takeover is bounded by owner epoch and lease expiry",
+      "stage": "WEB-C3",
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor_support.rs:expire_human_lease"
+      ],
+      "tests": ["browser_human_lease_expiry_advances_epoch_and_revision"],
+      "ci": ["Browser C0-C3 qualification"]
+    },
+    {
+      "id": "BR-C3-003",
+      "statement": "Request ID exact replay is stable and conflicting bytes are denied",
+      "stage": "WEB-C3",
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor.rs:CachedResponse"
+      ],
+      "tests": ["browser_request_replay_is_stable_and_conflict_fails_closed"],
+      "ci": ["Browser C0-C3 qualification"]
+    },
+    {
+      "id": "BR-C3-004",
+      "statement": "Rejected wrong-session requests bind receipts to actual actor identity and leak no page evidence",
+      "stage": "WEB-C3",
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_contracts.rs:BrowserActivityReceipt",
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor_support.rs:response"
+      ],
+      "tests": ["browser_wrong_session_receipt_binds_actual_actor_identity"],
+      "ci": ["Browser C0-C3 qualification"]
+    },
+    {
+      "id": "BR-C4-001",
+      "statement": "Public-web work remains read-only and has no alternate-engine fallback",
+      "stage": "WEB-C4",
+      "code": [],
+      "tests": [],
+      "ci": ["future public read-only corpus"]
+    },
+    {
+      "id": "BR-C5-001",
+      "statement": "All real network requests pass SSRF/DNS/redirect policy",
+      "stage": "WEB-C5",
+      "code": [],
+      "tests": [],
+      "ci": ["future security matrix"]
+    },
+    {
+      "id": "BR-C6-001",
+      "statement": "Native human UI uses the same Servo WebView as Agent operations",
+      "stage": "WEB-C6",
+      "code": [],
+      "tests": [],
+      "ci": ["future platform headed matrix"]
+    },
+    {
+      "id": "BR-C7-001",
+      "statement": "Authentication and effects require AuthBus, TaskFlow reconcile, operator acceptance, and promotion",
+      "stage": "WEB-C7",
+      "code": [],
+      "tests": [],
+      "ci": ["future final-release gate"]
+    }
+  ]
+}
