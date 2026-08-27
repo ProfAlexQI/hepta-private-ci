@@ -1,0 +1,36 @@
+{
+  "schema": "hepta.browser.exact_source_run_request.v1",
+  "schema_version": 1,
+  "updated_at_utc": "2026-08-28T00:00:00Z",
+  "workflow": ".github/workflows/hepta-servo-independent-source-qualification-v3.yml",
+  "requested_ref": "codex/hepta-vnext-plan-browser-c0-c3-20260827",
+  "required_input": {
+    "acknowledge_source_only": "SOURCE_ONLY_NO_RUNTIME_AUTHORITY"
+  },
+  "purpose": "two independent pinned Servo source acquisitions, deterministic archive and Git-order-correct offline root-tree reconstruction",
+  "expected_commit": "0a48e298482659817eb50097df23841f2b8e3044",
+  "expected_tree": "b04d2f75b3217374d079d579c270177b57fa1389",
+  "status": "REQUESTED_NOT_EVIDENCED",
+  "workflow_run_id": null,
+  "accepted_receipt": null,
+  "claims": {
+    "exact_servo_source_accepted": false,
+    "servo_built": false,
+    "servo_runtime_qualified": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  },
+  "authority": {
+    "runtime_authority": false,
+    "effect_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "runtime_external_network": false,
+    "raw_cookie_export": false,
+    "credential_export": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  }
+}
