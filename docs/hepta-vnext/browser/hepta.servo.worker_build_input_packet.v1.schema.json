@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hepta.servo.worker_build_input_packet.v1",
+  "title": "Hepta Servo worker build input packet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "phase",
+    "claim_level",
+    "captured_at_utc",
+    "source_binding",
+    "distribution_binding",
+    "toolchain_binding",
+    "build_binding",
+    "artifact",
+    "authority",
+    "decision",
+    "receipt_id"
+  ],
+  "properties": {
+    "schema": {"const": "hepta.servo.worker_build_input_packet.v1"},
+    "phase": {"const": "DEVELOPMENT"},
+    "claim_level": {"const": "WORKER_BUILD_INPUTS_FROZEN_ONLY"},
+    "captured_at_utc": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "commit",
+        "tree",
+        "source_receipt_id",
+        "source_receipt_sha256",
+        "source_bundle_receipt_id",
+        "source_bundle_sha256"
+      ],
+      "properties": {
+        "repository": {"const": "https://github.com/servo/servo"},
+        "commit": {"const": "0a48e298482659817eb50097df23841f2b8e3044"},
+        "tree": {"const": "b04d2f75b3217374d079d579c270177b57fa1389"},
+        "source_receipt_id": {
+          "type": "string",
+          "pattern": "^servo-source-receipt:v1:[0-9a-f]{64}$"
+        },
+        "source_receipt_sha256": {"$ref": "#/$defs/sha256"},
+        "source_bundle_receipt_id": {
+          "type": "string",
+          "pattern": "^servo-source-bundle-verification:v1:[0-9a-f]{64}$"
+        },
+        "source_bundle_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "distribution_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "patch_inventory_sha256",
+        "license_packet_sha256",
+        "sbom_sha256",
+        "sbom_format"
+      ],
+      "properties": {
+        "patch_inventory_sha256": {"$ref": "#/$defs/sha256"},
+        "license_packet_sha256": {"$ref": "#/$defs/sha256"},
+        "sbom_sha256": {"$ref": "#/$defs/sha256"},
+        "sbom_format": {"const": "SPDX-2.3-json"}
+      }
+    },
+    "toolchain_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rustc_verbose_sha256",
+        "rustc_verbose_bytes",
+        "cargo_version",
+        "cargo_version_sha256",
+        "cargo_version_bytes",
+        "linker_id",
+        "linker_id_sha256",
+        "linker_id_bytes"
+      ],
+      "properties": {
+        "rustc_verbose_sha256": {"$ref": "#/$defs/sha256"},
+        "rustc_verbose_bytes": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "cargo_version": {"$ref": "#/$defs/safeText"},
+        "cargo_version_sha256": {"$ref": "#/$defs/sha256"},
+        "cargo_version_bytes": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "linker_id": {"$ref": "#/$defs/safeText"},
+        "linker_id_sha256": {"$ref": "#/$defs/sha256"},
+        "linker_id_bytes": {"type": "integer", "minimum": 1, "maximum": 65536}
+      }
+    },
+    "build_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_triple",
+        "build_profile",
+        "features",
+        "working_directory",
+        "build_command_sha256",
+        "build_command_argc",
+        "environment_allowlist_sha256",
+        "environment_keys",
+        "environment_values",
+        "network_access_during_build"
+      ],
+      "properties": {
+        "target_triple": {
+          "enum": [
+            "x86_64-unknown-linux-gnu",
+            "aarch64-unknown-linux-gnu",
+            "x86_64-apple-darwin",
+            "aarch64-apple-darwin",
+            "x86_64-pc-windows-msvc",
+            "aarch64-pc-windows-msvc"
+          ]
+        },
+        "build_profile": {"$ref": "#/$defs/safeText"},
+        "features": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/safeText"}
+        },
+        "working_directory": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000\\\\]+$"
+        },
+        "build_command_sha256": {"$ref": "#/$defs/sha256"},
+        "build_command_argc": {"type": "integer", "minimum": 2, "maximum": 256},
+        "environment_allowlist_sha256": {"$ref": "#/$defs/sha256"},
+        "environment_keys": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,127}$"}
+        },
+        "environment_values": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {"$ref": "#/$defs/environmentValue"}
+        },
+        "network_access_during_build": {"const": false}
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "worker_artifact_built",
+        "worker_artifact_sha256",
+        "runtime_qualified",
+        "reproducible_build_verified"
+      ],
+      "properties": {
+        "worker_artifact_built": {"const": false},
+        "worker_artifact_sha256": {"type": "null"},
+        "runtime_qualified": {"const": false},
+        "reproducible_build_verified": {"const": false}
+      }
+    },
+    "authority": {"$ref": "#/$defs/authority"},
+    "decision": {"const": "BUILD_INPUTS_FROZEN_ARTIFACT_AND_RUNTIME_NOT_QUALIFIED"},
+    "receipt_id": {
+      "type": "string",
+      "pattern": "^servo-worker-build-inputs:v1:[0-9a-f]{64}$"
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "safeText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9._:+/@=-]+$"
+    },
+    "environmentValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "value_sha256", "utf8_bytes"],
+      "properties": {
+        "key": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,127}$"},
+        "value_sha256": {"$ref": "#/$defs/sha256"},
+        "utf8_bytes": {"type": "integer", "minimum": 0, "maximum": 16384}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "machine_authority",
+        "runtime_authority",
+        "production_caller",
+        "production_writer",
+        "effect_authority",
+        "external_effect",
+        "external_network_allowed",
+        "credential_export_allowed",
+        "operator_acceptance",
+        "promotion",
+        "release_qualified"
+      ],
+      "properties": {
+        "machine_authority": {"const": false},
+        "runtime_authority": {"const": false},
+        "production_caller": {"const": false},
+        "production_writer": {"const": false},
+        "effect_authority": {"const": false},
+        "external_effect": {"const": false},
+        "external_network_allowed": {"const": false},
+        "credential_export_allowed": {"const": false},
+        "operator_acceptance": {"const": false},
+        "promotion": {"const": false},
+        "release_qualified": {"const": false}
+      }
+    }
+  }
+}
