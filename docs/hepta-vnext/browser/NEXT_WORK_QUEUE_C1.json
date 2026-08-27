@@ -1,8 +1,9 @@
 {
   "schema": "hepta.browser.next_work_queue.c1.v1",
-  "updated_at": "2026-08-28T00:00:00+08:00",
+  "updated_at": "2026-08-28T18:50:00+08:00",
   "phase": "DEVELOPMENT",
   "plan": "WEB-PLAN-2026-08-27E",
+  "ordering_rule": "seal two-fetch source evidence, deterministic source bundle and strict build-input packet before building or launching any Servo worker artifact",
   "authority": {
     "runtime_authority": false,
     "production_caller": false,
@@ -20,45 +21,46 @@
       "id": "C1-004A-1",
       "title": "Generate canonical source receipt from exact Servo checkout",
       "state": "READY_AFTER_RUNNER_REPAIR_AND_MANUAL_DISPATCH",
-      "dependencies": ["source-contract-fixture-workflow-pass", "github-actions-runner-enters-first-step"],
+      "dependencies": [
+        "hepta-servo-source-contract",
+        "github-actions-runner-enters-first-step"
+      ],
       "implemented": [
         "exact source receipt generator and verifier",
         "manual acknowledged two-fetch source qualification workflow",
         "clean checkout, origin, HEAD, tree, license and recursive tree-manifest binding"
       ],
-      "inputs": [
-        "two independent exact servo/servo checkouts",
-        "commit 0a48e298482659817eb50097df23841f2b8e3044",
-        "tree b04d2f75b3217374d079d579c270177b57fa1389"
+      "outputs": [
+        "fetch-a/hepta.servo.source_receipt.v1",
+        "fetch-b/hepta.servo.source_receipt.v1"
       ],
-      "outputs": ["two hepta.servo.source_receipt.v1 receipts"],
       "acceptance": [
-        "origin/HEAD/tree/clean/license/tree-manifest exact",
-        "receipt compact canonical and create-only",
-        "build/archive/SBOM/authority claims false",
-        "both exact-head jobs execute steps and upload immutable evidence"
+        "origin, HEAD, tree, clean state, license and tree-manifest exact",
+        "receipts compact canonical and create-only",
+        "build, archive, SBOM and all authority claims false",
+        "both independent fetch jobs execute steps and upload immutable evidence"
       ]
     },
     {
       "id": "C1-004A-2",
-      "title": "Repeat source verification from an independent fetch",
+      "title": "Compare independent exact source fetches",
       "state": "CONTRACT_IMPLEMENTED_BLOCKED_BY_C1-004A-1_EVIDENCE",
       "dependencies": ["C1-004A-1"],
       "implemented": [
         "independent fetch-ID fence",
         "source-facts and tree-manifest comparison",
-        "signature presence separated from trust verification"
+        "signature presence separated from signature trust"
       ],
-      "outputs": ["second source receipt", "cross-fetch comparison receipt"],
+      "outputs": ["cross-fetch comparison receipt"],
       "acceptance": [
-        "same commit/tree/tree-manifest/license digest",
-        "independent checkout and evidence root",
-        "signature trust status explicit, not inferred"
+        "same commit, tree, tree-manifest and license digest",
+        "independent checkout and evidence roots",
+        "signature trust status explicit and not inferred"
       ]
     },
     {
       "id": "C1-004A-3",
-      "title": "Create deterministic Servo source archive",
+      "title": "Create and independently compare deterministic Servo source archive",
       "state": "CONTRACT_IMPLEMENTED_BLOCKED_BY_C1-004A-2_EVIDENCE",
       "dependencies": ["C1-004A-2"],
       "implemented": [
@@ -67,16 +69,21 @@
         "independent archive comparison",
         "path, symlink and submodule fail-closed policy"
       ],
-      "outputs": ["source archive", "archive SHA-256", "archive inventory"],
+      "outputs": [
+        "deterministic source archive",
+        "archive SHA-256",
+        "archive inventory",
+        "archive comparison receipt"
+      ],
       "acceptance": [
-        "archive generated from exact tree",
-        "two independent generations match or differences explained",
-        "symlink/submodule policy enforced"
+        "archive generated only from exact tree",
+        "two independent generations match byte-for-byte or candidate fails",
+        "symlink and submodule policy enforced before archive creation"
       ]
     },
     {
       "id": "C1-004A-4",
-      "title": "Seal MPL-2.0 license/source-distribution packet and patch inventory",
+      "title": "Seal MPL-2.0 distribution packet and governed patch inventory",
       "state": "CONTRACT_IMPLEMENTED_BLOCKED_BY_C1-004A-3_EVIDENCE",
       "dependencies": ["C1-004A-3"],
       "implemented": [
@@ -85,39 +92,58 @@
         "governed patch inventory transform",
         "complete source-bundle recomputation"
       ],
-      "outputs": ["hepta.servo.license_packet.v1", "hepta.servo.patch_inventory.v1"],
+      "outputs": [
+        "hepta.servo.license_packet.v1",
+        "hepta.servo.patch_inventory.v1",
+        "hepta.servo.source_bundle_verification.v1"
+      ],
       "acceptance": [
         "license and notices exact",
-        "source offer/distribution obligations explicit",
-        "patch IDs/hashes/reasons/upstream references/deletion conditions complete"
+        "source distribution and legal-review obligations explicit",
+        "binary distribution remains unauthorized",
+        "patch IDs, hashes, reasons, upstream references and deletion conditions complete"
       ]
     },
     {
       "id": "C1-004B-1",
-      "title": "Freeze real worker build input manifest and source-bundle packet",
-      "state": "IMPLEMENTED_FIXTURE_ONLY_BLOCKED_BY_CANONICAL_SOURCE_BUNDLE",
+      "title": "Freeze strict real worker build-input packet and manifest",
+      "state": "IMPLEMENTED_15_LOCAL_FIXTURE_TESTS_BLOCKED_BY_CANONICAL_SOURCE_BUNDLE_AND_EXACT_HEAD_CI",
       "dependencies": [
         "C1-004A-4",
-        "build-manifest-contract-workflow-pass",
-        "worker-build-inputs-contract-workflow-pass"
+        "hepta-servo-worker-build-inputs-contract",
+        "hepta-focused-gates-verifier"
       ],
+      "canonical_entrypoint": "scripts/hepta-servo-worker-build-inputs.py",
+      "engine": "scripts/hepta-servo-worker-build-manifest.py",
       "implemented": [
-        "base hepta.servo.worker_build_manifest.v1 primitive",
         "source-bundle-aware hepta.servo.worker_build_input_packet.v1 orchestration",
-        "exact source/patch/license/SBOM/toolchain/command/environment digest binding",
+        "exact source, patch, license, SBOM, toolchain, command and environment digest binding",
+        "create-only canonical packet and manifest plus independent recomputation",
         "raw environment values redacted from packet output",
-        "create-only canonical packet and manifest verification"
+        "direct cargo build or cargo rustc requirement",
+        "mandatory --locked and --offline",
+        "registry and acquisition operations rejected",
+        "duplicate features rejected instead of silently normalized",
+        "NUL, CR/LF ambiguity and secret-bearing environment keys rejected"
       ],
+      "local_fixture_evidence": {
+        "engine_tests": "7/7 PASS_LOCAL_FIXTURE_ONLY",
+        "strict_policy_tests": "8/8 PASS_LOCAL_FIXTURE_ONLY",
+        "combined": "15/15 PASS_LOCAL_FIXTURE_ONLY",
+        "exact_head_receipt": null
+      },
       "outputs": [
         "hepta.servo.worker_build_input_packet.v1",
         "hepta.servo.worker_build_manifest.v1"
       ],
       "acceptance": [
-        "target/profile/rustc/cargo/linker/features exact",
-        "build command and environment allowlist digests exact",
         "canonical source-bundle receipt bound",
-        "build/network/worker authority booleans false",
-        "real packet independently recomputes from one exact input set"
+        "target, profile, rustc, cargo, linker and unique features exact",
+        "build command and environment digests exact",
+        "Cargo is direct, locked and offline",
+        "build, network, worker and authority booleans false",
+        "real packet independently recomputes from one exact input set",
+        "exact-head reusable workflow and CI-required aggregator pass"
       ]
     },
     {
@@ -125,54 +151,67 @@
       "title": "Build first Linux local-fixture-only Servo worker",
       "state": "BLOCKED_BY_C1-004B-1_REAL_EVIDENCE",
       "dependencies": ["C1-004B-1"],
-      "outputs": ["worker executable", "symbols/debug packet", "complete SPDX SBOM"],
+      "outputs": [
+        "worker executable",
+        "symbols and debug packet",
+        "complete SPDX-2.3 SBOM",
+        "native dependency inventory"
+      ],
       "acceptance": [
-        "build network disabled after declared dependency acquisition",
-        "no wildcard/loopback HTTP automation server compiled or started",
-        "worker feature surface limited to private protocol/local fixture",
-        "exact build packet and manifest supplied as immutable inputs"
+        "build uses the immutable strict input packet and manifest",
+        "network remains disabled during build execution",
+        "no wildcard or loopback HTTP automation server compiled or started",
+        "worker feature surface limited to private protocol and local fixture",
+        "build output contains no undeclared source or machine-local binding"
       ]
     },
     {
       "id": "C1-004B-3",
       "title": "Generate and independently verify worker artifact receipt",
       "state": "CONTRACT_IMPLEMENTED_FIXTURE_ONLY_BLOCKED_BY_REAL_ARTIFACT",
-      "dependencies": ["C1-004B-2", "artifact-contract-workflow-pass"],
+      "dependencies": [
+        "C1-004B-2",
+        "hepta-servo-artifact-contract"
+      ],
       "implemented": [
-        "source/build/artifact/patch/license/SBOM binding contract",
-        "nonexecuting ELF/Mach-O/PE target and architecture inspection",
+        "source, build, artifact, patch, license and SBOM binding contract",
+        "nonexecuting ELF, Mach-O and PE target/architecture inspection",
         "symlink, hardlink, writable artifact and positive-authority rejection"
       ],
       "outputs": ["hepta.servo.worker_artifact_receipt.v1"],
       "acceptance": [
-        "source/build/artifact/patch/license/SBOM exact",
-        "binary target/format/architecture exact",
-        "runtime qualification and authority fields false"
+        "source, build, artifact, patch, license and SBOM exact",
+        "binary target, format and architecture exact",
+        "runtime qualification and all authority fields false"
       ]
     },
     {
       "id": "C1-004B-4",
-      "title": "Repeat the build and compare reproducibility",
+      "title": "Repeat worker build and compare reproducibility",
       "state": "BLOCKED_BY_C1-004B-3_REAL_EVIDENCE",
       "dependencies": ["C1-004B-3"],
-      "outputs": ["second artifact receipt", "reproducibility comparison"],
+      "outputs": [
+        "second artifact receipt",
+        "artifact and symbols comparison",
+        "reproducibility receipt"
+      ],
       "acceptance": [
-        "identical artifact or enumerated deterministic differences",
-        "same source/build/SBOM/license/patch bindings",
-        "no unexplained native dependency drift"
+        "identical artifact or candidate fails with enumerated non-determinism",
+        "same source, build, SBOM, license and patch bindings",
+        "no unexplained toolchain or native dependency drift"
       ]
     },
     {
       "id": "C1-004C-1",
       "title": "Launch artifact-bound Servo worker over inherited private channel",
-      "state": "LAUNCH_GATE_SCAFFOLD_IMPLEMENTED_REAL_ARTIFACT_BLOCKED",
+      "state": "LAUNCH_GATE_FIXTURE_IMPLEMENTED_REAL_ARTIFACT_BLOCKED",
       "dependencies": [
         "C1-004B-4",
-        "c1-private-protocol-workflow-pass",
-        "c1-artifact-launch-gate-workflow-pass"
+        "hepta-browser-c1-protocol",
+        "hepta-browser-c1-artifact-gate"
       ],
       "implemented": [
-        "zero-dependency executable/build/source SHA-256 launch binding",
+        "zero-dependency executable, build-manifest and source-receipt SHA-256 binding",
         "exact spawned-child PID and private challenge authentication",
         "Unix inherited socketpair qualification transport",
         "bounded read/write deadlines",
@@ -181,10 +220,10 @@
       "outputs": ["real worker startup receipt"],
       "acceptance": [
         "executable SHA-256 matches artifact receipt before spawn",
-        "session/generation/epoch/source pin exact before browser protocol handoff",
-        "startup capability/challenge private and one-process",
+        "session, generation, epoch and source pin exact before browser protocol handoff",
+        "startup capability and challenge private and one-process",
         "no listener or external egress",
-        "fixture receipts replaced by exact real source/build/artifact receipts"
+        "fixture receipts replaced by exact real source, build and artifact receipts"
       ]
     },
     {
@@ -192,30 +231,30 @@
       "title": "Create exactly one local-fixture Servo WebView",
       "state": "BLOCKED_BY_C1-004C-1_REAL_WORKER",
       "dependencies": ["C1-004C-1"],
-      "outputs": ["one-WebView local fixture smoke receipt"],
+      "outputs": ["one-WebView local-fixture smoke receipt"],
       "acceptance": [
-        "one session one process one WebView one mutation owner",
-        "local fixture only",
-        "no second WebDriver/page owner",
-        "clean shutdown and child reap"
+        "one session, one process, one WebView and one mutation owner",
+        "local fixture only and external network false",
+        "no second WebDriver or page owner",
+        "clean shutdown and descendant reap"
       ]
     },
     {
       "id": "C1-004C-3",
-      "title": "Bind real semantic observe/click/type to BrowserActor",
+      "title": "Bind real semantic observe, click and type to BrowserActor",
       "state": "BLOCKED_BY_C1-004C-2",
       "dependencies": ["C1-004C-2"],
       "outputs": ["real C1 semantic smoke receipt"],
       "acceptance": [
         "page revision advances on every mutation",
-        "stale refs fail closed",
+        "stale semantic references fail closed",
         "human takeover fences queued Agent mutation",
-        "no raw cookie/storage/eval exposure"
+        "no raw cookie, storage, script-eval or profile exposure"
       ]
     },
     {
       "id": "C1-004C-4",
-      "title": "Qualify deadlines, forced teardown, descriptors, sandbox, and platforms",
+      "title": "Qualify deadlines, forced teardown, descriptors, sandbox and platforms",
       "state": "PARTIAL_PROCESS_FIXTURE_IMPLEMENTED_BLOCKED_BY_REAL_SERVO_INTEGRATION",
       "dependencies": ["C1-004C-3"],
       "implemented": [
@@ -223,12 +262,16 @@
         "fixture normal child reap",
         "fixture hung-child forced kill and bounded reap"
       ],
-      "outputs": ["Linux receipt", "macOS receipt", "Windows named-pipe receipt"],
+      "outputs": [
+        "Linux x86_64 receipt",
+        "macOS arm64 receipt",
+        "Windows x86_64 named-pipe receipt"
+      ],
       "acceptance": [
-        "bounded handshake/read/write/command/drain/kill/reap",
-        "no listener/no egress OS evidence",
-        "private profile/resource limits/parent-death/descendant cleanup",
-        "Windows exact SID ACL and one-client named-pipe equivalence"
+        "bounded handshake, read, write, command, drain, kill and reap",
+        "OS-level no-listener and no-egress evidence",
+        "private profile, resource limits, parent-death and descendant cleanup",
+        "Windows exact SID ACL, one-client named pipe and Job Object equivalence"
       ]
     }
   ],
@@ -245,6 +288,6 @@
     ],
     "evidence": "independent workflows completed as failure with no recorded steps; source-bundle log retrieval returned BlobNotFound",
     "interpretation": "runner, billing, policy or Actions allocation failure; not a code PASS and not a code-test failure",
-    "required_action": "restore a runner that enters the first step, then rerun the exact Draft PR head before changing any evidence status"
+    "required_action": "restore a runner that enters the first step, then rerun the exact Draft PR head before changing any exact-head evidence status"
   }
 }
