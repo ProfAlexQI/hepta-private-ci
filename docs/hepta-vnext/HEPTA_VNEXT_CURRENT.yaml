@@ -9,7 +9,9 @@
   "baseline_commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
   "baseline_tree": "636341eb865b7c6d669958a96e7959de74fee020",
   "implementation_branch": "codex/hepta-vnext-plan-browser-c0-c3-20260827",
-  "implementation_commit": "PENDING_SUCCESSOR_BINDING",
+  "implementation_commit": "bd416fe195003403c59b0a419d26a91be4dc20b2",
+  "implementation_tree": "e95453fb9c14e36c8c3b586028dbfec0eeb62feb",
+  "implementation_binding": "docs/hepta-vnext/HEPTA_BROWSER_IMPLEMENTATION_BINDING.json",
   "active_plan": {
     "plan_id": "WEB-PLAN-2026-08-27E",
     "path": "docs/hepta-vnext/HEPTA_BROWSER_ACTIVE_PLAN.md",
@@ -56,7 +58,7 @@
   },
   "release_readiness": "BLOCKED",
   "blocking_reasons": [
-    "implementation commit and CI result are not yet bound",
+    "focused and blocking CI results are not yet bound",
     "Servo source is not imported or built",
     "integrated one-WebView C3 qualification has not run",
     "C4-C6 security/platform qualification has not run",
