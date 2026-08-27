@@ -75,12 +75,6 @@ jobs:
     uses: ./.github/workflows/hepta-servo-artifact-contract.yml
     secrets: inherit
 
-  hepta-servo-build-manifest-contract:
-    name: Hepta Servo build manifest contract
-    needs: runner-preflight
-    uses: ./.github/workflows/hepta-servo-build-manifest-contract.yml
-    secrets: inherit
-
   hepta-servo-source-bundle-contract:
     name: Hepta Servo source bundle contract
     needs: runner-preflight
@@ -138,7 +132,6 @@ jobs:
       - hepta-browser-c1-artifact-gate
       - hepta-browser-c1-protocol
       - hepta-servo-artifact-contract
-      - hepta-servo-build-manifest-contract
       - hepta-servo-source-bundle-contract
       - hepta-servo-source-contract
       - hepta-servo-worker-build-inputs-contract
