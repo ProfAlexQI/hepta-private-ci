@@ -1,0 +1,280 @@
+name: hepta Servo canonical source bundle qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      network_fetch_acknowledgement:
+        description: "Type C1-004A-NETWORK-FETCH to permit two exact public Servo checkouts"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-servo-source-bundle-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fetch-and-archive:
+    name: Independent source fetch ${{ matrix.replica }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    steps:
+      - name: Require explicit network-fetch acknowledgement
+        shell: bash
+        env:
+          ACK: ${{ inputs.network_fetch_acknowledgement }}
+        run: |
+          set -euo pipefail
+          test "$ACK" = "C1-004A-NETWORK-FETCH"
+
+      - name: Checkout Hepta candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact Servo source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: servo/servo
+          ref: 0a48e298482659817eb50097df23841f2b8e3044
+          path: servo-source
+          fetch-depth: 1
+          persist-credentials: false
+          lfs: false
+          submodules: false
+
+      - name: Initialize acquisition posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-source-${{ matrix.replica }}"
+          mkdir -p "$evidence_dir"
+          echo "HEPTA_SERVO_SOURCE_EVIDENCE_DIR=$evidence_dir" >> "$GITHUB_ENV"
+          {
+            echo "hepta_commit=$(git rev-parse HEAD)"
+            echo "hepta_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "replica=${{ matrix.replica }}"
+            echo "servo_commit=0a48e298482659817eb50097df23841f2b8e3044"
+            echo "servo_tree=b04d2f75b3217374d079d579c270177b57fa1389"
+            echo "network_fetch_performed=true"
+            echo "network_use_scope=exact_public_source_acquisition_only"
+            echo "worker_artifact_built=false"
+            echo "sbom_created=false"
+            echo "runtime_authority=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "external_effect=false"
+            echo "external_network_allowed=false"
+            echo "credential_export_allowed=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Seal and reverify exact source receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          captured_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python3 scripts/hepta-servo-source-receipt.py snapshot \
+            --checkout "$GITHUB_WORKSPACE/servo-source" \
+            --output "$HEPTA_SERVO_SOURCE_EVIDENCE_DIR/source-receipt.json" \
+            --captured-at "$captured_at" \
+            2>&1 | tee "$HEPTA_SERVO_SOURCE_EVIDENCE_DIR/source-snapshot.log"
+          python3 scripts/hepta-servo-source-receipt.py verify \
+            --checkout "$GITHUB_WORKSPACE/servo-source" \
+            --receipt "$HEPTA_SERVO_SOURCE_EVIDENCE_DIR/source-receipt.json" \
+            2>&1 | tee "$HEPTA_SERVO_SOURCE_EVIDENCE_DIR/source-verify.log"
+
+      - name: Create and reverify deterministic source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          captured_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python3 scripts/hepta-servo-source-bundle.py archive-create \
+            --checkout "$GITHUB_WORKSPACE/servo-source" \
+            --source-receipt "$HEPTA_SERVO_SOURCE_EVIDENCE_DIR/source-receipt.json" \
+            --output-archive "$HEPTA_SERVO_SOURCE_EVIDENCE_DIR/servo-source-${{ matrix.replica }}.tar.gz" \
+            --output-receipt "$HEPTA_SERVO_SOURCE_EVIDENCE_DIR/archive-receipt.json" \
+            --captured-at "$captured_at" \
+            2>&1 | tee "$HEPTA_SERVO_SOURCE_EVIDENCE_DIR/archive-create.log"
+          python3 scripts/hepta-servo-source-bundle.py archive-verify \
+            --archive "$HEPTA_SERVO_SOURCE_EVIDENCE_DIR/servo-source-${{ matrix.replica }}.tar.gz" \
+            --receipt "$HEPTA_SERVO_SOURCE_EVIDENCE_DIR/archive-receipt.json" \
+            2>&1 | tee "$HEPTA_SERVO_SOURCE_EVIDENCE_DIR/archive-verify.log"
+
+      - name: Record independent source result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "job_status=${{ job.status }}" >> "$HEPTA_SERVO_SOURCE_EVIDENCE_DIR/posture.txt"
+          {
+            echo "### Hepta Servo source replica ${{ matrix.replica }}"
+            echo
+            echo "This job may produce source-only evidence for one exact public fetch."
+            echo "It does not build or run Servo and grants no runtime or release authority."
+            echo
+            sed 's/^/- /' "$HEPTA_SERVO_SOURCE_EVIDENCE_DIR/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload independent source evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hepta-servo-source-${{ matrix.replica }}
+          path: ${{ env.HEPTA_SERVO_SOURCE_EVIDENCE_DIR }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  compare-and-seal:
+    name: Compare independent source bundles and seal MPL packet
+    needs: fetch-and-archive
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Download source replica a
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: hepta-servo-source-a
+          path: ${{ runner.temp }}/hepta-servo-download/a
+
+      - name: Download source replica b
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: hepta-servo-source-b
+          path: ${{ runner.temp }}/hepta-servo-download/b
+
+      - name: Initialize comparison posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-source-sealed"
+          mkdir -p "$evidence_dir"
+          echo "HEPTA_SERVO_SEALED_EVIDENCE_DIR=$evidence_dir" >> "$GITHUB_ENV"
+          {
+            echo "hepta_commit=$(git rev-parse HEAD)"
+            echo "hepta_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "source_fetch_count=2"
+            echo "worker_artifact_built=false"
+            echo "sbom_created=false"
+            echo "runtime_authority=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "external_effect=false"
+            echo "external_network_allowed=false"
+            echo "credential_export_allowed=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Compare independent source receipts
+        shell: bash
+        run: |
+          set -euo pipefail
+          captured_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python3 scripts/hepta-servo-source-bundle.py compare-source \
+            --left-receipt "$RUNNER_TEMP/hepta-servo-download/a/source-receipt.json" \
+            --right-receipt "$RUNNER_TEMP/hepta-servo-download/b/source-receipt.json" \
+            --left-fetch-id "${GITHUB_RUN_ID}-a" \
+            --right-fetch-id "${GITHUB_RUN_ID}-b" \
+            --captured-at "$captured_at" \
+            --output "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/source-comparison.json" \
+            2>&1 | tee "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/source-comparison.log"
+
+      - name: Compare independent deterministic archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          captured_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python3 scripts/hepta-servo-source-bundle.py archive-compare \
+            --left-archive "$RUNNER_TEMP/hepta-servo-download/a/servo-source-a.tar.gz" \
+            --left-receipt "$RUNNER_TEMP/hepta-servo-download/a/archive-receipt.json" \
+            --left-generation-id "${GITHUB_RUN_ID}-archive-a" \
+            --right-archive "$RUNNER_TEMP/hepta-servo-download/b/servo-source-b.tar.gz" \
+            --right-receipt "$RUNNER_TEMP/hepta-servo-download/b/archive-receipt.json" \
+            --right-generation-id "${GITHUB_RUN_ID}-archive-b" \
+            --captured-at "$captured_at" \
+            --output "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/archive-comparison.json" \
+            2>&1 | tee "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/archive-comparison.log"
+
+      - name: Seal MPL packet and governed patch inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          captured_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python3 scripts/hepta-servo-source-bundle.py license-create \
+            --source-receipt "$RUNNER_TEMP/hepta-servo-download/a/source-receipt.json" \
+            --source-archive "$RUNNER_TEMP/hepta-servo-download/a/servo-source-a.tar.gz" \
+            --archive-receipt "$RUNNER_TEMP/hepta-servo-download/a/archive-receipt.json" \
+            --governance-patch-inventory "$GITHUB_WORKSPACE/third_party/servo-patches/PATCH_INVENTORY.json" \
+            --patch-root "$GITHUB_WORKSPACE/third_party/servo-patches" \
+            --output-license-packet "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/license-packet.json" \
+            --output-patch-inventory "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/patch-inventory.json" \
+            --output-distribution-receipt "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/distribution-receipt.json" \
+            --captured-at "$captured_at" \
+            2>&1 | tee "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/license-create.log"
+          python3 scripts/hepta-servo-source-bundle.py license-verify \
+            --license-packet "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/license-packet.json" \
+            --patch-inventory "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/patch-inventory.json" \
+            --distribution-receipt "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/distribution-receipt.json" \
+            2>&1 | tee "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/license-verify.log"
+
+      - name: Recompute complete source bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          captured_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          python3 scripts/hepta-servo-source-bundle.py verify-bundle \
+            --left-source-receipt "$RUNNER_TEMP/hepta-servo-download/a/source-receipt.json" \
+            --right-source-receipt "$RUNNER_TEMP/hepta-servo-download/b/source-receipt.json" \
+            --source-comparison "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/source-comparison.json" \
+            --left-archive "$RUNNER_TEMP/hepta-servo-download/a/servo-source-a.tar.gz" \
+            --right-archive "$RUNNER_TEMP/hepta-servo-download/b/servo-source-b.tar.gz" \
+            --left-archive-receipt "$RUNNER_TEMP/hepta-servo-download/a/archive-receipt.json" \
+            --right-archive-receipt "$RUNNER_TEMP/hepta-servo-download/b/archive-receipt.json" \
+            --archive-comparison "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/archive-comparison.json" \
+            --license-packet "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/license-packet.json" \
+            --patch-inventory "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/patch-inventory.json" \
+            --distribution-receipt "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/distribution-receipt.json" \
+            --captured-at "$captured_at" \
+            --output "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/bundle-verification.json" \
+            2>&1 | tee "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/bundle-verification.log"
+
+      - name: Record sealed source-only result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "job_status=${{ job.status }}" >> "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/posture.txt"
+          {
+            echo "### Hepta Servo canonical source bundle"
+            echo
+            echo "A passing result seals source, archive-reproducibility, MPL, and patch evidence only."
+            echo "It does not build or execute Servo and grants no runtime, product, operator, or release authority."
+            echo
+            sed 's/^/- /' "$HEPTA_SERVO_SEALED_EVIDENCE_DIR/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload sealed source-only evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hepta-servo-canonical-source-bundle
+          path: ${{ env.HEPTA_SERVO_SEALED_EVIDENCE_DIR }}
+          if-no-files-found: error
+          retention-days: 14
