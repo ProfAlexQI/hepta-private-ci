@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.invalid/schema/hepta.servo.source_receipt.v1.schema.json",
+  "title": "Hepta Servo source receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "source",
+    "integration",
+    "reviewed_files",
+    "required_files",
+    "patches",
+    "patch_inventory_sha256",
+    "inventory_sha256",
+    "machine_local_paths_included",
+    "network_access_used",
+    "authority"
+  ],
+  "properties": {
+    "schema": {"const": "hepta.browser.servo_source_receipt.v1"},
+    "schema_version": {"const": 1},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "commit",
+        "tree",
+        "clean",
+        "tracked_file_count",
+        "workspace_version",
+        "workspace_edition",
+        "minimum_rust_version",
+        "license"
+      ],
+      "properties": {
+        "repository": {"const": "servo/servo"},
+        "commit": {"$ref": "#/$defs/gitObject"},
+        "tree": {"$ref": "#/$defs/gitObject"},
+        "clean": {"const": true},
+        "tracked_file_count": {"type": "integer", "minimum": 1},
+        "workspace_version": {"const": "0.5.0"},
+        "workspace_edition": {"const": "2024"},
+        "minimum_rust_version": {"const": "1.88.0"},
+        "license": {"const": "MPL-2.0"}
+      }
+    },
+    "integration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "main_cargo_workspace_dependency",
+        "servo_types_exposed_to_hepta_callers",
+        "raw_webdriver_surface_exposed"
+      ],
+      "properties": {
+        "mode": {"const": "isolated_verified_source_checkout_and_worker_artifact"},
+        "main_cargo_workspace_dependency": {"const": false},
+        "servo_types_exposed_to_hepta_callers": {"const": false},
+        "raw_webdriver_surface_exposed": {"const": false}
+      }
+    },
+    "reviewed_files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/reviewedFile"}
+    },
+    "required_files": {
+      "type": "array",
+      "minItems": 4,
+      "items": {"$ref": "#/$defs/sourceFile"}
+    },
+    "patches": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/patchFile"}
+    },
+    "patch_inventory_sha256": {"$ref": "#/$defs/sha256"},
+    "inventory_sha256": {"$ref": "#/$defs/sha256"},
+    "machine_local_paths_included": {"const": false},
+    "network_access_used": {"const": false},
+    "authority": {"$ref": "#/$defs/authority"}
+  },
+  "$defs": {
+    "gitObject": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourcePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000]+$"
+    },
+    "sourceFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "bytes"],
+      "properties": {
+        "path": {"$ref": "#/$defs/sourcePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "reviewedFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "git_blob_sha1", "sha256", "bytes", "role"],
+      "properties": {
+        "path": {"$ref": "#/$defs/sourcePath"},
+        "git_blob_sha1": {"$ref": "#/$defs/gitObject"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 1},
+        "role": {"type": "string", "minLength": 1, "maxLength": 512}
+      }
+    },
+    "patchFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "sha256", "bytes"],
+      "properties": {
+        "file": {"type": "string", "pattern": "^[A-Za-z0-9._-]+\\.patch$"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_authority",
+        "production_caller",
+        "production_writer",
+        "external_network",
+        "external_effect",
+        "operator_acceptance",
+        "promotion"
+      ],
+      "properties": {
+        "runtime_authority": {"const": false},
+        "production_caller": {"const": false},
+        "production_writer": {"const": false},
+        "external_network": {"const": false},
+        "external_effect": {"const": false},
+        "operator_acceptance": {"const": false},
+        "promotion": {"const": false}
+      }
+    }
+  }
+}
