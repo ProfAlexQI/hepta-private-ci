@@ -22,6 +22,78 @@ def load_verifier_core() -> dict[str, Any]:
     return namespace
 
 
+def install_worker_verifier(namespace: dict[str, Any]) -> None:
+    fail = namespace.get("fail")
+    original = namespace.get("verify_worker_code")
+    if not callable(fail) or not callable(original):
+        raise RuntimeError("browser verifier core has no worker verifier")
+
+    unix_module_path = (
+        ROOT / "codex-rs/hepta-shadow-qualification/src/browser_worker_unix.rs"
+    )
+    unix_test_path = (
+        ROOT / "codex-rs/hepta-shadow-qualification/tests/browser_worker_unix_socketpair.rs"
+    )
+    binary_path = (
+        ROOT
+        / "codex-rs/hepta-shadow-qualification/src/bin/hepta-browser-worker-qualification.rs"
+    )
+
+    def verify_worker_code() -> None:
+        original()
+        for path in (unix_module_path, unix_test_path, binary_path):
+            if not path.is_file():
+                fail(f"missing Unix worker file: {path.relative_to(ROOT)}")
+        module = unix_module_path.read_text(encoding="utf-8")
+        test = unix_test_path.read_text(encoding="utf-8")
+        binary = binary_path.read_text(encoding="utf-8")
+        required = (
+            "#![cfg(unix)]",
+            "StdUnixStream::pair()",
+            "UnixInheritedSocketPair",
+            "OwnedFd",
+            "Stdio::from(child_input_fd)",
+            "Stdio::from(child_output_fd)",
+            "worker_pid == expected_pid",
+            "kill_on_drop(true)",
+            "run_unix_qualification_browser_worker",
+        )
+        for token in required:
+            if token not in module:
+                fail(f"Unix socketpair scaffold is missing {token}")
+        if "BROWSER_WORKER_UNIX_MODE_ARGUMENT" not in binary:
+            fail("worker binary does not dispatch the Unix socketpair mode")
+        if "fn inherited_unix_socketpair_has_no_listener_and_preserves_worker_identity" not in test:
+            fail("Unix socketpair process test is missing")
+        for forbidden in (
+            "TcpListener",
+            "TcpStream",
+            "0.0.0.0",
+            "127.0.0.1",
+            "WebSocket",
+            "unsafe {",
+            ".unwrap(",
+            ".expect(",
+        ):
+            if forbidden in module or forbidden in test or forbidden in binary:
+                fail(f"Unix worker scaffold contains forbidden surface: {forbidden}")
+
+    def verify_test_names(test_names: set[str]) -> None:
+        test_paths = (
+            ROOT / "codex-rs/hepta-shadow-qualification/src/browser_tests.rs",
+            ROOT / "codex-rs/hepta-shadow-qualification/src/browser_worker_tests.rs",
+            ROOT / "codex-rs/hepta-shadow-qualification/tests/browser_worker_process.rs",
+            unix_test_path,
+        )
+        sources = "\n".join(path.read_text(encoding="utf-8") for path in test_paths)
+        missing = sorted(name for name in test_names if f"fn {name}" not in sources)
+        if missing:
+            fail(f"traceability references missing tests: {missing}")
+
+    namespace["verify_worker_code"] = verify_worker_code
+    namespace["verify_test_names"] = verify_test_names
+
+
 def install_ci_verifier(namespace: dict[str, Any]) -> None:
     fail = namespace.get("fail")
     if not callable(fail):
@@ -59,8 +131,10 @@ def install_ci_verifier(namespace: dict[str, Any]) -> None:
             "scripts/verify-hepta-browser-plan.py",
             "scripts/test_generate_hepta_servo_provenance.py",
             "--test browser_worker_process",
+            "--test browser_worker_unix_socketpair",
             "--all-targets -- -D warnings",
             "servo_runtime_qualified=false",
+            "unix_socketpair_fixture_implemented=true",
             "external_network=false",
         )
         for token in browser_tokens:
@@ -97,6 +171,7 @@ def install_ci_verifier(namespace: dict[str, Any]) -> None:
 
 def main() -> int:
     namespace = load_verifier_core()
+    install_worker_verifier(namespace)
     install_ci_verifier(namespace)
     verifier = namespace.get("main")
     if not callable(verifier):
