@@ -1,0 +1,53 @@
+{
+  "schema": "hepta.browser.source_pipeline_current.v1",
+  "schema_version": 1,
+  "updated_at_utc": "2026-08-28T00:00:00Z",
+  "phase": "DEVELOPMENT",
+  "canonical_generator": "scripts/hepta-servo-independent-source-v2.py",
+  "generator_core": "scripts/hepta-servo-independent-source.py",
+  "canonical_generator_tests": "scripts/tests/test_hepta_servo_independent_source_v2.py",
+  "offline_verifier": "scripts/hepta-servo-source-bundle-verify.py",
+  "offline_verifier_tests": "scripts/tests/test_hepta_servo_source_bundle_verify.py",
+  "canonical_contract_workflow": ".github/workflows/hepta-servo-independent-source-contract-v2.yml",
+  "canonical_exact_source_workflow": ".github/workflows/hepta-servo-independent-source-qualification-v2.yml",
+  "legacy_workflows": [
+    {
+      "path": ".github/workflows/hepta-servo-independent-source-contract.yml",
+      "status": "COMPATIBILITY_ONLY_NOT_CANONICAL"
+    },
+    {
+      "path": ".github/workflows/hepta-servo-independent-source-qualification.yml",
+      "status": "SUPERSEDED_DO_NOT_USE_FOR_ACCEPTANCE"
+    }
+  ],
+  "determinism": {
+    "git_config_count": 1,
+    "git_config_key_0": "tar.umask",
+    "git_config_value_0": "0022",
+    "timezone": "UTC",
+    "source_date_epoch": "0",
+    "gzip_mtime": 0,
+    "gzip_filename": ""
+  },
+  "acceptance_requires": [
+    "two independent pinned HTTPS fetch receipts",
+    "distinct acquisition nonces and object stores",
+    "byte-identical tar and gzip archives",
+    "offline recomputation of the pinned Git tree",
+    "MPL-2.0 license and patch-inventory binding",
+    "all authority fields false"
+  ],
+  "actual_exact_source_receipt": null,
+  "authority": {
+    "runtime_authority": false,
+    "effect_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "runtime_external_network": false,
+    "raw_cookie_export": false,
+    "credential_export": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  }
+}
