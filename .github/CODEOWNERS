@@ -22,6 +22,7 @@
 /scripts/verify-hepta-browser-plan-v2.py @ProfAlexQI
 /scripts/generate-hepta-servo-provenance.py @ProfAlexQI
 /scripts/test_generate_hepta_servo_provenance.py @ProfAlexQI
+/.github/workflows/hepta-browser-ci.yml @ProfAlexQI
 /.github/workflows/hepta-vnext-qualification.yml @ProfAlexQI
 /.github/workflows/blocking-ci.yml @ProfAlexQI
 
