@@ -12,6 +12,9 @@ on:
       - "design-tokens/**"
       - "docs/ui/**"
       - "scripts/hepta-ui-v4-static-gate"
+      - "scripts/hepta-ui-v4-next-source-gate"
+      - "scripts/hepta-ui-v4-tranche3-source-gate"
+      - "scripts/hepta-ui-v4-browser-qualification.cjs"
       - "scripts/hepta-ui-light-glass-token-sync.rb"
       - ".github/workflows/hepta-ui-v4.yml"
   workflow_dispatch:
@@ -25,46 +28,65 @@ concurrency:
 
 jobs:
   static-contract:
-    name: UI v4 static contract
+    name: UI v4 source contracts
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout candidate
         uses: actions/checkout@v4
 
-      - name: Validate Ruby sources
+      - name: Validate Ruby and JavaScript sources
         run: |
           ruby -c scripts/hepta-ui-v4-static-gate
+          ruby -c scripts/hepta-ui-v4-next-source-gate
+          ruby -c scripts/hepta-ui-v4-tranche3-source-gate
           ruby -c scripts/hepta-ui-light-glass-token-sync.rb
+          node --check apps/hepta-control-ui/control-ui-v4-runtime.js
+          node --check scripts/hepta-ui-v4-browser-qualification.cjs
+
+      - name: Validate JSON contracts
+        run: |
+          ruby -rjson -e 'JSON.parse(File.read("design-tokens/hepta-material-v4.contract.json"))'
+          ruby -rjson -e 'JSON.parse(File.read("docs/ui/HEPTA_UI_STATE_AUTHORITY_MATRIX_V1.json"))'
+          ruby -rjson -e 'JSON.parse(File.read("docs/ui/HEPTA_VISUAL_QUALIFICATION_MATRIX_V1.json"))'
+          ruby -rjson -e 'JSON.parse(File.read("docs/ui/schemas/hepta.ui.v4.browser-qualification-receipt.v1.schema.json"))'
 
       - name: Verify generated v3 compatibility outputs
         run: ruby scripts/hepta-ui-light-glass-token-sync.rb --check
 
-      - name: Run fail-closed UI v4 gate
+      - name: Run fail-closed UI v4 gates
         run: |
           mkdir -p artifacts/ui-v4
           ruby scripts/hepta-ui-v4-static-gate | tee artifacts/ui-v4/static-gate-result.json
+          ruby scripts/hepta-ui-v4-next-source-gate | tee artifacts/ui-v4/next-source-gate-result.json
+          ruby scripts/hepta-ui-v4-tranche3-source-gate | tee artifacts/ui-v4/tranche3-source-gate-result.json
 
-      - name: Verify gate result is static-only
+      - name: Verify source-only authority boundary
         run: |
           ruby -rjson -e '
-            result = JSON.parse(File.read("artifacts/ui-v4/static-gate-result.json"))
-            abort "unexpected status" unless result.fetch("status") == "PASS_STATIC_CONTRACT_ONLY"
-            abort "runtime must remain unclaimed" unless result.fetch("runtime_validation") == false
-            abort "browser must remain unclaimed" unless result.fetch("browser_validation") == false
-            abort "native compile must remain unclaimed" unless result.fetch("native_compile_validation") == false
-            abort "device must remain unclaimed" unless result.fetch("device_validation") == false
-            abort "production authority must remain false" unless result.fetch("production_authority") == false
-            abort "effect authority must remain false" unless result.fetch("effect_authority") == false
-            abort "promotion must remain false" unless result.fetch("promotion") == false
+            expected = {
+              "static-gate-result.json" => "PASS_STATIC_CONTRACT_ONLY",
+              "next-source-gate-result.json" => "PASS_NEXT_SOURCE_CONTRACT_ONLY",
+              "tranche3-source-gate-result.json" => "PASS_TRANCHE3_SOURCE_CONTRACT_ONLY",
+            }
+            expected.each do |name, status|
+              result = JSON.parse(File.read(File.join("artifacts/ui-v4", name)))
+              abort "#{name}: unexpected status" unless result.fetch("status") == status
+              %w[production_authority effect_authority operator_acceptance promotion].each do |key|
+                abort "#{name}: #{key} must remain false" unless result.fetch(key) == false
+              end
+            end
+            tranche = JSON.parse(File.read("artifacts/ui-v4/tranche3-source-gate-result.json"))
+            abort "Rust-served runtime asset must remain unclaimed" unless tranche.fetch("rust_served_runtime_asset_bound") == false
+            abort "device validation must remain unclaimed" unless tranche.fetch("device_validation") == false
           '
 
-      - name: Upload source-bound static receipt
+      - name: Upload source-bound gate receipts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-ui-v4-static-${{ github.sha }}
-          path: artifacts/ui-v4/static-gate-result.json
+          name: hepta-ui-v4-source-${{ github.sha }}
+          path: artifacts/ui-v4/*.json
           if-no-files-found: error
           retention-days: 14
 
@@ -85,12 +107,67 @@ jobs:
       - name: Check Native formatting
         run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
 
-      - name: Compile and test fail-closed Native v4 contract
+      - name: Compile and test fail-closed Native v4 contracts
         env:
           CARGO_TERM_COLOR: always
         run: |
-          cargo test \
-            --manifest-path apps/hepta-native/Cargo.toml \
-            --lib \
-            shared::hepta_v4::tests::v4_contract_is_fail_closed_and_readable \
-            -- --exact
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
+            shared::hepta_v4::tests::v4_contract_is_fail_closed_and_readable -- --exact
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
+            shared::hepta_platform_material::tests::platform_profiles_are_bounded_and_fail_closed -- --exact
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
+            shared::hepta_platform_material_runtime::tests::runtime_material_resolution_is_bounded_and_fail_closed -- --exact
+
+  browser-fixture-qualification:
+    name: Chromium fixture visual qualification
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pinned Playwright in an isolated prefix
+        env:
+          PLAYWRIGHT_PREFIX: ${{ runner.temp }}/hepta-ui-v4-playwright
+        run: |
+          mkdir -p "$PLAYWRIGHT_PREFIX"
+          npm install --prefix "$PLAYWRIGHT_PREFIX" --no-save --no-audit --no-fund playwright@1.55.0
+          node "$PLAYWRIGHT_PREFIX/node_modules/playwright/cli.js" install --with-deps chromium
+
+      - name: Capture fixture browser qualification
+        env:
+          PLAYWRIGHT_PREFIX: ${{ runner.temp }}/hepta-ui-v4-playwright
+          HEPTA_UI_V4_BROWSER_OUT: artifacts/ui-v4-browser
+        run: |
+          export NODE_PATH="$PLAYWRIGHT_PREFIX/node_modules"
+          export HEPTA_CANDIDATE_COMMIT="$(git rev-parse HEAD)"
+          export HEPTA_CANDIDATE_TREE="$(git rev-parse 'HEAD^{tree}')"
+          node scripts/hepta-ui-v4-browser-qualification.cjs \
+            | tee artifacts/ui-v4-browser/stdout-receipt.json
+
+      - name: Verify fixture-only receipt boundary
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const receipt = JSON.parse(fs.readFileSync('artifacts/ui-v4-browser/HEPTA_UI_V4_BROWSER_QUALIFICATION_RECEIPT.json', 'utf8'));
+          if (receipt.status !== 'PASS_FIXTURE_VISUAL_CONTRACT_ONLY') throw new Error('fixture qualification failed');
+          if (!receipt.fixture || !receipt.browserValidation) throw new Error('fixture/browser flags invalid');
+          if (receipt.rustServedRuntimeAssetBound || receipt.rustRuntimeValidation || receipt.deviceValidation) throw new Error('runtime/device claim escaped fixture boundary');
+          if (receipt.productionAuthority || receipt.effectAuthority || receipt.operatorAcceptance || receipt.promotion) throw new Error('authority escaped fixture boundary');
+          if (receipt.results.length !== 8 || receipt.failures.length !== 0) throw new Error('unexpected scenario result');
+          NODE
+
+      - name: Upload fixture screenshots and receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-browser-fixture-${{ github.sha }}
+          path: artifacts/ui-v4-browser
+          if-no-files-found: error
+          retention-days: 14
