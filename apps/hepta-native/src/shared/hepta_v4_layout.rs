@@ -1,7 +1,7 @@
 //! Native adaptive-layout primitives for the v4 UI lane.
 //!
 //! The constants and widgets establish the mobile header, back-target, safe
-//! inset, and desktop rail floors used during the next component migrations.
+//! inset, and desktop rail floors used during component migrations.
 
 use makepad_widgets::*;
 
@@ -15,9 +15,15 @@ script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
 
+    mod.widgets.HEPTA_V4_MOBILE_HEADER_HEIGHT = 56
+    mod.widgets.HEPTA_V4_MOBILE_BACK_TARGET = 48
+    mod.widgets.HEPTA_V4_DESKTOP_RAIL_MIN_WIDTH = 280
+    mod.widgets.HEPTA_V4_COMPACT_DESKTOP_BREAKPOINT = 980
+    mod.widgets.HEPTA_V4_MOBILE_BREAKPOINT = 700
+
     mod.widgets.HeptaV4MobileTopBar = View {
         width: Fill
-        height: 56
+        height: (mod.widgets.HEPTA_V4_MOBILE_HEADER_HEIGHT)
         flow: Right
         align: Align{y: 0.5}
         spacing: 8
@@ -56,7 +62,7 @@ script_mod! {
     }
 
     mod.widgets.HeptaV4DesktopRail = View {
-        width: 280
+        width: (mod.widgets.HEPTA_V4_DESKTOP_RAIL_MIN_WIDTH)
         height: Fill
         flow: Down
         show_bg: true

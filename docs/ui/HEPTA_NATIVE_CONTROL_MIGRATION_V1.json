@@ -1,52 +1,90 @@
 {
   "schema": "hepta.ui.native-control-migration.v1",
-  "status": "SOURCE_INVENTORY_RUNTIME_VALIDATION_REQUIRED",
+  "status": "SOURCE_MIGRATION_BOUND_COMPILE_AND_DEVICE_VALIDATION_REQUIRED",
+  "branch": "codex/ui-v4-native-host-adapter-20260828",
   "authority": {
     "production": false,
     "effect": false,
-    "promotion": false
+    "liveAdapter": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
   },
   "minimumTouchTarget": 48,
+  "minimumMobileHeader": 56,
+  "registration": {
+    "sharedModule": "apps/hepta-native/src/shared/mod.rs",
+    "controlsRegisteredAfter": [
+      "styles",
+      "hepta_v4"
+    ],
+    "layoutRegistered": true,
+    "homeOverrideRegisteredAfterHomeScreen": true,
+    "runtimeValidated": false
+  },
   "items": [
     {
       "id": "shared-robrix-text-input",
-      "path": "apps/hepta-native/src/shared/styles.rs",
-      "observedHeight": 44,
+      "legacyPath": "apps/hepta-native/src/shared/styles.rs",
+      "migrationPath": "apps/hepta-native/src/shared/hepta_v4_controls.rs",
+      "previousHeight": 44,
+      "sourceHeight": 48,
       "targetHeight": 48,
-      "sourceStatus": "MIGRATION_REQUIRED",
+      "sourceStatus": "V4_COMPATIBILITY_NAME_REBOUND_AFTER_LEGACY_STYLES",
+      "compileStatus": "REQUIRED_NOT_RUN",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
       "id": "settings-button-height",
       "path": "apps/hepta-native/src/shared/hepta_v4.rs",
-      "observedHeight": 48,
+      "previousHeight": 40,
+      "sourceHeight": 48,
       "targetHeight": 48,
-      "sourceStatus": "V4_OVERRIDE_PRESENT",
+      "sourceStatus": "V4_OVERRIDE_REGISTERED",
+      "compileStatus": "REQUIRED_NOT_RUN",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
       "id": "navigation-tab-bar",
       "path": "apps/hepta-native/src/shared/hepta_v4.rs",
-      "observedHeight": 56,
-      "targetHeight": 48,
-      "sourceStatus": "V4_OVERRIDE_PRESENT",
+      "previousHeight": 54,
+      "sourceHeight": 56,
+      "targetHeight": 56,
+      "sourceStatus": "V4_OVERRIDE_REGISTERED",
+      "compileStatus": "REQUIRED_NOT_RUN",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
       "id": "mobile-stack-header",
-      "path": "apps/hepta-native/src/home/home_screen.rs",
-      "observedHeight": 45,
-      "targetHeight": 48,
-      "sourceStatus": "MIGRATION_REQUIRED",
+      "legacyPath": "apps/hepta-native/src/home/home_screen.rs",
+      "migrationPath": "apps/hepta-native/src/home/hepta_v4_home_overrides.rs",
+      "previousHeight": 45,
+      "sourceHeight": 56,
+      "targetHeight": 56,
+      "backTarget": 48,
+      "sourceStatus": "POST_HOME_COMPATIBILITY_OVERRIDE_REGISTERED",
+      "compileStatus": "REQUIRED_NOT_RUN",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
       "id": "login-controls",
       "path": "apps/hepta-native/src/login/login_screen.rs",
-      "observedHeight": 48,
+      "sourceHeight": 48,
       "targetHeight": 48,
-      "sourceStatus": "TOKEN_CONTRACT_PRESENT",
+      "sourceStatus": "SHARED_V4_TEMPLATE_AVAILABLE",
+      "compileStatus": "REQUIRED_NOT_RUN",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     }
+  ],
+  "qualificationRequired": [
+    "cargo fmt",
+    "Native library compile",
+    "login screen measurement",
+    "rooms list measurement",
+    "thread composer measurement",
+    "settings measurement",
+    "mobile stack header measurement",
+    "modal measurement",
+    "dynamic font and safe-area device capture"
   ]
 }

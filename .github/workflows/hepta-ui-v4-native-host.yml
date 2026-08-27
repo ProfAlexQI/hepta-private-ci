@@ -1,0 +1,134 @@
+name: hepta-ui-v4-native-host
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-native-host-adapter-*"
+      - "codex/ui-v4-canonical-bundle-guard-*"
+      - "codex/ui-light-glass-v4-*"
+    paths:
+      - "apps/hepta-native/src/shared/hepta_platform_material*.rs"
+      - "apps/hepta-native/src/shared/hepta_v4*.rs"
+      - "apps/hepta-native/src/shared/mod.rs"
+      - "apps/hepta-native/src/home/hepta_v4_home_overrides.rs"
+      - "apps/hepta-native/src/home/mod.rs"
+      - "docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"
+      - "docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"
+      - "docs/ui/HEPTA_UI_V4_NATIVE_HOST_TRANCHE_2026-08-28.md"
+      - "scripts/hepta-ui-v4-native-host-gate"
+      - ".github/workflows/hepta-ui-v4-native-host.yml"
+  pull_request:
+    paths:
+      - "apps/hepta-native/src/shared/hepta_platform_material*.rs"
+      - "apps/hepta-native/src/shared/hepta_v4*.rs"
+      - "apps/hepta-native/src/shared/mod.rs"
+      - "apps/hepta-native/src/home/hepta_v4_home_overrides.rs"
+      - "apps/hepta-native/src/home/mod.rs"
+      - "docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"
+      - "docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"
+      - "docs/ui/HEPTA_UI_V4_NATIVE_HOST_TRANCHE_2026-08-28.md"
+      - "scripts/hepta-ui-v4-native-host-gate"
+      - ".github/workflows/hepta-ui-v4-native-host.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v4-native-host-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Native v4 host source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Validate source contracts
+        run: |
+          ruby -c scripts/hepta-ui-v4-native-host-gate
+          ruby -rjson -e 'JSON.parse(File.read("docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"))'
+          ruby -rjson -e 'JSON.parse(File.read("docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"))'
+
+      - name: Run fail-closed source gate
+        run: |
+          mkdir -p artifacts/ui-v4-native-host
+          ruby scripts/hepta-ui-v4-native-host-gate \
+            | tee artifacts/ui-v4-native-host/source-gate-result.json
+
+      - name: Verify source-only claim boundary
+        run: |
+          ruby -rjson -e '
+            result = JSON.parse(
+              File.read("artifacts/ui-v4-native-host/source-gate-result.json")
+            )
+            abort "unexpected source status" unless
+              result.fetch("status") == "PASS_NATIVE_HOST_SOURCE_CONTRACT_ONLY"
+            abort "source failures present" unless result.fetch("failures").empty?
+            %w[
+              native_compile_validation
+              native_runtime_validation
+              operating_system_adapter_validation
+              device_validation
+              production_authority
+              effect_authority
+              live_adapter_authority
+              operator_acceptance
+              promotion
+              release
+            ].each do |key|
+              abort "#{key} escaped source-only boundary" unless result.fetch(key) == false
+            end
+          '
+
+      - name: Upload source receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-native-host-source-${{ github.sha }}
+          path: artifacts/ui-v4-native-host/source-gate-result.json
+          if-no-files-found: error
+          retention-days: 14
+
+  native-compile:
+    name: Native v4 registration and host compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+
+      - name: Compile Native library
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --lib
+
+      - name: Test v4 control and layout registration contracts
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
+            shared::hepta_v4_controls::tests::v4_controls_meet_the_shared_interaction_floor -- --exact
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
+            shared::hepta_v4_layout::tests::adaptive_layout_metrics_meet_v4_contract -- --exact
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
+            home::hepta_v4_home_overrides::tests::mobile_stack_metrics_meet_v4_contract -- --exact
+
+      - name: Test fail-closed material host transactions
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
+            shared::hepta_platform_material_host::tests -- --nocapture

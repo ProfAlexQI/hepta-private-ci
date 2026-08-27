@@ -1,19 +1,33 @@
 {
   "schema": "hepta.ui.platform-material-adapter-matrix.v1",
-  "status": "SOURCE_DECISION_LAYER_IMPLEMENTED_RUNTIME_ADAPTERS_REQUIRED",
-  "branch": "codex/ui-light-glass-v4-20260827",
+  "status": "SOURCE_HOST_LIFECYCLE_IMPLEMENTED_SYSTEM_ADAPTERS_REQUIRED",
+  "branch": "codex/ui-v4-native-host-adapter-20260828",
   "authority": {
     "production": false,
     "effect": false,
     "liveAdapter": false,
     "operatorAcceptance": false,
-    "promotion": false
+    "promotion": false,
+    "release": false
   },
   "invariants": {
     "content": "always Solid",
     "fallback": "always Solid",
     "maxVisibleBackdropLayers": 2,
-    "stableContentBackdropLayers": 0
+    "stableContentBackdropLayers": 0,
+    "transactionFailure": "unbind and roll back to Solid",
+    "highContrast": "force Solid",
+    "transparencyDisabled": "force Solid",
+    "suspendOrShutdown": "unbind and force Solid"
+  },
+  "host": {
+    "source": "apps/hepta-native/src/shared/hepta_platform_material_host.rs",
+    "lifecycleStatus": "SOURCE_IMPLEMENTED",
+    "adapterTrait": "HeptaSystemMaterialAdapter",
+    "receiptValidation": "SOURCE_IMPLEMENTED",
+    "transactionRollback": "SOURCE_IMPLEMENTED",
+    "compileStatus": "REQUIRED_NOT_RUN",
+    "runtimeStatus": "REQUIRED_NOT_RUN"
   },
   "platforms": [
     {
@@ -21,43 +35,66 @@
       "environment": "WindowsMica",
       "chrome": "WindowsMica",
       "transient": "WindowsAcrylic",
-      "runtimeStatus": "REQUIRED_NOT_RUN"
+      "fallback": "Solid",
+      "hostLifecycleStatus": "SOURCE_IMPLEMENTED",
+      "systemAdapterStatus": "REQUIRED_NOT_RUN",
+      "deviceEvidenceStatus": "REQUIRED_NOT_RUN"
     },
     {
       "id": "macos",
       "environment": "Solid",
       "chrome": "MacSystemChrome",
       "transient": "MacSystemPopover",
-      "runtimeStatus": "REQUIRED_NOT_RUN"
+      "fallback": "Solid",
+      "hostLifecycleStatus": "SOURCE_IMPLEMENTED",
+      "systemAdapterStatus": "REQUIRED_NOT_RUN",
+      "deviceEvidenceStatus": "REQUIRED_NOT_RUN"
     },
     {
       "id": "ios",
       "environment": "Solid",
       "chrome": "IosSystemGlass",
       "transient": "IosSystemSheet",
-      "runtimeStatus": "REQUIRED_NOT_RUN"
+      "fallback": "Solid",
+      "hostLifecycleStatus": "SOURCE_IMPLEMENTED",
+      "systemAdapterStatus": "REQUIRED_NOT_RUN",
+      "deviceEvidenceStatus": "REQUIRED_NOT_RUN"
     },
     {
       "id": "android",
       "environment": "Solid",
       "chrome": "AndroidTonalChrome",
       "transient": "AndroidTonalSheet",
-      "runtimeStatus": "REQUIRED_NOT_RUN"
+      "fallback": "Solid",
+      "dynamicColorRequiredForBinding": true,
+      "hostLifecycleStatus": "SOURCE_IMPLEMENTED",
+      "systemAdapterStatus": "REQUIRED_NOT_RUN",
+      "deviceEvidenceStatus": "REQUIRED_NOT_RUN"
     },
     {
       "id": "web",
       "environment": "Solid",
       "chrome": "WebBackdropChrome",
       "transient": "WebBackdropTransient",
-      "runtimeStatus": "SOURCE_IMPLEMENTED_BROWSER_NOT_RUN"
+      "fallback": "Solid",
+      "hostLifecycleStatus": "NOT_APPLICABLE_NATIVE_HOST",
+      "systemAdapterStatus": "SOURCE_IMPLEMENTED_BROWSER_NOT_RUN",
+      "deviceEvidenceStatus": "REQUIRED_NOT_RUN"
     },
     {
       "id": "linux",
       "environment": "Solid",
       "chrome": "Solid",
       "transient": "Solid",
-      "runtimeStatus": "REFERENCE_FALLBACK_NOT_RUN"
+      "fallback": "Solid",
+      "hostLifecycleStatus": "SOURCE_IMPLEMENTED_FALLBACK_ONLY",
+      "systemAdapterStatus": "NOT_APPLICABLE",
+      "deviceEvidenceStatus": "REQUIRED_NOT_RUN"
     }
   ],
-  "source": "apps/hepta-native/src/shared/hepta_platform_material.rs"
+  "sources": [
+    "apps/hepta-native/src/shared/hepta_platform_material.rs",
+    "apps/hepta-native/src/shared/hepta_platform_material_runtime.rs",
+    "apps/hepta-native/src/shared/hepta_platform_material_host.rs"
+  ]
 }

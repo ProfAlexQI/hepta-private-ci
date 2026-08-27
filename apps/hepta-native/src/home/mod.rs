@@ -3,32 +3,33 @@ use makepad_widgets::ScriptVm;
 pub mod add_room;
 pub mod edited_indicator;
 pub mod editing_pane;
+pub mod event_reaction_list;
 pub mod event_source_modal;
+pub mod hepta_v4_home_overrides;
 pub mod home_screen;
 pub mod invite_modal;
 pub mod invite_screen;
 pub mod light_themed_dock;
-pub mod tombstone_footer;
+pub mod link_preview;
 pub mod loading_pane;
 pub mod location_preview;
 pub mod main_desktop_ui;
-pub mod room_screen;
-pub mod timeline_update_queue;
+pub mod navigation_tab_bar;
+pub mod new_message_context_menu;
+pub mod room_context_menu;
+pub mod room_image_viewer;
 pub mod room_read_receipt;
+pub mod room_screen;
 pub mod rooms_list;
 pub mod rooms_list_entry;
 pub mod rooms_list_header;
 pub mod rooms_sidebar;
 pub mod space_lobby;
 pub mod spaces_bar;
-pub mod navigation_tab_bar;
-pub mod welcome_screen;
-pub mod event_reaction_list;
-pub mod new_message_context_menu;
-pub mod room_context_menu;
-pub mod link_preview;
-pub mod room_image_viewer;
+pub mod timeline_update_queue;
+pub mod tombstone_footer;
 pub mod upload_progress;
+pub mod welcome_screen;
 
 pub fn script_mod(vm: &mut ScriptVm) {
     loading_pane::script_mod(vm);
@@ -57,6 +58,8 @@ pub fn script_mod(vm: &mut ScriptVm) {
     spaces_bar::script_mod(vm);
     navigation_tab_bar::script_mod(vm);
     upload_progress::script_mod(vm);
-    // Keep HomeScreen last, it references many widgets registered above.
+    // HomeScreen must be registered after its dependencies. The v4 module then
+    // upgrades its compatibility prototype without forking the full screen.
     home_screen::script_mod(vm);
+    hepta_v4_home_overrides::script_mod(vm);
 }

@@ -14,6 +14,9 @@ script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
 
+    mod.widgets.HEPTA_V4_CONTROL_MIN_HEIGHT = 48
+    mod.widgets.HEPTA_V4_ICON_HIT_TARGET = 48
+
     mod.widgets.HeptaV4TextInput = TextInput {
         width: Fill
         height: Fit{min: FitBound.Abs(48)}
@@ -49,6 +52,19 @@ script_mod! {
         }
         draw_cursor +: { color: (mod.widgets.COLOR_HEPTA_TEXT) }
         draw_selection +: { color: (mod.widgets.COLOR_HEPTA_SELECTION) }
+    }
+
+    // Rebind the upstream compatibility name after `styles` loads. Existing
+    // login, room, settings, and composer code can keep using RobrixTextInput
+    // while receiving the v4 48px hit target and stable-content surface.
+    mod.widgets.RobrixTextInput = mod.widgets.HeptaV4TextInput {
+        scroll_bar +: {
+            draw_bg +: {
+                color: #00000040
+                color_hover: #00000060
+                color_drag: #00000080
+            }
+        }
     }
 
     mod.widgets.HeptaV4IconButton = Button {

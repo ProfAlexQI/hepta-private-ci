@@ -1,0 +1,151 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+ROOT = Pathname.new(__dir__).join("..").expand_path
+FILES = {
+  shared_mod: ROOT.join("apps/hepta-native/src/shared/mod.rs"),
+  controls: ROOT.join("apps/hepta-native/src/shared/hepta_v4_controls.rs"),
+  layout: ROOT.join("apps/hepta-native/src/shared/hepta_v4_layout.rs"),
+  host: ROOT.join("apps/hepta-native/src/shared/hepta_platform_material_host.rs"),
+  home_mod: ROOT.join("apps/hepta-native/src/home/mod.rs"),
+  home_override: ROOT.join("apps/hepta-native/src/home/hepta_v4_home_overrides.rs"),
+  migration: ROOT.join("docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"),
+  matrix: ROOT.join("docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json")
+}.freeze
+
+checks = {}
+FILES.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+
+unless checks.values.all?
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.native-host-source-gate.v1",
+    status: "FAIL_MISSING_INPUT",
+    checks: checks,
+    failures: checks.reject { |_name, passed| passed }.keys,
+    native_compile_validation: false,
+    native_runtime_validation: false,
+    device_validation: false,
+    production_authority: false,
+    effect_authority: false,
+    live_adapter_authority: false,
+    operator_acceptance: false,
+    promotion: false,
+    release: false
+  )
+  exit 1
+end
+
+shared_mod = FILES.fetch(:shared_mod).read
+controls = FILES.fetch(:controls).read
+layout = FILES.fetch(:layout).read
+host = FILES.fetch(:host).read
+home_mod = FILES.fetch(:home_mod).read
+home_override = FILES.fetch(:home_override).read
+migration = JSON.parse(FILES.fetch(:migration).read)
+matrix = JSON.parse(FILES.fetch(:matrix).read)
+
+checks["shared.controls_declared"] = shared_mod.include?("pub mod hepta_v4_controls;")
+checks["shared.layout_declared"] = shared_mod.include?("pub mod hepta_v4_layout;")
+checks["shared.host_declared"] = shared_mod.include?("pub mod hepta_platform_material_host;")
+style_index = shared_mod.index("styles::script_mod(vm);")
+v4_index = shared_mod.index("hepta_v4::script_mod(vm);")
+controls_index = shared_mod.index("hepta_v4_controls::script_mod(vm);")
+layout_index = shared_mod.index("hepta_v4_layout::script_mod(vm);")
+checks["shared.registration_order"] = [style_index, v4_index, controls_index, layout_index].none?(&:nil?) &&
+  style_index < v4_index && v4_index < controls_index && controls_index < layout_index
+
+checks["controls.min48"] = controls.include?("HEPTA_V4_CONTROL_MIN_HEIGHT: f64 = 48.0") &&
+  controls.include?("FitBound.Abs(48)")
+checks["controls.legacy_input_rebound"] = controls.include?(
+  "mod.widgets.RobrixTextInput = mod.widgets.HeptaV4TextInput"
+)
+checks["controls.stable_content"] = controls.include?("COLOR_HEPTA_CONTENT")
+checks["controls.body15"] = controls.include?("font_size: 15")
+
+checks["layout.header56"] = layout.include?("HEPTA_V4_MOBILE_HEADER_HEIGHT: f64 = 56.0")
+checks["layout.back48"] = layout.include?("HEPTA_V4_MOBILE_BACK_TARGET: f64 = 48.0")
+checks["layout.stable_content"] = layout.include?("HeptaV4StableContent")
+
+checks["home.override_declared"] = home_mod.include?("pub mod hepta_v4_home_overrides;")
+home_screen_index = home_mod.index("home_screen::script_mod(vm);")
+home_override_index = home_mod.index("hepta_v4_home_overrides::script_mod(vm);")
+checks["home.override_after_home"] = !home_screen_index.nil? && !home_override_index.nil? &&
+  home_screen_index < home_override_index
+checks["home.header56"] = home_override.include?("HEPTA_V4_STACK_HEADER_HEIGHT: f64 = 56.0") &&
+  home_override.include?("HEPTA_V4_MOBILE_HEADER_HEIGHT")
+checks["home.back48"] = home_override.include?("HEPTA_V4_STACK_BACK_TARGET: f64 = 48.0") &&
+  home_override.include?("FitBound.Abs(48)")
+checks["home.compatibility_rebound"] = home_override.include?(
+  "mod.widgets.RobrixStackNavigationView = mod.widgets.HeptaV4RobrixStackNavigationView"
+)
+
+checks["host.adapter_boundary"] = host.include?("HeptaSystemMaterialAdapter") &&
+  host.include?("HeptaSystemMaterialReceipt")
+checks["host.transaction_rollback"] = host.include?("AdapterReceiptRejected") &&
+  host.scan("adapter.unbind()").length >= 6 && host.include?("install_solid")
+checks["host.accessibility_fallback"] = host.include?("HighContrast") &&
+  host.include?("UserTransparencyDisabled")
+checks["host.lifecycle"] = host.include?("pub fn suspend") && host.include?("pub fn shutdown")
+checks["host.content_solid"] = host.include?("profile.content == HeptaMaterialRenderer::Solid")
+checks["host.layers_bounded"] = host.include?("profile.max_visible_backdrop_layers <= 2") &&
+  host.include?("profile.stable_content_backdrop_layers == 0")
+checks["host.android_dynamic_color"] = host.include?("HeptaPlatform::Android") &&
+  host.include?("dynamic_color_available")
+checks["host.authority_false"] = %w[
+  PRODUCTION_AUTHORITY
+  EFFECT_AUTHORITY
+  LIVE_ADAPTER_AUTHORITY
+  OPERATOR_ACCEPTANCE
+  PROMOTION
+  RELEASE
+].all? { |marker| host.match?(/#{marker}: bool = false/) }
+
+checks["migration.schema"] = migration["schema"] == "hepta.ui.native-control-migration.v1"
+checks["migration.status"] = migration["status"] ==
+  "SOURCE_MIGRATION_BOUND_COMPILE_AND_DEVICE_VALIDATION_REQUIRED"
+checks["migration.target48"] = migration["minimumTouchTarget"] == 48
+checks["migration.header56"] = migration["minimumMobileHeader"] == 56
+checks["migration.runtime_unclaimed"] = migration.fetch("items").all? do |item|
+  item["compileStatus"] == "REQUIRED_NOT_RUN" && item["runtimeStatus"] == "REQUIRED_NOT_RUN"
+end
+
+checks["matrix.schema"] = matrix["schema"] == "hepta.ui.platform-material-adapter-matrix.v1"
+checks["matrix.host_source"] = matrix.dig("host", "source") ==
+  "apps/hepta-native/src/shared/hepta_platform_material_host.rs"
+checks["matrix.compile_unclaimed"] = matrix.dig("host", "compileStatus") == "REQUIRED_NOT_RUN"
+checks["matrix.runtime_unclaimed"] = matrix.dig("host", "runtimeStatus") == "REQUIRED_NOT_RUN"
+checks["matrix.adapters_unclaimed"] = matrix.fetch("platforms").all? do |platform|
+  !%w[PASS VERIFIED BOUND].include?(platform["systemAdapterStatus"])
+end
+checks["matrix.devices_unclaimed"] = matrix.fetch("platforms").all? do |platform|
+  platform["deviceEvidenceStatus"] == "REQUIRED_NOT_RUN"
+end
+checks["matrix.authority_false"] = matrix.fetch("authority").values.all? { |value| value == false }
+
+failed = checks.reject { |_name, passed| passed }
+result = {
+  schema: "hepta.ui.v4.native-host-source-gate.v1",
+  status: failed.empty? ? "PASS_NATIVE_HOST_SOURCE_CONTRACT_ONLY" : "FAIL_NATIVE_HOST_SOURCE_CONTRACT",
+  scope: "NATIVE_V4_REGISTRATION_MIGRATION_AND_HOST_SOURCE_ONLY",
+  native_module_registration: failed.empty?,
+  control_migration_source_bound: failed.empty?,
+  material_host_source_bound: failed.empty?,
+  native_compile_validation: false,
+  native_runtime_validation: false,
+  operating_system_adapter_validation: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failed.keys
+}
+
+puts JSON.pretty_generate(result)
+exit(failed.empty? ? 0 : 1)
