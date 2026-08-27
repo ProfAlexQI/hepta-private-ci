@@ -216,7 +216,7 @@ fn b2_contracts_validate_and_have_golden_digests() {
     );
     assert_eq!(
         reservation.digest().expect("reservation digest").as_str(),
-        "a334fc8eedaa7ec540dbc7255c94f422c3dabe81fb447a7f60869d5a599adac5"
+        "b3f3f707fb91bb96afeb7f4487599728fce73f46e59e221376846550f284be89"
     );
     assert_eq!(
         provider_status
@@ -227,7 +227,7 @@ fn b2_contracts_validate_and_have_golden_digests() {
     );
     assert_eq!(
         operation.digest().expect("operation digest").as_str(),
-        "145e6335446b4f41c57b1304488011a282297b67cec8c6919b3e8464dc88c4be"
+        "601018bfb77ff20cda689654f5003ccc3114a31d8a07a554a7f4cbe9c4d75465"
     );
     assert_eq!(
         attenuation.digest().expect("attenuation digest").as_str(),
@@ -298,40 +298,171 @@ fn b2_subject_epochs_and_fences_reject_stale_values() {
 fn b2_quota_reservation_cas_is_terminal_and_idempotent() {
     let held = reservation();
     assert!(
-        held.transition(0, 5, QuotaReservationState::Consumed)
+        held.transition(0, 5, QuotaReservationState::DispatchAttempted)
             .is_err()
     );
     assert!(
-        held.transition(1, 4, QuotaReservationState::Consumed)
+        held.transition(1, 4, QuotaReservationState::DispatchAttempted)
             .is_err()
     );
-    let consumed = held
-        .transition(1, 5, QuotaReservationState::Consumed)
-        .expect("consume");
-    assert_eq!(consumed.revision, 2);
-    assert_eq!(consumed.state, QuotaReservationState::Consumed);
+    let attempted = held
+        .transition(1, 5, QuotaReservationState::DispatchAttempted)
+        .expect("mark dispatch attempt");
+    assert_eq!(attempted.revision, 2);
+    assert_eq!(attempted.state, QuotaReservationState::DispatchAttempted);
+    let accepted = attempted
+        .transition(2, 5, QuotaReservationState::DispatchAccepted)
+        .expect("accept dispatch");
+    assert_eq!(accepted.revision, 3);
+    assert_eq!(accepted.state, QuotaReservationState::DispatchAccepted);
+    let partial = accepted
+        .transition(3, 5, QuotaReservationState::PartiallyConsumed)
+        .expect("record partial consumption");
+    assert_eq!(partial.revision, 4);
+    assert_eq!(partial.state, QuotaReservationState::PartiallyConsumed);
     assert_eq!(
-        consumed
-            .transition(2, 5, QuotaReservationState::Consumed)
+        partial
+            .transition(4, 5, QuotaReservationState::PartiallyConsumed)
             .expect("idempotent replay"),
-        consumed
+        partial
     );
     assert!(
-        consumed
-            .transition(2, 5, QuotaReservationState::Held)
+        partial
+            .transition(4, 5, QuotaReservationState::Held)
             .is_err()
     );
 
-    let uncertain = held
-        .transition(1, 5, QuotaReservationState::Indeterminate)
+    let uncertain = accepted
+        .transition(3, 5, QuotaReservationState::Indeterminate)
         .expect("indeterminate");
     let refunded = uncertain
-        .transition(2, 5, QuotaReservationState::Refunded)
+        .transition(4, 5, QuotaReservationState::Refunded)
         .expect("refund after reconciliation");
     assert!(
         refunded
-            .transition(3, 5, QuotaReservationState::Held)
+            .transition(5, 5, QuotaReservationState::Held)
             .is_err()
+    );
+}
+
+#[test]
+fn b2_quota_reservation_state_set_matches_registry_v13() {
+    // Keep this list in the same order as
+    // AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry.
+    // `DispatchAttempted` is intentionally retained even though older plan
+    // prose omitted it from the compact projection summary.
+    let expected = [
+        (QuotaReservationState::Proposed, "Proposed", false),
+        (QuotaReservationState::Held, "Held", false),
+        (
+            QuotaReservationState::DispatchAttempted,
+            "DispatchAttempted",
+            false,
+        ),
+        (
+            QuotaReservationState::DispatchAccepted,
+            "DispatchAccepted",
+            false,
+        ),
+        (
+            QuotaReservationState::PartiallyConsumed,
+            "PartiallyConsumed",
+            false,
+        ),
+        (QuotaReservationState::Indeterminate, "Indeterminate", false),
+        (QuotaReservationState::Released, "Released", true),
+        (QuotaReservationState::Refunded, "Refunded", true),
+        (QuotaReservationState::Expired, "Expired", true),
+    ];
+
+    let states = QuotaReservationState::all();
+    assert_eq!(states.len(), expected.len());
+    for (state, (expected_state, expected_name, expected_terminal)) in
+        states.iter().zip(expected.iter())
+    {
+        assert_eq!(state, expected_state);
+        assert_eq!(state.canonical_name(), *expected_name);
+        assert_eq!(state.is_terminal(), *expected_terminal);
+        assert_eq!(state.is_non_terminal(), !*expected_terminal);
+        let wire = serde_json::to_string(state).expect("state wire encoding");
+        assert_eq!(wire, format!("\"{expected_name}\""));
+        let decoded: QuotaReservationState =
+            serde_json::from_str(&wire).expect("canonical state decoding");
+        assert_eq!(decoded, *state);
+    }
+
+    // Historical internal spellings are decode-only; serialization remains
+    // canonical and never emits an alias.
+    let aliases = [
+        ("PROPOSED", QuotaReservationState::Proposed),
+        ("HELD", QuotaReservationState::Held),
+        (
+            "DISPATCH_ATTEMPTED",
+            QuotaReservationState::DispatchAttempted,
+        ),
+        ("DISPATCH_ACCEPTED", QuotaReservationState::DispatchAccepted),
+        ("DISPATCHED", QuotaReservationState::DispatchAccepted),
+        ("PARTIAL", QuotaReservationState::PartiallyConsumed),
+        ("INDETERMINATE", QuotaReservationState::Indeterminate),
+        ("RELEASED", QuotaReservationState::Released),
+        ("REFUNDED", QuotaReservationState::Refunded),
+        ("EXPIRED", QuotaReservationState::Expired),
+    ];
+    for (alias, expected_state) in aliases {
+        let decoded: QuotaReservationState =
+            serde_json::from_str(&format!("\"{alias}\"")).expect("documented decode-only alias");
+        assert_eq!(decoded, expected_state);
+        assert_eq!(
+            serde_json::to_string(&decoded).expect("canonical alias re-encoding"),
+            format!("\"{}\"", expected_state.canonical_name())
+        );
+    }
+
+    // The old `Consumed` state had no canonical v1.3 meaning.  Accepting it
+    // would silently conflate quota accounting with an effect terminal.
+    for legacy in ["Consumed", "consumed"] {
+        assert!(
+            serde_json::from_str::<QuotaReservationState>(&format!("\"{legacy}\"")).is_err(),
+            "obsolete state must fail closed: {legacy}"
+        );
+    }
+}
+
+#[test]
+fn b2_quota_reservation_transition_matrix_is_closed() {
+    let states = QuotaReservationState::all();
+    for &from in &states {
+        for &to in &states {
+            let mut current = reservation();
+            current.state = from;
+            let result = current.transition(1, 5, to);
+            assert_eq!(
+                result.is_ok(),
+                from.can_transition_to(to),
+                "unexpected quota transition {from:?} -> {to:?}"
+            );
+            if from == to {
+                assert_eq!(result.expect("idempotent state transition"), current);
+            } else if from.can_transition_to(to) {
+                let next = result.expect("allowed state transition");
+                assert_eq!(next.state, to);
+                assert_eq!(next.expected_revision, 1);
+                assert_eq!(next.revision, 2);
+            }
+        }
+    }
+
+    // A post-dispatch reservation cannot skip the uncertainty hold and jump
+    // directly to a release/refund/expiry outcome.
+    assert!(
+        !QuotaReservationState::DispatchAttempted
+            .can_transition_to(QuotaReservationState::Released)
+    );
+    assert!(
+        !QuotaReservationState::DispatchAccepted.can_transition_to(QuotaReservationState::Refunded)
+    );
+    assert!(
+        !QuotaReservationState::PartiallyConsumed.can_transition_to(QuotaReservationState::Expired)
     );
 }
 

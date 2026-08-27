@@ -177,15 +177,135 @@ impl AdmissionDecision {
 
 impl_contract_methods!(AdmissionDecision, "admission-decision");
 
-/// Lifecycle of a reservation.  Terminal states cannot be reopened.
+/// Canonical v1.3 lifecycle of a local quota reservation.
+///
+/// `DispatchAccepted` is only a provider queue acknowledgement and
+/// `PartiallyConsumed` is a metering state; neither is an effect terminal.
+/// `Released`, `Refunded`, and `Expired` are reservation outcomes and must not
+/// be projected as effect success.  The upper-case spellings and the old
+/// snake-case spellings below are decode-only compatibility aliases.  New
+/// bytes always emit the canonical registry spelling.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
 pub enum QuotaReservationState {
+    #[serde(rename = "Proposed", alias = "PROPOSED", alias = "proposed")]
+    Proposed,
+    #[serde(rename = "Held", alias = "HELD", alias = "held")]
     Held,
-    Consumed,
-    Released,
-    Refunded,
+    #[serde(
+        rename = "DispatchAttempted",
+        alias = "DISPATCH_ATTEMPTED",
+        alias = "dispatch_attempted"
+    )]
+    DispatchAttempted,
+    #[serde(
+        rename = "DispatchAccepted",
+        alias = "DISPATCH_ACCEPTED",
+        alias = "DISPATCHED",
+        alias = "dispatch_accepted",
+        alias = "dispatched"
+    )]
+    DispatchAccepted,
+    #[serde(
+        rename = "PartiallyConsumed",
+        alias = "PARTIAL",
+        alias = "partial",
+        alias = "partially_consumed"
+    )]
+    PartiallyConsumed,
+    #[serde(
+        rename = "Indeterminate",
+        alias = "INDETERMINATE",
+        alias = "indeterminate"
+    )]
     Indeterminate,
+    #[serde(rename = "Released", alias = "RELEASED", alias = "released")]
+    Released,
+    #[serde(rename = "Refunded", alias = "REFUNDED", alias = "refunded")]
+    Refunded,
+    #[serde(rename = "Expired", alias = "EXPIRED", alias = "expired")]
+    Expired,
+}
+
+impl QuotaReservationState {
+    /// The closed canonical state set published by the v1.3 registry.
+    pub const fn all() -> [Self; 9] {
+        [
+            Self::Proposed,
+            Self::Held,
+            Self::DispatchAttempted,
+            Self::DispatchAccepted,
+            Self::PartiallyConsumed,
+            Self::Indeterminate,
+            Self::Released,
+            Self::Refunded,
+            Self::Expired,
+        ]
+    }
+
+    /// Canonical registry spelling for this state.
+    pub const fn canonical_name(self) -> &'static str {
+        match self {
+            Self::Proposed => "Proposed",
+            Self::Held => "Held",
+            Self::DispatchAttempted => "DispatchAttempted",
+            Self::DispatchAccepted => "DispatchAccepted",
+            Self::PartiallyConsumed => "PartiallyConsumed",
+            Self::Indeterminate => "Indeterminate",
+            Self::Released => "Released",
+            Self::Refunded => "Refunded",
+            Self::Expired => "Expired",
+        }
+    }
+
+    /// Reservation outcomes are terminal and immutable.
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Released | Self::Refunded | Self::Expired)
+    }
+
+    /// Every non-terminal state remains held until a verified outcome or
+    /// reconciliation closes the reservation.
+    pub const fn is_non_terminal(self) -> bool {
+        !self.is_terminal()
+    }
+
+    /// State edges for the qualification-only local reservation model.
+    ///
+    /// The model deliberately requires an explicit dispatch-attempt marker
+    /// before acceptance and routes post-dispatch uncertainty through
+    /// `Indeterminate`; this prevents a caller from releasing a potentially
+    /// effected reservation without reconciliation evidence.
+    pub const fn can_transition_to(self, next: Self) -> bool {
+        matches!(
+            (self, next),
+            (Self::Proposed, Self::Proposed)
+                | (Self::Held, Self::Held)
+                | (Self::DispatchAttempted, Self::DispatchAttempted)
+                | (Self::DispatchAccepted, Self::DispatchAccepted)
+                | (Self::PartiallyConsumed, Self::PartiallyConsumed)
+                | (Self::Indeterminate, Self::Indeterminate)
+                | (Self::Released, Self::Released)
+                | (Self::Refunded, Self::Refunded)
+                | (Self::Expired, Self::Expired)
+                | (Self::Proposed, Self::Held | Self::Released | Self::Expired)
+                | (
+                    Self::Held,
+                    Self::DispatchAttempted | Self::Released | Self::Expired
+                )
+                | (
+                    Self::DispatchAttempted,
+                    Self::DispatchAccepted | Self::Indeterminate
+                )
+                | (
+                    Self::DispatchAccepted,
+                    Self::PartiallyConsumed | Self::Indeterminate
+                )
+                | (Self::PartiallyConsumed, Self::Indeterminate)
+                | (
+                    Self::Indeterminate,
+                    Self::Released | Self::Refunded | Self::Expired
+                )
+        )
+    }
 }
 
 /// Quota hold created after admission and before a physical effect.
@@ -258,24 +378,7 @@ impl QuotaReservation {
         if self.state == next_state {
             return Ok(self.clone());
         }
-        let allowed = match self.state {
-            QuotaReservationState::Held => matches!(
-                next_state,
-                QuotaReservationState::Consumed
-                    | QuotaReservationState::Released
-                    | QuotaReservationState::Indeterminate
-            ),
-            QuotaReservationState::Indeterminate => {
-                matches!(
-                    next_state,
-                    QuotaReservationState::Released | QuotaReservationState::Refunded
-                )
-            }
-            QuotaReservationState::Consumed
-            | QuotaReservationState::Released
-            | QuotaReservationState::Refunded => false,
-        };
-        if !allowed {
+        if !self.state.can_transition_to(next_state) {
             return Err(error("invalid quota reservation state transition"));
         }
         let revision = self
