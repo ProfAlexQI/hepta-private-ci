@@ -1,0 +1,95 @@
+{
+  "schema": "hepta.browser.c1_current.v3",
+  "schema_version": 1,
+  "updated_at_utc": "2026-08-28T00:00:00Z",
+  "plan_id": "HEPTA-BROWSER-WEB-D",
+  "stage": "WEB_C1",
+  "phase": "DEVELOPMENT",
+  "claim_level": "QUALIFICATION_TOOLING_AND_FIXTURES_ONLY",
+  "canonical_source_pipeline": "docs/hepta-vnext/browser/SOURCE_PIPELINE_CURRENT_V2.json",
+  "canonical_build_input_pipeline": "docs/hepta-vnext/browser/BUILD_INPUT_CURRENT_V2.json",
+  "canonical_build_preflight": "scripts/hepta-servo-build-preflight-v2.py",
+  "build_preflight_contract": "docs/hepta-vnext/browser/C1_BUILD_PREFLIGHT.md",
+  "source_acceptance_policy": "docs/hepta-vnext/browser/C1_SOURCE_ACCEPTANCE_POLICY.md",
+  "pre_build_stop_conditions": "docs/hepta-vnext/browser/C1_BUILD_EXECUTION_STOP_CONDITIONS.md",
+  "canonical_aggregate_workflow": ".github/workflows/hepta-browser-next-required-v5.yml",
+  "manual_exact_source_workflow": ".github/workflows/hepta-servo-independent-source-qualification-v3.yml",
+  "implementation": {
+    "source_acquisition": "V2_IMPLEMENTED_NOT_ACCEPTED_EXACT_RUN",
+    "offline_git_tree_reconstruction": "V2_GIT_ORDER_CORRECT_IMPLEMENTED_NOT_ACCEPTED_EXACT_RUN",
+    "source_distribution_packet": "IMPLEMENTED_NOT_ACCEPTED_EXACT_RUN",
+    "toolchain_capture": "V1_IMPLEMENTED_FIXTURE_ONLY_NO_ACCEPTED_RECEIPT",
+    "build_input_sealer": "V3_IMPLEMENTED_NO_REAL_INPUT_MANIFEST",
+    "build_preflight": "V2_IMPLEMENTED_FIXTURE_ONLY_NO_REAL_RECEIPT",
+    "private_worker_protocol": "IMPLEMENTED_QUALIFICATION_ONLY_UNQUALIFIED",
+    "portable_process_harness": "IMPLEMENTED_QUALIFICATION_ONLY_UNQUALIFIED",
+    "unix_socketpair": "IMPLEMENTED_QUALIFICATION_ONLY_UNQUALIFIED",
+    "windows_named_pipe": "NOT_IMPLEMENTED",
+    "real_servo_worker": "NOT_IMPLEMENTED",
+    "real_servo_webview": "NOT_IMPLEMENTED"
+  },
+  "evidence": {
+    "accepted_source_bundle": null,
+    "accepted_source_verification": null,
+    "accepted_toolchain_receipt": null,
+    "accepted_build_recipe": null,
+    "sealed_build_input_manifest": null,
+    "build_preflight_receipt": null,
+    "build_receipt": null,
+    "artifact_receipt": null,
+    "symbols_receipt": null,
+    "sbom": null,
+    "runtime_receipt": null
+  },
+  "next_action_order": [
+    "run canonical exact-source qualification v3",
+    "review and accept one source bundle and offline verification pointer",
+    "freeze minimal Servo worker source and API topology",
+    "capture and review one exact Linux toolchain receipt",
+    "freeze and review one minimal worker build recipe",
+    "seal one real build-input manifest with sealer v3",
+    "run build preflight v2 against exact retained bytes and private roots",
+    "execute one bounded offline Linux build from the exact preflight receipt",
+    "produce an unqualified worker artifact, symbols and SPDX SBOM",
+    "independently reproduce and compare the artifact",
+    "bind the accepted artifact candidate to the private worker transport",
+    "implement exactly one local-fixture Servo WebView"
+  ],
+  "claims": {
+    "exact_servo_source_accepted": false,
+    "toolchain_accepted": false,
+    "build_recipe_accepted": false,
+    "real_build_inputs_sealed": false,
+    "build_preflight_passed": false,
+    "build_run": false,
+    "artifact_created": false,
+    "symbols_created": false,
+    "sbom_created": false,
+    "servo_runtime_qualified": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  },
+  "authority": {
+    "runtime_authority": false,
+    "effect_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "runtime_external_network": false,
+    "raw_cookie_export": false,
+    "credential_export": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  },
+  "supersedes": [
+    {
+      "path": "docs/hepta-vnext/browser/C1_CURRENT_V2.json",
+      "reason": "does not select the canonical build-preflight entrypoint or aggregate it into the merge gate"
+    },
+    {
+      "path": ".github/workflows/hepta-browser-next-required-v4.yml",
+      "reason": "does not require build-preflight fixture qualification"
+    }
+  ]
+}
