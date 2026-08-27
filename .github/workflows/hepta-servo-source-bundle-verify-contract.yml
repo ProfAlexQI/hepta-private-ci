@@ -1,0 +1,70 @@
+name: hepta-servo source bundle verifier contract
+
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - "scripts/hepta-servo-independent-source.py"
+      - "scripts/hepta-servo-source-bundle-verify.py"
+      - "scripts/tests/test_hepta_servo_independent_source.py"
+      - "scripts/tests/test_hepta_servo_source_bundle_verify.py"
+      - "docs/hepta-vnext/browser/C1_SOURCE_BUNDLE_OFFLINE_VERIFICATION.md"
+      - "docs/hepta-vnext/browser/hepta.servo.source_bundle_verification.v1.schema.json"
+      - ".github/workflows/hepta-servo-source-bundle-verify-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-contract:
+    name: Offline tree reconstruction contract (fixture only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Compile source-only tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-servo-independent-source.py \
+            scripts/hepta-servo-source-bundle-verify.py \
+            scripts/tests/test_hepta_servo_independent_source.py \
+            scripts/tests/test_hepta_servo_source_bundle_verify.py
+
+      - name: Run generator fixture tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_hepta_servo_independent_source.py
+
+      - name: Run independent offline verifier tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_hepta_servo_source_bundle_verify.py
+
+      - name: Record negative authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "source_fetch_performed=false"
+            echo "external_network=false"
+            echo "servo_built=false"
+            echo "servo_runtime_qualified=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
