@@ -1,0 +1,65 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  bridge: root.join("apps/hepta-control-ui/styles.accessibility.css"),
+  platform: root.join("apps/hepta-native/src/shared/hepta_platform_material.rs"),
+  shared_mod: root.join("apps/hepta-native/src/shared/mod.rs"),
+  adapter_matrix: root.join("docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"),
+  migration: root.join("docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"),
+  z_index: root.join("docs/ui/HEPTA_UI_Z_INDEX_REGISTRY_V1.json"),
+  ci_blocker: root.join("docs/ui/HEPTA_UI_V4_CI_BLOCKER_2026-08-27.json")
+}
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? }
+
+bridge = files[:bridge].read
+platform = files[:platform].read
+shared_mod = files[:shared_mod].read
+adapter_matrix = JSON.parse(files[:adapter_matrix].read)
+migration = JSON.parse(files[:migration].read)
+z_index = JSON.parse(files[:z_index].read)
+ci_blocker = JSON.parse(files[:ci_blocker].read)
+
+checks["bridge.runtime_marker"] = bridge.include?("--hepta-v4-runtime-bridge: 1")
+checks["bridge.content_no_blur"] = bridge.include?("Stable reading and form content may never create another backdrop layer")
+checks["bridge.touch_target"] = bridge.include?("--hepta-v4-target-touch: 48px")
+checks["bridge.mobile_safe_area"] = bridge.include?("safe-area-inset-bottom")
+checks["bridge.accessibility_final"] = bridge.index("Hepta v4 runtime compatibility bridge") < bridge.index("System accessibility preferences are final")
+
+checks["platform.registered"] = shared_mod.include?("pub mod hepta_platform_material;")
+checks["platform.content_solid"] = platform.include?("content: HeptaMaterialRenderer::Solid")
+checks["platform.fallback_solid"] = platform.include?("return solid_profile()")
+checks["platform.layers_bounded"] = platform.include?("max_visible_backdrop_layers: 2")
+checks["platform.authority_false"] = platform.scan(/AUTHORITY: bool = false/).length >= 3 && platform.include?("OPERATOR_ACCEPTANCE: bool = false") && platform.include?("PROMOTION: bool = false")
+
+checks["matrix.schema"] = adapter_matrix["schema"] == "hepta.ui.platform-material-adapter-matrix.v1"
+checks["matrix.runtime_unclaimed"] = adapter_matrix.fetch("platforms").all? { |entry| entry.fetch("runtimeStatus") != "PASS" }
+checks["migration.schema"] = migration["schema"] == "hepta.ui.native-control-migration.v1"
+checks["migration.target_48"] = migration["minimumTouchTarget"] == 48
+values = z_index.fetch("layers").map { |entry| entry.fetch("value") }
+checks["z_index.unique"] = values.uniq.length == values.length
+checks["ci.blocked_not_pass"] = ci_blocker["status"] == "BLOCKED_RUNNER_NOT_ASSIGNED" && ci_blocker.dig("claims", "staticGatePassed") == false
+
+failed = checks.reject { |_name, result| result }
+result = {
+  schema: "hepta.ui.v4.next-source-gate.v1",
+  status: failed.empty? ? "PASS_NEXT_SOURCE_CONTRACT_ONLY" : "FAIL_NEXT_SOURCE_CONTRACT",
+  source_contract: failed.empty?,
+  browser_validation: false,
+  native_runtime_validation: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  checks: checks,
+  failures: failed.keys
+}
+puts JSON.pretty_generate(result)
+exit(failed.empty? ? 0 : 1)
