@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.invalid/schemas/hepta.browser_receipt.v2.schema.json",
+  "title": "Hepta Browser qualification receipts v2",
+  "description": "Qualification-only ActivityReceipt and WebEvidenceReceipt. This schema grants no production authority.",
+  "oneOf": [
+    {"$ref": "#/$defs/activity_receipt"},
+    {"$ref": "#/$defs/evidence_receipt"}
+  ],
+  "$defs": {
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qualification_only",
+        "production_caller",
+        "production_writer",
+        "effect_authority",
+        "operator_acceptance",
+        "promotion",
+        "g5_allowed",
+        "execute_allowed",
+        "external_effect"
+      ],
+      "properties": {
+        "qualification_only": {"const": true},
+        "production_caller": {"const": false},
+        "production_writer": {"const": false},
+        "effect_authority": {"const": false},
+        "operator_acceptance": {"const": false},
+        "promotion": {"const": false},
+        "g5_allowed": {"const": false},
+        "execute_allowed": {"const": false},
+        "external_effect": {"const": false}
+      }
+    },
+    "activity_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "request_id",
+        "session_id",
+        "actor",
+        "command",
+        "request_sha256",
+        "outcome_sha256",
+        "generation",
+        "owner_epoch_before",
+        "owner_epoch_after",
+        "page_revision_before",
+        "page_revision_after",
+        "authority",
+        "receipt_sha256"
+      ],
+      "properties": {
+        "schema_version": {"const": 2},
+        "request_id": {"type": "integer", "minimum": 1},
+        "session_id": {"type": "string", "pattern": "^browser-session:v1:[0-9a-f]{64}$"},
+        "actor": {"enum": ["agent", "human"]},
+        "command": {
+          "enum": [
+            "navigate",
+            "observe",
+            "act",
+            "wait",
+            "extract",
+            "human_take_control",
+            "human_release_control",
+            "human_input"
+          ]
+        },
+        "request_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "outcome_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "generation": {"type": "integer", "minimum": 1},
+        "owner_epoch_before": {"type": "integer", "minimum": 1},
+        "owner_epoch_after": {"type": "integer", "minimum": 1},
+        "page_revision_before": {"type": "integer", "minimum": 0},
+        "page_revision_after": {"type": "integer", "minimum": 0},
+        "authority": {"$ref": "#/$defs/authority"},
+        "receipt_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "evidence_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "session_id",
+        "generation",
+        "owner_epoch",
+        "page_revision",
+        "url_sha256",
+        "snapshot_sha256",
+        "node_count",
+        "raw_secret_bytes_present",
+        "cross_tenant_data_present",
+        "external_effect",
+        "qualification_only",
+        "receipt_sha256"
+      ],
+      "properties": {
+        "schema_version": {"const": 2},
+        "session_id": {"type": "string", "pattern": "^browser-session:v1:[0-9a-f]{64}$"},
+        "generation": {"type": "integer", "minimum": 1},
+        "owner_epoch": {"type": "integer", "minimum": 1},
+        "page_revision": {"type": "integer", "minimum": 0},
+        "url_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "snapshot_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "node_count": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "raw_secret_bytes_present": {"const": false},
+        "cross_tenant_data_present": {"const": false},
+        "external_effect": {"const": false},
+        "qualification_only": {"const": true},
+        "receipt_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}
