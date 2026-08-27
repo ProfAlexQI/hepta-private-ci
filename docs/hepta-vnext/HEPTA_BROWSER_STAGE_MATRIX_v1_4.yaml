@@ -1,0 +1,392 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "hepta.browser.stage-matrix.v1.4",
+  "plan_id": "WEB-PLAN-2026-08-27E",
+  "phase": "DEVELOPMENT",
+  "encoding": "JSON_COMPATIBLE_YAML",
+  "source_baseline": {
+    "hepta_commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+    "hepta_tree": "636341eb865b7c6d669958a96e7959de74fee020",
+    "servo_research_commit": "0a48e298482659817eb50097df23841f2b8e3044",
+    "servo_research_tree": "b04d2f75b3217374d079d579c270177b57fa1389"
+  },
+  "global_invariants": [
+    "Servo is the only live engine",
+    "one session has one BrowserActor and one WebView",
+    "human and Agent share the same page owner",
+    "web content is observation, not authority",
+    "raw WebDriver/CDP/JavaScript/cookies/passwords/tokens/profile files are not model-facing",
+    "TaskFlow remains effect/retry/reconcile authority",
+    "agentd/fleet remains process generation authority",
+    "unknown or possibly applied mutation is indeterminate and is not blindly retried"
+  ],
+  "authority": {
+    "qualification_only": true,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "external_effect": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false
+  },
+  "stages": [
+    {
+      "id": "WEB-C0",
+      "title": "Authority and contract closure",
+      "status": "IMPLEMENTED_PENDING_CI",
+      "depends_on": [],
+      "deliverables": [
+        "repository-native active plan and current index",
+        "threat model",
+        "stage and traceability matrices",
+        "receipt schema",
+        "dependency-free verifier",
+        "CI/default-branch trigger repair",
+        "Hepta CODEOWNERS"
+      ],
+      "entry_gate": [
+        "baseline commit and historical WEB-D provenance identified",
+        "all production authority remains closed"
+      ],
+      "exit_gate": [
+        "documents parse",
+        "active stage set is exactly WEB-C0..WEB-C7",
+        "code/tests/CI references exist",
+        "focused CI passes"
+      ],
+      "tests": [
+        "python3 scripts/verify-hepta-browser-plan.py",
+        "cargo fmt --all -- --check"
+      ],
+      "rollback": "revert additive plan/code commit; retain historical snapshot",
+      "authority": {
+        "qualification_only": true,
+        "production_caller": false,
+        "production_writer": false,
+        "effect_authority": false,
+        "external_effect": false,
+        "operator_acceptance": false,
+        "promotion": false,
+        "g5_allowed": false,
+        "execute_allowed": false
+      }
+    },
+    {
+      "id": "WEB-C1",
+      "title": "Pinned headed Servo foundation",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "WEB-C0"
+      ],
+      "deliverables": [
+        "Servo source receipt",
+        "MPL/SBOM and patch inventory",
+        "hepta-browser-contracts crate",
+        "hepta-browserd process",
+        "one headed native WebView",
+        "private profile",
+        "no public or unauthenticated control listener"
+      ],
+      "entry_gate": [
+        "C0 focused CI passed",
+        "exact Servo pin approved for source import",
+        "toolchain/native dependencies and disk budget declared"
+      ],
+      "exit_gate": [
+        "exact source/toolchain build receipts",
+        "one headed WebView smoke on macOS and Linux",
+        "human input reaches page",
+        "external navigation remains disabled",
+        "no TCP control listener"
+      ],
+      "tests": [
+        "Servo build/check",
+        "source/license/SBOM verifier",
+        "headed fixture smoke",
+        "listener/socket negative tests"
+      ],
+      "rollback": "remove candidate from dependency graph; preserve source/build receipts",
+      "authority": {
+        "qualification_only": true,
+        "production_caller": false,
+        "production_writer": false,
+        "effect_authority": false,
+        "external_effect": false,
+        "operator_acceptance": false,
+        "promotion": false,
+        "g5_allowed": false,
+        "execute_allowed": false
+      }
+    },
+    {
+      "id": "WEB-C2",
+      "title": "Semantic projection",
+      "status": "IMPLEMENTED_PENDING_CI",
+      "depends_on": [
+        "WEB-C0"
+      ],
+      "deliverables": [
+        "portable BrowserSessionId/Request/Command/Outcome types",
+        "canonical semantic refs and snapshots",
+        "engine privacy markers",
+        "sensitive/cross-tenant denial",
+        "golden fixture projection"
+      ],
+      "entry_gate": [
+        "C0 contract version fixed",
+        "fixture engine is explicitly qualification-only"
+      ],
+      "exit_gate": [
+        "canonical identifiers reject malformed bytes",
+        "snapshots are bounded",
+        "stale refs fail after mutation",
+        "secret/cross-tenant markers fail closed",
+        "portable tests pass"
+      ],
+      "tests": [
+        "browser_wire_identifiers_require_canonical_shape",
+        "browser_stale_semantic_ref_is_rejected_after_mutation",
+        "browser_sensitive_extract_is_denied"
+      ],
+      "rollback": "remove fixture modules or revert commit; no profile migration required",
+      "authority": {
+        "qualification_only": true,
+        "production_caller": false,
+        "production_writer": false,
+        "effect_authority": false,
+        "external_effect": false,
+        "operator_acceptance": false,
+        "promotion": false,
+        "g5_allowed": false,
+        "execute_allowed": false
+      }
+    },
+    {
+      "id": "WEB-C3",
+      "title": "Single-owner human/Agent actor",
+      "status": "FIXTURE_IMPLEMENTED_PENDING_CI",
+      "depends_on": [
+        "WEB-C1",
+        "WEB-C2"
+      ],
+      "deliverables": [
+        "single BrowserActor owner",
+        "owner epoch/page revision fences",
+        "human takeover lease",
+        "bounded idempotency cache",
+        "ActivityReceipt v2",
+        "WebEvidenceReceipt v2",
+        "same-page fixture vertical slice"
+      ],
+      "entry_gate": [
+        "C2 contract available",
+        "for integrated exit: one real C1 Servo WebView available"
+      ],
+      "exit_gate": [
+        "fixture exit: actor tests pass",
+        "integrated exit: headed human and Agent use same Servo WebView",
+        "wrong session/generation/epoch/revision/ref denied",
+        "exact replay stable and payload conflict denied"
+      ],
+      "tests": [
+        "browser_shared_page_human_agent_round_trip",
+        "browser_request_replay_is_stable_and_conflict_fails_closed",
+        "browser_human_lease_expiry_advances_epoch_and_revision",
+        "browser_wrong_session_receipt_binds_actual_actor_identity"
+      ],
+      "rollback": "terminate candidate actor and start fresh session/generation; never reuse refs",
+      "authority": {
+        "qualification_only": true,
+        "production_caller": false,
+        "production_writer": false,
+        "effect_authority": false,
+        "external_effect": false,
+        "operator_acceptance": false,
+        "promotion": false,
+        "g5_allowed": false,
+        "execute_allowed": false
+      }
+    },
+    {
+      "id": "WEB-C4",
+      "title": "Read-only public-web qualification",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "WEB-C3",
+        "WEB-C5"
+      ],
+      "deliverables": [
+        "curated local/public corpus",
+        "compatibility and challenge taxonomy",
+        "known-gap registry",
+        "read-only routing profile"
+      ],
+      "entry_gate": [
+        "integrated C3 passed",
+        "C5 network broker enforces every request"
+      ],
+      "exit_gate": [
+        "corpus reproducible",
+        "no second engine fallback",
+        "no authentication/upload/download/external mutation",
+        "failures typed"
+      ],
+      "tests": [
+        "local corpus",
+        "bounded public corpus",
+        "redirect/frame/worker challenge fixtures"
+      ],
+      "rollback": "disable public-web profile and retain local fixture only",
+      "authority": {
+        "qualification_only": true,
+        "production_caller": false,
+        "production_writer": false,
+        "effect_authority": false,
+        "external_effect": false,
+        "operator_acceptance": false,
+        "promotion": false,
+        "g5_allowed": false,
+        "execute_allowed": false
+      }
+    },
+    {
+      "id": "WEB-C5",
+      "title": "Security, network and isolation",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "WEB-C1",
+        "WEB-C2"
+      ],
+      "deliverables": [
+        "SSRF/DNS/redirect policy broker",
+        "process sandbox",
+        "tenant/profile isolation",
+        "download quarantine",
+        "same-UID peer authentication",
+        "fuzz and malformed-engine-output corpus"
+      ],
+      "entry_gate": [
+        "real Servo process exists only in isolated development profile",
+        "threat model test vectors frozen"
+      ],
+      "exit_gate": [
+        "private/metadata targets blocked",
+        "redirects revalidated",
+        "no routable control listener",
+        "secret/cross-tenant scans zero",
+        "crash/OOM contained"
+      ],
+      "tests": [
+        "SSRF matrix",
+        "DNS rebinding",
+        "proxy isolation",
+        "malformed snapshot/extract fuzz",
+        "crash/OOM tests"
+      ],
+      "rollback": "disable network and terminate profiles; preserve security evidence",
+      "authority": {
+        "qualification_only": true,
+        "production_caller": false,
+        "production_writer": false,
+        "effect_authority": false,
+        "external_effect": false,
+        "operator_acceptance": false,
+        "promotion": false,
+        "g5_allowed": false,
+        "execute_allowed": false
+      }
+    },
+    {
+      "id": "WEB-C6",
+      "title": "Native product integration",
+      "status": "NOT_STARTED",
+      "depends_on": [
+        "WEB-C3",
+        "WEB-C5"
+      ],
+      "deliverables": [
+        "macOS/Linux/Windows window integration",
+        "focus/IME/clipboard/file-picker/permission policy",
+        "packaging",
+        "runbooks",
+        "observability"
+      ],
+      "entry_gate": [
+        "C3/C5 qualified on candidate source",
+        "platform owners and resource budgets assigned"
+      ],
+      "exit_gate": [
+        "same WebView identity under show/hide and human input",
+        "platform matrix passes or known gaps block",
+        "no silent authority widening"
+      ],
+      "tests": [
+        "native UI matrix",
+        "IME/focus",
+        "clipboard/file picker negative tests",
+        "package/rollback smoke"
+      ],
+      "rollback": "uninstall candidate package and restore prior qualified artifact/profile snapshot",
+      "authority": {
+        "qualification_only": true,
+        "production_caller": false,
+        "production_writer": false,
+        "effect_authority": false,
+        "external_effect": false,
+        "operator_acceptance": false,
+        "promotion": false,
+        "g5_allowed": false,
+        "execute_allowed": false
+      }
+    },
+    {
+      "id": "WEB-C7",
+      "title": "Authentication and controlled effects",
+      "status": "BLOCKED_FINAL_RELEASE",
+      "depends_on": [
+        "WEB-C4",
+        "WEB-C5",
+        "WEB-C6"
+      ],
+      "deliverables": [
+        "AuthBus SecretRef integration",
+        "operator-mediated login/MFA",
+        "TaskFlow effect intents and reconcile",
+        "controlled upload/download/form submission",
+        "final artifact/operator/promotion receipts"
+      ],
+      "entry_gate": [
+        "C4-C6 qualified",
+        "provider terms and external trust inputs available",
+        "explicit FINAL_RELEASE decision"
+      ],
+      "exit_gate": [
+        "no raw credential model-facing",
+        "indeterminate effects reconcile",
+        "operator acceptance binds exact artifact",
+        "promotion receipt separately grants production flags"
+      ],
+      "tests": [
+        "login/MFA fixtures",
+        "effect idempotency/reconcile",
+        "credential scans",
+        "artifact/platform qualification",
+        "rollback rehearsal"
+      ],
+      "rollback": "revoke permits, drain browserd, restore prior artifact/profile, preserve indeterminate outcomes",
+      "authority": {
+        "qualification_only": true,
+        "production_caller": false,
+        "production_writer": false,
+        "effect_authority": false,
+        "external_effect": false,
+        "operator_acceptance": false,
+        "promotion": false,
+        "g5_allowed": false,
+        "execute_allowed": false
+      }
+    }
+  ]
+}
