@@ -15,6 +15,11 @@ name = "hepta-shadow-live-trial"
 path = "src/bin/hepta-shadow-live-trial.rs"
 test = false
 
+[[bin]]
+name = "hepta-browser-worker-qualification"
+path = "src/bin/hepta-browser-worker-qualification.rs"
+test = false
+
 [lints]
 workspace = true
 
@@ -26,7 +31,7 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["io-util", "macros", "net", "process", "rt", "sync", "time"] }
+tokio = { workspace = true, features = ["io-std", "io-util", "macros", "net", "process", "rt", "sync", "time"] }
 toml = { workspace = true }
 
 [dev-dependencies]
