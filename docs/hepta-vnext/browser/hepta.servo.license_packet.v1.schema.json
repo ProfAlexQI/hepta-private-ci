@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hepta.servo.license_packet.v1",
+  "title": "Hepta Servo license and source-distribution packet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "upstream_repository",
+    "upstream_commit",
+    "primary_license",
+    "license_file_sha256",
+    "notices",
+    "source_offer_required"
+  ],
+  "properties": {
+    "schema": {"const": "hepta.servo.license_packet.v1"},
+    "upstream_repository": {"const": "https://github.com/servo/servo"},
+    "upstream_commit": {"const": "0a48e298482659817eb50097df23841f2b8e3044"},
+    "primary_license": {"const": "MPL-2.0"},
+    "license_file_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "notices": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Za-z0-9._:+/@=-]{1,512}$"}
+    },
+    "source_offer_required": {"const": true}
+  }
+}
