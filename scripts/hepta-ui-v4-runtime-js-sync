@@ -6,79 +6,130 @@ require "json"
 require "pathname"
 
 ROOT = Pathname.new(__dir__).join("..").expand_path
-OUTPUT = ROOT.join("apps/hepta-control-ui/control-ui.js")
+BASE = ROOT.join("apps/hepta-control-ui/control-ui.js")
 RUNTIME = ROOT.join("apps/hepta-control-ui/control-ui-v4-runtime.js")
+BUILD = ROOT.join("codex-rs/hepta-core/build.rs")
+STATIC_ASSETS = ROOT.join("codex-rs/hepta-core/src/control_ui_static_assets.rs")
 START_MARKER = "/* HEPTA_UI_V4_RUNTIME_BEGIN */"
 END_MARKER = "/* HEPTA_UI_V4_RUNTIME_END */"
-FORBIDDEN_NETWORK = [
+BUNDLE_BOUNDARY = "hepta-ui-v4-runtime-bundle-boundary"
+
+case ARGV
+when [], ["--check"]
+  # Check-only by design.
+when ["--write"]
+  abort(
+    "direct runtime mutation is disabled: hepta-core/build.rs is the sole " \
+    "authority for composing control-ui.js + boundary + v4 runtime"
+  )
+else
+  abort("usage: #{File.basename($PROGRAM_NAME)} [--check]")
+end
+
+{
+  base: BASE,
+  runtime: RUNTIME,
+  build: BUILD,
+  static_assets: STATIC_ASSETS,
+}.each do |name, path|
+  abort("missing #{name}: #{path}") unless path.file?
+  abort("empty #{name}: #{path}") if path.zero?
+end
+
+base = BASE.read
+runtime = RUNTIME.read
+build = BUILD.read
+static_assets = STATIC_ASSETS.read
+
+FORBIDDEN_RUNTIME_CAPABILITIES = [
   /\bfetch\s*\(/,
   /\bXMLHttpRequest\b/,
   /\bWebSocket\b/,
+  /\bEventSource\b/,
   /\bsendBeacon\s*\(/,
   /\bnavigator\.serviceWorker\b/,
+  /\beval\s*\(/,
+  /\bnew\s+Function\s*\(/,
 ].freeze
-
-mode = case ARGV
-       when [], ["--check"] then :check
-       when ["--write"] then :write
-       else
-         abort("usage: #{File.basename($PROGRAM_NAME)} [--check|--write]")
-       end
-
-abort("missing output: #{OUTPUT}") unless OUTPUT.file?
-abort("missing runtime source: #{RUNTIME}") unless RUNTIME.file?
-
-runtime = RUNTIME.read
-FORBIDDEN_NETWORK.each do |pattern|
-  abort("runtime source may not own network capability: #{pattern.inspect}") if runtime.match?(pattern)
+FORBIDDEN_RUNTIME_CAPABILITIES.each do |pattern|
+  abort("runtime source may not own capability: #{pattern.inspect}") if runtime.match?(pattern)
 end
-%w[productionAuthority effectAuthority liveAdapterAuthority promotion].each do |key|
+
+%w[
+  productionAuthority
+  effectAuthority
+  liveAdapterAuthority
+  operatorAcceptance
+  promotion
+  release
+].each do |key|
   abort("runtime source must publish #{key}=false") unless runtime.match?(/#{key}:\s*false/)
 end
 
-current = OUTPUT.read
-start_count = current.scan(START_MARKER).length
-end_count = current.scan(END_MARKER).length
-abort("unbalanced v4 runtime markers") unless start_count == end_count
-abort("multiple v4 runtime bindings") if start_count > 1
-
-base = if start_count == 1
-         before, remainder = current.split(START_MARKER, 2)
-         _bound, after = remainder.split(END_MARKER, 2)
-         abort("content after v4 runtime marker is not allowed") unless after.to_s.strip.empty?
-         before.rstrip
-       else
-         current.rstrip
-       end
-
-expected = [
-  base,
-  "",
+forbidden_base_markers = [
   START_MARKER,
-  runtime.rstrip,
   END_MARKER,
-  "",
-].join("\n")
+  BUNDLE_BOUNDARY,
+  "HeptaUiV4ReadState",
+  'controlUiV4Runtime = "ready"',
+  'controlUiV4RuntimeAuthority = "local-ui-only"',
+]
+forbidden_base_markers.each do |marker|
+  abort("base controller contains v4 runtime marker: #{marker}") if base.include?(marker)
+end
 
-if mode == :write
-  OUTPUT.write(expected)
-else
-  abort("control-ui.js is not bound to canonical v4 runtime source; run --write") unless current == expected
+required_build_markers = [
+  'apps/hepta-control-ui/control-ui.js',
+  'apps/hepta-control-ui/control-ui-v4-runtime.js',
+  BUNDLE_BOUNDARY,
+  'control-ui.bundle.js',
+  'control_ui_bundle_metadata.rs',
+  'CONTROL_UI_V4_RUNTIME_BOUND: bool = true',
+  'CONTROL_UI_JS_SHA256',
+  'CONTROL_UI_JS_ETAG',
+]
+required_build_markers.each do |marker|
+  abort("build-time bundle marker missing: #{marker}") unless build.include?(marker)
+end
+
+required_static_markers = [
+  'control-ui.bundle.js',
+  'CONTROL_UI_BASE_JS',
+  'CONTROL_UI_V4_RUNTIME_JS',
+  'CONTROL_UI_JS',
+]
+required_static_markers.each do |marker|
+  abort("static asset marker missing: #{marker}") unless static_assets.include?(marker)
 end
 
 puts JSON.pretty_generate(
-  schema: "hepta.ui.v4.runtime-js-binding.v1",
-  status: "PASS_SOURCE_BINDING_ONLY",
-  output: OUTPUT.relative_path_from(ROOT).to_s,
+  schema: "hepta.ui.v4.runtime-js-binding.v2",
+  status: "PASS_BUILD_TIME_BUNDLE_SOURCE_ONLY",
+  binding_mode: "HEPTA_CORE_BUILD_TIME_BUNDLE",
+  base: BASE.relative_path_from(ROOT).to_s,
   runtime: RUNTIME.relative_path_from(ROOT).to_s,
-  output_sha256: Digest::SHA256.file(OUTPUT).hexdigest,
+  build: BUILD.relative_path_from(ROOT).to_s,
+  static_assets: STATIC_ASSETS.relative_path_from(ROOT).to_s,
+  served_path: "/control-ui.js",
+  source_order: [
+    BASE.relative_path_from(ROOT).to_s,
+    BUNDLE_BOUNDARY,
+    RUNTIME.relative_path_from(ROOT).to_s,
+  ],
+  base_sha256: Digest::SHA256.file(BASE).hexdigest,
   runtime_sha256: Digest::SHA256.file(RUNTIME).hexdigest,
-  marker_count: 1,
+  direct_source_mutation_allowed: false,
+  runtime_occurrences_in_base: 0,
+  rust_compile_validation: false,
+  rust_runtime_validation: false,
+  browser_validation: false,
+  device_validation: false,
   network_authority: false,
   mutation_authority: false,
   effect_authority: false,
+  live_adapter_authority: false,
   production_authority: false,
+  operator_acceptance: false,
   promotion: false,
-  browser_validation: false,
-  device_validation: false
+  release: false
 )

@@ -1,7 +1,7 @@
 {
   "schema": "hepta.ui.read-state-machine.v1",
   "version": 1,
-  "status": "SOURCE_CONTRACT_NO_RUNTIME_OR_RELEASE_AUTHORITY",
+  "status": "SOURCE_BOUND_NO_RUNTIME_OR_RELEASE_AUTHORITY",
   "states": {
     "idle": {
       "terminal": false,
@@ -38,26 +38,73 @@
     }
   },
   "transitions": {
-    "idle": ["loading"],
-    "loading": ["fresh", "stale", "partial", "offline", "error"],
-    "fresh": ["loading", "stale", "offline"],
-    "stale": ["loading", "fresh", "partial", "offline", "error"],
-    "partial": ["loading", "fresh", "stale", "offline", "error"],
-    "offline": ["loading", "fresh", "stale", "error"],
-    "error": ["loading", "offline"]
+    "idle": [
+      "loading"
+    ],
+    "loading": [
+      "fresh",
+      "stale",
+      "partial",
+      "offline",
+      "error"
+    ],
+    "fresh": [
+      "loading",
+      "stale",
+      "offline"
+    ],
+    "stale": [
+      "loading",
+      "fresh",
+      "partial",
+      "offline",
+      "error"
+    ],
+    "partial": [
+      "loading",
+      "fresh",
+      "stale",
+      "offline",
+      "error"
+    ],
+    "offline": [
+      "loading",
+      "fresh",
+      "stale",
+      "error"
+    ],
+    "error": [
+      "loading",
+      "offline"
+    ]
   },
   "authority": {
     "networkAuthority": false,
     "mutationAuthority": false,
     "effectAuthority": false,
+    "liveAdapterAuthority": false,
     "productionAuthority": false,
-    "promotion": false
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
   },
   "binding": {
     "canonicalSource": "apps/hepta-control-ui/control-ui-v4-runtime.js",
+    "baseSource": "apps/hepta-control-ui/control-ui.js",
+    "buildScript": "codex-rs/hepta-core/build.rs",
+    "staticAssetModule": "codex-rs/hepta-core/src/control_ui_static_assets.rs",
     "runtimeCss": "apps/hepta-control-ui/styles.v4.runtime.css",
-    "boundIntoRustServedControlUiJs": false,
-    "bindingMarkerStart": "HEPTA_UI_V4_RUNTIME_BEGIN",
-    "bindingMarkerEnd": "HEPTA_UI_V4_RUNTIME_END"
+    "boundIntoRustServedControlUiJs": true,
+    "bindingMode": "HEPTA_CORE_BUILD_TIME_BUNDLE",
+    "directSourceMutationAllowed": false,
+    "servedPath": "/control-ui.js",
+    "bundleBoundary": "hepta-ui-v4-runtime-bundle-boundary"
+  },
+  "qualification": {
+    "sourceBound": true,
+    "rustCompileValidation": false,
+    "rustRuntimeValidation": false,
+    "browserValidation": false,
+    "deviceValidation": false
   }
 }

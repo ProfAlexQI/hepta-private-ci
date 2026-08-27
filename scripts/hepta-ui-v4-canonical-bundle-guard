@@ -1,0 +1,102 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  base: root.join("apps/hepta-control-ui/control-ui.js"),
+  runtime: root.join("apps/hepta-control-ui/control-ui-v4-runtime.js"),
+  sync: root.join("scripts/hepta-ui-v4-runtime-js-sync"),
+  build: root.join("codex-rs/hepta-core/build.rs"),
+  assets: root.join("codex-rs/hepta-core/src/control_ui_static_assets.rs"),
+  read_state: root.join("docs/ui/HEPTA_UI_READ_STATE_MACHINE_V1.json")
+}
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+unless checks.values.all?
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.canonical-bundle-guard.v1",
+    status: "FAIL_MISSING_INPUT",
+    checks: checks,
+    failures: checks.reject { |_name, passed| passed }.keys
+  )
+  exit 1
+end
+
+base = files.fetch(:base).read
+runtime = files.fetch(:runtime).read
+sync = files.fetch(:sync).read
+build = files.fetch(:build).read
+assets = files.fetch(:assets).read
+read_state = JSON.parse(files.fetch(:read_state).read)
+
+checks["base.runtime_absent"] = [
+  "HEPTA_UI_V4_RUNTIME_BEGIN",
+  "HEPTA_UI_V4_RUNTIME_END",
+  "hepta-ui-v4-runtime-bundle-boundary",
+  "HeptaUiV4ReadState",
+  'controlUiV4Runtime = "ready"',
+].none? { |marker| base.include?(marker) }
+checks["runtime.source_present"] =
+  runtime.include?("HeptaUiV4ReadState") &&
+  runtime.include?('controlUiV4Runtime = "ready"')
+checks["sync.check_only"] =
+  sync.include?("PASS_BUILD_TIME_BUNDLE_SOURCE_ONLY") &&
+  sync.include?("direct runtime mutation is disabled") &&
+  sync.include?("direct_source_mutation_allowed: false") &&
+  !sync.include?("OUTPUT.write") &&
+  !sync.include?("BASE.write")
+checks["build.sole_composer"] = [
+  "apps/hepta-control-ui/control-ui.js",
+  "apps/hepta-control-ui/control-ui-v4-runtime.js",
+  "hepta-ui-v4-runtime-bundle-boundary",
+  "control-ui.bundle.js",
+  "CONTROL_UI_V4_RUNTIME_BOUND: bool = true",
+  "CONTROL_UI_JS_SHA256",
+  "CONTROL_UI_JS_ETAG",
+].all? { |marker| build.include?(marker) }
+checks["assets.generated_bundle"] =
+  assets.include?("control-ui.bundle.js") &&
+  assets.include?("CONTROL_UI_BASE_JS") &&
+  assets.include?("CONTROL_UI_V4_RUNTIME_JS") &&
+  assets.include?("CONTROL_UI_JS")
+checks["read_state.build_time_binding"] =
+  read_state.dig("binding", "boundIntoRustServedControlUiJs") == true &&
+  read_state.dig("binding", "bindingMode") == "HEPTA_CORE_BUILD_TIME_BUNDLE" &&
+  read_state.dig("binding", "directSourceMutationAllowed") == false &&
+  read_state.dig("binding", "servedPath") == "/control-ui.js"
+checks["read_state.authority_false"] =
+  read_state.fetch("authority").values.all? { |value| value == false }
+checks["read_state.runtime_unclaimed"] =
+  read_state.dig("qualification", "rustCompileValidation") == false &&
+  read_state.dig("qualification", "rustRuntimeValidation") == false &&
+  read_state.dig("qualification", "browserValidation") == false &&
+  read_state.dig("qualification", "deviceValidation") == false
+
+failed = checks.reject { |_name, passed| passed }
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.canonical-bundle-guard.v1",
+  status: failed.empty? ?
+    "PASS_CANONICAL_BUILD_TIME_BUNDLE_SOURCE_ONLY" :
+    "FAIL_CANONICAL_BUILD_TIME_BUNDLE_SOURCE",
+  binding_mode: "HEPTA_CORE_BUILD_TIME_BUNDLE",
+  served_path: "/control-ui.js",
+  direct_source_mutation_allowed: false,
+  runtime_occurrences_in_base: 0,
+  rust_compile_validation: false,
+  rust_runtime_validation: false,
+  browser_validation: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failed.keys
+)
+exit(failed.empty? ? 0 : 1)

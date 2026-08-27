@@ -1,0 +1,195 @@
+name: hepta-ui-v4-rust-served
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-rust-served-qualification-*"
+      - "codex/ui-light-glass-v4-*"
+    paths:
+      - "apps/hepta-control-ui/control-ui.js"
+      - "apps/hepta-control-ui/control-ui-v4-runtime.js"
+      - "apps/hepta-control-ui/styles.v4.css"
+      - "apps/hepta-control-ui/styles.v4.runtime.css"
+      - "codex-rs/hepta-core/build.rs"
+      - "codex-rs/hepta-core/src/control_ui_static_assets.rs"
+      - "codex-rs/hepta-core/tests/control_ui_v4_bundle.rs"
+      - "codex-rs/hepta-native-gateway/src/ui_domain/generated_control_ui_assets.rs"
+      - "docs/ui/schemas/hepta.ui.v4.rust-served-browser-qualification.v1.schema.json"
+      - "scripts/hepta-ui-v4-served-bundle-gate"
+      - "scripts/hepta-ui-v4-rust-served-browser-source-gate"
+      - "scripts/hepta-ui-v4-rust-served-browser-qualification.cjs"
+      - "scripts/hepta-ui-v4-rust-served-browser-qualification.sh"
+      - ".github/workflows/hepta-ui-v4-rust-served.yml"
+  pull_request:
+    paths:
+      - "apps/hepta-control-ui/control-ui.js"
+      - "apps/hepta-control-ui/control-ui-v4-runtime.js"
+      - "apps/hepta-control-ui/styles.v4.css"
+      - "apps/hepta-control-ui/styles.v4.runtime.css"
+      - "codex-rs/hepta-core/build.rs"
+      - "codex-rs/hepta-core/src/control_ui_static_assets.rs"
+      - "codex-rs/hepta-core/tests/control_ui_v4_bundle.rs"
+      - "codex-rs/hepta-native-gateway/src/ui_domain/generated_control_ui_assets.rs"
+      - "docs/ui/schemas/hepta.ui.v4.rust-served-browser-qualification.v1.schema.json"
+      - "scripts/hepta-ui-v4-served-bundle-gate"
+      - "scripts/hepta-ui-v4-rust-served-browser-source-gate"
+      - "scripts/hepta-ui-v4-rust-served-browser-qualification.cjs"
+      - "scripts/hepta-ui-v4-rust-served-browser-qualification.sh"
+      - ".github/workflows/hepta-ui-v4-rust-served.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v4-rust-served-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Rust-served browser source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Validate source syntax and receipt Schema
+        run: |
+          ruby -c scripts/hepta-ui-v4-rust-served-browser-source-gate
+          node --check scripts/hepta-ui-v4-rust-served-browser-qualification.cjs
+          bash -n scripts/hepta-ui-v4-rust-served-browser-qualification.sh
+          ruby -rjson -e '
+            JSON.parse(
+              File.read(
+                "docs/ui/schemas/hepta.ui.v4.rust-served-browser-qualification.v1.schema.json"
+              )
+            )
+          '
+
+      - name: Run fail-closed source gate
+        run: |
+          mkdir -p artifacts/ui-v4-rust-served
+          ruby scripts/hepta-ui-v4-rust-served-browser-source-gate \
+            | tee artifacts/ui-v4-rust-served/source-gate-result.json
+
+      - name: Verify source-only authority boundary
+        run: |
+          ruby -rjson -e '
+            result = JSON.parse(
+              File.read("artifacts/ui-v4-rust-served/source-gate-result.json")
+            )
+            abort "unexpected source status" unless
+              result.fetch("status") ==
+                "PASS_RUST_SERVED_BROWSER_SOURCE_CONTRACT_ONLY"
+            abort "formal asset is not source-bound" unless
+              result.fetch("rust_served_runtime_asset_bound") == true
+            %w[
+              rust_compile_validation
+              rust_runtime_validation
+              browser_validation
+              device_validation
+              production_authority
+              effect_authority
+              live_adapter_authority
+              operator_acceptance
+              promotion
+              release
+            ].each do |key|
+              abort "#{key} escaped source-only boundary" unless
+                result.fetch(key) == false
+            end
+            abort "source gate failures present" unless
+              result.fetch("failures").empty?
+          '
+
+      - name: Upload source gate receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-rust-served-source-${{ github.sha }}
+          path: artifacts/ui-v4-rust-served/source-gate-result.json
+          if-no-files-found: error
+          retention-days: 14
+
+  rust-served-browser-qualification:
+    name: Chromium Rust-served runtime qualification
+    if: github.event_name == 'workflow_dispatch'
+    needs: source-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+
+      - name: Install pinned Playwright in an isolated prefix
+        env:
+          PLAYWRIGHT_PREFIX: ${{ runner.temp }}/hepta-ui-v4-playwright
+        run: |
+          mkdir -p "$PLAYWRIGHT_PREFIX"
+          npm install --prefix "$PLAYWRIGHT_PREFIX" \
+            --no-save --no-audit --no-fund playwright@1.55.0
+          node "$PLAYWRIGHT_PREFIX/node_modules/playwright/cli.js" \
+            install --with-deps chromium
+
+      - name: Build Rust server and qualify formal runtime asset
+        env:
+          PLAYWRIGHT_PREFIX: ${{ runner.temp }}/hepta-ui-v4-playwright
+          HEPTA_UI_V4_RUST_SERVED_BROWSER_OUT: artifacts/ui-v4-rust-served-browser
+        run: |
+          export NODE_PATH="$PLAYWRIGHT_PREFIX/node_modules"
+          bash scripts/hepta-ui-v4-rust-served-browser-qualification.sh
+
+      - name: Verify receipt and runtime/device/authority boundary
+        run: |
+          receipt="artifacts/ui-v4-rust-served-browser/HEPTA_UI_V4_RUST_SERVED_BROWSER_QUALIFICATION_RECEIPT.json"
+          jq -e '
+            .schema == "hepta.ui.v4.rust-served-browser-qualification.v1"
+            and .status == "PASS_RUST_SERVED_BROWSER_CONTRACT"
+            and .scope == "RUST_SERVED_LOOPBACK_LOCAL_READ_ONLY"
+            and .candidate.commitBound == true
+            and .candidate.treeBound == true
+            and .fixture == false
+            and .runtimeAssetInjectedForQualification == false
+            and .rustServedRuntimeAssetBound == true
+            and .browserValidation == true
+            and .rustRuntimeValidation == true
+            and .deviceValidation == false
+            and .productionAuthority == false
+            and .effectAuthority == false
+            and .liveAdapterAuthority == false
+            and .operatorAcceptance == false
+            and .promotion == false
+            and .release == false
+            and .server.servedAssets.script.exactBytesBound == true
+            and .server.servedAssets.script.etagBound == true
+            and .server.servedAssets.script.runtimeBound == true
+            and (.results | length) == 10
+            and ([.results[] |
+              select(.status != "PASS_RUST_SERVED_BROWSER_CONTRACT")
+            ] | length) == 0
+            and ([.results[] |
+              select(.network.crossOrigin != 0 or .network.nonGet != 0)
+            ] | length) == 0
+            and (.failures | length) == 0
+          ' "$receipt" >/dev/null \
+            || { echo "runtime/device/authority boundary escaped" >&2; exit 1; }
+
+      - name: Upload screenshots and receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-rust-served-browser-${{ github.sha }}
+          path: artifacts/ui-v4-rust-served-browser
+          if-no-files-found: error
+          retention-days: 14
