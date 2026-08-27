@@ -2,9 +2,18 @@ name: hepta-vnext qualification
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "codex-rs/hepta-shadow-qualification/**"
+      - "docs/hepta-vnext/**"
+      - "scripts/verify-hepta-browser-plan.py"
+      - ".github/CODEOWNERS"
+      - ".github/workflows/hepta-vnext-qualification.yml"
+      - ".github/workflows/blocking-ci.yml"
   push:
     branches:
       - vnext-main
+      - integration/vnext-main-20260811
       - "integration/vnext-main-full-ci-*"
 
 permissions:
@@ -167,6 +176,108 @@ jobs:
         with:
           name: authbus-local-qualification
           path: ${{ runner.temp }}/authbus-local-qualification
+          if-no-files-found: error
+
+  browser-c0-c3:
+    name: Browser C0-C3 qualification (fixture, no authority)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Initialize Browser qualification posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3"
+          mkdir -p "$evidence_dir"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "plan=WEB-PLAN-2026-08-27E"
+            echo "stages=WEB-C0,WEB-C2,WEB-C3-fixture"
+            echo "servo_linked=false"
+            echo "qualification_only=true"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "external_effect=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "g5_allowed=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Verify repository-native Browser plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3"
+          python3 scripts/verify-hepta-browser-plan.py 2>&1 | tee "$evidence_dir/plan-verifier.log"
+          echo "plan_verifier=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Locked Browser contract and actor tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3"
+          cargo test --locked \
+            -p codex-hepta-shadow-qualification \
+            --lib browser_ -- --nocapture 2>&1 | tee "$evidence_dir/tests.log"
+          echo "tests=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Locked Browser library check
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3"
+          cargo check --locked \
+            -p codex-hepta-shadow-qualification \
+            --lib 2>&1 | tee "$evidence_dir/check.log"
+          echo "check=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Strict Browser Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3"
+          cargo clippy --locked \
+            -p codex-hepta-shadow-qualification \
+            --lib --tests -- -D warnings 2>&1 | tee "$evidence_dir/clippy.log"
+          echo "clippy=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Record Browser qualification-only result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3"
+          echo "job_status=${{ job.status }}" >> "$evidence_dir/posture.txt"
+          {
+            echo "### Hepta Browser C0-C3 fixture qualification"
+            echo
+            echo "This job validates portable contracts and a deterministic actor fixture."
+            echo "It does not build Servo or grant production/effect/promotion authority."
+            echo
+            sed 's/^/- /' "$evidence_dir/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Browser qualification evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-browser-c0-c3
+          path: ${{ runner.temp }}/hepta-browser-c0-c3
           if-no-files-found: error
 
   generated-and-locks:
