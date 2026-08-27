@@ -8,6 +8,8 @@ mod browser_worker_harness;
 mod browser_worker_protocol;
 #[cfg(test)]
 mod browser_worker_tests;
+#[cfg(unix)]
+mod browser_worker_unix;
 mod child;
 #[cfg(test)]
 mod child_tests;
@@ -139,6 +141,12 @@ pub use browser_worker_protocol::BrowserWorkerStartupCapability;
 pub use browser_worker_protocol::BrowserWorkerTransportKind;
 pub use browser_worker_protocol::read_browser_worker_frame;
 pub use browser_worker_protocol::write_browser_worker_frame;
+#[cfg(unix)]
+pub use browser_worker_unix::BROWSER_WORKER_UNIX_MODE_ARGUMENT;
+#[cfg(unix)]
+pub use browser_worker_unix::UnixQualificationBrowserWorker;
+#[cfg(unix)]
+pub use browser_worker_unix::run_unix_qualification_browser_worker;
 pub use child::ChildOutcome;
 pub use child::ProductChild;
 pub use closure::QualificationClosure;
