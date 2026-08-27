@@ -1304,6 +1304,7 @@ async fn five_running_agents_share_only_with_the_explicit_consumer() -> Result<(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[cfg(not(feature = "qualification-cognitive-write"))]
 async fn unavailable_cognitive_store_keeps_read_tools_and_omits_write_tools() -> Result<()> {
     const UNAVAILABLE_CALL: &str = "unavailable-recall";
     const QUERY: &str = "unavailable runtime probe";
@@ -1373,6 +1374,63 @@ async fn unavailable_cognitive_store_keeps_read_tools_and_omits_write_tools() ->
 
     product.shutdown().await?;
     Ok(())
+}
+
+/// The explicit writer qualification profile has a stronger startup
+/// contract than local read-only development: an unavailable cognitive store
+/// must stop before App Server can serve a turn.  Keep this assertion next to
+/// the default-profile degraded-runtime test so enabling the feature cannot
+/// accidentally weaken the E.24 available-only gate.
+#[cfg(feature = "qualification-cognitive-write")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn qualification_cognitive_store_unavailable_fails_closed_before_provider() -> Result<()> {
+    let mut fleet = FleetHarness::new()?;
+    let agent = fleet.register(AGENT_A, "workspace-a-qualification-unavailable")?;
+    let blocking_path = agent.layout.cognitive_root().join("cognitive_1.sqlite3");
+    std::fs::create_dir(&blocking_path)?;
+
+    fleet.start(&agent)?;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let report = fleet.supervisor.tick(Instant::now());
+        ensure!(
+            report.faults.is_empty(),
+            "supervisor faulted while observing qualification startup rejection: {:?}",
+            report.faults
+        );
+        let lifecycle = fleet
+            .registry
+            .load()?
+            .agent(&agent.agent_id)
+            .context("qualification Agent disappeared from registry")?
+            .lifecycle
+            .lifecycle;
+        let snapshot = fleet
+            .supervisor
+            .snapshot(&agent.agent_id)
+            .context("qualification Agent disappeared from supervisor")?;
+        if lifecycle == AgentLifecycle::Failed && !snapshot.active {
+            let logs = snapshot
+                .logs
+                .iter()
+                .map(|log| String::from_utf8_lossy(&log.bytes))
+                .collect::<String>();
+            ensure!(
+                logs.contains("qualification cognitive runtime unavailable"),
+                "qualification startup omitted the fail-closed error; logs={logs:?}"
+            );
+            ensure!(
+                !snapshot.healthy,
+                "qualification startup rejection was reported healthy"
+            );
+            return Ok(());
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "qualification Agent did not fail closed; lifecycle={lifecycle:?}; snapshot={snapshot:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
