@@ -9,40 +9,69 @@ on:
     branches: [main, integration/vnext-main-20260811]
 
 jobs:
+  runner-preflight:
+    name: Runner preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Confirm hosted runner execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner_os=$RUNNER_OS"
+          echo "runner_arch=$RUNNER_ARCH"
+          echo "event=$GITHUB_EVENT_NAME"
+          echo "sha=$GITHUB_SHA"
+          test -n "$RUNNER_TEMP"
+          test -d "$RUNNER_TEMP"
+
   # Keep reusable workflow calls alphabetized. The `required` job below is the
   # version-controlled list that the main-branch ruleset should require.
   bazel:
     name: Bazel
+    needs: runner-preflight
     uses: ./.github/workflows/bazel.yml
     secrets: inherit
 
   blob-size-policy:
     name: Blob size policy
+    needs: runner-preflight
     uses: ./.github/workflows/blob-size-policy.yml
     secrets: inherit
 
   cargo-deny:
     name: cargo-deny
+    needs: runner-preflight
     uses: ./.github/workflows/cargo-deny.yml
     secrets: inherit
 
   codespell:
     name: Codespell
+    needs: runner-preflight
     uses: ./.github/workflows/codespell.yml
+    secrets: inherit
+
+  hepta-vnext:
+    name: Hepta vNext qualification
+    needs: runner-preflight
+    uses: ./.github/workflows/hepta-vnext-qualification.yml
     secrets: inherit
 
   repo-checks:
     name: repo-checks
+    needs: runner-preflight
     uses: ./.github/workflows/repo-checks.yml
     secrets: inherit
 
   rust-ci:
     name: rust-ci
+    needs: runner-preflight
     uses: ./.github/workflows/rust-ci.yml
     secrets: inherit
 
   sdk:
     name: sdk
+    needs: runner-preflight
     uses: ./.github/workflows/sdk.yml
     secrets: inherit
 
@@ -52,10 +81,12 @@ jobs:
     # required check can appear successful instead of reporting the failure.
     if: ${{ always() }}
     needs:
+      - runner-preflight
       - bazel
       - blob-size-policy
       - cargo-deny
       - codespell
+      - hepta-vnext
       - repo-checks
       - rust-ci
       - sdk
