@@ -34,6 +34,7 @@ pub const BROWSER_WORKER_MODE_ARGUMENT: &str = "--hepta-browser-worker-qualifica
 
 const DEFAULT_STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_IO_TIMEOUT: Duration = Duration::from_secs(5);
+const MIN_TIMEOUT: Duration = Duration::from_millis(1);
 const MAX_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, thiserror::Error)]
@@ -101,15 +102,23 @@ impl BrowserWorkerLaunchSpec {
                 "worker executable path must be absolute".to_string(),
             ));
         }
+        let metadata = std::fs::symlink_metadata(&self.program).map_err(|error| {
+            BrowserWorkerHarnessError::Invalid(format!(
+                "worker executable cannot be inspected: {error}"
+            ))
+        })?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(BrowserWorkerHarnessError::Invalid(
+                "worker executable must be an existing non-symlink regular file".to_string(),
+            ));
+        }
         if self.generation == 0 {
             return Err(BrowserWorkerHarnessError::Invalid(
                 "worker generation must be nonzero".to_string(),
             ));
         }
-        if self.startup_timeout.is_zero()
-            || self.io_timeout.is_zero()
-            || self.startup_timeout > MAX_TIMEOUT
-            || self.io_timeout > MAX_TIMEOUT
+        if !(MIN_TIMEOUT..=MAX_TIMEOUT).contains(&self.startup_timeout)
+            || !(MIN_TIMEOUT..=MAX_TIMEOUT).contains(&self.io_timeout)
         {
             return Err(BrowserWorkerHarnessError::Invalid(
                 "worker timeouts must be within one millisecond and sixty seconds".to_string(),
@@ -126,6 +135,7 @@ pub struct QualificationBrowserWorker {
     reader: BufReader<ChildStdout>,
     protocol: BrowserWorkerParentSession,
     io_timeout: Duration,
+    worker_pid: u32,
 }
 
 impl QualificationBrowserWorker {
@@ -153,6 +163,11 @@ impl QualificationBrowserWorker {
             .stderr(Stdio::inherit())
             .kill_on_drop(true);
         let mut child = command.spawn()?;
+        let expected_pid = child.id().ok_or_else(|| {
+            BrowserWorkerHarnessError::Invalid(
+                "browser worker has no spawned process identity".to_string(),
+            )
+        })?;
         let writer = child
             .stdin
             .take()
@@ -169,6 +184,7 @@ impl QualificationBrowserWorker {
             reader,
             protocol,
             io_timeout: spec.io_timeout,
+            worker_pid: expected_pid,
         };
         timeout(
             spec.startup_timeout,
@@ -183,13 +199,21 @@ impl QualificationBrowserWorker {
         .await
         .map_err(|_| BrowserWorkerHarnessError::StartupTimeout)??;
         match worker.protocol.accept(ready)? {
-            BrowserWorkerParentEvent::Ready { .. } => Ok(worker),
+            BrowserWorkerParentEvent::Ready {
+                worker_pid,
+                transport: BrowserWorkerTransportKind::QualificationStdioPipe,
+            } if worker_pid == expected_pid => Ok(worker),
+            BrowserWorkerParentEvent::Ready { worker_pid, .. } => {
+                Err(BrowserWorkerHarnessError::Invalid(format!(
+                    "worker ready PID {worker_pid} differs from spawned PID {expected_pid}"
+                )))
+            }
             _ => Err(BrowserWorkerHarnessError::UnexpectedEvent),
         }
     }
 
-    pub fn process_id(&self) -> Option<u32> {
-        self.child.id()
+    pub fn process_id(&self) -> u32 {
+        self.worker_pid
     }
 
     pub fn is_ready(&self) -> bool {
