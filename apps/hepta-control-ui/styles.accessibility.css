@@ -1,3 +1,86 @@
+/*
+ * Hepta v4 runtime compatibility bridge.
+ *
+ * The Rust Control UI aggregate historically concatenates accessibility.css
+ * directly after responsive.css. Keep the critical v4 invariants in this final
+ * source until the canonical aggregate includes styles.v4.css as a dedicated
+ * input. This bridge is intentionally smaller than styles.v4.css and preserves
+ * the final accessibility preference rules below.
+ */
+:root {
+  --hepta-v4-runtime-bridge: 1;
+  --hepta-v4-font-body: 15px;
+  --hepta-v4-font-meta: 12px;
+  --hepta-v4-target-pointer: 44px;
+  --hepta-v4-target-touch: 48px;
+}
+
+body[data-view="chat"] {
+  font-size: var(--hepta-v4-font-body);
+  line-height: 1.5;
+}
+
+/* Stable reading and form content may never create another backdrop layer. */
+body[data-view="chat"] :is(
+  .tg-thread-panel,
+  .tg-bubble,
+  .metric-card,
+  .route-card,
+  .v2-diagnostic,
+  input,
+  textarea,
+  select
+) {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body[data-view="chat"] :is(.tg-message,.tg-bubble,[data-chat-composer-input]) {
+  font-size: var(--hepta-v4-font-body) !important;
+}
+
+body[data-view="chat"] :is(.tg-message small,.tg-bubble>span,time,.hepta-v4-local-draft-status) {
+  font-size: var(--hepta-v4-font-meta) !important;
+}
+
+body[data-view="chat"] :is(button,a[href],summary,input,textarea,select,[tabindex]:not([tabindex="-1"])) {
+  min-width: var(--hepta-v4-target-pointer);
+  min-height: var(--hepta-v4-target-pointer);
+}
+
+@media(pointer:coarse), (max-width:700px) {
+  body[data-view="chat"] :is(button,a[href],summary,input,textarea,select,[tabindex]:not([tabindex="-1"])) {
+    min-width: var(--hepta-v4-target-touch);
+    min-height: var(--hepta-v4-target-touch);
+  }
+
+  body[data-view="chat"] :is(
+    .tg-row-action-popover[popover]:popover-open,
+    .tg-composer-popover[popover]:popover-open,
+    [data-control-ui-thread-tools-panel="light-glass"][popover]:popover-open,
+    [data-control-ui-composer-tools-panel="light-glass"][popover]:popover-open
+  ) {
+    position:fixed !important;
+    inset:auto 8px calc(8px + env(safe-area-inset-bottom,0px)) 8px !important;
+    width:auto !important;
+    max-width:none !important;
+    max-height:min(70dvh,640px) !important;
+    overflow:auto !important;
+    overscroll-behavior:contain;
+    border-radius:18px !important;
+  }
+}
+
+html[data-hepta-v4-transient-open="true"] {
+  overflow:hidden;
+  overscroll-behavior:none;
+}
+
+html[data-hepta-v4-transient-open="true"] [popover]:popover-open {
+  touch-action:pan-y;
+  overscroll-behavior:contain;
+}
+
 /* System accessibility preferences are final in the cascade. */
 @media(prefers-contrast:more){
 :root{--border:#45616c;--text:#071a21;--muted:#29444e}
