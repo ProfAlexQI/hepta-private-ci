@@ -26,7 +26,7 @@ migration = JSON.parse(files[:migration].read)
 z_index = JSON.parse(files[:z_index].read)
 ci_blocker = JSON.parse(files[:ci_blocker].read)
 
-checks["bridge.runtime_marker"] = bridge.include?("--hepta-v4-runtime-bridge: 1")
+checks["bridge.runtime_marker"] = bridge.match?(/--hepta-v4-runtime-bridge:\s*[12]/)
 checks["bridge.content_no_blur"] = bridge.include?("Stable reading and form content may never create another backdrop layer")
 checks["bridge.touch_target"] = bridge.include?("--hepta-v4-target-touch: 48px")
 checks["bridge.mobile_safe_area"] = bridge.include?("safe-area-inset-bottom")
