@@ -10,10 +10,17 @@ without exposing Servo or WebDriver types. It carries one typed browser session
 and nothing else. The worker reports facts and outcomes; it never grants
 policy, effect, caller, operator or promotion authority.
 
-The current executable harness uses inherited child stdin/stdout pipes solely
-to qualify framing and lifecycle behavior. Production C1 requires an inherited
-Unix socketpair and a Windows named pipe whose ACL is bound to the expected
-SID. Neither production transport exists yet.
+Two executable qualification transports now use this protocol:
+
+1. inherited child stdin/stdout pipes, to qualify portable framing and process
+   lifecycle behavior;
+2. an inherited Unix `socketpair`, to qualify a pathless full-duplex channel and
+   exact spawned-PID handshake without creating a socket path or listener.
+
+Neither transport is production-qualified. The Unix scaffold still lacks a
+sealed artifact identity, platform receipt, parent-death qualification, sandbox
+and egress proof. Windows still requires a named pipe whose ACL is bound to the
+expected SID and Job Object lifecycle.
 
 ## 2. Envelope
 
@@ -51,9 +58,11 @@ The capability:
 - is not a credential for another session or process generation;
 - does not authorize browser commands, network access or external effects.
 
-The current qualification harness does not prove same-UID peer identity. The
-production Unix and Windows transports must add OS process identity and artifact
-digest binding before C1 can pass.
+The Unix launcher also requires the PID reported in `WorkerReady` to equal the
+PID returned for the process it spawned. The inherited channel and PID check
+reduce accidental or ambient attachment, but do not yet replace platform peer
+credentials, executable digest verification or protection against a hostile
+same-UID debugger. Those remain C1 qualification gates.
 
 ## 4. Sequence rules
 
@@ -111,17 +120,22 @@ send a response before a valid hello. Shutdown is explicit and acknowledged.
 EOF, timeout, process exit, capability failure, sequence failure, authority
 widening or unexpected payload terminates the qualification channel.
 
-## 7. Timeouts and process ownership
+## 7. Timeouts, file descriptors and process ownership
 
-The qualification launcher applies bounded startup and I/O timeouts, pipes only
-stdin/stdout, inherits stderr for diagnostics, and sets kill-on-drop. The child
-exits on parent pipe closure or explicit shutdown.
+Both launchers apply bounded startup and I/O timeouts, inherit stderr only for
+bounded diagnostics, and set kill-on-drop.
+
+The portable harness pipes stdin and stdout. The Unix harness creates one
+anonymous full-duplex socketpair, retains one endpoint in the parent, duplicates
+the child endpoint only into file descriptors zero and one, and exposes no
+filesystem socket name. The child exits on channel EOF or explicit shutdown.
 
 Production C1 must additionally provide:
 
-- Unix parent-death/process-group handling;
-- Windows Job Object termination;
-- executable and artifact digest verification;
+- Unix parent-death and process-group handling;
+- platform peer/process credential evidence where available;
+- Windows SID ACL and Job Object termination;
+- executable, source and artifact digest verification;
 - private runtime/profile roots;
 - resource limits;
 - sandbox and external-egress denial;
@@ -147,8 +161,11 @@ The current tests are required to prove:
 - skipped sequence closes the channel;
 - typed Actor request/response keeps authority closed;
 - a separate child process can navigate and observe the local fixture over
-  private pipes and shut down cleanly.
+  private stdio pipes and shut down cleanly;
+- a separate Unix child can do the same over a pathless inherited socketpair,
+  with its reported PID matching the spawned PID.
 
-Passing those tests qualifies only the protocol scaffold. WEB-C1 remains open
-until the same protocol is bound to a real pinned Servo worker and the required
-platform-private transports, provenance, sandbox, listener and egress receipts.
+Passing those tests qualifies only protocol and process scaffolds. WEB-C1
+remains open until the protocol is bound to a real pinned Servo worker and all
+required provenance, platform-private transport, artifact identity, sandbox,
+listener, egress and platform receipts exist.
