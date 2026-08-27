@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "hepta.vnext.current.v2",
+  "as_of": "2026-08-27",
+  "phase": "DEVELOPMENT",
+  "claim_level": "L0_BASELINE_L1_QUALIFICATION_ONLY",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "default_branch": "integration/vnext-main-20260811",
+  "baseline_commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+  "baseline_tree": "636341eb865b7c6d669958a96e7959de74fee020",
+  "implementation_branch": "codex/hepta-vnext-plan-browser-c0-c3-20260827",
+  "implementation_commit": "PENDING_SUCCESSOR_BINDING",
+  "active_plan": {
+    "plan_id": "WEB-PLAN-2026-08-27E",
+    "path": "docs/hepta-vnext/HEPTA_BROWSER_ACTIVE_PLAN.md",
+    "stages": [
+      "WEB-C0",
+      "WEB-C1",
+      "WEB-C2",
+      "WEB-C3",
+      "WEB-C4",
+      "WEB-C5",
+      "WEB-C6",
+      "WEB-C7"
+    ],
+    "unique_live_engine": "servo",
+    "fixture_engine": "qualification_only"
+  },
+  "servo_research_pin": {
+    "repository": "servo/servo",
+    "commit": "0a48e298482659817eb50097df23841f2b8e3044",
+    "tree": "b04d2f75b3217374d079d579c270177b57fa1389",
+    "license": "MPL-2.0",
+    "status": "RESEARCH_PIN_NOT_IMPORTED"
+  },
+  "stage_status": {
+    "WEB-C0": "IMPLEMENTED_PENDING_CI",
+    "WEB-C1": "NOT_STARTED",
+    "WEB-C2": "IMPLEMENTED_PENDING_CI",
+    "WEB-C3": "FIXTURE_IMPLEMENTED_PENDING_CI",
+    "WEB-C4": "NOT_STARTED",
+    "WEB-C5": "NOT_STARTED",
+    "WEB-C6": "NOT_STARTED",
+    "WEB-C7": "BLOCKED_FINAL_RELEASE"
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "external_effect": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false
+  },
+  "release_readiness": "BLOCKED",
+  "blocking_reasons": [
+    "implementation commit and CI result are not yet bound",
+    "Servo source is not imported or built",
+    "integrated one-WebView C3 qualification has not run",
+    "C4-C6 security/platform qualification has not run",
+    "C7 authentication/effect/operator/promotion gates are closed"
+  ],
+  "historical_snapshot": {
+    "path": "docs/hepta-vnext/dropbox-current-2026-08-27",
+    "role": "PROVENANCE_ONLY",
+    "machine_authority": false
+  }
+}
