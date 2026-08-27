@@ -1,0 +1,22 @@
+[package]
+name = "hepta-browser-c1-startup-bridge-qualification"
+version = "0.1.0"
+edition = "2024"
+publish = false
+autobins = false
+
+[[bin]]
+name = "hepta-browser-c1-startup-bridge-trial"
+path = "src/bin/hepta-browser-c1-startup-bridge-trial.rs"
+test = false
+
+[dependencies]
+hepta-browser-c1-artifact-gate-qualification = { path = "../hepta-browser-c1-artifact-gate" }
+hepta-browser-worker-protocol-qualification = { path = "../hepta-browser-c1-protocol" }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+expect_used = "deny"
+unwrap_used = "deny"
