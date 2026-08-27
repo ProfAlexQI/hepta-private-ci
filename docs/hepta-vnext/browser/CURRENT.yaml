@@ -1,7 +1,7 @@
 {
   "schema": "hepta.browser.current.v1",
   "schema_version": 1,
-  "updated_at_utc": "2026-08-28T10:30:00Z",
+  "updated_at_utc": "2026-08-28T10:45:00Z",
   "phase": "DEVELOPMENT",
   "claim_level": "L1_QUALIFICATION_ONLY",
   "canonical_plan": "docs/hepta-vnext/browser/EXECUTION_PLAN.md",
@@ -20,7 +20,8 @@
   "servo_build_status": "docs/hepta-vnext/browser/C1_BUILD_STATUS.json",
   "servo_patch_inventory": "third_party/servo-patches/PATCH_INVENTORY.json",
   "provenance_generator": "scripts/generate-hepta-servo-provenance.py",
-  "servo_worker_build_input_tool": "scripts/hepta-servo-worker-build-manifest.py",
+  "servo_worker_build_input_tool": "scripts/hepta-servo-worker-build-inputs.py",
+  "servo_worker_build_input_engine": "scripts/hepta-servo-worker-build-manifest.py",
   "next_work_queue": "docs/hepta-vnext/browser/NEXT_WORK_QUEUE.yaml",
   "c1_work_queue": "docs/hepta-vnext/browser/NEXT_WORK_QUEUE_C1.json",
   "implementation": {
@@ -31,6 +32,7 @@
     "servo_source_topology": "frozen_isolated_verified_checkout",
     "servo_provenance_generator": "implemented_unqualified_no_source_receipt",
     "servo_build_input_freezer": "implemented_fixture_qualified_locally_exact_evidence_pending",
+    "servo_build_input_strict_policy": "implemented_8_of_8_local_fixture_tests_exact_head_pending",
     "private_worker_protocol": "implemented_qualification_only_unqualified",
     "qualification_process_harness": "implemented_private_stdio_pipe_unqualified",
     "unix_inherited_socketpair": "implemented_qualification_only_unqualified",
@@ -55,7 +57,7 @@
     "the Unix socketpair and artifact-launch implementations are qualification fixtures and still lack exact artifact, sandbox and parent-death platform receipts",
     "the Windows SID-restricted named pipe and Job Object equivalent are not implemented",
     "Servo source is pinned but no canonical two-fetch source bundle has been sealed",
-    "the worker build-input freezer is locally fixture-qualified but no real packet or manifest exists",
+    "the worker build-input freezer and strict policy have 15 local fixture passes but no real packet or manifest exists",
     "Servo has not been patched, built, linked, or bound to a real worker artifact",
     "source, complete SBOM, toolchain, native dependency, artifact, and reproducibility receipts are not sealed",
     "real one-WebView smoke, listener scan, sandbox and external-egress denial are not run"
