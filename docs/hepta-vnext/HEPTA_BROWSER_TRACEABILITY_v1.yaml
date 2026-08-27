@@ -3,7 +3,9 @@
   "schema": "hepta.browser.traceability.v1",
   "plan_id": "WEB-PLAN-2026-08-27E",
   "encoding": "JSON_COMPATIBLE_YAML",
-  "implementation_commit": "PENDING_SUCCESSOR_BINDING",
+  "implementation_commit": "bd416fe195003403c59b0a419d26a91be4dc20b2",
+  "implementation_tree": "e95453fb9c14e36c8c3b586028dbfec0eeb62feb",
+  "implementation_binding": "docs/hepta-vnext/HEPTA_BROWSER_IMPLEMENTATION_BINDING.json",
   "requirements": [
     {
       "id": "BR-C0-001",
