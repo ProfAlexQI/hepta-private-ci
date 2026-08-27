@@ -1,19 +1,22 @@
 {
   "schema": "hepta.ui.platform-material-adapter-matrix.v1",
-  "status": "SOURCE_DECISION_LAYER_IMPLEMENTED_RUNTIME_ADAPTERS_REQUIRED",
-  "branch": "codex/ui-light-glass-v4-20260827",
+  "status": "WINDOWS_ADAPTER_AND_SYSTEM_PREFERENCE_SOURCE_IMPLEMENTED_RUNTIME_EVIDENCE_REQUIRED",
+  "candidateBranch": "codex/ui-v4-native-material-runtime-20260828",
   "authority": {
     "production": false,
     "effect": false,
     "liveAdapter": false,
     "operatorAcceptance": false,
-    "promotion": false
+    "promotion": false,
+    "release": false
   },
   "invariants": {
     "content": "always Solid",
     "fallback": "always Solid",
     "maxVisibleBackdropLayers": 2,
-    "stableContentBackdropLayers": 0
+    "stableContentBackdropLayers": 0,
+    "unknownPreferenceFallback": "transparency disabled and reduced motion enabled",
+    "directWindowHandleDiscovery": false
   },
   "platforms": [
     {
@@ -21,6 +24,10 @@
       "environment": "WindowsMica",
       "chrome": "WindowsMica",
       "transient": "WindowsAcrylic",
+      "preferenceProbe": "SystemParametersInfoW plus EnableTransparency registry value",
+      "adapterSource": "HeptaWindowsDwmBackdropApi",
+      "hostBinding": "explicit non-zero chrome and transient HWND values required",
+      "sourceStatus": "IMPLEMENTED_FAIL_CLOSED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -28,6 +35,10 @@
       "environment": "Solid",
       "chrome": "MacSystemChrome",
       "transient": "MacSystemPopover",
+      "preferenceProbe": "host-provided or fail-closed",
+      "adapterSource": "semantic profile only",
+      "hostBinding": "NSWindow and material-view integration required",
+      "sourceStatus": "HOST_ADAPTER_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -35,6 +46,10 @@
       "environment": "Solid",
       "chrome": "IosSystemGlass",
       "transient": "IosSystemSheet",
+      "preferenceProbe": "UIKit accessibility reduce-transparency, reduce-motion, and darker-system-colors functions",
+      "adapterSource": "preference probe implemented; view adapter required",
+      "hostBinding": "UIView or controller integration required",
+      "sourceStatus": "PREFERENCE_SOURCE_IMPLEMENTED_HOST_ADAPTER_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -42,6 +57,11 @@
       "environment": "Solid",
       "chrome": "AndroidTonalChrome",
       "transient": "AndroidTonalSheet",
+      "preferenceProbe": "host-provided activity snapshot required",
+      "adapterSource": "dynamic-color capability gate implemented",
+      "hostBinding": "Activity, API level, animation scale, and dynamic-color availability required",
+      "fallbackWhenDynamicColorUnavailable": "Solid",
+      "sourceStatus": "CAPABILITY_GATE_IMPLEMENTED_HOST_ADAPTER_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -49,6 +69,9 @@
       "environment": "Solid",
       "chrome": "WebBackdropChrome",
       "transient": "WebBackdropTransient",
+      "preferenceProbe": "CSS media queries",
+      "adapterSource": "bounded Web material implementation",
+      "sourceStatus": "IMPLEMENTED_BROWSER_EVIDENCE_REQUIRED",
       "runtimeStatus": "SOURCE_IMPLEMENTED_BROWSER_NOT_RUN"
     },
     {
@@ -56,8 +79,16 @@
       "environment": "Solid",
       "chrome": "Solid",
       "transient": "Solid",
+      "preferenceProbe": "fail-closed",
+      "adapterSource": "solid fallback",
+      "sourceStatus": "REFERENCE_FALLBACK",
       "runtimeStatus": "REFERENCE_FALLBACK_NOT_RUN"
     }
   ],
-  "source": "apps/hepta-native/src/shared/hepta_platform_material.rs"
+  "sources": [
+    "apps/hepta-native/src/shared/hepta_platform_material.rs",
+    "apps/hepta-native/src/shared/hepta_platform_material_runtime.rs",
+    "apps/hepta-native/src/shared/hepta_system_preferences.rs",
+    "apps/hepta-native/src/shared/hepta_windows_material_adapter.rs"
+  ]
 }

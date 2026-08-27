@@ -1,0 +1,131 @@
+name: hepta-ui-v4-native-material-runtime
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-native-material-runtime-*"
+  pull_request:
+    paths:
+      - "apps/hepta-native/src/shared/hepta_platform_material.rs"
+      - "apps/hepta-native/src/shared/hepta_platform_material_runtime.rs"
+      - "apps/hepta-native/src/shared/hepta_system_preferences.rs"
+      - "apps/hepta-native/src/shared/hepta_windows_material_adapter.rs"
+      - "apps/hepta-native/src/shared/hepta_v4_controls.rs"
+      - "apps/hepta-native/src/shared/hepta_v4_layout.rs"
+      - "apps/hepta-native/src/shared/mod.rs"
+      - "docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_5_NATIVE_MATERIAL_RUNTIME_2026-08-28.md"
+      - "scripts/hepta-ui-v4-native-material-runtime-gate"
+      - ".github/workflows/hepta-ui-v4-native-material-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v4-native-material-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Native material runtime source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Validate source gate and matrix
+        run: |
+          ruby -c scripts/hepta-ui-v4-native-material-runtime-gate
+          ruby -rjson -e 'JSON.parse(File.read("docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"))'
+
+      - name: Run fail-closed source gate
+        run: |
+          mkdir -p artifacts/ui-v4-native-material
+          ruby scripts/hepta-ui-v4-native-material-runtime-gate \
+            | tee artifacts/ui-v4-native-material/source-gate.json
+
+      - name: Verify claim boundary
+        run: |
+          ruby -rjson -e '
+            receipt = JSON.parse(File.read("artifacts/ui-v4-native-material/source-gate.json"))
+            abort "unexpected source status" unless receipt.fetch("status") == "PASS_NATIVE_MATERIAL_RUNTIME_SOURCE_ONLY"
+            %w[
+              native_compile_validation native_runtime_validation
+              windows_runtime_validation ios_runtime_validation
+              android_runtime_validation macos_runtime_validation device_validation
+              production_authority effect_authority live_adapter_authority
+              operator_acceptance promotion release
+            ].each do |key|
+              abort "#{key} escaped source boundary" unless receipt.fetch(key) == false
+            end
+          '
+
+      - name: Upload source receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-native-material-source-${{ github.sha }}
+          path: artifacts/ui-v4-native-material/source-gate.json
+          if-no-files-found: error
+          retention-days: 14
+
+  portable-native-contract:
+    name: Portable Native material contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+
+      - name: Check Native formatting
+        run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+
+      - name: Compile Native library
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --lib
+
+      - name: Run focused portable material tests
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
+            shared::hepta_platform_material::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
+            shared::hepta_platform_material_runtime::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
+            shared::hepta_system_preferences::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib \
+            shared::hepta_windows_material_adapter::tests -- --nocapture
+
+  windows-dwm-contract:
+    name: Windows DWM adapter compile and focused tests
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+
+      - name: Compile Windows Native library
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --lib
+
+      - name: Run Windows material adapter tests
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo test --manifest-path apps/hepta-native/Cargo.toml --lib shared::hepta_windows_material_adapter::tests -- --nocapture

@@ -2,7 +2,7 @@
 //!
 //! This module maps semantic material roles to bounded platform renderer intents.
 //! It invokes no operating-system API and grants no production, effect,
-//! live-adapter, operator-acceptance, or promotion authority.
+//! live-adapter, operator-acceptance, promotion, or release authority.
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HeptaPlatform {
@@ -41,11 +41,17 @@ pub struct HeptaPlatformMaterialProfile {
     pub transparency_enabled: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct HeptaPlatformMaterialCapabilities {
+    pub dynamic_color_available: bool,
+}
+
 pub const HEPTA_PLATFORM_MATERIAL_PRODUCTION_AUTHORITY: bool = false;
 pub const HEPTA_PLATFORM_MATERIAL_EFFECT_AUTHORITY: bool = false;
 pub const HEPTA_PLATFORM_MATERIAL_LIVE_ADAPTER_AUTHORITY: bool = false;
 pub const HEPTA_PLATFORM_MATERIAL_OPERATOR_ACCEPTANCE: bool = false;
 pub const HEPTA_PLATFORM_MATERIAL_PROMOTION: bool = false;
+pub const HEPTA_PLATFORM_MATERIAL_RELEASE: bool = false;
 
 const fn solid_profile() -> HeptaPlatformMaterialProfile {
     HeptaPlatformMaterialProfile {
@@ -62,6 +68,20 @@ const fn solid_profile() -> HeptaPlatformMaterialProfile {
 pub const fn platform_material_profile(
     platform: HeptaPlatform,
     transparency_allowed: bool,
+) -> HeptaPlatformMaterialProfile {
+    platform_material_profile_with_capabilities(
+        platform,
+        transparency_allowed,
+        HeptaPlatformMaterialCapabilities {
+            dynamic_color_available: true,
+        },
+    )
+}
+
+pub const fn platform_material_profile_with_capabilities(
+    platform: HeptaPlatform,
+    transparency_allowed: bool,
+    capabilities: HeptaPlatformMaterialCapabilities,
 ) -> HeptaPlatformMaterialProfile {
     if !transparency_allowed {
         return solid_profile();
@@ -83,17 +103,19 @@ pub const fn platform_material_profile(
             HeptaMaterialRenderer::IosSystemGlass,
             HeptaMaterialRenderer::IosSystemSheet,
         ),
-        HeptaPlatform::Android => (
+        HeptaPlatform::Android if capabilities.dynamic_color_available => (
             HeptaMaterialRenderer::Solid,
             HeptaMaterialRenderer::AndroidTonalChrome,
             HeptaMaterialRenderer::AndroidTonalSheet,
         ),
+        HeptaPlatform::Android | HeptaPlatform::Linux | HeptaPlatform::Unknown => {
+            return solid_profile();
+        }
         HeptaPlatform::Web => (
             HeptaMaterialRenderer::Solid,
             HeptaMaterialRenderer::WebBackdropChrome,
             HeptaMaterialRenderer::WebBackdropTransient,
         ),
-        HeptaPlatform::Linux | HeptaPlatform::Unknown => return solid_profile(),
     };
 
     HeptaPlatformMaterialProfile {
@@ -113,12 +135,6 @@ mod tests {
 
     #[test]
     fn platform_profiles_are_bounded_and_fail_closed() {
-        assert!(!HEPTA_PLATFORM_MATERIAL_PRODUCTION_AUTHORITY);
-        assert!(!HEPTA_PLATFORM_MATERIAL_EFFECT_AUTHORITY);
-        assert!(!HEPTA_PLATFORM_MATERIAL_LIVE_ADAPTER_AUTHORITY);
-        assert!(!HEPTA_PLATFORM_MATERIAL_OPERATOR_ACCEPTANCE);
-        assert!(!HEPTA_PLATFORM_MATERIAL_PROMOTION);
-
         for platform in [
             HeptaPlatform::Windows,
             HeptaPlatform::MacOs,
@@ -128,11 +144,65 @@ mod tests {
             HeptaPlatform::Linux,
             HeptaPlatform::Unknown,
         ] {
-            let transparent = platform_material_profile(platform, true);
-            assert_eq!(transparent.content, HeptaMaterialRenderer::Solid);
-            assert_eq!(transparent.stable_content_backdrop_layers, 0);
-            assert!(transparent.max_visible_backdrop_layers <= 2);
+            let profile = platform_material_profile(platform, true);
+            assert_eq!(profile.content, HeptaMaterialRenderer::Solid);
+            assert_eq!(profile.stable_content_backdrop_layers, 0);
+            assert!(profile.max_visible_backdrop_layers <= 2);
             assert_eq!(platform_material_profile(platform, false), solid_profile());
         }
+    }
+
+    #[test]
+    fn stable_content_is_always_solid() {
+        for platform in [
+            HeptaPlatform::Windows,
+            HeptaPlatform::MacOs,
+            HeptaPlatform::Ios,
+            HeptaPlatform::Android,
+            HeptaPlatform::Web,
+            HeptaPlatform::Linux,
+            HeptaPlatform::Unknown,
+        ] {
+            let profile = platform_material_profile(platform, true);
+            assert_eq!(profile.content, HeptaMaterialRenderer::Solid);
+            assert_eq!(profile.stable_content_backdrop_layers, 0);
+        }
+    }
+
+    #[test]
+    fn disabled_transparency_forces_solid_fallback() {
+        for platform in [
+            HeptaPlatform::Windows,
+            HeptaPlatform::MacOs,
+            HeptaPlatform::Ios,
+            HeptaPlatform::Android,
+            HeptaPlatform::Web,
+            HeptaPlatform::Linux,
+            HeptaPlatform::Unknown,
+        ] {
+            assert_eq!(platform_material_profile(platform, false), solid_profile());
+        }
+    }
+
+    #[test]
+    fn android_dynamic_color_unavailable_forces_solid_fallback() {
+        let profile = platform_material_profile_with_capabilities(
+            HeptaPlatform::Android,
+            true,
+            HeptaPlatformMaterialCapabilities {
+                dynamic_color_available: false,
+            },
+        );
+        assert_eq!(profile, solid_profile());
+    }
+
+    #[test]
+    fn semantic_resolution_never_grants_authority() {
+        assert!(!HEPTA_PLATFORM_MATERIAL_PRODUCTION_AUTHORITY);
+        assert!(!HEPTA_PLATFORM_MATERIAL_EFFECT_AUTHORITY);
+        assert!(!HEPTA_PLATFORM_MATERIAL_LIVE_ADAPTER_AUTHORITY);
+        assert!(!HEPTA_PLATFORM_MATERIAL_OPERATOR_ACCEPTANCE);
+        assert!(!HEPTA_PLATFORM_MATERIAL_PROMOTION);
+        assert!(!HEPTA_PLATFORM_MATERIAL_RELEASE);
     }
 }

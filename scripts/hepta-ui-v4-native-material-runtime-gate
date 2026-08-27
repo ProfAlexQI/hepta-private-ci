@@ -1,0 +1,118 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  shared: root.join("apps/hepta-native/src/shared/mod.rs"),
+  material: root.join("apps/hepta-native/src/shared/hepta_platform_material.rs"),
+  runtime: root.join("apps/hepta-native/src/shared/hepta_platform_material_runtime.rs"),
+  preferences: root.join("apps/hepta-native/src/shared/hepta_system_preferences.rs"),
+  windows: root.join("apps/hepta-native/src/shared/hepta_windows_material_adapter.rs"),
+  controls: root.join("apps/hepta-native/src/shared/hepta_v4_controls.rs"),
+  layout: root.join("apps/hepta-native/src/shared/hepta_v4_layout.rs"),
+  matrix: root.join("docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+unless checks.values.all?
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.native-material-runtime-source-gate.v1",
+    status: "FAIL_MISSING_INPUT",
+    checks: checks,
+    failures: checks.reject { |_name, passed| passed }.keys,
+    native_compile_validation: false,
+    runtime_validation: false,
+    device_validation: false,
+    production_authority: false,
+    effect_authority: false,
+    promotion: false
+  )
+  exit 1
+end
+
+shared = files.fetch(:shared).read
+material = files.fetch(:material).read
+runtime = files.fetch(:runtime).read
+preferences = files.fetch(:preferences).read
+windows = files.fetch(:windows).read
+controls = files.fetch(:controls).read
+layout = files.fetch(:layout).read
+matrix = JSON.parse(files.fetch(:matrix).read)
+
+checks["shared.controls_declared"] = shared.include?("pub mod hepta_v4_controls;")
+checks["shared.layout_declared"] = shared.include?("pub mod hepta_v4_layout;")
+checks["shared.preferences_declared"] = shared.include?("pub mod hepta_system_preferences;")
+checks["shared.windows_declared"] = shared.include?("pub mod hepta_windows_material_adapter;")
+checks["shared.controls_registered"] = shared.include?("hepta_v4_controls::script_mod(vm);")
+checks["shared.layout_registered"] = shared.include?("hepta_v4_layout::script_mod(vm);")
+checks["shared.v4_order"] = shared.index("hepta_v4::script_mod(vm);") < shared.index("hepta_v4_controls::script_mod(vm);") && shared.index("hepta_v4_controls::script_mod(vm);") < shared.index("hepta_v4_layout::script_mod(vm);")
+
+checks["controls.minimum_48"] = controls.include?("HEPTA_V4_CONTROL_MIN_HEIGHT: f64 = 48.0") && controls.include?("HEPTA_V4_ICON_HIT_TARGET: f64 = 48.0")
+checks["layout.header_56"] = layout.include?("HEPTA_V4_MOBILE_HEADER_HEIGHT: f64 = 56.0")
+checks["layout.back_48"] = layout.include?("HEPTA_V4_MOBILE_BACK_TARGET: f64 = 48.0")
+
+checks["material.capabilities"] = material.include?("HeptaPlatformMaterialCapabilities")
+checks["material.android_dynamic_gate"] = material.include?("HeptaPlatform::Android if capabilities.dynamic_color_available")
+checks["material.android_solid_fallback"] = material.include?("android_dynamic_color_unavailable_forces_solid_fallback")
+checks["material.content_solid"] = material.include?("content: HeptaMaterialRenderer::Solid")
+checks["material.layer_budget"] = material.include?("max_visible_backdrop_layers: 2") && material.include?("stable_content_backdrop_layers: 0")
+
+checks["runtime.preference_source"] = runtime.include?("current_system_preferences") && runtime.include?("HeptaSystemPreferenceSnapshot")
+checks["runtime.dynamic_color_used"] = runtime.include?("dynamic_color_available: preferences.dynamic_color_available")
+checks["runtime.explicit_binding"] = runtime.include?("HeptaSystemMaterialBinding::Unbound") && runtime.include?("HeptaSystemMaterialBinding::Bound")
+checks["runtime.requires_receipt_binding"] = runtime.include?("!receipt.system_material_bound") && runtime.include?("AdapterDidNotBindSystemMaterial")
+checks["runtime.authority_false"] = %w[
+  HEPTA_SYSTEM_MATERIAL_RUNTIME_PRODUCTION_AUTHORITY
+  HEPTA_SYSTEM_MATERIAL_RUNTIME_EFFECT_AUTHORITY
+  HEPTA_SYSTEM_MATERIAL_RUNTIME_LIVE_ADAPTER_AUTHORITY
+  HEPTA_SYSTEM_MATERIAL_RUNTIME_OPERATOR_ACCEPTANCE
+  HEPTA_SYSTEM_MATERIAL_RUNTIME_PROMOTION
+  HEPTA_SYSTEM_MATERIAL_RUNTIME_RELEASE
+].all? { |name| runtime.include?("#{name}: bool = false") }
+
+checks["preferences.fail_closed"] = preferences.include?("HeptaSystemPreferenceSnapshot::fail_closed") && preferences.include?("transparency_allowed: false") && preferences.include?("reduced_motion: true")
+checks["preferences.windows_high_contrast"] = preferences.include?("SPI_GETHIGHCONTRAST") && preferences.include?("SystemParametersInfoW")
+checks["preferences.windows_transparency"] = preferences.include?("EnableTransparency") && preferences.include?("RegGetValueW")
+checks["preferences.ios_accessibility"] = preferences.include?("UIAccessibilityIsReduceTransparencyEnabled") && preferences.include?("UIAccessibilityIsReduceMotionEnabled") && preferences.include?("UIAccessibilityDarkerSystemColorsEnabled")
+checks["preferences.no_network"] = preferences.scan(/\b(fetch|XMLHttpRequest|WebSocket|EventSource)\b/).empty?
+checks["preferences.authority_false"] = preferences.scan(/AUTHORITY: bool = false/).length >= 3 && preferences.include?("PROMOTION: bool = false") && preferences.include?("RELEASE: bool = false")
+
+checks["windows.explicit_handles"] = windows.include?("HeptaWindowsWindowHandles") && windows.include?("InvalidHostHandle")
+checks["windows.dwm_api"] = windows.include?("DwmSetWindowAttribute") && windows.include?("DWMWA_SYSTEMBACKDROP_TYPE")
+checks["windows.mica_acrylic"] = windows.include?("DWMSBT_MAINWINDOW") && windows.include?("DWMSBT_TRANSIENTWINDOW")
+checks["windows.rollback"] = windows.include?("windows_adapter_rolls_back_a_partial_bind") && windows.include?("HeptaWindowsBackdropKind::None")
+checks["windows.receipt_bounded"] = windows.include?("system_material_bound: true") && windows.include?("production_authority: false") && windows.include?("effect_authority: false")
+
+checks["matrix.schema"] = matrix["schema"] == "hepta.ui.platform-material-adapter-matrix.v1"
+checks["matrix.all_runtime_unclaimed"] = matrix.fetch("platforms").all? { |entry| entry.fetch("runtimeStatus") != "PASS" }
+checks["matrix.android_fallback"] = matrix.fetch("platforms").find { |entry| entry["id"] == "android" }.fetch("fallbackWhenDynamicColorUnavailable") == "Solid"
+checks["matrix.authority_false"] = matrix.fetch("authority").values.none?
+
+failed = checks.reject { |_name, passed| passed }
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.native-material-runtime-source-gate.v1",
+  status: failed.empty? ? "PASS_NATIVE_MATERIAL_RUNTIME_SOURCE_ONLY" : "FAIL_NATIVE_MATERIAL_RUNTIME_SOURCE",
+  source_implemented: failed.empty?,
+  windows_dwm_adapter_source: failed.empty?,
+  system_preference_probe_source: failed.empty?,
+  native_compile_validation: false,
+  native_runtime_validation: false,
+  windows_runtime_validation: false,
+  ios_runtime_validation: false,
+  android_runtime_validation: false,
+  macos_runtime_validation: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failed.keys
+)
+exit(failed.empty? ? 0 : 1)
