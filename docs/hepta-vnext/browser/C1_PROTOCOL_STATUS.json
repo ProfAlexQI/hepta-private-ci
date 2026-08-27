@@ -1,0 +1,48 @@
+{
+  "schema": "hepta.browser.c1_protocol_status.v1",
+  "updated_at": "2026-08-27T00:00:00+08:00",
+  "phase": "DEVELOPMENT",
+  "plan": "WEB-PLAN-2026-08-27E",
+  "slice": "WEB-C1.3-private-worker-protocol",
+  "status": "IMPLEMENTED_QUALIFICATION_ONLY_EVIDENCE_PENDING",
+  "source_branch": "codex/hepta-vnext-plan-browser-c0-c3-20260827",
+  "base_commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+  "servo_source_pin": {
+    "repository": "servo/servo",
+    "commit": "0a48e298482659817eb50097df23841f2b8e3044",
+    "tree": "b04d2f75b3217374d079d579c270177b57fa1389",
+    "license": "MPL-2.0",
+    "state": "SOURCE_PIN_ONLY_NOT_IMPORTED_NOT_BUILT"
+  },
+  "implementation": {
+    "crate": "tools/hepta-browser-c1-protocol",
+    "third_party_dependencies": 0,
+    "transport": "inherited_private_channel",
+    "unix_qualification_transport": "socketpair",
+    "windows_transport": "NOT_IMPLEMENTED",
+    "servo_linked": false,
+    "real_webview": false,
+    "external_network": false
+  },
+  "evidence": {
+    "workflow": ".github/workflows/hepta-browser-c1-protocol.yml",
+    "latest_run": null,
+    "latest_conclusion": "NOT_RUN",
+    "receipt": null
+  },
+  "authority": {
+    "runtime_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "external_effect": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "external_network_allowed": false,
+    "credential_export_allowed": false
+  },
+  "merge_authorized": false,
+  "release_qualified": false
+}
