@@ -1,0 +1,237 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+ROOT = Pathname.new(__dir__).join("..").expand_path
+
+FILES = {
+  build: ROOT.join("codex-rs/hepta-core/build.rs"),
+  core_assets: ROOT.join("codex-rs/hepta-core/src/control_ui_static_assets.rs"),
+  bundle_test: ROOT.join("codex-rs/hepta-core/tests/control_ui_v4_bundle.rs"),
+  gateway_assets: ROOT.join("codex-rs/hepta-native-gateway/src/ui_domain/generated_control_ui_assets.rs"),
+  bundle_gate: ROOT.join("scripts/hepta-ui-v4-served-bundle-gate"),
+  qualifier: ROOT.join("scripts/hepta-ui-v4-rust-served-browser-qualification.cjs"),
+  runner: ROOT.join("scripts/hepta-ui-v4-rust-served-browser-qualification.sh"),
+  schema: ROOT.join(
+    "docs/ui/schemas/hepta.ui.v4.rust-served-browser-qualification.v1.schema.json"
+  ),
+  workflow: ROOT.join(".github/workflows/hepta-ui-v4-rust-served.yml")
+}.freeze
+
+checks = {}
+FILES.each { |name, path| checks["file.#{name}"] = path.file? }
+
+unless checks.values.all?
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.rust-served-browser-source-gate.v1",
+    status: "FAIL_MISSING_INPUT",
+    rust_served_runtime_asset_bound: false,
+    rust_compile_validation: false,
+    rust_runtime_validation: false,
+    browser_validation: false,
+    device_validation: false,
+    production_authority: false,
+    effect_authority: false,
+    live_adapter_authority: false,
+    operator_acceptance: false,
+    promotion: false,
+    release: false,
+    checks: checks,
+    failures: checks.reject { |_name, passed| passed }.keys
+  )
+  exit 1
+end
+
+build = FILES.fetch(:build).read
+core_assets = FILES.fetch(:core_assets).read
+bundle_test = FILES.fetch(:bundle_test).read
+gateway_assets = FILES.fetch(:gateway_assets).read
+bundle_gate = FILES.fetch(:bundle_gate).read
+qualifier = FILES.fetch(:qualifier).read
+runner = FILES.fetch(:runner).read
+schema = JSON.parse(FILES.fetch(:schema).read)
+workflow = FILES.fetch(:workflow).read
+
+checks["bundle.generated"] =
+  build.include?("control-ui.bundle.js") &&
+  build.include?("control_ui_bundle_metadata.rs") &&
+  build.include?("hepta-ui-v4-runtime-bundle-boundary")
+checks["bundle.hash_and_etag"] =
+  build.include?("CONTROL_UI_JS_SHA256") &&
+  build.include?("CONTROL_UI_JS_ETAG") &&
+  build.include?("CONTROL_UI_V4_RUNTIME_BOUND: bool = true")
+checks["bundle.single_asset"] =
+  core_assets.scan(/pub const CONTROL_UI_JS:/).length == 1 &&
+  core_assets.include?("control-ui.bundle.js") &&
+  core_assets.include?("CONTROL_UI_V4_RUNTIME_JS")
+checks["bundle.compiled_test"] =
+  bundle_test.include?("control_ui_v4_runtime_is_bound_into_the_single_served_bundle") &&
+  bundle_test.include?("base_position < boundary_position") &&
+  bundle_test.include?("boundary_position < runtime_position")
+checks["bundle.gateway_single_route"] =
+  gateway_assets.scan(/"\/control-ui\.js"/).length == 2 &&
+  !gateway_assets.include?("/control-ui-v4-runtime.js") &&
+  gateway_assets.include?("CONTROL_UI_JS_ETAG") &&
+  gateway_assets.include?("CONTROL_UI_JS")
+checks["bundle.source_gate"] =
+  bundle_gate.include?("PASS_SERVED_BUNDLE_SOURCE_CONTRACT_ONLY") &&
+  bundle_gate.include?("rust_served_runtime_asset_bound: failed.empty?")
+
+checks["qualifier.loopback_only"] =
+  qualifier.include?("Rust-served qualification refuses a non-loopback origin") &&
+  qualifier.include?('url.protocol !== "http:"')
+checks["qualifier.bounded_assets"] =
+  qualifier.include?("MAX_ASSET_BYTES") &&
+  qualifier.include?("asset exceeds declared byte bound") &&
+  qualifier.include?("asset exceeds byte bound")
+checks["qualifier.formal_asset_only"] =
+  qualifier.include?('boundedGet("/control-ui.js")') &&
+  qualifier.include?('boundedGet("/control-ui-v4-runtime.js")') &&
+  qualifier.include?("runtime_side_route_must_not_exist") &&
+  !qualifier.include?("addScriptTag")
+checks["qualifier.exact_bundle"] =
+  qualifier.include?("Buffer.concat([baseSource, BUNDLE_BOUNDARY, runtimeSource])") &&
+  qualifier.include?("served_bundle_bytes_mismatch") &&
+  qualifier.include?("served_bundle_etag_mismatch")
+checks["qualifier.runtime_ready"] =
+  qualifier.include?('controlUiV4Runtime === "ready"') &&
+  qualifier.include?("HeptaUiV4ReadState") &&
+  qualifier.include?("runtimeAssetInjectedForQualification: false")
+checks["qualifier.read_state"] =
+  qualifier.include?('HeptaUiV4ReadState.apply(target, "stale"') &&
+  qualifier.include?("read_state_projection_failed") &&
+  qualifier.include?("read_state_digest_failed")
+checks["qualifier.mobile_transient"] =
+  qualifier.include?("exerciseTransient") &&
+  qualifier.include?("mobile_sheet_scroll_lock_missing") &&
+  qualifier.include?("escape_focus_not_restored") &&
+  qualifier.include?("back_focus_not_restored")
+checks["qualifier.accessibility_and_material"] =
+  qualifier.include?("stableBlurViolations") &&
+  qualifier.include?("visibleUnder12") &&
+  qualifier.include?("targetViolations") &&
+  qualifier.include?("transparencyFallback") &&
+  qualifier.include?("focusNotObscured")
+checks["qualifier.network_boundary"] =
+  qualifier.include?("network.crossOrigin") &&
+  qualifier.include?("network.nonGet") &&
+  qualifier.include?("cross_origin_requests") &&
+  qualifier.include?("non_get_requests")
+checks["qualifier.scenario_matrix"] =
+  %w[320 390 412 600 768 980 1280 1440].all? do |width|
+    qualifier.include?("width: #{width}")
+  end &&
+  qualifier.include?("prefers-reduced-transparency") &&
+  qualifier.include?("forced-colors") &&
+  qualifier.include?("prefers-reduced-motion")
+checks["qualifier.source_binding"] =
+  qualifier.include?('gitValue("rev-parse", "HEAD")') &&
+  qualifier.include?('gitValue("rev-parse", "HEAD^{tree}")') &&
+  qualifier.include?("commitBound") &&
+  qualifier.include?("treeBound")
+checks["qualifier.authority_false"] =
+  qualifier.include?("productionAuthority: false") &&
+  qualifier.include?("effectAuthority: false") &&
+  qualifier.include?("liveAdapterAuthority: false") &&
+  qualifier.include?("operatorAcceptance: false") &&
+  qualifier.include?("promotion: false") &&
+  qualifier.include?("release: false")
+
+checks["runner.safe_output"] =
+  runner.include?("hepta-safe-output-v1.sh") &&
+  runner.include?("hepta_safe_output_resolve_directory")
+checks["runner.identity_safe_process"] =
+  runner.include?("hepta-process-identity-v1.sh") &&
+  runner.include?("hepta_process_terminate_identity_safe") &&
+  runner.include?("server_start_token")
+checks["runner.loopback_ports_bounded"] =
+  runner.include?('HOST="127.0.0.1"') &&
+  runner.include?("HEPTA_UI_V4_RUST_SERVED_PORTS") &&
+  runner.include?("port_available")
+checks["runner.isolated_state"] =
+  runner.include?("HEPTA_RUNTIME_OUTCOME_DATABASE") &&
+  runner.include?("HEPTA_PREFERENCE_DATABASE") &&
+  runner.include?("mktemp -d")
+checks["runner.builds_real_server"] =
+  runner.include?("-p hepta-cli") &&
+  runner.include?("--bin hepta") &&
+  runner.include?("--serve-ui")
+checks["runner.exact_candidate"] =
+  runner.include?('git rev-parse HEAD') &&
+  runner.include?("git rev-parse 'HEAD^{tree}'")
+checks["runner.receipt_fail_closed"] =
+  runner.include?('PASS_RUST_SERVED_BROWSER_CONTRACT') &&
+  runner.include?(".rustServedRuntimeAssetBound == true") &&
+  runner.include?(".deviceValidation == false") &&
+  runner.include?(".productionAuthority == false")
+
+checks["schema.identity"] =
+  schema.dig("properties", "schema", "const") ==
+    "hepta.ui.v4.rust-served-browser-qualification.v1"
+checks["schema.pass_status"] =
+  schema.dig("properties", "status", "enum").include?(
+    "PASS_RUST_SERVED_BROWSER_CONTRACT"
+  )
+checks["schema.fixture_false"] =
+  schema.dig("properties", "fixture", "const") == false
+checks["schema.runtime_injection_false"] =
+  schema.dig("properties", "runtimeAssetInjectedForQualification", "const") == false
+checks["schema.formal_asset_bound"] =
+  schema.dig("properties", "rustServedRuntimeAssetBound", "const") == true
+checks["schema.runtime_browser_true"] =
+  schema.dig("properties", "rustRuntimeValidation", "const") == true &&
+  schema.dig("properties", "browserValidation", "const") == true
+checks["schema.device_authority_false"] =
+  %w[
+    deviceValidation
+    productionAuthority
+    effectAuthority
+    liveAdapterAuthority
+    operatorAcceptance
+    promotion
+    release
+  ].all? { |name| schema.dig("properties", name, "const") == false }
+checks["schema.ten_results"] =
+  schema.dig("properties", "results", "minItems").to_i >= 10
+
+checks["workflow.source_gate"] =
+  workflow.include?("hepta-ui-v4-rust-served-browser-source-gate")
+checks["workflow.source_syntax"] =
+  workflow.include?("node --check scripts/hepta-ui-v4-rust-served-browser-qualification.cjs") &&
+  workflow.include?("bash -n scripts/hepta-ui-v4-rust-served-browser-qualification.sh")
+checks["workflow.manual_runtime_job"] =
+  workflow.include?("rust-served-browser-qualification:") &&
+  workflow.include?("github.event_name == 'workflow_dispatch'")
+checks["workflow.real_server_runner"] =
+  workflow.include?("hepta-ui-v4-rust-served-browser-qualification.sh")
+checks["workflow.receipt_boundary"] =
+  workflow.include?("PASS_RUST_SERVED_BROWSER_CONTRACT") &&
+  workflow.include?("runtime/device/authority boundary escaped")
+
+formal_bundle_checks = checks.keys.grep(/\Abundle\./)
+formal_bundle_bound = formal_bundle_checks.all? { |name| checks.fetch(name) }
+failed = checks.reject { |_name, passed| passed }
+
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.rust-served-browser-source-gate.v1",
+  status: failed.empty? ?
+    "PASS_RUST_SERVED_BROWSER_SOURCE_CONTRACT_ONLY" :
+    "FAIL_RUST_SERVED_BROWSER_SOURCE_CONTRACT",
+  scope: "SOURCE_AND_RUNNER_CONTRACT_ONLY",
+  rust_served_runtime_asset_bound: formal_bundle_bound,
+  rust_compile_validation: false,
+  rust_runtime_validation: false,
+  browser_validation: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failed.keys
+)
+exit(failed.empty? ? 0 : 1)

@@ -1,0 +1,328 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.local/schemas/hepta.ui.v4.rust-served-browser-qualification.v1.schema.json",
+  "title": "Hepta UI v4 Rust-served browser qualification receipt",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "status",
+    "scope",
+    "candidate",
+    "server",
+    "browser",
+    "fixture",
+    "runtimeAssetInjectedForQualification",
+    "rustServedRuntimeAssetBound",
+    "browserValidation",
+    "rustRuntimeValidation",
+    "deviceValidation",
+    "productionAuthority",
+    "effectAuthority",
+    "liveAdapterAuthority",
+    "operatorAcceptance",
+    "promotion",
+    "release",
+    "results",
+    "failures"
+  ],
+  "properties": {
+    "schema": {
+      "const": "hepta.ui.v4.rust-served-browser-qualification.v1"
+    },
+    "status": {
+      "enum": [
+        "PASS_RUST_SERVED_BROWSER_CONTRACT",
+        "FAIL_RUST_SERVED_BROWSER_CONTRACT"
+      ]
+    },
+    "scope": {
+      "const": "RUST_SERVED_LOOPBACK_LOCAL_READ_ONLY"
+    },
+    "candidate": {
+      "type": "object",
+      "required": [
+        "commit",
+        "tree",
+        "commitBound",
+        "treeBound"
+      ],
+      "properties": {
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "tree": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "commitBound": {
+          "const": true
+        },
+        "treeBound": {
+          "const": true
+        }
+      }
+    },
+    "server": {
+      "type": "object",
+      "required": [
+        "baseUrl",
+        "loopback",
+        "runtime",
+        "servedAssets"
+      ],
+      "properties": {
+        "loopback": {
+          "const": true
+        },
+        "runtime": {
+          "const": "hepta"
+        },
+        "servedAssets": {
+          "type": "object",
+          "required": [
+            "failures",
+            "root",
+            "script",
+            "runtimeSideRouteStatus"
+          ],
+          "properties": {
+            "script": {
+              "type": "object",
+              "required": [
+                "path",
+                "status",
+                "contentType",
+                "etag",
+                "baseSha256",
+                "runtimeSha256",
+                "expectedBundleSha256",
+                "servedBundleSha256",
+                "bytes",
+                "exactBytesBound",
+                "etagBound",
+                "runtimeBound",
+                "singleServedPath"
+              ],
+              "properties": {
+                "path": {
+                  "const": "/control-ui.js"
+                },
+                "status": {
+                  "const": 200
+                },
+                "contentType": {
+                  "type": "string",
+                  "pattern": "javascript"
+                },
+                "etag": {
+                  "type": "string",
+                  "minLength": 20
+                },
+                "baseSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "runtimeSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "expectedBundleSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "servedBundleSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "exactBytesBound": {
+                  "const": true
+                },
+                "etagBound": {
+                  "const": true
+                },
+                "runtimeBound": {
+                  "const": true
+                },
+                "singleServedPath": {
+                  "const": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "browser": {
+      "type": "object",
+      "required": [
+        "name",
+        "version",
+        "executablePath"
+      ]
+    },
+    "fixture": {
+      "const": false
+    },
+    "runtimeAssetInjectedForQualification": {
+      "const": false
+    },
+    "rustServedRuntimeAssetBound": {
+      "const": true
+    },
+    "browserValidation": {
+      "const": true
+    },
+    "rustRuntimeValidation": {
+      "const": true
+    },
+    "deviceValidation": {
+      "const": false
+    },
+    "productionAuthority": {
+      "const": false
+    },
+    "effectAuthority": {
+      "const": false
+    },
+    "liveAdapterAuthority": {
+      "const": false
+    },
+    "operatorAcceptance": {
+      "const": false
+    },
+    "promotion": {
+      "const": false
+    },
+    "release": {
+      "const": false
+    },
+    "results": {
+      "type": "array",
+      "minItems": 10,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "viewport",
+          "deviceScaleFactor",
+          "fixtureRuntimeInjected",
+          "rustServedRuntimeBound",
+          "audit",
+          "network",
+          "screenshot",
+          "status",
+          "failures"
+        ],
+        "properties": {
+          "fixtureRuntimeInjected": {
+            "const": false
+          },
+          "rustServedRuntimeBound": {
+            "const": true
+          },
+          "status": {
+            "enum": [
+              "PASS_RUST_SERVED_BROWSER_CONTRACT",
+              "FAIL_RUST_SERVED_BROWSER_CONTRACT"
+            ]
+          },
+          "network": {
+            "type": "object",
+            "required": [
+              "crossOrigin",
+              "nonGet",
+              "requests"
+            ],
+            "properties": {
+              "crossOrigin": {
+                "const": 0
+              },
+              "nonGet": {
+                "const": 0
+              },
+              "requests": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "screenshot": {
+            "type": "object",
+            "required": [
+              "path",
+              "bytes",
+              "sha256"
+            ],
+            "properties": {
+              "bytes": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS_RUST_SERVED_BROWSER_CONTRACT"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "failures": {
+            "maxItems": 0
+          },
+          "results": {
+            "items": {
+              "properties": {
+                "status": {
+                  "const": "PASS_RUST_SERVED_BROWSER_CONTRACT"
+                }
+              }
+            }
+          },
+          "server": {
+            "properties": {
+              "servedAssets": {
+                "properties": {
+                  "failures": {
+                    "maxItems": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "failures": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
+}
