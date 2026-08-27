@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,44 @@ def load_verifier_core() -> dict[str, Any]:
     }
     exec(compile(source, str(VERIFIER_CORE), "exec"), namespace)
     return namespace
+
+
+def install_current_verifier(namespace: dict[str, Any]) -> None:
+    fail = namespace.get("fail")
+    original = namespace.get("verify_current")
+    require_repo_file = namespace.get("require_repo_file")
+    if not callable(fail) or not callable(original) or not callable(require_repo_file):
+        raise RuntimeError("browser verifier core has no current-pointer verifier")
+
+    def verify_current(current: dict[str, Any]) -> list[Path]:
+        implementation = current.get("implementation")
+        if not isinstance(implementation, dict):
+            fail("CURRENT.yaml implementation must be an object")
+        expected = {
+            "servo_provenance_generator": "implemented_unqualified_no_source_receipt",
+            "unix_inherited_socketpair": "implemented_qualification_only_unqualified",
+            "windows_sid_named_pipe": "not_implemented",
+            "servo_runtime": "not_integrated",
+            "production_caller": "not_integrated",
+        }
+        for key, value in expected.items():
+            if implementation.get(key) != value:
+                fail(f"CURRENT.yaml implementation status drift for {key}")
+
+        compatibility = copy.deepcopy(current)
+        compatibility["implementation"]["unix_inherited_socketpair"] = "not_implemented"
+        paths = original(compatibility)
+        extra_pointers = (
+            "worker_protocol_spec",
+            "servo_source_receipt_schema",
+            "servo_provenance_spec",
+            "provenance_generator",
+        )
+        for key in extra_pointers:
+            paths.append(require_repo_file(current.get(key), f"CURRENT.yaml#{key}"))
+        return paths
+
+    namespace["verify_current"] = verify_current
 
 
 def install_worker_verifier(namespace: dict[str, Any]) -> None:
@@ -171,6 +210,7 @@ def install_ci_verifier(namespace: dict[str, Any]) -> None:
 
 def main() -> int:
     namespace = load_verifier_core()
+    install_current_verifier(namespace)
     install_worker_verifier(namespace)
     install_ci_verifier(namespace)
     verifier = namespace.get("main")
