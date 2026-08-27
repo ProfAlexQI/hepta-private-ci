@@ -6,14 +6,21 @@ report="$(jq -n \
   --arg runtime "hepta" \
   --arg base_url "$BASE_URL" \
   --arg output_dir "$OUT_DIR" \
+  --arg candidate_commit "$(git rev-parse HEAD 2>/dev/null || printf unknown)" \
+  --arg candidate_tree "$(git rev-parse 'HEAD^{tree}' 2>/dev/null || printf unknown)" \
   --arg browser_executable "$CHROME_BIN" \
   --arg browser_version "$CHROME_VERSION" \
   --arg browser_executable_sha256 "$CHROME_SHA256" \
   --argjson telegram_live_send_enabled "$telegram_live_send_enabled" \
   --argjson native_post_real_activation_enabled "$native_post_real_activation_enabled" \
+  --argjson control_ui_v4_runtime_bound "$control_ui_v4_runtime_bound" \
   --arg logo_dimensions "$logo_dimensions" \
   --arg logo_sha "$(shasum -a 256 "$logo_png" | awk '{print $1}')" \
+  --arg control_ui_base_js_sha "$source_js_sha" \
+  --arg control_ui_runtime_js_sha "$runtime_js_sha" \
+  --arg control_ui_expected_bundle_sha "$expected_bundle_js_sha" \
   --arg control_ui_js_sha "$served_js_sha" \
+  --arg control_ui_js_etag "$served_js_etag" \
   --arg desktop_sha "$(shasum -a 256 "$OUT_DIR/desktop.png" | awk '{print $1}')" \
   --arg narrow_sha "$(shasum -a 256 "$OUT_DIR/narrow.png" | awk '{print $1}')" \
   --arg mobile_sha "$(shasum -a 256 "$OUT_DIR/mobile.png" | awk '{print $1}')" \
@@ -31,10 +38,31 @@ report="$(jq -n \
     status:"ready",
     base_url:$base_url,
     output_dir:$output_dir,
+    candidate:{commit:$candidate_commit,tree:$candidate_tree},
     browser:"playwright-explicit-chromium-executable",
     browser_executable:$browser_executable,
     browser_version:$browser_version,
     browser_executable_sha256:$browser_executable_sha256,
+    rust_served_runtime_asset_bound:$control_ui_v4_runtime_bound,
+    rust_runtime_validation:true,
+    browser_validation:true,
+    device_validation:false,
+    production_authority:false,
+    effect_authority:false,
+    operator_acceptance:false,
+    promotion:false,
+    control_ui_js_bundle:{
+      base_sha256:$control_ui_base_js_sha,
+      runtime_sha256:$control_ui_runtime_js_sha,
+      expected_bundle_sha256:$control_ui_expected_bundle_sha,
+      served_bundle_sha256:$control_ui_js_sha,
+      etag:$control_ui_js_etag,
+      source_order:["apps/hepta-control-ui/control-ui.js","hepta-ui-v4-runtime-bundle-boundary","apps/hepta-control-ui/control-ui-v4-runtime.js"],
+      exact_bytes_bound:($control_ui_expected_bundle_sha == $control_ui_js_sha),
+      etag_bound:($control_ui_js_etag == ("\"sha256-" + $control_ui_js_sha + "\"")),
+      runtime_bound:$control_ui_v4_runtime_bound,
+      single_served_path:"/control-ui.js"
+    },
     checked_text:[
       "data-rust-frontend-renderer=\"hepta-core::control_ui\"",
       "data-no-js-fallback=\"navigation\"",
@@ -70,7 +98,11 @@ report="$(jq -n \
       "data-control-ui-command-palette-surface=\"light-glass\"",
       "data-control-ui-command-palette-input=\"light-glass\"",
       "data-control-ui-command-palette-close=\"light-glass\"",
-      "data-control-ui-catalog-mount=\"palette\""
+      "data-control-ui-catalog-mount=\"palette\"",
+      "hepta-ui-v4-runtime-bundle-boundary",
+      "HeptaUiV4ReadState",
+      "controlUiV4Runtime=ready",
+      "controlUiV4RuntimeAuthority=local-ui-only"
     ],
     control_ui_product_first_ready:true,
     control_ui_primary_path:"telegram-chat-shell",
@@ -125,11 +157,21 @@ report="$(jq -n \
     control_ui_progressive_adversarial_ready:($progressive_enhancement_adversarial_qa.status == "ready"),
     density_qa:$density_qa,
     progressive_enhancement_qa:$progressive_enhancement_qa,
-    progressive_enhancement_adversarial_qa:$progressive_enhancement_adversarial_qa,
+    progressive_enhancement_adversarial_qa:$progressive_adversarial_qa,
     checked_assets:[
-		      {path:"/styles.css", markers:[".tg-conversation-rail",".tg-thread-panel",".command-palette","safe-area-inset-bottom","mrog","data-control-ui-compact-product-path","data-control-ui-primary-shell-light-glass","crs","cwb","cce","pce","ppe","cpe","mpb","ipc","avr","rpf","rcs","mmp","tsp","csh","rms","hte","rsc","rpe","mbp","bsp","rsp","fcp","strong){filter","--x:0 1px #fff6","text-shadow:var(--x)","rdlg","oclg","data-control-ui-tspcfrg","dsc","mecs","cmv","ctlg","cplg","cpsg","rmlg","ttlg","bmslg","mslg","tiblg","stslg","talg","body[data-view=chat] .hepta-secondary-map{display:none}","gar26","cps","cpis","cpt","cpc","cpir","cph","cprw","cprr","cpkc","cpilg","data-control-ui-command-palette-input=light-glass","data-control-ui-command-palette-result=light-glass"]},
-      {path:"/assets/hepta-agent-logo.png", dimensions:$logo_dimensions, sha256:$logo_sha}
-      ,{path:"/control-ui.js", sha256:$control_ui_js_sha, source_bound:true, etag_bound:true, inline_script:false}
+      {path:"/styles.css", markers:[".tg-conversation-rail",".tg-thread-panel",".command-palette","safe-area-inset-bottom","mrog","data-control-ui-compact-product-path","data-control-ui-primary-shell-light-glass","crs","cwb","cce","pce","ppe","cpe","mpb","ipc","avr","rpf","rcs","mmp","tsp","csh","rms","hte","rsc","rpe","mbp","bsp","rsp","fcp","strong){filter","--x:0 1px #fff6","text-shadow:var(--x)","rdlg","oclg","data-control-ui-tspcfrg","dsc","mecs","cmv","ctlg","cplg","cpsg","rmlg","ttlg","bmslg","mslg","tiblg","stslg","talg","body[data-view=chat] .hepta-secondary-map{display:none}","gar26","cps","cpis","cpt","cpc","cpir","cph","cprw","cprr","cpkc","cpilg","data-control-ui-command-palette-input=light-glass","data-control-ui-command-palette-result=light-glass"]},
+      {path:"/assets/hepta-agent-logo.png", dimensions:$logo_dimensions, sha256:$logo_sha},
+      {
+        path:"/control-ui.js",
+        sha256:$control_ui_js_sha,
+        etag:$control_ui_js_etag,
+        source_bound:true,
+        etag_bound:true,
+        inline_script:false,
+        runtime_bound:$control_ui_v4_runtime_bound,
+        base_sha256:$control_ui_base_js_sha,
+        runtime_sha256:$control_ui_runtime_js_sha
+      }
     ],
     telegram_live_send_enabled:$telegram_live_send_enabled,
     native_post_real_activation_enabled:$native_post_real_activation_enabled,
