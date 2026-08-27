@@ -1,45 +1,86 @@
 {
   "schema": "hepta.ui.ci-blocker.v1",
-  "observedAt": "2026-08-27T22:59:11+08:00",
+  "observedAt": "2026-08-27T23:40:01+08:00",
   "workflow": "hepta-ui-v4",
-  "runId": 33085288945,
-  "headSha": "e90e84b4457bac20e16c79015809e6d762d47554",
+  "runId": 33089048328,
+  "headSha": "e692ebf98d297fc76e30f01f264a304a5f0348e6",
+  "headTree": "99a38378f59a8af58016cbcec929f4d8e419eba7",
   "status": "BLOCKED_RUNNER_NOT_ASSIGNED",
   "classification": "INFRASTRUCTURE_SCHEDULING_NOT_TEST_FAILURE",
   "evidence": {
     "runnerId": 0,
-    "steps": [],
+    "runnerName": "",
+    "logsAvailable": false,
+    "checkoutReached": false,
+    "commandsExecuted": false,
     "jobs": [
-      { "id": 98563164942, "name": "UI v4 source contracts", "conclusion": "failure", "steps": [] },
-      { "id": 98563165248, "name": "Native v4 contract compile", "conclusion": "failure", "steps": [] },
-      { "id": 98563166512, "name": "Chromium fixture visual qualification", "conclusion": "skipped", "steps": [] }
-    ],
-    "logsAvailable": false
+      {
+        "id": 98576574949,
+        "name": "UI v4 source contracts",
+        "conclusion": "failure",
+        "runnerId": 0,
+        "steps": []
+      },
+      {
+        "id": 98576575161,
+        "name": "Rust and Native v4 contract compile",
+        "conclusion": "failure",
+        "runnerId": 0,
+        "steps": []
+      },
+      {
+        "id": 98576576214,
+        "name": "Chromium fixture visual qualification",
+        "conclusion": "skipped",
+        "runnerId": null,
+        "steps": []
+      }
+    ]
+  },
+  "sourceState": {
+    "runtimeControllerSourceImplemented": true,
+    "singleServedBundleSourceImplemented": true,
+    "generatedBundleDigestAndEtagSourceImplemented": true,
+    "gatewaySinglePathBindingImplemented": true,
+    "servedBundleSourceGateImplemented": true,
+    "compiledBundleIntegrationTestImplemented": true
   },
   "claims": {
     "staticGatePassed": false,
     "nextSourceGatePassed": false,
-    "tranche3SourceGatePassed": false,
+    "tranche3HistoricalGatePassed": false,
+    "servedBundleSourceGatePassed": false,
+    "heptaCoreCompilePassed": false,
+    "gatewayCompilePassed": false,
     "nativeCompilePassed": false,
+    "compiledBundleTestPassed": false,
     "browserFixturePassed": false,
     "rustServedBrowserPassed": false,
     "devicePassed": false,
     "production": false,
     "effect": false,
-    "promotion": false
+    "liveAdapterAuthority": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
   },
-  "localChecks": {
-    "runtimeJavaScriptSyntax": "PASS",
-    "browserQualificationJavaScriptSyntax": "PASS",
-    "tranche3RubySyntax": "PASS",
-    "tranche3SourceGate": "PASS_TRANCHE3_SOURCE_CONTRACT_ONLY",
-    "nativeCompile": "NOT_RUN_NO_RUST_TOOLCHAIN",
-    "playwrightCapture": "NOT_RUN_PLAYWRIGHT_UNAVAILABLE"
+  "developmentChecks": {
+    "runtimeJavaScriptSyntax": "PREVIOUS_LOCAL_PASS_NOT_CURRENT_CI_RECEIPT",
+    "browserQualificationJavaScriptSyntax": "PREVIOUS_LOCAL_PASS_NOT_CURRENT_CI_RECEIPT",
+    "embeddedSha256KnownAnswer": "SOURCE_PRESENT_AND_DEVELOPMENT_REFERENCE_MATCH_NOT_CI_RECEIPT",
+    "servedBundleSourceGate": "NOT_RUN_RUNNER_UNAVAILABLE",
+    "heptaCoreCompile": "NOT_RUN_RUNNER_UNAVAILABLE",
+    "gatewayCompile": "NOT_RUN_RUNNER_UNAVAILABLE",
+    "nativeCompile": "NOT_RUN_RUNNER_UNAVAILABLE",
+    "rustServedBrowser": "REQUIRED_NOT_RUN",
+    "deviceQualification": "REQUIRED_NOT_RUN"
   },
   "recovery": [
     "restore an eligible GitHub Actions runner or account execution capacity",
-    "rerun the exact source-bound workflow",
-    "manually dispatch the fixture browser qualification only after runners execute normal steps",
-    "do not reinterpret runner failure as test failure or pass"
+    "rerun the exact source-bound workflow without changing the candidate",
+    "require source gates and Rust compile tests to execute before interpreting the candidate",
+    "launch the Rust-served endpoint and bind browser evidence to the generated bundle digest",
+    "manually dispatch fixture qualification only after normal jobs reach checkout",
+    "do not reinterpret runner scheduling failure as test failure or pass"
   ]
 }
