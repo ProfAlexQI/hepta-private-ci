@@ -1,0 +1,97 @@
+/* Hepta UI v4 runtime-state and mobile top-layer contract. */
+html[data-hepta-v4-transient-open="true"] {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body[data-hepta-v4-scroll-lock="true"] {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+[popover][data-hepta-v4-active-transient="true"] {
+  scroll-padding-block: 12px max(12px, env(safe-area-inset-bottom, 0px));
+  overscroll-behavior: contain;
+}
+
+body[data-view="chat"] :is(
+  button,
+  a[href],
+  summary,
+  input,
+  textarea,
+  select,
+  [tabindex]:not([tabindex="-1"])
+) {
+  scroll-margin-block: 72px max(96px, calc(72px + env(safe-area-inset-bottom, 0px)));
+}
+
+[data-control-ui-read-state] {
+  position: relative;
+}
+
+[data-control-ui-read-state="loading"] {
+  cursor: progress;
+}
+
+[data-control-ui-read-state="loading"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    color-mix(in srgb, var(--hepta-glass-focus) 8%, transparent) 48%,
+    transparent 76%
+  );
+  background-size: 220% 100%;
+  animation: hepta-v4-read-state-sweep 1.4s linear infinite;
+}
+
+[data-control-ui-read-state="fresh"] {
+  --hepta-v4-read-state-accent: var(--hepta-glass-success, #137a5a);
+}
+
+[data-control-ui-read-state="stale"],
+[data-control-ui-read-state="partial"] {
+  --hepta-v4-read-state-accent: var(--hepta-glass-warning, #9a6500);
+}
+
+[data-control-ui-read-state="offline"],
+[data-control-ui-read-state="error"] {
+  --hepta-v4-read-state-accent: var(--hepta-glass-danger, #b63845);
+}
+
+[data-control-ui-read-state]:not([data-control-ui-read-state="idle"]):not([data-control-ui-read-state="loading"]) {
+  border-inline-start-color: var(--hepta-v4-read-state-accent, var(--hepta-glass-hairline)) !important;
+}
+
+@keyframes hepta-v4-read-state-sweep {
+  from { background-position: 220% 0; }
+  to { background-position: -120% 0; }
+}
+
+@media (max-width: 700px) {
+  [popover][data-hepta-v4-active-transient="true"] {
+    max-height: min(70dvh, 640px);
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-control-ui-read-state="loading"]::after {
+    animation: none;
+    background: color-mix(in srgb, var(--hepta-glass-focus) 6%, transparent);
+  }
+}
+
+@media (forced-colors: active) {
+  [data-control-ui-read-state]:not([data-control-ui-read-state="idle"]) {
+    border-inline-start: 3px solid Highlight !important;
+  }
+  [data-control-ui-read-state="loading"]::after {
+    display: none;
+  }
+}
