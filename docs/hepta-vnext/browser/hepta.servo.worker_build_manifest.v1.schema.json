@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hepta.servo.worker_build_manifest.v1",
+  "title": "Hepta Servo worker build input manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "source_receipt_id",
+    "source_receipt_sha256",
+    "target_triple",
+    "build_profile",
+    "rustc_verbose_sha256",
+    "cargo_version",
+    "linker_id",
+    "features",
+    "build_command_sha256",
+    "environment_allowlist_sha256",
+    "patch_inventory_sha256",
+    "license_packet_sha256",
+    "sbom_sha256",
+    "sbom_format",
+    "network_access_during_build",
+    "worker_tcp_listener",
+    "worker_http_surface",
+    "worker_external_network",
+    "worker_credential_export",
+    "worker_production_authority",
+    "worker_effect_authority"
+  ],
+  "properties": {
+    "schema": {"const": "hepta.servo.worker_build_manifest.v1"},
+    "source_receipt_id": {
+      "type": "string",
+      "pattern": "^servo-source-receipt:v1:[0-9a-f]{64}$"
+    },
+    "source_receipt_sha256": {"$ref": "#/$defs/sha256"},
+    "target_triple": {
+      "enum": [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+        "aarch64-pc-windows-msvc"
+      ]
+    },
+    "build_profile": {"type": "string", "pattern": "^[A-Za-z0-9._:+/@=-]{1,256}$"},
+    "rustc_verbose_sha256": {"$ref": "#/$defs/sha256"},
+    "cargo_version": {"type": "string", "pattern": "^[A-Za-z0-9._:+/@=-]{1,256}$"},
+    "linker_id": {"type": "string", "pattern": "^[A-Za-z0-9._:+/@=-]{1,256}$"},
+    "features": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Za-z0-9._:+/@=-]{1,128}$"}
+    },
+    "build_command_sha256": {"$ref": "#/$defs/sha256"},
+    "environment_allowlist_sha256": {"$ref": "#/$defs/sha256"},
+    "patch_inventory_sha256": {"$ref": "#/$defs/sha256"},
+    "license_packet_sha256": {"$ref": "#/$defs/sha256"},
+    "sbom_sha256": {"$ref": "#/$defs/sha256"},
+    "sbom_format": {"const": "SPDX-2.3-json"},
+    "network_access_during_build": {"const": false},
+    "worker_tcp_listener": {"const": false},
+    "worker_http_surface": {"const": false},
+    "worker_external_network": {"const": false},
+    "worker_credential_export": {"const": false},
+    "worker_production_authority": {"const": false},
+    "worker_effect_authority": {"const": false}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}
