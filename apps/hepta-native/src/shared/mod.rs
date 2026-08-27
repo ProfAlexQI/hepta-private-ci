@@ -19,6 +19,7 @@ pub mod room_filter_input_bar;
 pub mod room_input_popup_menu;
 pub mod slash_commands;
 pub mod hepta_theme;
+pub mod hepta_v4;
 pub mod styles;
 pub mod text_or_image;
 pub mod timestamp;
@@ -32,6 +33,10 @@ pub fn script_mod(vm: &mut ScriptVm) {
     // Order matters here, as some widget definitions depend on others.
     hepta_theme::script_mod(vm);
     styles::script_mod(vm);
+    // v4 intentionally comes after the legacy style graph so the typography,
+    // interaction, and fail-closed authority contract has the final shared
+    // definitions without rewriting the upstream Robrix component tree.
+    hepta_v4::script_mod(vm);
     helpers::script_mod(vm);
     icon_button::script_mod(vm);
     navigation_bar_button::script_mod(vm);
