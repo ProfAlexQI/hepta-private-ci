@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.invalid/schemas/hepta.browser.qualification_receipt.v1.schema.json",
+  "title": "Hepta Browser Qualification Receipt V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "receipt_id",
+    "stage",
+    "status",
+    "source",
+    "build",
+    "tests",
+    "artifacts",
+    "authority",
+    "known_gaps",
+    "created_at_utc"
+  ],
+  "properties": {
+    "schema": {"const": "hepta.browser.qualification_receipt.v1"},
+    "schema_version": {"const": 1},
+    "receipt_id": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,160}$"},
+    "stage": {"enum": ["WEB_C0", "WEB_C1", "WEB_C2", "WEB_C3", "WEB_C4", "WEB_C5", "WEB_C6", "WEB_C7"]},
+    "status": {"enum": ["PASS_QUALIFICATION_ONLY", "PASS_PLATFORM_QUALIFICATION", "FAIL", "BLOCKED", "NOT_RUN"]},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "commit", "tree", "dirty"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1, "maxLength": 256},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "dirty": {"const": false},
+        "servo_commit": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+        "servo_tree": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"}
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "toolchain", "features", "locked"],
+      "properties": {
+        "target": {"type": "string", "minLength": 1, "maxLength": 128},
+        "toolchain": {"type": "string", "minLength": 1, "maxLength": 128},
+        "features": {"type": "array", "items": {"type": "string", "maxLength": 128}, "uniqueItems": true},
+        "locked": {"const": true},
+        "profile": {"type": "string", "maxLength": 64}
+      }
+    },
+    "tests": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "command", "result"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,160}$"},
+          "command": {"type": "string", "minLength": 1, "maxLength": 4096},
+          "result": {"enum": ["PASS", "FAIL", "SKIPPED", "NOT_RUN"]},
+          "log_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "sha256", "bytes"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1, "maxLength": 512},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "bytes": {"type": "integer", "minimum": 0},
+          "media_type": {"type": "string", "maxLength": 128}
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_authority",
+        "effect_authority",
+        "production_caller",
+        "production_writer",
+        "external_network",
+        "raw_cookie_export",
+        "credential_export",
+        "operator_acceptance",
+        "promotion",
+        "release_qualified"
+      ],
+      "properties": {
+        "runtime_authority": {"const": false},
+        "effect_authority": {"const": false},
+        "production_caller": {"const": false},
+        "production_writer": {"const": false},
+        "external_network": {"const": false},
+        "raw_cookie_export": {"const": false},
+        "credential_export": {"const": false},
+        "operator_acceptance": {"const": false},
+        "promotion": {"const": false},
+        "release_qualified": {"const": false}
+      }
+    },
+    "known_gaps": {"type": "array", "items": {"type": "string", "maxLength": 1024}, "uniqueItems": true},
+    "created_at_utc": {"type": "string", "format": "date-time"}
+  }
+}
