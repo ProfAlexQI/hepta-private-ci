@@ -1,0 +1,49 @@
+{
+  "schema": "hepta.servo.worker_artifact_status.v1",
+  "updated_at": "2026-08-27T00:00:00+08:00",
+  "phase": "DEVELOPMENT",
+  "plan": "WEB-PLAN-2026-08-27E",
+  "work_item": "C1-004B-worker-artifact-binding",
+  "status": "TOOL_IMPLEMENTED_SYNTHETIC_FIXTURE_EVIDENCE_PENDING",
+  "source_dependency": {
+    "source_status": "TOOL_IMPLEMENTED_FIXTURE_QUALIFICATION_PENDING",
+    "canonical_source_receipt": null,
+    "source_archive": null
+  },
+  "implementation": {
+    "generator": "scripts/hepta-servo-artifact-receipt.py",
+    "tests": "scripts/tests/test_hepta_servo_artifact_receipt.py",
+    "build_manifest_schema": "docs/hepta-vnext/browser/hepta.servo.worker_build_manifest.v1.schema.json",
+    "patch_inventory_schema": "docs/hepta-vnext/browser/hepta.servo.patch_inventory.v1.schema.json",
+    "license_packet_schema": "docs/hepta-vnext/browser/hepta.servo.license_packet.v1.schema.json",
+    "artifact_receipt_schema": "docs/hepta-vnext/browser/hepta.servo.worker_artifact_receipt.v1.schema.json",
+    "real_worker_artifact": false,
+    "artifact_executed": false,
+    "servo_webview_started": false,
+    "listener_scan_passed": false,
+    "egress_scan_passed": false,
+    "sandbox_qualified": false,
+    "platform_matrix_qualified": false
+  },
+  "evidence": {
+    "workflow": ".github/workflows/hepta-servo-artifact-contract.yml",
+    "latest_run": null,
+    "latest_conclusion": "NOT_RUN",
+    "synthetic_fixture_receipt": null,
+    "real_artifact_receipt": null
+  },
+  "authority": {
+    "machine_authority": false,
+    "runtime_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "external_effect": false,
+    "external_network_allowed": false,
+    "credential_export_allowed": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  },
+  "merge_authorized": false
+}
