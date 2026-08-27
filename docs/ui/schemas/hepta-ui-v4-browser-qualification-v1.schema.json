@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.local/schemas/hepta-ui-v4-browser-qualification-v1.schema.json",
+  "title": "Hepta UI v4 browser qualification receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "scope",
+    "producer",
+    "candidate",
+    "baseUrl",
+    "chromeExecutable",
+    "chromeExecutableSha256",
+    "materialContractSha256",
+    "runtimeSourceSha256",
+    "resultCount",
+    "passedCount",
+    "failedCount",
+    "results",
+    "authority",
+    "claims"
+  ],
+  "properties": {
+    "schema": {
+      "const": "hepta.ui.v4.browser-qualification.v1"
+    },
+    "status": {
+      "enum": ["PASS_BROWSER_MATRIX", "FAIL_BROWSER_MATRIX", "BLOCKED_BROWSER_MATRIX"]
+    },
+    "scope": {
+      "enum": ["SOURCE_STATIC_SERVER_BROWSER_ONLY", "RUST_SERVED_BROWSER_ONLY"]
+    },
+    "producer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "tree", "branch"],
+      "properties": {
+        "commit": {
+          "type": "string",
+          "pattern": "^(?:[0-9a-f]{40}|UNAVAILABLE)$"
+        },
+        "tree": {
+          "type": "string",
+          "pattern": "^(?:[0-9a-f]{40}|UNAVAILABLE)$"
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "baseUrl": {
+      "type": "string",
+      "pattern": "^http://(?:127\\.0\\.0\\.1|localhost):[0-9]+/"
+    },
+    "chromeExecutable": {
+      "type": "string",
+      "minLength": 1
+    },
+    "chromeExecutableSha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "materialContractSha256": {
+      "oneOf": [
+        { "$ref": "#/$defs/sha256" },
+        { "const": "MISSING" }
+      ]
+    },
+    "runtimeSourceSha256": {
+      "oneOf": [
+        { "$ref": "#/$defs/sha256" },
+        { "const": "MISSING" }
+      ]
+    },
+    "resultCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "passedCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "failedCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "viewport", "deviceScaleFactor", "failures"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": ["PASS", "FAIL", "BLOCKED"]
+          },
+          "viewport": {
+            "type": "string",
+            "pattern": "^[0-9]+x[0-9]+$"
+          },
+          "deviceScaleFactor": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 4
+          },
+          "screenshot": {
+            "type": "object",
+            "required": ["path", "bytes", "sha256"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "bytes": { "type": "integer", "minimum": 1 },
+              "sha256": { "$ref": "#/$defs/sha256" }
+            }
+          },
+          "metrics": { "type": "object" },
+          "requestAudit": { "type": "object" },
+          "consoleErrors": { "type": "array" },
+          "failures": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "status": { "const": "PASS" } }
+            },
+            "then": {
+              "required": ["screenshot", "metrics", "requestAudit", "consoleErrors"],
+              "properties": {
+                "failures": { "maxItems": 0 }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mutation", "effect", "production", "operatorAcceptance", "promotion", "release"],
+      "properties": {
+        "mutation": { "const": false },
+        "effect": { "const": false },
+        "production": { "const": false },
+        "operatorAcceptance": { "const": false },
+        "promotion": { "const": false },
+        "release": { "const": false }
+      }
+    },
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rustServedAssetValidated",
+        "nativeCompileValidated",
+        "deviceValidated",
+        "platformSystemMaterialValidated"
+      ],
+      "properties": {
+        "rustServedAssetValidated": { "type": "boolean" },
+        "nativeCompileValidated": { "type": "boolean" },
+        "deviceValidated": { "type": "boolean" },
+        "platformSystemMaterialValidated": { "type": "boolean" }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}
