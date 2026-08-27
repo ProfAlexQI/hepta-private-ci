@@ -1,0 +1,213 @@
+name: hepta browser C0-C3 qualification
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "codex-rs/hepta-shadow-qualification/**"
+      - "docs/hepta-vnext/**"
+      - "scripts/verify-hepta-browser-plan.py"
+      - "scripts/verify-hepta-browser-plan-v2.py"
+      - ".github/workflows/hepta-browser-c0-c3.yml"
+      - ".github/workflows/blocking-ci.yml"
+  push:
+    branches:
+      - integration/vnext-main-20260811
+      - "codex/hepta-*"
+    paths:
+      - "codex-rs/hepta-shadow-qualification/**"
+      - "docs/hepta-vnext/**"
+      - "scripts/verify-hepta-browser-plan.py"
+      - "scripts/verify-hepta-browser-plan-v2.py"
+      - ".github/workflows/hepta-browser-c0-c3.yml"
+      - ".github/workflows/blocking-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  browser-c0-c3:
+    name: Browser C0-C3 fixture (no authority)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Initialize Browser qualification posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3"
+          mkdir -p "$evidence_dir"
+          echo "BROWSER_C0_C3_EVIDENCE_DIR=$evidence_dir" >> "$GITHUB_ENV"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "plan=WEB-PLAN-2026-08-27E"
+            echo "stages=WEB-C0,WEB-C2,WEB-C3-fixture"
+            echo "servo_linked=false"
+            echo "real_webview=false"
+            echo "external_network=false"
+            echo "credential_export=false"
+            echo "qualification_only=true"
+            echo "runtime_authority=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "external_effect=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "g5_allowed=false"
+            echo "execute_allowed=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Verify repository-native Browser plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f scripts/verify-hepta-browser-plan-v2.py ]]; then
+            python3 scripts/verify-hepta-browser-plan-v2.py \
+              2>&1 | tee "$BROWSER_C0_C3_EVIDENCE_DIR/plan-verifier.log"
+          else
+            python3 scripts/verify-hepta-browser-plan.py \
+              2>&1 | tee "$BROWSER_C0_C3_EVIDENCE_DIR/plan-verifier.log"
+          fi
+
+      - name: Check focused package formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            --manifest-path codex-rs/hepta-shadow-qualification/Cargo.toml \
+            -- --check 2>&1 | tee "$BROWSER_C0_C3_EVIDENCE_DIR/format.log"
+
+      - name: Run locked Browser contract and actor tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked \
+            -p codex-hepta-shadow-qualification \
+            --lib browser_ -- --nocapture \
+            2>&1 | tee "$BROWSER_C0_C3_EVIDENCE_DIR/tests.log"
+
+      - name: Run locked Browser library check
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --locked \
+            -p codex-hepta-shadow-qualification \
+            --lib 2>&1 | tee "$BROWSER_C0_C3_EVIDENCE_DIR/check.log"
+
+      - name: Run strict Browser Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked \
+            -p codex-hepta-shadow-qualification \
+            --lib --tests -- -D warnings \
+            2>&1 | tee "$BROWSER_C0_C3_EVIDENCE_DIR/clippy.log"
+
+      - name: Verify clean focused paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- \
+            codex-rs/hepta-shadow-qualification \
+            docs/hepta-vnext \
+            scripts/verify-hepta-browser-plan.py \
+            scripts/verify-hepta-browser-plan-v2.py \
+            .github/workflows/hepta-browser-c0-c3.yml \
+            2>&1 | tee "$BROWSER_C0_C3_EVIDENCE_DIR/clean-worktree.log"
+
+      - name: Build qualification-only receipt
+        if: ${{ success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import subprocess
+
+          evidence = pathlib.Path(os.environ["BROWSER_C0_C3_EVIDENCE_DIR"])
+
+          def digest(name: str) -> str:
+              return hashlib.sha256((evidence / name).read_bytes()).hexdigest()
+
+          receipt = {
+              "schema": "hepta.browser.c0_c3_qualification_receipt.v1",
+              "phase": "DEVELOPMENT",
+              "claim_level": "QUALIFICATION_ONLY_DETERMINISTIC_FIXTURE",
+              "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "source_tree": subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip(),
+              "stages": ["WEB-C0", "WEB-C2-fixture", "WEB-C3-fixture"],
+              "checks": {
+                  "plan": digest("plan-verifier.log"),
+                  "format": digest("format.log"),
+                  "tests": digest("tests.log"),
+                  "check": digest("check.log"),
+                  "clippy": digest("clippy.log"),
+              },
+              "runtime": {
+                  "servo_linked": False,
+                  "real_webview": False,
+                  "external_network": False,
+                  "credential_export": False,
+              },
+              "authority": {
+                  "runtime_authority": False,
+                  "production_caller": False,
+                  "production_writer": False,
+                  "effect_authority": False,
+                  "external_effect": False,
+                  "operator_acceptance": False,
+                  "promotion": False,
+                  "g5_allowed": False,
+                  "execute_allowed": False,
+              },
+              "decision": "QUALIFICATION_ONLY_PASS",
+          }
+          encoded = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+          (evidence / "qualification-receipt.json").write_bytes(encoded)
+          (evidence / "qualification-receipt.sha256").write_text(
+              hashlib.sha256(encoded).hexdigest() + "  qualification-receipt.json\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Record final status
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "job_status=${{ job.status }}" >> "$BROWSER_C0_C3_EVIDENCE_DIR/posture.txt"
+          {
+            echo "### Hepta Browser C0-C3 fixture qualification"
+            echo
+            echo "This validates repository-native contracts and a deterministic actor fixture only."
+            echo "It does not build Servo or grant browser/network/effect/promotion authority."
+            echo
+            sed 's/^/- /' "$BROWSER_C0_C3_EVIDENCE_DIR/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Browser qualification evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-browser-c0-c3
+          path: ${{ env.BROWSER_C0_C3_EVIDENCE_DIR }}
+          if-no-files-found: error
