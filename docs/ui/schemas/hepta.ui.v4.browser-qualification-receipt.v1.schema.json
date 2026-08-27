@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.local/schemas/hepta.ui.v4.browser-qualification-receipt.v1.schema.json",
+  "title": "Hepta UI v4 browser qualification receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "status", "scope", "candidate", "browser", "fixture",
+    "runtimeAssetInjectedForQualification", "rustServedRuntimeAssetBound",
+    "browserValidation", "rustRuntimeValidation", "deviceValidation",
+    "productionAuthority", "effectAuthority", "operatorAcceptance", "promotion",
+    "source", "results", "failures"
+  ],
+  "properties": {
+    "schema": { "const": "hepta.ui.v4.browser-qualification-receipt.v1" },
+    "status": { "enum": ["PASS_FIXTURE_VISUAL_CONTRACT_ONLY", "FAIL_FIXTURE_VISUAL_CONTRACT"] },
+    "scope": { "const": "LOCAL_STATIC_FIXTURE_WITH_SAME_ORIGIN_GET_STUBS" },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "tree", "commitBound", "treeBound"],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "tree": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "commitBound": { "const": true },
+        "treeBound": { "const": true }
+      }
+    },
+    "browser": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "executablePath"],
+      "properties": {
+        "name": { "const": "Chromium" },
+        "version": { "type": "string", "minLength": 1 },
+        "executablePath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fixture": { "const": true },
+    "runtimeAssetInjectedForQualification": { "const": true },
+    "rustServedRuntimeAssetBound": { "const": false },
+    "browserValidation": { "const": true },
+    "rustRuntimeValidation": { "const": false },
+    "deviceValidation": { "const": false },
+    "productionAuthority": { "const": false },
+    "effectAuthority": { "const": false },
+    "operatorAcceptance": { "const": false },
+    "promotion": { "const": false },
+    "source": {
+      "type": "object",
+      "minProperties": 7,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["bytes", "sha256"],
+        "properties": {
+          "bytes": { "type": "integer", "minimum": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "results": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["id", "viewport", "deviceScaleFactor", "fixtureRuntimeInjected", "rustServedRuntimeBound", "audit", "network", "screenshot", "status", "failures"]
+      }
+    },
+    "failures": { "type": "array", "items": { "type": "string" } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "PASS_FIXTURE_VISUAL_CONTRACT_ONLY" } } },
+      "then": {
+        "properties": {
+          "failures": { "maxItems": 0 },
+          "results": {
+            "items": {
+              "properties": { "status": { "const": "PASS_FIXTURE_VISUAL_CONTRACT_ONLY" } }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
