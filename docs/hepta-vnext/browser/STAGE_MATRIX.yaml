@@ -52,19 +52,24 @@
         "exact Servo commit/tree and reviewed upstream file inventory",
         "isolated external Servo checkout and worker artifact topology",
         "governed empty patch queue",
+        "offline deterministic source receipt generator and schema",
         "versioned 64-KiB maximum canonical JSON frame protocol",
         "one-use startup capability with domain-separated digest",
         "session, generation and monotonic sequence fences",
         "closed authority verification in worker-ready and response frames",
+        "existing non-symlink executable validation",
         "private child stdin/stdout qualification harness with no listener",
-        "parent EOF and kill-on-drop process boundary",
-        "fixture BrowserActor round trip through the child process"
+        "pathless inherited Unix socketpair qualification harness",
+        "spawned PID and WorkerReady PID binding",
+        "parent EOF, bounded timeout and kill-on-drop process boundary",
+        "fixture BrowserActor round trips through both process transports"
       ],
       "remaining": [
-        "deterministic source/SBOM/toolchain generator",
-        "exact Servo source checkout and first patch",
-        "Unix inherited socketpair production transport",
-        "Windows SID-restricted named pipe production transport",
+        "run source receipt generator against the exact Servo checkout",
+        "Cargo/native SBOM, complete license and toolchain receipt",
+        "exact Servo source checkout and first governed patch",
+        "Unix peer credential, parent-death, artifact identity and platform qualification",
+        "Windows SID-restricted named pipe and Job Object lifecycle",
         "real headed Servo WebView adapter",
         "sandbox, listener and external-egress qualification",
         "Linux, macOS and Windows artifact receipts"
@@ -79,14 +84,21 @@
       "code_paths": [
         "codex-rs/hepta-shadow-qualification/src/browser_worker_protocol.rs",
         "codex-rs/hepta-shadow-qualification/src/browser_worker_harness.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_unix.rs",
         "codex-rs/hepta-shadow-qualification/src/bin/hepta-browser-worker-qualification.rs",
         "codex-rs/hepta-shadow-qualification/src/browser_worker_tests.rs",
-        "codex-rs/hepta-shadow-qualification/tests/browser_worker_process.rs"
+        "codex-rs/hepta-shadow-qualification/tests/browser_worker_process.rs",
+        "codex-rs/hepta-shadow-qualification/tests/browser_worker_unix_socketpair.rs",
+        "scripts/generate-hepta-servo-provenance.py",
+        "scripts/test_generate_hepta_servo_provenance.py"
       ],
       "document_paths": [
         "docs/hepta-vnext/browser/SERVO_UPSTREAM_PIN.json",
         "docs/hepta-vnext/browser/SERVO_SOURCE_IMPORT_TOPOLOGY.yaml",
+        "docs/hepta-vnext/browser/SERVO_PROVENANCE.md",
+        "docs/hepta-vnext/browser/WORKER_PROTOCOL.md",
         "docs/hepta-vnext/browser/ADR-0001-servo-private-transport.md",
+        "docs/hepta-vnext/browser/hepta.servo.source_receipt.v1.schema.json",
         "third_party/servo-patches/PATCH_INVENTORY.json"
       ],
       "tests": [
@@ -95,14 +107,17 @@
         "wrong and replayed startup capability rejection",
         "sequence violation closes channel",
         "actor request/response preserves closed authority",
-        "private child process navigate and observe round trip"
+        "private child stdio process navigate and observe round trip",
+        "inherited pathless Unix socketpair navigate and observe round trip",
+        "offline provenance generator primitive tests"
       ],
       "forbidden": [
         "binding Servo WebDriver to 0.0.0.0",
-        "binding any TCP listener in the qualification harness",
+        "binding any TCP, WebSocket or filesystem listener in the qualification harness",
         "unbounded WebDriver passthrough",
         "using Servo internals as Hepta public API",
-        "claiming a real C1 Servo runtime from the stdio fixture harness"
+        "claiming a real C1 Servo runtime from either fixture harness",
+        "claiming the Unix socketpair as production-qualified before platform evidence"
       ],
       "exit": [
         "real Servo smoke test passes on a pinned target",
