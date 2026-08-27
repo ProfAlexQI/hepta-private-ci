@@ -1,0 +1,173 @@
+{
+  "schema": "hepta.browser.next_work_queue.c1.v1",
+  "updated_at": "2026-08-27T00:00:00+08:00",
+  "phase": "DEVELOPMENT",
+  "plan": "WEB-PLAN-2026-08-27E",
+  "authority": {
+    "runtime_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "external_effect": false,
+    "external_network_allowed": false,
+    "credential_export_allowed": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  },
+  "items": [
+    {
+      "id": "C1-004A-1",
+      "title": "Generate canonical source receipt from exact Servo checkout",
+      "state": "READY_WHEN_CHECKOUT_AVAILABLE",
+      "dependencies": ["source-contract-fixture-workflow-pass"],
+      "inputs": [
+        "exact servo/servo checkout",
+        "commit 0a48e298482659817eb50097df23841f2b8e3044",
+        "tree b04d2f75b3217374d079d579c270177b57fa1389"
+      ],
+      "outputs": ["hepta.servo.source_receipt.v1"],
+      "acceptance": [
+        "origin/HEAD/tree/clean/license/tree-manifest exact",
+        "receipt compact canonical and create-only",
+        "build/archive/SBOM/authority claims false"
+      ]
+    },
+    {
+      "id": "C1-004A-2",
+      "title": "Repeat source verification from an independent fetch",
+      "state": "BLOCKED_BY_C1-004A-1",
+      "dependencies": ["C1-004A-1"],
+      "outputs": ["second source receipt", "cross-fetch comparison receipt"],
+      "acceptance": [
+        "same commit/tree/tree-manifest/license digest",
+        "independent checkout and evidence root",
+        "signature trust status explicit, not inferred"
+      ]
+    },
+    {
+      "id": "C1-004A-3",
+      "title": "Create deterministic Servo source archive",
+      "state": "BLOCKED_BY_C1-004A-2",
+      "dependencies": ["C1-004A-2"],
+      "outputs": ["source archive", "archive SHA-256", "archive inventory"],
+      "acceptance": [
+        "archive generated from exact tree",
+        "two independent generations match or differences explained",
+        "symlink/submodule policy enforced"
+      ]
+    },
+    {
+      "id": "C1-004A-4",
+      "title": "Seal MPL-2.0 license/source-distribution packet and patch inventory",
+      "state": "BLOCKED_BY_C1-004A-3",
+      "dependencies": ["C1-004A-3"],
+      "outputs": ["hepta.servo.license_packet.v1", "hepta.servo.patch_inventory.v1"],
+      "acceptance": [
+        "license and notices exact",
+        "source offer/distribution obligations explicit",
+        "patch IDs/hashes/reasons/upstream references/deletion conditions complete"
+      ]
+    },
+    {
+      "id": "C1-004B-1",
+      "title": "Freeze real worker build input manifest",
+      "state": "BLOCKED_BY_C1-004A-4",
+      "dependencies": ["C1-004A-4", "artifact-contract-fixture-workflow-pass"],
+      "outputs": ["hepta.servo.worker_build_manifest.v1"],
+      "acceptance": [
+        "target/profile/rustc/cargo/linker/features exact",
+        "build command and environment allowlist digests exact",
+        "build/network/worker authority booleans false"
+      ]
+    },
+    {
+      "id": "C1-004B-2",
+      "title": "Build first Linux local-fixture-only Servo worker",
+      "state": "BLOCKED_BY_C1-004B-1",
+      "dependencies": ["C1-004B-1"],
+      "outputs": ["worker executable", "symbols/debug packet", "SPDX SBOM"],
+      "acceptance": [
+        "build network disabled after declared dependency acquisition",
+        "no wildcard/loopback HTTP automation server compiled or started",
+        "worker feature surface limited to private protocol/local fixture"
+      ]
+    },
+    {
+      "id": "C1-004B-3",
+      "title": "Generate and independently verify worker artifact receipt",
+      "state": "BLOCKED_BY_C1-004B-2",
+      "dependencies": ["C1-004B-2"],
+      "outputs": ["hepta.servo.worker_artifact_receipt.v1"],
+      "acceptance": [
+        "source/build/artifact/patch/license/SBOM exact",
+        "binary target/format/architecture exact",
+        "runtime qualification and authority fields false"
+      ]
+    },
+    {
+      "id": "C1-004B-4",
+      "title": "Repeat the build and compare reproducibility",
+      "state": "BLOCKED_BY_C1-004B-3",
+      "dependencies": ["C1-004B-3"],
+      "outputs": ["second artifact receipt", "reproducibility comparison"],
+      "acceptance": [
+        "identical artifact or enumerated deterministic differences",
+        "same source/build/SBOM/license/patch bindings",
+        "no unexplained native dependency drift"
+      ]
+    },
+    {
+      "id": "C1-004C-1",
+      "title": "Launch artifact-bound Servo worker over inherited private channel",
+      "state": "BLOCKED_BY_C1-004B-4",
+      "dependencies": ["C1-004B-4", "c1-private-protocol-workflow-pass"],
+      "outputs": ["real worker startup receipt"],
+      "acceptance": [
+        "executable SHA-256 matches artifact receipt before spawn",
+        "session/generation/epoch/source pin exact",
+        "startup capability/nonce private and one-process",
+        "no listener or external egress"
+      ]
+    },
+    {
+      "id": "C1-004C-2",
+      "title": "Create exactly one local-fixture Servo WebView",
+      "state": "BLOCKED_BY_C1-004C-1",
+      "dependencies": ["C1-004C-1"],
+      "outputs": ["one-WebView local fixture smoke receipt"],
+      "acceptance": [
+        "one session one process one WebView one mutation owner",
+        "local fixture only",
+        "no second WebDriver/page owner",
+        "clean shutdown and child reap"
+      ]
+    },
+    {
+      "id": "C1-004C-3",
+      "title": "Bind real semantic observe/click/type to BrowserActor",
+      "state": "BLOCKED_BY_C1-004C-2",
+      "dependencies": ["C1-004C-2"],
+      "outputs": ["real C1 semantic smoke receipt"],
+      "acceptance": [
+        "page revision advances on every mutation",
+        "stale refs fail closed",
+        "human takeover fences queued Agent mutation",
+        "no raw cookie/storage/eval exposure"
+      ]
+    },
+    {
+      "id": "C1-004C-4",
+      "title": "Qualify deadlines, forced teardown, descriptors, sandbox, and platforms",
+      "state": "BLOCKED_BY_C1-004C-3",
+      "dependencies": ["C1-004C-3"],
+      "outputs": ["Linux receipt", "macOS receipt", "Windows named-pipe receipt"],
+      "acceptance": [
+        "bounded handshake/read/write/command/drain/kill/reap",
+        "no listener/no egress OS evidence",
+        "private profile/resource limits/descendant cleanup",
+        "Windows exact SID ACL and one-client named-pipe equivalence"
+      ]
+    }
+  ]
+}
