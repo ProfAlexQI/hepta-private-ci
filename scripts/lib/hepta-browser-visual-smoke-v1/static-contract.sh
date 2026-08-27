@@ -215,13 +215,27 @@ if ! grep -Fqi "content-security-policy:" "$root_headers" \
   exit 1
 fi
 
-source_js_sha="$(shasum -a 256 apps/hepta-control-ui/control-ui.js | awk '{print $1}')"
+control_ui_base_js_source="apps/hepta-control-ui/control-ui.js"
+control_ui_runtime_js_source="apps/hepta-control-ui/control-ui-v4-runtime.js"
+control_ui_expected_js_file="$OUT_DIR/control-ui.expected.js"
+cat "$control_ui_base_js_source" >"$control_ui_expected_js_file"
+printf '\n/* hepta-ui-v4-runtime-bundle-boundary */\n' >>"$control_ui_expected_js_file"
+cat "$control_ui_runtime_js_source" >>"$control_ui_expected_js_file"
+
+source_js_sha="$(shasum -a 256 "$control_ui_base_js_source" | awk '{print $1}')"
+runtime_js_sha="$(shasum -a 256 "$control_ui_runtime_js_source" | awk '{print $1}')"
+expected_bundle_js_sha="$(shasum -a 256 "$control_ui_expected_js_file" | awk '{print $1}')"
 served_js_sha="$(shasum -a 256 "$control_ui_js_file" | awk '{print $1}')"
 served_js_etag="$(awk 'tolower($1) == "etag:" { gsub(/\r/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit }' "$control_ui_js_headers")"
-if [[ "$served_js_sha" != "$source_js_sha" || "$served_js_etag" != "\"sha256-${source_js_sha}\"" ]]; then
-  echo "control UI JavaScript source, served bytes, and ETag digest are not bound" >&2
+control_ui_v4_runtime_bound=false
+if ! cmp -s "$control_ui_expected_js_file" "$control_ui_js_file" \
+  || [[ "$served_js_sha" != "$expected_bundle_js_sha" \
+  || "$served_js_etag" != "\"sha256-${expected_bundle_js_sha}\"" ]]; then
+  echo "Control UI base/runtime sources, served bundle bytes, and ETag digest are not bound" >&2
   exit 1
 fi
+control_ui_v4_runtime_bound=true
+
 if [[ "$(grep -Eo ', \"/api/[^\"]+\", (true|false)\]' "$control_ui_js_file" | wc -l | tr -d ' ')" != "21" ]]; then
   echo "control UI JavaScript does not expose exactly 21 fixed read-only report routes" >&2
   exit 1
@@ -247,6 +261,11 @@ for marker in \
   'source_path: path' \
   'headers: { Accept: "application/json" }' \
   'url.origin !== window.location.origin' \
+  'hepta-ui-v4-runtime-bundle-boundary' \
+  'const READ_STATE_SET = new Set(READ_STATES)' \
+  'HeptaUiV4ReadState' \
+  'controlUiV4Runtime = "ready"' \
+  'controlUiV4RuntimeAuthority = "local-ui-only"' \
   'textContent'; do
   if [[ "$control_ui_js" != *"$marker"* ]]; then
     echo "control UI JavaScript is missing safety marker: $marker" >&2
