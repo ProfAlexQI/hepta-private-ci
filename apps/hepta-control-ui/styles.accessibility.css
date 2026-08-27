@@ -2,13 +2,13 @@
  * Hepta v4 runtime compatibility bridge.
  *
  * The Rust Control UI aggregate historically concatenates accessibility.css
- * directly after responsive.css. Keep the critical v4 invariants in this final
- * source until the canonical aggregate includes styles.v4.css as a dedicated
- * input. This bridge is intentionally smaller than styles.v4.css and preserves
- * the final accessibility preference rules below.
+ * directly after responsive.css. Keep the critical v4 invariants and runtime
+ * state selectors in this final source until styles.v4.css and
+ * styles.v4.runtime.css become dedicated aggregate inputs. System preference
+ * rules remain last and authoritative.
  */
 :root {
-  --hepta-v4-runtime-bridge: 1;
+  --hepta-v4-runtime-bridge: 2;
   --hepta-v4-font-body: 15px;
   --hepta-v4-font-meta: 12px;
   --hepta-v4-target-pointer: 44px;
@@ -46,6 +46,7 @@ body[data-view="chat"] :is(.tg-message small,.tg-bubble>span,time,.hepta-v4-loca
 body[data-view="chat"] :is(button,a[href],summary,input,textarea,select,[tabindex]:not([tabindex="-1"])) {
   min-width: var(--hepta-v4-target-pointer);
   min-height: var(--hepta-v4-target-pointer);
+  scroll-margin-block: 72px max(96px, calc(72px + env(safe-area-inset-bottom, 0px)));
 }
 
 @media(pointer:coarse), (max-width:700px) {
@@ -67,6 +68,7 @@ body[data-view="chat"] :is(button,a[href],summary,input,textarea,select,[tabinde
     max-height:min(70dvh,640px) !important;
     overflow:auto !important;
     overscroll-behavior:contain;
+    scroll-padding-block:12px max(12px,env(safe-area-inset-bottom,0px));
     border-radius:18px !important;
   }
 }
@@ -76,9 +78,45 @@ html[data-hepta-v4-transient-open="true"] {
   overscroll-behavior:none;
 }
 
+body[data-hepta-v4-scroll-lock="true"] {
+  overflow:hidden;
+  overscroll-behavior:none;
+}
+
 html[data-hepta-v4-transient-open="true"] [popover]:popover-open {
   touch-action:pan-y;
   overscroll-behavior:contain;
+}
+
+[data-control-ui-read-state] {
+  position:relative;
+}
+
+[data-control-ui-read-state="loading"] {
+  cursor:progress;
+}
+
+[data-control-ui-read-state="loading"]::after {
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  background:linear-gradient(100deg,transparent 20%,color-mix(in srgb,var(--hepta-glass-focus) 8%,transparent) 48%,transparent 76%);
+  background-size:220% 100%;
+  animation:hepta-v4-read-state-sweep 1.4s linear infinite;
+}
+
+[data-control-ui-read-state="fresh"] {--hepta-v4-read-state-accent:var(--hepta-glass-success,#137a5a)}
+[data-control-ui-read-state="stale"],[data-control-ui-read-state="partial"] {--hepta-v4-read-state-accent:var(--hepta-glass-warning,#9a6500)}
+[data-control-ui-read-state="offline"],[data-control-ui-read-state="error"] {--hepta-v4-read-state-accent:var(--hepta-glass-danger,#b63845)}
+[data-control-ui-read-state]:not([data-control-ui-read-state="idle"]):not([data-control-ui-read-state="loading"]) {
+  border-inline-start-color:var(--hepta-v4-read-state-accent,var(--hepta-glass-hairline)) !important;
+}
+
+@keyframes hepta-v4-read-state-sweep {
+  from {background-position:220% 0}
+  to {background-position:-120% 0}
 }
 
 /* System accessibility preferences are final in the cascade. */
@@ -89,6 +127,8 @@ body[data-view="chat"] :is(button,a[href],summary,input,textarea,select):focus-v
 @media(forced-colors:active){
 *{background-image:none!important;box-shadow:none!important;text-shadow:none!important}
 body[data-view="chat"] :is(button,a[href],summary,input,textarea,select):focus-visible{outline:3px solid Highlight!important;outline-offset:3px!important}
+[data-control-ui-read-state]:not([data-control-ui-read-state="idle"]){border-inline-start:3px solid Highlight!important}
+[data-control-ui-read-state="loading"]::after{display:none}
 }
 @media(prefers-reduced-transparency:reduce){
 body[data-view="chat"] :is(.tg-conversation-rail,.tg-thread-panel,.tg-compose-bar,.tg-bubble,.tg-row-action-popover,.tg-composer-popover,.tg-thread-command-menu__panel,.command-palette){
@@ -105,4 +145,5 @@ background:rgba(223,234,237,.96)!important;
 }
 @media(prefers-reduced-motion:reduce){
 body[data-view="chat"] :is(button,a,summary,[popover]){transition:none!important;animation:none!important;scroll-behavior:auto!important}
+[data-control-ui-read-state="loading"]::after{animation:none;background:color-mix(in srgb,var(--hepta-glass-focus) 6%,transparent)}
 }
