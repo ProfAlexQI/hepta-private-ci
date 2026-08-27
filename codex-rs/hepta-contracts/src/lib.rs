@@ -96,6 +96,7 @@ pub use authbus::b3::RefreshWithSecretRefResponse;
 pub use authbus::b3::RotateSecretRefRequest;
 pub use authbus::b3::RotateSecretRefResponse;
 pub use authbus::b3::SecretProviderStatus;
+pub use authbus::b3::SecretRefCallbackFence;
 pub use authbus::b3::SecretRefErrorClass;
 pub use authbus::b3::SecretRefEvent;
 pub use authbus::b3::SecretRefOperationRecord;

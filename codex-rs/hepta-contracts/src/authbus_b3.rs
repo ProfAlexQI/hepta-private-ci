@@ -337,6 +337,67 @@ pub enum SecretRefEvent {
     ClaimAgain,
 }
 
+impl SecretRefEvent {
+    /// Returns whether this event carries an observation or decision that
+    /// crossed the provider/evidence boundary.  Such events must be checked
+    /// against the operation's current identity fence before they can mutate
+    /// a durable record.  Local scheduling events (claim, dispatch, lookup,
+    /// and retry bookkeeping) do not carry an external callback and remain
+    /// available through [`SecretRefOperationRecord::transition`].
+    pub const fn requires_current_fence(self) -> bool {
+        matches!(
+            self,
+            Self::Rotated
+                | Self::InvalidGrant
+                | Self::TransientFailure
+                | Self::ResponseUnknown
+                | Self::LookupRotated
+                | Self::LookupInvalidGrant
+                | Self::LookupTransientFailure
+                | Self::LookupRetryable
+                | Self::ManualRequired
+                | Self::ManualEvidenceSubmitted
+        )
+    }
+}
+
+/// Identity fence supplied with an adapter response or reconciliation
+/// decision.  It is intentionally separate from the operation record so a
+/// callback cannot silently borrow the record's own (possibly stale) values.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SecretRefCallbackFence {
+    pub authority_epoch: u64,
+    pub owner_epoch: u64,
+    pub generation: u64,
+    pub fencing_token: Sha256Digest,
+}
+
+impl SecretRefCallbackFence {
+    pub fn new(
+        authority_epoch: u64,
+        owner_epoch: u64,
+        generation: u64,
+        fencing_token: Sha256Digest,
+    ) -> Result<Self, AuthBusContractError> {
+        let fence = Self {
+            authority_epoch,
+            owner_epoch,
+            generation,
+            fencing_token,
+        };
+        fence.validate()?;
+        Ok(fence)
+    }
+
+    pub fn validate(&self) -> Result<(), AuthBusContractError> {
+        validate_nonzero(self.authority_epoch, "callback authority epoch")?;
+        validate_nonzero(self.owner_epoch, "callback owner epoch")?;
+        validate_nonzero(self.generation, "callback generation")?;
+        validate_digest(&self.fencing_token, "callback fencing token")
+    }
+}
+
 /// Bind the fields common to refresh and rotate requests and enforce the
 /// registry's operation-key and operation-id formulas.
 #[allow(clippy::too_many_arguments)]
@@ -1204,6 +1265,8 @@ pub struct SecretRefOperationRecord {
     pub profile_id: String,
     pub token_family_id: String,
     pub expected_secret_revision: u64,
+    pub authority_epoch: u64,
+    pub owner_epoch: u64,
     pub generation: u64,
     pub fencing_token: Sha256Digest,
     pub state: SecretRefState,
@@ -1224,6 +1287,8 @@ impl SecretRefOperationRecord {
             profile_id: request.profile_id.clone(),
             token_family_id: request.token_family_id.clone(),
             expected_secret_revision: request.expected_secret_revision,
+            authority_epoch: request.authority_epoch,
+            owner_epoch: request.owner_epoch,
             generation: request.generation,
             fencing_token: request.fencing_token.clone(),
             state: SecretRefState::Idle,
@@ -1233,6 +1298,39 @@ impl SecretRefOperationRecord {
     }
 
     pub fn transition(&mut self, event: SecretRefEvent) -> Result<(), AuthBusContractError> {
+        if event.requires_current_fence() {
+            return Err(error(format!(
+                "SecretRef event {event:?} requires an explicit current callback fence"
+            )));
+        }
+        self.transition_unfenced(event)
+    }
+
+    /// Apply a provider/evidence callback only when it carries the exact
+    /// identity fence captured by this operation.  Validation occurs before
+    /// any state or attempt mutation, so stale callbacks are side-effect free.
+    pub fn transition_with_fence(
+        &mut self,
+        event: SecretRefEvent,
+        callback_fence: &SecretRefCallbackFence,
+    ) -> Result<(), AuthBusContractError> {
+        if !event.requires_current_fence() {
+            return Err(error(format!(
+                "SecretRef event {event:?} does not accept a callback fence"
+            )));
+        }
+        callback_fence.validate()?;
+        if callback_fence.authority_epoch != self.authority_epoch
+            || callback_fence.owner_epoch != self.owner_epoch
+            || callback_fence.generation != self.generation
+            || callback_fence.fencing_token != self.fencing_token
+        {
+            return Err(error("SecretRef callback carries a stale identity fence"));
+        }
+        self.transition_unfenced(event)
+    }
+
+    fn transition_unfenced(&mut self, event: SecretRefEvent) -> Result<(), AuthBusContractError> {
         let next = self.state.transition(event)?;
         let next_attempt = if matches!(event, SecretRefEvent::Dispatch) {
             let attempt = self
@@ -1370,6 +1468,17 @@ mod tests {
             expected_execution_mode: "qualification".to_string(),
             policy_digest: request.policy_digest,
         }
+    }
+
+    fn callback_fence() -> SecretRefCallbackFence {
+        let request = refresh_request();
+        SecretRefCallbackFence::new(
+            request.authority_epoch,
+            request.owner_epoch,
+            request.generation,
+            request.fencing_token,
+        )
+        .expect("callback fence")
     }
 
     fn local_status_response(
@@ -1581,14 +1690,14 @@ mod tests {
             .transition(SecretRefEvent::Dispatch)
             .expect("dispatch");
         record
-            .transition(SecretRefEvent::ResponseUnknown)
+            .transition_with_fence(SecretRefEvent::ResponseUnknown, &callback_fence())
             .expect("unknown");
         assert!(record.reconcile_allowed());
         assert!(!record.dispatch_allowed());
         assert!(record.transition(SecretRefEvent::Dispatch).is_err());
         record.transition(SecretRefEvent::Lookup).expect("lookup");
         record
-            .transition(SecretRefEvent::LookupRotated)
+            .transition_with_fence(SecretRefEvent::LookupRotated, &callback_fence())
             .expect("rotated");
         assert!(record.state.is_terminal());
         assert!(record.transition(SecretRefEvent::ClaimAgain).is_err());
@@ -1603,7 +1712,7 @@ mod tests {
             .transition(SecretRefEvent::Dispatch)
             .expect("first dispatch");
         record
-            .transition(SecretRefEvent::TransientFailure)
+            .transition_with_fence(SecretRefEvent::TransientFailure, &callback_fence())
             .expect("transient failure");
         record
             .transition(SecretRefEvent::RetryScheduled)
@@ -1652,5 +1761,59 @@ mod tests {
             .expect("object")
             .insert("access_token".to_string(), serde_json::json!("raw"));
         assert!(serde_json::from_value::<RotateSecretRefResponse>(unknown).is_err());
+    }
+
+    #[test]
+    fn callback_events_require_current_fence_and_reject_stale_without_mutation() {
+        let mut record =
+            SecretRefOperationRecord::from_refresh_request(&refresh_request(), 1).expect("record");
+        record.transition(SecretRefEvent::Claim).expect("claim");
+        record
+            .transition(SecretRefEvent::Dispatch)
+            .expect("dispatch");
+
+        let before = record.clone();
+        assert!(record.transition(SecretRefEvent::ResponseUnknown).is_err());
+        assert_eq!(record, before);
+
+        let mut stale_authority = callback_fence();
+        stale_authority.authority_epoch += 1;
+        let mut stale_owner = callback_fence();
+        stale_owner.owner_epoch += 1;
+        let mut stale_generation = callback_fence();
+        stale_generation.generation += 1;
+        let mut stale_token = callback_fence();
+        stale_token.fencing_token = digest("stale-token");
+        for stale in [
+            &stale_authority,
+            &stale_owner,
+            &stale_generation,
+            &stale_token,
+        ] {
+            assert!(
+                record
+                    .transition_with_fence(SecretRefEvent::ResponseUnknown, stale)
+                    .is_err()
+            );
+            assert_eq!(record, before);
+        }
+
+        let current = callback_fence();
+        record
+            .transition_with_fence(SecretRefEvent::ResponseUnknown, &current)
+            .expect("current response-loss callback");
+        record.transition(SecretRefEvent::Lookup).expect("lookup");
+
+        let before = record.clone();
+        assert!(
+            record
+                .transition_with_fence(SecretRefEvent::LookupRotated, &stale_generation)
+                .is_err()
+        );
+        assert_eq!(record, before);
+        record
+            .transition_with_fence(SecretRefEvent::LookupRotated, &current)
+            .expect("current lookup callback");
+        assert_eq!(record.state, SecretRefState::Succeeded);
     }
 }
