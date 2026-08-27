@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - vnext-main
-      - integration/vnext-main-20260811
       - "integration/vnext-main-full-ci-*"
 
 permissions:
