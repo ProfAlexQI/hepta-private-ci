@@ -7,6 +7,7 @@ require "pathname"
 
 ROOT = Pathname.new(__dir__).join("..").expand_path
 BOUNDARY = "\n/* hepta-ui-v4-runtime-bundle-boundary */\n"
+SHA256_ABC = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 
 FILES = {
   base_js: ROOT.join("apps/hepta-control-ui/control-ui.js"),
@@ -53,10 +54,11 @@ checks["bundle.order"] = build.index("control-ui.js") && build.index("control-ui
 checks["bundle.boundary_exact"] = build.include?("hepta-ui-v4-runtime-bundle-boundary")
 checks["bundle.output_written"] = build.include?("control-ui.bundle.js")
 checks["bundle.metadata_written"] = build.include?("control_ui_bundle_metadata.rs")
-checks["bundle.sha256_generated"] = build.include?("CONTROL_UI_JS_SHA256") && build.include?("CONTROL_UI_JS_ETAG") && build.include?("Sha256::digest")
+checks["bundle.sha256_generated"] = build.include?("CONTROL_UI_JS_SHA256") && build.include?("CONTROL_UI_JS_ETAG") && build.include?("fn sha256_hex")
+checks["bundle.sha256_known_answer"] = build.include?(SHA256_ABC) && build.include?("validate_sha256_implementation()")
 checks["bundle.rerun_base"] = build.include?("cargo:rerun-if-changed={}") && build.include?("base_js_path.display()")
 checks["bundle.rerun_runtime"] = build.include?("runtime_js_path.display()")
-checks["cargo.sha2_build_dependency"] = cargo.match?(/\[build-dependencies\].*sha2\.workspace\s*=\s*true/m)
+checks["cargo.lockfile_neutral"] = !cargo.include?("[build-dependencies]") && !cargo.match?(/^sha2\s*=/)
 
 checks["core.generated_metadata"] = core_assets.include?("control_ui_bundle_metadata.rs")
 checks["core.generated_bundle"] = core_assets.include?("control-ui.bundle.js")
