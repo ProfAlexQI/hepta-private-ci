@@ -1,5 +1,7 @@
 #![cfg(feature = "authbus-local-qualification")]
 
+use serde::Serialize;
+
 use codex_hepta_contracts::authbus_b4::{
     LocalScheduler, QuotaLimits, QuotaVector, ResourceState, SchedulerError, SchedulerRequest,
     SchedulerResource,
@@ -96,6 +98,19 @@ fn delivery(label: &str) -> B5OutboxDelivery {
     }
 }
 
+// Keep the private WAL record shape local to this test so the recovery test
+// can construct a hash-valid marker without exposing the internal record enum.
+#[derive(Serialize)]
+enum DispatchAttemptMarker {
+    DispatchAttemptStarted {
+        effect_key: ProviderEffectKey,
+        idempotency_key: String,
+        payload_sha256: Sha256Digest,
+        attempt: u32,
+        fence: B5Fence,
+    },
+}
+
 #[test]
 fn b4_unknown_quota_and_duplicate_request_fail_closed() {
     let unknown_resource = scheduler_resource(QuotaLimits::unknown_rpm(QuotaVector::new(
@@ -177,6 +192,45 @@ fn b5_unknown_intent_is_a_safe_stop_without_dispatch() {
     );
     assert_eq!(wal.durable_record_count(), 0);
     assert_eq!(wal.adapter_calls(), 0);
+
+    // Also exercise the serialized recovery path.  The marker is deliberately
+    // re-hashed with the same field order as the private B5 record enum so the
+    // semantic UnknownIntent check is reached after chain validation.
+    let original = intent("unknown-recovery", 11);
+    let mut wal = LocalB5Wal::new();
+    wal.append_intent(original.clone()).expect("intent");
+    wal.crash_after_call(&original.effect_key, 1, original.fence.clone())
+        .expect("crash boundary");
+    let mut snapshot: serde_json::Value =
+        serde_json::from_slice(&wal.durable_snapshot()).expect("snapshot json");
+    let previous = Sha256Digest::parse(
+        snapshot[0]["record_digest"]
+            .as_str()
+            .expect("previous digest")
+            .to_string(),
+    )
+    .expect("previous digest parses");
+    let unknown_key = effect_key("missing-recovery-intent");
+    let marker = DispatchAttemptMarker::DispatchAttemptStarted {
+        effect_key: unknown_key.clone(),
+        idempotency_key: original.idempotency_key.clone(),
+        payload_sha256: original.payload_sha256.clone(),
+        attempt: 1,
+        fence: original.fence.clone(),
+    };
+    let record_digest = Sha256Digest::for_bytes(
+        &serde_json::to_vec(&(2_u64, Some(&previous), &marker)).expect("record bytes"),
+    );
+    snapshot[1]["kind"]["DispatchAttemptStarted"]["effect_key"] =
+        serde_json::Value::String(unknown_key.as_str().to_string());
+    let record_digest_text = record_digest.as_str().to_string();
+    snapshot[1]["record_digest"] = serde_json::Value::String(record_digest_text.clone());
+    snapshot[1]["fsync_witness"]["commit_digest"] = serde_json::Value::String(record_digest_text);
+    let tampered = serde_json::to_vec(&snapshot).expect("tampered snapshot");
+    assert_eq!(
+        LocalB5Wal::recover_snapshot(&tampered),
+        B5RecoveryAction::SafeStop(B5Error::UnknownIntent)
+    );
 }
 
 #[test]
