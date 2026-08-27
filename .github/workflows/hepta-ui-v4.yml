@@ -12,6 +12,7 @@ on:
       - "codex-rs/hepta-core/Cargo.toml"
       - "codex-rs/hepta-core/build.rs"
       - "codex-rs/hepta-core/src/control_ui_static_assets.rs"
+      - "codex-rs/hepta-core/tests/control_ui_v4_bundle.rs"
       - "codex-rs/hepta-native-gateway/src/ui_domain/generated_control_ui_assets.rs"
       - "design-tokens/**"
       - "docs/ui/**"
@@ -123,6 +124,7 @@ jobs:
         run: |
           cargo check --manifest-path codex-rs/Cargo.toml -p hepta-core
           cargo check --manifest-path codex-rs/Cargo.toml -p hepta-native-gateway
+          cargo test --manifest-path codex-rs/Cargo.toml -p hepta-core --test control_ui_v4_bundle
 
       - name: Check Native formatting
         run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
