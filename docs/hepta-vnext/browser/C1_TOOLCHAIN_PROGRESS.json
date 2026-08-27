@@ -1,0 +1,53 @@
+{
+  "schema": "hepta.browser.c1_toolchain_progress.v1",
+  "schema_version": 1,
+  "updated_at_utc": "2026-08-28T00:00:00Z",
+  "phase": "DEVELOPMENT",
+  "claim_level": "TOOLCHAIN_CAPTURE_TOOLING_ONLY",
+  "implemented": {
+    "canonical_binary_path_check": true,
+    "symlink_rejection": true,
+    "single_hardlink_requirement": true,
+    "group_world_write_rejection": true,
+    "binary_sha256_and_length": true,
+    "bounded_direct_version_commands": true,
+    "minimal_environment": true,
+    "rustc_commit_host_release_parsing": true,
+    "cargo_host_release_parsing": true,
+    "linker_kind_version_parsing": true,
+    "path_free_receipt": true,
+    "private_atomic_output": true,
+    "fixture_unit_tests": true
+  },
+  "actual_toolchain_receipt": null,
+  "accepted_toolchain_receipt": null,
+  "remaining": [
+    "select the exact Linux build toolchain after source acceptance",
+    "capture the real rustc, Cargo and linker binaries",
+    "independently verify binary digests and version outputs",
+    "review host/target compatibility",
+    "bind the accepted receipt in build-input manifest v2",
+    "rehash binaries immediately before the first build"
+  ],
+  "not_claimed": [
+    "accepted toolchain",
+    "Servo build",
+    "worker artifact",
+    "SBOM",
+    "runtime qualification",
+    "operator acceptance",
+    "promotion"
+  ],
+  "authority": {
+    "runtime_authority": false,
+    "effect_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "runtime_external_network": false,
+    "raw_cookie_export": false,
+    "credential_export": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  }
+}
