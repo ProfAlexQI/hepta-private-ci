@@ -43,3 +43,15 @@ rust_binary(
         "@crates//:tokio",
     ],
 )
+
+rust_binary(
+    name = "hepta-browser-worker-qualification",
+    srcs = ["src/bin/hepta-browser-worker-qualification.rs"],
+    crate_root = "src/bin/hepta-browser-worker-qualification.rs",
+    edition = "2024",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":hepta-shadow-qualification-lib",
+        "@crates//:tokio",
+    ],
+)
