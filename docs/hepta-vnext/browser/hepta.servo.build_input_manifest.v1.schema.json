@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.invalid/schema/hepta.servo.build_input_manifest.v1.schema.json",
+  "title": "Hepta Servo build input manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "plan_id",
+    "stage",
+    "status",
+    "source",
+    "recipe_sha256",
+    "build",
+    "qualification",
+    "machine_local_paths_included",
+    "authority"
+  ],
+  "properties": {
+    "schema": {"const": "hepta.browser.servo_build_input_manifest.v1"},
+    "schema_version": {"const": 1},
+    "plan_id": {"const": "HEPTA-BROWSER-WEB-D"},
+    "stage": {"const": "WEB_C1"},
+    "status": {"const": "SEALED_INPUTS_BUILD_NOT_RUN"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "commit",
+        "tree",
+        "recomputed_tree",
+        "source_verification_receipt_sha256",
+        "source_bundle_receipt_sha256",
+        "compressed_source_archive_sha256",
+        "source_tar_sha256",
+        "license_packet_sha256",
+        "tree_manifest_sha256"
+      ],
+      "properties": {
+        "repository": {"const": "servo/servo"},
+        "commit": {"const": "0a48e298482659817eb50097df23841f2b8e3044"},
+        "tree": {"const": "b04d2f75b3217374d079d579c270177b57fa1389"},
+        "recomputed_tree": {"const": "b04d2f75b3217374d079d579c270177b57fa1389"},
+        "source_verification_receipt_sha256": {"$ref": "#/$defs/sha256"},
+        "source_bundle_receipt_sha256": {"$ref": "#/$defs/sha256"},
+        "compressed_source_archive_sha256": {"$ref": "#/$defs/sha256"},
+        "source_tar_sha256": {"$ref": "#/$defs/sha256"},
+        "license_packet_sha256": {"$ref": "#/$defs/sha256"},
+        "tree_manifest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "recipe_sha256": {"$ref": "#/$defs/sha256"},
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "profile",
+        "manifest_path",
+        "package",
+        "artifact_path",
+        "features",
+        "default_features",
+        "jobs",
+        "canonical_command",
+        "environment",
+        "toolchain",
+        "build_network",
+        "source_mutation_allowed",
+        "runtime_external_network"
+      ],
+      "properties": {
+        "target": {
+          "enum": [
+            "x86_64-unknown-linux-gnu",
+            "aarch64-apple-darwin",
+            "x86_64-pc-windows-msvc"
+          ]
+        },
+        "profile": {"enum": ["release", "profiling"]},
+        "manifest_path": {"$ref": "#/$defs/relativePath"},
+        "package": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"},
+        "artifact_path": {"$ref": "#/$defs/relativePath"},
+        "features": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"}
+        },
+        "default_features": {"const": false},
+        "jobs": {"type": "integer", "minimum": 1, "maximum": 64},
+        "canonical_command": {
+          "type": "array",
+          "minItems": 14,
+          "maxItems": 40,
+          "items": {"type": "string", "minLength": 1, "maxLength": 512}
+        },
+        "environment": {
+          "const": {
+            "CARGO_NET_OFFLINE": "true",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+            "LANG": "C",
+            "LC_ALL": "C",
+            "SOURCE_DATE_EPOCH": "0",
+            "TZ": "UTC"
+          }
+        },
+        "toolchain": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cargo_binary_sha256",
+            "cargo_version",
+            "host",
+            "linker_binary_sha256",
+            "linker_kind",
+            "linker_version",
+            "rustc_binary_sha256",
+            "rustc_commit_hash",
+            "rustc_version",
+            "target"
+          ],
+          "properties": {
+            "cargo_binary_sha256": {"$ref": "#/$defs/sha256"},
+            "cargo_version": {"type": "string", "minLength": 1, "maxLength": 128},
+            "host": {"type": "string", "minLength": 1, "maxLength": 128},
+            "linker_binary_sha256": {"$ref": "#/$defs/sha256"},
+            "linker_kind": {"type": "string", "minLength": 1, "maxLength": 128},
+            "linker_version": {"type": "string", "minLength": 1, "maxLength": 128},
+            "rustc_binary_sha256": {"$ref": "#/$defs/sha256"},
+            "rustc_commit_hash": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            "rustc_version": {"type": "string", "minLength": 1, "maxLength": 128},
+            "target": {
+              "enum": [
+                "x86_64-unknown-linux-gnu",
+                "aarch64-apple-darwin",
+                "x86_64-pc-windows-msvc"
+              ]
+            }
+          }
+        },
+        "build_network": {"const": false},
+        "source_mutation_allowed": {"const": false},
+        "runtime_external_network": {"const": false}
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputs_sealed",
+        "source_tree_independently_verified",
+        "command_canonicalized",
+        "environment_allowlisted",
+        "toolchain_digests_bound",
+        "build_network_disabled",
+        "build_run",
+        "artifact_created",
+        "sbom_created",
+        "servo_runtime_qualified",
+        "operator_accepted",
+        "release_qualified"
+      ],
+      "properties": {
+        "inputs_sealed": {"const": true},
+        "source_tree_independently_verified": {"const": true},
+        "command_canonicalized": {"const": true},
+        "environment_allowlisted": {"const": true},
+        "toolchain_digests_bound": {"const": true},
+        "build_network_disabled": {"const": true},
+        "build_run": {"const": false},
+        "artifact_created": {"const": false},
+        "sbom_created": {"const": false},
+        "servo_runtime_qualified": {"const": false},
+        "operator_accepted": {"const": false},
+        "release_qualified": {"const": false}
+      }
+    },
+    "machine_local_paths_included": {"const": false},
+    "authority": {"$ref": "#/$defs/authority"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000\\\\]+$"
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_authority",
+        "effect_authority",
+        "production_caller",
+        "production_writer",
+        "runtime_external_network",
+        "raw_cookie_export",
+        "credential_export",
+        "operator_acceptance",
+        "promotion",
+        "release_qualified"
+      ],
+      "properties": {
+        "runtime_authority": {"const": false},
+        "effect_authority": {"const": false},
+        "production_caller": {"const": false},
+        "production_writer": {"const": false},
+        "runtime_external_network": {"const": false},
+        "raw_cookie_export": {"const": false},
+        "credential_export": {"const": false},
+        "operator_acceptance": {"const": false},
+        "promotion": {"const": false},
+        "release_qualified": {"const": false}
+      }
+    }
+  }
+}
