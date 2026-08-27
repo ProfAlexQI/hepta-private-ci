@@ -86,9 +86,11 @@
       "documents": [
         "docs/hepta-vnext/browser/SERVO_UPSTREAM_PIN.json",
         "docs/hepta-vnext/browser/SERVO_SOURCE_IMPORT_TOPOLOGY.yaml",
+        "docs/hepta-vnext/browser/SERVO_PROVENANCE.md",
+        "docs/hepta-vnext/browser/hepta.servo.source_receipt.v1.schema.json",
         "third_party/servo-patches/PATCH_INVENTORY.json"
       ],
-      "status": "SOURCE_TOPOLOGY_FROZEN_NOT_IMPORTED",
+      "status": "SOURCE_TOPOLOGY_AND_GENERATOR_IMPLEMENTED_NO_SOURCE_RECEIPT",
       "release_blocking": true
     },
     {
@@ -97,16 +99,19 @@
       "stage": "WEB_C1",
       "code": [
         "codex-rs/hepta-shadow-qualification/src/browser_worker_protocol.rs",
-        "codex-rs/hepta-shadow-qualification/src/browser_worker_harness.rs"
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_harness.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_unix.rs"
       ],
       "documents": [
         "docs/hepta-vnext/browser/ADR-0001-servo-private-transport.md",
-        "docs/hepta-vnext/browser/SERVO_SOURCE_IMPORT_TOPOLOGY.yaml"
+        "docs/hepta-vnext/browser/SERVO_SOURCE_IMPORT_TOPOLOGY.yaml",
+        "docs/hepta-vnext/browser/WORKER_PROTOCOL.md"
       ],
       "tests": [
-        "qualification_worker_uses_only_private_child_pipes_and_preserves_browser_fences"
+        "qualification_worker_uses_only_private_child_pipes_and_preserves_browser_fences",
+        "inherited_unix_socketpair_has_no_listener_and_preserves_worker_identity"
       ],
-      "status": "QUALIFICATION_PIPE_IMPLEMENTED_PRODUCTION_TRANSPORT_PENDING",
+      "status": "QUALIFICATION_PRIVATE_TRANSPORTS_IMPLEMENTED_WINDOWS_AND_PRODUCTION_GATES_PENDING",
       "release_blocking": true
     },
     {
@@ -127,11 +132,13 @@
       "stage": "WEB_C1",
       "code": [
         "codex-rs/hepta-shadow-qualification/src/browser_worker_protocol.rs",
-        "codex-rs/hepta-shadow-qualification/src/browser_worker_harness.rs"
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_harness.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_unix.rs"
       ],
       "tests": [
         "browser_worker_rejects_wrong_or_replayed_startup_capability",
-        "qualification_worker_uses_only_private_child_pipes_and_preserves_browser_fences"
+        "qualification_worker_uses_only_private_child_pipes_and_preserves_browser_fences",
+        "inherited_unix_socketpair_has_no_listener_and_preserves_worker_identity"
       ],
       "status": "IMPLEMENTED_UNQUALIFIED",
       "release_blocking": true
@@ -151,31 +158,45 @@
       "stage": "WEB_C1",
       "code": [
         "codex-rs/hepta-shadow-qualification/src/browser_worker_protocol.rs",
-        "codex-rs/hepta-shadow-qualification/src/browser_worker_harness.rs"
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_harness.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_unix.rs"
       ],
       "tests": [
         "browser_worker_transports_actor_request_and_response_with_closed_authority",
-        "qualification_worker_uses_only_private_child_pipes_and_preserves_browser_fences"
+        "qualification_worker_uses_only_private_child_pipes_and_preserves_browser_fences",
+        "inherited_unix_socketpair_has_no_listener_and_preserves_worker_identity"
       ],
       "status": "IMPLEMENTED_UNQUALIFIED",
       "release_blocking": true
     },
     {
       "id": "WEB-REQ-014",
+      "title": "Unix worker control uses an inherited pathless socketpair and binds the spawned process identity",
+      "stage": "WEB_C1",
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_unix.rs",
+        "codex-rs/hepta-shadow-qualification/src/bin/hepta-browser-worker-qualification.rs"
+      ],
+      "tests": ["inherited_unix_socketpair_has_no_listener_and_preserves_worker_identity"],
+      "status": "IMPLEMENTED_QUALIFICATION_ONLY_UNQUALIFIED",
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-015",
       "title": "Crash recovery cannot replay an indeterminate external effect",
       "stage": "WEB_C5",
       "status": "NOT_IMPLEMENTED",
       "release_blocking": true
     },
     {
-      "id": "WEB-REQ-015",
+      "id": "WEB-REQ-016",
       "title": "Product caller and UI expose control mode, degradation and fencing",
       "stage": "WEB_C6",
       "status": "NOT_IMPLEMENTED",
       "release_blocking": true
     },
     {
-      "id": "WEB-REQ-016",
+      "id": "WEB-REQ-017",
       "title": "A release candidate binds source, features, artifacts, tests and operator acceptance",
       "stage": "WEB_C7",
       "documents": ["docs/hepta-vnext/browser/hepta.browser.qualification_receipt.v1.schema.json"],
