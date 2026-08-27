@@ -22,7 +22,8 @@
       "codex-rs/hepta-memory/src/lib.rs",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28.md",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
-      "scripts/verify-hepta-intelligence-fact-grounding.py"
+      "scripts/verify-hepta-intelligence-fact-grounding.py",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_1_SOURCE_RECEIPT_2026-08-28.json"
     ],
     "claims": {
       "source_span_validation": true,
@@ -35,7 +36,7 @@
     },
     "qualification": {
       "source_contract_gate": "PASS_FACT_GROUNDING_SOURCE_CONTRACT_ONLY",
-      "source_gate_execution": "local_reproduction_passed",
+      "source_gate_execution": "local_source_equivalent_reproduction_passed",
       "format": "not_run_runner_blocked",
       "focused_tests": "not_run_runner_blocked",
       "crate_tests": "not_run_runner_blocked",
@@ -58,7 +59,8 @@
           "commands_executed": false
         }
       ],
-      "qualified": false
+      "qualified": false,
+      "exact_candidate_source_gate": "not_run_runner_blocked"
     }
   },
   "capabilities": [
