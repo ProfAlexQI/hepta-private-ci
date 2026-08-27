@@ -1,0 +1,100 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+ROOT = Pathname.new(__dir__).join("..").expand_path
+FILES = {
+  semantic_css: ROOT.join("apps/hepta-control-ui/styles.v4.css"),
+  runtime_css: ROOT.join("apps/hepta-control-ui/styles.v4.runtime.css"),
+  runtime_js: ROOT.join("apps/hepta-control-ui/control-ui-v4-runtime.js"),
+  native_material: ROOT.join("apps/hepta-native/src/shared/hepta_platform_material.rs"),
+  native_controls: ROOT.join("apps/hepta-native/src/shared/hepta_v4_controls.rs"),
+  native_layout: ROOT.join("apps/hepta-native/src/shared/hepta_v4_layout.rs")
+}.freeze
+
+failures = []
+checks = []
+check = lambda do |id, condition, detail = nil|
+  passed = !!condition
+  checks << { id: id, passed: passed, detail: detail }
+  failures << "#{id}: #{detail || 'condition failed'}" unless passed
+end
+
+FILES.each { |name, path| check.call("file.#{name}", path.file?, path.to_s) }
+unless failures.empty?
+  warn JSON.pretty_generate(status: "FAIL_MISSING_INPUT", failures: failures, checks: checks)
+  exit 1
+end
+
+semantic = FILES.fetch(:semantic_css).read
+runtime = FILES.fetch(:runtime_css).read
+javascript = FILES.fetch(:runtime_js).read
+material = FILES.fetch(:native_material).read
+controls = FILES.fetch(:native_controls).read
+layout = FILES.fetch(:native_layout).read
+
+check.call("css.content.no_blur", semantic.match?(/\.tg-thread-panel.*?backdrop-filter:\s*none/m))
+check.call("css.mobile.uses_safe_bottom", semantic.include?("safe-area-inset-bottom"))
+check.call("css.mobile.uses_dvh", semantic.include?("100dvh"))
+check.call("css.runtime.scroll_lock", runtime.include?('data-hepta-v4-sheet-open="true"'))
+check.call("css.runtime.read_states", runtime.include?("data-hepta-v4-read-state"))
+check.call("css.no_filter_blur", !(semantic + runtime).match?(/filter:\s*blur\(/), "filter: blur() is forbidden")
+check.call(
+  "css.no_fixed_top_coordinates",
+  !(semantic + runtime).match?(/\btop:\s*\d+(?:\.\d+)?px\b/),
+  "fixed top pixel coordinates are forbidden in v4 source"
+)
+check.call(
+  "css.important_budget",
+  semantic.scan(/!important/).length <= 180,
+  "count=#{semantic.scan(/!important/).length} budget=180"
+)
+check.call("css.reduced_transparency", semantic.include?("prefers-reduced-transparency: reduce"))
+check.call("css.reduced_motion", semantic.include?("prefers-reduced-motion: reduce"))
+check.call("css.forced_colors", semantic.include?("forced-colors: active"))
+
+%w[fetch XMLHttpRequest WebSocket sendBeacon serviceWorker].each do |word|
+  check.call("js.network_forbidden.#{word}", !javascript.include?(word), word)
+end
+check.call("js.focus_cycle", javascript.include?("visibleFocusable") && javascript.include?("event.key !== \"Tab\""))
+check.call("js.escape", javascript.include?('event.key === "Escape"'))
+check.call("js.back", javascript.include?("popstate") && javascript.include?("history.pushState"))
+check.call("js.scroll_lock", javascript.include?("heptaV4SheetOpen"))
+check.call("js.read_states", javascript.include?("HeptaUiV4ReadState"))
+%w[productionAuthority effectAuthority liveAdapterAuthority promotion].each do |key|
+  check.call("js.authority.#{key}.false", javascript.match?(/#{key}:\s*false/), key)
+end
+
+check.call("native.material.content_solid", material.include?("stable_content_is_always_solid"))
+check.call("native.material.fallback", material.include?("disabled_transparency_forces_solid_fallback"))
+check.call("native.material.no_authority", material.include?("semantic_resolution_never_grants_authority"))
+check.call("native.controls.min48", controls.match?(/HEPTA_V4_CONTROL_MIN_HEIGHT:\s*f64\s*=\s*48\.0/))
+check.call("native.controls.icon48", controls.match?(/HEPTA_V4_ICON_HIT_TARGET:\s*f64\s*=\s*48\.0/))
+check.call("native.layout.header56", layout.match?(/HEPTA_V4_MOBILE_HEADER_HEIGHT:\s*f64\s*=\s*56\.0/))
+check.call("native.layout.back48", layout.match?(/HEPTA_V4_MOBILE_BACK_TARGET:\s*f64\s*=\s*48\.0/))
+
+result = {
+  schema: "hepta.ui.v4.style-lint-result.v1",
+  status: failures.empty? ? "PASS_SOURCE_LINT_ONLY" : "FAIL_SOURCE_LINT",
+  runtime_validation: false,
+  browser_validation: false,
+  native_compile_validation: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  promotion: false,
+  check_count: checks.length,
+  failed_count: failures.length,
+  failures: failures,
+  checks: checks
+}
+
+output = JSON.pretty_generate(result)
+if failures.empty?
+  puts output
+  exit 0
+end
+warn output
+exit 1
