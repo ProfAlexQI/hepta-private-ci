@@ -1139,6 +1139,13 @@ pub struct RefreshStatusByOperationKeyResponse {
 }
 
 impl RefreshStatusByOperationKeyResponse {
+    /// Recomputes the canonical binding digest without trusting the value
+    /// carried by a deserialized provider response.  Adapters use this helper
+    /// before exposing a status observation on the lookup-only boundary.
+    pub fn expected_binding_digest(&self) -> Result<Sha256Digest, AuthBusContractError> {
+        status_binding_digest(self)
+    }
+
     pub fn validate_against(
         &self,
         request: &RefreshStatusByOperationKeyRequest,

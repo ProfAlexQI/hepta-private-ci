@@ -2,6 +2,8 @@
 
 mod agent_id;
 mod authbus;
+#[cfg(feature = "authbus-local-qualification")]
+pub mod authbus_b3_adapter;
 #[cfg(any(test, feature = "authbus-local-qualification"))]
 pub mod authbus_b4;
 #[cfg(any(test, feature = "authbus-local-qualification"))]

@@ -3527,6 +3527,7 @@ dependencies = [
  "sha2 0.10.9",
  "tokio",
  "toml 0.9.11+spec-1.1.0",
+ "zeroize",
 ]
 
 [[package]]
