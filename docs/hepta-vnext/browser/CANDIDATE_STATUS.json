@@ -6,9 +6,26 @@
   "base_commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
   "candidate_branch": "codex/hepta-vnext-plan-browser-c0-c3-20260827",
   "pull_request": 1,
-  "head_commit": null,
-  "status": "CI_PENDING_NOT_QUALIFIED",
+  "head_commit": "9926882ca8405999ea19fd4e95c88a97c4852f46",
+  "head_tree": "38dd038106f21865bf3a622a61ff26182d980695",
+  "status": "HOSTED_RUNNER_ZERO_STEPS_NOT_QUALIFIED",
+  "current_pointer": "docs/hepta-vnext/browser/C1_CURRENT_V4.json",
+  "canonical_aggregate": ".github/workflows/hepta-browser-next-required-v6.yml",
+  "local_fixture_evidence": {
+    "worker_source_topology_contract": "PASS_LOCAL_ONLY",
+    "worker_source_topology_tests": "10_OF_10_PASS_LOCAL_ONLY",
+    "static_merge_verifier": "PASS_LOCAL_ONLY",
+    "hosted_equivalence": false
+  },
+  "hosted_evidence": {
+    "source_topology_run_id": 33126835010,
+    "aggregate_v6_run_id": 33126835338,
+    "source_topology_rerun_requested": true,
+    "jobs_entered_first_step": false,
+    "interpretation": "runner_account_or_policy_allocation_failure_not_a_code_test_result"
+  },
   "qualification_receipt": null,
+  "source_topology_receipt": null,
   "operator_acceptance": null,
   "promotion_receipt": null,
   "merge_authorized": false,
