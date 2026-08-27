@@ -1,7 +1,7 @@
 {
   "schema": "hepta.browser.current.v1",
   "schema_version": 1,
-  "updated_at_utc": "2026-08-27T12:05:00Z",
+  "updated_at_utc": "2026-08-27T17:20:00Z",
   "phase": "DEVELOPMENT",
   "claim_level": "L1_QUALIFICATION_ONLY",
   "canonical_plan": "docs/hepta-vnext/browser/EXECUTION_PLAN.md",
@@ -11,12 +11,17 @@
   "worker_protocol_spec": "docs/hepta-vnext/browser/WORKER_PROTOCOL.md",
   "receipt_schema": "docs/hepta-vnext/browser/hepta.browser.qualification_receipt.v1.schema.json",
   "servo_source_receipt_schema": "docs/hepta-vnext/browser/hepta.servo.source_receipt.v1.schema.json",
+  "servo_build_manifest_schema": "docs/hepta-vnext/browser/hepta.servo.worker_build_manifest.v1.schema.json",
   "servo_pin": "docs/hepta-vnext/browser/SERVO_UPSTREAM_PIN.json",
   "servo_source_topology": "docs/hepta-vnext/browser/SERVO_SOURCE_IMPORT_TOPOLOGY.yaml",
   "servo_provenance_spec": "docs/hepta-vnext/browser/SERVO_PROVENANCE.md",
+  "servo_build_manifest_spec": "docs/hepta-vnext/browser/C1_BUILD_MANIFEST.md",
+  "servo_build_manifest_status": "docs/hepta-vnext/browser/C1_BUILD_MANIFEST_STATUS.json",
   "servo_patch_inventory": "third_party/servo-patches/PATCH_INVENTORY.json",
   "provenance_generator": "scripts/generate-hepta-servo-provenance.py",
+  "servo_build_manifest_tool": "scripts/hepta-servo-build-manifest.py",
   "next_work_queue": "docs/hepta-vnext/browser/NEXT_WORK_QUEUE.yaml",
+  "c1_work_queue": "docs/hepta-vnext/browser/NEXT_WORK_QUEUE_C1.json",
   "implementation": {
     "crate": "codex-hepta-shadow-qualification",
     "contracts": "implemented_qualification_only",
@@ -24,6 +29,7 @@
     "single_owner_actor": "implemented_fixture_engine",
     "servo_source_topology": "frozen_isolated_verified_checkout",
     "servo_provenance_generator": "implemented_unqualified_no_source_receipt",
+    "servo_build_manifest_generator": "implemented_contract_evidence_pending",
     "private_worker_protocol": "implemented_qualification_only_unqualified",
     "qualification_process_harness": "implemented_private_stdio_pipe_unqualified",
     "unix_inherited_socketpair": "implemented_qualification_only_unqualified",
@@ -33,7 +39,7 @@
   },
   "stage_status": {
     "WEB_C0": "IMPLEMENTED_QUALIFICATION_ONLY",
-    "WEB_C1": "IN_PROGRESS_PRIVATE_PROTOCOL_QUALIFICATION",
+    "WEB_C1": "IN_PROGRESS_PRIVATE_PROTOCOL_AND_BUILD_INPUT_QUALIFICATION",
     "WEB_C2": "IMPLEMENTED_FIXTURE_ONLY",
     "WEB_C3": "IMPLEMENTED_FIXTURE_ONLY",
     "WEB_C4": "NOT_IMPLEMENTED",
@@ -42,12 +48,14 @@
     "WEB_C7": "NOT_IMPLEMENTED"
   },
   "open_c1_gates": [
-    "GitHub Actions runner preflight itself fails before recording steps; runner, billing, policy or action configuration must be repaired before any PASS claim",
+    "GitHub Actions jobs still fail before recording steps or usable logs; runner, billing, policy or action configuration must be repaired before any exact-head PASS claim",
+    "the focused workflows are now explicit CI-required dependencies but have not produced exact-head receipts",
     "the Unix socketpair implementation is a qualification scaffold and still lacks platform receipt, artifact digest, sandbox and parent-death qualification",
     "the Windows SID-restricted named pipe is not implemented",
-    "Servo source is pinned but not checked out, patched, built or linked",
-    "the provenance generator has not been run against the exact Servo checkout",
-    "source/SBOM/toolchain/artifact receipts are not sealed",
+    "Servo source is pinned but no canonical two-fetch source bundle has been sealed",
+    "the build-manifest generator is implemented and locally fixture-tested but no real build manifest exists",
+    "Servo has not been patched, built, linked, or bound to a real worker artifact",
+    "source, complete SBOM, toolchain, native dependency, artifact, and reproducibility receipts are not sealed",
     "real one-WebView smoke, listener scan, sandbox and external-egress denial are not run"
   ],
   "authority": {
@@ -66,6 +74,7 @@
   "supersedes": [
     "Dropbox-only browser plan pointers",
     "unreceipted natural-language browser implementation claims",
-    "C1 status that did not distinguish protocol scaffolding from a real Servo runtime"
+    "C1 status that did not distinguish protocol scaffolding from a real Servo runtime",
+    "build-input plans without a canonical create-and-recompute manifest contract"
   ]
 }
