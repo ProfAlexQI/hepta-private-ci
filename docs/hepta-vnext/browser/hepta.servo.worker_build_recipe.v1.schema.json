@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.invalid/schema/hepta.servo.worker_build_recipe.v1.schema.json",
+  "title": "Hepta Servo worker build recipe v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "plan_id",
+    "stage",
+    "status",
+    "target",
+    "profile",
+    "manifest_path",
+    "package",
+    "artifact_path",
+    "features",
+    "default_features",
+    "jobs",
+    "command_prefix",
+    "environment",
+    "toolchain",
+    "build_network",
+    "source_mutation_allowed",
+    "runtime_external_network",
+    "authority"
+  ],
+  "properties": {
+    "schema": {"const": "hepta.browser.servo_worker_build_recipe.v1"},
+    "schema_version": {"const": 1},
+    "plan_id": {"const": "HEPTA-BROWSER-WEB-D"},
+    "stage": {"const": "WEB_C1"},
+    "status": {"const": "FROZEN_INPUTS_NOT_EXECUTED"},
+    "target": {
+      "enum": [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ]
+    },
+    "profile": {"enum": ["release", "profiling"]},
+    "manifest_path": {"$ref": "#/$defs/relativePath"},
+    "package": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"},
+    "artifact_path": {"$ref": "#/$defs/relativePath"},
+    "features": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,127}$"}
+    },
+    "default_features": {"const": false},
+    "jobs": {"type": "integer", "minimum": 1, "maximum": 64},
+    "command_prefix": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 16,
+      "items": {"type": "string", "minLength": 1, "maxLength": 512}
+    },
+    "environment": {
+      "const": {
+        "CARGO_NET_OFFLINE": "true",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_TERMINAL_PROMPT": "0",
+        "LANG": "C",
+        "LC_ALL": "C",
+        "SOURCE_DATE_EPOCH": "0",
+        "TZ": "UTC"
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rustc_version",
+        "rustc_commit_hash",
+        "cargo_version",
+        "host",
+        "target",
+        "rustc_binary_sha256",
+        "cargo_binary_sha256",
+        "linker_kind",
+        "linker_version",
+        "linker_binary_sha256"
+      ],
+      "properties": {
+        "rustc_version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "rustc_commit_hash": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "cargo_version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "host": {"type": "string", "minLength": 1, "maxLength": 128},
+        "target": {
+          "enum": [
+            "x86_64-unknown-linux-gnu",
+            "aarch64-apple-darwin",
+            "x86_64-pc-windows-msvc"
+          ]
+        },
+        "rustc_binary_sha256": {"$ref": "#/$defs/sha256"},
+        "cargo_binary_sha256": {"$ref": "#/$defs/sha256"},
+        "linker_kind": {"type": "string", "minLength": 1, "maxLength": 128},
+        "linker_version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "linker_binary_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "build_network": {"const": false},
+    "source_mutation_allowed": {"const": false},
+    "runtime_external_network": {"const": false},
+    "authority": {"$ref": "#/$defs/authority"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000\\\\]+$"
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_authority",
+        "effect_authority",
+        "production_caller",
+        "production_writer",
+        "runtime_external_network",
+        "raw_cookie_export",
+        "credential_export",
+        "operator_acceptance",
+        "promotion",
+        "release_qualified"
+      ],
+      "properties": {
+        "runtime_authority": {"const": false},
+        "effect_authority": {"const": false},
+        "production_caller": {"const": false},
+        "production_writer": {"const": false},
+        "runtime_external_network": {"const": false},
+        "raw_cookie_export": {"const": false},
+        "credential_export": {"const": false},
+        "operator_acceptance": {"const": false},
+        "promotion": {"const": false},
+        "release_qualified": {"const": false}
+      }
+    }
+  }
+}
