@@ -18,6 +18,7 @@
 /codex-rs/ext/hepta-* @ProfAlexQI
 /docs/hepta-vnext/ @ProfAlexQI
 /scripts/verify-hepta-browser-plan.py @ProfAlexQI
+/scripts/verify-hepta-browser-plan-v2.py @ProfAlexQI
 /.github/workflows/hepta-vnext-qualification.yml @ProfAlexQI
 
 # Keep ownership changes reviewed by the same upstream team and the Hepta owner.
