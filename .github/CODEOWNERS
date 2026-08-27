@@ -19,12 +19,13 @@
 /docs/hepta-vnext/ @ProfAlexQI
 /third_party/servo-patches/ @ProfAlexQI
 /tools/hepta-browser-c1-protocol/ @ProfAlexQI
+/tools/hepta-browser-c1-artifact-gate/ @ProfAlexQI
 /scripts/hepta-servo-*.py @ProfAlexQI
 /scripts/hepta_servo_*.py @ProfAlexQI
 /scripts/verify-hepta-browser-*.py @ProfAlexQI
 /scripts/verify-hepta-servo-*.py @ProfAlexQI
 /scripts/generate-hepta-servo-provenance.py @ProfAlexQI
-/scripts/test_generate_hepta_servo_provenance.py @ProfAlexQI
+/scripts/test_generate_hepta-servo-provenance.py @ProfAlexQI
 /scripts/tests/test_hepta_servo_*.py @ProfAlexQI
 /.github/workflows/hepta-*.yml @ProfAlexQI
 /.github/workflows/hepta-browser-ci.yml @ProfAlexQI
