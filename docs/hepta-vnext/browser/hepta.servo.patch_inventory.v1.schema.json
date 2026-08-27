@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hepta.servo.patch_inventory.v1",
+  "title": "Hepta Servo patch inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "upstream_commit", "upstream_tree", "patches"],
+  "properties": {
+    "schema": {"const": "hepta.servo.patch_inventory.v1"},
+    "upstream_commit": {"const": "0a48e298482659817eb50097df23841f2b8e3044"},
+    "upstream_tree": {"const": "b04d2f75b3217374d079d579c270177b57fa1389"},
+    "patches": {
+      "type": "array",
+      "maxItems": 1024,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "path",
+          "sha256",
+          "reason",
+          "upstream_reference",
+          "deletion_condition"
+        ],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9._:+@=-]{1,128}$"},
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^[A-Za-z0-9._:+/@=-]+$"
+          },
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "reason": {"type": "string", "minLength": 1, "maxLength": 2048},
+          "upstream_reference": {"type": "string", "minLength": 1, "maxLength": 2048},
+          "deletion_condition": {"type": "string", "minLength": 1, "maxLength": 2048}
+        }
+      }
+    }
+  }
+}
