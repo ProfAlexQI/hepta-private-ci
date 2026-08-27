@@ -4,7 +4,7 @@ use codex_hepta_shadow_qualification::run_qualification_browser_worker;
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let arguments = std::env::args().skip(1).collect::<Vec<_>>();
-    if arguments.as_slice() != [BROWSER_WORKER_MODE_ARGUMENT] {
+    if arguments.len() != 1 || arguments[0] != BROWSER_WORKER_MODE_ARGUMENT {
         eprintln!(
             "hepta-browser-worker-qualification accepts only the private qualification mode"
         );
