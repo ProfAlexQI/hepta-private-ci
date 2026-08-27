@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hepta.browser.c1_protocol_qualification_receipt.v1",
+  "title": "Hepta Browser C1 private worker protocol qualification receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "phase",
+    "claim_level",
+    "source_commit",
+    "source_tree",
+    "servo_source_pin",
+    "protocol",
+    "checks",
+    "authority",
+    "decision"
+  ],
+  "properties": {
+    "schema": {
+      "const": "hepta.browser.c1_protocol_qualification_receipt.v1"
+    },
+    "phase": {
+      "const": "DEVELOPMENT"
+    },
+    "claim_level": {
+      "const": "QUALIFICATION_ONLY_PRIVATE_PROTOCOL"
+    },
+    "source_commit": {
+      "$ref": "#/$defs/sha40"
+    },
+    "source_tree": {
+      "$ref": "#/$defs/sha40"
+    },
+    "servo_source_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "commit", "tree", "license", "artifact_imported"],
+      "properties": {
+        "repository": {"const": "servo/servo"},
+        "commit": {"const": "0a48e298482659817eb50097df23841f2b8e3044"},
+        "tree": {"const": "b04d2f75b3217374d079d579c270177b57fa1389"},
+        "license": {"const": "MPL-2.0"},
+        "artifact_imported": {"const": false}
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "maximum_frame_bytes",
+        "third_party_dependencies",
+        "tcp_listener",
+        "http_surface",
+        "external_network",
+        "real_servo_worker"
+      ],
+      "properties": {
+        "version": {"const": 1},
+        "maximum_frame_bytes": {"const": 65536},
+        "third_party_dependencies": {"const": 0},
+        "tcp_listener": {"const": false},
+        "http_surface": {"const": false},
+        "external_network": {"const": false},
+        "real_servo_worker": {"const": false}
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan_verifier", "format", "tests", "clippy", "forbidden_surface_scan"],
+      "properties": {
+        "plan_verifier": {"$ref": "#/$defs/check"},
+        "format": {"$ref": "#/$defs/check"},
+        "tests": {"$ref": "#/$defs/check"},
+        "clippy": {"$ref": "#/$defs/check"},
+        "forbidden_surface_scan": {"$ref": "#/$defs/check"}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_authority",
+        "production_caller",
+        "production_writer",
+        "effect_authority",
+        "external_effect",
+        "operator_acceptance",
+        "promotion",
+        "g5_allowed",
+        "execute_allowed",
+        "external_network_allowed",
+        "credential_export_allowed"
+      ],
+      "properties": {
+        "runtime_authority": {"const": false},
+        "production_caller": {"const": false},
+        "production_writer": {"const": false},
+        "effect_authority": {"const": false},
+        "external_effect": {"const": false},
+        "operator_acceptance": {"const": false},
+        "promotion": {"const": false},
+        "g5_allowed": {"const": false},
+        "execute_allowed": {"const": false},
+        "external_network_allowed": {"const": false},
+        "credential_export_allowed": {"const": false}
+      }
+    },
+    "decision": {
+      "enum": ["QUALIFICATION_ONLY_PASS", "FAIL_CLOSED"]
+    }
+  },
+  "$defs": {
+    "sha40": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "log_sha256"],
+      "properties": {
+        "status": {"enum": ["PASSED", "FAILED"]},
+        "log_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}
