@@ -1,0 +1,91 @@
+name: hepta-servo independent source contract
+
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - "scripts/hepta-servo-independent-source.py"
+      - "scripts/verify-hepta-servo-independent-source-contract.py"
+      - "scripts/tests/test_hepta_servo_independent_source.py"
+      - "docs/hepta-vnext/browser/C1_INDEPENDENT_SOURCE_PIPELINE.md"
+      - "docs/hepta-vnext/browser/C1_004A_PROGRESS.json"
+      - "docs/hepta-vnext/browser/hepta.servo.independent_source_bundle.v1.schema.json"
+      - ".github/workflows/hepta-servo-independent-source-contract.yml"
+      - ".github/workflows/hepta-servo-independent-source-qualification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Independent source tooling contract (no Servo fetch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Initialize fail-closed posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-independent-source-contract"
+          mkdir -p "$evidence_dir"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "source_fetch_performed=false"
+            echo "external_network=false"
+            echo "servo_built=false"
+            echo "servo_runtime_qualified=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Compile Python entrypoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-servo-independent-source.py \
+            scripts/verify-hepta-servo-independent-source-contract.py \
+            scripts/tests/test_hepta_servo_independent_source.py
+
+      - name: Run isolated Git fixture tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-independent-source-contract"
+          python3 scripts/tests/test_hepta_servo_independent_source.py 2>&1 | tee "$evidence_dir/unit-tests.log"
+          echo "unit_tests=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Verify frozen source-only contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-independent-source-contract"
+          python3 scripts/verify-hepta-servo-independent-source-contract.py 2>&1 | tee "$evidence_dir/contract.log"
+          echo "contract=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-independent-source-contract"
+          echo "job_status=${{ job.status }}" >> "$evidence_dir/posture.txt"
+          cat "$evidence_dir/posture.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload contract evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-servo-independent-source-contract
+          path: ${{ runner.temp }}/hepta-servo-independent-source-contract
+          if-no-files-found: error
