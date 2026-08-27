@@ -13,13 +13,17 @@
 /.github/scripts/macos-signing/ @openai/codex-core-agent-team
 /.github/workflows/rust-release.yml @openai/codex-core-agent-team
 
-# Hepta repository-native contracts, qualification, and authority surfaces.
+# Hepta repository-native contracts, qualification, provenance, and authority surfaces.
 /codex-rs/hepta-* @ProfAlexQI
 /codex-rs/ext/hepta-* @ProfAlexQI
 /docs/hepta-vnext/ @ProfAlexQI
+/third_party/servo-patches/ @ProfAlexQI
 /scripts/verify-hepta-browser-plan.py @ProfAlexQI
 /scripts/verify-hepta-browser-plan-v2.py @ProfAlexQI
+/scripts/generate-hepta-servo-provenance.py @ProfAlexQI
+/scripts/test_generate_hepta_servo_provenance.py @ProfAlexQI
 /.github/workflows/hepta-vnext-qualification.yml @ProfAlexQI
+/.github/workflows/blocking-ci.yml @ProfAlexQI
 
 # Keep ownership changes reviewed by the same upstream team and the Hepta owner.
 /.github/CODEOWNERS @openai/codex-core-agent-team @ProfAlexQI
