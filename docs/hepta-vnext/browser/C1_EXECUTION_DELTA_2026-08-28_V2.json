@@ -1,0 +1,99 @@
+{
+  "schema": "hepta.browser.c1_execution_delta.v2",
+  "schema_version": 1,
+  "updated_at_utc": "2026-08-28T00:00:00Z",
+  "plan_id": "HEPTA-BROWSER-WEB-D",
+  "stage": "WEB_C1",
+  "phase": "DEVELOPMENT",
+  "canonical_current": "docs/hepta-vnext/browser/C1_CURRENT_V3.json",
+  "canonical_aggregate": ".github/workflows/hepta-browser-next-required-v5.yml",
+  "completed_tooling": [
+    {
+      "id": "C1-004A-1",
+      "status": "IMPLEMENTED_NOT_ACCEPTED_EXACT_RUN",
+      "result": "two independent exact-source acquisitions with distinct Git roots, object stores and nonces"
+    },
+    {
+      "id": "C1-004A-2",
+      "status": "IMPLEMENTED_NOT_ACCEPTED_EXACT_RUN",
+      "result": "offline archive verification and Git root-tree reconstruction"
+    },
+    {
+      "id": "C1-004A-3",
+      "status": "IMPLEMENTED_NOT_ACCEPTED_EXACT_RUN",
+      "result": "deterministic Git tar umask and gzip metadata"
+    },
+    {
+      "id": "C1-004A-4",
+      "status": "IMPLEMENTED_NOT_ACCEPTED_EXACT_RUN",
+      "result": "MPL-2.0 license and patch-inventory binding"
+    },
+    {
+      "id": "C1-004B-1",
+      "status": "IMPLEMENTED_NO_REAL_INPUT_MANIFEST",
+      "result": "independent toolchain capture and source/recipe/toolchain build-input sealing"
+    },
+    {
+      "id": "C1-004B-2-PREFLIGHT",
+      "status": "IMPLEMENTED_FIXTURES_ONLY_NO_REAL_PREFLIGHT",
+      "result": "Linux source/archive/recipe/toolchain/manifest/binary/root cross-binding before Cargo"
+    }
+  ],
+  "correctness_repairs": [
+    {
+      "issue": "git archive modes depended on process umask",
+      "repair": "canonical source generator v2 forces process-scoped tar.umask=0022"
+    },
+    {
+      "issue": "ordinary byte sorting does not implement Git tree base-name ordering",
+      "repair": "canonical source verifier v2 uses directory slash and file NUL comparison semantics"
+    },
+    {
+      "issue": "build-input v2 rejected normal rustc/linker version punctuation",
+      "repair": "canonical build-input sealer v3 accepts bounded path-free punctuation while rejecting control/shell/path characters"
+    },
+    {
+      "issue": "preflight trusted toolchain capture fields too broadly",
+      "repair": "canonical preflight v2 freezes commands, capture environment, linker kinds and path-free version facts"
+    }
+  ],
+  "evidence_still_required": [
+    "successful exact-source qualification v3 run",
+    "reviewed accepted source pointer",
+    "minimal Servo worker source/API topology",
+    "accepted exact Linux toolchain receipt",
+    "accepted minimal build recipe",
+    "sealed real build-input manifest v2",
+    "real preflight receipt v1",
+    "bounded offline build receipt",
+    "artifact, symbols and SPDX SBOM",
+    "independent reproducibility comparison",
+    "real one-WebView runtime receipt"
+  ],
+  "claims": {
+    "exact_servo_source_accepted": false,
+    "toolchain_accepted": false,
+    "build_recipe_accepted": false,
+    "real_build_inputs_sealed": false,
+    "real_build_preflight_passed": false,
+    "build_run": false,
+    "artifact_created": false,
+    "sbom_created": false,
+    "servo_runtime_qualified": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  },
+  "authority": {
+    "runtime_authority": false,
+    "effect_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "runtime_external_network": false,
+    "raw_cookie_export": false,
+    "credential_export": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  }
+}
