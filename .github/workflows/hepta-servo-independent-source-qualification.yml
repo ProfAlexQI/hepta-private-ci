@@ -1,0 +1,136 @@
+name: hepta-servo independent source qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      acknowledge_source_only:
+        description: Type SOURCE_ONLY_NO_RUNTIME_AUTHORITY
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    name: Two independent exact Servo fetches and deterministic archive
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Require explicit source-only acknowledgement
+        shell: bash
+        env:
+          ACKNOWLEDGEMENT: ${{ inputs.acknowledge_source_only }}
+        run: |
+          set -euo pipefail
+          test "$ACKNOWLEDGEMENT" = "SOURCE_ONLY_NO_RUNTIME_AUTHORITY"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Record exact immutable inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-independent-source-evidence"
+          mkdir -p "$evidence_dir"
+          {
+            echo "hepta_commit=$(git rev-parse HEAD)"
+            echo "hepta_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "servo_commit=0a48e298482659817eb50097df23841f2b8e3044"
+            echo "servo_tree=b04d2f75b3217374d079d579c270177b57fa1389"
+            echo "acquisition_network=true"
+            echo "runtime_external_network=false"
+            echo "servo_built=false"
+            echo "servo_runtime_qualified=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } > "$evidence_dir/posture.txt"
+          df -h . "$RUNNER_TEMP" > "$evidence_dir/disk-before.txt"
+
+      - name: Verify source tooling contract before network access
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-servo-independent-source-contract.py
+          python3 scripts/tests/test_hepta_servo_independent_source.py
+
+      - name: Acquire exact Servo source twice and create deterministic bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/hepta-servo-independent-source"
+          python3 scripts/hepta-servo-independent-source.py \
+            --output-dir "$output_dir" \
+            2>&1 | tee "$RUNNER_TEMP/hepta-servo-independent-source-evidence/pipeline.log"
+          test -f "$output_dir/independent-source-bundle.receipt.json"
+          test -f "$output_dir/servo-source-a.tar.gz"
+          rm "$output_dir/servo-source-a.tar"
+          sha256sum "$output_dir"/* > "$RUNNER_TEMP/hepta-servo-independent-source-evidence/SHA256SUMS"
+          df -h . "$RUNNER_TEMP" > "$RUNNER_TEMP/hepta-servo-independent-source-evidence/disk-after.txt"
+
+      - name: Assert source-only negative authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/hepta-servo-independent-source"
+          python3 - "$output_dir/independent-source-bundle.receipt.json" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          receipt_path = pathlib.Path(sys.argv[1])
+          receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+          assert receipt["canonical"] is True
+          assert receipt["source"]["commit"] == "0a48e298482659817eb50097df23841f2b8e3044"
+          assert receipt["source"]["tree"] == "b04d2f75b3217374d079d579c270177b57fa1389"
+          assert receipt["qualification"]["servo_built"] is False
+          assert receipt["qualification"]["servo_runtime_qualified"] is False
+          assert receipt["runtime_external_network"] is False
+          assert all(value is False for value in receipt["authority"].values())
+          text = receipt_path.read_text(encoding="utf-8")
+          assert str(pathlib.Path.home()) not in text
+          assert "/home/runner/work" not in text
+          PY
+          echo "source_bundle=passed" >> "$RUNNER_TEMP/hepta-servo-independent-source-evidence/posture.txt"
+
+      - name: Upload canonical source-only receipts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-servo-independent-source-receipts
+          path: |
+            ${{ runner.temp }}/hepta-servo-independent-source/*.json
+            ${{ runner.temp }}/hepta-servo-independent-source-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload deterministic compressed source archive
+        if: success()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: servo-0a48e298482659817eb50097df23841f2b8e3044-source
+          path: ${{ runner.temp }}/hepta-servo-independent-source/servo-source-a.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Final source-only summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-independent-source-evidence"
+          echo "job_status=${{ job.status }}" >> "$evidence_dir/posture.txt"
+          {
+            echo "### Exact Servo source-only qualification"
+            echo
+            echo "This run may qualify source acquisition and deterministic archive bytes only."
+            echo "It never builds or executes Servo and never grants runtime or release authority."
+            echo
+            sed 's/^/- /' "$evidence_dir/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
