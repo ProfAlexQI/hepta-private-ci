@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.local/schemas/hepta.hnl_receipt.v1.schema.json",
+  "title": "Hepta HNL Qualification Receipt v1",
+  "type": "object",
+  "required": [
+    "schema", "kind", "status", "qualification_mode", "source", "inputs",
+    "tests", "artifacts", "resource", "authority", "open_blockers",
+    "negative_authority"
+  ],
+  "properties": {
+    "schema": {"const": "hepta.hnl_receipt.v1"},
+    "kind": {"type": "string"},
+    "status": {"enum": ["PASS", "FAIL", "KNOWN_GAP", "BLOCKED", "STALE_SOURCE_BINDING"]},
+    "qualification_mode": {"enum": ["design", "shadow", "qualification", "interop", "benchmark"]},
+    "source": {
+      "type": "object",
+      "required": ["repo", "worktree", "branch", "head", "tree", "dirty", "parent_plan_digest"],
+      "properties": {
+        "repo": {"type": "string"},
+        "worktree": {"type": "string"},
+        "branch": {"type": "string"},
+        "head": {"type": "string"},
+        "tree": {"type": "string"},
+        "dirty": {"type": "boolean"},
+        "parent_plan_digest": {"type": "string"}
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "properties": {
+        "manifest_digest": {"type": "string"},
+        "cargo_lock_digest": {"type": "string"},
+        "backend_commit": {"type": "string"},
+        "schema_digest": {"type": "string"}
+      }
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "status", "counts", "duration_ms", "network_access", "external_services"],
+        "properties": {
+          "command": {"type": "string"},
+          "status": {"enum": ["pass", "fail", "skipped", "known_gap"]},
+          "counts": {"type": "object"},
+          "duration_ms": {"type": "integer", "minimum": 0},
+          "network_access": {"type": "boolean"},
+          "external_services": {"type": "array", "items": {"type": "string"}},
+          "trace_digest": {"type": "string"}
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {"path": {"type": "string"}, "sha256": {"type": "string"}}
+      }
+    },
+    "resource": {
+      "type": "object",
+      "properties": {
+        "rss_peak_mb": {"type": ["number", "null"]},
+        "cpu_peak_pct": {"type": ["number", "null"]},
+        "disk_mb": {"type": ["number", "null"]},
+        "threads": {"type": ["integer", "null"]},
+        "fds": {"type": ["integer", "null"]},
+        "hardware": {"type": ["string", "null"]}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "required": ["production_writer", "effect", "fleet", "shared_kg", "route", "model_npu", "callers", "promotion", "operator_acceptance"],
+      "properties": {
+        "production_writer": {"const": false},
+        "effect": {"const": false},
+        "fleet": {"const": false},
+        "shared_kg": {"const": false},
+        "route": {"const": false},
+        "model_npu": {"const": false},
+        "callers": {"const": false},
+        "promotion": {"const": false},
+        "operator_acceptance": {"const": false}
+      },
+      "additionalProperties": false
+    },
+    "open_blockers": {"type": "array", "items": {"type": "string"}},
+    "negative_authority": {
+      "type": "object",
+      "required": ["production_writer", "effect", "fleet", "shared_kg", "route", "model_npu", "callers", "promotion"],
+      "properties": {
+        "production_writer": {"const": false},
+        "effect": {"const": false},
+        "fleet": {"const": false},
+        "shared_kg": {"const": false},
+        "route": {"const": false},
+        "model_npu": {"const": false},
+        "callers": {"const": false},
+        "promotion": {"const": false}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

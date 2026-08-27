@@ -1,0 +1,93 @@
+{
+  "schema": "hepta.h23.taskflow_event_fence_binding.qualification_receipt.v1",
+  "status": "LOCAL_QUALIFICATION_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "slice": [
+    "bind each fenced TaskFlow event to the contiguous lease tuple that authorized it",
+    "require lease_claimed to be the only owner/generation transition and require takeover generation monotonicity",
+    "require an active event tail to match the run projection owner/epoch/generation/fencing token",
+    "fail closed when a hash-valid event owner or fencing token is edited without changing the legacy event digest",
+    "exercise the invariant through the default opener and the opt-in structural replay seam",
+    "retain the legacy fence-less sticky-cancel Resume terminal event shape"
+  ],
+  "worktree": "/Volumes/T5/hepta-vnext/worktrees/h2-registry-backlog-20260826",
+  "branch": "hepta/h2-registry-backlog-20260826",
+  "head": "2e98c49968a06c3ee0e39719b316e44be1628824",
+  "tree": "05c60b67219ec9cb7e94b8c82bbb9f64505874f3",
+  "parent": "a5858034eba39806346c73607bdd3173ce503a9d",
+  "source_binding": {
+    "canonical_candidate": "a5858034eba39806346c73607bdd3173ce503a9d",
+    "canonical_candidate_tree": "f4b75cc4ee05873bbae5eb38c8c1b29201c66d8e",
+    "external_authority_receipt": false,
+    "binding_status": "NOT_PRODUCTION_BOUND",
+    "note": "Independent append-only local evidence; no canonical worktree, Dropbox current/effective index, or authority flag was modified."
+  },
+  "supersedes_local_receipt": {
+    "path": "/Volumes/T5/hepta-vnext/artifacts/hepta-h23-taskflow-fence-binding-c1a7ee1a-20260826/H23-TASKFLOW-FENCE-BINDING-RECEIPT.json",
+    "sha256": "368bf14dcf5acb0b4dcc1c1f717325188735f9b45aae3cc7074bd8d49d7382f7",
+    "reason": "The amended commit preserves a legacy fence-less sticky-cancel Resume terminal event shape that the first receipt did not record."
+  },
+  "evidence": {
+    "evidence_class": "LOCAL_TASKFLOW_EVENT_FENCE_TAMPER_REGRESSION",
+    "claim_status": "QUALIFICATION_ONLY",
+    "efficacy_status": "NOT_ASSESSED",
+    "approval": "NONE",
+    "physical_exactly_once": "NOT_ESTABLISHED",
+    "scope": "The verifier now relates duplicated event fence columns to lease history and the active run projection. The existing event digest algorithm and schema are unchanged, so no migration or production writer/effect authority is introduced."
+  },
+  "checks": {
+    "focused_default_fence_tamper_test": "1 passed / 0 failed / 9 filtered",
+    "focused_structural_fence_tamper_test": "1 passed / 0 failed / 3 filtered",
+    "default_package_tests_locked": "26 passed / 0 failed / 0 skipped (16 automation, 10 TaskFlow)",
+    "structural_feature_package_tests_locked": "30 passed / 0 failed / 0 skipped (16 automation, 10 TaskFlow, 4 structural)",
+    "cargo_check_codex_hepta_automation_default_locked": "pass",
+    "cargo_check_codex_hepta_automation_structural_feature_locked": "pass",
+    "cargo_clippy_codex_hepta_automation_all_targets_d_warnings_locked": "pass",
+    "cargo_clippy_codex_hepta_automation_structural_feature_all_targets_d_warnings_locked": "pass",
+    "targeted_cargo_fmt_check": "pass (pinned formatter warnings only)",
+    "git_diff_check": "pass",
+    "worktree_clean_after_commit": true
+  },
+  "tamper_model": {
+    "mutation": "drop the local immutable-event trigger and replace event owner_id/fencing_token while leaving event_digest, payload, revision, and state digest unchanged",
+    "default_opener": "AutomationStore::open returns AutomationError::Corrupt",
+    "structural_replay": "replay_taskflow_structural returns TaskFlowError::Corrupt with event-tail fence mismatch",
+    "authority_source": "local lease history and run projection only; no external signer or provider is consulted"
+  },
+  "compatibility": {
+    "schema_migration": false,
+    "event_digest_algorithm_migration": false,
+    "legacy_run_created_fence": "fence-less",
+    "legacy_terminal_event_fence": "fence-less",
+    "legacy_sticky_cancel_resume": "a final fence-less resumed event is accepted only for a cancelled projection with cancel_requested=true",
+    "takeover_rule": "only lease_claimed may change the active tuple, and its generation must strictly increase"
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "scheduler_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "model_inference": false,
+    "shared_kg_write": false,
+    "fleet": false
+  },
+  "external_effects": false,
+  "real_provider_or_market_connected": false,
+  "remaining_gates": [
+    "include owner/generation/fencing tuple in a versioned cryptographic event digest or signed provenance envelope",
+    "durable per-step TaskFlow writer/outbox and receipt/reconciliation authority",
+    "production scheduler/effect/provider mutation wiring and external signer/trust-root/KMS/HSM lifecycle",
+    "crash/reopen/power-loss/media durability and independent supervisor/promotion ceremony",
+    "coordinated multi-row database edits remain outside local cryptographic authority because this slice intentionally avoids schema/digest migration"
+  ],
+  "append_only": true,
+  "generated_at": "2026-08-26T15:35:36Z"
+}

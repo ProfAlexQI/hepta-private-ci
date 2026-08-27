@@ -1,0 +1,101 @@
+{
+  "schema": "hepta.authbus.b3.wire-strict.qualification-receipt.v1",
+  "receipt_kind": "QUALIFICATION",
+  "status": "LOCAL_QUALIFICATION_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "slice": [
+    "B3 active provider wire unknown-field policy",
+    "B3 provider binding, intent, terminal, and receipt invariant validation"
+  ],
+  "change": {
+    "commit": "103832598045a7d35e800c5cc15a03c26387fac7",
+    "parent": "cc4f6dd0e17b131d19d32e00c86680208d995350",
+    "tree": "49e6b8d11626cefc4115550c79b338ace9d5bb07",
+    "files": [
+      "codex-rs/hepta-contracts/src/provider.rs"
+    ],
+    "summary": "Harden the active provider wire contracts with strict unknown-field rejection and explicit pre-adapter validation without changing evidence storage projections.",
+    "unknown_field_policy": "ProviderRequestBinding, ProviderInvocationIntent, ProviderTerminal, and ProviderInvocationReceipt reject unknown fields at active v1 decode boundaries.",
+    "validation": [
+      "schema version must equal PROVIDER_EVIDENCE_SCHEMA_VERSION",
+      "text identifiers and terminal reason codes are non-empty, bounded, and NUL-free",
+      "all SHA-256 fields are canonical lowercase digests",
+      "ephemeral input and witness digests are present together or absent together",
+      "request binding, attempt, and receipt IDs are recomputed and identity-fenced",
+      "terminal response and partial-response digests are validated before wire encoding"
+    ],
+    "canonical_encoding": "canonical_wire_bytes validates first and then emits the active provider JSON wire bytes; it is intentionally distinct from the hepta-evidence sorted projection and does not alter stored payload digests.",
+    "compatibility": "Legacy payloads that omit the optional ephemeral input and witness fields remain decodable; historical evidence receipts are not rewritten. Unknown future fields are rejected rather than silently projected."
+  },
+  "qualification_lane": {
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/authbus-b3-wire-strict-20260826",
+    "branch": "hepta/authbus-b3-wire-strict-20260826",
+    "head": "103832598045a7d35e800c5cc15a03c26387fac7",
+    "tree": "49e6b8d11626cefc4115550c79b338ace9d5bb07",
+    "parent": "cc4f6dd0e17b131d19d32e00c86680208d995350",
+    "clean": true
+  },
+  "source_binding": {
+    "plan_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+    "plan_sha256": "b8c8c8187f86e538b312a90497dfe7ba21db3a923d3d2fad0ce3312ab4c6bb0f",
+    "qualification_index_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+    "qualification_index_sha256": "e3105a4684c49340fd66c71c4be94e0a335ba19e8081200a87416d1c6e809b63",
+    "authbus_stage_matrix": "AUTHBUS.11-v1.3#/execution_closure_v1_3/phase_map",
+    "binding_status": "CURRENT_SOURCE_SNAPSHOT_FOR_LOCAL_QUALIFICATION",
+    "external_authority": false
+  },
+  "checks": {
+    "focused_provider_contract_tests": "7 passed / 0 failed",
+    "cargo_test_locked_p_codex_hepta_contracts_lib_serial": "89 passed / 0 failed",
+    "cargo_test_locked_p_codex_hepta_evidence_lib_serial": "80 passed / 0 failed",
+    "cargo_check_locked_p_codex_hepta_contracts": "pass",
+    "cargo_clippy_locked_p_codex_hepta_contracts_lib_d_warnings": "pass",
+    "rustfmt_check_changed_provider_file": "pass",
+    "git_diff_check": "pass"
+  },
+  "test_logs": [
+    {
+      "path": "/Volumes/T5/hepta-vnext/artifacts/authbus-b3-wire-strict-20260826/provider-focused.log",
+      "sha256": "8b06fe5d05badf1a462677876be6a75cd0ee601425624bcdee22f7ea11892186"
+    },
+    {
+      "path": "/Volumes/T5/hepta-vnext/artifacts/authbus-b3-wire-strict-20260826/contracts-test.log",
+      "sha256": "cbd6a99bc4bf10d819ffdf132aef411687242c3c0d2ffd2d429950c93ee2cbdc"
+    }
+  ],
+  "scope": {
+    "provider_contract_only": true,
+    "provider_adapter": false,
+    "status_by_effect_key_network_call": false,
+    "secret_material": false,
+    "daemon_or_listener": false,
+    "market_or_external_effect": false,
+    "production_keys": false,
+    "historical_receipts_rewritten": false
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "production_listener": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "model_inference": false,
+    "shared_kg_write": false,
+    "fleet": false
+  },
+  "remaining_gaps": [
+    "B3 process-bound SecretRef refresh/rotation and invalid-grant adapter remain unimplemented in this slice",
+    "Provider-owned signed StatusByEffectKey/direct ACK provenance and external trust-root remain release-gated",
+    "Physical provider exactly-once, crash-after-send, and power-loss evidence remain outstanding",
+    "H4 durable writer/outbox and B5 authbusd recovery remain separate implementation work",
+    "This receipt makes no production, efficacy, promotion, or external authority claim"
+  ],
+  "external_effects": false,
+  "generated_at": "2026-08-26T15:45:00Z"
+}

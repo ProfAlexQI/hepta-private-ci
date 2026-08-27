@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "claim_level": "L0_BASELINE_L1_SHADOW_ONLY",
+  "current_digest_pointer": {
+    "index_sha256_field": "canonical_index_sha256",
+    "manifest_path": "hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/E21-CURRENT-MANIFEST.json",
+    "plan_sha256_field": "canonical_plan_sha256"
+  },
+  "effective_version": "1.4",
+  "active_profile": "development_internal_test",
+  "phase": "DEVELOPMENT",
+  "allowed_phases": ["DEVELOPMENT", "INTERNAL_TEST", "RELEASE_PREP", "FINAL_RELEASE", "POST_RELEASE"],
+  "development_blockers": "implementation_backlog_only",
+  "external_inputs_required_for_development": [],
+  "release_gates_deferred": [
+    "provider_provenance_status",
+    "external_h7_h8_h9_trust",
+    "h4_physical_power_and_media",
+    "h8_h9_production_governance"
+  ],
+  "phase_policy_source": "canonical_plan#E.41",
+  "mirror_status": "MIRROR_STALE/non-evidence",
+  "freeze_policy": "append_only_after_receipt_binding; current pointer is external manifest only",
+  "header_legacy_status": "historical_architecture_baseline",
+  "live_source": {
+    "index_path": "/home/qian-qi/Dropbox/OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+    "index_sha256": "404adbe43531b588fcdf63be8994f22f2535bf12a804ba97da5ce2faa33f757f",
+    "plan_path": "/home/qian-qi/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+    "plan_sha256": "ca5e28fc5b6a7bac8ca4c156dc7ce389f9320161081910b42f9ec01007ba244c"
+  },
+  "precedence": [
+    "G4_G5_hard_safety",
+    "E.19_E.20_E.21_v1_4_contract",
+    "approved_receipt_registry",
+    "v1.3_background_only"
+  ],
+  "production_negative_flags": {
+    "callers_promoted": false,
+    "effect_dispatch": false,
+    "g5_allowed": false,
+    "model_inference": false,
+    "npu_connected": false,
+    "operator_acceptance": false,
+    "production_writer": false,
+    "promotion": false
+  },
+  "runtime_authority": false,
+  "schema": "hepta.effective_version_index.v1",
+  "source_sections": [
+    "E.20.0",
+    "E.21.0"
+  ],
+  "source_digests": {
+    "plan_sha256": "ca5e28fc5b6a7bac8ca4c156dc7ce389f9320161081910b42f9ec01007ba244c",
+    "index_sha256": "404adbe43531b588fcdf63be8994f22f2535bf12a804ba97da5ce2faa33f757f"
+  },
+  "stage_crosswalk": {
+    "H5": "H5a_model_bakeoff_then_H5b_typed_runtime",
+    "H6": "H6a_typed_causal_adapter_then_H6b_action_seam",
+    "H7": "H7a_authoritative_trajectory_then_H7b_NDU_reload",
+    "H8": "H8a_local_sandbox_then_S5_production_governance",
+    "H9": "S5_fleet_governance",
+    "L3": "S6_topology_proposal"
+  },
+  "status": "PROPOSED_IMPLEMENTATION_CONTRACT_V1_4",
+  "supersedes": "1.3"
+}

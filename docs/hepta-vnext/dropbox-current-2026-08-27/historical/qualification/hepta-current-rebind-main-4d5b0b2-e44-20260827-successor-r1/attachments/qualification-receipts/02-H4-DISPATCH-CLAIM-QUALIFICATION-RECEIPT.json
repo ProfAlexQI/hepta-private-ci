@@ -1,0 +1,233 @@
+{
+  "schema": "hepta.h4.dispatch_claim_qualification_receipt.v1",
+  "kind": "h4_durable_pre_dispatch_claim",
+  "generated_at": "2026-08-26T18:05:17Z",
+  "phase": "DEVELOPMENT",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "status": "PASS_LOCAL_QUALIFICATION",
+  "claim_level": "L1_SHADOW_QUALIFICATION_ONLY",
+  "evidence_class": "LOCAL_SQLITE_WAL_FULL_CRASH_REOPEN_AND_CONCURRENCY_REGRESSION",
+  "claim_status": "LOCAL_BEHAVIORAL_INVARIANT_ONLY",
+  "efficacy_status": "NO_PRODUCTION_EFFICACY_CLAIM",
+  "approval_state": "NOT_APPROVED",
+  "external_gate_status": "DEFERRED_PRE_RELEASE",
+  "source_binding": {
+    "schema": "hepta.e41.source_binding.v2",
+    "binding_status": "EXACT_CODE_HEAD_TREE_LOCAL_QUALIFICATION_PLAN_SNAPSHOT_NON_AUTHORITY",
+    "plan_snapshot": {
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+      "sha256": "a78488951e686f7a06b9cd725d7bd7d20deb49c9e20b0fdd9537bc76aea72491",
+      "read_method": "direct",
+      "authority_status": "source_snapshot_only"
+    },
+    "qualification_index_snapshot": {
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+      "sha256": "e3105a4684c49340fd66c71c4be94e0a335ba19e8081200a87416d1c6e809b63",
+      "read_method": "direct",
+      "authority_status": "source_snapshot_only"
+    },
+    "effective_index_snapshot": {
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_EFFECTIVE_VERSION_INDEX_V1_4.json",
+      "sha256": "03801d76729ffdbe90ab1e2a84971fa548679fcee109d9c58557729703c1c0f7",
+      "read_method": "direct",
+      "authority_status": "source_snapshot_only"
+    },
+    "candidate": {
+      "worktree": "/Volumes/T5/hepta-vnext/worktrees/h4-dispatch-claim-20260827",
+      "branch": "hepta/h4-dispatch-claim-20260827",
+      "head": "c9217eaed38fa9464c1576f92c8890edb1a86241",
+      "tree": "2dbb8a234e2eb7f1ecbd710b11cd1e4067325e53",
+      "parent": "a997f33b29089d192848dd37cc04a6e3bfaa3444",
+      "dirty": false,
+      "tracked_diff_clean": true
+    },
+    "candidate_base": {
+      "worktree": "/Volumes/T5/hepta-vnext/worktrees/main-integration",
+      "branch": "hepta/vnext-main-integration-20260811",
+      "head": "b29b7e6c105a2b44fe490309b42ae423c12fc10f",
+      "tree": "3012b20faeebd5930c077d5382051723034a990f",
+      "dirty": false
+    },
+    "source_stability": "single_direct_snapshot_for_lane_receipt; current_authority_rebind_remains_parent_p0",
+    "dirty_status": "CLEAN_CANDIDATE_UNMERGED"
+  },
+  "source": {
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/h4-dispatch-claim-20260827",
+    "branch": "hepta/h4-dispatch-claim-20260827",
+    "base": "b29b7e6c105a2b44fe490309b42ae423c12fc10f",
+    "head": "c9217eaed38fa9464c1576f92c8890edb1a86241",
+    "tree": "2dbb8a234e2eb7f1ecbd710b11cd1e4067325e53",
+    "parent": "a997f33b29089d192848dd37cc04a6e3bfaa3444",
+    "dirty": false,
+    "changed_paths": [
+      {
+        "path": "codex-rs/hepta-memory/src/local_lease_outbox.rs",
+        "sha256": "6b5cb8ea9ccf97ef3da302b5aab56f54c5ca59cb573c82e23956a8f127df2b8d"
+      },
+      {
+        "path": "codex-rs/hepta-memory/src/production_writer.rs",
+        "sha256": "dbf0396b657f93112034a49dad5882407118fd3d1a23c05205e2955c7d4a4e7f"
+      }
+    ]
+  },
+  "change": {
+    "summary": "Durably claim a queued local outbox operation as Indeterminate before crossing the target boundary, with exact immutable grant/lease/occurrence/topic/payload digest binding and strict no-replay semantics.",
+    "invariants": [
+      "At most one dispatcher can append the fenced pre-dispatch claim for a queued occurrence.",
+      "A malformed, unbound, stale, or mismatched operation digest is rejected before any target call or lease mutation.",
+      "A target panic/crash after the boundary leaves the durable local outcome Indeterminate and cannot be redispatched from the old queued receipt.",
+      "A target-provided reason is preserved in the qualification dispatch receipt for status/reconcile; an unknown crash reason remains explicitly unresolved.",
+      "No SQLite schema migration, provider adapter, external effect, or production authority is introduced."
+    ],
+    "implementation": [
+      "LocalLeaseOutbox::claim_dispatch verifies immutable operation binding, then appends the existing indeterminate event kind with dispatch_started_pending_ack payload inside the fenced write transaction.",
+      "ProductionOutboxDispatcher claims before target invocation; committed/rejected/indeterminate target outcomes are applied from the claimed state without a second dispatch marker.",
+      "The operation digest helper retains the existing hepta:production-outbox-operation:v1 framing and is shared by validation and request construction.",
+      "ProductionDispatchReceipt.target_reason is serde-defaulted for compatibility with older qualification receipts."
+    ]
+  },
+  "operation_digest": {
+    "namespace": "hepta:production-outbox-operation:v1",
+    "bound_fields": [
+      "grant_digest",
+      "lease_id",
+      "occurrence_key",
+      "topic",
+      "payload_sha256"
+    ],
+    "encoding": "each field framed as u64 big-endian byte length followed by bytes, then SHA-256",
+    "validation": "serialized digest syntax and recomputed digest must both match before claim"
+  },
+  "tests": [
+    {
+      "command": "cargo test --locked -p codex-hepta-memory --lib production_writer::tests -- --test-threads=1",
+      "passed": 9,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 195,
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-dispatch-claim-focused-postcommit-20260827.log",
+      "log_sha256": "353e5aad5deb906e0b3bf40f696cbf72665a4f4ade383c4984f824e2dd6db094"
+    },
+    {
+      "command": "cargo test --locked -p codex-hepta-memory --lib -- --test-threads=1",
+      "passed": 201,
+      "failed": 0,
+      "ignored": 3,
+      "filtered": 0,
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-dispatch-claim-memory-postcommit-20260827.log",
+      "log_sha256": "99fe892a071a2b9b46f2ac4a00e64bd4c15da7eb3633f4cb7802bddaff7c04ec"
+    },
+    {
+      "name": "crash_after_target_send_reopens_as_indeterminate_and_cannot_redispatch",
+      "result": "pass",
+      "assertions": [
+        "one target invocation",
+        "reopen reports Indeterminate",
+        "retry of old queued receipt returns StaleReceipt",
+        "no second target invocation",
+        "recovery keeps external_effect false"
+      ]
+    },
+    {
+      "name": "concurrent_dispatchers_have_one_durable_claim_and_one_target_call",
+      "result": "pass",
+      "assertions": [
+        "one dispatcher succeeds with Indeterminate",
+        "the other fails closed as StaleReceipt",
+        "target invocation count is one"
+      ]
+    },
+    {
+      "name": "dispatch_claim_rejects_unbound_or_malformed_operation_digest",
+      "result": "pass",
+      "assertions": [
+        "malformed digest returns Invalid without mutation",
+        "well-formed wrong digest returns StaleFence without mutation",
+        "correct recomputed digest claims exactly once"
+      ]
+    },
+    {
+      "command": "cargo check --locked -p codex-hepta-memory",
+      "result": "pass; two existing EventRow/OutboxRow dead_code warnings only",
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-dispatch-claim-check-successor-v2-20260827.log",
+      "log_sha256": "654abd18100986acd774ea076ccf109a40735f3fd90e8c724f1a62752df7cc09"
+    },
+    {
+      "command": "cargo clippy --locked -p codex-hepta-memory --lib -- -D warnings",
+      "result": "FAIL_BASELINE",
+      "diagnostic_count": 50,
+      "new_diagnostics": 0,
+      "note": "Existing candidate-baseline diagnostics; no diagnostic points at the added claim/digest/reason logic.",
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-dispatch-claim-clippy-postcommit-20260827.log",
+      "log_sha256": "1099abee5925265ebd41cb07f924ce6586c74ef7fb03308b5ec0822631836569"
+    },
+    {
+      "command": "cargo clippy --locked -p codex-hepta-memory --lib -- --cap-lints warn",
+      "result": "pass_with_baseline_warnings",
+      "warning_count": 50,
+      "new_warnings": 0,
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-dispatch-claim-clippy-capwarn-postcommit-20260827.log",
+      "log_sha256": "e02e48571cb6648f80d259587e05ac3a5bf6f238addfa899a51575331a89fd9f"
+    },
+    {
+      "command": "cargo fmt -p codex-hepta-memory -- --check",
+      "result": "FAIL_BASELINE_DRIFT",
+      "new_format_drift_in_added_lines": false,
+      "note": "Repository candidate contains pre-existing formatter drift; added lines were manually formatted.",
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-dispatch-claim-fmt-postcommit-20260827.log",
+      "log_sha256": "8171b9d3ed779a91871c3cf468db24724af990bde8c1f91554d02706f33d5f14"
+    },
+    {
+      "command": "git diff HEAD^ HEAD --check",
+      "result": "pass"
+    }
+  ],
+  "evidence": {
+    "durable_claim": "pre-target Indeterminate claim is append-only and fenced by current lease/generation/fencing token",
+    "crash_reopen": "panic-after-send and reopen regression passed under local SQLite WAL/FULL qualification harness",
+    "concurrency": "two simultaneous dispatchers produce one claim and one target invocation",
+    "digest_binding": "malformed and wrong operation digests fail closed without journal mutation",
+    "external_effect": false,
+    "provider_owned_ack": false,
+    "physical_power_loss": false,
+    "physical_media_durability": false,
+    "production_writer": false,
+    "kg_write_authority": false
+  },
+  "known_gaps": [
+    "A crash before a provider response cannot supply a provider-owned reason; external status lookup/reconcile remains required.",
+    "No provider physical exactly-once proof, signed provider ACK/status, external signer/trust-root, KMS/HSM, or production mutation authority is established.",
+    "No physical power-loss or media-failure durability run has been executed; WAL/FULL crash/reopen is local qualification only.",
+    "Strict clippy and repository formatter checks remain blocked by candidate-baseline diagnostics/drift and require a separate hygiene change."
+  ],
+  "negative_authority": {
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "external_effect": false,
+    "kg_write_authority": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "fleet_write": false,
+    "external_signer": false,
+    "external_trust_root": false,
+    "physical_power_loss_claim": false
+  },
+  "immutability": {
+    "canonical_main_modified": false,
+    "dropbox_plan_or_index_modified": false,
+    "old_receipts_modified": false,
+    "qualification_lane_only": true,
+    "worktree_clean_at_capture": true
+  },
+  "receipt_hash": {
+    "algorithm": "SHA-256",
+    "basis": "canonical bytes of this receipt file",
+    "recorded_in": "SHA256SUMS",
+    "self_hash_embedded": false,
+    "authority_meaning": "qualification evidence only; not an authority grant"
+  }
+}

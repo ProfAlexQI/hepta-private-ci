@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.local/schemas/hepta.infer_receipt.v1.schema.json",
+  "title": "Hepta Inference Execution Receipt v1",
+  "type": "object",
+  "required": [
+    "schema", "kind", "status", "qualification_mode", "source", "request",
+    "artifacts", "backend", "device", "metrics", "resource", "authority",
+    "fallback_attempts", "open_blockers", "negative_authority"
+  ],
+  "properties": {
+    "schema": {"const": "hepta.infer_receipt.v1"},
+    "kind": {"type": "string"},
+    "model_receipt_ref": {"type": ["string", "null"]},
+    "status": {"enum": ["PASS", "FAIL", "KNOWN_GAP", "BLOCKED", "NOT_ADMITTED", "STALE_SOURCE_BINDING"]},
+    "qualification_mode": {"enum": ["design", "shadow", "qualification", "benchmark", "interop"]},
+    "source": {
+      "type": "object",
+      "required": ["repo", "worktree", "branch", "head", "tree", "dirty", "parent_plan_digest"],
+      "properties": {
+        "repo": {"type": "string"},
+        "worktree": {"type": "string"},
+        "branch": {"type": "string"},
+        "head": {"type": "string"},
+        "tree": {"type": "string"},
+        "dirty": {"type": "boolean"},
+        "parent_plan_digest": {"type": "string"},
+        "append_anchor": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "request": {
+      "type": "object",
+      "required": ["request_id", "tenant_id", "workspace_id", "agent_id", "agent_generation", "task_id", "policy_digest", "resource_budget_id"],
+      "properties": {
+        "request_id": {"type": "string"},
+        "tenant_id": {"type": "string"},
+        "workspace_id": {"type": "string"},
+        "agent_id": {"type": "string"},
+        "agent_generation": {"type": "integer", "minimum": 0},
+        "task_id": {"type": "string"},
+        "policy_digest": {"type": "string"},
+        "resource_budget_id": {"type": "string"},
+        "deadline_ms": {"type": ["integer", "null"], "minimum": 0},
+        "cancellation_generation": {"type": "integer", "minimum": 0},
+        "input_digest": {"type": ["string", "null"]},
+        "input_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "privacy_class": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["model_digest", "tokenizer_digest", "compiled_artifact_digest", "manifest_digest"],
+      "properties": {
+        "model_digest": {"type": "string"},
+        "tokenizer_digest": {"type": "string"},
+        "graph_digest": {"type": ["string", "null"]},
+        "head_digest": {"type": ["string", "null"]},
+        "calibration_digest": {"type": ["string", "null"]},
+        "compiled_artifact_digest": {"type": "string"},
+        "manifest_digest": {"type": "string"},
+        "sbom_digest": {"type": ["string", "null"]},
+        "license_digest": {"type": ["string", "null"]},
+        "rollback_digest": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "backend": {
+      "type": "object",
+      "required": ["name", "commit", "abi", "model_format", "quantization", "compiler", "driver"],
+      "properties": {
+        "name": {"type": "string"},
+        "commit": {"type": "string"},
+        "abi": {"type": "string"},
+        "model_format": {"type": "string"},
+        "quantization": {"type": "string"},
+        "compiler": {"type": "string"},
+        "build_flags": {"type": "array", "items": {"type": "string"}},
+        "driver": {"type": "string"},
+        "direct_native_baseline_id": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "device": {
+      "type": "object",
+      "required": ["profile_digest", "os", "acceleration_path", "thermal_mode"],
+      "properties": {
+        "profile_digest": {"type": "string"},
+        "model": {"type": ["string", "null"]},
+        "os": {"type": "string"},
+        "cpu": {"type": ["string", "null"]},
+        "gpu": {"type": ["string", "null"]},
+        "npu": {"type": ["string", "null"]},
+        "ram_mb": {"type": ["integer", "null"], "minimum": 0},
+        "acceleration_path": {"type": "string"},
+        "thermal_mode": {"type": "string"},
+        "power_mode": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "queue_wait_ms": {"type": ["number", "null"], "minimum": 0},
+        "model_load_ms": {"type": ["number", "null"], "minimum": 0},
+        "ttft_ms": {"type": ["number", "null"], "minimum": 0},
+        "prefill_tokens_per_s": {"type": ["number", "null"], "minimum": 0},
+        "decode_tokens_per_s": {"type": ["number", "null"], "minimum": 0},
+        "generated_tokens": {"type": ["integer", "null"], "minimum": 0},
+        "asr_real_time_factor": {"type": ["number", "null"], "minimum": 0},
+        "audio_seconds": {"type": ["number", "null"], "minimum": 0},
+        "image_seconds": {"type": ["number", "null"], "minimum": 0},
+        "image_seconds_per_step": {"type": ["number", "null"], "minimum": 0},
+        "image_pixels": {"type": ["integer", "null"], "minimum": 0},
+        "steps": {"type": ["integer", "null"], "minimum": 0},
+        "warm": {"type": ["boolean", "null"]},
+        "baseline_ratio": {"type": ["number", "null"], "minimum": 0},
+        "cache_hit": {"type": ["boolean", "null"]},
+        "cancellation_reason": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "resource": {
+      "type": "object",
+      "properties": {
+        "rss_peak_mb": {"type": ["number", "null"], "minimum": 0},
+        "vram_peak_mb": {"type": ["number", "null"], "minimum": 0},
+        "cpu_peak_pct": {"type": ["number", "null"], "minimum": 0},
+        "gpu_peak_pct": {"type": ["number", "null"], "minimum": 0},
+        "npu_peak_pct": {"type": ["number", "null"], "minimum": 0},
+        "power_w_peak": {"type": ["number", "null"], "minimum": 0},
+        "temperature_c_peak": {"type": ["number", "null"]},
+        "thermal_throttle": {"type": ["boolean", "null"]},
+        "worker_count": {"type": ["integer", "null"], "minimum": 0},
+        "fds_peak": {"type": ["integer", "null"], "minimum": 0},
+        "streams_peak": {"type": ["integer", "null"], "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "fallback_attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["backend", "status", "reason"],
+        "properties": {
+          "backend": {"type": "string"},
+          "status": {"enum": ["admitted", "rejected", "not_admitted", "failed"]},
+          "reason": {"type": "string"},
+          "artifact_digest": {"type": ["string", "null"]},
+          "policy_digest": {"type": ["string", "null"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "authority": {
+      "type": "object",
+      "required": ["production_writer", "effect", "fleet", "shared_kg", "route", "model_npu", "remote_inference", "callers", "promotion", "operator_acceptance"],
+      "properties": {
+        "production_writer": {"const": false},
+        "effect": {"const": false},
+        "fleet": {"const": false},
+        "shared_kg": {"const": false},
+        "route": {"const": false},
+        "model_npu": {"const": false},
+        "remote_inference": {"const": false},
+        "callers": {"const": false},
+        "promotion": {"const": false},
+        "operator_acceptance": {"const": false}
+      },
+      "additionalProperties": false
+    },
+    "open_blockers": {"type": "array", "items": {"type": "string"}},
+    "negative_authority": {
+      "type": "object",
+      "required": ["production_writer", "effect", "fleet", "shared_kg", "route", "model_npu", "remote_inference", "callers", "promotion"],
+      "properties": {
+        "production_writer": {"const": false},
+        "effect": {"const": false},
+        "fleet": {"const": false},
+        "shared_kg": {"const": false},
+        "route": {"const": false},
+        "model_npu": {"const": false},
+        "remote_inference": {"const": false},
+        "callers": {"const": false},
+        "promotion": {"const": false}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "canonical": {
+    "index": "/home/qian-qi/Dropbox/OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+    "package": "/home/qian-qi/Dropbox/OpenClaw/hepta-vnext-qualification-2026-08-23",
+    "plan": "/home/qian-qi/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md"
+  },
+  "claim_level": "L0_BASELINE_L1_SHADOW_ONLY",
+  "active_profile": "development_internal_test",
+  "phase": "DEVELOPMENT",
+  "allowed_phases": ["DEVELOPMENT", "INTERNAL_TEST", "RELEASE_PREP", "FINAL_RELEASE", "POST_RELEASE"],
+  "development_blockers": "implementation_backlog_only",
+  "external_inputs_required_for_development": [],
+  "release_gates_deferred": [
+    "provider_provenance_status",
+    "external_h7_h8_h9_trust",
+    "h4_physical_power_and_media",
+    "h8_h9_production_governance"
+  ],
+  "current_manifest": {
+    "historical_receipts_immutable": true,
+    "path": "hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/E21-CURRENT-MANIFEST.json",
+    "role": "external_current_evidence_manifest"
+  },
+  "current_policy_source": "canonical_root:E.41",
+  "mirror_status": "MIRROR_STALE/non-evidence",
+  "package_plan_index_authority": "canonical_root_only_until_mirror_rebound",
+  "directories": [
+    {
+      "include_in_glob_audit": true,
+      "path": "hepta-vnext-qualification-2026-08-23",
+      "status": "CURRENT_AUTHORITY_PACKAGE"
+    },
+    {
+      "include_in_glob_audit": false,
+      "path": "hepta-vnext-qualification-20260823",
+      "status": "NON_AUTHORITATIVE_LEGACY_PACKAGE"
+    },
+    {
+      "include_in_glob_audit": false,
+      "path": "hepta-vnext-qualification-20260824",
+      "status": "EMPTY_STAGING"
+    }
+  ],
+  "effective_version_index": "HEPTA_EFFECTIVE_VERSION_INDEX_V1_4.json",
+  "production_negative_flags": {
+    "callers_promoted": false,
+    "effect_dispatch": false,
+    "g5_allowed": false,
+    "model_inference": false,
+    "npu_connected": false,
+    "operator_acceptance": false,
+    "production_writer": false,
+    "promotion": false
+  },
+  "runtime_authority": false,
+  "schema": "hepta.qualification_authority.v1"
+}

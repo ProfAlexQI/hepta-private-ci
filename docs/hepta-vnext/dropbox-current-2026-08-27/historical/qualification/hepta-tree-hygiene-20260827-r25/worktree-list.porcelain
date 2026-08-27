@@ -1,0 +1,551 @@
+worktree /Volumes/T5/hepta-vnext/git/hepta.git
+bare
+
+worktree /Volumes/T5/hepta-vnext/git/hepta.git/azi2-h4-production-20260826
+HEAD 843cfb931d5e6ac2017b7a5ca0dd34e29b8e4115
+branch refs/heads/hepta/azi2-h4-production-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/active-refactor
+HEAD 3110c5aba5daa0af1498b3eec85272011589ce8e
+branch refs/heads/agent/hepta-vnext-qualification-refactor-20260810
+
+worktree /Volumes/T5/hepta-vnext/worktrees/atomic-p0
+HEAD 2ceb7f565cb4275f4b004cafc43344d6318844b3
+branch refs/heads/agent/hepta-vnext-s4-atomic-read-contract-20260808
+
+worktree /Volumes/T5/hepta-vnext/worktrees/authbus-b0-b3-20260826
+HEAD 3952f09dc6cc16ca72cc9a7347f43b4b96f2683d
+branch refs/heads/hepta/authbus-b0-b3-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/authbus-b3-local-20260826
+HEAD 9864bb9f9f730283662144e52c0d28cb07b0711d
+branch refs/heads/hepta/authbus-b3-local-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/authbus-b3-wire-strict-20260826
+HEAD 103832598045a7d35e800c5cc15a03c26387fac7
+branch refs/heads/hepta/authbus-b3-wire-strict-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/authbus-b4-qualification-20260826
+HEAD 47fe302b2ef9ccac166cc3a362516b0bc4afdfec
+branch refs/heads/hepta/authbus-b4-qualification-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/authbus-b5-local-20260827
+HEAD b29b7e6c105a2b44fe490309b42ae423c12fc10f
+branch refs/heads/hepta/authbus-b5-local-20260827
+
+worktree /Volumes/T5/hepta-vnext/worktrees/authbus-next-20260827
+HEAD c02a834773d08393e34143705fddc7c67ffa22cf
+branch refs/heads/hepta/authbus-next-20260827
+
+worktree /Volumes/T5/hepta-vnext/worktrees/authread-stable-handle-20260824
+HEAD c2ee4453f677744e8d35a1892f94eddaae4fce04
+branch refs/heads/hepta/authread-stable-handle-20260824
+
+worktree /Volumes/T5/hepta-vnext/worktrees/authread-tests-20260824
+HEAD 4d07a5a1fc28c5c72931304fa82f98a10c9c1a0d
+branch refs/heads/hepta/authread-tests-20260824
+
+worktree /Volumes/T5/hepta-vnext/worktrees/automation-r5
+HEAD 51cf679f73dbe76cf364bb7524415ad1beee5bcc
+branch refs/heads/hepta/automation-r5-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/azi2-authority-20260826
+HEAD 43de0060195379ad73a14a75f848071be3297c79
+branch refs/heads/hepta/azi2-authority-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/azi2-h23-opener-audit-20260826
+HEAD f3737ef58e8323c2c2710c394e0d95c6a5c9962c
+branch refs/heads/hepta/azi2-h23-opener-audit-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/azi2-h23-taskflow-audit-20260826
+HEAD a996b0ad40ed0c48d2a2a544657791fc3375f7e1
+branch refs/heads/hepta/azi2-h23-taskflow-audit-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/azi2-h4-durable-writer-20260826
+HEAD 023de235a3d5be70033f65b0509106822b0198d9
+branch refs/heads/hepta/azi2-h4-durable-writer-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/azi2-h7-h89-production-20260826
+HEAD ecf95e4623a8a333c19b9f4b49d64b0dc68cf5fe
+branch refs/heads/hepta/azi2-h7-h89-production-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/azi2-production-wiring-20260826
+HEAD 39e82f895cdae3239448723e5e5e522f37182c97
+branch refs/heads/hepta/azi2-production-wiring-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/azi2-provider-reconcile-guard-20260826
+HEAD d7f3ecc4a9cf83bc846916e2e638bc537b458729
+branch refs/heads/hepta/azi2-provider-reconcile-guard-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/azi2-provider-status-20260826
+HEAD 6c62d44e8c4f33ca50b04f97d63e4563a173f90e
+branch refs/heads/hepta/azi2-provider-status-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/b23-next-20260827
+HEAD 5f41813ed27d8c99393e2339f2548510405f0533
+branch refs/heads/hepta/authbus-b23-next-20260827
+
+worktree /Volumes/T5/hepta-vnext/worktrees/chatgpt-wire-fix-20260824
+HEAD b27e6191d97ee7e9f321e5353b450840c7ae3a6d
+branch refs/heads/hepta/chatgpt-wire-fix-20260824
+
+worktree /Volumes/T5/hepta-vnext/worktrees/cognitive-fleet-final-r6
+HEAD aafa375e925dfb1a67eba375585490883a11207c
+branch refs/heads/hepta/cognitive-fleet-r2-turn-recovery-20260819
+
+worktree /Volumes/T5/hepta-vnext/worktrees/cognitive-fleet-intake
+HEAD 74b6efed33d3f1a58ab6e0950f1365e8625393fb
+branch refs/heads/hepta/cognitive-fleet-intake-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/cognitive-fleet-upstream-71db
+HEAD 0f08bf439ca685aa4c15a4be3ac844012e096759
+branch refs/heads/hepta/cognitive-fleet-upstream-71db-20260819
+
+worktree /Volumes/T5/hepta-vnext/worktrees/cognitive-loop-product
+HEAD 8c2f0069927b8261b6474e2ea051d54faaaf4824
+branch refs/heads/hepta/cognitive-loop-product-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/cognitive-plane-foundation
+HEAD 75b71df78c9dc63afd29f8f2ce103a17fe459ea8
+branch refs/heads/hepta/cognitive-plane-foundation-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/e41-capture-4a1a7b0-20260827
+HEAD 4a1a7b02a56340eb662765beb38d6e7df1e78fe6
+detached
+
+worktree /Volumes/T5/hepta-vnext/worktrees/e41-capture-4d5b0b2-20260827
+HEAD 4d5b0b2d082ddbe0abb6d2fc880d9d9448434ab2
+detached
+
+worktree /Volumes/T5/hepta-vnext/worktrees/federation-control-r5
+HEAD b371b3f78fd273e79cc539f6fefabd67209e42a3
+branch refs/heads/hepta/federation-control-r5-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/fleet-foundation
+HEAD ae479a699cffce6390a89ecf12d8e7360ad66148
+branch refs/heads/hepta/cognitive-fleet-foundation-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/fleet-r5-integration
+HEAD 6619904200da71fe566151fd2a7ceabe2fcf513c
+branch refs/heads/hepta/fleet-r5-integration-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/github-hosted-52ec
+HEAD 0ef2313ed96751afd64c14d3d28323c1a1454b77
+branch refs/heads/qualification/hosted-52ec-v2-20260813
+
+worktree /Volumes/T5/hepta-vnext/worktrees/github-selfhosted-09e9
+HEAD e0ed29beb7103388f282b9b6ae2228640b466195
+branch refs/heads/qualification/selfhosted-09e9
+
+worktree /Volumes/T5/hepta-vnext/worktrees/github-selfhosted-52ec
+HEAD df79b9638a16bc395e24d999a7fd1f00773377f3
+branch refs/heads/qualification/selfhosted-52ec
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h2-registry-backlog-20260826
+HEAD 2e98c49968a06c3ee0e39719b316e44be1628824
+branch refs/heads/hepta/h2-registry-backlog-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h23-graph-writer-20260827
+HEAD 536d10c098b293b0d9d7cfeff0f9d319023518ae
+branch refs/heads/hepta/h23-graph-writer-20260827
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h23-kernel-20260826
+HEAD 5529095b186a30b2b6091cc9cc5c5309a153cbc6
+branch refs/heads/hepta/h23-kernel-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h23-step-outbox-20260827
+HEAD 9652cc25fb32cd99df7c282c5e928385298aa6a6
+branch refs/heads/hepta/h23-step-outbox-20260827
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h23-step-outbox-salvage-20260827
+HEAD 4d5b0b2d082ddbe0abb6d2fc880d9d9448434ab2
+branch refs/heads/hepta/h23-step-outbox-salvage-20260827
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h4-durable-gap-20260826
+HEAD 4b0112706e88fd18277b60eb8197581cd73991da
+branch refs/heads/hepta/h4-durable-gap-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h4-durable-next-local-20260827
+HEAD 9aefa3ab59d754b0105ee5787503b5a68d4d39dd
+branch refs/heads/hepta/h4-durable-next-local-20260827
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h4-h23-backlog-20260826
+HEAD 5a2b2f2face9d9845bfcafd13820d512b73385d5
+branch refs/heads/hepta/h4-h23-backlog-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h4-next-20260827
+HEAD 61d48407a06b03c5db8e4150385f389b7c819301
+branch refs/heads/hepta/h4-next-20260827
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h4-unresolved-guard-20260827
+HEAD 3f4ba6a02fd3d8d0f56bf3d9cd20e479a781de02
+branch refs/heads/hepta/h4-unresolved-guard-20260827
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h4-writer-backlog-20260826
+HEAD 92989d6175f30b68aa7d830046ad7b376e8a22a2
+branch refs/heads/hepta/h4-writer-backlog-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h5-digest-fence-20260826
+HEAD b3f9b04baa23e53f57e322914908c137fd404962
+branch refs/heads/hepta/h5-digest-fence-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h5-h7-backlog-20260826
+HEAD 2e39c3d5818b9c6595e48b562862bd53fd017a3c
+branch refs/heads/hepta/h5-h7-backlog-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h5h6-advisory-validation-20260826
+HEAD a45905641b4df839644ede7149d232c6988de035
+branch refs/heads/hepta/h5h6-advisory-validation-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/h5h7-provider-sandbox-20260826
+HEAD 1cacbe2e6f3ac2542c9de873545bd9bbc69d3c83
+branch refs/heads/hepta/h5h7-provider-sandbox-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/intake-74004
+HEAD 32fb822ccc4eda7949b0fc4101f594604e31f282
+branch refs/heads/hepta/vnext-intake-74004-20260813
+
+worktree /Volumes/T5/hepta-vnext/worktrees/linux-exact-v8
+HEAD 8ff1586d96dff6babc4240b3a828a1d92f8c77e3
+branch refs/heads/agent/hepta-vnext-linux-exact-v8-20260814
+
+worktree /Volumes/T5/hepta-vnext/worktrees/linux-mnl-live-v1
+HEAD a72d58d95e7bb081728eea7b395e4a3a75a0aed5
+branch refs/heads/agent/hepta-vnext-linux-mnl-live-v1-20260817
+
+worktree /Volumes/T5/hepta-vnext/worktrees/linux-priv-lifecycle-v9
+HEAD 898628204ff60131b8b015555a3f3a5b2ff80987
+branch refs/heads/agent/hepta-vnext-mac-linux-stage-e-integration-20260816
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-artifact-v3
+HEAD f3ebb808094da833623c5715d6715debfeb26b9c
+branch refs/heads/agent/hepta-vnext-mac-artifact-v3-20260815
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-collector-v3
+HEAD bfd8f64b450713b575459a4b3820144bd4561ddb
+branch refs/heads/agent/hepta-vnext-mac-collector-v3-20260815
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-effect-lineage-v3
+HEAD 5352601eeda40aca9fc9a40bb834b8328b498c83
+branch refs/heads/agent/hepta-vnext-mac-effect-lineage-v3-20260816
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-fixed-launcher-v3
+HEAD 21a69db95b9cc5009ba8aa3337d7357e82c9b207
+branch refs/heads/agent/hepta-vnext-mac-fixed-launcher-v3-20260816
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-grant-session-v3
+HEAD e2979f75d5d7cc371fe4be285b254b0a26d77523
+branch refs/heads/agent/hepta-vnext-mac-grant-session-v3-20260816
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-grant-v3
+HEAD 161a65db70381e46462f126563c9b71663a0c57c
+branch refs/heads/agent/hepta-vnext-mac-grant-v3-20260815
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-integration-v3
+HEAD acba7de53a2f8d709a48926eaefc9e91cd3f3473
+branch refs/heads/agent/hepta-vnext-mac-priv-lifecycle-v3-20260815
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-issue-s2-v3
+HEAD 2ede036ff1fb22bb4f052fcfe7c9d68b4dc6a9ac
+branch refs/heads/agent/hepta-vnext-mac-issue-s2-v3-20260815
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-issue-v3
+HEAD 90276405da426e0cc0a9b6e101a6b25fbec843fd
+branch refs/heads/agent/hepta-vnext-mac-issue-v3-20260815
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-lifecycle-v2
+HEAD e4bb76d00a0b712dd9ad52934236832e345c5b6e
+branch refs/heads/agent/hepta-vnext-mac-lifecycle-v2-20260815
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-mnl-live-v1
+HEAD 7f0a15f04c16d524d8892bc3a78b19defd9b2a9a
+branch refs/heads/agent/hepta-vnext-mac-mnl-live-v1-20260817
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-mount-delta-v3
+HEAD bd5d726c91e7f6a199e993efa05d9dfab5b12d95
+branch refs/heads/agent/hepta-vnext-mac-mount-delta-v3-20260815
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-priv-broker-native
+HEAD ce391d276bea708cf775bc2ffa95dbd819229678
+branch refs/heads/agent/hepta-vnext-mac-priv-broker-native-20260814
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-reconcile-v3
+HEAD 710fdbd5674c50071a67e8a33b92a4c56655b689
+branch refs/heads/agent/hepta-vnext-mac-reconcile-v3-20260815
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-restart-admission-v3
+HEAD b5af78857ec28d919b9189ef728e890d23f019bf
+branch refs/heads/agent/hepta-vnext-mac-restart-admission-v3-20260816
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-runner-v3
+HEAD f16283cfecae36d4e820047f2959d2d855f62fcc
+branch refs/heads/agent/hepta-vnext-mac-runner-v3-20260815
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-s1-s2-v3
+HEAD c195c3ed3a7b92578648ef9d40b79df8c44bc6d5
+branch refs/heads/agent/hepta-vnext-mac-s1-s2-v3-20260815
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-store-v3
+HEAD 96edc199dc3964e13265aeb33f071ac957348d83
+branch refs/heads/agent/hepta-vnext-mac-store-v3-20260815
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mac-unlinked-backing-v3
+HEAD 35ad97d390931960113a7ee11a498ee2ec80166a
+branch refs/heads/agent/hepta-vnext-mac-unlinked-backing-v3-20260816
+
+worktree /Volumes/T5/hepta-vnext/worktrees/main-integration
+HEAD 4d5b0b2d082ddbe0abb6d2fc880d9d9448434ab2
+branch refs/heads/hepta/vnext-main-integration-20260811
+
+worktree /Volumes/T5/hepta-vnext/worktrees/main-integration-next
+HEAD d1dbad8ec1aec87253cc6d231ee78ee4abd8a8d9
+branch refs/heads/hepta/vnext-main-upstream-20260811
+
+worktree /Volumes/T5/hepta-vnext/worktrees/matrix-appserver-bridge
+HEAD 3a981ee01951b12d2ec367ae6be3e130187e1fda
+branch refs/heads/hepta/matrix-appserver-bridge-r4-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/matrix-durable-core
+HEAD 500fdd3a23981ec68bb4cf0065a9c1d1669f1022
+branch refs/heads/hepta/matrix-durable-core-r4-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/matrix-e2e-r4
+HEAD f18cef7a32c5c04cf118bf528aa5dca70ed91392
+branch refs/heads/hepta/matrix-e2e-r4-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/matrix-runtime-engine
+HEAD 3a5996e4e2b89c5b56081bdbec8ada1472613237
+branch refs/heads/hepta/matrix-runtime-engine-r4-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/matrix-sdk-sidecar
+HEAD 6c65075bb4e8ff399c924139f9ef58bcb9fd2e97
+branch refs/heads/hepta/matrix-sdk-sidecar-r4-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/memory-federation-r5
+HEAD 0098d30da6e3a4ca15d0247d640a8217a1ef3bcb
+branch refs/heads/hepta/memory-federation-r5-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/memory-port
+HEAD 911d2c5e5d864c417d0b9a3baf8e51dc4f2612f9
+branch refs/heads/hepta/vnext-memory-port-20260811
+
+worktree /Volumes/T5/hepta-vnext/worktrees/mnl-successor-v1
+HEAD ec6b29465b4de328a5393647c804ec9fe7e6d8b5
+branch refs/heads/agent/hepta-vnext-mnl-successor-v1-20260817
+
+worktree /Volumes/T5/hepta-vnext/worktrees/nix-mnl-live-v1
+HEAD becfaf779c23aec1bbab064aa3d5b70a992bd3d2
+branch refs/heads/agent/hepta-vnext-nix-mnl-live-v1-20260817
+
+worktree /Volumes/T5/hepta-vnext/worktrees/nix-repair
+HEAD 867ed76a0dee863bc5981da565a52bc2bc141a74
+branch refs/heads/agent/hepta-vnext-s4-nix-repair-20260808
+
+worktree /Volumes/T5/hepta-vnext/worktrees/operator-acceptance
+HEAD 00b2eac833a56afbbe9dc7219a23fb2083ac9281
+branch refs/heads/agent/hepta-vnext-operator-acceptance-20260811
+
+worktree /Volumes/T5/hepta-vnext/worktrees/operator-acceptance-09e9
+HEAD 47759632a2008336c7281d5837bc9a801e9d5522
+branch refs/heads/agent/hepta-vnext-operator-acceptance-v2-09e9-20260812
+
+worktree /Volumes/T5/hepta-vnext/worktrees/operator-acceptance-52ec-v3
+HEAD 35fb3d3320d182a1da574df57f2d2413a681ee79
+branch refs/heads/agent/hepta-vnext-operator-acceptance-v3-52ec-20260813
+
+worktree /Volumes/T5/hepta-vnext/worktrees/operator-acceptance-mnl-scope
+HEAD 6c83d089386b6c5a3eaece25be1bbdc1571eef33
+branch refs/heads/agent/hepta-vnext-operator-acceptance-mnl-scope-20260814
+
+worktree /Volumes/T5/hepta-vnext/worktrees/operator-acceptance-rev10-broker
+HEAD 35fb3d3320d182a1da574df57f2d2413a681ee79
+branch refs/heads/agent/hepta-vnext-operator-acceptance-rev10-broker-20260814
+
+worktree /Volumes/T5/hepta-vnext/worktrees/p3-h57-shadow-20260826
+HEAD 275fdf0cb46241b4b046d4c14ff208ed03cda003
+branch refs/heads/hepta/h57-shadow-causal-fence-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/p3-hnl-inf-20260826
+HEAD 6a3da18f25d279883c7e665ce2eedc878a57eab2
+branch refs/heads/hepta/hnl-inf-contracts-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/p3-hnl-inf-uds-loopback-20260826
+HEAD 6a6ae77304b66ed56a216b79eb2b65074eafedc8
+branch refs/heads/hepta/hnl-inf-uds-loopback-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/paired-companion-r6
+HEAD 831c6625fb468c228eeda6d77be887c426f25582
+branch refs/heads/hepta/paired-companion-r6-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/provider-contract-slice-20260824
+HEAD d333d82de10672d171ad06c326a60f9bdfed5c59
+branch refs/heads/hepta/provider-contract-slice-20260824
+
+worktree /Volumes/T5/hepta-vnext/worktrees/provider-h57-next-20260827
+HEAD 0eee95a17b80418449985a61853c835ab0db77f1
+branch refs/heads/hepta/provider-h57-next-20260827
+
+worktree /Volumes/T5/hepta-vnext/worktrees/provider-sandbox-20260826
+HEAD 7eda0acfc0b74c5e0598c558c0420526933022f8
+branch refs/heads/hepta/provider-sandbox-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/provider-sandbox-backlog-20260826
+HEAD 92d7f1158776d820c207e64165df6d1eee08347f
+branch refs/heads/hepta/provider-sandbox-backlog-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/provider-sandbox-gap-20260826
+HEAD 0509da7e5c135dbd4e9fafd39831a56665dcdb38
+branch refs/heads/hepta/provider-sandbox-gap-20260826
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-contracts-h4-h7-20260823
+HEAD ca2cf9fe69a54e1560484c430fa86094f48f132a
+branch refs/heads/qualification/qual-contracts-h4-h7-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-g4-dispatch-20260823
+HEAD 445d1cdc50c9e86d09041b17888245b8c5937bda
+branch refs/heads/qual-g4-dispatch-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-g4-memory-temp-canonical-20260823
+HEAD c83fbcc1312dbfbdfd2a4eddfbf1c67119f5123a
+branch refs/heads/qualification/qual-g4-memory-temp-canonical-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-g5-bounded-aggregate-20260823
+HEAD 7ff977aa1771c725fda4d0eaa24657c5c94826d8
+branch refs/heads/qualification/g5-bounded-aggregate-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-h0-protocol-20260823
+HEAD 74078ea3390bf55bc2ea46fc6e2eb043107319e5
+branch refs/heads/qualification/qual-h0-protocol-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-h1-authoritative-writer-20260823
+HEAD 42e958d4d083a0beb19f76e4e5ecaad7110f14ea
+branch refs/heads/qualification/qual-h1-authoritative-writer-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-h2-workflow-20260823
+HEAD fe9122cf0bff4adc62c321f7591cb0096673c5cc
+branch refs/heads/qualification/qual-h2-workflow-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-h3-taskflow-20260823
+HEAD 8cdd600d50a3d2cb0228b568771ccea24c298388
+branch refs/heads/qualification/qual-h3-taskflow-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-h4-implementation-spike-20260823
+HEAD 0fd584455464071fbfc7d00517db39d9c2c6724d
+branch refs/heads/qualification/qual-h4-implementation-spike-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-h4-memory-compact-20260823
+HEAD ab67e772c75fc2fb27ba6606ea3aa667d8dd5338
+branch refs/heads/qualification/qual-h4-memory-compact-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-h5-h7-runtime-prereqs-20260823
+HEAD d0e418e6f1d94b02576bd8dba8d73ef61f40909e
+branch refs/heads/qualification/qual-h5-h7-runtime-prereqs-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-h5-neuron-group-20260823
+HEAD 5c69eeeb10c77fedd2a22eddda180025ce191a3a
+branch refs/heads/qualification/qual-h5-neuron-group-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-h6-intuition-policy-20260823
+HEAD 8807e17b24dc2a977a1c0b57f3cea03352b949c9
+branch refs/heads/qualification/qual-h6-intuition-policy-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-h7-ndu-learning-20260823
+HEAD 7e8441183cb31a196210300261d0bde22bcbce1b
+branch refs/heads/qualification/qual-h7-ndu-learning-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-h8-h9-governance-gate-20260823
+HEAD 445d1cdc50c9e86d09041b17888245b8c5937bda
+branch refs/heads/qualification/qual-h8-h9-governance-gate-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-implementation-readiness-20260823
+HEAD ae5009358df7003d1abcf4b23ebc1db0612ddae9
+branch refs/heads/qualification/qual-implementation-readiness-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qual-protocol-contracts-20260823
+HEAD 0e84bd1f20d539eade367c3ffb41a063ad28696c
+branch refs/heads/qualification/qual-protocol-contracts-20260823
+
+worktree /Volumes/T5/hepta-vnext/worktrees/qualification
+HEAD 66410aebfb221f9a035a4c5302e37eae1cf036eb
+branch refs/heads/agent/hepta-vnext-s4-qualification-next-20260809
+
+worktree /Volumes/T5/hepta-vnext/worktrees/r2-g3-intelligence-kg
+HEAD e0c4b0bbf403af99143ad9691385aea1d4992fa0
+branch refs/heads/hepta/r2-g3-intelligence-kg-20260820
+
+worktree /Volumes/T5/hepta-vnext/worktrees/r2-g4-matrix-robrix
+HEAD 445d1cdc50c9e86d09041b17888245b8c5937bda
+branch refs/heads/hepta/r2-g4-matrix-robrix-20260820
+
+worktree /Volumes/T5/hepta-vnext/worktrees/r2-g4-robrix-integration
+HEAD 64612c01de811f647d7f113d3104e2c9d8e17656
+branch refs/heads/ui/r2-g4-robrix-integration-20260821
+
+worktree /Volumes/T5/hepta-vnext/worktrees/r2-g4-robrix-v2
+HEAD 64612c01de811f647d7f113d3104e2c9d8e17656
+branch refs/heads/ui/r2-g4-robrix-v2-20260820
+
+worktree /Volumes/T5/hepta-vnext/worktrees/replay-stress-20260824
+HEAD 1ac538c3f515e25ae1b8cbf1f87c3f2ffc2195cd
+branch refs/heads/hepta/replay-stress-20260824
+
+worktree /Volumes/T5/hepta-vnext/worktrees/runtime-port
+HEAD 1bc55942588a94f2c3de1c8b66a51ad5e93fb3e0
+branch refs/heads/hepta/vnext-runtime-port-20260811
+
+worktree /Volumes/T5/hepta-vnext/worktrees/s5-port
+HEAD f72000a4dc760453aabe2cf8172bb55fe83e275a
+branch refs/heads/hepta/vnext-s5-port-20260811
+
+worktree /Volumes/T5/hepta-vnext/worktrees/state-recutover-closure
+HEAD 8a84ec2d76cd576f8f07eebd39764692c8bdd134
+branch refs/heads/hepta/vnext-state-recutover-closure-20260812
+
+worktree /Volumes/T5/hepta-vnext/worktrees/state-snapshot-v3
+HEAD 896ac817e197ec66a78fb3086130126a879dd13f
+branch refs/heads/agent/hepta-vnext-state-snapshot-v3-20260814
+
+worktree /Volumes/T5/hepta-vnext/worktrees/supervisor-cas-v2-r6
+HEAD 87095df31c6701577e3f81a2e79e56d2153afea1
+branch refs/heads/hepta/supervisor-cas-v2-r6-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/supervisord-product-r6
+HEAD c0f46679a8427635722102d4835e5de8606eb2e6
+branch refs/heads/hepta/supervisord-product-r6-20260819
+
+worktree /Volumes/T5/hepta-vnext/worktrees/turn-binding-contract-20260824
+HEAD 144e58a8227056031b080c66212e2e78838a109d
+branch refs/heads/hepta/turn-binding-contract-20260824
+
+worktree /Volumes/T5/hepta-vnext/worktrees/ui-fleet-r4
+HEAD 988975418a4d62c455150dbe1c8db95ecebb3700
+branch refs/heads/ui/cognitive-fleet-r4-20260818
+
+worktree /Volumes/T5/hepta-vnext/worktrees/ui-main
+HEAD f818e130f8832449e3098bb728578a1276c0e52e
+branch refs/heads/ui/vnext-main
+
+worktree /Volumes/T5/hepta-vnext/worktrees/upstream-c4b-integration
+HEAD 09e9e9ff7fa6b6c1d129d0c7a858979823e13ae8
+branch refs/heads/hepta/vnext-main-c4b287-20260812
+
+worktree /Volumes/T5/hepta-vnext/worktrees/upstream-sync-20260824
+HEAD bc45b0937a4ecdeb194d8831aa11cc37370f856b
+branch refs/heads/hepta/integration-upstream-20260824
+
+worktree /Volumes/T5/hepta-vnext/worktrees/upstream-sync-20260824/worktrees/azi2-h7-h89-20260826
+HEAD 1f512c403c6ad43e72631076b068b25765d2cfbb
+branch refs/heads/azi2/h7-h89-qualification
+
+worktree /Volumes/T5/hepta-vnext/worktrees/windows-driver
+HEAD 3f91dfaf85f6c66c774e215318b8da52a2f3ab0b
+branch refs/heads/agent/hepta-vnext-windows-driver-478f1396f6
+
+worktree /Volumes/T5/hepta-vnext/worktrees/writer-hook-e26-20260824
+HEAD 8c5ad938dd55e367bf2edade05c395ec72efc50b
+branch refs/heads/writer-hook-e26-20260824
+
+worktree /Volumes/T5/hepta-vnext/worktrees/writer-runtime-slice-20260824
+HEAD fd88880d8ed36bb7673eaf75eb5308b3833cc39a
+branch refs/heads/hepta/writer-runtime-slice-20260824
+

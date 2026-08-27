@@ -1,0 +1,120 @@
+{
+  "schema": "hepta.infer.inf0.qualification_receipt.v1",
+  "receipt_kind": "INF_0_CONTRACT_MANIFEST_QUALIFICATION",
+  "generated_at": "2026-08-27T02:12:00+08:00",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "status": "STALE_SOURCE_BINDING",
+  "decision": "CONTINUE_PRE_RELEASE_QUALIFICATION_ONLY",
+  "scope": [
+    "INF-0 backend-neutral wire contract projection",
+    "PerformanceContract tuple and no-silent-fallback policy",
+    "model manifest and supply-chain digest binding",
+    "hardware profile and redacted workload fixture inventory",
+    "deterministic golden vectors and fail-closed tamper verification"
+  ],
+  "source": {
+    "repo": "hepta-vnext",
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/inf-0-qualification-20260827",
+    "branch": "hepta/inf-0-qualification-20260827",
+    "base_head": "b29b7e6c105a2b44fe490309b42ae423c12fc10f",
+    "base_tree": "3012b20faeebd5930c077d5382051723034a990f",
+    "head": "70f62b46c8b421ecd7598b72b11d7d25dc0071ab",
+    "tree": "3d056cf5ee71c2146030c375ed7ca1d2f9da5fab",
+    "parent": "b29b7e6c105a2b44fe490309b42ae423c12fc10f",
+    "dirty": false,
+    "tracked_delta_scope": "qualification/inf-0/** only"
+  },
+  "source_binding": {
+    "root_plan_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+    "root_plan_sha256": "86a568844abad73a4fb2cf267b3d0df9692ee8c54bb362755e69f516f1621619",
+    "qualification_index_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+    "qualification_index_sha256": "e3105a4684c49340fd66c71c4be94e0a335ba19e8081200a87416d1c6e809b63",
+    "inf_plan_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-inference-runtime-plan-2026-08-26.md",
+    "inf_plan_sha256": "ff85519288c9d85315fd60471e577a933a00b5b48736cc4281b51f26029214d0",
+    "inf_stage_matrix_sha256": "ca2ab4ae9724ec42e250f65986c5fa816b31a9cb7038a398396ab93c5592ad13",
+    "parent_plan_digest_declared_by_inf": "ba5008aa46b2f4e2ee3325deee197aa99d6997039bd5659db67f400c0c72c417",
+    "binding_status": "STALE_SOURCE_BINDING",
+    "reason_codes": [
+      "INF_PLAN_PARENT_DIGEST_MISMATCH",
+      "EXTERNAL_EFFECTIVE_INDEX_NOT_REBOUND",
+      "NO_EXTERNAL_SIGNER_ATTESTATION",
+      "NO_DEVICE_PERFORMANCE_RECEIPT"
+    ],
+    "root_or_history_rewritten": false
+  },
+  "evidence": {
+    "evidence_class": "DETERMINISTIC_FIXTURE_AND_OFFLINE_SCHEMA_VALIDATION",
+    "claim_status": "SCHEMA_ONLY",
+    "efficacy_status": "NOT_MEASURED",
+    "approval": "NONE",
+    "external_authority": false,
+    "cryptographic_attestation": "NOT_PERFORMED",
+    "network_or_model_backend_used": false
+  },
+  "artifacts": {
+    "qualification_path": "qualification/inf-0",
+    "files": [
+      {"path": "P3-SOURCE-BINDING.json", "sha256": "91744364e473a8c3b10bcdc9836bd1301a7a81ab4081da4ac729c10cfe3aa95f"},
+      {"path": "README.md", "sha256": "bdbaa9deb24f9ea08d1b4e510a9c0eff42abf3322ace01f80120198d0f4bfd21"},
+      {"path": "golden-vectors.json", "sha256": "550c8859562b04ee5c3962cf5aac47448d113aba727ad8303b82a1d48eda6d37"},
+      {"path": "hardware-profiles-v1.json", "sha256": "9902cae85e0401319b0cee87000a688d8a7f2f9e5dadd26b9ca8986e8e90ad9a"},
+      {"path": "inf-wire-v1.schema.json", "sha256": "379d44c4ff939d0737a6b390a837fd17756b6455f48b24b7d17f86d27d78ea24"},
+      {"path": "model-manifest-v1.json", "sha256": "d68d426c5f0971bc8fc18de726e218e7abdc4a7ceba79c0e98813dcd6afeb0da"},
+      {"path": "model-manifest-v1.schema.json", "sha256": "1db52699b25c60ec374b93b2960dafa6177b7a15ae3e16cc95ccb7de2fb9f8ec"},
+      {"path": "performance-contract-v1.json", "sha256": "1f518680d124c685490d1fa5b13ad1595ef9d604ae67246b4997e6a82d3c8c7a"},
+      {"path": "test_inf0.py", "sha256": "4599e47e7f4b274697b1354c2b7f64821d3c7fd29d4791dbe6d2385073cdc8a8"},
+      {"path": "verify_inf0.py", "sha256": "9fbef8f2f623d29ca4dba078867ce3f02ea513f8213a9771b73efc4cbe933db6"},
+      {"path": "verify_inf0.sh", "sha256": "fe63a1dac64946ff6f799d291a29813b91d56799446e555aa76b2d08ed38e0ba"},
+      {"path": "workload-fixtures-v1.json", "sha256": "70b73e7771b6964793bca9a326fef22a3d685de451e255d400ebefe26bce0bf2"}
+    ]
+  },
+  "validation": [
+    {
+      "name": "offline_inf0_verifier",
+      "command": "./qualification/inf-0/verify_inf0.sh",
+      "script_sha256": "fe63a1dac64946ff6f799d291a29813b91d56799446e555aa76b2d08ed38e0ba",
+      "fixture_sha256": "550c8859562b04ee5c3962cf5aac47448d113aba727ad8303b82a1d48eda6d37",
+      "result": "2 positive / 12 negative passed"
+    },
+    {
+      "name": "python_tamper_regressions",
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest -v qualification/inf-0/test_inf0.py",
+      "script_sha256": "4599e47e7f4b274697b1354c2b7f64821d3c7fd29d4791dbe6d2385073cdc8a8",
+      "result": "5 passed / 0 failed"
+    },
+    {
+      "name": "jsonschema_draft2020_positive_fixtures",
+      "command": "jsonschema Draft202012Validator for wire + model manifest",
+      "schema_sha256": "379d44c4ff939d0737a6b390a837fd17756b6455f48b24b7d17f86d27d78ea24",
+      "result": "3/3 positive documents validated"
+    },
+    {"name": "cargo_check_locked_codex_hepta_contracts", "command": "cargo check --locked -p codex-hepta-contracts", "result": "pass"},
+    {"name": "cargo_clippy_locked_codex_hepta_contracts_lib", "command": "cargo clippy --locked -p codex-hepta-contracts --lib -- -D warnings", "result": "pass"},
+    {"name": "git_diff_check", "command": "git diff HEAD^ HEAD --check", "result": "pass"},
+    {"name": "worktree_clean", "command": "git status --porcelain=v1", "result": "empty"}
+  ],
+  "authority_flags": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "shared_kg_write": false,
+    "routing_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "callers_touched": false,
+    "operator_acceptance": false,
+    "promotion": false
+  },
+  "open_blockers": [
+    "INF plan parent digest and external effective-index are stale; no authority rebind claimed",
+    "No signed model/weight/compiled-artifact/SBOM/license registry entry",
+    "No device-specific benchmark or direct-native baseline; all hardware profiles remain NOT_TESTED/KNOWN_GAP",
+    "INF-1 UDS/CBOR loopback, native worker ABI and shared-memory descriptors are separate future lanes",
+    "No external signer, KMS/HSM, NPU, remote inference, router admission, or production effect"
+  ],
+  "rollback": "remove qualification/inf-0 path only; no runtime or authority state exists to roll back",
+  "append_only": true,
+  "historical_receipts_rewritten": false
+}

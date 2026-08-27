@@ -1,0 +1,530 @@
+{
+  "schema": "hepta.authbus.execution-closure-receipt.v1",
+  "plan_id": "AUTHBUS-PLAN-2026-08-26",
+  "revision": "1.3",
+  "status": "PLANNING_ONLY_IMPLEMENTATION_BACKLOG",
+  "amendment": {
+    "id": "AUTHBUS.11",
+    "canonical_anchor": "authbus11-execution-closure-v13",
+    "supersedes": "AUTHBUS.11-v1.2",
+    "purpose": "execution_closure_and_generated_contract_binding"
+  },
+  "parent_amendment": {
+    "receipt_path": "OpenClaw/AUTHBUS-PLAN-AMENDMENT-RECEIPT-2026-08-26.json",
+    "receipt_sha256": "2951072b7c032b6dbbd4e0dfec92b3202f4471b9e5b0c260984e1af3bce60775",
+    "schema_path": "OpenClaw/hepta.authbus_amendment_receipt.v1.schema.json",
+    "schema_sha256": "376a946ca262272378e7e648ed9ec580de2b9caeda66807d12e2fd18e77da94a",
+    "immutable": true
+  },
+  "parent_bindings": [
+    {
+      "path": "OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+      "sha256": "4fb8cc7b5d20d9bd07e3aed6352d9457a3f2fa754c6361842922d71538077967"
+    },
+    {
+      "path": "OpenClaw/hepta-authbus-basil-fork-plan-2026-08-26.md",
+      "sha256": "5133e9aecda40f75291df94d52fa9685fd3cb5994f93945b3fe43b12081b7465"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml",
+      "sha256": "25a97bf088ac4ec384131d10a81c99e7d7f2ea14f049388a8f19d5e4a82267fb"
+    },
+    {
+      "path": "OpenClaw/HEPTA_AUTHBUS_BASIL_UPSTREAM_POLICY_V1.md",
+      "sha256": "a1209078e287b9d879fe783fb2bbc37d574eef78a3384efdf44e6ec6859070c6"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml",
+      "sha256": "7d8db70c06c775b354eb89876d313d549fc2faf7cb402ba46ee4146e6e9ff3af"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml",
+      "sha256": "565f8df52a7d7217083f532cd33f3b41d19c5adccd03a1a42513c3aa1e9dcd08"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml",
+      "sha256": "f1a993adfa20eb9b66c7610980b4a0361020c4fc31804cde8d216f6c2980c969"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml",
+      "sha256": "9ea57b07a007ea883a3d87e507251477c0a159f7562862e97a8a7b19a4344883"
+    },
+    {
+      "path": "OpenClaw/hepta.authbus_receipt.v1.schema.json",
+      "sha256": "5074dccc09e221e9c7806be51075bf284fc8977dc32ddbfcd4973aca4f349a3a"
+    },
+    {
+      "path": "OpenClaw/hepta.authbus_amendment_receipt.v1.schema.json",
+      "sha256": "376a946ca262272378e7e648ed9ec580de2b9caeda66807d12e2fd18e77da94a"
+    }
+  ],
+  "post_bindings": [
+    {
+      "path": "OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+      "sha256": "1ff0f8aabf733e1d43a59e3b8f30281dba4f6814f20d3759b909816f207becce"
+    },
+    {
+      "path": "OpenClaw/hepta-authbus-basil-fork-plan-2026-08-26.md",
+      "sha256": "ba2a6779865ce3a2fccc592bfc17cb688b112e9e4e42940254d58c9818fa6c23"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml",
+      "sha256": "5d98b261e3cd803fd52a06427e341b3fae9269495099bfd6c43b96b3f554b707"
+    },
+    {
+      "path": "OpenClaw/HEPTA_AUTHBUS_BASIL_UPSTREAM_POLICY_V1.md",
+      "sha256": "70ae381bdcbfd0655d392e6ca9ca15728aeef2e44c487a87c135f8a85d4a29f6"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml",
+      "sha256": "d95c0cbd0162156baa3a6b8b4b6bd5423826c99a90b06c596ffedaa9ed153309"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml",
+      "sha256": "aa90dbe0c63826dcf951783d858ce2e7ec05a0f554ec119cbc6b2b4a72a0ddf8"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml",
+      "sha256": "c726f52e0109763ed876d23468c4e5552ff27da97f0c86c1e4c6380475a8f30a"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml",
+      "sha256": "0e92726dab7777b1904e4369c92d506e391765a278757fe0bc6a22e1ae8ada14"
+    },
+    {
+      "path": "OpenClaw/HEPTA_VNEXT_PROTOCOL_SPEC.md",
+      "sha256": "58862b5bb0dc02d2bbad7d74a70efd8a281c3672dd6ae70ea7e88f78cd9361e6"
+    },
+    {
+      "path": "OpenClaw/HEPTA_TASKFLOW_VERTICAL_SLICE.md",
+      "sha256": "0b5f5c35ad9bd454b3304233a7f0270c44437f6644edbaba666474d125c7076b"
+    },
+    {
+      "path": "OpenClaw/hepta.authbus_amendment_receipt.v1_3.schema.json",
+      "sha256": "bc518877a81cc49bfe7f964392beadaf0ebb0ca9bd581f5b82b99b391db42ce1"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml",
+      "sha256": "cda83c4776d4c2b3c2851474e476e775d6ca26fa815373083aac47fdfd0c89f5"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml",
+      "sha256": "bd82b1380497de39f484b2f071f611247752459ad1aaf1d8d112fad8680e2d92"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml",
+      "sha256": "fff6dbee24303b8333b23ba084e73d0863a8ef6d8e5f629ae11bbdecca50f5e4"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml",
+      "sha256": "ff84c2de1b6e8e7197a34252ef7bee524c6691c5c1e8d688985f7932e001995f"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml",
+      "sha256": "693119ead3c3ed6b8c6027260020374a49ccf56356e99756235524a9f2fc9887"
+    }
+  ],
+  "changed_files": [
+    {
+      "path": "OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+      "sha256": "1ff0f8aabf733e1d43a59e3b8f30281dba4f6814f20d3759b909816f207becce"
+    },
+    {
+      "path": "OpenClaw/hepta-authbus-basil-fork-plan-2026-08-26.md",
+      "sha256": "ba2a6779865ce3a2fccc592bfc17cb688b112e9e4e42940254d58c9818fa6c23"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml",
+      "sha256": "5d98b261e3cd803fd52a06427e341b3fae9269495099bfd6c43b96b3f554b707"
+    },
+    {
+      "path": "OpenClaw/HEPTA_AUTHBUS_BASIL_UPSTREAM_POLICY_V1.md",
+      "sha256": "70ae381bdcbfd0655d392e6ca9ca15728aeef2e44c487a87c135f8a85d4a29f6"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml",
+      "sha256": "d95c0cbd0162156baa3a6b8b4b6bd5423826c99a90b06c596ffedaa9ed153309"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml",
+      "sha256": "aa90dbe0c63826dcf951783d858ce2e7ec05a0f554ec119cbc6b2b4a72a0ddf8"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml",
+      "sha256": "c726f52e0109763ed876d23468c4e5552ff27da97f0c86c1e4c6380475a8f30a"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml",
+      "sha256": "0e92726dab7777b1904e4369c92d506e391765a278757fe0bc6a22e1ae8ada14"
+    },
+    {
+      "path": "OpenClaw/HEPTA_VNEXT_PROTOCOL_SPEC.md",
+      "sha256": "58862b5bb0dc02d2bbad7d74a70efd8a281c3672dd6ae70ea7e88f78cd9361e6"
+    },
+    {
+      "path": "OpenClaw/HEPTA_TASKFLOW_VERTICAL_SLICE.md",
+      "sha256": "0b5f5c35ad9bd454b3304233a7f0270c44437f6644edbaba666474d125c7076b"
+    },
+    {
+      "path": "OpenClaw/hepta.authbus_amendment_receipt.v1_3.schema.json",
+      "sha256": "bc518877a81cc49bfe7f964392beadaf0ebb0ca9bd581f5b82b99b391db42ce1"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml",
+      "sha256": "cda83c4776d4c2b3c2851474e476e775d6ca26fa815373083aac47fdfd0c89f5"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml",
+      "sha256": "bd82b1380497de39f484b2f071f611247752459ad1aaf1d8d112fad8680e2d92"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml",
+      "sha256": "fff6dbee24303b8333b23ba084e73d0863a8ef6d8e5f629ae11bbdecca50f5e4"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml",
+      "sha256": "ff84c2de1b6e8e7197a34252ef7bee524c6691c5c1e8d688985f7932e001995f"
+    },
+    {
+      "path": "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml",
+      "sha256": "693119ead3c3ed6b8c6027260020374a49ccf56356e99756235524a9f2fc9887"
+    }
+  ],
+  "dependency_bindings": [
+    {
+      "id": "HNL-GATE0-DECISIONS",
+      "required_for": [
+        "B7",
+        "B8_federated",
+        "B9_federated",
+        "B10_federated"
+      ],
+      "resolution": "NOT_READY_FAIL_CLOSED",
+      "source_digest": "2b3ffb6c66eec25183881f158368dfee1cabee545a33503ced1ffdc155784c0b",
+      "receipt_digest": "956ff899a147a8f53cd112e850f52e80f9b68af26f8d97e5512750937a8b9e1f",
+      "source_ref": "OpenClaw/hepta-net-node-link-plan-2026-08-26.md#hnl-gate0-architecture",
+      "resolution_detail": "HNL Gate-0 source anchor is present but matrix/receipt binding is stale; federated lane remains fail-closed.",
+      "source_bindings": [
+        {
+          "role": "plan",
+          "path": "OpenClaw/hepta-net-node-link-plan-2026-08-26.md",
+          "sha256": "2b3ffb6c66eec25183881f158368dfee1cabee545a33503ced1ffdc155784c0b",
+          "anchor_or_pointer": "#hnl-gate0-architecture"
+        },
+        {
+          "role": "matrix",
+          "path": "OpenClaw/HNL_STAGE_MATRIX_v1.yaml",
+          "sha256": "c92c6ae08486c7c33a8f7590b4d009d2e0b759630d4f3a5f9059747db5b67f53",
+          "anchor_or_pointer": "#/stages/0"
+        },
+        {
+          "role": "receipt",
+          "path": "OpenClaw/HNL-PLAN-APPEND-RECEIPT-2026-08-26.json",
+          "sha256": "956ff899a147a8f53cd112e850f52e80f9b68af26f8d97e5512750937a8b9e1f",
+          "anchor_or_pointer": "receipt"
+        }
+      ],
+      "release_gate": false
+    },
+    {
+      "id": "AUTHBUS-CANONICAL-CONTRACT-REGISTRY",
+      "required_for": [
+        "B2",
+        "B3",
+        "B4",
+        "B5",
+        "B6",
+        "B7",
+        "B8",
+        "B9",
+        "B10"
+      ],
+      "resolution": "DESIGN_ONLY",
+      "source_ref": "OpenClaw/AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry",
+      "resolution_detail": "Registry and generated projections are static implementation inputs; B2 must bind digest before codegen.",
+      "source_bindings": [
+        {
+          "role": "registry",
+          "path": "OpenClaw/AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml",
+          "sha256": "cda83c4776d4c2b3c2851474e476e775d6ca26fa815373083aac47fdfd0c89f5",
+          "anchor_or_pointer": "#/registry"
+        }
+      ],
+      "release_gate": false
+    }
+  ],
+  "stage_dod": [
+    {
+      "stage_id": "B0",
+      "status": "PLANNED",
+      "checks": [
+        "source_binding",
+        "source_receipt",
+        "license_sbom",
+        "locked_build_input",
+        "no_runtime_write"
+      ],
+      "command_digest": "7224a55cb4f6886f95dff23ea13d856b18bec83af198053c1f2f3737aba61635",
+      "fixture_digest": "6aae455bb5918410a3ec471386dc6c15b8064ef0338f283b4a57b1d3b923948b",
+      "lane": "aggregate"
+    },
+    {
+      "stage_id": "B1",
+      "status": "PLANNED",
+      "checks": [
+        "B0",
+        "minimal_profile_deny_vectors",
+        "descriptor_route_digest",
+        "key_generation_forbidden",
+        "identity_vectors"
+      ],
+      "command_digest": "2184f2163e0ce974a6fad9b570e75a33bb817006b3de16ae9fcc07c3776d0688",
+      "fixture_digest": "5e278853bb6d51e4aaf4393665c8a4057a895e119e5910f43937886526bc0f98",
+      "lane": "aggregate"
+    },
+    {
+      "stage_id": "B2",
+      "status": "PLANNED",
+      "checks": [
+        "B1",
+        "e21_fixture",
+        "status_error_crosswalk",
+        "canonical_bytes_vectors",
+        "historical_alias_guard"
+      ],
+      "command_digest": "397a1337b5d0e28cbf62f447df6fd57430689198c013b5438bcefa3795782ee4",
+      "fixture_digest": "40551d9a169be2848effa03c6ef293e899eb544c543b465506e7bbfd48d5fac3",
+      "lane": "aggregate"
+    },
+    {
+      "stage_id": "B3",
+      "status": "PLANNED",
+      "checks": [
+        "B2",
+        "openbao_error_matrix",
+        "opaque_secretref_refresh",
+        "direct_ack_path",
+        "status_by_key_lookup",
+        "fail_closed"
+      ],
+      "command_digest": "103ee4ba72c80348f7b91d86f3b40c5021907e81b856157855f3f9b331e83333",
+      "fixture_digest": "f96b9b2ac113aa5307b35eaba0b824f0131bd536799aa600989965a3aa179974",
+      "lane": "aggregate"
+    },
+    {
+      "stage_id": "B4",
+      "status": "PLANNED",
+      "checks": [
+        "B2",
+        "B3",
+        "oversell_zero",
+        "duplicate_permit_zero",
+        "fairness_bound",
+        "starvation_bound"
+      ],
+      "command_digest": "bc80760c4c51ed88a8fa6e0a4e295d2108c1ac581bf01ecff74b3af91d24bf80",
+      "fixture_digest": "e4becfe5cb8f1fba5ba7e4a20691c138d923f353f881368e5c3abc60a31ea3d5",
+      "lane": "aggregate"
+    },
+    {
+      "stage_id": "B5",
+      "status": "PLANNED",
+      "checks": [
+        "B3",
+        "B4",
+        "fsync_before_call",
+        "lookup_only_unknown_recovery",
+        "outbox_dedupe",
+        "rpo_zero"
+      ],
+      "command_digest": "3eae52f1657fe718a683f87aaa31dabcecd3499b624b2e596835e14b3e7efd02",
+      "fixture_digest": "51dfff71cd58a7a7e8f4686dc5a9de589eead89274976e2514c02f9b7c8b4132",
+      "lane": "aggregate"
+    },
+    {
+      "stage_id": "B6",
+      "status": "PLANNED",
+      "checks": [
+        "B5",
+        "single_writer",
+        "stale_callback_reject",
+        "raw_scrub_receipt",
+        "rollback_fence"
+      ],
+      "command_digest": "58d23371f112a722abdaf14448d8f5c9b3c6ebad76025533fc61ee7ef759585a",
+      "fixture_digest": "56240402137a699a008f7ce7c15f098eaed1342f35f5d00effc8094c3de3f566",
+      "lane": "aggregate"
+    },
+    {
+      "stage_id": "B7",
+      "status": "NOT_READY",
+      "checks": [
+        "B5",
+        "B6",
+        "HNL-GATE0-DECISIONS",
+        "hnl_gate0_resolved",
+        "three_node_loopback",
+        "identity_vectors",
+        "replay_partition_reject"
+      ],
+      "command_digest": "538cf6d8b2c591071ad65fcc2f50fb42c895f2836d899c092e6694d02f114dd3",
+      "fixture_digest": "2033ca671e49cd10627f9168c42bdd78ae61feb2f5da11616be452eceb893710",
+      "lane": "aggregate"
+    },
+    {
+      "stage_id": "B8",
+      "status": "PLANNED",
+      "checks": [
+        "B4",
+        "B5",
+        "B7",
+        "HNL-GATE0-DECISIONS",
+        "virtual_credential_vectors",
+        "api_subset_frozen",
+        "stream_cancel_backpressure",
+        "ssrf_negative",
+        "basil_route_crosswalk"
+      ],
+      "command_digest": "ecbd0e1cb8a008fb132da26d5f47327903f7b8b6eb0c5bdf54846843d6d2941e",
+      "fixture_digest": "9bc69d892362ec634f1350b63ff82ffb42f800927a3954789d13e06e0afdfdb5",
+      "lane": "aggregate",
+      "local_status": "PLANNED",
+      "federated_status": "NOT_READY"
+    },
+    {
+      "stage_id": "B9",
+      "status": "PLANNED",
+      "checks": [
+        "B8",
+        "B7",
+        "HNL-GATE0-DECISIONS",
+        "bounded_delegation",
+        "usage_vector_conservation",
+        "no_double_settlement",
+        "dispute_vectors",
+        "basil_route_crosswalk"
+      ],
+      "command_digest": "b5c9bc159fc5b0d5200a4f7cf67d39380347a3e70dee0bcbe19ce7cb8052ba59",
+      "fixture_digest": "be10faf46a28d4147ace9194024263ec468986b320602a4803c246205262d5fb",
+      "lane": "aggregate",
+      "local_status": "PLANNED",
+      "federated_status": "NOT_READY"
+    },
+    {
+      "stage_id": "B10",
+      "status": "PLANNED",
+      "checks": [
+        "B6",
+        "B8",
+        "B9",
+        "B7",
+        "HNL-GATE0-DECISIONS",
+        "reproducible_build",
+        "canary_rollback",
+        "final_release_handoff_only",
+        "flags_false"
+      ],
+      "command_digest": "0a758c33c8fb9e15e3c776860dfcd9490f6497aba1c26524fcbb11f85ebd548d",
+      "fixture_digest": "59aeca406d8dc717990b899851905bb10d03343e1c7f413bb75493fbff3fc160",
+      "lane": "aggregate",
+      "local_status": "PLANNED",
+      "federated_status": "NOT_READY"
+    }
+  ],
+  "source_closure": {
+    "basil_repo": "https://github.com/openbasil/basil",
+    "basil_commit": "1fd29adb8e7356968eacbff9309e056cec9bafd7",
+    "license": "Apache-2.0",
+    "source_status": "research_capture",
+    "source_receipt_status": "NOT_CAPTURED",
+    "source_receipt_ref": "NOT_CAPTURED",
+    "source_receipt_sha256": "NOT_CAPTURED",
+    "toolchain_status": "RESEARCH_CAPTURE_ONLY",
+    "key_generation": "forbidden",
+    "source_tree_sha256": "REQUIRED_AT_B0",
+    "git_archive_sha256": "REQUIRED_AT_B0",
+    "cargo_lock_sha256": "REQUIRED_AT_B0",
+    "rust_toolchain_sha256": "REQUIRED_AT_B0",
+    "gitmodules_sha256": "REQUIRED_AT_B0",
+    "submodule_commits": [
+      "NOT_CAPTURED"
+    ],
+    "workspace_members_included": [
+      "NOT_CAPTURED"
+    ],
+    "workspace_members_excluded": [
+      "NOT_CAPTURED"
+    ],
+    "features_enabled": [
+      "NOT_CAPTURED"
+    ],
+    "target_triples": [
+      "NOT_CAPTURED"
+    ],
+    "rust_toolchain_channel": "1.98.0",
+    "rustc_version": "1.94.0-research-capture",
+    "cargo_version": "1.94.0-research-capture",
+    "protoc_version": "34.1-research-capture",
+    "msrv_core": "1.88",
+    "test_minimum_rust": "1.96",
+    "build_profile_id": "hepta-basil-host-minimal-v1",
+    "cargo_metadata_sha256": "REQUIRED_AT_B0",
+    "sbom_manifest_sha256": "REQUIRED_AT_B0",
+    "license_manifest_sha256": "REQUIRED_AT_B0",
+    "build_status": "NOT_RUN",
+    "test_status": "NOT_RUN",
+    "dirty": "REQUIRED_AT_B0",
+    "canonical_registry_status": "REQUIRED_AT_B2"
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false
+  },
+  "external_gates": {
+    "development": "DEFERRED_PRE_RELEASE",
+    "internal_test": "DEFERRED_PRE_RELEASE",
+    "release_prep": "DEFERRED_PRE_RELEASE",
+    "final_release": "REQUIRED_FOR_RELEASE_ONLY"
+  },
+  "validation": {
+    "validation_scope": "DOCUMENT_STATIC_ONLY",
+    "assertion_kind": "DOCUMENT_STATIC_ASSERTION",
+    "static_contract_guard": true,
+    "behavioral_implementation_evidence": "NOT_RUN",
+    "implementation_tests_run": false,
+    "strict_yaml_duplicate_keys": true,
+    "json_schema": true,
+    "crosswalk_projection": true,
+    "status_and_error_registry": true,
+    "reconcile_evidence": true,
+    "dispatch_wal_outbox": true,
+    "basil_profile_keygen": true,
+    "stage_dag_and_refs": true,
+    "historical_terminal_guard": true,
+    "e41_prefix_unchanged": true,
+    "runtime_untouched": true,
+    "production_flags_unchanged": true,
+    "validation_commands_manifest_ref": "OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml#/execution_closure_v1_3/ci_validation",
+    "validation_commands_digest": "8a5f19789acce6ada16b2756f084425dab6b745d4c685c16de7c6e2be2a1ac1b",
+    "fixture_manifest_ref": "OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml#/execution_closure_v1_3/stage_dod",
+    "fixture_manifest_digest": "1faf6ac004befccb19ab69dd9ece05285afab5648a8b41a67be0362a00928659",
+    "fixture_bundle_digest": "a883b4a53218f3aff8cc64c6836000839d9d2582f6c715fbc748b37939a10ed9"
+  },
+  "index_binding": {
+    "path": "OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+    "entry": "E.44",
+    "hash_scope": "external_index_records_receipt_and_post_bindings; index_is_excluded_from_receipt_hash_to_avoid_cycle"
+  },
+  "notes": [
+    "Static document closure only; no behavioral implementation, runtime authority, provider effect, signer/KMS, physical power-loss or release evidence is claimed.",
+    "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml is the sole normative v1.3 source; narrow and broad attachments are generated projections.",
+    "E.41 development/internal-test/release-prep continuity remains unchanged; external gates are release-only."
+  ],
+  "created_at": "2026-08-27T02:30:00+08:00"
+}

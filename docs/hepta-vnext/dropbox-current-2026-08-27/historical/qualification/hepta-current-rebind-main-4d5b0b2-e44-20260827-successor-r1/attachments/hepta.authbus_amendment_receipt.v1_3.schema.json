@@ -1,0 +1,553 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hepta.local/schemas/hepta.authbus_amendment_receipt.v1_3.schema.json",
+  "title": "Hepta AuthBus AUTHBUS.11 execution-closure amendment receipt v1.3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "plan_id",
+    "revision",
+    "status",
+    "amendment",
+    "parent_amendment",
+    "parent_bindings",
+    "post_bindings",
+    "changed_files",
+    "dependency_bindings",
+    "stage_dod",
+    "source_closure",
+    "authority_flags",
+    "external_gates",
+    "validation",
+    "index_binding",
+    "created_at"
+  ],
+  "properties": {
+    "schema": { "const": "hepta.authbus.execution-closure-receipt.v1" },
+    "plan_id": { "const": "AUTHBUS-PLAN-2026-08-26" },
+    "revision": { "const": "1.3" },
+    "status": { "const": "PLANNING_ONLY_IMPLEMENTATION_BACKLOG" },
+    "amendment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "canonical_anchor", "supersedes", "purpose"],
+      "properties": {
+        "id": { "const": "AUTHBUS.11" },
+        "canonical_anchor": { "const": "authbus11-execution-closure-v13" },
+        "supersedes": { "const": "AUTHBUS.11-v1.2" },
+        "purpose": { "const": "execution_closure_and_generated_contract_binding" }
+      }
+    },
+    "parent_amendment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receipt_path", "receipt_sha256", "schema_path", "schema_sha256", "immutable"],
+      "properties": {
+        "receipt_path": { "const": "OpenClaw/AUTHBUS-PLAN-AMENDMENT-RECEIPT-2026-08-26.json" },
+        "receipt_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "schema_path": { "const": "OpenClaw/hepta.authbus_amendment_receipt.v1.schema.json" },
+        "schema_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "immutable": { "const": true }
+      }
+    },
+    "parent_bindings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/definitions/digest_entry" }
+    },
+    "post_bindings": {
+      "type": "array",
+      "description": "The v1.3 post-state is a closed set. Index and receipt files are deliberately excluded to avoid a hash cycle.",
+      "minItems": 16,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": { "$ref": "#/definitions/bound_digest_entry" },
+      "allOf": [
+        { "$ref": "#/definitions/contains_plan" },
+        { "$ref": "#/definitions/contains_fork_plan" },
+        { "$ref": "#/definitions/contains_stage_matrix" },
+        { "$ref": "#/definitions/contains_upstream_policy" },
+        { "$ref": "#/definitions/contains_trust_matrix" },
+        { "$ref": "#/definitions/contains_quota_contract" },
+        { "$ref": "#/definitions/contains_failure_machine" },
+        { "$ref": "#/definitions/contains_abuse_policy" },
+        { "$ref": "#/definitions/contains_protocol_spec" },
+        { "$ref": "#/definitions/contains_taskflow_slice" },
+        { "$ref": "#/definitions/contains_v13_schema" },
+        { "$ref": "#/definitions/contains_canonical_registry" },
+        { "$ref": "#/definitions/contains_oauth_contract" },
+        { "$ref": "#/definitions/contains_reconcile_contract" },
+        { "$ref": "#/definitions/contains_outbox_contract" },
+        { "$ref": "#/definitions/contains_remote_gateway_contract" }
+      ]
+    },
+    "changed_files": {
+      "type": "array",
+      "description": "Exactly the files changed by this amendment; qualification index and receipt are outside the self-hash set.",
+      "minItems": 16,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": { "$ref": "#/definitions/bound_digest_entry" },
+      "allOf": [
+        { "$ref": "#/definitions/contains_plan" },
+        { "$ref": "#/definitions/contains_fork_plan" },
+        { "$ref": "#/definitions/contains_stage_matrix" },
+        { "$ref": "#/definitions/contains_upstream_policy" },
+        { "$ref": "#/definitions/contains_trust_matrix" },
+        { "$ref": "#/definitions/contains_quota_contract" },
+        { "$ref": "#/definitions/contains_failure_machine" },
+        { "$ref": "#/definitions/contains_abuse_policy" },
+        { "$ref": "#/definitions/contains_protocol_spec" },
+        { "$ref": "#/definitions/contains_taskflow_slice" },
+        { "$ref": "#/definitions/contains_v13_schema" },
+        { "$ref": "#/definitions/contains_canonical_registry" },
+        { "$ref": "#/definitions/contains_oauth_contract" },
+        { "$ref": "#/definitions/contains_reconcile_contract" },
+        { "$ref": "#/definitions/contains_outbox_contract" },
+        { "$ref": "#/definitions/contains_remote_gateway_contract" }
+      ]
+    },
+    "dependency_bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+          "required": ["id", "required_for", "resolution", "source_bindings", "release_gate"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "required_for": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "resolution": { "enum": ["RESOLVED", "NOT_READY_FAIL_CLOSED", "DESIGN_ONLY"] },
+          "source_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "receipt_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "source_bindings": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "$ref": "#/definitions/source_binding_entry" }
+          },
+          "resolution_detail": { "type": "string", "minLength": 1 },
+          "source_ref": { "type": "string", "pattern": "^OpenClaw/[^\\s#]+#[^\\s]+$" },
+          "release_gate": { "const": false }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": ["resolution"],
+              "properties": {
+                "resolution": { "enum": ["RESOLVED", "NOT_READY_FAIL_CLOSED"] }
+              }
+            },
+            "then": { "required": ["source_digest", "receipt_digest"] }
+          }
+        ]
+      }
+    },
+    "stage_dod": {
+      "type": "array",
+      "minItems": 11,
+      "maxItems": 11,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["stage_id", "status", "checks", "command_digest", "fixture_digest"],
+        "properties": {
+          "stage_id": { "enum": ["B0", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10"] },
+          "status": { "enum": ["PLANNED", "DESIGN_ONLY", "FIXTURE_ONLY", "NOT_READY"] },
+          "checks": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "command_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "fixture_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "lane": { "enum": ["local", "federated", "aggregate"] },
+          "local_status": { "enum": ["PLANNED", "DESIGN_ONLY", "FIXTURE_ONLY", "NOT_READY"] },
+          "federated_status": { "enum": ["PLANNED", "DESIGN_ONLY", "FIXTURE_ONLY", "NOT_READY"] }
+        }
+      },
+      "allOf": [
+        { "$ref": "#/definitions/contains_stage_b0" },
+        { "$ref": "#/definitions/contains_stage_b1" },
+        { "$ref": "#/definitions/contains_stage_b2" },
+        { "$ref": "#/definitions/contains_stage_b3" },
+        { "$ref": "#/definitions/contains_stage_b4" },
+        { "$ref": "#/definitions/contains_stage_b5" },
+        { "$ref": "#/definitions/contains_stage_b6" },
+        { "$ref": "#/definitions/contains_stage_b7" },
+        { "$ref": "#/definitions/contains_stage_b8" },
+        { "$ref": "#/definitions/contains_stage_b9" },
+        { "$ref": "#/definitions/contains_stage_b10" }
+      ]
+    },
+    "source_closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "basil_repo",
+        "basil_commit",
+        "license",
+        "source_status",
+        "source_receipt_status",
+        "source_receipt_ref",
+        "source_receipt_sha256",
+        "toolchain_status",
+        "key_generation",
+        "source_tree_sha256",
+        "git_archive_sha256",
+        "cargo_lock_sha256",
+        "rust_toolchain_sha256",
+        "gitmodules_sha256",
+        "submodule_commits",
+        "workspace_members_included",
+        "workspace_members_excluded",
+        "features_enabled",
+        "target_triples",
+        "rust_toolchain_channel",
+        "rustc_version",
+        "cargo_version",
+        "protoc_version",
+        "msrv_core",
+        "test_minimum_rust",
+        "build_profile_id",
+        "cargo_metadata_sha256",
+        "sbom_manifest_sha256",
+        "license_manifest_sha256",
+        "build_status",
+        "test_status",
+        "dirty"
+      ],
+      "properties": {
+        "basil_repo": { "const": "https://github.com/openbasil/basil" },
+        "basil_commit": { "const": "1fd29adb8e7356968eacbff9309e056cec9bafd7" },
+        "license": { "const": "Apache-2.0" },
+        "source_status": { "enum": ["research_capture", "imported_fork", "not_captured"] },
+        "source_receipt_status": { "enum": ["NOT_CAPTURED", "RESEARCH_CAPTURE_ONLY", "CAPTURED", "VERIFIED", "STALE_SOURCE_BINDING", "REQUIRED_AT_B0"] },
+        "toolchain_status": { "enum": ["RESEARCH_CAPTURE_ONLY", "B0_REQUIRED", "VERIFIED"] },
+        "key_generation": { "const": "forbidden" },
+        "source_tree_sha256": { "$ref": "#/definitions/digest_or_pending" },
+        "git_archive_sha256": { "$ref": "#/definitions/digest_or_pending" },
+        "cargo_lock_sha256": { "$ref": "#/definitions/digest_or_pending" },
+        "rust_toolchain_sha256": { "$ref": "#/definitions/digest_or_pending" },
+        "gitmodules_sha256": { "$ref": "#/definitions/digest_or_pending" },
+        "submodule_commits": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["path", "commit"],
+                "properties": {
+                  "path": { "type": "string", "minLength": 1 },
+                  "commit": { "type": "string", "minLength": 1 }
+                }
+              }
+            ]
+          }
+        },
+        "workspace_members_included": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "workspace_members_excluded": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "features_enabled": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "target_triples": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "rust_toolchain_channel": { "type": "string", "minLength": 1 },
+        "rustc_version": { "type": "string", "minLength": 1 },
+        "cargo_version": { "type": "string", "minLength": 1 },
+        "protoc_version": { "type": "string", "minLength": 1 },
+        "msrv_core": { "type": "string", "minLength": 1 },
+        "test_minimum_rust": { "type": "string", "minLength": 1 },
+        "build_profile_id": { "type": "string", "minLength": 1 },
+        "build_status": { "enum": ["NOT_RUN", "RESEARCH_ONLY", "PASS", "FAIL", "REQUIRED_AT_B0"] },
+        "test_status": { "enum": ["NOT_RUN", "RESEARCH_ONLY", "PASS", "FAIL", "REQUIRED_AT_B0"] },
+        "source_receipt_ref": {
+          "oneOf": [
+            { "$ref": "#/definitions/manifest_ref" },
+            { "type": "string", "pattern": "^OpenClaw/[^\\s#]+$" },
+            { "enum": ["NOT_CAPTURED", "RESEARCH_CAPTURE_ONLY", "REQUIRED_AT_B0"] }
+          ]
+        },
+        "source_receipt_sha256": { "$ref": "#/definitions/digest_or_pending" },
+        "cargo_metadata_sha256": { "$ref": "#/definitions/digest_or_pending" },
+        "sbom_manifest_sha256": { "$ref": "#/definitions/digest_or_pending" },
+        "license_manifest_sha256": { "$ref": "#/definitions/digest_or_pending" },
+        "e21_schema_path": { "type": "string", "pattern": "^OpenClaw/[^\\s#]+$" },
+        "e21_schema_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "canonical_registry_status": { "enum": ["REQUIRED_AT_B2", "CAPTURED", "VERIFIED", "NOT_CAPTURED"] },
+        "dirty": {
+          "oneOf": [
+            { "type": "boolean" },
+            { "enum": ["NOT_CAPTURED", "REQUIRED_AT_B0"] }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["source_receipt_status"],
+            "properties": {
+              "source_receipt_status": { "enum": ["CAPTURED", "VERIFIED"] }
+            }
+          },
+          "then": {
+            "properties": {
+              "source_receipt_ref": { "$ref": "#/definitions/source_receipt_bound_ref" },
+              "source_receipt_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        }
+      ]
+    },
+    "authority_flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority", "production_caller", "production_writer", "effect_authority", "operator_acceptance", "promotion", "g5_allowed", "execute_allowed"],
+      "properties": {
+        "authority": { "const": false },
+        "production_caller": { "const": false },
+        "production_writer": { "const": false },
+        "effect_authority": { "const": false },
+        "operator_acceptance": { "const": false },
+        "promotion": { "const": false },
+        "g5_allowed": { "const": false },
+        "execute_allowed": { "const": false }
+      }
+    },
+    "external_gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["development", "internal_test", "release_prep", "final_release"],
+      "properties": {
+        "development": { "const": "DEFERRED_PRE_RELEASE" },
+        "internal_test": { "const": "DEFERRED_PRE_RELEASE" },
+        "release_prep": { "const": "DEFERRED_PRE_RELEASE" },
+        "final_release": { "const": "REQUIRED_FOR_RELEASE_ONLY" }
+      }
+    },
+    "index_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "entry", "hash_scope"],
+      "properties": {
+        "path": { "const": "OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md" },
+        "entry": { "const": "E.44" },
+        "hash_scope": { "const": "external_index_records_receipt_and_post_bindings; index_is_excluded_from_receipt_hash_to_avoid_cycle" }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validation_scope",
+        "assertion_kind",
+        "static_contract_guard",
+        "behavioral_implementation_evidence",
+        "implementation_tests_run",
+        "strict_yaml_duplicate_keys",
+        "json_schema",
+        "crosswalk_projection",
+        "status_and_error_registry",
+        "reconcile_evidence",
+        "dispatch_wal_outbox",
+        "basil_profile_keygen",
+        "stage_dag_and_refs",
+        "historical_terminal_guard",
+        "e41_prefix_unchanged",
+        "runtime_untouched",
+        "production_flags_unchanged",
+        "validation_commands_manifest_ref",
+        "validation_commands_digest",
+        "fixture_manifest_ref",
+        "fixture_manifest_digest"
+      ],
+      "properties": {
+        "validation_scope": { "const": "DOCUMENT_STATIC_ONLY" },
+        "assertion_kind": { "const": "DOCUMENT_STATIC_ASSERTION" },
+        "static_contract_guard": { "const": true },
+        "behavioral_implementation_evidence": { "const": "NOT_RUN" },
+        "implementation_tests_run": { "const": false },
+        "strict_yaml_duplicate_keys": { "const": true },
+        "json_schema": { "const": true },
+        "crosswalk_projection": { "const": true },
+        "status_and_error_registry": { "const": true },
+        "reconcile_evidence": { "const": true },
+        "dispatch_wal_outbox": { "const": true },
+        "basil_profile_keygen": { "const": true },
+        "stage_dag_and_refs": { "const": true },
+        "historical_terminal_guard": { "const": true },
+        "e41_prefix_unchanged": { "const": true },
+        "runtime_untouched": { "const": true },
+        "production_flags_unchanged": { "const": true },
+        "validation_commands_manifest_ref": {
+          "const": "OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml#/execution_closure_v1_3/ci_validation"
+        },
+        "validation_commands_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "fixture_manifest_ref": {
+          "enum": [
+            "OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml#/execution_closure_v1_3/stage_dod",
+            "OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml#/execution_closure_v1_3/historical_terminal_guard"
+          ]
+        },
+        "fixture_manifest_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "fixture_bundle_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "notes": { "type": "array", "items": { "type": "string" } },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "definitions": {
+    "digest_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^OpenClaw/[^\\s#]+$" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "bound_digest_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "$ref": "#/definitions/allowed_binding_path" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "allowed_binding_path": {
+      "enum": [
+        "OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+        "OpenClaw/hepta-authbus-basil-fork-plan-2026-08-26.md",
+        "OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml",
+        "OpenClaw/HEPTA_AUTHBUS_BASIL_UPSTREAM_POLICY_V1.md",
+        "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml",
+        "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml",
+        "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml",
+        "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml",
+        "OpenClaw/HEPTA_VNEXT_PROTOCOL_SPEC.md",
+        "OpenClaw/HEPTA_TASKFLOW_VERTICAL_SLICE.md",
+        "OpenClaw/hepta.authbus_amendment_receipt.v1_3.schema.json",
+        "OpenClaw/AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml",
+        "OpenClaw/AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml",
+        "OpenClaw/AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml",
+        "OpenClaw/AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml",
+        "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml"
+      ]
+    },
+    "source_binding_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "path", "sha256"],
+      "properties": {
+        "role": { "enum": ["plan", "matrix", "receipt", "registry", "contract"] },
+        "path": { "type": "string", "pattern": "^OpenClaw/[^\\s#]+$" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "anchor_or_pointer": { "type": "string", "minLength": 1 }
+      }
+    },
+    "manifest_ref": {
+      "type": "string",
+      "pattern": "^OpenClaw/[^\\s#]+#[^\\s]+$"
+    },
+    "source_receipt_bound_ref": {
+      "oneOf": [
+        { "$ref": "#/definitions/manifest_ref" },
+        { "type": "string", "pattern": "^OpenClaw/[^\\s#]+$" }
+      ]
+    },
+    "digest_or_pending": {
+      "oneOf": [
+        { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        { "enum": ["NOT_CAPTURED", "RESEARCH_CAPTURE_ONLY", "REQUIRED_AT_B0"] }
+      ]
+    },
+    "contains_path": {
+      "type": "object",
+      "required": ["contains"],
+      "properties": {
+        "contains": { "type": "object" }
+      }
+    },
+    "contains_plan": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md" } } }
+    },
+    "contains_fork_plan": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/hepta-authbus-basil-fork-plan-2026-08-26.md" } } }
+    },
+    "contains_stage_matrix": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml" } } }
+    },
+    "contains_upstream_policy": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/HEPTA_AUTHBUS_BASIL_UPSTREAM_POLICY_V1.md" } } }
+    },
+    "contains_trust_matrix": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml" } } }
+    },
+    "contains_quota_contract": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml" } } }
+    },
+    "contains_failure_machine": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml" } } }
+    },
+    "contains_abuse_policy": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml" } } }
+    },
+    "contains_protocol_spec": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/HEPTA_VNEXT_PROTOCOL_SPEC.md" } } }
+    },
+    "contains_taskflow_slice": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/HEPTA_TASKFLOW_VERTICAL_SLICE.md" } } }
+    },
+    "contains_v13_schema": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/hepta.authbus_amendment_receipt.v1_3.schema.json" } } }
+    },
+    "contains_canonical_registry": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml" } } }
+    },
+    "contains_oauth_contract": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml" } } }
+    },
+    "contains_reconcile_contract": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml" } } }
+    },
+    "contains_outbox_contract": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml" } } }
+    },
+    "contains_remote_gateway_contract": {
+      "contains": { "type": "object", "required": ["path"], "properties": { "path": { "const": "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml" } } }
+    },
+    "contains_stage_b0": {
+      "contains": { "type": "object", "required": ["stage_id"], "properties": { "stage_id": { "const": "B0" } } }
+    },
+    "contains_stage_b1": {
+      "contains": { "type": "object", "required": ["stage_id"], "properties": { "stage_id": { "const": "B1" } } }
+    },
+    "contains_stage_b2": {
+      "contains": { "type": "object", "required": ["stage_id"], "properties": { "stage_id": { "const": "B2" } } }
+    },
+    "contains_stage_b3": {
+      "contains": { "type": "object", "required": ["stage_id"], "properties": { "stage_id": { "const": "B3" } } }
+    },
+    "contains_stage_b4": {
+      "contains": { "type": "object", "required": ["stage_id"], "properties": { "stage_id": { "const": "B4" } } }
+    },
+    "contains_stage_b5": {
+      "contains": { "type": "object", "required": ["stage_id"], "properties": { "stage_id": { "const": "B5" } } }
+    },
+    "contains_stage_b6": {
+      "contains": { "type": "object", "required": ["stage_id"], "properties": { "stage_id": { "const": "B6" } } }
+    },
+    "contains_stage_b7": {
+      "contains": { "type": "object", "required": ["stage_id"], "properties": { "stage_id": { "const": "B7" } } }
+    },
+    "contains_stage_b8": {
+      "contains": { "type": "object", "required": ["stage_id"], "properties": { "stage_id": { "const": "B8" } } }
+    },
+    "contains_stage_b9": {
+      "contains": { "type": "object", "required": ["stage_id"], "properties": { "stage_id": { "const": "B9" } } }
+    },
+    "contains_stage_b10": {
+      "contains": { "type": "object", "required": ["stage_id"], "properties": { "stage_id": { "const": "B10" } } }
+    }
+  }
+}

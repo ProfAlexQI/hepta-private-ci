@@ -1,0 +1,161 @@
+{
+  "schema": "hepta.provider.malformed-ack-quarantine.qualification-receipt.v1",
+  "kind": "provider_effect_malformed_ack_replay_fence",
+  "generated_at": "2026-08-26T20:49:42Z",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "phase_policy": "E.41",
+  "status": "PASS_LOCAL_QUALIFICATION",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "source_binding": {
+    "root_plan_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+    "root_plan_bytes": 325940,
+    "root_plan_sha256": "d8e708eff60ade95732f904d8254bd367ec5e42093f23d90a45c6b1b112825cf",
+    "qualification_index_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+    "qualification_index_bytes": 71724,
+    "qualification_index_sha256": "c44f8157f9f518ba5a4410ac880f5d848ae8ebb193d505637e21c1af7154429e",
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/provider-next-20260827",
+    "branch": "hepta/provider-next-20260827",
+    "baseline_head": "ba96bb6a71759de4eeb2bb76988037b4b8cc4097",
+    "baseline_tree": "bc4bf270c85250f669cb1d70df17cda7ab2b4a53",
+    "head": "f153bf0517c5aab5fbf36b615210c70f9e816ee4",
+    "tree": "52a236466d285d102d1e782ba028561d29ff6a3e",
+    "parent": "ba96bb6a71759de4eeb2bb76988037b4b8cc4097",
+    "canonical_main_modified": false,
+    "dropbox_plan_or_index_modified": false,
+    "binding_status": "LOCAL_CANDIDATE_QUALIFICATION_ONLY"
+  },
+  "evidence": {
+    "evidence_class": "LOCAL_DETERMINISTIC_TEST_EVIDENCE",
+    "claim_status": "L1_SHADOW_QUALIFICATION_ONLY",
+    "efficacy_status": "NOT_ASSESSED",
+    "approval": "NONE",
+    "runtime_authority": false,
+    "physical_exactly_once": "NOT_ESTABLISHED",
+    "scope": "After an adapter boundary has been crossed, a malformed or conflicting dispatch acknowledgement is quarantined before the binding error escapes. Replay stays Indeterminate and never invokes the adapter again. A late raw dispatch acknowledgement after an imported-Pending quarantine is rejected without creating empty provenance maps or mutating the journal. Durable evidence propagation now fails closed if the quarantine append itself fails."
+  },
+  "change": {
+    "contracts": "ProviderEffectJournal validates all ACK and source transitions before creating auxiliary vectors. Both coordinator dispatch paths persist provider_dispatch_ack_invalid before returning a malformed ACK error.",
+    "evidence_store": "The SQLite qualification facade no longer ignores a failed durable quarantine append after an invalid dispatch ACK; it returns a combined corruption error instead.",
+    "changed_files": {
+      "codex-rs/hepta-contracts/src/provider_effect.rs": "d12003693efb85f4a8b0948b4def20bab9e5b4375cbdeb08434cdd59e0019d2a",
+      "codex-rs/hepta-evidence/src/provider_effect_store.rs": "741998f5e82477b2ecb2028614f84f77575d238455ea818a4c78bd650d1641d6"
+    }
+  },
+  "checks": [
+    {
+      "command": "cargo test --locked -p codex-hepta-contracts --lib provider_effect -- --test-threads=1",
+      "status": "pass",
+      "passed": 34,
+      "failed": 0,
+      "ignored": 0,
+      "log": "contracts-focused.log",
+      "log_sha256": "071519769e6e931c4751324c9275a0e28b21736b552e37d5b1b33891bb172e8f"
+    },
+    {
+      "command": "cargo test --locked -p codex-hepta-contracts --lib -- --test-threads=1",
+      "status": "pass",
+      "passed": 101,
+      "failed": 0,
+      "ignored": 0,
+      "log": "contracts-serial.log",
+      "log_sha256": "7f317da3898b82aba880f054931f384888b2c7147927b4354805cd13d78dcd5a"
+    },
+    {
+      "command": "cargo test --locked -p codex-hepta-evidence --lib provider_effect -- --test-threads=1",
+      "status": "pass",
+      "passed": 29,
+      "failed": 0,
+      "ignored": 0,
+      "log": "evidence-focused.log",
+      "log_sha256": "d0653e88fa0b2d656d71da46d99b51eb95be5bf403d0b56e87f44056608a7ade"
+    },
+    {
+      "command": "cargo test --locked -p codex-hepta-evidence --lib -- --test-threads=1",
+      "status": "pass",
+      "passed": 80,
+      "failed": 0,
+      "ignored": 0,
+      "log": "evidence-serial.log",
+      "log_sha256": "aa796ae6a0961b07a2da5cf93e0db83e42fc0f6a33303be9f12504dec7932a21"
+    },
+    {
+      "command": "cargo test --locked -p codex-model-provider --lib provider_effect -- --test-threads=1",
+      "status": "pass_after_environment_retry",
+      "passed": 8,
+      "failed": 0,
+      "ignored": 0,
+      "log": "model-provider-focused-r2.log",
+      "log_sha256": "a2e2745de91bf2c08672dba25d6eac4b59c9f816380a4335fd7c92b6c8cc66c5"
+    },
+    {
+      "command": "cargo test --locked -p codex-model-provider --lib -- --test-threads=1",
+      "status": "pass",
+      "passed": 82,
+      "failed": 0,
+      "ignored": 0,
+      "log": "model-provider-serial.log",
+      "log_sha256": "18fcaff319584c5dfa5c05a193bb941ce5ab53af5ddce7ec31272c088304d56a"
+    },
+    {
+      "command": "cargo check --locked -p codex-hepta-contracts -p codex-hepta-evidence -p codex-model-provider",
+      "status": "pass",
+      "log": "cargo-check.log",
+      "log_sha256": "6024abf819f2cb4c482e28705f8f398562e9d2d3b5a113d9a4f17953a5b89087"
+    },
+    {
+      "command": "cargo clippy --locked -p codex-hepta-contracts -p codex-hepta-evidence -p codex-model-provider --lib -- -D warnings",
+      "status": "pass",
+      "log": "cargo-clippy.log",
+      "log_sha256": "4376a655cefece84917e79dfe93e0ef266ed44865a05f49d48df41d83a600bd6"
+    },
+    {
+      "command": "rustfmt --edition 2024 --check <two changed Rust files>; git diff HEAD^ HEAD --check; git diff --check",
+      "status": "pass",
+      "log": "static-checks.log",
+      "log_sha256": "02af088af31c54743fc30870683f88a949164a01c8c8f36d9570cf0a3b7bd365"
+    }
+  ],
+  "environment_notes": {
+    "first_model_provider_attempt": "blocked_by_no_space_left_on_device_before tests ran",
+    "first_attempt_log": "model-provider-focused.log",
+    "first_attempt_log_sha256": "8bb4c96de732b1722ac84599500409c9d7b1ffb486dfc1e45499dcb8b89c6947",
+    "recovery": "Removed only the disposable, inactive provider-next-20260827 Cargo target directory, then reran the exact focused command serially to 8/8 pass. No source, receipt, ref, worktree, or unrelated lane was removed."
+  },
+  "worktree_state": {
+    "clean": true,
+    "dirty": false,
+    "detached": false,
+    "commit_scope_clean": true,
+    "canonical_main_modified": false,
+    "dropbox_authority_or_index_modified": false,
+    "old_receipts_modified": false
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "provider_owned_signed_ack": false,
+    "external_trust_root": false,
+    "kms_hsm": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "shared_kg_write": false,
+    "fleet": false,
+    "model_inference": false
+  },
+  "external_effects": false,
+  "real_provider_connected": false,
+  "remaining_gates": [
+    "provider-owned signed ACK/status and status-by-key provenance",
+    "provider physical exactly-once and crash-after-send evidence against a real provider",
+    "external signer/trust-root/KMS/HSM and key rotation/revocation lifecycle",
+    "production mutation authority, CALLERS, operator acceptance and promotion ceremony",
+    "physical power-loss/media durability qualification"
+  ],
+  "receipt_hash_binding": "The SHA-256 of these canonical receipt bytes is stored in adjacent SHA256SUMS; this local qualification receipt is not an authority grant."
+}

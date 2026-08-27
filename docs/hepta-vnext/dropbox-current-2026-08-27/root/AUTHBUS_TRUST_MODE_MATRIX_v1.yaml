@@ -1,0 +1,846 @@
+schema: hepta.authbus.trust_mode.v1
+plan_id: AUTHBUS-PLAN-2026-08-26
+status: PLANNING_ONLY
+authority: false
+source_status: STALE_SOURCE_BINDING
+current_projection_binding:
+  status: CURRENT_PROJECTION_BINDING
+  plan_revision: E.45
+  plan_pointer: OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md#development-docs-sync-e45
+  plan_sha256: f0a98ae0e6cb1ff3c4bb660bfe50ca921cda434926a755d127dcc7399c4a5620
+  canonical_registry_ref: OpenClaw/AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+  canonical_registry_sha256: cda83c4776d4c2b3c2851474e476e775d6ca26fa815373083aac47fdfd0c89f5
+  active_stage_selector: OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml#/execution_closure_v1_3/phase_map
+  semantic_revision: AUTHBUS.11-v1.3
+  projection_kind: generated_domain_projection
+  fail_closed_on_source_digest_mismatch: true
+  behavioral_implementation_evidence: NOT_RUN
+  runtime_authority: false
+  production_effect_authority: false
+implementation_branch: not-created
+source_binding:
+  basil_repo: https://github.com/openbasil/basil
+  basil_commit: 1fd29adb8e7356968eacbff9309e056cec9bafd7
+  basil_version: 0.7.2-main-snapshot
+  license: Apache-2.0
+purpose: >-
+  Machine-readable trust, process-identity, and phase-mode inputs for the Basil-derived
+  Hepta AuthBus. This file is not a production authorization or release receipt.
+
+principles:
+  - "AuthBus is the resource-admission control plane; agentd remains lifecycle authority."
+  - "One authbusd instance is the durable writer for a physical host."
+  - "Raw provider credentials are never a transferable product or a wire-level capability."
+  - "Default deny applies to every unlisted actor, operation, Basil service, and new RPC."
+  - "A settlement reference can never authorize resource use."
+
+actors:
+  - id: owner
+    description: "Human or organization that owns a provider account or compute capacity."
+    permissions: [discover, register, delegate, revoke, inspect_receipts]
+    trust_assumptions: [explicit_consent, provider_terms, authenticated_owner_channel]
+  - id: tenant
+    description: "Hepta workspace subject with an attenuated usage budget."
+    permissions: [discover, request_admission, consume_permit, inspect_own_receipts]
+    trust_assumptions: [valid_workspace_membership, policy_scope]
+  - id: agent
+    description: "Agent process launched and supervised by agentd."
+    permissions: [request_admission, renew_own_lease, release_own_permit, report_usage]
+    trust_assumptions: [agentd_launch_attestation, generation_binding, local_peer_check]
+  - id: node
+    description: "Physical Hepta node participating in local or HNL federation."
+    permissions: [advertise_capacity, accept_scoped_right, report_health]
+    trust_assumptions: [hnl_node_identity, session_epoch, policy_digest]
+  - id: agentd
+    description: "Fleet and process lifecycle supervisor."
+    permissions: [launch, stop, transfer_owner, drain, issue_generation]
+    trust_assumptions: [single_lifecycle_authority, local_supervisor_identity]
+  - id: gateway
+    description: "Hepta ingress that exchanges a virtual credential for a permit."
+    permissions: [authenticate_virtual_credential, request_scoped_admission, report_usage]
+    trust_assumptions: [audience_binding, expiry_check, tenant_quota]
+  - id: provider
+    description: "External or synthetic upstream resource endpoint."
+    permissions: [return_status, accept_scoped_effect, return_effect_ack]
+    trust_assumptions: [adapter_contract, provider_policy]
+  - id: walletd
+    description: "Ledger and escrow authority, outside AuthBus."
+    permissions: [hold, settle, refund, dispute]
+    trust_assumptions: [ledger_single_writer, nonce_and_receipt_rules]
+  - id: operator
+    description: "Local operator with explicitly audited maintenance rights."
+    permissions: [health, drain, rotate_policy, emergency_revoke, inspect_redacted_audit]
+    trust_assumptions: [local_console_or_attested_control_socket]
+  - id: basil_backend
+    description: "Basil/OpenBao backend service; never the Hepta subject authority."
+    permissions: [sign_in_place, decrypt_in_place, verify, public_key, health]
+    trust_assumptions: [fixed_service_uid, restricted_catalog, backend_tls]
+  - id: authbusd
+    description: "Per-host Hepta AuthBus authority and sole durable writer for resource/quota/lease state."
+    permissions: [admit, reserve, dispatch_ref, reconcile, revoke, audit_projection]
+    trust_assumptions: [agentd_generation, owner_epoch, local_wal]
+  - id: relay
+    description: "HNL forwarding hop; transports encrypted signed envelopes without authorization power."
+    permissions: [forward_encrypted_signed_messages]
+    trust_assumptions: [hnl_session_identity, packet_integrity]
+  - id: arbiter
+    description: "Independent dispute reviewer; separate from operator control and trade parties."
+    permissions: [review_digest_references, decide_dispute]
+    trust_assumptions: [independent_assignment, evidence_digest_only]
+  - id: taskflow_adapter
+    description: "Typed TaskFlow integration client; submits commands and receives projections, never owns AuthBus state."
+    permissions: [request_admission, submit_effect_intent_reference, report_usage]
+    trust_assumptions: [taskflow_lineage, generation_binding, local_peer_check]
+  - id: authbusd_worker
+    description: "AuthBus internal worker that invokes an adapter or performs bounded reconciliation under authbusd fencing."
+    permissions: [dispatch, provider_feedback, reconcile_lookup]
+    trust_assumptions: [authbusd_owner_epoch, adapter_binding, local_wal]
+  - id: verified_adapter
+    description: "Provider adapter with an immutable effect/operation binding; lookup-only during reconciliation."
+    permissions: [status_by_effect_key, return_terminal_ack]
+    trust_assumptions: [adapter_contract, effect_key_binding, provider_policy]
+
+permission_constraints:
+  owner_scope: "Only resources and provider accounts owned or explicitly delegated by the owner."
+  tenant_scope: "Only the tenant workspace and unexpired attenuated usage rights."
+  agent_scope: "Only the agent generation, audience, and active permit."
+  operator_scope: "Control socket and redacted maintenance operations; emergency revoke may only stop new admission/drain a bounded resource scope and never transfers ownership or changes market outcomes. Never secret read/export."
+  wallet_scope: "Settlement references only; never admission or secret use."
+
+permission_matrix:
+  columns: [discover, admit, lease, secret_use, receipt, revoke, settle]
+  rows:
+    owner:        {discover: allow, admit: allow, lease: allow, secret_use: deny,  receipt: allow, revoke: allow, settle: delegate}
+    tenant:       {discover: allow, admit: request, lease: own_only, secret_use: deny, receipt: own_only, revoke: own_only, settle: deny}
+    agent:        {discover: scoped, admit: request, lease: own_only, secret_use: through_permit, receipt: own_only, revoke: own_only, settle: deny}
+    node:         {discover: scoped, admit: scoped, lease: scoped, secret_use: through_permit, receipt: scoped, revoke: scoped, settle: deny}
+    agentd:       {discover: allow, admit: allow, lease: transfer, secret_use: deny, receipt: allow, revoke: allow, settle: deny}
+    gateway:      {discover: scoped, admit: request, lease: own_only, secret_use: through_adapter, receipt: own_only, revoke: own_only, settle: deny}
+    provider:     {discover: status_only, admit: n_a, lease: n_a, secret_use: n_a, receipt: ack_only, revoke: n_a, settle: deny}
+    walletd:      {discover: reference_only, admit: deny, lease: deny, secret_use: deny, receipt: settlement_ref, revoke: deny, settle: allow}
+    operator:     {discover: redacted, admit: deny, lease: drain_only, secret_use: deny, receipt: redacted, revoke: emergency, settle: deny}
+    basil_backend: {discover: health_only, admit: deny, lease: deny, secret_use: in_place_only, receipt: audit_projection, revoke: key_policy_only, settle: deny}
+    authbusd:     {discover: allow, admit: allow, lease: own_writer, secret_use: through_permit, receipt: allow, revoke: allow, settle: deny}
+    relay:        {discover: forward_only, admit: deny, lease: deny, secret_use: deny, receipt: forward_only, revoke: deny, settle: deny}
+    arbiter:      {discover: evidence_only, admit: deny, lease: deny, secret_use: deny, receipt: evidence_only, revoke: deny, settle: adjudicate_only}
+    taskflow_adapter: {discover: scoped, admit: request, lease: own_only, secret_use: deny, receipt: own_only, revoke: deny, settle: deny}
+    authbusd_worker: {discover: health_only, admit: own_writer, lease: own_writer, secret_use: through_permit, receipt: audit_projection, revoke: own_writer, settle: deny}
+    verified_adapter: {discover: status_only, admit: n_a, lease: n_a, secret_use: n_a, receipt: ack_only, revoke: n_a, settle: deny}
+
+identity:
+  first_hop:
+    linux: "SO_PEERCRED plus authbusd registry and agentd generation/pidfd/starttime binding"
+    macos: "socket peer check plus platform audit-token adapter; development target only"
+  same_uid_limit: "SO_PEERCRED alone cannot distinguish two agents sharing one UID."
+  self_reported_subject: reject
+  forwarded_uid_claim: reject
+  required_claims: [tenant_id, workspace_id, agent_id, service_id, node_id, generation, launch_nonce, session_id, epoch, nonce, key_id, capability_digest, intent_digest, transcript_digest, audience, issued_at, expires_at, policy_digest]
+  derived_claims: [subject_digest, secret_ref_allowlist_digest]
+  derived_claim_rule: "subject_digest and SecretRef allowlist digest are computed from verified canonical claims/capability; they are never accepted as self-reported identity."
+  bridge_mode:
+    preferred: embedded_basil_service
+    fallback: "COSE/CBOR or mTLS bridge with nonce, audience, TTL, replay cache, epoch, and fence"
+    basil_sees: service_uid_and_attenuated_capability
+    basil_does_not_see: original_agent_uid_claim
+
+basil_profile:
+  profile_id: hepta-basil-host-minimal-v1
+  default_features: [core, uds, backend_openbao, audit, sign, verify, public_key, health]
+  optional_features:
+    process_bound_decrypt:
+      default: disabled
+      enable_only_for: [declared_purpose, active_permit, allowlisted_secret_ref]
+  allowed_services:
+    - Sign
+    - Verify
+    - PublicKey
+    - Health
+    - IssueProcessBoundCapability  # Hepta wrapper operation; not assumed Basil-native RPC
+  conditionally_allowed_services:
+    - Decrypt
+  denied_services:
+    - GetSecret
+    - SetSecret
+    - ImportSecret
+    - ListSecret
+    - NewKey
+    - ExportPrivateKey
+    - ReturnCertificatePrivateKey
+    - MintUnscopedToken
+    - NATS
+    - SDS
+    - SPIFFE
+    - Admin
+    - RemoteInvocation
+    - UnknownFutureRPC
+  enforcement: [compile_feature_profile, registration_allowlist, runtime_default_deny, negative_rpc_tests, raw_byte_scan]
+  operation_constraints:
+    Decrypt: "Only an allowlisted SecretRef and declared purpose may be used; plaintext is process-bound."
+    Sign: "Only an allowlisted SecretRef/purpose and an active scoped permit may be used."
+    Verify: "Public material or an allowlisted reference only."
+
+mutation_constraints:
+  owner_or_agentd_mutation: [authority_epoch, owner_epoch, generation, fencing_token, expected_revision]
+  unknown_operation: deny
+
+listeners:
+  agent_socket:
+    path: authbusd-agent.sock
+    accepts: [admission, permit, renew, release, usage, watch]
+    public_bind: false
+    owner: authbusd
+    mode: "0600"
+    directory_fsync_after_create: true
+  control_socket:
+    path: authbusd-control.sock
+    accepts: [register_resource, owner_transfer, agentd_lifecycle, drain, policy_reload, revoke, health, ready]
+    public_bind: false
+    owner: authbusd
+    mode: "0600"
+    directory_fsync_after_create: true
+    operation_aliases: {register_resource: RegisterResource, owner_transfer: OwnerTransfer, agentd_lifecycle: AgentdLifecycle, drain: Drain, policy_reload: PolicyReload, revoke: Revoke, health: Health, ready: Ready}
+    caller_operations:
+      agentd: [RegisterResource, OwnerTransfer, AgentdLifecycle, Drain, PolicyReload, Revoke, Health, Ready]
+      operator: [Drain, PolicyReload, Revoke, Health, Ready]
+    operator_revoke_constraint: "operator may invoke Revoke only with emergency=true, incident_id, reason, and a bounded resource scope; it cannot register, transfer owner, launch/stop agents, settle, or mutate market state."
+  owner_mediated_channel:
+    transport: authbusd-control.sock
+    caller: agentd
+    operation: SubmitOwnerCommand
+    owner_actions: [RegisterResource, DelegateUsageRight, Revoke]
+    required_binding: [owner_attestation_digest, consent_digest, tenant_id, resource_digest, authority_epoch, owner_epoch, generation, fencing_token, idempotency_key]
+    direct_owner_socket: false
+    rule: "The owner never receives a privileged direct socket; agentd authenticates the owner channel and submits a typed, consent-bound command."
+  basil_socket:
+    exposure: "private local service or embedded"
+    public_bind: false
+  openbao_endpoint:
+    exposure: "authbusd adapter only"
+    direct_agent_access: false
+
+modes:
+  DEVELOPMENT:
+    listeners: [loopback_agent, loopback_control]
+    resources: [synthetic_provider, synthetic_inferd]
+    lan_federation: {enabled: false, policy: loopback_only}
+    public_gateway: {enabled: false, policy: disabled}
+    real_provider_effects: false
+    real_funds: false
+    production_writer: false
+    production_caller: false
+  INTERNAL_TEST:
+    listeners: [opt_in_lan_agent, loopback_control]
+    resources: [synthetic_provider, owner_local_compute]
+    lan_federation: {enabled: true, policy: explicit_lan_allowlist}
+    lan_federation_activation: explicit_allowlist
+    public_gateway: {enabled: false, policy: disabled}
+    real_provider_effects: false
+    real_funds: false
+    production_writer: false
+    production_caller: false
+  RELEASE_PREP:
+    listeners: [approved_test_lan, loopback_control]
+    resources: [sandbox_provider, virtual_credits_compute]
+    lan_federation: {enabled: true, policy: explicit_test_allowlist}
+    lan_federation_activation: explicit_approval
+    public_gateway: {enabled: false, policy: canary_listener_only}
+    canary_listener: true
+    real_provider_effects: false
+    real_funds: false
+    production_writer: false
+    production_caller: false
+  FINAL_RELEASE:
+    listeners: [explicitly_approved_release_surfaces]
+    resources: [externally_qualified_resources]
+    lan_federation: {enabled: false, policy: explicit_promotion_required}
+    public_gateway: {enabled: false, policy: explicit_promotion_required}
+    real_provider_effects: false
+    real_funds: false
+    requirements: [external_evidence, explicit_promotion, wallet_operator_legal_acceptance]
+    activation_state: review_only
+    auto_transition: false
+    missing_requirement_action: remain_review_only_and_block_release_only
+    explicit_promotion_required: true
+    production_writer: false
+    production_caller: false
+
+negative_authority_flags:
+  authority: false
+  production_caller: false
+  production_writer: false
+  effect_authority: false
+  operator_acceptance: false
+  promotion: false
+  g5_allowed: false
+  execute_allowed: false
+
+implementation_dag:
+  - B0_provenance
+  - B1_topology_profile_identity
+  - B2_contracts
+  - B3_adapter
+  - B4_scheduler
+  - B5_authbusd_wal_reconcile
+  - B6_legacy_migration
+  - B7_hnl
+  - B8_gateway
+  - B9_market_sandbox
+  - B10_release_prep
+
+external_gate_policy:
+  development: deferred_by_E41
+  internal_test: deferred_by_E41
+  release_prep: deferred_by_E41
+  final_release: required_only_for_release_action
+
+# AUTHBUS.11 crosswalk amendment.  This v1.2 block is decode-only historical trust/profile
+# material; the canonical registry projection map is normative and the v1.3
+# execution_closure_v1_3 below is its generated projection.  The actor and mode tables above
+# remain the human-readable source summary.
+contract_crosswalk_v1_2:
+  id: AUTHBUS.11
+  status: DECODE_ONLY_HISTORICAL
+  normative: false
+  decode_only: true
+  superseded_by: contract_crosswalk_v1_3
+  canonical_source: "codex-hepta-contracts.v1 + hepta-auth-contracts.v1"
+  shared_contract_owner: codex-hepta-contracts.v1
+  authbus_extension_owner: hepta-auth-contracts.v1
+  wire_namespace: hepta.auth.v1
+  base_contract_projection:
+    owner: codex-hepta-contracts.v1.4_e21
+    required_effect_fields: [schema_version, event_id, event_kind, authority_scope, run_id, aggregate_id, event_seq, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload, payload_digest, prev_event_digest, event_digest, hash_algorithm, effect_id, effect_intent_id, decision_id, reconciliation_required, idempotency_key, attempt, execution_scope, effect_authority, production_authority, snapshot_digest, graph_digest, policy_digest, provider_id, reconciliation_id, reconciles_receipt_id, external_state_digest, resolver_attempt, current_revision, cas, schema_digest]
+    e21_effect_receipt_required: [effect_id, effect_intent_id, decision_id, run_id, schema_digest, status, terminal, reconciliation_required, idempotency_key, attempt, authority_scope, execution_scope, effect_authority, production_authority, snapshot_digest, graph_digest, policy_digest, provider_id, reconciliation_id, reconciles_receipt_id, external_state_digest, resolver_attempt, current_revision, cas]
+    extension_rule: "Trust claims and AuthBus capability fields extend the base contract; they cannot rename or weaken it."
+  causal_lineage:
+    public_wire_field: causal_parent_event_id
+    internal_event_store_field: causal_parent_seq
+    mapping_rule: "Resolve internal seq through immutable event_seq→event_id index; one serialization context emits one field; never cast a numeric sequence to an event id."
+    public_schema: e21_v1_4
+  base_mutation_fields: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+  field_aliases:
+    revision: expected_revision
+    agent_generation: generation
+    fence: fencing_token
+    payload_sha256: payload_digest
+    resource_sha256: resource_digest
+    operation_id: provider_operation_id
+    operation_id_sha256: provider_operation_id_sha256
+    causal_parent_seq: internal_event_store_only
+    tenant: tenant_id
+    audience: aud
+    issued_at: iat
+    expires_at: exp
+    not_before: nbf
+  identity_claims:
+    canonical: [tenant_id, workspace_id, agent_id, service_id, node_id, generation, launch_nonce, session_id, epoch, nonce, key_id, capability_digest, intent_digest, transcript_digest, aud, iat, nbf, exp, policy_digest]
+    derived: [subject_digest, secret_ref_allowlist_digest]
+    decode_only_aliases: {tenant: tenant_id, audience: aud, issued_at: iat, not_before: nbf, expires_at: exp}
+    self_reported_subject: reject
+    forwarded_uid_claim: reject
+    same_uid_requires: [agentd_generation, launch_nonce, pidfd_or_starttime]
+  actor_crosswalk:
+    agent: agent
+    node: node
+    agentd: agentd
+    operator: operator
+    taskflow_adapter: taskflow_adapter
+    basil_backend: basil_backend
+    seller_owner: owner
+    buyer_tenant: tenant
+    relay: relay
+    arbiter: arbiter
+    authbusd: authbusd
+    authbusd_worker: authbusd_worker
+    verified_adapter: verified_adapter
+    walletd: walletd
+    gateway: gateway
+    provider: provider
+  rpc_acl:
+    control.sock:
+      caller_operations:
+        agentd: [RegisterResource, OwnerTransfer, AgentdLifecycle, Drain, PolicyReload, Revoke, Health, Ready]
+        operator: [Drain, PolicyReload, Revoke, Health, Ready]
+      operator_revoke_constraint: "Revoke by operator requires emergency=true, incident_id, reason and a bounded resource scope; no owner transfer, registration, lifecycle or market mutation."
+    owner_mediation:
+      callers: [agentd]
+      operations: [SubmitOwnerCommand]
+      owner_actions: [RegisterResource, DelegateUsageRight, Revoke]
+      required_claims: [owner_attestation_digest, consent_digest, tenant_id, resource_digest, authority_epoch, owner_epoch, generation, fencing_token, idempotency_key]
+      direct_owner_socket: false
+    agent.sock:
+      callers: [generation_bound_agent, gateway, taskflow_adapter]
+      operations: [AcquirePermit, RenewLease, Release, ReportUsage, WatchEvents]
+    adapter_only:
+      callers: [authbusd_worker]
+      operations: [Dispatch, ReportProviderFeedback, StatusByEffectKey]
+    reconcile_worker:
+      callers: [authbusd_worker, verified_adapter]
+      operations: [Reconcile]
+      lookup_only: true
+      blind_retry: false
+    gateway_seam:
+      callers: [gateway]
+      operations: [IssueVirtualCredential, AcquirePermit, ReportUsage]
+      upstream_authorization_forwarding: false
+    settlement:
+      callers: [walletd]
+      operations: [SubmitSettlementRef]
+      admission_authority: false
+  operation_aliases:
+    register_resource: RegisterResource
+    owner_transfer: OwnerTransfer
+    agentd_lifecycle: AgentdLifecycle
+    submit_owner_command: SubmitOwnerCommand
+    delegate_usage_right: DelegateUsageRight
+    reconcile: Reconcile
+    issue_virtual_credential: IssueVirtualCredential
+    acquire_permit: AcquirePermit
+    report_usage: ReportUsage
+    drain: Drain
+    policy_reload: PolicyReload
+    revoke: Revoke
+    health: Health
+    ready: Ready
+  arbiter_boundary:
+    independent_from_operator: true
+    callers: [arbiter]
+    operations: [ReviewEvidence, DecideDispute]
+    control_socket_access: false
+    authbus_wal_mutation: false
+  mutation_idempotency_policy:
+    required_for: [RegisterResource, OwnerTransfer, SubmitOwnerCommand, AcquirePermit, RenewLease, Release, ReportUsage, Dispatch, Reconcile, IssueVirtualCredential, market_order, settlement_reference]
+    not_required_for: [Health, Ready, WatchEvents, PublicKey, Verify]
+    conflict_rule: "A reused key with a different canonical payload digest is Conflict and cannot create a second mutation."
+  hnl_field_crosswalk:
+    source_contract: hepta-net-node-link-plan-2026-08-26
+    canonical_authbus_fields: [descriptor_node_id, issuer_node_id, local_node_id, remote_node_id, generation, capability_digest, intent_digest, nonce, aud, depth, scope_digest, expires_at, epoch, policy_digest, record_seq, key_id, signature, endpoint_id]
+    source_path_mappings:
+      NodeDescriptor.node_id: descriptor_node_id
+      AgentDelegation.parent_node_id: issuer_node_id
+      ConnectIntent.initiator_node: local_node_id
+      ConnectIntent.remote_node: remote_node_id
+      ConnectIntent.agent_generation: generation
+      ConnectIntent.capability_hash: capability_digest
+      ConnectIntent.purpose_digest: intent_digest
+      ConnectIntent.session_nonce: nonce
+      NodeDescriptor.audience: aud
+      NodeDescriptor.max_depth: depth
+      AgentDelegation.scope: scope_digest
+      ConnectIntent.expiry: expires_at
+      ConnectIntent.epoch: epoch
+      ConnectIntent.policy_digest: policy_digest
+      NodeDescriptor.record_seq: record_seq
+      NodeDescriptor.key_id: key_id
+      NodeDescriptor.signature: signature
+      ConnectIntent.transport_endpoint_id: endpoint_id
+    hash_preimage: "scope_digest = SHA-256(domain || canonical_scope_bytes); capability_digest and intent_digest preserve HNL canonical byte preimages."
+    scope_rule: "HNL raw scope is canonicalized and hashed into scope_digest; raw scope is never authority-bearing on the AuthBus wire."
+    unmapped_field_policy: reject
+    no_widening: true
+    golden_vector: "NodeDescriptor and ConnectIntent role-qualified source paths map deterministically to the canonical fields above; missing, role-swapped, or widened fields reject."
+  basil_service_profile:
+    profile_id: hepta-basil-host-minimal-v1
+    default_allowed: [Sign, Verify, PublicKey, Health, IssueProcessBoundCapability]
+    optional_process_bound: [Decrypt]
+    default_denied: [GetSecret, SetSecret, ImportSecret, ListSecret, NewKey, ExportPrivateKey, ReturnCertificatePrivateKey, MintUnscopedToken, NATS, SDS, SPIFFE, Admin, RemoteInvocation, UnknownFutureRPC]
+    enforcement: [compile_feature_profile, registration_allowlist, runtime_default_deny, negative_rpc, raw_byte_scan]
+    public_listener: false
+  writer_boundary:
+    authbusd_wal: [AuthResource, ComputeResource, QuotaSnapshot, Lease, Permit, QuotaReservation, ReconcileQueue, EffectDispatchRef, DispatchAttempt]
+    taskflow_db: [FlowRun, Step, EffectIntent, ActivityReceipt, EffectReceipt]
+    taskflow_reconcile_decision: [ReconcileDecision]
+    market_adapter: [Offer, UsageRight, UsageRightCounter, Dispute]
+    usage_counter_bridge: [ReserveUse, CommitUse, ReleaseUse, UseReservationRef]
+    walletd: [escrow, balance, nonce, settlement]
+    raw_secret_store: [OpenBao_or_SecretBackend]
+    projection_is_authority: false
+  ci_rules:
+    - canonical_identity_fields_match_hnl_crosswalk
+    - actor_rpc_acl_is_default_deny
+    - every_declared_actor_has_crosswalk_mapping
+    - operator_acl_cannot_perform_owner_or_lifecycle_mutation
+    - owner_commands_are_agentd_mediated_and_consent_bound
+    - basil_default_profile_has_no_raw_secret_or_admin_rpc
+    - decrypt_is_disabled_without_explicit_process_bound_feature
+    - all_mutations_have_generation_epoch_fence
+    - mutation_idempotency_policy_is_explicit_for_each_write
+    - hnl_field_crosswalk_is_lossless_and_non_widening
+    - usage_right_counter_has_one_writer_and_fenced_bridge
+    - reserved_plus_consumed_never_exceeds_max_uses
+    - reconcile_decision_is_taskflow_owned_sidecar_not_new_effect_status
+    - stage_and_contract_crosswalk_refs_resolve
+
+# AUTHBUS.11 v1.3 execution closure.  The v1.2 crosswalk above is retained as
+# historical/decode-only input; new encoders and CI consumers use the block below.
+execution_closure_v1_3:
+  id: AUTHBUS.11-execution-closure-v1.3
+  normative: true
+  execution_input: false
+  role: generated_contract_projection
+  projection_only: true
+  canonical_registry_status: REQUIRED_AT_B2
+  canonical_registry_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+  source_registry_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+  source_registry_digest: PENDING_AT_B2
+  projection_transform: [metadata_wrapper, domain_grouping, decode_alias]
+  execution_input_via: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_contract_map
+  projection_authority: registry_only
+  semantic_source_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+  codegen_allowed_before_registry: false
+  canonical_contract_owner: codex-hepta-contracts.v1.4_e21
+  authbus_contract_owner: hepta-auth-contracts.v1
+  wire_namespace: hepta.auth.v1
+  supersedes_crosswalk: contract_crosswalk_v1_2
+  prior_crosswalk_consumption: decode_only_historical
+  no_runtime_authority_change: true
+  canonical_shared:
+    projection_id: AUTHBUS.11
+    version: "1.3"
+    canonical_source: "codex-hepta-contracts.v1.4_e21 + hepta-auth-contracts.v1"
+    wire_namespace: hepta.auth.v1
+    causal_lineage: {public_wire_field: causal_parent_event_id, internal_event_store_field: causal_parent_seq, mapping_rule: "Resolve internal seq through immutable event_seq->event_id index; never cast a numeric sequence to an event id.", public_schema: e21_v1_4}
+    field_aliases: {revision: expected_revision, agent_generation: generation, fence: fencing_token, payload_sha256: payload_digest, resource_sha256: resource_digest}
+    base_mutation_fields: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+    e21_effect_receipt_required: [effect_id, effect_intent_id, decision_id, run_id, schema_digest, status, terminal, reconciliation_required, idempotency_key, attempt, authority_scope, execution_scope, effect_authority, production_authority, snapshot_digest, graph_digest, policy_digest, provider_id, reconciliation_id, reconciles_receipt_id, external_state_digest, resolver_attempt, current_revision, cas]
+    serialization_contexts:
+      e21_public_envelope: {version: codex-hepta-contracts.v1.4_e21, domain: hepta.e21, encoding: sha256-canonical-json, field_order: schema_order, unknown_fields: reject, null_rule: tagged_null}
+      authbus_object: {version: hepta-auth-contracts.v1, domain: hepta.auth.v1, encoding: length_delimited_canonical_bytes, field_order: lexicographic_field_name_then_value, unknown_fields: reject, null_rule: tagged_null}
+      basil_transport: {version: basil.broker.v1, domain: hepta.auth.basil.v1, encoding: protobuf_length_delimited_canonical_bytes, field_order: canonical_bytes_then_digest, unknown_fields: reject, null_rule: tagged_null}
+      hnl_cose_cbor: {version: HNL-0..6, domain: hepta.hnl.v1, encoding: canonical_cbor_cose_sign1, field_order: cbor_canonical, unknown_fields: reject, null_rule: tagged_null}
+      gateway_token: {version: hepta-gateway.v1, domain: hepta.gateway.v1, encoding: jwt_or_cose_sign1, field_order: registered_claim_order, unknown_fields: reject, null_rule: tagged_null}
+    time_alias_scope: {lease_resource: rfc3339_utc_plus_monotonic_snapshot_and_uncertainty, jwt_cose: numeric_date, hnl_cbor: hnl_native_units, aliases_encode: declared_context_only}
+    status_error_registry_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry
+  basil_profile:
+    profile_id: hepta-basil-host-minimal-v1
+    key_generation:
+      mode: forbidden
+      startup_missing_registered_key: fail_closed
+      allowed_sources: [pre_registered_backend_key_ref]
+      required_registration_fields: [key_id, key_epoch, signature_alg, key_type, signer_usage_domain, public_key_digest, backend_binding_digest]
+      registration_algorithm_rule: "key_id is not sufficient to select an algorithm; signature_alg, key_type and signer_usage_domain are independently registered and included in the descriptor/key-registry golden-vector preimage."
+      forbidden_paths:
+        - LocalIdentity.open_or_create
+        - reconcile_catalog.missing_generate
+        - keystore.generate
+        - keystore.import
+        - Signing.NewKey
+        - Signing.Import
+        - Signing.ImportSet
+        - SecretService.GetSecret
+        - SecretService.SetSecret
+        - SecretService.RotateSecret
+        - SecretService.ListCatalog
+        - ExportPrivateKey
+      private_key_export: forbidden
+      missing_key_behavior: "Do not generate, import, or silently substitute a key. Refuse readiness and every signing/capability issuance operation until a registered backend key is present."
+      negative_tests: [startup_without_registered_key, missing_generate_flag, new_key_rpc, import_key_rpc, private_key_export_rpc, readiness_with_missing_key]
+      ci_rules: [key_generation_is_compile_and_runtime_forbidden, missing_registered_key_is_fail_closed, no_private_key_export, registered_algorithm_and_key_type_are_unambiguous]
+    service_registry:
+      exact_allowed:
+        - "/basil.broker.v1.SigningService/Sign"
+        - "/basil.broker.v1.SigningService/Verify"
+        - "/basil.broker.v1.SigningService/GetPublicKey"
+        - "/basil.broker.v1.AdminService/Health"
+      optional_process_bound: ["/basil.broker.v1.AeadService/Decrypt"]
+      hepta_wrapper_only: ["authbusd.IssueProcessBoundCapability"]
+      wrapper_guard: "IssueProcessBoundCapability is an AuthBus contract operation, never a Basil descriptor route; it requires agentd identity, owner consent, active permit and current epoch/fence."
+      exact_denied:
+        - "/basil.broker.v1.SigningService/NewKey"
+        - "/basil.broker.v1.SigningService/Import"
+        - "/basil.broker.v1.SigningService/ImportSet"
+        - "/basil.broker.v1.SecretService/GetSecret"
+        - "/basil.broker.v1.SecretService/SetSecret"
+        - "/basil.broker.v1.SecretService/RotateSecret"
+        - "/basil.broker.v1.SecretService/ListCatalog"
+        - "/basil.broker.v1.AeadService/Encrypt"
+        - "/basil.broker.v1.AeadService/WrapEnvelope"
+        - "/basil.broker.v1.AeadService/UnwrapEnvelope"
+        - "/basil.broker.v1.AeadService/UnsealCose"
+        - "/basil.broker.v1.MintingService/MintJwt"
+        - "/basil.broker.v1.MintingService/IssueCertificate"
+        - "/basil.broker.v1.InvocationService/Invoke"
+        - "/basil.broker.v1.InvocationService/GetInvocationChallenge"
+        - "/basil.broker.v1.InvocationService/GetInvocationCapabilities"
+        - "/basil.broker.v1.AdminService/Status"
+        - "/basil.broker.v1.AdminService/Readiness"
+        - "/basil.broker.v1.AdminService/Watch"
+        - "/basil.broker.v1.AdminService/Reload"
+        - "/basil.broker.v1.AdminService/Explain"
+        - "/basil.broker.v1.AdminService/Revoke"
+        - "/basil.broker.v1.AdminService/ListConnections"
+        - "/basil.broker.v1.AdminService/DropConnections"
+        - "/basil.broker.v1.NatsService/*"
+        - "/basil.broker.v1.NixCacheService/*"
+        - "/SpiffeWorkloadAPI/*"
+        - "/envoy.service.secret.v3.SecretDiscoveryService/*"
+        - "UnknownFutureRPC"
+      route_set_digest_required: true
+      descriptor_digest_required: true
+      compile_registration_runtime_checks: true
+      route_name_rule: "Allow/deny entries use fully-qualified service.method names; abstract aliases Sign/Verify/PublicKey/Health are decode-only labels."
+      backend_surface:
+        restricted_backend_type: HeptaRestrictedBackend
+        forbidden_trait_methods: [new_key, create_named_key, import_key, export_private_key, kv_get, kv_put, raw_decrypt, issue_x509_cert]
+        feature_gate: "Generation/import/raw-read APIs are removed or feature-gated from the Hepta build; an Unsupported runtime result alone is insufficient."
+        binary_symbol_scan_scope: "reachable registered services and linked Hepta profile"
+        explicit_exemptions: "Any unavoidable upstream trait dispatch symbol must list a symbol digest and reason in the B1 patch inventory."
+        unknown_future_rpc: compile_registration_runtime_deny
+      descriptor_route_inventory:
+        source: basil-proto-descriptor-v1
+        allowed: ["/basil.broker.v1.SigningService/Sign", "/basil.broker.v1.SigningService/Verify", "/basil.broker.v1.SigningService/GetPublicKey", "/basil.broker.v1.AdminService/Health"]
+        optional: ["/basil.broker.v1.AeadService/Decrypt"]
+        denied_service_families: [InvocationService, SecretService, MintingService, NatsService, NixCacheService, SpiffeWorkloadAPI, SecretDiscoveryService]
+        denied_admin_methods: [Status, Readiness, Watch, Reload, Explain, Revoke, ListConnections, DropConnections]
+        route_set_digest: REQUIRED_AT_B1
+        descriptor_digest: REQUIRED_AT_B1
+        aliases_decode_only: [Sign, Verify, PublicKey, Health, Decrypt]
+      structural_patch:
+        required: true
+        patch_inventory: [listener_profile_enum, basil_nats_optional_or_removed, nats_proto_service_disabled, broad_host_registration_removed, descriptor_allow_deny_generation]
+        forbidden_shortcut: "Policy-only denial or --no-default-features without structural listener/feature changes is not surface removal."
+        compile_checks: [cargo_tree_minimal_profile, descriptor_symbol_scan, registered_service_negative_test]
+    opaque_operation_acl:
+      authbusd_owned: [RefreshWithSecretRef, RotateSecretRef]
+      adapter_only: [RefreshStatusByOperationKey, Dispatch, StatusByEffectKey]
+      raw_secret_rpc: forbidden
+      backend_resolves_secret_ref: true
+      output_is_opaque_secret_ref: true
+      operation_contract_ref: "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/opaque_secret_operations"
+      not_basil_native: true
+  identity_boundary:
+    required_fence_fields: [authority_epoch, owner_epoch, generation, fencing_token]
+    linux_direct_peer: SO_PEERCRED
+    linux_same_uid_binding: [agentd_generation, launch_nonce, pidfd_or_starttime]
+    macos_development_binding: audit_token_adapter
+    forwarded_uid_claim: reject
+    service_bridge_claims: [subject_digest, tenant_id, workspace_id, agent_id, service_id, node_id, session_id, operation, secret_ref_allowlist_digest, audience, nonce, issued_at, expires_at, policy_digest, intent_digest, authority_epoch, owner_epoch, generation, fencing_token]
+    basil_sees: service_uid_and_attenuated_capability
+    original_agent_uid_transparency: false
+    actor_crosswalk:
+      agent: agent
+      node: node
+      agentd: agentd
+      operator: operator
+      taskflow_adapter: taskflow_adapter
+      basil_backend: basil_backend
+      seller_owner: owner
+      buyer_tenant: tenant
+      relay: relay
+      arbiter: arbiter
+      authbusd: authbusd
+      authbusd_worker: authbusd_worker
+      verified_adapter: verified_adapter
+      walletd: walletd
+      gateway: gateway
+      provider: provider
+  compatibility:
+    canonical_encode: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+    canonical_decode: [AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry, "#/contract_crosswalk_v1_3", "#/contract_crosswalk_v1_2", v1_historical]
+    aliases_decode_only: true
+    unknown_authoritative_operation: reject
+
+contract_crosswalk_v1_3:
+  id: AUTHBUS.11
+  version: "1.3"
+  status: DECODE_ONLY_GENERATED_PROJECTION
+  normative: false
+  decode_only: true
+  execution_input: false
+  historical_only_reason: "This top-level crosswalk is retained for decode-only compatibility; new encoding and CI consume the canonical registry projection map and execution_closure_v1_3."
+  supersedes: contract_crosswalk_v1_2
+  canonical_source: "codex-hepta-contracts.v1.4_e21 + hepta-auth-contracts.v1"
+  projection_mode: GENERATED_FROM_CANONICAL_REGISTRY
+  role: generated_contract_projection
+  projection_only: true
+  canonical_registry_status: REQUIRED_AT_B2
+  codegen_allowed_before_registry: false
+  canonical_registry_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry"
+  status_error_registry_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry"
+  concrete_contract_refs: [AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry, AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml#/contract, AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract, AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml#/contract, AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract]
+  shared_projection_keys: [id, version, canonical_source, wire_namespace, causal_lineage, base_mutation_fields, field_aliases, serialization_contexts, time_alias_scope]
+  wire_namespace: hepta.auth.v1
+  causal_lineage:
+    public_wire_field: causal_parent_event_id
+    internal_event_store_field: causal_parent_seq
+    mapping_rule: "Resolve internal seq through immutable event_seq->event_id index; never cast a numeric sequence to an event id."
+    public_schema: e21_v1_4
+  base_mutation_fields: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+  field_aliases:
+    revision: expected_revision
+    agent_generation: generation
+    fence: fencing_token
+    payload_sha256: payload_digest
+    resource_sha256: resource_digest
+  operation_id_alias_scope:
+    effect_status_lookup: {operation_id: provider_operation_id, operation_id_sha256: provider_operation_id_sha256}
+    refresh_secretref: {operation_id: operation_id, operation_id_sha256: forbidden}
+    collision_rule: "AuthBus refresh operation_id is never renamed to provider_operation_id; provider fields are valid only in effect/status lookup contexts."
+    causal_parent_seq: internal_event_store_only
+    tenant: tenant_id
+    audience: aud
+    issued_at: iat
+    expires_at: exp
+    not_before: nbf
+  serialization_contexts:
+    e21_public_envelope: {version: codex-hepta-contracts.v1.4_e21, domain: hepta.e21, encoding: sha256-canonical-json, field_order: schema_order, unknown_fields: reject, null_rule: tagged_null}
+    authbus_object: {version: hepta-auth-contracts.v1, domain: hepta.auth.v1, encoding: length_delimited_canonical_bytes, field_order: lexicographic_field_name_then_value, unknown_fields: reject, null_rule: tagged_null}
+    basil_transport: {version: basil.broker.v1, domain: hepta.auth.basil.v1, encoding: protobuf_length_delimited_canonical_bytes, field_order: canonical_bytes_then_digest, unknown_fields: reject, null_rule: tagged_null}
+    hnl_cose_cbor: {version: HNL-0..6, domain: hepta.hnl.v1, encoding: canonical_cbor_cose_sign1, field_order: cbor_canonical, unknown_fields: reject, null_rule: tagged_null}
+    gateway_token: {version: hepta-gateway.v1, domain: hepta.gateway.v1, encoding: jwt_or_cose_sign1, field_order: registered_claim_order, unknown_fields: reject, null_rule: tagged_null}
+  time_alias_scope:
+    lease_resource: rfc3339_utc_plus_monotonic_snapshot_and_uncertainty
+    jwt_cose: numeric_date
+    hnl_cbor: hnl_native_units
+    aliases_encode: declared_context_only
+  e21_effect_receipt_required: [effect_id, effect_intent_id, decision_id, run_id, schema_digest, status, terminal, reconciliation_required, idempotency_key, attempt, authority_scope, execution_scope, effect_authority, production_authority, snapshot_digest, graph_digest, policy_digest, provider_id, reconciliation_id, reconciles_receipt_id, external_state_digest, resolver_attempt, current_revision, cas]
+  effect_status_enum: [Queued, DispatchAccepted, Running, Succeeded, Failed, Cancelled, Indeterminate, Reconciled]
+  effect_top_level_extension: forbidden
+  execution_closure_ref: "#/execution_closure_v1_3"
+  basil_profile_ref: /execution_closure_v1_3/basil_profile
+  key_generation: forbidden
+  missing_key_action: fail_closed
+  opaque_operation_ref: /execution_closure_v1_3/basil_profile/opaque_operation_acl
+  identity_bridge_ref: /execution_closure_v1_3/identity_boundary
+  hnl_field_crosswalk:
+    source_contract: hepta-net-node-link-plan-2026-08-26
+    canonical_authbus_fields: [descriptor_version, descriptor_node_id, endpoint_candidates, allowed_relays, capabilities, issuer_node_id, delegation_id, parent_fingerprint, tenant_id, workspace_id, agent_id, service_id, service_ids, local_node_id, local_agent_id, local_service_id, remote_node_id, remote_agent_id, remote_service_id, subject_node_id, subject_agent_id, recipient_key_id, generation, capability_digest, intent_digest, purpose, issuer_key_id, order_ref, nonce, aud, depth, scope_digest, vector_digest, fencing_token, issued_at, expires_at, epoch, policy_digest, record_seq, key_id, signature, endpoint_id, subject, parent, revocation_seq, revocation_reason, reason, event_id, event_seq, monotonic_counter, event_type, usage_kind, payload_digest]
+    mapping_scope: object_local
+    collision_rule: "A canonical field name is scoped by source object; same-named fields from AgentDelegation and ConnectIntent are never merged across objects."
+    source_path_mappings:
+      NodeDescriptor.node_id: descriptor_node_id
+      NodeDescriptor.version: descriptor_version
+      NodeDescriptor.allowed_relays: allowed_relays
+      NodeDescriptor.capabilities: capabilities
+      AgentDelegation.parent_node_id: issuer_node_id
+      AgentDelegation.delegation_id: delegation_id
+      AgentDelegation.parent_fingerprint: parent_fingerprint
+      AgentDelegation.tenant_id: tenant_id
+      AgentDelegation.workspace_id: workspace_id
+      AgentDelegation.agent_id: agent_id
+      AgentDelegation.agent_generation: generation
+      AgentDelegation.issued_at: issued_at
+      AgentDelegation.service_ids: service_ids
+      ConnectIntent.initiator_node: local_node_id
+      ConnectIntent.initiator_agent: local_agent_id
+      ConnectIntent.initiator_service: local_service_id
+      ConnectIntent.remote_node: remote_node_id
+      ConnectIntent.remote_agent: remote_agent_id
+      ConnectIntent.remote_service: remote_service_id
+      ConnectIntent.tenant_id: tenant_id
+      ConnectIntent.workspace_id: workspace_id
+      ConnectIntent.agent_generation: generation
+      ConnectIntent.version: descriptor_version
+      ConnectIntent.capability_hash: capability_digest
+      ConnectIntent.purpose_digest: intent_digest
+      ConnectIntent.session_nonce: nonce
+      AgentDelegation.audience: aud
+      AgentDelegation.max_depth: depth
+      AgentDelegation.scope: scope_digest
+      ConnectIntent.expiry: expires_at
+      ConnectIntent.epoch: epoch
+      ConnectIntent.policy_digest: policy_digest
+      NodeDescriptor.record_seq: record_seq
+      NodeDescriptor.key_id: key_id
+      NodeDescriptor.signature: signature
+      ConnectIntent.transport_endpoint_id: endpoint_id
+      NodeDescriptor.endpoint_candidates: endpoint_candidates
+      NodeDescriptor.issued_at: issued_at
+      NodeDescriptor.expires_at: expires_at
+      NodeDescriptor.policy_digest: policy_digest
+      AgentDelegation.expires_at: expires_at
+      AgentDelegation.epoch: epoch
+      AgentDelegation.nonce: nonce
+      AgentDelegation.key_id: key_id
+      AgentDelegation.signature: signature
+      ConnectIntent.agent_id: local_agent_id
+      ConnectIntent.service_id: local_service_id
+      ConnectIntent.purpose: purpose
+      ConnectIntent.issuer_key_id: issuer_key_id
+      ConnectIntent.order_ref: order_ref
+      ConnectIntent.nonce: nonce
+      RevocationRecord.subject: subject
+      RevocationRecord.parent: parent
+      RevocationRecord.tenant_id: tenant_id
+      RevocationRecord.workspace_id: workspace_id
+      RevocationRecord.agent_generation: generation
+      RevocationRecord.epoch: epoch
+      RevocationRecord.revocation_seq: revocation_seq
+      RevocationRecord.issued_at: issued_at
+      RevocationRecord.expires_at: expires_at
+      RevocationRecord.reason: revocation_reason
+      RevocationRecord.key_id: key_id
+      RevocationRecord.signature: signature
+      NetworkEvent.version: descriptor_version
+      NetworkEvent.event_id: event_id
+      NetworkEvent.subject: subject
+      NetworkEvent.seq: event_seq
+      NetworkEvent.monotonic_counter: monotonic_counter
+      NetworkEvent.issued_at: issued_at
+      NetworkEvent.event_type: event_type
+      NetworkEvent.payload_digest: payload_digest
+      NetworkEvent.policy_digest: policy_digest
+      NetworkEvent.signature: signature
+    unmapped_field_policy: reject
+    no_widening: true
+    endpoint_id_rule: "endpoint_id is an optional selection key resolved against NodeDescriptor.endpoint_candidates; it is not a NodeDescriptor scalar and carries no authority by itself."
+    object_projection:
+      NodeDescriptor: [descriptor_version, descriptor_node_id, endpoint_candidates, allowed_relays, capabilities, record_seq, key_id, signature, policy_digest, issued_at, expires_at]
+      AgentDelegation: [delegation_id, issuer_node_id, parent_fingerprint, tenant_id, workspace_id, agent_id, generation, service_ids, aud, depth, scope_digest, issued_at, expires_at, nonce, epoch, key_id, policy_digest, signature]
+      ConnectIntent: [descriptor_version, tenant_id, workspace_id, generation, local_node_id, local_agent_id, local_service_id, remote_node_id, remote_agent_id, remote_service_id, endpoint_id, capability_digest, intent_digest, purpose, issuer_key_id, order_ref, nonce, expires_at, epoch, policy_digest]
+      RevocationRecord: [subject, parent, tenant_id, workspace_id, generation, epoch, revocation_seq, issued_at, expires_at, revocation_reason, key_id, signature]
+      NetworkEvent: [descriptor_version, event_id, subject, event_seq, monotonic_counter, issued_at, event_type, payload_digest, policy_digest, signature]
+    usage_event_projection:
+      source_objects: [HNL_NetworkEvent, HNL_UsageEvent]
+      authbus_objects: [Offer, UsageRight, DispatchPermit, UsageReceipt, Revoke]
+      authority_rule: "These are typed projections over HNL evidence; settlement and wallet disposition remain outside AuthBus."
+      selection_rule: "HNL_NetworkEvent with event_type=offer|revoke projects to Offer|Revoke; HNL_UsageEvent with usage_kind=right|permit|receipt projects to UsageRight|DispatchPermit|UsageReceipt. Unknown event_type/usage_kind is rejected, never guessed."
+      field_mappings:
+        HNL_NetworkEvent.event_id: object_id
+        HNL_NetworkEvent.event_type: object_type
+        HNL_NetworkEvent.issuer_node_id: issuer_node_id
+        HNL_NetworkEvent.tenant_id: tenant_id
+        HNL_NetworkEvent.workspace_id: workspace_id
+        HNL_NetworkEvent.scope_digest: scope_digest
+        HNL_NetworkEvent.audience: aud
+        HNL_NetworkEvent.expires_at: expires_at
+        HNL_NetworkEvent.nonce: nonce
+        HNL_NetworkEvent.payload_digest: payload_digest
+        HNL_NetworkEvent.issued_at: issued_at
+        HNL_NetworkEvent.signature: signature
+        HNL_UsageEvent.usage_id: usage_id
+        HNL_UsageEvent.usage_kind: usage_kind
+        HNL_UsageEvent.right_id: right_id
+        HNL_UsageEvent.issuer_node_id: issuer_node_id
+        HNL_UsageEvent.recipient_key_id: recipient_key_id
+        HNL_UsageEvent.subject_node_id: subject_node_id
+        HNL_UsageEvent.subject_agent_id: subject_agent_id
+        HNL_UsageEvent.scope_digest: scope_digest
+        HNL_UsageEvent.audience: aud
+        HNL_UsageEvent.expires_at: expires_at
+        HNL_UsageEvent.nonce: nonce
+        HNL_UsageEvent.vector_digest: vector_digest
+        HNL_UsageEvent.fencing_token: fencing_token
+        HNL_UsageEvent.operation_ref: operation_ref
+        HNL_UsageEvent.usage_vector: usage_vector
+        HNL_UsageEvent.counter_revision: counter_revision
+        HNL_UsageEvent.counter_state_digest: counter_state_digest
+        HNL_UsageEvent.payload_digest: payload_digest
+      typed_output_fields_by_type:
+        Offer: [object_id, object_type, issuer_node_id, tenant_id, scope_digest, aud, expires_at, nonce, payload_digest, signature]
+        UsageRight: [usage_id, right_id, issuer_node_id, recipient_key_id, scope_digest, aud, expires_at, vector_digest, payload_digest, signature]
+        DispatchPermit: [usage_id, right_id, operation_ref, subject_node_id, subject_agent_id, scope_digest, aud, expires_at, fencing_token, payload_digest, signature]
+        UsageReceipt: [usage_id, right_id, operation_ref, usage_vector, counter_revision, counter_state_digest, payload_digest, signature]
+        Revoke: [object_id, object_type, subject, revocation_seq, reason, issued_at, expires_at, signature]
+      required_fields_mapping_rule: "Every field in required_source_fields_by_type must have a typed source field_mapping or be explicitly represented as a tagged-null optional; opaque source_object_digest alone cannot satisfy this rule."
+      required_source_fields_by_type:
+        offer: [event_id, event_type, issuer_node_id, tenant_id, scope_digest, audience, expires_at, nonce, payload_digest, signature]
+        usage_right: [usage_id, right_id, issuer_node_id, recipient_key_id, scope_digest, audience, expires_at, vector_digest, payload_digest, signature]
+        permit: [usage_id, right_id, operation_ref, subject_node_id, subject_agent_id, scope_digest, audience, expires_at, fencing_token, payload_digest, signature]
+        receipt: [usage_id, right_id, operation_ref, usage_vector, counter_revision, counter_state_digest, payload_digest, signature]
+        revoke: [event_id, subject, revocation_seq, reason, issued_at, expires_at, signature]
+      digest_preimage: "preimage_v1(domain=hepta.auth.hnl-usage-projection.v1; object_type; canonical mapped fields; source_object_digest)"
+    lossless_required_source_fields: [tenant_id, workspace_id, agent_id, service_id, agent_generation, delegation_id, parent_fingerprint, service_ids, allowed_relays, capabilities, revocation_seq, reason, purpose, issuer_key_id, order_ref, issued_at, nonce, key_id, signature]
+    opaque_passthrough_digest_rule: "Any source extension not represented as a typed field must be included in a signed source_object_digest; omission without a digest is rejected."
+  aliases_decode_only: true
+  ci_rules: [basil_profile_route_set_is_closed, key_generation_is_forbidden, missing_key_fails_closed, opaque_refresh_never_emits_raw_bytes, forwarded_uid_is_not_kernel_proof, aliases_never_encode, usage_event_required_fields_have_typed_mapping]

@@ -1,0 +1,54 @@
+{
+  "$schema": "hepta.hnl.plan_append_receipt.v1",
+  "receipt_kind": "HNL_PLAN_APPEND_ONLY",
+  "status": "PLANNING_ONLY_STALE_SOURCE_BINDING",
+  "timestamp": "2026-08-26T01:13:00+08:00",
+  "canonical_plan": {
+    "path": "/home/qian-qi/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+    "parent_sha256_before_append": "07dbbd0fb36a9d82d039275a9819e6c18b133248a2864470f7ffa17ef6cda718",
+    "sha256_after_append": "ba5008aa46b2f4e2ee3325deee197aa99d6997039bd5659db67f400c0c72c417",
+    "append_anchor": "E.40.3 / EOF line 3346",
+    "new_section": "HNL-PLAN-2026-08-26"
+  },
+  "source_binding": {
+    "parent_plan_id": "hepta-vnext-development-plan-final-2026-08-23",
+    "documented_canonical_main_head": "7ed9c9a85fa65aa3cb26cf440a55028ce0b35079",
+    "repo_tree": "not-revalidated-in-this-environment",
+    "implementation_branch": "not-created",
+    "worktree": "not-created",
+    "dirty": "unknown_not_mounted",
+    "external_pointer_status": "STALE_SOURCE_BINDING"
+  },
+  "attachments": [
+    {
+      "path": "OpenClaw/hepta-net-node-link-plan-2026-08-26.md",
+      "sha256": "d302ac671a2264afa44016da0acc408c5355369d2c4b5bcc0bfd9484b3ae43f7"
+    },
+    {
+      "path": "OpenClaw/HNL_STAGE_MATRIX_v1.yaml",
+      "sha256": "c92c6ae08486c7c33a8f7590b4d009d2e0b759630d4f3a5f9059747db5b67f53"
+    },
+    {
+      "path": "OpenClaw/hepta.hnl_receipt.v1.schema.json",
+      "sha256": "2eb3c9e97469c53ee4bf4943aca2d5ae5bdad471a45485b4016356fc959c53c3"
+    }
+  ],
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "shared_kg_write": false,
+    "routing_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "callers_touched": false,
+    "operator_acceptance": false,
+    "promotion": false
+  },
+  "mirror": {
+    "path": "OpenClaw/hepta-vnext-qualification-2026-08-23/hepta-vnext-development-plan-final-2026-08-23.md",
+    "status": "UNCHANGED_OLD_ARCHIVAL_MIRROR",
+    "not_updated": true
+  }
+}

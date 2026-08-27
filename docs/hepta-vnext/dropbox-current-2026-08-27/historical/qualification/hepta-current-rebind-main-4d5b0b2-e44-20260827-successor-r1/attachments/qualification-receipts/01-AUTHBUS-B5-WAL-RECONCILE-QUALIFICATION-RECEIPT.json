@@ -1,0 +1,201 @@
+{
+  "schema": "hepta.authbus.b5.wal-reconcile.qualification-receipt.v1",
+  "receipt_kind": "QUALIFICATION",
+  "status": "LOCAL_QUALIFICATION_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "approval": {
+    "class": "local_development_qualification",
+    "status": "not_release_approval",
+    "external_signer": false
+  },
+  "plan": {
+    "plan_id": "AUTHBUS-PLAN-2026-08-26",
+    "stage": "B5",
+    "contract_reference": "AUTHBUS.11 v1.3 / E.41",
+    "qualification_target": "authbusd WAL ordering, fsync-before-call, lookup-only recovery, and outbox dedupe"
+  },
+  "source_binding": {
+    "status": "LOCAL_BYTES_CAPTURED_ROOT_PATH_MISMATCH",
+    "plan_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+    "plan_sha256": "e16d49b3123c5e4a68d722e38839a7c65278009f23d87bbcec664cc2162cf387",
+    "stage_matrix_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml",
+    "stage_matrix_sha256": "4fa95cc0706d4692b704b38611738b75d20c9f8d75b1e1472c67b1fdbea16fe4",
+    "matrix_observed_filesystem_root": "/home/qian-qi/Dropbox/OpenClaw",
+    "resolved_local_filesystem_root": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw",
+    "active_stage_selector": "#/execution_closure_v1_3/phase_map",
+    "active_stage_id": "B0",
+    "target_stage_id": "B5",
+    "authority_index_rebound": false,
+    "note": "This qualification receipt does not rewrite Dropbox plan/index or promote B5 to an execution authority."
+  },
+  "scope": {
+    "qualification_only": true,
+    "module_cfg_test_only": true,
+    "in_memory_reference_model": true,
+    "daemon_or_listener": false,
+    "production_caller": false,
+    "production_writer": false,
+    "provider_adapter": false,
+    "external_effects": false,
+    "persistent_wal": false,
+    "physical_fsync_proof": false,
+    "authority_or_promotion": false,
+    "network_access": false
+  },
+  "candidate": {
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/authbus-b5-clean-20260827",
+    "branch": "hepta/authbus-b5-clean-20260827",
+    "base_commit": "b29b7e6c105a2b44fe490309b42ae423c12fc10f",
+    "base_tree": "3012b20faeebd5930c077d5382051723034a990f",
+    "head_commit": "e2e58dac8556d8e2a6c85c6ff6ad95f73fd0e70e",
+    "head_tree": "9848d5f418e8e172d70c2bcddee188065ee35357",
+    "parent_exact": true,
+    "clean": true,
+    "delta_paths": [
+      "codex-rs/hepta-contracts/src/authbus_b5.rs",
+      "codex-rs/hepta-contracts/src/lib.rs"
+    ]
+  },
+  "artifacts": {
+    "module_path": "codex-rs/hepta-contracts/src/authbus_b5.rs",
+    "module_sha256": "943eccc9606d9f361a92e0cf0468a434e46d41ed57fef97bcdc1b05d792569ed",
+    "lib_path": "codex-rs/hepta-contracts/src/lib.rs",
+    "lib_sha256": "f3603887637b270f85e6ae55e744fae276b9fbcbf24e6e1a774b447435f81fd9",
+    "cargo_lock_path": "codex-rs/Cargo.lock",
+    "cargo_lock_sha256": "53b732fe3d7e0bdb145be9fb156ce211a441d612a35f6610df21f9f8e4f3e23a",
+    "receipt_hash_algorithm": "SHA-256"
+  },
+  "model": {
+    "durable_order": [
+      "EffectIntentDurable",
+      "DispatchAttemptStarted(fsync)",
+      "adapter_call_witness",
+      "DispatchAcceptedRef|DispatchUnknownRef(fsync)",
+      "EffectAckRef|IndeterminateRef",
+      "typed_outbox_delivery",
+      "lookup_only_reconcile"
+    ],
+    "marker_scope": "internal WAL records; no public EffectReceipt status is invented",
+    "fsync_witness_fields": [
+      "source_owner",
+      "wal_seq",
+      "commit_digest",
+      "directory_fsync",
+      "writer_boot_id"
+    ],
+    "identity_fence_fields": [
+      "authority_epoch",
+      "owner_epoch",
+      "generation",
+      "fencing_token_sha256"
+    ],
+    "dispatch_policy": {
+      "pre_call_marker_required": true,
+      "response_missing_after_call": "DispatchUnknownRef",
+      "recovery_action": "lookup_only",
+      "blind_retry": false,
+      "unknown_or_missing_intent": "safe_stop",
+      "stale_fence": "reject_without_append",
+      "terminal_replay": "reject_without_append"
+    },
+    "outbox_policy": {
+      "dedupe_key": [
+        "idempotency_key",
+        "payload_sha256"
+      ],
+      "exact_duplicate": "AlreadyPresent_without_append",
+      "digest_conflict": "OutboxConflict_without_append",
+      "ack_binding": [
+        "outbox_id",
+        "idempotency_key",
+        "payload_sha256",
+        "ack_sha256"
+      ]
+    },
+    "rehydration": "hash-chain and per-record fsync witness validated before derived maps are exposed"
+  },
+  "verification": [
+    {
+      "command": "cargo test --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-contracts authbus_b5 --lib -- --test-threads=1",
+      "status": "pass",
+      "result": "8 passed / 0 failed"
+    },
+    {
+      "command": "cargo test --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-contracts --lib -- --test-threads=1",
+      "status": "pass",
+      "result": "97 passed / 0 failed"
+    },
+    {
+      "command": "cargo check --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-contracts",
+      "status": "pass",
+      "result": "production build excludes the cfg(test)-only B5 seam"
+    },
+    {
+      "command": "cargo clippy --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-contracts --lib -- -D warnings",
+      "status": "pass",
+      "result": "strict library clippy passed"
+    },
+    {
+      "command": "cargo clippy --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-contracts --lib --tests -- -D warnings",
+      "status": "baseline_failure",
+      "result": "B5 module introduced no diagnostics; existing provider_effect.rs has four redundant-clone/cloned-ref errors"
+    },
+    {
+      "command": "rustfmt --edition 2024 --check codex-rs/hepta-contracts/src/authbus_b5.rs",
+      "status": "pass",
+      "note": "stable rustfmt emits only the repository's existing nightly imports_granularity warning"
+    },
+    {
+      "command": "git diff --check HEAD^ HEAD",
+      "status": "pass"
+    }
+  ],
+  "bounded_metrics": {
+    "measurement_scope": "deterministic local model only; not a physical durability or fleet-capacity claim",
+    "fault_injection_points": 1000,
+    "fsync_complete_rpo_model": 0,
+    "lookup_only_recovery_cases": 1000,
+    "blind_retry_events": 0,
+    "adapter_call_replay_events": 0,
+    "outbox_duplicate_rows": 0,
+    "outbox_payload_conflicts_with_mutation": 0,
+    "terminal_replay_mutations": 0,
+    "stale_fence_appends": 0,
+    "corrupt_snapshot_reopened": 0
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "production_listener": false,
+    "provider_effect": false,
+    "model_inference": false,
+    "shared_kg_write": false,
+    "fleet_automation": false
+  },
+  "deferred_gates": [
+    "real authbusd daemon/socket integration and single durable writer",
+    "physical WAL fsync, disk-full/OOM/clock-rollback/partition/reopen evidence",
+    "cross-process owner transfer and recovery race proof",
+    "full AUTHBUS.11 v1.3 field-complete marker and E21 registry projection",
+    "TaskFlow canonical receipt/outbox bridge and external signer/trust-root",
+    "provider-owned signed ACK/status and physical exactly-once"
+  ],
+  "residual_gaps": [
+    "The model uses an in-memory vector and synthetic fsync witnesses; it is not a physical RPO=0 proof.",
+    "B5Record and WAL internals are test-only and not a production API.",
+    "No provider call or external effect is performed; adapter_calls is a local witness counter only.",
+    "The Dropbox root/index remains stale/path-mismatched and was intentionally not modified in this lane."
+  ],
+  "runner": {
+    "kind": "hepta-ssd-run + cargo/rustfmt",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)"
+  },
+  "generated_at": "2026-08-26T17:47:46Z"
+}

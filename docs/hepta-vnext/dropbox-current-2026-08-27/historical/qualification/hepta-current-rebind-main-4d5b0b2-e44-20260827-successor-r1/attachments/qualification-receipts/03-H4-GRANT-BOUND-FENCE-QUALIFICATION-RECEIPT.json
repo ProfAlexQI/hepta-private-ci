@@ -1,0 +1,96 @@
+{
+  "schema": "hepta.h4.production_writer.grant_bound_fence.qualification_receipt.v1",
+  "receipt_kind": "LOCAL_QUALIFICATION",
+  "status": "PASS_LOCAL_QUALIFICATION",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "plan": {
+    "plan_reference": "E.41",
+    "stage": "P2/H4",
+    "slice": "append-only production writer lease fence binds exact signed grant"
+  },
+  "scope": {
+    "qualification_only": true,
+    "external_authority": false,
+    "production_caller": false,
+    "provider_dispatch": false,
+    "external_effects": false,
+    "physical_durability": false,
+    "schema_migration": false,
+    "network_access": false
+  },
+  "source": {
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/h4-durable-gap-20260826",
+    "branch": "hepta/h4-durable-gap-20260826",
+    "base_commit": "a910961e49460e7bd14c32654335248ebf1a5be3",
+    "head_commit": "4b0112706e88fd18277b60eb8197581cd73991da",
+    "head_tree": "a39e3eb24b88f93595a9e83422f713b771e0cf57",
+    "parent_exact": true,
+    "dirty": false,
+    "changed_paths": [
+      {
+        "path": "codex-rs/hepta-memory/src/production_writer.rs",
+        "sha256": "2b97e66cdb3f612b3eac9750dfc68c7ac95979aae4ae72c4a87abd399c61b5be"
+      }
+    ]
+  },
+  "change": {
+    "summary": "Derive the local fencing digest from the exact grant digest and opaque verifier token, preventing an active append-only lease from being reopened under a different signed grant that reuses token and epochs.",
+    "invariants": [
+      "A changed grant digest returns StaleReceipt before reopen or journal mutation.",
+      "The existing active lease head remains unchanged after the rejected reopen.",
+      "Queued receipts and dispatch validation use the same grant-bound fence.",
+      "No mutable grant column or historical receipt rewrite is introduced."
+    ]
+  },
+  "verification": [
+    {
+      "command": "cargo test --manifest-path codex-rs/Cargo.toml -p codex-hepta-memory production_writer::tests::active_lease_cannot_reopen_under_a_different_grant_with_same_token -- --exact --nocapture",
+      "result": "1 passed / 0 failed / 194 filtered"
+    },
+    {
+      "command": "cargo test --manifest-path codex-rs/Cargo.toml -p codex-hepta-memory production_writer::tests -- --nocapture",
+      "result": "6 passed / 0 failed / 189 filtered"
+    },
+    {
+      "command": "cargo check --manifest-path codex-rs/Cargo.toml -p codex-hepta-memory",
+      "result": "pass; existing dead_code warnings only"
+    },
+    {
+      "command": "cargo test --manifest-path codex-rs/Cargo.toml -p codex-hepta-memory --lib -- --test-threads=1",
+      "result": "192 passed / 0 failed / 3 ignored"
+    },
+    {
+      "command": "git diff HEAD^ HEAD --check",
+      "result": "pass"
+    }
+  ],
+  "evidence": {
+    "evidence_class": "LOCAL_APPEND_ONLY_FENCE_REGRESSION",
+    "claim_status": "QUALIFICATION_ONLY",
+    "efficacy_status": "NOT_ASSESSED",
+    "approval": "NONE",
+    "physical_exactly_once": "NOT_ESTABLISHED",
+    "external_signer_or_trust_root": "NOT_PRESENT"
+  },
+  "compatibility_boundary": "Existing persisted leases written with the prior token-only fence version fail closed on reopen until an independently authorized lease is acquired; no automatic migration or historical rewrite is performed.",
+  "known_gaps": [
+    "No external signer/trust-root or provider-owned physical exactly-once evidence.",
+    "No physical power-loss/media durability run has been executed.",
+    "This is not a production authority or promotion receipt."
+  ],
+  "authority_flags": {
+    "authority": false,
+    "production_writer": false,
+    "production_caller": false,
+    "effect_authority": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "shared_kg_write": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "fleet": false
+  },
+  "generated_at": "2026-08-26T13:37:14Z",
+  "receipt_sha256_basis": "SHA-256 of the final canonical receipt file is reported with this artifact; this receipt carries qualification evidence only and is not an authority grant."
+}

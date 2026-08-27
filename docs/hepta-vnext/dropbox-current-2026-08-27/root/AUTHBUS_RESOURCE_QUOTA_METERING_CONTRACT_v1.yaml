@@ -1,0 +1,823 @@
+schema: hepta.authbus.resource-quota-metering.v1
+plan_id: AUTHBUS-PLAN-2026-08-26
+status: PLANNING_ONLY
+authority: false
+source_status: STALE_SOURCE_BINDING
+current_projection_binding:
+  status: CURRENT_PROJECTION_BINDING
+  plan_revision: E.45
+  plan_pointer: OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md#development-docs-sync-e45
+  plan_sha256: f0a98ae0e6cb1ff3c4bb660bfe50ca921cda434926a755d127dcc7399c4a5620
+  canonical_registry_ref: OpenClaw/AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+  canonical_registry_sha256: cda83c4776d4c2b3c2851474e476e775d6ca26fa815373083aac47fdfd0c89f5
+  active_stage_selector: OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml#/execution_closure_v1_3/phase_map
+  semantic_revision: AUTHBUS.11-v1.3
+  projection_kind: generated_domain_projection
+  fail_closed_on_source_digest_mismatch: true
+  behavioral_implementation_evidence: NOT_RUN
+  runtime_authority: false
+  production_effect_authority: false
+implementation_branch: not-created
+source_binding:
+  basil_repo: https://github.com/openbasil/basil
+  basil_commit: 1fd29adb8e7356968eacbff9309e056cec9bafd7
+  basil_version: 0.7.2-main-snapshot
+  license: Apache-2.0
+purpose: >-
+  Typed implementation inputs for resource registration, quota observations, reservations,
+  metering, and legacy auth-profile refresh. Values are scheduling facts, not release approval.
+
+resource_kinds:
+  AuthResource:
+    admission_writer: authbusd
+    capacity_owner: provider_or_account_owner
+    capacity: provider_or_account_usage_right
+    secret_surface: SecretRef_only
+    transferable: false
+  ComputeResource:
+    admission_writer: authbusd
+    capacity_owner: inferd_owner
+    capacity: model_or_device_capacity_claim
+    means: capacity_claim_not_execution_queue
+    transferable: scoped_usage_right_only
+  EgressResource:
+    owner_authority: future_network_policy
+    state: reserved_trait_not_P0
+
+# Legacy v1 surface; decoders may read it, but v1.3 encoders use the generated
+# usage_vector below.  request_count is explicit in the v1.3 registry.
+quota_dimensions: [request_count, rpm, tpm, concurrency, day_budget, context]
+quota_scopes: [provider, account, organization, ip, model, endpoint]
+units_by_dimension:
+  rpm: requests
+  tpm: tokens
+  concurrency: simultaneous_operations
+  day_budget: integer_budget_units
+  context: provider_defined_integer_units
+quota_vector:
+  type: non_negative_integer_or_unknown
+  unknown_representation: explicit_unknown
+  arithmetic: integer_minimum_units_only
+  unknown_policy: conservative_no_new_unbounded_admission
+
+quota_contract:
+  required: [resource_id, domain_id, dimensions, window, policy_digest, revision]
+  dimensions_shape:
+    type: map
+    key_enum: [request_count, rpm, tpm, concurrency, day_budget, context]
+    value_type: non_negative_integer_or_explicit_unknown
+  unit_required: true
+  window_fields: [window_kind, starts_at, ends_at, timezone_or_offset]
+  scope_binding: [provider_id, account_ref, organization_ref, ip_ref, model_ref, endpoint_ref]
+  mutation_fence: [authority_epoch, owner_epoch, generation, fencing_token]
+
+quota_snapshot:
+  required: [resource_id, domain_id, observed_at, source, confidence, clock_uncertainty_ms, known]
+  measurement_fields: [limit, used, remaining, window, reset_at, previous_revision]
+  measurement_constraints: "remaining + used must not exceed limit within the same domain and window when all values are known."
+  decode_only: true
+  normative_source: "#/execution_closure_v1_3/quota_snapshot"
+  source_enum: [provider_header, provider_status, owner_config, local_measurement, synthetic]
+  confidence_enum: [unknown, low, medium, high, authoritative]
+  monotonic_rules:
+    - "Never increase available capacity solely because an observation is missing."
+    - "Clamp contradictory observations and retain the source and previous revision."
+    - "Retry-After is a lower-bound cooldown, not proof of terminal quota reset."
+  clock: [wall_time, monotonic_time, clock_uncertainty_ms]
+
+reservation:
+  normative: false
+  decode_only: true
+  superseded_by: execution_closure_v1_3.local_reservation
+  required:
+    - command_id
+    - idempotency_key
+    - subject_ref
+    - resource_digest
+    - quota_domain
+    - cost_estimate
+    - safety_margin
+    - owner_epoch
+    - generation
+    - fencing_token
+    - expires_at
+    - state
+  states: [PROPOSED, HELD, DISPATCHED, PARTIAL, INDETERMINATE, RELEASED, REFUNDED, EXPIRED]
+  rules:
+    - "Reserve against every applicable aggregate domain; do not add incompatible windows."
+    - "Estimate before dispatch and hold a configurable safety margin."
+    - "A response timeout never releases or recreates a reservation without reconcile."
+    - "The same idempotency key and payload digest returns the original reservation/receipt."
+    - "A changed payload with the same key is a conflict, never a second dispatch."
+
+usage_right_counter:
+  normative: false
+  decode_only: true
+  superseded_by: execution_closure_v1_3.usage_counter
+  owner: market-adapter
+  authority: "The market adapter is the sole durable writer for UsageRight entitlement counters."
+  fields: [right_id, max_uses, reserved_uses, consumed_uses, remaining_uses, counter_revision, counter_state_digest, owner_epoch, generation, fencing_token]
+  invariant: "remaining_uses = max_uses - reserved_uses - consumed_uses and reserved_uses + consumed_uses <= max_uses."
+  reserve_command: "AuthBus submits fenced ReserveUse(right_id, usage_id, idempotency_key, expected_revision); the adapter returns UseReservationRef with before/after counter digests."
+  commit_command: "Only a verified terminal consumption commits one reserved use to consumed_uses; the same usage_id is idempotent."
+  release_command: "A verified no-effect, pre-dispatch cancellation, or expired unstarted permit releases reserved_uses exactly once."
+  unknown_rule: "Unknown or partial external outcomes keep reserved_uses held until ReconcileDecision; they never silently burn or recreate a use."
+  mutable_counter_proof: [counter_revision, counter_state_digest, prior_counter_state_digest, usage_receipt_digest, owner_epoch, generation, fencing_token]
+
+metering_contract:
+  required: [unit, estimate_method, hold_rule, finalization_rule, rounding, cancel_partial_refund, receipt_digest]
+  unit_policy: integer_minimum_units
+  estimate_method: [declared_tokens, provider_estimate, local_model, fixed_request_unit]
+  hold_rule: "Pre-authorize estimated cost before EffectIntent dispatch."
+  finalization_rule: "Finalize only from terminal EffectAck or an explicit reconcile outcome."
+  rounding: deterministic_integer_round_up
+  cancel_partial_refund: explicit_by_bytes_or_tokens_consumed
+  receipt_fields: [usage_id, resource_id, quantity_estimate, quantity_final, unit, policy_digest, operation_ref, timestamps]
+  forbidden_fields: [raw_prompt, raw_token, authorization_header, private_key]
+
+provider_status:
+  required: [availability, source, observed_at, retry_after_ms, operation_ref_semantics]
+  availability_enum: [AVAILABLE, DEGRADED, THROTTLED, UNAVAILABLE, SEALED, STANDBY, UNKNOWN]
+  error_mapping:
+    sealed: {decision: no_new_lease, class: BACKEND_SEALED, reconcile: true, indeterminate_reason: BackendSealed}
+    standby: {decision: no_new_lease, class: BACKEND_MISCONFIGURED, reconcile: true, indeterminate_reason: StatusLookupUnavailable, note: "STANDBY is a role/reachability condition, not a sealed barrier; do not classify it as BACKEND_SEALED."}
+    http_401: {decision: quarantine_or_reauth, class: AUTHENTICATION, reconcile: false}
+    http_403: {decision: deny, class: AUTHORIZATION_OR_SCOPE, reconcile: false}
+    http_404: {decision: distinguish, class: NOT_FOUND, misconfiguration_class: BACKEND_MISCONFIGURED, reconcile: operator_or_probe}
+    http_429: {decision: cooldown, class: THROTTLED, reconcile: false}
+    timeout_or_reset: {decision: indeterminate, class: TIMEOUT, secondary_class: CONNECTION_RESET, reconcile: true}
+    http_202: {decision: accepted_not_terminal, status: DISPATCH_ACCEPTED, reconcile: true}
+  not_found_rule: "A wrong mount or route must not be converted to a null secret or healthy status."
+  operation_ref_shape:
+    required: [provider_operation_id, provider_operation_id_sha256, effect_key]
+    terminal_state_enum: [UNKNOWN, QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED]
+    payload_binding: "payload_digest and effect_key are immutable for one operation."
+  non_effect_health: "operation_ref, effect_key, and payload_digest may be null only when known=false and this is not an effect status."
+
+effect_status:
+  required: [effect_key, operation_ref, terminal_state, payload_digest]
+  provider_terminal_state_enum: [UNKNOWN, QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED]
+  effect_receipt_status_enum: [Queued, DispatchAccepted, Running, Succeeded, Failed, Cancelled, Indeterminate, Reconciled]
+  operation_ref_shape:
+    required: [provider_operation_id, provider_operation_id_sha256, effect_key]
+  payload_binding: "The payload digest, effect key, and operation reference are immutable together."
+
+auth_profile:
+  fields:
+    - profile_id
+    - provider_id
+    - secret_ref
+    - scope_digest
+    - quota_domain
+    - max_concurrency
+    - rpm_window
+    - tpm_window
+    - expires_at
+    - last_good
+    - cooldown_until
+    - health
+    - quarantine_reason
+    - revision
+    - authority_epoch
+  secret_rule: "Only an opaque SecretRef is persisted in AuthBus projections."
+  selection_inputs: [health, quota_snapshot, cooldown_until, deadline, fair_share, last_good, order]
+
+refresh_attempt:
+  fields: [profile_id, provider_id, token_family_id, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest, idempotency_key, state, started_at, finished_at, error_class]
+  states: [IDLE, CLAIMED, IN_FLIGHT, SUCCEEDED, INVALID_GRANT, TRANSIENT_FAILURE, INDETERMINATE, BACKOFF, QUARANTINED]
+  singleflight_key: provider_id_and_profile_id
+  cas_key: [profile_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token]
+  decode_only_aliases: {owner_generation: generation}
+  invalid_grant: "Quarantine token family and require explicit re-authorization; do not loop."
+  normative_source: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/oauth_secretref"
+
+fairness_and_safety:
+  scheduler_components: [per_resource_semaphore, token_bucket, WFQ, EDF, cooldown, deadline]
+  oversell_definition: "No two active permits consume the same reserved unit."
+  starvation_definition: "A continuously eligible subject waits no more than configured quanta."
+  account_rotation: "Changing account/profile cannot bypass provider aggregate limits."
+
+metrics_targets:
+  oversell: 0
+  duplicate_active_permit: 0
+  duplicate_dispatch_for_same_idempotency_key: 0
+  jain_fairness_min: 0.95
+  starvation_max_quanta: 3
+  p95_admission_ms_target: 100
+  quota_unknown_admission: 0
+  metering_conservation_error_units: 0
+
+receipt_policy:
+  authority: authbusd_dispatch_ref_wal_for_quota_and_permit
+  canonical_effect_receipt_owner: taskflow_agent_db
+  projection: basil_audit_and_agent_cursor
+  content: digests_references_and_integer_usage_only
+  status: implementation_metric_not_E41_release_gate
+
+negative_authority_flags:
+  authority: false
+  production_caller: false
+  production_writer: false
+  effect_authority: false
+  operator_acceptance: false
+  promotion: false
+  g5_allowed: false
+  execute_allowed: false
+
+# AUTHBUS.11 crosswalk amendment.  Existing v1 keys are retained for provenance;
+# this v1.2 block is decode-only historical material.  The canonical registry projection map
+# is normative, and the v1.3 execution_closure_v1_3 below is its generated domain projection.
+contract_crosswalk_v1_2:
+  id: AUTHBUS.11
+  status: DECODE_ONLY_HISTORICAL
+  normative: false
+  decode_only: true
+  superseded_by: contract_crosswalk_v1_3
+  canonical_source: "codex-hepta-contracts.v1 + hepta-auth-contracts.v1"
+  shared_contract_owner: codex-hepta-contracts.v1
+  authbus_extension_owner: hepta-auth-contracts.v1
+  wire_namespace: hepta.auth.v1
+  base_contract_projection:
+    owner: codex-hepta-contracts.v1.4_e21
+    e21_effect_receipt_required: [effect_id, effect_intent_id, decision_id, run_id, schema_digest, status, terminal, reconciliation_required, idempotency_key, attempt, authority_scope, execution_scope, effect_authority, production_authority, snapshot_digest, graph_digest, policy_digest, provider_id, reconciliation_id, reconciles_receipt_id, external_state_digest, resolver_attempt, current_revision, cas]
+    extension_rule: "Quota/resource fields extend the closed E21 effect receipt and cannot remove, rename, or add top-level receipt fields."
+  no_parallel_enums: true
+  canonical_encoding:
+    authoritative: canonical_versioned_bytes_from_codex_hepta_contracts
+    local_transport: basil_protobuf_length_delimited
+    edge_projection: json_or_cbor
+    digest: domain_separated_sha256
+    unknown_fields: reject_in_authoritative_decode
+  causal_lineage:
+    public_wire_field: causal_parent_event_id
+    internal_event_store_field: causal_parent_seq
+    mapping_rule: "Resolve internal seq through immutable event_seq→event_id index; one serialization context emits one field; never cast a numeric sequence to an event id."
+    public_schema: e21_v1_4
+  base_mutation_fields: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+  required_fence_fields:
+    base_mutation: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+    mutation: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+    reservation: [reservation_id, command_id, run_id, aggregate_id, resource_id, quota_domain, idempotency_key, expires_at]
+    usage: [usage_id, reservation_id, effect_id, operation_ref]
+    refresh: [profile_id, provider_id, token_family_id, idempotency_key]
+    inheritance_rule: "Object-specific lists are added to base_mutation; generators validate the union."
+  mutation_idempotency_policy:
+    required_for: [admission, reservation, dispatch, usage, refresh, market_order, settlement_reference]
+    not_required_for: [health, ready, watch, verify]
+    conflict_rule: "A reused idempotency_key with a different canonical payload_digest is Conflict and cannot create a second mutation."
+  field_aliases:
+    revision: expected_revision
+    agent_generation: generation
+    fence: fencing_token
+    payload_sha256: payload_digest
+    resource_sha256: resource_digest
+    operation_id: provider_operation_id
+    operation_id_sha256: provider_operation_id_sha256
+    causal_parent_seq: internal_event_store_only
+    tenant: tenant_id
+    audience: aud
+    issued_at: iat
+    expires_at: exp
+    not_before: nbf
+  status_registry:
+    effect_receipt:
+      enum: [Queued, DispatchAccepted, Running, Succeeded, Failed, Cancelled, Indeterminate, Reconciled]
+      terminal: [Succeeded, Failed, Cancelled, Reconciled]
+      non_terminal: [Queued, DispatchAccepted, Running, Indeterminate]
+      mapping_from_reservation:
+        PROPOSED: Queued
+        HELD: Queued
+        DISPATCHED: DispatchAccepted
+        PARTIAL: Running
+        INDETERMINATE: Indeterminate
+        RELEASED: null
+        REFUNDED: null
+        EXPIRED: null
+    quota_reservation:
+      enum: [Proposed, Held, DispatchAccepted, PartiallyConsumed, Indeterminate, Released, Refunded, Expired]
+      internal_aliases:
+        PROPOSED: Proposed
+        HELD: Held
+        DISPATCHED: DispatchAccepted
+        PARTIAL: PartiallyConsumed
+        INDETERMINATE: Indeterminate
+        RELEASED: Released
+        REFUNDED: Refunded
+        EXPIRED: Expired
+      terminal: [Released, Refunded, Expired]
+      non_terminal: [Proposed, Held, DispatchAccepted, PartiallyConsumed, Indeterminate]
+      reservation_is_not_effect_receipt: true
+      release_refund_expiry_effect_projection: not_applicable_without_independent_effect_proof
+    usage_metering:
+      phase_enum: [Preauthorized, Held, Consumed, PartiallyConsumed, Finalized, Refunded, Indeterminate]
+      effect_status_source: EffectReceipt.status
+      terminal_usage_phases: [Finalized, Refunded]
+      unknown_usage_phase: Indeterminate
+    refresh_attempt:
+      status: DECODE_ONLY_HISTORICAL
+      canonical_source_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/oauth_secretref
+      projection_note: "This compact legacy summary is decode-only; active generators use execution_closure_v1_3/refresh_state."
+      state_enum: [IDLE, CLAIMED, IN_FLIGHT, SUCCEEDED, TRANSIENT_FAILURE, INDETERMINATE, BACKOFF, QUARANTINED]
+      terminal: [SUCCEEDED, QUARANTINED]
+      legacy_state_aliases:
+        INVALID_GRANT: QUARANTINED
+      invalid_grant_failure_class: INVALID_GRANT
+      invalid_grant_rule: "INVALID_GRANT is an event/error, not a parallel state; quarantine the token family and require explicit re-authorization."
+  reservation_math:
+    vector_dimensions: [rpm, tpm, concurrency, day_budget, context]
+    per_domain_equation: "available_before_margin_d = max(0, limit_d - used_d - held_d)"
+    admission_rule: "For every applicable domain d, estimate_d + safety_margin_d <= available_before_margin_d; commit all domain holds atomically or none."
+    safety_margin_counted_once: true
+    golden_vector:
+      input: {limit: 100, used: 20, held: 30, estimate: 40, safety_margin: 5}
+      available_before_margin: 50
+      decision: admit
+      boundary_reject: {estimate: 46, reason: SAFETY_MARGIN_EXCEEDED}
+    hold_rule: "held_d increases only in the authbusd WAL transaction that creates the reservation."
+    finalize_rule: "used_d increases by final_quantity_d and held_d decreases by held_quantity_d in one writer transaction."
+    release_rule: "A release requires proof of no effect; unused held units return to availability exactly once."
+    refund_rule: "Refund is a wallet/market outcome and never increases provider quota used; it requires a terminal reconcile outcome."
+    partial_stream_rule: "Each usage delta is monotonic by usage_id and operation_ref; duplicate deltas are idempotent and overrun is rejected."
+    rounding: integer_round_up_before_hold_and_integer_exact_on_finalize
+    atomic_domains: true
+  clock_contract:
+    reservation_timestamps: [issued_at, expires_at, observed_at]
+    expiry_basis: monotonic_time_with_wall_clock_snapshot
+    remote_time: observation_only
+    max_clock_uncertainty_ms: implementation_configured_positive
+    clock_rollback: safe_stop_no_new_admission
+  quota_observation_contract:
+    canonical_fields: [resource_id, domain_id, observed_at, source, confidence, clock_uncertainty_ms, limit, used, remaining, reset_at, previous_revision]
+    source_enum: [provider_header, provider_status, owner_config, local_measurement, synthetic]
+    confidence_enum: [unknown, low, medium, high, authoritative]
+    contradiction_rule: retain_previous_revision_and_mark_unknown
+    retry_after_semantics: lower_bound_cooldown_only
+    unknown_policy: conservative_no_new_unbounded_admission
+  provider_feedback_contract:
+    effect_key_binding: [effect_key, provider_operation_id, provider_operation_id_sha256, payload_digest]
+    immutable_binding: true
+    terminal_state_enum: [UNKNOWN, QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED]
+    accepted_not_terminal: [http_202, DISPATCH_ACCEPTED]
+    status_by_effect_key_required_for_reconcile: true
+    provider_to_effect_receipt:
+      UNKNOWN: {effect_status: Indeterminate, failure_class: LOST_RESPONSE}
+      QUEUED: {effect_status: Queued, failure_class: null}
+      RUNNING: {effect_status: Running, failure_class: null}
+      SUCCEEDED: {effect_status: Succeeded, failure_class: null}
+      FAILED:
+        effect_status: Failed
+        failure_class: provider_declared_canonical_or_PROVIDER_5XX_fallback
+        failure_class_rule: "Use the provider-declared canonical FailureClass when present; use PROVIDER_5XX only as a fallback for an immutable terminal provider failure with no more specific class."
+      CANCELLED: {effect_status: Cancelled, failure_class: null}
+      STATUS_LOOKUP_UNAVAILABLE: {effect_status: Indeterminate, failure_class: LOST_RESPONSE, indeterminate_reason: StatusLookupUnavailable}
+      UNKNOWN_DISPATCH: {effect_status: Indeterminate, failure_class: LOST_RESPONSE, indeterminate_reason: UnknownDispatch}
+      DISPATCH_UNKNOWN: {effect_status: Indeterminate, failure_class: LOST_RESPONSE, indeterminate_reason: UnknownDispatch}
+    terminal_ack_guard: "Only SUCCEEDED/FAILED/CANCELLED with immutable effect/operation/payload binding and current epoch/fence may produce a terminal EffectReceipt."
+    dispatch_acceptance_guard:
+      accepted_response_requires: [provider_operation_id, provider_operation_id_sha256, effect_key, payload_digest]
+      missing_binding_projection: UNKNOWN_DISPATCH
+      http_202_is_terminal: false
+    reconciliation_projection:
+      direct_terminal_ack:
+        SUCCEEDED: {effect_status: Succeeded, outcome: Succeeded}
+        FAILED: {effect_status: Failed, outcome: Failed}
+        CANCELLED: {effect_status: Cancelled, outcome: Cancelled}
+      reconciled_terminal_result:
+        SUCCEEDED: {effect_status: Reconciled, outcome: Succeeded}
+        FAILED: {effect_status: Reconciled, outcome: Failed}
+        CANCELLED: {effect_status: Reconciled, outcome: Cancelled}
+      reconciled_non_effect_proof: {effect_status: Reconciled, outcome: NoEffect}
+      rule: "A terminal result obtained after Indeterminate/RECONCILING is Reconciled; terminal_outcome is carried by the existing TaskFlow-owned ReconcileDecision sidecar, while reservation release/refund alone is not an effect result."
+      reconcile_decision_projection:
+        owner: taskflow_agent_db
+        authbus_record: ReconcileEvidenceRef
+        required_fields: [reconciliation_id, effect_id, outcome, evidence_digest, provider_query_receipt_digest, decided_at, authority_epoch, owner_epoch, generation, fencing_token]
+        no_parallel_status: true
+    provider_status_projection:
+      SEALED: {failure_class: BACKEND_SEALED, indeterminate_reason: BackendSealed}
+      STANDBY: {failure_class: BACKEND_MISCONFIGURED, indeterminate_reason: StatusLookupUnavailable}
+  error_registry:
+    source: AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.contract_crosswalk_v1_2.failure_class
+    aliases_decode_only: true
+    canonical_classes: [AUTHENTICATION, AUTHORIZATION_OR_SCOPE, BACKEND_MISCONFIGURED, NOT_FOUND, QUOTA_EXHAUSTED, BACKEND_SEALED, THROTTLED, TIMEOUT, CONNECTION_RESET, LOST_RESPONSE, LEASE_STALE, PARTITION, CLOCK_SKEW, INVALID_GRANT, DISK_FULL, WAL_CORRUPT, OOM, OWNER_EPOCH_MISMATCH, RESOURCE_REVOKED, PROVIDER_5XX, QUOTA_UNKNOWN]
+    aliases:
+      BACKEND_UNAVAILABLE: BACKEND_MISCONFIGURED
+      TRANSPORT_UNKNOWN: LOST_RESPONSE
+    ambiguous_404: NOT_FOUND_OR_BACKEND_MISCONFIGURED_REQUIRES_DISAMBIGUATION
+    status_only_values: [DISPATCH_ACCEPTED]
+    quota_denials: [QUOTA_EXHAUSTED, QUOTA_UNKNOWN]
+    throttling: [THROTTLED]
+    transport_indeterminate: [TIMEOUT, CONNECTION_RESET, LOST_RESPONSE, PARTITION]
+    provider_5xx_rule: "PROVIDER_5XX is terminal Failed only when the provider supplies immutable effect/operation/payload binding; otherwise project Indeterminate with Provider5xx and reconcile."
+  writer_and_fence:
+    durable_writer: authbusd
+    dispatch_ref_record: EffectDispatchRef
+    canonical_effect_ledger_owner: taskflow_agent_db
+    reconcile_decision_owner: taskflow_agent_db
+    usage_right_counter_owner: market-adapter
+    usage_right_counter_bridge: [ReserveUse, CommitUse, ReleaseUse, UseReservationRef]
+    projection_authority: false
+    owner_epoch: "Monotonic per writer claim; persisted before admission."
+    generation: "agentd launch generation; stale generations cannot renew or report usage."
+    fencing_token: "Fresh per owner_epoch/generation and checked on every mutation."
+    stale_callback: reject_without_quota_mutation
+  hnl_field_crosswalk:
+    source_contract: hepta-net-node-link-plan-2026-08-26
+    canonical_authbus_fields: [descriptor_node_id, issuer_node_id, local_node_id, remote_node_id, generation, capability_digest, intent_digest, nonce, aud, depth, scope_digest, expires_at, epoch, policy_digest, record_seq, key_id, signature, endpoint_id]
+    source_path_mappings:
+      NodeDescriptor.node_id: descriptor_node_id
+      AgentDelegation.parent_node_id: issuer_node_id
+      ConnectIntent.initiator_node: local_node_id
+      ConnectIntent.remote_node: remote_node_id
+      ConnectIntent.agent_generation: generation
+      ConnectIntent.capability_hash: capability_digest
+      ConnectIntent.purpose_digest: intent_digest
+      ConnectIntent.session_nonce: nonce
+      NodeDescriptor.audience: aud
+      NodeDescriptor.max_depth: depth
+      AgentDelegation.scope: scope_digest
+      ConnectIntent.expiry: expires_at
+      ConnectIntent.epoch: epoch
+      ConnectIntent.policy_digest: policy_digest
+      NodeDescriptor.record_seq: record_seq
+      NodeDescriptor.key_id: key_id
+      NodeDescriptor.signature: signature
+      ConnectIntent.transport_endpoint_id: endpoint_id
+    hash_preimage: "scope_digest = SHA-256(domain || canonical_scope_bytes); capability_digest and intent_digest preserve HNL canonical byte preimages."
+    unmapped_field_policy: reject
+    no_widening: true
+  ci_rules:
+    - reservation_state_mapping_matches_failure_crosswalk
+    - effect_status_enum_matches_v14_schema
+    - all_quota_domains_are_atomic
+    - no_negative_or_fractional_integer_usage
+    - usage_deltas_are_idempotent_and_monotonic
+    - unknown_quota_never_grants_unbounded_admission
+    - same_idempotency_key_changed_payload_is_conflict
+    - every_reservation_mutation_has_required_fence_fields
+    - required_object_fields_are_base_mutation_union_object_specific
+    - provider_terminal_state_mapping_is_total_and_terminal_ack_guarded
+    - public_and_internal_causal_lineage_is_mapped_explicitly
+    - refresh_attempt_fields_inherit_base_fence_and_idempotency_contract
+    - invalid_grant_is_quarantine_event_not_parallel_refresh_state
+    - reservation_safety_margin_is_counted_once_and_golden_vector_passes
+    - sealed_and_standby_have_distinct_failure_and_reconcile_semantics
+    - direct_and_reconciled_effect_projections_are_distinct
+    - reconcile_decision_is_taskflow_owned_sidecar_not_new_effect_status
+    - usage_right_counter_has_one_writer_and_fenced_bridge
+    - reserved_plus_consumed_never_exceeds_max_uses
+
+# AUTHBUS.11 v1.3 execution closure.  Existing v1/v1.2 material is retained for
+# compatibility; this block is the sole implementation projection for new code.
+execution_closure_v1_3:
+  id: AUTHBUS.11-execution-closure-v1.3
+  normative: true
+  execution_input: false
+  role: generated_contract_projection
+  projection_only: true
+  canonical_registry_status: REQUIRED_AT_B2
+  canonical_registry_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+  source_registry_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+  source_registry_digest: PENDING_AT_B2
+  projection_transform: [metadata_wrapper, domain_grouping, decode_alias, operation_map, delivery_and_attempt_named_objects, reconciliation_named_objects, remote_and_gateway_named_objects, remote_flat_to_nested]
+  execution_input_via: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_contract_map
+  projection_authority: registry_only
+  semantic_source_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+  codegen_allowed_before_registry: false
+  canonical_contract_owner: codex-hepta-contracts.v1.4_e21
+  authbus_contract_owner: hepta-auth-contracts.v1
+  wire_namespace: hepta.auth.v1
+  supersedes_crosswalk: contract_crosswalk_v1_2
+  prior_crosswalk_consumption: decode_only_historical
+  no_runtime_authority_change: true
+  canonical_shared:
+    projection_id: AUTHBUS.11
+    version: "1.3"
+    canonical_source: "codex-hepta-contracts.v1.4_e21 + hepta-auth-contracts.v1"
+    wire_namespace: hepta.auth.v1
+    causal_lineage: {public_wire_field: causal_parent_event_id, internal_event_store_field: causal_parent_seq, mapping_rule: "Resolve internal seq through immutable event_seq->event_id index; never cast a numeric sequence to an event id.", public_schema: e21_v1_4}
+    field_aliases: {revision: expected_revision, agent_generation: generation, fence: fencing_token, payload_sha256: payload_digest, resource_sha256: resource_digest}
+    base_mutation_fields: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+    e21_effect_receipt_required: [effect_id, effect_intent_id, decision_id, run_id, schema_digest, status, terminal, reconciliation_required, idempotency_key, attempt, authority_scope, execution_scope, effect_authority, production_authority, snapshot_digest, graph_digest, policy_digest, provider_id, reconciliation_id, reconciles_receipt_id, external_state_digest, resolver_attempt, current_revision, cas]
+    serialization_contexts:
+      e21_public_envelope: {version: codex-hepta-contracts.v1.4_e21, domain: hepta.e21, encoding: sha256-canonical-json, field_order: schema_order, unknown_fields: reject, null_rule: tagged_null}
+      authbus_object: {version: hepta-auth-contracts.v1, domain: hepta.auth.v1, encoding: length_delimited_canonical_bytes, field_order: lexicographic_field_name_then_value, unknown_fields: reject, null_rule: tagged_null}
+      basil_transport: {version: basil.broker.v1, domain: hepta.auth.basil.v1, encoding: protobuf_length_delimited_canonical_bytes, field_order: canonical_bytes_then_digest, unknown_fields: reject, null_rule: tagged_null}
+      hnl_cose_cbor: {version: HNL-0..6, domain: hepta.hnl.v1, encoding: canonical_cbor_cose_sign1, field_order: cbor_canonical, unknown_fields: reject, null_rule: tagged_null}
+      gateway_token: {version: hepta-gateway.v1, domain: hepta.gateway.v1, encoding: jwt_or_cose_sign1, field_order: registered_claim_order, unknown_fields: reject, null_rule: tagged_null}
+    time_alias_scope: {lease_resource: rfc3339_utc_plus_monotonic_snapshot_and_uncertainty, jwt_cose: numeric_date, hnl_cbor: hnl_native_units, aliases_encode: declared_context_only}
+    identity_fence_fields: [authority_epoch, owner_epoch, generation, fencing_token]
+    status_error_registry_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry
+  effect_status_enum: [Queued, DispatchAccepted, Running, Succeeded, Failed, Cancelled, Indeterminate, Reconciled]
+  quota_reservation_status_enum: [Proposed, Held, DispatchAttempted, DispatchAccepted, PartiallyConsumed, Indeterminate, Released, Refunded, Expired]
+  quota_snapshot:
+    writer: authbusd
+    authority: observation_only
+    required: [observation_id, resource_id, domain_id, window_id, window_kind, window_start, window_end, source_seq, observed_at, source, confidence, clock_uncertainty_ms, stale_after_ms, component_states, limit_vector, used_vector, held_vector, remaining_vector, reset_at, revision, authority_epoch, owner_epoch, generation, fencing_token]
+    observation_id_formula: "qs:<sha256(preimage_v1(domain=hepta.auth.quota-observation.v1; ordered fields=resource_id,domain_id,window_id,source_seq,observed_at,source,measurement_bytes))>"
+    window_schema:
+      schema_id: hepta.auth.quota-window.v1
+      required: [window_id, window_kind, window_start, window_end, reset_at, source_seq]
+      window_kind: [rolling_minute, fixed_minute, rolling_day, fixed_day, provider_defined, concurrency_instant, request_scope]
+      time_rule: "window_start/window_end/reset_at are RFC3339 UTC plus a ClockSnapshot; concurrency_instant uses a monotonic observation epoch and request_scope binds one effect."
+      source_seq_rule: "source_seq is strictly monotonic per (resource_id,domain_id,window_id,source); equal sequence with a changed digest is Conflict."
+    component_shape:
+      known: {required: [state, value, unit], state: KNOWN, value: non_negative_integer}
+      unknown: {required: [state, reason, last_known_digest], state: UNKNOWN, value: forbidden}
+      reasons: [provider_omitted, status_unavailable, stale, contradictory, not_applicable]
+      vector_rule: "Every declared dimension has one component state; absent does not mean unlimited or zero."
+    stale_after_rule: "stale_after_ms is serialized in the snapshot; admission must fail closed when observed_at + stale_after_ms is before the current ClockSnapshot."
+    revision_rule: "revision is monotonic per (resource_id,domain_id,window_id); a stale or fenced observation cannot overwrite a newer snapshot."
+    merge_rule: "Merge componentwise and source-aware; missing data cannot increase available capacity. Contradictions retain the previous revision and mark the affected component unknown."
+  local_reservation:
+    schema_id: hepta.auth.local-reservation.v1
+    writer: authbusd
+    authority: durable_admission_state
+    required_fields: [reservation_id, command_id, idempotency_key, resource_id, resource_digest, quota_domain, window_bindings, estimated_vector, safety_margin_vector, held_vector, consumed_vector, remaining_vector, state, expires_at, payload_digest, policy_digest, authority_epoch, owner_epoch, generation, fencing_token, revision, prior_state_digest, state_digest]
+    vector_rule: "estimated_vector, safety_margin_vector, held_vector, consumed_vector and remaining_vector use the same declared UsageVector dimensions and units; absent is not zero."
+    invariant: "For consumable dimensions (request_count,rpm,tpm,day_budget), held + consumed + safety_margin <= limit componentwise; concurrency is an active hold and is released rather than consumed; context is a per-request bound unless the provider declares an aggregate unit. Unknown components fail closed."
+    identity_fence_fields: [authority_epoch, owner_epoch, generation, fencing_token]
+    dimension_lifecycle_ref: "#/execution_closure_v1_3/usage_vector/dimension_semantics/lifecycle"
+    state_enum: [PROPOSED, HELD, DISPATCH_ATTEMPTED, DISPATCH_ACCEPTED, PARTIAL, INDETERMINATE, RELEASED, REFUNDED, EXPIRED]
+    canonical_state_enum: [Proposed, Held, DispatchAttempted, DispatchAccepted, PartiallyConsumed, Indeterminate, Released, Refunded, Expired]
+    state_aliases_decode_only: {PROPOSED: Proposed, HELD: Held, DISPATCH_ATTEMPTED: DispatchAttempted, DISPATCH_ACCEPTED: DispatchAccepted, DISPATCHED: DispatchAccepted, PARTIAL: PartiallyConsumed, INDETERMINATE: Indeterminate, RELEASED: Released, REFUNDED: Refunded, EXPIRED: Expired}
+    transition_rules: [proposed_to_held_requires_fenced_cas, held_to_dispatch_attempted_requires_intent_and_fsync, dispatch_attempted_to_dispatch_accepted_requires_provider_reference, unknown_never_releases_without_reconcile, release_or_refund_once_by_reservation_id]
+    digest_preimage: "preimage_v1(domain=hepta.auth.local-reservation.v1; ordered required fields excluding state_digest; prior_state_digest included)"
+    projection_of_legacy_reservation: "The top-level reservation block is decode-only; no v1.3 encoder may emit its scalar cost_estimate/safety_margin shape."
+  usage_vector:
+    schema_id: hepta.auth.usage-vector.v1
+    dimensions: [request_count, rpm, tpm, concurrency, day_budget, context]
+    quantity_type: non_negative_integer
+    absent_dimension: not_declared
+    unknown_representation: explicit_unknown
+    component_state_model: [ABSENT, KNOWN, UNKNOWN]
+    zero_rule: "A declared dimension may have KNOWN value 0; ABSENT/not_declared is not zero, unlimited, or a spendable quantity."
+    unknown_rule: "UNKNOWN is distinct from ABSENT; admission and settlement touching UNKNOWN fail closed or use an explicitly recorded conservative bound."
+    unit_by_dimension:
+      request_count: requests
+      rpm: requests_per_window
+      tpm: tokens_per_window
+      concurrency: active_operations
+      day_budget: provider_defined_integer_units
+      context: provider_defined_integer_units
+    dimension_semantics:
+      cumulative: [request_count]
+      windowed: [rpm, tpm, day_budget]
+      active_hold: [concurrency]
+      per_request_bound: [context]
+      window_identity_required: [rpm, tpm, day_budget, concurrency]
+      reset_rule: "A reset opens a new window_id; old-window usage is never subtracted from the new window by inference."
+      lifecycle:
+        request_count: {reservation: hold, terminal_success: consume_actual_delta, terminal_failure: release_unused, cancel: release_unused}
+        rpm: {reservation: hold, terminal_success: consume_actual_delta, terminal_failure: release_unused, cancel: release_unused, window_rollover: new_window_id}
+        tpm: {reservation: hold_estimate, terminal_success: consume_actual_delta_with_rounding, terminal_failure: release_unused, cancel: release_unused, window_rollover: new_window_id}
+        day_budget: {reservation: hold, terminal_success: consume_actual_delta, terminal_failure: release_unused, cancel: release_unused, window_rollover: new_window_id}
+        concurrency: {reservation: active_hold, terminal_success: release_active_hold, terminal_failure: release_active_hold, cancel: release_active_hold, consumed_delta: always_zero, window_rollover: new_observation_epoch}
+        context: {reservation: per_request_bound, terminal_success: record_actual_only, terminal_failure: record_actual_only, cancel: discard_bound, aggregate_decrement: forbidden_without_provider_unit}
+      partial_commit_rule: "A terminal usage receipt carries per-dimension consumed_delta and released_delta; deltas use declared units, are CAS-bound to reservation revision, and cannot reuse the concurrency release path for consumable dimensions."
+    algebra: {add: componentwise_checked, subtract: componentwise_checked, underflow: Conflict_without_mutation, min: componentwise_for_admission}
+    digest_formula: "SHA-256(preimage_v1(domain=hepta.auth.usage-vector.v1; canonical ordered dimension map))"
+    invariant: "For consumable dimensions, consumed_vector + held_vector <= limit_vector componentwise whenever known; concurrency active holds <= limit and consumed_vector.concurrency is always zero; context is not aggregate spend without an explicit provider unit."
+    dimension_lifecycle_ref: "#/execution_closure_v1_3/usage_vector/dimension_semantics/lifecycle"
+    scalar_compatibility:
+      max_uses_decode_only: "Map max_uses to usage_vector.request_count only when no other dimension is present or non-zero."
+      mixed_vector_scalar_encoding: forbidden
+  remote_reservation_contract:
+    schema_id: hepta.auth.remote-reservation.v1
+    mode: escrowed_vector
+    source_writer: source_authbusd
+    recipient_writer: recipient_authbusd
+    required_fields: [allocation_id, reservation_id, usage_id, source_node_id, recipient_node_id, quota_domain, window_id, window_kind, window_start, window_end, reset_at, source_seq, window_digest, allocated_vector, held_vector, consumed_vector, remaining_vector, vector_digest, counter_revision, scope_digest, audience, nonce_or_jti, provider_consent_ref, owner_attestation_digest, authority_epoch, owner_epoch, generation, fencing_token, idempotency_key, expires_at]
+    global_invariant: "For consumable dimensions, source consumed + source local held + remote allocated <= source limit componentwise; concurrency is an active remote hold released on terminal and never committed as consumed; recipient spends only its allocated vector."
+    allocation_sequence: [source_prepare_wal, source_fsync, signed_usage_vector_lease, recipient_verify_hnl_and_fence, recipient_hold_wal, recipient_ack, source_commit_allocation]
+    reserve_command:
+      name: ReserveRemote
+      required: [allocation_id, reservation_id, usage_id, source_node_id, recipient_node_id, quota_domain, window_id, window_kind, window_start, window_end, reset_at, source_seq, allocated_vector, window_digest, scope_digest, audience, nonce_or_jti, provider_consent_ref, owner_attestation_digest, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, idempotency_key, payload_digest]
+      field_aliases_decode_only: {usage_vector: allocated_vector}
+      signature_preimage: "preimage_v1(domain=hepta.auth.remote-reserve.v1; ordered fields=allocation_id,reservation_id,usage_id,source_node_id,recipient_node_id,quota_domain,window_id,window_kind,window_start,window_end,reset_at,source_seq,allocated_vector,window_digest,scope_digest,audience,nonce_or_jti,provider_consent_ref,owner_attestation_digest,expected_revision,authority_epoch,owner_epoch,generation,fencing_token,idempotency_key,payload_digest)"
+      window_binding: "The command window tuple and window_digest must equal the signed lease and durable reservation; a changed window is a new reservation and cannot reuse the command idempotency key."
+      check: componentwise_remaining_vector_non_negative
+    consume_command:
+      name: CommitRemoteUse
+      rule: "Commit only a verified terminal UsageReceipt; usage_id and operation_ref make retries idempotent."
+    release_command:
+      name: ReleaseRemoteUse
+      rule: "Release only verified no-effect, pre-dispatch cancellation, or unstarted expiry; unknown keeps the vector held."
+    partition_policy: [no_new_remote_admission, existing_permits_ttl_and_fence_only, old_permit_reject, reconcile_before_reopen]
+    no_global_two_phase_claim: true
+    escrow_shard_rule: "A recipient may spend only the signed allocated vector; it cannot infer, increase, or mint source quota."
+    source_commit_failure: "If the source cannot durably commit after recipient ACK, source records COMMIT_UNKNOWN; recipient hold remains bounded and cannot be spent until an idempotent signed compensation or expiry under the current fence."
+    recovery_sequence: [lookup_source_allocation, lookup_recipient_hold, compensate_or_commit_idempotently, expire_only_with_current_fence, reopen_after_reconcile]
+    owner_rules: {source_allocation: source_authbusd, recipient_hold_and_spend: recipient_authbusd, settlement: market-adapter}
+    invariants_and_tests: [window_identity_signed_and_digest_bound, no_spend_while_commit_unknown, compensation_idempotent, stale_window_reject, counter_conservation]
+    signed_usage_vector_lease:
+      schema_id: hepta.auth.signed-usage-vector.v1
+      required_fields: [usage_id, right_id, usage_vector, unit_digest, window_id, window_kind, window_start, window_end, reset_at, source_seq, window_digest, vector_digest, scope_digest, audience, expires_at, nonce_or_jti, provider_consent_ref, owner_attestation_digest, counter_revision, authority_epoch, owner_epoch, generation, fencing_token]
+      signature_preimage: "preimage_v1(domain=hepta.auth.signed-usage-vector.v1; ordered required_fields; length_delimited_utf8_or_canonical_bytes)"
+      signer: source_authbusd
+      verifier: [recipient_authbusd, market_adapter]
+      binding_rule: "scope_digest, audience, nonce_or_jti, provider_consent_ref, owner_attestation_digest and all window fields are signed; required_fields must contain every signed field; omission, widening, missing consent or a changed recipient is Conflict."
+  opaque_secret_operations:
+    schema_id: hepta.auth.opaque-secret-operation.v1
+    operation_owner: authbusd
+    token_family_writer: authbusd
+    backend_executor: basil_backend_restricted_refresh_adapter
+    not_basil_native: true
+    separate_refresh_writer: forbidden
+    raw_bytes_cross_boundary: false
+    secret_ref_shape:
+      required: [backend_id, mount, key_id, version, secret_digest]
+      forbidden: [secret_bytes, raw_secret, access_token, refresh_token, client_secret, authorization_header, provider_headers]
+    operations:
+      RefreshWithSecretRef:
+        request_required: [schema_version, operation_id, refresh_operation_key, command_id, run_id, profile_id, provider_id, token_family_id, secret_ref, expected_secret_revision, idempotency_key, payload_digest, policy_digest, scope_digest, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, deadline_at, purpose_digest, audience]
+        request_forbidden: [raw_secret, access_token, refresh_token, client_secret, authorization_header, provider_headers]
+        response_required: [schema_version, response_id, operation_id, provider_id, profile_id, token_family_id, outcome, access_secret_ref, refresh_secret_ref, secret_revision, refresh_operation_key, provider_status, response_digest, idempotency_key, payload_digest, expected_secret_revision, authority_epoch, owner_epoch, generation, fencing_token]
+        response_nullable: [access_secret_ref, refresh_secret_ref]
+        outcomes: [SUCCEEDED, TRANSIENT_FAILURE, INDETERMINATE, QUARANTINED]
+        error_class: [NONE, INVALID_GRANT, UNAUTHORIZED, CONFLICT, TIMEOUT, UNAVAILABLE, SEALED, STALE_FENCE, SCHEMA_INVALID]
+        refresh_operation_key_formula: "rok:<sha256(preimage_v1(domain=hepta.auth.refresh-operation.v1; provider_id; profile_id; token_family_id; idempotency_key; expected_secret_revision; scope_digest; purpose_digest; payload_digest; policy_digest; authority_epoch; owner_epoch; generation; fencing_token))>"
+        operation_id_formula: "op:<sha256(preimage_v1(domain=hepta.auth.refresh-operation-id.v1; refresh_operation_key; idempotency_key; payload_digest))>"
+        operation_key_binding_equalities: [operation_id_is_derived_from_refresh_operation_key, response_operation_id_equal, response_idempotency_key_equal, response_payload_digest_equal, response_expected_secret_revision_equal, response_fence_tuple_equal]
+        pre_call_durable_non_null: [refresh_operation_key, idempotency_key, expected_secret_revision, authority_epoch, owner_epoch, generation, fencing_token]
+        conditional_response:
+          SUCCEEDED: {required_non_null: [access_secret_ref, refresh_secret_ref, secret_revision], forbidden: []}
+          TRANSIENT_FAILURE: {required_non_null: [provider_status], forbidden: [access_secret_ref, refresh_secret_ref]}
+          INDETERMINATE: {required_non_null: [refresh_operation_key], forbidden: [access_secret_ref, refresh_secret_ref]}
+          QUARANTINED: {required_non_null: [provider_status], forbidden: [access_secret_ref, refresh_secret_ref]}
+        invalid_grant: {classification_only: true, durable_outcome: QUARANTINED, required_non_null: [provider_status], forbidden: [access_secret_ref, refresh_secret_ref]}
+        singleflight_key: [provider_id, profile_id, token_family_id]
+        cas_key: [profile_id, token_family_id, expected_secret_revision, authority_epoch, owner_epoch, generation, fencing_token]
+        response_lost: "Persist INDETERMINATE and reconcile by RefreshStatusByOperationKey; never replay blindly."
+      RotateSecretRef:
+        request_required: [schema_version, operation_id, refresh_operation_key, command_id, run_id, profile_id, provider_id, token_family_id, secret_ref, expected_secret_revision, idempotency_key, payload_digest, policy_digest, scope_digest, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, deadline_at, purpose_digest, audience]
+        request_forbidden: [raw_secret, access_token, refresh_token, client_secret, authorization_header, provider_headers]
+        response_required: [schema_version, response_id, operation_id, provider_id, profile_id, token_family_id, outcome, new_refresh_secret_ref, secret_revision, refresh_operation_key, response_digest, idempotency_key, payload_digest, expected_secret_revision, authority_epoch, owner_epoch, generation, fencing_token]
+        response_nullable: [new_refresh_secret_ref]
+        outcomes: [SUCCEEDED, TRANSIENT_FAILURE, INDETERMINATE, QUARANTINED]
+        error_class: [NONE, INVALID_GRANT, UNAUTHORIZED, CONFLICT, TIMEOUT, UNAVAILABLE, SEALED, STALE_FENCE, SCHEMA_INVALID]
+        pre_call_durable_non_null: [refresh_operation_key, idempotency_key, expected_secret_revision, authority_epoch, owner_epoch, generation, fencing_token]
+        conditional_response:
+          SUCCEEDED: {required_non_null: [new_refresh_secret_ref, secret_revision], forbidden: []}
+          TRANSIENT_FAILURE: {required_non_null: [], forbidden: [new_refresh_secret_ref]}
+          INDETERMINATE: {required_non_null: [refresh_operation_key], forbidden: [new_refresh_secret_ref]}
+          QUARANTINED: {required_non_null: [], forbidden: [new_refresh_secret_ref]}
+        invalid_grant: {classification_only: true, durable_outcome: QUARANTINED, required_non_null: [], forbidden: [new_refresh_secret_ref]}
+        operation_id_formula: "op:<sha256(preimage_v1(domain=hepta.auth.refresh-operation-id.v1; refresh_operation_key; idempotency_key; payload_digest))>"
+        operation_key_binding_equalities: [operation_id_is_derived_from_refresh_operation_key, response_operation_id_equal, response_idempotency_key_equal, response_payload_digest_equal, response_expected_secret_revision_equal, response_fence_tuple_equal]
+        old_family_rule: "Invalid grant or confirmed revocation emits one QUARANTINED event; parallel claimants are rejected."
+      RefreshStatusByOperationKey:
+        operation_name: RefreshStatusByOperationKey
+        operation_aliases_decode_only: {status_lookup: StatusByEffectKey}
+        request_required: [schema_version, operation_id, provider_id, profile_id, token_family_id, refresh_operation_key, idempotency_key, payload_digest, expected_secret_revision, authority_epoch, owner_epoch, generation, fencing_token, deadline_at, audience, expected_execution_mode, policy_digest]
+        response_required: [schema_version, response_id, operation_id, provider_id, profile_id, token_family_id, refresh_operation_key, idempotency_key, payload_digest, expected_secret_revision, authority_epoch, owner_epoch, generation, fencing_token, outcome, secret_revision, response_digest, provider_status, status_revision, observed_at, binding_digest, evidence_profile, provider_query_receipt_digest, execution_mode, mode_attestation_digest, policy_digest, audience, key_epoch, issuer]
+        response_nullable: [new_access_secret_ref, new_refresh_secret_ref, signature, key_id, issued_at, expires_at]
+        synthetic_loopback_sentinel: {audience: "hepta.auth.local-mode", key_epoch: 0, issuer: "local-mode-registry", signature: forbidden, key_id: forbidden, issued_at: forbidden, expires_at: forbidden}
+        outcomes: [SUCCEEDED, TRANSIENT_FAILURE, INDETERMINATE, QUARANTINED]
+        error_class: [NONE, INVALID_GRANT, UNAUTHORIZED, CONFLICT, TIMEOUT, UNAVAILABLE, SEALED, STALE_FENCE, SCHEMA_INVALID]
+        operation_id_formula: "op:<sha256(preimage_v1(domain=hepta.auth.refresh-operation-id.v1; refresh_operation_key; idempotency_key; payload_digest))>"
+        conditional_response:
+          SUCCEEDED: {required_non_null: [new_access_secret_ref, new_refresh_secret_ref, secret_revision, signature, key_id, issued_at, expires_at, audience, key_epoch, issuer], guard: immutable_operation_binding}
+          TRANSIENT_FAILURE: {required_non_null: [response_digest, evidence_profile], forbidden: [new_access_secret_ref, new_refresh_secret_ref], guard: finite_retry_budget}
+          INDETERMINATE: {required_non_null: [response_digest, evidence_profile, provider_query_receipt_digest], forbidden: [new_access_secret_ref, new_refresh_secret_ref], guard: lookup_only}
+          QUARANTINED: {required_non_null: [response_digest, evidence_profile], forbidden: [new_access_secret_ref, new_refresh_secret_ref], guard: verified_provider_classification}
+        classification_aliases: {ROTATED: SUCCEEDED, INVALID_GRANT: QUARANTINED, UNKNOWN: INDETERMINATE}
+        evidence_profile_binding: "execution_mode/mode_attestation_digest/policy_digest are verified by the local mode registry; external signatures cover audience, key_epoch, issuer and operation binding."
+        binding_digest_preimage: "preimage_v1(domain=hepta.auth.refresh-status.v1; provider_id; profile_id; token_family_id; refresh_operation_key; idempotency_key; payload_digest; expected_secret_revision; authority_epoch; owner_epoch; generation; fencing_token; outcome; secret_revision; execution_mode; policy_digest; audience; key_epoch; issuer; evidence fields)"
+        binding_equalities: [request_operation_id_equal, request_idempotency_key_equal, request_payload_digest_equal, request_expected_secret_revision_equal, request_fence_tuple_equal, response_operation_key_equal, response_operation_id_equal, synthetic_loopback_sentinel_or_external_evidence]
+        lookup_only: true
+        dispatch: forbidden
+    memory_policy: {max_plaintext_lifetime_ms: implementation_configured_positive, zeroize_on: [provider_return, error, cancellation, timeout, process_shutdown], persistence: secret_ref_and_digest_only, logging: digests_and_class_only}
+  outbox_delivery:
+    contract_ref: AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/outbox_delivery
+    source_owners: [authbusd, taskflow_agent_db, market_adapter]
+    no_shared_writer: true
+    quota_mutation_requires_ack: true
+    unknown_delivery: hold_and_reconcile
+  reconcile_queue_boundary:
+    durable_decision_owner: taskflow_agent_db
+    authbusd_role: adapter_lookup_worklist_projection
+    outcome_close_or_refund_by_authbusd: forbidden
+    projection_replay_source: taskflow_agent_db_outbox
+  refresh_state:
+    generated_from_registry: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/oauth_secretref
+    projection_mode: generated_exact_with_decode_only_event_aliases
+    enum: [IDLE, CLAIMED, IN_FLIGHT, SUCCEEDED, TRANSIENT_FAILURE, INDETERMINATE, RECONCILING, BACKOFF, MANUAL_REQUIRED, QUARANTINED]
+    classification_events: [ROTATED, INVALID_GRANT, TRANSIENT_FAILURE, UNKNOWN]
+    terminal: [SUCCEEDED, QUARANTINED]
+    non_terminal_hold: [INDETERMINATE, RECONCILING, MANUAL_REQUIRED]
+    invalid_grant: {event: invalid_grant, canonical_state: QUARANTINED, classification_only: true, legacy_alias: INVALID_GRANT, parallel_refresh: forbidden}
+    status_lookup_on_response_loss: required
+    transitions:
+      - {from: IDLE, event: claim, to: CLAIMED, guard: cas_and_fence}
+      - {from: CLAIMED, event: dispatch, to: IN_FLIGHT, guard: claim_ttl_valid}
+      - {from: IN_FLIGHT, event: rotated, to: SUCCEEDED, guard: opaque_secretref_response_and_cas}
+      - {from: IN_FLIGHT, event: invalid_grant, to: QUARANTINED, guard: provider_authenticated_error_and_one_token_family_quarantine}
+      - {from: IN_FLIGHT, event: transient_failure, to: TRANSIENT_FAILURE, guard: retry_budget_finite}
+      - {from: TRANSIENT_FAILURE, event: retry_scheduled, to: BACKOFF, guard: retry_budget_remaining}
+      - {from: TRANSIENT_FAILURE, event: retry_budget_exhausted, to: MANUAL_REQUIRED, guard: no_safe_retry}
+      - {from: IN_FLIGHT, event: response_unknown, to: INDETERMINATE, guard: lookup_key_persisted}
+      - {from: INDETERMINATE, event: lookup, to: RECONCILING, guard: lookup_only}
+      - {from: RECONCILING, event: lookup_rotated, to: SUCCEEDED, guard: verified_rotation_and_secretref_cas}
+      - {from: RECONCILING, event: lookup_invalid_grant, to: QUARANTINED, guard: verified_revoke_or_invalid_grant}
+      - {from: RECONCILING, event: lookup_transient_failure, to: BACKOFF, guard: retry_budget_remaining}
+      - {from: RECONCILING, event: lookup_retryable, to: BACKOFF, guard: retry_budget_remaining}
+      - {from: RECONCILING, event: manual_required, to: MANUAL_REQUIRED, guard: no_verified_evidence}
+      - {from: MANUAL_REQUIRED, event: manual_evidence_submitted, to: RECONCILING, guard: evidence_digest_verified_and_current_fence}
+      - {from: BACKOFF, event: claim_again, to: CLAIMED, guard: backoff_elapsed_and_fence_current}
+    decode_only_event_aliases: {verified_rotation: rotated, response_lost: response_unknown, unavailable: manual_required, verified_evidence: manual_evidence_submitted, budget_remaining: retry_scheduled, retryable: lookup_retryable}
+    invalid_grant_alias: "INVALID_GRANT is a transition classification; QUARANTINED is the durable token-family terminal state."
+    status_lookup_outcomes:
+      ROTATED: {to: SUCCEEDED, required_non_null: [new_refresh_secret_ref, secret_revision, response_digest], guard: verified_operation_key_and_cas}
+      INVALID_GRANT: {to: QUARANTINED, required_non_null: [response_digest], forbidden: [new_refresh_secret_ref], guard: verified_provider_revoke_or_invalid_grant}
+      TRANSIENT_FAILURE: {to: BACKOFF, required_non_null: [response_digest], forbidden: [new_refresh_secret_ref], guard: retry_budget_remaining}
+      UNKNOWN: {to: INDETERMINATE, required_non_null: [response_digest], forbidden: [new_refresh_secret_ref], guard: lookup_only_no_verified_terminal_evidence}
+  metering:
+    schema_id: hepta.auth.metering.v1
+    role: generated_contract_projection
+    projection_only: true
+    canonical_registry_status: REQUIRED_AT_B2
+    canonical_source_ref: AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/metering_contract
+    required: [unit, estimate_method, hold_rule, finalization_rule, rounding, cancel_partial_refund, receipt_digest]
+    unit_policy: integer_minimum_units
+    estimate_method: [declared_tokens, provider_estimate, local_model, fixed_request_unit]
+    hold_rule: "Pre-authorize estimated cost before EffectIntent dispatch."
+    finalization_rule: "Finalize only from terminal EffectAck or an explicit reconcile outcome."
+    rounding: deterministic_integer_round_up
+    cancel_partial_refund: explicit_by_bytes_or_tokens_consumed
+    receipt_fields: [usage_id, operation_ref, estimated_vector, consumed_vector, refund_vector, vector_digest, receipt_digest, authority_epoch, owner_epoch, generation, fencing_token]
+    forbidden: [implicit_unit_conversion, settlement_without_terminal_or_reconcile, scalar_alias_for_tpm_or_concurrency]
+  canonical_refs:
+    base_mutation_fields: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+    serialization_contexts:
+      e21_public_envelope: {version: codex-hepta-contracts.v1.4_e21, domain: hepta.e21, encoding: sha256-canonical-json, field_order: schema_order, unknown_fields: reject, null_rule: tagged_null}
+      authbus_object: {version: hepta-auth-contracts.v1, domain: hepta.auth.v1, encoding: length_delimited_canonical_bytes, field_order: lexicographic_field_name_then_value, unknown_fields: reject, null_rule: tagged_null}
+      basil_transport: {version: basil.broker.v1, domain: hepta.auth.basil.v1, encoding: protobuf_length_delimited_canonical_bytes, field_order: canonical_bytes_then_digest, unknown_fields: reject, null_rule: tagged_null}
+      hnl_cose_cbor: {version: HNL-0..6, domain: hepta.hnl.v1, encoding: canonical_cbor_cose_sign1, field_order: cbor_canonical, unknown_fields: reject, null_rule: tagged_null}
+      gateway_token: {version: hepta-gateway.v1, domain: hepta.gateway.v1, encoding: jwt_or_cose_sign1, field_order: registered_claim_order, unknown_fields: reject, null_rule: tagged_null}
+    time_alias_scope: {lease_resource: rfc3339_utc_plus_monotonic_snapshot_and_uncertainty, jwt_cose: numeric_date, hnl_cbor: hnl_native_units, aliases_encode: declared_context_only}
+    receipt_identity: AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/receipt_identity
+    status_by_effect_key: AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/status_by_effect_key
+    status_error_registry: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry
+
+contract_crosswalk_v1_3:
+  id: AUTHBUS.11
+  version: "1.3"
+  status: DECODE_ONLY_GENERATED_PROJECTION
+  normative: false
+  decode_only: true
+  execution_input: false
+  historical_only_reason: "This top-level crosswalk is retained for decode-only compatibility; new encoding and CI consume the canonical registry projection map and execution_closure_v1_3."
+  projection_mode: GENERATED_FROM_CANONICAL_REGISTRY
+  canonical_registry_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+  status_error_registry_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry
+  concrete_contract_refs: [AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry, AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml#/contract, AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract]
+  role: generated_contract_projection
+  projection_only: true
+  canonical_registry_status: REQUIRED_AT_B2
+  codegen_allowed_before_registry: false
+  supersedes: contract_crosswalk_v1_2
+  canonical_source: "codex-hepta-contracts.v1.4_e21 + hepta-auth-contracts.v1"
+  shared_projection_keys: [id, version, canonical_source, wire_namespace, causal_lineage, base_mutation_fields, field_aliases, serialization_contexts, time_alias_scope]
+  wire_namespace: hepta.auth.v1
+  causal_lineage:
+    public_wire_field: causal_parent_event_id
+    internal_event_store_field: causal_parent_seq
+    mapping_rule: "Resolve internal seq through immutable event_seq->event_id index; never cast a numeric sequence to an event id."
+    public_schema: e21_v1_4
+  base_mutation_fields: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+  field_aliases:
+    revision: expected_revision
+    agent_generation: generation
+    fence: fencing_token
+    payload_sha256: payload_digest
+    resource_sha256: resource_digest
+  operation_id_alias_scope:
+    effect_status_lookup: {operation_id: provider_operation_id, operation_id_sha256: provider_operation_id_sha256}
+    refresh_secretref: {operation_id: operation_id, operation_id_sha256: forbidden}
+    collision_rule: "AuthBus refresh operation_id is never renamed to provider_operation_id; provider fields are valid only in effect/status lookup contexts."
+    causal_parent_seq: internal_event_store_only
+    tenant: tenant_id
+    audience: aud
+    issued_at: iat
+    expires_at: exp
+    not_before: nbf
+  serialization_contexts:
+    e21_public_envelope: {version: codex-hepta-contracts.v1.4_e21, domain: hepta.e21, encoding: sha256-canonical-json, field_order: schema_order, unknown_fields: reject, null_rule: tagged_null}
+    authbus_object: {version: hepta-auth-contracts.v1, domain: hepta.auth.v1, encoding: length_delimited_canonical_bytes, field_order: lexicographic_field_name_then_value, unknown_fields: reject, null_rule: tagged_null}
+    basil_transport: {version: basil.broker.v1, domain: hepta.auth.basil.v1, encoding: protobuf_length_delimited_canonical_bytes, field_order: canonical_bytes_then_digest, unknown_fields: reject, null_rule: tagged_null}
+    hnl_cose_cbor: {version: HNL-0..6, domain: hepta.hnl.v1, encoding: canonical_cbor_cose_sign1, field_order: cbor_canonical, unknown_fields: reject, null_rule: tagged_null}
+    gateway_token: {version: hepta-gateway.v1, domain: hepta.gateway.v1, encoding: jwt_or_cose_sign1, field_order: registered_claim_order, unknown_fields: reject, null_rule: tagged_null}
+  time_alias_scope:
+    lease_resource: rfc3339_utc_plus_monotonic_snapshot_and_uncertainty
+    jwt_cose: numeric_date
+    hnl_cbor: hnl_native_units
+    aliases_encode: declared_context_only
+  e21_effect_receipt_required: [effect_id, effect_intent_id, decision_id, run_id, schema_digest, status, terminal, reconciliation_required, idempotency_key, attempt, authority_scope, execution_scope, effect_authority, production_authority, snapshot_digest, graph_digest, policy_digest, provider_id, reconciliation_id, reconciles_receipt_id, external_state_digest, resolver_attempt, current_revision, cas]
+  effect_status_enum: [Queued, DispatchAccepted, Running, Succeeded, Failed, Cancelled, Indeterminate, Reconciled]
+  effect_top_level_extension: forbidden
+  execution_closure_ref: "#/execution_closure_v1_3"
+  projections: {usage_vector: /execution_closure_v1_3/usage_vector, remote_reservation: /execution_closure_v1_3/remote_reservation_contract, opaque_secret_operations: /execution_closure_v1_3/opaque_secret_operations, outbox_delivery: /execution_closure_v1_3/outbox_delivery}
+  e21_receipt_identity_ref: AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/receipt_identity
+  aliases_decode_only: true
+  ci_rules: [usage_vector_componentwise_conservation, remote_reservation_fenced, scalar_max_uses_only_request_count, opaque_refresh_no_raw_bytes, outbox_ack_digest_binding, quota_snapshot_monotonic_revision]

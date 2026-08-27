@@ -1,0 +1,76 @@
+{
+  "schema": "hepta.agentd.two_agent_recovery_helper.qualification_receipt.v1",
+  "status": "LOCAL_QUALIFICATION_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "slice": [
+    "make the two-agent recovery qualification helper tolerate the documented queue auto-dispatch transition from InProgress to terminal",
+    "retain fail-closed diagnostics for unexpected Failed or Interrupted terminal states",
+    "do not change agentd recovery, queue service, provider, authority, or production behavior"
+  ],
+  "worktree": "/Volumes/T5/hepta-vnext/worktrees/agentd-recovery-fix",
+  "branch": null,
+  "head": "365f4a6d5a0d8393ba3f7594211a1ae4792e62e2",
+  "tree": "6217bf0d3b02e465e0eb6d11f9ea15dfb606e276",
+  "parent": "4a874d7cb94ec8746c3c92bcf2b73373636b95ce",
+  "source_binding": {
+    "canonical_candidate": "4a874d7cb94ec8746c3c92bcf2b73373636b95ce",
+    "canonical_candidate_tree": "a1449586c73008f2d8d34f05f30be744bf5f7f07",
+    "external_authority_receipt": false,
+    "binding_status": "NOT_PRODUCTION_BOUND",
+    "note": "Independent append-only local evidence; canonical main, Dropbox indexes, and authority flags were not modified."
+  },
+  "evidence": {
+    "evidence_class": "AGENTD_TEST_HELPER_RACE_REGRESSION",
+    "claim_status": "QUALIFICATION_ONLY",
+    "efficacy_status": "NOT_ASSESSED",
+    "approval": "NONE",
+    "scope": "The original helper asserted that a queued turn must already be Completed immediately after the preceding turn became Completed. The queue service documents automatic dispatch on idle, so the queued turn can be durably InProgress during that observation. The helper now polls that same turn until Completed and fails closed on other terminal states."
+  },
+  "baseline": {
+    "head": "4a874d7cb94ec8746c3c92bcf2b73373636b95ce",
+    "tree": "a1449586c73008f2d8d34f05f30be744bf5f7f07",
+    "observed_failures": 3,
+    "failure_signature": "queued turn appeared before reaching terminal state: status InProgress after preceding turn status Completed",
+    "interpretation": "documented queue auto-dispatch race in the qualification helper, not an agentd recovery state-machine failure"
+  },
+  "checks": {
+    "focused_run_1": "pass (1 passed / 0 failed; observed before receipt logging)",
+    "focused_run_2": "pass (1 passed / 0 failed; log focused-run-2.log)",
+    "cargo_check_codex_hepta_agentd_tests": "started against the shared pinned target; compilation was interrupted after the focused qualification passed and is not counted as a completed check",
+    "targeted_rustfmt_check": "pass (pinned formatter warning only)",
+    "git_diff_check": "pass",
+    "worktree_clean_after_commit": true
+  },
+  "artifacts": {
+    "focused_run_2_log": "focused-run-2.log",
+    "cargo_check_log": "cargo-check.log",
+    "rustfmt_log": "rustfmt-check.log"
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "scheduler_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "model_inference": false,
+    "shared_kg_write": false,
+    "fleet": false
+  },
+  "external_effects": false,
+  "real_provider_or_market_connected": false,
+  "remaining_gates": [
+    "serial full canonical checks after controlled cherry-pick",
+    "external signer/trust-root/KMS/HSM and production authority ceremony",
+    "provider-owned signed ACK/status and physical exactly-once evidence",
+    "H4 physical power/media durability and H8/H9 supervisor/canary/rollback gates"
+  ],
+  "append_only": true,
+  "generated_at": "2026-08-27T03:44:00+08:00"
+}

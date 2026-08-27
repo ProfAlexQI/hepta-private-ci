@@ -1,0 +1,37 @@
+schema: hepta.authbus.contract-projection.v1
+plan_id: AUTHBUS-PLAN-2026-08-26
+revision: "1.3"
+status: PLANNING_ONLY_IMPLEMENTATION_BACKLOG
+normative: false
+execution_input: false
+projection_only: true
+generated_from_registry: true
+source_registry_ref: OpenClaw/AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/outbox_dispatch
+source_registry_status: REQUIRED_AT_B2
+source_registry_digest: PENDING_AT_B2
+projection_transform: {allowed: [metadata_wrapper, delivery_and_attempt_named_objects], forbidden: [semantic_rename, field_drop, status_reinterpretation]}
+contract:
+  id: hepta.auth.outbox-delivery.v1
+  local_writer: source_record_owner_only
+  effect_ledger_writer: TaskFlow
+  authbus_dispatch_reference_writer: authbusd
+  delivery_semantics: local_atomic_commit_plus_at_least_once_bridge
+  fields: [schema_version, outbox_id, source_owner, destination, event_type, event_id, aggregate_id, command_id, causal_parent_event_id, delivery_seq, delivery_attempt, provider_attempt, resolver_attempt, payload_ref, payload_encoding, payload_digest, source_record_digest, idempotency_key, lease_owner, lease_expires_at, next_retry_at, ack_digest, created_at, updated_at, status, authority_epoch, owner_epoch, generation, fencing_token, writer_record_fsync_confirmed, writer_fsync_witness_digest, dead_letter_reason]
+  nullable_fields: [lease_owner, lease_expires_at, next_retry_at, ack_digest, dead_letter_reason]
+  status: [PENDING, LEASED, SENT, ACKED, UNKNOWN, DEAD_LETTER, CANCELLED]
+  sequence: [local_commit, fsync, lease, deliver, receiver_dedupe, ack_digest, cursor_advance]
+  dedupe_key: [idempotency_key, payload_digest]
+  changed_payload: conflict_and_halt
+  dispatch_order: [EffectIntentDurable, DispatchAttemptStarted, AdapterCall, DispatchAcceptedRef_or_DirectTerminalAckRef_or_DispatchUnknownRef, EffectAckRef_or_IndeterminateRef, TaskFlowReceipt, LookupOnlyReconcile, Release_or_Refund]
+  unknown_recovery: lookup_only
+  unknown_recovery_detail: no_blind_retry
+  crash_windows: [before_attempt_marker, after_attempt_before_call, after_call_before_response_marker, after_unknown_before_receipt, after_ack_before_cursor]
+  dispatch_attempt_fields: [dispatch_id, effect_id, effect_intent_id, effect_key, provider_namespace, provider_attempt, idempotency_key, payload_digest, started_at, deadline_at, source_outbox_id, delivery_seq, authority_epoch, owner_epoch, generation, fencing_token, writer_fsync_witness_digest, state]
+  dispatch_attempt_state: [STARTED, ACCEPTED, DIRECT_TERMINAL_ACK, UNKNOWN]
+  delivery_ack_fields: [ack_id, outbox_id, delivery_seq, idempotency_key, payload_digest, result, receiver_owner, receiver_revision, ack_digest, received_at, authority_epoch, owner_epoch, generation, fencing_token]
+  delivery_ack_result: [APPLIED, ALREADY_APPLIED, CONFLICT, STALE_FENCE, REJECTED, UNKNOWN]
+  fsync_witness_fields: [source_owner, wal_segment, wal_offset, event_seq, commit_digest, directory_fsync, writer_boot_id, writer_generation, verified_at]
+  forbidden: [raw_secret_bytes, authorization_header, unbounded_retry, second_scheduler, release_on_manual_required]
+  reconcile_queue_owner: TaskFlow
+  authbus_reconcile_queue_role: lookup_worklist_projection_only
+  fixture_manifest: {manifest: authbus_contract_vectors_v1/outbox_dispatch, positive: [normal_ack, duplicate_ack, lease_takeover, direct_terminal_ack], negative: [changed_digest, lost_ack_unknown, stale_fence, gap, dead_letter, crash_before_fsync, crash_after_call_before_marker, crash_after_ack_before_fsync, disk_full, oom, reopen]}

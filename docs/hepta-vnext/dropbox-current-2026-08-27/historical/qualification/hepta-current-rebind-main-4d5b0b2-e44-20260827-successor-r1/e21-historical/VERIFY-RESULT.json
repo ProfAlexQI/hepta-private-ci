@@ -1,0 +1,588 @@
+{
+  "attachment_audit": {
+    "HEPTA_H8_H9_GOVERNANCE_GATE.md": {
+      "byte_equal": false,
+      "canonical_exists": true,
+      "canonical_sha256": "f656c6eea14a2d83948a5579ecdc4f0d483f2f153ac32e4f43b929d4978b9204",
+      "package_exists": true,
+      "package_sha256": "9d71b3cddb771495e8ab899fad590f19e90a5423eb06dbd0b1d8c355d28c54c8"
+    },
+    "HEPTA_NDU_LEARNING_SPEC.md": {
+      "byte_equal": true,
+      "canonical_exists": true,
+      "canonical_sha256": "971fdfa7b58202976e10f82f5b5199e7063ff7b3f3dbf7ee6f5cc512e199d82e",
+      "package_exists": true,
+      "package_sha256": "971fdfa7b58202976e10f82f5b5199e7063ff7b3f3dbf7ee6f5cc512e199d82e"
+    },
+    "HEPTA_RESOURCE_EVAL_MATRIX.md": {
+      "byte_equal": true,
+      "canonical_exists": true,
+      "canonical_sha256": "f5b60d009ca46430225c905101d0d2141148a1f448e5c556ac3124f1f23bda96",
+      "package_exists": true,
+      "package_sha256": "f5b60d009ca46430225c905101d0d2141148a1f448e5c556ac3124f1f23bda96"
+    },
+    "HEPTA_TASKFLOW_VERTICAL_SLICE.md": {
+      "byte_equal": true,
+      "canonical_exists": true,
+      "canonical_sha256": "f1cbb7151b1fa2258ffa3630b28b5574a1bca1acc8e93275d7e84f357a974618",
+      "package_exists": true,
+      "package_sha256": "f1cbb7151b1fa2258ffa3630b28b5574a1bca1acc8e93275d7e84f357a974618"
+    },
+    "HEPTA_VNEXT_PROTOCOL_SPEC.md": {
+      "byte_equal": true,
+      "canonical_exists": true,
+      "canonical_sha256": "d25e76ed1283c1b01326bfc540d797d07a188c0e6fe27159e763ee3233eeffb4",
+      "package_exists": true,
+      "package_sha256": "d25e76ed1283c1b01326bfc540d797d07a188c0e6fe27159e763ee3233eeffb4"
+    }
+  },
+  "bundle_integrity": {
+    "crosswalk": {
+      "blocker_count": 7,
+      "failures": [],
+      "path": "hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/E21-DELIVERY-CROSSWALK.json",
+      "valid": true
+    },
+    "manifest": {
+      "entries": [
+        {
+          "actual": "ca5e28fc5b6a7bac8ca4c156dc7ce389f9320161081910b42f9ec01007ba244c",
+          "expected": "ca5e28fc5b6a7bac8ca4c156dc7ce389f9320161081910b42f9ec01007ba244c",
+          "id": "canonical_plan",
+          "ok": true,
+          "path": "hepta-vnext-development-plan-final-2026-08-23.md",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "b17ae5f5308e29ec44b6e720e2ef94bbba455dfe052100a032ea2cafbb0f1023",
+          "expected": "b17ae5f5308e29ec44b6e720e2ef94bbba455dfe052100a032ea2cafbb0f1023",
+          "id": "archival_plan_mirror",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/hepta-vnext-development-plan-final-2026-08-23.md",
+          "status": "STALE"
+        },
+        {
+          "actual": "404adbe43531b588fcdf63be8994f22f2535bf12a804ba97da5ce2faa33f757f",
+          "expected": "404adbe43531b588fcdf63be8994f22f2535bf12a804ba97da5ce2faa33f757f",
+          "id": "canonical_index",
+          "ok": true,
+          "path": "HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "2104bac0705f510956ddddc41eafd824f5ace8b260b1663455ddf6cf49e4ce18",
+          "expected": "2104bac0705f510956ddddc41eafd824f5ace8b260b1663455ddf6cf49e4ce18",
+          "id": "archival_index_mirror",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+          "status": "STALE"
+        },
+        {
+          "actual": "50fcf00799eec1898ded8188fa1b4bc626c0803ed5be15fb04bc7b65f91df337",
+          "expected": "50fcf00799eec1898ded8188fa1b4bc626c0803ed5be15fb04bc7b65f91df337",
+          "id": "delivery_receipt_v3_source",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/delivery-consistency-qualification-20260824/DELIVERY-CONSISTENCY-RECEIPT-V3.json",
+          "status": "HISTORICAL_ONLY"
+        },
+        {
+          "actual": "5a214746a280ba3b5b0ba81cf1f3befeb9a642a382d080fdf109c2991b4c6607",
+          "expected": "5a214746a280ba3b5b0ba81cf1f3befeb9a642a382d080fdf109c2991b4c6607",
+          "id": "delivery_verify_v3",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/delivery-consistency-qualification-20260824/VERIFY-RESULT-V3.json",
+          "status": "HISTORICAL_ONLY"
+        },
+        {
+          "actual": "d3ebc55bb85b5c53e06a5605b60918ed02621add838cb6a90bd6303addbc76df",
+          "expected": "d3ebc55bb85b5c53e06a5605b60918ed02621add838cb6a90bd6303addbc76df",
+          "id": "current_compat_manifest",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/delivery-consistency-qualification-20260824/CURRENT-COMPAT-SHA256SUMS",
+          "status": "HISTORICAL_ONLY"
+        },
+        {
+          "actual": "f656c6eea14a2d83948a5579ecdc4f0d483f2f153ac32e4f43b929d4978b9204",
+          "expected": "f656c6eea14a2d83948a5579ecdc4f0d483f2f153ac32e4f43b929d4978b9204",
+          "id": "h8_gate",
+          "ok": true,
+          "path": "HEPTA_H8_H9_GOVERNANCE_GATE.md",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "f5b60d009ca46430225c905101d0d2141148a1f448e5c556ac3124f1f23bda96",
+          "expected": "f5b60d009ca46430225c905101d0d2141148a1f448e5c556ac3124f1f23bda96",
+          "id": "resource_root",
+          "ok": true,
+          "path": "HEPTA_RESOURCE_EVAL_MATRIX.md",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "f1cbb7151b1fa2258ffa3630b28b5574a1bca1acc8e93275d7e84f357a974618",
+          "expected": "f1cbb7151b1fa2258ffa3630b28b5574a1bca1acc8e93275d7e84f357a974618",
+          "id": "taskflow_root",
+          "ok": true,
+          "path": "HEPTA_TASKFLOW_VERTICAL_SLICE.md",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "9d71b3cddb771495e8ab899fad590f19e90a5423eb06dbd0b1d8c355d28c54c8",
+          "expected": "9d71b3cddb771495e8ab899fad590f19e90a5423eb06dbd0b1d8c355d28c54c8",
+          "id": "h8_gate_package",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/HEPTA_H8_H9_GOVERNANCE_GATE.md",
+          "status": "STALE"
+        },
+        {
+          "actual": "f5b60d009ca46430225c905101d0d2141148a1f448e5c556ac3124f1f23bda96",
+          "expected": "f5b60d009ca46430225c905101d0d2141148a1f448e5c556ac3124f1f23bda96",
+          "id": "resource_package",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/HEPTA_RESOURCE_EVAL_MATRIX.md",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "f1cbb7151b1fa2258ffa3630b28b5574a1bca1acc8e93275d7e84f357a974618",
+          "expected": "f1cbb7151b1fa2258ffa3630b28b5574a1bca1acc8e93275d7e84f357a974618",
+          "id": "taskflow_package",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/HEPTA_TASKFLOW_VERTICAL_SLICE.md",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "03801d76729ffdbe90ab1e2a84971fa548679fcee109d9c58557729703c1c0f7",
+          "expected": "03801d76729ffdbe90ab1e2a84971fa548679fcee109d9c58557729703c1c0f7",
+          "id": "effective_version_index",
+          "ok": true,
+          "path": "HEPTA_EFFECTIVE_VERSION_INDEX_V1_4.json",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "03801d76729ffdbe90ab1e2a84971fa548679fcee109d9c58557729703c1c0f7",
+          "expected": "03801d76729ffdbe90ab1e2a84971fa548679fcee109d9c58557729703c1c0f7",
+          "id": "effective_version_index_mirror",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/HEPTA_EFFECTIVE_VERSION_INDEX_V1_4.json",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "9c809190037a7ae4c82cc79dcfc4a397be4ee6a4314e6f5624f20c286bfafc57",
+          "expected": "9c809190037a7ae4c82cc79dcfc4a397be4ee6a4314e6f5624f20c286bfafc57",
+          "id": "planned_neuron_runtime_v14_root",
+          "ok": true,
+          "path": "HEPTA_NEURON_RUNTIME_CONTRACT_V1_4.md",
+          "status": "PLANNING_ONLY"
+        },
+        {
+          "actual": "9c809190037a7ae4c82cc79dcfc4a397be4ee6a4314e6f5624f20c286bfafc57",
+          "expected": "9c809190037a7ae4c82cc79dcfc4a397be4ee6a4314e6f5624f20c286bfafc57",
+          "id": "planned_neuron_runtime_v14_mirror",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/HEPTA_NEURON_RUNTIME_CONTRACT_V1_4.md",
+          "status": "PLANNING_ONLY"
+        },
+        {
+          "actual": "4127ef64dec73408d14d6de4cdb5ac4ccea063f39103ed5f77db587964caaf12",
+          "expected": "4127ef64dec73408d14d6de4cdb5ac4ccea063f39103ed5f77db587964caaf12",
+          "id": "planned_model_eval_matrix_root",
+          "ok": true,
+          "path": "HEPTA_NEURON_MODEL_EVAL_MATRIX.md",
+          "status": "PLANNING_ONLY"
+        },
+        {
+          "actual": "4127ef64dec73408d14d6de4cdb5ac4ccea063f39103ed5f77db587964caaf12",
+          "expected": "4127ef64dec73408d14d6de4cdb5ac4ccea063f39103ed5f77db587964caaf12",
+          "id": "planned_model_eval_matrix_mirror",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/HEPTA_NEURON_MODEL_EVAL_MATRIX.md",
+          "status": "PLANNING_ONLY"
+        },
+        {
+          "actual": "bfe62a5e70485ed2775252fb9d235fcdb6dd766229d2b13d7ce1614adf212d71",
+          "expected": "bfe62a5e70485ed2775252fb9d235fcdb6dd766229d2b13d7ce1614adf212d71",
+          "id": "planned_topology_proposal_root",
+          "ok": true,
+          "path": "HEPTA_TOPOLOGY_PROPOSAL_CONTRACT.md",
+          "status": "PLANNING_ONLY"
+        },
+        {
+          "actual": "bfe62a5e70485ed2775252fb9d235fcdb6dd766229d2b13d7ce1614adf212d71",
+          "expected": "bfe62a5e70485ed2775252fb9d235fcdb6dd766229d2b13d7ce1614adf212d71",
+          "id": "planned_topology_proposal_mirror",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/HEPTA_TOPOLOGY_PROPOSAL_CONTRACT.md",
+          "status": "PLANNING_ONLY"
+        },
+        {
+          "actual": "b607c362559267b4589588e7d62c148fa4a602d9abe73e798fe2ce08ae29574e",
+          "expected": "b607c362559267b4589588e7d62c148fa4a602d9abe73e798fe2ce08ae29574e",
+          "id": "planned_sensorimotor_loop_root",
+          "ok": true,
+          "path": "HEPTA_SENSORIMOTOR_LOOP_PROTOCOL.md",
+          "status": "PLANNING_ONLY"
+        },
+        {
+          "actual": "b607c362559267b4589588e7d62c148fa4a602d9abe73e798fe2ce08ae29574e",
+          "expected": "b607c362559267b4589588e7d62c148fa4a602d9abe73e798fe2ce08ae29574e",
+          "id": "planned_sensorimotor_loop_mirror",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/HEPTA_SENSORIMOTOR_LOOP_PROTOCOL.md",
+          "status": "PLANNING_ONLY"
+        },
+        {
+          "actual": "3a2a41a3094640f3487fb604c438c8fe918a6a9b39b5c7afd336f46be84580c9",
+          "expected": "3a2a41a3094640f3487fb604c438c8fe918a6a9b39b5c7afd336f46be84580c9",
+          "id": "planned_longitudinal_eval_root",
+          "ok": true,
+          "path": "HEPTA_LONGITUDINAL_EVAL_PROTOCOL.md",
+          "status": "PLANNING_ONLY"
+        },
+        {
+          "actual": "3a2a41a3094640f3487fb604c438c8fe918a6a9b39b5c7afd336f46be84580c9",
+          "expected": "3a2a41a3094640f3487fb604c438c8fe918a6a9b39b5c7afd336f46be84580c9",
+          "id": "planned_longitudinal_eval_mirror",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/HEPTA_LONGITUDINAL_EVAL_PROTOCOL.md",
+          "status": "PLANNING_ONLY"
+        },
+        {
+          "actual": "fdedc6840b873c2ad8b1ba80a1684fb8b9bedc887cbcb795d2255b396c3fee27",
+          "expected": "fdedc6840b873c2ad8b1ba80a1684fb8b9bedc887cbcb795d2255b396c3fee27",
+          "id": "e21_delivery_hardening",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/normalized_receipts/e21_delivery_hardening.json",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "e73bc280756d650c877f465446cded946e7b4d6d2d2a615fe1347c44d96ee83d",
+          "expected": "e73bc280756d650c877f465446cded946e7b4d6d2d2a615fe1347c44d96ee83d",
+          "id": "e21_delivery_hardening_source",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/E21-DELIVERY-HARDENING-RECEIPT.json",
+          "status": "HISTORICAL_ONLY"
+        },
+        {
+          "actual": "e0f7e10ae5a061bd1c342126abc75df27fd80f066cfd57c29175ab0341b03ac3",
+          "expected": "e0f7e10ae5a061bd1c342126abc75df27fd80f066cfd57c29175ab0341b03ac3",
+          "id": "contract_closure_v14",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/normalized_receipts/contract_closure_v14.json",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "79815c8db53fe7363682b2e30d9077e0e1c4cf17fdab3848cd2a242241ce1e08",
+          "expected": "79815c8db53fe7363682b2e30d9077e0e1c4cf17fdab3848cd2a242241ce1e08",
+          "id": "contract_closure_v14_source",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/v1.4-contract-closure-qualification-20260824/CONTRACT-CLOSURE-RECEIPT.json",
+          "status": "HISTORICAL_ONLY"
+        },
+        {
+          "actual": "0796174cfdd5c3f5e23ac0b1f4234b11207b813abf460131824360402e619f47",
+          "expected": "0796174cfdd5c3f5e23ac0b1f4234b11207b813abf460131824360402e619f47",
+          "id": "model_eval_protocol",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/normalized_receipts/model_eval_protocol.json",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "9425f47c986c8841f2fd13b69011495cf41e93006684616ed9a877a5d489a28a",
+          "expected": "9425f47c986c8841f2fd13b69011495cf41e93006684616ed9a877a5d489a28a",
+          "id": "model_eval_protocol_source",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/model-eval-longitudinal-qualification-20260824/MODEL-EVAL-LONGITUDINAL-RECEIPT.json",
+          "status": "HISTORICAL_ONLY"
+        },
+        {
+          "actual": "a4b3c2cad31044e4077e4f06527a0593d28175e0284bae42efaf7f17cf5705d7",
+          "expected": "a4b3c2cad31044e4077e4f06527a0593d28175e0284bae42efaf7f17cf5705d7",
+          "id": "e21_contract_hardening",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/normalized_receipts/e21_contract_hardening.json",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "e030777c0a1c8bbab20bbe7d507a4ea4cbd14fc005bda3c518b335157e6304c9",
+          "expected": "e030777c0a1c8bbab20bbe7d507a4ea4cbd14fc005bda3c518b335157e6304c9",
+          "id": "e21_contract_hardening_source",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/e21-contract-hardening-qualification-20260824/E21-CONTRACT-HARDENING-RECEIPT.json",
+          "status": "HISTORICAL_ONLY"
+        },
+        {
+          "actual": "67a8dcc5513b110dce7c8230f9030709c220445411a440990d85ab8dddfbe807",
+          "expected": "67a8dcc5513b110dce7c8230f9030709c220445411a440990d85ab8dddfbe807",
+          "id": "e21_model_verifier",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/normalized_receipts/e21_model_verifier.json",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "705acf39eaaabc35af797fa2f0a1825f672fe6412fc74d9656bebd8caf3c914a",
+          "expected": "705acf39eaaabc35af797fa2f0a1825f672fe6412fc74d9656bebd8caf3c914a",
+          "id": "e21_model_verifier_source",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/e21-model-verifier-qualification-20260824/MODEL-VERIFIER-HARDENING-RECEIPT.json",
+          "status": "HISTORICAL_ONLY"
+        },
+        {
+          "actual": "f3bf23558f254ea0973d4cc8d1c9d6770ee0c998fbbedbb2e1f7264d58978b88",
+          "expected": "f3bf23558f254ea0973d4cc8d1c9d6770ee0c998fbbedbb2e1f7264d58978b88",
+          "id": "e21_s3a_runtime",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/normalized_receipts/e21_s3a_runtime.json",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "2d54c7531365d52f94717c59f5ada811f75a1874122ebd8bdb668ba51de5c6f5",
+          "expected": "2d54c7531365d52f94717c59f5ada811f75a1874122ebd8bdb668ba51de5c6f5",
+          "id": "e21_s3a_runtime_source",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/e21-s3a-runtime-qualification-20260824/E21-S3A-RUNTIME-RECEIPT.json",
+          "status": "HISTORICAL_ONLY"
+        },
+        {
+          "actual": "47de7cae4a25aa942605a494ee0cdb52ce163c1e6a294dfe8f980ac1a446f952",
+          "expected": "47de7cae4a25aa942605a494ee0cdb52ce163c1e6a294dfe8f980ac1a446f952",
+          "id": "e21_named_contracts",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/normalized_receipts/e21_named_contracts.json",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "4b3985809c99c8e05ea7f9767c6aee9a3ee0d4040cce467eb47616d5b3a25b13",
+          "expected": "4b3985809c99c8e05ea7f9767c6aee9a3ee0d4040cce467eb47616d5b3a25b13",
+          "id": "e21_named_contracts_source",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/e21-named-contracts-qualification-20260824/E21-NAMED-CONTRACTS-RECEIPT.json",
+          "status": "HISTORICAL_ONLY"
+        },
+        {
+          "actual": "249b5dec426dc13351e06a4200e4f6e49d58f379b5cdc1ab96727beb35c102ed",
+          "expected": "249b5dec426dc13351e06a4200e4f6e49d58f379b5cdc1ab96727beb35c102ed",
+          "id": "e22_runtime_integration",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/normalized_receipts/e22_runtime_integration.json",
+          "status": "PRESENT"
+        },
+        {
+          "actual": "617040a09ffde86ff6aee31b0062a68e8595f96412a29eaece7729ed077c5bc4",
+          "expected": "617040a09ffde86ff6aee31b0062a68e8595f96412a29eaece7729ed077c5bc4",
+          "id": "e22_runtime_integration_source",
+          "ok": true,
+          "path": "hepta-vnext-qualification-2026-08-23/e22-runtime-integration-qualification-20260824/E22-RUNTIME-INTEGRATION-RECEIPT.json",
+          "status": "HISTORICAL_ONLY"
+        }
+      ],
+      "failures": [],
+      "path": "hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/E21-CURRENT-MANIFEST.json",
+      "valid": true
+    },
+    "schemas": {
+      "available": true,
+      "failures": [],
+      "schemas": {
+        "E21-CURRENT-MANIFEST.schema.json": {
+          "error_count": 0,
+          "valid": true
+        },
+        "E21-DELIVERY-CROSSWALK.schema.json": {
+          "error_count": 0,
+          "valid": true
+        }
+      },
+      "valid": true
+    }
+  },
+  "claim_level": "L0_BASELINE_L1_SHADOW_ONLY",
+  "core_delivery_checks": {
+    "effective_section_present": true,
+    "index_byte_equal": false,
+    "index_current_plan_pointer": true,
+    "index_exists": true,
+    "index_mirror_sha": "2104bac0705f510956ddddc41eafd824f5ace8b260b1663455ddf6cf49e4ce18",
+    "index_sha": "404adbe43531b588fcdf63be8994f22f2535bf12a804ba97da5ce2faa33f757f",
+    "index_sha_nonempty": true,
+    "legacy_header_present": true,
+    "plan_byte_equal": false,
+    "plan_exists": true,
+    "plan_mirror_sha": "b17ae5f5308e29ec44b6e720e2ef94bbba455dfe052100a032ea2cafbb0f1023",
+    "plan_sha": "ca5e28fc5b6a7bac8ca4c156dc7ce389f9320161081910b42f9ec01007ba244c",
+    "plan_sha_nonempty": true,
+    "version_entry_ambiguity": false
+  },
+  "efficacy_status": "BLOCKED_MODEL_AND_LONGITUDINAL_PREREQUISITES",
+  "evidence_class": "delivery_and_contract_fixture_only",
+  "existing_verifier_audit": {
+    "current_manifest_fail_closed": false,
+    "historical_drift_always_pass": true,
+    "negative_flags_hardcoded": true,
+    "verifier_exists": true
+  },
+  "h8_gate_audit": {
+    "gate_exists": true,
+    "legacy_inputs_present": true,
+    "required_machine_fields": {
+      "approval_state": true,
+      "claim_level": true,
+      "efficacy_status": true,
+      "evidence_class": true,
+      "runtime_authority": true
+    },
+    "runtime_seam_lane_refs": {
+      "e21-s3a-runtime-qualification-20260824": true,
+      "e22-runtime-integration-qualification-20260824": true
+    },
+    "runtime_seam_receipts_mandatory": true,
+    "shadow_contract_lane_refs": {
+      "e21-contract-hardening-qualification-20260824": true,
+      "e21-delivery-hardening-qualification-20260824": true,
+      "e21-model-verifier-qualification-20260824": true,
+      "e21-named-contracts-qualification-20260824": true,
+      "model-eval-longitudinal-qualification-20260824": true,
+      "v1.4-contract-closure-qualification-20260824": true
+    },
+    "shadow_contract_receipts_mandatory": true,
+    "v14_lane_refs": {
+      "e21-contract-hardening-qualification-20260824": true,
+      "e21-delivery-hardening-qualification-20260824": true,
+      "e21-model-verifier-qualification-20260824": true,
+      "e21-named-contracts-qualification-20260824": true,
+      "e21-s3a-runtime-qualification-20260824": true,
+      "e22-runtime-integration-qualification-20260824": true,
+      "model-eval-longitudinal-qualification-20260824": true,
+      "v1.4-contract-closure-qualification-20260824": true
+    },
+    "v14_receipts_mandatory": true
+  },
+  "hardening_status": "BLOCKED_REMAINING_E21_FINDINGS",
+  "history_audit": {
+    "bootstrap_hashes_present": {
+      "7c94b42fdca530cf7b71d796a381a5784468ed0c7f7f27577f314e6b980292cb": true,
+      "856ebde826c51a697a3d0dcd437a2cdfb2d018d6c595d5ea7676d0fde2c63749": true,
+      "bfd1aa719639f3c03db354bd57a55a66e56ea2dd47d14cae910bd64c717d1264": true
+    },
+    "bootstrap_rows_are_historical_marked": true,
+    "duplicate_directories": {
+      "hepta-vnext-qualification-2026-08-23": true,
+      "hepta-vnext-qualification-20260823": true,
+      "hepta-vnext-qualification-20260824": true
+    }
+  },
+  "notes": [
+    "This verifier is read-only and scoped to delivery/index/attachment/history boundaries.",
+    "A PASS status means this isolated audit bundle is internally coherent; open_findings remain blockers in canonical documents.",
+    "No production writer/effect/model/NPU/CALLERS/operator/promotion authority is granted."
+  ],
+  "open_findings": [
+    "E21-ATTACHMENT-MIRROR-DRIFT",
+    "E21-H8-V14-RECEIPT-BINDING",
+    "E21-NAMED-CONTRACTS-NOT_GENERATED"
+  ],
+  "production_negative_flags": {
+    "callers_promoted": false,
+    "effect_dispatch": false,
+    "g5_allowed": false,
+    "model_inference": false,
+    "npu_connected": false,
+    "operator_acceptance": false,
+    "production_writer": false,
+    "promotion": false
+  },
+  "qualified_at": "2026-08-24",
+  "receipt_boundary_audit": {
+    "hepta-vnext-qualification-2026-08-23/delivery-consistency-qualification-20260824/DELIVERY-CONSISTENCY-RECEIPT-V3.json": {
+      "exists": true,
+      "flags": {
+        "callers_promoted": false,
+        "effect_dispatch": false,
+        "g5_allowed": false,
+        "model_inference": false,
+        "npu_connected": false,
+        "operator_acceptance": false,
+        "production_writer": false,
+        "promotion": false
+      },
+      "flags_all_false": true,
+      "parse_error": null
+    },
+    "hepta-vnext-qualification-2026-08-23/delivery-consistency-qualification-20260824/VERIFY-RESULT-V3.json": {
+      "exists": true,
+      "flags": {},
+      "flags_all_false": null,
+      "parse_error": null
+    },
+    "hepta-vnext-qualification-2026-08-23/model-eval-longitudinal-qualification-20260824/MODEL-EVAL-LONGITUDINAL-RECEIPT.json": {
+      "exists": true,
+      "flags": {},
+      "flags_all_false": null,
+      "parse_error": null
+    },
+    "hepta-vnext-qualification-2026-08-23/v1.4-contract-closure-qualification-20260824/CONTRACT-CLOSURE-RECEIPT.json": {
+      "exists": true,
+      "flags": {},
+      "flags_all_false": null,
+      "parse_error": null
+    }
+  },
+  "runtime_authority": false,
+  "sibling_lane_audit": {
+    "e21_contract_hardening": {
+      "claim_level": "L0_BASELINE_L1_SHADOW_CONTRACT_ONLY",
+      "evidence_class": "deterministic_shadow_contract_fixture",
+      "exists": true,
+      "parse_error": null,
+      "path": "hepta-vnext-qualification-2026-08-23/e21-contract-hardening-qualification-20260824/E21-CONTRACT-HARDENING-RECEIPT.json",
+      "required_now": true,
+      "runtime_authority": false,
+      "sha256": "e030777c0a1c8bbab20bbe7d507a4ea4cbd14fc005bda3c518b335157e6304c9",
+      "status": "PASS_E21_CANONICAL_CONTRACT_HARDENING_SHADOW"
+    },
+    "e21_model_verifier": {
+      "claim_level": "L0_BASELINE_L1_SHADOW_CONTRACT_ONLY",
+      "evidence_class": "deterministic_shadow_contract_fixture",
+      "exists": true,
+      "parse_error": null,
+      "path": "hepta-vnext-qualification-2026-08-23/e21-model-verifier-qualification-20260824/MODEL-VERIFIER-HARDENING-RECEIPT.json",
+      "required_now": true,
+      "runtime_authority": false,
+      "sha256": "705acf39eaaabc35af797fa2f0a1825f672fe6412fc74d9656bebd8caf3c914a",
+      "status": "PASS_MODEL_VERIFIER_HARDENING_SHADOW"
+    },
+    "e21_named_contracts": {
+      "claim_level": "L0_BASELINE_L1_SHADOW_CONTRACT_ONLY",
+      "evidence_class": "standalone_planning_contracts_fixture",
+      "exists": true,
+      "parse_error": null,
+      "path": "hepta-vnext-qualification-2026-08-23/e21-named-contracts-qualification-20260824/E21-NAMED-CONTRACTS-RECEIPT.json",
+      "required_now": true,
+      "runtime_authority": false,
+      "sha256": "4b3985809c99c8e05ea7f9767c6aee9a3ee0d4040cce467eb47616d5b3a25b13",
+      "status": "PASS_E21_NAMED_CONTRACTS_SHADOW"
+    },
+    "e21_s3a_runtime": {
+      "claim_level": "L0_BASELINE_L1_SHADOW_ONLY",
+      "evidence_class": "deterministic_fixture_and_fault_replay",
+      "exists": true,
+      "parse_error": null,
+      "path": "hepta-vnext-qualification-2026-08-23/e21-s3a-runtime-qualification-20260824/E21-S3A-RUNTIME-RECEIPT.json",
+      "required_now": true,
+      "runtime_authority": false,
+      "sha256": "2d54c7531365d52f94717c59f5ada811f75a1874122ebd8bdb668ba51de5c6f5",
+      "status": "PASS_E21_S3A_RUNTIME_SHADOW"
+    },
+    "e22_runtime_integration": {
+      "claim_level": "L0_BASELINE_L1_SHADOW_ONLY",
+      "evidence_class": "file_backed_sqlite_and_typed_causal_adapter_qualification",
+      "exists": true,
+      "parse_error": null,
+      "path": "hepta-vnext-qualification-2026-08-23/e22-runtime-integration-qualification-20260824/E22-RUNTIME-INTEGRATION-RECEIPT.json",
+      "required_now": true,
+      "runtime_authority": false,
+      "sha256": "617040a09ffde86ff6aee31b0062a68e8595f96412a29eaece7729ed077c5bc4",
+      "status": "PASS_E22_SQLITE_CAUSAL_ADAPTER_SHADOW"
+    }
+  },
+  "status": "PASS_E21_DELIVERY_HARDENING_SHADOW",
+  "verifier": "hepta-e21-delivery-hardening-verifier-v1.0"
+}

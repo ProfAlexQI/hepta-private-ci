@@ -1,0 +1,845 @@
+schema: hepta.authbus.abuse-dispute.v1
+plan_id: AUTHBUS-PLAN-2026-08-26
+status: PLANNING_ONLY
+authority: false
+source_status: STALE_SOURCE_BINDING
+current_projection_binding:
+  status: CURRENT_PROJECTION_BINDING
+  plan_revision: E.45
+  plan_pointer: OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md#development-docs-sync-e45
+  plan_sha256: f0a98ae0e6cb1ff3c4bb660bfe50ca921cda434926a755d127dcc7399c4a5620
+  canonical_registry_ref: OpenClaw/AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+  canonical_registry_sha256: cda83c4776d4c2b3c2851474e476e775d6ca26fa815373083aac47fdfd0c89f5
+  active_stage_selector: OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml#/execution_closure_v1_3/phase_map
+  semantic_revision: AUTHBUS.11-v1.3
+  projection_kind: generated_domain_projection
+  fail_closed_on_source_digest_mismatch: true
+  behavioral_implementation_evidence: NOT_RUN
+  runtime_authority: false
+  production_effect_authority: false
+implementation_branch: not-created
+source_binding:
+  basil_repo: https://github.com/openbasil/basil
+  basil_commit: 1fd29adb8e7356968eacbff9309e056cec9bafd7
+  basil_version: 0.7.2-main-snapshot
+  license: Apache-2.0
+purpose: >-
+  Product, marketplace, gateway-abuse, privacy, and dispute inputs for implementation. This policy
+  models synthetic/virtual transactions first and does not authorize real funds or public effects.
+
+product_types:
+  normative: false
+  decode_only: true
+  superseded_by: execution_closure_v1_3
+  ProviderUsageRight:
+    description: "A bounded right to consume owner/provider capacity, never a raw credential."
+    raw_token_transfer: false
+    transferable_default: false
+    requires_owner_and_provider_consent: true
+    provider_terms_required: true
+    constraints: [domain_tag, signature_alg, key_id, scope_digest, max_uses, not_before, expires_at, audience, data_policy, region, subject_digest]
+  OwnedComputeService:
+    description: "An owner-operated inferd capacity service exposed through a Hepta gateway."
+    inferd_backed: true
+    exposes_virtual_credential: true
+    raw_upstream_token_transfer: false
+    raw_materialization: adapter_only
+    capacity_receipt_required: true
+    capacity_receipt_type: ResourceAdvertisement
+    capacity_receipt_writer: authbusd
+    capacity_receipt_projection: "ResourceAdvertisement advertises capacity; ModelReceipt/UsageReceipt records consumption. No new CapacityReceipt type is introduced."
+
+rights_constraints:
+  normative: false
+  decode_only: true
+  superseded_by: execution_closure_v1_3
+  domain_tag: required
+  signature_alg: required
+  key_id: required
+  scope_digest: required
+  max_uses: required
+  not_before: required
+  expires_at: required
+  audience: required
+  nonce_or_jti: required
+  depth: 0
+  transferable: false
+  data_policy: required
+  region: required
+  provider_consent_ref: required_for_provider_usage_right
+  consent_digest: required_for_signed_delegation
+  subject_binding: [tenant_id, workspace_id, agent_id, service_id, recipient_key_id, subject_digest]
+  settlement_ref_authorizes_use: false
+
+roles: [seller_owner, buyer_tenant, relay, authbusd, gateway, walletd, provider, operator, arbiter]
+role_boundaries:
+  authbusd: [admit, reserve, revoke, usage_receipt]
+  walletd: [escrow, settle, refund, dispute_hold]
+  gateway: [authenticate_virtual_credential, request_scoped_permit, meter]
+  relay: [forward_encrypted_signed_messages]
+  provider: [status_and_effect_ack]
+  operator: [drain, kill_switch, emergency_revoke, redacted_audit]
+  arbiter: [review_digest_references, decide_dispute]
+  provider_cannot: [settlement_signature, wallet_mutation]
+  arbiter_cannot: [authbus_wal_mutation, provider_effect_signature]
+  relay_cannot: [admit, reserve, lease, secret_use, settle, mutate_wal]
+  operator_cannot: [decide_dispute, mutate_market_outcome_without_arbiter]
+
+market_lifecycle:
+  normative: false
+  decode_only: true
+  superseded_by: execution_closure_v1_3.market_lifecycle
+  role: historical_decode_projection
+  canonical_source: hepta-auth-contracts.v1/registry/market-lifecycle.v1
+  projection_consumers: [execution_closure_v1_3]
+  states: [OFFER, QUOTE, ORDER, ESCROW_HELD, RESERVED, ACTIVE, PARTIALLY_CONSUMED, SETTLED, REFUNDED, DISPUTED, CLOSED]
+  terminal: [SETTLED, REFUNDED, CLOSED]
+  transitions:
+    - {from: OFFER, event: quote_accepted, to: QUOTE}
+    - {from: OFFER, event: offer_expired_or_cancelled, to: CLOSED}
+    - {from: QUOTE, event: order_created, to: ORDER}
+    - {from: QUOTE, event: quote_expired_or_cancelled, to: CLOSED}
+    - {from: ORDER, event: escrow_confirmed, to: ESCROW_HELD}
+    - {from: ORDER, event: order_cancelled, to: CLOSED}
+    - {from: ESCROW_HELD, event: permit_reserved, to: RESERVED}
+    - {from: RESERVED, event: first_use, to: ACTIVE}
+    - {from: ACTIVE, event: usage_reported, to: PARTIALLY_CONSUMED}
+    - {from: PARTIALLY_CONSUMED, event: usage_reported, to: PARTIALLY_CONSUMED}
+    - {from: ACTIVE, event: terminal_receipt, to: SETTLED}
+    - {from: ACTIVE, event: expiry_or_cancel_review, to: DISPUTED, guard: verified_no_effect_or_adjudication_required}
+    - {from: ACTIVE, event: effect_failed, to: DISPUTED}
+    - {from: ESCROW_HELD, event: expiry_or_cancel, to: REFUNDED, guard: verified_no_effect_and_wallet_disposition}
+    - {from: RESERVED, event: expiry_or_cancel, to: REFUNDED, guard: verified_no_effect_and_wallet_disposition}
+    - {from: [ESCROW_HELD, RESERVED], event: reconciled_no_effect, to: REFUNDED, guard: verified_no_effect_and_wallet_disposition}
+    - {from: [ACTIVE, PARTIALLY_CONSUMED], event: reconciled_no_effect, to: DISPUTED}
+    - {from: PARTIALLY_CONSUMED, event: terminal_receipt, to: SETTLED}
+    - {from: PARTIALLY_CONSUMED, event: refund_review, to: DISPUTED, guard: adjudicator_and_wallet_disposition_required}
+    - {from: PARTIALLY_CONSUMED, event: effect_failed, to: DISPUTED}
+    - {from: [ESCROW_HELD, RESERVED, ACTIVE, PARTIALLY_CONSUMED], event: evidence_conflict, to: DISPUTED}
+    - {from: DISPUTED, event: adjudicated_settle, to: SETTLED}
+    - {from: DISPUTED, event: adjudicated_partial_refund, to: REFUNDED}
+    - {from: DISPUTED, event: adjudicated_refund, to: REFUNDED}
+    - {from: DISPUTED, event: adjudicated_reject, to: DISPUTED}
+    - {from: DISPUTED, event: appeal_opened, to: DISPUTED}
+    - {from: DISPUTED, event: adjudicated_close, to: CLOSED}
+  terminal_immutable: true
+  terminal_guards:
+    SETTLED: wallet_disposition_receipt_covers_settlement_and_fees
+    REFUNDED: wallet_disposition_receipt_covers_refund_and_any_settlement_or_fee
+    CLOSED: wallet_no_funds_or_explicit_disposition_receipt
+  reject_rule: "adjudicated_reject records rejection of the claim but is non-terminal; remain DISPUTED until an explicit wallet disposition or adjudicated_close with no funds remains."
+  unknown_effect: hold_escrow_and_reconcile
+  no_effect_reconcile_rule: "A verified NoEffect result refunds only an untouched ESCROW_HELD/RESERVED right; if ACTIVE or PARTIALLY_CONSUMED evidence exists, route to DISPUTED for adjudication rather than assuming a full refund."
+  transition_guard_rule: "No ACTIVE or PARTIALLY_CONSUMED path may enter REFUNDED directly; expiry/cancel/refund requests first enter DISPUTED and require an immutable wallet disposition plus adjudication."
+  usage_counter:
+    normative: false
+    decode_only: true
+    superseded_by: execution_closure_v1_3.usage_counter
+    owner: market-adapter
+    fields: [max_uses, reserved_uses, consumed_uses, remaining_uses, counter_revision, counter_state_digest, owner_epoch, generation, fencing_token]
+    invariant: "remaining_uses = max_uses - reserved_uses - consumed_uses and reserved_uses + consumed_uses <= max_uses."
+    acquire_rule: "AuthBus submits fenced ReserveUse; market-adapter atomically checks remaining_uses > 0 and increments reserved_uses."
+    commit_rule: "A verified terminal consumption atomically moves one reserved use to consumed_uses; duplicate usage_id is idempotent."
+    release_rule: "Verified no-effect, pre-dispatch cancellation, and unstarted expiry atomically decrement reserved_uses exactly once."
+    unknown_rule: "Unknown or partial effect keeps reserved_uses held until TaskFlow-owned ReconcileDecision."
+    receipt_witness: [usage_id, reserved_uses, consumed_uses, remaining_uses, counter_revision, counter_state_digest, operation_ref]
+
+escrow:
+  normative: false
+  decode_only: true
+  superseded_by: execution_closure_v1_3.wallet_disposition_join
+  authority: walletd
+  states: [HELD, RELEASED, SETTLED, REFUNDED, DISPUTED]
+  market_state_mapping:
+    HELD: ESCROW_HELD
+    RELEASED: explicit_disposition_join_only
+    SETTLED: SETTLED
+    REFUNDED: REFUNDED
+    DISPUTED: DISPUTED
+  conservation: exact_integer_units
+  settlement_ref_is_authority: false
+  authbus_may_mutate_balance: false
+  unknown_effect_action: HOLD
+  double_settlement: reject
+  nonce_owner: walletd
+  escrow_transition_semantics: "walletd RELEASED/SETTLED describe funds; market SETTLED describes usage outcome. RELEASED has no implicit market projection. AuthBus never mutates either balance or escrow state."
+  wallet_disposition_join:
+    schema_id: hepta.auth.wallet-market-disposition.v1
+    required_fields: [schema_version, disposition_id, command_id, market_right_id, wallet_state, market_state, amount, currency, fee, total_due, settled_amount, refund_amount, balance_before, balance_after, outcome, settlement_ref, usage_receipt_digest, effect_receipt_digest, evidence_digest, ledger_seq, ledger_digest, wallet_epoch, wallet_nonce, idempotency_key, created_at, authority_epoch, owner_epoch, generation, fencing_token]
+    mutation_fields: [schema_version, command_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, causal_parent_event_id, payload_digest, policy_digest]
+    conservation_formula: "balance_after = balance_before - settled_amount - fee + refund_amount; total_due = settled_amount + fee; all amounts are exact integer units and non-negative."
+    ledger_binding: "ledger_seq and ledger_digest are emitted by walletd; market state cannot become terminal until the disposition, effect/usage digests and wallet conservation witness verify under one idempotency key."
+    conflict_rule: "Same idempotency_key with a different payload_digest, ledger_seq/digest or amount vector is Conflict without balance or market mutation."
+    wallet_state_to_market: {RELEASED: only_DISPUTED_or_CLOSED_with_no_funds_disposition, SETTLED: SETTLED, REFUNDED: REFUNDED, DISPUTED: DISPUTED}
+    terminal_join_rule: "A market terminal state requires one immutable wallet disposition and conservation proof; RELEASED never implicitly means SETTLED or REFUNDED."
+    idempotency: [disposition_id, market_right_id]
+
+dispute:
+  evidence_refs: [UsageReceipt, EffectAck, OperationRef, MeteringReceipt, policy_digest, clock_snapshot]
+  raw_secret_or_prompt_in_evidence: false
+  raw_authorization_header_in_evidence: false
+  evidence_digest_required: true
+  outcomes: [SETTLE, PARTIAL_REFUND, REFUND, REJECT, ESCALATE]
+  outcome_semantics:
+    lifecycle_events:
+      SETTLE: adjudicated_settle
+      PARTIAL_REFUND: adjudicated_partial_refund
+      REFUND: adjudicated_refund
+      REJECT: adjudicated_reject
+    non_terminal_label:
+      ESCALATE: appeal_opened
+    labels_not_states: true
+  accepted_unknown_rule: "A 202/Accepted or missing response is not proof of consumption."
+  timeout_rule: "Keep the hold until status-by-key or an explicit adjudication."
+  adjudication_fields: [outcome, evidence_digest, settlement_ref, refund_amount, deadline, appeal_window]
+  canonical_event_mapping:
+    SETTLE: adjudicated_settle
+    PARTIAL_REFUND: adjudicated_partial_refund
+    REFUND: adjudicated_refund
+    REJECT: adjudicated_reject
+    ESCALATE: appeal_opened
+  outcome_labels_not_states: true
+  event_ledger_semantics:
+    adjudicated_partial_refund: "Transitions DISPUTED→REFUNDED only with a consumed_units witness and a wallet disposition receipt that accounts for refund plus any settlement/fee; walletd applies the integer disposition exactly once."
+    adjudicated_reject: "Records rejection of the claim and remains DISPUTED; it has no settlement authority. A later wallet disposition or no-funds adjudicated_close is required before a terminal market state."
+    appeal_opened: "Idempotent DISPUTED→DISPUTED marker carrying appeal_window and evidence_digest; it is not terminal."
+
+abuse_controls:
+  anti_sybil: [hnl_node_identity, tenant_rate_limit, per_peer_quota, admission_cost]
+  prevent: [hoarding, collusion, wash_trade, replay, credential_exfiltration, account_rotation_limit_evasion, quota_probe_abuse]
+  detection_inputs: [peer_session_digest, usage_pattern, failed_admission_rate, duplicate_nonce, dispute_rate]
+  response: [throttle, quarantine, revoke, drain, operator_review]
+  no_new_scheduler: true
+  no_second_trust_root: true
+  owner_consent: required_for_delegation
+  admission_cost_mode: virtual_only_until_final_release
+
+gateway_controls:
+  registry_allowlist: required
+  # The ingress caller may present a virtual credential in Authorization; it may not
+  # choose the upstream destination or smuggle arbitrary upstream headers through.
+  ingress_authorization_virtual_credential: allowed
+  upstream_url: registry_allowlist_only
+  upstream_headers: adapter_constructed_only
+  caller_url: forbidden
+  caller_headers: forbidden
+  legacy_ambiguous_fields:
+    caller_url: "Interpret as caller-supplied upstream URL; the ingress request URL itself is not forbidden."
+    caller_headers: "Interpret as arbitrary upstream-header forwarding; Authorization: Bearer <virtual-credential> extraction is allowed."
+  ssrf: blocked
+  dns_rebinding: blocked
+  connect_method: blocked
+  body_limit: required
+  stream_backpressure: required
+  cancel_deadline_ms: 1000
+  virtual_credential:
+    fields: [iss, kid, cnf, tenant_id, workspace_id, agent_id, service_id, node_id, agent_generation, authority_epoch, owner_epoch, generation, fencing_token, resource_id, provider_id, permit_id, payload_digest, aud, scope, model, iat, nbf, exp, jti, nonce, policy_digest]
+    ttl_default_seconds: 300
+    ttl_max_seconds: 900
+    proof_of_possession: required_for_non_loopback
+    replay_cache: required
+    replay_window_default_seconds: 300
+    replay_window_max_seconds: 900
+    missing_or_over_limit: reject_fail_closed
+    replay_key: [iss, kid, jti, resource_id, permit_id, payload_digest]
+    issuer_kid_alias: "kid is the issuer key id; no separate issuer_kid field exists."
+    jti_and_nonce_domains_distinct: true
+    jti_domain: virtual_credential_instance
+    nonce_domain: hnl_session_or_dispatch
+  output_policy: [redact_configured_pii, retention_ttl, no_secret_echo, no_authority_minting]
+  output_cannot_mint: [key, grant, wallet_asset, command_authority]
+  ci_boundary:
+    ingress_virtual_credential_only: true
+    caller_selected_upstream_url: false
+    arbitrary_upstream_header_forwarding: false
+    upstream_authorization_constructed_by: allowlisted_adapter
+    virtual_authorization_is_never_upstream_authorization: true
+
+privacy:
+  raw_tokens: false
+  raw_prompts: false
+  raw_provider_headers: false
+  receipt_content: digests_and_references_only
+  retention_ttl_required: true
+  legal_hold: explicit_only
+  cross_tenant_data: forbidden
+
+kill_switch:
+  owner_or_agentd_can_revoke: true
+  drain: true
+  disable_public_listener: true
+  stop_new_admission: true
+  preserve_redacted_receipts: true
+  operator_emergency_revoke:
+    allowed: true
+    required_claims: [emergency, incident_id, reason, bounded_resource_scope]
+    market_outcome_mutation: false
+
+mode_policy:
+  DEVELOPMENT:
+    transaction_kind: synthetic_virtual_credits
+    external_effect: false
+    real_funds: false
+    public_listener: false
+  INTERNAL_TEST:
+    transaction_kind: opt_in_loopback_or_lan_simulation
+    external_effect: false
+    real_funds: false
+    public_listener: false
+  RELEASE_PREP:
+    transaction_kind: approved_sandbox_only
+    external_effect: false
+    real_funds: false
+    public_listener: false
+  FINAL_RELEASE:
+    transaction_kind: external_review_required
+    external_effect: false
+    real_funds: false
+    public_listener: false
+    explicit_promotion_required: true
+    external_review_required: true
+    activation_state: review_only
+    auto_transition: false
+    missing_requirement_action: remain_review_only_and_block_release_only
+
+consent_by_mode:
+  DEVELOPMENT: not_applicable_synthetic_consent
+  INTERNAL_TEST: owner_local_or_synthetic_consent
+  RELEASE_PREP: sandbox_owner_consent
+  FINAL_RELEASE: provider_and_owner_attested_consent
+
+arbiter_constraints:
+  independent_from_trade_parties: required
+  conflict_of_interest_disclosure: required
+  decision_fields: [outcome, evidence_digest, settlement_ref, refund_amount, deadline, appeal_window]
+  cannot_mutate_authbus_wal: true
+  cannot_sign_provider_effect: true
+
+release_boundary:
+  provider_terms_and_consent: release_input_only
+  external_signer_or_kms: release_input_only
+  physical_power_loss: release_input_only
+  public_settlement: release_input_only
+  development_blocking: false
+
+negative_authority_flags:
+  authority: false
+  production_caller: false
+  production_writer: false
+  effect_authority: false
+  operator_acceptance: false
+  promotion: false
+  g5_allowed: false
+  execute_allowed: false
+
+# AUTHBUS.11 crosswalk amendment.  The market_lifecycle above is the sole
+# authority for usage-right transitions; this block makes its wire projection
+# and compatibility rules explicit for the other AuthBus attachments.
+contract_crosswalk_v1_2:
+  id: AUTHBUS.11
+  status: DECODE_ONLY_HISTORICAL
+  normative: false
+  decode_only: true
+  superseded_by: contract_crosswalk_v1_3
+  canonical_source: "codex-hepta-contracts.v1 + hepta-auth-contracts.v1"
+  shared_contract_owner: codex-hepta-contracts.v1
+  authbus_extension_owner: hepta-auth-contracts.v1
+  wire_namespace: hepta.auth.v1
+  lifecycle_owner: AUTHBUS_ABUSE_DISPUTE_POLICY_v1.market_lifecycle
+  no_parallel_enums: true
+  actor_crosswalk:
+    seller_owner: owner
+    buyer_tenant: tenant
+    authbusd: authbusd
+    gateway: gateway
+    walletd: walletd
+    provider: provider
+    relay: relay
+    operator: operator
+    arbiter: arbiter
+    authbusd_worker: authbusd_worker
+    verified_adapter: verified_adapter
+    relay_permissions: [forward_encrypted_signed_messages]
+    relay_forbidden: [admit, reserve, lease, secret_use, settle, mutate_wal]
+    arbiter_permissions: [review_digest_references, decide_dispute]
+    arbiter_forbidden: [control_socket, authbus_wal_mutation, provider_effect_signature]
+  canonical_encoding:
+    authoritative: versioned_canonical_bytes
+    edge_projection: json_or_cbor
+    digest: domain_separated_sha256
+    signed_objects: [Offer, UsageRight, DispatchPermit, UsageReceipt, Revoke]
+    signed_fields: [schema_version, domain_tag, signature_alg, key_id, object_id, issuer_node_id, subject_tenant, workspace_id, subject_node_id, subject_agent_id, subject_service_id, recipient_key_id, subject_digest, audience, scope_digest, resource_digest, policy_digest, issued_at, not_before, expires_at, nonce_or_jti, depth, max_uses, transferable, data_policy, region, provider_consent_ref, owner_attestation_digest, authority_epoch, owner_epoch, generation, fencing_token, idempotency_key, payload_digest, consent_digest]
+    issuer_owner_binding: [issuer_node_id, owner_attestation_digest, provider_consent_ref, consent_digest, key_id, domain_tag]
+    signed_constraint_rule: "max_uses, depth, transferable, data_policy, region, provider_consent_ref, subject binding and owner_attestation_digest are part of canonical signed bytes; payload_digest alone cannot be treated as an implicit substitute by a verifier."
+    subject_binding_rule: "A tenant-wide right must set subject_node_id/subject_agent_id/subject_service_id to null and rely on a subsequent DispatchPermit binding; a node/agent-scoped right signs those fields and recipient_key_id."
+    replay_domain_rule: "jti/nonce values are domain-separated; virtual-credential jti and HNL/session nonce never share a replay cache key."
+    unknown_fields: reject_in_authoritative_decode
+  base_contract_projection:
+    owner: codex-hepta-contracts.v1.4_e21
+    required_effect_fields: [schema_version, event_id, event_kind, authority_scope, run_id, aggregate_id, event_seq, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload, payload_digest, prev_event_digest, event_digest, hash_algorithm, effect_id, effect_intent_id, decision_id, reconciliation_required, idempotency_key, attempt, execution_scope, effect_authority, production_authority, snapshot_digest, graph_digest, policy_digest, provider_id, reconciliation_id, reconciles_receipt_id, external_state_digest, resolver_attempt, current_revision, cas, schema_digest]
+    e21_effect_receipt_required: [effect_id, effect_intent_id, decision_id, run_id, schema_digest, status, terminal, reconciliation_required, idempotency_key, attempt, authority_scope, execution_scope, effect_authority, production_authority, snapshot_digest, graph_digest, policy_digest, provider_id, reconciliation_id, reconciles_receipt_id, external_state_digest, resolver_attempt, current_revision, cas]
+    extension_rule: "Usage-right and dispute fields extend the base; they cannot remove or rename base fields."
+  causal_lineage:
+    public_wire_field: causal_parent_event_id
+    internal_event_store_field: causal_parent_seq
+    mapping_rule: "Resolve internal seq through immutable event_seq→event_id index; one serialization context emits one field; never cast a numeric sequence to an event id."
+    public_schema: e21_v1_4
+  base_mutation_fields: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+  required_fence_fields:
+    base_mutation: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+    market_mutation: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+    usage_right: [right_id, offer_id, order_id, resource_digest, scope_digest, nonce_or_jti, authority_epoch, owner_epoch, generation, fencing_token, expires_at, consent_digest, idempotency_key, max_uses, reserved_uses, consumed_uses, remaining_uses, counter_revision, counter_state_digest]
+    settlement_reference: [settlement_ref, usage_receipt_digest, effect_receipt_digest, wallet_epoch, wallet_nonce]
+    inheritance_rule: "market_mutation is base_mutation; object-specific lists are validated as base ∪ object fields."
+  mutation_idempotency_policy:
+    required_for: [offer, quote, order, escrow_confirmed, usage_reported, dispute_event, adjudication, settlement_reference]
+    not_required_for: [read_offer, read_usage_right, health, verify]
+    conflict_rule: "A reused idempotency_key with a different canonical payload_digest is Conflict and cannot create a second market mutation."
+  field_aliases:
+    revision: expected_revision
+    agent_generation: generation
+    fence: fencing_token
+    payload_sha256: payload_digest
+    resource_sha256: resource_digest
+    operation_id: provider_operation_id
+    operation_id_sha256: provider_operation_id_sha256
+    causal_parent_seq: internal_event_store_only
+    tenant: tenant_id
+    audience: aud
+    issued_at: iat
+    expires_at: exp
+    not_before: nbf
+  domain_specific_field_aliases:
+    node_id: issuer_node_id
+    tenant_id: subject_tenant
+    jti: nonce_or_jti
+  hnl_field_crosswalk:
+    source_contract: hepta-net-node-link-plan-2026-08-26
+    canonical_authbus_fields: [descriptor_node_id, issuer_node_id, local_node_id, remote_node_id, generation, capability_digest, intent_digest, nonce, aud, depth, scope_digest, expires_at, epoch, policy_digest, record_seq, key_id, signature, endpoint_id]
+    source_path_mappings:
+      NodeDescriptor.node_id: descriptor_node_id
+      AgentDelegation.parent_node_id: issuer_node_id
+      ConnectIntent.initiator_node: local_node_id
+      ConnectIntent.remote_node: remote_node_id
+      ConnectIntent.agent_generation: generation
+      ConnectIntent.capability_hash: capability_digest
+      ConnectIntent.purpose_digest: intent_digest
+      ConnectIntent.session_nonce: nonce
+      NodeDescriptor.audience: aud
+      NodeDescriptor.max_depth: depth
+      AgentDelegation.scope: scope_digest
+      ConnectIntent.expiry: expires_at
+      ConnectIntent.epoch: epoch
+      ConnectIntent.policy_digest: policy_digest
+      NodeDescriptor.record_seq: record_seq
+      NodeDescriptor.key_id: key_id
+      NodeDescriptor.signature: signature
+      ConnectIntent.transport_endpoint_id: endpoint_id
+    hash_preimage: "scope_digest = SHA-256(domain || canonical_scope_bytes); capability_digest and intent_digest preserve HNL canonical byte preimages."
+    unmapped_field_policy: reject
+    no_widening: true
+  market_state_enum: [OFFER, QUOTE, ORDER, ESCROW_HELD, RESERVED, ACTIVE, PARTIALLY_CONSUMED, SETTLED, REFUNDED, DISPUTED, CLOSED]
+  terminal_states: [SETTLED, REFUNDED, CLOSED]
+  terminal_immutable: true
+  usage_counter_ref: "#/market_lifecycle/usage_counter"
+  terminal_guards:
+    SETTLED: wallet_disposition_receipt_covers_settlement_and_fees
+    REFUNDED: wallet_disposition_receipt_covers_refund_and_any_settlement_or_fee
+    CLOSED: wallet_no_funds_or_explicit_disposition_receipt
+  reject_rule: "adjudicated_reject is a non-terminal claim decision; remain DISPUTED until an explicit wallet disposition or adjudicated_close with no funds remains."
+  canonical_transitions:
+    - {from: OFFER, event: quote_accepted, to: QUOTE}
+    - {from: OFFER, event: offer_expired_or_cancelled, to: CLOSED}
+    - {from: QUOTE, event: order_created, to: ORDER}
+    - {from: QUOTE, event: quote_expired_or_cancelled, to: CLOSED}
+    - {from: ORDER, event: escrow_confirmed, to: ESCROW_HELD}
+    - {from: ORDER, event: order_cancelled, to: CLOSED}
+    - {from: ESCROW_HELD, event: permit_reserved, to: RESERVED}
+    - {from: RESERVED, event: first_use, to: ACTIVE}
+    - {from: ACTIVE, event: usage_reported, to: PARTIALLY_CONSUMED}
+    - {from: PARTIALLY_CONSUMED, event: usage_reported, to: PARTIALLY_CONSUMED}
+    - {from: ACTIVE, event: terminal_receipt, to: SETTLED}
+    - {from: ACTIVE, event: expiry_or_cancel, to: REFUNDED}
+    - {from: ACTIVE, event: effect_failed, to: DISPUTED}
+    - {from: ESCROW_HELD, event: expiry_or_cancel, to: REFUNDED}
+    - {from: RESERVED, event: expiry_or_cancel, to: REFUNDED}
+    - {from: [ESCROW_HELD, RESERVED], event: reconciled_no_effect, to: REFUNDED}
+    - {from: [ACTIVE, PARTIALLY_CONSUMED], event: reconciled_no_effect, to: DISPUTED}
+    - {from: PARTIALLY_CONSUMED, event: terminal_receipt, to: SETTLED}
+    - {from: PARTIALLY_CONSUMED, event: approved_refund, to: REFUNDED}
+    - {from: PARTIALLY_CONSUMED, event: effect_failed, to: DISPUTED}
+    - {from: [ESCROW_HELD, RESERVED, ACTIVE, PARTIALLY_CONSUMED], event: evidence_conflict, to: DISPUTED}
+    - {from: DISPUTED, event: adjudicated_settle, to: SETTLED}
+    - {from: DISPUTED, event: adjudicated_partial_refund, to: REFUNDED}
+    - {from: DISPUTED, event: adjudicated_refund, to: REFUNDED}
+    - {from: DISPUTED, event: adjudicated_reject, to: DISPUTED}
+    - {from: DISPUTED, event: appeal_opened, to: DISPUTED}
+    - {from: DISPUTED, event: adjudicated_close, to: CLOSED}
+  legacy_event_aliases:
+    escrow_held:
+      canonical: escrow_confirmed
+      allowed_from: [ORDER]
+      new_events_forbidden: true
+    authorized_settlement:
+      by_source_state:
+        PARTIALLY_CONSUMED: terminal_receipt
+        DISPUTED: adjudicated_settle
+      new_events_forbidden: true
+    authorized_refund:
+      by_source_state:
+        PARTIALLY_CONSUMED: approved_refund
+        DISPUTED: adjudicated_refund
+      new_events_forbidden: true
+    adjudication_closed: adjudicated_close
+  effect_and_escrow_crosswalk:
+    effect_status_enum: [Queued, DispatchAccepted, Running, Succeeded, Failed, Cancelled, Indeterminate, Reconciled]
+    effect_terminal: [Succeeded, Failed, Cancelled, Reconciled]
+    dispatch_accepted_terminal: false
+    unknown_effect_market_action: hold_escrow_and_reconcile
+    effect_to_market:
+      Succeeded: usage_reported_or_terminal_receipt
+      Failed: evidence_conflict_or_refund_review
+      Cancelled: expiry_or_cancel_review
+      Indeterminate: DISPUTED_or_hold
+      Reconciled: adjudication_or_terminal_receipt
+      Reconciled_Succeeded: terminal_receipt
+      Reconciled_Failed: effect_failed
+      Reconciled_Cancelled: expiry_or_cancel_review
+      Reconciled_NoEffect: "reconciled_no_effect for ESCROW_HELD/RESERVED; evidence_conflict for ACTIVE/PARTIALLY_CONSUMED"
+    no_effect_requires_state_context: true
+    settlement_ref_authorizes_use: false
+    walletd_owns_balance_and_nonce: true
+    authbus_owns_escrow: false
+    wallet_release_market_projection: explicit_disposition_join_only
+  capability_attenuation:
+    default_transferable: false
+    required_constraints: [scope_digest, audience, expires_at, max_uses, nonce_or_jti, data_policy, region, subject_digest]
+    attenuation_only: true
+    raw_token_transfer: false
+    output_cannot_mint_authority: true
+  error_mapping:
+    source: AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.contract_crosswalk_v1_2.failure_class
+    evidence_conflict: DISPUTED
+    unknown_dispatch: hold_escrow_and_reconcile
+    status_lookup_unavailable: hold_escrow_and_reconcile
+    wallet_conflict: DISPUTED
+    duplicate_settlement: reject_without_state_change
+    alias_decode_only: true
+  dispute_contract:
+    evidence_refs: [UsageReceipt, EffectAck, OperationRef, MeteringReceipt, policy_digest, clock_snapshot]
+    accepted_or_202_is_not_consumption: true
+    terminal_evidence_required: [immutable_ack, terminal_failure, non_effect_proof, adjudication]
+    provider_consent_required: [provider_consent_ref, consent_digest]
+    raw_secret_or_prompt_in_evidence: false
+    raw_authorization_header_in_evidence: false
+    hold_until_reconciled: true
+    usage_counter:
+      owner: market-adapter
+      required_fields: [max_uses, reserved_uses, consumed_uses, remaining_uses, counter_revision, counter_state_digest, expected_revision, owner_epoch, generation, fencing_token]
+      invariant: "remaining_uses = max_uses - reserved_uses - consumed_uses; reserved_uses + consumed_uses <= max_uses."
+      bridge_commands: [ReserveUse, CommitUse, ReleaseUse]
+      acquire_atomic: true
+      no_effect_releases_reservation: true
+      unknown_holds_reservation: true
+      counter_digest_witness: [prior_counter_state_digest, counter_state_digest, counter_revision, usage_receipt_digest]
+      exhaustion_action: reject_new_permit
+      receipt_witness: [usage_id, reserved_uses, consumed_uses, remaining_uses, counter_revision, counter_state_digest, operation_ref]
+  ci_rules:
+    - market_transition_projection_equals_market_lifecycle
+    - legacy_event_aliases_decode_only
+    - terminal_states_have_no_outgoing_transition
+    - settlement_ref_cannot_authorize_dispatch
+    - duplicate_settlement_is_rejected
+    - every_signed_object_has_required_fence_fields
+    - arbiter_is_independent_from_operator_control_acl
+    - public_and_internal_causal_lineage_is_mapped_explicitly
+    - canonical_bytes_and_digest_are_stable
+    - unknown_effect_keeps_escrow_held
+    - signed_usage_right_constraints_are_issuer_owner_bound
+    - wallet_released_funds_do_not_project_market_settled
+    - reconciled_no_effect_mapping_is_state_contextual
+    - gateway_virtual_ingress_is_separate_from_upstream_url_and_headers
+    - hnl_source_path_mapping_is_role_qualified_and_lossless
+    - usage_right_counter_has_one_writer_and_fenced_bridge
+    - reserved_plus_consumed_never_exceeds_max_uses
+    - counter_digest_and_revision_witness_every_mutation
+    - adjudicated_reject_is_non_terminal_until_wallet_disposition
+    - terminal_market_state_has_wallet_conservation_proof
+
+# AUTHBUS.11 v1.3 execution closure.  The v1.2 crosswalk remains available for
+# decode-only compatibility; this block is the normative market projection.
+execution_closure_v1_3:
+  id: AUTHBUS.11-execution-closure-v1.3
+  normative: true
+  execution_input: false
+  role: generated_contract_projection
+  projection_only: true
+  canonical_registry_status: REQUIRED_AT_B2
+  canonical_registry_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+  source_registry_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+  source_registry_digest: PENDING_AT_B2
+  projection_transform: [metadata_wrapper, domain_grouping, decode_alias, remote_and_gateway_named_objects, remote_flat_to_nested, evidence_ref_and_no_effect_proof_named_objects, operation_map]
+  execution_input_via: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_contract_map
+  projection_authority: registry_only
+  semantic_source_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+  codegen_allowed_before_registry: false
+  canonical_contract_owner: codex-hepta-contracts.v1.4_e21
+  authbus_contract_owner: hepta-auth-contracts.v1
+  wire_namespace: hepta.auth.v1
+  supersedes_crosswalk: contract_crosswalk_v1_2
+  prior_crosswalk_consumption: decode_only_historical
+  no_runtime_authority_change: true
+  canonical_shared:
+    projection_id: AUTHBUS.11
+    version: "1.3"
+    canonical_source: "codex-hepta-contracts.v1.4_e21 + hepta-auth-contracts.v1"
+    wire_namespace: hepta.auth.v1
+    causal_lineage: {public_wire_field: causal_parent_event_id, internal_event_store_field: causal_parent_seq, mapping_rule: "Resolve internal seq through immutable event_seq->event_id index; never cast a numeric sequence to an event id.", public_schema: e21_v1_4}
+    field_aliases: {revision: expected_revision, agent_generation: generation, fence: fencing_token, payload_sha256: payload_digest, resource_sha256: resource_digest}
+    base_mutation_fields: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+    e21_effect_receipt_required: [effect_id, effect_intent_id, decision_id, run_id, schema_digest, status, terminal, reconciliation_required, idempotency_key, attempt, authority_scope, execution_scope, effect_authority, production_authority, snapshot_digest, graph_digest, policy_digest, provider_id, reconciliation_id, reconciles_receipt_id, external_state_digest, resolver_attempt, current_revision, cas]
+    serialization_contexts:
+      e21_public_envelope: {version: codex-hepta-contracts.v1.4_e21, domain: hepta.e21, encoding: sha256-canonical-json, field_order: schema_order, unknown_fields: reject, null_rule: tagged_null}
+      authbus_object: {version: hepta-auth-contracts.v1, domain: hepta.auth.v1, encoding: length_delimited_canonical_bytes, field_order: lexicographic_field_name_then_value, unknown_fields: reject, null_rule: tagged_null}
+      basil_transport: {version: basil.broker.v1, domain: hepta.auth.basil.v1, encoding: protobuf_length_delimited_canonical_bytes, field_order: canonical_bytes_then_digest, unknown_fields: reject, null_rule: tagged_null}
+      hnl_cose_cbor: {version: HNL-0..6, domain: hepta.hnl.v1, encoding: canonical_cbor_cose_sign1, field_order: cbor_canonical, unknown_fields: reject, null_rule: tagged_null}
+      gateway_token: {version: hepta-gateway.v1, domain: hepta.gateway.v1, encoding: jwt_or_cose_sign1, field_order: registered_claim_order, unknown_fields: reject, null_rule: tagged_null}
+    time_alias_scope: {lease_resource: rfc3339_utc_plus_monotonic_snapshot_and_uncertainty, jwt_cose: numeric_date, hnl_cbor: hnl_native_units, aliases_encode: declared_context_only}
+    identity_fence_fields: [authority_epoch, owner_epoch, generation, fencing_token]
+    effect_status_enum: [Queued, DispatchAccepted, Running, Succeeded, Failed, Cancelled, Indeterminate, Reconciled]
+    status_error_registry_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry
+  status_error_projection:
+    source_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry
+    canonical_emit: true
+    effect_public_status: [Queued, DispatchAccepted, Running, Succeeded, Failed, Cancelled, Indeterminate, Reconciled]
+    nonterminal_holds: [Indeterminate, ManualRequired, ReconcileBlocked, DispatchUnknownRef]
+    errors: [InvalidRequest, Conflict, StaleRevision, StaleEpoch, StaleGeneration, FencingRejected, ForbiddenCapability, ProviderUnavailable, ProviderUnknown, InvalidGrant, ReconcileUnavailable, ManualRequired, ReconcileBlocked, QuotaExceeded, QuotaUnknown, RetentionExpired, SignatureInvalid, AudienceMismatch, ReplayDetected]
+    legacy_aliases_decode_only: {ACKED: Succeeded, DISPATCHED: DispatchAccepted, RECONCILING: Indeterminate, RECONCILE_BLOCKED: ManualRequired}
+  market_lifecycle_ref: "#/execution_closure_v1_3/market_lifecycle"
+  market_lifecycle_projection_mode: GENERATED_FROM_CANONICAL_REGISTRY
+  market_lifecycle:
+    schema_id: hepta.auth.market-lifecycle.v1
+    role: generated_contract_projection
+    projection_only: true
+    canonical_registry_status: REQUIRED_AT_B2
+    states: [OFFER, QUOTE, ORDER, ESCROW_HELD, RESERVED, ACTIVE, PARTIALLY_CONSUMED, SETTLED, REFUNDED, DISPUTED, CLOSED]
+    terminal: [SETTLED, REFUNDED, CLOSED]
+    terminal_immutable: true
+    transitions:
+      - {from: OFFER, event: quote_accepted, to: QUOTE}
+      - {from: OFFER, event: offer_expired_or_cancelled, to: CLOSED}
+      - {from: QUOTE, event: order_created, to: ORDER}
+      - {from: QUOTE, event: quote_expired_or_cancelled, to: CLOSED}
+      - {from: ORDER, event: escrow_confirmed, to: ESCROW_HELD}
+      - {from: ORDER, event: order_cancelled, to: CLOSED}
+      - {from: ESCROW_HELD, event: permit_reserved, to: RESERVED}
+      - {from: RESERVED, event: first_use, to: ACTIVE}
+      - {from: ACTIVE, event: usage_reported, to: PARTIALLY_CONSUMED}
+      - {from: PARTIALLY_CONSUMED, event: usage_reported, to: PARTIALLY_CONSUMED}
+      - {from: ACTIVE, event: terminal_receipt, to: SETTLED}
+      - {from: PARTIALLY_CONSUMED, event: terminal_receipt, to: SETTLED}
+      - {from: ACTIVE, event: expiry_or_cancel_review, to: DISPUTED, guard: verified_no_effect_or_adjudication_required}
+      - {from: PARTIALLY_CONSUMED, event: refund_review, to: DISPUTED, guard: adjudicator_and_wallet_disposition_required}
+      - {from: ACTIVE, event: effect_failed, to: DISPUTED}
+      - {from: PARTIALLY_CONSUMED, event: effect_failed, to: DISPUTED}
+      - {from: [ESCROW_HELD, RESERVED], event: reconciled_no_effect, to: REFUNDED, guard: verified_no_effect_and_wallet_disposition}
+      - {from: [ACTIVE, PARTIALLY_CONSUMED], event: reconciled_no_effect, to: DISPUTED}
+      - {from: [ESCROW_HELD, RESERVED, ACTIVE, PARTIALLY_CONSUMED], event: evidence_conflict, to: DISPUTED}
+      - {from: DISPUTED, event: adjudicated_settle, to: SETTLED}
+      - {from: DISPUTED, event: adjudicated_partial_refund, to: REFUNDED}
+      - {from: DISPUTED, event: adjudicated_refund, to: REFUNDED}
+      - {from: DISPUTED, event: adjudicated_reject, to: DISPUTED}
+      - {from: DISPUTED, event: appeal_opened, to: DISPUTED}
+      - {from: DISPUTED, event: adjudicated_close, to: CLOSED}
+    direct_refund_forbidden_from: [ACTIVE, PARTIALLY_CONSUMED]
+    no_effect_refund_guard: "Only untouched ESCROW_HELD/RESERVED with verified NoEffectProof and immutable wallet disposition may refund; ACTIVE/PARTIALLY_CONSUMED always enter DISPUTED."
+    usage_counter_ref: "#/execution_closure_v1_3/usage_counter"
+    domain_status_registry_ref: hepta-market-contracts.v1/registry/market-lifecycle.v1
+  wallet_disposition_join:
+    schema_id: hepta.auth.wallet-market-disposition.v1
+    role: generated_contract_projection
+    projection_only: true
+    canonical_registry_status: REQUIRED_AT_B2
+    required_fields: [schema_version, disposition_id, command_id, market_right_id, wallet_state, market_state, amount, currency, fee, total_due, settled_amount, refund_amount, balance_before, balance_after, outcome, settlement_ref, usage_receipt_digest, effect_receipt_digest, evidence_digest, ledger_seq, ledger_digest, wallet_epoch, wallet_nonce, idempotency_key, created_at, authority_epoch, owner_epoch, generation, fencing_token]
+    mutation_fields: [schema_version, command_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, causal_parent_event_id, payload_digest, policy_digest]
+    conservation_formula: "balance_after = balance_before - settled_amount - fee + refund_amount; total_due = settled_amount + fee; all amounts are exact integer units and non-negative."
+    terminal_join_rule: "Terminal market state requires one immutable wallet disposition plus effect/usage evidence and a conservation witness; RELEASED never implicitly maps to SETTLED or REFUNDED."
+    conflict_rule: "Same idempotency_key with changed payload_digest, ledger_seq/digest or amount vector is Conflict without wallet or market mutation."
+  usage_vector:
+    schema_id: hepta.auth.usage-vector.v1
+    canonical_ref: AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/usage_vector
+    projection_source: generated_from_canonical_registry
+    dimensions: [request_count, rpm, tpm, concurrency, day_budget, context]
+    quantity_type: non_negative_integer
+    absent_dimension: not_declared
+    unknown_representation: explicit_unknown
+    component_state_model: [ABSENT, KNOWN, UNKNOWN]
+    zero_rule: "A declared dimension may have KNOWN value 0; ABSENT/not_declared is not zero, unlimited, or spendable."
+    unknown_rule: "UNKNOWN is distinct from ABSENT; admission and settlement touching UNKNOWN fail closed or use an explicitly recorded conservative bound."
+    unit_by_dimension:
+      request_count: requests
+      rpm: requests_per_window
+      tpm: tokens_per_window
+      concurrency: active_operations
+      day_budget: provider_defined_integer_units
+      context: provider_defined_integer_units
+    dimension_semantics:
+      cumulative: [request_count]
+      windowed: [rpm, tpm, day_budget]
+      active_hold: [concurrency]
+      per_request_bound: [context]
+      window_identity_required: [rpm, tpm, day_budget, concurrency]
+      reset_rule: "A reset opens a new window_id; old-window usage is never subtracted from the new window by inference."
+    algebra: {add: componentwise_checked, subtract: componentwise_checked, underflow: Conflict_without_mutation, min: componentwise_for_admission}
+    invariant: "For every source or recipient quota domain/window, consumed_vector + held_vector <= limit_vector componentwise when values are known."
+    digest_formula: "SHA-256(preimage_v1(domain=hepta.auth.usage-vector.v1; canonical ordered dimension map))"
+    scalar_compatibility:
+      max_uses_decode_only: "Map max_uses to usage_vector.request_count only when no other dimension is present or non-zero."
+      mixed_vector_scalar_encoding: forbidden
+  usage_counter:
+    owner: market-adapter
+    accounting_mode: vector
+    fields: [right_id, usage_vector, reserved_vector, consumed_vector, remaining_vector, vector_digest, counter_revision, counter_state_digest, authority_epoch, owner_epoch, generation, fencing_token]
+    identity_fence_fields: [authority_epoch, owner_epoch, generation, fencing_token]
+    scalar_aliases: {max_uses: usage_vector.request_count, reserved_uses: reserved_vector.request_count, consumed_uses: consumed_vector.request_count, remaining_uses: remaining_vector.request_count}
+    scalar_alias_condition: request_count_only_vector
+    invariant: "reserved_vector + consumed_vector <= usage_vector componentwise; remaining_vector = usage_vector - reserved_vector - consumed_vector."
+    bridge_commands: [ReserveUse, CommitUse, ReleaseUse, ReserveRemote, CommitRemoteUse, ReleaseRemoteUse]
+    unknown_rule: "Unknown or partial effect holds the complete vector reservation; it never burns or recreates a use."
+    receipt_witness: [usage_id, operation_ref, vector_digest, counter_revision, counter_state_digest, prior_counter_state_digest, usage_receipt_digest]
+    signed_usage_vector:
+      schema_id: hepta.auth.signed-usage-vector.v1
+      required_fields: [usage_id, right_id, usage_vector, unit_digest, window_id, window_kind, window_start, window_end, reset_at, source_seq, window_digest, vector_digest, scope_digest, audience, expires_at, nonce_or_jti, provider_consent_ref, owner_attestation_digest, counter_revision, authority_epoch, owner_epoch, generation, fencing_token]
+      scalar_mode: request_count_only_only
+      preimage: "preimage_v1(domain=hepta.auth.signed-usage-vector.v1; ordered required fields with length-delimited field names and values)"
+      conservation_rule: "Signed vector, window digest and counter revision must be the same values used by ReserveUse/CommitUse/ReleaseUse; max_uses cannot represent TPM or concurrency."
+  remote_usage:
+    schema_id: hepta.auth.remote-reservation.v1
+    allocation_owner: source_authbusd
+    spend_owner: recipient_authbusd
+    market_adapter_counter_owner: market-adapter
+    field_aliases_decode_only: {nonce_or_jti: nonce}
+    required_fields: [allocation_id, reservation_id, usage_id, source_node_id, recipient_node_id, quota_domain, window_id, window_kind, window_start, window_end, reset_at, source_seq, window_digest, allocated_vector, held_vector, consumed_vector, remaining_vector, vector_digest, counter_revision, scope_digest, audience, nonce_or_jti, provider_consent_ref, owner_attestation_digest, authority_epoch, owner_epoch, generation, fencing_token, idempotency_key, expires_at]
+    signed_fields: [allocation_id, reservation_id, usage_id, source_node_id, recipient_node_id, quota_domain, window_id, window_kind, window_start, window_end, reset_at, source_seq, window_digest, allocated_vector, held_vector, consumed_vector, remaining_vector, vector_digest, counter_revision, scope_digest, audience, expires_at, nonce_or_jti, owner_attestation_digest, provider_consent_ref, idempotency_key, authority_epoch, owner_epoch, generation, fencing_token]
+    window_digest_rule: "window_digest = SHA-256(preimage_v1(domain=hepta.auth.quota-window.v1; window_id; window_kind; window_start; window_end; reset_at; source_seq)); signed and required in the reservation preimage."
+    allocation_sequence: [source_prepare_wal, source_fsync, signed_usage_vector_lease, recipient_verify_hnl_and_fence, recipient_hold_wal, recipient_ack, source_commit_allocation]
+    global_invariant: "source consumed + source local held + remote allocated <= source limit componentwise; recipient spends only its allocated vector."
+    partition_action: no_new_remote_admission
+    old_permit_action: reject
+    no_global_two_phase_claim: true
+  delegation:
+    raw_token_transfer: forbidden
+    bounded_usage_right: consent_bound_and_attenuation_only
+    default_depth: 0
+    test_depth: 1
+    provider_consent_required: true
+    owner_consent_required: true
+    recipient_binding_required: [recipient_key_id, subject_digest, audience, scope_digest, expires_at, nonce_or_jti, owner_attestation_digest, provider_consent_ref, consent_digest, authority_epoch, owner_epoch, generation, fencing_token]
+    re_delegation_without_consent: forbidden
+    output_cannot_mint_authority: true
+  gateway_boundary:
+    virtual_credential_issuer: authbusd_owner_mediated
+    gateway_self_issuance: forbidden
+    upstream_authorization_forwarding: false
+    upstream_url: registry_allowlist_only
+    upstream_headers: adapter_constructed_only
+    request_acl: gateway_may_request_only
+    issuer: authbusd_only
+    credential_format: jwt_or_cose_sign1
+    signature_algorithms: [EdDSA_Ed25519, COSE_EdDSA_Ed25519]
+    algorithms_forbidden: [HS256, RS256, ES256, none, bearer_without_signature]
+    issuer_key_registry: authbusd_owner_key_registry
+    jwks_endpoint: gateway_local_only
+    key_rotation: {overlap_window: bounded, old_key_acceptance: until_expiry_or_revoke, revocation_source: authbusd}
+    clock_skew_ms_max: 30000
+    required_binding: [tenant_id, workspace_id, agent_id, service_id, node_id, agent_generation, authority_epoch, owner_epoch, generation, fencing_token, resource_id, provider_id, permit_id, payload_digest, audience, jti, scope_digest]
+    request_only_binding: [idempotency_key]
+    stream_binding: "stream_id is required for streaming requests and omitted only for non-streaming requests; it is included in the PoP request preimage when present."
+    credential_claims: [iss, kid, cnf, tenant_id, workspace_id, agent_id, service_id, node_id, agent_generation, authority_epoch, owner_epoch, generation, fencing_token, resource_id, provider_id, permit_id, payload_digest, aud, scope_digest, model, iat, nbf, exp, jti, nonce, policy_digest]
+    claim_aliases: {audience: aud, scope: scope_digest}
+    api_subset: {protocols: [Responses, ChatCompletions], streaming: [SSE], controls: [cancel, backpressure], errors: [typed_http_and_e21_mapping], idempotency: [idempotency_key_required, same_key_same_digest_replay, same_key_changed_digest_conflict]}
+    pop: {required_for: [remote], holder_binding_claim: cnf, challenge: request_digest_plus_nonce, request_binding_fields: [method, path, canonical_headers, body_digest, stream_id_or_tagged_null, nonce], request_digest_preimage: "preimage_v1(domain=hepta.gateway.request.v1; method; path; canonical_headers; body_digest; stream_id_or_tagged_null; nonce)", verifier: gateway, replay_cache_key: [iss, kid, jti, resource_id, permit_id, payload_digest, nonce], revocation_ref: authbusd}
+    negative_vectors: [wrong_alg, unknown_kid, expired, nbf, audience_mismatch, scope_mismatch, cnf_mismatch, replayed_jti, generation_mismatch, fence_mismatch, caller_selected_upstream_url, forwarded_authorization_header, ssrf, dns_rebind, stream_id_mismatch]
+    negative_vector_aliases_decode_only: {expired_or_skewed_iat: expired, aud_mismatch: audience_mismatch, scope_digest_mismatch: scope_mismatch}
+    single_use_or_bounded: true
+    upstream_authorization: adapter_only
+    cross_resource_replay: forbidden
+  market_effect_rules:
+    accepted_or_202_is_not_consumption: true
+    status_lookup_expiry_is_not_no_effect: true
+    manual_required: {market_state: DISPUTED, terminal: false, refund: forbidden, new_dispatch: forbidden}
+    no_effect_refund_guard: "Only a verified NoEffectProof and an untouched ESCROW_HELD/RESERVED state may release/refund a right; ACTIVE/PARTIALLY_CONSUMED routes to DISPUTED."
+    transition_projection_ref: "#/execution_closure_v1_3/market_lifecycle"
+    wallet_disposition_join_ref: "#/execution_closure_v1_3/wallet_disposition_join"
+  compatibility:
+    aliases_decode_only: true
+    path_scoped_node_aliases:
+      signed_usage_right.issuer_node_id: node_id
+      hnl.NodeDescriptor.node_id: descriptor_node_id
+      usage_right.subject_tenant: tenant_id
+
+contract_crosswalk_v1_3:
+  id: AUTHBUS.11
+  version: "1.3"
+  status: DECODE_ONLY_GENERATED_PROJECTION
+  normative: false
+  decode_only: true
+  execution_input: false
+  historical_only_reason: "This top-level crosswalk is retained for decode-only compatibility; new encoding and CI consume the canonical registry projection map and execution_closure_v1_3."
+  projection_mode: GENERATED_FROM_CANONICAL_REGISTRY
+  canonical_registry_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry
+  status_error_registry_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry
+  concrete_contract_refs: [AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry, AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract]
+  role: generated_contract_projection
+  projection_only: true
+  canonical_registry_status: REQUIRED_AT_B2
+  codegen_allowed_before_registry: false
+  supersedes: contract_crosswalk_v1_2
+  canonical_source: "codex-hepta-contracts.v1.4_e21 + hepta-auth-contracts.v1"
+  shared_projection_keys: [id, version, canonical_source, wire_namespace, causal_lineage, base_mutation_fields, field_aliases, serialization_contexts, time_alias_scope]
+  wire_namespace: hepta.auth.v1
+  causal_lineage:
+    public_wire_field: causal_parent_event_id
+    internal_event_store_field: causal_parent_seq
+    mapping_rule: "Resolve internal seq through immutable event_seq->event_id index; never cast a numeric sequence to an event id."
+    public_schema: e21_v1_4
+  base_mutation_fields: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+  field_aliases:
+    revision: expected_revision
+    agent_generation: generation
+    fence: fencing_token
+    payload_sha256: payload_digest
+    resource_sha256: resource_digest
+  operation_id_alias_scope:
+    effect_status_lookup: {operation_id: provider_operation_id, operation_id_sha256: provider_operation_id_sha256}
+    refresh_secretref: {operation_id: operation_id, operation_id_sha256: forbidden}
+    collision_rule: "AuthBus refresh operation_id is never renamed to provider_operation_id; provider fields are valid only in effect/status lookup contexts."
+    causal_parent_seq: internal_event_store_only
+    tenant: tenant_id
+    audience: aud
+    issued_at: iat
+    expires_at: exp
+    not_before: nbf
+  serialization_contexts:
+    e21_public_envelope: {version: codex-hepta-contracts.v1.4_e21, domain: hepta.e21, encoding: sha256-canonical-json, field_order: schema_order, unknown_fields: reject, null_rule: tagged_null}
+    authbus_object: {version: hepta-auth-contracts.v1, domain: hepta.auth.v1, encoding: length_delimited_canonical_bytes, field_order: lexicographic_field_name_then_value, unknown_fields: reject, null_rule: tagged_null}
+    basil_transport: {version: basil.broker.v1, domain: hepta.auth.basil.v1, encoding: protobuf_length_delimited_canonical_bytes, field_order: canonical_bytes_then_digest, unknown_fields: reject, null_rule: tagged_null}
+    hnl_cose_cbor: {version: HNL-0..6, domain: hepta.hnl.v1, encoding: canonical_cbor_cose_sign1, field_order: cbor_canonical, unknown_fields: reject, null_rule: tagged_null}
+    gateway_token: {version: hepta-gateway.v1, domain: hepta.gateway.v1, encoding: jwt_or_cose_sign1, field_order: registered_claim_order, unknown_fields: reject, null_rule: tagged_null}
+  time_alias_scope:
+    lease_resource: rfc3339_utc_plus_monotonic_snapshot_and_uncertainty
+    jwt_cose: numeric_date
+    hnl_cbor: hnl_native_units
+    aliases_encode: declared_context_only
+  e21_effect_receipt_required: [effect_id, effect_intent_id, decision_id, run_id, schema_digest, status, terminal, reconciliation_required, idempotency_key, attempt, authority_scope, execution_scope, effect_authority, production_authority, snapshot_digest, graph_digest, policy_digest, provider_id, reconciliation_id, reconciles_receipt_id, external_state_digest, resolver_attempt, current_revision, cas]
+  effect_status_enum: [Queued, DispatchAccepted, Running, Succeeded, Failed, Cancelled, Indeterminate, Reconciled]
+  effect_top_level_extension: forbidden
+  execution_closure_ref: "#/execution_closure_v1_3"
+  usage_vector_ref: "#/execution_closure_v1_3/usage_vector"
+  remote_reservation_ref: "#/execution_closure_v1_3/remote_usage"
+  reconcile_evidence_ref: AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/reconcile_evidence
+  market_lifecycle_owner: "#/execution_closure_v1_3/market_lifecycle"
+  wallet_disposition_join_ref: "#/execution_closure_v1_3/wallet_disposition_join"
+  delegation_mode_ref: "#/execution_closure_v1_3/delegation"
+  aliases_decode_only: true
+  ci_rules: [raw_token_never_transferable, delegated_rights_are_attenuated, remote_vector_conservation, scalar_alias_rejects_mixed_vector, provider_consent_is_signed, gateway_cannot_self_issue, gateway_algorithm_and_claim_binding_is_closed, manual_required_is_non_terminal, status_lookup_expiry_never_maps_to_no_effect, wallet_disposition_conservation_and_conflict_guard, lifecycle_projection_matches_execution_closure]

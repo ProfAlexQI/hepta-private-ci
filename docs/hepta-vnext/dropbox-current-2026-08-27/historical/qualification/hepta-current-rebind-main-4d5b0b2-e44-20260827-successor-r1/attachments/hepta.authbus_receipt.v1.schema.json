@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hepta.local/schemas/hepta.authbus_receipt.v1.schema.json",
+  "title": "Hepta AuthBus plan append receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "plan_id",
+    "status",
+    "source_binding",
+    "append",
+    "authority_flags",
+    "external_gates"
+  ],
+  "properties": {
+    "schema": { "const": "hepta.authbus.receipt.v1" },
+    "plan_id": { "const": "AUTHBUS-PLAN-2026-08-26" },
+    "status": {
+      "enum": [
+        "PLANNING_ONLY",
+        "PLANNING_ONLY_STALE_SOURCE_BINDING",
+        "IMPLEMENTATION_BACKLOG"
+      ]
+    },
+    "source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basil_repo", "basil_commit", "basil_version", "license"],
+      "properties": {
+        "basil_repo": { "type": "string", "format": "uri" },
+        "basil_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "basil_version": { "type": "string" },
+        "license": { "const": "Apache-2.0" },
+        "parent_plan_sha256_before_append": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "post_append_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "append": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonical_file", "section", "anchor"],
+      "properties": {
+        "canonical_file": { "type": "string" },
+        "section": { "const": "AUTHBUS-PLAN-2026-08-26" },
+        "anchor": { "type": "string" },
+        "attachments": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "authority_flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "production_caller",
+        "production_writer",
+        "effect_authority",
+        "operator_acceptance",
+        "promotion",
+        "g5_allowed",
+        "execute_allowed"
+      ],
+      "properties": {
+        "authority": { "const": false },
+        "production_caller": { "const": false },
+        "production_writer": { "const": false },
+        "effect_authority": { "const": false },
+        "operator_acceptance": { "const": false },
+        "promotion": { "const": false },
+        "g5_allowed": { "const": false },
+        "execute_allowed": { "const": false }
+      }
+    },
+    "external_gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["development", "final_release"],
+      "properties": {
+        "development": { "const": "DEFERRED" },
+        "final_release": { "const": "REQUIRED" }
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  }
+}

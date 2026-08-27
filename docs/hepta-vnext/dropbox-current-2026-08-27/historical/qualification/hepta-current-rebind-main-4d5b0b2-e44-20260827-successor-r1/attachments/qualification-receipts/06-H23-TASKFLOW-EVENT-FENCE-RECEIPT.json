@@ -1,0 +1,68 @@
+{
+  "schema": "hepta.h23.taskflow_event_fence.qualification_receipt.v1",
+  "status": "LOCAL_QUALIFICATION_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "slice": [
+    "TaskFlow duplicate run replay event-chain verification",
+    "TaskFlow lease claim replay/takeover event-chain verification",
+    "TaskFlow command apply and AlreadyApplied event-chain verification"
+  ],
+  "worktree": "/Volumes/T5/hepta-vnext/worktrees/azi2-h23-taskflow-audit-20260826",
+  "branch": "hepta/azi2-h23-taskflow-audit-20260826",
+  "head": "a996b0ad40ed0c48d2a2a544657791fc3375f7e1",
+  "tree": "a38ffc60cd2a977df814cb65806983edb8a6f8c4",
+  "parent": "476d1c2d387cc1439f6745f0b518bddcd80c9d4a",
+  "source_binding": {
+    "canonical_candidate": "476d1c2d387cc1439f6745f0b518bddcd80c9d4a",
+    "canonical_candidate_tree": "266b824b93195cbaf1eaf72a1519b740e4acc552",
+    "external_authority_receipt": false,
+    "binding_status": "NOT_PRODUCTION_BOUND",
+    "note": "This receipt is append-only local evidence and does not modify the canonical worktree or authority index."
+  },
+  "evidence": {
+    "evidence_class": "LOCAL_TAMPER_REGRESSION",
+    "claim_status": "QUALIFICATION_ONLY",
+    "efficacy_status": "NOT_ASSESSED",
+    "approval": "NONE",
+    "physical_exactly_once": "NOT_ESTABLISHED",
+    "scope": "A tampered TaskFlow event payload is rejected inside the same SQLite transaction before duplicate replay, lease claim, or command/event append; event cardinality remains unchanged."
+  },
+  "checks": {
+    "focused_tampered_event_test": "1 passed / 0 failed",
+    "taskflow_integration_tests": "6 passed / 0 failed",
+    "automation_integration_tests": "16 passed / 0 failed",
+    "just_test_p_codex_hepta_automation": "22 passed / 0 failed / 0 skipped",
+    "cargo_check_codex_hepta_automation_lib": "pass",
+    "cargo_clippy_codex_hepta_automation_lib_d_warnings": "pass",
+    "targeted_rustfmt_check": "pass",
+    "git_diff_check": "pass"
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "scheduler_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "model_inference": false,
+    "shared_kg_write": false,
+    "fleet": false
+  },
+  "external_effects": false,
+  "real_provider_or_market_connected": false,
+  "remaining_gates": [
+    "TaskFlow graph-aware frontier/current-node execution and durable step receipts",
+    "TaskFlow opener-wide definition/run/event audit on database recovery",
+    "provider-owned signed ACK/status and physical exactly-once evidence",
+    "external signer/trust-root/KMS/HSM and key lifecycle",
+    "production mutation authority and independent supervisor ceremony",
+    "physical power-loss/media durability qualification"
+  ],
+  "generated_at": "2026-08-26T12:34:53Z"
+}

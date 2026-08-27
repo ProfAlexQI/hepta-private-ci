@@ -1,0 +1,92 @@
+{
+  "schema": "hepta.authbus.amendment-receipt.v1",
+  "plan_id": "AUTHBUS-PLAN-2026-08-26",
+  "revision": "1.2",
+  "status": "PLANNING_ONLY_IMPLEMENTATION_BACKLOG",
+  "amendment": {
+    "id": "AUTHBUS.11",
+    "supersedes": "AUTHBUS.10",
+    "canonical_anchor": "authbus11-contract-crosswalk-ci-rules-v12",
+    "purpose": "contract_crosswalk_and_implementation_consistency"
+  },
+  "parent_receipt": {
+    "path": "OpenClaw/AUTHBUS-PLAN-APPEND-RECEIPT-2026-08-26.json",
+    "sha256": "2f1e1c6aa86132cbd956e8045834e1224322e728f5fc577fedf20cf327c6059d",
+    "immutable": true
+  },
+  "index_binding": {
+    "path": "OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+    "entry": "E.43",
+    "hash_scope": "external_index_records_receipt_and_post_bindings; index_is_excluded_from_receipt_hash_to_avoid_cycle"
+  },
+  "parent_bindings": [
+    {"path": "OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md", "sha256": "2616e5aadbc789bd95af0d2ed65f4086f3dcc467e404fa1c45cb05c513d48f80"},
+    {"path": "OpenClaw/hepta-authbus-basil-fork-plan-2026-08-26.md", "sha256": "2a5d0952b63e4d208ceed9ac8b945adaf36ba6f39e4afe0d637f16e09efe7d6d"},
+    {"path": "OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml", "sha256": "84a09bec4a81001a7858ed38daa933e9a8d6b8f51bd945c8ae4dc4189e44c4f2"},
+    {"path": "OpenClaw/hepta.authbus_receipt.v1.schema.json", "sha256": "5074dccc09e221e9c7806be51075bf284fc8977dc32ddbfcd4973aca4f349a3a"},
+    {"path": "OpenClaw/HEPTA_AUTHBUS_BASIL_UPSTREAM_POLICY_V1.md", "sha256": "c7b13f770d1547c6b10900956ed0ceb6c3752d2cc52214f0291124547903e72e"},
+    {"path": "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml", "sha256": "023ced6c982e83941663c9a086307a61c0fec6a3d6e585f297618d26b8b6531f"},
+    {"path": "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml", "sha256": "8522265b77677388bd4d326173b619620a2d9a144292d74382f7ec496d6c161a"},
+    {"path": "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml", "sha256": "18e1bf82066db366d9e95def9dbb45c2cdd9f9db0a821ccf0fdd4736147582e4"},
+    {"path": "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml", "sha256": "085d727956a1e03fc52706445639cb36266fb3afcf8e6a900e456d838be729a6"},
+    {"path": "OpenClaw/AUTHBUS-PLAN-APPEND-RECEIPT-2026-08-26.json", "sha256": "2f1e1c6aa86132cbd956e8045834e1224322e728f5fc577fedf20cf327c6059d"}
+  ],
+  "post_bindings": [
+    {"path": "OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md", "sha256": "4fb8cc7b5d20d9bd07e3aed6352d9457a3f2fa754c6361842922d71538077967"},
+    {"path": "OpenClaw/hepta-authbus-basil-fork-plan-2026-08-26.md", "sha256": "5133e9aecda40f75291df94d52fa9685fd3cb5994f93945b3fe43b12081b7465"},
+    {"path": "OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml", "sha256": "25a97bf088ac4ec384131d10a81c99e7d7f2ea14f049388a8f19d5e4a82267fb"},
+    {"path": "OpenClaw/HEPTA_AUTHBUS_BASIL_UPSTREAM_POLICY_V1.md", "sha256": "a1209078e287b9d879fe783fb2bbc37d574eef78a3384efdf44e6ec6859070c6"},
+    {"path": "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml", "sha256": "7d8db70c06c775b354eb89876d313d549fc2faf7cb402ba46ee4146e6e9ff3af"},
+    {"path": "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml", "sha256": "565f8df52a7d7217083f532cd33f3b41d19c5adccd03a1a42513c3aa1e9dcd08"},
+    {"path": "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml", "sha256": "f1a993adfa20eb9b66c7610980b4a0361020c4fc31804cde8d216f6c2980c969"},
+    {"path": "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml", "sha256": "9ea57b07a007ea883a3d87e507251477c0a159f7562862e97a8a7b19a4344883"},
+    {"path": "OpenClaw/hepta.authbus_receipt.v1.schema.json", "sha256": "5074dccc09e221e9c7806be51075bf284fc8977dc32ddbfcd4973aca4f349a3a"},
+    {"path": "OpenClaw/hepta.authbus_amendment_receipt.v1.schema.json", "sha256": "376a946ca262272378e7e648ed9ec580de2b9caeda66807d12e2fd18e77da94a"}
+  ],
+  "changed_files": [
+    {"path": "OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md", "sha256": "4fb8cc7b5d20d9bd07e3aed6352d9457a3f2fa754c6361842922d71538077967"},
+    {"path": "OpenClaw/hepta-authbus-basil-fork-plan-2026-08-26.md", "sha256": "5133e9aecda40f75291df94d52fa9685fd3cb5994f93945b3fe43b12081b7465"},
+    {"path": "OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml", "sha256": "25a97bf088ac4ec384131d10a81c99e7d7f2ea14f049388a8f19d5e4a82267fb"},
+    {"path": "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml", "sha256": "7d8db70c06c775b354eb89876d313d549fc2faf7cb402ba46ee4146e6e9ff3af"},
+    {"path": "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml", "sha256": "565f8df52a7d7217083f532cd33f3b41d19c5adccd03a1a42513c3aa1e9dcd08"},
+    {"path": "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml", "sha256": "f1a993adfa20eb9b66c7610980b4a0361020c4fc31804cde8d216f6c2980c969"},
+    {"path": "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml", "sha256": "9ea57b07a007ea883a3d87e507251477c0a159f7562862e97a8a7b19a4344883"},
+    {"path": "OpenClaw/hepta.authbus_amendment_receipt.v1.schema.json", "sha256": "376a946ca262272378e7e648ed9ec580de2b9caeda66807d12e2fd18e77da94a"},
+    {"path": "OpenClaw/HEPTA_AUTHBUS_BASIL_UPSTREAM_POLICY_V1.md", "sha256": "a1209078e287b9d879fe783fb2bbc37d574eef78a3384efdf44e6ec6859070c6"}
+  ],
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false
+  },
+  "external_gates": {
+    "development": "DEFERRED_PRE_RELEASE",
+    "internal_test": "DEFERRED_PRE_RELEASE",
+    "release_prep": "DEFERRED_PRE_RELEASE",
+    "final_release": "REQUIRED_FOR_RELEASE_ONLY"
+  },
+  "validation": {
+    "strict_yaml_duplicate_keys": true,
+    "json_schema": true,
+    "crosswalk_projection": true,
+    "status_and_error_registry": true,
+    "dispatch_wal_invariants": true,
+    "stage_dag_and_refs": true,
+    "e41_prefix_unchanged": true,
+    "runtime_untouched": true,
+    "production_flags_unchanged": true
+  },
+  "notes": [
+    "AUTHBUS.11 v1.2 is the sole normative implementation overlay; AUTHBUS.10 and the original E.42 append remain immutable historical records.",
+    "The closed E21 EffectReceipt required set is explicit; AuthBus additions live in envelopes, payloads, or the existing TaskFlow-owned ReconcileDecision sidecar.",
+    "authbusd is the per-host writer for resource/quota/lease/permit and dispatch references; TaskFlow owns EffectIntent/EffectReceipt/ReconcileDecision; market-adapter owns UsageRightCounter; walletd owns escrow and settlement.",
+    "Public causal lineage uses causal_parent_event_id; internal WAL may use causal_parent_seq only through an immutable event_seq-to-event_id index.",
+    "External provider, KMS/HSM, physical-media, operator, and public-settlement evidence remains deferred by E.41 until explicit FINAL_RELEASE."
+  ],
+  "created_at": "2026-08-26T21:46:25+08:00"
+}

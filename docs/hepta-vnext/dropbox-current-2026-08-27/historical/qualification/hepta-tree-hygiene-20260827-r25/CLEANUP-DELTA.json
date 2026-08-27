@@ -1,0 +1,61 @@
+{
+  "schema": "hepta.tree_hygiene_cleanup_delta.v1",
+  "archive": "hepta-tree-hygiene-20260827-r25",
+  "canonical": {
+    "branch": "hepta/vnext-main-integration-20260811",
+    "head": "4d5b0b2d082ddbe0abb6d2fc880d9d9448434ab2",
+    "tree": "a3988c2d4624437080a2cdb65185ce74e7cee488",
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/main-integration"
+  },
+  "pre_cleanup": {
+    "worktree_count": 138,
+    "non_bare_count": 137,
+    "dirty_count": 14,
+    "detached_count": 2,
+    "detached_clean_count": 2
+  },
+  "post_cleanup": {
+    "worktree_count": 132,
+    "non_bare_count": 131,
+    "dirty_count": 14,
+    "detached_count": 1,
+    "detached_clean_count": 1
+  },
+  "removed_worktrees": [
+    {
+      "path": "/Volumes/T5/hepta-vnext/worktrees/e41-capture-4a1a7b0-20260827",
+      "head": "4a1a7b02a56340eb662765beb38d6e7df1e78fe6",
+      "archive_ref": "refs/archive/e44/e41-capture-4a1a7b0-20260827"
+    },
+    {
+      "path": "/Volumes/T5/hepta-vnext/worktrees/h23-step-outbox-salvage-20260827",
+      "head": "4d5b0b2d082ddbe0abb6d2fc880d9d9448434ab2",
+      "archive_ref": "refs/archive/e44/h23-step-outbox-salvage-20260827"
+    },
+    {
+      "path": "/Volumes/T5/hepta-vnext/worktrees/b23-next-20260827",
+      "head": "5f41813ed27d8c99393e2339f2548510405f0533",
+      "archive_ref": "refs/archive/e44/authbus-b3-source-20260827"
+    },
+    {
+      "path": "/Volumes/T5/hepta-vnext/worktrees/h4-durable-next-local-20260827",
+      "head": "9aefa3ab59d754b0105ee5787503b5a68d4d39dd",
+      "archive_ref": "refs/archive/e44/h4-durable-next-local-20260827"
+    },
+    {
+      "path": "/Volumes/T5/hepta-vnext/worktrees/authbus-b3-wire-strict-20260826",
+      "head": "103832598045a7d35e800c5cc15a03c26387fac7",
+      "archive_ref": "refs/archive/e44/authbus-b3-wire-strict-20260826"
+    },
+    {
+      "path": "/Volumes/T5/hepta-vnext/worktrees/provider-h57-next-20260827",
+      "head": "0eee95a17b80418449985a61853c835ab0db77f1",
+      "archive_ref": "refs/archive/e44/provider-h57-next-20260827"
+    }
+  ],
+  "dirty_wip_modified": false,
+  "branch_refs_deleted": false,
+  "force_operations": false,
+  "batch_merge": false,
+  "notes": "Each removed directory was clean and preserved by an archive ref; all dirty WIP and the fresh 4d5 capture remain."
+}

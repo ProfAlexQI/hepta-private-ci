@@ -1,0 +1,134 @@
+{
+  "schema": "hepta.h23.taskflow_step_outbox.qualification_receipt.v1",
+  "status": "LOCAL_QUALIFICATION_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "plan": {
+    "reference": "E.41",
+    "stage": "P2/H2-H3",
+    "slice": "feature-gated Agent-local durable TaskFlow step intent/outbox and reconciliation chain"
+  },
+  "candidate": {
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/h23-step-outbox-salvage-20260827",
+    "branch": "hepta/h23-step-outbox-salvage-20260827",
+    "head": "4d5b0b2d082ddbe0abb6d2fc880d9d9448434ab2",
+    "tree": "a3988c2d4624437080a2cdb65185ce74e7cee488",
+    "parent": "4a1a7b02a56340eb662765beb38d6e7df1e78fe6",
+    "clean": true,
+    "delta_paths": [
+      {
+        "path": "codex-rs/hepta-automation/src/lib.rs",
+        "sha256": "eb61eefff3db4e77202a450fe8b41feb843557277796bb3c9c9b304108e205b4"
+      },
+      {
+        "path": "codex-rs/hepta-automation/src/taskflow_step.rs",
+        "sha256": "cc1e5568c7891290e51f7e748dd047468357475cc3948e308985684c0be9442d"
+      },
+      {
+        "path": "codex-rs/hepta-automation/tests/taskflow_step.rs",
+        "sha256": "978055f470fa78de016fd318be2da1ef61ede32322f66bbce361f5dfb3a00cb6"
+      }
+    ]
+  },
+  "source_binding": {
+    "canonical_base": "4a1a7b02a56340eb662765beb38d6e7df1e78fe6",
+    "canonical_base_tree": "11a055b7d1735d6873ae8ca19a3d597740beb613",
+    "external_authority_receipt": false,
+    "binding_status": "LOCAL_LANE_NOT_PRODUCTION_BOUND",
+    "note": "The salvage lane copied only the intended feature-gated module, exports, and tests from a dirty WIP lane. Canonical main, Dropbox sources/indexes, and historical receipts were not modified."
+  },
+  "change": {
+    "summary": "Add an opt-in append-only per-step intent/outbox event chain with exact owner, immutable definition, run, attempt, generation, fence, intent, payload, command, receipt, and reconciliation binding.",
+    "invariants": [
+      "Prepared, claimed, recorded, and reconciled step events form one verified append-only hash chain.",
+      "Command replay is idempotent only for the exact canonical command bytes; conflicting reuse fails closed.",
+      "Stale owner, generation, lease, fence, intent, payload, transition order, or damaged history is rejected before append.",
+      "An indeterminate observation requires an explicit reconciliation receipt.",
+      "The module never calls a provider, wakes a scheduler, runs a model, or grants production/effect authority."
+    ]
+  },
+  "evidence": {
+    "evidence_class": "LOCAL_TASKFLOW_STEP_OUTBOX_REGRESSION",
+    "claim_status": "QUALIFICATION_ONLY",
+    "efficacy_status": "NOT_ASSESSED",
+    "approval": "NONE",
+    "physical_exactly_once": "NOT_ESTABLISHED",
+    "external_signer_or_trust_root": "NOT_PRESENT"
+  },
+  "verification": {
+    "default_all_targets": {
+      "command": "RUST_MIN_STACK=8388608 cargo test --locked -p codex-hepta-automation --all-targets -- --test-threads=1",
+      "passed": 29,
+      "failed": 0,
+      "ignored": 0,
+      "status": "pass",
+      "log_sha256": "8c8c8b825be5a1fa810e633511b426264851172bc72d77ca2a2fb70f9c0def8c"
+    },
+    "structural_all_targets": {
+      "command": "RUST_MIN_STACK=8388608 cargo test --locked -p codex-hepta-automation --features taskflow-structural-qualification --all-targets -- --test-threads=1",
+      "passed": 36,
+      "failed": 0,
+      "ignored": 0,
+      "status": "pass",
+      "log_sha256": "6d7e38dfde0b52fd5c95547eb189671e6e7097cd7a824bd0d0fbca336e2238d4"
+    },
+    "default_cargo_check": {
+      "status": "pass",
+      "log_sha256": "c004d51690753c95206a49e4a3094494cb9806ec6a8d85e53647281cfa32e325"
+    },
+    "structural_cargo_check": {
+      "status": "pass",
+      "log_sha256": "ae78e958dea88b8570f0c011937331a68c0862a2c73d7e2e5047371d4f2760ff"
+    },
+    "default_clippy_all_targets_d_warnings": {
+      "status": "pass",
+      "log_sha256": "dccad65a474a0e64d7c677fc96c87f30265067841005a793f4d82605fea6fe77"
+    },
+    "structural_clippy_all_targets_d_warnings": {
+      "status": "pass",
+      "log_sha256": "1f5852af1ed7025b5728e842e3c3c2f5d2f720d25557d84c38f1ffda99719c59"
+    },
+    "targeted_rustfmt": {
+      "status": "pass",
+      "log_sha256": "40fb37a0cb48659f9e05e0228f8de81e088ad05b38d0d3ef39f45fdc488dddd6",
+      "note": "Pinned stable formatter emitted configuration warnings only."
+    },
+    "git_diff_check": {
+      "status": "pass",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "authority_flags": {
+    "authority": false,
+    "external_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "scheduler_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "model_inference": false,
+    "npu_connected": false,
+    "network_listener": false,
+    "shared_kg_write": false,
+    "fleet": false
+  },
+  "known_gaps": [
+    "The schema is created lazily behind an explicit qualification feature and is not a root-owned production migration or writer seal.",
+    "No provider-owned signed ACK/status, crash-after-send authority, or physical exactly-once evidence exists.",
+    "No external signer/trust-root/KMS/HSM, key lifecycle, or physical power/media durability evidence exists.",
+    "No named production caller, operator acceptance, or promotion ceremony is granted by this receipt."
+  ],
+  "runner": {
+    "entrypoint": "/Volumes/T5/hepta-vnext/bin/hepta-ssd-run",
+    "worktree_name": "h23-step-outbox-salvage-20260827",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)"
+  },
+  "append_only": true,
+  "generated_at": "2026-08-27T06:59:00Z"
+}

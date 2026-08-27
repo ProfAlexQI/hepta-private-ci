@@ -1,0 +1,144 @@
+{
+  "schema": "hepta.h4.replay_peer_qualification_receipt.v1",
+  "kind": "local_replay_finalization_peer_unresolved_guard",
+  "generated_at": "2026-08-26T22:22:03Z",
+  "phase": "DEVELOPMENT",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "status": "PASS_LOCAL_QUALIFICATION",
+  "plan_reference": "E.41 P2/H4",
+  "claim_level": "L1_SHADOW_QUALIFICATION_ONLY",
+  "evidence_class": "LOCAL_APPEND_ONLY_REPLAY_RECONCILIATION_REGRESSION",
+  "efficacy_status": "NO_PRODUCTION_EFFICACY_CLAIM",
+  "approval_state": "NOT_APPROVED",
+  "external_gate_status": "DEFERRED_RELEASE_ONLY",
+  "source": {
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/h4-durable-next-local-20260827",
+    "branch": "hepta/h4-durable-next-local-20260827",
+    "base_commit": "9652cc25fb32cd99df7c282c5e928385298aa6a6",
+    "head_commit": "9aefa3ab59d754b0105ee5787503b5a68d4d39dd",
+    "head_tree": "a5b9b00a4cec3a4265aa7094b4267ea03332dc1c",
+    "parent_exact": true,
+    "dirty": false,
+    "canonical_main_at_capture": {
+      "worktree": "/Volumes/T5/hepta-vnext/worktrees/main-integration",
+      "head_commit": "ceb045978ecb31ea4daafd734a98689fa9348ad1",
+      "dirty": false,
+      "modified_by_this_lane": false
+    },
+    "changed_paths": [
+      {
+        "path": "codex-rs/hepta-memory/src/local_lease_outbox.rs",
+        "sha256": "1675e43adda22c63851a4cb8ea79cfb3ed1b61630b8c6911e974bb553aa50e5a"
+      },
+      {
+        "path": "codex-rs/hepta-memory/src/local_lease_outbox_tests.rs",
+        "sha256": "5ed217418580818aaf2a270ce968708b3b2a1c806163684e0864771deea03205"
+      },
+      {
+        "path": "codex-rs/hepta-memory/src/production_writer.rs",
+        "sha256": "d75c81cdfe40b59d95f6c527b45d071b1c5716d2fb83c1e8602dc32cf6171198"
+      }
+    ]
+  },
+  "change": {
+    "summary": "Keep a replayed H4 lease active when another current-generation occurrence is still Queued or Indeterminate.",
+    "bug_before": "finalize_replayed_occurrence could append Released after one occurrence was reconciled, stranding a peer local outbox intent behind a terminal fence.",
+    "fix": "Reuse the append-only outcome FSM in the same BEGIN IMMEDIATE transaction, excluding only the occurrence being finalized, and reject terminalization when any peer occurrence remains unresolved.",
+    "invariants": [
+      "A queued replay still returns its original receipt without releasing the lease.",
+      "An indeterminate or terminal replay returns IllegalTransition when another current-generation occurrence is Queued or Indeterminate.",
+      "A rejected replay terminalization appends no lease row and preserves the exact active head and peer statuses.",
+      "After every peer occurrence is explicitly settled, replay finalization still appends one Released lease row with external_effect=false.",
+      "The guard is inside the same BEGIN IMMEDIATE transaction as the terminal append, so a concurrent outcome transition cannot race the decision.",
+      "No provider target, external effect, KG write, promotion, or physical power-loss claim is introduced."
+    ]
+  },
+  "tests": [
+    {
+      "command": "cargo test --locked -p codex-hepta-memory --lib local_lease_outbox_tests::replay_finalization_keeps_lease_active_when_another_occurrence_is_unresolved -- --exact --test-threads=1",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 208,
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-replay-peer-9aefa3ab59-20260827/focused-local.log",
+      "log_sha256": "b1e34c635ffe5f2854618ee4ca8e080a97ff0ae5e14ce05febfea5b1e0e3f3dd"
+    },
+    {
+      "command": "cargo test --locked -p codex-hepta-memory --lib production_writer::tests::recovery_does_not_release_production_lease_with_peer_pending -- --exact --test-threads=1",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 208,
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-replay-peer-9aefa3ab59-20260827/focused-production.log",
+      "log_sha256": "402fdc692340e7b7f8ff0f7456a35261e57155775dda4821d3ff2d64a1f0dc6f"
+    },
+    {
+      "command": "cargo test --locked -p codex-hepta-memory --lib -- --test-threads=1",
+      "passed": 206,
+      "failed": 0,
+      "ignored": 3,
+      "filtered": 0,
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-replay-peer-9aefa3ab59-20260827/full-serial.log",
+      "log_sha256": "cf59969b6a2402642f68832663f7c96e3cac470be82eb334536862ea02622020"
+    },
+    {
+      "command": "cargo check --locked -p codex-hepta-memory",
+      "result": "PASS_WITH_EXISTING_EVENT_OUTBOX_DEAD_CODE_WARNINGS",
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-replay-peer-9aefa3ab59-20260827/cargo-check.log",
+      "log_sha256": "007d2ebacd3b414764b3f9af6779646c8274c811c6e34a3ff7ee35a8bb0fb6b8"
+    },
+    {
+      "command": "git diff HEAD^ HEAD --check",
+      "result": "PASS",
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-replay-peer-9aefa3ab59-20260827/diff-check.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "rustfmt --edition 2024 --check hepta-memory/src/local_lease_outbox.rs hepta-memory/src/local_lease_outbox_tests.rs hepta-memory/src/production_writer.rs",
+      "result": "FAIL_BASELINE",
+      "note": "Existing repository formatting drift and stable-tool configuration warnings remain; no formatter write was performed. The added hunks were manually checked against rustfmt output.",
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-replay-peer-9aefa3ab59-20260827/rustfmt-check.log",
+      "log_sha256": "085c78a97ed7ebbe8c87abf76dcc39a303d9e04864e1be94941381700486e89b"
+    }
+  ],
+  "evidence": {
+    "peer_unresolved_recovery": "pass; indeterminate A plus queued B rejected replay release and left the active lease/head unchanged",
+    "production_writer_boundary": "pass; ProductionDurableWriter::recover propagated the local IllegalTransition and did not terminalize the lease",
+    "settled_recovery": "pass; explicit rollback of B then released A as released_indeterminate",
+    "transaction_scope": "guard runs after full event/outbox pairing verification in the same BEGIN IMMEDIATE transaction as append_lease",
+    "external_effect": false,
+    "kg_write_authority": false,
+    "production_caller": false,
+    "physical_power_loss": false
+  },
+  "known_gaps": [
+    "No physical power-loss or media-failure durability run has been executed.",
+    "No external signer, supervisor authority, provider-owned signed ACK/status, or production promotion is established.",
+    "The persistent qualification harness still lacks a store-wide pending-occurrence listing; this slice prevents premature lease closure but does not add enumeration.",
+    "Strict clippy and repository formatter baseline cleanup remain separate hygiene work."
+  ],
+  "negative_authority": {
+    "authority": false,
+    "production_writer": false,
+    "production_caller": false,
+    "effect_authority": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "shared_kg_write": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "fleet": false,
+    "external_signer": false,
+    "external_trust_root": false,
+    "physical_power_loss_claim": false
+  },
+  "immutability": {
+    "canonical_main_modified_by_this_lane": false,
+    "dropbox_plan_or_index_modified": false,
+    "old_receipts_modified": false,
+    "qualification_lane_only": true,
+    "worktree_clean_at_capture": true
+  },
+  "receipt_sha256_basis": "SHA-256 of this canonical receipt file is recorded in the companion SHA256SUMS file; self-hash is not embedded. This receipt carries local qualification evidence only and is not an authority grant."
+}

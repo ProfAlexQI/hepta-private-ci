@@ -1,0 +1,154 @@
+{
+  "action": "copy_current_root_bytes_and_regenerate_checksums",
+  "approval_state": "NOT_APPROVED",
+  "attachments": [
+    {
+      "byte_identical": true,
+      "bytes": 3261,
+      "mirror_path": "/Volumes/T5/hepta-vnext/artifacts/e21-mirror-repair-20260826-r16/canonical-mirror/HEPTA_RESOURCE_EVAL_MATRIX.md",
+      "mirror_sha256": "f5b60d009ca46430225c905101d0d2141148a1f448e5c556ac3124f1f23bda96",
+      "name": "HEPTA_RESOURCE_EVAL_MATRIX.md",
+      "root_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_RESOURCE_EVAL_MATRIX.md",
+      "root_sha256": "f5b60d009ca46430225c905101d0d2141148a1f448e5c556ac3124f1f23bda96",
+      "status": "REPAIRED_CANONICAL_ROOT_COPY"
+    },
+    {
+      "byte_identical": true,
+      "bytes": 25400,
+      "mirror_path": "/Volumes/T5/hepta-vnext/artifacts/e21-mirror-repair-20260826-r16/canonical-mirror/HEPTA_TASKFLOW_VERTICAL_SLICE.md",
+      "mirror_sha256": "e2729cc52e0ec4fb76ad461d7854a0d786e6664f88add4fd5ff4afca36425d4e",
+      "name": "HEPTA_TASKFLOW_VERTICAL_SLICE.md",
+      "root_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_TASKFLOW_VERTICAL_SLICE.md",
+      "root_sha256": "e2729cc52e0ec4fb76ad461d7854a0d786e6664f88add4fd5ff4afca36425d4e",
+      "status": "REPAIRED_CANONICAL_ROOT_COPY"
+    },
+    {
+      "byte_identical": true,
+      "bytes": 9712,
+      "mirror_path": "/Volumes/T5/hepta-vnext/artifacts/e21-mirror-repair-20260826-r16/canonical-mirror/HEPTA_H8_H9_GOVERNANCE_GATE.md",
+      "mirror_sha256": "f656c6eea14a2d83948a5579ecdc4f0d483f2f153ac32e4f43b929d4978b9204",
+      "name": "HEPTA_H8_H9_GOVERNANCE_GATE.md",
+      "root_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_H8_H9_GOVERNANCE_GATE.md",
+      "root_sha256": "f656c6eea14a2d83948a5579ecdc4f0d483f2f153ac32e4f43b929d4978b9204",
+      "status": "REPAIRED_CANONICAL_ROOT_COPY"
+    },
+    {
+      "byte_identical": true,
+      "bytes": 20667,
+      "mirror_path": "/Volumes/T5/hepta-vnext/artifacts/e21-mirror-repair-20260826-r16/canonical-mirror/HEPTA_VNEXT_PROTOCOL_SPEC.md",
+      "mirror_sha256": "13decc5ad162f3ac99126fe33456960bcb2ab8f4754d6f5e36f1e63625345ac8",
+      "name": "HEPTA_VNEXT_PROTOCOL_SPEC.md",
+      "root_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_VNEXT_PROTOCOL_SPEC.md",
+      "root_sha256": "13decc5ad162f3ac99126fe33456960bcb2ab8f4754d6f5e36f1e63625345ac8",
+      "status": "REPAIRED_CANONICAL_ROOT_COPY"
+    },
+    {
+      "byte_identical": true,
+      "bytes": 4670,
+      "mirror_path": "/Volumes/T5/hepta-vnext/artifacts/e21-mirror-repair-20260826-r16/canonical-mirror/HEPTA_NDU_LEARNING_SPEC.md",
+      "mirror_sha256": "971fdfa7b58202976e10f82f5b5199e7063ff7b3f3dbf7ee6f5cc512e199d82e",
+      "name": "HEPTA_NDU_LEARNING_SPEC.md",
+      "root_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_NDU_LEARNING_SPEC.md",
+      "root_sha256": "971fdfa7b58202976e10f82f5b5199e7063ff7b3f3dbf7ee6f5cc512e199d82e",
+      "status": "REPAIRED_CANONICAL_ROOT_COPY"
+    }
+  ],
+  "checks": {
+    "all_attachment_copies_byte_identical": true,
+    "canonical_head_tree_exact": true,
+    "canonical_worktree_clean": true,
+    "historical_files_overwritten": false,
+    "negative_flags_all_false": true,
+    "plan_index_readable": true,
+    "plan_index_snapshot_stable": true
+  },
+  "claim_level": "L0_BASELINE_L1_SHADOW_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "efficacy_status": "NO_EFFICACY_CLAIM",
+  "evidence_class": "E21_CANONICAL_MIRROR_REPAIR_ONLY",
+  "external_authority": false,
+  "generated_at": "2026-08-26T20:57:05.753128Z",
+  "historical_drift": [
+    {
+      "expected_sha256": "76a58bc4034ec2aed104c7b648c4ff671738e2c28b22e22667bd2125e72c4732",
+      "observed_sha256": "a5b022a3be2696acaf8561e158701d9b74fbddb580454c3754eb3a4c7bc3c5a6",
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/E21-CURRENT-MANIFEST.json",
+      "status": "HISTORICAL_DRIFT_OBSERVED"
+    },
+    {
+      "expected_sha256": "43769caa651403f674253c8eab7a09101f96723cbb8ca2bebbf684979cdf82c3",
+      "observed_sha256": "f982b3a979420c72a6643a8b4fa613a5e66fb249cfcd1af94ce1cedf8095ca06",
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/E21-DELIVERY-CROSSWALK.json",
+      "status": "HISTORICAL_DRIFT_OBSERVED"
+    },
+    {
+      "expected_sha256": "40e08396e54aa1c21d492576a6b62a4a9cc8dd641833460d5ec43b2265897bb2",
+      "observed_sha256": "075f09d24ebd0c3d6414a97a398a9a959642fd73589b1230633fdcf7ba3a78ab",
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/VERIFY-RESULT.json",
+      "status": "HISTORICAL_DRIFT_OBSERVED"
+    }
+  ],
+  "historical_drift_count": 3,
+  "historical_files_overwritten": false,
+  "historical_package": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824",
+  "historical_receipt_status": "HISTORICAL_STALE_IMMUTABLE",
+  "historical_sha256sums_sha256": "2a7d2d6d74ce3ab51ab54937c90a7702ac6f578443d7b77cc9223adf844acd2c",
+  "production_negative_flags": {
+    "callers_promoted": false,
+    "effect_dispatch": false,
+    "fleet_write": false,
+    "g5_allowed": false,
+    "model_inference": false,
+    "npu_connected": false,
+    "operator_acceptance": false,
+    "production_writer": false,
+    "promotion": false,
+    "provider_effect": false,
+    "shared_kg_write": false
+  },
+  "receipt_sha256": "392b908214cc50732709c5f25c6f2be5ad3da1ba02037fe1fc8f8218f70f1447",
+  "repair_scope": "new_package_only",
+  "runtime_authority": false,
+  "schema": "hepta.e41.e21_mirror_repair.v1",
+  "source_binding": {
+    "approval_state": "NOT_APPROVED",
+    "canonical_branch": "hepta/vnext-main-integration-20260811",
+    "canonical_commit": "a37278620b34a47193db867e0cb749e50ed1bfe5",
+    "canonical_parent": "6e43dfc9b0b57a2d06ae1bbbbb5c441cf7597865",
+    "canonical_tree": "1e17dbd267bc68864658761b32a9bb7e2ec6cec8",
+    "canonical_worktree": "/Volumes/T5/hepta-vnext/worktrees/main-integration",
+    "claim_level": "L0_BASELINE_L1_SHADOW_ONLY",
+    "decision": "CONTINUE_PRE_RELEASE",
+    "dirty": false,
+    "efficacy_status": "NO_EFFICACY_CLAIM",
+    "evidence_class": "E21_CANONICAL_MIRROR_REPAIR_ONLY",
+    "index": {
+      "bytes": 71724,
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+      "sha256": "c44f8157f9f518ba5a4410ac880f5d848ae8ebb193d505637e21c1af7154429e"
+    },
+    "phase": "DEVELOPMENT",
+    "plan": {
+      "bytes": 325940,
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+      "sha256": "d8e708eff60ade95732f904d8254bd367ec5e42093f23d90a45c6b1b112825cf"
+    },
+    "production_negative_flags": {
+      "callers_promoted": false,
+      "effect_dispatch": false,
+      "fleet_write": false,
+      "g5_allowed": false,
+      "model_inference": false,
+      "npu_connected": false,
+      "operator_acceptance": false,
+      "production_writer": false,
+      "promotion": false,
+      "provider_effect": false,
+      "shared_kg_write": false
+    },
+    "receipt_sha256": "0d17732bdf91a9a1a92368547c8784dc7ba866b8bf07994f6e0020d47a7cd7a7",
+    "runtime_authority": false,
+    "schema": "hepta.e41.e21_source_binding.v1"
+  },
+  "status": "CURRENT_E21_MIRROR_REPAIRED_NEW_PACKAGE"
+}

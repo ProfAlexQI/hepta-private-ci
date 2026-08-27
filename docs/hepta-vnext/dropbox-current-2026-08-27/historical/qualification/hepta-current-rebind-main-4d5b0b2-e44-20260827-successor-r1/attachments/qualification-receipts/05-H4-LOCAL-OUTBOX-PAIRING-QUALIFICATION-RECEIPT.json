@@ -1,0 +1,125 @@
+{
+  "schema": "hepta.h4.local_outbox_pairing_qualification_receipt.v1",
+  "kind": "local_event_outbox_reverse_pairing",
+  "generated_at": "2026-08-26T15:27:25Z",
+  "phase": "DEVELOPMENT",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "status": "PASS",
+  "claim_level": "L1_SHADOW_QUALIFICATION_ONLY",
+  "evidence_class": "LOCAL_APPEND_ONLY_CORRUPTION_REGRESSION",
+  "efficacy_status": "NOT_PRODUCT_AUTHORITY",
+  "approval_state": "NOT_APPROVED",
+  "external_gate_status": "DEFERRED_PRE_RELEASE",
+  "source": {
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/h4-writer-backlog-20260826",
+    "branch": "hepta/h4-writer-backlog-20260826",
+    "base": "a5858034eba39806346c73607bdd3173ce503a9d",
+    "head": "92989d6175f30b68aa7d830046ad7b376e8a22a2",
+    "tree": "6d8bd3d4eab3ab33830cb65ea1ff02c468394cbd",
+    "dirty": false,
+    "parent_exact": true,
+    "changed_paths": [
+      {
+        "path": "codex-rs/hepta-memory/src/local_lease_outbox.rs",
+        "sha256": "632e7a59323b020890082249097aa668708f383b087cfb5558cf2730e3af95e4"
+      },
+      {
+        "path": "codex-rs/hepta-memory/src/local_lease_outbox_tests.rs",
+        "sha256": "bd15e77d9e8f64421892c788ca4a3178f9df965867f3375b2fbff80a9eb243b3"
+      }
+    ]
+  },
+  "change": {
+    "summary": "Require every admitted local event to have exactly one immutable outbox intent with matching occurrence, owner, generation, fence, event id, and payload before terminal or recovery mutations.",
+    "invariants": [
+      "A missing, duplicate, orphaned, or mismatched event/outbox pair returns Corrupt.",
+      "release, rollback, explicit expiry, and replay finalization append no lease row when pairing validation fails.",
+      "Admission, outcome, reopen, and acquisition recovery paths audit the same reverse-pair invariant.",
+      "The local outbox remains an intent record; no provider dispatch or external effect is introduced."
+    ]
+  },
+  "tests": [
+    {
+      "command": "cargo test --manifest-path codex-rs/hepta-memory/Cargo.toml --lib terminal_recovery_rejects_missing_event_outbox_pair_without_appending_lease -- --nocapture",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 198
+    },
+    {
+      "command": "cargo test --manifest-path codex-rs/hepta-memory/Cargo.toml --lib expiry_and_replay_finalization_reject_missing_outbox_pair -- --nocapture",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 198
+    },
+    {
+      "command": "cargo test --manifest-path codex-rs/hepta-memory/Cargo.toml --lib -- --test-threads=1",
+      "passed": 196,
+      "failed": 0,
+      "ignored": 3,
+      "filtered": 0
+    },
+    {
+      "command": "cargo test --manifest-path codex-rs/hepta-memory/Cargo.toml --lib local_lease_outbox_tests::qualification_durable_writer_crash_reopen_probe -- --ignored --nocapture",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 198,
+      "receipt": {
+        "journal_mode": "wal",
+        "synchronous": 2,
+        "crash_counts": {"lease_rows": 3, "event_rows": 1, "outbox_rows": 1},
+        "reopen_counts": {"lease_rows": 3, "event_rows": 1, "outbox_rows": 1},
+        "retry_counts": {"lease_rows": 3, "event_rows": 1, "outbox_rows": 1},
+        "terminal_counts": {"lease_rows": 4, "event_rows": 3, "outbox_rows": 1},
+        "retry_disposition": "replay",
+        "terminal_transition": "mark_indeterminate_then_rollback_occurrence_then_release",
+        "external_effect": false,
+        "physical_power_loss_claim": false
+      }
+    },
+    {
+      "command": "cargo check --manifest-path codex-rs/hepta-memory/Cargo.toml",
+      "result": "pass; existing EventRow/OutboxRow dead_code warnings only"
+    },
+    {
+      "command": "cargo clippy --manifest-path codex-rs/hepta-memory/Cargo.toml --lib -- -D warnings",
+      "result": "blocked by 51 pre-existing candidate-baseline diagnostics across hepta-memory (dead_code, expect_used, collapsible_if, too_many_arguments, and related lints); no new helper-specific diagnostic"
+    },
+    {
+      "command": "cargo fmt --manifest-path codex-rs/hepta-memory/Cargo.toml -- --check",
+      "result": "blocked by pre-existing formatting drift in candidate files (including h7_signed_artifact.rs, lib.rs, local_compact_hooks.rs, local_memory_saga.rs, logical_turn_registry.rs, model_receipt.rs, and shadow_model_runtime.rs); no formatter write performed"
+    },
+    {
+      "command": "git diff HEAD^ HEAD --check",
+      "result": "pass"
+    }
+  ],
+  "evidence": {
+    "pairing_regression": "missing outbox row is rejected by release, rollback, expiry, and replay finalization with unchanged lease/event/outbox counts",
+    "crash_reopen": "WAL/FULL local crash probe passed; this is SQLite crash/reopen qualification only",
+    "external_effect": false,
+    "kg_write_authority": false,
+    "production_caller": false,
+    "physical_power_loss": false
+  },
+  "known_gaps": [
+    "No physical power-loss or media-failure durability run has been executed.",
+    "No external signer, supervisor authority, provider dispatch, or production promotion is established.",
+    "Strict clippy and repository formatter checks remain blocked by candidate-baseline diagnostics/drift and require a separate hygiene change."
+  ],
+  "negative_authority": {
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "external_effect": false,
+    "kg_write_authority": false,
+    "provider_effect": false,
+    "fleet_write": false
+  },
+  "receipt_sha256_basis": "SHA-256 of this canonical receipt file is recorded in the companion SHA256SUMS file; this receipt carries qualification evidence only and is not an authority grant."
+}

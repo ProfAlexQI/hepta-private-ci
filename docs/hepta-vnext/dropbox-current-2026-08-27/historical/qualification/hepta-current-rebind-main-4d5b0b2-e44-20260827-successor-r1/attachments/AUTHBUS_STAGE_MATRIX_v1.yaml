@@ -1,0 +1,711 @@
+schema: hepta.authbus.stage-matrix.v1
+plan_id: AUTHBUS-PLAN-2026-08-26
+status: PLANNING_ONLY
+lane_status: IMPLEMENTATION_BACKLOG
+authority: false
+canonical_ref_root:
+  logical: "OpenClaw/"
+  filesystem_resolution: "Resolve OpenClaw/... relative to the canonical Dropbox root; never resolve it relative to a caller workspace."
+  observed_filesystem_root: "/home/qian-qi/Dropbox/OpenClaw"
+decoder_guard:
+  active_selector: "stage_resolution.active_stage_ref"
+  historical_selectors: ["#/stages", "#/implementation_overlay", "#/contract_crosswalk_v1_2", "#/execution_closure_v1_3/stage_dod_historical"]
+  rule: "A consumer that sees a historical selector without an explicit decode_only=true and normative=false guard MUST fail closed; only the active selector may drive code generation, stage status, or CI."
+stage_resolution:
+  schema_version: "1.3"
+  historical_stage_ref: "#/stages"
+  normative_stage_ref: "#/execution_closure_v1_3/phase_map"
+  active_stage_ref: "#/execution_closure_v1_3/phase_map"
+  active_dependency_ref: "#/execution_closure_v1_3/dependencies"
+  active_crosswalk_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_contract_map"
+  active_stage_id: B0
+  active_lane: local
+  active_lane_selection: "Development defaults to local; federated is opt-in and must resolve HNL-GATE0-DECISIONS before any federated admission."
+  active_stage_status: PLANNED
+  active_stage_selection: "B0 is the first runnable normative stage in PLANNING_ONLY; null is forbidden for an active implementation plan. A later stage may be selected only after its entry checks and dependencies resolve."
+  stage_sets:
+    historical:
+      ref: "#/stages"
+      normative: false
+      execution_input: false
+    implementation:
+      ref: "#/execution_closure_v1_3/phase_map"
+      normative: true
+      execution_input: true
+  selection_rule: >-
+    Implementation consumers MUST resolve stages through active_stage_ref (the normative
+    execution-closure overlay). The historical stages collection and superseded v1.2 overlay are
+    provenance/decode-only and MUST NOT be used as an execution dependency or current-status source.
+  validation:
+    require_single_normative_stage_set: true
+    require_active_stage_ref_resolves: true
+    require_phase_ids_match_dependency_dag: true
+    reject_historical_stage_set_as_execution_input: true
+    require_active_dependency_ref_resolves: true
+    require_active_crosswalk_ref_resolves: true
+    reject_superseded_overlay_as_execution_input: true
+amendment_binding:
+  normative_revision: AUTHBUS.11-v1.3
+  supersedes: AUTHBUS.11-v1.2
+  canonical_anchor: authbus11-execution-closure-v13
+  receipt_schema: hepta.authbus_amendment_receipt.v1_3.schema.json
+  receipt: AUTHBUS-PLAN-AMENDMENT-RECEIPT-2026-08-26-v1.3.json
+  qualification_index_entry: E.44
+  parent_amendment_receipt: AUTHBUS-PLAN-AMENDMENT-RECEIPT-2026-08-26.json
+  parent_amendment_schema: hepta.authbus_amendment_receipt.v1.schema.json
+  active_crosswalk_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_contract_map"
+source_binding:
+  basil_repo: https://github.com/openbasil/basil
+  basil_commit: 1fd29adb8e7356968eacbff9309e056cec9bafd7
+  basil_version: 0.7.2-main-snapshot
+  latest_published_release: v0.7.1
+  license: Apache-2.0
+  parent_plan_sha256_before_append: ca5e28fc5b6a7bac8ca4c156dc7ce389f9320161081910b42f9ec01007ba244c
+  source_status: research_capture
+  source_tree_sha256: a37378a0b8878646db43cbf0037a9b056f65d882527d629af0dc4051fcc962ff
+  git_archive_sha256: 1858ba1bc77e345c119f20270f1cd8953c5dd640efebcbcda29893587a2192bc
+  cargo_lock_sha256: 994e6a1331b6fd6c998d377d0eb717f726ed000fce08a9eab4a167939aee2703
+  rust_toolchain_sha256: 441c9c10157504995d17df44eb7f31738118e3f15c97bd035e606e0e6821bb9d
+  gitmodules_sha256: REQUIRED_AT_B0
+  source_receipt_status: NOT_CAPTURED
+  rust_toolchain_channel: "1.98.0"
+  research_capture_rustc: "1.94.0"
+  msrv_core: "1.88"
+  test_minimum_rust: "1.96"
+  build_profile_id: hepta-basil-host-minimal-v1
+  e21_schema_path: "OpenClaw/hepta-vnext-qualification-2026-08-23/e21-contract-hardening-qualification-20260824/schema/canonical_contract_v1_4_e21.schema.json"
+  e21_schema_sha256: 0e712e91cd188a150b8349391d9043c4ca61cef4798a091f36cd46e675fd6955
+stages:
+  - id: B0
+    hepta_phase: AUTH-0
+    name: provenance
+    state: PLANNED
+    target: fork-and-pin
+  - id: B1
+    hepta_phase: AUTH-1
+    name: basil-base-import
+    state: PLANNED
+    target: upstream-compatible-build
+  - id: B2
+    hepta_phase: AUTH-3
+    name: secretref-adapter
+    state: PLANNED
+    target: typed-openbao-backend
+  - id: B3
+    hepta_phase: AUTH-1
+    name: contracts
+    state: PLANNED
+    target: lease-permit-receipt
+  - id: B4
+    hepta_phase: AUTH-2
+    name: local-scheduler
+    state: PLANNED
+    target: quota-concurrency-fairness
+  - id: B5
+    hepta_phase: AUTH-4
+    name: authbusd
+    state: PLANNED
+    target: uds-wal-audit
+  - id: B6
+    hepta_phase: AUTH-4/AUTH-5
+    name: hnl-and-provider-feedback
+    state: PLANNED
+    target: loopback-federation
+  - id: B7
+    hepta_phase: AUTH-6
+    name: gateway
+    state: PLANNED
+    target: virtual-credential-inferd-seam
+  - id: B8
+    hepta_phase: AUTH-7
+    name: market-sandbox
+    state: PLANNED
+    target: virtual-escrow-only
+  - id: B9
+    hepta_phase: AUTH-8/AUTH-9
+    name: migration-release-prep
+    state: PLANNED
+    target: single-writer-canary
+release_policy:
+  development: continue_pre_release
+  internal_test: continue_pre_release
+  release_prep: continue_pre_release
+  final_release: external_gates_required
+external_gates_deferred_until_final_release:
+  - provider_effect_and_status_contract
+  - external_kms_or_hsm_signer
+  - physical_power_loss_and_media_evidence
+  - operator_legal_and_public_settlement_acceptance
+negative_authority_flags:
+  production_caller: false
+  production_writer: false
+  effect_authority: false
+  operator_acceptance: false
+  promotion: false
+  g5_allowed: false
+  execute_allowed: false
+
+implementation_overlay:
+  schema_version: "1.2"
+  status: HISTORICAL_SUPERSEDED
+  normative: false
+  execution_input: false
+  historical_summary: true
+  historical_summary_ref: "#/stages"
+  active_stage_ref: null
+  superseded_by: "#/execution_closure_v1_3"
+  decode_only: true
+  note: "The v1.2 dependency DAG is retained for provenance/decode compatibility; execution consumers MUST use execution_closure_v1_3."
+  supersedes_historical_mapping: ["B2/AUTH-3", "B3/AUTH-1", "B9 migration-release-prep"]
+  dependency_dag:
+    - B0
+    - B1
+    - B2
+    - B3
+    - B4
+    - B5
+    - B6
+    - B7
+    - B8
+    - B9
+    - B10
+  implementation_keys:
+    B0: B0_provenance
+    B1: B1_topology_profile_identity
+    B2: B2_contracts
+    B3: B3_adapter
+    B4: B4_scheduler
+    B5: B5_authbusd_wal_reconcile
+    B6: B6_legacy_migration
+    B7: B7_hnl
+    B8: B8_gateway
+    B9: B9_market_sandbox
+    B10: B10_release_prep
+  phase_map:
+    - {id: B0, hepta_phase: AUTH-0, name: provenance, depends_on: []}
+    - {id: B1, hepta_phase: AUTH-1, name: topology-profile-identity, depends_on: [B0]}
+    - {id: B2, hepta_phase: AUTH-2, name: contracts, depends_on: [B1]}
+    - {id: B3, hepta_phase: AUTH-3, name: adapter, depends_on: [B2]}
+    - {id: B4, hepta_phase: AUTH-4, name: scheduler, depends_on: [B2, B3]}
+    - {id: B5, hepta_phase: AUTH-5, name: authbusd-wal-reconcile, depends_on: [B3, B4]}
+    - {id: B6, hepta_phase: AUTH-6, name: legacy-migration, depends_on: [B5]}
+    - {id: B7, hepta_phase: AUTH-7, name: hnl, depends_on: [B5, B6]}
+    - {id: B8, hepta_phase: AUTH-8, name: gateway, depends_on: [B4, B5, B7]}
+    - {id: B9, hepta_phase: AUTH-9, name: market-sandbox, depends_on: [B7, B8]}
+    - {id: B10, hepta_phase: AUTH-10, name: release-prep, depends_on: [B6, B7, B8, B9]}
+  stage_contract_ref_policy:
+    format: "relative_path#stable_anchor_or_json_pointer"
+    markdown_anchor_resolution: stable_explicit_anchor_required
+    yaml_pointer_resolution: required
+    unresolved_reference: fail_ci
+  stage_contract_refs:
+    B0: ["HEPTA_AUTHBUS_BASIL_UPSTREAM_POLICY_V1.md#authbus-provenance-capture-minimal-profile", "HEPTA_AUTHBUS_BASIL_UPSTREAM_POLICY_V1.md#authbus-required-sync-pipeline"]
+    B1: ["AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/basil_profile", "AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/identity", "AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/listeners"]
+    B2: ["AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/contract_crosswalk_v1_2", "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/contract_crosswalk_v1_2", "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/contract_crosswalk_v1_2"]
+    B3: ["AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/provider_status", "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/contract_crosswalk_v1_2/failure_class"]
+    B4: ["AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/reservation", "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/fairness_and_safety", "AUTHBUS_STAGE_MATRIX_v1.yaml#/implementation_overlay/quantitative_targets/B4_scheduler"]
+    B5: ["AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/wal", "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/contract_crosswalk_v1_2/owner_epoch_algorithm", "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/reconcile"]
+    B6: ["hepta-authbus-basil-fork-plan-2026-08-26.md#authbus-migration-verification", "hepta-vnext-development-plan-final-2026-08-23.md#authbus11-contract-crosswalk-ci-rules-v12"]
+    B7: ["AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/identity", "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/contract_crosswalk_v1_2/capability_attenuation", "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/partition"]
+    B8: ["AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/gateway_controls", "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/contract_crosswalk_v1_2/effect_and_escrow_crosswalk"]
+    B9: ["AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/market_lifecycle", "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/escrow", "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/dispute"]
+    B10: ["hepta-vnext-development-plan-final-2026-08-23.md#authbus11-contract-crosswalk-ci-rules-v12", "AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/modes/FINAL_RELEASE"]
+  quantitative_targets:
+    B4_scheduler:
+      oversell_max: 0
+      duplicate_active_permit_max: 0
+      jain_fairness_min: 0.95
+    B5_authbusd:
+      fault_injection_min: 1000
+      fsync_complete_rpo_max: 0
+    B6_legacy_migration:
+      legacy_writer_acceptance_after_cutover_max: 0
+    B7_hnl:
+      old_permit_acceptance_after_partition_max: 0
+    B8_gateway:
+      cancel_latency_ms_max: 1000
+    B9_market:
+      double_settlement_max: 0
+      ledger_conservation_delta_max: 0
+  deprecated_metric_aliases:
+    scheduler_oversell_max:
+      canonical_ref: "#/implementation_overlay/quantitative_targets/B4_scheduler/oversell_max"
+      status: CANONICAL_RENAMED
+    scheduler_duplicate_active_permit_max:
+      canonical_ref: "#/implementation_overlay/quantitative_targets/B4_scheduler/duplicate_active_permit_max"
+      status: CANONICAL_RENAMED
+    scheduler_jain_fairness_min:
+      canonical_ref: "#/implementation_overlay/quantitative_targets/B4_scheduler/jain_fairness_min"
+      status: CANONICAL_RENAMED
+    b5_fault_injection_min:
+      canonical_ref: "#/implementation_overlay/quantitative_targets/B5_authbusd/fault_injection_min"
+      status: DEPRECATED_ALIAS
+    b6_old_permit_acceptance_after_partition:
+      canonical_ref: "#/implementation_overlay/quantitative_targets/B7_hnl/old_permit_acceptance_after_partition_max"
+      status: DEPRECATED_MOVED_TO_B7
+    b7_cancel_latency_ms_max:
+      canonical_ref: "#/implementation_overlay/quantitative_targets/B8_gateway/cancel_latency_ms_max"
+      status: DEPRECATED_MOVED_TO_B8
+    b8_double_settlement:
+      canonical_ref: "#/implementation_overlay/quantitative_targets/B9_market/double_settlement_max"
+      status: DEPRECATED_MOVED_TO_B9
+  ci_validation:
+    schema: hepta.authbus.stage-matrix-ci.v1
+    required_checks:
+      - id: active-ref-resolves
+        rule: "active_stage_ref MUST resolve to implementation_overlay.phase_map"
+      - id: normative-singleton
+        rule: "Exactly one stage set may have normative=true and execution_input=true"
+      - id: dag-phase-equality
+        rule: "dependency_dag IDs MUST equal phase_map IDs in order; implementation_keys carries descriptive names"
+      - id: dependency-refs-resolve
+        rule: "Every phase_map.depends_on ID MUST resolve to an earlier phase_map entry"
+      - id: historical-excluded
+        rule: "stage_resolution.stage_sets.historical MUST remain normative=false and execution_input=false"
+      - id: metric-stage-ownership
+        rule: "Each quantitative target MUST be nested under its owning implementation stage"
+      - id: deprecated-aliases-not-authoritative
+        rule: "deprecated_metric_aliases MUST never be read as normative targets"
+      - id: amendment-receipt-binds-post-files
+        rule: "AUTHBUS.11 amendment receipt and E.43 MUST bind the same post-amendment file digests"
+      - id: usage-counter-stage-ownership
+        rule: "UsageRightCounter conservation and dispute disposition checks belong to B9, not B6/B7/B8"
+external_gates_development: deferred_by_E41
+
+# AUTHBUS.11 v1.3 execution closure.  This is the sole normative implementation
+# projection.  The v1.2 overlay and crosswalk below remain decode-only history.
+execution_closure_v1_3:
+  id: AUTHBUS.11-execution-closure-v1.3
+  schema_version: "1.3"
+  status: NORMATIVE_FOR_IMPLEMENTATION
+  normative: true
+  execution_input: true
+  historical_summary: false
+  supersedes: "#/implementation_overlay"
+  canonical_anchor: authbus11-execution-closure-v13
+  role: normative_stage_execution_registry
+  canonical_registry_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry"
+  registry_projection_map_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_contract_map"
+  concrete_contract_refs: ["AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry", "AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml#/contract", "AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract", "AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml#/contract", "AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract"]
+  projection:
+    mode: GENERATED_FROM_CANONICAL_REGISTRY
+    canonical_registry_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry"
+    registry_projection_map_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_contract_map"
+    concrete_contract_refs: ["AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml#/contract", "AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract", "AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml#/contract", "AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract"]
+    stage_record_fields: [stage_id, hepta_phase, name, depends_on, federated_depends_on, local_lane, federated_lane]
+    status_fields: [status, local_status, federated_status]
+    owner_field: owner
+    projection_only: false
+  active_stage_ref: "#/execution_closure_v1_3/phase_map"
+  active_dependency_ref: "#/execution_closure_v1_3/dependencies"
+  active_crosswalk_ref: AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_contract_map
+  dependency_resolution: fail_closed
+  no_runtime_authority_change: true
+  dependencies:
+    HNL-GATE0-DECISIONS:
+      short_name: HNL-GATE0
+      purpose: hnl_architecture_contract_and_single_backend_vertical_slice
+      plan_ref: "OpenClaw/hepta-net-node-link-plan-2026-08-26.md#hnl-gate0-architecture"
+      matrix_ref: "OpenClaw/HNL_STAGE_MATRIX_v1.yaml#/stages/0"
+      expected_stage_id: HNL-0
+      receipt_ref: "OpenClaw/HNL-PLAN-APPEND-RECEIPT-2026-08-26.json"
+      plan_sha256: 2b3ffb6c66eec25183881f158368dfee1cabee545a33503ced1ffdc155784c0b
+      matrix_sha256: c92c6ae08486c7c33a8f7590b4d009d2e0b759630d4f3a5f9059747db5b67f53
+      receipt_sha256: 956ff899a147a8f53cd112e850f52e80f9b68af26f8d97e5512750937a8b9e1f
+      required_for: [B7, B8_federated, B9_federated, B10_federated]
+      development_acceptance: contract_or_loopback_only
+      final_release_acceptance: fresh_hnl_gate_receipt_required
+      resolution: stable_anchor_plus_yaml_pointer_plus_receipt_binding
+      anchor_resolved: true
+      receipt_status: STALE_SOURCE_BINDING
+      resolution_status: RECEIPT_STALE
+      unresolved_action: NOT_READY_FAIL_CLOSED
+      release_gate: false
+      aliases: [HNL-GATE0]
+  required_dependency_ids: [HNL-GATE0-DECISIONS]
+  dependency_dag: [B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10]
+  lane_resolution:
+    active_lane_selector: "stage_resolution.active_lane"
+    allowed_lanes: [local, federated]
+    default_lane: local
+    local_rule: "Synthetic/loopback B8, B9 and B10 may execute after their local dependencies; HNL-GATE0-DECISIONS is never a local-lane prerequisite."
+    federated_rule: "Federated B7/B8/B9/B10 require HNL-GATE0-DECISIONS; stale or unresolved HNL evidence keeps only the federated lane NOT_READY_FAIL_CLOSED."
+    stage_status_rule: "A stage with local_status and federated_status is resolved per active_lane; an aggregate status must not block a ready local lane."
+  lane_dependency_dag:
+    local:
+      stages: [B0, B1, B2, B3, B4, B5, B6, B8, B9, B10]
+      external_dependencies: []
+      terminal_stage: B10
+    federated:
+      stages: [B0, B1, B2, B3, B4, B5, B6, B7, B8, B9, B10]
+      external_dependencies: [HNL-GATE0-DECISIONS]
+      terminal_stage: B10
+  implementation_keys:
+    B0: B0_provenance
+    B1: B1_topology_profile_identity
+    B2: B2_contracts
+    B3: B3_adapter
+    B4: B4_scheduler
+    B5: B5_authbusd_wal_reconcile
+    B6: B6_legacy_migration
+    B7: B7_hnl
+    B8: B8_gateway
+    B9: B9_market_sandbox
+    B10: B10_release_prep
+  phase_map:
+    - {id: B0, hepta_phase: AUTH-0, name: provenance, depends_on: []}
+    - {id: B1, hepta_phase: AUTH-1, name: topology-profile-identity, depends_on: [B0]}
+    - {id: B2, hepta_phase: AUTH-2, name: contracts, depends_on: [B1]}
+    - {id: B3, hepta_phase: AUTH-3, name: adapter, depends_on: [B2]}
+    - {id: B4, hepta_phase: AUTH-4, name: scheduler, depends_on: [B2, B3]}
+    - {id: B5, hepta_phase: AUTH-5, name: authbusd-wal-reconcile, depends_on: [B3, B4]}
+    - {id: B6, hepta_phase: AUTH-6, name: legacy-migration, depends_on: [B5]}
+    - {id: B7, hepta_phase: AUTH-7, name: hnl, depends_on: [B5, B6], external_depends_on: [HNL-GATE0-DECISIONS]}
+    - {id: B8, hepta_phase: AUTH-8, name: gateway, depends_on: [B4, B5], federated_depends_on: [B7, HNL-GATE0-DECISIONS], local_lane: true, federated_lane: true}
+    - {id: B9, hepta_phase: AUTH-9, name: market-sandbox, depends_on: [B8], federated_depends_on: [B7, HNL-GATE0-DECISIONS], local_lane: true, federated_lane: true}
+    - {id: B10, hepta_phase: AUTH-10, name: release-prep, depends_on: [B6, B8, B9], federated_depends_on: [B7, HNL-GATE0-DECISIONS], local_lane: true, federated_lane: true}
+  stage_contract_ref_policy:
+    format: "relative_path#stable_anchor_or_json_pointer"
+    markdown_anchor_resolution: stable_explicit_anchor_required
+    yaml_pointer_resolution: required
+    unresolved_reference: fail_ci
+    stale_dependency: NOT_READY_FAIL_CLOSED
+  stage_contract_refs:
+    B0: ["HEPTA_AUTHBUS_BASIL_UPSTREAM_POLICY_V1.md#authbus11-execution-closure-v13", "HEPTA_AUTHBUS_BASIL_UPSTREAM_POLICY_V1.md#authbus-required-sync-pipeline"]
+    B1: ["AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/basil_profile", "AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/identity_boundary"]
+    B2: ["AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry", "AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml#/contract", "AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract", "AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml#/contract", "AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract", "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3", "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3", "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3"]
+    B3: ["AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml#/contract", "AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract/status_lookup_request", "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/opaque_secret_operations", "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/status_by_effect_key"]
+    B4: ["AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/quota_snapshot", "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/usage_vector", "AUTHBUS_STAGE_MATRIX_v1.yaml#/execution_closure_v1_3/quantitative_targets/B4_scheduler"]
+    B5: ["AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml#/contract", "AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract", "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/outbox_delivery", "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/dispatch", "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/reconcile_evidence"]
+    B6: ["hepta-authbus-basil-fork-plan-2026-08-26.md#authbus-migration-verification", "hepta-vnext-development-plan-final-2026-08-23.md#authbus11-execution-closure-v13"]
+    B7: ["AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/identity_boundary", "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/delegation", "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/status_by_effect_key", "AUTHBUS_STAGE_MATRIX_v1.yaml#/execution_closure_v1_3/dependencies/HNL-GATE0-DECISIONS"]
+    B8: ["AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential", "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary", "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/usage_vector", "AUTHBUS_STAGE_MATRIX_v1.yaml#/execution_closure_v1_3/basil_route_bindings/B8"]
+    B9: ["AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/remote_reservation", "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/usage_counter", "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/market_lifecycle", "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/wallet_disposition_join", "AUTHBUS_STAGE_MATRIX_v1.yaml#/execution_closure_v1_3/basil_route_bindings/B9"]
+    B10: ["hepta-vnext-development-plan-final-2026-08-23.md#authbus11-execution-closure-v13", "AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/modes/FINAL_RELEASE"]
+  source_closure:
+    source_binding_ref: "#/source_binding"
+    required_fields: [source_tree_sha256, git_archive_sha256, cargo_lock_sha256, rust_toolchain_sha256, gitmodules_sha256, submodule_commits, workspace_members_included, workspace_members_excluded, features_enabled, target_triples, rustc_version, cargo_version, protoc_version, msrv_core, test_minimum_rust, build_profile_id, cargo_metadata_sha256, sbom_manifest_sha256, license_manifest_sha256, source_status, source_receipt_status, source_receipt_ref, source_receipt_sha256, build_status, test_status, dirty]
+    required_toolchain_channel: "1.98.0"
+    research_capture_toolchain: "1.94.0"
+    msrv_core: "1.88"
+    test_minimum_rust: "1.96"
+    build_profile_id: hepta-basil-host-minimal-v1
+    source_status: research_capture
+    source_receipt_status: NOT_CAPTURED
+    source_receipt_ref: NOT_CAPTURED
+    source_receipt_sha256: NOT_CAPTURED
+    submodule_commits: [NOT_CAPTURED]
+    workspace_members_included: [NOT_CAPTURED]
+    workspace_members_excluded: [NOT_CAPTURED]
+    features_enabled: [NOT_CAPTURED]
+    target_triples: [NOT_CAPTURED]
+    rustc_version: "1.94.0-research-capture"
+    cargo_version: "1.94.0-research-capture"
+    protoc_version: "34.1-research-capture"
+    cargo_metadata_sha256: REQUIRED_AT_B0
+    sbom_manifest_sha256: REQUIRED_AT_B0
+    license_manifest_sha256: REQUIRED_AT_B0
+    build_status: NOT_RUN
+    test_status: NOT_RUN
+    dirty: REQUIRED_AT_B0
+    dirty_semantics: "A clean/dirty boolean is not asserted until B0 captures the checkout; missing capture is not a clean claim."
+    submodule_policy: every_initialized_submodule_bound_or_explicitly_not_required
+  basil_profile:
+    profile_id: hepta-basil-host-minimal-v1
+    route_name_rule: "Canonical Basil routes use the fully-qualified gRPC path /basil.broker.v1.<Service>/<Method>; the equivalent basil.broker.v1.<Service>.<Method> symbol is accepted for digest labels, while unqualified names are decode-only."
+    native_allowed_routes: ["/basil.broker.v1.SigningService/Sign", "/basil.broker.v1.SigningService/Verify", "/basil.broker.v1.SigningService/GetPublicKey", "/basil.broker.v1.AdminService/Health"]
+    hepta_wrapper_routes: ["authbusd.IssueProcessBoundCapability"]
+    optional_native_routes: ["/basil.broker.v1.AeadService/Decrypt"]
+    wrapper_guard: "The capability wrapper is not registered in Basil and cannot mint without authbusd admission, owner consent, permit and current fence."
+    key_generation:
+      mode: forbidden
+      startup_missing_registered_key: fail_closed
+      allowed_sources: [pre_registered_backend_key_ref]
+      forbidden_paths: [LocalIdentity.open_or_create, reconcile_catalog.missing_generate, keystore.generate, keystore.import, Signing.NewKey, Signing.Import, Signing.ImportSet, SecretService.GetSecret, SecretService.SetSecret, SecretService.RotateSecret, SecretService.ListCatalog, ExportPrivateKey]
+      private_key_export: forbidden
+      negative_tests: [startup_without_registered_key, missing_generate_flag, new_key_rpc, import_key_rpc, private_key_export_rpc, readiness_with_missing_key]
+    service_registry:
+      exact_allowed: ["/basil.broker.v1.SigningService/Sign", "/basil.broker.v1.SigningService/Verify", "/basil.broker.v1.SigningService/GetPublicKey", "/basil.broker.v1.AdminService/Health"]
+      optional_process_bound: ["/basil.broker.v1.AeadService/Decrypt"]
+      hepta_wrapper_only: ["authbusd.IssueProcessBoundCapability"]
+      exact_denied: ["/basil.broker.v1.SigningService/NewKey", "/basil.broker.v1.SigningService/Import", "/basil.broker.v1.SigningService/ImportSet", "/basil.broker.v1.SecretService/GetSecret", "/basil.broker.v1.SecretService/SetSecret", "/basil.broker.v1.SecretService/RotateSecret", "/basil.broker.v1.SecretService/ListCatalog", "/basil.broker.v1.AeadService/Encrypt", "/basil.broker.v1.AeadService/WrapEnvelope", "/basil.broker.v1.AeadService/UnwrapEnvelope", "/basil.broker.v1.AeadService/UnsealCose", "/basil.broker.v1.MintingService/MintJwt", "/basil.broker.v1.MintingService/IssueCertificate", "/basil.broker.v1.InvocationService/Invoke", "/basil.broker.v1.InvocationService/GetInvocationChallenge", "/basil.broker.v1.InvocationService/GetInvocationCapabilities", "/basil.broker.v1.AdminService/Status", "/basil.broker.v1.AdminService/Readiness", "/basil.broker.v1.AdminService/Watch", "/basil.broker.v1.AdminService/Reload", "/basil.broker.v1.AdminService/Explain", "/basil.broker.v1.AdminService/Revoke", "/basil.broker.v1.AdminService/ListConnections", "/basil.broker.v1.AdminService/DropConnections", "/basil.broker.v1.NatsService/*", "/basil.broker.v1.NixCacheService/*", "/SpiffeWorkloadAPI/*", "/envoy.service.secret.v3.SecretDiscoveryService/*", "UnknownFutureRPC"]
+      compile_registration_runtime_checks: true
+      descriptor_digest_required: true
+      route_set_digest_required: true
+    raw_secret_boundary: {wire: forbidden, wal: forbidden, sqlite_projection: forbidden, logs: forbidden, core_dump: forbidden}
+  basil_route_bindings:
+    route_encoding:
+      canonical: grpc_method_path
+      path_pattern: "/basil.broker.v1.<Service>/<Method>"
+      symbol_pattern: "basil.broker.v1.<Service>.<Method>"
+      aliases_decode_only: true
+      source_descriptor: basil-proto-descriptor-v1
+    B8:
+      purpose: gateway_virtual_credential_and_process_bound_signing
+      native:
+        fq_methods: [basil.broker.v1.SigningService.Sign, basil.broker.v1.SigningService.Verify, basil.broker.v1.SigningService.GetPublicKey, basil.broker.v1.AdminService.Health]
+        grpc_paths: ["/basil.broker.v1.SigningService/Sign", "/basil.broker.v1.SigningService/Verify", "/basil.broker.v1.SigningService/GetPublicKey", "/basil.broker.v1.AdminService/Health"]
+      wrapper:
+        wire_namespace: hepta.auth.v1
+        operations: [IssueProcessBoundCapability, IssueVirtualCredential, AcquirePermit, ReportUsage]
+        basil_registration: forbidden
+        authority_owner: authbusd
+        gateway_caller: hepta-gatewayd
+      forbidden_native: ["/basil.broker.v1.SecretService/GetSecret", "/basil.broker.v1.SecretService/SetSecret", "/basil.broker.v1.SecretService/ListCatalog", "/basil.broker.v1.SigningService/NewKey", "/basil.broker.v1.SigningService/Import", "/basil.broker.v1.SigningService/ImportSet", "/basil.broker.v1.AdminService/Status", "/basil.broker.v1.AdminService/Readiness", "/basil.broker.v1.AdminService/ListConnections", "/basil.broker.v1.AdminService/DropConnections", "/basil.broker.v1.InvocationService/Invoke", "/basil.broker.v1.InvocationService/GetInvocationChallenge", "/basil.broker.v1.InvocationService/GetInvocationCapabilities"]
+    B9:
+      purpose: bounded_usage_right_market_signing_and_counter_bridge
+      native:
+        fq_methods: [basil.broker.v1.SigningService.Sign, basil.broker.v1.SigningService.Verify, basil.broker.v1.SigningService.GetPublicKey, basil.broker.v1.AdminService.Health]
+        grpc_paths: ["/basil.broker.v1.SigningService/Sign", "/basil.broker.v1.SigningService/Verify", "/basil.broker.v1.SigningService/GetPublicKey", "/basil.broker.v1.AdminService/Health"]
+      wrapper:
+        wire_namespace: hepta.auth.v1
+        local_operations: [ReserveUse, CommitUse, ReleaseUse]
+        federated_operations: [ReserveRemote, CommitRemoteUse, ReleaseRemoteUse]
+        basil_registration: forbidden
+        authority_owner: market-adapter
+        authbus_bridge: fenced_only
+      forbidden_native: ["/basil.broker.v1.SecretService/GetSecret", "/basil.broker.v1.SecretService/SetSecret", "/basil.broker.v1.SecretService/ListCatalog", "/basil.broker.v1.SigningService/NewKey", "/basil.broker.v1.SigningService/Import", "/basil.broker.v1.SigningService/ImportSet", "/basil.broker.v1.MintingService/MintJwt", "/basil.broker.v1.AdminService/Reload", "/basil.broker.v1.AdminService/ListConnections", "/basil.broker.v1.AdminService/DropConnections", "/basil.broker.v1.InvocationService/Invoke", "/basil.broker.v1.InvocationService/GetInvocationChallenge", "/basil.broker.v1.InvocationService/GetInvocationCapabilities"]
+  quantitative_targets:
+    B4_scheduler: {oversell_max: 0, duplicate_active_permit_max: 0, jain_fairness_min: 0.95, starvation_bound_ms: REQUIRED_AT_B4, admission_p95_ms: REQUIRED_AT_B4}
+    B5_authbusd: {fault_injection_min: 1000, fsync_complete_rpo_max: 0, unknown_dispatch_blind_retry_max: 0}
+    B6_legacy_migration: {legacy_writer_acceptance_after_cutover_max: 0, raw_secret_residue_max: 0}
+    B7_hnl: {old_permit_acceptance_after_partition_max: 0, replay_acceptance_max: 0}
+    B8_gateway: {cancel_latency_ms_max: 1000, ssrf_bypass_max: 0, replay_acceptance_max: 0}
+    B9_market: {double_settlement_max: 0, ledger_conservation_delta_max: 0, counter_overspend_max: 0}
+  stage_dod_historical:
+    normative: false
+    execution_input: false
+    decode_only: true
+    digest_rule:
+      command_manifest_digest: "SHA-256(canonical_json({stage_id,commands}))"
+      fixture_manifest_digest: "SHA-256(canonical_json({stage_id,entry_checks,exit_checks,rollback,status}))"
+      canonical_json: "UTF-8 JSON, sorted keys, compact separators; digest fields are excluded from their own preimage."
+    B0: {owner: authbus-maintainer, entry_checks: [source_binding], exit_checks: [source_receipt, license_sbom, locked_build_input, no_runtime_write], commands: [source_manifest_capture, cargo_metadata_locked, sbom_license_scan], rollback: provenance_only, status: PLANNED, command_manifest_digest: 7224a55cb4f6886f95dff23ea13d856b18bec83af198053c1f2f3737aba61635, fixture_manifest_digest: 6aae455bb5918410a3ec471386dc6c15b8064ef0338f283b4a57b1d3b923948b}
+    B1: {owner: authbus-maintainer, entry_checks: [B0], exit_checks: [minimal_profile_deny_vectors, descriptor_route_digest, key_generation_forbidden, identity_vectors], commands: [minimal_profile_build, raw_rpc_negative_tests, keygen_negative_tests], rollback: feature_off, status: PLANNED, command_manifest_digest: 2184f2163e0ce974a6fad9b570e75a33bb817006b3de16ae9fcc07c3776d0688, fixture_manifest_digest: 5e278853bb6d51e4aaf4393665c8a4057a895e119e5910f43937886526bc0f98}
+    B2: {owner: contracts-owner, entry_checks: [B1], exit_checks: [e21_fixture, status_error_crosswalk, canonical_bytes_vectors, historical_alias_guard], commands: [contract_codegen, golden_vectors, strict_schema_check], rollback: contract_only, status: PLANNED, command_manifest_digest: 397a1337b5d0e28cbf62f447df6fd57430689198c013b5438bcefa3795782ee4, fixture_manifest_digest: 40551d9a169be2848effa03c6ef293e899eb544c543b465506e7bbfd48d5fac3}
+    B3: {owner: adapter-owner, entry_checks: [B2], exit_checks: [openbao_error_matrix, opaque_secretref_refresh, direct_ack_path, status_by_key_lookup, fail_closed], commands: [adapter_matrix, refresh_secretref_tests, status_lookup_tests], rollback: adapter_off, status: PLANNED, command_manifest_digest: 103ee4ba72c80348f7b91d86f3b40c5021907e81b856157855f3f9b331e83333, fixture_manifest_digest: f96b9b2ac113aa5307b35eaba0b824f0131bd536799aa600989965a3aa179974}
+    B4: {owner: scheduler-owner, entry_checks: [B2, B3], exit_checks: [oversell_zero, duplicate_permit_zero, fairness_bound, starvation_bound], commands: [synthetic_scheduler_property_tests, fixed_seed_fairness_benchmark], rollback: scheduler_off, status: PLANNED, command_manifest_digest: bc80760c4c51ed88a8fa6e0a4e295d2108c1ac581bf01ecff74b3af91d24bf80, fixture_manifest_digest: e4becfe5cb8f1fba5ba7e4a20691c138d923f353f881368e5c3abc60a31ea3d5}
+    B5: {owner: authbusd-owner, entry_checks: [B3, B4], exit_checks: [fsync_before_call, lookup_only_unknown_recovery, outbox_dedupe, rpo_zero], commands: [crash_reopen_matrix, fault_injection_1000, disk_full_oom_clock_partition_tests], rollback: read_only, status: PLANNED, command_manifest_digest: 3eae52f1657fe718a683f87aaa31dabcecd3499b624b2e596835e14b3e7efd02, fixture_manifest_digest: 51dfff71cd58a7a7e8f4686dc5a9de589eead89274976e2514c02f9b7c8b4132}
+    B6: {owner: migration-owner, entry_checks: [B5], exit_checks: [single_writer, stale_callback_reject, raw_scrub_receipt, rollback_fence], commands: [metadata_only_profile_migration, cutover_canary, scrub_and_rollback], rollback: observer_only, status: PLANNED, command_manifest_digest: 58d23371f112a722abdaf14448d8f5c9b3c6ebad76025533fc61ee7ef759585a, fixture_manifest_digest: 56240402137a699a008f7ce7c15f098eaed1342f35f5d00effc8094c3de3f566}
+    B7: {owner: hnl-owner, entry_checks: [B5, B6, HNL-GATE0-DECISIONS], exit_checks: [hnl_gate0_resolved, three_node_loopback, identity_vectors, replay_partition_reject], commands: [hnl_gate0_resolution, loopback_three_node, partition_replay_tests], rollback: hnl_off, status: NOT_READY, command_manifest_digest: 538cf6d8b2c591071ad65fcc2f50fb42c895f2836d899c092e6694d02f114dd3, fixture_manifest_digest: 2033ca671e49cd10627f9168c42bdd78ae61feb2f5da11616be452eceb893710}
+    B8: {owner: gateway-owner, entry_checks: [B4, B5, B7], exit_checks: [virtual_credential_vectors, api_subset_frozen, stream_cancel_backpressure, ssrf_negative], commands: [credential_vector_tests, api_compat_tests, stream_cancel_ssrf_tests], rollback: loopback_only, status: NOT_READY, command_manifest_digest: 43e5c22a357065ead6bcd6ece6eece25728882166a5b4d694b2408e4110742e4, fixture_manifest_digest: 70be560fff7d4f1f4b0973367f26efbedb9a63a8c83938ab8e362ddc3379ee6c}
+    B9: {owner: market-owner, entry_checks: [B7, B8], exit_checks: [bounded_delegation, usage_vector_conservation, no_double_settlement, dispute_vectors], commands: [market_simulator, counter_conservation_tests, dispute_timeout_refund_tests], rollback: virtual_only, status: NOT_READY, command_manifest_digest: 244b8e2218f776e8105bc2e6e5e92865250ce42bed7e9b0764bab9b540d8cc68, fixture_manifest_digest: f79b430d0eba7af7bef14b5b50db9d5dab687b16d5c2e000661eb7f3a537ee80}
+    B10: {owner: release-owner, entry_checks: [B6, B7, B8, B9], exit_checks: [reproducible_build, canary_rollback, final_release_handoff_only, flags_false], commands: [locked_release_build, sbom_attestation, rollback_drill], rollback: no_promotion, status: NOT_READY, command_manifest_digest: 0a758c33c8fb9e15e3c776860dfcd9490f6497aba1c26524fcbb11f85ebd548d, fixture_manifest_digest: 01d04f4f0b3d9554308569707b769d5acc197672568c01b1ffc8ef278472f55c}
+  stage_dod_digest_rule:
+    command_manifest_digest: "SHA-256(canonical_json({stage_id,commands}))"
+    fixture_manifest_digest: "SHA-256(canonical_json({stage_id,entry_checks,federated_entry_checks?,exit_checks,rollback,status,local_status?,federated_status?}))"
+    canonical_json: "UTF-8 JSON, sorted keys, compact separators; digest fields and stage_dod_digest_rule are excluded from their own preimage; optional lane fields are included when present."
+  aggregate_digest_rule:
+    validation_commands_digest: "SHA-256(canonical_json(ci_validation))"
+    fixture_bundle_digest: "SHA-256(canonical_json({ci_validation,stage_dod,historical_terminal_guard}))"
+    canonical_json: "UTF-8 JSON, sorted keys, compact separators; validation_commands_digest, fixture_bundle_digest and aggregate_digest_rule are excluded from the aggregate preimage; refs resolve within execution_closure_v1_3."
+  stage_dod:
+    B0: {stage_id: B0, owner: authbus-maintainer, entry_checks: [source_binding], exit_checks: [source_receipt, license_sbom, locked_build_input, no_runtime_write], commands: [source_manifest_capture, cargo_metadata_locked, sbom_license_scan], rollback: provenance_only, status: PLANNED, command_manifest_digest: 7224a55cb4f6886f95dff23ea13d856b18bec83af198053c1f2f3737aba61635, fixture_manifest_digest: 6aae455bb5918410a3ec471386dc6c15b8064ef0338f283b4a57b1d3b923948b}
+    B1: {stage_id: B1, owner: authbus-maintainer, entry_checks: [B0], exit_checks: [minimal_profile_deny_vectors, descriptor_route_digest, key_generation_forbidden, identity_vectors], commands: [minimal_profile_build, raw_rpc_negative_tests, keygen_negative_tests], rollback: feature_off, status: PLANNED, command_manifest_digest: 2184f2163e0ce974a6fad9b570e75a33bb817006b3de16ae9fcc07c3776d0688, fixture_manifest_digest: 5e278853bb6d51e4aaf4393665c8a4057a895e119e5910f43937886526bc0f98}
+    B2: {stage_id: B2, owner: contracts-owner, entry_checks: [B1], exit_checks: [e21_fixture, status_error_crosswalk, canonical_bytes_vectors, historical_alias_guard], commands: [contract_codegen, golden_vectors, strict_schema_check], rollback: contract_only, status: PLANNED, command_manifest_digest: 397a1337b5d0e28cbf62f447df6fd57430689198c013b5438bcefa3795782ee4, fixture_manifest_digest: 40551d9a169be2848effa03c6ef293e899eb544c543b465506e7bbfd48d5fac3}
+    B3: {stage_id: B3, owner: adapter-owner, entry_checks: [B2], exit_checks: [openbao_error_matrix, opaque_secretref_refresh, direct_ack_path, status_by_key_lookup, fail_closed], commands: [adapter_matrix, refresh_secretref_tests, status_lookup_tests], rollback: adapter_off, status: PLANNED, command_manifest_digest: 103ee4ba72c80348f7b91d86f3b40c5021907e81b856157855f3f9b331e83333, fixture_manifest_digest: f96b9b2ac113aa5307b35eaba0b824f0131bd536799aa600989965a3aa179974}
+    B4: {stage_id: B4, owner: scheduler-owner, entry_checks: [B2, B3], exit_checks: [oversell_zero, duplicate_permit_zero, fairness_bound, starvation_bound], commands: [synthetic_scheduler_property_tests, fixed_seed_fairness_benchmark], rollback: scheduler_off, status: PLANNED, command_manifest_digest: bc80760c4c51ed88a8fa6e0a4e295d2108c1ac581bf01ecff74b3af91d24bf80, fixture_manifest_digest: e4becfe5cb8f1fba5ba7e4a20691c138d923f353f881368e5c3abc60a31ea3d5}
+    B5: {stage_id: B5, owner: authbusd-owner, entry_checks: [B3, B4], exit_checks: [fsync_before_call, lookup_only_unknown_recovery, outbox_dedupe, rpo_zero], commands: [crash_reopen_matrix, fault_injection_1000, disk_full_oom_clock_partition_tests], rollback: read_only, status: PLANNED, command_manifest_digest: 3eae52f1657fe718a683f87aaa31dabcecd3499b624b2e596835e14b3e7efd02, fixture_manifest_digest: 51dfff71cd58a7a7e8f4686dc5a9de589eead89274976e2514c02f9b7c8b4132}
+    B6: {stage_id: B6, owner: migration-owner, entry_checks: [B5], exit_checks: [single_writer, stale_callback_reject, raw_scrub_receipt, rollback_fence], commands: [metadata_only_profile_migration, cutover_canary, scrub_and_rollback], rollback: observer_only, status: PLANNED, command_manifest_digest: 58d23371f112a722abdaf14448d8f5c9b3c6ebad76025533fc61ee7ef759585a, fixture_manifest_digest: 56240402137a699a008f7ce7c15f098eaed1342f35f5d00effc8094c3de3f566}
+    B7: {stage_id: B7, owner: hnl-owner, entry_checks: [B5, B6, HNL-GATE0-DECISIONS], exit_checks: [hnl_gate0_resolved, three_node_loopback, identity_vectors, replay_partition_reject], commands: [hnl_gate0_resolution, loopback_three_node, partition_replay_tests], rollback: hnl_off, status: NOT_READY, command_manifest_digest: 538cf6d8b2c591071ad65fcc2f50fb42c895f2836d899c092e6694d02f114dd3, fixture_manifest_digest: 2033ca671e49cd10627f9168c42bdd78ae61feb2f5da11616be452eceb893710}
+    B8: {stage_id: B8, owner: gateway-owner, entry_checks: [B4, B5], federated_entry_checks: [B7, HNL-GATE0-DECISIONS], exit_checks: [virtual_credential_vectors, api_subset_frozen, stream_cancel_backpressure, ssrf_negative, basil_route_crosswalk], commands: [credential_vector_tests, api_compat_tests, stream_cancel_ssrf_tests, basil_route_vectors], rollback: loopback_only, status: PLANNED, local_status: PLANNED, federated_status: NOT_READY, command_manifest_digest: ecbd0e1cb8a008fb132da26d5f47327903f7b8b6eb0c5bdf54846843d6d2941e, fixture_manifest_digest: 9bc69d892362ec634f1350b63ff82ffb42f800927a3954789d13e06e0afdfdb5}
+    B9: {stage_id: B9, owner: market-owner, entry_checks: [B8], federated_entry_checks: [B7, HNL-GATE0-DECISIONS], exit_checks: [bounded_delegation, usage_vector_conservation, no_double_settlement, dispute_vectors, basil_route_crosswalk], commands: [market_simulator, counter_conservation_tests, dispute_timeout_refund_tests, basil_route_vectors], rollback: virtual_only, status: PLANNED, local_status: PLANNED, federated_status: NOT_READY, command_manifest_digest: b5c9bc159fc5b0d5200a4f7cf67d39380347a3e70dee0bcbe19ce7cb8052ba59, fixture_manifest_digest: be10faf46a28d4147ace9194024263ec468986b320602a4803c246205262d5fb}
+    B10: {stage_id: B10, owner: release-owner, entry_checks: [B6, B8, B9], federated_entry_checks: [B7, HNL-GATE0-DECISIONS], exit_checks: [reproducible_build, canary_rollback, final_release_handoff_only, flags_false], commands: [locked_release_build, sbom_attestation, rollback_drill], rollback: no_promotion, status: PLANNED, local_status: PLANNED, federated_status: NOT_READY, command_manifest_digest: 0a758c33c8fb9e15e3c776860dfcd9490f6497aba1c26524fcbb11f85ebd548d, fixture_manifest_digest: 59aeca406d8dc717990b899851905bb10d03343e1c7f413bb75493fbff3fc160}
+  historical_terminal_guard:
+    status: REQUIRED
+    decode_only_sources: ["#/stages", "#/implementation_overlay", "#/contract_crosswalk_v1_2", "#/execution_closure_v1_3/stage_dod_historical"]
+    forbidden_emissions:
+      scope: [legacy_effect_namespace, legacy_compatibility_decoder]
+      values: [ACKED, RECONCILING, RELEASED, REFUNDED, old_DispatchStatus, escrow_held, authorized_settlement]
+      current_namespace_exemptions: [hepta.auth.market.v1/REFUNDED, hepta.auth.market.v1/RELEASED, hepta.auth.reconcile.v1/ManualRequired, hepta.auth.reconcile.v1/ReconcileBlocked]
+      rule: "The guard rejects legacy aliases only in legacy effect/compatibility namespaces; current market reservation outcomes and non-terminal reconcile labels are not globally forbidden."
+    nonterminal_values: [ManualRequired, ReconcileBlocked]
+    forbidden_reopen: true
+    manual_required_nonterminal: true
+    manual_required_closes_indeterminate: false
+    stale_dependency_pass: false
+    frozen_negative_corpus_sha256: REQUIRED_AT_B2
+    ci_command: ci/authbus_historical_terminal_guard.sh
+  ci_validation:
+    schema: hepta.authbus.stage-matrix-ci.v1_3
+    required_checks:
+      - {id: active-ref-resolves, rule: "active_stage_ref MUST resolve to execution_closure_v1_3/phase_map"}
+      - {id: active-dependency-resolves, rule: "active_dependency_ref MUST resolve and unresolved dependencies MUST be NOT_READY_FAIL_CLOSED"}
+      - {id: active-crosswalk-resolves, rule: "active_crosswalk_ref MUST resolve to AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_contract_map; active domain projections are selected from the map and must resolve to execution_closure_v1_3"}
+      - {id: active-contract-refs-not-decode-only, rule: "Every active stage_contract_refs target MUST resolve to an active execution_closure_v1_3 or explicitly normative source; no active ref may target a top-level normative=false/decode_only=true block."}
+      - {id: normative-singleton, rule: "Exactly one stage set may have normative=true and execution_input=true; superseded overlays are false"}
+      - {id: dag-phase-equality, rule: "dependency_dag IDs MUST equal phase_map IDs in order"}
+      - {id: dependency-refs-resolve, rule: "Every phase_map.depends_on ID MUST resolve to an earlier phase_map entry"}
+      - {id: active-stage-id-explicit, rule: "Every active stage_dod record MUST carry stage_id equal to its map key; phase_map records use id as their canonical key"}
+      - {id: active-lane-projection-closed, rule: "Every active stage exposes explicit local/federated lane applicability and status where the lanes diverge; lane resolution MUST use the active lane selector"}
+      - {id: hnl-gate0-binding, rule: "HNL-GATE0-DECISIONS plan/matrix/receipt refs and expected HNL-0 ID MUST resolve before B7 PASS or a federated B8/B9 PASS; local B8 loopback is not HNL-blocked"}
+      - {id: source-toolchain-closure, rule: "B0 source/tree/archive/lock/toolchain/gitmodules/submodule fields and command results MUST be captured; research 1.94 is not a 1.98 build PASS"}
+      - {id: basil-minimal-profile, rule: "Forbidden Basil services/key-generation paths MUST fail at compile, registration and runtime"}
+      - {id: stage-dod-complete, rule: "Every B0-B10 stage MUST have owner, entry, exit, commands, rollback and status"}
+      - {id: basil-route-crosswalk, rule: "B8 and B9 native Basil calls MUST resolve to exact FQ gRPC paths in basil_route_bindings; Hepta wrapper operations MUST be marked non-Basil and remain default-deny at Basil registration"}
+      - {id: historical-terminal-guard, rule: "Historical statuses/aliases are decode-only in their legacy namespaces; current market Released/Refunded remain valid, while ManualRequired/ReconcileBlocked are non-terminal"}
+      - {id: historical-decoder-guard, rule: "Any consumer selecting #/stages, #/implementation_overlay, #/contract_crosswalk_v1_2 or #/execution_closure_v1_3/stage_dod_historical without explicit decode_only=true and normative=false MUST fail closed"}
+      - {id: b8-lane-separation, rule: "B8 local lane depends only on B4/B5; B8 federated lane additionally requires B7 and HNL-GATE0-DECISIONS"}
+      - {id: b9-lane-separation, rule: "B9 local lane depends only on local B8; B9 federated lane additionally requires B7 and HNL-GATE0-DECISIONS"}
+      - {id: b10-lane-separation, rule: "B10 local lane depends only on B6/B8/B9; B10 federated lane additionally requires B7 and HNL-GATE0-DECISIONS"}
+      - {id: stage-digest-rule-location, rule: "stage_dod_digest_rule is the only per-stage digest rule; aggregate_digest_rule is the only receipt aggregate rule; stage_dod entries contain only stage records"}
+      - {id: historical-stage-dod-excluded, rule: "stage_dod_historical is decode-only and cannot satisfy a normative stage digest"}
+      - {id: cross-file-normative-singleton, rule: "Exactly AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry emits the v1.3 state/error/status projection; attachment crosswalks and narrow contracts are generated projections"}
+      - {id: concrete-registry-projection-binding, rule: "Every active v1.3 crosswalk MUST list the canonical registry and applicable narrow contract refs; each narrow contract MUST declare source_registry_status=REQUIRED_AT_B2 until B2 binds a 64-hex registry digest"}
+      - {id: domain-qualified-revision, rule: "A resolver must qualify AUTHBUS.11-v1.3 by domain and reject an unqualified global-index revision"}
+      - {id: no-blind-retry, rule: "DispatchUnknownRef and response-lost refresh are lookup-only"}
+      - {id: amendment-receipt-binds-post-files, rule: "v1.3 receipt binds exact post-amendment file digests; index/receipt are outside their own hash scope"}
+      - {id: no-runtime-authority-change, rule: "E.41 prefix, runtime services and negative authority flags remain unchanged"}
+
+# AUTHBUS.11 shared crosswalk projection. Domain-specific details remain in the four
+# contract attachments; this block is the machine-readable stage/contract join.
+contract_crosswalk_v1_2:
+  id: AUTHBUS.11
+  status: DECODE_ONLY_HISTORICAL
+  normative: false
+  decode_only: true
+  superseded_by: "#/contract_crosswalk_v1_3"
+  canonical_source: "codex-hepta-contracts.v1 + hepta-auth-contracts.v1"
+  shared_contract_owner: codex-hepta-contracts.v1
+  authbus_extension_owner: hepta-auth-contracts.v1
+  wire_namespace: hepta.auth.v1
+  base_contract_projection:
+    owner: codex-hepta-contracts.v1.4_e21
+    e21_effect_receipt_required: [effect_id, effect_intent_id, decision_id, run_id, schema_digest, status, terminal, reconciliation_required, idempotency_key, attempt, authority_scope, execution_scope, effect_authority, production_authority, snapshot_digest, graph_digest, policy_digest, provider_id, reconciliation_id, reconciles_receipt_id, external_state_digest, resolver_attempt, current_revision, cas]
+    extension_rule: "Stage projections reference the closed E21 receipt and may not add top-level fields."
+  active_stage_ref: "#/implementation_overlay/phase_map"
+  implementation_dag_ref: "#/implementation_overlay/dependency_dag"
+  shared_projection_keys: [id, canonical_source, shared_contract_owner, authbus_extension_owner, wire_namespace, causal_lineage, base_mutation_fields, field_aliases]
+  domain_specific_keys: [status_registry, effect_receipt, quota_observation_contract, usage_right, usage_right_counter, basil_service_profile, actor_crosswalk, dispute_contract, hnl_field_crosswalk]
+  causal_lineage:
+    public_wire_field: causal_parent_event_id
+    internal_event_store_field: causal_parent_seq
+    mapping_rule: "Resolve internal seq through immutable event_seq→event_id index; one serialization context emits one field; never cast a numeric sequence to an event id."
+    public_schema: e21_v1_4
+  base_mutation_fields: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+  field_aliases:
+    revision: expected_revision
+    agent_generation: generation
+    fence: fencing_token
+    payload_sha256: payload_digest
+    resource_sha256: resource_digest
+    operation_id: provider_operation_id
+    operation_id_sha256: provider_operation_id_sha256
+    causal_parent_seq: internal_event_store_only
+    tenant: tenant_id
+    audience: aud
+    issued_at: iat
+    expires_at: exp
+    not_before: nbf
+  status_projection:
+    effect_receipt: [Queued, DispatchAccepted, Running, Succeeded, Failed, Cancelled, Indeterminate, Reconciled]
+    quota_reservation: [Proposed, Held, DispatchAttempted, DispatchAccepted, PartiallyConsumed, Indeterminate, Released, Refunded, Expired]
+    terminal_effect: [Succeeded, Failed, Cancelled, Reconciled]
+  lifecycle_owner: AUTHBUS_ABUSE_DISPUTE_POLICY_v1.market_lifecycle
+  usage_right_counter:
+    owner: market-adapter
+    bridge_commands: [ReserveUse, CommitUse, ReleaseUse]
+    invariant: "reserved_uses + consumed_uses <= max_uses; no-effect/cancel releases reserved use; unknown holds it."
+    evidence: [counter_revision, prior_counter_state_digest, counter_state_digest, usage_receipt_digest]
+  hnl_field_crosswalk_ref: "AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/contract_crosswalk_v1_2/hnl_field_crosswalk"
+  metric_ownership:
+    B4: [oversell_max, duplicate_active_permit_max, jain_fairness_min]
+    B5: [fault_injection_min, fsync_complete_rpo_max]
+    B6: [legacy_writer_acceptance_after_cutover_max]
+    B7: [old_permit_acceptance_after_partition_max]
+    B8: [cancel_latency_ms_max]
+    B9: [double_settlement_max, ledger_conservation_delta_max]
+  ci_rules:
+    - shared_projection_keys_match_all_attachment_crosswalks
+    - stage_contract_refs_use_stable_anchor_or_json_pointer
+    - metric_ownership_matches_quantitative_targets
+    - historical_stages_are_not_execution_input
+    - usage_right_counter_is_owned_by_market_adapter
+    - hnl_crosswalk_refs_are_role_qualified
+    - reconciliation_decision_is_taskflow_owned_sidecar
+
+# The v1.3 shared projection is generated from the canonical contract registry.  The
+# preceding v1.2 projection is retained only for decode compatibility and provenance.
+contract_crosswalk_v1_3:
+  id: AUTHBUS.11
+  version: "1.3"
+  status: DECODE_ONLY_GENERATED_PROJECTION
+  normative: false
+  decode_only: true
+  execution_input: false
+  historical_only_reason: "This top-level crosswalk is retained for decode-only compatibility; new encoding and CI consume the canonical registry projection map and execution_closure_v1_3."
+  supersedes: contract_crosswalk_v1_2
+  canonical_anchor: authbus11-execution-closure-v13
+  canonical_source: "codex-hepta-contracts.v1.4_e21 + hepta-auth-contracts.v1"
+  projection_mode: GENERATED_FROM_CANONICAL_REGISTRY
+  canonical_registry_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry"
+  status_error_registry_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry"
+  registry_projection_map_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_contract_map"
+  concrete_contract_refs: ["AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry", "AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml#/contract", "AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract", "AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml#/contract", "AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract"]
+  execution_closure_ref: "#/execution_closure_v1_3"
+  active_stage_ref: "#/execution_closure_v1_3/phase_map"
+  active_dependency_ref: "#/execution_closure_v1_3/dependencies"
+  historical_terminal_guard_ref: "#/execution_closure_v1_3/historical_terminal_guard"
+  shared_projection_keys: [id, version, canonical_source, wire_namespace, causal_lineage, base_mutation_fields, field_aliases, serialization_contexts, time_alias_scope]
+  domain_specific_keys: [status_registry, effect_receipt, quota_observation_contract, usage_vector, usage_right, usage_right_counter, basil_service_profile, actor_crosswalk, dispute_contract, hnl_field_crosswalk, concrete_contract_refs, registry_projection_map_ref]
+  wire_namespace: hepta.auth.v1
+  causal_lineage:
+    public_wire_field: causal_parent_event_id
+    internal_event_store_field: causal_parent_seq
+    mapping_rule: "Resolve internal seq through immutable event_seq->event_id index; never cast a numeric sequence to an event id."
+    public_schema: e21_v1_4
+  base_contract_projection:
+    owner: codex-hepta-contracts.v1.4_e21
+    e21_effect_receipt_required: [effect_id, effect_intent_id, decision_id, run_id, schema_digest, status, terminal, reconciliation_required, idempotency_key, attempt, authority_scope, execution_scope, effect_authority, production_authority, snapshot_digest, graph_digest, policy_digest, provider_id, reconciliation_id, reconciles_receipt_id, external_state_digest, resolver_attempt, current_revision, cas]
+    extension_rule: "Stage projections reference the closed E21 receipt and may not add or remove top-level fields."
+  base_mutation_fields: [schema_version, command_id, run_id, aggregate_id, expected_revision, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, payload_digest, policy_digest, resource_digest]
+  field_aliases:
+    revision: expected_revision
+    agent_generation: generation
+    fence: fencing_token
+    payload_sha256: payload_digest
+    resource_sha256: resource_digest
+  operation_id_alias_scope:
+    effect_status_lookup: {operation_id: provider_operation_id, operation_id_sha256: provider_operation_id_sha256}
+    refresh_secretref: {operation_id: operation_id, operation_id_sha256: forbidden}
+    collision_rule: "AuthBus refresh operation_id is never renamed to provider_operation_id; provider fields are valid only in effect/status lookup contexts."
+    causal_parent_seq: internal_event_store_only
+    tenant: tenant_id
+    audience: aud
+    issued_at: iat
+    expires_at: exp
+    not_before: nbf
+  serialization_contexts:
+    e21_public_envelope: {version: codex-hepta-contracts.v1.4_e21, domain: hepta.e21, encoding: sha256-canonical-json, field_order: schema_order, unknown_fields: reject, null_rule: tagged_null}
+    authbus_object: {version: hepta-auth-contracts.v1, domain: hepta.auth.v1, encoding: length_delimited_canonical_bytes, field_order: lexicographic_field_name_then_value, unknown_fields: reject, null_rule: tagged_null}
+    basil_transport: {version: basil.broker.v1, domain: hepta.auth.basil.v1, encoding: protobuf_length_delimited_canonical_bytes, field_order: canonical_bytes_then_digest, unknown_fields: reject, null_rule: tagged_null}
+    hnl_cose_cbor: {version: HNL-0..6, domain: hepta.hnl.v1, encoding: canonical_cbor_cose_sign1, field_order: cbor_canonical, unknown_fields: reject, null_rule: tagged_null}
+    gateway_token: {version: hepta-gateway.v1, domain: hepta.gateway.v1, encoding: jwt_or_cose_sign1, field_order: registered_claim_order, unknown_fields: reject, null_rule: tagged_null}
+  time_alias_scope:
+    lease_resource: rfc3339_utc_plus_monotonic_snapshot_and_uncertainty
+    jwt_cose: numeric_date
+    hnl_cbor: hnl_native_units
+    aliases_encode: declared_context_only
+  aliases_decode_only: true
+  status_projection:
+    effect_receipt: [Queued, DispatchAccepted, Running, Succeeded, Failed, Cancelled, Indeterminate, Reconciled]
+    quota_reservation: [Proposed, Held, DispatchAccepted, PartiallyConsumed, Indeterminate, Released, Refunded, Expired]
+    terminal_effect: [Succeeded, Failed, Cancelled, Reconciled]
+  lifecycle_owner: AUTHBUS_ABUSE_DISPUTE_POLICY_v1.market_lifecycle
+  usage_right_counter:
+    owner: market-adapter
+    accounting_mode: vector
+    bridge_commands: [ReserveUse, CommitUse, ReleaseUse, ReserveRemote, CommitRemoteUse, ReleaseRemoteUse]
+    invariant: "reserved_vector + consumed_vector <= usage_vector componentwise; scalar aliases are request_count-only decode projections."
+    evidence: [counter_revision, prior_counter_state_digest, counter_state_digest, usage_receipt_digest]
+  usage_vector_ref: "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/usage_vector"
+  hnl_field_crosswalk_ref: "AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/contract_crosswalk_v1_3/hnl_field_crosswalk"
+  hnl_crosswalk_projection_status: existing_role_qualified_mapping_requires_v1_3_projection
+  metric_ownership:
+    B4: [oversell_max, duplicate_active_permit_max, jain_fairness_min, starvation_bound_ms, admission_p95_ms]
+    B5: [fault_injection_min, fsync_complete_rpo_max, unknown_dispatch_blind_retry_max]
+    B6: [legacy_writer_acceptance_after_cutover_max, raw_secret_residue_max]
+    B7: [old_permit_acceptance_after_partition_max, replay_acceptance_max]
+    B8: [cancel_latency_ms_max, ssrf_bypass_max, replay_acceptance_max]
+    B9: [double_settlement_max, ledger_conservation_delta_max, counter_overspend_max]
+  ci_rules: [shared_projection_keys_match_all_attachment_crosswalks, only_v1_3_normative_refs, canonical_registry_generates_projections, projection_registry_digest_bound_at_b2, e21_required_set_closed, historical_aliases_decode_only, manual_required_nonterminal, dispatch_unknown_lookup_only, hnl_dependency_fail_closed, basil_key_generation_forbidden, usage_right_counter_one_writer]

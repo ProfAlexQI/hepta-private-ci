@@ -1,0 +1,30 @@
+{
+  "action": "record_observed_mismatches_without_overwriting_historical_files",
+  "drift_class": "E21_MIRROR_CHECKSUM_DRIFT",
+  "generated_at": "2026-08-26T22:58:15.106796Z",
+  "historical_files_overwritten": false,
+  "historical_package": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824",
+  "historical_receipt_status": "HISTORICAL_STALE_IMMUTABLE",
+  "historical_sha256sums_sha256": "2a7d2d6d74ce3ab51ab54937c90a7702ac6f578443d7b77cc9223adf844acd2c",
+  "mismatch_count": 3,
+  "mismatches": [
+    {
+      "expected_sha256": "76a58bc4034ec2aed104c7b648c4ff671738e2c28b22e22667bd2125e72c4732",
+      "observed_sha256": "a5b022a3be2696acaf8561e158701d9b74fbddb580454c3754eb3a4c7bc3c5a6",
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/E21-CURRENT-MANIFEST.json"
+    },
+    {
+      "expected_sha256": "43769caa651403f674253c8eab7a09101f96723cbb8ca2bebbf684979cdf82c3",
+      "observed_sha256": "f982b3a979420c72a6643a8b4fa613a5e66fb249cfcd1af94ce1cedf8095ca06",
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/E21-DELIVERY-CROSSWALK.json"
+    },
+    {
+      "expected_sha256": "40e08396e54aa1c21d492576a6b62a4a9cc8dd641833460d5ec43b2265897bb2",
+      "observed_sha256": "075f09d24ebd0c3d6414a97a398a9a959642fd73589b1230633fdcf7ba3a78ab",
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-qualification-2026-08-23/e21-delivery-hardening-qualification-20260824/VERIFY-RESULT.json"
+    }
+  ],
+  "repair_scope": "new_package_only",
+  "schema": "hepta.e41.e21_checksum_repair.v1",
+  "status": "NEW_PACKAGE_TRACEABLE_REPAIR"
+}

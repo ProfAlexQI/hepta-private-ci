@@ -1,0 +1,190 @@
+{
+  "schema": "hepta.hnl_gate0_dependency.qualification_receipt.v1",
+  "receipt_kind": "HNL_GATE0_DEPENDENCY_QUALIFICATION",
+  "generated_at_utc": "2026-08-26T17:45:08Z",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "status": "RECEIPT_STALE",
+  "decision": "BLOCK_FEDERATED_ALLOW_LOCAL",
+  "scope": [
+    "AUTHBUS.11 HNL-GATE0-DECISIONS dependency projection",
+    "HNL plan anchor and HNL-0 stage pointer resolution",
+    "append-receipt digest binding and stale-source fail-closed behavior",
+    "offline strict schema and golden-vector regressions"
+  ],
+  "source": {
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/p3-hnl-gate0-dependency-20260827",
+    "branch": "hepta/p3-hnl-gate0-dependency-20260827",
+    "head": "21ca297f75daeee43e6f9dd12ce82bc79ab7f52e",
+    "tree": "777a4085f649baf9b6c075209108021591babef9",
+    "parent": "74b6a7ef4ded3d4dafe06fa4d2c069eaa8c1023c",
+    "clean": true,
+    "status_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "canonical_reference": {
+      "branch": "hepta/vnext-main-integration-20260811",
+      "head": "b29b7e6c105a2b44fe490309b42ae423c12fc10f",
+      "tree": "3012b20faeebd5930c077d5382051723034a990f",
+      "relationship": "divergent",
+      "transfer_policy": "PATH_LIMITED_QUALIFICATION_PATCH_ONLY"
+    }
+  },
+  "source_binding": {
+    "root_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw",
+    "root_plan": {
+      "path": "hepta-vnext-development-plan-final-2026-08-23.md",
+      "sha256": "e16d49b3123c5e4a68d722e38839a7c65278009f23d87bbcec664cc2162cf387"
+    },
+    "references": [
+      {
+        "path": "hepta-net-node-link-plan-2026-08-26.md",
+        "sha256": "2b3ffb6c66eec25183881f158368dfee1cabee545a33503ced1ffdc155784c0b"
+      },
+      {
+        "path": "HNL_STAGE_MATRIX_v1.yaml",
+        "sha256": "c92c6ae08486c7c33a8f7590b4d009d2e0b759630d4f3a5f9059747db5b67f53"
+      },
+      {
+        "path": "HNL-PLAN-APPEND-RECEIPT-2026-08-26.json",
+        "sha256": "956ff899a147a8f53cd112e850f52e80f9b68af26f8d97e5512750937a8b9e1f"
+      },
+      {
+        "path": "AUTHBUS_STAGE_MATRIX_v1.yaml",
+        "sha256": "4fa95cc0706d4692b704b38611738b75d20c9f8d75b1e1472c67b1fdbea16fe4"
+      }
+    ],
+    "observed_at": "2026-08-27T01:45:08+08:00",
+    "source_bytes_rewritten": false,
+    "historical_receipts_rewritten": false
+  },
+  "dependency": {
+    "id": "HNL-GATE0-DECISIONS",
+    "expected_stage_id": "HNL-0",
+    "plan_anchor": "hnl-gate0-architecture",
+    "matrix_pointer": "#/stages/0",
+    "anchor_resolved": true,
+    "stage_resolved": true,
+    "receipt_kind": "HNL_PLAN_APPEND_ONLY",
+    "receipt_declared_status": "PLANNING_ONLY_STALE_SOURCE_BINDING",
+    "receipt_digest_match": false,
+    "resolution_status": "RECEIPT_STALE",
+    "reason_codes": [
+      "HNL_APPEND_RECEIPT_ATTACHMENT_DIGEST_MISMATCH",
+      "HNL_APPEND_RECEIPT_PARENT_PLAN_STALE",
+      "EXTERNAL_TRUST_ROOT_NOT_PRESENT"
+    ],
+    "local_lane": "ALLOWED_QUALIFICATION_ONLY",
+    "federated_lane": "NOT_READY_FAIL_CLOSED"
+  },
+  "evidence": {
+    "evidence_class": "DETERMINISTIC_FIXTURE_AND_OFFLINE_SOURCE_RESOLUTION",
+    "claim_status": "SCHEMA_ONLY",
+    "efficacy_status": "NOT_MEASURED",
+    "approval": "NONE",
+    "external_authority": false,
+    "network_or_signer_used": false,
+    "production_listener_or_route": false
+  },
+  "qualification_files": [
+    {
+      "path": "qualification/hnl-inf-0/hnl-gate0-dependency.json",
+      "sha256": "b1a8c606bc6e93a08240fbc4f21efabfeb4967bc2cfd00ee645bc6d35fb5c83b"
+    },
+    {
+      "path": "qualification/hnl-inf-0/hnl-gate0-dependency.schema.json",
+      "sha256": "abf433b67b00475c3f7f1cd2026a2bfb0a54ea3f4d334c8722cc1775e9671d5a"
+    },
+    {
+      "path": "qualification/hnl-inf-0/verify_gate0_dependency.py",
+      "sha256": "1f3a169dab2aa8f187a416dab428f08ba923b23971a180dae46ad473145ac3e1"
+    },
+    {
+      "path": "qualification/hnl-inf-0/test_gate0_dependency.py",
+      "sha256": "65756375931e905f5124733d24c0e26c2e760d75c47473c341e2cf6248fd6923"
+    },
+    {
+      "path": "qualification/hnl-inf-0/verify_gate0_dependency.sh",
+      "sha256": "acaf4300a2eb88b19084a14bce3e25b46dc7c4be018fb2f15b2d493b5be358f1"
+    },
+    {
+      "path": "qualification/hnl-inf-0/README.md",
+      "sha256": "c7ea95e82cef77d5fd7f2c93833178eeed8678de3e8f4260fd4d3e7998979e8c"
+    }
+  ],
+  "checks": {
+    "gate0_dependency_tests": {
+      "command": "./qualification/hnl-inf-0/verify_gate0_dependency.sh",
+      "passed": 8,
+      "failed": 0,
+      "ignored": 0,
+      "log": "gate0.log",
+      "log_bytes": 1790,
+      "log_sha256": "86ed81d266dd4b78b1ace48cb066eadb0ef5671d58c457b0b55d7eafb2fbdfc4"
+    },
+    "uds_loopback_tests": {
+      "command": "cd qualification/hnl-inf-0 && PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest -v test_uds_loopback.py",
+      "passed": 17,
+      "failed": 0,
+      "ignored": 0,
+      "log": "uds.log",
+      "log_bytes": 2727,
+      "log_sha256": "56e0c77c5c05ff00943e0b50b58ab42cf854d50478fa9f52828f40097a79c108"
+    },
+    "json_schema_surface": {
+      "command": "stdlib JSON syntax and strict schema-surface assertions",
+      "result": "pass",
+      "log": "json-schema.log",
+      "log_bytes": 112,
+      "log_sha256": "e6a14844b882bcc42166deba8d96abe203f6b909610c0545a1a979aa2a03a20e"
+    },
+    "cargo_check_contracts": {
+      "command": "hepta-ssd-run p3-hnl-gate0-dependency-20260827 -- cargo check --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-contracts",
+      "result": "pass",
+      "log": "cargo-check-contracts.log",
+      "log_bytes": 845,
+      "log_sha256": "1f583ac811eccf0c959b7243a665bbcc45ac3fee7d49c84d994d63d7d903c08b"
+    },
+    "cargo_clippy_contracts": {
+      "command": "hepta-ssd-run p3-hnl-gate0-dependency-20260827 -- cargo clippy --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-contracts --lib -- -D warnings",
+      "result": "pass",
+      "log": "cargo-clippy-contracts.log",
+      "log_bytes": 208,
+      "log_sha256": "32e66c466eb80d2f5b019c84dc18ed9eeb4f16eb45033b757fb5cb0daa71038f"
+    },
+    "cargo_fmt_workspace": {
+      "command": "hepta-ssd-run p3-hnl-gate0-dependency-20260827 -- cargo fmt --manifest-path codex-rs/Cargo.toml --all -- --check",
+      "result": "baseline_drift",
+      "exit": 1,
+      "log": "cargo-fmt-check.log",
+      "log_bytes": 126955,
+      "log_sha256": "26265157be26143f0814a6e9b83051c2a48e1e7e406074669c10e24f78d2b13a",
+      "note": "pre-existing repository-wide formatter drift; this qualification commit contains no Rust source changes"
+    },
+    "git_diff_check": {
+      "command": "git diff --check HEAD^ HEAD",
+      "result": "pass"
+    }
+  },
+  "authority_flags": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "shared_kg_write": false,
+    "routing_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "callers_touched": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "external_trust_root": false
+  },
+  "remaining_gates": [
+    "fresh independently reviewed HNL Gate 0 append receipt with matching plan attachment digest",
+    "external signer/trust-root and platform identity credentials",
+    "HNL field crosswalk and Linux pidfd/starttime/launch-nonce or macOS audit-token vectors",
+    "native network backend and deterministic UDS loopback beyond synthetic fixtures",
+    "production federation/provider/effect authority and HNL-1 implementation"
+  ],
+  "append_only": true,
+  "receipt_hash_basis": "SHA-256 of this receipt's canonical bytes is recorded in SHA256SUMS; the receipt does not self-embed its own digest and grants no authority."
+}

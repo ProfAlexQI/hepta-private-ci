@@ -1,0 +1,51 @@
+{
+  "$schema": "hepta.inference.plan_append_receipt.v1",
+  "receipt_kind": "INF_PLAN_APPEND_ONLY",
+  "status": "PLANNING_ONLY_STALE_SOURCE_BINDING",
+  "timestamp": "2026-08-26T02:35:22+08:00",
+  "canonical_plan": {
+    "path": "/home/qian-qi/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+    "parent_sha256_before_append": "ba5008aa46b2f4e2ee3325deee197aa99d6997039bd5659db67f400c0c72c417",
+    "sha256_after_append": "c1f03a4ba0166484b4e7120bbf4675a275c3b5344f3d53e327f624c5d2949ed1",
+    "line_count_after_append": 3575,
+    "append_anchor": "HNL.6 / EOF line 3479 (pre-append snapshot)",
+    "new_section": "INF-PLAN-2026-08-26"
+  },
+  "source_binding": {
+    "parent_plan_id": "hepta-vnext-development-plan-final-2026-08-23",
+    "documented_canonical_main_head": "7ed9c9a85fa65aa3cb26cf440a55028ce0b35079",
+    "repo_tree": "7d4306273861564a62fa9614860bdc6239a065d0",
+    "canonical_dirty": true,
+    "active_experimental_branch": "hepta/integration-upstream-20260824",
+    "active_experimental_head": "54c733764be7c24ef928cfc689e09515273ff900",
+    "active_experimental_tree": "ff902e217d857c3040516557305d0b93382afeae",
+    "implementation_branch": "not-created",
+    "worktree": "not-created",
+    "dirty": true,
+    "external_pointer_status": "STALE_SOURCE_BINDING"
+  },
+  "attachments": [
+    {"path": "OpenClaw/hepta-inference-runtime-plan-2026-08-26.md", "sha256": "ff85519288c9d85315fd60471e577a933a00b5b48736cc4281b51f26029214d0"},
+    {"path": "OpenClaw/INF_STAGE_MATRIX_v1.yaml", "sha256": "ca2ab4ae9724ec42e250f65986c5fa816b31a9cb7038a398396ab93c5592ad13"},
+    {"path": "OpenClaw/hepta.infer_receipt.v1.schema.json", "sha256": "2e2c79fe15b7dc8237a1c2b5240f4c2d324f9de2a047f776f6e642aa999c7117"},
+    {"path": "OpenClaw/HEPTA_INFERENCE_PERFORMANCE_CONTRACT_V1.md", "sha256": "71806550b4de64a3c6c1617451156e1793f293eb59a25544a8d4cb3ca3f24ad8"}
+  ],
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "shared_kg_write": false,
+    "routing_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "callers_touched": false,
+    "operator_acceptance": false,
+    "promotion": false
+  },
+  "mirror": {
+    "status": "UNCHANGED_OLD_ARCHIVAL_MIRROR",
+    "not_updated": true
+  }
+}

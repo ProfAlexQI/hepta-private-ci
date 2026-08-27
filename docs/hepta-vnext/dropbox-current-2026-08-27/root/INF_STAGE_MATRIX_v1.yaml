@@ -1,0 +1,209 @@
+schema: hepta.inference.stage_matrix.v1
+current_global_plan_pointer:
+  plan_revision: E.45
+  plan_path: OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md#development-docs-sync-e45
+  plan_sha256: f0a98ae0e6cb1ff3c4bb660bfe50ca921cda434926a755d127dcc7399c4a5620
+  binding_manifest: OpenClaw/HEPTA_DEVELOPMENT_DOCS_CURRENT_BINDING_V1.json
+  meaning: contextual_only_does_not_rebind_inference_parent
+  implementation_evidence: NOT_RUN
+plan_id: INF-hepta-inference-runtime
+plan_version: 0.1.0
+parent_source:
+  parent_plan_id: hepta-vnext-development-plan-final-2026-08-23
+  parent_plan_digest: "ba5008aa46b2f4e2ee3325deee197aa99d6997039bd5659db67f400c0c72c417"
+  canonical_head: "7ed9c9a85fa65aa3cb26cf440a55028ce0b35079"
+  canonical_tree: "7d4306273861564a62fa9614860bdc6239a065d0"
+  canonical_dirty: true
+  active_experimental_branch: "hepta/integration-upstream-20260824"
+  active_experimental_head: "54c733764be7c24ef928cfc689e09515273ff900"
+  active_experimental_tree: "ff902e217d857c3040516557305d0b93382afeae"
+  active_experimental_dirty: true
+  binding_observed_at: "2026-08-26T02:32:40+08:00"
+  binding_observed_via: "ssh mac-ts read-only git inspection"
+  insert_after: "HNL.6 / EOF line 3479 (pre-append snapshot)"
+  status: STALE_SOURCE_BINDING
+  implementation_branch: not-created
+  worktree: not-created
+  dirty: true
+global:
+  mode: qualification_only
+  matrix_status: bound_planning_only_stale_external_pointer
+  command_status: planned_until_stage_artifacts_exist
+  production_writer: false
+  provider_effect: false
+  shared_kg_write: false
+  route_write: false
+  fleet_write: false
+  model_npu: false
+  remote_inference: false
+  callers_touched: false
+  promotion: false
+  operator_acceptance: false
+  deterministic_network_access: false
+  owner_role: hepta_inference_lane
+  accountable_role: hepta_maintainer
+  security_review_role: security_reviewer
+  performance_review_role: platform_performance_reviewer
+  source_drift_rule: "parent digest/head/tree/dirty/branch/worktree change => STALE_SOURCE_BINDING and stop"
+  unknown_tuple_rule: "NotAdmitted; never silently fallback"
+stages:
+  - id: INF-0
+    title: contract_hardware_model_baseline
+    depends_on: []
+    owner: hepta_inference_lane
+    reviewers: [security_reviewer, platform_performance_reviewer]
+    entry: exact_parent_binding_sealed
+    exit:
+      - performance_contract_frozen
+      - backend_abi_and_wire_profile_reviewed
+      - hardware_profiles_and_workload_fixtures_recorded
+      - model_manifest_and_golden_vectors_present
+    commands:
+      - "cargo fmt --check"
+      - "cargo check --workspace --locked"
+      - "schema-lint --strict drafts/inference"
+      - "python3 qualification/verify_inference_manifest.py"
+    timeout_minutes: 30
+    provisional_resource_budget: {rss_mb: 1024, disk_mb: 2048, network_access: false}
+    receipt_kind: infer_design_receipt_v1
+    rollback: revert_schema_and_manifest_only_no_runtime_effect
+  - id: INF-1
+    title: backend_neutral_loopback_uds
+    depends_on: [INF-0]
+    owner: hepta_inference_lane
+    entry: INF-0_qualification_receipt
+    exit:
+      - deterministic_loopback_request_response
+      - uds_peer_auth_and_agent_acl
+      - idempotency_cancel_and_generation_fence
+      - crash_restart_and_receipt_terminality
+      - shadow_typed_output_and_authority_fence
+    commands:
+      - "cargo fmt --check"
+      - "cargo clippy --workspace --locked -- -D warnings"
+      - "cargo test --workspace --locked --no-default-features"
+      - "cargo fuzz run infer_uds_codec -- -max_total_time=600"
+    timeout_minutes: 60
+    provisional_resource_budget: {rss_mb: 2048, disk_mb: 4096, network_access: false}
+    receipt_kind: infer_core_receipt_v1
+    rollback: disable_inference_feature_and_remove_only_new_crate
+  - id: INF-2A
+    title: llama_cpp_native_worker
+    depends_on: [INF-1]
+    owner: hepta_inference_lane
+    reviewers: [platform_performance_reviewer]
+    entry: INF-1_receipt_and_locked_backend_commit
+    exit:
+      - one_model_quant_device_tuple_admitted
+      - direct_native_baseline_receipt
+      - sidecar_warm_cold_and_cancel_receipts
+      - abi_sanitizer_and_worker_restart_pass
+    commands:
+      - "cargo test -p hepta-infer-llama --locked"
+      - "./qualification/infer_direct_native_vs_sidecar.sh --backend llama.cpp"
+      - "./qualification/infer_worker_faults.sh --backend llama.cpp"
+    timeout_minutes: 120
+    provisional_resource_budget: {rss_mb: 4096, disk_mb: 8192, network_access: controlled_fixture_only}
+    receipt_kind: infer_llama_receipt_v1
+    rollback: backend_feature_flag_off_and_remove_tuple_from_router
+  - id: INF-2B
+    title: coreml_tiny_and_audio_workers
+    depends_on: [INF-1]
+    owner: hepta_inference_lane
+    reviewers: [platform_performance_reviewer, security_reviewer]
+    entry: INF-1_receipt_and_device_profile
+    exit:
+      - actual_coreml_device_path_receipt_or_known_gap
+      - whisper_asr_baseline_receipt
+      - sherpa_audio_capability_receipt_or_known_gap
+    commands:
+      - "cargo test -p hepta-infer-audio --locked"
+      - "./qualification/infer_coreml_path_check.sh"
+      - "./qualification/infer_audio_benchmark.sh"
+    timeout_minutes: 120
+    provisional_resource_budget: {rss_mb: 4096, disk_mb: 8192, network_access: controlled_fixture_only}
+    receipt_kind: infer_coreml_audio_receipt_v1
+    rollback: disable_coreml_audio_backend_features
+  - id: INF-3
+    title: pool_scheduler_cache_and_backpressure
+    depends_on: [INF-2A]
+    optional_depends_on: [INF-2B]
+    owner: hepta_inference_lane
+    entry: at_least_one_native_tuple_qualified
+    exit:
+      - warm_pool_and_residency_limits
+      - deadline_and_background_scheduler_tests
+      - quota_backpressure_and_cache_isolation
+      - oom_thermal_cancel_and_restart_matrix
+    commands:
+      - "cargo test -p hepta-infer-core --locked --features scheduler"
+      - "cargo test -p hepta-infer-integration --locked --features scheduler"
+      - "./qualification/infer_fault_matrix.sh"
+    timeout_minutes: 180
+    provisional_resource_budget: {rss_mb: 4096, disk_mb: 8192, network_access: false}
+    receipt_kind: infer_scheduler_receipt_v1
+    rollback: disable_scheduler_cache_feature_and_drain_workers
+  - id: INF-4
+    title: multi_device_performance_qualification
+    depends_on: [INF-3]
+    owner: hepta_inference_lane
+    reviewers: [platform_performance_reviewer, security_reviewer]
+    entry: hardware_profile_and_direct_native_harness_present
+    exit:
+      - mac_m5_profile_receipt
+      - rtx4060_profile_receipt
+      - j3160_baseline_or_known_gap
+      - pocket4_profile_or_explicit_blocker
+      - router_contains_only_measured_tuples
+    commands:
+      - "./qualification/infer_perf_matrix.sh --device-profile all-known"
+      - "./qualification/verify_infer_router_admission.sh"
+    timeout_minutes: 300
+    provisional_resource_budget: {rss_mb: 8192, disk_mb: 16384, network_access: controlled_fixture_only}
+    receipt_kind: infer_perf_receipt_v1
+    rollback: remove_failed_tuples_from_registry_and_restore_previous_router_manifest
+  - id: INF-5
+    title: image_and_controlled_audio_extension
+    depends_on: [INF-4]
+    owner: hepta_inference_lane
+    entry: image_device_profile_and_vram_budget_present
+    exit:
+      - stable_diffusion_image_receipt_or_known_gap
+      - audio_extension_receipt
+      - video_generation_explicitly_deferred
+    commands:
+      - "cargo test -p hepta-infer-media --locked"
+      - "./qualification/infer_image_benchmark.sh"
+    timeout_minutes: 240
+    provisional_resource_budget: {rss_mb: 8192, disk_mb: 16384, network_access: controlled_fixture_only}
+    receipt_kind: infer_media_receipt_v1
+    rollback: image_backend_feature_off
+  - id: INF-6
+    title: hepta_semantic_contract_integration
+    depends_on: [INF-3, INF-4]
+    owner: hepta_inference_lane
+    reviewers: [hepta_maintainer, security_reviewer]
+    entry: performance_and_isolation_receipts_present
+    exit:
+      - run_start_snapshot_binding
+      - model_receipt_and_neuron_signal_compatibility
+      - typed_output_only_and_negative_authority_verified
+      - rollback_and_replay_receipt
+    commands:
+      - "cargo test -p hepta-infer-integration --locked --features contract"
+      - "./qualification/verify_infer_authority_fences.sh"
+    timeout_minutes: 120
+    provisional_resource_budget: {rss_mb: 4096, disk_mb: 8192, network_access: false}
+    receipt_kind: infer_integration_receipt_v1
+    rollback: disable_inference_contract_adapter_no_core_contract_change
+  - id: INF-7
+    title: video_remote_federation_future
+    depends_on: [INF-6]
+    owner: future_inference_platform_lane
+    entry: explicit_p1_p2_governance_approval
+    exit: [separate_video_and_remote_policy_review]
+    commands: ["qualification/future_inference_lane.sh"]
+    timeout_minutes: 240
+    provisional_resource_budget: {rss_mb: 8192, disk_mb: 16384, network_access: controlled_fixture_only}
+    receipt_kind: infer_future_lane_receipt_v1
+    rollback: keep_future_lane_disabled

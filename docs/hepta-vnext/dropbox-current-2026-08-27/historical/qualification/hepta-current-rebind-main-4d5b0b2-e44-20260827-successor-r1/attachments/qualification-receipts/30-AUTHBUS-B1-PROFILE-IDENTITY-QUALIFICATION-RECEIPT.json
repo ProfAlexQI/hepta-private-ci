@@ -1,0 +1,109 @@
+{
+  "schema": "hepta.authbus.b1.profile-identity.qualification-receipt.v1",
+  "receipt_kind": "QUALIFICATION",
+  "status": "LOCAL_QUALIFICATION_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "stage": "B1",
+  "slice": [
+    "typed Basil minimal service profile with a closed default-deny route set",
+    "route-set and descriptor digest validation",
+    "forbidden key generation with fail-closed pre-registered key admission",
+    "process-bound identity claims with peer, generation, nonce, epoch and fence evidence"
+  ],
+  "candidate": {
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/authbus-next-20260827",
+    "branch": "hepta/authbus-next-20260827",
+    "head": "c02a834773d08393e34143705fddc7c67ffa22cf",
+    "tree": "68831914cef813763ea2c0419390b3371c3efac7",
+    "parent": "a37278620b34a47193db867e0cb749e50ed1bfe5",
+    "dirty": false,
+    "changed_paths": [
+      "codex-rs/hepta-contracts/src/authbus.rs",
+      "codex-rs/hepta-contracts/src/authbus_b1.rs",
+      "codex-rs/hepta-contracts/src/authbus_b1_tests.rs",
+      "codex-rs/hepta-contracts/src/lib.rs"
+    ]
+  },
+  "source_binding": {
+    "plan_id": "AUTHBUS-PLAN-2026-08-26",
+    "plan_reference": "E.41 / AUTHBUS.11 v1.3",
+    "root_plan_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+    "root_plan_sha256": "d8e708eff60ade95732f904d8254bd367ec5e42093f23d90a45c6b1b112825cf",
+    "qualification_index_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+    "qualification_index_sha256": "ddc956447ea13ce1e08b99e642b1b237de4bd177eecc7084873f13447d4745ac",
+    "registry_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml",
+    "registry_sha256": "cda83c4776d4c2b3c2851474e476e775d6ca26fa815373083aac47fdfd0c89f5",
+    "trust_matrix_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml",
+    "trust_matrix_sha256": "aafaa9576a184c084a5791291e99d42581ffd429403cb16cb77adb0ba4c59165",
+    "binding_status": "STALE_SOURCE_BINDING_LOCAL_OBSERVATION",
+    "external_authority_receipt": false,
+    "note": "The local lane records the observed Dropbox bytes but does not replace the current/effective index or claim an external signer/trust-root decision. Existing source and historical receipts remain immutable."
+  },
+  "evidence": {
+    "evidence_class": "LOCAL_DETERMINISTIC_CONTRACT_TEST_EVIDENCE",
+    "claim_status": "L1_SHADOW_QUALIFICATION_ONLY",
+    "efficacy_status": "NOT_ASSESSED",
+    "approval": "NONE",
+    "physical_exactly_once": "NOT_ESTABLISHED",
+    "scope": "The contract layer rejects route widening, unknown routes, missing or ambiguous key registration, same-UID-only identity, mismatched peer generation/launch nonce, malformed claims and unknown wire fields. It does not open a Basil listener, invoke a backend, generate/import/export key material, or establish external identity authority."
+  },
+  "checks": {
+    "cargo_test_locked_p_codex_hepta_contracts_serial": "107 passed / 0 failed / 0 ignored",
+    "cargo_check_locked_p_codex_hepta_contracts": "pass",
+    "cargo_clippy_locked_p_codex_hepta_contracts_lib_d_warnings": "pass",
+    "git_diff_check": "pass",
+    "targeted_rustfmt_new_files": "pass",
+    "workspace_fmt": "baseline_drift_not_rewritten"
+  },
+  "contract_properties": {
+    "allowed_routes": [
+      "/basil.broker.v1.SigningService/Sign",
+      "/basil.broker.v1.SigningService/Verify",
+      "/basil.broker.v1.SigningService/GetPublicKey",
+      "/basil.broker.v1.AdminService/Health"
+    ],
+    "optional_process_bound_routes": [
+      "/basil.broker.v1.AeadService/Decrypt"
+    ],
+    "unknown_route_policy": "DENY",
+    "key_generation": "FORBIDDEN",
+    "missing_registered_key": "FAIL_CLOSED",
+    "identity_peer_policy": "SO_PEERCRED_PLUS_GENERATION_NONCE_PIDFD_OR_PLATFORM_ADAPTER",
+    "same_uid_only": "REJECT",
+    "forwarded_uid": "REJECT",
+    "authority_default": false
+  },
+  "authority_flags": {
+    "authority": false,
+    "external_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "production_listener": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "model_inference": false,
+    "shared_kg_write": false,
+    "fleet": false,
+    "network": false,
+    "key_generation": false
+  },
+  "external_effects": false,
+  "real_provider_or_basil_backend_connected": false,
+  "remaining_gates": [
+    "Basil fork patch inventory and descriptor/raw-byte scan bound to a current source receipt",
+    "external signer/trust-root/KMS/HSM and key rotation/revocation",
+    "runtime socket identity adapters with independent agentd/launch attestation",
+    "physical power-loss/media durability and root-owned authoritative writer",
+    "provider-owned signed ACK/status and physical exactly-once",
+    "CALLERS/operator/promotion ceremony and H8/H9 supervisor/canary/rollback"
+  ],
+  "append_only": true,
+  "generated_at": "2026-08-26T21:25:44Z",
+  "receipt_sha256_basis": "SHA-256 of this immutable receipt file is recorded in SHA256SUMS beside it; the receipt is qualification evidence only and is not an authority grant."
+}

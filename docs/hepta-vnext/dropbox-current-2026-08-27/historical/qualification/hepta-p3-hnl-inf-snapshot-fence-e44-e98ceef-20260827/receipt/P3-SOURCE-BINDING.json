@@ -1,0 +1,84 @@
+{
+  "$schema": "hepta.hnl-inf.p3_source_binding.v1",
+  "binding_kind": "qualification_contract_inputs",
+  "observed_at": "2026-08-27T04:36:00+08:00",
+  "status": "STALE_SOURCE_BINDING",
+  "mode": "qualification_only",
+  "reason_codes": [
+    "E44_CURRENT_PLAN_BYTES_REBOUND",
+    "E43_CURRENT_PLAN_BYTES_REBOUND",
+    "E41_CURRENT_PLAN_BYTES_REBOUND",
+    "EXTERNAL_EFFECTIVE_INDEX_NOT_REBOUND",
+    "HNL_PLAN_DECLARES_STALE_PARENT",
+    "INF_PLAN_DECLARES_STALE_PARENT",
+    "NO_EXTERNAL_SIGNER_ATTESTATION"
+  ],
+  "root_source": {
+    "local_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+    "documented_path": "/home/qian-qi/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+    "sha256": "d8e708eff60ade95732f904d8254bd367ec5e42093f23d90a45c6b1b112825cf",
+    "latest_section": "E.44",
+    "source_status": "current_local_bytes_e44_external_pointer_stale"
+  },
+  "qualification_index": {
+    "local_path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+    "sha256": "c44f8157f9f518ba5a4410ac880f5d848ae8ebb193d505637e21c1af7154429e",
+    "source_status": "current_local_bytes_external_pointer_requires_review"
+  },
+  "plan_append_receipts": {
+    "hnl": {
+      "path": "OpenClaw/HNL-PLAN-APPEND-RECEIPT-2026-08-26.json",
+      "sha256": "956ff899a147a8f53cd112e850f52e80f9b68af26f8d97e5512750937a8b9e1f",
+      "parent_plan_digest": "07dbbd0fb36a9d82d039275a9819e6c18b133248a2864470f7ffa17ef6cda718",
+      "status": "PLANNING_ONLY_STALE_SOURCE_BINDING"
+    },
+    "inf": {
+      "path": "OpenClaw/INF-PLAN-APPEND-RECEIPT-2026-08-26.json",
+      "sha256": "67b17ea421271728fa5d19bb7ce44f0e5b286d3a37201e70c69c6bfd1e30ceaf",
+      "parent_plan_digest": "ba5008aa46b2f4e2ee3325deee197aa99d6997039bd5659db67f400c0c72c417",
+      "status": "PLANNING_ONLY_STALE_SOURCE_BINDING"
+    }
+  },
+  "attachments": [
+    {"path": "OpenClaw/hepta-net-node-link-plan-2026-08-26.md", "sha256": "2b3ffb6c66eec25183881f158368dfee1cabee545a33503ced1ffdc155784c0b"},
+    {"path": "OpenClaw/HNL_STAGE_MATRIX_v1.yaml", "sha256": "c92c6ae08486c7c33a8f7590b4d009d2e0b759630d4f3a5f9059747db5b67f53"},
+    {"path": "OpenClaw/hepta.hnl_receipt.v1.schema.json", "sha256": "2eb3c9e97469c53ee4bf4943aca2d5ae5bdad471a45485b4016356fc959c53c3"},
+    {"path": "OpenClaw/hepta-inference-runtime-plan-2026-08-26.md", "sha256": "ff85519288c9d85315fd60471e577a933a00b5b48736cc4281b51f26029214d0"},
+    {"path": "OpenClaw/INF_STAGE_MATRIX_v1.yaml", "sha256": "ca2ab4ae9724ec42e250f65986c5fa816b31a9cb7038a398396ab93c5592ad13"},
+    {"path": "OpenClaw/hepta.infer_receipt.v1.schema.json", "sha256": "2e2c79fe15b7dc8237a1c2b5240f4c2d324f9de2a047f776f6e642aa999c7117"},
+    {"path": "OpenClaw/HEPTA_INFERENCE_PERFORMANCE_CONTRACT_V1.md", "sha256": "71806550b4de64a3c6c1617451156e1793f293eb59a25544a8d4cb3ca3f24ad8"}
+  ],
+  "qualification_target": {
+    "repository": "hepta-vnext",
+    "branch": "hepta/hnl-inf-snapshot-fence-20260827",
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/p3-hnl-inf-snapshot-fence-20260827",
+    "base_head": "bc45b0937a4ecdeb194d8831aa11cc37370f856b",
+    "base_tree": "eb83937325c9c9ea836e1b80cc0f7fa13a74eaf9",
+    "implementation_stage": "HNL-1_INF-1_deterministic_uds_loopback_snapshot_rehydrate",
+    "runtime_created": false,
+    "listener_started": false,
+    "network_route_touched": false,
+    "model_loaded": false
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "shared_kg_write": false,
+    "routing_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "callers_touched": false,
+    "operator_acceptance": false,
+    "promotion": false
+  },
+  "artifact_policy": {
+    "canonical_encoding": "JSON sorted-key compact UTF-8 projection for fixtures only",
+    "cryptographic_attestation": "not_performed",
+    "network_access": false,
+    "production_claim": false,
+    "next_stage": "separate HNL-1/INF-1 review and feature-gated deterministic UDS loopback"
+  }
+}

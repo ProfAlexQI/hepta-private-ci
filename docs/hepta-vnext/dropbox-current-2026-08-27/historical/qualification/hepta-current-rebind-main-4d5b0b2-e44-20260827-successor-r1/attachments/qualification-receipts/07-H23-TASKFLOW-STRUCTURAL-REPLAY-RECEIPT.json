@@ -1,0 +1,71 @@
+{
+  "schema": "hepta.h23.taskflow_structural_replay.qualification_receipt.v1",
+  "status": "LOCAL_QUALIFICATION_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "slice": [
+    "opt-in deterministic TaskFlow graph frontier derivation",
+    "read-only durable TaskFlow event replay with current-node/state validation",
+    "fail-closed rejection of hash-valid transitions that violate graph structure",
+    "regressions for sorted frontiers, blocked/terminal states, replay divergence, and invalid resume edges"
+  ],
+  "worktree": "/Volumes/T5/hepta-vnext/worktrees/h23-kernel-20260826",
+  "branch": "hepta/h23-kernel-20260826",
+  "head": "5529095b186a30b2b6091cc9cc5c5309a153cbc6",
+  "tree": "bf9e6faafa7d6a8fa08d52bbc2f72a03c9dc0ce9",
+  "parent": "d600fd3130b1f7d731ae440990a078b98189e3d6",
+  "source_binding": {
+    "canonical_candidate": "d600fd3130b1f7d731ae440990a078b98189e3d6",
+    "canonical_candidate_tree": "8992fb37a8399202d65b4baeb836f2529fea6d29",
+    "external_authority_receipt": false,
+    "binding_status": "NOT_PRODUCTION_BOUND",
+    "note": "Independent append-only local evidence; no canonical worktree, Dropbox root, or authority index was modified."
+  },
+  "evidence": {
+    "evidence_class": "LOCAL_STRUCTURAL_REPLAY",
+    "claim_status": "QUALIFICATION_ONLY",
+    "efficacy_status": "NOT_ASSESSED",
+    "approval": "NONE",
+    "physical_exactly_once": "NOT_ESTABLISHED",
+    "scope": "The feature-gated read-only structural seam reconstructs TaskFlow current node, state, revision, and deterministic frontier from the durable event ledger and rejects graph-invalid replay without invoking scheduling, providers, models, or external effects."
+  },
+  "checks": {
+    "focused_structural_tests": "3 passed / 0 failed / 0 skipped",
+    "feature_package_tests": "28 passed / 0 failed / 0 skipped",
+    "default_package_tests": "25 passed / 0 failed / 0 skipped (1 existing leaky-test classification)",
+    "cargo_check_codex_hepta_automation_default": "pass",
+    "cargo_check_codex_hepta_automation_structural_feature": "pass",
+    "cargo_clippy_structural_feature_all_targets_d_warnings": "pass",
+    "targeted_rustfmt_check": "pass (pinned formatter warnings only)",
+    "git_diff_check": "pass",
+    "worktree_clean": true
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "scheduler_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "model_inference": false,
+    "shared_kg_write": false,
+    "fleet": false
+  },
+  "external_effects": false,
+  "real_provider_or_market_connected": false,
+  "remaining_gates": [
+    "atomic graph-aware validation/current-node advancement in the production command writer",
+    "per-step attempt, effect-intent, outbox, provider receipt, and reconciliation durability",
+    "scheduler/provider/model authority and production mutation wiring",
+    "provider-owned signed ACK/status and physical exactly-once evidence",
+    "external signer/trust-root/KMS/HSM and key lifecycle",
+    "power-loss/media durability and independent supervisor/promotion ceremony"
+  ],
+  "generated_at": "2026-08-26T14:00:19Z",
+  "append_only": true
+}

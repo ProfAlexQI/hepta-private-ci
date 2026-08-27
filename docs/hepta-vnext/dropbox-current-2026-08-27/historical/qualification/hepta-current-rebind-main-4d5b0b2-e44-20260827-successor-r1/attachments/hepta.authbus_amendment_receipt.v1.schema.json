@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hepta.local/schemas/hepta.authbus_amendment_receipt.v1.schema.json",
+  "title": "Hepta AuthBus AUTHBUS.11 implementation amendment receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "plan_id",
+    "revision",
+    "status",
+    "amendment",
+    "parent_receipt",
+    "index_binding",
+    "parent_bindings",
+    "post_bindings",
+    "changed_files",
+    "authority_flags",
+    "external_gates",
+    "validation",
+    "created_at"
+  ],
+  "properties": {
+    "schema": { "const": "hepta.authbus.amendment-receipt.v1" },
+    "plan_id": { "const": "AUTHBUS-PLAN-2026-08-26" },
+    "revision": { "const": "1.2" },
+    "status": { "const": "PLANNING_ONLY_IMPLEMENTATION_BACKLOG" },
+    "amendment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "supersedes", "canonical_anchor", "purpose"],
+      "properties": {
+        "id": { "const": "AUTHBUS.11" },
+        "supersedes": { "const": "AUTHBUS.10" },
+        "canonical_anchor": { "const": "authbus11-contract-crosswalk-ci-rules-v12" },
+        "purpose": { "const": "contract_crosswalk_and_implementation_consistency" }
+      }
+    },
+    "parent_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "immutable"],
+      "properties": {
+        "path": { "const": "OpenClaw/AUTHBUS-PLAN-APPEND-RECEIPT-2026-08-26.json" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "immutable": { "const": true }
+      }
+    },
+    "index_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "entry", "hash_scope"],
+      "properties": {
+        "path": { "const": "OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md" },
+        "entry": { "const": "E.43" },
+        "hash_scope": { "const": "external_index_records_receipt_and_post_bindings; index_is_excluded_from_receipt_hash_to_avoid_cycle" }
+      }
+    },
+    "parent_bindings": {
+      "type": "array",
+      "minItems": 10,
+      "items": { "$ref": "#/definitions/digest_entry" }
+    },
+    "post_bindings": {
+      "type": "array",
+      "minItems": 10,
+      "items": { "$ref": "#/definitions/digest_entry" }
+    },
+    "changed_files": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/digest_entry" }
+    },
+    "authority_flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "production_caller",
+        "production_writer",
+        "effect_authority",
+        "operator_acceptance",
+        "promotion",
+        "g5_allowed",
+        "execute_allowed"
+      ],
+      "properties": {
+        "authority": { "const": false },
+        "production_caller": { "const": false },
+        "production_writer": { "const": false },
+        "effect_authority": { "const": false },
+        "operator_acceptance": { "const": false },
+        "promotion": { "const": false },
+        "g5_allowed": { "const": false },
+        "execute_allowed": { "const": false }
+      }
+    },
+    "external_gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["development", "internal_test", "release_prep", "final_release"],
+      "properties": {
+        "development": { "const": "DEFERRED_PRE_RELEASE" },
+        "internal_test": { "const": "DEFERRED_PRE_RELEASE" },
+        "release_prep": { "const": "DEFERRED_PRE_RELEASE" },
+        "final_release": { "const": "REQUIRED_FOR_RELEASE_ONLY" }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strict_yaml_duplicate_keys",
+        "json_schema",
+        "crosswalk_projection",
+        "status_and_error_registry",
+        "dispatch_wal_invariants",
+        "stage_dag_and_refs",
+        "e41_prefix_unchanged",
+        "runtime_untouched",
+        "production_flags_unchanged"
+      ],
+      "properties": {
+        "strict_yaml_duplicate_keys": { "const": true },
+        "json_schema": { "const": true },
+        "crosswalk_projection": { "const": true },
+        "status_and_error_registry": { "const": true },
+        "dispatch_wal_invariants": { "const": true },
+        "stage_dag_and_refs": { "const": true },
+        "e41_prefix_unchanged": { "const": true },
+        "runtime_untouched": { "const": true },
+        "production_flags_unchanged": { "const": true }
+      }
+    },
+    "notes": { "type": "array", "items": { "type": "string" } },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "definitions": {
+    "digest_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

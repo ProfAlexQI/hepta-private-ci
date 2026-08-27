@@ -1,0 +1,174 @@
+{
+  "schema": "hepta.h4.persistent_writer_boundary_qualification_receipt.v1",
+  "kind": "h4_persistent_writer_crash_boundary",
+  "generated_at": "2026-08-26T19:55:43Z",
+  "phase": "DEVELOPMENT",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "status": "PASS_LOCAL_QUALIFICATION",
+  "claim_level": "L1_SHADOW_QUALIFICATION_ONLY",
+  "evidence_class": "LOCAL_SQLITE_WAL_FULL_CLAIM_BOUNDARY_AND_MARKER_DURABILITY_REGRESSION",
+  "claim_status": "LOCAL_BEHAVIORAL_INVARIANT_ONLY",
+  "efficacy_status": "NO_PRODUCTION_EFFICACY_CLAIM",
+  "approval_state": "NOT_APPROVED",
+  "external_gate_status": "DEFERRED_PRE_RELEASE",
+  "source_binding": {
+    "schema": "hepta.e41.source_binding.v2",
+    "binding_status": "EXACT_CODE_HEAD_TREE_LOCAL_QUALIFICATION_PLAN_SNAPSHOT_NON_AUTHORITY",
+    "plan_snapshot": {
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+      "sha256": "3faa225ef4835f9922c3bf95614644b42d9dd33b32c04d666c3e9eba3c499b6a",
+      "read_method": "direct",
+      "authority_status": "source_snapshot_only"
+    },
+    "qualification_index_snapshot": {
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+      "sha256": "90a40947d872ffb55ccf303996e3aa8471fb45d115f5176e1696959191cb9496",
+      "read_method": "direct",
+      "authority_status": "source_snapshot_only"
+    },
+    "effective_index_snapshot": {
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_EFFECTIVE_VERSION_INDEX_V1_4.json",
+      "sha256": "03801d76729ffdbe90ab1e2a84971fa548679fcee109d9c58557729703c1c0f7",
+      "read_method": "direct",
+      "authority_status": "source_snapshot_only"
+    },
+    "candidate": {
+      "worktree": "/Volumes/T5/hepta-vnext/worktrees/h4-next-slice-20260827",
+      "branch": "(detached qualification lane)",
+      "head": "33d8d38c1bdd71d589e3eb6f189f7548c8c52ee9",
+      "tree": "0c5b33b390458e48d06d24b925ea6511ff33f612",
+      "parent": "4a874d7cb94ec8746c3c92bcf2b73373636b95ce",
+      "dirty": false,
+      "tracked_diff_clean": true
+    },
+    "candidate_base": {
+      "worktree": "/Volumes/T5/hepta-vnext/worktrees/main-integration",
+      "branch": "hepta/vnext-main-integration-20260811",
+      "head": "0fa4943b1f976a1b6190923dc97dff454db0040a",
+      "tree": "6217bf0d3b02e465e0eb6d11f9ea15dfb606e276",
+      "dirty": false,
+      "relation": "candidate parent is an ancestor; cherry-pick review required"
+    },
+    "source_stability": "single_direct_snapshot_for_lane_receipt; current_authority_rebind_remains_parent_p0",
+    "dirty_status": "CLEAN_CANDIDATE_UNMERGED",
+    "index_note": "qualification index is a source snapshot and may contain an older embedded plan digest; it is not rewritten by this lane"
+  },
+  "source": {
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/h4-next-slice-20260827",
+    "branch": null,
+    "base": "4a874d7cb94ec8746c3c92bcf2b73373636b95ce",
+    "head": "33d8d38c1bdd71d589e3eb6f189f7548c8c52ee9",
+    "tree": "0c5b33b390458e48d06d24b925ea6511ff33f612",
+    "parent": "4a874d7cb94ec8746c3c92bcf2b73373636b95ce",
+    "dirty": false,
+    "changed_paths": [
+      {
+        "path": "codex-rs/hepta-agentd/examples/h4_persistent_writer.rs",
+        "sha256": "c2a12c2a90c0d779d6db5c0b086eeb65ff900b3b9fc993186efc4e56949af52a"
+      }
+    ]
+  },
+  "change": {
+    "summary": "Harden the opt-in H4 persistent writer qualification marker and stale-root isolation; add a claim-before-target abort/reopen regression.",
+    "invariants": [
+      "JSON marker bytes and rename are followed by mandatory parent-directory fsync; sync errors fail closed.",
+      "prepare refuses any non-empty root, preventing stale database or marker replay contamination.",
+      "A dispatch claim is durable before target invocation; abort in the claim-to-target window reopens Indeterminate.",
+      "An old queued receipt cannot redispatch after a durable claim; the target call count remains zero on retry.",
+      "Explicit recovery terminalizes as released_indeterminate with external_effect=false and physical_power_loss_claim=false.",
+      "No provider, production authority, physical power-loss, or root-owned seal claim is made."
+    ],
+    "implementation": [
+      "validate_prepare_root rejects an existing marker and any non-empty qualification root before opening a store.",
+      "write_json_atomic fsyncs the parent directory after rename and propagates directory-sync errors.",
+      "ClaimThenBlockTarget models a crash after the durable claim and before target completion without invoking a provider effect.",
+      "The regression reopens a fresh writer, asserts Indeterminate, rejects the old receipt as StaleReceipt without redispatch, and performs explicit fail-closed local recovery."
+    ]
+  },
+  "tests": [
+    {
+      "command": "cargo test --locked -p codex-hepta-agentd --example h4_persistent_writer -- --test-threads=1",
+      "passed": 2,
+      "failed": 0,
+      "ignored": 0,
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-persistent-boundary-33d8d38-20260827/focused.log",
+      "log_sha256": "e1cd08f6fe1db5aa887929c8783398c93375398b3831e7f9e402d3b8e5ea2c7c"
+    },
+    {
+      "command": "cargo check --locked -p codex-hepta-agentd --example h4_persistent_writer",
+      "result": "pass_with_existing_warnings",
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-persistent-boundary-33d8d38-20260827/check.log",
+      "log_sha256": "4ba34d83cd703aff18af90c50e31a1db2ff17e1d8a49e138ffe8cf545f0fe092"
+    },
+    {
+      "command": "git diff --check",
+      "result": "pass",
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-persistent-boundary-33d8d38-20260827/diff-check.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "rustfmt --check codex-rs/hepta-agentd/examples/h4_persistent_writer.rs",
+      "result": "pass_with_existing_configuration_warning",
+      "note": "unstable imports_granularity=Item warning is pre-existing",
+      "log": "/Volumes/T5/hepta-vnext/artifacts/h4-persistent-boundary-33d8d38-20260827/fmt-check.log",
+      "log_sha256": "46e6296365b301e2eb16bb5b40f88b1aab521b90ae30c5631fe41d6319ca14c8"
+    },
+    {
+      "command": "cargo clippy --locked -p codex-hepta-agentd --example h4_persistent_writer -- -D warnings",
+      "result": "FAIL_BASELINE",
+      "diagnostic_count": 50,
+      "new_diagnostics": 0,
+      "note": "Existing candidate-baseline diagnostics outside added lines; no diagnostic points at this change."
+    }
+  ],
+  "evidence": {
+    "claim_before_target_reopen": "pass; fresh writer observed Indeterminate after task abort",
+    "no_redispatch": "pass; stale receipt rejected before target and retry call count remained zero",
+    "stale_root_guard": "pass; existing marker and non-empty root rejected",
+    "marker_parent_sync": "mandatory directory sync implemented and normal path compiled/tested; no physical cut executed",
+    "physical_power_loss": false,
+    "physical_media_durability": false,
+    "provider_owned_ack": false,
+    "external_effect": false,
+    "production_writer": false,
+    "kg_write_authority": false
+  },
+  "known_gaps": [
+    "No actual host or VM power cut or media PLP evidence has been executed.",
+    "The persistent harness still enumerates one named occurrence and has no store-wide pending-occurrence listing.",
+    "The runbook build command references a retired azi2 worktree and should be refreshed in a separate documentation patch.",
+    "The memory ignored child-marker helper still lacks mandatory parent-directory fsync; this is a separate non-overlapping hygiene lane.",
+    "Provider-owned signed ACK/status, physical exactly-once, external signer/trust-root, KMS/HSM, and production mutation authority remain release gates.",
+    "Strict clippy and repository formatter baseline cleanup remain separate from this qualification slice."
+  ],
+  "negative_authority": {
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "external_effect": false,
+    "kg_write_authority": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "fleet_write": false,
+    "external_signer": false,
+    "external_trust_root": false,
+    "physical_power_loss_claim": false
+  },
+  "immutability": {
+    "canonical_main_modified": false,
+    "dropbox_plan_or_index_modified": false,
+    "old_receipts_modified": false,
+    "qualification_lane_only": true,
+    "worktree_clean_at_capture": true
+  },
+  "receipt_hash": {
+    "algorithm": "SHA-256",
+    "basis": "canonical bytes of this receipt file",
+    "recorded_in": "SHA256SUMS",
+    "self_hash_embedded": false,
+    "authority_meaning": "qualification evidence only; not an authority grant"
+  }
+}

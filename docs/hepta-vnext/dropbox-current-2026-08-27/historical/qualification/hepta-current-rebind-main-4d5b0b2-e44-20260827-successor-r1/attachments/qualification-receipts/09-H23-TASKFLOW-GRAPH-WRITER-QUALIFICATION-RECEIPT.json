@@ -1,0 +1,120 @@
+{
+  "schema": "hepta.h23.taskflow_graph_writer.qualification_receipt.v1",
+  "status": "LOCAL_QUALIFICATION_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "slice": [
+    "load and validate the immutable TaskFlow definition in the command writer transaction",
+    "reject a Wait resume target that is not an outgoing edge from the durable current node before any mutation",
+    "persist a valid Wait resume target as the durable current-node projection",
+    "keep default and structural replay projections aligned"
+  ],
+  "candidate": {
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/h23-graph-writer-20260827",
+    "branch": "hepta/h23-graph-writer-20260827",
+    "head": "536d10c098b293b0d9d7cfeff0f9d319023518ae",
+    "tree": "a1449586c73008f2d8d34f05f30be744bf5f7f07",
+    "parent": "f49cc84521f0be39a0964037136786680da7c61f",
+    "clean": true,
+    "delta_paths": [
+      "codex-rs/hepta-automation/src/taskflow.rs",
+      "codex-rs/hepta-automation/tests/taskflow.rs",
+      "codex-rs/hepta-automation/tests/taskflow_kernel.rs"
+    ]
+  },
+  "source_binding": {
+    "canonical_base": "f49cc84521f0be39a0964037136786680da7c61f",
+    "canonical_base_tree": "fa1280c84b94d0e34f8bf027de0cdc42e33e31e3",
+    "external_authority_receipt": false,
+    "binding_status": "LOCAL_LANE_NOT_PRODUCTION_BOUND",
+    "note": "Independent append-only local evidence; canonical main, Dropbox source/index, and historical receipts were not modified."
+  },
+  "evidence": {
+    "evidence_class": "LOCAL_TASKFLOW_GRAPH_WRITER_REGRESSION",
+    "claim_level": "QUALIFICATION_ONLY",
+    "efficacy_status": "NOT_ASSESSED",
+    "approval": "NONE",
+    "physical_exactly_once": "NOT_ESTABLISHED",
+    "scope": "The Agent-local TaskFlow command writer now performs definition-bound graph validation and current-node advancement atomically with the run projection/event append. It does not schedule work, invoke providers/models, or grant effect authority."
+  },
+  "verification": {
+    "default_all_targets": {
+      "command": "RUST_MIN_STACK=8388608 cargo test --locked -p codex-hepta-automation --all-targets -- --test-threads=1",
+      "passed": 27,
+      "failed": 0,
+      "ignored": 0,
+      "status": "pass",
+      "log_sha256": "b9e1a11a823e44ae161820c2fca0e22a948aa01e7e4383027f370c3fc85123db"
+    },
+    "structural_all_targets": {
+      "command": "RUST_MIN_STACK=8388608 cargo test --locked -p codex-hepta-automation --features taskflow-structural-qualification --all-targets -- --test-threads=1",
+      "passed": 31,
+      "failed": 0,
+      "ignored": 0,
+      "status": "pass",
+      "log_sha256": "720f01213638b73c9c118e53da3ca1e37f5fab5a41d4c33a64fc107583355b85"
+    },
+    "default_cargo_check": {
+      "command": "cargo check --locked -p codex-hepta-automation",
+      "status": "pass",
+      "log_sha256": "8950be1e8f4499f41b8e38ef15f09a0e2671be53a43aa5dec4d794320908881d"
+    },
+    "structural_cargo_check": {
+      "command": "cargo check --locked -p codex-hepta-automation --features taskflow-structural-qualification",
+      "status": "pass",
+      "log_sha256": "8b1fd2394f7b6f177ede882431154a419bd9f404f00add314c912e91a7fc0ec0"
+    },
+    "default_clippy": {
+      "command": "cargo clippy --locked -p codex-hepta-automation --all-targets -- -D warnings",
+      "status": "pass",
+      "log_sha256": "1f5852af1ed7025b5728e842e3c3c2f5d2f720d25557d84c38f1ffda99719c59"
+    },
+    "structural_clippy": {
+      "command": "cargo clippy --locked -p codex-hepta-automation --all-targets --features taskflow-structural-qualification -- -D warnings",
+      "status": "pass",
+      "log_sha256": "8b1fd2394f7b6f177ede882431154a419bd9f404f00add314c912e91a7fc0ec0"
+    },
+    "targeted_rustfmt": {
+      "command": "rustfmt --edition 2024 --check hepta-automation/src/taskflow.rs hepta-automation/tests/taskflow.rs hepta-automation/tests/taskflow_kernel.rs",
+      "status": "pass",
+      "note": "Only pinned stable-format configuration warnings; no changed-file diff."
+    },
+    "git_diff_check": {
+      "command": "git diff HEAD^ HEAD --check",
+      "status": "pass",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "scheduler_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "model_inference": false,
+    "shared_kg_write": false,
+    "fleet": false
+  },
+  "external_effects": false,
+  "append_only": true,
+  "remaining_gates": [
+    "durable per-step TaskFlow attempt/effect-intent/outbox/provider receipt and reconciliation writer",
+    "crash/reopen/power-loss/media durability and independent supervisor authority",
+    "provider-owned signed ACK/status and physical exactly-once evidence",
+    "external signer/trust-root/KMS/HSM and key lifecycle",
+    "named production caller, CALLERS, operator acceptance, and promotion ceremony"
+  ],
+  "runner": {
+    "entrypoint": "/Volumes/T5/hepta-vnext/bin/hepta-ssd-run",
+    "worktree_name": "h23-graph-writer-20260827",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)"
+  },
+  "generated_at": "2026-08-26T18:54:53Z"
+}

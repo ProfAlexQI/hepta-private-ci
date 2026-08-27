@@ -1,0 +1,148 @@
+schema: hepta.hnl.stage_matrix.v1
+plan_id: HNL-hepta-net-node-link
+plan_version: 0.1.0
+parent_source:
+  parent_plan_id: hepta-vnext-development-plan-final-2026-08-23
+  parent_plan_digest: "07dbbd0fb36a9d82d039275a9819e6c18b133248a2864470f7ffa17ef6cda718"
+  canonical_head: "7ed9c9a85fa65aa3cb26cf440a55028ce0b35079"
+  canonical_tree: not-revalidated-in-this-environment
+  insert_after: "E.40.3 / EOF line 3346 (pre-append snapshot)"
+  status: STALE_SOURCE_BINDING
+  implementation_branch: not-created
+  worktree: not-created
+  dirty: unknown_not_mounted
+global:
+  mode: qualification_only
+  matrix_status: bound_planning_only_stale_external_pointer
+  command_status: planned_until_stage_artifacts_exist
+  production_writer: false
+  provider_effect: false
+  fleet_write: false
+  shared_kg_write: false
+  route_write: false
+  model_npu: false
+  callers_touched: false
+  promotion: false
+  operator_acceptance: false
+  deterministic_network_access: false
+  owner_role: hepta_network_lane
+  accountable_role: hepta_maintainer
+  security_review_role: security_reviewer
+  source_drift_rule: "parent digest/head/tree/dirty change => STALE_SOURCE_BINDING and stop"
+stages:
+  - id: HNL-0
+    title: contract-threat-model
+    depends_on: []
+    owner: hepta_network_lane
+    reviewers: [security_reviewer, platform_reviewer]
+    entry: exact_parent_binding_sealed
+    exit:
+      - facade_and_wire_schema_frozen
+      - key_lifecycle_and_threat_model_reviewed
+      - golden_handshake_vectors_present
+      - source_manifest_locked
+    commands:
+      - "cargo fmt --check"
+      - "cargo test -p hepta-net-schema --locked"
+      - "schema-lint --strict drafts/schema"
+    timeout_minutes: 20
+    provisional_resource_budget: {rss_mb: 1024, disk_mb: 2048}
+    receipt_kind: hnl_design_receipt_v1
+    rollback: revert_schema_only_no_runtime_effect
+  - id: HNL-1
+    title: backend_neutral_core_loopback_uds
+    depends_on: [HNL-0]
+    owner: hepta_network_lane
+    entry: HNL-0_qualification_receipt
+    exit:
+      - deterministic_loopback_backend_passes
+      - uds_peer_auth_and_agent_delegation_passes
+      - crash_restart_revoke_receipts_present
+    commands:
+      - "cargo fmt --check"
+      - "cargo clippy --workspace --locked -- -D warnings"
+      - "cargo test --workspace --locked --no-default-features"
+      - "cargo deny check"
+    timeout_minutes: 45
+    provisional_resource_budget: {rss_mb: 2048, disk_mb: 4096, network_access: false}
+    receipt_kind: hnl_core_receipt_v1
+    rollback: disable_linkd_feature_and_remove_only_new_crate
+  - id: HNL-2A
+    title: native_quic_service_backend
+    depends_on: [HNL-1]
+    owner: hepta_network_lane
+    entry: HNL-1_receipt
+    exit: [two_node_e2e_service_channel, relay_fallback, path_migration]
+    commands:
+      - "cargo test -p hepta-net-iroh --locked"
+      - "cargo test -p hepta-net-integration --locked --features native-quic"
+    timeout_minutes: 60
+    provisional_resource_budget: {rss_mb: 2048, disk_mb: 4096, network_access: controlled_fixture_only}
+    receipt_kind: hnl_native_backend_receipt_v1
+    rollback: backend_feature_flag_off
+  - id: HNL-2B
+    title: tailscale_rs_compatibility
+    depends_on: [HNL-1]
+    owner: hepta_network_lane
+    entry: HNL-1_receipt
+    exit: [headscale_go_interop, derp_tcp_udp, persistence_reconnect, known_gap_matrix]
+    commands:
+      - "cargo test -p hepta-net-tailscale --locked"
+      - "./qualification/tailscale_headscale_interop.sh"
+    timeout_minutes: 90
+    provisional_resource_budget: {rss_mb: 2048, disk_mb: 4096, network_access: controlled_fixture_only}
+    receipt_kind: hnl_tailscale_interop_receipt_v1
+    rollback: backend_feature_flag_off_no_core_api_change
+  - id: HNL-3
+    title: cross_backend_multi_agent_qualification
+    depends_on: [HNL-2A]
+    optional_depends_on: [HNL-2B]
+    owner: hepta_network_lane
+    entry: native_backend_qualified_and_compatibility_result_recorded
+    exit: [two_agents_per_node_acl_isolation, delegated_key_rotation, revoke_active_stream, fuzz_and_fault_matrix]
+    commands:
+      - "cargo test --workspace --locked --features qualification"
+      - "cargo fuzz run handshake_parser -- -max_total_time=600"
+      - "cargo fuzz run uds_codec -- -max_total_time=600"
+      - "cargo fuzz run path_migration -- -max_total_time=600"
+    timeout_minutes: 120
+    provisional_resource_budget: {rss_mb: 4096, disk_mb: 8192, network_access: false_for_fuzz}
+    receipt_kind: hnl_multi_agent_qualification_receipt_v1
+    rollback: disable_multi_agent_feature_gate
+  - id: HNL-4
+    title: l3_wireguard_easytier_benchmark
+    depends_on: [HNL-3]
+    owner: hepta_network_lane
+    entry: explicit_l3_use_case_and_privileged_helper_review
+    exit: [wireguard_route_lease_benchmark, easytier_isolated_report]
+    commands:
+      - "cargo test -p hepta-net-wireguard --locked"
+      - "./qualification/l3_netns_benchmark.sh"
+    timeout_minutes: 120
+    provisional_resource_budget: {rss_mb: 4096, disk_mb: 8192, network_access: controlled_fixture_only}
+    receipt_kind: hnl_l3_backend_receipt_v1
+    rollback: keep_l3_feature_disabled
+  - id: HNL-5
+    title: trnm_signed_event_adapter_simulator
+    depends_on: [HNL-3]
+    owner: hepta_market_adapter_lane
+    entry: network_qualification_receipt_and_trnm_schema_review
+    exit: [signed_lease_revoke_usage_events, idempotent_adapter, no_chain_sdk_in_netd]
+    commands:
+      - "cargo test -p hepta-market-adapter --locked"
+      - "cargo test -p trnm-simulator --locked"
+    timeout_minutes: 60
+    provisional_resource_budget: {rss_mb: 2048, disk_mb: 4096, network_access: false}
+    receipt_kind: hnl_trnm_adapter_receipt_v1
+    rollback: adapter_unloaded_no_net_core_change
+  - id: HNL-6
+    title: federated_relay_and_multiregion_future
+    depends_on: [HNL-3, HNL-5]
+    owner: hepta_network_lane
+    entry: explicit_multiregion_governance_approval
+    exit: [multi_operator_relay, signed_peer_federation, jurisdiction_privacy_review]
+    commands: ["qualification/multiregion_chaos.sh"]
+    timeout_minutes: 240
+    provisional_resource_budget: {rss_mb: 4096, disk_mb: 16384, network_access: controlled_fixture_only}
+    receipt_kind: hnl_federation_receipt_v1
+    rollback: revert_to_single_bootstrap_provider

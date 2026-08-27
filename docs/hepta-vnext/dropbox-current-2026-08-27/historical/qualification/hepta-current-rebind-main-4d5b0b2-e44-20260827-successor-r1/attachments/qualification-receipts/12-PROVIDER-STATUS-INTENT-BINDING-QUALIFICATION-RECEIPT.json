@@ -1,0 +1,82 @@
+{
+  "schema": "hepta.provider.status-intent-binding.qualification-receipt.v1",
+  "status": "LOCAL_QUALIFICATION_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "slice": [
+    "intent-bound provider status lookup seam",
+    "payload digest transport on sandbox status queries",
+    "fail-closed rejection of status ACKs for a different payload"
+  ],
+  "worktree": "/Volumes/T5/hepta-vnext/worktrees/provider-h57-next-20260827",
+  "branch": "hepta/provider-h57-next-20260827",
+  "head": "0eee95a17b80418449985a61853c835ab0db77f1",
+  "tree": "419bbcafed1dbc1368adfa9a18185588325a93b6",
+  "parent": "f94e06d59221cde61fc6865df3a6e34959e43cc5",
+  "source_binding": {
+    "root_plan": "E.41",
+    "canonical_head_binding": "LOCAL_CANDIDATE_ONLY",
+    "external_authority_receipt": false,
+    "binding_status": "NOT_PRODUCTION_BOUND",
+    "note": "This receipt is append-only qualification evidence and does not modify or replace the Dropbox current/effective index."
+  },
+  "evidence": {
+    "evidence_class": "LOCAL_TEST_EVIDENCE",
+    "claim_status": "QUALIFICATION_ONLY",
+    "efficacy_status": "NOT_ASSESSED",
+    "approval": "NONE",
+    "scope": "Reconcile coordinators pass the exact durable ProviderEffectIntent to adapters. The HTTP sandbox adapter sends the occurrence key and payload digest on status lookup and rejects an ACK whose payload digest differs.",
+    "provider_owned_exactly_once": "NOT_ESTABLISHED"
+  },
+  "changes": {
+    "contracts": "Added backward-compatible lookup_for_intent(intent) seam and made supported coordinator reconciliation obtain the exact durable intent before querying.",
+    "evidence": "Evidence-store reconciliation now uses the stored intent-bound lookup seam.",
+    "model_provider": "HTTP status lookup optionally carries the payload digest and validates key plus digest before exposing an ACK."
+  },
+  "checks": {
+    "focused_contracts_provider_effect": "31 passed / 0 failed",
+    "focused_evidence_provider_effect": "29 passed / 0 failed",
+    "focused_model_provider_effect": "8 passed / 0 failed",
+    "cargo_test_p_codex_hepta_contracts_serial": "89 passed / 0 failed / 0 ignored",
+    "cargo_test_p_codex_hepta_evidence_serial": "80 passed / 0 failed / 0 ignored",
+    "cargo_test_p_codex_model_provider_serial": "82 passed / 0 failed / 0 ignored",
+    "cargo_check_contracts_evidence_model_provider": "pass",
+    "cargo_clippy_contracts_lib_d_warnings": "pass",
+    "cargo_clippy_evidence_lib_d_warnings": "pass",
+    "cargo_clippy_model_provider_lib_d_warnings": "pass",
+    "targeted_rustfmt_check": "pass",
+    "git_diff_check": "pass"
+  },
+  "worktree_state": {
+    "commit_scope_clean": true,
+    "worktree_dirty": false,
+    "dirty_status": "CLEAN",
+    "action": "Independent qualification lane is released for review; no canonical main or Dropbox files were changed."
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "production_listener": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "model_inference": false,
+    "shared_kg_write": false,
+    "fleet": false
+  },
+  "external_effects": false,
+  "real_provider_or_market_connected": false,
+  "remaining_gates": [
+    "provider-owned signed ACK/status and physical exactly-once evidence",
+    "external signer/trust-root/KMS/HSM and key lifecycle",
+    "production mutation authority and independent supervisor ceremony",
+    "physical power-loss/media durability qualification",
+    "CALLERS and promotion ceremony with an external authority receipt"
+  ],
+  "generated_at": "2026-08-26T16:27:36Z"
+}

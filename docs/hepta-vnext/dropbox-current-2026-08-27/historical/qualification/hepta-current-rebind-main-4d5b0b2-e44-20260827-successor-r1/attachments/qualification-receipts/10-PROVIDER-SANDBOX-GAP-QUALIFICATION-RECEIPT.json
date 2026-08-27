@@ -1,0 +1,73 @@
+{
+  "schema": "hepta.provider.sandbox-gap.qualification-receipt.v1",
+  "status": "LOCAL_QUALIFICATION_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "slice": [
+    "restored Pending provider-effect intent quarantine",
+    "crash-window status reconciliation without redispatch",
+    "payload and non-payload coordinator dispatch paths"
+  ],
+  "worktree": "/Volumes/T5/hepta-vnext/worktrees/provider-sandbox-gap-20260826",
+  "branch": "hepta/provider-sandbox-gap-20260826",
+  "head": "0509da7e5c135dbd4e9fafd39831a56665dcdb38",
+  "tree": "8846e9e75a714f76222ea0cd1e451d53620f6e36",
+  "parent": "ae43039ba241ec92d745992e1635a572bbd2f331",
+  "source_binding": {
+    "root_plan": "E.41",
+    "canonical_head_binding": "LOCAL_CANDIDATE_ONLY",
+    "external_authority_receipt": false,
+    "binding_status": "NOT_PRODUCTION_BOUND",
+    "note": "This receipt does not modify or replace the Dropbox current/effective index."
+  },
+  "evidence": {
+    "evidence_class": "LOCAL_TEST_EVIDENCE",
+    "claim_status": "QUALIFICATION_ONLY",
+    "efficacy_status": "NOT_ASSESSED",
+    "approval": "NONE",
+    "physical_exactly_once": "NOT_ESTABLISHED",
+    "scope": "An imported durable Pending record is quarantined as provider_imported_pending before any adapter dispatch; status lookup may close it with provenance."
+  },
+  "checks": {
+    "cargo_test_p_codex_hepta_contracts_serial": "72 passed / 0 failed / 0 ignored",
+    "cargo_test_p_codex_hepta_evidence_serial": "79 passed / 0 failed / 0 ignored",
+    "cargo_test_p_codex_model_provider_serial": "80 passed / 0 failed / 0 ignored",
+    "cargo_check_contracts_evidence_model_provider": "pass",
+    "cargo_clippy_contracts_lib_d_warnings": "pass",
+    "cargo_clippy_evidence_lib_d_warnings": "pass",
+    "cargo_clippy_model_provider_lib_d_warnings": "pass",
+    "git_diff_check": "pass"
+  },
+  "worktree_state": {
+    "commit_scope_clean": true,
+    "worktree_dirty": true,
+    "dirty_status": "UNRELATED_CONCURRENT_UNSTAGED_FILES",
+    "dirty_files_are_in_commit": false,
+    "action": "Preserve unrelated WIP; do not include or delete it in this lane."
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "production_listener": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "model_inference": false,
+    "shared_kg_write": false,
+    "fleet": false
+  },
+  "external_effects": false,
+  "real_provider_or_market_connected": false,
+  "remaining_gates": [
+    "provider-owned signed ACK/status and physical exactly-once evidence",
+    "external signer/trust-root/KMS/HSM and key lifecycle",
+    "production mutation authority and independent supervisor ceremony",
+    "physical power-loss/media durability qualification"
+  ],
+  "generated_at": "2026-08-26T05:40:00Z"
+}

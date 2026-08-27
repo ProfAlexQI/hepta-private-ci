@@ -1,0 +1,707 @@
+schema: hepta.authbus.canonical-contract-registry.v1
+plan_id: AUTHBUS-PLAN-2026-08-26
+revision: "1.3"
+status: PLANNING_ONLY_IMPLEMENTATION_BACKLOG
+normative: true
+execution_input: true
+authority: false
+canonical_anchor: authbus-canonical-contract-registry-v13
+purpose: >-
+  Single machine-readable source for the AUTHBUS.11 v1.3 implementation contracts.  The
+  materialized contract files and the four domain attachments are generated projections of this
+  registry; none of them grant runtime or production authority.
+
+registry:
+  id: hepta-auth-contracts.v1/registry/authbus.v1
+  version: "1.3"
+  owner: hepta-auth-contracts.v1
+  public_contract_owner: codex-hepta-contracts.v1.4_e21
+  wire_namespace: hepta.auth.v1
+  # Projection metadata is itself canonical.  `registry.id` identifies this
+  # registry; `projection_id` identifies the AUTHBUS.11 view emitted into an
+  # attachment.  Consumers must not compare the two as if they were the same
+  # object id.
+  projection_metadata:
+    projection_id: AUTHBUS.11
+    version: "1.3"
+    canonical_source: "codex-hepta-contracts.v1.4_e21 + hepta-auth-contracts.v1"
+    wire_namespace: hepta.auth.v1
+    causal_lineage:
+      public_wire_field: causal_parent_event_id
+      internal_event_store_field: causal_parent_seq
+      mapping_rule: "Resolve internal seq through immutable event_seq->event_id index; never cast a numeric sequence to an event id."
+      public_schema: e21_v1_4
+    field_aliases:
+      revision: expected_revision
+      agent_generation: generation
+      fence: fencing_token
+      payload_sha256: payload_digest
+      resource_sha256: resource_digest
+  source_plan: OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md#authbus11-execution-closure-v13
+  source_schema: OpenClaw/hepta-vnext-qualification-2026-08-23/e21-contract-hardening-qualification-20260824/schema/canonical_contract_v1_4_e21.schema.json
+  generated_contract_projections:
+    - OpenClaw/AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml#/contract
+    - OpenClaw/AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract
+    - OpenClaw/AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml#/contract
+    - OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract
+  domain_projection_files:
+    - OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3
+    - OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3
+    - OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3
+    - OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3
+  # Compatibility inventory only.  Code generation MUST NOT consume this
+  # mixed list; it exists for older index readers.  The two typed lists above
+  # are the only selectors for generated contracts versus domain projections.
+  projection_files_all:
+    - OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3
+    - OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3
+    - OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3
+    - OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3
+    - OpenClaw/AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml#/contract
+    - OpenClaw/AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract
+    - OpenClaw/AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml#/contract
+    - OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract
+  generated_projection_files_legacy:
+    status: DECODE_ONLY_INVENTORY
+    consumer: index_and_provenance_only
+    files_ref: "#/registry/projection_files_all"
+  generated_projection_rule: >-
+    A projection may wrap metadata, group a contract into named sub-objects, and expose a
+    domain-specific view, but canonical IDs, field names, field values, status semantics and
+    dimensions cannot be silently renamed, deleted or reinterpreted.  Any grouping or decode alias
+    must be declared in the machine-readable projection map below.  Code generation consumes this
+    registry or a verified generated projection and fails closed on a stale registry revision.
+  registry_digest_binding:
+    status: REQUIRED_AT_B2
+    digest_rule: SHA-256(canonical_yaml(registry_without_registry_digest_binding))
+    projection_must_record: [source_registry_ref, source_registry_digest, projection_transform]
+  projection_contract_map:
+    schema: hepta.authbus.projection-map.v1
+    version: "1"
+    map_key: file
+    policy:
+      unlisted_path: reject
+      shared_paths_must_equal: true
+      encode_lossless: true
+      target_extensions: declared_only
+      aliases: decode_only
+      mapping_kinds: [copy, group, alias_group, subset, derived_nonsemantic]
+      ref_resolution:
+        syntax: uri_fragment
+        default_ref_base: document_root
+        relative_fragment_base: "#/"
+        external_file_prefix: OpenClaw/
+      mapping_requirements:
+        required_fields: [source_path, target_path, kind, canonical_emit, required, lossless]
+        group_coverage: explicit
+        lossless_group_requires: [coverage, child_or_field_set_ref]
+        lossy_group_requires: [coverage, omitted_source_fields]
+        subset_requires: [coverage, element_mappings]
+        alias_group_requires: [coverage, alias_direction]
+        alias_group_encode: forbidden
+        envelope_mapping_requires: [source_path, target_path, kind, canonical_emit, required, lossless, coverage, target_fields]
+        unique_projection_target: true
+      allowed_transforms: [metadata_wrapper, domain_grouping, decode_alias, derived_nonsemantic, operation_map, evidence_ref_and_no_effect_proof_named_objects, delivery_and_attempt_named_objects, remote_and_gateway_named_objects, remote_flat_to_nested, reconciliation_named_objects]
+      forbidden_transforms: [semantic_rename, field_drop, status_reinterpretation, dimension_replacement, authority_widening]
+      extension_rule: >-
+        An extension path not covered by a shared mapping must be listed in that entry's
+        allowed_extensions with an owner, source_ref and non-semantic/domain-extension reason;
+        extensions may not override a shared canonical path.
+    contract_projections:
+      - file: OpenClaw/AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml#/contract
+        source: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/oauth_secretref"
+        target: "OpenClaw/AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml#/contract"
+        projection_kind: generated_exact
+        transform: [metadata_wrapper, operation_map]
+        aliases_decode_only: [hepta.auth.secretref-operation.v1, INVALID_GRANT, ROTATED]
+        field_mappings:
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/oauth_secretref", target_path: "OpenClaw/AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml#/contract", kind: group, canonical_emit: true, required: true, lossless: true, coverage: explicit, child_or_field_set_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/oauth_secretref"}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/oauth_secretref/fixture_manifest", target_path: "OpenClaw/AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml#/contract/fixture_manifest", kind: group, canonical_emit: true, required: true, lossless: true, coverage: explicit, child_or_field_set_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/oauth_secretref/fixture_manifest"}
+        allowed_extensions: []
+      - file: OpenClaw/AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract
+        source: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/reconcile_e21"
+        target: "OpenClaw/AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract"
+        projection_kind: generated_exact
+        transform: [metadata_wrapper, evidence_ref_and_no_effect_proof_named_objects, reconciliation_named_objects]
+        aliases_decode_only: [receipt_ref_v1_not_applicable_interpolation]
+        field_mappings:
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/reconcile_e21", target_path: "OpenClaw/AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract", kind: group, canonical_emit: true, required: true, lossless: false, coverage: explicit, child_or_field_set_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/reconcile_e21", same_named_fields: generated_exact_except_declared_aliases, omitted_source_fields: [], projection_notes: [evidence_ref_required_and_no_effect_proof_required_are_emitted_as_named_alias_groups]}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/reconcile_e21/evidence_ref_required", target_path: "OpenClaw/AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract/evidence_ref_fields", kind: alias_group, alias: evidence_ref_fields, alias_direction: target_decode_to_source_canonical, canonical_emit: false, required: true, lossless: true, coverage: explicit, child_or_field_set_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/reconcile_e21/evidence_ref_required"}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/reconcile_e21/no_effect_proof_required", target_path: "OpenClaw/AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract/no_effect_proof_fields", kind: alias_group, alias: no_effect_proof_fields, alias_direction: target_decode_to_source_canonical, canonical_emit: false, required: true, lossless: true, coverage: explicit, child_or_field_set_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/reconcile_e21/no_effect_proof_required"}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/reconcile_e21/fixture_manifest", target_path: "OpenClaw/AUTHBUS_RECONCILE_E21_CONTRACT_v1.yaml#/contract/fixture_manifest", kind: group, canonical_emit: true, required: true, lossless: true, coverage: explicit, child_or_field_set_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/reconcile_e21/fixture_manifest"}
+        allowed_extensions: []
+      - file: OpenClaw/AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml#/contract
+        source: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/outbox_dispatch"
+        target: "OpenClaw/AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml#/contract"
+        projection_kind: generated_exact
+        transform: [metadata_wrapper, delivery_and_attempt_named_objects]
+        aliases_decode_only: [attempt_as_delivery_attempt]
+        field_mappings:
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/outbox_dispatch", target_path: "OpenClaw/AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml#/contract", kind: group, canonical_emit: true, required: true, lossless: true, coverage: explicit, child_or_field_set_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/outbox_dispatch"}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/outbox_dispatch/fixture_manifest", target_path: "OpenClaw/AUTHBUS_OUTBOX_DISPATCH_CONTRACT_v1.yaml#/contract/fixture_manifest", kind: group, canonical_emit: true, required: true, lossless: true, coverage: explicit, child_or_field_set_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/outbox_dispatch/fixture_manifest"}
+        allowed_extensions: []
+      - file: OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract
+        source: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway"
+        target: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract"
+        projection_kind: generated_exact
+        transform: [metadata_wrapper, remote_and_gateway_named_objects, remote_flat_to_nested]
+        aliases_decode_only: [nonce_or_jti, remote_reservation_gateway_combined_id]
+        field_mappings:
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract", kind: group, canonical_emit: true, required: true, lossless: false, coverage: explicit, child_or_field_set_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway", omitted_source_fields: [], projection_notes: [remote_reservation_fields_and_gateway_credential_are_grouped_into_named_target_objects]}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/remote_reservation_fields", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/remote_reservation/remote_reservation_fields", kind: group, canonical_emit: true, required: true, lossless: true, coverage: explicit, child_or_field_set_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/remote_reservation_fields"}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/fixture_manifest", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/fixture_manifest", kind: group, canonical_emit: true, required: true, lossless: true, coverage: explicit, child_or_field_set_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/fixture_manifest"}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/internal_contracts", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/internal_contracts", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/usage_vector_dimensions", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/remote_reservation/usage_vector_dimensions", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/provider_specific_dimensions", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/remote_reservation/provider_specific_dimensions", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/units_required", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/remote_reservation/units_required", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/scalar_alias", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/remote_reservation/scalar_alias", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/conservation", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/remote_reservation/conservation", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/reservation_sequence", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/remote_reservation/reservation_sequence", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/partition_policy", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/remote_reservation/partition_policy", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/counter_owner", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/remote_reservation/counter_owner", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/gateway_issuer", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/gateway_issuer", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/gateway_self_issuance", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/gateway_self_issuance", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/credential_format", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/credential_format", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/signature_algorithms", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/signature_algorithms", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/forbidden_algorithms", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/forbidden_algorithms", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/required_claims", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/required_claims", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/request_only_binding", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/request_only_binding", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/api_subset", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/api_subset", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/upstream_url_policy", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/upstream_url_policy", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/upstream_authorization", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/upstream_authorization", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/pop_request_binding", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/pop_request_binding", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/replay_key", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/replay_key", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/negative_vectors", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/negative_vectors", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/negative_vector_aliases_decode_only", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/negative_vector_aliases_decode_only", kind: copy, canonical_emit: false, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/market_manual_required", target_path: "OpenClaw/AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/market_manual_required", kind: copy, canonical_emit: true, required: true, lossless: true}
+        allowed_extensions:
+          - {path: remote_reservation/schema_id, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/remote_reservation/schema_id", reason: named_schema_metadata}
+          - {path: gateway_credential/schema_id, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/schema_id", reason: named_schema_metadata}
+          - {path: gateway_credential/cnf_shape, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_REMOTE_RESERVATION_GATEWAY_CONTRACT_v1.yaml#/contract/gateway_credential/cnf_shape", reason: gateway_binding_shape}
+    domain_projections:
+      - id: trust_mode
+        file: OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3
+        target: OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3
+        projection_kind: domain_projection
+        source_refs: ["AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/serialization_contexts", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/time_alias_scope", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/identity_fence", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/base_mutation_fields", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/e21_effect_receipt_required"]
+        shared_paths:
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/projection_id", target_path: "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/canonical_shared/projection_id", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/version", target_path: "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/canonical_shared/version", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/canonical_source", target_path: "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/canonical_shared/canonical_source", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/wire_namespace", target_path: "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/canonical_shared/wire_namespace", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/causal_lineage", target_path: "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/canonical_shared/causal_lineage", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/field_aliases", target_path: "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/canonical_shared/field_aliases", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/base_mutation_fields", target_path: "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/canonical_shared/base_mutation_fields", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/e21_effect_receipt_required", target_path: "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/canonical_shared/e21_effect_receipt_required", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/serialization_contexts", target_path: "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/canonical_shared/serialization_contexts", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/time_alias_scope", target_path: "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/canonical_shared/time_alias_scope", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/identity_fence/required_fields", target_path: "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/identity_boundary/required_fence_fields", kind: copy, canonical_emit: true, required: true, lossless: true}
+        allowed_extensions:
+          - {path: basil_profile, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/basil_profile", reason: domain_profile}
+          - {path: identity_boundary, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/identity_boundary", reason: identity_binding}
+          - {path: compatibility, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/compatibility", reason: decode_compatibility}
+          - {path: basil_profile/service_registry, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/basil_profile/service_registry", reason: route_profile}
+          - {path: identity_boundary/actor_crosswalk, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_TRUST_MODE_MATRIX_v1.yaml#/execution_closure_v1_3/identity_boundary/actor_crosswalk", reason: actor_binding}
+      - id: quota_metering
+        file: OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3
+        target: OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3
+        projection_kind: domain_projection
+        source_refs: ["AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/serialization_contexts", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/time_alias_scope", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/identity_fence", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/base_mutation_fields", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/e21_effect_receipt_required", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/oauth_secretref", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway"]
+        shared_paths:
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/projection_id", target_path: "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/canonical_shared/projection_id", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/version", target_path: "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/canonical_shared/version", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/canonical_source", target_path: "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/canonical_shared/canonical_source", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/wire_namespace", target_path: "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/canonical_shared/wire_namespace", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/causal_lineage", target_path: "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/canonical_shared/causal_lineage", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/field_aliases", target_path: "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/canonical_shared/field_aliases", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/base_mutation_fields", target_path: "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/canonical_shared/base_mutation_fields", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/e21_effect_receipt_required", target_path: "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/canonical_shared/e21_effect_receipt_required", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/serialization_contexts", target_path: "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/canonical_shared/serialization_contexts", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/time_alias_scope", target_path: "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/canonical_shared/time_alias_scope", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry/effect_public_status", target_path: "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/effect_status_enum", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry/quota_reservation_status", target_path: "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/quota_reservation_status_enum", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/identity_fence/required_fields", target_path: "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/canonical_shared/identity_fence_fields", kind: copy, canonical_emit: true, required: true, lossless: true}
+        allowed_extensions:
+          - {path: quota_snapshot, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/quota_snapshot", reason: observation_domain}
+          - {path: local_reservation, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/local_reservation", reason: admission_domain}
+          - {path: usage_vector, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/usage_vector", reason: vector_domain}
+          - {path: remote_reservation_contract, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/remote_reservation_contract", reason: federation_domain}
+          - {path: opaque_secret_operations, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/opaque_secret_operations", reason: secretref_domain}
+          - {path: outbox_delivery, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/outbox_delivery", reason: delivery_projection}
+          - {path: reconcile_queue_boundary, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/reconcile_queue_boundary", reason: taskflow_boundary}
+          - {path: refresh_state, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/refresh_state", reason: refresh_domain}
+          - {path: metering, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/metering", reason: accounting_domain}
+          - {path: canonical_refs, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml#/execution_closure_v1_3/canonical_refs", reason: canonical_ref_bundle}
+      - id: failure_reconcile
+        file: OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3
+        target: OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3
+        projection_kind: domain_projection
+        source_refs: ["AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/serialization_contexts", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/time_alias_scope", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/base_mutation_fields", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/e21_effect_receipt_required", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/id_rules", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/reconcile_e21", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/outbox_dispatch"]
+        shared_paths:
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/projection_id", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/canonical_shared/projection_id", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/version", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/canonical_shared/version", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/canonical_source", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/canonical_shared/canonical_source", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/wire_namespace", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/canonical_shared/wire_namespace", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/causal_lineage", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/canonical_shared/causal_lineage", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/field_aliases", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/canonical_shared/field_aliases", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/base_mutation_fields", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/canonical_shared/base_mutation_fields", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/e21_effect_receipt_required", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/canonical_shared/e21_effect_receipt_required", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/serialization_contexts", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/canonical_shared/serialization_contexts", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/time_alias_scope", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/canonical_shared/time_alias_scope", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry/effect_public_status", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/receipt_identity/status_enum", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/status_error_projection", kind: group, canonical_emit: true, required: true, lossless: true, coverage: explicit, child_or_field_set_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry"}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/e21_effect_receipt_required", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/receipt_identity/e21_required_fields", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/id_rules/reconciliation_id", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/receipt_identity/reconciliation_id/canonical_rule", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/outbox_dispatch/fields", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/outbox_delivery/required_fields", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/reconcile_e21/evidence_ref_required", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/reconcile_evidence/required_fields", kind: alias_group, alias: evidence_ref_fields, aliases_decode_only: {evidence_ref_fields: evidence_ref_required}, alias_direction: target_decode_to_source_canonical, canonical_emit: false, required: true, lossless: true, coverage: explicit}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/reconcile_e21/no_effect_proof_required", target_path: "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/reconcile_evidence/no_effect_proof/required_fields", kind: alias_group, alias: no_effect_proof_fields, aliases_decode_only: {no_effect_proof_fields: no_effect_proof_required}, alias_direction: target_decode_to_source_canonical, canonical_emit: false, required: true, lossless: true, coverage: explicit}
+        allowed_extensions:
+          - {path: receipt_identity, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/receipt_identity", reason: receipt_projection}
+          - {path: reconcile_evidence, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/reconcile_evidence", reason: evidence_projection}
+          - {path: status_by_effect_key, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/status_by_effect_key", reason: lookup_contract}
+          - {path: dispatch, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/dispatch", reason: dispatch_state}
+          - {path: outbox_delivery, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/outbox_delivery", reason: delivery_contract}
+          - {path: writer_boundary, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/writer_boundary", reason: writer_ownership}
+          - {path: refresh_state, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/refresh_state", reason: refresh_projection}
+          - {path: state_machine, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/state_machine", reason: state_projection}
+          - {path: compatibility, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml#/execution_closure_v1_3/compatibility", reason: decode_compatibility}
+      - id: abuse_dispute
+        file: OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3
+        target: OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3
+        projection_kind: domain_projection
+        source_refs: ["AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/serialization_contexts", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/time_alias_scope", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/identity_fence", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/base_mutation_fields", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/e21_effect_receipt_required", "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway"]
+        domain_source_owner: hepta-market-contracts.v1
+        domain_source_id: hepta.auth.market-lifecycle.v1
+        domain_source_status: DOMAIN_EXTENSION_REGISTRY_REQUIRED_AT_B9
+        shared_paths:
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/projection_id", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/canonical_shared/projection_id", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/version", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/canonical_shared/version", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/canonical_source", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/canonical_shared/canonical_source", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/wire_namespace", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/canonical_shared/wire_namespace", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/causal_lineage", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/canonical_shared/causal_lineage", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/projection_metadata/field_aliases", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/canonical_shared/field_aliases", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/base_mutation_fields", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/canonical_shared/base_mutation_fields", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/e21_effect_receipt_required", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/canonical_shared/e21_effect_receipt_required", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/serialization_contexts", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/canonical_shared/serialization_contexts", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/time_alias_scope", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/canonical_shared/time_alias_scope", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/identity_fence/required_fields", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/canonical_shared/identity_fence_fields", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry/effect_public_status", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/canonical_shared/effect_status_enum", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/status_error_projection", kind: group, canonical_emit: true, required: true, lossless: false, coverage: explicit, child_or_field_set_ref: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/status_error_registry", omitted_source_fields: [{path: id, reason: domain_projection_metadata_not_consumed}, {path: quota_reservation_status, reason: market_adapter_owns_quota_status}, {path: internal_dispatch_states, reason: failure_projection_owns_dispatch_state}, {path: terminal_public_status, reason: derived_from_effect_public_status}, {path: terminal_hold_policy, reason: inherited_from_failure_policy}, {path: quota_reservation_aliases_decode_only, reason: quota_aliases_not_consumed}]}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/usage_vector_dimensions", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/usage_vector/dimensions", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/remote_reservation_fields", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/remote_usage/required_fields", kind: alias_group, alias: nonce_or_jti, aliases_decode_only: {nonce_or_jti: nonce}, alias_direction: target_decode_to_source_canonical, canonical_emit: false, required: true, lossless: true, coverage: explicit, same_named_elements: true, unchanged_except_aliases: [nonce], element_mappings: [{source: nonce, target: nonce_or_jti, direction: target_decode_to_source_canonical, canonical_emit: false}]}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/identity_fence/required_fields", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/usage_counter/identity_fence_fields", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/gateway_issuer", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary/virtual_credential_issuer", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/gateway_self_issuance", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary/gateway_self_issuance", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/credential_format", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary/credential_format", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/signature_algorithms", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary/signature_algorithms", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/forbidden_algorithms", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary/algorithms_forbidden", kind: alias_group, aliases_decode_only: {unsigned_bearer: bearer_without_signature}, alias_direction: target_decode_to_source_canonical, canonical_emit: false, required: true, lossless: false, coverage: explicit, same_named_elements: true, unchanged_except_aliases: [unsigned_bearer], omitted_source_fields: [], element_mappings: [{source: unsigned_bearer, target: bearer_without_signature, direction: target_decode_to_source_canonical, canonical_emit: false}]}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/required_claims", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary/credential_claims", kind: subset, canonical_emit: true, required: true, lossless: false, coverage: explicit, source_element_set: canonical_required_claims, target_element_set: gateway_credential_claims, omitted_source_fields: [], element_mappings: [{source: iss, target: iss, direction: copy, canonical_emit: true}, {source: kid, target: kid, direction: copy, canonical_emit: true}, {source: cnf, target: cnf, direction: copy, canonical_emit: true}, {source: tenant_id, target: tenant_id, direction: copy, canonical_emit: true}, {source: workspace_id, target: workspace_id, direction: copy, canonical_emit: true}, {source: agent_id, target: agent_id, direction: copy, canonical_emit: true}, {source: service_id, target: service_id, direction: copy, canonical_emit: true}, {source: node_id, target: node_id, direction: copy, canonical_emit: true}, {source: agent_generation, target: agent_generation, direction: copy, canonical_emit: true}, {source: authority_epoch, target: authority_epoch, direction: copy, canonical_emit: true}, {source: owner_epoch, target: owner_epoch, direction: copy, canonical_emit: true}, {source: generation, target: generation, direction: copy, canonical_emit: true}, {source: fencing_token, target: fencing_token, direction: copy, canonical_emit: true}, {source: resource_id, target: resource_id, direction: copy, canonical_emit: true}, {source: provider_id, target: provider_id, direction: copy, canonical_emit: true}, {source: permit_id, target: permit_id, direction: copy, canonical_emit: true}, {source: payload_digest, target: payload_digest, direction: copy, canonical_emit: true}, {source: aud, target: aud, direction: copy, canonical_emit: true}, {source: scope_digest, target: scope_digest, direction: copy, canonical_emit: true}, {source: jti, target: jti, direction: copy, canonical_emit: true}, {source: nonce, target: nonce, direction: copy, canonical_emit: true}, {source: iat, target: iat, direction: copy, canonical_emit: true}, {source: nbf, target: nbf, direction: copy, canonical_emit: true}, {source: exp, target: exp, direction: copy, canonical_emit: true}, {source: policy_digest, target: policy_digest, direction: copy, canonical_emit: true}, {source: null, target: model, direction: target_extension, canonical_emit: true, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary/credential_claims", reason: gateway_model_binding_extension}]}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/pop_request_binding", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary/pop/request_binding_fields", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/request_only_binding", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary/request_only_binding", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/replay_key", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary/pop/replay_cache_key", kind: copy, canonical_emit: true, required: true, lossless: true}
+          - {source_path: "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml#/registry/contracts/remote_reservation_gateway/negative_vectors", target_path: "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary/negative_vectors", kind: subset, canonical_emit: true, required: true, lossless: false, coverage: explicit, source_element_set: canonical_negative_vectors, target_element_set: gateway_negative_vectors, omitted_source_fields: [], element_mappings: [{source: wrong_alg, target: wrong_alg, direction: copy, canonical_emit: true}, {source: unknown_kid, target: unknown_kid, direction: copy, canonical_emit: true}, {source: expired, target: expired, direction: copy, canonical_emit: true}, {source: nbf, target: nbf, direction: copy, canonical_emit: true}, {source: audience_mismatch, target: audience_mismatch, direction: copy, canonical_emit: true}, {source: scope_mismatch, target: scope_mismatch, direction: copy, canonical_emit: true}, {source: cnf_mismatch, target: cnf_mismatch, direction: copy, canonical_emit: true}, {source: replayed_jti, target: replayed_jti, direction: copy, canonical_emit: true}, {source: generation_mismatch, target: generation_mismatch, direction: copy, canonical_emit: true}, {source: fence_mismatch, target: fence_mismatch, direction: copy, canonical_emit: true}, {source: caller_selected_upstream_url, target: caller_selected_upstream_url, direction: copy, canonical_emit: true}, {source: forwarded_authorization_header, target: forwarded_authorization_header, direction: copy, canonical_emit: true}, {source: ssrf, target: ssrf, direction: copy, canonical_emit: true}, {source: dns_rebind, target: dns_rebind, direction: copy, canonical_emit: true}, {source: null, target: stream_id_mismatch, direction: target_extension, canonical_emit: true, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary/negative_vectors", reason: stream_binding_extension}]}
+        allowed_extensions:
+          - {path: market_lifecycle, owner: hepta-market-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/market_lifecycle", reason: market_domain}
+          - {path: wallet_disposition_join, owner: hepta-market-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/wallet_disposition_join", reason: wallet_boundary}
+          - {path: usage_vector, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/usage_vector", reason: vector_domain}
+          - {path: usage_counter, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/usage_counter", reason: counter_domain}
+          - {path: remote_usage, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/remote_usage", reason: federation_domain}
+          - {path: delegation, owner: hepta-market-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/delegation", reason: bounded_delegation}
+          - {path: gateway_boundary, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary", reason: gateway_domain}
+          - {path: market_effect_rules, owner: hepta-market-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/market_effect_rules", reason: settlement_policy}
+          - {path: market_lifecycle/domain_status_registry_ref, owner: hepta-market-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/market_lifecycle/domain_status_registry_ref", reason: status_registry}
+          - {path: market_lifecycle_ref, owner: hepta-market-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/market_lifecycle_ref", reason: projection_ref_metadata}
+          - {path: market_lifecycle_projection_mode, owner: hepta-market-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/market_lifecycle_projection_mode", reason: projection_mode_metadata}
+          - {path: compatibility, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/compatibility", reason: decode_compatibility}
+          - {path: gateway_boundary/negative_vector_aliases_decode_only, owner: hepta-auth-contracts.v1, source_ref: "AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml#/execution_closure_v1_3/gateway_boundary/negative_vector_aliases_decode_only", reason: decode_only_negative_vector_aliases}
+  serialization_contexts:
+    e21_public_envelope:
+      version: codex-hepta-contracts.v1.4_e21
+      domain: hepta.e21
+      encoding: sha256-canonical-json
+      field_order: schema_order
+      unknown_fields: reject
+      null_rule: tagged_null
+    authbus_object:
+      version: hepta-auth-contracts.v1
+      domain: hepta.auth.v1
+      encoding: length_delimited_canonical_bytes
+      field_order: lexicographic_field_name_then_value
+      unknown_fields: reject
+      null_rule: tagged_null
+    basil_transport:
+      version: basil.broker.v1
+      domain: hepta.auth.basil.v1
+      encoding: protobuf_length_delimited_canonical_bytes
+      field_order: canonical_bytes_then_digest
+      unknown_fields: reject
+      null_rule: tagged_null
+    hnl_cose_cbor:
+      version: HNL-0..6
+      domain: hepta.hnl.v1
+      encoding: canonical_cbor_cose_sign1
+      field_order: cbor_canonical
+      unknown_fields: reject
+      null_rule: tagged_null
+    gateway_token:
+      version: hepta-gateway.v1
+      domain: hepta.gateway.v1
+      encoding: jwt_or_cose_sign1
+      field_order: registered_claim_order
+      unknown_fields: reject
+      null_rule: tagged_null
+  serialization_digest_rule: >-
+    For non-E21 objects digest = SHA-256(domain_label || 0x00 || version || 0x00 || canonical_bytes).
+    preimage_v1 encodes every field with a big-endian length prefix; integers are unsigned
+    big-endian and absent values use an explicit tagged-null.  Unframed string concatenation is
+    forbidden.  E21 continues to use its published canonical-json/schema digest rules.
+  time_alias_scope:
+    lease_resource: rfc3339_utc_plus_monotonic_snapshot_and_uncertainty
+    jwt_cose: numeric_date
+    hnl_cbor: hnl_native_units
+    aliases_encode: declared_context_only
+  base_mutation_fields:
+    - schema_version
+    - command_id
+    - run_id
+    - aggregate_id
+    - expected_revision
+    - authority_epoch
+    - owner_epoch
+    - generation
+    - fencing_token
+    - logical_clock
+    - causal_parent_event_id
+    - payload_digest
+    - policy_digest
+    - resource_digest
+  e21_effect_receipt_required:
+    - effect_id
+    - effect_intent_id
+    - decision_id
+    - run_id
+    - schema_digest
+    - status
+    - terminal
+    - reconciliation_required
+    - idempotency_key
+    - attempt
+    - authority_scope
+    - execution_scope
+    - effect_authority
+    - production_authority
+    - snapshot_digest
+    - graph_digest
+    - policy_digest
+    - provider_id
+    - reconciliation_id
+    - reconciles_receipt_id
+    - external_state_digest
+    - resolver_attempt
+    - current_revision
+    - cas
+  status_error_registry:
+    id: hepta-auth-contracts.v1/registry/status-error.v1
+    effect_public_status:
+      - Queued
+      - DispatchAccepted
+      - Running
+      - Succeeded
+      - Failed
+      - Cancelled
+      - Indeterminate
+      - Reconciled
+    quota_reservation_status:
+      - Proposed
+      - Held
+      - DispatchAttempted
+      - DispatchAccepted
+      - PartiallyConsumed
+      - Indeterminate
+      - Released
+      - Refunded
+      - Expired
+    internal_dispatch_states:
+      - EffectIntentDurable
+      - DispatchAttemptStarted
+      - DispatchAcceptedRef
+      - DirectTerminalAckRef
+      - DispatchUnknownRef
+      - EffectAckRef
+      - IndeterminateRef
+      - ReconcileQueued
+      - Reconciled
+    internal_dispatch_aliases_decode_only:
+      AckRef: EffectAckRef
+    terminal_public_status: [Succeeded, Failed, Cancelled, Reconciled]
+    nonterminal_holds: [Indeterminate, ManualRequired, ReconcileBlocked, DispatchUnknownRef]
+    terminal_hold_policy: >-
+      ManualRequired, ReconcileBlocked and DispatchUnknownRef are holds, never terminal states.
+      They cannot release/refund quota or escrow, create a new provider attempt, or close an E21
+      receipt without a verified terminal ACK or NoEffectProof and a current fence.
+    errors:
+      - InvalidRequest
+      - Conflict
+      - StaleRevision
+      - StaleEpoch
+      - StaleGeneration
+      - FencingRejected
+      - ForbiddenCapability
+      - ProviderUnavailable
+      - ProviderUnknown
+      - InvalidGrant
+      - ReconcileUnavailable
+      - ManualRequired
+      - ReconcileBlocked
+      - QuotaExceeded
+      - QuotaUnknown
+      - RetentionExpired
+      - SignatureInvalid
+      - AudienceMismatch
+      - ReplayDetected
+    legacy_aliases_decode_only:
+      ACKED: Succeeded
+      DISPATCHED: DispatchAccepted
+      RECONCILING: Indeterminate
+      RELEASED: Released
+      REFUNDED: Refunded
+      RECONCILE_BLOCKED: ManualRequired
+    quota_reservation_aliases_decode_only:
+      PROPOSED: Proposed
+      HELD: Held
+      DISPATCH_ATTEMPTED: DispatchAttempted
+      DISPATCHED: DispatchAccepted
+      PARTIAL: PartiallyConsumed
+      INDETERMINATE: Indeterminate
+      RELEASED: Released
+      REFUNDED: Refunded
+      EXPIRED: Expired
+  identity_fence:
+    required_fields: [authority_epoch, owner_epoch, generation, fencing_token]
+    stale_callback: reject_without_state_change
+    same_key_changed_payload: Conflict_without_state_change
+    direct_uid_identity: insufficient_for_agent_separation
+    required_agent_binding: [hnl_attestation, pidfd_or_audit_token, service_identity, nonce, audience, ttl]
+  id_rules:
+    reconciliation_id: >-
+      recon:v1:<sha256(preimage_v1(domain=hepta.auth.reconciliation.v1; effect_id;
+      effect_intent_id; idempotency_key; attempt; authority_epoch; owner_epoch; generation;
+      fencing_token))>
+    initial_receipt_ref: "receipt-ref:v1:na:<sha256(preimage_v1(domain=hepta.auth.receipt-ref.na.v1; effect_id; effect_intent_id; idempotency_key; attempt; authority_epoch; owner_epoch; generation; fencing_token))>"
+    initial_decision_id: "decision-ref:v1:na:<sha256(preimage_v1(domain=hepta.auth.decision-ref.na.v1; effect_id; effect_intent_id; idempotency_key; attempt; status; current_revision; authority_epoch; owner_epoch; generation; fencing_token))>"
+    no_effect_operation_ref: "operation-ref:v1:not-applicable:<provider_namespace>:<effect_id>:<effect_key>:<attempt>"
+    refresh_operation_key: >-
+      Durable before the provider call; deterministic for a retry of the same operation and bound
+      to provider_id, profile_id, token_family_id, expected_secret_revision and payload_digest.
+  contracts:
+    oauth_secretref:
+      id: hepta.auth.opaque-secret-operation.v1
+      decode_only_aliases: [hepta.auth.secretref-operation.v1]
+      owner: authbusd
+      writer: authbusd
+      adapter_boundary: process_bound_secretref_only
+      raw_secret_bytes: forbidden
+      secret_ref_shape: {required: [backend_id, mount, key_id, version, secret_digest], forbidden: [secret_bytes, raw_secret, access_token, refresh_token, client_secret, authorization_header, provider_headers]}
+      request_required: [schema_version, operation_id, refresh_operation_key, command_id, run_id, profile_id, provider_id, token_family_id, secret_ref, expected_secret_revision, idempotency_key, payload_digest, policy_digest, scope_digest, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, deadline_at, purpose_digest, audience]
+      operations:
+        RefreshWithSecretRef:
+          request_required: [schema_version, operation_id, refresh_operation_key, command_id, run_id, profile_id, provider_id, token_family_id, secret_ref, expected_secret_revision, idempotency_key, payload_digest, policy_digest, scope_digest, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, deadline_at, purpose_digest, audience]
+          response_required: [schema_version, response_id, operation_id, provider_id, profile_id, token_family_id, outcome, access_secret_ref, refresh_secret_ref, secret_revision, refresh_operation_key, provider_status, response_digest, idempotency_key, payload_digest, expected_secret_revision, authority_epoch, owner_epoch, generation, fencing_token]
+          outcomes: [SUCCEEDED, TRANSIENT_FAILURE, INDETERMINATE, QUARANTINED]
+          error_class: [NONE, INVALID_GRANT, UNAUTHORIZED, CONFLICT, TIMEOUT, UNAVAILABLE, SEALED, STALE_FENCE, SCHEMA_INVALID]
+          success_requires: [access_secret_ref, refresh_secret_ref, secret_revision, response_digest]
+          non_success_forbids: [access_secret_ref, refresh_secret_ref]
+        RotateSecretRef:
+          request_required: [schema_version, operation_id, refresh_operation_key, command_id, run_id, profile_id, provider_id, token_family_id, secret_ref, expected_secret_revision, idempotency_key, payload_digest, policy_digest, scope_digest, authority_epoch, owner_epoch, generation, fencing_token, logical_clock, causal_parent_event_id, deadline_at, purpose_digest, audience]
+          response_required: [schema_version, response_id, operation_id, provider_id, profile_id, token_family_id, outcome, new_refresh_secret_ref, secret_revision, refresh_operation_key, response_digest, idempotency_key, payload_digest, expected_secret_revision, authority_epoch, owner_epoch, generation, fencing_token]
+          outcomes: [SUCCEEDED, TRANSIENT_FAILURE, INDETERMINATE, QUARANTINED]
+          error_class: [NONE, INVALID_GRANT, UNAUTHORIZED, CONFLICT, TIMEOUT, UNAVAILABLE, SEALED, STALE_FENCE, SCHEMA_INVALID]
+          success_requires: [new_refresh_secret_ref, secret_revision, response_digest]
+          non_success_forbids: [new_refresh_secret_ref]
+        RefreshStatusByOperationKey:
+          lookup_only: true
+          dispatch: forbidden
+          operation_name: RefreshStatusByOperationKey
+          request_required: [schema_version, operation_id, provider_id, profile_id, token_family_id, refresh_operation_key, idempotency_key, payload_digest, expected_secret_revision, authority_epoch, owner_epoch, generation, fencing_token, deadline_at, audience, expected_execution_mode, policy_digest]
+          response_required: [schema_version, response_id, operation_id, provider_id, profile_id, token_family_id, refresh_operation_key, idempotency_key, payload_digest, expected_secret_revision, authority_epoch, owner_epoch, generation, fencing_token, outcome, secret_revision, response_digest, provider_status, status_revision, observed_at, binding_digest, evidence_profile, provider_query_receipt_digest, execution_mode, mode_attestation_digest, policy_digest, audience, key_epoch, issuer]
+          response_nullable: [new_access_secret_ref, new_refresh_secret_ref, signature, key_id, issued_at, expires_at]
+          operation_aliases_decode_only: {status_lookup: StatusByEffectKey}
+          outcomes: [SUCCEEDED, TRANSIENT_FAILURE, INDETERMINATE, QUARANTINED]
+          error_class: [NONE, INVALID_GRANT, UNAUTHORIZED, CONFLICT, TIMEOUT, UNAVAILABLE, SEALED, STALE_FENCE, SCHEMA_INVALID]
+      states: [IDLE, CLAIMED, IN_FLIGHT, SUCCEEDED, TRANSIENT_FAILURE, INDETERMINATE, RECONCILING, BACKOFF, QUARANTINED, MANUAL_REQUIRED]
+      transitions:
+        - [IDLE, claim, CLAIMED]
+        - [CLAIMED, dispatch, IN_FLIGHT]
+        - [IN_FLIGHT, rotated, SUCCEEDED]
+        - [IN_FLIGHT, invalid_grant, QUARANTINED]
+        - [IN_FLIGHT, transient_failure, TRANSIENT_FAILURE]
+        - [TRANSIENT_FAILURE, retry_scheduled, BACKOFF]
+        - [TRANSIENT_FAILURE, retry_budget_exhausted, MANUAL_REQUIRED]
+        - [IN_FLIGHT, response_unknown, INDETERMINATE]
+        - [INDETERMINATE, lookup, RECONCILING]
+        - [RECONCILING, lookup_rotated, SUCCEEDED]
+        - [RECONCILING, lookup_invalid_grant, QUARANTINED]
+        - [RECONCILING, lookup_transient_failure, BACKOFF]
+        - [RECONCILING, lookup_retryable, BACKOFF]
+        - [RECONCILING, manual_required, MANUAL_REQUIRED]
+        - [MANUAL_REQUIRED, manual_evidence_submitted, RECONCILING]
+        - [BACKOFF, claim_again, CLAIMED]
+      decode_only_event_aliases:
+        verified_rotation: rotated
+        response_lost: response_unknown
+        unavailable: manual_required
+        verified_evidence: manual_evidence_submitted
+        budget_remaining: retry_scheduled
+        retryable: lookup_retryable
+      status_lookup_classification_aliases_decode_only:
+        ROTATED: SUCCEEDED
+        INVALID_GRANT: QUARANTINED
+        TRANSIENT_FAILURE: BACKOFF
+        UNKNOWN: INDETERMINATE
+      invalid_grant_policy: one_quarantine_then_reauthorize
+      response_lost_policy: lookup_only_no_blind_retry
+      claim_key: [provider_id, profile_id, token_family_id]
+      token_family_writer: authbusd
+      fixture_manifest:
+        manifest: authbus_contract_vectors_v1/opaque_secret_operation
+        positive: [refresh_success, rotate_success, invalid_grant_quarantine, transient_backoff, response_lost_indeterminate, status_lookup]
+        negative: [raw_field, changed_digest, stale_fence, blind_retry, synthetic_external_signature]
+      terminal: [SUCCEEDED, QUARANTINED]
+      invariants: [operation_key_durable_before_call, one_token_family_singleflight, invalid_grant_quarantine_once, no_blind_retry_after_response_loss, old_fence_callback_rejected, no_raw_token_projection]
+      compatibility: {deadline: decode_only, deadline_at: encode_only, invalid_grant: classification_only_alias, rotated: result_kind_alias, manual_required: nonterminal_hold_alias, raw_token_fields: reject}
+    reconcile_e21:
+      id: hepta.auth.reconcile-evidence.v1
+      owner: TaskFlow
+      public_contract_owner: codex-hepta-contracts.v1.4_e21
+      decision_owner: TaskFlow
+      authbus_role: proposal_only
+      evidence_ref_required: [reconciliation_id, effect_id, effect_intent_id, reconciles_receipt_id, idempotency_key, attempt, operation_ref, outcome, evidence_kind, evidence_digest, external_state_digest, provider_query_receipt_digest, verified_at, decided_at, resolver_attempt, authority_epoch, owner_epoch, generation, fencing_token, payload_digest, policy_digest, current_revision, cas]
+      no_effect_proof_required: [proof_id, proof_stage, reconciliation_id, provider_id, provider_namespace, effect_id, effect_intent_id, effect_key, attempt, idempotency_key, operation_ref, proof_kind, dispatch_attempted, dispatch_marker_state, dispatch_marker_digest, outbox_delivery_seq, writer_record_fsync_confirmed, writer_fsync_witness_digest, provider_query_receipt_digest, external_state_digest, evidence_digest, observed_at, verified_at, decided_at, taskflow_decision_id, taskflow_decision_digest, authority_epoch, owner_epoch, generation, fencing_token, payload_digest, current_revision, cas]
+      e21_effect_receipt_required: [effect_id, effect_intent_id, decision_id, run_id, schema_digest, status, terminal, reconciliation_required, idempotency_key, attempt, authority_scope, execution_scope, effect_authority, production_authority, snapshot_digest, graph_digest, policy_digest, provider_id, reconciliation_id, reconciles_receipt_id, external_state_digest, resolver_attempt, current_revision, cas]
+      reconciliation_id_rule: "recon:v1:<sha256(preimage_v1(domain=hepta.auth.reconciliation.v1; effect_id; effect_intent_id; idempotency_key; attempt; authority_epoch; owner_epoch; generation; fencing_token))>"
+      initial_receipt_ref_rule: "receipt-ref:v1:na:<sha256(preimage_v1(domain=hepta.auth.receipt-ref.na.v1; effect_id; effect_intent_id; idempotency_key; attempt; authority_epoch; owner_epoch; generation; fencing_token))>"
+      initial_decision_id_rule: "decision-ref:v1:na:<sha256(preimage_v1(domain=hepta.auth.decision-ref.na.v1; effect_id; effect_intent_id; idempotency_key; attempt; status; current_revision; authority_epoch; owner_epoch; generation; fencing_token))>"
+      proof_stage: [PROPOSED, COMMITTED]
+      proposed_proof_rule: authbusd_may_propose_with_pending_decision_sentinel
+      committed_proof_rule: taskflow_decision_and_current_fence_required_before_release_or_refund
+      manual_required_is_terminal: false
+      manual_required_closes_indeterminate: false
+      no_effect_requires: [canonical_no_query_marker, current_fence, taskflow_decision, durable_fsync_witness]
+      direct_ack_path: DispatchAttemptStarted_to_DirectTerminalAckRef
+      dispatch_paths:
+        asynchronous: [DispatchAttemptStarted, DispatchAcceptedRef, EffectAckRef]
+        direct_terminal: [DispatchAttemptStarted, DirectTerminalAckRef]
+        unknown: [DispatchAttemptStarted, DispatchUnknownRef, Indeterminate, lookup_only_reconcile]
+      status_lookup_operation: StatusByEffectKey
+      status_lookup_operation_aliases_decode_only: [status_lookup]
+      status_lookup_request: [schema_version, request_id, provider_id, provider_namespace, effect_key, payload_digest, idempotency_key, attempt, authority_epoch, owner_epoch, generation, fencing_token, audience, request_nonce, deadline_at, query_revision, retention_hint, expected_execution_mode, policy_digest]
+      status_lookup_response: [schema_version, response_id, provider_id, provider_namespace, effect_key, payload_digest, terminal_state, operation_ref, provider_operation_id, provider_operation_id_sha256, ack_digest, observed_at, status_revision, binding_digest, provider_query_receipt_digest, not_found_kind, evidence_profile, execution_mode, mode_attestation_digest, policy_digest, signature, key_id, issued_at, expires_at]
+      status_lookup_terminal_state_enum: [UNKNOWN, QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED]
+      status_lookup_terminal_states: [SUCCEEDED, FAILED, CANCELLED]
+      status_lookup_response_nullable: [operation_ref, provider_operation_id, provider_operation_id_sha256, ack_digest, signature, key_id, issued_at, expires_at]
+      status_lookup_conditional_response:
+        terminal: {when: "terminal_state in [SUCCEEDED, FAILED, CANCELLED] and not_found_kind=none", required_non_null: [operation_ref, provider_operation_id, provider_operation_id_sha256, ack_digest, evidence_profile], guard: immutable_terminal_binding}
+        non_terminal: {when: "terminal_state in [UNKNOWN, QUEUED, RUNNING]", required_non_null: [observed_at, status_revision, binding_digest, provider_query_receipt_digest, evidence_profile], guard: lookup_only}
+        not_found: {when: "not_found_kind in [verified, unavailable, expired]", required_non_null: [provider_query_receipt_digest, observed_at, evidence_profile, not_found_kind, terminal_state], terminal_state: UNKNOWN, forbidden: [operation_ref, provider_operation_id, provider_operation_id_sha256, ack_digest], guard: "verified_not_found_requires_no_effect_proof; unavailable_or_expired_never_closes_effect"}
+      not_found_kind: [none, verified, unavailable, expired]
+      nonterminal_holds: [ManualRequired, ReconcileBlocked, DispatchUnknownRef, Indeterminate]
+      release_guard: verified_terminal_ack_or_canonical_no_effect_proof_and_current_fence
+      forbidden: [manual_required_as_terminal, blind_retry_after_unknown, unscoped_404_as_evidence, raw_provider_body_projection, public_no_effect_status]
+      not_found_policy:
+        verified: no_effect_proof_only
+        unavailable: indeterminate
+        expired: indeterminate
+        unscoped_404: reject_as_evidence
+      fixture_manifest:
+        manifest: authbus_contract_vectors_v1/reconcile_e21
+        positive: [queued, running, direct_success, direct_failed, direct_cancelled, indeterminate, reconciled_success, pre_dispatch_no_effect, verified_not_found, manual_hold]
+        negative: [missing_e21_field, wrong_digest, receipt_chain_mismatch, stale_fence, manual_terminal, unknown_release, forged_no_query, synthetic_external_signature]
+    outbox_dispatch:
+      id: hepta.auth.outbox-delivery.v1
+      local_writer: source_record_owner_only
+      effect_ledger_writer: TaskFlow
+      authbus_dispatch_reference_writer: authbusd
+      delivery_semantics: local_atomic_commit_plus_at_least_once_bridge
+      fields: [schema_version, outbox_id, source_owner, destination, event_type, event_id, aggregate_id, command_id, causal_parent_event_id, delivery_seq, delivery_attempt, provider_attempt, resolver_attempt, payload_ref, payload_encoding, payload_digest, source_record_digest, idempotency_key, lease_owner, lease_expires_at, next_retry_at, ack_digest, created_at, updated_at, status, authority_epoch, owner_epoch, generation, fencing_token, writer_record_fsync_confirmed, writer_fsync_witness_digest, dead_letter_reason]
+      nullable_fields: [lease_owner, lease_expires_at, next_retry_at, ack_digest, dead_letter_reason]
+      status: [PENDING, LEASED, SENT, ACKED, UNKNOWN, DEAD_LETTER, CANCELLED]
+      sequence: [local_commit, fsync, lease, deliver, receiver_dedupe, ack_digest, cursor_advance]
+      dedupe_key: [idempotency_key, payload_digest]
+      changed_payload: conflict_and_halt
+      dispatch_order: [EffectIntentDurable, DispatchAttemptStarted, AdapterCall, DispatchAcceptedRef_or_DirectTerminalAckRef_or_DispatchUnknownRef, EffectAckRef_or_IndeterminateRef, TaskFlowReceipt, LookupOnlyReconcile, Release_or_Refund]
+      unknown_recovery: lookup_only
+      unknown_recovery_detail: no_blind_retry
+      reconcile_queue_owner: TaskFlow
+      authbus_reconcile_queue_role: lookup_worklist_projection_only
+      dispatch_attempt_fields: [dispatch_id, effect_id, effect_intent_id, effect_key, provider_namespace, provider_attempt, idempotency_key, payload_digest, started_at, deadline_at, source_outbox_id, delivery_seq, authority_epoch, owner_epoch, generation, fencing_token, writer_fsync_witness_digest, state]
+      dispatch_attempt_state: [STARTED, ACCEPTED, DIRECT_TERMINAL_ACK, UNKNOWN]
+      delivery_ack_fields: [ack_id, outbox_id, delivery_seq, idempotency_key, payload_digest, result, receiver_owner, receiver_revision, ack_digest, received_at, authority_epoch, owner_epoch, generation, fencing_token]
+      delivery_ack_result: [APPLIED, ALREADY_APPLIED, CONFLICT, STALE_FENCE, REJECTED, UNKNOWN]
+      fsync_witness_fields: [source_owner, wal_segment, wal_offset, event_seq, commit_digest, directory_fsync, writer_boot_id, writer_generation, verified_at]
+      forbidden: [raw_secret_bytes, authorization_header, unbounded_retry, second_scheduler, release_on_manual_required]
+      crash_windows: [before_attempt_marker, after_attempt_before_call, after_call_before_response_marker, after_unknown_before_receipt, after_ack_before_cursor]
+      fixture_manifest:
+        manifest: authbus_contract_vectors_v1/outbox_dispatch
+        positive: [normal_ack, duplicate_ack, lease_takeover, direct_terminal_ack]
+        negative: [changed_digest, lost_ack_unknown, stale_fence, gap, dead_letter, crash_before_fsync, crash_after_call_before_marker, crash_after_ack_before_fsync, disk_full, oom, reopen]
+    remote_reservation_gateway:
+      id: hepta.auth.remote-gateway-contracts.v1
+      internal_contracts: [hepta.auth.remote-reservation.v1, hepta.gateway.credential.v1]
+      usage_vector_dimensions: [request_count, rpm, tpm, concurrency, day_budget, context]
+      provider_specific_dimensions: "input_tokens, output_tokens, compute_millis and bytes are context extensions, not replacements for the canonical six dimensions."
+      units_required: true
+      scalar_alias: request_count_only
+      remote_reservation_fields: [allocation_id, reservation_id, usage_id, source_node_id, recipient_node_id, quota_domain, window_id, window_kind, window_start, window_end, reset_at, source_seq, window_digest, allocated_vector, held_vector, consumed_vector, remaining_vector, vector_digest, counter_revision, scope_digest, audience, nonce, provider_consent_ref, owner_attestation_digest, authority_epoch, owner_epoch, generation, fencing_token, idempotency_key, expires_at]
+      conservation: "sum(local_held + remote_held) + consumed <= limit componentwise"
+      reservation_sequence: [source_prepare_wal, source_fsync, signed_usage_vector_lease, recipient_verify_fence, recipient_hold_wal, recipient_ack, source_commit_allocation]
+      partition_policy: no_new_remote_admission
+      counter_owner: market-adapter
+      gateway_issuer: authbusd_owner_mediated
+      gateway_self_issuance: forbidden
+      credential_format: jwt_or_cose_sign1
+      signature_algorithms: [EdDSA_Ed25519, COSE_EdDSA_Ed25519]
+      forbidden_algorithms: [HS256, RS256, ES256, none, unsigned_bearer]
+      required_claims: [iss, kid, cnf, tenant_id, workspace_id, agent_id, service_id, node_id, agent_generation, authority_epoch, owner_epoch, generation, fencing_token, resource_id, provider_id, permit_id, payload_digest, aud, scope_digest, jti, nonce, iat, nbf, exp, policy_digest]
+      request_only_binding: [idempotency_key]
+      api_subset: [Responses, ChatCompletions, SSE, cancel, backpressure]
+      upstream_url_policy: registry_allowlist_only
+      upstream_authorization: adapter_constructed_only
+      pop_request_binding: [method, path, canonical_headers, body_digest, stream_id_or_tagged_null, nonce]
+      replay_key: [iss, kid, jti, resource_id, permit_id, payload_digest, nonce]
+      negative_vectors: [wrong_alg, unknown_kid, expired, nbf, audience_mismatch, scope_mismatch, cnf_mismatch, replayed_jti, generation_mismatch, fence_mismatch, caller_selected_upstream_url, forwarded_authorization_header, ssrf, dns_rebind]
+      negative_vector_aliases_decode_only: {expired_or_skewed_iat: expired, aud_mismatch: audience_mismatch, scope_digest_mismatch: scope_mismatch}
+      market_manual_required: disputed_nonterminal_no_refund_no_dispatch
+      fixture_manifest:
+        manifest: authbus_contract_vectors_v1/remote_gateway
+        remote: [local_reserve, remote_hold, commit, partial, commit_unknown_compensate, partition_reject, stale_window, overspend, unknown_dimension, rollover, duplicate, changed_digest]
+        gateway: [valid_local, valid_remote_pop, wrong_alg, unknown_kid, expired, nbf, aud_scope_cnf_replay, generation_fence_stream_mismatch, caller_url, forwarded_auth, ssrf, dns_rebind]
+  stage_bindings:
+    B0: [source_and_toolchain]
+    B1: [basil_profile, identity_fence]
+    B2: [e21_effect_receipt_required, serialization_contexts, status_error_registry, all_contracts]
+    B3: [oauth_secretref, reconcile_e21_status_lookup, direct_terminal_ack]
+    B4: [quota_vector, reservation_invariants]
+    B5: [outbox_dispatch, dispatch_order, crash_windows]
+    B6: [legacy_secretref_metadata_migration]
+    B7: [hnl_identity_and_remote_reservation]
+    B8: [remote_reservation_gateway]
+    B9: [usage_vector_counter_and_wallet_disposition]
+    B10: [reproducible_build_and_release_handoff]
+  ci_rules:
+    - canonical_registry_is_the_only_normative_status_error_source
+    - generated_projections_match_registry_keys_and_values
+    - e21_effect_receipt_required_set_is_closed
+    - manual_required_reconcile_blocked_and_dispatch_unknown_are_nonterminal
+    - direct_terminal_ack_path_is_total
+    - dispatch_unknown_recovery_is_lookup_only
+    - response_lost_refresh_is_lookup_only
+    - no_raw_secret_or_authorization_header_in_wire_wal_sqlite_logs_receipts
+    - basil_key_generation_is_forbidden_and_missing_key_fails_closed
+    - local_outbox_commit_is_atomic_and_bridge_delivery_is_deduplicated
+    - remote_vector_conservation_is_componentwise
+    - scalar_usage_right_is_request_count_only
+    - gateway_cannot_self_issue_or_select_upstream_url
+    - stale_epoch_generation_fence_callbacks_are_rejected
+    - historical_aliases_are_decode_only
+    - hnl_gate0_blocks_only_federated_lane
+    - e41_external_gates_remain_deferred_until_final_release

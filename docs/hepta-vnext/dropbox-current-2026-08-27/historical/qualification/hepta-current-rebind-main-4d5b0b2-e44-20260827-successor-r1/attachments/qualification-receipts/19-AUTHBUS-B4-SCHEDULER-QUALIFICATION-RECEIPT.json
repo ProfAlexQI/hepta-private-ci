@@ -1,0 +1,135 @@
+{
+  "schema": "hepta.authbus.b4.scheduler.qualification-receipt.v1",
+  "receipt_kind": "QUALIFICATION",
+  "status": "LOCAL_QUALIFICATION_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "plan": {
+    "plan_id": "AUTHBUS-PLAN-2026-08-26",
+    "stage": "B4",
+    "contract_reference": "AUTHBUS.11 / E.41",
+    "qualification_target": "deterministic local scheduler seam"
+  },
+  "scope": {
+    "qualification_only": true,
+    "module_cfg_test_only": true,
+    "in_memory_only": true,
+    "daemon_or_listener": false,
+    "production_scheduler": false,
+    "provider_adapter": false,
+    "external_effects": false,
+    "persistent_wal": false,
+    "authority_or_promotion": false,
+    "network_access": false
+  },
+  "candidate": {
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/authbus-b4-qualification-20260826",
+    "branch": "hepta/authbus-b4-qualification-20260826",
+    "base_commit": "aaa8b3452b6652ae733ee05f428cde46c20c5e11",
+    "base_tree": "4b9fd3c837a40304a9610e7399c883f4c86b00a6",
+    "supersedes_commit": "66335ab9ab7360756902d2d17f0017db4491262f",
+    "head_commit": "47fe302b2ef9ccac166c3a362516b0bc4afdfec",
+    "head_tree": "d1d85c153ffbc823b1cf58a841a0bec6e12361b9",
+    "parent_exact": true,
+    "clean": true,
+    "delta_paths": [
+      "codex-rs/hepta-contracts/src/authbus_b4.rs",
+      "codex-rs/hepta-contracts/src/lib.rs"
+    ]
+  },
+  "artifacts": {
+    "module_path": "codex-rs/hepta-contracts/src/authbus_b4.rs",
+    "module_sha256": "914ec7478cef6c357475229a9a402b0abaee3c84558370f863ed1fa6f68047c9",
+    "focused_test_log": "/Volumes/T5/hepta-vnext/artifacts/authbus-b4-qualification-20260826/focused-tests.log",
+    "focused_test_log_sha256": "8e54e9fd5912e56492bf6ab8ad1b8e872c298888d04ada22a3bf5f5c85c6be40",
+    "cargo_lock_sha256": "53b732fe3d7e0bdb145be9fb156ce211a441d612a35f6610df21f9f8e4f3e23a"
+  },
+  "model": {
+    "quota_dimensions": ["rpm", "tpm", "concurrency", "day_budget", "context"],
+    "reservation_formula": "estimate + safety_margin <= limit - used - held",
+    "unknown_quota_policy": "deny_new_admission",
+    "atomic_reservation": true,
+    "concurrency_semantics": "simultaneous_hold_only_not_cumulative_usage",
+    "resource_states": ["Available", "Draining", "Unavailable", "Unknown"],
+    "fence_fields": [
+      "authority_epoch",
+      "owner_epoch",
+      "generation",
+      "fencing_token_sha256",
+      "resource_sha256",
+      "expected_revision"
+    ],
+    "duplicate_keys": ["request_id", "idempotency_key"],
+    "selection_policy": "weighted service-debt across subjects; EDF within each subject",
+    "callback_policy": "stale or mismatched callbacks reject without quota mutation"
+  },
+  "verification": [
+    {
+      "command": "cargo test --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-contracts authbus_b4 -- --test-threads=1",
+      "status": "pass",
+      "result": "10 passed / 0 failed (including 3 overflow transaction regressions)",
+      "log": "focused-tests.log"
+    },
+    {
+      "command": "cargo test --manifest-path codex-rs/Cargo.toml -p codex-hepta-contracts --lib",
+      "status": "pass",
+      "result": "82 passed / 0 failed"
+    },
+    {
+      "command": "cargo check --locked --manifest-path codex-rs/Cargo.toml -p codex-hepta-contracts",
+      "status": "pass",
+      "result": "production build excludes cfg(test) seam"
+    },
+    {
+      "command": "git diff --check",
+      "status": "pass"
+    },
+    {
+      "command": "cargo clippy --lib --tests -- -D warnings",
+      "status": "baseline_failure",
+      "note": "existing unrelated provider_effect.rs redundant-clone/cloned-ref diagnostics and repository clippy.toml invalid-type diagnostics; no promotion decision is inferred"
+    }
+  ],
+  "bounded_metrics": {
+    "measurement_scope": "deterministic unit vectors in this qualification seam; not fleet capacity proof",
+    "oversell_events": 0,
+    "duplicate_active_permits": 0,
+    "stale_callback_quota_mutations": 0,
+    "unknown_quota_admissions": 0,
+    "overflow_half_mutations": 0,
+    "jain_fairness_ppm": 1000000,
+    "max_wait_quanta": 3,
+    "fairness_subject_counts": [4, 4, 4]
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "production_listener": false,
+    "provider_effect": false,
+    "model_inference": false,
+    "shared_kg_write": false
+  },
+  "deferred_gates": [
+    "16-agent / 3-resource pool qualification and Jain/starvation stress evidence",
+    "authbusd durable WAL, fsync, restart/reconcile, and multi-process race proof",
+    "canonical AUTHBUS.11 E21 envelope/status/error crosswalk and registry integration",
+    "Basil upstream import, SBOM/native build, and source-attachment verification",
+    "provider/KMS/HSM/physical/public settlement and HNL/gateway/market stages"
+  ],
+  "residual_gaps": [
+    "This commit is a test-only reference model; it does not implement a production scheduler crate or caller.",
+    "The existing B2 wire contracts remain separate from a full E21 registry/WAL contract.",
+    "No provider call, EffectIntent, EffectReceipt, DispatchAttemptStarted, or durable reconciliation path is added."
+  ],
+  "runner": {
+    "kind": "hepta-ssd-run + cargo",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)"
+  },
+  "generated_at": "2026-08-26T13:46:31Z"
+}

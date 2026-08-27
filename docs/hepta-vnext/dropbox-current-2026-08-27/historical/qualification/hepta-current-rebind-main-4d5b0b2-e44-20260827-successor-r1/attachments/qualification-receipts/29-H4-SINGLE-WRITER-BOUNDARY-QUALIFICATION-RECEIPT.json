@@ -1,0 +1,111 @@
+{
+  "schema": "hepta.h4.single_writer_boundary.qualification_receipt.v1",
+  "receipt_kind": "LOCAL_QUALIFICATION",
+  "status": "PASS_LOCAL_QUALIFICATION",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "plan": {
+    "plan_reference": "E.41",
+    "stage": "P2/H4",
+    "slice": "local durable writer lifetime ownership and reopen boundary"
+  },
+  "source": {
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/h4-next-20260827",
+    "branch": "hepta/h4-next-20260827",
+    "base_commit": "a37278620b34a47193db867e0cb749e50ed1bfe5",
+    "head_commit": "61d48407a06b03c5db8e4150385f389b7c819301",
+    "parent": "a37278620b34a47193db867e0cb749e50ed1bfe5",
+    "head_tree": "e207f919a6d7c1cab52d95025fb4c8f6357bb671",
+    "commit_scope_clean": true,
+    "worktree_dirty_after_commit": true,
+    "dirty_note": "Unrelated sibling WIP files were present before this lane and were not staged, changed, or discarded.",
+    "changed_paths": [
+      {
+        "path": "codex-rs/hepta-memory/src/production_writer.rs",
+        "sha256": "1331f086a56ac5117a1dbbe955a9fb9eee9e1561f575b82c9db72714d470e652"
+      }
+    ]
+  },
+  "change": {
+    "summary": "Add a stable, hashed per-database/per-lease sidecar lock retained for the lifetime of ProductionDurableWriter; reject a second same-lease opener with WriterBusy, recheck the exact lease head after lock acquisition, and permit replay after the first owner drops.",
+    "invariants": [
+      "Two local writer handles cannot concurrently own the same active lease under the same grant.",
+      "The failed second open appends no lease, event, outbox, or recovery row.",
+      "The lock path is derived from canonical database path and lease id and is never removed, avoiding inode replacement races.",
+      "Dropping the first owner releases the OS advisory lock; a later exact reopen remains append-only and replayable.",
+      "This lock adds no grant, signer, provider, effect, shared-KG, or production authority."
+    ]
+  },
+  "evidence": {
+    "evidence_class": "LOCAL_DETERMINISTIC_SINGLE_WRITER_REGRESSION",
+    "claim_status": "QUALIFICATION_ONLY",
+    "efficacy_status": "NOT_ASSESSED",
+    "approval": "NONE",
+    "physical_exactly_once": "NOT_ESTABLISHED",
+    "external_signer_or_trust_root": "NOT_PRESENT",
+    "source_binding_status": "OBSERVED_CURRENT_BYTES_NOT_EXTERNAL_AUTHORITY",
+    "root_plan": {
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+      "sha256": "d8e708eff60ade95732f904d8254bd367ec5e42093f23d90a45c6b1b112825cf",
+      "hydration": "READABLE"
+    },
+    "qualification_index": {
+      "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/HEPTA_VNEXT_QUALIFICATION_INDEX.md",
+      "sha256_observed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "hydration": "DATALess_PLACEHOLDER_UNREADABLE",
+      "note": "Dropbox File Provider exposed a 71724-byte dataless placeholder; no index content was used as authority. Current P0 rebind remains the authoritative source package."
+    }
+  },
+  "verification": [
+    {
+      "command": "cargo test --locked -p codex-hepta-memory production_writer::tests -- --test-threads=1",
+      "result": "10 passed / 0 failed / 0 ignored / 195 filtered"
+    },
+    {
+      "command": "cargo test --locked -p codex-hepta-memory --lib -- --test-threads=1",
+      "result": "202 passed / 0 failed / 3 ignored / 0 measured"
+    },
+    {
+      "command": "cargo check --locked -p codex-hepta-memory",
+      "result": "pass; existing dead_code warnings only"
+    },
+    {
+      "command": "cargo fmt --package codex-hepta-memory -- --check",
+      "result": "pass; pinned-toolchain unstable-imports warning only"
+    },
+    {
+      "command": "cargo clippy --locked -p codex-hepta-memory --lib -- -D warnings",
+      "result": "baseline failure: 50 pre-existing diagnostics across hepta-memory; no new production_writer-specific lint (the reported redundant closure predates this commit)"
+    },
+    {
+      "command": "git diff --check",
+      "result": "pass for committed lane diff"
+    }
+  ],
+  "authority_flags": {
+    "authority": false,
+    "external_authority": false,
+    "production_writer": false,
+    "production_caller": false,
+    "effect_authority": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "shared_kg_write": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "fleet": false,
+    "model_inference": false,
+    "npu_connected": false,
+    "network_listener": false
+  },
+  "known_gaps": [
+    "The sidecar lock is host-local OS advisory coordination, not an external supervisor or trust-root authority and has no cross-host lease semantics.",
+    "No root-owned production writer seal, external signer/trust-root, KMS/HSM, or key lifecycle evidence exists.",
+    "No provider-owned signed ACK/status, physical exactly-once, or real crash-after-send authority exists.",
+    "No physical power-loss/media durability run or 1000-operation fault-injection RPO proof has been executed by this lane.",
+    "The full package clippy baseline and repository-wide formatting drift remain pre-existing and are not rewritten here."
+  ],
+  "receipt_sha256_basis": "SHA-256 of this canonical JSON file is reported in the adjacent SHA256SUMS; the receipt carries qualification evidence only and is not an authority grant.",
+  "generated_at": "2026-08-26T21:17:58Z"
+}

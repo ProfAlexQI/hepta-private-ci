@@ -1,0 +1,43 @@
+{
+  "schema": "hepta.authbus.receipt.v1",
+  "plan_id": "AUTHBUS-PLAN-2026-08-26",
+  "status": "PLANNING_ONLY_STALE_SOURCE_BINDING",
+  "source_binding": {
+    "basil_repo": "https://github.com/openbasil/basil",
+    "basil_commit": "1fd29adb8e7356968eacbff9309e056cec9bafd7",
+    "basil_version": "0.7.2-main-snapshot",
+    "license": "Apache-2.0",
+    "parent_plan_sha256_before_append": "ca5e28fc5b6a7bac8ca4c156dc7ce389f9320161081910b42f9ec01007ba244c",
+    "post_append_sha256": "2616e5aadbc789bd95af0d2ed65f4086f3dcc467e404fa1c45cb05c513d48f80"
+  },
+  "append": {
+    "canonical_file": "OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+    "section": "AUTHBUS-PLAN-2026-08-26",
+    "anchor": "E.41.4 / EOF line 3666 before append; AUTHBUS section starts at line 3668",
+    "attachments": [
+      "OpenClaw/hepta-authbus-basil-fork-plan-2026-08-26.md",
+      "OpenClaw/AUTHBUS_STAGE_MATRIX_v1.yaml",
+      "OpenClaw/hepta.authbus_receipt.v1.schema.json",
+      "OpenClaw/HEPTA_AUTHBUS_BASIL_UPSTREAM_POLICY_V1.md",
+      "OpenClaw/AUTHBUS_TRUST_MODE_MATRIX_v1.yaml",
+      "OpenClaw/AUTHBUS_RESOURCE_QUOTA_METERING_CONTRACT_v1.yaml",
+      "OpenClaw/AUTHBUS_FAILURE_RECONCILE_STATE_MACHINE_v1.yaml",
+      "OpenClaw/AUTHBUS_ABUSE_DISPUTE_POLICY_v1.yaml"
+    ]
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false
+  },
+  "external_gates": {
+    "development": "DEFERRED",
+    "final_release": "REQUIRED"
+  },
+  "created_at": "2026-08-26T17:53:12+08:00"
+}

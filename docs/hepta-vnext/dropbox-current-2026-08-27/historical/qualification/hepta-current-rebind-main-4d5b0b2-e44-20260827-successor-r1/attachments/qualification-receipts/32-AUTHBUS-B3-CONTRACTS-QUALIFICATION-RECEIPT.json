@@ -1,0 +1,108 @@
+{
+  "schema": "hepta.authbus.b3.opaque_secretref.qualification_receipt.v1",
+  "status": "LOCAL_QUALIFICATION_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "slice": [
+    "opaque SecretRef shape with backend/mount/key/version/digest and no raw secret bytes",
+    "RefreshWithSecretRef and RotateSecretRef request/response wire contracts",
+    "lookup-only RefreshStatusByOperationKey request/response contract",
+    "exact operation identity, payload digest, authority epoch, owner epoch, generation and fencing-token binding",
+    "response-loss state machine and transactional retry-budget accounting"
+  ],
+  "worktree": "/Volumes/T5/hepta-vnext/worktrees/b23-next-20260827",
+  "branch": "hepta/authbus-b23-next-20260827",
+  "head": "5f41813ed27d8c99393e2339f2548510405f0533",
+  "tree": "319921144fe81543df0de07772ff3c28a805db92",
+  "parent": "9652cc25fb32cd99df7c282c5e928385298aa6a6",
+  "source_binding": {
+    "root_plan": "E.41",
+    "canonical_base_head": "9652cc25fb32cd99df7c282c5e928385298aa6a6",
+    "canonical_base_tree": "a0f4ad3bfbf45af8831851f394daaa74971af1c9",
+    "external_authority_receipt": false,
+    "binding_status": "LOCAL_CANDIDATE_ONLY",
+    "source_files": {
+      "AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml": {
+        "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/AUTHBUS_CANONICAL_CONTRACT_REGISTRY_v1.yaml",
+        "sha256": "cda83c4776d4c2b3c2851474e476e775d6ca26fa815373083aac47fdfd0c89f5"
+      },
+      "AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml": {
+        "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/AUTHBUS_OAUTH_SECRETREF_CONTRACT_v1.yaml",
+        "sha256": "bd82b1380497de39f484b2f071f611247752459ad1aaf1d8d112fad8680e2d92"
+      },
+      "hepta-vnext-development-plan-final-2026-08-23.md": {
+        "path": "/Users/qianqi/Library/CloudStorage/Dropbox/OpenClaw/hepta-vnext-development-plan-final-2026-08-23.md",
+        "sha256": "1ff0f8aabf733e1d43a59e3b8f30281dba4f6814f20d3759b909816f207becce"
+      }
+    },
+    "note": "Append-only local evidence; no canonical main, Dropbox source, current/effective index, or authority flag was modified."
+  },
+  "evidence": {
+    "evidence_class": "AUTHBUS_B3_CONTRACTS_WIRE_AND_BINDING_REGRESSION",
+    "claim_status": "QUALIFICATION_ONLY",
+    "efficacy_status": "NOT_ASSESSED",
+    "approval": "NONE",
+    "physical_exactly_once": "NOT_ESTABLISHED",
+    "scope": "Contracts reject unknown/raw-secret fields, bind all mutation identity/fence components, prohibit status redispatch, and preserve fail-closed response-loss semantics. This is not provider or production authority."
+  },
+  "files_changed": [
+    {
+      "path": "codex-rs/hepta-contracts/src/authbus.rs",
+      "sha256": "36f8ab12cf4e0292eeb93c87fa6a37f5b8ef928722e59f3146c818b89665e72c"
+    },
+    {
+      "path": "codex-rs/hepta-contracts/src/authbus_b3.rs",
+      "sha256": "d50a25bdee33f0c87840e2549fc4d8285457758997ff1b4129b3b9144d96f6e3"
+    },
+    {
+      "path": "codex-rs/hepta-contracts/src/lib.rs",
+      "sha256": "033eee96c418bdad086b766112b510660bc2cfac1c96e54a9d925587246d2da3"
+    }
+  ],
+  "checks": {
+    "cargo_test_locked_p_codex_hepta_contracts_serial": "116 passed / 0 failed / 0 ignored",
+    "cargo_check_locked_p_codex_hepta_contracts": "pass",
+    "cargo_clippy_locked_p_codex_hepta_contracts_lib_d_warnings": "pass",
+    "targeted_rustfmt_authbus_b3": "pass (pinned formatter warning only)",
+    "git_diff_check": "pass",
+    "worktree_clean_after_commit": true
+  },
+  "contract_coverage": {
+    "opaque_secret_ref": "backend_id/mount/key_id/version/secret_digest only; raw secret and provider header fields forbidden",
+    "refresh": "strict request and response fields; success requires both opaque refs and advancing revision",
+    "rotate": "strict request and response fields; success requires new opaque refresh ref and advancing revision",
+    "status": "operation-key lookup only; dispatch_allowed=false; unknown/indeterminate cannot carry refs",
+    "binding": "operation key/id and response identity bind provider/profile/family/payload/authority_epoch/owner_epoch/generation/fencing_token",
+    "state_machine": "response loss enters INDETERMINATE and only explicit lookup can reconcile",
+    "atomicity": "retry-budget and attempt overflow errors leave operation record unchanged"
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "scheduler_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "model_inference": false,
+    "shared_kg_write": false,
+    "fleet": false,
+    "network_listener": false
+  },
+  "external_effects": false,
+  "real_provider_or_market_connected": false,
+  "remaining_gates": [
+    "provider-owned signed ACK/status and physical exactly-once/crash-after-send evidence",
+    "external signer/trust-root/KMS/HSM and key lifecycle",
+    "root-owned durable writer/outbox and independent production authority",
+    "physical power-loss/media durability and H8/H9 supervisor/canary/rollback ceremony",
+    "current canonical main source/receipt rebinding and release approval"
+  ],
+  "append_only": true,
+  "historical_receipts_unchanged": true,
+  "generated_at": "2026-08-27T03:00:00+08:00"
+}

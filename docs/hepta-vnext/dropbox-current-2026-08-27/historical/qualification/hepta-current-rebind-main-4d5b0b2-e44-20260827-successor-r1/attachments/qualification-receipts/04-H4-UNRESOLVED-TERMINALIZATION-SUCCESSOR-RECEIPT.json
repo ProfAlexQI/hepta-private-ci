@@ -1,0 +1,137 @@
+{
+  "schema": "hepta.h4.local_unresolved_terminalization_successor_receipt.v1",
+  "kind": "local_lease_terminalization_generation_scoped_unresolved_guard",
+  "generated_at": "2026-08-26T16:41:31Z",
+  "phase": "DEVELOPMENT",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "status": "PASS_LOCAL_QUALIFICATION",
+  "plan_reference": "E.41 P2/H4",
+  "claim_level": "L1_SHADOW_QUALIFICATION_ONLY",
+  "evidence_class": "LOCAL_APPEND_ONLY_GENERATION_FENCE_REGRESSION",
+  "efficacy_status": "NOT_PRODUCT_AUTHORITY",
+  "approval_state": "NOT_APPROVED",
+  "external_gate_status": "DEFERRED_RELEASE_ONLY",
+  "successor_of": {
+    "receipt": "H4-UNRESOLVED-TERMINALIZATION-QUALIFICATION-RECEIPT.json",
+    "receipt_sha256": "9279b705b0059a5a2810de582d408be558c82f76b0181b86e3aef622717af552",
+    "supersedes": false,
+    "old_receipt_immutable": true
+  },
+  "source": {
+    "worktree": "/Volumes/T5/hepta-vnext/worktrees/h4-unresolved-guard-20260827",
+    "branch": "hepta/h4-unresolved-guard-20260827",
+    "base_commit": "f94e06d59221cde61fc6865df3a6e34959e43cc5",
+    "parent_commit": "d94d27fe6778fa75fdeeea17cd5a7fab4a2da775",
+    "head_commit": "3f4ba6a02fd3d8d0f56bf3d9cd20e479a781de02",
+    "head_tree": "aa8bf01e9512c219034a6a6fe1de3924ce573965",
+    "parent_exact": true,
+    "dirty": false,
+    "changed_paths": [
+      {
+        "path": "codex-rs/hepta-memory/src/local_lease_outbox.rs",
+        "sha256": "3c6bc42a11d26c75951b6428fedbdaaa071bee506c93a472931b08bbb5ef1dc9"
+      },
+      {
+        "path": "codex-rs/hepta-memory/src/local_lease_outbox_tests.rs",
+        "sha256": "d7b38797b8b9008bb86c9ae573f42dde751102a17587a3e6ab7ed3346762810a"
+      }
+    ]
+  },
+  "change": {
+    "summary": "Scope the normal release/rollback unresolved-outcome guard to the current lease generation and exact fencing token, so an expired generation's quarantined queued/indeterminate occurrence cannot deadlock a successor terminal transition.",
+    "invariants": [
+      "Full historical event and outbox chains are still verified before terminalization.",
+      "Only events matching the active handle generation and exact fencing token participate in the unresolved-state FSM.",
+      "Queued or Indeterminate occurrences in the current generation reject release and rollback before any lease row is appended.",
+      "After current-generation settlement, a successor can release despite unresolved rows quarantined by explicit expiry in an older generation.",
+      "The old occurrence remains fenced and cannot be rewritten by the successor; expiry remains the separate timeout path."
+    ]
+  },
+  "tests": [
+    {
+      "command": "cargo test --locked -p codex-hepta-memory --lib local_lease_outbox_tests::successor_terminalization_ignores_unresolved_expired_generation -- --exact --test-threads=1",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 200
+    },
+    {
+      "command": "cargo test --locked -p codex-hepta-memory --lib local_lease_outbox_tests:: -- --test-threads=1",
+      "passed": 28,
+      "failed": 0,
+      "ignored": 1,
+      "filtered": 172
+    },
+    {
+      "command": "cargo test --locked -p codex-hepta-memory --lib -- --test-threads=1",
+      "passed": 198,
+      "failed": 0,
+      "ignored": 3,
+      "filtered": 0
+    },
+    {
+      "command": "cargo test --locked -p codex-hepta-memory --lib local_lease_outbox_tests::qualification_durable_writer_crash_reopen_probe -- --ignored --exact --test-threads=1",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "evidence": {
+        "journal_mode": "wal",
+        "synchronous": 2,
+        "crash_reopen_probe": "pass",
+        "physical_power_loss_claim": false
+      }
+    },
+    {
+      "command": "cargo check --locked -p codex-hepta-memory",
+      "result": "pass; existing EventRow/OutboxRow dead_code warnings only"
+    },
+    {
+      "command": "cargo clippy --locked -p codex-hepta-memory --lib -- -D warnings",
+      "result": "blocked by 51 pre-existing candidate-baseline diagnostics; no new generation-filter helper diagnostic"
+    },
+    {
+      "command": "cargo fmt --all -- --check",
+      "result": "blocked by pre-existing candidate formatting drift outside this two-file follow-up; no formatter write performed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "pass"
+    }
+  ],
+  "evidence": {
+    "historical_unresolved_successor": "explicitly expired generation 1 with queued occurrence; generation 2 release succeeds after its own occurrence is rolled back",
+    "current_generation_guard": "generation 2 queued occurrence rejects release, then succeeds after explicit occurrence rollback",
+    "late_old_outcome": "old generation rollback attempt returns StaleFence and appends no row",
+    "crash_reopen": "existing WAL/FULL child-process qualification probe passed",
+    "external_effect": false,
+    "kg_write_authority": false,
+    "production_caller": false,
+    "physical_power_loss": false
+  },
+  "known_gaps": [
+    "No physical power-loss or media-failure durability run has been executed.",
+    "No external signer, supervisor authority, provider dispatch, or production promotion is established.",
+    "Strict clippy and repository formatter checks remain blocked by candidate-baseline diagnostics/drift and require separate hygiene work."
+  ],
+  "negative_authority": {
+    "authority": false,
+    "production_writer": false,
+    "production_caller": false,
+    "effect_authority": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "shared_kg_write": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "fleet": false
+  },
+  "log_sha256": {
+    "full_memory_serial_followup": "9b15163bd32f998a16634180cd51940d3b9d3d264800f1dd4d6457eab52f5cfb",
+    "crash_reopen_probe_followup": "55e9a0da7d7a5752ebdeef0993967973e11187ae4ab463f84255109d35c5211a",
+    "cargo_check_followup": "452e0cb9304a20b948315290069932d57f9fab9a8ed810dd768b09f6a7930579",
+    "clippy_strict_followup": "910b0df2a12be9b22fc3b23de0d8cdb07c48ac9521d58efefb75ab6724fd7cca",
+    "fmt_followup": "318f100195f4d2be71529227b37857d4c600e5b0e6ae16f7613f2778f67c63c1"
+  },
+  "receipt_sha256_basis": "SHA-256 of this canonical successor receipt is recorded by appending a new line to the companion SHA256SUMS; the historical receipt line and file remain unchanged."
+}

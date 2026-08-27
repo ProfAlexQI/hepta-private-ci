@@ -1,0 +1,79 @@
+{
+  "schema": "hepta.provider.sandbox.status-fence.qualification-receipt.v1",
+  "status": "LOCAL_QUALIFICATION_ONLY",
+  "decision": "CONTINUE_PRE_RELEASE",
+  "phase": "DEVELOPMENT_INTERNAL_TEST",
+  "slice": [
+    "late DispatchResponse is fenced after the latest provider-owned StatusLookup observation",
+    "durable SQLite evidence preserves Accepted status and rejects the late dispatch transition",
+    "HTTP/WireMock lookup rejects an ACK bound to a different effect key as Unknown"
+  ],
+  "worktree": "/Volumes/T5/hepta-vnext/worktrees/provider-sandbox-backlog-20260826",
+  "branch": "hepta/provider-sandbox-backlog-20260826",
+  "head": "92d7f1158776d820c207e64165df6d1eee08347f",
+  "tree": "144a695829946f7a3410c3a93b368b39249be8a1",
+  "parent": "0f86c7afd6e7715601c74107b76e177e90124d9d",
+  "source_binding": {
+    "root_plan": "E.41",
+    "canonical_head_binding": "LOCAL_CANDIDATE_0f86c7afd6",
+    "external_authority_receipt": false,
+    "binding_status": "NOT_PRODUCTION_BOUND",
+    "note": "This qualification lane is based on the reviewed local candidate and does not modify or replace the Dropbox current/effective index or authority receipt."
+  },
+  "evidence": {
+    "evidence_class": "LOCAL_DETERMINISTIC_TEST_EVIDENCE",
+    "claim_status": "L1_SHADOW_QUALIFICATION_ONLY",
+    "efficacy_status": "NOT_ASSESSED",
+    "approval": "NONE",
+    "physical_exactly_once": "NOT_ESTABLISHED",
+    "scope": "The local state machine and durable evidence store refuse a raw dispatch response after a provider-owned status lookup and retain the lookup state; the attested HTTP fixture refuses a wrong-key ACK. This does not prove provider-owned physical exactly-once or external status authority."
+  },
+  "checks": {
+    "cargo_test_p_codex_hepta_contracts_provider_effect_serial": "31 passed / 0 failed / 0 ignored",
+    "cargo_test_p_codex_hepta_evidence_provider_effect_serial": "29 passed / 0 failed / 0 ignored",
+    "cargo_test_p_codex_model_provider_provider_effect_serial": "7 passed / 0 failed / 0 ignored",
+    "cargo_test_p_codex_hepta_contracts_full_lib_serial": "86 passed / 0 failed / 0 ignored",
+    "cargo_test_p_codex_hepta_evidence_full_lib_serial": "80 passed / 0 failed / 0 ignored",
+    "cargo_test_p_codex_model_provider_full_lib_serial": "81 passed / 0 failed / 0 ignored",
+    "cargo_check_contracts_evidence_model_provider": "pass",
+    "cargo_clippy_contracts_lib_d_warnings": "pass",
+    "cargo_clippy_evidence_lib_d_warnings": "pass",
+    "cargo_clippy_model_provider_lib_d_warnings": "pass",
+    "targeted_nightly_rustfmt_check": "pass",
+    "cargo_clippy_tests_d_warnings": "baseline_failure_only: pre-existing redundant-clone diagnostics in unrelated provider-effect tests",
+    "workspace_cargo_fmt_check": "baseline_drift_not_rewritten",
+    "git_diff_check": "pass"
+  },
+  "worktree_state": {
+    "commit_scope_clean": true,
+    "worktree_dirty": false,
+    "dirty_status": "CLEAN",
+    "action": "Commit is isolated and ready for review/cherry-pick; canonical main was not modified."
+  },
+  "authority_flags": {
+    "authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "g5_allowed": false,
+    "execute_allowed": false,
+    "production_listener": false,
+    "provider_effect": false,
+    "provider_physical_exactly_once": false,
+    "model_inference": false,
+    "shared_kg_write": false,
+    "fleet": false
+  },
+  "external_effects": false,
+  "real_provider_or_market_connected": false,
+  "remaining_gates": [
+    "provider-owned signed ACK/status and physical exactly-once evidence",
+    "external signer/trust-root/KMS/HSM and key lifecycle",
+    "crash-after-send evidence against a real provider with status/reconcile authority",
+    "physical power-loss/media durability qualification",
+    "production mutation authority, independent supervisor, CALLERS, operator and promotion ceremony"
+  ],
+  "generated_at": "2026-08-26T14:40:14Z"
+}
