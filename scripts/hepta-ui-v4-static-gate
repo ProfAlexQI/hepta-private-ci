@@ -1,0 +1,240 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "pathname"
+
+ROOT = Pathname.new(__dir__).join("..").expand_path
+
+FILES = {
+  plan: ROOT.join("docs/ui/HEPTA_UI_DEVELOPMENT_PLAN_V4_2026-08-27.md"),
+  material: ROOT.join("design-tokens/hepta-material-v4.contract.json"),
+  authority: ROOT.join("docs/ui/HEPTA_UI_STATE_AUTHORITY_MATRIX_V1.json"),
+  visual: ROOT.join("docs/ui/HEPTA_VISUAL_QUALIFICATION_MATRIX_V1.json"),
+  cascade: ROOT.join("apps/hepta-control-ui/styles.css"),
+  web: ROOT.join("apps/hepta-control-ui/styles.v4.css"),
+  native: ROOT.join("apps/hepta-native/src/shared/hepta_v4.rs"),
+  native_mod: ROOT.join("apps/hepta-native/src/shared/mod.rs")
+}.freeze
+
+EXPECTED_BINDINGS = {
+  "latest_plan_snapshot_commit" => "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+  "canonical_source_head" => "a85612afb43af722c61b54efe73570b25e9e4031",
+  "ui_base_commit" => "647e294522a3b3341b4169e3f5a85f8f0df42cbe"
+}.freeze
+
+failures = []
+checks = []
+
+check = lambda do |id, condition, detail = nil|
+  passed = !!condition
+  checks << { id: id, passed: passed, detail: detail }
+  failures << "#{id}: #{detail || 'condition failed'}" unless passed
+end
+
+FILES.each do |name, path|
+  check.call("file.#{name}.exists", path.file?, path.relative_path_from(ROOT).to_s)
+end
+
+unless failures.empty?
+  warn JSON.pretty_generate(
+    schema: "hepta.ui.v4.static-gate-result.v1",
+    status: "FAIL_MISSING_INPUT",
+    failures: failures,
+    checks: checks
+  )
+  exit 1
+end
+
+plan = FILES.fetch(:plan).read
+material = JSON.parse(FILES.fetch(:material).read)
+authority = JSON.parse(FILES.fetch(:authority).read)
+visual = JSON.parse(FILES.fetch(:visual).read)
+cascade = FILES.fetch(:cascade).read
+web = FILES.fetch(:web).read
+native = FILES.fetch(:native).read
+native_mod = FILES.fetch(:native_mod).read
+
+check.call("material.schema", material["schema"] == "hepta.ui.material.v4", material["schema"].inspect)
+check.call("material.version", material["version"] == 4, material["version"].inspect)
+check.call(
+  "material.status.no_release_claim",
+  material["status"] == "IMPLEMENTATION_CONTRACT_NO_RELEASE_AUTHORITY",
+  material["status"].inspect
+)
+
+EXPECTED_BINDINGS.each do |key, expected|
+  actual = material.fetch("bindings", {})[key]
+  check.call("binding.#{key}", actual == expected, "actual=#{actual.inspect} expected=#{expected.inspect}")
+  check.call("plan.binding.#{key}", plan.include?(expected), expected)
+end
+
+material_authority = material.fetch("authority")
+%w[
+  plan_authority
+  production_authority
+  effect_authority
+  live_adapter_authority
+  operator_acceptance
+  promotion
+  release_claim
+].each do |key|
+  check.call("material.authority.#{key}.false", material_authority[key] == false, material_authority[key].inspect)
+end
+check.call("material.authority.local_ui_implementation.true", material_authority["local_ui_implementation"] == true)
+check.call("material.authority.same_origin_read_only.true", material_authority["same_origin_read_only"] == true)
+
+roles = material.fetch("materialRoles")
+limits = material.fetch("limits")
+typography = material.fetch("typography")
+interaction = material.fetch("interaction")
+accessibility = material.fetch("accessibility")
+responsive = material.fetch("responsive")
+
+check.call("material.content.blur.zero", roles.dig("content", "backdropBlurPx") == 0, roles.dig("content", "backdropBlurPx").inspect)
+check.call("material.fallback.blur.zero", roles.dig("fallback", "backdropBlurPx") == 0, roles.dig("fallback", "backdropBlurPx").inspect)
+check.call("material.max_backdrop_layers", limits["maxVisibleBackdropLayers"].to_i <= 2, limits["maxVisibleBackdropLayers"].inspect)
+check.call("material.no_stable_backdrop", limits["maxStableContentBackdropLayers"] == 0, limits["maxStableContentBackdropLayers"].inspect)
+check.call("material.no_scroll_backdrop", limits["stableScrollableBackdropBlurAllowed"] == false)
+check.call("material.no_nested_transient", limits["nestedTransientGlassAllowed"] == false)
+check.call("material.no_hardcoded_popover_coordinates", limits["hardCodedPopoverCoordinatesAllowed"] == false)
+
+check.call("type.body.min15", typography["bodyPx"].to_i >= 15, typography["bodyPx"].inspect)
+check.call("type.message.min15", typography["messagePx"].to_i >= 15, typography["messagePx"].inspect)
+check.call("type.metadata.min12", typography["metadataPx"].to_i >= 12, typography["metadataPx"].inspect)
+check.call("type.dynamic200", typography["dynamicTypeMaximumScale"].to_f >= 2.0, typography["dynamicTypeMaximumScale"].inspect)
+check.call("interaction.touch.min48", interaction["minimumTouchTargetPx"].to_i >= 48, interaction["minimumTouchTargetPx"].inspect)
+check.call("interaction.native.min48", interaction["minimumNativeControlHeightPx"].to_i >= 48, interaction["minimumNativeControlHeightPx"].inspect)
+check.call("accessibility.wcag22aa", accessibility["wcagTarget"] == "2.2_AA", accessibility["wcagTarget"].inspect)
+check.call("accessibility.reduced_transparency", accessibility["supportsReducedTransparency"] == true)
+check.call("accessibility.reduced_motion", accessibility["supportsReducedMotion"] == true)
+check.call("accessibility.forced_colors", accessibility["supportsForcedColors"] == true)
+check.call("accessibility.zoom200", accessibility["zoom200Required"] == true)
+check.call("responsive.minimum320", responsive["minimumViewportWidthPx"].to_i <= 320, responsive["minimumViewportWidthPx"].inspect)
+check.call("responsive.mobile_sheet", responsive["mobileTransientPresentation"] == "BOTTOM_SHEET")
+check.call("responsive.safe_area", responsive["safeAreaRequired"] == true)
+check.call("responsive.ime", responsive["imeAwareComposerRequired"] == true)
+
+check.call("authority.schema", authority["schema"] == "hepta.ui.state-authority-matrix.v1", authority["schema"].inspect)
+global_authority = authority.fetch("globalAuthority")
+global_authority.each do |key, value|
+  check.call("authority.global.#{key}.false", value == false, value.inspect)
+end
+
+capabilities = authority.fetch("capabilities")
+check.call("authority.capabilities.present", capabilities.length >= 20, capabilities.length.to_s)
+check.call("authority.capabilities.unique", capabilities.map { |item| item.fetch("id") }.uniq.length == capabilities.length)
+capabilities.each do |capability|
+  id = capability.fetch("id")
+  check.call("authority.#{id}.effect.false", capability["effectAllowed"] == false, capability["effectAllowed"].inspect)
+  check.call("authority.#{id}.production.false", capability["productionAllowed"] == false, capability["productionAllowed"].inspect)
+  if capability["enabled"] && !capability["authorityGranted"]
+    check.call("authority.#{id}.enabled_requires_authority", false, "enabled=true authorityGranted=false")
+  end
+end
+
+check.call("visual.schema", visual["schema"] == "hepta.ui.visual-qualification-matrix.v1", visual["schema"].inspect)
+check.call("visual.global.not_run", visual["status"] == "REQUIRED_NOT_RUN", visual["status"].inspect)
+check.call("visual.production.false", visual.dig("candidate", "production") == false)
+check.call("visual.promotion.false", visual.dig("candidate", "promotion") == false)
+targets = visual.fetch("targets")
+check.call("visual.targets.count", targets.length >= 21, targets.length.to_s)
+check.call("visual.targets.unique", targets.map { |item| item.fetch("id") }.uniq.length == targets.length)
+targets.each do |target|
+  status = target.fetch("status")
+  evidence = target["evidence"]
+  allowed = visual.dig("resultPolicy", "allowed")
+  check.call("visual.#{target.fetch('id')}.status.allowed", allowed.include?(status), status)
+  if status == "PASS"
+    check.call("visual.#{target.fetch('id')}.pass.has_evidence", evidence.is_a?(Hash) && !evidence.empty?, evidence.inspect)
+  elsif status == "BLOCKED"
+    check.call("visual.#{target.fetch('id')}.blocked.has_reason", evidence.is_a?(Hash) && !evidence["reason"].to_s.empty?, evidence.inspect)
+  else
+    check.call("visual.#{target.fetch('id')}.not_forged_pass", status != "PASS" || evidence.is_a?(Hash), status)
+  end
+end
+
+imports = cascade.lines.grep(/@import/).map(&:strip)
+v4_index = imports.index('@import url("./styles.v4.css");')
+responsive_index = imports.index('@import url("./styles.responsive.css");')
+accessibility_index = imports.index('@import url("./styles.accessibility.css");')
+check.call("cascade.v4.present", !v4_index.nil?, imports.join(" | "))
+check.call("cascade.v4.after_responsive", v4_index && responsive_index && v4_index > responsive_index, imports.join(" | "))
+check.call("cascade.v4.before_accessibility", v4_index && accessibility_index && v4_index < accessibility_index, imports.join(" | "))
+
+[
+  ["web.content.no_backdrop", /Stable content role.*backdrop blur is forbidden/m],
+  ["web.content.backdrop.none", /\.tg-thread-panel.*?backdrop-filter:\s*none/m],
+  ["web.message.font15", /--hepta-v4-font-message:\s*15px/],
+  ["web.body.font15", /--hepta-v4-font-body:\s*15px/],
+  ["web.metadata.font12", /--hepta-v4-font-metadata:\s*12px/],
+  ["web.touch48", /--hepta-v4-touch-target:\s*48px/],
+  ["web.mobile.bottom_sheet", /Mobile transient presentation.*bottom sheets/m],
+  ["web.mobile.safe_area", /safe-area-inset-bottom/],
+  ["web.mobile.100dvh", /100dvh/],
+  ["web.reduced_transparency", /prefers-reduced-transparency:\s*reduce/],
+  ["web.reduced_motion", /prefers-reduced-motion:\s*reduce/],
+  ["web.forced_colors", /forced-colors:\s*active/],
+  ["web.increased_contrast", /prefers-contrast:\s*more/],
+  ["web.container_query", /@container\s*\(max-width:\s*520px\)/]
+].each do |id, pattern|
+  check.call(id, web.match?(pattern), pattern.inspect)
+end
+
+[
+  ["native.enabled", /HEPTA_UI_V4_ENABLED:\s*bool\s*=\s*true/],
+  ["native.production.false", /HEPTA_UI_V4_PRODUCTION_AUTHORITY:\s*bool\s*=\s*false/],
+  ["native.effect.false", /HEPTA_UI_V4_EFFECT_AUTHORITY:\s*bool\s*=\s*false/],
+  ["native.live.false", /HEPTA_UI_V4_LIVE_ADAPTER_AUTHORITY:\s*bool\s*=\s*false/],
+  ["native.body15", /HEPTA_V4_FONT_BODY:\s*f64\s*=\s*15\.0/],
+  ["native.message15", /HEPTA_V4_FONT_MESSAGE:\s*f64\s*=\s*15\.0/],
+  ["native.metadata12", /HEPTA_V4_FONT_METADATA:\s*f64\s*=\s*12\.0/],
+  ["native.touch48", /HEPTA_V4_MIN_TOUCH_TARGET:\s*f64\s*=\s*48\.0/],
+  ["native.content_blur0", /HEPTA_V4_CONTENT_BLUR:\s*f64\s*=\s*0\.0/],
+  ["native.backdrop_max2", /HEPTA_V4_MAX_VISIBLE_BACKDROP_LAYERS:\s*usize\s*=\s*2/]
+].each do |id, pattern|
+  check.call(id, native.match?(pattern), pattern.inspect)
+end
+
+style_position = native_mod.index("styles::script_mod(vm);")
+v4_position = native_mod.index("hepta_v4::script_mod(vm);")
+check.call("native.module.declared", native_mod.include?("pub mod hepta_v4;"))
+check.call("native.module.after_styles", style_position && v4_position && v4_position > style_position)
+
+input_digests = FILES.transform_values do |path|
+  {
+    path: path.relative_path_from(ROOT).to_s,
+    sha256: Digest::SHA256.file(path).hexdigest,
+    bytes: path.size
+  }
+end
+
+result = {
+  schema: "hepta.ui.v4.static-gate-result.v1",
+  status: failures.empty? ? "PASS_STATIC_CONTRACT_ONLY" : "FAIL_STATIC_CONTRACT",
+  scope: "SOURCE_STATIC_ONLY",
+  runtime_validation: false,
+  browser_validation: false,
+  native_compile_validation: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  check_count: checks.length,
+  passed_count: checks.count { |item| item[:passed] },
+  failed_count: failures.length,
+  failures: failures,
+  inputs: input_digests,
+  checks: checks
+}
+
+output = JSON.pretty_generate(result)
+if failures.empty?
+  puts output
+  exit 0
+end
+
+warn output
+exit 1
