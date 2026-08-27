@@ -16,12 +16,13 @@
   "current_tranche": {
     "id": "P0.1",
     "name": "qualification_source_span_fact_grounding",
-    "status": "implemented_on_branch_pending_ci",
+    "status": "source_contract_pass_blocked_runner_not_assigned",
     "files": [
       "codex-rs/hepta-memory/src/fact_grounding.rs",
       "codex-rs/hepta-memory/src/lib.rs",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28.md",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json"
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
+      "scripts/verify-hepta-intelligence-fact-grounding.py"
     ],
     "claims": {
       "source_span_validation": true,
@@ -33,11 +34,31 @@
       "production_authority": false
     },
     "qualification": {
-      "format": "pending",
-      "focused_tests": "pending",
-      "crate_tests": "pending",
-      "clippy": "pending",
-      "workflow_ci": "pending"
+      "source_contract_gate": "PASS_FACT_GROUNDING_SOURCE_CONTRACT_ONLY",
+      "source_gate_execution": "local_reproduction_passed",
+      "format": "not_run_runner_blocked",
+      "focused_tests": "not_run_runner_blocked",
+      "crate_tests": "not_run_runner_blocked",
+      "clippy": "not_run_runner_blocked",
+      "workflow_ci": "blocked_runner_not_assigned",
+      "workflow_runs": [
+        {
+          "id": 33110477298,
+          "name": "blocking-ci",
+          "conclusion": "failure",
+          "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
+          "job_count": 29,
+          "commands_executed": false
+        },
+        {
+          "id": 33110475903,
+          "name": "v8-canary",
+          "conclusion": "failure",
+          "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
+          "commands_executed": false
+        }
+      ],
+      "qualified": false
     }
   },
   "capabilities": [
@@ -143,9 +164,9 @@
     }
   ],
   "next_actions": [
-    "Run format, focused tests, crate tests, and clippy in hosted CI.",
-    "Fix P0.1 without expanding authority or changing production defaults.",
-    "Implement P0.2 migration 0011 and exact reopen verification after P0.1 is qualified.",
+    "Restore GitHub Actions runner assignment and execute format, focused tests, crate tests, and clippy.",
+    "Keep the PR draft and capability qualified=false until executable Rust evidence binds one exact head.",
+    "Implement P0.2 migration 0011 and exact reopen verification only after P0.1 executable qualification.",
     "Wire tool protocol and projection gate only after durable receipts are qualified."
   ]
 }
