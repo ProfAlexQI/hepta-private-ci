@@ -56,7 +56,7 @@ impl fmt::Debug for BrowserSessionId {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct StartupCapability(pub(crate) [u8; 32]);
 
 impl StartupCapability {
@@ -73,6 +73,12 @@ impl StartupCapability {
 impl fmt::Debug for StartupCapability {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("StartupCapability(<redacted>)")
+    }
+}
+
+impl Drop for StartupCapability {
+    fn drop(&mut self) {
+        self.0.fill(0);
     }
 }
 
@@ -216,7 +222,7 @@ impl WorkerHello {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct HostExpectedWorker {
     pub identity: WorkerIdentity,
     pub source_pin: SourcePin,
@@ -241,7 +247,11 @@ impl HostExpectedWorker {
     }
 
     pub fn worker_hello(&self) -> Result<WorkerHello, ProtocolError> {
-        WorkerHello::new(self.identity, self.source_pin, self.startup_capability)
+        WorkerHello::new(
+            self.identity,
+            self.source_pin,
+            self.startup_capability.clone(),
+        )
     }
 
     pub fn host_nonce(&self) -> &[u8; 32] {
@@ -249,7 +259,25 @@ impl HostExpectedWorker {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for HostExpectedWorker {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HostExpectedWorker")
+            .field("identity", &self.identity)
+            .field("source_pin", &self.source_pin)
+            .field("startup_capability", &"<redacted>")
+            .field("host_nonce", &"<redacted>")
+            .finish()
+    }
+}
+
+impl Drop for HostExpectedWorker {
+    fn drop(&mut self) {
+        self.host_nonce.fill(0);
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub struct HostAck {
     pub identity: WorkerIdentity,
     pub accepted: bool,
@@ -271,7 +299,24 @@ impl HostAck {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl fmt::Debug for HostAck {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HostAck")
+            .field("identity", &self.identity)
+            .field("accepted", &self.accepted)
+            .field("host_nonce", &"<redacted>")
+            .finish()
+    }
+}
+
+impl Drop for HostAck {
+    fn drop(&mut self) {
+        self.host_nonce.fill(0);
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub struct WorkerConfirm {
     pub identity: WorkerIdentity,
     pub(crate) host_nonce: [u8; 32],
@@ -288,6 +333,22 @@ impl WorkerConfirm {
 
     pub fn host_nonce_matches(&self, expected: &[u8; 32]) -> bool {
         constant_time_eq(&self.host_nonce, expected)
+    }
+}
+
+impl fmt::Debug for WorkerConfirm {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("WorkerConfirm")
+            .field("identity", &self.identity)
+            .field("host_nonce", &"<redacted>")
+            .finish()
+    }
+}
+
+impl Drop for WorkerConfirm {
+    fn drop(&mut self) {
+        self.host_nonce.fill(0);
     }
 }
 
