@@ -1,0 +1,139 @@
+name: hepta Servo worker artifact contract
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/hepta-servo-artifact-receipt.py"
+      - "scripts/verify-hepta-servo-artifact-contract.py"
+      - "scripts/tests/test_hepta_servo_artifact_receipt.py"
+      - "docs/hepta-vnext/browser/C1_ARTIFACT_*"
+      - "docs/hepta-vnext/browser/hepta.servo.worker_*"
+      - "docs/hepta-vnext/browser/hepta.servo.patch_inventory.v1.schema.json"
+      - "docs/hepta-vnext/browser/hepta.servo.license_packet.v1.schema.json"
+      - ".github/workflows/hepta-servo-artifact-contract.yml"
+      - ".github/workflows/blocking-ci.yml"
+  push:
+    branches:
+      - integration/vnext-main-20260811
+      - "codex/hepta-*"
+    paths:
+      - "scripts/hepta-servo-artifact-receipt.py"
+      - "scripts/verify-hepta-servo-artifact-contract.py"
+      - "scripts/tests/test_hepta_servo_artifact_receipt.py"
+      - "docs/hepta-vnext/browser/C1_ARTIFACT_*"
+      - "docs/hepta-vnext/browser/hepta.servo.worker_*"
+      - "docs/hepta-vnext/browser/hepta.servo.patch_inventory.v1.schema.json"
+      - "docs/hepta-vnext/browser/hepta.servo.license_packet.v1.schema.json"
+      - ".github/workflows/hepta-servo-artifact-contract.yml"
+      - ".github/workflows/blocking-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  artifact-contract:
+    name: Artifact contract (synthetic headers only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Initialize artifact-contract posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-artifact-contract"
+          mkdir -p "$evidence_dir"
+          echo "SERVO_ARTIFACT_EVIDENCE_DIR=$evidence_dir" >> "$GITHUB_ENV"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "work_item=C1-004B-worker-artifact-binding"
+            echo "servo_commit=0a48e298482659817eb50097df23841f2b8e3044"
+            echo "servo_tree=b04d2f75b3217374d079d579c270177b57fa1389"
+            echo "synthetic_fixture=true"
+            echo "servo_fetch_performed=false"
+            echo "servo_build_performed=false"
+            echo "canonical_source_receipt=false"
+            echo "real_worker_artifact=false"
+            echo "artifact_executed=false"
+            echo "servo_webview_started=false"
+            echo "listener_scan_passed=false"
+            echo "egress_scan_passed=false"
+            echo "sandbox_qualified=false"
+            echo "platform_matrix_qualified=false"
+            echo "machine_authority=false"
+            echo "runtime_authority=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "external_effect=false"
+            echo "external_network_allowed=false"
+            echo "credential_export_allowed=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Compile Python tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-servo-artifact-receipt.py \
+            scripts/verify-hepta-servo-artifact-contract.py \
+            scripts/tests/test_hepta_servo_artifact_receipt.py \
+            2>&1 | tee "$SERVO_ARTIFACT_EVIDENCE_DIR/py-compile.log"
+
+      - name: Verify fail-closed artifact contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-servo-artifact-contract.py \
+            2>&1 | tee "$SERVO_ARTIFACT_EVIDENCE_DIR/contract-verifier.log"
+
+      - name: Run synthetic executable-header fixture tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_hepta_servo_artifact_receipt.py -v \
+            2>&1 | tee "$SERVO_ARTIFACT_EVIDENCE_DIR/tests.log"
+
+      - name: Verify clean artifact-contract paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- \
+            scripts/hepta-servo-artifact-receipt.py \
+            scripts/verify-hepta-servo-artifact-contract.py \
+            scripts/tests/test_hepta_servo_artifact_receipt.py \
+            docs/hepta-vnext/browser \
+            .github/workflows/hepta-servo-artifact-contract.yml \
+            2>&1 | tee "$SERVO_ARTIFACT_EVIDENCE_DIR/clean-worktree.log"
+
+      - name: Record final status
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "job_status=${{ job.status }}" >> "$SERVO_ARTIFACT_EVIDENCE_DIR/posture.txt"
+          {
+            echo "### Hepta Servo worker artifact contract"
+            echo
+            echo "This job validates binding logic with synthetic ELF/Mach-O/PE headers only."
+            echo "It does not fetch, build, execute, sandbox, or qualify a real Servo worker."
+            echo
+            sed 's/^/- /' "$SERVO_ARTIFACT_EVIDENCE_DIR/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload synthetic artifact-contract evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-servo-artifact-contract-synthetic
+          path: ${{ env.SERVO_ARTIFACT_EVIDENCE_DIR }}
+          if-no-files-found: error
