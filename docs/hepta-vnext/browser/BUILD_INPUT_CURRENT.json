@@ -1,0 +1,54 @@
+{
+  "schema": "hepta.browser.build_input_current.v1",
+  "schema_version": 1,
+  "updated_at_utc": "2026-08-28T00:00:00Z",
+  "phase": "DEVELOPMENT",
+  "canonical_sealer": "scripts/hepta-servo-build-input-seal-v2.py",
+  "sealer_core": "scripts/hepta-servo-build-input-seal.py",
+  "canonical_manifest_schema": "docs/hepta-vnext/browser/hepta.servo.build_input_manifest.v2.schema.json",
+  "recipe_schema": "docs/hepta-vnext/browser/hepta.servo.worker_build_recipe.v1.schema.json",
+  "toolchain_capture": "scripts/hepta-servo-toolchain-receipt.py",
+  "toolchain_schema": "docs/hepta-vnext/browser/hepta.servo.toolchain_receipt.v1.schema.json",
+  "canonical_contract_workflow": ".github/workflows/hepta-servo-build-input-contract-v2.yml",
+  "legacy": [
+    {
+      "path": "scripts/hepta-servo-build-input-seal.py",
+      "status": "V1_CORE_COMPATIBILITY_ONLY_REQUIRES_V2_TOOLCHAIN_BINDING"
+    },
+    {
+      "path": "docs/hepta-vnext/browser/hepta.servo.build_input_manifest.v1.schema.json",
+      "status": "SUPERSEDED_NOT_ACCEPTABLE_FOR_FIRST_BUILD"
+    },
+    {
+      "path": ".github/workflows/hepta-servo-build-input-contract.yml",
+      "status": "COMPATIBILITY_ONLY_NOT_CANONICAL"
+    }
+  ],
+  "acceptance_requires": [
+    "accepted exact source bundle verification receipt",
+    "accepted exact toolchain receipt",
+    "recipe toolchain projection exactly equal to receipt",
+    "sealed source, recipe and toolchain receipt digests",
+    "locked offline frozen direct Cargo command",
+    "default features disabled and feature set sorted",
+    "build/runtime network false",
+    "all authority false"
+  ],
+  "actual_recipe": null,
+  "actual_toolchain_receipt": null,
+  "actual_build_input_manifest": null,
+  "build_run": false,
+  "artifact_created": false,
+  "authority": {
+    "runtime_authority": false,
+    "effect_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "runtime_external_network": false,
+    "raw_cookie_export": false,
+    "credential_export": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  }
+}
