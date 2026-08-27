@@ -1,0 +1,27 @@
+{
+  "schema": "hepta.browser.candidate_status.v1",
+  "schema_version": 1,
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "base_branch": "integration/vnext-main-20260811",
+  "base_commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+  "candidate_branch": "codex/hepta-vnext-plan-browser-c0-c3-20260827",
+  "pull_request": 1,
+  "head_commit": null,
+  "status": "CI_PENDING_NOT_QUALIFIED",
+  "qualification_receipt": null,
+  "operator_acceptance": null,
+  "promotion_receipt": null,
+  "merge_authorized": false,
+  "authority": {
+    "runtime_authority": false,
+    "effect_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "external_network": false,
+    "raw_cookie_export": false,
+    "credential_export": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  }
+}
