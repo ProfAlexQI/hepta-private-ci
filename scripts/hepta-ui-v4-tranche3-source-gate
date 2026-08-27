@@ -1,0 +1,74 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  runtime_js: root.join("apps/hepta-control-ui/control-ui-v4-runtime.js"),
+  runtime_css: root.join("apps/hepta-control-ui/styles.v4.runtime.css"),
+  served_css: root.join("apps/hepta-control-ui/styles.accessibility.css"),
+  native_runtime: root.join("apps/hepta-native/src/shared/hepta_platform_material_runtime.rs"),
+  native_mod: root.join("apps/hepta-native/src/shared/mod.rs"),
+  browser: root.join("scripts/hepta-ui-v4-browser-qualification.cjs"),
+  schema: root.join("docs/ui/schemas/hepta.ui.v4.browser-qualification-receipt.v1.schema.json")
+}
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? }
+abort JSON.pretty_generate(status: "FAIL_MISSING_INPUT", checks: checks) unless checks.values.all?
+
+runtime_js = files[:runtime_js].read
+runtime_css = files[:runtime_css].read
+served_css = files[:served_css].read
+native_runtime = files[:native_runtime].read
+native_mod = files[:native_mod].read
+browser = files[:browser].read
+schema = JSON.parse(files[:schema].read)
+
+checks["runtime.focus_cycle"] = runtime_js.include?("FOCUSABLE_SELECTOR") && runtime_js.include?("event.key !== \"Tab\"")
+checks["runtime.escape"] = runtime_js.include?("event.key === \"Escape\"")
+checks["runtime.back"] = runtime_js.include?("window.addEventListener(\"popstate\"")
+checks["runtime.scroll_lock"] = runtime_js.include?("heptaV4TransientOpen") && runtime_js.include?("heptaV4ScrollLock")
+checks["runtime.read_states"] = runtime_js.include?("HeptaUiV4ReadState") && runtime_js.include?("evidenceDigest")
+checks["runtime.no_network"] = runtime_js.scan(/\b(fetch|XMLHttpRequest|WebSocket|EventSource)\b/).empty?
+checks["runtime.no_dynamic_code"] = runtime_js.scan(/\b(eval|Function)\s*\(/).empty? && !runtime_js.include?("innerHTML")
+checks["runtime.authority_local"] = runtime_js.include?("controlUiV4RuntimeAuthority = \"local-ui-only\"")
+
+checks["css.scroll_lock"] = runtime_css.include?("data-hepta-v4-scroll-lock")
+checks["css.read_state"] = runtime_css.include?("data-control-ui-read-state=\"loading\"")
+checks["css.no_backdrop"] = !runtime_css.match?(/backdrop-filter\s*:\s*(?!none)/)
+checks["css.served_bridge_present"] = served_css.include?("--hepta-v4-runtime-bridge:")
+
+checks["native.runtime_registered"] = native_mod.include?("pub mod hepta_platform_material_runtime;")
+checks["native.target_detection"] = native_runtime.include?("pub const fn current_platform()")
+checks["native.high_contrast_fallback"] = native_runtime.include?("preferences.transparency_allowed && !preferences.high_contrast")
+checks["native.adapter_trait"] = native_runtime.include?("pub trait HeptaSystemMaterialAdapter")
+checks["native.authority_false"] = native_runtime.scan(/AUTHORITY: bool = false/).length >= 2 && native_runtime.include?("PROMOTION: bool = false")
+
+checks["browser.fixture_scope"] = browser.include?("LOCAL_STATIC_FIXTURE_WITH_SAME_ORIGIN_GET_STUBS")
+checks["browser.viewports"] = %w[320 390 412 600 768 980 1280 1440].all? { |width| browser.include?("width: #{width}") }
+checks["browser.get_only"] = browser.include?("fixture_get_only") && browser.include?("nonGet")
+checks["browser.source_binding"] = browser.include?("HEAD^{tree}") && browser.include?("sha256")
+checks["browser.authority_false"] = browser.include?("productionAuthority: false") && browser.include?("effectAuthority: false") && browser.include?("promotion: false")
+checks["schema.identity"] = schema["properties"]["schema"]["const"] == "hepta.ui.v4.browser-qualification-receipt.v1"
+checks["schema.runtime_unbound"] = schema["properties"]["rustServedRuntimeAssetBound"]["const"] == false
+checks["schema.production_false"] = schema["properties"]["productionAuthority"]["const"] == false
+
+failed = checks.reject { |_name, passed| passed }
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.tranche3-source-gate.v1",
+  status: failed.empty? ? "PASS_TRANCHE3_SOURCE_CONTRACT_ONLY" : "FAIL_TRANCHE3_SOURCE_CONTRACT",
+  runtime_asset_source_ready: failed.empty?,
+  rust_served_runtime_asset_bound: false,
+  fixture_browser_qualification_ready: failed.empty?,
+  rust_runtime_validation: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  checks: checks,
+  failures: failed.keys
+)
+exit(failed.empty? ? 0 : 1)
