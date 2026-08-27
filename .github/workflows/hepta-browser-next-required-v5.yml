@@ -1,0 +1,116 @@
+name: hepta-browser next required v5
+
+on:
+  pull_request:
+    paths:
+      - "codex-rs/hepta-shadow-qualification/**"
+      - "scripts/hepta-servo-*.py"
+      - "scripts/verify-hepta-servo-*.py"
+      - "scripts/tests/test_hepta_servo_*.py"
+      - "docs/hepta-vnext/browser/**"
+      - "third_party/servo-patches/**"
+      - ".github/workflows/hepta-browser-ci.yml"
+      - ".github/workflows/hepta-servo-*.yml"
+      - ".github/workflows/hepta-browser-next-required-v5.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-protocol:
+    name: Browser contracts, Actor and private worker protocol
+    uses: ./.github/workflows/hepta-browser-ci.yml
+    secrets: inherit
+
+  independent-source-v3:
+    name: Git-order-correct source and archive tooling
+    uses: ./.github/workflows/hepta-servo-independent-source-contract-v3.yml
+    secrets: inherit
+
+  build-input-v3:
+    name: Toolchain-bound build-input tooling with real version text
+    uses: ./.github/workflows/hepta-servo-build-input-contract-v3.yml
+    secrets: inherit
+
+  build-preflight:
+    name: Linux build preflight cross-binding and stop conditions
+    uses: ./.github/workflows/hepta-servo-build-preflight-contract.yml
+    secrets: inherit
+
+  required:
+    name: Hepta Browser next required v5
+    if: ${{ always() }}
+    needs:
+      - browser-protocol
+      - independent-source-v3
+      - build-input-v3
+      - build-preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require all canonical tooling and fixture gates
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          needs = json.loads(os.environ["NEEDS"])
+          failures = {
+              name: value.get("result")
+              for name, value in needs.items()
+              if value.get("result") != "success"
+          }
+          if failures:
+              print(json.dumps({"status": "FAIL", "dependencies": failures}, sort_keys=True))
+              sys.exit(1)
+          print(
+              json.dumps(
+                  {
+                      "status": "PASS_TOOLING_AND_FIXTURES_ONLY",
+                      "dependencies": sorted(needs),
+                      "source_generator": "v2_deterministic_umask",
+                      "source_verifier": "v2_git_base_name_compare",
+                      "build_input_sealer": "v3_toolchain_bound_real_version_text",
+                      "build_preflight": "v2_strict_capture_facts",
+                      "exact_servo_source_receipt": False,
+                      "accepted_toolchain_receipt": False,
+                      "accepted_build_recipe": False,
+                      "sealed_real_build_inputs": False,
+                      "real_build_preflight": False,
+                      "servo_build_run": False,
+                      "servo_artifact": False,
+                      "sbom": False,
+                      "servo_runtime_qualified": False,
+                      "operator_acceptance": False,
+                      "promotion": False,
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
+
+      - name: Record negative authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Hepta Browser canonical next-stage aggregate v5"
+            echo
+            echo "All dependencies cover tooling and local fixtures only."
+            echo
+            echo "- protocol/Actor fixture: required"
+            echo "- deterministic source and Git tree reconstruction: required"
+            echo "- independently captured toolchain binding: required"
+            echo "- build-input and preflight cross-binding: required"
+            echo "- exact Servo source acceptance: false"
+            echo "- real preflight/build/artifact/SBOM: false"
+            echo "- Servo runtime qualified: false"
+            echo "- production/effect authority: false"
+            echo "- operator acceptance/promotion/release: false"
+          } >> "$GITHUB_STEP_SUMMARY"
