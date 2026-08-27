@@ -1,0 +1,48 @@
+{
+  "schema": "hepta.browser.current.v1",
+  "schema_version": 1,
+  "updated_at_utc": "2026-08-27T10:00:00Z",
+  "phase": "DEVELOPMENT",
+  "claim_level": "L1_QUALIFICATION_ONLY",
+  "canonical_plan": "docs/hepta-vnext/browser/EXECUTION_PLAN.md",
+  "stage_matrix": "docs/hepta-vnext/browser/STAGE_MATRIX.yaml",
+  "traceability_matrix": "docs/hepta-vnext/browser/TRACEABILITY_MATRIX.yaml",
+  "threat_model": "docs/hepta-vnext/browser/THREAT_MODEL.md",
+  "receipt_schema": "docs/hepta-vnext/browser/hepta.browser.qualification_receipt.v1.schema.json",
+  "servo_pin": "docs/hepta-vnext/browser/SERVO_UPSTREAM_PIN.json",
+  "implementation": {
+    "crate": "codex-hepta-shadow-qualification",
+    "contracts": "implemented_qualification_only",
+    "semantic_model": "implemented_fixture_engine",
+    "single_owner_actor": "implemented_fixture_engine",
+    "servo_runtime": "not_integrated",
+    "production_caller": "not_integrated"
+  },
+  "stage_status": {
+    "WEB_C0": "IMPLEMENTED_QUALIFICATION_ONLY",
+    "WEB_C1": "NOT_IMPLEMENTED_SOURCE_PINNED",
+    "WEB_C2": "IMPLEMENTED_FIXTURE_ONLY",
+    "WEB_C3": "IMPLEMENTED_FIXTURE_ONLY",
+    "WEB_C4": "NOT_IMPLEMENTED",
+    "WEB_C5": "NOT_IMPLEMENTED",
+    "WEB_C6": "NOT_IMPLEMENTED",
+    "WEB_C7": "NOT_IMPLEMENTED"
+  },
+  "authority": {
+    "runtime_authority": false,
+    "effect_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "external_network": false,
+    "raw_cookie_export": false,
+    "credential_export": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  },
+  "fail_closed": true,
+  "supersedes": [
+    "Dropbox-only browser plan pointers",
+    "unreceipted natural-language browser implementation claims"
+  ]
+}
