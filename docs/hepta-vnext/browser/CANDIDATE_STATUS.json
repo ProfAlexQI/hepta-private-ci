@@ -6,8 +6,14 @@
   "base_commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
   "candidate_branch": "codex/hepta-vnext-plan-browser-c0-c3-20260827",
   "pull_request": 1,
-  "head_commit": "9926882ca8405999ea19fd4e95c88a97c4852f46",
-  "head_tree": "38dd038106f21865bf3a622a61ff26182d980695",
+  "head_commit": null,
+  "evidence_binding": {
+    "kind": "PRE_STATUS_COMMIT_ONLY",
+    "evaluated_commit": "9926882ca8405999ea19fd4e95c88a97c4852f46",
+    "evaluated_tree": "38dd038106f21865bf3a622a61ff26182d980695",
+    "exact_current_head_qualified": false,
+    "reason": "writing this status record advances the branch, so the record cannot self-bind its own final commit"
+  },
   "status": "HOSTED_RUNNER_ZERO_STEPS_NOT_QUALIFIED",
   "current_pointer": "docs/hepta-vnext/browser/C1_CURRENT_V4.json",
   "canonical_aggregate": ".github/workflows/hepta-browser-next-required-v6.yml",
