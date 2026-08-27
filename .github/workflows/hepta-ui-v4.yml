@@ -9,11 +9,16 @@ on:
     paths:
       - "apps/hepta-control-ui/**"
       - "apps/hepta-native/src/shared/**"
+      - "codex-rs/hepta-core/Cargo.toml"
+      - "codex-rs/hepta-core/build.rs"
+      - "codex-rs/hepta-core/src/control_ui_static_assets.rs"
+      - "codex-rs/hepta-native-gateway/src/ui_domain/generated_control_ui_assets.rs"
       - "design-tokens/**"
       - "docs/ui/**"
       - "scripts/hepta-ui-v4-static-gate"
       - "scripts/hepta-ui-v4-next-source-gate"
       - "scripts/hepta-ui-v4-tranche3-source-gate"
+      - "scripts/hepta-ui-v4-served-bundle-gate"
       - "scripts/hepta-ui-v4-browser-qualification.cjs"
       - "scripts/hepta-ui-light-glass-token-sync.rb"
       - ".github/workflows/hepta-ui-v4.yml"
@@ -40,6 +45,7 @@ jobs:
           ruby -c scripts/hepta-ui-v4-static-gate
           ruby -c scripts/hepta-ui-v4-next-source-gate
           ruby -c scripts/hepta-ui-v4-tranche3-source-gate
+          ruby -c scripts/hepta-ui-v4-served-bundle-gate
           ruby -c scripts/hepta-ui-light-glass-token-sync.rb
           node --check apps/hepta-control-ui/control-ui-v4-runtime.js
           node --check scripts/hepta-ui-v4-browser-qualification.cjs
@@ -60,6 +66,7 @@ jobs:
           ruby scripts/hepta-ui-v4-static-gate | tee artifacts/ui-v4/static-gate-result.json
           ruby scripts/hepta-ui-v4-next-source-gate | tee artifacts/ui-v4/next-source-gate-result.json
           ruby scripts/hepta-ui-v4-tranche3-source-gate | tee artifacts/ui-v4/tranche3-source-gate-result.json
+          ruby scripts/hepta-ui-v4-served-bundle-gate | tee artifacts/ui-v4/served-bundle-gate-result.json
 
       - name: Verify source-only authority boundary
         run: |
@@ -68,6 +75,7 @@ jobs:
               "static-gate-result.json" => "PASS_STATIC_CONTRACT_ONLY",
               "next-source-gate-result.json" => "PASS_NEXT_SOURCE_CONTRACT_ONLY",
               "tranche3-source-gate-result.json" => "PASS_TRANCHE3_SOURCE_CONTRACT_ONLY",
+              "served-bundle-gate-result.json" => "PASS_SERVED_BUNDLE_SOURCE_CONTRACT_ONLY",
             }
             expected.each do |name, status|
               result = JSON.parse(File.read(File.join("artifacts/ui-v4", name)))
@@ -77,8 +85,13 @@ jobs:
               end
             end
             tranche = JSON.parse(File.read("artifacts/ui-v4/tranche3-source-gate-result.json"))
-            abort "Rust-served runtime asset must remain unclaimed" unless tranche.fetch("rust_served_runtime_asset_bound") == false
-            abort "device validation must remain unclaimed" unless tranche.fetch("device_validation") == false
+            abort "tranche 3 must remain an historical unbound receipt" unless tranche.fetch("rust_served_runtime_asset_bound") == false
+            served = JSON.parse(File.read("artifacts/ui-v4/served-bundle-gate-result.json"))
+            abort "compile-time served bundle must be source-bound" unless served.fetch("rust_served_runtime_asset_bound") == true
+            abort "compile validation must remain separate" unless served.fetch("rust_compile_validation") == false
+            abort "runtime validation must remain separate" unless served.fetch("rust_runtime_validation") == false
+            abort "browser validation must remain separate" unless served.fetch("browser_validation") == false
+            abort "device validation must remain unclaimed" unless served.fetch("device_validation") == false
           '
 
       - name: Upload source-bound gate receipts
@@ -91,9 +104,9 @@ jobs:
           retention-days: 14
 
   native-contract:
-    name: Native v4 contract compile
+    name: Rust and Native v4 contract compile
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout candidate
         uses: actions/checkout@v4
@@ -103,6 +116,13 @@ jobs:
         with:
           toolchain: 1.88.0
           components: rustfmt
+
+      - name: Compile digest-bound served bundle path
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo check --manifest-path codex-rs/Cargo.toml -p hepta-core
+          cargo check --manifest-path codex-rs/Cargo.toml -p hepta-native-gateway
 
       - name: Check Native formatting
         run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
