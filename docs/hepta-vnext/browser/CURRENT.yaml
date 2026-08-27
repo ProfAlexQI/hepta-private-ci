@@ -1,7 +1,7 @@
 {
   "schema": "hepta.browser.current.v1",
   "schema_version": 1,
-  "updated_at_utc": "2026-08-27T10:00:00Z",
+  "updated_at_utc": "2026-08-27T11:33:28Z",
   "phase": "DEVELOPMENT",
   "claim_level": "L1_QUALIFICATION_ONLY",
   "canonical_plan": "docs/hepta-vnext/browser/EXECUTION_PLAN.md",
@@ -10,17 +10,25 @@
   "threat_model": "docs/hepta-vnext/browser/THREAT_MODEL.md",
   "receipt_schema": "docs/hepta-vnext/browser/hepta.browser.qualification_receipt.v1.schema.json",
   "servo_pin": "docs/hepta-vnext/browser/SERVO_UPSTREAM_PIN.json",
+  "servo_source_topology": "docs/hepta-vnext/browser/SERVO_SOURCE_IMPORT_TOPOLOGY.yaml",
+  "servo_patch_inventory": "third_party/servo-patches/PATCH_INVENTORY.json",
+  "next_work_queue": "docs/hepta-vnext/browser/NEXT_WORK_QUEUE.yaml",
   "implementation": {
     "crate": "codex-hepta-shadow-qualification",
     "contracts": "implemented_qualification_only",
     "semantic_model": "implemented_fixture_engine",
     "single_owner_actor": "implemented_fixture_engine",
+    "servo_source_topology": "frozen_isolated_verified_checkout",
+    "private_worker_protocol": "implemented_qualification_only_unqualified",
+    "qualification_process_harness": "implemented_private_stdio_pipe_unqualified",
+    "unix_inherited_socketpair": "not_implemented",
+    "windows_sid_named_pipe": "not_implemented",
     "servo_runtime": "not_integrated",
     "production_caller": "not_integrated"
   },
   "stage_status": {
     "WEB_C0": "IMPLEMENTED_QUALIFICATION_ONLY",
-    "WEB_C1": "NOT_IMPLEMENTED_SOURCE_PINNED",
+    "WEB_C1": "IN_PROGRESS_PRIVATE_PROTOCOL_QUALIFICATION",
     "WEB_C2": "IMPLEMENTED_FIXTURE_ONLY",
     "WEB_C3": "IMPLEMENTED_FIXTURE_ONLY",
     "WEB_C4": "NOT_IMPLEMENTED",
@@ -28,6 +36,13 @@
     "WEB_C6": "NOT_IMPLEMENTED",
     "WEB_C7": "NOT_IMPLEMENTED"
   },
+  "open_c1_gates": [
+    "GitHub Actions jobs currently terminate before steps and provide no usable logs; runner or repository policy must be repaired before any PASS claim",
+    "private stdio pipes are a qualification harness, not the required Unix socketpair or Windows SID named pipe",
+    "Servo source is pinned but not checked out, patched, built or linked",
+    "source/SBOM/toolchain/artifact receipts are not sealed",
+    "real one-WebView smoke, listener scan, sandbox and external-egress denial are not run"
+  ],
   "authority": {
     "runtime_authority": false,
     "effect_authority": false,
@@ -43,6 +58,7 @@
   "fail_closed": true,
   "supersedes": [
     "Dropbox-only browser plan pointers",
-    "unreceipted natural-language browser implementation claims"
+    "unreceipted natural-language browser implementation claims",
+    "C1 status that did not distinguish protocol scaffolding from a real Servo runtime"
   ]
 }
