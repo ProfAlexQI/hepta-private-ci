@@ -3,13 +3,23 @@
 
 from __future__ import annotations
 
-import runpy
 from pathlib import Path
 from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
 VERIFIER_CORE = Path(__file__).with_name("verify-hepta-browser-plan-v2.py")
+
+
+def load_verifier_core() -> dict[str, Any]:
+    source = VERIFIER_CORE.read_text(encoding="utf-8")
+    namespace: dict[str, Any] = {
+        "__file__": str(VERIFIER_CORE),
+        "__name__": "hepta_browser_verifier_core",
+        "__package__": None,
+    }
+    exec(compile(source, str(VERIFIER_CORE), "exec"), namespace)
+    return namespace
 
 
 def install_ci_verifier(namespace: dict[str, Any]) -> None:
@@ -86,7 +96,7 @@ def install_ci_verifier(namespace: dict[str, Any]) -> None:
 
 
 def main() -> int:
-    namespace: dict[str, Any] = runpy.run_path(str(VERIFIER_CORE))
+    namespace = load_verifier_core()
     install_ci_verifier(namespace)
     verifier = namespace.get("main")
     if not callable(verifier):
