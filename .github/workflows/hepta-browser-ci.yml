@@ -54,7 +54,9 @@ jobs:
             echo "servo_source_imported=false"
             echo "servo_linked=false"
             echo "servo_runtime_qualified=false"
-            echo "worker_transport=qualification_stdio_pipe"
+            echo "worker_transport_stdio=qualification_only"
+            echo "worker_transport_unix_socketpair=qualification_only"
+            echo "unix_socketpair_fixture_implemented=true"
             echo "unix_socketpair_qualified=false"
             echo "windows_named_pipe_qualified=false"
             echo "qualification_only=true"
@@ -101,7 +103,7 @@ jobs:
             --lib browser_ -- --nocapture 2>&1 | tee "$evidence_dir/unit-tests.log"
           echo "unit_tests=passed" >> "$evidence_dir/posture.txt"
 
-      - name: Locked private worker process test
+      - name: Locked private stdio worker process test
         working-directory: codex-rs
         shell: bash
         run: |
@@ -110,7 +112,18 @@ jobs:
           cargo test --locked \
             -p codex-hepta-shadow-qualification \
             --test browser_worker_process -- --nocapture 2>&1 | tee "$evidence_dir/process-test.log"
-          echo "process_test=passed" >> "$evidence_dir/posture.txt"
+          echo "stdio_process_test=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Locked inherited Unix socketpair process test
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3-c1-protocol"
+          cargo test --locked \
+            -p codex-hepta-shadow-qualification \
+            --test browser_worker_unix_socketpair -- --nocapture 2>&1 | tee "$evidence_dir/unix-socketpair-test.log"
+          echo "unix_socketpair_process_test=passed" >> "$evidence_dir/posture.txt"
 
       - name: Locked Browser all-target check
         working-directory: codex-rs
@@ -145,11 +158,12 @@ jobs:
             echo "### Hepta Browser qualification-only fixture and protocol slice"
             echo
             echo "This job validates repository-native plans, portable contracts,"
-            echo "a deterministic actor, an offline provenance generator, and a"
-            echo "private child-pipe protocol harness."
+            echo "a deterministic actor, an offline provenance generator, and"
+            echo "private stdio and inherited Unix socketpair process harnesses."
             echo
-            echo "It does not import or build Servo, qualify Unix/Windows production"
-            echo "transport, enable external network access, or grant authority."
+            echo "It does not import or build Servo, qualify the Unix transport for"
+            echo "production, implement Windows named pipes, enable external network"
+            echo "access, or grant any authority."
             echo
             sed 's/^/- /' "$evidence_dir/posture.txt"
           } >> "$GITHUB_STEP_SUMMARY"
