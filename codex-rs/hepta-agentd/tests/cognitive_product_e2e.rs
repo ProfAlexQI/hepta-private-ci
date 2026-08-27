@@ -143,6 +143,49 @@ impl ProductClient {
         Ok(response.thread.id)
     }
 
+    /// Start a thread while asserting the provider/model selected by the
+    /// app-server.  The external-provider smoke must not pass merely because
+    /// a fallback model (or a different provider) completed the turn.
+    async fn start_thread_with_expected_provider(
+        &mut self,
+        workspace: &Path,
+        expected_model: &str,
+        expected_provider: &str,
+    ) -> Result<String> {
+        let request_id = self.request_id();
+        let response: ThreadStartResponse = self
+            .inner
+            .request_typed(ClientRequest::ThreadStart {
+                request_id,
+                params: ThreadStartParams {
+                    model: Some(expected_model.to_string()),
+                    model_provider: Some(expected_provider.to_string()),
+                    cwd: Some(workspace.to_string_lossy().into_owned()),
+                    // The surrounding FleetHarness home is temporary, but a
+                    // non-ephemeral thread is required so the read-only gate
+                    // can inspect persisted items after turn completion.
+                    ephemeral: Some(false),
+                    ..ThreadStartParams::default()
+                },
+            })
+            .await?;
+        ensure!(
+            response.model == expected_model,
+            "app-server selected unexpected model: expected {expected_model}, got {}",
+            response.model
+        );
+        ensure!(
+            response.model_provider == expected_provider,
+            "app-server selected unexpected provider: expected {expected_provider}, got {}",
+            response.model_provider
+        );
+        ensure!(
+            response.cwd.as_path() == workspace,
+            "thread started in the wrong workspace"
+        );
+        Ok(response.thread.id)
+    }
+
     async fn read_thread(&mut self, thread_id: &str) -> Result<ThreadReadResponse> {
         let request_id = self.request_id();
         self.inner
@@ -842,14 +885,18 @@ async fn real_agentd_external_gpt53_spark_read_only_smoke() -> Result<()> {
     fleet.start(&agent)?;
     let (control, _health) = fleet.wait_ready(&agent, 1).await?;
     let mut product = ProductClient::connect(&agent, &control).await?;
-    let thread = product.start_thread(&agent.workspace).await?;
-    product
+    let thread = product
+        .start_thread_with_expected_provider(&agent.workspace, MODEL_ID, "openai_external")
+        .await?;
+    let turn_id = product
         .run_turn_with_timeout(
             &thread,
             "Reply with exactly READY. Do not call tools, access memory, or cause any external effect.",
             Duration::from_secs(90),
         )
         .await?;
+    let thread_read = product.read_thread(&thread).await?;
+    assert_external_read_only_turn(&thread_read, &turn_id, "READY")?;
     product.shutdown().await?;
     Ok(())
 }
@@ -1663,6 +1710,49 @@ fn assert_thread_read_contains_cited_answer(
             .iter()
             .any(|entry| entry.path == expected_citation_path),
         "assistant memory citation did not bind to the expected source path"
+    );
+    Ok(())
+}
+
+fn assert_external_read_only_turn(
+    response: &ThreadReadResponse,
+    turn_id: &str,
+    expected_text: &str,
+) -> Result<()> {
+    let turn = response
+        .thread
+        .turns
+        .iter()
+        .find(|turn| turn.id == turn_id)
+        .context("thread/read omitted the completed external-provider turn")?;
+    ensure!(
+        turn.items_view == codex_app_server_protocol::TurnItemsView::Full,
+        "thread/read did not return full turn items"
+    );
+    // For this one-shot smoke, only user/assistant/reasoning items are valid.
+    // Reject every other variant (including command, MCP, dynamic, web, and
+    // collaboration calls) instead of relying on the prompt as a soft guard.
+    ensure!(
+        turn.items.iter().all(|item| matches!(
+            item,
+            ThreadItem::UserMessage { .. }
+                | ThreadItem::AgentMessage { .. }
+                | ThreadItem::Reasoning { .. }
+        )),
+        "external-provider smoke produced a non-read-only thread item"
+    );
+    let assistant_text = turn
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            ThreadItem::AgentMessage { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .last()
+        .context("external-provider turn omitted an assistant message")?;
+    ensure!(
+        assistant_text.trim() == expected_text,
+        "external-provider assistant text mismatch: expected {expected_text:?}, got {assistant_text:?}"
     );
     Ok(())
 }
