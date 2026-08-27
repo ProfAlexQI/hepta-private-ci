@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hepta.servo.worker_artifact_receipt.v1",
+  "title": "Hepta Servo worker artifact binding receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "phase",
+    "claim_level",
+    "captured_at_utc",
+    "source_binding",
+    "build_binding",
+    "artifact",
+    "supporting_inputs",
+    "runtime_qualification",
+    "authority",
+    "decision",
+    "receipt_id"
+  ],
+  "properties": {
+    "schema": {"const": "hepta.servo.worker_artifact_receipt.v1"},
+    "phase": {"const": "DEVELOPMENT"},
+    "claim_level": {"const": "ARTIFACT_DIGEST_AND_BUILD_INPUTS_ONLY"},
+    "captured_at_utc": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_receipt_id",
+        "source_receipt_sha256",
+        "repository",
+        "commit",
+        "tree"
+      ],
+      "properties": {
+        "source_receipt_id": {
+          "type": "string",
+          "pattern": "^servo-source-receipt:v1:[0-9a-f]{64}$"
+        },
+        "source_receipt_sha256": {"$ref": "#/$defs/sha256"},
+        "repository": {"const": "https://github.com/servo/servo"},
+        "commit": {"const": "0a48e298482659817eb50097df23841f2b8e3044"},
+        "tree": {"const": "b04d2f75b3217374d079d579c270177b57fa1389"}
+      }
+    },
+    "build_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "build_manifest_sha256",
+        "target_triple",
+        "build_profile",
+        "rustc_verbose_sha256",
+        "cargo_version",
+        "linker_id",
+        "features",
+        "build_command_sha256",
+        "environment_allowlist_sha256"
+      ],
+      "properties": {
+        "build_manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "target_triple": {"$ref": "#/$defs/target"},
+        "build_profile": {"type": "string", "pattern": "^[A-Za-z0-9._:+/@=-]{1,256}$"},
+        "rustc_verbose_sha256": {"$ref": "#/$defs/sha256"},
+        "cargo_version": {"type": "string", "pattern": "^[A-Za-z0-9._:+/@=-]{1,256}$"},
+        "linker_id": {"type": "string", "pattern": "^[A-Za-z0-9._:+/@=-]{1,256}$"},
+        "features": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9._:+/@=-]{1,128}$"}
+        },
+        "build_command_sha256": {"$ref": "#/$defs/sha256"},
+        "environment_allowlist_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha256",
+        "bytes",
+        "mode",
+        "format",
+        "architecture",
+        "target_triple"
+      ],
+      "properties": {
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "bytes": {"type": "integer", "minimum": 64},
+        "mode": {"type": "string", "pattern": "^0o[0-7]{4}$"},
+        "format": {"enum": ["elf", "macho", "pe"]},
+        "architecture": {"enum": ["x86_64", "aarch64"]},
+        "target_triple": {"$ref": "#/$defs/target"}
+      }
+    },
+    "supporting_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "patch_inventory_sha256",
+        "patch_count",
+        "license_packet_sha256",
+        "license_notice_count",
+        "sbom_sha256",
+        "sbom_bytes",
+        "sbom_format",
+        "sbom_package_count"
+      ],
+      "properties": {
+        "patch_inventory_sha256": {"$ref": "#/$defs/sha256"},
+        "patch_count": {"type": "integer", "minimum": 0},
+        "license_packet_sha256": {"$ref": "#/$defs/sha256"},
+        "license_notice_count": {"type": "integer", "minimum": 1},
+        "sbom_sha256": {"$ref": "#/$defs/sha256"},
+        "sbom_bytes": {"type": "integer", "minimum": 1},
+        "sbom_format": {"const": "SPDX-2.3-json"},
+        "sbom_package_count": {"type": "integer", "minimum": 1}
+      }
+    },
+    "runtime_qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_executed",
+        "servo_webview_started",
+        "listener_scan_passed",
+        "egress_scan_passed",
+        "sandbox_qualified",
+        "platform_matrix_qualified"
+      ],
+      "properties": {
+        "artifact_executed": {"const": false},
+        "servo_webview_started": {"const": false},
+        "listener_scan_passed": {"const": false},
+        "egress_scan_passed": {"const": false},
+        "sandbox_qualified": {"const": false},
+        "platform_matrix_qualified": {"const": false}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "machine_authority",
+        "runtime_authority",
+        "production_caller",
+        "production_writer",
+        "effect_authority",
+        "external_effect",
+        "external_network_allowed",
+        "credential_export_allowed",
+        "operator_acceptance",
+        "promotion",
+        "release_qualified"
+      ],
+      "properties": {
+        "machine_authority": {"const": false},
+        "runtime_authority": {"const": false},
+        "production_caller": {"const": false},
+        "production_writer": {"const": false},
+        "effect_authority": {"const": false},
+        "external_effect": {"const": false},
+        "external_network_allowed": {"const": false},
+        "credential_export_allowed": {"const": false},
+        "operator_acceptance": {"const": false},
+        "promotion": {"const": false},
+        "release_qualified": {"const": false}
+      }
+    },
+    "decision": {"const": "ARTIFACT_BOUND_RUNTIME_NOT_QUALIFIED"},
+    "receipt_id": {
+      "type": "string",
+      "pattern": "^servo-worker-artifact-receipt:v1:[0-9a-f]{64}$"
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "target": {
+      "enum": [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+        "aarch64-pc-windows-msvc"
+      ]
+    }
+  }
+}
