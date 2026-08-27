@@ -1,6 +1,6 @@
 {
   "schema": "hepta.browser.next_work_queue.c1.v1",
-  "updated_at": "2026-08-27T00:00:00+08:00",
+  "updated_at": "2026-08-28T00:00:00+08:00",
   "phase": "DEVELOPMENT",
   "plan": "WEB-PLAN-2026-08-27E",
   "authority": {
@@ -19,25 +19,36 @@
     {
       "id": "C1-004A-1",
       "title": "Generate canonical source receipt from exact Servo checkout",
-      "state": "READY_WHEN_CHECKOUT_AVAILABLE",
-      "dependencies": ["source-contract-fixture-workflow-pass"],
+      "state": "READY_AFTER_RUNNER_REPAIR_AND_MANUAL_DISPATCH",
+      "dependencies": ["source-contract-fixture-workflow-pass", "github-actions-runner-enters-first-step"],
+      "implemented": [
+        "exact source receipt generator and verifier",
+        "manual acknowledged two-fetch source qualification workflow",
+        "clean checkout, origin, HEAD, tree, license and recursive tree-manifest binding"
+      ],
       "inputs": [
-        "exact servo/servo checkout",
+        "two independent exact servo/servo checkouts",
         "commit 0a48e298482659817eb50097df23841f2b8e3044",
         "tree b04d2f75b3217374d079d579c270177b57fa1389"
       ],
-      "outputs": ["hepta.servo.source_receipt.v1"],
+      "outputs": ["two hepta.servo.source_receipt.v1 receipts"],
       "acceptance": [
         "origin/HEAD/tree/clean/license/tree-manifest exact",
         "receipt compact canonical and create-only",
-        "build/archive/SBOM/authority claims false"
+        "build/archive/SBOM/authority claims false",
+        "both exact-head jobs execute steps and upload immutable evidence"
       ]
     },
     {
       "id": "C1-004A-2",
       "title": "Repeat source verification from an independent fetch",
-      "state": "BLOCKED_BY_C1-004A-1",
+      "state": "CONTRACT_IMPLEMENTED_BLOCKED_BY_C1-004A-1_EVIDENCE",
       "dependencies": ["C1-004A-1"],
+      "implemented": [
+        "independent fetch-ID fence",
+        "source-facts and tree-manifest comparison",
+        "signature presence separated from trust verification"
+      ],
       "outputs": ["second source receipt", "cross-fetch comparison receipt"],
       "acceptance": [
         "same commit/tree/tree-manifest/license digest",
@@ -48,8 +59,14 @@
     {
       "id": "C1-004A-3",
       "title": "Create deterministic Servo source archive",
-      "state": "BLOCKED_BY_C1-004A-2",
+      "state": "CONTRACT_IMPLEMENTED_BLOCKED_BY_C1-004A-2_EVIDENCE",
       "dependencies": ["C1-004A-2"],
+      "implemented": [
+        "byte-sorted deterministic archive",
+        "archive inventory and digest recomputation",
+        "independent archive comparison",
+        "path, symlink and submodule fail-closed policy"
+      ],
       "outputs": ["source archive", "archive SHA-256", "archive inventory"],
       "acceptance": [
         "archive generated from exact tree",
@@ -60,8 +77,14 @@
     {
       "id": "C1-004A-4",
       "title": "Seal MPL-2.0 license/source-distribution packet and patch inventory",
-      "state": "BLOCKED_BY_C1-004A-3",
+      "state": "CONTRACT_IMPLEMENTED_BLOCKED_BY_C1-004A-3_EVIDENCE",
       "dependencies": ["C1-004A-3"],
+      "implemented": [
+        "MPL packet creation and verification",
+        "source-distribution receipt",
+        "governed patch inventory transform",
+        "complete source-bundle recomputation"
+      ],
       "outputs": ["hepta.servo.license_packet.v1", "hepta.servo.patch_inventory.v1"],
       "acceptance": [
         "license and notices exact",
@@ -71,33 +94,55 @@
     },
     {
       "id": "C1-004B-1",
-      "title": "Freeze real worker build input manifest",
-      "state": "BLOCKED_BY_C1-004A-4",
-      "dependencies": ["C1-004A-4", "artifact-contract-fixture-workflow-pass"],
-      "outputs": ["hepta.servo.worker_build_manifest.v1"],
+      "title": "Freeze real worker build input manifest and source-bundle packet",
+      "state": "IMPLEMENTED_FIXTURE_ONLY_BLOCKED_BY_CANONICAL_SOURCE_BUNDLE",
+      "dependencies": [
+        "C1-004A-4",
+        "build-manifest-contract-workflow-pass",
+        "worker-build-inputs-contract-workflow-pass"
+      ],
+      "implemented": [
+        "base hepta.servo.worker_build_manifest.v1 primitive",
+        "source-bundle-aware hepta.servo.worker_build_input_packet.v1 orchestration",
+        "exact source/patch/license/SBOM/toolchain/command/environment digest binding",
+        "raw environment values redacted from packet output",
+        "create-only canonical packet and manifest verification"
+      ],
+      "outputs": [
+        "hepta.servo.worker_build_input_packet.v1",
+        "hepta.servo.worker_build_manifest.v1"
+      ],
       "acceptance": [
         "target/profile/rustc/cargo/linker/features exact",
         "build command and environment allowlist digests exact",
-        "build/network/worker authority booleans false"
+        "canonical source-bundle receipt bound",
+        "build/network/worker authority booleans false",
+        "real packet independently recomputes from one exact input set"
       ]
     },
     {
       "id": "C1-004B-2",
       "title": "Build first Linux local-fixture-only Servo worker",
-      "state": "BLOCKED_BY_C1-004B-1",
+      "state": "BLOCKED_BY_C1-004B-1_REAL_EVIDENCE",
       "dependencies": ["C1-004B-1"],
-      "outputs": ["worker executable", "symbols/debug packet", "SPDX SBOM"],
+      "outputs": ["worker executable", "symbols/debug packet", "complete SPDX SBOM"],
       "acceptance": [
         "build network disabled after declared dependency acquisition",
         "no wildcard/loopback HTTP automation server compiled or started",
-        "worker feature surface limited to private protocol/local fixture"
+        "worker feature surface limited to private protocol/local fixture",
+        "exact build packet and manifest supplied as immutable inputs"
       ]
     },
     {
       "id": "C1-004B-3",
       "title": "Generate and independently verify worker artifact receipt",
-      "state": "BLOCKED_BY_C1-004B-2",
-      "dependencies": ["C1-004B-2"],
+      "state": "CONTRACT_IMPLEMENTED_FIXTURE_ONLY_BLOCKED_BY_REAL_ARTIFACT",
+      "dependencies": ["C1-004B-2", "artifact-contract-workflow-pass"],
+      "implemented": [
+        "source/build/artifact/patch/license/SBOM binding contract",
+        "nonexecuting ELF/Mach-O/PE target and architecture inspection",
+        "symlink, hardlink, writable artifact and positive-authority rejection"
+      ],
       "outputs": ["hepta.servo.worker_artifact_receipt.v1"],
       "acceptance": [
         "source/build/artifact/patch/license/SBOM exact",
@@ -108,7 +153,7 @@
     {
       "id": "C1-004B-4",
       "title": "Repeat the build and compare reproducibility",
-      "state": "BLOCKED_BY_C1-004B-3",
+      "state": "BLOCKED_BY_C1-004B-3_REAL_EVIDENCE",
       "dependencies": ["C1-004B-3"],
       "outputs": ["second artifact receipt", "reproducibility comparison"],
       "acceptance": [
@@ -120,20 +165,32 @@
     {
       "id": "C1-004C-1",
       "title": "Launch artifact-bound Servo worker over inherited private channel",
-      "state": "BLOCKED_BY_C1-004B-4",
-      "dependencies": ["C1-004B-4", "c1-private-protocol-workflow-pass"],
+      "state": "LAUNCH_GATE_SCAFFOLD_IMPLEMENTED_REAL_ARTIFACT_BLOCKED",
+      "dependencies": [
+        "C1-004B-4",
+        "c1-private-protocol-workflow-pass",
+        "c1-artifact-launch-gate-workflow-pass"
+      ],
+      "implemented": [
+        "zero-dependency executable/build/source SHA-256 launch binding",
+        "exact spawned-child PID and private challenge authentication",
+        "Unix inherited socketpair qualification transport",
+        "bounded read/write deadlines",
+        "normal shutdown/reap and hung-child forced-kill/reap trials"
+      ],
       "outputs": ["real worker startup receipt"],
       "acceptance": [
         "executable SHA-256 matches artifact receipt before spawn",
-        "session/generation/epoch/source pin exact",
-        "startup capability/nonce private and one-process",
-        "no listener or external egress"
+        "session/generation/epoch/source pin exact before browser protocol handoff",
+        "startup capability/challenge private and one-process",
+        "no listener or external egress",
+        "fixture receipts replaced by exact real source/build/artifact receipts"
       ]
     },
     {
       "id": "C1-004C-2",
       "title": "Create exactly one local-fixture Servo WebView",
-      "state": "BLOCKED_BY_C1-004C-1",
+      "state": "BLOCKED_BY_C1-004C-1_REAL_WORKER",
       "dependencies": ["C1-004C-1"],
       "outputs": ["one-WebView local fixture smoke receipt"],
       "acceptance": [
@@ -159,15 +216,35 @@
     {
       "id": "C1-004C-4",
       "title": "Qualify deadlines, forced teardown, descriptors, sandbox, and platforms",
-      "state": "BLOCKED_BY_C1-004C-3",
+      "state": "PARTIAL_PROCESS_FIXTURE_IMPLEMENTED_BLOCKED_BY_REAL_SERVO_INTEGRATION",
       "dependencies": ["C1-004C-3"],
+      "implemented": [
+        "fixture Unix read/write deadline",
+        "fixture normal child reap",
+        "fixture hung-child forced kill and bounded reap"
+      ],
       "outputs": ["Linux receipt", "macOS receipt", "Windows named-pipe receipt"],
       "acceptance": [
         "bounded handshake/read/write/command/drain/kill/reap",
         "no listener/no egress OS evidence",
-        "private profile/resource limits/descendant cleanup",
+        "private profile/resource limits/parent-death/descendant cleanup",
         "Windows exact SID ACL and one-client named-pipe equivalence"
       ]
     }
-  ]
+  ],
+  "environment_blocker": {
+    "status": "GITHUB_ACTIONS_JOBS_FAIL_BEFORE_STEPS",
+    "observed_head": "7ba3c1840692e5012d34ae7c118ca72de88368f3",
+    "observed_runs": [
+      33088469216,
+      33088468637,
+      33088468593,
+      33088468595,
+      33088468614,
+      33088468663
+    ],
+    "evidence": "independent workflows completed as failure with no recorded steps; source-bundle log retrieval returned BlobNotFound",
+    "interpretation": "runner, billing, policy or Actions allocation failure; not a code PASS and not a code-test failure",
+    "required_action": "restore a runner that enters the first step, then rerun the exact Draft PR head before changing any evidence status"
+  }
 }
