@@ -685,6 +685,50 @@ fn validate_ref_for_outcome(
     Ok(())
 }
 
+/// Keep the provider classification and durable outcome in the same
+/// conservative projection.  A positive provider classification can never
+/// be wrapped as a hold, and an unknown/negative classification can never be
+/// presented as a successful refresh.  More specific quarantine and
+/// indeterminate checks below retain their dedicated error messages.
+fn validate_outcome_status(
+    outcome: SecretRefOutcome,
+    provider_status: SecretProviderStatus,
+) -> Result<(), AuthBusContractError> {
+    match outcome {
+        SecretRefOutcome::Succeeded
+            if !matches!(
+                provider_status,
+                SecretProviderStatus::Succeeded | SecretProviderStatus::Rotated
+            ) => Err(error(
+                "successful SecretRef outcome requires a positive provider status",
+            )),
+        SecretRefOutcome::TransientFailure
+            if matches!(
+                provider_status,
+                SecretProviderStatus::Succeeded
+                    | SecretProviderStatus::Rotated
+                    | SecretProviderStatus::InvalidGrant
+                    | SecretProviderStatus::Quarantined
+                    | SecretProviderStatus::Unknown
+            ) => Err(error(
+                "transient SecretRef outcome cannot carry a terminal or unknown provider status",
+            )),
+        SecretRefOutcome::Indeterminate if provider_status != SecretProviderStatus::Unknown => {
+            Err(error(
+                "indeterminate SecretRef outcome requires unknown provider status",
+            ))
+        }
+        SecretRefOutcome::Quarantined
+            if !matches!(
+                provider_status,
+                SecretProviderStatus::InvalidGrant | SecretProviderStatus::Quarantined
+            ) => Err(error(
+                "quarantined SecretRef outcome requires invalid-grant provider status",
+            )),
+        _ => Ok(()),
+    }
+}
+
 /// Refresh response.  A non-success response cannot carry a new secret
 /// reference; an indeterminate response is therefore safe to persist and
 /// reconcile by operation key.
@@ -761,6 +805,7 @@ impl RefreshWithSecretRefResponse {
             self.refresh_secret_ref.as_ref(),
             "refresh secret reference",
         )?;
+        validate_outcome_status(self.outcome, self.provider_status)?;
         if self.outcome == SecretRefOutcome::Succeeded {
             let revision = self
                 .secret_revision
@@ -1145,6 +1190,7 @@ impl RefreshStatusByOperationKeyResponse {
         validate_nonzero(self.owner_epoch, "status response owner epoch")?;
         validate_nonzero(self.generation, "status response generation")?;
         validate_nonzero(self.status_revision, "status revision")?;
+        validate_nonzero(self.secret_revision, "status secret revision")?;
         validate_nonzero(self.observed_at, "status observed-at")?;
         if self.operation_id != request.operation_id
             || self.provider_id != request.provider_id
@@ -1170,6 +1216,7 @@ impl RefreshStatusByOperationKeyResponse {
         if self.binding_digest != expected_binding {
             return Err(error("status binding digest mismatch"));
         }
+        validate_outcome_status(self.outcome, self.provider_status)?;
         if self.outcome == SecretRefOutcome::Succeeded {
             if self.secret_revision <= self.expected_secret_revision {
                 return Err(error("successful status revision must advance"));
@@ -1628,6 +1675,9 @@ mod tests {
         let mut invalid = response.clone();
         invalid.access_secret_ref = None;
         assert!(invalid.validate_against(&request).is_err());
+        invalid = response.clone();
+        invalid.provider_status = SecretProviderStatus::Unknown;
+        assert!(invalid.validate_against(&request).is_err());
     }
 
     #[test]
@@ -1678,6 +1728,9 @@ mod tests {
         let mut stale = response.clone();
         stale.generation += 1;
         assert!(stale.validate_against(&request).is_err());
+        let mut missing_revision = response;
+        missing_revision.secret_revision = 0;
+        assert!(missing_revision.validate_against(&request).is_err());
     }
 
     #[test]
