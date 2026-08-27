@@ -1,0 +1,84 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "pathname"
+
+ROOT = Pathname.new(__dir__).join("..").expand_path
+OUTPUT = ROOT.join("apps/hepta-control-ui/control-ui.js")
+RUNTIME = ROOT.join("apps/hepta-control-ui/control-ui-v4-runtime.js")
+START_MARKER = "/* HEPTA_UI_V4_RUNTIME_BEGIN */"
+END_MARKER = "/* HEPTA_UI_V4_RUNTIME_END */"
+FORBIDDEN_NETWORK = [
+  /\bfetch\s*\(/,
+  /\bXMLHttpRequest\b/,
+  /\bWebSocket\b/,
+  /\bsendBeacon\s*\(/,
+  /\bnavigator\.serviceWorker\b/,
+].freeze
+
+mode = case ARGV
+       when [], ["--check"] then :check
+       when ["--write"] then :write
+       else
+         abort("usage: #{File.basename($PROGRAM_NAME)} [--check|--write]")
+       end
+
+abort("missing output: #{OUTPUT}") unless OUTPUT.file?
+abort("missing runtime source: #{RUNTIME}") unless RUNTIME.file?
+
+runtime = RUNTIME.read
+FORBIDDEN_NETWORK.each do |pattern|
+  abort("runtime source may not own network capability: #{pattern.inspect}") if runtime.match?(pattern)
+end
+%w[productionAuthority effectAuthority liveAdapterAuthority promotion].each do |key|
+  abort("runtime source must publish #{key}=false") unless runtime.match?(/#{key}:\s*false/)
+end
+
+current = OUTPUT.read
+start_count = current.scan(START_MARKER).length
+end_count = current.scan(END_MARKER).length
+abort("unbalanced v4 runtime markers") unless start_count == end_count
+abort("multiple v4 runtime bindings") if start_count > 1
+
+base = if start_count == 1
+         before, remainder = current.split(START_MARKER, 2)
+         _bound, after = remainder.split(END_MARKER, 2)
+         abort("content after v4 runtime marker is not allowed") unless after.to_s.strip.empty?
+         before.rstrip
+       else
+         current.rstrip
+       end
+
+expected = [
+  base,
+  "",
+  START_MARKER,
+  runtime.rstrip,
+  END_MARKER,
+  "",
+].join("\n")
+
+if mode == :write
+  OUTPUT.write(expected)
+else
+  abort("control-ui.js is not bound to canonical v4 runtime source; run --write") unless current == expected
+end
+
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.runtime-js-binding.v1",
+  status: "PASS_SOURCE_BINDING_ONLY",
+  output: OUTPUT.relative_path_from(ROOT).to_s,
+  runtime: RUNTIME.relative_path_from(ROOT).to_s,
+  output_sha256: Digest::SHA256.file(OUTPUT).hexdigest,
+  runtime_sha256: Digest::SHA256.file(RUNTIME).hexdigest,
+  marker_count: 1,
+  network_authority: false,
+  mutation_authority: false,
+  effect_authority: false,
+  production_authority: false,
+  promotion: false,
+  browser_validation: false,
+  device_validation: false
+)
