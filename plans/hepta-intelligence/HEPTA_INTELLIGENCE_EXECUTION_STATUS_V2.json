@@ -1,0 +1,151 @@
+{
+  "schema": "hepta_intelligence_execution_status_v2",
+  "generated_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "default_branch": "integration/vnext-main-20260811",
+  "document_snapshot_head": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+  "canonical_code_parent": "a85612afb43af722c61b54efe73570b25e9e4031",
+  "development_branch": "codex/hepta-intelligence-grounding-v2-20260828",
+  "authority": {
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "current_tranche": {
+    "id": "P0.1",
+    "name": "qualification_source_span_fact_grounding",
+    "status": "implemented_on_branch_pending_ci",
+    "files": [
+      "codex-rs/hepta-memory/src/fact_grounding.rs",
+      "codex-rs/hepta-memory/src/lib.rs",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28.md",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json"
+    ],
+    "claims": {
+      "source_span_validation": true,
+      "per_fact_evidence_required": true,
+      "receipt_digest_binding": true,
+      "validation_before_store_mutation": true,
+      "durable_persistence": false,
+      "production_projection_gate": false,
+      "production_authority": false
+    },
+    "qualification": {
+      "format": "pending",
+      "focused_tests": "pending",
+      "crate_tests": "pending",
+      "clippy": "pending",
+      "workflow_ci": "pending"
+    }
+  },
+  "capabilities": [
+    {
+      "id": "fact_grounding_contract",
+      "implemented": true,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "notes": "Qualification-only strict source-span contract; receipt is not durable."
+    },
+    {
+      "id": "durable_fact_grounding_ledger",
+      "implemented": false,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "next_workstream": "P0.2"
+    },
+    {
+      "id": "grounded_projection_gate",
+      "implemented": false,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "next_workstream": "P0.3"
+    },
+    {
+      "id": "intelligence_mutation_state_machine",
+      "implemented": false,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "next_workstream": "P0.4"
+    },
+    {
+      "id": "hybrid_retrieval_v2",
+      "implemented": false,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "next_workstream": "P1.1"
+    },
+    {
+      "id": "privacy_safe_intelligence_telemetry",
+      "implemented": false,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "next_workstream": "P1.2"
+    },
+    {
+      "id": "bounded_concurrent_federated_recall",
+      "implemented": false,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "next_workstream": "P1.3"
+    },
+    {
+      "id": "memory_semantic_security",
+      "implemented": false,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "next_workstream": "P1.4"
+    },
+    {
+      "id": "h5_h6_h7_minimal_closed_loop",
+      "implemented": false,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "next_workstream": "P2.1"
+    },
+    {
+      "id": "statistical_promotion_gate",
+      "implemented": false,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false,
+      "next_workstream": "P2.2"
+    }
+  ],
+  "next_actions": [
+    "Run format, focused tests, crate tests, and clippy in hosted CI.",
+    "Fix P0.1 without expanding authority or changing production defaults.",
+    "Implement P0.2 migration 0011 and exact reopen verification after P0.1 is qualified.",
+    "Wire tool protocol and projection gate only after durable receipts are qualified."
+  ]
+}
