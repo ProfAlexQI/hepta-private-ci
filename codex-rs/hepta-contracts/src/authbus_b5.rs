@@ -1039,7 +1039,14 @@ impl LocalB5Wal {
 
     /// Obtain an immutable snapshot suitable for a crash/reopen test.
     pub fn durable_snapshot(&self) -> Vec<u8> {
-        serde_json::to_vec(&self.records).expect("B5 WAL records serialize")
+        match serde_json::to_vec(&self.records) {
+            Ok(bytes) => bytes,
+            // Every record is made solely from serializable, validated wire
+            // types. Reaching this arm indicates a programmer error, but
+            // keeping it explicit avoids an unchecked panic in a
+            // feature-enabled library build.
+            Err(error) => unreachable!("B5 WAL records serialize: {error}"),
+        }
     }
 
     /// Reopen from a serialized durable snapshot.  Non-durable or malformed
@@ -1094,7 +1101,10 @@ fn digest_record(
     prev_digest: Option<&Sha256Digest>,
     kind: &B5RecordKind,
 ) -> Sha256Digest {
-    let bytes = serde_json::to_vec(&(seq, prev_digest, kind)).expect("B5 record serializes");
+    let bytes = match serde_json::to_vec(&(seq, prev_digest, kind)) {
+        Ok(bytes) => bytes,
+        Err(error) => unreachable!("B5 record serializes: {error}"),
+    };
     Sha256Digest::for_bytes(&bytes)
 }
 
