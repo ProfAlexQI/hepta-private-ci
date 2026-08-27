@@ -1,0 +1,136 @@
+name: hepta-servo independent source contract v2
+
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - "scripts/hepta-servo-independent-source.py"
+      - "scripts/hepta-servo-independent-source-v2.py"
+      - "scripts/hepta-servo-source-bundle-verify.py"
+      - "scripts/verify-hepta-servo-independent-source-contract.py"
+      - "scripts/tests/test_hepta_servo_independent_source.py"
+      - "scripts/tests/test_hepta_servo_independent_source_v2.py"
+      - "scripts/tests/test_hepta_servo_source_bundle_verify.py"
+      - "docs/hepta-vnext/browser/C1_INDEPENDENT_SOURCE_PIPELINE.md"
+      - "docs/hepta-vnext/browser/C1_SOURCE_BUNDLE_OFFLINE_VERIFICATION.md"
+      - "docs/hepta-vnext/browser/C1_004A_PROGRESS.json"
+      - "docs/hepta-vnext/browser/SOURCE_PIPELINE_CURRENT.json"
+      - "docs/hepta-vnext/browser/hepta.servo.independent_source_bundle.v1.schema.json"
+      - "docs/hepta-vnext/browser/hepta.servo.source_bundle_verification.v1.schema.json"
+      - ".github/workflows/hepta-servo-independent-source-contract-v2.yml"
+      - ".github/workflows/hepta-servo-independent-source-qualification-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract-v2:
+    name: Canonical source and offline-tree contract (fixtures only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Initialize negative-authority posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-source-contract-v2"
+          mkdir -p "$evidence_dir"
+          {
+            echo "hepta_commit=$(git rev-parse HEAD)"
+            echo "hepta_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "canonical_generator=scripts/hepta-servo-independent-source-v2.py"
+            echo "source_fetch_performed=false"
+            echo "external_network=false"
+            echo "servo_built=false"
+            echo "servo_runtime_qualified=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Compile all source-only entrypoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-servo-independent-source.py \
+            scripts/hepta-servo-independent-source-v2.py \
+            scripts/hepta-servo-source-bundle-verify.py \
+            scripts/verify-hepta-servo-independent-source-contract.py \
+            scripts/tests/test_hepta_servo_independent_source.py \
+            scripts/tests/test_hepta_servo_independent_source_v2.py \
+            scripts/tests/test_hepta_servo_source_bundle_verify.py
+
+      - name: Run independent source fixture suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-source-contract-v2"
+          python3 scripts/tests/test_hepta_servo_independent_source.py 2>&1 | tee "$evidence_dir/source-v1-tests.log"
+          python3 scripts/tests/test_hepta_servo_independent_source_v2.py 2>&1 | tee "$evidence_dir/source-v2-tests.log"
+          echo "source_fixture_tests=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Run independent offline verifier suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-source-contract-v2"
+          python3 scripts/tests/test_hepta_servo_source_bundle_verify.py 2>&1 | tee "$evidence_dir/offline-verifier-tests.log"
+          echo "offline_tree_reconstruction_tests=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Verify frozen source-only contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-source-contract-v2"
+          python3 scripts/verify-hepta-servo-independent-source-contract.py 2>&1 | tee "$evidence_dir/static-contract.log"
+          python3 - <<'PY' 2>&1 | tee "$evidence_dir/canonical-pointer.log"
+          import json
+          import pathlib
+
+          root = pathlib.Path.cwd()
+          pointer = json.loads((root / "docs/hepta-vnext/browser/SOURCE_PIPELINE_CURRENT.json").read_text(encoding="utf-8"))
+          assert pointer["canonical_generator"] == "scripts/hepta-servo-independent-source-v2.py"
+          assert pointer["offline_verifier"] == "scripts/hepta-servo-source-bundle-verify.py"
+          assert pointer["actual_exact_source_receipt"] is None
+          assert all(value is False for value in pointer["authority"].values())
+          generator = (root / pointer["canonical_generator"]).read_text(encoding="utf-8")
+          assert '"GIT_CONFIG_KEY_0": "tar.umask"' in generator
+          assert '"GIT_CONFIG_VALUE_0": "0022"' in generator
+          PY
+          echo "static_contract=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-source-contract-v2"
+          echo "job_status=${{ job.status }}" >> "$evidence_dir/posture.txt"
+          {
+            echo "### Canonical source-pipeline v2 contract"
+            echo
+            echo "This job uses only local Git fixtures. It does not fetch, build, or run Servo."
+            echo
+            sed 's/^/- /' "$evidence_dir/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload contract evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-servo-independent-source-contract-v2
+          path: ${{ runner.temp }}/hepta-servo-source-contract-v2
+          if-no-files-found: error
+
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
