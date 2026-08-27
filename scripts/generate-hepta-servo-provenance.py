@@ -152,11 +152,65 @@ def require_regular_source_file(source: Path, relative: str) -> Path:
     return canonical
 
 
+def verify_plan_inputs(
+    pin: dict[str, Any],
+    topology: dict[str, Any],
+    patch_inventory: dict[str, Any],
+) -> dict[str, str]:
+    if pin.get("schema") != "hepta.browser.servo_upstream_pin.v1":
+        fail("Servo pin schema is invalid")
+    if pin.get("integration_status") != "SOURCE_PIN_ONLY_NOT_IMPORTED":
+        fail("Servo pin must remain source-only before this receipt is generated")
+    if pin.get("repository") != "servo/servo" or pin.get("license") != "MPL-2.0":
+        fail("Servo pin repository or license is invalid")
+
+    if topology.get("schema") != "hepta.browser.servo_source_import_topology.v1":
+        fail("Servo source topology schema is invalid")
+    source = topology.get("source")
+    integration = topology.get("integration_topology")
+    if not isinstance(source, dict) or not isinstance(integration, dict):
+        fail("Servo source topology is incomplete")
+    for key in ("commit", "tree", "license"):
+        if source.get(key) != pin.get(key):
+            fail(f"Servo source topology differs from the pin for {key}")
+    if source.get("branch_tracking_allowed") is not False:
+        fail("Servo source topology cannot permit branch tracking")
+    if source.get("unpinned_git_dependencies_allowed") is not False:
+        fail("Servo source topology cannot permit unpinned Git dependencies")
+    if integration.get("mode") != "isolated_verified_source_checkout_and_worker_artifact":
+        fail("Servo source topology uses an unsupported integration mode")
+    for key in (
+        "main_cargo_workspace_dependency",
+        "servo_source_inside_codex_rs_workspace",
+        "servo_types_exposed_to_hepta_callers",
+        "raw_webdriver_surface_exposed",
+    ):
+        if integration.get(key) is not False:
+            fail(f"Servo integration topology attempted to enable {key}")
+
+    if patch_inventory.get("schema") != "hepta.browser.servo_patch_inventory.v1":
+        fail("Servo patch inventory schema is invalid")
+    if patch_inventory.get("servo_commit") != pin.get("commit"):
+        fail("Servo patch inventory commit differs from the source pin")
+    if patch_inventory.get("servo_tree") != pin.get("tree"):
+        fail("Servo patch inventory tree differs from the source pin")
+
+    return {
+        "servo_pin_sha256": sha256_bytes(canonical_bytes(pin)),
+        "source_topology_sha256": sha256_bytes(canonical_bytes(topology)),
+        "patch_inventory_sha256": sha256_bytes(canonical_bytes(patch_inventory)),
+    }
+
+
 def verify_git_source(source: Path, pin: dict[str, Any]) -> dict[str, Any]:
     expected_commit = pin.get("commit")
     expected_tree = pin.get("tree")
     commit = one_line(git(source, "rev-parse", "HEAD"), "Servo HEAD")
     tree = one_line(git(source, "rev-parse", "HEAD^{tree}"), "Servo tree")
+    if one_line(git(source, "cat-file", "-t", "HEAD"), "Servo HEAD type") != "commit":
+        fail("Servo HEAD is not a commit object")
+    if one_line(git(source, "cat-file", "-t", "HEAD^{tree}"), "Servo tree type") != "tree":
+        fail("Servo HEAD tree is not a tree object")
     if commit != expected_commit:
         fail(f"Servo HEAD {commit} does not match the pinned commit {expected_commit}")
     if tree != expected_tree:
@@ -174,11 +228,27 @@ def verify_git_source(source: Path, pin: dict[str, Any]) -> dict[str, Any]:
         fail("Servo source checkout has no tracked files")
     if len(tracked_files) != len(set(tracked_files)):
         fail("Servo tracked file inventory contains duplicates")
+    for relative in tracked_files:
+        path = Path(relative)
+        if path.is_absolute() or ".." in path.parts or "\0" in relative:
+            fail(f"Servo tracked file inventory contains an invalid path: {relative!r}")
+    tracked_files.sort()
+    tracked_preimage = "\0".join(tracked_files).encode("utf-8") + b"\0"
+
+    submodule_status = git(source, "submodule", "status", "--recursive").stdout
+    submodule_lines = [line for line in submodule_status.splitlines() if line]
+    for line in submodule_lines:
+        if line[0] != " ":
+            fail(f"Servo submodule is missing, modified or conflicted: {line}")
+
     return {
         "commit": commit,
         "tree": tree,
         "clean": True,
         "tracked_file_count": len(tracked_files),
+        "tracked_paths_sha256": sha256_bytes(tracked_preimage),
+        "submodule_count": len(submodule_lines),
+        "submodule_status_sha256": sha256_bytes(submodule_status.encode("utf-8")),
     }
 
 
@@ -232,6 +302,7 @@ def verify_required_source_files(source: Path) -> list[dict[str, Any]]:
     license_text = (source / "LICENSE").read_text(encoding="utf-8", errors="strict")
     if "Mozilla Public License Version 2.0" not in license_text:
         fail("Servo LICENSE does not contain the expected MPL-2.0 text")
+    records.sort(key=lambda item: item["path"])
     return records
 
 
@@ -283,12 +354,14 @@ def inventory_digest(
     reviewed_files: Iterable[dict[str, Any]],
     required_files: Iterable[dict[str, Any]],
     patches: Iterable[dict[str, Any]],
+    plan_inputs: dict[str, str],
 ) -> str:
     preimage = {
         "source": source,
         "reviewed_files": list(reviewed_files),
         "required_files": list(required_files),
         "patches": list(patches),
+        "plan_inputs": plan_inputs,
     }
     return sha256_bytes(canonical_bytes(preimage))
 
@@ -297,23 +370,28 @@ def build_receipt(source: Path) -> dict[str, Any]:
     pin = load_object(PIN_PATH)
     topology = load_object(TOPOLOGY_PATH)
     patch_inventory = load_object(PATCH_INVENTORY_PATH)
+    plan_inputs = verify_plan_inputs(pin, topology, patch_inventory)
 
-    if pin.get("integration_status") != "SOURCE_PIN_ONLY_NOT_IMPORTED":
-        fail("Servo pin must remain source-only before this receipt is generated")
     source_binding = verify_git_source(source, pin)
     reviewed_files = verify_reviewed_files(source, topology)
     required_files = verify_required_source_files(source)
     patches, patch_inventory_sha256 = verify_patch_inventory(patch_inventory, pin)
+    if patch_inventory_sha256 != plan_inputs["patch_inventory_sha256"]:
+        fail("Servo patch inventory digest changed during receipt generation")
 
     receipt = {
         "schema": "hepta.browser.servo_source_receipt.v1",
         "schema_version": 1,
+        "plan_inputs": plan_inputs,
         "source": {
             "repository": pin.get("repository"),
             "commit": source_binding["commit"],
             "tree": source_binding["tree"],
             "clean": source_binding["clean"],
             "tracked_file_count": source_binding["tracked_file_count"],
+            "tracked_paths_sha256": source_binding["tracked_paths_sha256"],
+            "submodule_count": source_binding["submodule_count"],
+            "submodule_status_sha256": source_binding["submodule_status_sha256"],
             "workspace_version": topology.get("source", {}).get("workspace_version"),
             "workspace_edition": topology.get("source", {}).get("workspace_edition"),
             "minimum_rust_version": topology.get("source", {}).get("minimum_rust_version"),
@@ -340,6 +418,7 @@ def build_receipt(source: Path) -> dict[str, Any]:
             reviewed_files,
             required_files,
             patches,
+            plan_inputs,
         ),
         "machine_local_paths_included": False,
         "network_access_used": False,
@@ -352,6 +431,23 @@ def build_receipt(source: Path) -> dict[str, Any]:
     return receipt
 
 
+def fsync_directory(path: Path) -> None:
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(path, os.O_RDONLY | directory_flag)
+    except OSError as error:
+        if os.name == "nt":
+            return
+        fail(f"cannot open receipt directory for durability: {error}")
+    try:
+        os.fsync(descriptor)
+    except OSError as error:
+        if os.name != "nt":
+            fail(f"cannot fsync receipt directory: {error}")
+    finally:
+        os.close(descriptor)
+
+
 def write_atomic(path_value: str, receipt: dict[str, Any]) -> None:
     destination = Path(path_value)
     if not destination.is_absolute():
@@ -360,9 +456,20 @@ def write_atomic(path_value: str, receipt: dict[str, Any]) -> None:
     canonical_destination = parent / destination.name
     if destination != canonical_destination:
         fail("--output must already be canonical and contain no symlink or '..' components")
-    if destination.exists() and destination.is_symlink():
-        fail("--output must not be a symlink")
     encoded = canonical_bytes(receipt)
+
+    if destination.exists():
+        metadata = destination.lstat()
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            fail("existing receipt output must be a non-symlink regular file")
+        try:
+            existing = destination.read_bytes()
+        except OSError as error:
+            fail(f"cannot read existing Servo source receipt: {error}")
+        if existing == encoded:
+            return
+        fail("refusing to overwrite a different existing Servo source receipt")
+
     temporary = parent / f".{destination.name}.tmp-{os.getpid()}"
     try:
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
@@ -372,6 +479,7 @@ def write_atomic(path_value: str, receipt: dict[str, Any]) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, destination)
+        fsync_directory(parent)
     except OSError as error:
         try:
             temporary.unlink(missing_ok=True)
