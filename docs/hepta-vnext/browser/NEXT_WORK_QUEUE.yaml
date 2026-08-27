@@ -3,7 +3,7 @@
   "schema_version": 1,
   "lane": "WEB_C1_SERVO_BOOTSTRAP",
   "authority": "qualification_only",
-  "ordering_rule": "complete source provenance and production-private transports before importing or executing Servo",
+  "ordering_rule": "complete exact source provenance and at least one platform-private transport before importing or executing Servo",
   "tasks": [
     {
       "id": "C1-001",
@@ -37,34 +37,57 @@
     {
       "id": "C1-002",
       "title": "Create Servo provenance and SBOM generator",
-      "status": "READY_IMPLEMENT_NEXT",
+      "status": "PARTIAL_SOURCE_RECEIPT_GENERATOR_IMPLEMENTED",
       "depends_on": ["C1-001"],
-      "outputs": [
-        "canonical source receipt",
-        "Cargo and native dependency SBOM",
-        "license inventory",
-        "source and patch SHA256SUMS",
-        "toolchain compatibility receipt"
+      "implemented_outputs": [
+        "scripts/generate-hepta-servo-provenance.py",
+        "scripts/test_generate_hepta_servo_provenance.py",
+        "docs/hepta-vnext/browser/hepta.servo.source_receipt.v1.schema.json",
+        "docs/hepta-vnext/browser/SERVO_PROVENANCE.md"
+      ],
+      "completed": [
+        "offline exact HEAD/tree verification",
+        "dirty, staged and untracked source rejection",
+        "reviewed Git blob verification",
+        "required source file SHA-256 inventory",
+        "MPL-2.0 text check",
+        "patch inventory and patch digest binding",
+        "canonical path-free atomic source receipt output",
+        "negative authority fields fixed false",
+        "dependency-free primitive unit tests"
+      ],
+      "remaining": [
+        "run the generator against the exact clean Servo checkout",
+        "validate the generated receipt independently",
+        "Cargo package and feature SBOM",
+        "native/system dependency inventory",
+        "complete license inventory and notices",
+        "toolchain compatibility receipt",
+        "offline source bundle and SHA256SUMS"
       ],
       "acceptance": [
         "generator uses only exact clean source",
         "second run produces byte-identical canonical output",
         "reviewed upstream blobs match the frozen topology",
         "unknown, dirty, missing or symlinked source fails closed",
-        "receipt contains no machine-local absolute paths"
+        "receipt contains no machine-local absolute paths",
+        "SBOM and toolchain records bind the same source tree"
       ]
     },
     {
       "id": "C1-003",
       "title": "Implement private worker protocol and process launcher",
-      "status": "PARTIAL_QUALIFICATION_HARNESS_IMPLEMENTED",
+      "status": "PARTIAL_UNIX_AND_PORTABLE_QUALIFICATION_SCAFFOLDS_IMPLEMENTED",
       "depends_on": ["C1-001"],
       "outputs": [
         "codex-rs/hepta-shadow-qualification/src/browser_worker_protocol.rs",
         "codex-rs/hepta-shadow-qualification/src/browser_worker_harness.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_unix.rs",
         "codex-rs/hepta-shadow-qualification/src/bin/hepta-browser-worker-qualification.rs",
         "codex-rs/hepta-shadow-qualification/src/browser_worker_tests.rs",
-        "codex-rs/hepta-shadow-qualification/tests/browser_worker_process.rs"
+        "codex-rs/hepta-shadow-qualification/tests/browser_worker_process.rs",
+        "codex-rs/hepta-shadow-qualification/tests/browser_worker_unix_socketpair.rs",
+        "docs/hepta-vnext/browser/WORKER_PROTOCOL.md"
       ],
       "completed": [
         "versioned canonical JSON protocol with 65536-byte maximum frame",
@@ -72,28 +95,33 @@
         "session, generation, transport and sequence validation",
         "closed-authority verification",
         "qualification-only private stdin/stdout child process harness",
-        "parent EOF, timeout, kill-on-drop and explicit shutdown behavior",
-        "fixture BrowserActor request/response round trip"
+        "pathless inherited Unix socketpair qualification harness",
+        "spawned PID and WorkerReady PID binding",
+        "existing non-symlink worker executable validation",
+        "parent EOF, bounded timeout, kill-on-drop and explicit shutdown behavior",
+        "fixture BrowserActor request/response round trips"
       ],
       "remaining": [
-        "Unix inherited socketpair with peer/process identity binding",
+        "independent compile, unit, process and Clippy qualification",
+        "Unix peer credential and executable artifact digest evidence",
+        "Unix parent-death/process-group enforcement",
         "Windows SID-restricted named pipe",
-        "parent-death process-group or job-object enforcement",
-        "production worker executable identity and artifact digest binding",
+        "Windows Job Object enforcement",
         "real Servo event-loop adapter"
       ],
       "acceptance": [
-        "no TCP listener",
+        "no TCP, WebSocket or filesystem listener",
         "wrong capability/session/generation/sequence closes channel",
         "oversized, noncanonical and unknown-field frames fail closed",
         "child cannot reconnect to a closed generation",
-        "qualification stdio pipes are never described as the final production transport"
+        "reported child PID matches the process spawned by the parent",
+        "qualification transports are never described as production-qualified"
       ]
     },
     {
       "id": "C1-004",
       "title": "Build minimal pinned Servo worker adapter",
-      "status": "BLOCKED_BY_C1-002_AND_C1-003_PRODUCTION_TRANSPORT",
+      "status": "BLOCKED_BY_SOURCE_RECEIPT_AND_QUALIFIED_PLATFORM_TRANSPORT",
       "depends_on": ["C1-002", "C1-003"],
       "outputs": [
         "create and close one session",
@@ -186,9 +214,9 @@
     }
   ],
   "environment_blocker": {
-    "status": "GITHUB_ACTIONS_JOBS_FAIL_BEFORE_STEPS",
-    "evidence": "all jobs in recent Hepta and blocking workflows completed within seconds with no step records or usable logs",
-    "interpretation": "not a code test result",
-    "required_action": "run a dependency-free runner preflight and repair repository runner, billing, policy or action allowlist before recording PASS"
+    "status": "GITHUB_ACTIONS_RUNNER_PREFLIGHT_FAILS_BEFORE_STEPS",
+    "evidence": "blocking-ci run 33069454542 recorded Runner preflight failure with no step records; all dependent qualification jobs were skipped",
+    "interpretation": "repository runner, billing or policy layer failure; not a code test result",
+    "required_action": "repair GitHub Actions runner, billing, repository policy or action configuration, then rerun the exact Draft PR head before recording any PASS"
   }
 }
