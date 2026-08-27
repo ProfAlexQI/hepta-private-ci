@@ -1,0 +1,135 @@
+name: hepta-servo build input contract v3
+
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - "scripts/hepta-servo-build-input-seal.py"
+      - "scripts/hepta-servo-build-input-seal-v2.py"
+      - "scripts/hepta-servo-build-input-seal-v3.py"
+      - "scripts/hepta-servo-toolchain-receipt.py"
+      - "scripts/verify-hepta-servo-build-input-v2-contract.py"
+      - "scripts/verify-hepta-servo-build-input-v3-contract.py"
+      - "scripts/verify-hepta-servo-toolchain-contract-v2.py"
+      - "scripts/tests/test_hepta_servo_build_input_seal.py"
+      - "scripts/tests/test_hepta_servo_build_input_seal_v2.py"
+      - "scripts/tests/test_hepta_servo_build_input_seal_v3.py"
+      - "scripts/tests/test_hepta_servo_toolchain_receipt.py"
+      - "docs/hepta-vnext/browser/BUILD_INPUT_CURRENT_V2.json"
+      - "docs/hepta-vnext/browser/hepta.servo.build_input_manifest.v2.schema.json"
+      - "docs/hepta-vnext/browser/hepta.servo.toolchain_receipt.v1.schema.json"
+      - ".github/workflows/hepta-servo-build-input-contract-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-v3:
+    name: Canonical build-input v3 (fixtures only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Initialize negative-authority posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-build-input-contract-v3"
+          mkdir -p "$evidence_dir"
+          {
+            echo "hepta_commit=$(git rev-parse HEAD)"
+            echo "hepta_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "canonical_sealer=scripts/hepta-servo-build-input-seal-v3.py"
+            echo "external_network=false"
+            echo "actual_source_receipt=false"
+            echo "actual_toolchain_receipt=false"
+            echo "actual_build_recipe=false"
+            echo "actual_build_input_manifest=false"
+            echo "build_run=false"
+            echo "artifact_created=false"
+            echo "sbom_created=false"
+            echo "servo_runtime_qualified=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Compile canonical toolchain and build-input tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-servo-toolchain-receipt.py \
+            scripts/hepta-servo-build-input-seal.py \
+            scripts/hepta-servo-build-input-seal-v2.py \
+            scripts/hepta-servo-build-input-seal-v3.py \
+            scripts/verify-hepta-servo-toolchain-contract-v2.py \
+            scripts/verify-hepta-servo-build-input-v2-contract.py \
+            scripts/verify-hepta-servo-build-input-v3-contract.py \
+            scripts/tests/test_hepta_servo_toolchain_receipt.py \
+            scripts/tests/test_hepta_servo_build_input_seal.py \
+            scripts/tests/test_hepta_servo_build_input_seal_v2.py \
+            scripts/tests/test_hepta_servo_build_input_seal_v3.py
+
+      - name: Run toolchain fixture tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-build-input-contract-v3"
+          python3 scripts/tests/test_hepta_servo_toolchain_receipt.py 2>&1 | tee "$evidence_dir/toolchain-tests.log"
+          echo "toolchain_fixture_tests=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Run build-input v1, v2 and v3 fixture tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-build-input-contract-v3"
+          python3 scripts/tests/test_hepta_servo_build_input_seal.py 2>&1 | tee "$evidence_dir/build-input-v1-tests.log"
+          python3 scripts/tests/test_hepta_servo_build_input_seal_v2.py 2>&1 | tee "$evidence_dir/build-input-v2-tests.log"
+          python3 scripts/tests/test_hepta_servo_build_input_seal_v3.py 2>&1 | tee "$evidence_dir/build-input-v3-tests.log"
+          echo "build_input_fixture_tests=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Verify canonical v3 contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-build-input-contract-v3"
+          python3 scripts/verify-hepta-servo-toolchain-contract-v2.py 2>&1 | tee "$evidence_dir/toolchain-contract.log"
+          python3 scripts/verify-hepta-servo-build-input-v2-contract.py 2>&1 | tee "$evidence_dir/build-input-v2-contract.log"
+          python3 scripts/verify-hepta-servo-build-input-v3-contract.py 2>&1 | tee "$evidence_dir/build-input-v3-contract.log"
+          echo "static_contracts=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-build-input-contract-v3"
+          echo "job_status=${{ job.status }}" >> "$evidence_dir/posture.txt"
+          {
+            echo "### Canonical Servo build-input v3 contract"
+            echo
+            echo "This job uses fake toolchains and synthetic receipts only."
+            echo "It does not accept real inputs, run Cargo, or create an artifact."
+            echo
+            sed 's/^/- /' "$evidence_dir/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build-input v3 contract evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-servo-build-input-contract-v3
+          path: ${{ runner.temp }}/hepta-servo-build-input-contract-v3
+          if-no-files-found: error
+
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
