@@ -18,13 +18,14 @@
 /codex-rs/ext/hepta-* @ProfAlexQI
 /docs/hepta-vnext/ @ProfAlexQI
 /third_party/servo-patches/ @ProfAlexQI
-/scripts/verify-hepta-browser-plan.py @ProfAlexQI
-/scripts/verify-hepta-browser-plan-v2.py @ProfAlexQI
-/scripts/generate-hepta-servo-provenance.py @ProfAlexQI
+/tools/hepta-browser-c1-protocol/ @ProfAlexQI
+/scripts/hepta-servo-*.py @ProfAlexQI
+/scripts/hepta_servo_*.py @ProfAlexQI
+/scripts/verify-hepta-browser-*.py @ProfAlexQI
+/scripts/verify-hepta-servo-*.py @ProfAlexQI
 /scripts/test_generate_hepta_servo_provenance.py @ProfAlexQI
-/.github/workflows/hepta-browser-ci.yml @ProfAlexQI
-/.github/workflows/hepta-vnext-qualification.yml @ProfAlexQI
-/.github/workflows/blocking-ci.yml @ProfAlexQI
+/scripts/tests/test_hepta_servo_*.py @ProfAlexQI
+/.github/workflows/hepta-*.yml @ProfAlexQI
 
 # Keep ownership changes reviewed by the same upstream team and the Hepta owner.
 /.github/CODEOWNERS @openai/codex-core-agent-team @ProfAlexQI
