@@ -61,6 +61,90 @@ def install_current_verifier(namespace: dict[str, Any]) -> None:
     namespace["verify_current"] = verify_current
 
 
+def install_queue_verifier(namespace: dict[str, Any]) -> None:
+    fail = namespace.get("fail")
+    original = namespace.get("verify_queue")
+    require_repo_file = namespace.get("require_repo_file")
+    if not callable(fail) or not callable(original) or not callable(require_repo_file):
+        raise RuntimeError("browser verifier core has no C1 queue verifier")
+
+    def verify_queue(queue: dict[str, Any]) -> None:
+        tasks = queue.get("tasks")
+        if not isinstance(tasks, list):
+            fail("NEXT_WORK_QUEUE tasks must be an array")
+        by_id = {
+            task.get("id"): task
+            for task in tasks
+            if isinstance(task, dict) and isinstance(task.get("id"), str)
+        }
+        expected_status = {
+            "C1-001": "COMPLETE_CONTRACT_FROZEN",
+            "C1-002": "PARTIAL_SOURCE_RECEIPT_GENERATOR_IMPLEMENTED",
+            "C1-003": "PARTIAL_UNIX_AND_PORTABLE_QUALIFICATION_SCAFFOLDS_IMPLEMENTED",
+            "C1-004": "BLOCKED_BY_SOURCE_RECEIPT_AND_QUALIFIED_PLATFORM_TRANSPORT",
+            "C1-005": "BLOCKED_BY_C1-004",
+            "C1-006": "BLOCKED_BY_C1-004",
+            "C1-007": "BLOCKED_BY_C1-005_AND_C1-006",
+            "C1-008": "BLOCKED_BY_C1-007",
+        }
+        actual_status = {
+            task_id: by_id.get(task_id, {}).get("status") for task_id in expected_status
+        }
+        if actual_status != expected_status:
+            fail(f"NEXT_WORK_QUEUE advanced status drift: {actual_status}")
+
+        for path in by_id["C1-002"].get("implemented_outputs", []):
+            require_repo_file(path, "NEXT_WORK_QUEUE#C1-002.implemented_outputs")
+        for path in by_id["C1-003"].get("outputs", []):
+            require_repo_file(path, "NEXT_WORK_QUEUE#C1-003.outputs")
+
+        c1_002_text = "\n".join(by_id["C1-002"].get("completed", []))
+        for token in (
+            "offline exact HEAD/tree verification",
+            "reviewed Git blob verification",
+            "canonical path-free atomic source receipt output",
+        ):
+            if token not in c1_002_text:
+                fail(f"C1-002 completion record is missing {token}")
+
+        c1_003_text = "\n".join(by_id["C1-003"].get("completed", []))
+        for token in (
+            "pathless inherited Unix socketpair qualification harness",
+            "spawned PID and WorkerReady PID binding",
+            "existing non-symlink worker executable validation",
+        ):
+            if token not in c1_003_text:
+                fail(f"C1-003 completion record is missing {token}")
+
+        blocker = queue.get("environment_blocker")
+        if not isinstance(blocker, dict):
+            fail("NEXT_WORK_QUEUE environment blocker is missing")
+        if blocker.get("status") != "GITHUB_ACTIONS_RUNNER_PREFLIGHT_FAILS_BEFORE_STEPS":
+            fail("NEXT_WORK_QUEUE no longer records the runner-preflight blocker")
+        if blocker.get("interpretation") != (
+            "repository runner, billing or policy layer failure; not a code test result"
+        ):
+            fail("NEXT_WORK_QUEUE misclassifies the runner-preflight failure")
+
+        compatibility = copy.deepcopy(queue)
+        compatibility_by_id = {
+            task["id"]: task for task in compatibility["tasks"] if isinstance(task, dict)
+        }
+        compatibility_by_id["C1-002"]["status"] = "READY_IMPLEMENT_NEXT"
+        compatibility_by_id["C1-003"]["status"] = (
+            "PARTIAL_QUALIFICATION_HARNESS_IMPLEMENTED"
+        )
+        compatibility_by_id["C1-004"]["status"] = (
+            "BLOCKED_BY_C1-002_AND_C1-003_PRODUCTION_TRANSPORT"
+        )
+        compatibility["environment_blocker"]["status"] = (
+            "GITHUB_ACTIONS_JOBS_FAIL_BEFORE_STEPS"
+        )
+        original(compatibility)
+
+    namespace["verify_queue"] = verify_queue
+
+
 def install_worker_verifier(namespace: dict[str, Any]) -> None:
     fail = namespace.get("fail")
     original = namespace.get("verify_worker_code")
@@ -154,14 +238,17 @@ def install_ci_verifier(namespace: dict[str, Any]) -> None:
 
         hepta_tokens = (
             "workflow_call:",
+            "workflow_dispatch:",
             "runner-preflight:",
             "browser-c0-c3:",
             "uses: ./.github/workflows/hepta-browser-ci.yml",
-            "integration/vnext-main-20260811",
+            "integration/vnext-main-full-ci-*",
         )
         for token in hepta_tokens:
             if token not in hepta:
                 fail(f"Hepta qualification workflow is missing {token}")
+        if "- integration/vnext-main-20260811" in hepta:
+            fail("Hepta qualification duplicates the default-branch Blocking CI trigger")
 
         browser_tokens = (
             "workflow_call:",
@@ -211,6 +298,7 @@ def install_ci_verifier(namespace: dict[str, Any]) -> None:
 def main() -> int:
     namespace = load_verifier_core()
     install_current_verifier(namespace)
+    install_queue_verifier(namespace)
     install_worker_verifier(namespace)
     install_ci_verifier(namespace)
     verifier = namespace.get("main")
