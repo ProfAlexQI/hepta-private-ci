@@ -10,7 +10,10 @@
         "codex-rs/hepta-shadow-qualification/src/browser_contracts.rs",
         "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor.rs"
       ],
-      "tests": ["wrong session", "stale generation", "stale owner epoch"],
+      "tests": [
+        "browser_wrong_session_receipt_binds_actual_actor_identity",
+        "browser_human_lease_expiry_advances_epoch_and_revision"
+      ],
       "release_blocking": true
     },
     {
@@ -19,10 +22,10 @@
       "stage": "WEB_C2",
       "code": [
         "codex-rs/hepta-shadow-qualification/src/browser_contracts.rs",
-        "codex-rs/hepta-shadow-qualification/src/browser_runtime/deterministic.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/engine.rs",
         "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor.rs"
       ],
-      "tests": ["stale semantic reference rejected"],
+      "tests": ["browser_stale_semantic_ref_is_rejected_after_mutation"],
       "release_blocking": true
     },
     {
@@ -30,15 +33,21 @@
       "title": "One actor owns all mutations for a browser session",
       "stage": "WEB_C3",
       "code": ["codex-rs/hepta-shadow-qualification/src/browser_runtime/actor.rs"],
-      "tests": ["owner epoch fencing", "request idempotency conflict"],
+      "tests": [
+        "browser_shared_page_human_agent_round_trip",
+        "browser_request_replay_is_stable_and_conflict_fails_closed"
+      ],
       "release_blocking": true
     },
     {
       "id": "WEB-REQ-004",
-      "title": "Human takeover immediately fences agent mutation",
+      "title": "Human takeover immediately fences Agent mutation",
       "stage": "WEB_C3",
       "code": ["codex-rs/hepta-shadow-qualification/src/browser_runtime/actor.rs"],
-      "tests": ["human lease acquisition", "agent mutation denied during human lease", "lease expiry transition"],
+      "tests": [
+        "browser_shared_page_human_agent_round_trip",
+        "browser_human_lease_expiry_advances_epoch_and_revision"
+      ],
       "release_blocking": true
     },
     {
@@ -49,15 +58,15 @@
         "codex-rs/hepta-shadow-qualification/src/browser_contracts.rs",
         "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor.rs"
       ],
-      "tests": ["same id and payload returns cached response", "same id and different payload denied"],
+      "tests": ["browser_request_replay_is_stable_and_conflict_fails_closed"],
       "release_blocking": true
     },
     {
       "id": "WEB-REQ-006",
       "title": "Raw cookies, credentials and authorization material are never exported",
       "stage": "WEB_C4",
-      "code": ["codex-rs/hepta-shadow-qualification/src/browser_runtime/deterministic.rs"],
-      "tests": ["raw cookie extraction denied", "sensitive field extraction denied"],
+      "code": ["codex-rs/hepta-shadow-qualification/src/browser_runtime/engine.rs"],
+      "tests": ["browser_sensitive_extract_is_denied"],
       "status": "PARTIAL_FIXTURE_ONLY",
       "release_blocking": true
     },
@@ -65,8 +74,8 @@
       "id": "WEB-REQ-007",
       "title": "External network is denied until a receipt-bound egress policy exists",
       "stage": "WEB_C4",
-      "code": ["codex-rs/hepta-shadow-qualification/src/browser_runtime/deterministic.rs"],
-      "tests": ["external HTTP navigation denied", "external HTTPS navigation denied"],
+      "code": ["codex-rs/hepta-shadow-qualification/src/browser_runtime/engine.rs"],
+      "tests": ["browser_external_navigation_is_denied_without_state_evidence"],
       "status": "PARTIAL_FIXTURE_ONLY",
       "release_blocking": true
     },
@@ -74,37 +83,99 @@
       "id": "WEB-REQ-008",
       "title": "Servo source and runtime are pinned and provenance-bound before execution",
       "stage": "WEB_C1",
-      "documents": ["docs/hepta-vnext/browser/SERVO_UPSTREAM_PIN.json"],
-      "status": "SOURCE_PIN_ONLY",
+      "documents": [
+        "docs/hepta-vnext/browser/SERVO_UPSTREAM_PIN.json",
+        "docs/hepta-vnext/browser/SERVO_SOURCE_IMPORT_TOPOLOGY.yaml",
+        "third_party/servo-patches/PATCH_INVENTORY.json"
+      ],
+      "status": "SOURCE_TOPOLOGY_FROZEN_NOT_IMPORTED",
       "release_blocking": true
     },
     {
       "id": "WEB-REQ-009",
-      "title": "Servo control transport cannot expose an unauthenticated wildcard listener",
+      "title": "Servo control transport cannot expose an unauthenticated network listener",
       "stage": "WEB_C1",
-      "documents": [
-        "docs/hepta-vnext/browser/EXECUTION_PLAN.md",
-        "docs/hepta-vnext/browser/THREAT_MODEL.md"
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_protocol.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_harness.rs"
       ],
-      "status": "DESIGNED_NOT_IMPLEMENTED",
+      "documents": [
+        "docs/hepta-vnext/browser/ADR-0001-servo-private-transport.md",
+        "docs/hepta-vnext/browser/SERVO_SOURCE_IMPORT_TOPOLOGY.yaml"
+      ],
+      "tests": [
+        "qualification_worker_uses_only_private_child_pipes_and_preserves_browser_fences"
+      ],
+      "status": "QUALIFICATION_PIPE_IMPLEMENTED_PRODUCTION_TRANSPORT_PENDING",
       "release_blocking": true
     },
     {
       "id": "WEB-REQ-010",
+      "title": "Worker frames are canonical, length-bounded and reject unknown fields",
+      "stage": "WEB_C1",
+      "code": ["codex-rs/hepta-shadow-qualification/src/browser_worker_protocol.rs"],
+      "tests": [
+        "browser_worker_frame_round_trips_as_bounded_canonical_json",
+        "browser_worker_rejects_noncanonical_and_oversized_frames"
+      ],
+      "status": "IMPLEMENTED_UNQUALIFIED",
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-011",
+      "title": "Worker startup requires one-use capability, exact session and generation",
+      "stage": "WEB_C1",
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_protocol.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_harness.rs"
+      ],
+      "tests": [
+        "browser_worker_rejects_wrong_or_replayed_startup_capability",
+        "qualification_worker_uses_only_private_child_pipes_and_preserves_browser_fences"
+      ],
+      "status": "IMPLEMENTED_UNQUALIFIED",
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-012",
+      "title": "Skipped, duplicate or replayed worker sequence closes the generation",
+      "stage": "WEB_C1",
+      "code": ["codex-rs/hepta-shadow-qualification/src/browser_worker_protocol.rs"],
+      "tests": ["browser_worker_sequence_violation_fences_the_channel"],
+      "status": "IMPLEMENTED_UNQUALIFIED",
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-013",
+      "title": "Worker responses preserve browser fences and closed authority",
+      "stage": "WEB_C1",
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_protocol.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_harness.rs"
+      ],
+      "tests": [
+        "browser_worker_transports_actor_request_and_response_with_closed_authority",
+        "qualification_worker_uses_only_private_child_pipes_and_preserves_browser_fences"
+      ],
+      "status": "IMPLEMENTED_UNQUALIFIED",
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-014",
       "title": "Crash recovery cannot replay an indeterminate external effect",
       "stage": "WEB_C5",
       "status": "NOT_IMPLEMENTED",
       "release_blocking": true
     },
     {
-      "id": "WEB-REQ-011",
+      "id": "WEB-REQ-015",
       "title": "Product caller and UI expose control mode, degradation and fencing",
       "stage": "WEB_C6",
       "status": "NOT_IMPLEMENTED",
       "release_blocking": true
     },
     {
-      "id": "WEB-REQ-012",
+      "id": "WEB-REQ-016",
       "title": "A release candidate binds source, features, artifacts, tests and operator acceptance",
       "stage": "WEB_C7",
       "documents": ["docs/hepta-vnext/browser/hepta.browser.qualification_receipt.v1.schema.json"],
