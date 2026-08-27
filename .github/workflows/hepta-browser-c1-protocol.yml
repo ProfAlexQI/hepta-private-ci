@@ -1,0 +1,217 @@
+name: hepta browser C1 private worker protocol
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "tools/hepta-browser-c1-protocol/**"
+      - "docs/hepta-vnext/browser/C1_*"
+      - "docs/hepta-vnext/browser/hepta.browser.c1_protocol_*"
+      - "scripts/verify-hepta-browser-c1-protocol.py"
+      - ".github/workflows/hepta-browser-c1-protocol.yml"
+  push:
+    branches:
+      - integration/vnext-main-20260811
+      - "codex/hepta-*"
+    paths:
+      - "tools/hepta-browser-c1-protocol/**"
+      - "docs/hepta-vnext/browser/C1_*"
+      - "docs/hepta-vnext/browser/hepta.browser.c1_protocol_*"
+      - "scripts/verify-hepta-browser-c1-protocol.py"
+      - ".github/workflows/hepta-browser-c1-protocol.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  c1-private-protocol:
+    name: C1 private protocol (qualification only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Initialize qualification-only posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c1-protocol"
+          mkdir -p "$evidence_dir"
+          echo "C1_EVIDENCE_DIR=$evidence_dir" >> "$GITHUB_ENV"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "slice=WEB-C1.3-private-worker-protocol"
+            echo "protocol_version=1"
+            echo "maximum_frame_bytes=65536"
+            echo "third_party_dependencies=0"
+            echo "transport=inherited_private_channel"
+            echo "unix_qualification_transport=socketpair"
+            echo "servo_commit=0a48e298482659817eb50097df23841f2b8e3044"
+            echo "servo_tree=b04d2f75b3217374d079d579c270177b57fa1389"
+            echo "servo_linked=false"
+            echo "real_webview=false"
+            echo "tcp_listener=false"
+            echo "http_surface=false"
+            echo "external_network=false"
+            echo "credential_export=false"
+            echo "qualification_only=true"
+            echo "runtime_authority=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "external_effect=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "g5_allowed=false"
+            echo "execute_allowed=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Verify plan, source boundary, and receipt contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-browser-c1-protocol.py \
+            2>&1 | tee "$C1_EVIDENCE_DIR/plan-verifier.log"
+
+      - name: Check formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          # cargo fmt --locked is not a cargo-fmt option; the committed dependency-free
+          # Cargo.lock is verified separately and the formatter runs in --check mode.
+          cargo fmt \
+            --manifest-path tools/hepta-browser-c1-protocol/Cargo.toml \
+            -- --check 2>&1 | tee "$C1_EVIDENCE_DIR/format.log"
+
+      - name: Run locked protocol qualification tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked \
+            --manifest-path tools/hepta-browser-c1-protocol/Cargo.toml \
+            2>&1 | tee "$C1_EVIDENCE_DIR/tests.log"
+
+      - name: Run strict Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked \
+            --manifest-path tools/hepta-browser-c1-protocol/Cargo.toml \
+            --all-targets -- -D warnings \
+            2>&1 | tee "$C1_EVIDENCE_DIR/clippy.log"
+
+      - name: Verify committed lock and clean worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(grep -c '^\[\[package\]\]' tools/hepta-browser-c1-protocol/Cargo.lock)" -eq 1
+          git diff --exit-code -- \
+            tools/hepta-browser-c1-protocol \
+            docs/hepta-vnext/browser \
+            scripts/verify-hepta-browser-c1-protocol.py \
+            .github/workflows/hepta-browser-c1-protocol.yml \
+            2>&1 | tee "$C1_EVIDENCE_DIR/clean-worktree.log"
+
+      - name: Build qualification receipt
+        if: ${{ success() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import subprocess
+
+          evidence = pathlib.Path(os.environ["C1_EVIDENCE_DIR"])
+
+          def digest(name: str) -> str:
+              return hashlib.sha256((evidence / name).read_bytes()).hexdigest()
+
+          commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip()
+          receipt = {
+              "schema": "hepta.browser.c1_protocol_qualification_receipt.v1",
+              "phase": "DEVELOPMENT",
+              "claim_level": "QUALIFICATION_ONLY_PRIVATE_PROTOCOL",
+              "source_commit": commit,
+              "source_tree": tree,
+              "servo_source_pin": {
+                  "repository": "servo/servo",
+                  "commit": "0a48e298482659817eb50097df23841f2b8e3044",
+                  "tree": "b04d2f75b3217374d079d579c270177b57fa1389",
+                  "license": "MPL-2.0",
+                  "artifact_imported": False,
+              },
+              "protocol": {
+                  "version": 1,
+                  "maximum_frame_bytes": 65536,
+                  "third_party_dependencies": 0,
+                  "tcp_listener": False,
+                  "http_surface": False,
+                  "external_network": False,
+                  "real_servo_worker": False,
+              },
+              "checks": {
+                  "plan_verifier": {"status": "PASSED", "log_sha256": digest("plan-verifier.log")},
+                  "format": {"status": "PASSED", "log_sha256": digest("format.log")},
+                  "tests": {"status": "PASSED", "log_sha256": digest("tests.log")},
+                  "clippy": {"status": "PASSED", "log_sha256": digest("clippy.log")},
+                  "forbidden_surface_scan": {
+                      "status": "PASSED",
+                      "log_sha256": digest("plan-verifier.log"),
+                  },
+              },
+              "authority": {
+                  "runtime_authority": False,
+                  "production_caller": False,
+                  "production_writer": False,
+                  "effect_authority": False,
+                  "external_effect": False,
+                  "operator_acceptance": False,
+                  "promotion": False,
+                  "g5_allowed": False,
+                  "execute_allowed": False,
+                  "external_network_allowed": False,
+                  "credential_export_allowed": False,
+              },
+              "decision": "QUALIFICATION_ONLY_PASS",
+          }
+          encoded = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+          (evidence / "qualification-receipt.json").write_bytes(encoded)
+          (evidence / "qualification-receipt.sha256").write_text(
+              hashlib.sha256(encoded).hexdigest() + "  qualification-receipt.json\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Record final job status
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "job_status=${{ job.status }}" >> "$C1_EVIDENCE_DIR/posture.txt"
+          {
+            echo "### Hepta Browser WEB-C1.3 private protocol"
+            echo
+            echo "This job qualifies only a dependency-free inherited-channel protocol."
+            echo "Servo is not linked and no browser, network, credential, effect, or production authority is enabled."
+            echo
+            sed 's/^/- /' "$C1_EVIDENCE_DIR/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload qualification evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-browser-c1-private-protocol
+          path: ${{ env.C1_EVIDENCE_DIR }}
+          if-no-files-found: error
