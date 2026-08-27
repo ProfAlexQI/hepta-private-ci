@@ -1,0 +1,57 @@
+{
+  "schema": "hepta.browser.source_pipeline_current.v2",
+  "schema_version": 1,
+  "updated_at_utc": "2026-08-28T00:00:00Z",
+  "phase": "DEVELOPMENT",
+  "canonical_generator": "scripts/hepta-servo-independent-source-v2.py",
+  "generator_core": "scripts/hepta-servo-independent-source.py",
+  "canonical_offline_verifier": "scripts/hepta-servo-source-bundle-verify-v2.py",
+  "offline_verifier_core": "scripts/hepta-servo-source-bundle-verify.py",
+  "canonical_generator_tests": "scripts/tests/test_hepta_servo_independent_source_v2.py",
+  "canonical_verifier_tests": "scripts/tests/test_hepta_servo_source_bundle_verify_v2.py",
+  "canonical_contract_workflow": ".github/workflows/hepta-servo-independent-source-contract-v3.yml",
+  "canonical_exact_source_workflow": ".github/workflows/hepta-servo-independent-source-qualification-v3.yml",
+  "supersedes": [
+    {
+      "path": "docs/hepta-vnext/browser/SOURCE_PIPELINE_CURRENT.json",
+      "reason": "offline verifier v1 used ordinary byte ordering instead of Git tree base-name ordering"
+    },
+    {
+      "path": "scripts/hepta-servo-source-bundle-verify.py",
+      "reason": "retained as v2 core only; not independently acceptable without Git-order patch"
+    },
+    {
+      "path": ".github/workflows/hepta-servo-independent-source-qualification-v2.yml",
+      "reason": "uses offline verifier v1 and is not acceptable for canonical source acceptance"
+    }
+  ],
+  "git_tree_ordering": {
+    "rule": "Git base_name_compare semantics",
+    "directory_terminator": "/",
+    "file_terminator": "NUL",
+    "prefix_collision_regression": "foo.rs versus foo/",
+    "required": true
+  },
+  "determinism": {
+    "tar_umask": "0022",
+    "timezone": "UTC",
+    "source_date_epoch": "0",
+    "gzip_mtime": 0,
+    "gzip_filename": "",
+    "two_independent_archives_equal": true
+  },
+  "actual_exact_source_receipt": null,
+  "actual_offline_verification_receipt": null,
+  "authority": {
+    "runtime_authority": false,
+    "effect_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "runtime_external_network": false,
+    "raw_cookie_export": false,
+    "credential_export": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  }
+}
