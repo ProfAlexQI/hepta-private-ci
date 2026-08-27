@@ -1,0 +1,59 @@
+{
+  "schema": "hepta.browser.c1_004a_progress.v1",
+  "schema_version": 1,
+  "updated_at_utc": "2026-08-28T00:00:00Z",
+  "phase": "DEVELOPMENT",
+  "claim_level": "SOURCE_TOOLING_ONLY",
+  "plan_lane": "WEB_C1_SERVO_BOOTSTRAP",
+  "implemented": {
+    "two_independent_fetches": true,
+    "standalone_object_store_check": true,
+    "exact_commit_tree_check": true,
+    "clean_tree_check": true,
+    "tree_manifest_digest": true,
+    "deterministic_git_archive": true,
+    "deterministic_gzip": true,
+    "archive_path_and_symlink_validation": true,
+    "mpl_license_packet": true,
+    "patch_inventory_binding": true,
+    "strict_receipt_schema": true,
+    "fixture_unit_tests": true,
+    "manual_exact_source_workflow": true
+  },
+  "actual_exact_servo_run": {
+    "status": "NOT_RUN",
+    "bundle_receipt": null,
+    "source_archive_sha256": null,
+    "compressed_archive_sha256": null,
+    "independent_fetch_receipts": [],
+    "qualification_run": null
+  },
+  "remaining_before_c1_004a_complete": [
+    "run the manual workflow on an available trusted runner",
+    "review both independent fetch receipts",
+    "retain and independently verify the deterministic archive",
+    "seal the canonical bundle receipt against the repository schema",
+    "bind the accepted source bundle into the build-input manifest"
+  ],
+  "not_claimed": [
+    "Servo build",
+    "Servo worker artifact",
+    "Servo WebView",
+    "runtime qualification",
+    "production caller",
+    "operator acceptance",
+    "promotion"
+  ],
+  "authority": {
+    "runtime_authority": false,
+    "effect_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "runtime_external_network": false,
+    "raw_cookie_export": false,
+    "credential_export": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  }
+}
