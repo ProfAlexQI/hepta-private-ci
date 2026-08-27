@@ -1,0 +1,129 @@
+{
+  "schema": "hepta.browser.servo_source_import_topology.v1",
+  "schema_version": 1,
+  "status": "FROZEN_IMPLEMENTATION_INPUT",
+  "authority": "qualification_only",
+  "source": {
+    "repository": "servo/servo",
+    "commit": "0a48e298482659817eb50097df23841f2b8e3044",
+    "tree": "b04d2f75b3217374d079d579c270177b57fa1389",
+    "workspace_version": "0.5.0",
+    "workspace_edition": "2024",
+    "minimum_rust_version": "1.88.0",
+    "license": "MPL-2.0",
+    "branch_tracking_allowed": false,
+    "unpinned_git_dependencies_allowed": false
+  },
+  "integration_topology": {
+    "mode": "isolated_verified_source_checkout_and_worker_artifact",
+    "main_cargo_workspace_dependency": false,
+    "servo_source_inside_codex_rs_workspace": false,
+    "servo_types_exposed_to_hepta_callers": false,
+    "raw_webdriver_surface_exposed": false,
+    "artifact_boundary": "hepta-servo-worker private process protocol",
+    "source_checkout_requirement": "exact detached commit and tree with clean worktree",
+    "release_requirement": "offline source bundle or independently retained mirror bound by SHA-256",
+    "reason": "Servo is a large MPL-2.0 workspace with a distinct toolchain and native dependency graph. Keeping it outside the Codex Cargo workspace prevents lockfile, feature, license and failure-domain coupling."
+  },
+  "reviewed_upstream_files": [
+    {
+      "path": "Cargo.toml",
+      "blob_sha": "de3665c8cf98337aa908ddacef906b4bea7832e5",
+      "role": "workspace version, edition, MSRV, license and dependency root"
+    },
+    {
+      "path": "components/servo/Cargo.toml",
+      "blob_sha": "d9dce354a8db17b95f2ef618d73a19b1438f08fc",
+      "role": "engine feature and dependency boundary"
+    },
+    {
+      "path": "ports/servoshell/Cargo.toml",
+      "blob_sha": "2576ee3e26f0772c7737c42215ac266346b1c2ea",
+      "role": "headed shell, platform and renderer dependency boundary"
+    },
+    {
+      "path": "ports/servoshell/lib.rs",
+      "blob_sha": "399e0c4fcc68a5c426ff981286ded466fcf9a03b",
+      "role": "headed application and event-loop entrypoint"
+    },
+    {
+      "path": "ports/servoshell/webdriver.rs",
+      "blob_sha": "4665c52134a968ab3ff572ac97dab61463967de4",
+      "role": "embedder command routing reference only"
+    },
+    {
+      "path": "components/webdriver_server/lib.rs",
+      "blob_sha": "8341df151f04a214694dcf0d9ad675e7d1e7fe98",
+      "role": "command conversion reference; network server entrypoint rejected"
+    }
+  ],
+  "selected_initial_surface": [
+    "one headed Servo WebView and its existing event loop",
+    "create and close exactly one session",
+    "local fixture navigation only",
+    "bounded observe, click, type, clear and wait operations",
+    "status, cancellation and teardown",
+    "screenshot only after a separate redaction and evidence contract"
+  ],
+  "explicitly_excluded_initial_surface": [
+    "components/webdriver_server::start_server",
+    "TCP or WebSocket listener",
+    "raw WebDriver command passthrough",
+    "arbitrary JavaScript evaluation",
+    "preference mutation",
+    "cookie, storage or profile export",
+    "download or upload",
+    "external DNS, HTTP, HTTPS, UDP or WebSocket",
+    "multiple WebViews or windows",
+    "service workers, WebGPU, WebXR, Bluetooth and media backends unless independently admitted"
+  ],
+  "initial_feature_posture": {
+    "default_features": false,
+    "bundled_resources": true,
+    "clipboard": false,
+    "js_jit": "platform_qualified_only",
+    "webgpu": false,
+    "webxr": false,
+    "webgl": false,
+    "gamepad": false,
+    "bluetooth": false,
+    "media_gstreamer": false,
+    "testbinding": false,
+    "background_hang_monitor": true
+  },
+  "patch_queue": {
+    "directory": "third_party/servo-patches",
+    "format": "ordered git-format-patch files plus PATCH_INVENTORY.json",
+    "maximum_initial_patches": 8,
+    "required_fields": [
+      "patch_id",
+      "upstream_commit",
+      "affected_files",
+      "reason",
+      "security_boundary",
+      "upstream_issue_or_pr",
+      "compatibility_tests",
+      "deletion_condition",
+      "patch_sha256"
+    ],
+    "first_expected_patch": "add Hepta private inherited-channel worker entrypoint without starting WebDriver HTTP server"
+  },
+  "build_outputs": [
+    "hepta-servo-worker executable",
+    "source receipt",
+    "toolchain receipt",
+    "Cargo.lock digest",
+    "native dependency and license SBOM",
+    "patch inventory",
+    "artifact digest and platform identity"
+  ],
+  "negative_authority": {
+    "runtime_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "external_network": false,
+    "external_effect": false,
+    "operator_acceptance": false,
+    "promotion": false
+  }
+}
