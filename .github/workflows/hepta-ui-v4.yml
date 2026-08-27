@@ -1,0 +1,96 @@
+name: hepta-ui-v4
+
+on:
+  push:
+    branches:
+      - "codex/ui-light-glass-v4-*"
+      - "ui/**"
+  pull_request:
+    paths:
+      - "apps/hepta-control-ui/**"
+      - "apps/hepta-native/src/shared/**"
+      - "design-tokens/**"
+      - "docs/ui/**"
+      - "scripts/hepta-ui-v4-static-gate"
+      - "scripts/hepta-ui-light-glass-token-sync.rb"
+      - ".github/workflows/hepta-ui-v4.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v4-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-contract:
+    name: UI v4 static contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Validate Ruby sources
+        run: |
+          ruby -c scripts/hepta-ui-v4-static-gate
+          ruby -c scripts/hepta-ui-light-glass-token-sync.rb
+
+      - name: Verify generated v3 compatibility outputs
+        run: ruby scripts/hepta-ui-light-glass-token-sync.rb --check
+
+      - name: Run fail-closed UI v4 gate
+        run: |
+          mkdir -p artifacts/ui-v4
+          ruby scripts/hepta-ui-v4-static-gate | tee artifacts/ui-v4/static-gate-result.json
+
+      - name: Verify gate result is static-only
+        run: |
+          ruby -rjson -e '
+            result = JSON.parse(File.read("artifacts/ui-v4/static-gate-result.json"))
+            abort "unexpected status" unless result.fetch("status") == "PASS_STATIC_CONTRACT_ONLY"
+            abort "runtime must remain unclaimed" unless result.fetch("runtime_validation") == false
+            abort "browser must remain unclaimed" unless result.fetch("browser_validation") == false
+            abort "native compile must remain unclaimed" unless result.fetch("native_compile_validation") == false
+            abort "device must remain unclaimed" unless result.fetch("device_validation") == false
+            abort "production authority must remain false" unless result.fetch("production_authority") == false
+            abort "effect authority must remain false" unless result.fetch("effect_authority") == false
+            abort "promotion must remain false" unless result.fetch("promotion") == false
+          '
+
+      - name: Upload source-bound static receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-static-${{ github.sha }}
+          path: artifacts/ui-v4/static-gate-result.json
+          if-no-files-found: error
+          retention-days: 14
+
+  native-contract:
+    name: Native v4 contract compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+
+      - name: Check Native formatting
+        run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+
+      - name: Compile and test fail-closed Native v4 contract
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo test \
+            --manifest-path apps/hepta-native/Cargo.toml \
+            --lib \
+            shared::hepta_v4::tests::v4_contract_is_fail_closed_and_readable \
+            -- --exact
