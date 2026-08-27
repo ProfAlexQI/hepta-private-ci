@@ -1,0 +1,108 @@
+{
+  "schema": "hepta.browser.c1_protocol_traceability.v1",
+  "slice": "WEB-C1.3-private-worker-protocol",
+  "requirements": [
+    {
+      "id": "C1P-001",
+      "requirement": "No discoverable network or filesystem listener exists in the qualification implementation.",
+      "code": [
+        "tools/hepta-browser-c1-protocol/src/lib.rs",
+        "tools/hepta-browser-c1-protocol/src/transport.rs"
+      ],
+      "tests": ["inherited_unix_channel_completes_mutual_startup_handshake"],
+      "static_check": "scripts/verify-hepta-browser-c1-protocol.py",
+      "status": "IMPLEMENTED_QUALIFICATION_ONLY",
+      "release_blocking": true
+    },
+    {
+      "id": "C1P-002",
+      "requirement": "Frames are length-prefixed and rejected before allocation when larger than 65536 bytes.",
+      "code": ["tools/hepta-browser-c1-protocol/src/codec.rs"],
+      "tests": ["oversized_frame_is_rejected_before_allocation"],
+      "status": "IMPLEMENTED_QUALIFICATION_ONLY",
+      "release_blocking": true
+    },
+    {
+      "id": "C1P-003",
+      "requirement": "The worker is fenced by exact session, generation, and owner epoch.",
+      "code": [
+        "tools/hepta-browser-c1-protocol/src/protocol.rs",
+        "tools/hepta-browser-c1-protocol/src/transport.rs"
+      ],
+      "tests": ["framed_channel_rejects_a_stale_identity_before_writing"],
+      "status": "IMPLEMENTED_QUALIFICATION_ONLY",
+      "release_blocking": true
+    },
+    {
+      "id": "C1P-004",
+      "requirement": "The worker reports an exact lowercase Servo commit and tree pin.",
+      "code": ["tools/hepta-browser-c1-protocol/src/protocol.rs"],
+      "tests": ["source_pin_and_startup_secrets_are_strict"],
+      "status": "IMPLEMENTED_SYNTAX_ONLY",
+      "known_gap": "Executable digest is not yet bound to a source/build receipt.",
+      "release_blocking": true
+    },
+    {
+      "id": "C1P-005",
+      "requirement": "Startup capability and host nonce complete a mutual three-message handshake.",
+      "code": ["tools/hepta-browser-c1-protocol/src/transport.rs"],
+      "tests": [
+        "inherited_unix_channel_completes_mutual_startup_handshake",
+        "wrong_startup_capability_fails_closed"
+      ],
+      "status": "IMPLEMENTED_QUALIFICATION_ONLY",
+      "release_blocking": true
+    },
+    {
+      "id": "C1P-006",
+      "requirement": "Unknown or positive runtime/effect/production authority bits fail closed.",
+      "code": ["tools/hepta-browser-c1-protocol/src/protocol.rs"],
+      "tests": ["unknown_message_and_authority_bits_are_rejected"],
+      "status": "IMPLEMENTED_QUALIFICATION_ONLY",
+      "release_blocking": true
+    },
+    {
+      "id": "C1P-007",
+      "requirement": "C1 navigation is limited to parent-approved local fixture identifiers.",
+      "code": ["tools/hepta-browser-c1-protocol/src/protocol.rs"],
+      "tests": ["command_vocabulary_rejects_external_or_unbounded_inputs"],
+      "status": "IMPLEMENTED_CONTRACT_ONLY",
+      "known_gap": "Real Servo fixture manifest and worker mapping are not implemented.",
+      "release_blocking": true
+    },
+    {
+      "id": "C1P-008",
+      "requirement": "Truncated, trailing, unknown-kind, invalid-UTF8, and noncanonical messages are rejected.",
+      "code": ["tools/hepta-browser-c1-protocol/src/codec.rs"],
+      "tests": [
+        "truncated_and_trailing_frames_are_rejected",
+        "unknown_message_and_authority_bits_are_rejected"
+      ],
+      "status": "IMPLEMENTED_QUALIFICATION_ONLY",
+      "release_blocking": true
+    },
+    {
+      "id": "C1P-009",
+      "requirement": "The qualification crate has no third-party dependencies.",
+      "code": [
+        "tools/hepta-browser-c1-protocol/Cargo.toml",
+        "tools/hepta-browser-c1-protocol/Cargo.lock"
+      ],
+      "static_check": "scripts/verify-hepta-browser-c1-protocol.py",
+      "status": "IMPLEMENTED_QUALIFICATION_ONLY",
+      "release_blocking": false
+    },
+    {
+      "id": "C1P-010",
+      "requirement": "Passing C1.3 cannot be interpreted as real Servo, WebView, external network, operator acceptance, promotion, or release qualification.",
+      "documents": [
+        "docs/hepta-vnext/browser/C1_PRIVATE_WORKER_PROTOCOL.md",
+        "docs/hepta-vnext/browser/C1_PROTOCOL_STATUS.json",
+        "docs/hepta-vnext/browser/hepta.browser.c1_protocol_qualification_receipt.v1.schema.json"
+      ],
+      "static_check": "scripts/verify-hepta-browser-c1-protocol.py",
+      "status": "FAIL_CLOSED_POLICY_ENCODED",
+      "release_blocking": true
+    }
+  ]
+}
