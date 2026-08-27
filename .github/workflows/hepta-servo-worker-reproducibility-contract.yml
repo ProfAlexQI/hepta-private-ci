@@ -1,0 +1,140 @@
+name: hepta Servo worker reproducibility contract
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/hepta-servo-worker-reproducibility.py"
+      - "scripts/verify-hepta-servo-worker-reproducibility.py"
+      - "scripts/tests/test_hepta_servo_worker_reproducibility.py"
+      - "docs/hepta-vnext/browser/C1_REPRODUCIBILITY*"
+      - "docs/hepta-vnext/browser/hepta.servo.worker_reproducibility*"
+      - ".github/workflows/hepta-servo-worker-reproducibility-contract.yml"
+      - ".github/workflows/blocking-ci.yml"
+  push:
+    branches:
+      - integration/vnext-main-20260811
+      - "codex/hepta-*"
+    paths:
+      - "scripts/hepta-servo-worker-reproducibility.py"
+      - "scripts/verify-hepta-servo-worker-reproducibility.py"
+      - "scripts/tests/test_hepta_servo_worker_reproducibility.py"
+      - "docs/hepta-vnext/browser/C1_REPRODUCIBILITY*"
+      - "docs/hepta-vnext/browser/hepta.servo.worker_reproducibility*"
+      - ".github/workflows/hepta-servo-worker-reproducibility-contract.yml"
+      - ".github/workflows/blocking-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  reproducibility-contract:
+    name: Worker reproducibility contract (fixture only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Initialize negative-authority posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-worker-reproducibility"
+          mkdir -p "$evidence_dir"
+          echo "HEPTA_SERVO_REPRO_EVIDENCE=$evidence_dir" >> "$GITHUB_ENV"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "comparison_scope=local_fixtures_only"
+            echo "byte_identical_required=true"
+            echo "allow_explained_differences=false"
+            echo "real_worker_build_compared=false"
+            echo "worker_executed=false"
+            echo "servo_runtime_qualified=false"
+            echo "network_access=false"
+            echo "machine_authority=false"
+            echo "runtime_authority=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "external_effect=false"
+            echo "external_network_allowed=false"
+            echo "credential_export_allowed=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Compile Python contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-servo-worker-reproducibility.py \
+            scripts/verify-hepta-servo-worker-reproducibility.py \
+            scripts/tests/test_hepta_servo_worker_reproducibility.py \
+            2>&1 | tee "$HEPTA_SERVO_REPRO_EVIDENCE/py-compile.log"
+          echo "py_compile=passed" >> "$HEPTA_SERVO_REPRO_EVIDENCE/posture.txt"
+
+      - name: Verify repository contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-servo-worker-reproducibility.py \
+            2>&1 | tee "$HEPTA_SERVO_REPRO_EVIDENCE/static-verifier.log"
+          echo "static_verifier=passed" >> "$HEPTA_SERVO_REPRO_EVIDENCE/posture.txt"
+
+      - name: Run comparator contract check
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-servo-worker-reproducibility.py contract \
+            2>&1 | tee "$HEPTA_SERVO_REPRO_EVIDENCE/contract.log"
+          echo "contract=passed" >> "$HEPTA_SERVO_REPRO_EVIDENCE/posture.txt"
+
+      - name: Run fail-closed self-test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-servo-worker-reproducibility.py self-test \
+            2>&1 | tee "$HEPTA_SERVO_REPRO_EVIDENCE/self-test.log"
+          echo "self_test=passed" >> "$HEPTA_SERVO_REPRO_EVIDENCE/posture.txt"
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_hepta_servo_worker_reproducibility.py -v \
+            2>&1 | tee "$HEPTA_SERVO_REPRO_EVIDENCE/unit-tests.log"
+          echo "unit_tests=passed" >> "$HEPTA_SERVO_REPRO_EVIDENCE/posture.txt"
+
+      - name: Record fixture-only result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "job_status=${{ job.status }}" >> "$HEPTA_SERVO_REPRO_EVIDENCE/posture.txt"
+          {
+            echo "### Hepta Servo worker reproducibility contract"
+            echo
+            echo "This job compares local synthetic fixtures only."
+            echo "It does not build, execute, sandbox, or qualify Servo."
+            echo
+            sed 's/^/- /' "$HEPTA_SERVO_REPRO_EVIDENCE/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload fixture-only evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hepta-servo-worker-reproducibility-contract
+          path: ${{ env.HEPTA_SERVO_REPRO_EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Check clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
