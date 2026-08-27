@@ -157,7 +157,7 @@ report="$(jq -n \
     control_ui_progressive_adversarial_ready:($progressive_enhancement_adversarial_qa.status == "ready"),
     density_qa:$density_qa,
     progressive_enhancement_qa:$progressive_enhancement_qa,
-    progressive_enhancement_adversarial_qa:$progressive_adversarial_qa,
+    progressive_enhancement_adversarial_qa:$progressive_enhancement_adversarial_qa,
     checked_assets:[
       {path:"/styles.css", markers:[".tg-conversation-rail",".tg-thread-panel",".command-palette","safe-area-inset-bottom","mrog","data-control-ui-compact-product-path","data-control-ui-primary-shell-light-glass","crs","cwb","cce","pce","ppe","cpe","mpb","ipc","avr","rpf","rcs","mmp","tsp","csh","rms","hte","rsc","rpe","mbp","bsp","rsp","fcp","strong){filter","--x:0 1px #fff6","text-shadow:var(--x)","rdlg","oclg","data-control-ui-tspcfrg","dsc","mecs","cmv","ctlg","cplg","cpsg","rmlg","ttlg","bmslg","mslg","tiblg","stslg","talg","body[data-view=chat] .hepta-secondary-map{display:none}","gar26","cps","cpis","cpt","cpc","cpir","cph","cprw","cprr","cpkc","cpilg","data-control-ui-command-palette-input=light-glass","data-control-ui-command-palette-result=light-glass"]},
       {path:"/assets/hepta-agent-logo.png", dimensions:$logo_dimensions, sha256:$logo_sha},
