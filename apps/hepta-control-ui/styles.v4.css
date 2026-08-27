@@ -1,0 +1,437 @@
+/*
+ * Hepta semantic light-glass v4 overlay.
+ *
+ * Loaded after responsive/legacy component layers and before final accessibility
+ * preferences. Stable content is opaque and never uses backdrop blur. Persistent
+ * glass is reserved for navigation/chrome; transient glass is reserved for one
+ * open menu, popover, command palette, or mobile sheet.
+ */
+
+:root {
+  --hepta-v4-font-display: 24px;
+  --hepta-v4-font-title: 18px;
+  --hepta-v4-font-body: 15px;
+  --hepta-v4-font-message: 15px;
+  --hepta-v4-font-label: 13px;
+  --hepta-v4-font-metadata: 12px;
+  --hepta-v4-font-micro: 11px;
+  --hepta-v4-line-body: 1.5;
+  --hepta-v4-line-message: 1.45;
+  --hepta-v4-pointer-target: 44px;
+  --hepta-v4-touch-target: 48px;
+  --hepta-v4-content: #fcfdfe;
+  --hepta-v4-content-muted: #f7fafb;
+  --hepta-v4-fallback: #f7fafb;
+  --hepta-v4-transient: rgba(247, 250, 251, 0.96);
+  --hepta-v4-chrome: rgba(234, 241, 243, 0.9);
+  --hepta-v4-chrome-strong: rgba(245, 248, 249, 0.94);
+  --hepta-v4-shadow-low: rgba(23, 48, 71, 0.06);
+  --hepta-v4-shadow-chrome: rgba(23, 48, 71, 0.12);
+  --hepta-v4-shadow-transient: rgba(23, 48, 71, 0.18);
+  --hepta-v4-chrome-blur: 12px;
+  --hepta-v4-transient-blur: 18px;
+  --hepta-v4-sheet-radius: 22px;
+  --hepta-v4-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html[data-theme-mode="light"] {
+  color-scheme: light;
+  font-size: var(--hepta-v4-font-body);
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body[data-view="chat"] {
+  color: var(--hepta-glass-text);
+  font-size: var(--hepta-v4-font-body);
+  line-height: var(--hepta-v4-line-body);
+  text-rendering: optimizeLegibility;
+}
+
+/* Type hierarchy: do not shrink product state to fit dense chrome. */
+body[data-view="chat"] :is(
+  .hero-copy,
+  .tg-message,
+  .tg-bubble,
+  .route-card p,
+  .route-card li,
+  .result-drawer,
+  .command-palette__results
+) {
+  font-size: var(--hepta-v4-font-body) !important;
+  line-height: var(--hepta-v4-line-body) !important;
+}
+
+body[data-view="chat"] :is(.tg-message__body, .tg-bubble p, [data-chat-message-body]) {
+  font-size: var(--hepta-v4-font-message) !important;
+  line-height: var(--hepta-v4-line-message) !important;
+}
+
+body[data-view="chat"] :is(
+  .tg-message small,
+  .tg-bubble > span,
+  .tg-thread-header__main p,
+  .tg-compose-status,
+  .badge,
+  .pill,
+  .tg-folder-chip,
+  .tg-routing-badges,
+  [data-control-ui-micro-surface],
+  .metric-card span,
+  .metric-card p
+) {
+  font-size: var(--hepta-v4-font-metadata) !important;
+  line-height: 1.35 !important;
+}
+
+body[data-view="chat"] :is(h1, .app-brand h1) {
+  font-size: var(--hepta-v4-font-display);
+  line-height: 1.15;
+}
+
+body[data-view="chat"] :is(h2, .tg-rail-header h2, .tg-thread-header h2) {
+  font-size: var(--hepta-v4-font-title);
+  line-height: 1.25;
+}
+
+/*
+ * Stable content role. These surfaces may scroll or contain long-form text;
+ * backdrop blur is forbidden regardless of the legacy layer underneath.
+ */
+body[data-view="chat"] :is(
+  .tg-thread-panel,
+  .tg-bubble,
+  .panel.card,
+  .metric-card,
+  .route-card,
+  .v2-diagnostic,
+  .hepta-dashboard-recovery,
+  .result-drawer,
+  .command-palette__results,
+  input,
+  textarea,
+  select,
+  [data-chat-composer-input],
+  [data-control-ui-command-palette-input="light-glass"],
+  [data-control-ui-composer-popover-search="light-glass"]
+) {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+}
+
+body[data-view="chat"] .tg-thread-panel {
+  background: var(--hepta-v4-content) !important;
+  background-image: none !important;
+  border: 1px solid color-mix(in srgb, var(--hepta-glass-hairline) 64%, transparent) !important;
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.9),
+    0 8px 24px var(--hepta-v4-shadow-low) !important;
+}
+
+body[data-view="chat"] .tg-bubble {
+  background: var(--hepta-v4-content-muted) !important;
+  background-image: none !important;
+  border: 1px solid color-mix(in srgb, var(--hepta-glass-hairline) 54%, transparent) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.92), 0 3px 10px var(--hepta-v4-shadow-low) !important;
+}
+
+body[data-view="chat"] :is(.panel.card, .metric-card, .route-card, .v2-diagnostic, .result-drawer) {
+  background: var(--hepta-v4-content) !important;
+  background-image: none !important;
+  border-color: color-mix(in srgb, var(--hepta-glass-hairline) 58%, transparent) !important;
+  box-shadow: 0 6px 20px var(--hepta-v4-shadow-low) !important;
+}
+
+body[data-view="chat"] :is(
+  .tg-search-shell input,
+  [data-chat-composer-input],
+  textarea[data-chat-composer-input],
+  [data-control-ui-composer-popover-search="light-glass"],
+  [data-control-ui-command-palette-input="light-glass"],
+  select
+) {
+  min-height: var(--hepta-v4-touch-target) !important;
+  padding-block: 10px !important;
+  background: var(--hepta-v4-content) !important;
+  background-image: none !important;
+  border: 1px solid var(--hepta-glass-hairline) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.94), 0 2px 8px var(--hepta-v4-shadow-low) !important;
+  font-size: var(--hepta-v4-font-body) !important;
+  line-height: 1.4 !important;
+}
+
+/* Persistent chrome role: one glass layer only. */
+body[data-view="chat"] :is(
+  .shell-nav,
+  .topbar,
+  .tg-conversation-rail,
+  .tg-compose-bar,
+  .tg-mobile-layer-tabs
+) {
+  background-color: var(--hepta-v4-chrome) !important;
+  background-image: linear-gradient(145deg, rgba(255, 255, 255, 0.36), rgba(226, 237, 240, 0.28)) !important;
+  border-color: color-mix(in srgb, var(--hepta-glass-hairline) 82%, transparent) !important;
+  backdrop-filter: blur(var(--hepta-v4-chrome-blur)) saturate(1.04) !important;
+  -webkit-backdrop-filter: blur(var(--hepta-v4-chrome-blur)) saturate(1.04) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.82), 0 8px 24px var(--hepta-v4-shadow-chrome) !important;
+}
+
+/* The thread is content; its pseudo texture may not create another glass layer. */
+body[data-view="chat"] :is(.tg-thread-panel, .tg-bubble)::before {
+  content: none !important;
+  display: none !important;
+  opacity: 0 !important;
+}
+
+/* Transient glass role. Only the currently open transient is rendered. */
+body[data-view="chat"] :is(
+  .tg-row-action-popover[popover]:popover-open,
+  .tg-composer-popover[popover]:popover-open,
+  [data-control-ui-thread-tools-panel="light-glass"][popover]:popover-open,
+  [data-control-ui-composer-tools-panel="light-glass"][popover]:popover-open,
+  #command-palette:popover-open .command-palette
+) {
+  background: var(--hepta-v4-transient) !important;
+  background-image: linear-gradient(145deg, rgba(255, 255, 255, 0.54), rgba(232, 241, 243, 0.34)) !important;
+  border: 1px solid color-mix(in srgb, var(--hepta-glass-hairline) 88%, transparent) !important;
+  border-radius: var(--hepta-v4-sheet-radius) !important;
+  backdrop-filter: blur(var(--hepta-v4-transient-blur)) saturate(1.06) !important;
+  -webkit-backdrop-filter: blur(var(--hepta-v4-transient-blur)) saturate(1.06) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.92), 0 20px 52px var(--hepta-v4-shadow-transient) !important;
+}
+
+/* One consistent interactive target contract. */
+body[data-view="chat"] :is(
+  button,
+  a.btn,
+  a.button,
+  .nav a,
+  .tg-icon-action,
+  .tg-compose-icon,
+  .tg-send-button,
+  .tg-compose-plan,
+  .tg-row-menu-toggle,
+  .tg-row-action,
+  .tg-menu-item,
+  .tg-composer-popover__item,
+  [data-control-ui-icon-button],
+  [data-control-ui-menu-trigger="icon"],
+  [data-control-ui-command-palette-result="light-glass"]
+) {
+  min-width: var(--hepta-v4-pointer-target);
+  min-height: var(--hepta-v4-pointer-target);
+}
+
+@media (pointer: coarse), (max-width: 700px) {
+  body[data-view="chat"] :is(
+    button,
+    a.btn,
+    a.button,
+    .nav a,
+    .tg-icon-action,
+    .tg-compose-icon,
+    .tg-send-button,
+    .tg-compose-plan,
+    .tg-row-menu-toggle,
+    .tg-row-action,
+    .tg-menu-item,
+    .tg-composer-popover__item,
+    .tg-mobile-topbar__back,
+    .tg-mobile-topbar__title,
+    .tg-mobile-topbar__detail,
+    [data-control-ui-icon-button],
+    [data-control-ui-menu-trigger="icon"],
+    [data-control-ui-command-palette-result="light-glass"]
+  ) {
+    min-width: var(--hepta-v4-touch-target) !important;
+    min-height: var(--hepta-v4-touch-target) !important;
+  }
+}
+
+/* Keyboard focus is visible above both content and glass. */
+body[data-view="chat"] :is(button, a[href], summary, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--hepta-glass-focus) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--hepta-glass-focus) 18%, transparent) !important;
+}
+
+/* Component-local adaptation precedes viewport fallback. */
+body[data-view="chat"] :is(.telegram-chat-shell, .tg-thread-panel, .tg-conversation-rail) {
+  container-type: inline-size;
+}
+
+@container (max-width: 520px) {
+  .v2-control-flow,
+  .v2-readbacks,
+  .hepta-route-directory__links {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/*
+ * Mobile transient presentation. Fixed top coordinates are intentionally
+ * replaced by viewport-safe bottom sheets. The native popover API still owns
+ * focus trapping, Escape/back dismissal, and the top-layer stack.
+ */
+@media (max-width: 700px) {
+  body[data-view="chat"] .telegram-chat-shell .focus-main {
+    min-width: 0;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    padding-bottom: var(--hepta-v4-safe-bottom);
+  }
+
+  body[data-view="chat"] .tg-mobile-layer-tabs {
+    min-height: 56px;
+    padding: 4px max(4px, env(safe-area-inset-right, 0px)) 4px max(4px, env(safe-area-inset-left, 0px)) !important;
+  }
+
+  body[data-view="chat"] .tg-compose-wrap {
+    padding-bottom: max(8px, var(--hepta-v4-safe-bottom)) !important;
+  }
+
+  body[data-view="chat"] :is(
+    #row-menu-ui-chat-agent,
+    #row-menu-task-queue,
+    #row-menu-operator-plane,
+    #thread-tools-popover,
+    #composer-tools-popover,
+    #composer-popover-artifact,
+    #composer-popover-command
+  ):popover-open {
+    position: fixed !important;
+    inset: auto 8px max(8px, var(--hepta-v4-safe-bottom)) 8px !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    max-height: min(70dvh, 640px) !important;
+    margin: 0 !important;
+    padding: 12px !important;
+    overflow: auto !important;
+    overscroll-behavior: contain;
+    transform: none !important;
+    border-radius: var(--hepta-v4-sheet-radius) var(--hepta-v4-sheet-radius) 14px 14px !important;
+  }
+
+  #command-palette:popover-open {
+    position: fixed !important;
+    inset: max(8px, env(safe-area-inset-top, 0px)) 8px max(8px, var(--hepta-v4-safe-bottom)) 8px !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    transform: none !important;
+  }
+
+  #command-palette:popover-open .command-palette__results {
+    max-height: calc(100dvh - 156px - env(safe-area-inset-top, 0px) - var(--hepta-v4-safe-bottom)) !important;
+  }
+
+  body[data-view="chat"] :is(
+    #row-menu-ui-chat-agent,
+    #row-menu-task-queue,
+    #row-menu-operator-plane,
+    #thread-tools-popover,
+    #composer-tools-popover,
+    #composer-popover-artifact,
+    #composer-popover-command,
+    #command-palette
+  )::backdrop {
+    background: rgba(230, 238, 240, 0.56) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+@media (max-width: 360px) {
+  body[data-view="chat"] {
+    --hepta-v4-font-display: 22px;
+    --hepta-v4-font-title: 17px;
+  }
+
+  body[data-view="chat"] .tg-routing-badges {
+    display: flex !important;
+    flex-wrap: wrap;
+  }
+}
+
+/* Transparent materials must have a complete solid fallback. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --hepta-v4-chrome: var(--hepta-v4-fallback);
+    --hepta-v4-chrome-strong: var(--hepta-v4-fallback);
+    --hepta-v4-transient: #f7fafb;
+  }
+
+  body[data-view="chat"] :is(
+    .shell-nav,
+    .topbar,
+    .tg-conversation-rail,
+    .tg-compose-bar,
+    .tg-mobile-layer-tabs,
+    .tg-row-action-popover[popover]:popover-open,
+    .tg-composer-popover[popover]:popover-open,
+    [data-control-ui-thread-tools-panel="light-glass"][popover]:popover-open,
+    [data-control-ui-composer-tools-panel="light-glass"][popover]:popover-open,
+    #command-palette:popover-open .command-palette
+  ) {
+    background: var(--hepta-v4-fallback) !important;
+    background-image: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  body[data-view="chat"] :is(.tg-thread-panel, .tg-bubble, .panel.card, .route-card) {
+    border-color: #45616c !important;
+  }
+
+  body[data-view="chat"] :is(button, a[href], summary, input, textarea, select, [tabindex]):focus-visible {
+    outline-width: 3px !important;
+    outline-color: #006f86 !important;
+    box-shadow: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  body[data-view="chat"] :is(
+    .shell-nav,
+    .topbar,
+    .tg-conversation-rail,
+    .tg-thread-panel,
+    .tg-bubble,
+    .tg-compose-bar,
+    .tg-mobile-layer-tabs,
+    [popover]
+  ) {
+    background: Canvas !important;
+    background-image: none !important;
+    color: CanvasText !important;
+    border-color: CanvasText !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  body[data-view="chat"] :is(button, a[href], summary, input, textarea, select, [tabindex]):focus-visible {
+    outline: 3px solid Highlight !important;
+    outline-offset: 3px !important;
+    box-shadow: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-view="chat"] *,
+  body[data-view="chat"] *::before,
+  body[data-view="chat"] *::after {
+    scroll-behavior: auto !important;
+  }
+
+  body[data-view="chat"] :is(button, a, summary, [popover]) {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
