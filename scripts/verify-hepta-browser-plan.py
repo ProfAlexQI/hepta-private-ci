@@ -54,6 +54,7 @@ def verify_documents() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     matrix = load_json(DOCS / "HEPTA_BROWSER_STAGE_MATRIX_v1_4.yaml")
     trace = load_json(DOCS / "HEPTA_BROWSER_TRACEABILITY_v1.yaml")
     receipt_schema = load_json(DOCS / "hepta.browser_receipt.v2.schema.json")
+    binding = load_json(DOCS / "HEPTA_BROWSER_IMPLEMENTATION_BINDING.json")
 
     require(current.get("schema") == "hepta.vnext.current.v2", "unexpected current schema")
     require(current.get("phase") == "DEVELOPMENT", "browser plan must remain DEVELOPMENT")
@@ -69,12 +70,27 @@ def verify_documents() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     authority = current.get("authority")
     require(isinstance(authority, dict), "current authority is missing")
     verify_authority(authority, "current")
-    implementation_commit = current.get("implementation_commit")
     require(
-        implementation_commit == "PENDING_SUCCESSOR_BINDING"
-        or (isinstance(implementation_commit, str) and SHA40.fullmatch(implementation_commit)),
-        "implementation_commit must be pending or an exact SHA",
+        binding.get("schema") == "hepta.browser.implementation-binding.v1",
+        "wrong implementation binding schema",
     )
+    binding_authority = binding.get("authority")
+    require(isinstance(binding_authority, dict), "binding authority is missing")
+    verify_authority(binding_authority, "implementation binding")
+    candidate_commit = binding.get("candidate_commit")
+    candidate_tree = binding.get("candidate_tree")
+    require(
+        isinstance(candidate_commit, str) and SHA40.fullmatch(candidate_commit),
+        "binding candidate_commit is not an exact SHA",
+    )
+    require(
+        isinstance(candidate_tree, str) and SHA40.fullmatch(candidate_tree),
+        "binding candidate_tree is not an exact SHA",
+    )
+    binding_path = "docs/hepta-vnext/HEPTA_BROWSER_IMPLEMENTATION_BINDING.json"
+    require(current.get("implementation_commit") == candidate_commit, "current commit binding drifted")
+    require(current.get("implementation_tree") == candidate_tree, "current tree binding drifted")
+    require(current.get("implementation_binding") == binding_path, "current binding path drifted")
 
     require(matrix.get("schema") == "hepta.browser.stage-matrix.v1.4", "wrong matrix schema")
     matrix_authority = matrix.get("authority")
@@ -91,6 +107,9 @@ def verify_documents() -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
         verify_authority(stage_authority, str(stage.get("id")))
 
     require(trace.get("schema") == "hepta.browser.traceability.v1", "wrong trace schema")
+    require(trace.get("implementation_commit") == candidate_commit, "trace commit binding drifted")
+    require(trace.get("implementation_tree") == candidate_tree, "trace tree binding drifted")
+    require(trace.get("implementation_binding") == binding_path, "trace binding path drifted")
     requirements = trace.get("requirements")
     require(isinstance(requirements, list) and requirements, "traceability requirements are empty")
     requirement_ids = [item.get("id") for item in requirements if isinstance(item, dict)]
