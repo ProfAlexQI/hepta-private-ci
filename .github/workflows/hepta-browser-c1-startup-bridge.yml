@@ -1,0 +1,167 @@
+name: hepta browser C1 startup bridge
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "tools/hepta-browser-c1-startup-bridge/**"
+      - "tools/hepta-browser-c1-artifact-gate/**"
+      - "tools/hepta-browser-c1-protocol/**"
+      - "scripts/verify-hepta-browser-c1-startup-bridge.py"
+      - "docs/hepta-vnext/browser/C1_STARTUP_BRIDGE*"
+      - "docs/hepta-vnext/browser/hepta.browser.c1_startup_bridge*"
+      - ".github/workflows/hepta-browser-c1-startup-bridge.yml"
+      - ".github/workflows/blocking-ci.yml"
+  push:
+    branches:
+      - integration/vnext-main-20260811
+      - "codex/hepta-*"
+    paths:
+      - "tools/hepta-browser-c1-startup-bridge/**"
+      - "tools/hepta-browser-c1-artifact-gate/**"
+      - "tools/hepta-browser-c1-protocol/**"
+      - "scripts/verify-hepta-browser-c1-startup-bridge.py"
+      - "docs/hepta-vnext/browser/C1_STARTUP_BRIDGE*"
+      - "docs/hepta-vnext/browser/hepta.browser.c1_startup_bridge*"
+      - ".github/workflows/hepta-browser-c1-startup-bridge.yml"
+      - ".github/workflows/blocking-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  c1-startup-bridge:
+    name: C1 artifact-to-browser handoff (qualification only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Initialize qualification-only posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c1-startup-bridge"
+          mkdir -p "$evidence_dir"
+          echo "HEPTA_C1_STARTUP_BRIDGE_EVIDENCE=$evidence_dir" >> "$GITHUB_ENV"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "artifact_gate=true"
+            echo "browser_session_binding=true"
+            echo "source_pin_binding=true"
+            echo "embedded_fixture_receipts=true"
+            echo "real_servo_artifact=false"
+            echo "servo_linked=false"
+            echo "servo_runtime_qualified=false"
+            echo "transport=anonymous_inherited_unix_socketpairs"
+            echo "qualification_only=true"
+            echo "machine_authority=false"
+            echo "runtime_authority=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "external_effect=false"
+            echo "external_network_allowed=false"
+            echo "credential_export_allowed=false"
+            echo "operator_acceptance=false"
+            echo "g5_allowed=false"
+            echo "execute_allowed=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Verify startup bridge contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-browser-c1-startup-bridge.py \
+            2>&1 | tee "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/contract.log"
+          echo "contract=passed" >> "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/posture.txt"
+
+      - name: Locked startup bridge format
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path tools/hepta-browser-c1-startup-bridge/Cargo.toml -- --check \
+            2>&1 | tee "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/fmt.log"
+          echo "format=passed" >> "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/posture.txt"
+
+      - name: Locked startup bridge tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --locked \
+            --manifest-path tools/hepta-browser-c1-startup-bridge/Cargo.toml \
+            -- --nocapture 2>&1 | tee "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/tests.log"
+          echo "tests=passed" >> "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/posture.txt"
+
+      - name: Run normal artifact-to-browser handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --locked \
+            --manifest-path tools/hepta-browser-c1-startup-bridge/Cargo.toml \
+            --bin hepta-browser-c1-startup-bridge-trial \
+            2>&1 | tee "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/normal-trial.log"
+          grep -F 'ARTIFACT_TO_BROWSER_HANDOFF_QUALIFICATION_PASS' \
+            "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/normal-trial.log"
+          echo "normal_trial=passed" >> "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/posture.txt"
+
+      - name: Run forced-kill and reap trial
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --locked \
+            --manifest-path tools/hepta-browser-c1-startup-bridge/Cargo.toml \
+            --bin hepta-browser-c1-startup-bridge-trial \
+            -- --force-kill-trial \
+            2>&1 | tee "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/force-kill-trial.log"
+          grep -F 'ARTIFACT_TO_BROWSER_HANDOFF_FORCE_KILL_REAP_PASS' \
+            "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/force-kill-trial.log"
+          echo "force_kill_reap=passed" >> "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/posture.txt"
+
+      - name: Strict startup bridge Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked \
+            --manifest-path tools/hepta-browser-c1-startup-bridge/Cargo.toml \
+            --all-targets -- -D warnings \
+            2>&1 | tee "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/clippy.log"
+          echo "clippy=passed" >> "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/posture.txt"
+
+      - name: Record qualification-only result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "job_status=${{ job.status }}" >> "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/posture.txt"
+          {
+            echo "### Hepta Browser C1 startup bridge"
+            echo
+            echo "This job qualifies fixture artifact binding followed by browser-session binding."
+            echo "It does not build, link, render, network-enable, or qualify Servo."
+            echo
+            sed 's/^/- /' "$HEPTA_C1_STARTUP_BRIDGE_EVIDENCE/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload startup bridge evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hepta-browser-c1-startup-bridge
+          path: ${{ env.HEPTA_C1_STARTUP_BRIDGE_EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Check clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
