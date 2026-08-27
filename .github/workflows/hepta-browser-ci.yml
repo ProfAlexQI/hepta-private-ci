@@ -1,0 +1,167 @@
+name: hepta-browser qualification
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  runner-preflight:
+    name: Runner preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Confirm hosted runner execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner_os=$RUNNER_OS"
+          echo "runner_arch=$RUNNER_ARCH"
+          echo "event=$GITHUB_EVENT_NAME"
+          echo "sha=$GITHUB_SHA"
+          test -n "$RUNNER_TEMP"
+          test -d "$RUNNER_TEMP"
+
+  browser-c0-c3-c1-protocol:
+    name: Browser C0-C3 and C1 protocol (fixture, no authority)
+    needs: runner-preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Initialize Browser qualification posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3-c1-protocol"
+          mkdir -p "$evidence_dir"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "plan=WEB-PLAN-2026-08-27E"
+            echo "stages=WEB-C0,WEB-C1-protocol,WEB-C2-fixture,WEB-C3-fixture"
+            echo "servo_source_topology=frozen"
+            echo "servo_source_imported=false"
+            echo "servo_linked=false"
+            echo "servo_runtime_qualified=false"
+            echo "worker_transport=qualification_stdio_pipe"
+            echo "unix_socketpair_qualified=false"
+            echo "windows_named_pipe_qualified=false"
+            echo "qualification_only=true"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "external_effect=false"
+            echo "external_network=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "g5_allowed=false"
+            echo "execute_allowed=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Verify repository-native Browser plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3-c1-protocol"
+          python3 scripts/verify-hepta-browser-plan.py 2>&1 | tee "$evidence_dir/plan-verifier.log"
+          echo "plan_verifier=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Verify provenance generator primitives
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3-c1-protocol"
+          python3 -m py_compile \
+            scripts/verify-hepta-browser-plan.py \
+            scripts/verify-hepta-browser-plan-v2.py \
+            scripts/generate-hepta-servo-provenance.py \
+            scripts/test_generate_hepta_servo_provenance.py
+          python3 scripts/test_generate_hepta_servo_provenance.py 2>&1 | tee "$evidence_dir/provenance-tests.log"
+          echo "provenance_tests=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Locked Browser contract, actor and protocol unit tests
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3-c1-protocol"
+          cargo test --locked \
+            -p codex-hepta-shadow-qualification \
+            --lib browser_ -- --nocapture 2>&1 | tee "$evidence_dir/unit-tests.log"
+          echo "unit_tests=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Locked private worker process test
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3-c1-protocol"
+          cargo test --locked \
+            -p codex-hepta-shadow-qualification \
+            --test browser_worker_process -- --nocapture 2>&1 | tee "$evidence_dir/process-test.log"
+          echo "process_test=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Locked Browser all-target check
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3-c1-protocol"
+          cargo check --locked \
+            -p codex-hepta-shadow-qualification \
+            --all-targets 2>&1 | tee "$evidence_dir/check.log"
+          echo "check=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Strict Browser Clippy
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3-c1-protocol"
+          cargo clippy --locked \
+            -p codex-hepta-shadow-qualification \
+            --all-targets -- -D warnings 2>&1 | tee "$evidence_dir/clippy.log"
+          echo "clippy=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Record Browser qualification-only result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c0-c3-c1-protocol"
+          echo "job_status=${{ job.status }}" >> "$evidence_dir/posture.txt"
+          {
+            echo "### Hepta Browser qualification-only fixture and protocol slice"
+            echo
+            echo "This job validates repository-native plans, portable contracts,"
+            echo "a deterministic actor, an offline provenance generator, and a"
+            echo "private child-pipe protocol harness."
+            echo
+            echo "It does not import or build Servo, qualify Unix/Windows production"
+            echo "transport, enable external network access, or grant authority."
+            echo
+            sed 's/^/- /' "$evidence_dir/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Browser qualification evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-browser-c0-c3-c1-protocol
+          path: ${{ runner.temp }}/hepta-browser-c0-c3-c1-protocol
+          if-no-files-found: error
+
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree
