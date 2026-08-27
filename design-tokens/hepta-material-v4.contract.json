@@ -1,0 +1,233 @@
+{
+  "schema": "hepta.ui.material.v4",
+  "version": 4,
+  "status": "IMPLEMENTATION_CONTRACT_NO_RELEASE_AUTHORITY",
+  "bound_at": "2026-08-27T00:00:00+08:00",
+  "bindings": {
+    "latest_plan_snapshot_commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+    "canonical_source_head": "a85612afb43af722c61b54efe73570b25e9e4031",
+    "canonical_source_tree": "71026adff61523660d953867188f094184cee2e9",
+    "ui_base_commit": "647e294522a3b3341b4169e3f5a85f8f0df42cbe",
+    "ui_base_tree": "643cba1d56e99205d0db042277dee2a498d0cbae",
+    "implementation_branch": "codex/ui-light-glass-v4-20260827"
+  },
+  "authority": {
+    "plan_authority": false,
+    "production_authority": false,
+    "effect_authority": false,
+    "live_adapter_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_claim": false,
+    "local_ui_implementation": true,
+    "same_origin_read_only": true
+  },
+  "principles": {
+    "content_first": true,
+    "glass_is_functional_chrome": true,
+    "stable_content_is_not_glass": true,
+    "platform_renderers_are_distinct": true,
+    "transparency_has_solid_fallback": true,
+    "authority_is_not_inferred_from_visual_style": true
+  },
+  "color": {
+    "shared": {
+      "text": "#142a32ff",
+      "textStrong": "#0b222bff",
+      "muted": "#506575ff",
+      "dim": "#566a78ff",
+      "focus": "#0f7290ff",
+      "focusHover": "#0b5d78ff",
+      "secondaryAccent": "#14b8a6ff",
+      "success": "#137a5aff",
+      "warning": "#9a6500ff",
+      "danger": "#b63845ff"
+    },
+    "surface": {
+      "environment": "#eef3f5ff",
+      "content": "#fcfdfeff",
+      "contentMuted": "#f7fafbff",
+      "chrome": "#eaf1f3e8",
+      "chromeStrong": "#f5f8f9ee",
+      "transient": "#f7fafbf2",
+      "input": "#f8fafbff",
+      "fallback": "#f7fafbff",
+      "active": "#dceff4ee",
+      "selection": "#0f729026"
+    },
+    "line": {
+      "hairline": "#8fb4bf66",
+      "hairlineStrong": "#6f9eaa8f",
+      "focus": "#0f7290ff"
+    },
+    "shadow": {
+      "low": "#1730470f",
+      "chrome": "#1730471f",
+      "transient": "#1730472e"
+    }
+  },
+  "typography": {
+    "displayPx": 24,
+    "titlePx": 18,
+    "bodyPx": 15,
+    "messagePx": 15,
+    "labelPx": 13,
+    "metadataPx": 12,
+    "microPx": 11,
+    "bodyLineHeight": 1.5,
+    "messageLineHeight": 1.45,
+    "dynamicTypeMaximumScale": 2.0,
+    "criticalTextMayUseMicro": false
+  },
+  "radius": {
+    "controlPx": 10,
+    "panelPx": 16,
+    "floatingPx": 20,
+    "sheetTopPx": 22
+  },
+  "spacing": {
+    "xxsPx": 4,
+    "xsPx": 8,
+    "smPx": 12,
+    "mdPx": 16,
+    "lgPx": 24,
+    "xlPx": 32
+  },
+  "interaction": {
+    "minimumPointerTargetPx": 44,
+    "minimumTouchTargetPx": 48,
+    "minimumNativeControlHeightPx": 48,
+    "focusRingPx": 2,
+    "focusRingHighContrastPx": 3,
+    "focusOffsetPx": 2
+  },
+  "motion": {
+    "fastMs": 100,
+    "normalMs": 180,
+    "layoutMs": 220,
+    "reducedMotionMs": 0,
+    "animateBackdropBlur": false
+  },
+  "materialRoles": {
+    "environment": {
+      "surfaceAlpha": 1.0,
+      "backdropBlurPx": 0,
+      "shadowAlpha": 0.0,
+      "persistent": true,
+      "mayContainStableContent": true
+    },
+    "content": {
+      "surfaceAlphaMin": 0.96,
+      "surfaceAlphaMax": 1.0,
+      "backdropBlurPx": 0,
+      "shadowAlphaMax": 0.04,
+      "persistent": true,
+      "mayContainStableContent": true
+    },
+    "chrome": {
+      "surfaceAlphaMin": 0.86,
+      "surfaceAlphaMax": 0.94,
+      "backdropBlurPxMin": 10,
+      "backdropBlurPxMax": 14,
+      "shadowAlphaMax": 0.08,
+      "persistent": true,
+      "mayContainStableContent": false
+    },
+    "transient": {
+      "surfaceAlphaMin": 0.92,
+      "surfaceAlphaMax": 0.98,
+      "backdropBlurPxMin": 14,
+      "backdropBlurPxMax": 20,
+      "shadowAlphaMax": 0.14,
+      "persistent": false,
+      "mayContainStableContent": false
+    },
+    "fallback": {
+      "surfaceAlpha": 1.0,
+      "backdropBlurPx": 0,
+      "shadowAlphaMax": 0.06,
+      "persistent": true,
+      "mayContainStableContent": true
+    }
+  },
+  "limits": {
+    "maxVisibleBackdropLayers": 2,
+    "maxStableContentBackdropLayers": 0,
+    "maxTransientLayers": 1,
+    "maxPersistentGlassRolesPerPixel": 1,
+    "stableScrollableBackdropBlurAllowed": false,
+    "nestedTransientGlassAllowed": false,
+    "hardCodedPopoverCoordinatesAllowed": false
+  },
+  "responsive": {
+    "minimumViewportWidthPx": 320,
+    "mobileMaxPx": 700,
+    "compactDesktopMaxPx": 980,
+    "wideDesktopMinPx": 1280,
+    "preferContainerQueries": true,
+    "mobileTransientPresentation": "BOTTOM_SHEET",
+    "wideTransientPresentation": "ANCHORED_POPOVER",
+    "safeAreaRequired": true,
+    "imeAwareComposerRequired": true
+  },
+  "accessibility": {
+    "wcagTarget": "2.2_AA",
+    "textContrastMinimum": 4.5,
+    "largeTextContrastMinimum": 3.0,
+    "nonTextContrastMinimum": 3.0,
+    "supportsReducedTransparency": true,
+    "supportsReducedMotion": true,
+    "supportsForcedColors": true,
+    "supportsIncreasedContrast": true,
+    "keyboardNavigationRequired": true,
+    "focusMustNotBeObscured": true,
+    "zoom200Required": true,
+    "dynamicType200Required": true
+  },
+  "platformMapping": {
+    "web": {
+      "environment": "SOLID_OR_GRADIENT",
+      "chrome": "BOUNDED_BACKDROP_FILTER",
+      "transient": "BOUNDED_BACKDROP_FILTER_WITH_SCRIM",
+      "content": "OPAQUE_NO_BLUR",
+      "fallback": "OPAQUE"
+    },
+    "windows": {
+      "environment": "MICA_LIKE_APP_BACKDROP",
+      "chrome": "PLATFORM_TRANSLUCENT_CHROME",
+      "transient": "ACRYLIC_LIKE_TRANSIENT",
+      "content": "SOLID",
+      "fallback": "SOLID"
+    },
+    "macos": {
+      "environment": "WINDOW_BACKGROUND",
+      "chrome": "SYSTEM_SIDEBAR_OR_TITLEBAR_MATERIAL",
+      "transient": "SYSTEM_POPOVER_MATERIAL",
+      "content": "SOLID",
+      "fallback": "SOLID"
+    },
+    "ios": {
+      "environment": "SYSTEM_BACKGROUND",
+      "chrome": "SYSTEM_NAVIGATION_CONTROL_GLASS_WHERE_SUPPORTED",
+      "transient": "SYSTEM_MENU_OR_SHEET",
+      "content": "SYSTEM_GROUPED_SOLID",
+      "fallback": "SYSTEM_SOLID"
+    },
+    "android": {
+      "environment": "MATERIAL3_DYNAMIC_TONAL",
+      "chrome": "TONAL_APP_BAR_NAVIGATION",
+      "transient": "MODAL_OR_SHEET_TONAL_ELEVATION",
+      "content": "TONAL_SOLID",
+      "fallback": "TONAL_SOLID"
+    }
+  },
+  "rendererPolicy": {
+    "baseTokens": "design-tokens/hepta-light-glass.tokens.json",
+    "webOverlay": "apps/hepta-control-ui/styles.v4.css",
+    "nativeOverlay": "apps/hepta-native/src/shared/hepta_v4.rs",
+    "staticGate": "scripts/hepta-ui-v4-static-gate",
+    "workflow": ".github/workflows/hepta-ui-v4.yml",
+    "generationMode": "CHECK_ONLY_BY_DEFAULT",
+    "mutationRequiresExplicitFlag": true
+  }
+}
