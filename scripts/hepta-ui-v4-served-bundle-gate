@@ -1,0 +1,103 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "pathname"
+
+ROOT = Pathname.new(__dir__).join("..").expand_path
+BOUNDARY = "\n/* hepta-ui-v4-runtime-bundle-boundary */\n"
+
+FILES = {
+  base_js: ROOT.join("apps/hepta-control-ui/control-ui.js"),
+  runtime_js: ROOT.join("apps/hepta-control-ui/control-ui-v4-runtime.js"),
+  cargo: ROOT.join("codex-rs/hepta-core/Cargo.toml"),
+  build: ROOT.join("codex-rs/hepta-core/build.rs"),
+  core_assets: ROOT.join("codex-rs/hepta-core/src/control_ui_static_assets.rs"),
+  gateway_assets: ROOT.join("codex-rs/hepta-native-gateway/src/ui_domain/generated_control_ui_assets.rs")
+}.freeze
+
+checks = {}
+FILES.each { |name, path| checks["file.#{name}"] = path.file? }
+
+unless checks.values.all?
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.served-bundle-source-gate.v1",
+    status: "FAIL_MISSING_INPUT",
+    rust_served_runtime_asset_bound: false,
+    rust_compile_validation: false,
+    rust_runtime_validation: false,
+    browser_validation: false,
+    device_validation: false,
+    production_authority: false,
+    effect_authority: false,
+    operator_acceptance: false,
+    promotion: false,
+    checks: checks,
+    failures: checks.reject { |_key, value| value }.keys
+  )
+  exit 1
+end
+
+base_js = FILES.fetch(:base_js).binread
+runtime_js = FILES.fetch(:runtime_js).binread
+cargo = FILES.fetch(:cargo).read
+build = FILES.fetch(:build).read
+core_assets = FILES.fetch(:core_assets).read
+gateway_assets = FILES.fetch(:gateway_assets).read
+bundle = base_js + BOUNDARY + runtime_js
+
+checks["bundle.base_non_empty"] = !base_js.empty?
+checks["bundle.runtime_non_empty"] = !runtime_js.empty?
+checks["bundle.order"] = build.index("control-ui.js") && build.index("control-ui-v4-runtime.js") && build.index("control-ui.js") < build.index("control-ui-v4-runtime.js")
+checks["bundle.boundary_exact"] = build.include?("hepta-ui-v4-runtime-bundle-boundary")
+checks["bundle.output_written"] = build.include?("control-ui.bundle.js")
+checks["bundle.metadata_written"] = build.include?("control_ui_bundle_metadata.rs")
+checks["bundle.sha256_generated"] = build.include?("CONTROL_UI_JS_SHA256") && build.include?("CONTROL_UI_JS_ETAG") && build.include?("Sha256::digest")
+checks["bundle.rerun_base"] = build.include?("cargo:rerun-if-changed={}") && build.include?("base_js_path.display()")
+checks["bundle.rerun_runtime"] = build.include?("runtime_js_path.display()")
+checks["cargo.sha2_build_dependency"] = cargo.match?(/\[build-dependencies\].*sha2\.workspace\s*=\s*true/m)
+
+checks["core.generated_metadata"] = core_assets.include?("control_ui_bundle_metadata.rs")
+checks["core.generated_bundle"] = core_assets.include?("control-ui.bundle.js")
+checks["core.base_source_visible"] = core_assets.include?("CONTROL_UI_BASE_JS") && core_assets.include?("control-ui.js")
+checks["core.runtime_source_visible"] = core_assets.include?("CONTROL_UI_V4_RUNTIME_JS") && core_assets.include?("control-ui-v4-runtime.js")
+checks["core.single_served_bundle"] = core_assets.scan(/pub const CONTROL_UI_JS:/).length == 1
+
+checks["gateway.single_script_path"] = gateway_assets.scan(/"\/control-ui\.js"/).length == 2
+checks["gateway.no_runtime_side_route"] = !gateway_assets.include?("/control-ui-v4-runtime.js")
+checks["gateway.generated_etag"] = gateway_assets.include?("etag: hepta_core::control_ui::CONTROL_UI_JS_ETAG")
+checks["gateway.generated_body"] = gateway_assets.include?("body: hepta_core::control_ui::CONTROL_UI_JS")
+
+checks["runtime.network_free"] = runtime_js.scan(/\b(fetch|XMLHttpRequest|WebSocket|EventSource)\b/).empty?
+checks["runtime.dynamic_code_free"] = runtime_js.scan(/\b(eval|Function)\s*\(/).empty? && !runtime_js.include?("innerHTML")
+checks["runtime.local_authority"] = runtime_js.include?("controlUiV4RuntimeAuthority = \"local-ui-only\"")
+checks["runtime.read_state_bounded"] = runtime_js.include?("READ_STATE_SET") && runtime_js.include?("evidenceDigest")
+
+failed = checks.reject { |_name, passed| passed }
+result = {
+  schema: "hepta.ui.v4.served-bundle-source-gate.v1",
+  status: failed.empty? ? "PASS_SERVED_BUNDLE_SOURCE_CONTRACT_ONLY" : "FAIL_SERVED_BUNDLE_SOURCE_CONTRACT",
+  scope: "COMPILE_TIME_SOURCE_BINDING_ONLY",
+  bundle: {
+    base_sha256: Digest::SHA256.hexdigest(base_js),
+    runtime_sha256: Digest::SHA256.hexdigest(runtime_js),
+    bundle_sha256: Digest::SHA256.hexdigest(bundle),
+    bytes: bundle.bytesize,
+    boundary: BOUNDARY.strip
+  },
+  rust_served_runtime_asset_bound: failed.empty?,
+  rust_compile_validation: false,
+  rust_runtime_validation: false,
+  browser_validation: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  checks: checks,
+  failures: failed.keys
+}
+
+puts JSON.pretty_generate(result)
+exit(failed.empty? ? 0 : 1)
