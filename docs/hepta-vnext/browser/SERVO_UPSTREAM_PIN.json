@@ -16,16 +16,20 @@
     "x86_64-pc-windows-msvc"
   ],
   "security_observations": [
-    "Servo WebDriver start_server currently binds 0.0.0.0 by default; Hepta C1 must not expose that default.",
-    "C1 must provide an authenticated private local transport or a loopback-only ephemeral listener.",
-    "No Servo source, binary, network listener, browser authority, or production caller is enabled by this pin."
+    "Servo WebDriver start_server at this commit binds 0.0.0.0 by default; Hepta rejects that entrypoint.",
+    "C1 production control must use an inherited Unix socketpair or a SID-restricted Windows named pipe, never TCP or WebSocket.",
+    "The current stdin/stdout child-pipe transport is qualification-only and cannot satisfy C1 production transport.",
+    "No Servo source, binary, listener, browser authority, external network, or production caller is enabled by this pin."
   ],
   "required_before_import": [
+    "isolated source import topology",
+    "deterministic source receipt generator",
     "source and license inventory",
-    "SBOM and patch inventory",
+    "Cargo and native dependency SBOM",
     "toolchain and target compatibility receipt",
-    "private transport decision ADR",
-    "sandbox and egress policy",
+    "governed patch inventory",
+    "private inherited transport implementation",
+    "sandbox and deny-by-default egress policy",
     "minimal Servo API surface inventory",
     "rollback and source update policy"
   ],
