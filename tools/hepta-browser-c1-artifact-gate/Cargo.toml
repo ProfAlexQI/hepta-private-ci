@@ -1,0 +1,22 @@
+[package]
+name = "hepta-browser-c1-artifact-gate-qualification"
+version = "0.1.0"
+edition = "2024"
+publish = false
+autobins = false
+
+[lib]
+path = "src/lib.rs"
+doctest = false
+
+[[bin]]
+name = "hepta-browser-c1-artifact-bound-trial"
+path = "src/bin/hepta-browser-c1-artifact-bound-trial.rs"
+test = false
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+expect_used = "deny"
+unwrap_used = "deny"
