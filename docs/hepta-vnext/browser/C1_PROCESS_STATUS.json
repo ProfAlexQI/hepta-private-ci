@@ -1,0 +1,48 @@
+{
+  "schema": "hepta.browser.c1_process_trial_status.v1",
+  "updated_at": "2026-08-27T00:00:00+08:00",
+  "phase": "DEVELOPMENT",
+  "plan": "WEB-PLAN-2026-08-27E",
+  "slice": "WEB-C1.3B-inherited-pipe-process-trial",
+  "status": "IMPLEMENTED_QUALIFICATION_ONLY_EVIDENCE_PENDING",
+  "implementation": {
+    "crate": "tools/hepta-browser-c1-protocol",
+    "binary": "hepta-browser-c1-process-trial",
+    "parent_child_process": true,
+    "process_boundary": "anonymous_inherited_stdin_stdout_pipes",
+    "bootstrap_bytes": 64,
+    "startup_capability_bytes": 32,
+    "host_nonce_bytes": 32,
+    "ping_round_trip": true,
+    "shutdown_round_trip": true,
+    "servo_linked": false,
+    "real_webview": false,
+    "tcp_listener": false,
+    "http_surface": false,
+    "external_network": false,
+    "windows_named_pipe": false,
+    "timeouts": false,
+    "forced_termination": false,
+    "descriptor_inventory": false,
+    "sandbox_qualified": false
+  },
+  "evidence": {
+    "workflow": ".github/workflows/hepta-browser-c1-protocol.yml",
+    "latest_run": null,
+    "latest_conclusion": "NOT_RUN",
+    "receipt": null
+  },
+  "authority": {
+    "runtime_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "external_effect": false,
+    "external_network_allowed": false,
+    "credential_export_allowed": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  },
+  "merge_authorized": false
+}
