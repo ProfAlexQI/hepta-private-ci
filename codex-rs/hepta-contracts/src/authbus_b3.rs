@@ -1614,7 +1614,7 @@ mod tests {
         tampered.fencing_token = digest("different-fence");
         assert!(tampered.validate().is_err());
 
-        let mut tampered = request.clone();
+        let mut tampered = request;
         tampered.payload_digest = digest("different-payload");
         assert!(tampered.validate().is_err());
 
@@ -1675,7 +1675,7 @@ mod tests {
         let mut invalid = response.clone();
         invalid.access_secret_ref = None;
         assert!(invalid.validate_against(&request).is_err());
-        invalid = response.clone();
+        invalid = response;
         invalid.provider_status = SecretProviderStatus::Unknown;
         assert!(invalid.validate_against(&request).is_err());
     }

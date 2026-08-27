@@ -168,7 +168,7 @@ fn b1_identity_requires_full_peer_binding_and_derived_subject_digest() {
     tampered.subject_digest = digest("forged-subject");
     assert!(tampered.validate().is_err());
 
-    let mut tampered = identity.clone();
+    let mut tampered = identity;
     tampered.peer = IdentityPeerEvidence::LinuxPeer {
         peer_uid: 501,
         peer_gid: 20,

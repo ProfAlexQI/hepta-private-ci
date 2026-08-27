@@ -47,7 +47,7 @@ fn scheduler_request(
             "service:qualification",
             generation,
         )
-        .expect("subject"),
+        .unwrap_or_else(|error| panic!("static qualification subject must be valid: {error:?}")),
         resource_sha256: resource.resource_sha256.clone(),
         payload_sha256: digest(&format!("payload:{request_id}")),
         policy_sha256: digest("policy:qualification"),
@@ -66,7 +66,7 @@ fn scheduler_request(
 
 fn effect_key(label: &str) -> ProviderEffectKey {
     ProviderEffectKey::parse(format!("provider-effect:v1:{}", digest(label).as_str()))
-        .expect("effect key")
+        .unwrap_or_else(|error| panic!("derived qualification effect key must be valid: {error:?}"))
 }
 
 fn fence(generation: u64) -> B5Fence {
@@ -149,7 +149,7 @@ fn b4_stale_permit_callback_does_not_mutate_accounting() {
     let used_before = scheduler.used();
     let active_before = scheduler.active_permit_count();
 
-    let mut stale = permit.clone();
+    let mut stale = permit;
     stale.generation += 1;
     assert_eq!(
         scheduler.complete(&stale, QuotaVector::default()),
@@ -258,23 +258,25 @@ fn b5_payload_conflict_and_stale_fence_do_not_append_records() {
 
 #[test]
 fn qualification_feature_keeps_b4_and_b5_authority_flags_false() {
-    assert!(authbus_b4::AUTHBUS_B4_QUALIFICATION_ONLY);
-    assert!(!authbus_b4::AUTHBUS_B4_AUTHORITY);
-    assert!(!authbus_b4::AUTHBUS_B4_PRODUCTION_CALLER);
-    assert!(!authbus_b4::AUTHBUS_B4_PRODUCTION_WRITER);
-    assert!(!authbus_b4::AUTHBUS_B4_EFFECT_AUTHORITY);
-    assert!(!authbus_b4::AUTHBUS_B4_OPERATOR_ACCEPTANCE);
-    assert!(!authbus_b4::AUTHBUS_B4_PROMOTION);
-    assert!(!authbus_b4::AUTHBUS_B4_G5_ALLOWED);
-    assert!(!authbus_b4::AUTHBUS_B4_EXECUTE_ALLOWED);
+    const {
+        assert!(authbus_b4::AUTHBUS_B4_QUALIFICATION_ONLY);
+        assert!(!authbus_b4::AUTHBUS_B4_AUTHORITY);
+        assert!(!authbus_b4::AUTHBUS_B4_PRODUCTION_CALLER);
+        assert!(!authbus_b4::AUTHBUS_B4_PRODUCTION_WRITER);
+        assert!(!authbus_b4::AUTHBUS_B4_EFFECT_AUTHORITY);
+        assert!(!authbus_b4::AUTHBUS_B4_OPERATOR_ACCEPTANCE);
+        assert!(!authbus_b4::AUTHBUS_B4_PROMOTION);
+        assert!(!authbus_b4::AUTHBUS_B4_G5_ALLOWED);
+        assert!(!authbus_b4::AUTHBUS_B4_EXECUTE_ALLOWED);
 
-    assert!(authbus_b5::AUTHBUS_B5_QUALIFICATION_ONLY);
-    assert!(!authbus_b5::AUTHBUS_B5_AUTHORITY);
-    assert!(!authbus_b5::AUTHBUS_B5_PRODUCTION_CALLER);
-    assert!(!authbus_b5::AUTHBUS_B5_PRODUCTION_WRITER);
-    assert!(!authbus_b5::AUTHBUS_B5_EFFECT_AUTHORITY);
-    assert!(!authbus_b5::AUTHBUS_B5_OPERATOR_ACCEPTANCE);
-    assert!(!authbus_b5::AUTHBUS_B5_PROMOTION);
-    assert!(!authbus_b5::AUTHBUS_B5_G5_ALLOWED);
-    assert!(!authbus_b5::AUTHBUS_B5_EXECUTE_ALLOWED);
+        assert!(authbus_b5::AUTHBUS_B5_QUALIFICATION_ONLY);
+        assert!(!authbus_b5::AUTHBUS_B5_AUTHORITY);
+        assert!(!authbus_b5::AUTHBUS_B5_PRODUCTION_CALLER);
+        assert!(!authbus_b5::AUTHBUS_B5_PRODUCTION_WRITER);
+        assert!(!authbus_b5::AUTHBUS_B5_EFFECT_AUTHORITY);
+        assert!(!authbus_b5::AUTHBUS_B5_OPERATOR_ACCEPTANCE);
+        assert!(!authbus_b5::AUTHBUS_B5_PROMOTION);
+        assert!(!authbus_b5::AUTHBUS_B5_G5_ALLOWED);
+        assert!(!authbus_b5::AUTHBUS_B5_EXECUTE_ALLOWED);
+    }
 }

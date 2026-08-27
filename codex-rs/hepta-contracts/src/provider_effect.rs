@@ -1929,18 +1929,21 @@ mod tests {
         let observation = ProviderEffectStatusObservation::new(
             key.clone(),
             intent.payload_sha256.clone(),
-            operation.clone(),
+            operation,
             ProviderEffectAckStatus::Accepted,
         );
         assert!(observation.validate_for(&intent).is_ok());
 
         let mut journal = ProviderEffectJournal::default();
-        journal.record_intent(intent.clone()).expect("intent");
+        journal.record_intent(intent).expect("intent");
         assert_eq!(
             journal.record_status_observation(observation.clone()),
             Ok(ProviderEffectAppendDisposition::Inserted)
         );
-        assert_eq!(journal.status_observations(&key), &[observation.clone()]);
+        assert_eq!(
+            journal.status_observations(&key),
+            std::slice::from_ref(&observation)
+        );
 
         let mut forged_source = observation.clone();
         forged_source.source = ProviderEffectAckSource::DispatchResponse;
@@ -1983,7 +1986,7 @@ mod tests {
             ProviderEffectAckStatus::Completed,
         );
         let mut journal = ProviderEffectJournal::default();
-        journal.record_intent(intent.clone()).expect("intent");
+        journal.record_intent(intent).expect("intent");
         journal
             .record_status_observation(accepted)
             .expect("accepted status");
