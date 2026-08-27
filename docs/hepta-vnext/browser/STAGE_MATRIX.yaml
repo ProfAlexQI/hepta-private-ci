@@ -1,0 +1,163 @@
+{
+  "schema": "hepta.browser.stage_matrix.v1",
+  "schema_version": 1,
+  "plan_id": "HEPTA-BROWSER-WEB-D",
+  "execution_order": ["WEB_C0", "WEB_C1", "WEB_C2", "WEB_C3", "WEB_C4", "WEB_C5", "WEB_C6", "WEB_C7"],
+  "global_invariants": [
+    "one durable owner per browser session",
+    "all mutating requests bind session, generation, owner_epoch, page_revision, request_id and payload digest",
+    "human takeover revokes agent mutation authority immediately",
+    "semantic references are revision-scoped and stale references fail closed",
+    "raw cookies, credentials, authorization headers and browser profile material are never exported",
+    "external network access remains disabled until an explicit egress policy and receipt exist",
+    "qualification receipts never imply production authority"
+  ],
+  "stages": [
+    {
+      "id": "WEB_C0",
+      "title": "Typed browser contracts and negative authority",
+      "status": "IMPLEMENTED_QUALIFICATION_ONLY",
+      "entry": ["repository-native plan exists", "authority defaults are false"],
+      "deliverables": [
+        "BrowserRequest and BrowserResponse",
+        "BrowserCommand and BrowserAction",
+        "SemanticSnapshot and revision-scoped SemanticRef",
+        "BrowserActivityReceipt and WebEvidenceReceipt",
+        "bounded denial codes and canonical request digests"
+      ],
+      "code_paths": [
+        "codex-rs/hepta-shadow-qualification/src/browser_contracts.rs"
+      ],
+      "tests": ["browser contract canonicalization", "unknown-field rejection", "negative-authority assertions"],
+      "exit": ["contract tests pass", "all production flags remain false"],
+      "receipt_kind": "hepta_browser_contract_qualification_v1"
+    },
+    {
+      "id": "WEB_C1",
+      "title": "Pinned Servo runtime and private transport",
+      "status": "NOT_IMPLEMENTED_SOURCE_PINNED",
+      "depends_on": ["WEB_C0"],
+      "entry": ["Servo source pin verified", "private transport ADR accepted"],
+      "deliverables": [
+        "pinned Servo source import or reproducible external artifact",
+        "loopback-only or authenticated private local control transport",
+        "sandbox profile and deny-by-default egress",
+        "source, license, SBOM and patch inventory receipt",
+        "crash, cancellation and teardown contract"
+      ],
+      "forbidden": [
+        "binding Servo WebDriver to 0.0.0.0",
+        "unbounded WebDriver passthrough",
+        "using Servo internals as Hepta public API",
+        "claiming C1 from fixture-engine tests"
+      ],
+      "exit": ["real Servo smoke test passes on a pinned target", "listener exposure scan passes", "artifact provenance is sealed"],
+      "receipt_kind": "hepta_browser_servo_runtime_qualification_v1"
+    },
+    {
+      "id": "WEB_C2",
+      "title": "Bounded semantic page model",
+      "status": "IMPLEMENTED_FIXTURE_ONLY",
+      "depends_on": ["WEB_C0"],
+      "deliverables": [
+        "bounded semantic observation",
+        "role, name, value and state projection",
+        "stable revision-scoped references",
+        "redacted evidence output"
+      ],
+      "code_paths": [
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/deterministic.rs"
+      ],
+      "exit": ["fixture semantic tests pass", "real Servo-backed implementation remains explicitly unqualified"],
+      "receipt_kind": "hepta_browser_semantic_fixture_qualification_v1"
+    },
+    {
+      "id": "WEB_C3",
+      "title": "Single-owner actor, fencing and human takeover",
+      "status": "IMPLEMENTED_FIXTURE_ONLY",
+      "depends_on": ["WEB_C0", "WEB_C2"],
+      "deliverables": [
+        "one actor owner per session",
+        "session/generation/owner_epoch/page_revision fencing",
+        "bounded idempotency cache",
+        "human lease acquisition, expiry and release",
+        "stale-reference and conflicting-request rejection"
+      ],
+      "code_paths": [
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor_support.rs"
+      ],
+      "tests": [
+        "wrong session rejected",
+        "stale generation rejected",
+        "stale owner epoch rejected",
+        "stale semantic reference rejected",
+        "human lease fences agent mutation",
+        "expired lease restores only explicitly permitted agent control",
+        "same request and payload is idempotent",
+        "same request with different payload is rejected"
+      ],
+      "exit": ["fixture actor tests pass", "no real Servo production caller exists"],
+      "receipt_kind": "hepta_browser_actor_fixture_qualification_v1"
+    },
+    {
+      "id": "WEB_C4",
+      "title": "Policy, secrets and egress enforcement",
+      "status": "NOT_IMPLEMENTED",
+      "depends_on": ["WEB_C1", "WEB_C3"],
+      "deliverables": [
+        "origin and destination policy",
+        "download and upload policy",
+        "credential/SecretRef boundary",
+        "prompt-injection and exfiltration defenses",
+        "network and filesystem audit events"
+      ],
+      "exit": ["malicious-site corpus passes", "raw-secret scan is zero", "unknown egress fails closed"],
+      "receipt_kind": "hepta_browser_policy_qualification_v1"
+    },
+    {
+      "id": "WEB_C5",
+      "title": "Durable session recovery and evidence",
+      "status": "NOT_IMPLEMENTED",
+      "depends_on": ["WEB_C3", "WEB_C4"],
+      "deliverables": [
+        "durable command/outcome journal",
+        "crash-safe request idempotency",
+        "session snapshot and replay frontier",
+        "bounded redacted evidence bundle"
+      ],
+      "exit": ["crash-point matrix passes", "replay cannot repeat an indeterminate external effect"],
+      "receipt_kind": "hepta_browser_recovery_qualification_v1"
+    },
+    {
+      "id": "WEB_C6",
+      "title": "Product caller integration",
+      "status": "NOT_IMPLEMENTED",
+      "depends_on": ["WEB_C1", "WEB_C2", "WEB_C3", "WEB_C4", "WEB_C5"],
+      "deliverables": [
+        "App Server typed browser caller",
+        "user-visible human takeover and status",
+        "capability-scoped command admission",
+        "cross-surface integration tests"
+      ],
+      "exit": ["exact product caller is covered by CI", "CALLERS ratchet remains shadow until separate promotion"],
+      "receipt_kind": "hepta_browser_product_caller_qualification_v1"
+    },
+    {
+      "id": "WEB_C7",
+      "title": "Multi-platform qualification and release handoff",
+      "status": "NOT_IMPLEMENTED",
+      "depends_on": ["WEB_C6"],
+      "deliverables": [
+        "Linux/macOS/Windows matrix",
+        "performance and resource qualification",
+        "supply-chain attestation",
+        "operator acceptance challenge",
+        "promotion and rollback manifest"
+      ],
+      "exit": ["all receipts bind one exact source tree and artifact set", "independent operator acceptance exists", "promotion remains a separate explicit action"],
+      "receipt_kind": "hepta_browser_release_candidate_qualification_v1"
+    }
+  ]
+}
