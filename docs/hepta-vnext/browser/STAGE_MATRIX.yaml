@@ -10,6 +10,8 @@
     "semantic references are revision-scoped and stale references fail closed",
     "raw cookies, credentials, authorization headers and browser profile material are never exported",
     "external network access remains disabled until an explicit egress policy and receipt exist",
+    "worker startup uses a one-use capability over a private inherited channel and never a public listener",
+    "protocol or sequence ambiguity closes the worker generation",
     "qualification receipts never imply production authority"
   ],
   "stages": [
@@ -28,30 +30,86 @@
       "code_paths": [
         "codex-rs/hepta-shadow-qualification/src/browser_contracts.rs"
       ],
-      "tests": ["browser contract canonicalization", "unknown-field rejection", "negative-authority assertions"],
+      "tests": [
+        "browser contract canonicalization",
+        "unknown-field rejection",
+        "negative-authority assertions"
+      ],
       "exit": ["contract tests pass", "all production flags remain false"],
       "receipt_kind": "hepta_browser_contract_qualification_v1"
     },
     {
       "id": "WEB_C1",
       "title": "Pinned Servo runtime and private transport",
-      "status": "NOT_IMPLEMENTED_SOURCE_PINNED",
+      "status": "IN_PROGRESS_PRIVATE_PROTOCOL_QUALIFICATION",
       "depends_on": ["WEB_C0"],
-      "entry": ["Servo source pin verified", "private transport ADR accepted"],
+      "entry": [
+        "Servo source pin verified",
+        "isolated source topology frozen",
+        "private transport ADR accepted"
+      ],
+      "implemented_now": [
+        "exact Servo commit/tree and reviewed upstream file inventory",
+        "isolated external Servo checkout and worker artifact topology",
+        "governed empty patch queue",
+        "versioned 64-KiB maximum canonical JSON frame protocol",
+        "one-use startup capability with domain-separated digest",
+        "session, generation and monotonic sequence fences",
+        "closed authority verification in worker-ready and response frames",
+        "private child stdin/stdout qualification harness with no listener",
+        "parent EOF and kill-on-drop process boundary",
+        "fixture BrowserActor round trip through the child process"
+      ],
+      "remaining": [
+        "deterministic source/SBOM/toolchain generator",
+        "exact Servo source checkout and first patch",
+        "Unix inherited socketpair production transport",
+        "Windows SID-restricted named pipe production transport",
+        "real headed Servo WebView adapter",
+        "sandbox, listener and external-egress qualification",
+        "Linux, macOS and Windows artifact receipts"
+      ],
       "deliverables": [
-        "pinned Servo source import or reproducible external artifact",
-        "loopback-only or authenticated private local control transport",
+        "pinned Servo source checkout or reproducible offline source bundle",
+        "authenticated private local control transport",
         "sandbox profile and deny-by-default egress",
         "source, license, SBOM and patch inventory receipt",
         "crash, cancellation and teardown contract"
       ],
+      "code_paths": [
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_protocol.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_harness.rs",
+        "codex-rs/hepta-shadow-qualification/src/bin/hepta-browser-worker-qualification.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_tests.rs",
+        "codex-rs/hepta-shadow-qualification/tests/browser_worker_process.rs"
+      ],
+      "document_paths": [
+        "docs/hepta-vnext/browser/SERVO_UPSTREAM_PIN.json",
+        "docs/hepta-vnext/browser/SERVO_SOURCE_IMPORT_TOPOLOGY.yaml",
+        "docs/hepta-vnext/browser/ADR-0001-servo-private-transport.md",
+        "third_party/servo-patches/PATCH_INVENTORY.json"
+      ],
+      "tests": [
+        "canonical bounded worker frame round trip",
+        "noncanonical and oversized frame rejection",
+        "wrong and replayed startup capability rejection",
+        "sequence violation closes channel",
+        "actor request/response preserves closed authority",
+        "private child process navigate and observe round trip"
+      ],
       "forbidden": [
         "binding Servo WebDriver to 0.0.0.0",
+        "binding any TCP listener in the qualification harness",
         "unbounded WebDriver passthrough",
         "using Servo internals as Hepta public API",
-        "claiming C1 from fixture-engine tests"
+        "claiming a real C1 Servo runtime from the stdio fixture harness"
       ],
-      "exit": ["real Servo smoke test passes on a pinned target", "listener exposure scan passes", "artifact provenance is sealed"],
+      "exit": [
+        "real Servo smoke test passes on a pinned target",
+        "Unix and Windows private transports pass identity and replay tests",
+        "listener exposure and egress scans pass",
+        "artifact provenance is sealed"
+      ],
       "receipt_kind": "hepta_browser_servo_runtime_qualification_v1"
     },
     {
@@ -66,10 +124,14 @@
         "redacted evidence output"
       ],
       "code_paths": [
-        "codex-rs/hepta-shadow-qualification/src/browser_runtime.rs",
-        "codex-rs/hepta-shadow-qualification/src/browser_runtime/deterministic.rs"
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/mod.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/engine.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor.rs"
       ],
-      "exit": ["fixture semantic tests pass", "real Servo-backed implementation remains explicitly unqualified"],
+      "exit": [
+        "fixture semantic tests pass",
+        "real Servo-backed implementation remains explicitly unqualified"
+      ],
       "receipt_kind": "hepta_browser_semantic_fixture_qualification_v1"
     },
     {
@@ -156,7 +218,11 @@
         "operator acceptance challenge",
         "promotion and rollback manifest"
       ],
-      "exit": ["all receipts bind one exact source tree and artifact set", "independent operator acceptance exists", "promotion remains a separate explicit action"],
+      "exit": [
+        "all receipts bind one exact source tree and artifact set",
+        "independent operator acceptance exists",
+        "promotion remains a separate explicit action"
+      ],
       "receipt_kind": "hepta_browser_release_candidate_qualification_v1"
     }
   ]
