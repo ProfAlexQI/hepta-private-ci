@@ -1,0 +1,1 @@
+This marker records that the standalone reproducibility contract workflow exists but has not yet been inserted into CI required because exact-head repository writes are still evidence-gated. It grants no authority.
