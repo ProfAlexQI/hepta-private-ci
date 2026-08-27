@@ -1,0 +1,157 @@
+{
+  "schema": "hepta.browser.next_work_queue.v1",
+  "schema_version": 1,
+  "lane": "WEB_C1_SERVO_BOOTSTRAP",
+  "authority": "qualification_only",
+  "tasks": [
+    {
+      "id": "C1-001",
+      "title": "Freeze Servo source import topology",
+      "status": "READY_AFTER_CURRENT_PR",
+      "depends_on": [],
+      "inputs": [
+        "docs/hepta-vnext/browser/SERVO_UPSTREAM_PIN.json",
+        "docs/hepta-vnext/browser/ADR-0001-servo-private-transport.md"
+      ],
+      "outputs": [
+        "source inventory",
+        "selected Servo crates/files/API surface",
+        "patch inventory with deletion conditions",
+        "toolchain compatibility report"
+      ],
+      "acceptance": [
+        "all imported source binds exact Servo commit/tree",
+        "no unpinned git dependency",
+        "MPL-2.0 notices and source obligations recorded"
+      ]
+    },
+    {
+      "id": "C1-002",
+      "title": "Create Servo provenance and SBOM generator",
+      "status": "BLOCKED_BY_C1-001",
+      "depends_on": ["C1-001"],
+      "outputs": [
+        "canonical source receipt",
+        "Cargo/native dependency SBOM",
+        "license inventory",
+        "source and patch SHA256SUMS"
+      ],
+      "acceptance": [
+        "generator is deterministic",
+        "second run produces identical canonical bytes",
+        "unknown or dirty source fails closed"
+      ]
+    },
+    {
+      "id": "C1-003",
+      "title": "Implement private worker protocol and process launcher",
+      "status": "BLOCKED_BY_C1-001",
+      "depends_on": ["C1-001"],
+      "outputs": [
+        "versioned length-bounded protocol",
+        "Unix inherited socketpair transport",
+        "Windows private named-pipe transport",
+        "one-use startup capability",
+        "parent-death and generation fencing"
+      ],
+      "acceptance": [
+        "no TCP listener",
+        "wrong capability/session/generation/sequence closes channel",
+        "oversized/noncanonical/unknown mandatory frames fail closed",
+        "child cannot reconnect to a closed generation"
+      ]
+    },
+    {
+      "id": "C1-004",
+      "title": "Build minimal pinned Servo worker adapter",
+      "status": "BLOCKED_BY_C1-001_C1-003",
+      "depends_on": ["C1-001", "C1-003"],
+      "outputs": [
+        "create/close session",
+        "local-fixture navigation",
+        "bounded semantic observation",
+        "bounded click/type/scroll/focus/wait",
+        "status/cancel/teardown"
+      ],
+      "forbidden": [
+        "raw WebDriver passthrough",
+        "arbitrary JavaScript execution",
+        "Servo preference mutation",
+        "raw cookie/storage/profile export",
+        "external network"
+      ],
+      "acceptance": [
+        "local fixture renders",
+        "typed observation produced",
+        "one bounded action changes page revision",
+        "worker teardown removes ephemeral profile"
+      ]
+    },
+    {
+      "id": "C1-005",
+      "title": "Bind real Servo worker to Browser Actor",
+      "status": "BLOCKED_BY_C1-004",
+      "depends_on": ["C1-004"],
+      "outputs": [
+        "real BrowserEngine implementation",
+        "fixture Actor/engine parity corpus",
+        "human takeover race tests",
+        "crash and cancellation outcomes"
+      ],
+      "acceptance": [
+        "session/generation/epoch/revision fences survive transport",
+        "stale semantic refs are rejected after real navigation",
+        "same request/digest is idempotent",
+        "indeterminate mutation is not blindly replayed"
+      ]
+    },
+    {
+      "id": "C1-006",
+      "title": "Qualify sandbox, listener and egress posture",
+      "status": "BLOCKED_BY_C1-004",
+      "depends_on": ["C1-004"],
+      "outputs": [
+        "socket/listener inventory",
+        "external egress denial proof",
+        "private filesystem/profile proof",
+        "resource limits and kill behavior"
+      ],
+      "acceptance": [
+        "wildcard and loopback TCP listener count is zero",
+        "external DNS/TCP/UDP attempts fail",
+        "profile root rejects symlink/hardlink escape",
+        "OOM/timeout terminates only the worker session"
+      ]
+    },
+    {
+      "id": "C1-007",
+      "title": "Run C1 platform matrix",
+      "status": "BLOCKED_BY_C1-005_C1-006",
+      "depends_on": ["C1-005", "C1-006"],
+      "outputs": [
+        "Linux x86_64 receipt",
+        "macOS arm64 receipt",
+        "Windows x86_64 receipt",
+        "known-gap inventory"
+      ],
+      "acceptance": [
+        "locked build/test commands pass",
+        "artifact/source/toolchain digests recorded",
+        "all authority flags false",
+        "results bind one Hepta and Servo source pair"
+      ]
+    },
+    {
+      "id": "C1-008",
+      "title": "Seal WEB-C1 qualification receipt",
+      "status": "BLOCKED_BY_C1-007",
+      "depends_on": ["C1-007"],
+      "outputs": ["hepta_browser_servo_runtime_qualification_v1 receipt"],
+      "acceptance": [
+        "receipt validates against the repository schema",
+        "C1 status changes only through a separately reviewed current-pointer update",
+        "no production caller, operator acceptance or promotion is created"
+      ]
+    }
+  ]
+}
