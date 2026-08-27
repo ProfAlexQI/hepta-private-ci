@@ -1,0 +1,228 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  shared: root.join("apps/hepta-native/src/shared/mod.rs"),
+  host: root.join("apps/hepta-native/src/shared/hepta_platform_material_host.rs"),
+  runtime: root.join("apps/hepta-native/src/shared/hepta_platform_material_runtime.rs"),
+  preferences: root.join("apps/hepta-native/src/shared/hepta_system_preferences.rs"),
+  windows: root.join("apps/hepta-native/src/shared/hepta_windows_material_adapter.rs"),
+  controls: root.join("apps/hepta-native/src/shared/hepta_v4_controls.rs"),
+  layout: root.join("apps/hepta-native/src/shared/hepta_v4_layout.rs"),
+  home_mod: root.join("apps/hepta-native/src/home/mod.rs"),
+  home_override: root.join("apps/hepta-native/src/home/hepta_v4_home_overrides.rs"),
+  control_matrix: root.join("docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"),
+  material_matrix: root.join("docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"),
+  status: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_6_NATIVE_HOST_CONSOLIDATION_2026-08-28.md"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-native-host-consolidation.yml")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+unless checks.values.all?
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.native-host-consolidation-source-gate.v1",
+    status: "FAIL_MISSING_INPUT",
+    source_implemented: false,
+    native_compile_validation: false,
+    native_runtime_validation: false,
+    windows_runtime_validation: false,
+    macos_runtime_validation: false,
+    ios_runtime_validation: false,
+    android_runtime_validation: false,
+    device_validation: false,
+    production_authority: false,
+    effect_authority: false,
+    live_adapter_authority: false,
+    operator_acceptance: false,
+    promotion: false,
+    release: false,
+    checks: checks,
+    failures: checks.reject { |_name, passed| passed }.keys
+  )
+  exit 1
+end
+
+shared = files.fetch(:shared).read
+host = files.fetch(:host).read
+runtime = files.fetch(:runtime).read
+preferences = files.fetch(:preferences).read
+windows = files.fetch(:windows).read
+controls = files.fetch(:controls).read
+layout = files.fetch(:layout).read
+home_mod = files.fetch(:home_mod).read
+home_override = files.fetch(:home_override).read
+control_matrix = JSON.parse(files.fetch(:control_matrix).read)
+material_matrix = JSON.parse(files.fetch(:material_matrix).read)
+workflow = files.fetch(:workflow).read
+
+checks["shared.host_declared"] = shared.include?("pub mod hepta_platform_material_host;")
+checks["shared.runtime_sources_retained"] =
+  shared.include?("pub mod hepta_system_preferences;") &&
+  shared.include?("pub mod hepta_windows_material_adapter;")
+checks["shared.controls_and_layout_declared"] =
+  shared.include?("pub mod hepta_v4_controls;") &&
+  shared.include?("pub mod hepta_v4_layout;")
+checks["shared.registration_order"] =
+  shared.index("hepta_v4::script_mod(vm);") <
+    shared.index("hepta_v4_controls::script_mod(vm);") &&
+  shared.index("hepta_v4_controls::script_mod(vm);") <
+    shared.index("hepta_v4_layout::script_mod(vm);")
+
+checks["home.override_declared"] =
+  home_mod.include?("pub mod hepta_v4_home_overrides;")
+checks["home.override_after_home_screen"] =
+  home_mod.index("home_screen::script_mod(vm);") <
+    home_mod.index("hepta_v4_home_overrides::script_mod(vm);")
+checks["home.header_56"] =
+  home_override.include?("HEPTA_V4_STACK_HEADER_HEIGHT: f64 = 56.0") &&
+  home_override.include?("height: (mod.widgets.HEPTA_V4_MOBILE_HEADER_HEIGHT)")
+checks["home.back_target_48"] =
+  home_override.include?("HEPTA_V4_STACK_BACK_TARGET: f64 = 48.0") &&
+  home_override.include?("FitBound.Abs(48)") &&
+  home_override.include?("icon_walk: Walk{width: 20, height: 20}")
+checks["home.body_offset_same_token"] =
+  home_override.include?("margin: Inset{top: (mod.widgets.HEPTA_V4_MOBILE_HEADER_HEIGHT)}")
+checks["home.compatibility_rebound"] =
+  home_override.include?("mod.widgets.RobrixStackNavigationView = mod.widgets.HeptaV4RobrixStackNavigationView")
+
+checks["controls.script_tokens"] =
+  controls.include?("mod.widgets.HEPTA_V4_CONTROL_MIN_HEIGHT = 48") &&
+  controls.include?("mod.widgets.HEPTA_V4_ICON_HIT_TARGET = 48")
+checks["controls.explicit_compat_target"] =
+  controls.include?("mod.widgets.HeptaV4RobrixTextInput = mod.widgets.RobrixTextInput")
+checks["controls.no_unsafe_global_rebind"] =
+  !controls.match?(/^\s*mod\.widgets\.RobrixTextInput\s*=/)
+checks["layout.script_tokens"] = %w[
+  HEPTA_V4_MOBILE_HEADER_HEIGHT
+  HEPTA_V4_MOBILE_BACK_TARGET
+  HEPTA_V4_DESKTOP_RAIL_MIN_WIDTH
+  HEPTA_V4_COMPACT_DESKTOP_BREAKPOINT
+  HEPTA_V4_MOBILE_BREAKPOINT
+].all? { |name| layout.include?("mod.widgets.#{name} =") }
+checks["layout.metrics"] =
+  layout.include?("HEPTA_V4_MOBILE_HEADER_HEIGHT: f64 = 56.0") &&
+  layout.include?("HEPTA_V4_MOBILE_BACK_TARGET: f64 = 48.0") &&
+  layout.include?("HEPTA_V4_DESKTOP_RAIL_MIN_WIDTH: f64 = 280.0")
+
+checks["host.snapshot_input"] =
+  host.include?("HeptaSystemPreferenceSnapshot") &&
+  host.include?("pub fn apply_snapshot")
+checks["host.canonical_bind_validator"] =
+  host.include?("bind_material_runtime") &&
+  host.include?("AdapterDidNotBindSystemMaterial")
+checks["host.phases"] = %w[
+  SolidFallback SemanticIntentOnly SystemMaterialBound Suspended Shutdown
+].all? { |phase| host.include?(phase) }
+checks["host.android_dual_evidence"] =
+  host.include?("preferences.dynamic_color_available && capabilities.dynamic_color_available")
+checks["host.rollback_and_cleanup"] =
+  host.include?("adapter.unbind();") &&
+  host.include?("pub fn suspend") &&
+  host.include?("pub fn shutdown")
+checks["host.shutdown_terminal"] =
+  host.include?("self.snapshot.phase == HeptaMaterialHostPhase::Shutdown") &&
+  host.include?("HeptaMaterialHostError::HostShutdown")
+checks["host.content_and_layers_bounded"] =
+  host.include?("profile.content == HeptaMaterialRenderer::Solid") &&
+  host.include?("profile.stable_content_backdrop_layers == 0") &&
+  host.include?("profile.max_visible_backdrop_layers <= 2")
+checks["host.authority_false"] = %w[
+  HEPTA_MATERIAL_HOST_PRODUCTION_AUTHORITY
+  HEPTA_MATERIAL_HOST_EFFECT_AUTHORITY
+  HEPTA_MATERIAL_HOST_LIVE_ADAPTER_AUTHORITY
+  HEPTA_MATERIAL_HOST_OPERATOR_ACCEPTANCE
+  HEPTA_MATERIAL_HOST_PROMOTION
+  HEPTA_MATERIAL_HOST_RELEASE
+].all? { |name| host.include?("#{name}: bool = false") }
+checks["host.focused_tests"] = %w[
+  disabled_transparency_and_high_contrast_are_solid_without_binding
+  unavailable_system_material_keeps_semantic_intent_unbound
+  android_requires_both_preference_and_host_dynamic_color_evidence
+  valid_receipt_binds_a_bounded_profile_from_a_system_snapshot
+  invalid_receipts_roll_back_to_solid
+  adapter_failure_suspend_and_shutdown_are_fail_closed
+  host_authority_constants_remain_false
+].all? { |name| host.include?(name) }
+
+checks["inherited.runtime_receipt_validation"] =
+  runtime.include?("AdapterDidNotBindSystemMaterial") &&
+  runtime.include?("!receipt.system_material_bound")
+checks["inherited.preferences_fail_closed"] =
+  preferences.include?("HeptaSystemPreferenceSnapshot::fail_closed") &&
+  preferences.include?("transparency_allowed: false") &&
+  preferences.include?("reduced_motion: true")
+checks["inherited.windows_dwm_adapter"] =
+  windows.include?("DwmSetWindowAttribute") &&
+  windows.include?("windows_adapter_rolls_back_a_partial_bind")
+
+checks["control_matrix.schema"] =
+  control_matrix["schema"] == "hepta.ui.native-control-migration.v1"
+checks["control_matrix.authority_false"] =
+  control_matrix.fetch("authority").values.none?
+checks["control_matrix.stack_migrated"] =
+  control_matrix.fetch("items").find { |item| item["id"] == "mobile-stack-header" }
+    .fetch("observedHeight") == 56 &&
+  control_matrix.fetch("items").find { |item| item["id"] == "mobile-stack-back-target" }
+    .fetch("observedHeight") == 48
+checks["control_matrix.remaining_debt_honest"] =
+  control_matrix.fetch("items").find { |item| item["id"] == "room-filter-input" }
+    .fetch("sourceStatus") == "MIGRATION_REQUIRED"
+checks["control_matrix.runtime_unclaimed"] =
+  control_matrix.fetch("items").all? { |item| item.fetch("runtimeStatus") != "PASS" }
+
+checks["material_matrix.schema"] =
+  material_matrix["schema"] == "hepta.ui.platform-material-adapter-matrix.v1"
+checks["material_matrix.authority_false"] =
+  material_matrix.fetch("authority").values.none?
+checks["material_matrix.host_source"] =
+  material_matrix.fetch("sources").include?("apps/hepta-native/src/shared/hepta_platform_material_host.rs")
+checks["material_matrix.app_integration_unclaimed"] =
+  material_matrix.fetch("hostLifecycle").fetch("appLifecycleIntegration") == false
+checks["material_matrix.runtime_unclaimed"] =
+  material_matrix.fetch("platforms").all? { |entry| entry.fetch("runtimeStatus") != "PASS" } &&
+  material_matrix.fetch("hostLifecycle").fetch("runtimeStatus") != "PASS"
+
+checks["workflow.source_gate"] =
+  workflow.include?("ruby scripts/hepta-ui-v4-native-host-consolidation-gate")
+checks["workflow.native_compile"] =
+  workflow.include?("cargo check --manifest-path apps/hepta-native/Cargo.toml --lib")
+checks["workflow.focused_tests"] =
+  workflow.include?("shared::hepta_platform_material_host::tests") &&
+  workflow.include?("home::hepta_v4_home_overrides::tests")
+checks["workflow.read_only"] =
+  workflow.include?("permissions:") && workflow.include?("contents: read")
+checks["workflow.no_deploy_publish_release"] =
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+
+failed = checks.reject { |_name, passed| passed }
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.native-host-consolidation-source-gate.v1",
+  status: failed.empty? ?
+    "PASS_NATIVE_HOST_CONSOLIDATION_SOURCE_ONLY" :
+    "FAIL_NATIVE_HOST_CONSOLIDATION_SOURCE",
+  source_implemented: failed.empty?,
+  sibling_branch_consolidated: failed.empty?,
+  host_lifecycle_source: failed.empty?,
+  mobile_stack_source_migration: failed.empty?,
+  native_compile_validation: false,
+  native_runtime_validation: false,
+  windows_runtime_validation: false,
+  macos_runtime_validation: false,
+  ios_runtime_validation: false,
+  android_runtime_validation: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failed.keys
+)
+exit(failed.empty? ? 0 : 1)

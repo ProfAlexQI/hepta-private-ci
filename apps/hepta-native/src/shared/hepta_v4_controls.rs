@@ -1,8 +1,12 @@
 //! Native UI v4 control primitives.
 //!
-//! These widgets provide a migration target for legacy controls that are below
-//! the shared 48 logical-pixel interaction contract. They do not enable any
-//! network, mutation, effect, or production capability.
+//! These widgets provide an explicit migration target for legacy controls that
+//! are below the shared 48 logical-pixel interaction contract. Compatibility
+//! names are not globally rebound here because some legacy containers still
+//! have fixed sub-48 heights; those consumers must migrate as bounded units.
+//!
+//! The module does not enable network, mutation, effect, or production
+//! capability.
 
 use makepad_widgets::*;
 
@@ -13,6 +17,9 @@ pub const HEPTA_V4_CONTROL_RADIUS: f64 = 10.0;
 script_mod! {
     use mod.prelude.widgets.*
     use mod.widgets.*
+
+    mod.widgets.HEPTA_V4_CONTROL_MIN_HEIGHT = 48
+    mod.widgets.HEPTA_V4_ICON_HIT_TARGET = 48
 
     mod.widgets.HeptaV4TextInput = TextInput {
         width: Fill
@@ -49,6 +56,33 @@ script_mod! {
         }
         draw_cursor +: { color: (mod.widgets.COLOR_HEPTA_TEXT) }
         draw_selection +: { color: (mod.widgets.COLOR_HEPTA_SELECTION) }
+    }
+
+    // Migration target for existing RobrixTextInput consumers. Call sites opt
+    // into this template only after their surrounding row has also reached the
+    // 48px floor, avoiding clipped controls during the staged migration.
+    mod.widgets.HeptaV4RobrixTextInput = mod.widgets.RobrixTextInput {
+        height: Fit{min: FitBound.Abs(48)}
+        padding: Inset{left: 12, right: 12, top: 10, bottom: 10}
+        draw_bg +: {
+            color: (mod.widgets.COLOR_HEPTA_CONTENT)
+            color_hover: (mod.widgets.COLOR_HEPTA_CONTENT)
+            color_focus: (mod.widgets.COLOR_HEPTA_CONTENT)
+            color_down: (mod.widgets.COLOR_HEPTA_CONTENT)
+            color_empty: (mod.widgets.COLOR_HEPTA_CONTENT)
+            color_disabled: (mod.widgets.COLOR_HEPTA_DISABLED_SURFACE)
+            border_radius: (mod.widgets.HEPTA_RADIUS_CONTROL)
+            border_size: 1.0
+            border_color: (mod.widgets.COLOR_HEPTA_HAIRLINE)
+            border_color_hover: (mod.widgets.COLOR_HEPTA_FOCUS)
+            border_color_focus: (mod.widgets.COLOR_HEPTA_FOCUS)
+            border_color_down: (mod.widgets.COLOR_HEPTA_FOCUS_HOVER)
+            border_color_empty: (mod.widgets.COLOR_HEPTA_HAIRLINE)
+            border_color_disabled: (mod.widgets.COLOR_HEPTA_DISABLED)
+        }
+        draw_text +: {
+            text_style: theme.font_regular { font_size: 15 }
+        }
     }
 
     mod.widgets.HeptaV4IconButton = Button {

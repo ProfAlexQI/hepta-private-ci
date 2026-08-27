@@ -1,7 +1,7 @@
 {
   "schema": "hepta.ui.platform-material-adapter-matrix.v1",
-  "status": "WINDOWS_ADAPTER_AND_SYSTEM_PREFERENCE_SOURCE_IMPLEMENTED_RUNTIME_EVIDENCE_REQUIRED",
-  "candidateBranch": "codex/ui-v4-native-material-runtime-20260828",
+  "status": "CONSOLIDATED_HOST_LIFECYCLE_AND_WINDOWS_ADAPTER_SOURCE_IMPLEMENTED_RUNTIME_EVIDENCE_REQUIRED",
+  "candidateBranch": "codex/ui-v4-native-host-consolidation-20260828",
   "authority": {
     "production": false,
     "effect": false,
@@ -16,7 +16,27 @@
     "maxVisibleBackdropLayers": 2,
     "stableContentBackdropLayers": 0,
     "unknownPreferenceFallback": "transparency disabled and reduced motion enabled",
-    "directWindowHandleDiscovery": false
+    "directWindowHandleDiscovery": false,
+    "hostBindsOnlyVerifiedReceipt": true,
+    "hostUnbindsBeforeSemanticOnlyOrFallbackState": true,
+    "shutdownIsTerminal": true
+  },
+  "hostLifecycle": {
+    "source": "apps/hepta-native/src/shared/hepta_platform_material_host.rs",
+    "phases": [
+      "SolidFallback",
+      "SemanticIntentOnly",
+      "SystemMaterialBound",
+      "Suspended",
+      "Shutdown"
+    ],
+    "systemPreferenceSnapshotAccepted": true,
+    "transactionalRollback": true,
+    "suspendCleanup": true,
+    "shutdownCleanup": true,
+    "appLifecycleIntegration": false,
+    "sourceStatus": "IMPLEMENTED_FAIL_CLOSED",
+    "runtimeStatus": "REQUIRED_NOT_RUN"
   },
   "platforms": [
     {
@@ -36,9 +56,9 @@
       "chrome": "MacSystemChrome",
       "transient": "MacSystemPopover",
       "preferenceProbe": "host-provided or fail-closed",
-      "adapterSource": "semantic profile only",
+      "adapterSource": "semantic profile and host lifecycle implemented; AppKit adapter required",
       "hostBinding": "NSWindow and material-view integration required",
-      "sourceStatus": "HOST_ADAPTER_REQUIRED",
+      "sourceStatus": "HOST_LIFECYCLE_IMPLEMENTED_PLATFORM_ADAPTER_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -47,9 +67,9 @@
       "chrome": "IosSystemGlass",
       "transient": "IosSystemSheet",
       "preferenceProbe": "UIKit accessibility reduce-transparency, reduce-motion, and darker-system-colors functions",
-      "adapterSource": "preference probe implemented; view adapter required",
+      "adapterSource": "preference probe and host lifecycle implemented; view adapter required",
       "hostBinding": "UIView or controller integration required",
-      "sourceStatus": "PREFERENCE_SOURCE_IMPLEMENTED_HOST_ADAPTER_REQUIRED",
+      "sourceStatus": "PREFERENCE_AND_HOST_SOURCE_IMPLEMENTED_VIEW_ADAPTER_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -58,10 +78,10 @@
       "chrome": "AndroidTonalChrome",
       "transient": "AndroidTonalSheet",
       "preferenceProbe": "host-provided activity snapshot required",
-      "adapterSource": "dynamic-color capability gate implemented",
+      "adapterSource": "dynamic-color capability gate and host lifecycle implemented",
       "hostBinding": "Activity, API level, animation scale, and dynamic-color availability required",
       "fallbackWhenDynamicColorUnavailable": "Solid",
-      "sourceStatus": "CAPABILITY_GATE_IMPLEMENTED_HOST_ADAPTER_REQUIRED",
+      "sourceStatus": "CAPABILITY_AND_HOST_GATE_IMPLEMENTED_ACTIVITY_ADAPTER_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -88,6 +108,7 @@
   "sources": [
     "apps/hepta-native/src/shared/hepta_platform_material.rs",
     "apps/hepta-native/src/shared/hepta_platform_material_runtime.rs",
+    "apps/hepta-native/src/shared/hepta_platform_material_host.rs",
     "apps/hepta-native/src/shared/hepta_system_preferences.rs",
     "apps/hepta-native/src/shared/hepta_windows_material_adapter.rs"
   ]

@@ -9,6 +9,7 @@ pub mod expand_arrow;
 pub mod file_upload_modal;
 pub mod helpers;
 pub mod hepta_platform_material;
+pub mod hepta_platform_material_host;
 pub mod hepta_platform_material_runtime;
 pub mod hepta_system_preferences;
 pub mod hepta_theme;
@@ -40,6 +41,8 @@ pub fn script_mod(vm: &mut ScriptVm) {
     hepta_theme::script_mod(vm);
     styles::script_mod(vm);
     hepta_v4::script_mod(vm);
+    // Concrete migration templates load after legacy styles and semantic v4
+    // overrides, before downstream consumers instantiate compatibility names.
     hepta_v4_controls::script_mod(vm);
     hepta_v4_layout::script_mod(vm);
     helpers::script_mod(vm);
