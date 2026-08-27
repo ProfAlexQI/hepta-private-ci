@@ -1,0 +1,91 @@
+{
+  "schema": "hepta.browser.c1_execution_delta.v1",
+  "schema_version": 1,
+  "updated_at_utc": "2026-08-28T00:00:00Z",
+  "plan_id": "HEPTA-BROWSER-WEB-D",
+  "phase": "DEVELOPMENT",
+  "active_lane": "WEB_C1_SERVO_BOOTSTRAP",
+  "completed_tooling_slices": [
+    {
+      "id": "C1-004A-1",
+      "title": "Two independent exact-source acquisition receipts",
+      "implementation_status": "IMPLEMENTED_NOT_RUN_ON_ACCEPTED_EXACT_SOURCE",
+      "canonical_entrypoint": "scripts/hepta-servo-independent-source-v2.py"
+    },
+    {
+      "id": "C1-004A-2",
+      "title": "Independent offline source-bundle verification",
+      "implementation_status": "IMPLEMENTED_NOT_RUN_ON_ACCEPTED_EXACT_SOURCE",
+      "canonical_entrypoint": "scripts/hepta-servo-source-bundle-verify.py"
+    },
+    {
+      "id": "C1-004A-3",
+      "title": "Deterministic Git tar and gzip source archive",
+      "implementation_status": "IMPLEMENTED_NOT_RUN_ON_ACCEPTED_EXACT_SOURCE",
+      "determinism": {
+        "tar_umask": "0022",
+        "gzip_mtime": 0,
+        "gzip_filename": "",
+        "independent_archive_comparison": true
+      }
+    },
+    {
+      "id": "C1-004A-4",
+      "title": "MPL-2.0 source distribution and patch inventory binding",
+      "implementation_status": "IMPLEMENTED_NOT_SEALED_FOR_EXACT_SOURCE"
+    },
+    {
+      "id": "C1-004B-1",
+      "title": "Exact build-input manifest sealing",
+      "implementation_status": "IMPLEMENTED_NO_ACCEPTED_RECIPE_NO_BUILD",
+      "canonical_entrypoint": "scripts/hepta-servo-build-input-seal.py"
+    }
+  ],
+  "canonical_ci": {
+    "aggregate": ".github/workflows/hepta-browser-next-required.yml",
+    "source_contract": ".github/workflows/hepta-servo-independent-source-contract-v2.yml",
+    "exact_source_manual": ".github/workflows/hepta-servo-independent-source-qualification-v2.yml",
+    "build_input_contract": ".github/workflows/hepta-servo-build-input-contract.yml"
+  },
+  "next_required_evidence": [
+    "successful exact-source v2 manual workflow bound to one Hepta commit/tree",
+    "two canonical fetch receipts and deterministic archive",
+    "offline verification receipt whose recomputed tree equals the pinned Servo tree",
+    "independent review and accepted source pointer",
+    "minimal worker source/API topology",
+    "exact Linux toolchain receipt and reviewed build recipe",
+    "sealed real build-input manifest"
+  ],
+  "blocked_until_evidence": [
+    "Servo compilation",
+    "worker artifact acceptance",
+    "Servo WebView launch",
+    "runtime external network",
+    "product caller",
+    "operator acceptance",
+    "promotion"
+  ],
+  "current_claims": {
+    "exact_servo_source_receipt": false,
+    "accepted_build_recipe": false,
+    "build_run": false,
+    "artifact_created": false,
+    "sbom_created": false,
+    "servo_runtime_qualified": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  },
+  "authority": {
+    "runtime_authority": false,
+    "effect_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "runtime_external_network": false,
+    "raw_cookie_export": false,
+    "credential_export": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  }
+}
