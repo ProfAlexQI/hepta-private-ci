@@ -1,0 +1,175 @@
+name: hepta-servo independent source qualification v2
+
+on:
+  workflow_dispatch:
+    inputs:
+      acknowledge_source_only:
+        description: Type SOURCE_ONLY_NO_RUNTIME_AUTHORITY
+        required: true
+        type: string
+
+concurrency:
+  group: hepta-servo-independent-source-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  exact-source-v2:
+    name: Exact Servo source, deterministic archive, offline tree reconstruction
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Require explicit source-only acknowledgement
+        shell: bash
+        env:
+          ACKNOWLEDGEMENT: ${{ inputs.acknowledge_source_only }}
+        run: |
+          set -euo pipefail
+          test "$ACKNOWLEDGEMENT" = "SOURCE_ONLY_NO_RUNTIME_AUTHORITY"
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Initialize immutable source-only posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-independent-source-v2-evidence"
+          mkdir -p "$evidence_dir"
+          {
+            echo "hepta_commit=$(git rev-parse HEAD)"
+            echo "hepta_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "servo_commit=0a48e298482659817eb50097df23841f2b8e3044"
+            echo "servo_tree=b04d2f75b3217374d079d579c270177b57fa1389"
+            echo "generator=scripts/hepta-servo-independent-source-v2.py"
+            echo "offline_verifier=scripts/hepta-servo-source-bundle-verify.py"
+            echo "acquisition_network=true"
+            echo "runtime_external_network=false"
+            echo "servo_built=false"
+            echo "servo_runtime_qualified=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } > "$evidence_dir/posture.txt"
+          df -h . "$RUNNER_TEMP" > "$evidence_dir/disk-before.txt"
+
+      - name: Verify source tooling before network access
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-independent-source-v2-evidence"
+          python3 -m py_compile \
+            scripts/hepta-servo-independent-source.py \
+            scripts/hepta-servo-independent-source-v2.py \
+            scripts/hepta-servo-source-bundle-verify.py \
+            scripts/tests/test_hepta_servo_independent_source_v2.py \
+            scripts/tests/test_hepta_servo_source_bundle_verify.py
+          python3 scripts/tests/test_hepta_servo_independent_source_v2.py 2>&1 | tee "$evidence_dir/v2-fixture-tests.log"
+          python3 scripts/tests/test_hepta_servo_source_bundle_verify.py 2>&1 | tee "$evidence_dir/offline-verifier-tests.log"
+          echo "pre_network_contract=passed" >> "$evidence_dir/posture.txt"
+
+      - name: Acquire exact Servo source twice and create deterministic bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/hepta-servo-independent-source-v2"
+          python3 scripts/hepta-servo-independent-source-v2.py \
+            --output-dir "$output_dir" \
+            2>&1 | tee "$RUNNER_TEMP/hepta-servo-independent-source-v2-evidence/pipeline.log"
+          test -f "$output_dir/independent-source-bundle.receipt.json"
+          test -f "$output_dir/servo-source-a.tar.gz"
+          test -f "$output_dir/fetch-a.receipt.json"
+          test -f "$output_dir/fetch-b.receipt.json"
+          test -f "$output_dir/license-packet.json"
+
+      - name: Independently reconstruct and verify the pinned Git tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/hepta-servo-independent-source-v2"
+          verification="$output_dir/source-bundle.verification.json"
+          python3 scripts/hepta-servo-source-bundle-verify.py \
+            --bundle-dir "$output_dir" \
+            --output "$verification" \
+            2>&1 | tee "$RUNNER_TEMP/hepta-servo-independent-source-v2-evidence/offline-verification.log"
+          test -f "$verification"
+          echo "offline_tree_reconstruction=passed" >> "$RUNNER_TEMP/hepta-servo-independent-source-v2-evidence/posture.txt"
+
+      - name: Assert exact source-only negative authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/hepta-servo-independent-source-v2"
+          python3 - "$output_dir" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          bundle = json.loads((root / "independent-source-bundle.receipt.json").read_text(encoding="utf-8"))
+          verification = json.loads((root / "source-bundle.verification.json").read_text(encoding="utf-8"))
+          expected_commit = "0a48e298482659817eb50097df23841f2b8e3044"
+          expected_tree = "b04d2f75b3217374d079d579c270177b57fa1389"
+          assert bundle["canonical"] is True
+          assert bundle["source"]["commit"] == expected_commit
+          assert bundle["source"]["tree"] == expected_tree
+          assert verification["source"]["tree"] == expected_tree
+          assert verification["source"]["recomputed_tree"] == expected_tree
+          assert bundle["qualification"]["servo_built"] is False
+          assert bundle["qualification"]["servo_runtime_qualified"] is False
+          assert verification["verification"]["servo_built"] is False
+          assert verification["verification"]["servo_runtime_qualified"] is False
+          assert bundle["runtime_external_network"] is False
+          assert all(value is False for value in bundle["authority"].values())
+          assert all(value is False for value in verification["authority"].values())
+          for path in root.glob("*.json"):
+              text = path.read_text(encoding="utf-8")
+              assert "/home/runner/work" not in text
+              assert str(pathlib.Path.home()) not in text
+          PY
+          rm "$output_dir/servo-source-a.tar"
+          sha256sum "$output_dir"/* > "$RUNNER_TEMP/hepta-servo-independent-source-v2-evidence/SHA256SUMS"
+          df -h . "$RUNNER_TEMP" > "$RUNNER_TEMP/hepta-servo-independent-source-v2-evidence/disk-after.txt"
+          echo "source_bundle=passed" >> "$RUNNER_TEMP/hepta-servo-independent-source-v2-evidence/posture.txt"
+
+      - name: Upload canonical source-only receipts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-servo-independent-source-v2-receipts
+          path: |
+            ${{ runner.temp }}/hepta-servo-independent-source-v2/*.json
+            ${{ runner.temp }}/hepta-servo-independent-source-v2-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload deterministic compressed source archive
+        if: success()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: servo-0a48e298482659817eb50097df23841f2b8e3044-source-v2
+          path: ${{ runner.temp }}/hepta-servo-independent-source-v2/servo-source-a.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Final source-only summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-independent-source-v2-evidence"
+          echo "job_status=${{ job.status }}" >> "$evidence_dir/posture.txt"
+          {
+            echo "### Canonical exact Servo source qualification v2"
+            echo
+            echo "This run qualifies source acquisition, deterministic distribution archive,"
+            echo "and offline Git-tree reconstruction only. It never builds or executes Servo."
+            echo
+            sed 's/^/- /' "$evidence_dir/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
