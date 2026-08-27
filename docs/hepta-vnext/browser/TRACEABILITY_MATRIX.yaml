@@ -1,0 +1,115 @@
+{
+  "schema": "hepta.browser.traceability_matrix.v1",
+  "schema_version": 1,
+  "requirements": [
+    {
+      "id": "WEB-REQ-001",
+      "title": "Every request is bound to one browser session and lifecycle fence",
+      "stage": "WEB_C0",
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_contracts.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor.rs"
+      ],
+      "tests": ["wrong session", "stale generation", "stale owner epoch"],
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-002",
+      "title": "Semantic references cannot survive a page revision change",
+      "stage": "WEB_C2",
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_contracts.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/deterministic.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor.rs"
+      ],
+      "tests": ["stale semantic reference rejected"],
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-003",
+      "title": "One actor owns all mutations for a browser session",
+      "stage": "WEB_C3",
+      "code": ["codex-rs/hepta-shadow-qualification/src/browser_runtime/actor.rs"],
+      "tests": ["owner epoch fencing", "request idempotency conflict"],
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-004",
+      "title": "Human takeover immediately fences agent mutation",
+      "stage": "WEB_C3",
+      "code": ["codex-rs/hepta-shadow-qualification/src/browser_runtime/actor.rs"],
+      "tests": ["human lease acquisition", "agent mutation denied during human lease", "lease expiry transition"],
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-005",
+      "title": "Repeated request IDs are idempotent only for the same canonical payload",
+      "stage": "WEB_C3",
+      "code": [
+        "codex-rs/hepta-shadow-qualification/src/browser_contracts.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_runtime/actor.rs"
+      ],
+      "tests": ["same id and payload returns cached response", "same id and different payload denied"],
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-006",
+      "title": "Raw cookies, credentials and authorization material are never exported",
+      "stage": "WEB_C4",
+      "code": ["codex-rs/hepta-shadow-qualification/src/browser_runtime/deterministic.rs"],
+      "tests": ["raw cookie extraction denied", "sensitive field extraction denied"],
+      "status": "PARTIAL_FIXTURE_ONLY",
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-007",
+      "title": "External network is denied until a receipt-bound egress policy exists",
+      "stage": "WEB_C4",
+      "code": ["codex-rs/hepta-shadow-qualification/src/browser_runtime/deterministic.rs"],
+      "tests": ["external HTTP navigation denied", "external HTTPS navigation denied"],
+      "status": "PARTIAL_FIXTURE_ONLY",
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-008",
+      "title": "Servo source and runtime are pinned and provenance-bound before execution",
+      "stage": "WEB_C1",
+      "documents": ["docs/hepta-vnext/browser/SERVO_UPSTREAM_PIN.json"],
+      "status": "SOURCE_PIN_ONLY",
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-009",
+      "title": "Servo control transport cannot expose an unauthenticated wildcard listener",
+      "stage": "WEB_C1",
+      "documents": [
+        "docs/hepta-vnext/browser/EXECUTION_PLAN.md",
+        "docs/hepta-vnext/browser/THREAT_MODEL.md"
+      ],
+      "status": "DESIGNED_NOT_IMPLEMENTED",
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-010",
+      "title": "Crash recovery cannot replay an indeterminate external effect",
+      "stage": "WEB_C5",
+      "status": "NOT_IMPLEMENTED",
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-011",
+      "title": "Product caller and UI expose control mode, degradation and fencing",
+      "stage": "WEB_C6",
+      "status": "NOT_IMPLEMENTED",
+      "release_blocking": true
+    },
+    {
+      "id": "WEB-REQ-012",
+      "title": "A release candidate binds source, features, artifacts, tests and operator acceptance",
+      "stage": "WEB_C7",
+      "documents": ["docs/hepta-vnext/browser/hepta.browser.qualification_receipt.v1.schema.json"],
+      "status": "SCHEMA_ONLY",
+      "release_blocking": true
+    }
+  ]
+}
