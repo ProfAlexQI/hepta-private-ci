@@ -1,0 +1,74 @@
+{
+  "schema": "hepta.browser.c1_build_preflight_progress.v1",
+  "schema_version": 1,
+  "updated_at_utc": "2026-08-28T00:00:00Z",
+  "phase": "DEVELOPMENT",
+  "claim_level": "BUILD_PREFLIGHT_TOOLING_ONLY",
+  "canonical_entrypoint": "scripts/hepta-servo-build-preflight-v2.py",
+  "implemented": {
+    "source_verification_receipt_cross_binding": true,
+    "compressed_source_archive_rehash": true,
+    "recipe_revalidation": true,
+    "toolchain_receipt_cross_binding": true,
+    "build_input_manifest_cross_binding": true,
+    "rustc_cargo_linker_byte_rehash": true,
+    "toolchain_capture_command_validation": true,
+    "toolchain_capture_environment_validation": true,
+    "path_free_version_fact_validation": true,
+    "private_empty_source_root": true,
+    "private_empty_artifact_root": true,
+    "distinct_root_requirement": true,
+    "private_atomic_receipt_output": true,
+    "fixture_unit_tests": true
+  },
+  "actual_source_verification_receipt": null,
+  "actual_toolchain_receipt": null,
+  "actual_build_recipe": null,
+  "actual_build_input_manifest": null,
+  "actual_preflight_receipt": null,
+  "actual_build": {
+    "status": "NOT_RUN",
+    "artifact": null,
+    "sbom": null,
+    "receipt": null
+  },
+  "remaining_before_real_preflight": [
+    "accept exact source bundle and offline verification receipts",
+    "accept one exact Linux toolchain receipt",
+    "review and accept the minimal Servo worker recipe",
+    "seal a real build-input manifest v2 through the canonical v3 sealer",
+    "prepare private empty source and artifact roots",
+    "run preflight v2 against exact retained bytes"
+  ],
+  "remaining_after_preflight_before_build": [
+    "extract source without unsafe paths or links",
+    "recompute source tree after extraction",
+    "make extracted source read-only",
+    "clear ambient environment and install only the sealed allowlist",
+    "enforce build-network denial and process/resource bounds",
+    "run the exact argv from the preflight receipt",
+    "capture artifact, symbols, logs, SPDX SBOM and build receipt"
+  ],
+  "not_claimed": [
+    "real preflight pass",
+    "Servo build",
+    "artifact",
+    "SBOM",
+    "Servo WebView",
+    "runtime qualification",
+    "operator acceptance",
+    "promotion"
+  ],
+  "authority": {
+    "runtime_authority": false,
+    "effect_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "runtime_external_network": false,
+    "raw_cookie_export": false,
+    "credential_export": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  }
+}
