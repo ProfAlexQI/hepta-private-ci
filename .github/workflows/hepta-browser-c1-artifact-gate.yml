@@ -1,0 +1,138 @@
+name: hepta browser C1 artifact launch gate
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "tools/hepta-browser-c1-artifact-gate/**"
+      - "scripts/verify-hepta-browser-c1-artifact-gate.py"
+      - "docs/hepta-vnext/browser/C1_ARTIFACT_LAUNCH_*"
+      - ".github/workflows/hepta-browser-c1-artifact-gate.yml"
+      - ".github/workflows/blocking-ci.yml"
+  push:
+    branches:
+      - integration/vnext-main-20260811
+      - "codex/hepta-*"
+    paths:
+      - "tools/hepta-browser-c1-artifact-gate/**"
+      - "scripts/verify-hepta-browser-c1-artifact-gate.py"
+      - "docs/hepta-vnext/browser/C1_ARTIFACT_LAUNCH_*"
+      - ".github/workflows/hepta-browser-c1-artifact-gate.yml"
+      - ".github/workflows/blocking-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  artifact-launch-gate:
+    name: Artifact-bound child process (qualification only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Initialize qualification-only posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-browser-c1-artifact-gate"
+          mkdir -p "$evidence_dir"
+          echo "HEPTA_ARTIFACT_GATE_EVIDENCE_DIR=$evidence_dir" >> "$GITHUB_ENV"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "real_servo_artifact=false"
+            echo "fixture_executable_self_hash=true"
+            echo "fixture_build_manifest_binding=true"
+            echo "fixture_source_receipt_binding=true"
+            echo "unix_socketpair=true"
+            echo "read_write_deadlines=true"
+            echo "forced_kill_reap=true"
+            echo "runtime_authority=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "external_effect=false"
+            echo "external_network_allowed=false"
+            echo "credential_export_allowed=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Verify launch-gate source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/verify-hepta-browser-c1-artifact-gate.py
+          python3 scripts/verify-hepta-browser-c1-artifact-gate.py \
+            2>&1 | tee "$HEPTA_ARTIFACT_GATE_EVIDENCE_DIR/contract.log"
+
+      - name: Format and test zero-dependency crate
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path tools/hepta-browser-c1-artifact-gate/Cargo.toml -- --check
+          cargo test --locked \
+            --manifest-path tools/hepta-browser-c1-artifact-gate/Cargo.toml \
+            2>&1 | tee "$HEPTA_ARTIFACT_GATE_EVIDENCE_DIR/tests.log"
+
+      - name: Run normal artifact-bound process trial
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --locked \
+            --manifest-path tools/hepta-browser-c1-artifact-gate/Cargo.toml \
+            --bin hepta-browser-c1-artifact-bound-trial \
+            2>&1 | tee "$HEPTA_ARTIFACT_GATE_EVIDENCE_DIR/normal-trial.log"
+
+      - name: Run deadline, forced-kill, and reap trial
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --locked \
+            --manifest-path tools/hepta-browser-c1-artifact-gate/Cargo.toml \
+            --bin hepta-browser-c1-artifact-bound-trial \
+            -- --force-kill-trial \
+            2>&1 | tee "$HEPTA_ARTIFACT_GATE_EVIDENCE_DIR/force-kill-trial.log"
+
+      - name: Strict Clippy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy --locked \
+            --manifest-path tools/hepta-browser-c1-artifact-gate/Cargo.toml \
+            --all-targets -- -D warnings \
+            2>&1 | tee "$HEPTA_ARTIFACT_GATE_EVIDENCE_DIR/clippy.log"
+
+      - name: Record qualification-only result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "job_status=${{ job.status }}" >> "$HEPTA_ARTIFACT_GATE_EVIDENCE_DIR/posture.txt"
+          {
+            echo "### C1 artifact-bound process launch gate"
+            echo
+            echo "This job binds a fixture executable to embedded fixture build/source bytes,"
+            echo "then qualifies Unix deadlines and forced child kill/reap."
+            echo "It does not link Servo or qualify a real worker artifact."
+            echo
+            sed 's/^/- /' "$HEPTA_ARTIFACT_GATE_EVIDENCE_DIR/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload qualification-only evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hepta-browser-c1-artifact-gate
+          path: ${{ env.HEPTA_ARTIFACT_GATE_EVIDENCE_DIR }}
+          if-no-files-found: error
+          retention-days: 7
