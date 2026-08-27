@@ -3,88 +3,119 @@
   "schema_version": 1,
   "lane": "WEB_C1_SERVO_BOOTSTRAP",
   "authority": "qualification_only",
+  "ordering_rule": "complete source provenance and production-private transports before importing or executing Servo",
   "tasks": [
     {
       "id": "C1-001",
       "title": "Freeze Servo source import topology",
-      "status": "READY_AFTER_CURRENT_PR",
+      "status": "COMPLETE_CONTRACT_FROZEN",
       "depends_on": [],
       "inputs": [
         "docs/hepta-vnext/browser/SERVO_UPSTREAM_PIN.json",
         "docs/hepta-vnext/browser/ADR-0001-servo-private-transport.md"
       ],
       "outputs": [
-        "source inventory",
-        "selected Servo crates/files/API surface",
-        "patch inventory with deletion conditions",
-        "toolchain compatibility report"
+        "docs/hepta-vnext/browser/SERVO_SOURCE_IMPORT_TOPOLOGY.yaml",
+        "third_party/servo-patches/PATCH_INVENTORY.json",
+        "third_party/servo-patches/README.md"
+      ],
+      "completed": [
+        "exact Servo commit, tree, version, edition, MSRV and license frozen",
+        "reviewed upstream file and blob inventory frozen",
+        "Servo kept outside the codex-rs Cargo workspace",
+        "worker artifact boundary selected",
+        "initial allowed and forbidden Servo surfaces frozen",
+        "governed patch queue created and remains empty"
       ],
       "acceptance": [
-        "all imported source binds exact Servo commit/tree",
-        "no unpinned git dependency",
-        "MPL-2.0 notices and source obligations recorded"
+        "all future imported source binds the exact Servo commit/tree",
+        "no unpinned branch or git dependency is allowed",
+        "MPL-2.0 notices and source obligations are recorded",
+        "changing the topology requires a successor decision"
       ]
     },
     {
       "id": "C1-002",
       "title": "Create Servo provenance and SBOM generator",
-      "status": "BLOCKED_BY_C1-001",
+      "status": "READY_IMPLEMENT_NEXT",
       "depends_on": ["C1-001"],
       "outputs": [
         "canonical source receipt",
-        "Cargo/native dependency SBOM",
+        "Cargo and native dependency SBOM",
         "license inventory",
-        "source and patch SHA256SUMS"
+        "source and patch SHA256SUMS",
+        "toolchain compatibility receipt"
       ],
       "acceptance": [
-        "generator is deterministic",
-        "second run produces identical canonical bytes",
-        "unknown or dirty source fails closed"
+        "generator uses only exact clean source",
+        "second run produces byte-identical canonical output",
+        "reviewed upstream blobs match the frozen topology",
+        "unknown, dirty, missing or symlinked source fails closed",
+        "receipt contains no machine-local absolute paths"
       ]
     },
     {
       "id": "C1-003",
       "title": "Implement private worker protocol and process launcher",
-      "status": "BLOCKED_BY_C1-001",
+      "status": "PARTIAL_QUALIFICATION_HARNESS_IMPLEMENTED",
       "depends_on": ["C1-001"],
       "outputs": [
-        "versioned length-bounded protocol",
-        "Unix inherited socketpair transport",
-        "Windows private named-pipe transport",
-        "one-use startup capability",
-        "parent-death and generation fencing"
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_protocol.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_harness.rs",
+        "codex-rs/hepta-shadow-qualification/src/bin/hepta-browser-worker-qualification.rs",
+        "codex-rs/hepta-shadow-qualification/src/browser_worker_tests.rs",
+        "codex-rs/hepta-shadow-qualification/tests/browser_worker_process.rs"
+      ],
+      "completed": [
+        "versioned canonical JSON protocol with 65536-byte maximum frame",
+        "one-use 32-byte startup capability and domain-separated digest",
+        "session, generation, transport and sequence validation",
+        "closed-authority verification",
+        "qualification-only private stdin/stdout child process harness",
+        "parent EOF, timeout, kill-on-drop and explicit shutdown behavior",
+        "fixture BrowserActor request/response round trip"
+      ],
+      "remaining": [
+        "Unix inherited socketpair with peer/process identity binding",
+        "Windows SID-restricted named pipe",
+        "parent-death process-group or job-object enforcement",
+        "production worker executable identity and artifact digest binding",
+        "real Servo event-loop adapter"
       ],
       "acceptance": [
         "no TCP listener",
         "wrong capability/session/generation/sequence closes channel",
-        "oversized/noncanonical/unknown mandatory frames fail closed",
-        "child cannot reconnect to a closed generation"
+        "oversized, noncanonical and unknown-field frames fail closed",
+        "child cannot reconnect to a closed generation",
+        "qualification stdio pipes are never described as the final production transport"
       ]
     },
     {
       "id": "C1-004",
       "title": "Build minimal pinned Servo worker adapter",
-      "status": "BLOCKED_BY_C1-001_C1-003",
-      "depends_on": ["C1-001", "C1-003"],
+      "status": "BLOCKED_BY_C1-002_AND_C1-003_PRODUCTION_TRANSPORT",
+      "depends_on": ["C1-002", "C1-003"],
       "outputs": [
-        "create/close session",
+        "create and close one session",
         "local-fixture navigation",
         "bounded semantic observation",
-        "bounded click/type/scroll/focus/wait",
-        "status/cancel/teardown"
+        "bounded click, type, clear and wait",
+        "status, cancel and teardown"
       ],
       "forbidden": [
         "raw WebDriver passthrough",
         "arbitrary JavaScript execution",
         "Servo preference mutation",
-        "raw cookie/storage/profile export",
-        "external network"
+        "raw cookie, storage or profile export",
+        "external network",
+        "multiple WebViews or windows"
       ],
       "acceptance": [
-        "local fixture renders",
-        "typed observation produced",
+        "local fixture renders in one real Servo WebView",
+        "typed observation is produced",
         "one bounded action changes page revision",
-        "worker teardown removes ephemeral profile"
+        "worker teardown removes the ephemeral profile",
+        "no wildcard, loopback TCP or WebSocket control listener exists"
       ]
     },
     {
@@ -94,14 +125,14 @@
       "depends_on": ["C1-004"],
       "outputs": [
         "real BrowserEngine implementation",
-        "fixture Actor/engine parity corpus",
+        "fixture Actor and real engine parity corpus",
         "human takeover race tests",
         "crash and cancellation outcomes"
       ],
       "acceptance": [
-        "session/generation/epoch/revision fences survive transport",
+        "session, generation, epoch and revision fences survive transport",
         "stale semantic refs are rejected after real navigation",
-        "same request/digest is idempotent",
+        "same request and digest is idempotent",
         "indeterminate mutation is not blindly replayed"
       ]
     },
@@ -111,22 +142,22 @@
       "status": "BLOCKED_BY_C1-004",
       "depends_on": ["C1-004"],
       "outputs": [
-        "socket/listener inventory",
+        "socket and listener inventory",
         "external egress denial proof",
-        "private filesystem/profile proof",
+        "private filesystem and profile proof",
         "resource limits and kill behavior"
       ],
       "acceptance": [
         "wildcard and loopback TCP listener count is zero",
-        "external DNS/TCP/UDP attempts fail",
-        "profile root rejects symlink/hardlink escape",
-        "OOM/timeout terminates only the worker session"
+        "external DNS, TCP, UDP and WebSocket attempts fail",
+        "profile root rejects symlink and hardlink escape",
+        "OOM or timeout terminates only the worker session"
       ]
     },
     {
       "id": "C1-007",
       "title": "Run C1 platform matrix",
-      "status": "BLOCKED_BY_C1-005_C1-006",
+      "status": "BLOCKED_BY_C1-005_AND_C1-006",
       "depends_on": ["C1-005", "C1-006"],
       "outputs": [
         "Linux x86_64 receipt",
@@ -135,9 +166,9 @@
         "known-gap inventory"
       ],
       "acceptance": [
-        "locked build/test commands pass",
-        "artifact/source/toolchain digests recorded",
-        "all authority flags false",
+        "locked build and test commands pass",
+        "artifact, source and toolchain digests are recorded",
+        "all authority flags remain false",
         "results bind one Hepta and Servo source pair"
       ]
     },
@@ -153,5 +184,11 @@
         "no production caller, operator acceptance or promotion is created"
       ]
     }
-  ]
+  ],
+  "environment_blocker": {
+    "status": "GITHUB_ACTIONS_JOBS_FAIL_BEFORE_STEPS",
+    "evidence": "all jobs in recent Hepta and blocking workflows completed within seconds with no step records or usable logs",
+    "interpretation": "not a code test result",
+    "required_action": "run a dependency-free runner preflight and repair repository runner, billing, policy or action allowlist before recording PASS"
+  }
 }
