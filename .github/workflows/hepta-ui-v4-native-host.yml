@@ -15,6 +15,7 @@ on:
       - "docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"
       - "docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"
       - "docs/ui/HEPTA_UI_V4_NATIVE_HOST_TRANCHE_2026-08-28.md"
+      - "docs/ui/HEPTA_UI_V4_NATIVE_HOST_CI_BLOCKER_2026-08-28.json"
       - "scripts/hepta-ui-v4-native-host-gate"
       - ".github/workflows/hepta-ui-v4-native-host.yml"
   pull_request:
@@ -27,6 +28,7 @@ on:
       - "docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"
       - "docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"
       - "docs/ui/HEPTA_UI_V4_NATIVE_HOST_TRANCHE_2026-08-28.md"
+      - "docs/ui/HEPTA_UI_V4_NATIVE_HOST_CI_BLOCKER_2026-08-28.json"
       - "scripts/hepta-ui-v4-native-host-gate"
       - ".github/workflows/hepta-ui-v4-native-host.yml"
   workflow_dispatch:

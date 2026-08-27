@@ -1,0 +1,58 @@
+{
+  "schema": "hepta.ui.ci-blocker.v1",
+  "observedAt": "2026-08-28T01:11:30+08:00",
+  "workflow": "hepta-ui-v4-native-host",
+  "runId": 33097120671,
+  "headSha": "68d347ac6695b6800cc0773c83b6550b8bfeef84",
+  "status": "BLOCKED_RUNNER_NOT_ASSIGNED",
+  "classification": "INFRASTRUCTURE_SCHEDULING_NOT_TEST_FAILURE",
+  "evidence": {
+    "logsAvailable": false,
+    "jobs": [
+      {
+        "id": 98604828825,
+        "name": "Native v4 host source contract",
+        "conclusion": "failure",
+        "steps": [],
+        "runnerId": 0,
+        "runnerName": ""
+      },
+      {
+        "id": 98604829074,
+        "name": "Native v4 registration and host compile",
+        "conclusion": "failure",
+        "steps": [],
+        "runnerId": 0,
+        "runnerName": ""
+      }
+    ]
+  },
+  "claims": {
+    "sourceGatePassedInGitHubActions": false,
+    "nativeCompilePassed": false,
+    "nativeRuntimePassed": false,
+    "operatingSystemAdapterPassed": false,
+    "devicePassed": false,
+    "production": false,
+    "effect": false,
+    "liveAdapter": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  },
+  "localChecks": {
+    "rubySyntax": "PASS",
+    "jsonSyntax": "PASS",
+    "workflowYamlSyntax": "PASS",
+    "nativeHostSourceGate": "PASS_NATIVE_HOST_SOURCE_CONTRACT_ONLY",
+    "rustfmt": "NOT_RUN_NO_RUST_TOOLCHAIN",
+    "nativeCompile": "NOT_RUN_NO_RUST_TOOLCHAIN",
+    "makepadRuntime": "NOT_RUN"
+  },
+  "recovery": [
+    "restore an eligible GitHub Actions runner or account execution capacity",
+    "rerun the exact commit-bound source and Native compile jobs",
+    "do not reinterpret steps=[] and runnerId=0 as a source failure or PASS",
+    "keep PR draft and all authority flags false until executable evidence exists"
+  ]
+}
