@@ -1,0 +1,19 @@
+{
+  "schema": "hepta.ui.z-index-registry.v1",
+  "status": "SOURCE_CONTRACT",
+  "layers": [
+    { "id": "content", "value": 0 },
+    { "id": "chrome", "value": 100 },
+    { "id": "sticky", "value": 200 },
+    { "id": "transient", "value": 1000 },
+    { "id": "modal", "value": 1100 },
+    { "id": "toast", "value": 1200 },
+    { "id": "tooltip", "value": 1300 },
+    { "id": "diagnostic", "value": 1400 }
+  ],
+  "rules": {
+    "newNumericValuesRequireRegistryEntry": true,
+    "stableContentMayNotExceedChrome": true,
+    "oneActiveTransient": true
+  }
+}
