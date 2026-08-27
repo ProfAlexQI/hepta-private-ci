@@ -1,0 +1,43 @@
+{
+  "schema": "hepta.servo.source_status.v1",
+  "updated_at": "2026-08-27T00:00:00+08:00",
+  "phase": "DEVELOPMENT",
+  "plan": "WEB-PLAN-2026-08-27E",
+  "work_item": "C1-004A-servo-source-receipt",
+  "status": "TOOL_IMPLEMENTED_FIXTURE_QUALIFICATION_PENDING",
+  "pin": {
+    "repository": "https://github.com/servo/servo",
+    "commit": "0a48e298482659817eb50097df23841f2b8e3044",
+    "tree": "b04d2f75b3217374d079d579c270177b57fa1389",
+    "license": "MPL-2.0"
+  },
+  "tooling": {
+    "generator": "scripts/hepta-servo-source-receipt.py",
+    "tests": "scripts/tests/test_hepta_servo_source_receipt.py",
+    "schema": "docs/hepta-vnext/browser/hepta.servo.source_receipt.v1.schema.json",
+    "canonical_checkout_verified": false,
+    "canonical_source_receipt": null,
+    "source_archive_created": false,
+    "worker_artifact_built": false,
+    "sbom_created": false
+  },
+  "evidence": {
+    "workflow": ".github/workflows/hepta-servo-source-contract.yml",
+    "latest_run": null,
+    "latest_conclusion": "NOT_RUN",
+    "fixture_receipt": null,
+    "canonical_receipt": null
+  },
+  "authority": {
+    "machine_authority": false,
+    "runtime_authority": false,
+    "production_caller": false,
+    "production_writer": false,
+    "effect_authority": false,
+    "external_effect": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release_qualified": false
+  },
+  "merge_authorized": false
+}
