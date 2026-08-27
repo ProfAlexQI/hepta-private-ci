@@ -51,6 +51,42 @@ jobs:
     uses: ./.github/workflows/codespell.yml
     secrets: inherit
 
+  hepta-browser-c0-c3:
+    name: Hepta Browser C0-C3 qualification
+    needs: runner-preflight
+    uses: ./.github/workflows/hepta-browser-c0-c3.yml
+    secrets: inherit
+
+  hepta-browser-c1-protocol:
+    name: Hepta Browser C1 private protocol
+    needs: runner-preflight
+    uses: ./.github/workflows/hepta-browser-c1-protocol.yml
+    secrets: inherit
+
+  hepta-servo-artifact-contract:
+    name: Hepta Servo artifact contract
+    needs: runner-preflight
+    uses: ./.github/workflows/hepta-servo-artifact-contract.yml
+    secrets: inherit
+
+  hepta-servo-build-manifest-contract:
+    name: Hepta Servo build manifest contract
+    needs: runner-preflight
+    uses: ./.github/workflows/hepta-servo-build-manifest-contract.yml
+    secrets: inherit
+
+  hepta-servo-source-bundle-contract:
+    name: Hepta Servo source bundle contract
+    needs: runner-preflight
+    uses: ./.github/workflows/hepta-servo-source-bundle-contract.yml
+    secrets: inherit
+
+  hepta-servo-source-contract:
+    name: Hepta Servo source receipt contract
+    needs: runner-preflight
+    uses: ./.github/workflows/hepta-servo-source-contract.yml
+    secrets: inherit
+
   hepta-vnext:
     name: Hepta vNext qualification
     needs: runner-preflight
@@ -86,6 +122,12 @@ jobs:
       - blob-size-policy
       - cargo-deny
       - codespell
+      - hepta-browser-c0-c3
+      - hepta-browser-c1-protocol
+      - hepta-servo-artifact-contract
+      - hepta-servo-build-manifest-contract
+      - hepta-servo-source-bundle-contract
+      - hepta-servo-source-contract
       - hepta-vnext
       - repo-checks
       - rust-ci
