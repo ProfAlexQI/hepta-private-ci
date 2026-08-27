@@ -115,34 +115,52 @@ impl LocalTurnLifecycleContributor {
             lease,
             occurrence_key,
         } = active;
-        if let TerminalAction::Indeterminate(reason) = action {
-            // Unknown/failed host outcomes are quarantined locally.  Errors
-            // are intentionally swallowed: extension callbacks must never
-            // abort the host turn or turn a queue receipt into success.
-            let marked = tokio::time::timeout(
+        // `release` is deliberately guarded by the local journal: it cannot
+        // close a lease while an admitted occurrence is still queued or
+        // indeterminate.  Settle this contributor's one occurrence first,
+        // then use the status-aware finalizer so a crash between the two
+        // transactions remains replayable and no intent is stranded behind a
+        // terminal fence.
+        let settled = match action {
+            TerminalAction::Stop => tokio::time::timeout(
                 LOCAL_LIFECYCLE_IO_TIMEOUT,
-                lease.mark_indeterminate(occurrence_key, reason),
+                lease.rollback_occurrence(
+                    occurrence_key.clone(),
+                    "local_turn_stopped_without_external_dispatch",
+                ),
             )
-            .await;
-            if match marked {
-                Ok(result) => result.is_err(),
-                Err(_) => true,
-            } {
-                return false;
-            }
-        }
-        let verified =
-            tokio::time::timeout(LOCAL_LIFECYCLE_IO_TIMEOUT, lease.verify_current()).await;
-        if match verified {
+            .await,
+            TerminalAction::Indeterminate(reason) => tokio::time::timeout(
+                LOCAL_LIFECYCLE_IO_TIMEOUT,
+                lease.mark_indeterminate(occurrence_key.clone(), reason),
+            )
+            .await,
+        };
+        if match settled {
             Ok(result) => result.is_err(),
             Err(_) => true,
         } {
-            // A corrupt/stale chain is never "cleaned up" by a release.
+            // Unknown/failed host outcomes remain quarantined locally.  A
+            // callback has no error channel, so retain the exact handle for a
+            // later replay rather than attempting an unguarded release.
             return false;
         }
-        match tokio::time::timeout(LOCAL_LIFECYCLE_IO_TIMEOUT, lease.release()).await {
-            Ok(result) => result.is_ok(),
-            Err(_) => false,
+
+        match tokio::time::timeout(
+            LOCAL_LIFECYCLE_IO_TIMEOUT,
+            lease.finalize_replayed_occurrence(occurrence_key),
+        )
+        .await
+        {
+            Ok(Ok(LocalReplayFinalization::Released { .. })) => true,
+            // A settled occurrence should never become queued/not-admitted;
+            // treating either result as a failed completion keeps the handle
+            // recoverable and preserves fail-closed behavior on a damaged or
+            // concurrently changed journal.
+            Ok(Ok(LocalReplayFinalization::Queued(_)))
+            | Ok(Ok(LocalReplayFinalization::NotAdmitted))
+            | Ok(Err(_))
+            | Err(_) => false,
         }
     }
 

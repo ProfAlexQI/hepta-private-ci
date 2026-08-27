@@ -568,6 +568,56 @@ impl QualificationTurnLifecycleContributor {
         turn_store.get_or_init(Mutex::default)
     }
 
+    /// Settle the local lifecycle occurrence before closing its lease.
+    ///
+    /// The lease layer intentionally rejects a blind `release` while an
+    /// admitted occurrence is queued or indeterminate.  Qualification H7 has
+    /// already supplied the terminal observation at this point, so map that
+    /// observation to an explicit local outcome and use the status-aware
+    /// finalizer.  Keeping the two writes separate preserves replayability if
+    /// the host dies between them; a retry reuses the exact transition and
+    /// cannot append a second admission or H7 event.
+    async fn settle_and_release(
+        lease: &LocalLeaseOutbox,
+        occurrence_key: &str,
+        outcome: &str,
+        reason: &str,
+    ) -> Result<(), QualificationTurnWriterInputError> {
+        match outcome {
+            "turn_stopped" => {
+                lease
+                    .rollback_occurrence(occurrence_key, reason)
+                    .await
+                    .map_err(QualificationTurnWriterInputError::from)?;
+            }
+            "turn_indeterminate" => {
+                lease
+                    .mark_indeterminate(occurrence_key, reason)
+                    .await
+                    .map_err(QualificationTurnWriterInputError::from)?;
+            }
+            other => {
+                return Err(QualificationTurnWriterInputError::Invalid(format!(
+                    "unsupported qualification terminal outcome {other:?}"
+                )));
+            }
+        }
+
+        match lease
+            .finalize_replayed_occurrence(occurrence_key)
+            .await
+            .map_err(QualificationTurnWriterInputError::from)?
+        {
+            LocalReplayFinalization::Released { .. } => Ok(()),
+            LocalReplayFinalization::Queued(_) => Err(QualificationTurnWriterInputError::Invalid(
+                "qualification terminal outcome left the local occurrence queued".to_string(),
+            )),
+            LocalReplayFinalization::NotAdmitted => Err(QualificationTurnWriterInputError::Invalid(
+                "qualification terminal outcome has no local admission".to_string(),
+            )),
+        }
+    }
+
     async fn admit(
         input: &QualificationTurnWriterInput,
     ) -> Result<Option<QueuedReceipt>, QualificationTurnWriterInputError> {
@@ -605,16 +655,13 @@ impl QualificationTurnLifecycleContributor {
                     input.lease.expire_lease().await?;
                     return Ok(None);
                 }
-                if terminal.outcome == "turn_indeterminate" {
-                    input
-                        .lease
-                        .mark_indeterminate(
-                            input.occurrence_key.clone(),
-                            bounded_terminal_reason(&terminal.reason),
-                        )
-                        .await?;
-                }
-                input.lease.release().await?;
+                Self::settle_and_release(
+                    &input.lease,
+                    &input.occurrence_key,
+                    &terminal.outcome,
+                    &bounded_terminal_reason(&terminal.reason),
+                )
+                .await?;
                 return Ok(None);
             }
         }
@@ -834,14 +881,13 @@ impl QualificationTurnLifecycleContributor {
             input.lease.expire_lease().await?;
             return Ok(());
         }
-        if projection.outcome == "turn_indeterminate" {
-            input
-                .lease
-                .mark_indeterminate(input.occurrence_key.clone(), projection.reason)
-                .await?;
-        }
-        input.lease.release().await?;
-        Ok(())
+        Self::settle_and_release(
+            &input.lease,
+            &input.occurrence_key,
+            &projection.outcome,
+            &projection.reason,
+        )
+        .await
     }
 
     async fn start_one(
@@ -863,10 +909,13 @@ impl QualificationTurnLifecycleContributor {
                         let lease = input.lease.clone();
                         let occurrence_key = input.occurrence_key.clone();
                         let _ = tokio::time::timeout(IO_TIMEOUT, async move {
-                            let _ = lease
-                                .mark_indeterminate(occurrence_key, "h7_start_failed")
-                                .await;
-                            let _ = lease.release().await;
+                            let _ = Self::settle_and_release(
+                                &lease,
+                                &occurrence_key,
+                                "turn_indeterminate",
+                                "h7_start_failed",
+                            )
+                            .await;
                         })
                         .await;
                         None
@@ -1663,7 +1712,10 @@ mod tests {
             .snapshot_counts()
             .await
             .expect("reopened counts");
-        assert_eq!(counts_after.event_rows, counts_before.event_rows);
+        // Closing the queued local intent requires an explicit rollback
+        // marker before the terminal lease row; the immutable outbox remains
+        // unchanged.
+        assert_eq!(counts_after.event_rows, counts_before.event_rows + 1);
         assert_eq!(counts_after.outbox_rows, counts_before.outbox_rows);
         assert_eq!(counts_after.lease_rows, counts_before.lease_rows + 1);
         assert_eq!(
@@ -1942,6 +1994,14 @@ mod tests {
                 .expect("reopened counts"),
             counts_before_forget
         );
+        // The queued local intent is immutable metadata, but the lease guard
+        // requires an explicit outcome before terminalization.  Host
+        // withdrawal settles it as a local rollback; no external effect or KG
+        // write is implied.
+        reopened_lease
+            .rollback_occurrence(OCCURRENCE, "qualification host withdrawal")
+            .await
+            .expect("settle withdrawn occurrence");
         let released = reopened_lease
             .release()
             .await

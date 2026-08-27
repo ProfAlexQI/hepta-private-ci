@@ -816,6 +816,13 @@ mod tests {
             .rehydration("op:h15")
             .await
             .expect("before witness");
+        // A terminal lease cannot be closed over a queued local intent.  The
+        // test is interested in the read-only observer's behavior, so settle
+        // the prepared intent explicitly before making the lease terminal.
+        lease
+            .rollback_occurrence("occurrence:h15", "test terminal lease")
+            .await
+            .expect("settle local intent");
         lease.release().await.expect("terminal release");
 
         let error = observe_local_rehydration_replay(LocalRehydrationReplayLifecycleInput::new(
