@@ -20,6 +20,7 @@ pub mod room_input_popup_menu;
 pub mod slash_commands;
 pub mod hepta_theme;
 pub mod hepta_platform_material;
+pub mod hepta_platform_material_runtime;
 pub mod hepta_v4;
 pub mod styles;
 pub mod text_or_image;
