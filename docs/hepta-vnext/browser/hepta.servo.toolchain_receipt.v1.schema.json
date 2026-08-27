@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.invalid/schema/hepta.servo.toolchain_receipt.v1.schema.json",
+  "title": "Hepta Servo toolchain receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "target",
+    "host",
+    "rustc",
+    "cargo",
+    "linker",
+    "capture",
+    "machine_local_paths_included",
+    "authority"
+  ],
+  "properties": {
+    "schema": {"const": "hepta.browser.servo_toolchain_receipt.v1"},
+    "schema_version": {"const": 1},
+    "target": {
+      "enum": [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ]
+    },
+    "host": {"type": "string", "minLength": 1, "maxLength": 256},
+    "rustc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "release",
+        "commit_hash",
+        "host",
+        "output_sha256",
+        "binary_sha256",
+        "binary_bytes"
+      ],
+      "properties": {
+        "version": {"type": "string", "minLength": 1, "maxLength": 256},
+        "release": {"type": "string", "minLength": 1, "maxLength": 256},
+        "commit_hash": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "host": {"type": "string", "minLength": 1, "maxLength": 256},
+        "output_sha256": {"$ref": "#/$defs/sha256"},
+        "binary_sha256": {"$ref": "#/$defs/sha256"},
+        "binary_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "cargo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "release",
+        "host",
+        "output_sha256",
+        "binary_sha256",
+        "binary_bytes"
+      ],
+      "properties": {
+        "version": {"type": "string", "minLength": 1, "maxLength": 256},
+        "release": {"type": "string", "minLength": 1, "maxLength": 256},
+        "commit_hash": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "host": {"type": "string", "minLength": 1, "maxLength": 256},
+        "output_sha256": {"$ref": "#/$defs/sha256"},
+        "binary_sha256": {"$ref": "#/$defs/sha256"},
+        "binary_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "linker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "version",
+        "output_sha256",
+        "binary_sha256",
+        "binary_bytes"
+      ],
+      "properties": {
+        "kind": {"enum": ["clang", "cc", "lld", "mold", "msvc-link", "zig"]},
+        "version": {"type": "string", "minLength": 1, "maxLength": 256},
+        "output_sha256": {"$ref": "#/$defs/sha256"},
+        "binary_sha256": {"$ref": "#/$defs/sha256"},
+        "binary_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commands",
+        "minimal_environment",
+        "network_access_used",
+        "build_run",
+        "artifact_created"
+      ],
+      "properties": {
+        "commands": {
+          "type": "array",
+          "prefixItems": [
+            {"const": "rustc -vV"},
+            {"const": "cargo -Vv"}
+          ],
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {"type": "string", "minLength": 1, "maxLength": 256}
+        },
+        "minimal_environment": {
+          "const": {
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+            "LANG": "C",
+            "LC_ALL": "C",
+            "TZ": "UTC"
+          }
+        },
+        "network_access_used": {"const": false},
+        "build_run": {"const": false},
+        "artifact_created": {"const": false}
+      }
+    },
+    "machine_local_paths_included": {"const": false},
+    "authority": {"$ref": "#/$defs/authority"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_authority",
+        "effect_authority",
+        "production_caller",
+        "production_writer",
+        "runtime_external_network",
+        "raw_cookie_export",
+        "credential_export",
+        "operator_acceptance",
+        "promotion",
+        "release_qualified"
+      ],
+      "properties": {
+        "runtime_authority": {"const": false},
+        "effect_authority": {"const": false},
+        "production_caller": {"const": false},
+        "production_writer": {"const": false},
+        "runtime_external_network": {"const": false},
+        "raw_cookie_export": {"const": false},
+        "credential_export": {"const": false},
+        "operator_acceptance": {"const": false},
+        "promotion": {"const": false},
+        "release_qualified": {"const": false}
+      }
+    }
+  }
+}
