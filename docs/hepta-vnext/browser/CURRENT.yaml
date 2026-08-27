@@ -1,7 +1,7 @@
 {
   "schema": "hepta.browser.current.v1",
   "schema_version": 1,
-  "updated_at_utc": "2026-08-27T11:50:00Z",
+  "updated_at_utc": "2026-08-27T12:05:00Z",
   "phase": "DEVELOPMENT",
   "claim_level": "L1_QUALIFICATION_ONLY",
   "canonical_plan": "docs/hepta-vnext/browser/EXECUTION_PLAN.md",
@@ -26,7 +26,7 @@
     "servo_provenance_generator": "implemented_unqualified_no_source_receipt",
     "private_worker_protocol": "implemented_qualification_only_unqualified",
     "qualification_process_harness": "implemented_private_stdio_pipe_unqualified",
-    "unix_inherited_socketpair": "not_implemented",
+    "unix_inherited_socketpair": "implemented_qualification_only_unqualified",
     "windows_sid_named_pipe": "not_implemented",
     "servo_runtime": "not_integrated",
     "production_caller": "not_integrated"
@@ -42,8 +42,9 @@
     "WEB_C7": "NOT_IMPLEMENTED"
   },
   "open_c1_gates": [
-    "GitHub Actions jobs currently terminate before steps and provide no usable logs; runner or repository policy must be repaired before any PASS claim",
-    "private stdio pipes are a qualification harness, not the required Unix socketpair or Windows SID named pipe",
+    "GitHub Actions runner preflight itself fails before recording steps; runner, billing, policy or action configuration must be repaired before any PASS claim",
+    "the Unix socketpair implementation is a qualification scaffold and still lacks platform receipt, artifact digest, sandbox and parent-death qualification",
+    "the Windows SID-restricted named pipe is not implemented",
     "Servo source is pinned but not checked out, patched, built or linked",
     "the provenance generator has not been run against the exact Servo checkout",
     "source/SBOM/toolchain/artifact receipts are not sealed",
