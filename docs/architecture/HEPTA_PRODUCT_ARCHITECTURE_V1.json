@@ -3,12 +3,15 @@
   "schema": "hepta.product_architecture.v1",
   "schema_version": 1,
   "canonical_human_entry": "ARCHITECTURE.md",
-  "source_base_commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
-  "implementation_branch": "codex/hepta-architecture-convergence-p0-20260828",
+  "source_base_commit": "03160d3e20a4972085e4ae31186a6c7e59e7a50c",
+  "implementation_branch": "codex/hepta-authority-adapter-services-p0-2-20260828",
   "status": "SOURCE_PRESENT_QUALIFICATION_PENDING",
   "profile": "agent_local",
   "authority_kernel": {
     "owner": "codex-hepta-contracts::AuthorityGrant",
+    "contract_schema_version": 2,
+    "verified_capability_constructor": "authorize_verified_capability",
+    "legacy_production_adapter": "codex-hepta-agentd::production_authority_adapter",
     "allowed_profiles": [
       "snapshot_read_only",
       "agent_local",
@@ -22,6 +25,13 @@
       "accept_operator",
       "promote_release"
     ]
+  },
+  "service_builders": {
+    "memory": "codex-hepta-agentd::memory_service::AgentMemoryService",
+    "automation": "codex-hepta-agentd::automation_service::AgentAutomationService",
+    "app_server": "codex-hepta-agentd::app_runtime::AgentAppServerService",
+    "supervision_loop_owns_raw_store_open": false,
+    "supervision_loop_owns_scheduler_internals": false
   },
   "components": [
     "supervisor",
@@ -55,7 +65,10 @@
     "qualification_is_product_component": false,
     "exact_head_required": true,
     "real_agent_private_sqlite_open_required": true,
-    "merge_candidate_gate_separate": true
+    "legacy_production_verifier_required": true,
+    "typed_cognitive_write_witness_required": true,
+    "merge_candidate_gate_separate": true,
+    "physical_memory_schema_extraction_allowed": false
   },
   "negative_authority": {
     "production_caller": false,
