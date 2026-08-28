@@ -1,0 +1,75 @@
+{
+  "schema": "hepta_intelligence_p0_4b_hosted_blocker_v1",
+  "recorded_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "pull_request": 21,
+  "base_branch": "codex/hepta-intelligence-mutation-state-machine-v4-20260828",
+  "base_commit": "39c30cc1f07c90c4d5176da05e9bd97e1792bd2a",
+  "head_branch": "codex/hepta-intelligence-mutation-journal-v4b-r2-20260828",
+  "source_candidate": "09d3fbb54021fdac8de0f35d3c013a4bb992fc4d",
+  "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
+  "qualified": false,
+  "workflow_runs": [
+    {
+      "id": 33142073039,
+      "name": "hepta-intelligence-mutation-journal",
+      "head": "09d3fbb54021fdac8de0f35d3c013a4bb992fc4d",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "id": 98754880885,
+          "name": "P0.4b mutation journal source and SQLite contract",
+          "steps": [],
+          "runner_id": 0
+        },
+        {
+          "id": 98754881015,
+          "name": "P0.4b mutation journal Rust qualification",
+          "steps": [],
+          "runner_id": 0
+        }
+      ],
+      "commands_executed": false
+    },
+    {
+      "id": 33142073302,
+      "name": "blocking-ci",
+      "head": "09d3fbb54021fdac8de0f35d3c013a4bb992fc4d",
+      "conclusion": "failure",
+      "commands_executed": false
+    },
+    {
+      "id": 33142072997,
+      "name": "v8-canary",
+      "head": "09d3fbb54021fdac8de0f35d3c013a4bb992fc4d",
+      "conclusion": "failure",
+      "commands_executed": false
+    }
+  ],
+  "source_claims": {
+    "component_migration_0012": true,
+    "sqlite_journal_implemented": true,
+    "failpoint_source_implemented": true,
+    "exact_head_source_gate_executed": false,
+    "exact_head_sqlite_selftest_executed": false,
+    "rust_qualification_executed": false,
+    "runtime_wired": false,
+    "default_open_wired": false
+  },
+  "authority": {
+    "wired": false,
+    "main_sqlx_migration_lineage_promoted": false,
+    "runtime_wired": false,
+    "default_open_wired": false,
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "interpretation": [
+    "No checkout, Python gate, SQLite self-test, Rust formatter, compiler, test, clippy, migration, failpoint, or runtime command executed in the cited jobs.",
+    "The GitHub conclusions are infrastructure evidence, not source failure and not PASS.",
+    "P0.4b remains implemented but unqualified. P0.4c may proceed only as a separate source-only stacked Draft with all runtime and production authority disabled."
+  ]
+}
