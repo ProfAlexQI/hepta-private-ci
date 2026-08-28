@@ -73,6 +73,12 @@ impl IntelligenceMutationState {
                         "quarantine has no indeterminate origin".to_string(),
                     )
                 })?;
+                if origin == Phase::OutboxSettled {
+                    return Err(IntelligenceMutationStateError::InvalidReconciliation(
+                        "an outbox-settled origin must reconcile to OutboxSettled; it cannot be quarantined"
+                            .to_string(),
+                    ));
+                }
                 self.last_recovery_origin = Some(origin);
                 self.indeterminate_from = None;
                 self.intent_disposition = Disposition::Quarantined;
