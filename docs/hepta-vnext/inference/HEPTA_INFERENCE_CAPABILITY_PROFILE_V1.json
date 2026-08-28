@@ -1,0 +1,63 @@
+{
+  "schema": "hepta.inference.capability-profile.v1",
+  "repository": "ProfHepta/hepta-private-ci",
+  "stage": "INF-0C",
+  "generated_from": {
+    "source_receipt_head": "333e8dbdde6ba7d82e183e0f648c5078a0f4aca3",
+    "exact_rust_qualification_run": 33186073719,
+    "semantic_e2e_run": 33187998350,
+    "closure_revalidation_run": 33198223073
+  },
+  "routing_policy": {
+    "default": "FAIL_CLOSED",
+    "tool_request_requires": "native_tool_call=QUALIFIED",
+    "cancel_success_requires": "backend_cancel_ack=QUALIFIED or worker_termination=QUALIFIED",
+    "stale_output_policy": "reject_by_request_and_backend_generation",
+    "unsupported_tuple_policy": "reject_before_backend_dispatch",
+    "implicit_model_install": false,
+    "remote_fallback": false
+  },
+  "tuples": [
+    {
+      "id": "ollama/granite4:1b/linux-arm64",
+      "provider": "ollama",
+      "model": "granite4:1b",
+      "semantic_text": {"status": "QUALIFIED", "evidence_run": 33187998350},
+      "native_tool_call": {"status": "PENDING", "evidence_run": 33198223073, "fail_closed_action": "REJECT_TOOL_REQUEST"},
+      "strict_sse": {"status": "PENDING", "evidence_run": 33198223073, "fail_closed_action": "TERMINATE_STREAM_AND_FAIL_REQUEST"},
+      "transport_disconnect": {"status": "PENDING", "evidence_run": 33198223073},
+      "backend_cancel_ack": {"status": "UNSUPPORTED_FAIL_CLOSED", "evidence_run": 33191367402, "fail_closed_action": "TERMINATE_ISOLATED_WORKER_AND_INCREMENT_BACKEND_GENERATION"},
+      "controlled_restart": {"status": "PENDING", "evidence_run": 33198223073},
+      "production_eligible": false
+    },
+    {
+      "id": "lmstudio/ibm-granite-4-micro-q4_k_m/linux-arm64",
+      "provider": "lmstudio",
+      "model": "ibm/granite-4-micro@q4_k_m",
+      "semantic_text": {"status": "QUALIFIED", "evidence_run": 33187998350},
+      "native_tool_call": {"status": "PENDING", "evidence_run": 33198223073, "fail_closed_action": "REJECT_TOOL_REQUEST"},
+      "strict_sse": {"status": "PENDING", "evidence_run": 33198223073, "fail_closed_action": "TERMINATE_STREAM_AND_FAIL_REQUEST"},
+      "transport_disconnect": {"status": "PENDING", "evidence_run": 33198223073},
+      "backend_cancel_ack": {"status": "UNSUPPORTED_FAIL_CLOSED", "evidence_run": 33191367402, "fail_closed_action": "TERMINATE_ISOLATED_WORKER_AND_INCREMENT_BACKEND_GENERATION"},
+      "controlled_restart": {"status": "PENDING", "evidence_run": 33198223073},
+      "production_eligible": false
+    }
+  ],
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

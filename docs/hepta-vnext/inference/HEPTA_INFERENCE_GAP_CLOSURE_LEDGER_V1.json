@@ -1,0 +1,29 @@
+{
+  "schema": "hepta.inference.gap-closure-ledger.v1",
+  "repository": "ProfHepta/hepta-private-ci",
+  "stage": "INF-0C",
+  "closure_rule": "A gap is closed only by executable PASS evidence or by an explicit UNSUPPORTED_FAIL_CLOSED capability with a tested rejection or containment action.",
+  "gaps": [
+    {"id": "INF0C-SOURCE-RUST", "status": "CLOSED_PASS", "evidence_run": 33186073719},
+    {"id": "INF0C-REAL-SEMANTIC-OLLAMA", "status": "CLOSED_PASS", "evidence_run": 33187998350},
+    {"id": "INF0C-REAL-SEMANTIC-LMSTUDIO", "status": "CLOSED_PASS", "evidence_run": 33187998350},
+    {"id": "INF0C-NATIVE-TOOL-CALL", "status": "PENDING", "evidence_run": 33198223073},
+    {"id": "INF0C-STRICT-SSE", "status": "PENDING", "evidence_run": 33198223073},
+    {"id": "INF0C-TRANSPORT-DISCONNECT", "status": "PENDING", "evidence_run": 33198223073},
+    {"id": "INF0C-BACKEND-CANCEL-ACK", "status": "CLOSED_UNSUPPORTED_FAIL_CLOSED", "evidence_run": 33191367402, "containment": "isolated-worker termination plus backend-generation fence"},
+    {"id": "INF0C-CONTROLLED-RESTART", "status": "PENDING", "evidence_run": 33198223073},
+    {"id": "INF1-SOURCE-RUST", "status": "PENDING", "evidence_run": 33198944249},
+    {"id": "INF1-UDS-E2E", "status": "PENDING", "evidence_run": null},
+    {"id": "PRODUCT-CALLER-TO-INFERD-E2E", "status": "NOT_STARTED", "evidence_run": null},
+    {"id": "HARDWARE-PERFORMANCE-RECEIPT", "status": "NOT_STARTED", "evidence_run": null},
+    {"id": "OPERATOR-ACCEPTANCE", "status": "NOT_STARTED", "evidence_run": null},
+    {"id": "PROMOTION", "status": "NOT_STARTED", "evidence_run": null}
+  ],
+  "overall": {
+    "all_gaps_closed": false,
+    "qualified": false,
+    "inf1_active": false,
+    "operator_accepted": false,
+    "promoted": false
+  }
+}

@@ -1,0 +1,53 @@
+name: Hepta inference capability closure qualification
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-capability-closure-20260829
+    paths:
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_CAPABILITY_PROFILE_V1.json"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_GAP_CLOSURE_LEDGER_V1.json"
+      - "scripts/hepta-inference-capability-profile-gate.py"
+      - ".github/workflows/hepta-inference-capability-profile.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capability-profile:
+    name: Validate fail-closed capability and gap ledger
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Verify syntax and JSON
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile scripts/hepta-inference-capability-profile-gate.py
+          python3 -m json.tool docs/hepta-vnext/inference/HEPTA_INFERENCE_CAPABILITY_PROFILE_V1.json >/dev/null
+          python3 -m json.tool docs/hepta-vnext/inference/HEPTA_INFERENCE_GAP_CLOSURE_LEDGER_V1.json >/dev/null
+      - name: Execute negative self-test
+        shell: bash
+        run: python3 scripts/hepta-inference-capability-profile-gate.py --self-test
+      - name: Execute capability profile gate
+        shell: bash
+        run: python3 scripts/hepta-inference-capability-profile-gate.py
+      - name: Record qualification-only posture
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Inference capability closure profile"
+            echo
+            echo "- head: $(git rev-parse HEAD)"
+            echo "- qualification_only: true"
+            echo "- qualified: false"
+            echo "- INF-1 active: false"
+            echo "- production/effect/model-NPU/remote/promotion authority: false"
+          } >> "$GITHUB_STEP_SUMMARY"
