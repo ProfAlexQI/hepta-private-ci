@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use codex_hepta_automation::AutomationError;
+use codex_hepta_automation::AutomationOperationContext;
 use codex_hepta_automation::AutomationStore;
 use codex_hepta_contracts::AuthorityGrant;
 use codex_hepta_contracts::Authorized;
@@ -14,6 +15,7 @@ use crate::automation::run_automation_scheduler;
 
 pub(crate) struct AgentAutomationService {
     store: Option<AutomationStore>,
+    operation_context: AutomationOperationContext,
     _mutation: Authorized<AutomationMutationCapability>,
 }
 
@@ -33,6 +35,15 @@ impl AgentAutomationService {
             .map_err(|error| {
                 AgentdError::Protocol(format!("authorize Automation service: {error}"))
             })?;
+        let operation_context = AutomationOperationContext::new(
+            u64::from(authority.schema_version()),
+            identity.spawn_generation,
+            identity.spawn_generation,
+            authority.digest(),
+        )
+        .map_err(|error| {
+            AgentdError::Protocol(format!("bind Automation operation fence: {error}"))
+        })?;
 
         state.refresh_generation()?;
         let opened = AutomationStore::open(&identity.layout).await;
@@ -48,6 +59,7 @@ impl AgentAutomationService {
 
         Ok(Self {
             store,
+            operation_context,
             _mutation: mutation,
         })
     }
@@ -64,7 +76,16 @@ impl AgentAutomationService {
         cancellation: CancellationToken,
     ) -> Result<(), AgentdError> {
         match self.store {
-            Some(store) => run_automation_scheduler(store, state, identity, cancellation).await,
+            Some(store) => {
+                run_automation_scheduler(
+                    store,
+                    self.operation_context,
+                    state,
+                    identity,
+                    cancellation,
+                )
+                .await
+            }
             None => {
                 cancellation.cancelled().await;
                 Ok(())
