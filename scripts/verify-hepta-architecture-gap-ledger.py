@@ -12,6 +12,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 LEDGER = ROOT / "docs/architecture/HEPTA_ARCHITECTURE_GAP_LEDGER_V1.json"
 CANONICAL_WORKFLOW = ROOT / ".github/workflows/hepta-architecture-convergence-p0-2.yml"
 BLOCKING_WORKFLOW = ROOT / ".github/workflows/blocking-ci.yml"
+WORKFLOW_ROOT = ROOT / ".github/workflows"
 
 RETIRED_WORKFLOWS = (
     ".github/workflows/hepta-architecture-convergence-p0-2-bootstrap.yml",
@@ -23,6 +24,7 @@ RETIRED_WORKFLOWS = (
     ".github/workflows/hepta-authority-callers-p0-1.yml",
     ".github/workflows/hepta-legacy-production-authority-adapter-p0-1.yml",
     ".github/workflows/hepta-route-architecture-slim-once.yml",
+    ".github/workflows/hepta-memory-runtime-lock-refresh-once.yml",
 )
 RETIRED_MUTATORS = (
     "scripts/hepta-architecture-p0-2-portability-bootstrap.py",
@@ -31,6 +33,22 @@ RETIRED_MUTATORS = (
     "scripts/hepta-memory-runtime-extraction-p0-1.py",
     "scripts/hepta-product-graph-authority-completion-p0-1-v2.py",
     "scripts/hepta-product-graph-authority-completion-p0-1.py",
+)
+MUTATING_WORKFLOW_NAME_PARTS = (
+    "architecture",
+    "memory-runtime",
+    "authority",
+    "product-graph",
+)
+MUTATING_WORKFLOW_SUFFIXES = (
+    "-bootstrap.yml",
+    "-bootstrap.yaml",
+    "-finalize.yml",
+    "-finalize.yaml",
+    "-once.yml",
+    "-once.yaml",
+    "-refresh.yml",
+    "-refresh.yaml",
 )
 
 
@@ -63,6 +81,33 @@ def read(path: pathlib.Path) -> str:
         fail(f"cannot read {path.relative_to(ROOT)}: {error}")
 
 
+def reject_source_mutators() -> None:
+    for relative in (*RETIRED_WORKFLOWS, *RETIRED_MUTATORS):
+        if (ROOT / relative).exists():
+            fail(f"retired source-mutating or duplicate qualification path still exists: {relative}")
+
+    for path in WORKFLOW_ROOT.iterdir():
+        if not path.is_file():
+            continue
+        name = path.name.lower()
+        if any(part in name for part in MUTATING_WORKFLOW_NAME_PARTS) and any(
+            name.endswith(suffix) for suffix in MUTATING_WORKFLOW_SUFFIXES
+        ):
+            fail(f"architecture source-mutating workflow name is forbidden: {path.relative_to(ROOT)}")
+        content = read(path)
+        if any(part in name for part in MUTATING_WORKFLOW_NAME_PARTS) and any(
+            marker in content
+            for marker in (
+                "permissions:\n  contents: write",
+                "persist-credentials: true",
+                "git push",
+                "git commit",
+                "git update-ref",
+            )
+        ):
+            fail(f"architecture workflow contains a source mutation path: {path.relative_to(ROOT)}")
+
+
 def main() -> int:
     ledger = load_json_no_duplicates(LEDGER)
     if ledger.get("schema") != "hepta.architecture-gap-ledger.v1" or ledger.get("schemaVersion") != 1:
@@ -85,9 +130,7 @@ def main() -> int:
             if not isinstance(relative, str) or not (ROOT / relative).is_file():
                 fail(f"source closure evidence is missing: {gap_id}: {relative!r}")
 
-    for relative in (*RETIRED_WORKFLOWS, *RETIRED_MUTATORS):
-        if (ROOT / relative).exists():
-            fail(f"retired source-mutating or duplicate qualification path still exists: {relative}")
+    reject_source_mutators()
 
     workflow = read(CANONICAL_WORKFLOW)
     for marker in (
