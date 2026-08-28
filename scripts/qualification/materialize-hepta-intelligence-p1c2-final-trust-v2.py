@@ -89,10 +89,21 @@ def patch_verifier() -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def patch_clippy() -> None:
+    path = Path("codex-rs/hepta-memory-p1-1c2-qualification/src/evaluation.rs")
+    text = path.read_text(encoding="utf-8")
+    old = "AblationLane::ALL.iter().copied().collect::<Vec<_>>()"
+    new = "AblationLane::ALL.to_vec()"
+    if text.count(old) != 1:
+        raise SystemExit(f"{path}: Clippy lane-order target is not unique")
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
 def main() -> None:
     legacy = load_legacy()
     legacy.patch_verifier = patch_verifier
     legacy.main()
+    patch_clippy()
 
 
 if __name__ == "__main__":
