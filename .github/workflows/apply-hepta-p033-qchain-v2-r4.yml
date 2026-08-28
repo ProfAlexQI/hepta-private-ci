@@ -1,0 +1,85 @@
+name: apply-hepta-p033-qchain-v2-r4
+
+on:
+  push:
+    branches:
+      - "codex/hepta-kg-qchain-v2-orchestrator-20260828"
+    paths:
+      - ".github/workflows/apply-hepta-p033-qchain-v2-r4.yml"
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: apply-hepta-p033-qchain-v2-r4
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      REPO: ProfAlexQI/hepta-private-ci
+      P033_BRANCH: codex/hepta-intelligence-evidence-resolver-v4-20260828
+      BUNDLE_SHA256: 9d7b97cbd4f6a5d990d30cbf548ae5b60fe6e7c2fcf70a4651f6f1135c2a697e
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/hepta-kg-qchain-v2-orchestrator-20260828
+          fetch-depth: 0
+
+      - name: Reassemble verified bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, os, tarfile
+          from pathlib import Path
+          chunks = sorted(Path('.qchain-v2').glob('chunk-*.txt'))
+          assert [p.name for p in chunks] == [f'chunk-{i:02d}.txt' for i in range(8)]
+          payload = base64.b64decode(''.join(p.read_text().strip() for p in chunks), validate=True)
+          assert hashlib.sha256(payload).hexdigest() == os.environ['BUNDLE_SHA256']
+          archive = Path('/tmp/hepta-qchain-v2.tar.gz'); archive.write_bytes(payload)
+          target = Path('/tmp/hepta-qchain-v2'); target.mkdir(parents=True, exist_ok=True)
+          with tarfile.open(archive, 'r:gz') as bundle:
+              bundle.extractall(target, filter='data')
+          PY
+
+      - name: Publish dependency-aware P0.3.3 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global user.name "Qian QI"
+          git config --global user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          python3 .qchain-v2/apply-p033-only.py "$PWD" | tee /tmp/p033-r4.json
+
+      - name: Verify exact remote head and Draft boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/git/ref/heads/$P033_BRANCH" > /tmp/p033-ref.json
+          gh api "repos/$REPO/pulls/30" > /tmp/pr30.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          result=json.loads(Path('/tmp/p033-r4.json').read_text())
+          remote=json.loads(Path('/tmp/p033-ref.json').read_text())['object']['sha']
+          pr=json.loads(Path('/tmp/pr30.json').read_text())
+          assert result['pushed'] is True
+          assert result['workflow_publication_pending'] is False
+          assert result['qualified'] is False and result['production_authority'] is False
+          assert remote == result['new_head']
+          assert pr['state']=='open' and pr['draft'] is True and pr['merged'] is False
+          PY
+
+      - name: Upload source publish evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-p033-qchain-v2-r4-${{ github.sha }}
+          path: /tmp/p033-r4.json
+          if-no-files-found: warn
+          retention-days: 21
