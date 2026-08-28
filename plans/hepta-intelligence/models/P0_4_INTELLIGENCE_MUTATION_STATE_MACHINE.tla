@@ -1,136 +1,253 @@
 ---- MODULE P0_4_INTELLIGENCE_MUTATION_STATE_MACHINE ----
 EXTENDS Naturals, TLC
 
-CONSTANT StartGeneration
+CONSTANTS StartGeneration, MaxReconciliations
 
 Phases == {
   "Planned", "SourceWitnessed", "GroundingValidated",
   "DurableIntentAppended", "MemoryFactsCommitted",
   "ProjectionPublished", "OutboxSettled", "Terminal",
-  "Indeterminate", "ReconciledApplied",
+  "RejectedPreCommit", "CancelledPreCommit", "Indeterminate",
   "ReconciledNotApplied", "Quarantined"
 }
 
-VARIABLES phase, intentAppended, intentSettled, writeCount,
-          publishCount, generation, indeterminateFrom
+DurablePhases == {
+  "DurableIntentAppended", "MemoryFactsCommitted",
+  "ProjectionPublished", "OutboxSettled"
+}
 
-vars == <<phase, intentAppended, intentSettled, writeCount,
-          publishCount, generation, indeterminateFrom>>
+Dispositions == {
+  "None", "Pending", "SettledApplied", "SettledNotApplied", "Quarantined"
+}
+
+VARIABLES phase, disposition, writeCount, publishCount, outboxSettled,
+          generation, indeterminateFrom, lastRecoveryOrigin,
+          reconciliationCount
+
+vars == <<phase, disposition, writeCount, publishCount, outboxSettled,
+          generation, indeterminateFrom, lastRecoveryOrigin,
+          reconciliationCount>>
 
 Init ==
   /\ phase = "Planned"
-  /\ intentAppended = FALSE
-  /\ intentSettled = FALSE
+  /\ disposition = "None"
   /\ writeCount = 0
   /\ publishCount = 0
+  /\ outboxSettled = FALSE
   /\ generation = StartGeneration
   /\ indeterminateFrom = "None"
+  /\ lastRecoveryOrigin = "None"
+  /\ reconciliationCount = 0
 
 WitnessSource ==
   /\ phase = "Planned"
   /\ phase' = "SourceWitnessed"
-  /\ UNCHANGED <<intentAppended, intentSettled, writeCount,
-                  publishCount, generation, indeterminateFrom>>
+  /\ UNCHANGED <<disposition, writeCount, publishCount, outboxSettled,
+                  generation, indeterminateFrom, lastRecoveryOrigin,
+                  reconciliationCount>>
 
 ValidateGrounding ==
   /\ phase = "SourceWitnessed"
   /\ phase' = "GroundingValidated"
-  /\ UNCHANGED <<intentAppended, intentSettled, writeCount,
-                  publishCount, generation, indeterminateFrom>>
+  /\ UNCHANGED <<disposition, writeCount, publishCount, outboxSettled,
+                  generation, indeterminateFrom, lastRecoveryOrigin,
+                  reconciliationCount>>
+
+RejectPreCommit ==
+  /\ phase \in {"Planned", "SourceWitnessed", "GroundingValidated"}
+  /\ phase' = "RejectedPreCommit"
+  /\ UNCHANGED <<disposition, writeCount, publishCount, outboxSettled,
+                  generation, indeterminateFrom, lastRecoveryOrigin,
+                  reconciliationCount>>
+
+CancelPreCommit ==
+  /\ phase \in {"Planned", "SourceWitnessed", "GroundingValidated"}
+  /\ phase' = "CancelledPreCommit"
+  /\ UNCHANGED <<disposition, writeCount, publishCount, outboxSettled,
+                  generation, indeterminateFrom, lastRecoveryOrigin,
+                  reconciliationCount>>
 
 AppendIntent ==
   /\ phase = "GroundingValidated"
   /\ phase' = "DurableIntentAppended"
-  /\ intentAppended' = TRUE
-  /\ intentSettled' = FALSE
-  /\ UNCHANGED <<writeCount, publishCount, generation, indeterminateFrom>>
+  /\ disposition' = "Pending"
+  /\ UNCHANGED <<writeCount, publishCount, outboxSettled, generation,
+                  indeterminateFrom, lastRecoveryOrigin,
+                  reconciliationCount>>
 
 CommitFacts ==
   /\ phase = "DurableIntentAppended"
   /\ writeCount = 0
   /\ phase' = "MemoryFactsCommitted"
   /\ writeCount' = 1
-  /\ UNCHANGED <<intentAppended, intentSettled, publishCount,
-                  generation, indeterminateFrom>>
+  /\ UNCHANGED <<disposition, publishCount, outboxSettled, generation,
+                  indeterminateFrom, lastRecoveryOrigin,
+                  reconciliationCount>>
 
 PublishProjection ==
   /\ phase = "MemoryFactsCommitted"
   /\ publishCount = 0
+  /\ generation = StartGeneration
   /\ phase' = "ProjectionPublished"
   /\ publishCount' = 1
-  /\ generation' = generation + 1
-  /\ UNCHANGED <<intentAppended, intentSettled, writeCount,
-                  indeterminateFrom>>
+  /\ generation' = StartGeneration + 1
+  /\ UNCHANGED <<disposition, writeCount, outboxSettled,
+                  indeterminateFrom, lastRecoveryOrigin,
+                  reconciliationCount>>
 
 SettleOutbox ==
   /\ phase = "ProjectionPublished"
   /\ phase' = "OutboxSettled"
-  /\ intentSettled' = TRUE
-  /\ UNCHANGED <<intentAppended, writeCount, publishCount,
-                  generation, indeterminateFrom>>
+  /\ outboxSettled' = TRUE
+  /\ disposition' = "SettledApplied"
+  /\ UNCHANGED <<writeCount, publishCount, generation,
+                  indeterminateFrom, lastRecoveryOrigin,
+                  reconciliationCount>>
 
 Terminalize ==
   /\ phase = "OutboxSettled"
-  /\ intentSettled
+  /\ disposition = "SettledApplied"
+  /\ writeCount = 1
+  /\ publishCount = 1
+  /\ outboxSettled
   /\ phase' = "Terminal"
-  /\ UNCHANGED <<intentAppended, intentSettled, writeCount,
-                  publishCount, generation, indeterminateFrom>>
+  /\ UNCHANGED <<disposition, writeCount, publishCount, outboxSettled,
+                  generation, indeterminateFrom, lastRecoveryOrigin,
+                  reconciliationCount>>
 
 MarkIndeterminate ==
-  /\ phase \in {"DurableIntentAppended", "MemoryFactsCommitted",
-                  "ProjectionPublished"}
+  /\ phase \in DurablePhases
+  /\ reconciliationCount < MaxReconciliations
   /\ indeterminateFrom' = phase
   /\ phase' = "Indeterminate"
-  /\ UNCHANGED <<intentAppended, intentSettled, writeCount,
-                  publishCount, generation>>
-
-ReconcileApplied ==
-  /\ phase = "Indeterminate"
-  /\ phase' = "ReconciledApplied"
-  /\ writeCount' = 1
-  /\ intentSettled' = TRUE
-  /\ UNCHANGED <<intentAppended, publishCount, generation,
-                  indeterminateFrom>>
+  /\ UNCHANGED <<disposition, writeCount, publishCount, outboxSettled,
+                  generation, lastRecoveryOrigin, reconciliationCount>>
 
 ReconcileNotApplied ==
   /\ phase = "Indeterminate"
+  /\ reconciliationCount < MaxReconciliations
   /\ indeterminateFrom = "DurableIntentAppended"
   /\ writeCount = 0
+  /\ publishCount = 0
+  /\ ~outboxSettled
   /\ phase' = "ReconciledNotApplied"
-  /\ intentSettled' = TRUE
-  /\ UNCHANGED <<intentAppended, writeCount, publishCount,
-                  generation, indeterminateFrom>>
+  /\ disposition' = "SettledNotApplied"
+  /\ lastRecoveryOrigin' = indeterminateFrom
+  /\ indeterminateFrom' = "None"
+  /\ reconciliationCount' = reconciliationCount + 1
+  /\ UNCHANGED <<writeCount, publishCount, outboxSettled, generation>>
+
+ReconcileMemoryCommitted ==
+  /\ phase = "Indeterminate"
+  /\ reconciliationCount < MaxReconciliations
+  /\ indeterminateFrom \in {"DurableIntentAppended", "MemoryFactsCommitted"}
+  /\ publishCount = 0
+  /\ ~outboxSettled
+  /\ phase' = "MemoryFactsCommitted"
+  /\ disposition' = "Pending"
+  /\ writeCount' = 1
+  /\ lastRecoveryOrigin' = indeterminateFrom
+  /\ indeterminateFrom' = "None"
+  /\ reconciliationCount' = reconciliationCount + 1
+  /\ UNCHANGED <<publishCount, outboxSettled, generation>>
+
+ReconcileProjectionPublished ==
+  /\ phase = "Indeterminate"
+  /\ reconciliationCount < MaxReconciliations
+  /\ indeterminateFrom \in {
+       "DurableIntentAppended", "MemoryFactsCommitted", "ProjectionPublished"
+     }
+  /\ phase' = "ProjectionPublished"
+  /\ disposition' = "Pending"
+  /\ writeCount' = 1
+  /\ publishCount' = 1
+  /\ outboxSettled' = FALSE
+  /\ generation' = StartGeneration + 1
+  /\ lastRecoveryOrigin' = indeterminateFrom
+  /\ indeterminateFrom' = "None"
+  /\ reconciliationCount' = reconciliationCount + 1
+
+ReconcileOutboxSettled ==
+  /\ phase = "Indeterminate"
+  /\ reconciliationCount < MaxReconciliations
+  /\ indeterminateFrom \in DurablePhases
+  /\ phase' = "OutboxSettled"
+  /\ disposition' = "SettledApplied"
+  /\ writeCount' = 1
+  /\ publishCount' = 1
+  /\ outboxSettled' = TRUE
+  /\ generation' = StartGeneration + 1
+  /\ lastRecoveryOrigin' = indeterminateFrom
+  /\ indeterminateFrom' = "None"
+  /\ reconciliationCount' = reconciliationCount + 1
 
 Quarantine ==
   /\ phase = "Indeterminate"
+  /\ reconciliationCount < MaxReconciliations
   /\ phase' = "Quarantined"
-  /\ intentSettled' = TRUE
-  /\ UNCHANGED <<intentAppended, writeCount, publishCount,
-                  generation, indeterminateFrom>>
+  /\ disposition' = "Quarantined"
+  /\ lastRecoveryOrigin' = indeterminateFrom
+  /\ indeterminateFrom' = "None"
+  /\ reconciliationCount' = reconciliationCount + 1
+  /\ UNCHANGED <<writeCount, publishCount, outboxSettled, generation>>
 
-Next == WitnessSource \/ ValidateGrounding \/ AppendIntent \/ CommitFacts \/
-        PublishProjection \/ SettleOutbox \/ Terminalize \/
-        MarkIndeterminate \/ ReconcileApplied \/
-        ReconcileNotApplied \/ Quarantine
+Next ==
+  WitnessSource \/ ValidateGrounding \/ RejectPreCommit \/ CancelPreCommit \/
+  AppendIntent \/ CommitFacts \/ PublishProjection \/ SettleOutbox \/
+  Terminalize \/ MarkIndeterminate \/ ReconcileNotApplied \/
+  ReconcileMemoryCommitted \/ ReconcileProjectionPublished \/
+  ReconcileOutboxSettled \/ Quarantine
 
 TypeInvariant ==
   /\ phase \in Phases
-  /\ intentAppended \in BOOLEAN
-  /\ intentSettled \in BOOLEAN
+  /\ disposition \in Dispositions
   /\ writeCount \in 0..1
   /\ publishCount \in 0..1
+  /\ outboxSettled \in BOOLEAN
   /\ generation \in Nat
+  /\ indeterminateFrom \in DurablePhases \cup {"None"}
+  /\ lastRecoveryOrigin \in DurablePhases \cup {"None"}
+  /\ reconciliationCount \in 0..MaxReconciliations
 
 NoDoubleWrite == writeCount <= 1
 NoDoublePublish == publishCount <= 1
 GenerationBound == generation \in {StartGeneration, StartGeneration + 1}
-TerminalImpliesSettled == phase = "Terminal" => intentSettled
-ResolvedImpliesSettled ==
-  phase \in {"ReconciledApplied", "ReconciledNotApplied", "Quarantined"}
-    => intentSettled
-ProjectionImpliesOneWrite ==
-  phase \in {"ProjectionPublished", "OutboxSettled", "Terminal"}
-    => writeCount = 1
+ProjectionImpliesWrite == publishCount = 1 => writeCount = 1
+OutboxImpliesProjection == outboxSettled => publishCount = 1
+
+PreCommitFinalHasNoIntent ==
+  phase \in {"RejectedPreCommit", "CancelledPreCommit"}
+    => /\ disposition = "None"
+       /\ writeCount = 0
+       /\ publishCount = 0
+       /\ ~outboxSettled
+
+TerminalIsComplete ==
+  phase = "Terminal"
+    => /\ disposition = "SettledApplied"
+       /\ writeCount = 1
+       /\ publishCount = 1
+       /\ outboxSettled
+
+NotAppliedIsEmpty ==
+  phase = "ReconciledNotApplied"
+    => /\ disposition = "SettledNotApplied"
+       /\ writeCount = 0
+       /\ publishCount = 0
+       /\ ~outboxSettled
+
+QuarantineIsNotAppliedAuthority ==
+  phase = "Quarantined" => disposition = "Quarantined"
+
+NoPrematureAppliedTerminal ==
+  phase \in {"ReconciledNotApplied", "Quarantined"}
+    => disposition # "SettledApplied"
+
+IndeterminateHasOrigin ==
+  phase = "Indeterminate" => indeterminateFrom \in DurablePhases
+
+ConcretePhaseClearsOrigin ==
+  phase # "Indeterminate" => indeterminateFrom = "None"
 
 Spec == Init /\ [][Next]_vars
 
