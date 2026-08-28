@@ -7,7 +7,7 @@ use serde::Serialize;
 use crate::AgentId;
 use crate::Sha256Digest;
 
-pub const AUTHORITY_KERNEL_SCHEMA_VERSION: u32 = 1;
+pub const AUTHORITY_KERNEL_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -80,6 +80,9 @@ pub enum AuthorityError {
     GenerationMismatch,
     ActionDenied(AuthorityAction),
     ProfileInvariant,
+    InvalidLeaseBinding(&'static str),
+    LeaseExpired { deadline: u64 },
+    VerificationRejected(String),
 }
 
 impl fmt::Display for AuthorityError {
@@ -93,6 +96,15 @@ impl fmt::Display for AuthorityError {
             }
             Self::ProfileInvariant => {
                 formatter.write_str("authority profile violates the closed-world action set")
+            }
+            Self::InvalidLeaseBinding(reason) => {
+                write!(formatter, "authority lease binding is invalid: {reason}")
+            }
+            Self::LeaseExpired { deadline } => {
+                write!(formatter, "authority lease expired at {deadline}")
+            }
+            Self::VerificationRejected(reason) => {
+                write!(formatter, "authority verifier rejected capability: {reason}")
             }
         }
     }
@@ -210,7 +222,11 @@ impl AuthorityGrant {
             return Err(AuthorityError::ActionDenied(C::ACTION));
         }
         Ok(Authorized {
-            grant_sha256: self.digest(),
+            source: AuthorizationSource::Local {
+                grant_sha256: self.digest(),
+                subject_agent_id: self.subject_agent_id.clone(),
+                generation: self.generation,
+            },
             action: C::ACTION,
             marker: PhantomData,
         })
@@ -244,7 +260,7 @@ impl AuthorityGrant {
 
     pub fn digest(&self) -> Sha256Digest {
         let mut bytes = Vec::new();
-        frame(&mut bytes, b"hepta:authority-grant:v1");
+        frame(&mut bytes, b"hepta:authority-grant:v2");
         frame(&mut bytes, &self.schema_version.to_be_bytes());
         frame(&mut bytes, self.subject_agent_id.as_str().as_bytes());
         frame(&mut bytes, &self.generation.to_be_bytes());
@@ -286,6 +302,192 @@ impl AuthorityGrant {
         }
         Ok(())
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuthorityLeaseBinding {
+    subject_agent_id: AgentId,
+    grant_sha256: Sha256Digest,
+    authority_epoch: u64,
+    owner_epoch: u64,
+    generation: u64,
+    fencing_token_sha256: Sha256Digest,
+    expires_at_unix_seconds: u64,
+}
+
+impl AuthorityLeaseBinding {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        subject_agent_id: AgentId,
+        grant_sha256: Sha256Digest,
+        authority_epoch: u64,
+        owner_epoch: u64,
+        generation: u64,
+        fencing_token_sha256: Sha256Digest,
+        expires_at_unix_seconds: u64,
+    ) -> Result<Self, AuthorityError> {
+        if authority_epoch == 0 {
+            return Err(AuthorityError::InvalidLeaseBinding(
+                "authority epoch must be non-zero",
+            ));
+        }
+        if owner_epoch == 0 {
+            return Err(AuthorityError::InvalidLeaseBinding(
+                "owner epoch must be non-zero",
+            ));
+        }
+        if generation == 0 {
+            return Err(AuthorityError::ZeroGeneration);
+        }
+        if expires_at_unix_seconds == 0 {
+            return Err(AuthorityError::InvalidLeaseBinding(
+                "expiry must be non-zero",
+            ));
+        }
+        Ok(Self {
+            subject_agent_id,
+            grant_sha256,
+            authority_epoch,
+            owner_epoch,
+            generation,
+            fencing_token_sha256,
+            expires_at_unix_seconds,
+        })
+    }
+
+    pub fn subject_agent_id(&self) -> &AgentId {
+        &self.subject_agent_id
+    }
+
+    pub fn grant_sha256(&self) -> &Sha256Digest {
+        &self.grant_sha256
+    }
+
+    pub fn authority_epoch(&self) -> u64 {
+        self.authority_epoch
+    }
+
+    pub fn owner_epoch(&self) -> u64 {
+        self.owner_epoch
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn fencing_token_sha256(&self) -> &Sha256Digest {
+        &self.fencing_token_sha256
+    }
+
+    pub fn expires_at_unix_seconds(&self) -> u64 {
+        self.expires_at_unix_seconds
+    }
+
+    pub fn is_expired_at(&self, observed_at_unix_seconds: u64) -> bool {
+        observed_at_unix_seconds >= self.expires_at_unix_seconds
+    }
+
+    pub fn digest(&self) -> Sha256Digest {
+        let mut bytes = Vec::new();
+        frame(&mut bytes, b"hepta:authority-lease-binding:v1");
+        frame(&mut bytes, self.subject_agent_id.as_str().as_bytes());
+        frame(&mut bytes, self.grant_sha256.as_str().as_bytes());
+        frame(&mut bytes, &self.authority_epoch.to_be_bytes());
+        frame(&mut bytes, &self.owner_epoch.to_be_bytes());
+        frame(&mut bytes, &self.generation.to_be_bytes());
+        frame(
+            &mut bytes,
+            self.fencing_token_sha256.as_str().as_bytes(),
+        );
+        frame(&mut bytes, &self.expires_at_unix_seconds.to_be_bytes());
+        Sha256Digest::for_bytes(&bytes)
+    }
+}
+
+#[derive(Debug)]
+pub struct CapabilityVerificationRequest<'a> {
+    action: AuthorityAction,
+    binding: &'a AuthorityLeaseBinding,
+    expected_agent_id: &'a AgentId,
+    expected_generation: u64,
+    observed_at_unix_seconds: u64,
+}
+
+impl<'a> CapabilityVerificationRequest<'a> {
+    pub fn action(&self) -> AuthorityAction {
+        self.action
+    }
+
+    pub fn binding(&self) -> &'a AuthorityLeaseBinding {
+        self.binding
+    }
+
+    pub fn expected_agent_id(&self) -> &'a AgentId {
+        self.expected_agent_id
+    }
+
+    pub fn expected_generation(&self) -> u64 {
+        self.expected_generation
+    }
+
+    pub fn observed_at_unix_seconds(&self) -> u64 {
+        self.observed_at_unix_seconds
+    }
+}
+
+pub trait CapabilityVerifier: Send + Sync {
+    fn verify(&self, request: &CapabilityVerificationRequest<'_>) -> Result<(), String>;
+}
+
+impl<F> CapabilityVerifier for F
+where
+    F: for<'a> Fn(&CapabilityVerificationRequest<'a>) -> Result<(), String> + Send + Sync,
+{
+    fn verify(&self, request: &CapabilityVerificationRequest<'_>) -> Result<(), String> {
+        self(request)
+    }
+}
+
+pub fn authorize_verified_capability<C, V>(
+    binding: AuthorityLeaseBinding,
+    expected_agent_id: &AgentId,
+    expected_generation: u64,
+    observed_at_unix_seconds: u64,
+    verifier: &V,
+) -> Result<Authorized<C>, AuthorityError>
+where
+    C: AuthorityCapability,
+    V: CapabilityVerifier + ?Sized,
+{
+    if binding.subject_agent_id() != expected_agent_id {
+        return Err(AuthorityError::SubjectMismatch);
+    }
+    if binding.generation() != expected_generation {
+        return Err(AuthorityError::GenerationMismatch);
+    }
+    if binding.is_expired_at(observed_at_unix_seconds) {
+        return Err(AuthorityError::LeaseExpired {
+            deadline: binding.expires_at_unix_seconds(),
+        });
+    }
+    {
+        let request = CapabilityVerificationRequest {
+            action: C::ACTION,
+            binding: &binding,
+            expected_agent_id,
+            expected_generation,
+            observed_at_unix_seconds,
+        };
+        verifier
+            .verify(&request)
+            .map_err(AuthorityError::VerificationRejected)?;
+    }
+    Ok(Authorized {
+        source: AuthorizationSource::ExternalLease(binding),
+        action: C::ACTION,
+        marker: PhantomData,
+    })
 }
 
 fn frame(target: &mut Vec<u8>, part: &[u8]) {
@@ -330,11 +532,21 @@ capability!(OperatorAcceptanceCapability, AuthorityAction::AcceptOperator);
 capability!(ReleasePromotionCapability, AuthorityAction::PromoteRelease);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+enum AuthorizationSource {
+    Local {
+        grant_sha256: Sha256Digest,
+        subject_agent_id: AgentId,
+        generation: u64,
+    },
+    ExternalLease(AuthorityLeaseBinding),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Authorized<C>
 where
     C: AuthorityCapability,
 {
-    grant_sha256: Sha256Digest,
+    source: AuthorizationSource,
     action: AuthorityAction,
     marker: PhantomData<C>,
 }
@@ -344,11 +556,41 @@ where
     C: AuthorityCapability,
 {
     pub fn grant_sha256(&self) -> &Sha256Digest {
-        &self.grant_sha256
+        match &self.source {
+            AuthorizationSource::Local { grant_sha256, .. } => grant_sha256,
+            AuthorizationSource::ExternalLease(binding) => binding.grant_sha256(),
+        }
+    }
+
+    pub fn subject_agent_id(&self) -> &AgentId {
+        match &self.source {
+            AuthorizationSource::Local {
+                subject_agent_id, ..
+            } => subject_agent_id,
+            AuthorizationSource::ExternalLease(binding) => binding.subject_agent_id(),
+        }
+    }
+
+    pub fn generation(&self) -> u64 {
+        match &self.source {
+            AuthorizationSource::Local { generation, .. } => *generation,
+            AuthorizationSource::ExternalLease(binding) => binding.generation(),
+        }
     }
 
     pub fn action(&self) -> AuthorityAction {
         self.action
+    }
+
+    pub fn external_lease_binding(&self) -> Option<&AuthorityLeaseBinding> {
+        match &self.source {
+            AuthorizationSource::Local { .. } => None,
+            AuthorizationSource::ExternalLease(binding) => Some(binding),
+        }
+    }
+
+    pub fn is_external(&self) -> bool {
+        self.external_lease_binding().is_some()
     }
 }
 
@@ -362,6 +604,45 @@ mod tests {
         match AgentId::parse(AGENT_ID) {
             Ok(agent_id) => agent_id,
             Err(error) => panic!("test AgentId must parse: {error}"),
+        }
+    }
+
+    fn lease_binding(generation: u64, expiry: u64) -> AuthorityLeaseBinding {
+        match AuthorityLeaseBinding::new(
+            agent_id(),
+            Sha256Digest::for_bytes(b"signed-supervisor-grant"),
+            7,
+            11,
+            generation,
+            Sha256Digest::for_bytes(b"opaque-fencing-token"),
+            expiry,
+        ) {
+            Ok(binding) => binding,
+            Err(error) => panic!("test lease binding must be valid: {error}"),
+        }
+    }
+
+    struct AllowCognitiveWrite;
+
+    impl CapabilityVerifier for AllowCognitiveWrite {
+        fn verify(&self, request: &CapabilityVerificationRequest<'_>) -> Result<(), String> {
+            if request.action() != AuthorityAction::WriteCognitiveState {
+                return Err("unexpected capability action".to_string());
+            }
+            if request.binding().subject_agent_id() != request.expected_agent_id()
+                || request.binding().generation() != request.expected_generation()
+            {
+                return Err("binding drift".to_string());
+            }
+            Ok(())
+        }
+    }
+
+    struct DenyCapability;
+
+    impl CapabilityVerifier for DenyCapability {
+        fn verify(&self, _request: &CapabilityVerificationRequest<'_>) -> Result<(), String> {
+            Err("signed grant scope denied".to_string())
         }
     }
 
@@ -424,9 +705,65 @@ mod tests {
     }
 
     #[test]
+    fn externally_verified_lease_mints_only_the_requested_typed_capability() {
+        let binding = lease_binding(3, 500);
+        let authorized = match authorize_verified_capability::<CognitiveWriteCapability, _>(
+            binding,
+            &agent_id(),
+            3,
+            100,
+            &AllowCognitiveWrite,
+        ) {
+            Ok(authorized) => authorized,
+            Err(error) => panic!("external cognitive write must authorize: {error}"),
+        };
+        assert_eq!(authorized.action(), AuthorityAction::WriteCognitiveState);
+        assert_eq!(authorized.generation(), 3);
+        assert!(authorized.is_external());
+        assert!(authorized.external_lease_binding().is_some());
+    }
+
+    #[test]
+    fn external_lease_rejects_expiry_and_verifier_denial() {
+        assert!(matches!(
+            authorize_verified_capability::<CognitiveWriteCapability, _>(
+                lease_binding(4, 100),
+                &agent_id(),
+                4,
+                100,
+                &AllowCognitiveWrite,
+            ),
+            Err(AuthorityError::LeaseExpired { deadline: 100 })
+        ));
+        assert!(matches!(
+            authorize_verified_capability::<CognitiveWriteCapability, _>(
+                lease_binding(4, 200),
+                &agent_id(),
+                4,
+                100,
+                &DenyCapability,
+            ),
+            Err(AuthorityError::VerificationRejected(reason))
+                if reason == "signed grant scope denied"
+        ));
+    }
+
+    #[test]
     fn zero_generation_is_rejected() {
         assert!(matches!(
             AuthorityGrant::agent_local(agent_id(), 0),
+            Err(AuthorityError::ZeroGeneration)
+        ));
+        assert!(matches!(
+            AuthorityLeaseBinding::new(
+                agent_id(),
+                Sha256Digest::for_bytes(b"grant"),
+                1,
+                1,
+                0,
+                Sha256Digest::for_bytes(b"fence"),
+                10,
+            ),
             Err(AuthorityError::ZeroGeneration)
         ));
     }

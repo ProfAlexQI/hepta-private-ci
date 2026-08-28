@@ -1,28 +1,23 @@
 use std::fs::File;
-use std::future::Future;
 use std::sync::Arc;
-use std::time::SystemTime;
-use std::time::UNIX_EPOCH;
 
-use codex_hepta_automation::AutomationError;
-use codex_hepta_automation::AutomationStore;
-use codex_hepta_contracts::AuthorityAction;
 use codex_hepta_contracts::AuthorityGrant;
 use codex_hepta_contracts::ProductGraph;
-use codex_hepta_memory::CognitiveRuntime;
 
 use crate::AgentdConfig;
 use crate::AgentdError;
 use crate::AgentdIdentity;
 use crate::AgentdState;
+use crate::automation_service::AgentAutomationService;
+use crate::memory_service::AgentMemoryService;
 
-const COMPOSITION_EVENT_CAPACITY: usize = 128;
+const EVENT_CAPACITY: usize = 128;
 
 pub(crate) struct AgentRuntimeComposition {
     identity: AgentdIdentity,
     state: Arc<AgentdState>,
-    cognitive_runtime: CognitiveRuntime,
-    automation_store: Option<AutomationStore>,
+    memory_service: AgentMemoryService,
+    automation_service: AgentAutomationService,
     authority: AuthorityGrant,
     product_graph: ProductGraph,
     writer_lock: File,
@@ -31,8 +26,8 @@ pub(crate) struct AgentRuntimeComposition {
 pub(crate) struct AgentRuntimeParts {
     pub(crate) identity: AgentdIdentity,
     pub(crate) state: Arc<AgentdState>,
-    pub(crate) cognitive_runtime: CognitiveRuntime,
-    pub(crate) automation_store: Option<AutomationStore>,
+    pub(crate) memory_service: AgentMemoryService,
+    pub(crate) automation_service: AgentAutomationService,
     pub(crate) authority: AuthorityGrant,
     pub(crate) product_graph: ProductGraph,
     pub(crate) writer_lock: File,
@@ -61,60 +56,23 @@ impl AgentRuntimeComposition {
         let state = Arc::new(AgentdState::new(
             identity.clone(),
             registry,
-            COMPOSITION_EVENT_CAPACITY,
+            EVENT_CAPACITY,
         )?);
-
-        state.refresh_generation()?;
-        let mut cognitive_runtime =
-            CognitiveRuntime::open_agent_owned(&identity.layout, &authority)
-                .await
-                .map_err(|error| {
-                    AgentdError::Protocol(format!("open Agent memory runtime: {error}"))
-                })?;
-        state.refresh_generation()?;
-        if authority.allows(AuthorityAction::WriteCognitiveState)
-            && !cognitive_runtime
-                .cognitive_write_store_available(&authority)
-                .map_err(|error| {
-                    AgentdError::Protocol(format!("bind cognitive write capability: {error}"))
-                })?
-        {
-            return Err(AgentdError::QualificationCognitiveRuntimeUnavailable);
-        }
-        if let Some(store) = cognitive_runtime.available_store() {
-            state.attach_cognitive_store(Arc::clone(store))?;
-        }
-
-        if cognitive_runtime.available_store().is_some() && !federation_owner_layouts.is_empty() {
-            state.refresh_generation()?;
-            cognitive_runtime = cognitive_runtime
-                .with_discovered_federation(
-                    identity.agent_id.clone(),
-                    federation_owner_layouts,
-                    now_unix_seconds()?,
-                    &authority,
-                )
-                .await
-                .map_err(|error| {
-                    AgentdError::Protocol(format!("discover memory federation: {error}"))
-                })?;
-            state.refresh_generation()?;
-        }
-
-        let automation_layout = identity.layout.clone();
-        let automation_store = open_automation_store_after_generation_fence(&state, || async move {
-            AutomationStore::open(&automation_layout).await
-        })
+        let memory_service = AgentMemoryService::open(
+            state.as_ref(),
+            &identity,
+            federation_owner_layouts,
+            &authority,
+        )
         .await?;
-        if let Some(store) = automation_store.as_ref() {
-            state.attach_automation_store(store.clone())?;
-        }
+        let automation_service =
+            AgentAutomationService::open(state.as_ref(), &identity, &authority).await?;
 
         Ok(Self {
             identity,
             state,
-            cognitive_runtime,
-            automation_store,
+            memory_service,
+            automation_service,
             authority,
             product_graph,
             writer_lock,
@@ -125,8 +83,8 @@ impl AgentRuntimeComposition {
         AgentRuntimeParts {
             identity: self.identity,
             state: self.state,
-            cognitive_runtime: self.cognitive_runtime,
-            automation_store: self.automation_store,
+            memory_service: self.memory_service,
+            automation_service: self.automation_service,
             authority: self.authority,
             product_graph: self.product_graph,
             writer_lock: self.writer_lock,
@@ -150,32 +108,6 @@ pub(crate) fn authority_for_identity(
     authority.map_err(|error| AgentdError::Protocol(format!("build Agent authority: {error}")))
 }
 
-async fn open_automation_store_after_generation_fence<Open, OpenFuture>(
-    state: &AgentdState,
-    open: Open,
-) -> Result<Option<AutomationStore>, AgentdError>
-where
-    Open: FnOnce() -> OpenFuture,
-    OpenFuture: Future<Output = Result<AutomationStore, AutomationError>>,
-{
-    state.refresh_generation()?;
-    let opened = open().await;
-    state.refresh_generation()?;
-    match opened {
-        Ok(store) => Ok(Some(store)),
-        Err(AutomationError::Unavailable | AutomationError::Corrupt) => Ok(None),
-        Err(error) => Err(error.into()),
-    }
-}
-
-fn now_unix_seconds() -> Result<i64, AgentdError> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| AgentdError::Protocol(error.to_string()))?
-        .as_secs();
-    i64::try_from(now).map_err(|_| AgentdError::Protocol("system clock overflow".to_string()))
-}
-
 #[cfg(test)]
 mod tests {
     use codex_hepta_contracts::AgentId;
@@ -193,7 +125,7 @@ mod tests {
     const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
 
     #[tokio::test]
-    async fn real_product_graph_opens_agent_private_stores_without_external_authority() {
+    async fn real_product_graph_opens_agent_private_services_without_external_authority() {
         let temp = tempfile::tempdir().expect("temporary root");
         let root = temp
             .path()
@@ -205,7 +137,8 @@ mod tests {
         let workspace = root.join("workspace");
         std::fs::create_dir(&workspace).expect("create workspace");
         let agent_id = AgentId::parse(AGENT_ID).expect("valid agent id");
-        let binding = WorkspaceBinding::new(workspace.clone(), &fleet_root).expect("bind workspace");
+        let binding =
+            WorkspaceBinding::new(workspace.clone(), &fleet_root).expect("bind workspace");
         let manifest = AgentManifest::new(
             agent_id.clone(),
             binding,
@@ -231,8 +164,12 @@ mod tests {
             .await
             .expect("open real Agent product composition");
         let parts = composition.into_parts();
-        assert!(parts.cognitive_runtime.available_store().is_some());
-        assert!(parts.automation_store.is_some());
+        assert!(parts.memory_service.is_available());
+        assert!(parts.automation_service.is_available());
+        assert_eq!(
+            parts.memory_service.cognitive_write_enabled(),
+            parts.authority.allows(AuthorityAction::WriteCognitiveState)
+        );
         assert!(parts.product_graph.validate().is_ok());
         assert!(parts.authority.is_product_closed());
         assert!(!parts.authority.allows(AuthorityAction::ExternalEffect));

@@ -1,14 +1,8 @@
-#[path = "composition.rs"]
-mod composition;
+use std::sync::Arc;
+use std::time::Duration;
 
 #[cfg(test)]
 use std::future::Future;
-use std::sync::Arc;
-use std::time::Duration;
-#[cfg(test)]
-use std::time::SystemTime;
-#[cfg(test)]
-use std::time::UNIX_EPOCH;
 
 use codex_app_server_client::RemoteAppServerClient;
 use codex_app_server_client::RemoteAppServerConnectArgs;
@@ -23,21 +17,20 @@ use codex_hepta_memory::CognitiveRuntime;
 #[cfg(test)]
 use codex_hepta_memory::CognitiveStore;
 #[cfg(test)]
-use codex_hepta_memory::FederatedRecallSet;
+use codex_hepta_memory::CognitiveStoreError;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 
-use self::composition::AgentRuntimeComposition;
-use self::composition::AgentRuntimeParts;
 use crate::AgentdConfig;
 use crate::AgentdControlServer;
 use crate::AgentdError;
 use crate::AgentdIdentity;
 use crate::AgentdState;
-use crate::app_runtime::run_app_server;
-use crate::automation::run_automation_scheduler;
+use crate::app_runtime::AgentAppServerService;
+use crate::composition::AgentRuntimeComposition;
+use crate::composition::AgentRuntimeParts;
 
 #[cfg(test)]
 const EVENT_CAPACITY: usize = 128;
@@ -56,18 +49,22 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
     let AgentRuntimeParts {
         identity,
         state,
-        cognitive_runtime,
-        automation_store,
+        memory_service,
+        automation_service,
         authority,
-        product_graph,
-        writer_lock,
+        product_graph: _product_graph,
+        writer_lock: _writer_lock,
     } = AgentRuntimeComposition::open(config).await?.into_parts();
-    // These process-bound resources intentionally live for the complete Agent
-    // runtime. The writer lock proves one Agentd composition root; the graph
-    // value binds the validated product topology used to construct it.
-    let _writer_lock = writer_lock;
-    let _product_graph = product_graph;
+    let (cognitive_runtime, cognitive_write) = memory_service.into_runtime_parts();
 
+    let app_server = AgentAppServerService::new(
+        identity.clone(),
+        arg0_paths,
+        cognitive_runtime,
+        cognitive_write,
+        authority,
+        Arc::clone(&state),
+    )?;
     let cancellation = CancellationToken::new();
     let control = AgentdControlServer::bind(
         identity.control_socket.clone(),
@@ -76,31 +73,13 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
     )
     .await?;
     let mut control_task = tokio::spawn(control.run());
-    let mut app_server_task = tokio::spawn(run_app_server(
-        identity.clone(),
-        arg0_paths,
-        cognitive_runtime,
-        authority,
-        Arc::clone(&state),
-    ));
+    let mut app_server_task = tokio::spawn(app_server.run());
     let mut monitor_task = tokio::spawn(monitor_runtime(Arc::clone(&state)));
-    let automation_cancellation = cancellation.clone();
-    let automation_state = Arc::clone(&state);
-    let mut automation_task = tokio::spawn(async move {
-        match automation_store {
-            Some(store) => {
-                run_automation_scheduler(store, automation_state, identity, automation_cancellation)
-                    .await
-            }
-            None => {
-                // Automation is an optional per-Agent product plane. A corrupt or
-                // unavailable private store must not create a second failure domain
-                // for Codex sessions, tools, or the App Server.
-                automation_cancellation.cancelled().await;
-                Ok(())
-            }
-        }
-    });
+    let mut automation_task = tokio::spawn(automation_service.run(
+        Arc::clone(&state),
+        identity,
+        cancellation.clone(),
+    ));
 
     let (outcome, completed_task) = tokio::select! {
         result = &mut control_task => (
@@ -137,7 +116,8 @@ pub async fn run(config: AgentdConfig, arg0_paths: Arg0DispatchPaths) -> Result<
     outcome
 }
 
-#[cfg(all(test, feature = "qualification-cognitive-write"))]
+#[cfg(feature = "qualification-cognitive-write")]
+#[cfg(test)]
 fn require_cognitive_runtime_for_profile(
     runtime: CognitiveRuntime,
 ) -> Result<CognitiveRuntime, AgentdError> {
@@ -148,7 +128,8 @@ fn require_cognitive_runtime_for_profile(
     }
 }
 
-#[cfg(all(test, not(feature = "qualification-cognitive-write")))]
+#[cfg(not(feature = "qualification-cognitive-write"))]
+#[cfg(test)]
 fn require_cognitive_runtime_for_profile(
     runtime: CognitiveRuntime,
 ) -> Result<CognitiveRuntime, AgentdError> {
@@ -162,7 +143,7 @@ async fn open_automation_store_after_generation_fence<Open, OpenFuture>(
 ) -> Result<Option<AutomationStore>, AgentdError>
 where
     Open: FnOnce() -> OpenFuture,
-    OpenFuture: Future<Output = Result<AutomationStore, codex_hepta_automation::AutomationError>>,
+    OpenFuture: Future<Output = Result<AutomationStore, AutomationError>>,
 {
     state.refresh_generation()?;
     let opened = open().await;
@@ -175,45 +156,18 @@ where
 }
 
 #[cfg(test)]
-async fn attach_federation_after_generation_fence(
-    state: &AgentdState,
-    runtime: CognitiveRuntime,
-    owner_layouts: Vec<codex_hepta_paths::HeptaAgentLayout>,
-) -> Result<CognitiveRuntime, AgentdError> {
-    if runtime.available_store().is_none() || owner_layouts.is_empty() {
-        return Ok(runtime);
-    }
-    state.refresh_generation()?;
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|error| AgentdError::Protocol(error.to_string()))?
-        .as_secs();
-    let now = i64::try_from(now)
-        .map_err(|_| AgentdError::Protocol("system clock overflow".to_string()))?;
-    let federation =
-        FederatedRecallSet::discover(state.identity().agent_id.clone(), owner_layouts, now).await;
-    // Discovery reads other owner stores and can outlive a lifecycle update.
-    // Fence once more before the read-only set reaches App Server.
-    state.refresh_generation()?;
-    Ok(runtime.with_federation(federation))
-}
-
-#[cfg(test)]
 async fn open_cognitive_runtime_after_generation_fence<Open, OpenFuture>(
     state: &AgentdState,
     open: Open,
 ) -> Result<CognitiveRuntime, AgentdError>
 where
     Open: FnOnce() -> OpenFuture,
-    OpenFuture: Future<Output = Result<CognitiveStore, codex_hepta_memory::CognitiveStoreError>>,
+    OpenFuture: Future<Output = Result<CognitiveStore, CognitiveStoreError>>,
 {
     state.refresh_generation()?;
-    let cognitive_runtime = CognitiveRuntime::from_open_result(open().await);
-    // Opening and migrating the store is bounded durable work. Fence again
-    // before binding control or starting App Server so a generation change
-    // concurrent with that work cannot reach a serving runtime.
+    let runtime = CognitiveRuntime::from_open_result(open().await);
     state.refresh_generation()?;
-    Ok(cognitive_runtime)
+    Ok(runtime)
 }
 
 async fn monitor_runtime(state: Arc<AgentdState>) -> Result<(), AgentdError> {

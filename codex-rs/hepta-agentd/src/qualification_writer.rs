@@ -1,13 +1,17 @@
 //! Agentd-owned qualification turn writer capability.
 //!
 //! The positive path exists only in the explicit
-//! `qualification-cognitive-write` build.  It binds each durable Codex turn
+//! `qualification-cognitive-write` build. It binds each durable Codex turn
 //! identity to one Agent-local lease and compact executor, and records local
-//! lifecycle metadata only.  The epochs below are process-local
-//! qualification witnesses; they are not production supervisor authority.
+//! lifecycle metadata only. The epochs below are process-local qualification
+//! witnesses; they are not production supervisor authority.
 
 use std::sync::Arc;
 
+#[cfg(feature = "qualification-cognitive-write")]
+use codex_hepta_contracts::AuthorityAction;
+use codex_hepta_contracts::Authorized;
+use codex_hepta_contracts::CognitiveWriteCapability;
 use codex_hepta_memory::CognitiveRuntime;
 use codex_hepta_memory_extension::QualificationTurnWriterHost;
 #[cfg(feature = "qualification-cognitive-write")]
@@ -17,7 +21,7 @@ use crate::AgentdIdentity;
 use crate::AgentdState;
 
 #[cfg(feature = "qualification-cognitive-write")]
-const CAPABILITY_ID: &str = "hepta-agentd:qualification-turn-writer:v1";
+const CAPABILITY_ID: &str = "hepta-agentd:qualification-turn-writer:v2";
 
 #[cfg(feature = "qualification-cognitive-write")]
 fn qualification_attempt_digest(
@@ -45,15 +49,24 @@ pub(crate) fn qualification_turn_writer_host(
     identity: &AgentdIdentity,
     state: Arc<AgentdState>,
     runtime: &CognitiveRuntime,
+    cognitive_write: Option<&Authorized<CognitiveWriteCapability>>,
 ) -> Option<QualificationTurnWriterHost> {
     #[cfg(not(feature = "qualification-cognitive-write"))]
     {
-        let _ = (identity, state, runtime);
+        let _ = (identity, state, runtime, cognitive_write);
         None
     }
 
     #[cfg(feature = "qualification-cognitive-write")]
     {
+        let cognitive_write = cognitive_write.cloned()?;
+        if cognitive_write.is_external()
+            || cognitive_write.action() != AuthorityAction::WriteCognitiveState
+            || cognitive_write.subject_agent_id() != &identity.agent_id
+            || cognitive_write.generation() != identity.spawn_generation
+        {
+            return None;
+        }
         let store = Arc::clone(runtime.available_store()?);
         if store.owner_agent_id() != &identity.agent_id
             || state.identity().agent_id != identity.agent_id
@@ -69,7 +82,20 @@ pub(crate) fn qualification_turn_writer_host(
                 let state = Arc::clone(&state);
                 let store = Arc::clone(&store);
                 let agent_id = agent_id.clone();
+                let cognitive_write = cognitive_write.clone();
                 async move {
+                    if cognitive_write.is_external()
+                        || cognitive_write.action() != AuthorityAction::WriteCognitiveState
+                        || cognitive_write.subject_agent_id() != &agent_id
+                        || cognitive_write.generation() != spawn_generation
+                    {
+                        return Err(
+                            codex_hepta_memory_extension::QualificationTurnWriterInputError::Invalid(
+                                "typed cognitive-write capability no longer matches the Agent host"
+                                    .to_string(),
+                            ),
+                        );
+                    }
                     prepare_qualification_turn_writer_input_with_request(
                         state,
                         store,
@@ -205,8 +231,8 @@ async fn prepare_qualification_turn_writer_input_with_request(
         fleet_generation,
         spawn_generation,
     )
-        .as_str()
-        .to_string();
+    .as_str()
+    .to_string();
     let attempt_id = format!("qualification-attempt:{attempt_suffix}");
     let lease_id = format!("qualification-turn-attempt:{attempt_suffix}");
     let journal_id = format!("qualification-turn-journal-attempt:{attempt_suffix}");
@@ -251,9 +277,9 @@ async fn prepare_qualification_turn_writer_input_with_request(
         | LogicalTurnReservation::Takeover { attempt, .. } => attempt,
         LogicalTurnReservation::ExistingInFlight { .. } => {
             // A live different physical attempt belongs to another callback
-            // or spawn.  Reusing its journal/trajectory with the current
-            // turn id would cross the attempt fence; only an exact
-            // `Replayed` tuple may reopen a writable input.
+            // or spawn. Reusing its journal/trajectory with the current turn
+            // id would cross the attempt fence; only an exact `Replayed` tuple
+            // may reopen a writable input.
             return Err(QualificationTurnWriterInputError::Invalid(
                 "logical-turn attempt is already in flight under another physical fence"
                     .to_string(),
@@ -262,11 +288,11 @@ async fn prepare_qualification_turn_writer_input_with_request(
         LogicalTurnReservation::Conflict { reason } => {
             return Err(QualificationTurnWriterInputError::Invalid(format!(
                 "logical-turn registry conflict: {reason}"
-            )))
+            )));
         }
         LogicalTurnReservation::BlockedByEvidence { evidence, .. } => {
             // Evidence is a durable quarantine witness, not an implicit
-            // terminal or owner-death proof.  Schema 0010 has no abort
+            // terminal or owner-death proof. Schema 0010 has no abort
             // projection, so leave the exact old head untouched and require
             // an explicit later lifecycle/authority decision.
             return Err(QualificationTurnWriterInputError::Invalid(format!(
@@ -276,7 +302,7 @@ async fn prepare_qualification_turn_writer_input_with_request(
         }
     };
 
-    // Reopen only the exact winner returned by the registry.  A caller's
+    // Reopen only the exact winner returned by the registry. A caller's
     // freshly computed tuple is never substituted for a durable winner.
     let inspected = store
         .inspect_local_lease_head(&attempt.lease_id)
@@ -290,7 +316,7 @@ async fn prepare_qualification_turn_writer_input_with_request(
         | codex_hepta_memory::LocalLeaseHeadDisposition::Missing => return Err(fenced()),
     };
     // A returned in-flight attempt may belong to an older fleet lifecycle
-    // generation.  It is not safe to adopt that physical fence merely because
+    // generation. It is not safe to adopt that physical fence merely because
     // the stable logical identity matches; only the registry's expired,
     // zero-evidence takeover may mint a successor under the current owner
     // epoch.
