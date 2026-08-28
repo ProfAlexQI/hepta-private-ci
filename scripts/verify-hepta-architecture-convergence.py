@@ -59,6 +59,15 @@ def verify_graph(manifest: dict[str, Any]) -> None:
         "data_authorities must be a non-empty list",
     )
     require(len(components) == len(set(components)), "component ids must be unique")
+    required_components = {
+        "supervisor",
+        "agentd",
+        "app_server",
+        "memory_runtime",
+        "automation_runtime",
+        "matrix_ingress",
+    }
+    require(set(components) == required_components, "canonical product component set changed")
     require("qualification_plane" not in components, "qualification cannot be a product component")
 
     edge_keys: set[tuple[str, str, str]] = set()
@@ -76,6 +85,17 @@ def verify_graph(manifest: dict[str, Any]) -> None:
         edge_keys.add(key)
         outgoing[source].append(target)
         indegree[target] += 1
+
+    required_edges = {
+        ("agentd", "supervisor", "depends_on"),
+        ("agentd", "memory_runtime", "composes"),
+        ("agentd", "automation_runtime", "composes"),
+        ("agentd", "app_server", "hosts"),
+        ("app_server", "memory_runtime", "reads_from"),
+        ("automation_runtime", "app_server", "submits_to"),
+        ("matrix_ingress", "agentd", "submits_to"),
+    }
+    require(edge_keys == required_edges, "canonical product edge set changed")
 
     ready = deque(sorted(component for component, degree in indegree.items() if degree == 0))
     visited = 0

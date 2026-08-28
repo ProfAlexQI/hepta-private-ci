@@ -10,17 +10,6 @@ on:
       - "codex-rs/hepta-memory/**"
       - "codex-rs/hepta-agentd/**"
       - ".github/workflows/hepta-architecture-convergence.yml"
-  push:
-    branches:
-      - "codex/hepta-architecture-convergence-*"
-    paths:
-      - "ARCHITECTURE.md"
-      - "docs/architecture/**"
-      - "scripts/verify-hepta-architecture-convergence.py"
-      - "codex-rs/hepta-contracts/**"
-      - "codex-rs/hepta-memory/**"
-      - "codex-rs/hepta-agentd/**"
-      - ".github/workflows/hepta-architecture-convergence.yml"
   workflow_dispatch:
 
 permissions:
