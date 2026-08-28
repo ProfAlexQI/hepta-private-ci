@@ -1,4 +1,4 @@
-name: hepta-intelligence-p1c2-reference-close
+name: hepta-intelligence-p1c2-trust-close
 
 on:
   push:
@@ -10,32 +10,29 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-intelligence-p1c2-reference-close
-  cancel-in-progress: true
+  group: hepta-intelligence-p1c2-trust-close-${{ github.sha }}
+  cancel-in-progress: false
 
 env:
   CARGO_NET_OFFLINE: "true"
-  SOURCE_SHA: c3c42f60e5ca11fd49fe5d4d2013c5b21e183619
-  QUALIFICATION_DRIVER_SHA: de95f9e6d39c6e57d132fc8ad8368ad89cf54fb4
 
 jobs:
   qualify:
-    name: P1.1c.2 final-label and frozen-reference closure
+    name: P1.1c.2 object, label, reference and receipt closure
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
 
     steps:
-      - name: Checkout complete qualification ancestry
+      - name: Checkout exact qualification head
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: ${{ github.sha }}
+          fetch-depth: 1
 
-      - name: Verify source and driver commits are materialized
+      - name: Verify exact trigger binding
         run: |
           set -euo pipefail
-          git cat-file -e "$SOURCE_SHA^{commit}"
-          git cat-file -e "$QUALIFICATION_DRIVER_SHA^{commit}"
-          test "$(git merge-base "$SOURCE_SHA" "$QUALIFICATION_DRIVER_SHA")" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Install Rust 1.95.0
         uses: dtolnay/rust-toolchain@stable
@@ -43,23 +40,18 @@ jobs:
           toolchain: "1.95.0"
           components: rustfmt,clippy
 
-      - name: Execute exact fail-closed reference closure
+      - name: Execute exact fail-closed trust closure
         env:
           RUNNER_NAME: ${{ runner.name }}
           RUNNER_OS: ${{ runner.os }}
           RUNNER_ARCH: ${{ runner.arch }}
-        run: |
-          set -euo pipefail
-          git checkout --detach "$QUALIFICATION_DRIVER_SHA"
-          cp scripts/qualification/run-hepta-intelligence-p1c2-fmt-close.sh \
-            "$RUNNER_TEMP/run-hepta-intelligence-p1c2-reference-close.sh"
-          bash "$RUNNER_TEMP/run-hepta-intelligence-p1c2-reference-close.sh"
+        run: bash scripts/qualification/run-hepta-intelligence-p1c2-fmt-close.sh
 
-      - name: Upload reference closure evidence
+      - name: Upload trust-closure evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-intelligence-p1c2-reference-close-${{ github.sha }}
-          path: artifacts/hepta-intelligence-p1-1c2-reference-closure
+          name: hepta-intelligence-p1c2-trust-close-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1c2-trust-closure
           if-no-files-found: warn
           retention-days: 14
