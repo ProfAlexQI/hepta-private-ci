@@ -22,7 +22,7 @@ promotion=false
 callers_ratchet=false
 ```
 
-The current `remember`, `correct`, recall, explain, KG projection generation, and physical-send paths are unchanged.
+default projection pointer is unchanged. The current `remember`, `correct`, recall, explain, KG projection generation, and physical-send paths are unchanged.
 
 ## 2. Grounded tool v3 contract
 
