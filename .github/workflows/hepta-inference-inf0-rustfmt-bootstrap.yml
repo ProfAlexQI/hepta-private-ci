@@ -1,0 +1,330 @@
+name: Hepta inference INF-0 Rust 1.95 formatting bootstrap
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-runtime-v2-20260828
+    paths:
+      - ".github/workflows/hepta-inference-inf0-rustfmt-bootstrap.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-inf0-rustfmt-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Apply exact Rust 1.95 formatting and restore strict gates
+    if: >-
+      github.repository == 'ProfAlexQI/hepta-private-ci' &&
+      github.ref == 'refs/heads/codex/hepta-inference-runtime-v2-20260828'
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      BRANCH: codex/hepta-inference-runtime-v2-20260828
+      EXPECTED_PARENT: bfe8ad2d98bb8480d268c16936c6f6bc13a220dd
+      SELF: .github/workflows/hepta-inference-inf0-rustfmt-bootstrap.yml
+      RECEIPT: docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_SOURCE_RECEIPT_2026-08-28.json
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+
+      - name: Verify exact one-shot parent and changed path
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          test -z "$(git status --porcelain)"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply candidate-scoped formatting and restore strict workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path(".github/workflows/hepta-inference-inf0.yml")
+          text = path.read_text(encoding="utf-8")
+
+          reference_start = "      - name: Check standalone reference formatting\n"
+          reference_end = "      - name: Test standalone reference crate\n"
+          compatibility_start = "      - name: Check included inference source fragments\n"
+          compatibility_end = "      - name: Workspace formatting\n"
+
+          def replace_between(source: str, start: str, end: str, replacement: str) -> str:
+              start_index = source.find(start)
+              end_index = source.find(end, start_index)
+              if start_index < 0 or end_index < 0:
+                  raise SystemExit(f"strict-workflow anchor missing: {start.strip()} -> {end.strip()}")
+              return source[:start_index] + replacement + source[end_index:]
+
+          text = replace_between(
+              text,
+              reference_start,
+              reference_end,
+              """      - name: Check standalone reference formatting
+                shell: bash
+                run: cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
+
+          """,
+          )
+          text = replace_between(
+              text,
+              compatibility_start,
+              compatibility_end,
+              """      - name: Check included inference source fragments
+                shell: bash
+                run: |
+                  rustfmt --edition 2024 --check \\
+                    ollama/src/client.rs \\
+                    ollama/src/client_*.inc.rs \\
+                    lmstudio/src/client.rs \\
+                    lmstudio/src/client_*.inc.rs
+
+          """,
+          )
+
+          forbidden = (
+              "Materialize standalone formatted source",
+              "Upload standalone formatted source",
+              "Enforce standalone formatting",
+              "Materialize included fragment formatting",
+              "Upload formatted inference fragments",
+              "Enforce included fragment formatting",
+              "hepta-inference-reference-rustfmt",
+              "hepta-inference-fragment-rustfmt",
+          )
+          for marker in forbidden:
+              if marker in text:
+                  raise SystemExit(f"diagnostic workflow marker remains: {marker}")
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml
+          (
+            cd codex-rs
+            rustfmt --edition 2024 \
+              ollama/src/client.rs \
+              ollama/src/client_*.inc.rs \
+              lmstudio/src/client.rs \
+              lmstudio/src/client_*.inc.rs
+          )
+          git rm "$SELF"
+
+      - name: Verify bounded source-commit delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+
+          changed = set(
+              subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          )
+          exact = {
+              ".github/workflows/hepta-inference-inf0.yml",
+              ".github/workflows/hepta-inference-inf0-rustfmt-bootstrap.yml",
+              "tools/hepta-inference-inf0/src/lib.rs",
+          }
+          prefixes = (
+              "codex-rs/ollama/src/client",
+              "codex-rs/lmstudio/src/client",
+          )
+          unexpected = sorted(
+              path for path in changed if path not in exact and not path.startswith(prefixes)
+          )
+          if unexpected:
+              raise SystemExit(f"unexpected rustfmt bootstrap paths: {unexpected}")
+          missing = sorted(exact - changed)
+          if missing:
+              raise SystemExit(f"required rustfmt bootstrap paths unchanged: {missing}")
+          if not any(path.startswith(prefixes[0]) for path in changed):
+              raise SystemExit("no Ollama fragment formatting delta")
+          if not any(path.startswith(prefixes[1]) for path in changed):
+              raise SystemExit("no LM Studio fragment formatting delta")
+          PY
+          git diff --check
+          cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
+          (
+            cd codex-rs
+            rustfmt --edition 2024 --check \
+              ollama/src/client.rs \
+              ollama/src/client_*.inc.rs \
+              lmstudio/src/client.rs \
+              lmstudio/src/client_*.inc.rs
+          )
+
+      - name: Create formatted source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(inference): apply Rust 1.95 formatting"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_ENV"
+
+      - name: Rebind append-only source receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["RECEIPT"])
+          data = json.loads(path.read_text(encoding="utf-8"))
+          source_sha = os.environ["SOURCE_SHA"]
+          source_tree = os.environ["SOURCE_TREE"]
+          run_id = int(os.environ["GITHUB_RUN_ID"])
+
+          data["source_candidate_commit"] = source_sha
+          data["source_candidate_tree"] = source_tree
+
+          components = data["source_candidate_components"]
+          components["inf0c_rustfmt_artifact_diagnostics"] = False
+          components["inf0c_rustfmt_repair_applied"] = True
+          components["inf0c_strict_rustfmt_gate_restored"] = True
+
+          validation = data["validation"]
+          validation["local_python_syntax"] = "PASS"
+          validation["local_receipt_json_parse"] = "PASS"
+          validation["exact_candidate_source_gate"] = "NOT_RUN_FOR_NEW_RECEIPT_HEAD"
+          validation["rust_fmt"] = "PASS_RUST_1_95_MACOS_BOOTSTRAP"
+          validation["rust_test"] = "NOT_RUN_FOR_NEW_RECEIPT_HEAD"
+          validation["rust_clippy"] = "NOT_RUN_FOR_NEW_RECEIPT_HEAD"
+
+          history = [entry for entry in data.get("ci_history", []) if entry.get("run_id") != run_id]
+          history.append(
+              {
+                  "run_id": run_id,
+                  "head": os.environ["GITHUB_SHA"],
+                  "runner_assigned": True,
+                  "runner_os": "macOS",
+                  "exact_parent": os.environ["EXPECTED_PARENT"],
+                  "reference_format": "PASS_AFTER_RUST_1_95_APPLY",
+                  "compatibility_fragment_format": "PASS_AFTER_RUST_1_95_APPLY",
+                  "strict_workflow_restored": True,
+                  "bootstrap_deleted_in_source_commit": True,
+                  "classification": "EXECUTED_RUSTFMT_REPAIR_SOURCE_COMMIT",
+              }
+          )
+          data["ci_history"] = history
+          data["current_ci"] = {
+              "status": "NOT_RUN_FOR_RECEIPT_HEAD",
+              "runner_assigned": False,
+              "source_gate": "NOT_RUN",
+              "reference_contract": "NOT_RUN",
+              "compatibility_readiness": "NOT_RUN",
+              "real_software_e2e": "NOT_RUN",
+          }
+          data["claim"] = "SOURCE_PRESENT_NOT_RUN"
+          data["qualified"] = False
+          data["known_gaps"] = [
+              "the new exact receipt head must execute the restored strict source, formatting, test, check and Clippy matrix",
+              "the real-software E2E harness has not executed against fixed pre-installed Ollama and LM Studio tuples",
+              "semantic, tool-call, disconnect, backend cancellation acknowledgement and controlled-restart evidence remain in stacked qualification lanes",
+              "hepta-inferd, the UDS protocol, native workers and hardware performance receipts are absent",
+              "INF-1 remains inactive and all production, effect, model-NPU, remote-inference and promotion authority remains closed",
+          ]
+          path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+          PY
+          test "$(git diff --name-only)" = "$RECEIPT"
+          python3 -m json.tool "$RECEIPT" >/dev/null
+          git add "$RECEIPT"
+          test "$(git diff --cached --name-only)" = "$RECEIPT"
+          git commit -m "docs(inference): rebind exact-head qualification receipt"
+          echo "RECEIPT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "RECEIPT_TREE=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_ENV"
+
+      - name: Verify final exact-head source and formatting contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0-source-gate.py \
+            scripts/hepta-inference-inf0c-real-e2e.py
+          python3 scripts/hepta-inference-inf0-source-gate.py
+          cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
+          (
+            cd codex-rs
+            rustfmt --edition 2024 --check \
+              ollama/src/client.rs \
+              ollama/src/client_*.inc.rs \
+              lmstudio/src/client.rs \
+              lmstudio/src/client_*.inc.rs
+          )
+          test -z "$(git status --porcelain)"
+
+      - name: Fast-forward final receipt head
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$GITHUB_SHA"
+          git push origin HEAD:"$BRANCH"
+
+      - name: Test standalone reference crate
+        shell: bash
+        run: cargo test --manifest-path tools/hepta-inference-inf0/Cargo.toml --locked
+
+      - name: Strict Clippy for standalone reference crate
+        shell: bash
+        run: |
+          cargo clippy --manifest-path tools/hepta-inference-inf0/Cargo.toml \
+            --all-targets --locked -- -D warnings
+
+      - name: Compile, test, and lint compatibility adapters
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+          cargo check --locked \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy
+          cargo test --locked \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy
+          cargo clippy --locked --all-targets \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy \
+            -- -D warnings
+
+      - name: Record fail-closed bootstrap result
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Hepta inference INF-0 Rust 1.95 bootstrap"
+            echo
+            echo "- bootstrap commit: $GITHUB_SHA"
+            echo "- formatted source commit: ${SOURCE_SHA:-not-created}"
+            echo "- formatted source tree: ${SOURCE_TREE:-not-created}"
+            echo "- receipt commit: ${RECEIPT_SHA:-not-created}"
+            echo "- receipt tree: ${RECEIPT_TREE:-not-created}"
+            echo "- qualification_only: true"
+            echo "- qualified: false"
+            echo "- INF-1: NOT_STARTED"
+            echo "- production/effect/model-NPU/remote/promotion authority: false"
+          } >> "$GITHUB_STEP_SUMMARY"
