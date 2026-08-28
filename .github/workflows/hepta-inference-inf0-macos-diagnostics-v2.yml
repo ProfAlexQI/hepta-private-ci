@@ -1,4 +1,4 @@
-name: Hepta inference INF-0 macOS exact diagnostics v2
+name: Hepta inference INF-0 macOS diagnostics retirement
 
 on:
   push:
@@ -13,239 +13,20 @@ permissions:
 
 concurrency:
   group: hepta-inference-inf0-macos-diagnostics-v2
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  diagnostics:
-    name: Capture exact-head source, fmt, check, test, and Clippy diagnostics
-    runs-on: macos-latest
-    timeout-minutes: 180
-    env:
-      CANDIDATE: 3afce0894a597f1968169400e3b79c4a5e94ec17
-      SELF: .github/workflows/hepta-inference-inf0-macos-diagnostics-v2.yml
-      CARGO_TERM_COLOR: never
-      RUST_BACKTRACE: "1"
+  retire:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-
-      - name: Verify isolated diagnostic branch shape
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "$CANDIDATE"
-          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
-          test -z "$(git status --porcelain)"
-          git checkout --detach "$CANDIDATE"
-          test "$(git rev-parse HEAD)" = "$CANDIDATE"
-          test "$(git rev-parse HEAD^)" = "d47cd292c89cd4ac6d484232b35589d65a88f0b9"
-          test -z "$(git status --porcelain)"
-
-      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-        with:
-          components: rustfmt, clippy
-
-      - name: Set up repository CI tools
-        id: setup_ci
-        continue-on-error: true
-        uses: ./.github/actions/setup-ci
-
-      - name: Capture complete command diagnostics
-        shell: bash
-        env:
-          SETUP_CI_OUTCOME: ${{ steps.setup_ci.outcome }}
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/hepta-inference-inf0-macos-diagnostics"
-          mkdir -p "$out"
-          printf 'gate\texit_code\n' > "$out/exit-codes.tsv"
-
-          run_capture() {
-            local name="$1"
-            shift
-            local started finished rc
-            started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            set +e
-            "$@" >"$out/$name.log" 2>&1
-            rc=$?
-            set -e
-            finished="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            printf '%s\t%s\n' "$name" "$rc" >> "$out/exit-codes.tsv"
-            printf 'started=%s\nfinished=%s\nexit_code=%s\n' \
-              "$started" "$finished" "$rc" > "$out/$name.meta"
-          }
-
-          {
-            echo "diagnostic_head=$GITHUB_SHA"
-            echo "candidate=$CANDIDATE"
-            echo "candidate_tree=$(git rev-parse 'HEAD^{tree}')"
-            echo "candidate_parent=$(git rev-parse HEAD^)"
-            echo "candidate_parent_tree=$(git rev-parse 'HEAD^^{tree}')"
-            echo "runner_os=$RUNNER_OS"
-            echo "runner_arch=$RUNNER_ARCH"
-            echo "setup_ci_outcome=$SETUP_CI_OUTCOME"
-            echo "rustc=$(rustc --version)"
-            echo "cargo=$(cargo --version)"
-            echo "rustfmt=$(rustfmt --version)"
-            echo "clippy=$(cargo clippy --version)"
-            echo "qualified=false"
-            echo "ubuntu_qualification=false"
-            echo "inf1=NOT_STARTED"
-            echo "production_authority=false"
-            echo "effect_authority=false"
-            echo "model_npu=false"
-            echo "remote_inference=false"
-            echo "promotion=false"
-          } > "$out/context.txt"
-
-          run_capture source_gate bash -lc '
-            python3 -m py_compile \
-              scripts/hepta-inference-inf0-source-gate.py \
-              scripts/hepta-inference-inf0c-real-e2e.py && \
-            python3 scripts/hepta-inference-inf0-source-gate.py
-          '
-
-          run_capture reference_fmt bash -lc '
-            cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
-          '
-          run_capture reference_test bash -lc '
-            cargo test --manifest-path tools/hepta-inference-inf0/Cargo.toml --locked
-          '
-          run_capture reference_clippy bash -lc '
-            cargo clippy --manifest-path tools/hepta-inference-inf0/Cargo.toml \
-              --all-targets --locked -- -D warnings
-          '
-
-          run_capture fragment_fmt bash -lc '
-            cd codex-rs && \
-            rustfmt --edition 2024 --check \
-              ollama/src/client.rs \
-              ollama/src/client_*.inc.rs \
-              lmstudio/src/client.rs \
-              lmstudio/src/client_*.inc.rs
-          '
-          run_capture workspace_fmt bash -lc '
-            cd codex-rs && cargo fmt --all -- --check
-          '
-
-          run_capture compatibility_check_all bash -lc '
-            cd codex-rs && \
-            cargo check --locked \
-              -p codex-lmstudio \
-              -p codex-ollama \
-              -p codex-utils-oss \
-              -p codex-responses-api-proxy
-          '
-          run_capture compatibility_test_all bash -lc '
-            cd codex-rs && \
-            cargo test --locked \
-              -p codex-lmstudio \
-              -p codex-ollama \
-              -p codex-utils-oss \
-              -p codex-responses-api-proxy
-          '
-          run_capture compatibility_clippy_all bash -lc '
-            cd codex-rs && \
-            cargo clippy --locked --all-targets \
-              -p codex-lmstudio \
-              -p codex-ollama \
-              -p codex-utils-oss \
-              -p codex-responses-api-proxy \
-              -- -D warnings
-          '
-
-          for package in \
-            codex-lmstudio \
-            codex-ollama \
-            codex-utils-oss \
-            codex-responses-api-proxy
-          do
-            safe="${package//-/_}"
-            run_capture "check_${safe}" bash -lc \
-              "cd codex-rs && cargo check --locked -p '$package'"
-            run_capture "test_${safe}" bash -lc \
-              "cd codex-rs && cargo test --locked -p '$package'"
-            run_capture "clippy_${safe}" bash -lc \
-              "cd codex-rs && cargo clippy --locked --all-targets -p '$package' -- -D warnings"
-          done
-
-          git status --porcelain=v1 > "$out/git-status-after.txt"
-          git diff --check > "$out/git-diff-check.log" 2>&1 || true
-
-          python3 - "$out" <<'PY'
-          import json
-          import os
-          import sys
-          from pathlib import Path
-
-          root = Path(sys.argv[1])
-          rows = root.joinpath("exit-codes.tsv").read_text(encoding="utf-8").splitlines()[1:]
-          exits = {}
-          for row in rows:
-              name, code = row.split("\t", 1)
-              exits[name] = int(code)
-          manifest = {
-              "schema": "hepta.inference.inf0c.macos-diagnostics.v2",
-              "diagnostic_head": os.environ["GITHUB_SHA"],
-              "candidate": os.environ["CANDIDATE"],
-              "runner_os": os.environ.get("RUNNER_OS"),
-              "runner_arch": os.environ.get("RUNNER_ARCH"),
-              "setup_ci_outcome": os.environ.get("SETUP_CI_OUTCOME"),
-              "exit_codes": exits,
-              "all_commands_passed": all(code == 0 for code in exits.values()),
-              "qualification_only": True,
-              "qualified": False,
-              "ubuntu_qualification": False,
-              "inf1": "NOT_STARTED",
-              "authority": {
-                  "production_listener": False,
-                  "production_writer": False,
-                  "provider_effect": False,
-                  "external_effect": False,
-                  "shared_kg_write": False,
-                  "memory_write": False,
-                  "route_write": False,
-                  "fleet_write": False,
-                  "model_npu": False,
-                  "remote_inference": False,
-                  "automatic_model_install": False,
-                  "operator_acceptance": False,
-                  "promotion": False,
-                  "release": False,
-              },
-          }
-          root.joinpath("manifest.json").write_text(
-              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
-          )
-          PY
-
-          find "$out" -type f -print0 | sort -z | xargs -0 shasum -a 256 > "$out/SHA256SUMS"
-          cat "$out/context.txt" >> "$GITHUB_STEP_SUMMARY"
-          echo >> "$GITHUB_STEP_SUMMARY"
-          sed 's/^/    /' "$out/exit-codes.tsv" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload complete diagnostic bundle
-        if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: hepta-inference-inf0-macos-diagnostics-v2-${{ env.CANDIDATE }}
-          path: ${{ runner.temp }}/hepta-inference-inf0-macos-diagnostics
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Preserve diagnostic-only fail-closed posture
-        if: always()
+      - name: Record diagnostic retirement
         shell: bash
         run: |
           {
-            echo
-            echo "diagnostic_only=true"
+            echo "retired_run=33173718807"
+            echo "reason=exact failures already isolated by fast diagnostics"
             echo "qualified=false"
-            echo "ubuntu_qualification=false"
             echo "INF-1=NOT_STARTED"
             echo "production/effect/model-NPU/remote/promotion authority=false"
           } >> "$GITHUB_STEP_SUMMARY"
