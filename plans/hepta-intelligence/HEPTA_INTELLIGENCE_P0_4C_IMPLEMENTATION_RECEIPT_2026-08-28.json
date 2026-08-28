@@ -10,16 +10,17 @@
   },
   "candidate": {
     "branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
-    "source_head_before_receipt": "d197575c298a731589938f292b1d490cb422db96",
+    "source_head_before_receipt": "1f0a86e4f118c747b4b9aa329d3a17d4eb7b2803",
     "core_adapter_commit": "27b64141575f1a937ae12d5d1e3bf344f7818491",
     "core_registration_commit": "0b60f474992b4ac490444ec575bed82bea317360",
     "agentd_adapter_commit": "8ad52c71074e465b861b488cd6a09112a00cb6c2",
     "agentd_feature_commit": "8b473361073d042c06eacca0d35832a800f9a5a6",
     "agentd_export_commit": "cd3f0227a8d3d4caf254c71b0a172e299027f88f",
-    "source_gate_commit": "91b774cf5e30d25f0192bb453b2a81c2cb889464",
+    "agentd_prepare_append_hardening_commit": "914917b4a1f71189042e2654a6be2ea10d176023",
+    "source_gate_commit": "d0b19ca7644b672406af079ff485bc10ca880dda",
     "workflow_commit": "59832f15548dcbd86d47d6c41035e68a04b759f8",
-    "plan_commit": "beae20bb47e5a25637391eed98165c81e3f93d26",
-    "status_commit": "d197575c298a731589938f292b1d490cb422db96"
+    "plan_commit": "a1f0f1e4a5c10c84a71a4a39d90791f13e02bf7b",
+    "status_commit": "1f0a86e4f118c747b4b9aa329d3a17d4eb7b2803"
   },
   "implemented_claims": {
     "core_shadow_adapter": true,
@@ -28,6 +29,13 @@
     "exact_retry_protocol": true,
     "postcommit_ack_loss_adoption_test": true,
     "zero_product_rows_test": true,
+    "agentd_prepare_envelope_round_trip": true,
+    "agentd_prepare_envelope_cross_spawn_rejection": true,
+    "agentd_prepare_envelope_payload_tamper_rejection": true,
+    "agentd_prepare_envelope_authority_tamper_rejection": true,
+    "agentd_operation_id_spawn_binding": true,
+    "agentd_lease_id_spawn_binding": true,
+    "agentd_causal_root_spawn_binding": true,
     "spawn_bound_agentd_envelope": true,
     "dedicated_source_gate": true,
     "dedicated_rust_workflow": true,
@@ -68,7 +76,9 @@
   },
   "interpretation": [
     "The adapter records typed observations in the qualification-only P0.4b journal and does not execute the represented product mutation.",
-    "The Agentd seam is build-feature gated, default-off, and absent from runtime and App Server construction paths.",
+    "The Agentd seam is build-feature gated, default-off, absent from runtime and App Server construction paths, and validates the complete spawn-bound prepare envelope before append.",
+    "Operation, lease and causal-root attenuation identifies a physical Agentd spawn attempt; this tranche does not implement cross-spawn takeover.",
+    "The host receipt is an unkeyed integrity binding, not a signature or independent authorization capability.",
     "No source-only or implementation receipt may be interpreted as executable qualification, efficacy, operator acceptance, promotion, or production authority."
   ]
 }
