@@ -81,9 +81,9 @@ quarantined
 
 Every evidence-bearing observation carries a lowercase SHA-256 digest. Projection observations also carry the expected previous generation and the next generation.
 
-These names describe facts the host claims it already observed. They do not grant the adapter permission to perform the corresponding product mutation.
+These names describe facts the host claims it already observed. They do not grant the adapter permission to perform the corresponding product mutation, and the observation digest is not independent proof that the represented product effect occurred.
 
-## 3. Prepare/append retry protocol
+## 3. Core prepare/append retry protocol
 
 `prepare_shadow_intelligence_mutation_observation` freezes:
 
@@ -136,7 +136,7 @@ projection_write_performed_by_adapter=false
 outbox_dispatch_performed_by_adapter=false
 ```
 
-## 5. Agentd seam
+## 5. Agentd seam and spawn binding
 
 `codex-rs/hepta-agentd/src/shadow_intelligence_mutation_host.rs` provides `AgentdShadowIntelligenceMutationHost`.
 
@@ -148,15 +148,50 @@ The seam is available only when built with:
 
 `default = []` remains unchanged. Agentd `runtime.rs` and `app_runtime.rs` do not construct, attach, register, or retain this handle.
 
-`open` binds the store owner to the exact `AgentdIdentity.agent_id`. Every returned envelope also binds:
+`open` binds the store owner to the exact `AgentdIdentity.agent_id`. Before `begin`, the Agentd host deterministically attenuates caller values into the current identity and spawn generation:
+
+```text
+caller operation ID
+  → agentd-shadow-operation:<digest(agent, spawn, caller-operation)>
+
+caller lease ID
+  → agentd-shadow-lease:<digest(agent, spawn, caller-lease)>
+
+caller causal root
+  → digest(agent, spawn, caller-causal-root)
+```
+
+This intentionally treats each Agentd spawn as a separate physical shadow attempt. A later cross-spawn takeover/reconciliation protocol is not implemented or implied by this tranche.
+
+Every returned envelope binds:
 
 ```text
 agent_id
 spawn_generation
 action
-payload_sha256
-host_receipt_sha256
+canonical payload SHA-256
+host receipt SHA-256
 ```
+
+The host receipt is an integrity binding, not a secret-key signature or independent authority grant.
+
+### Agentd prepare→append contract
+
+`AgentdShadowIntelligenceMutationHost::prepare` returns a complete Agentd envelope. `append` requires that exact envelope, not the nested core payload alone.
+
+Before unwrapping, `append` verifies:
+
+```text
+schema and namespace
+action == prepare
+exact AgentId
+exact spawn generation
+canonical payload digest
+host receipt digest
+all runtime/tool/effect/production flags remain false
+```
+
+Cross-agent, cross-spawn, changed payload, changed host receipt, and changed authority flags fail closed before the P0.4b journal is touched.
 
 The Agentd envelope repeats all negative authority flags and never exposes a dispatcher target.
 
@@ -174,6 +209,10 @@ Core focused tests cover:
 Agentd focused tests cover:
 
 - deterministic spawn-bound envelope digest;
+- prepare-envelope round trip;
+- cross-spawn envelope rejection;
+- payload and authority-bit tamper rejection;
+- operation/lease/causal-root spawn binding;
 - zero spawn-generation fencing;
 - runtime/app/tool/effect authority flags remaining false.
 
