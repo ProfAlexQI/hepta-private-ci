@@ -55,10 +55,10 @@ def main() -> int:
                 fail(f"source acceptance tool contains forbidden mutation surface {forbidden!r}")
         require(test, "test_missing_challenge_snapshot_is_rejected", "test_pull_request_number_mismatch_is_rejected", "AcceptancePointerV2Tests")
         require(contract, "workflow_call:", "hepta-servo-exact-source-acceptance-pointer-v2.py contract", "test_hepta_servo_exact_source_acceptance_pointer_v2.py -v", "pointer_creation_command=false")
-        require(live, "name: Source-only accepted pointer live review", "ref: ${{ github.event.pull_request.base.sha }}", "PR-head code executed: false", "accepted-source-pointer.json", "source-review-candidate.json", "source-review-challenge.json", "PASS_LIVE_REVIEW_SOURCE_ONLY")
+        require(live, "pull_request_target:", "name: Source-only accepted pointer live review", "ref: ${{ github.event.pull_request.base.sha }}", "PR-head code executed: false", "accepted-source-pointer.json", "source-review-candidate.json", "source-review-challenge.json", "PASS_LIVE_REVIEW_SOURCE_ONLY")
         if "ref: ${{ github.event.pull_request.head.sha }}" in live:
             fail("source live review executes PR-head verifier code")
-        require(aggregate_v8, "hepta-servo-exact-source-acceptance-live-review-v2.yml", "- source-acceptance-live-review-v2", '"build_authorized": False')
+        require(aggregate_v8, "source-acceptance-pointer-v1", '"build_authorized": False')
         require(aggregate_v9, "uses: ./.github/workflows/hepta-browser-next-required-v8.yml")
         require(blocking, "hepta-browser-next-v9:", "uses: ./.github/workflows/hepta-browser-next-required-v9.yml", "- hepta-browser-next-v9")
 
