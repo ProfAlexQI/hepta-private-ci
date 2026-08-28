@@ -239,7 +239,7 @@ jobs:
   inherited-p1-1:
     name: Inherited P1.1 signed identity and evidence matrix
     needs: source
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     timeout-minutes: 60
     steps:
       - name: Checkout exact candidate
@@ -303,7 +303,7 @@ jobs:
     needs:
       - source
       - inherited-p1-1
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-slim
     timeout-minutes: 90
     steps:
       - name: Checkout exact candidate
