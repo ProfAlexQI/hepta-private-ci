@@ -229,3 +229,4 @@ index 444bdd7..f3d6cf1 100644
 +            state.apply(drift_request),
              Err(IntelligenceMutationStateError::BindingDrift)
          );
+ 
