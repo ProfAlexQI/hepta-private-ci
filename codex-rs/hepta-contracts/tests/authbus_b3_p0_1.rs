@@ -276,6 +276,38 @@ fn provider_timeout_is_indeterminate_lookup_only_and_terminal_replay_updates() {
 }
 
 #[test]
+fn timeout_status_inside_ok_result_is_normalized_to_unknown_indeterminate() {
+    let bytes = b"ok-timeout-secret";
+    let reference = secret_ref("ok-timeout", bytes);
+    let request = refresh_request(reference.clone(), "ok-timeout");
+    let provider = ScriptedProvider::default();
+    provider.push_refresh(Ok(ProviderRefreshResult {
+        response_id: "provider:refresh:timeout".to_string(),
+        provider_status: SecretProviderStatus::Timeout,
+        access_secret_ref: Some(secret_ref("untrusted-access", b"untrusted-access")),
+        refresh_secret_ref: Some(secret_ref("untrusted-refresh", b"untrusted-refresh")),
+        secret_revision: Some(request.expected_secret_revision + 1),
+        response_digest: digest("provider:refresh:timeout"),
+    }));
+    let mut adapter =
+        ProcessBoundSecretRefAdapter::new(backend(&reference, bytes), provider.clone());
+
+    let response = adapter
+        .refresh(request.clone())
+        .expect("conservative timeout observation");
+    assert_eq!(response.outcome, SecretRefOutcome::Indeterminate);
+    assert_eq!(response.provider_status, SecretProviderStatus::Unknown);
+    assert_eq!(response.access_secret_ref, None);
+    assert_eq!(response.refresh_secret_ref, None);
+    assert_eq!(response.secret_revision, None);
+    assert_eq!(
+        adapter.retry_refresh(request),
+        Err(B3AdapterError::ReconcileRequired)
+    );
+    assert_eq!(provider.refresh_call_count(), 1);
+}
+
+#[test]
 fn verified_transient_replays_locally_until_explicit_retry() {
     let bytes = b"transient-secret";
     let reference = secret_ref("transient", bytes);
