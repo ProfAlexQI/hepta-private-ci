@@ -1,6 +1,12 @@
 name: Hepta architecture convergence P0
 
 on:
+  pull_request:
+    branches:
+      - integration/vnext-main-20260811
+  push:
+    branches:
+      - codex/hepta-architecture-convergence-p0-2-20260828
   workflow_call:
   workflow_dispatch:
 
@@ -8,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: hepta-architecture-convergence-${{ github.event.pull_request.number || github.ref }}
+  group: hepta-architecture-convergence-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
