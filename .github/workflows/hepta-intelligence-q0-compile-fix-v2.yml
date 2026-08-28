@@ -8,7 +8,6 @@ on:
       - .github/workflows/hepta-intelligence-q0-compile-fix-v2.yml
 
 permissions:
-  actions: read
   contents: write
 
 concurrency:
@@ -17,10 +16,7 @@ concurrency:
 
 env:
   EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-  EXPECTED_PARENT: a059bdfea758b726ef16e67cf491d56cbba1072b
-  PREVIOUS_RUN: "33163587740"
-  PREVIOUS_ARTIFACT: hepta-intelligence-q0-compile-fix-a059bdfea758b726ef16e67cf491d56cbba1072b
-  REPAIR_PATCH_SHA256: 3377fdf75137351d6756834df8da4b02a99a12c2f44511b9d6b3f9d80ada24d1
+  EXPECTED_PARENT: 640e0bea1d0fbc6f66074715122d0958bde66525
   OLD_APPLIER: .github/workflows/hepta-intelligence-q0-compile-fix-apply.yml
   THIS_APPLIER: .github/workflows/hepta-intelligence-q0-compile-fix-v2.yml
   ARTIFACT_DIR: artifacts/hepta-intelligence-q0-compile-fix-v2
@@ -58,38 +54,139 @@ jobs:
             "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" "$(git rev-parse HEAD^)" \
             > "$ARTIFACT_DIR/identity.json"
 
-      - name: Download the immutable proven v1 repair artifact
-        uses: actions/download-artifact@v4
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
-          name: ${{ env.PREVIOUS_ARTIFACT }}
-          path: /tmp/q0-v1
-          github-token: ${{ github.token }}
-          repository: ProfAlexQI/hepta-private-ci
-          run-id: ${{ env.PREVIOUS_RUN }}
+          toolchain: 1.95.0
+          components: rustfmt,clippy
 
-      - name: Verify and apply the exact v1 repair patch
+      - name: Verify toolchain, host and repository pin
         shell: bash
+        working-directory: codex-rs
         run: |
           set -euo pipefail
-          test "$(sha256sum /tmp/q0-v1/repair.patch | awk '{print $1}')" = "$REPAIR_PATCH_SHA256"
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          identity = json.loads(Path('/tmp/q0-v1/identity.json').read_text())
-          assert identity['head'] == 'a059bdfea758b726ef16e67cf491d56cbba1072b'
-          assert identity['parent'] == 'edbed25eaab9d8345aaccde81259f5391e2dad38'
-          assert identity['host'] == 'aarch64-unknown-linux-gnu'
-          assert identity['runtime_authority'] is False
+          expected=$(python3 - <<'PY'
+          import pathlib
+          import tomllib
+          value = tomllib.loads(pathlib.Path("rust-toolchain.toml").read_text())
+          print(value["toolchain"]["channel"])
           PY
-          git apply --check /tmp/q0-v1/repair.patch
-          git apply /tmp/q0-v1/repair.patch
+          )
+          test "$expected" = "1.95.0"
+          test "$(rustc --version | awk '{print $2}')" = "$expected"
+          test "$(rustc -vV | awk '/^host:/ {print $2}')" = "aarch64-unknown-linux-gnu"
+          test -s Cargo.lock
 
-      - name: Make tamper-trigger restoration exact and idempotent
+      - name: Apply exact visibility, helper, shadowing and tamper-restoration repairs
         shell: python
         run: |
           from pathlib import Path
-          path = Path('codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs')
-          text = path.read_text(encoding='utf-8')
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              assert count == 1, (path, count, old)
+              target.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          prepare = "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs"
+          for name in (
+              "validate_source_binding",
+              "require_groundable_revision",
+              "bind_exact_citation",
+              "prepare",
+              "validate_canonical_identity_binding",
+          ):
+              replace_once(
+                  prepare,
+                  f"pub(super) fn {name}(",
+                  f"pub(in crate::framing::durable_fact_grounding) fn {name}(",
+              )
+
+          insert = "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs"
+          replace_once(
+              insert,
+              "use super::*;\n",
+              "use super::*;\nuse super::support::durable_receipt_digest;\nuse super::support::to_i64_len;\n",
+          )
+          replace_once(
+              insert,
+              "pub(super) async fn insert_tx(",
+              "pub(in crate::framing::durable_fact_grounding) async fn insert_tx(",
+          )
+
+          verify = "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs"
+          replace_once(
+              verify,
+              "use super::*;\n",
+              "use super::*;\nuse super::support::durable_receipt_digest;\nuse super::support::limit_plus_one;\nuse super::support::parse_fact_kind;\nuse super::support::stored_fact_supports;\nuse super::support::validate_span_range_corrupt;\n",
+          )
+          replace_once(
+              verify,
+              "pub(super) async fn verify_receipts(",
+              "pub(in crate::framing::durable_fact_grounding) async fn verify_receipts(",
+          )
+
+          support = "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs"
+          replace_once(
+              support,
+              "use super::*;\n",
+              "use super::*;\nuse crate::framing::frame_part;\n",
+          )
+          for old, new in (
+              ("async fn stored_fact_supports(", "pub(super) async fn stored_fact_supports("),
+              ("fn durable_receipt_digest(", "pub(super) fn durable_receipt_digest("),
+              ("fn parse_fact_kind(", "pub(super) fn parse_fact_kind("),
+              ("fn validate_span_range_corrupt(", "pub(super) fn validate_span_range_corrupt("),
+              ("fn to_i64_len(", "pub(super) fn to_i64_len("),
+              ("fn limit_plus_one(", "pub(super) fn limit_plus_one("),
+          ):
+              replace_once(support, old, new)
+          target = Path(support)
+          text = target.read_text(encoding="utf-8")
+          count = text.count("super::super::frame_part")
+          assert count == 16, count
+          target.write_text(
+              text.replace("super::super::frame_part", "frame_part"),
+              encoding="utf-8",
+          )
+
+          ledger = "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs"
+          replace_once(
+              ledger,
+              "pub(super) use insert::insert_tx;",
+              "pub(in crate::framing::durable_fact_grounding) use insert::insert_tx;",
+          )
+          replace_once(
+              ledger,
+              "pub(super) use verify::verify_receipts;",
+              "pub(in crate::framing::durable_fact_grounding) use verify::verify_receipts;",
+          )
+
+          state = "codex-rs/hepta-memory/src/intelligence_mutation_state.rs"
+          replace_once(
+              state,
+              "        let request = IntelligenceMutationTransitionRequest {\n            binding: drifted,\n",
+              "        let drift_request = IntelligenceMutationTransitionRequest {\n            binding: drifted,\n",
+          )
+          replace_once(
+              state,
+              "            state.apply(request),\n            Err(IntelligenceMutationStateError::BindingDrift)\n",
+              "            state.apply(drift_request),\n            Err(IntelligenceMutationStateError::BindingDrift)\n",
+          )
+
+          replace_once(
+              "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
+              "use sqlx::Executor;\n",
+              "",
+          )
+          replace_once(
+              "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
+              "use super::intelligence_mutation_state::IntelligenceMutationState;\n",
+              "",
+          )
+
+          tests = "codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs"
           needle = '''    sqlx::query(
               "CREATE TRIGGER kg_revision_fact_grounding_spans_no_update
           BEFORE UPDATE ON kg_revision_fact_grounding_spans BEGIN
@@ -108,28 +205,12 @@ jobs:
           END",
       )
 '''
-          assert text.count(needle) == 1, text.count(needle)
-          path.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
+          replace_once(tests, needle, replacement)
 
-      - name: Install repository Rust toolchain
-        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
-        with:
-          toolchain: 1.95.0
-          components: rustfmt,clippy
-
-      - name: Verify toolchain, host, lock and exact repair files
+      - name: Format and assert the exact frozen repair set
         shell: bash
         run: |
           set -euo pipefail
-          expected=$(python3 - <<'PY'
-          import pathlib, tomllib
-          print(tomllib.loads(pathlib.Path('codex-rs/rust-toolchain.toml').read_text())['toolchain']['channel'])
-          PY
-          )
-          test "$expected" = "1.95.0"
-          test "$(rustc --version | awk '{print $2}')" = "$expected"
-          test "$(rustc -vV | awk '/^host:/ {print $2}')" = "aarch64-unknown-linux-gnu"
-          test -s codex-rs/Cargo.lock
           files=(
             codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs
             codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs
@@ -147,18 +228,23 @@ jobs:
           python3 - <<'PY'
           import subprocess
           expected = {
-              'codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs',
-              'codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs',
-              'codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs',
-              'codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs',
-              'codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs',
-              'codex-rs/hepta-memory/src/intelligence_mutation_state.rs',
-              'codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs',
-              'codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs',
-              'codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs',
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
+              "codex-rs/hepta-memory/src/intelligence_mutation_state.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
+              "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs",
           }
-          actual = set(subprocess.check_output(['git','diff','--name-only'], text=True).splitlines())
-          assert actual == expected, {'missing': sorted(expected-actual), 'unexpected': sorted(actual-expected)}
+          actual = set(
+              subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          )
+          assert actual == expected, {
+              "missing": sorted(expected - actual),
+              "unexpected": sorted(actual - expected),
+          }
           PY
           git diff --stat | tee "$ARTIFACT_DIR/repair-stat.txt"
           git diff --binary > "$ARTIFACT_DIR/repair.patch"
@@ -172,7 +258,9 @@ jobs:
           cp "$status" "$canonical"
           restore_status() { cp "$canonical" "$status"; rm -f "$canonical"; }
           trap restore_status EXIT
-          test "$(python3 scripts/verify-hepta-intelligence-master-plan.py)" = "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_SOURCE_ONLY"
+
+          test "$(python3 scripts/verify-hepta-intelligence-master-plan.py)" = \
+            "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_SOURCE_ONLY"
           python3 scripts/hepta-intelligence-status-compat.py P0.2 >/dev/null
           python3 scripts/verify-hepta-intelligence-grounding-ledger.py >/dev/null
           python3 scripts/hepta-intelligence-status-compat.py P0.3 >/dev/null
@@ -184,6 +272,7 @@ jobs:
           python3 scripts/verify-hepta-intelligence-mutation-journal.py >/dev/null
           python3 scripts/hepta-intelligence-status-compat.py P0.4c >/dev/null
           python3 scripts/verify-hepta-intelligence-shadow-host.py >/dev/null
+
           restore_status
           trap - EXIT
           git diff --check
@@ -239,21 +328,31 @@ jobs:
           git add -- "${repaired[@]}"
           git rm "$OLD_APPLIER" "$THIS_APPLIER"
           python3 - <<'PY'
-          import os, subprocess
+          import os
+          import subprocess
+
           expected = {
-              'codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs',
-              'codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs',
-              'codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs',
-              'codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs',
-              'codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs',
-              'codex-rs/hepta-memory/src/intelligence_mutation_state.rs',
-              'codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs',
-              'codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs',
-              'codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs',
-              os.environ['OLD_APPLIER'], os.environ['THIS_APPLIER'],
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
+              "codex-rs/hepta-memory/src/intelligence_mutation_state.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
+              "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
+              "codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs",
+              os.environ["OLD_APPLIER"],
+              os.environ["THIS_APPLIER"],
           }
-          actual = set(subprocess.check_output(['git','diff','--cached','--name-only'], text=True).splitlines())
-          assert actual == expected, {'missing': sorted(expected-actual), 'unexpected': sorted(actual-expected)}
+          actual = set(
+              subprocess.check_output(
+                  ["git", "diff", "--cached", "--name-only"], text=True
+              ).splitlines()
+          )
+          assert actual == expected, {
+              "missing": sorted(expected - actual),
+              "unexpected": sorted(actual - expected),
+          }
           PY
           git diff --cached --check
           git commit -m "fix(intelligence): restore nested grounding compile and tamper regression"
