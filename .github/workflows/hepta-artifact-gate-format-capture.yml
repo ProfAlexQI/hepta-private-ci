@@ -1,0 +1,63 @@
+name: hepta artifact gate format capture
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/hepta-vnext-plan-browser-c0-c3-20260827
+    paths:
+      - "tools/hepta-browser-c1-artifact-gate/**"
+      - ".github/workflows/hepta-artifact-gate-format-capture.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Capture Rust 1.95 artifact-gate formatting
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt
+
+      - name: Format qualification crate only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path tools/hepta-browser-c1-artifact-gate/Cargo.toml
+          git diff --check
+
+      - name: Record negative-authority posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > tools/hepta-browser-c1-artifact-gate/RUSTFMT_CAPTURE_POSTURE.txt <<'EOF'
+          qualification_only=true
+          servo_linked=false
+          artifact_executed=false
+          runtime_authority=false
+          production_caller=false
+          production_writer=false
+          effect_authority=false
+          external_network_allowed=false
+          operator_acceptance=false
+          promotion=false
+          release_qualified=false
+          EOF
+
+      - name: Upload exact formatted source
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hepta-artifact-gate-rustfmt-1.95
+          path: |
+            tools/hepta-browser-c1-artifact-gate/src
+            tools/hepta-browser-c1-artifact-gate/tests
+            tools/hepta-browser-c1-artifact-gate/RUSTFMT_CAPTURE_POSTURE.txt
+          if-no-files-found: error
+          retention-days: 1
