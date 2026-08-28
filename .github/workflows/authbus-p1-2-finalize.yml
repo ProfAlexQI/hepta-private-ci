@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 env:
-  EXPECTED_PARENT: 26b5f12784ddb68b10b4d3594ae16547089f014e
+  EXPECTED_PARENT: ed51bead0f1f2941fb6e0fba9c316930a40f6f83
   MANIFEST: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
   PACKAGE: codex-hepta-authbus-p1-2-qualification
   CRATE_ROOT: codex-rs/hepta-authbus-p1-2-qualification
@@ -53,6 +53,8 @@ jobs:
           grep -q 'applied_exact_ttl_boundary_repairs=1' \
             /tmp/authbus-p1-2-finalize.txt
           grep -q 'applied_canonical_sqlite_shim_repairs=1' \
+            /tmp/authbus-p1-2-finalize.txt
+          grep -q 'applied_source_verifier_shim_repairs=1' \
             /tmp/authbus-p1-2-finalize.txt
 
           python3 scripts/verify-authbus-p1-2.py | tee /tmp/authbus-p1-2-source.json
