@@ -1,0 +1,86 @@
+{
+  "schema": "hepta_intelligence_p1_1a_implementation_receipt_v1",
+  "recorded_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "base": {
+    "branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
+    "commit": "7691978b786dd00c69477d1a3355be13db2c4d67",
+    "pull_request": 23,
+    "qualified": false
+  },
+  "candidate": {
+    "branch": "codex/hepta-intelligence-hybrid-retrieval-v1a-20260828",
+    "source_head_before_receipt": "8a245f0501178b11ae0e2674caeb5f390cdbe0f6",
+    "module_commit": "d6d4c085dd33138df5f85c71a5d84efd78ace02b",
+    "tests_commit": "16a890ef3995e2bc940f470761cddd87fcb203bf",
+    "registration_commit": "63fd7cdba4ec288db45df72739874bc8ef388432",
+    "source_gate_commit": "07f5460b43feb94e3c6e1c09d59cd55e36a1f29b",
+    "workflow_commit": "2c36e3a0fb123672688131f815502cc49622cfd1",
+    "plan_commit": "8a245f0501178b11ae0e2674caeb5f390cdbe0f6"
+  },
+  "implemented_claims": {
+    "deterministic_query_planner": true,
+    "intent_temporal_language_classification": true,
+    "bounded_lexical_terms": true,
+    "existing_retrieval_baseline_reused": true,
+    "query_bound_semantic_batch_contract": true,
+    "model_tokenizer_index_digest_binding": true,
+    "semantic_candidate_batch_digest": true,
+    "semantic_candidate_evidence_digest": true,
+    "deterministic_fixed_point_fusion": true,
+    "semantic_absence_fallback": true,
+    "batch_revalidation": true,
+    "content_not_returned_by_receipt": true,
+    "zero_product_mutation_test_present": true,
+    "dedicated_source_gate": true,
+    "dedicated_rust_workflow": true,
+    "rust_toolchain_pin": "1.95.0"
+  },
+  "explicit_limitations": {
+    "candidate_union_single_snapshot": false,
+    "semantic_host_supplied_untrusted": true,
+    "semantic_index_provenance_verified": false,
+    "local_embedding_executed": false,
+    "ann_index_executed": false,
+    "tokenizer_registry_implemented": false,
+    "exact_token_budgeting_implemented": false,
+    "grounding_filter_applied": false,
+    "truth_filter_applied": false,
+    "contradiction_filter_applied": false,
+    "kg_two_hop_implemented": false,
+    "reranker_calibrated": false,
+    "efficacy_proven": false
+  },
+  "not_claimed": {
+    "source_gate_pass": false,
+    "rust_format_pass": false,
+    "rust_test_pass": false,
+    "rust_clippy_pass": false,
+    "runtime_wired": false,
+    "default_retrieval_changed": false,
+    "attachment_compiler_changed": false,
+    "physical_send_changed": false,
+    "external_effects": false,
+    "production_authority": false,
+    "operator_accepted": false,
+    "promoted": false,
+    "callers_ratchet": false
+  },
+  "qualification": {
+    "status": "PENDING_EXACT_HEAD_EXECUTION",
+    "qualified": false,
+    "required_commands": [
+      "python3 scripts/verify-hepta-intelligence-hybrid-retrieval.py",
+      "cargo fmt --all -- --check",
+      "cargo test -p codex-hepta-memory hybrid_retrieval_v2 -- --nocapture",
+      "cargo test -p codex-hepta-memory cognitive_retrieval -- --nocapture",
+      "cargo test -p codex-hepta-memory",
+      "cargo clippy -p codex-hepta-memory --all-targets -- -D warnings"
+    ]
+  },
+  "interpretation": [
+    "P1.1a is a source-only query-planner and deterministic fusion contract layered over the unchanged existing retrieval API.",
+    "A digest-valid host semantic batch is still untrusted evidence and is not proof that a local model or ANN index executed.",
+    "No implementation or source receipt may be interpreted as executable qualification, retrieval efficacy, operator acceptance, promotion, or production authority."
+  ]
+}
