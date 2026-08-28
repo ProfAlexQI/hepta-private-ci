@@ -1,0 +1,18 @@
+{
+  "schema": "hepta.authbus.p0-implementation-receipt.v1",
+  "plan_id": "AUTHBUS-P0-PLAN-2026-08-28",
+  "stage": "P0.1",
+  "implementation_commit": "7d34a83bda92152d894118c9f372e6c162342c4b",
+  "status": "CI_PENDING",
+  "qualification_only": true,
+  "authority": false,
+  "effect_authority": false,
+  "production_caller": false,
+  "production_writer": false,
+  "operator_acceptance": false,
+  "promotion": false,
+  "g5_allowed": false,
+  "execute_allowed": false,
+  "required_gates": ["fmt", "tests", "check", "clippy"],
+  "evidence": null
+}
