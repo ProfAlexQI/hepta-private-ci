@@ -1,4 +1,4 @@
-name: AuthBus P1.2 deterministic compile remediation
+name: AuthBus P1.2 deterministic remediation and qualification
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 env:
-  EXPECTED_PARENT: 10bda4b7f85e7debeac4b2cdcc23ee51a0754674
+  EXPECTED_PARENT: c3955a1fc542f2409fb8bf6fc4228ee09e74a6ab
   ARCHIVE_SHA256: 1a5570e79a842c389b9af929926030f5ce9d98b3f46e2f35d7f639d8a1aaa8fc
   MANIFEST: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
   PACKAGE: codex-hepta-authbus-p1-2-qualification
@@ -22,7 +22,7 @@ env:
 
 jobs:
   remediate-and-qualify:
-    name: Remediate digest persistence and pass the complete P1.2 matrix
+    name: Close observed failures and pass the complete P1.2 matrix
     runs-on: ubuntu-slim
     timeout-minutes: 90
     steps:
@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 2
           persist-credentials: true
 
-      - name: Verify branch, exact head, and failure-evidence parent
+      - name: Verify branch, exact head, and observed-failure parent
         shell: bash
         run: |
           set -euo pipefail
@@ -117,11 +117,12 @@ jobs:
                   destination.chmod(member.mode & 0o777)
           PY
           test -s "${CRATE_ROOT}/src/store.rs"
+          test -s "${CRATE_ROOT}/tests/p1_2.rs"
           python3 scripts/verify-authbus-p1-2.py | tee /tmp/authbus-p1-2-source.json
           grep -q 'PASS_AUTHBUS_P1_2_SOURCE_ONLY' /tmp/authbus-p1-2-source.json
           git diff --check
 
-      - name: Apply the bounded Sha256Digest persistence repair
+      - name: Apply bounded digest persistence and exact TTL-boundary repairs
         shell: bash
         run: |
           set -euo pipefail
@@ -131,13 +132,13 @@ jobs:
           import re
           from pathlib import Path
 
-          path = Path("codex-rs/hepta-authbus-p1-2-qualification/src/store.rs")
-          source = path.read_text(encoding="utf-8")
+          store_path = Path("codex-rs/hepta-authbus-p1-2-qualification/src/store.rs")
+          store = store_path.read_text(encoding="utf-8")
 
           unused_import = "use serde::Deserialize;\n"
-          if source.count(unused_import) != 1:
+          if store.count(unused_import) != 1:
               raise SystemExit("expected exactly one unused serde::Deserialize import")
-          source = source.replace(unused_import, "")
+          store = store.replace(unused_import, "")
 
           patterns = (
               re.compile(
@@ -151,34 +152,53 @@ jobs:
               ),
           )
 
-          replacements = 0
+          digest_repairs = 0
           for pattern in patterns:
-              source, count = pattern.subn(
+              store, count = pattern.subn(
                   lambda match: f"{match.group('expr')}.as_str().to_owned()",
-                  source,
+                  store,
               )
-              replacements += count
+              digest_repairs += count
 
-          if replacements != 29:
+          if digest_repairs != 29:
               raise SystemExit(
-                  f"expected exactly 29 Sha256Digest text repairs, got {replacements}"
+                  f"expected exactly 29 Sha256Digest text repairs, got {digest_repairs}"
               )
 
           suspicious = [
               (line_number, line)
-              for line_number, line in enumerate(source.splitlines(), start=1)
+              for line_number, line in enumerate(store.splitlines(), start=1)
               if ".to_string()" in line
               and ("_sha256" in line or "digest()?" in line)
           ]
           if suspicious:
               raise SystemExit(f"unrepaired digest text conversions: {suspicious}")
+          store_path.write_text(store, encoding="utf-8")
 
-          path.write_text(source, encoding="utf-8")
-          print(f"applied_sha256_digest_text_repairs={replacements}")
+          test_path = Path("codex-rs/hepta-authbus-p1-2-qualification/tests/p1_2.rs")
+          tests = test_path.read_text(encoding="utf-8")
+          before = '''        "nonce-two",
+                  NOW + 300,
+          '''.replace("                  ", "        ")
+          after = '''        "nonce-two",
+                  // `issued_at` is `NOW - 2`; this exercises the exact 300-second TTL limit.
+                  NOW + 298,
+          '''.replace("                  ", "        ")
+          if tests.count(before) != 1:
+              raise SystemExit("expected exactly one nonce-two TTL fixture")
+          tests = tests.replace(before, after)
+          test_path.write_text(tests, encoding="utf-8")
+
+          print(f"applied_sha256_digest_text_repairs={digest_repairs}")
+          print("applied_exact_ttl_boundary_repairs=1")
           PY
           grep -q 'as_str().to_owned()' "${CRATE_ROOT}/src/store.rs"
           ! grep -q '^use serde::Deserialize;$' "${CRATE_ROOT}/src/store.rs"
-          git diff --check -- "${CRATE_ROOT}/src/store.rs"
+          grep -q 'NOW + 298' "${CRATE_ROOT}/tests/p1_2.rs"
+          ! grep -A2 '"nonce-two"' "${CRATE_ROOT}/tests/p1_2.rs" | grep -q 'NOW + 300'
+          git diff --check -- \
+            "${CRATE_ROOT}/src/store.rs" \
+            "${CRATE_ROOT}/tests/p1_2.rs"
 
       - name: Install Rust 1.95
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
@@ -231,6 +251,7 @@ jobs:
           set -euo pipefail
           rm -rf scripts/__pycache__ "${CRATE_ROOT}/target"
 
+          rm .github/workflows/authbus-p1-2-diagnostic.yml
           rm .github/workflows/authbus-p1-2-remediation.yml
           rm .github/workflows/authbus-p1-2-source-seed.yml
           rm scripts/authbus-p1-2-source-seed.part-00.b64
@@ -262,6 +283,7 @@ jobs:
           )
           git add -- "${final_paths[@]}"
           git add -u -- \
+            .github/workflows/authbus-p1-2-diagnostic.yml \
             .github/workflows/authbus-p1-2-remediation.yml \
             .github/workflows/authbus-p1-2-source-seed.yml \
             scripts/authbus-p1-2-source-seed.part-00.b64 \
@@ -274,6 +296,7 @@ jobs:
             scripts/authbus-p1-2-source-seed.part-07.b64
 
           cat > /tmp/authbus-p1-2-expected-paths.txt <<'EOF'
+          .github/workflows/authbus-p1-2-diagnostic.yml
           .github/workflows/authbus-p1-2-qualification.yml
           .github/workflows/authbus-p1-2-remediation.yml
           .github/workflows/authbus-p1-2-source-seed.yml
