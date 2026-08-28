@@ -93,8 +93,20 @@ jobs:
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.88.0
+          toolchain: 1.95.0
           components: rustfmt,clippy
+
+      - name: Verify installed toolchain matches repository pin
+        working-directory: codex-rs
+        run: |
+          expected=$(python3 - <<'PY_TOOLCHAIN'
+          import pathlib, tomllib
+          value = tomllib.loads(pathlib.Path("rust-toolchain.toml").read_text())
+          print(value["toolchain"]["channel"])
+          PY_TOOLCHAIN
+          )
+          actual=$(rustc --version | awk '{print $2}')
+          test "$actual" = "$expected"
 
       - name: Check workspace formatting
         working-directory: codex-rs
