@@ -1,0 +1,263 @@
+name: Hepta architecture convergence P0.2
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "ARCHITECTURE.md"
+      - "docs/architecture/**"
+      - "scripts/verify-hepta-architecture-convergence-p0-2.py"
+      - "codex-rs/hepta-contracts/**"
+      - "codex-rs/hepta-memory/**"
+      - "codex-rs/hepta-agentd/**"
+      - ".github/workflows/hepta-architecture-convergence-p0-2.yml"
+      - ".github/workflows/blocking-ci.yml"
+  push:
+    branches:
+      - codex/hepta-architecture-convergence-p0-2-20260828
+      - integration/vnext-main-20260811
+    paths:
+      - "ARCHITECTURE.md"
+      - "docs/architecture/**"
+      - "scripts/verify-hepta-architecture-convergence-p0-2.py"
+      - "codex-rs/hepta-contracts/**"
+      - "codex-rs/hepta-memory/**"
+      - "codex-rs/hepta-agentd/**"
+      - ".github/workflows/hepta-architecture-convergence-p0-2.yml"
+      - ".github/workflows/blocking-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-architecture-convergence-p0-2-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  exact-source-head:
+    name: Exact source-head product graph
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+          git rev-parse 'HEAD^{tree}'
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Canonical architecture source gate
+        run: python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+
+      - name: Owned package rustfmt
+        working-directory: codex-rs
+        run: |
+          cargo fmt \
+            -p codex-hepta-contracts \
+            -p codex-hepta-memory \
+            -p codex-hepta-agentd \
+            -- --check
+
+      - name: Authority kernel tests
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts authority::tests -- --nocapture
+
+      - name: Cross-owner operation and fault tests
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts operation::tests -- --nocapture
+
+      - name: Canonical product graph tests
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts product_graph::tests -- --nocapture
+
+      - name: Memory authority facade tests
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-memory cognitive_runtime::authority_tests -- --nocapture
+
+      - name: Real Agentd composition tests
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
+
+      - name: Agentd authority integration tests
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-agentd app_runtime::tests -- --nocapture
+
+      - name: Product package graph compilation
+        working-directory: codex-rs
+        run: |
+          cargo check --locked \
+            -p codex-hepta-agentd \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-matrixd \
+            -p codex-hepta-native-gateway
+
+      - name: Strict owned-package Clippy
+        working-directory: codex-rs
+        run: |
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-contracts \
+            -p codex-hepta-memory \
+            -p codex-hepta-agentd \
+            -- -D warnings
+
+      - name: Write exact-head evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/hepta-architecture-source-head"
+          mkdir -p "$evidence"
+          {
+            echo "schema=hepta_architecture_source_head_evidence_v1"
+            echo "identity=source_head"
+            echo "repository=$GITHUB_REPOSITORY"
+            echo "workflow=$GITHUB_WORKFLOW"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "runner_name=$RUNNER_NAME"
+            echo "runner_os=$RUNNER_OS"
+            echo "expected_commit=$SOURCE_HEAD"
+            echo "actual_commit=$(git rev-parse HEAD)"
+            echo "actual_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "job_status=${{ job.status }}"
+            echo "production_authority=false"
+            echo "effect_authority=false"
+            echo "model_invocation_authority=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+          } > "$evidence/receipt.txt"
+          cat "$evidence/receipt.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-architecture-source-head-${{ env.SOURCE_HEAD }}
+          path: ${{ runner.temp }}/hepta-architecture-source-head
+          if-no-files-found: error
+
+  merge-candidate:
+    name: Merge-candidate product integration
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout merge candidate
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify merge-candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git rev-parse HEAD^1
+          git rev-parse HEAD^2
+          git rev-parse 'HEAD^{tree}'
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Merge-candidate architecture gate
+        run: python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+
+      - name: Merge-candidate product graph tests
+        working-directory: codex-rs
+        run: |
+          cargo test --locked -p codex-hepta-contracts authority::tests -- --nocapture
+          cargo test --locked -p codex-hepta-contracts operation::tests -- --nocapture
+          cargo test --locked -p codex-hepta-contracts product_graph::tests -- --nocapture
+          cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
+
+      - name: Merge-candidate product compilation
+        working-directory: codex-rs
+        run: |
+          cargo check --locked \
+            -p codex-hepta-agentd \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-matrixd \
+            -p codex-hepta-native-gateway
+
+      - name: Write merge-candidate evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/hepta-architecture-merge-candidate"
+          mkdir -p "$evidence"
+          {
+            echo "schema=hepta_architecture_merge_candidate_evidence_v1"
+            echo "identity=merge_candidate"
+            echo "repository=$GITHUB_REPOSITORY"
+            echo "workflow=$GITHUB_WORKFLOW"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "runner_name=$RUNNER_NAME"
+            echo "runner_os=$RUNNER_OS"
+            echo "source_head=$SOURCE_HEAD"
+            echo "merge_commit=$(git rev-parse HEAD)"
+            echo "merge_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "first_parent=$(git rev-parse HEAD^1)"
+            echo "second_parent=$(git rev-parse HEAD^2)"
+            echo "job_status=${{ job.status }}"
+            echo "production_authority=false"
+            echo "effect_authority=false"
+            echo "model_invocation_authority=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+          } > "$evidence/receipt.txt"
+          cat "$evidence/receipt.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload merge-candidate evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-architecture-merge-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-architecture-merge-candidate
+          if-no-files-found: error
+
+  required:
+    name: Hepta architecture convergence required
+    if: ${{ always() }}
+    needs:
+      - exact-source-head
+      - merge-candidate
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require successful architecture identities
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_RESULT: ${{ needs.exact-source-head.result }}
+          MERGE_RESULT: ${{ needs.merge-candidate.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$SOURCE_RESULT" = success
+          if test "$EVENT_NAME" = pull_request; then
+            test "$MERGE_RESULT" = success
+          else
+            test "$MERGE_RESULT" = skipped
+          fi
