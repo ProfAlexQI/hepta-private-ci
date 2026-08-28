@@ -1,6 +1,6 @@
 {
   "schema": "hepta.current-architecture.v1",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "authority": {
     "status": "canonical_product_architecture",
     "humanEntryPoint": "ARCHITECTURE.md",
@@ -8,7 +8,8 @@
     "rustAuthority": [
       "codex-rs/hepta-contracts/src/authority.rs",
       "codex-rs/hepta-contracts/src/product_graph.rs",
-      "codex-rs/hepta-contracts/src/operation.rs"
+      "codex-rs/hepta-contracts/src/operation.rs",
+      "codex-rs/hepta-contracts/src/provider_operation.rs"
     ],
     "externalPlanSnapshotsAreAuthority": false,
     "qualificationReceiptsAreProductAuthority": false,
@@ -88,6 +89,14 @@
       "durableDomains": ["ingress_projection"]
     },
     {
+      "id": "provider_effect_adapter",
+      "plane": "adapter",
+      "role": "dormant_external_effect_boundary",
+      "durableDomains": [],
+      "activeInLocalProfiles": false,
+      "requiresExternalEffectCapability": true
+    },
+    {
       "id": "qualification_plane",
       "plane": "qualification",
       "role": "read_only_evidence_consumer",
@@ -119,7 +128,22 @@
       "owner_epoch",
       "generation",
       "fencing_token_sha256"
+    ],
+    "wiredPaths": [
+      "automation_runtime_to_app_server",
+      "matrix_ingress_to_app_server",
+      "app_server_to_provider_effect_adapter"
     ]
+  },
+  "providerEffectBoundary": {
+    "component": "provider_effect_adapter",
+    "dataOwner": false,
+    "defaultAuthority": false,
+    "operationContract": "ProviderOperationRecord",
+    "coordinator": "ProviderOperationCoordinator",
+    "dispatchRequires": "Authorized<ExternalEffectCapability>",
+    "lookupAfterBoundaryOnly": true,
+    "blindRetry": false
   },
   "recoveryOrder": [
     "release_identity",
