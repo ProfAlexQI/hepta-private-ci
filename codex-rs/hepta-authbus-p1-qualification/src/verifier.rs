@@ -71,10 +71,7 @@ pub struct P11KeyRegistry {
 }
 
 impl P11KeyRegistry {
-    pub fn register(
-        &mut self,
-        record: P11VerificationKeyRecord,
-    ) -> P11Result<P11WriteDisposition> {
+    pub fn register(&mut self, record: P11VerificationKeyRecord) -> P11Result<P11WriteDisposition> {
         record.validate()?;
         let record_key = (
             record.issuer_id.clone(),
@@ -98,10 +95,8 @@ impl P11KeyRegistry {
             }
         }
 
-        self.current.insert(
-            current_key,
-            (record.key_epoch, record.key_id.clone()),
-        );
+        self.current
+            .insert(current_key, (record.key_epoch, record.key_id.clone()));
         self.records.insert(record_key, record);
         Ok(P11WriteDisposition::Applied)
     }
@@ -564,9 +559,7 @@ fn verify_ed25519(
         .as_slice()
         .try_into()
         .map_err(|_| P11Error::InvalidInput)?;
-    let signature_bytes: [u8; 64] = signature
-        .try_into()
-        .map_err(|_| P11Error::InvalidInput)?;
+    let signature_bytes: [u8; 64] = signature.try_into().map_err(|_| P11Error::InvalidInput)?;
     let verifying_key =
         VerifyingKey::from_bytes(&public_key).map_err(|_| P11Error::InvalidInput)?;
     let signature = Signature::from_bytes(&signature_bytes);

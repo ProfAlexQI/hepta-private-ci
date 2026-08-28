@@ -402,10 +402,7 @@ impl P11SignedProviderStatusEvidence {
         validate_digest(&self.status_binding_sha256)?;
         self.fence.validate()?;
         self.outcome.validate()?;
-        if self.key_epoch == 0
-            || self.status_revision == 0
-            || self.observed_at_unix_seconds == 0
-        {
+        if self.key_epoch == 0 || self.status_revision == 0 || self.observed_at_unix_seconds == 0 {
             return Err(P11Error::InvalidInput);
         }
         Ok(())
@@ -413,13 +410,9 @@ impl P11SignedProviderStatusEvidence {
 
     pub fn signing_bytes(&self) -> P11Result<Vec<u8>> {
         self.validate_unsigned()?;
-        let outcome =
-            serde_json::to_vec(&self.outcome).map_err(|_| P11Error::InvalidInput)?;
+        let outcome = serde_json::to_vec(&self.outcome).map_err(|_| P11Error::InvalidInput)?;
         let mut bytes = Vec::new();
-        push_text(
-            &mut bytes,
-            "hepta.authbus.p1.1.signed-provider-status.v1",
-        );
+        push_text(&mut bytes, "hepta.authbus.p1.1.signed-provider-status.v1");
         push_text(&mut bytes, &self.issuer_id);
         push_text(&mut bytes, &self.key_id);
         push_u64(&mut bytes, self.key_epoch);
@@ -505,10 +498,7 @@ impl P11SignedManualEvidence {
         validate_digest(&self.status_binding_sha256)?;
         validate_digest(&self.reason_sha256)?;
         self.fence.validate()?;
-        if self.key_epoch == 0
-            || self.manual_revision == 0
-            || self.observed_at_unix_seconds == 0
-        {
+        if self.key_epoch == 0 || self.manual_revision == 0 || self.observed_at_unix_seconds == 0 {
             return Err(P11Error::InvalidInput);
         }
         Ok(())
@@ -604,10 +594,7 @@ pub fn p11_identity_subject_digest(
 }
 
 pub(crate) fn validate_text(value: &str) -> P11Result<()> {
-    if value.trim().is_empty()
-        || value.len() > MAX_TEXT_BYTES
-        || value.as_bytes().contains(&0)
-    {
+    if value.trim().is_empty() || value.len() > MAX_TEXT_BYTES || value.as_bytes().contains(&0) {
         return Err(P11Error::InvalidInput);
     }
     Ok(())

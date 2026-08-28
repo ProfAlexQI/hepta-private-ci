@@ -229,16 +229,18 @@ fn signed_manual(
 
 #[test]
 fn negative_authority_and_key_registration_are_fail_closed() {
-    assert!(AUTHBUS_P1_1_QUALIFICATION_ONLY);
-    assert!(!AUTHBUS_P1_1_AUTHORITY);
-    assert!(!AUTHBUS_P1_1_EFFECT_AUTHORITY);
-    assert!(!AUTHBUS_P1_1_PRODUCTION_CALLER);
-    assert!(!AUTHBUS_P1_1_PRODUCTION_WRITER);
-    assert!(!AUTHBUS_P1_1_OPERATOR_ACCEPTANCE);
-    assert!(!AUTHBUS_P1_1_PROMOTION);
-    assert!(!AUTHBUS_P1_1_G5_ALLOWED);
-    assert!(!AUTHBUS_P1_1_EXECUTE_ALLOWED);
-    assert!(!AUTHBUS_P1_1_PRIVATE_KEY_STORAGE);
+    const {
+        assert!(AUTHBUS_P1_1_QUALIFICATION_ONLY);
+        assert!(!AUTHBUS_P1_1_AUTHORITY);
+        assert!(!AUTHBUS_P1_1_EFFECT_AUTHORITY);
+        assert!(!AUTHBUS_P1_1_PRODUCTION_CALLER);
+        assert!(!AUTHBUS_P1_1_PRODUCTION_WRITER);
+        assert!(!AUTHBUS_P1_1_OPERATOR_ACCEPTANCE);
+        assert!(!AUTHBUS_P1_1_PROMOTION);
+        assert!(!AUTHBUS_P1_1_G5_ALLOWED);
+        assert!(!AUTHBUS_P1_1_EXECUTE_ALLOWED);
+        assert!(!AUTHBUS_P1_1_PRIVATE_KEY_STORAGE);
+    }
 
     let signing = signing_key(1);
     let record = key_record(
@@ -260,10 +262,7 @@ fn negative_authority_and_key_registration_are_fail_closed() {
 
     let mut changed = record;
     changed.backend_binding_sha256 = digest("changed-backend");
-    assert_eq!(
-        verifier.register_key(changed),
-        Err(P11Error::KeyConflict)
-    );
+    assert_eq!(verifier.register_key(changed), Err(P11Error::KeyConflict));
 }
 
 #[test]
@@ -280,18 +279,15 @@ fn signed_identity_verifies_once_and_replay_is_rejected() {
         ))
         .expect("key");
 
-    let evidence = signed_identity(
-        &signing,
-        "identity-issuer",
-        "identity-key-1",
-        1,
-        "nonce-a",
-    );
+    let evidence = signed_identity(&signing, "identity-issuer", "identity-key-1", 1, "nonce-a");
     let context = identity_context(&evidence.binding, NOW);
     let receipt = verifier
         .verify_identity(&evidence, &context)
         .expect("identity verified");
-    assert_eq!(receipt.binding_sha256, evidence.binding.digest().expect("digest"));
+    assert_eq!(
+        receipt.binding_sha256,
+        evidence.binding.digest().expect("digest")
+    );
     assert!(!receipt.authority);
     assert_eq!(
         verifier.verify_identity(&evidence, &context),
