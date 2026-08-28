@@ -9,7 +9,19 @@
     "pull_request": 14
   },
   "development_branch": "codex/hepta-intelligence-evidence-resolver-v4-20260828",
-  "source_candidate": "7c9b5a29e24237e90201fbe0cf1a7b1fbd2a8415",
+  "pull_request": 30,
+  "candidate": {
+    "implementation_root": "7c9b5a29e24237e90201fbe0cf1a7b1fbd2a8415",
+    "hardened_source_candidate": "58f79cc591a9372c1d25a7b7801d096746c59ec0",
+    "hardening_commits": [
+      "c40814366e80a9662e259a305a8f24c72e9407b9",
+      "b50398aa1ce21e5985e040c3dd4fcb88a519e633",
+      "bb5f0ef37cb9489a3b1ec573413572fa85fa2f8e",
+      "253354a7dfdaaa5a941f8eaf7c4e5067a4c73cf9",
+      "58f79cc591a9372c1d25a7b7801d096746c59ec0"
+    ],
+    "unsigned_commits": true
+  },
   "dependency": {
     "id": "P0.3.2",
     "name": "shared_semantic_projection_planner",
@@ -35,6 +47,13 @@
     "host_computes_digests": true,
     "quote_selector": true,
     "segment_selector": true,
+    "overlapping_quote_occurrences_deterministic": true,
+    "same_fact_duplicate_or_overlapping_spans_rejected": true,
+    "different_facts_may_share_source_span": true,
+    "complete_tool_input_digest_bound": true,
+    "segment_catalog_digest_bound": true,
+    "receipt_structure_revalidated": true,
+    "source_body_returned_by_receipt": false,
     "production_projection_gate": false,
     "production_authority": false,
     "external_effects": false,
@@ -53,7 +72,7 @@
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_3_HOST_EVIDENCE_RESOLVER_2026-08-28.md"
     ],
     "qualification": {
-      "source_gate": "pending_exact_head_execution",
+      "source_gate": "queued_not_executed",
       "format": "not_run",
       "focused_tests": "not_run",
       "core_compatibility_tests": "not_run",
@@ -61,10 +80,30 @@
       "core_full_tests": "not_run",
       "extension_clippy": "not_run",
       "core_clippy": "not_run",
-      "hosted_ci": "pending",
+      "hosted_ci": {
+        "classification": "QUEUED_RUNNER_NOT_ASSIGNED_YET",
+        "workflow_run_id": 33149686752,
+        "workflow_name": "hepta-intelligence-evidence-resolver-v4",
+        "head": "58f79cc591a9372c1d25a7b7801d096746c59ec0",
+        "jobs": [
+          {
+            "id": 98778540464,
+            "name": "P0.3.3 host evidence resolver Rust qualification",
+            "status": "queued",
+            "steps": null,
+            "commands_executed": false
+          },
+          {
+            "id": 98778540742,
+            "name": "P0.3.3 host evidence resolver source contract",
+            "status": "queued",
+            "steps": null,
+            "commands_executed": false
+          }
+        ]
+      },
       "qualified": false
-    },
-    "implementation_commit": "7c9b5a29e24237e90201fbe0cf1a7b1fbd2a8415"
+    }
   },
   "authority": {
     "production_authority": false,
@@ -74,10 +113,10 @@
     "callers_ratchet": false
   },
   "next_actions": [
-    "Create the stacked Draft PR against the P0.3 branch.",
-    "Run the exact-head fail-closed source gate.",
-    "Run Rust fmt, focused tests, full tests, and strict clippy when a runner is assigned.",
-    "Keep v4 unregistered until P0.3.2 and P0.3.3 both qualify.",
-    "Proceed to P0.3.4 legacy inventory only after resolver qualification evidence exists."
+    "Wait for an assigned runner to execute the exact candidate source and Rust qualification jobs.",
+    "Classify steps=[] or runner_id=0 after completion as BLOCKED_RUNNER_NOT_ASSIGNED, not as source failure and not as PASS.",
+    "Fix only executable fmt, compile, test, or clippy failures without widening authority.",
+    "Keep v4 unregistered until P0.3.2 and P0.3.3 both independently qualify.",
+    "Start P0.3.4 legacy inventory/backfill/quarantine only after resolver qualification evidence exists."
   ]
 }
