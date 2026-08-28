@@ -14,6 +14,8 @@ mod event_buffer;
 mod qualification_writer;
 mod production_writer_host;
 mod runtime;
+#[cfg(feature = "qualification-intelligence-mutation-shadow")]
+mod shadow_intelligence_mutation_host;
 mod state;
 
 pub use client::AgentdClient;
@@ -47,8 +49,34 @@ pub use config::HEPTA_AGENT_HOME_ENV;
 pub use config::HEPTA_AGENT_ID_ENV;
 pub use config::HEPTA_AGENT_RUN_ROOT_ENV;
 pub use error::AgentdError;
-pub use runtime::run;
 pub use production_writer_host::AgentdProductionWriterHost;
+pub use runtime::run;
+#[cfg(feature = "qualification-intelligence-mutation-shadow")]
+pub use shadow_intelligence_mutation_host::AGENTD_SHADOW_INTELLIGENCE_MUTATION_HOST_APP_RUNTIME_ATTACHED;
+#[cfg(feature = "qualification-intelligence-mutation-shadow")]
+pub use shadow_intelligence_mutation_host::AGENTD_SHADOW_INTELLIGENCE_MUTATION_HOST_EXTERNAL_EFFECTS;
+#[cfg(feature = "qualification-intelligence-mutation-shadow")]
+pub use shadow_intelligence_mutation_host::AGENTD_SHADOW_INTELLIGENCE_MUTATION_HOST_MEMORY_WRITE_AUTHORITY;
+#[cfg(feature = "qualification-intelligence-mutation-shadow")]
+pub use shadow_intelligence_mutation_host::AGENTD_SHADOW_INTELLIGENCE_MUTATION_HOST_NAMESPACE;
+#[cfg(feature = "qualification-intelligence-mutation-shadow")]
+pub use shadow_intelligence_mutation_host::AGENTD_SHADOW_INTELLIGENCE_MUTATION_HOST_OPERATOR_ACCEPTANCE;
+#[cfg(feature = "qualification-intelligence-mutation-shadow")]
+pub use shadow_intelligence_mutation_host::AGENTD_SHADOW_INTELLIGENCE_MUTATION_HOST_OUTBOX_DISPATCH_AUTHORITY;
+#[cfg(feature = "qualification-intelligence-mutation-shadow")]
+pub use shadow_intelligence_mutation_host::AGENTD_SHADOW_INTELLIGENCE_MUTATION_HOST_PRODUCTION_AUTHORITY;
+#[cfg(feature = "qualification-intelligence-mutation-shadow")]
+pub use shadow_intelligence_mutation_host::AGENTD_SHADOW_INTELLIGENCE_MUTATION_HOST_PROJECTION_WRITE_AUTHORITY;
+#[cfg(feature = "qualification-intelligence-mutation-shadow")]
+pub use shadow_intelligence_mutation_host::AGENTD_SHADOW_INTELLIGENCE_MUTATION_HOST_PROMOTION;
+#[cfg(feature = "qualification-intelligence-mutation-shadow")]
+pub use shadow_intelligence_mutation_host::AGENTD_SHADOW_INTELLIGENCE_MUTATION_HOST_RUNTIME_WIRED;
+#[cfg(feature = "qualification-intelligence-mutation-shadow")]
+pub use shadow_intelligence_mutation_host::AGENTD_SHADOW_INTELLIGENCE_MUTATION_HOST_SCHEMA_VERSION;
+#[cfg(feature = "qualification-intelligence-mutation-shadow")]
+pub use shadow_intelligence_mutation_host::AGENTD_SHADOW_INTELLIGENCE_MUTATION_HOST_TOOL_REGISTERED;
+#[cfg(feature = "qualification-intelligence-mutation-shadow")]
+pub use shadow_intelligence_mutation_host::AgentdShadowIntelligenceMutationHost;
 
 use control::AgentdControlServer;
 use event_buffer::EventBuffer;
