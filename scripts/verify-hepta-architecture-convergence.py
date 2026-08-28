@@ -7,7 +7,7 @@ import json
 import sys
 from collections import Counter, defaultdict, deque
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "docs/architecture/HEPTA_PRODUCT_ARCHITECTURE_V1.json"
@@ -15,24 +15,6 @@ MANIFEST = ROOT / "docs/architecture/HEPTA_PRODUCT_ARCHITECTURE_V1.json"
 
 class VerificationError(RuntimeError):
     pass
-
-
-def load_json_no_duplicates(path: Path) -> dict[str, Any]:
-    def pairs_hook(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-        for key, value in pairs:
-            if key in result:
-                raise VerificationError(f"duplicate JSON key {key!r} in {path}")
-            result[key] = value
-        return result
-
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=pairs_hook)
-    except (OSError, json.JSONDecodeError) as error:
-        raise VerificationError(f"cannot parse {path}: {error}") from error
-    if not isinstance(value, dict):
-        raise VerificationError(f"{path} must contain one JSON object")
-    return value
 
 
 def require(condition: bool, message: str) -> None:
@@ -48,6 +30,33 @@ def read(relative: str) -> str:
         raise VerificationError(f"cannot read {relative}: {error}") from error
 
 
+def load_json_no_duplicates(path: Path) -> dict[str, Any]:
+    def pairs_hook(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise VerificationError(f"duplicate JSON key {key!r} in {path}")
+            result[key] = value
+        return result
+
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=pairs_hook)
+    except (OSError, json.JSONDecodeError) as error:
+        raise VerificationError(f"cannot parse {path}: {error}") from error
+    require(isinstance(value, dict), f"{path} must contain one JSON object")
+    return value
+
+
+def require_all(source: str, needles: Iterable[str], label: str) -> None:
+    missing = [needle for needle in needles if needle not in source]
+    require(not missing, f"{label} is missing required source contracts: {missing}")
+
+
+def require_none(source: str, needles: Iterable[str], label: str) -> None:
+    present = [needle for needle in needles if needle in source]
+    require(not present, f"{label} contains forbidden source contracts: {present}")
+
+
 def verify_graph(manifest: dict[str, Any]) -> None:
     components = manifest.get("components")
     edges = manifest.get("edges")
@@ -58,7 +67,7 @@ def verify_graph(manifest: dict[str, Any]) -> None:
         isinstance(authorities, list) and authorities,
         "data_authorities must be a non-empty list",
     )
-    require(len(components) == len(set(components)), "component ids must be unique")
+
     required_components = {
         "supervisor",
         "agentd",
@@ -67,6 +76,7 @@ def verify_graph(manifest: dict[str, Any]) -> None:
         "automation_runtime",
         "matrix_ingress",
     }
+    require(len(components) == len(set(components)), "component ids must be unique")
     require(set(components) == required_components, "canonical product component set changed")
     require("qualification_plane" not in components, "qualification cannot be a product component")
 
@@ -118,46 +128,55 @@ def verify_graph(manifest: dict[str, Any]) -> None:
         domains.append(domain)
     duplicates = sorted(domain for domain, count in Counter(domains).items() if count != 1)
     require(not duplicates, f"data domains must have exactly one writer: {duplicates}")
-    required_domains = {
-        "fleet_registry",
-        "agent_lifecycle",
-        "thread_session",
-        "memory_ledger",
-        "knowledge_projection",
-        "automation_schedule",
-        "ingress_projection",
-        "runtime_health",
-    }
-    require(set(domains) == required_domains, "machine data authority map is incomplete or widened")
+    require(
+        set(domains)
+        == {
+            "fleet_registry",
+            "agent_lifecycle",
+            "thread_session",
+            "memory_ledger",
+            "knowledge_projection",
+            "automation_schedule",
+            "ingress_projection",
+            "runtime_health",
+        },
+        "machine data authority map is incomplete or widened",
+    )
 
 
-def verify_negative_authority(manifest: dict[str, Any]) -> None:
+def verify_machine_authority(manifest: dict[str, Any]) -> None:
     negative = manifest.get("negative_authority")
     require(isinstance(negative, dict), "negative_authority must be an object")
-    required = {
-        "production_caller",
-        "production_writer",
-        "model_invocation",
-        "provider_dispatch",
-        "external_effect",
-        "fleet_mutation",
-        "operator_acceptance",
-        "promotion",
-    }
-    require(set(negative) == required, "negative-authority field set changed")
+    require(
+        set(negative)
+        == {
+            "production_caller",
+            "production_writer",
+            "model_invocation",
+            "provider_dispatch",
+            "external_effect",
+            "fleet_mutation",
+            "operator_acceptance",
+            "promotion",
+        },
+        "negative-authority field set changed",
+    )
     require(all(value is False for value in negative.values()), "all P0 authority flags must be false")
 
     kernel = manifest.get("authority_kernel")
     require(isinstance(kernel, dict), "authority_kernel must be an object")
     require(kernel.get("contract_schema_version") == 2, "authority kernel contract must be v2")
     require(
+        kernel.get("verified_capability_constructor") == "authorize_verified_capability",
+        "external capability constructor is not canonical",
+    )
+    require(
         kernel.get("legacy_production_adapter")
         == "codex-hepta-agentd::production_authority_adapter",
         "legacy production authority adapter is not canonical",
     )
-    forbidden = set(kernel.get("forbidden_actions", []))
     require(
-        forbidden
+        set(kernel.get("forbidden_actions", []))
         == {
             "invoke_model",
             "dispatch_provider",
@@ -167,6 +186,24 @@ def verify_negative_authority(manifest: dict[str, Any]) -> None:
             "promote_release",
         },
         "authority kernel forbidden-action set changed",
+    )
+
+    qualification = manifest.get("qualification")
+    require(isinstance(qualification, dict), "qualification must be an object")
+    for field in (
+        "uses_real_product_modules",
+        "exact_head_required",
+        "real_agent_private_sqlite_open_required",
+        "legacy_production_verifier_required",
+        "typed_cognitive_write_witness_required",
+        "typed_external_effect_witness_required_at_target_attach",
+        "typed_external_effect_witness_revalidated_at_dispatch",
+        "merge_candidate_gate_separate",
+    ):
+        require(qualification.get(field) is True, f"qualification field {field} must remain true")
+    require(
+        qualification.get("physical_memory_schema_extraction_allowed") is False,
+        "physical Memory schema extraction must remain blocked",
     )
 
 
@@ -185,184 +222,188 @@ def verify_source_wiring() -> None:
     authority_adapter = read("codex-rs/hepta-agentd/src/production_authority_adapter.rs")
     production_host = read("codex-rs/hepta-agentd/src/production_writer_host.rs")
 
-    for declaration in ("mod authority;", "mod product_graph;"):
-        require(declaration in contracts_lib, f"missing contract module declaration: {declaration}")
-    for constructor in (
-        "pub fn snapshot_read_only",
-        "pub fn agent_local",
-        "pub fn qualification_cognitive_write",
-    ):
-        require(constructor in authority, f"missing closed-world authority constructor: {constructor}")
-    require("AUTHORITY_KERNEL_SCHEMA_VERSION: u32 = 2" in authority, "authority kernel is not v2")
-    require("pub struct Authorized<C>" in authority, "typed Authorized<C> capability token is missing")
-    require("pub struct AuthorityLeaseBinding" in authority, "typed lease binding is missing")
-    require("pub trait CapabilityVerifier" in authority, "capability verifier seam is missing")
-    require(
-        "pub fn authorize_verified_capability" in authority,
-        "externally verified capability constructor is missing",
+    require_all(
+        contracts_lib,
+        (
+            "mod authority;",
+            "mod product_graph;",
+            "pub use authority::AuthorityLeaseBinding;",
+            "pub use authority::CapabilityVerifier;",
+            "pub use authority::authorize_verified_capability;",
+        ),
+        "contracts root",
     )
-    require("pub fn dangerous_actions" in authority, "authority escape audit is missing")
-
-    require("pub struct ProductGraph" in graph, "product graph contract is missing")
-    require("pub fn agent_local" in graph, "Agent product graph constructor is missing")
-    require("DuplicateDataWriter" in graph, "single-writer validation is missing")
-    require("DependencyCycle" in graph, "cycle validation is missing")
-
-    require("pub async fn open_agent_owned" in memory_runtime, "Memory open facade is missing")
-    require(
-        "pub async fn with_discovered_federation" in memory_runtime,
-        "Memory federation facade is missing",
+    require_all(
+        authority,
+        (
+            "AUTHORITY_KERNEL_SCHEMA_VERSION: u32 = 2",
+            "pub fn snapshot_read_only",
+            "pub fn agent_local",
+            "pub fn qualification_cognitive_write",
+            "pub struct AuthorityLeaseBinding",
+            "pub struct CapabilityVerificationRequest",
+            "pub trait CapabilityVerifier",
+            "pub fn authorize_verified_capability",
+            "pub struct Authorized<C>",
+            "AuthorizationSource::ExternalLease",
+            "pub fn external_lease_binding",
+            "pub fn dangerous_actions",
+        ),
+        "authority kernel",
     )
-    for declaration in (
-        "mod composition;",
-        "mod memory_service;",
-        "mod automation_service;",
-        "mod production_authority_adapter;",
-    ):
-        require(declaration in agentd_lib, f"Agentd module is not registered: {declaration}")
-
-    require(
-        "ProductGraph::agent_local(&authority)" in composition,
-        "Agentd does not consume the real ProductGraph",
-    )
-    require(
-        "AgentMemoryService::open" in composition,
-        "Agentd composition does not construct the Memory service",
-    )
-    require(
-        "AgentAutomationService::open" in composition,
-        "Agentd composition does not construct the Automation service",
-    )
-    require("CognitiveRuntime" not in composition, "composition still owns raw Memory runtime logic")
-    require("AutomationStore" not in composition, "composition still owns raw Automation store logic")
-
-    require(
-        "CognitiveRuntime::open_agent_owned" in memory_service,
-        "Memory service does not consume the Memory runtime facade",
-    )
-    require(
-        "authorize::<CognitiveWriteCapability>" in memory_service,
-        "Memory service does not retain typed cognitive-write capability",
-    )
-    require(
-        "into_runtime_parts" in memory_service,
-        "Memory service does not pass typed write authority to App Server composition",
-    )
-    require(
-        "Option<Authorized<CognitiveWriteCapability>>" in memory_service,
-        "Memory service write authority is not represented as a typed optional capability",
-    )
-    require(
-        "authorize::<AutomationMutationCapability>" in automation_service,
-        "Automation service does not retain typed mutation capability",
-    )
-    require(
-        "run_automation_scheduler" in automation_service,
-        "Automation service does not own scheduler execution",
+    require_none(
+        authority,
+        ("Deserialize for Authorized", "pub fn from_status"),
+        "typed authority token",
     )
 
-    require(
-        "AgentRuntimeComposition::open(config)" in runtime,
-        "Agentd supervision loop bypasses the composition root",
+    require_all(
+        graph,
+        (
+            "pub struct ProductGraph",
+            "pub fn agent_local",
+            "DuplicateDataWriter",
+            "DependencyCycle",
+            "QualificationComponentInProductGraph",
+        ),
+        "product graph",
     )
-    require(
-        "memory_service.into_runtime_parts()" in runtime,
-        "Agentd supervision loop drops the typed Memory write capability",
+    require_all(
+        memory_runtime,
+        (
+            "pub async fn open_agent_owned",
+            "pub async fn with_discovered_federation",
+            "pub fn cognitive_write_store_available",
+        ),
+        "Memory runtime facade",
     )
-    require(
-        "AgentAppServerService::new" in runtime,
-        "Agentd supervision loop does not construct the App Server service",
-    )
-    require(
-        "automation_service.run" in runtime,
-        "Agentd supervision loop does not execute the Automation service",
-    )
-    require("CognitiveStore::open" not in runtime, "Agentd supervision loop still opens Memory directly")
-    require("AutomationStore::open" not in runtime, "Agentd supervision loop still opens Automation directly")
-    require("run_automation_scheduler" not in runtime, "Agentd supervision loop still owns scheduler internals")
-
-    require("pub(crate) struct AgentAppServerService" in app_runtime, "App Server service is missing")
-    require(
-        "authorize::<SessionServeCapability>" in app_runtime,
-        "App Server service does not retain typed session authority",
-    )
-    require(
-        "cognitive_write: Option<Authorized<CognitiveWriteCapability>>" in app_runtime,
-        "App Server service does not own the typed cognitive-write capability",
-    )
-    require(
-        "validate_cognitive_write_capability" in app_runtime,
-        "App Server service does not validate typed cognitive-write identity/generation",
-    )
-    require(
-        "Agent App Server cannot consume external production cognitive-write authority" in app_runtime,
-        "App Server service does not reject an external production writer capability",
-    )
-    require(
-        "COGNITIVE_WRITE_ENABLED" not in app_runtime,
-        "App Server still uses a duplicated cognitive-write boolean",
-    )
-    require(
-        "authority.allows(AuthorityAction::WriteCognitiveState)" in app_runtime,
-        "App Server cognitive-write profile is not cross-checked with AuthorityGrant",
-    )
-    require(
-        "cognitive_write.as_ref()" in app_runtime,
-        "App Server does not pass the typed capability into the qualification writer host",
+    require_all(
+        agentd_lib,
+        (
+            "mod composition;",
+            "mod memory_service;",
+            "mod automation_service;",
+            "mod production_authority_adapter;",
+        ),
+        "Agentd module graph",
     )
 
-    require(
-        "cognitive_write: Option<&Authorized<CognitiveWriteCapability>>" in qualification_writer,
-        "qualification writer host does not require typed cognitive-write authority",
+    require_all(
+        composition,
+        (
+            "ProductGraph::agent_local(&authority)",
+            "AgentMemoryService::open",
+            "AgentAutomationService::open",
+        ),
+        "Agentd composition root",
     )
-    require(
-        "let cognitive_write = cognitive_write?.clone();" in qualification_writer,
-        "qualification writer host does not retain the typed capability",
-    )
-    require(
-        "cognitive_write.subject_agent_id() != &identity.agent_id" in qualification_writer,
-        "qualification writer host does not bind the capability to the Agent",
-    )
-    require(
-        "cognitive_write.generation() != identity.spawn_generation" in qualification_writer,
-        "qualification writer host does not bind the capability to the spawn generation",
-    )
-    require(
-        "hepta-agentd:qualification-turn-writer:v2" in qualification_writer,
-        "qualification writer capability namespace was not advanced",
+    require_none(
+        composition,
+        ("CognitiveRuntime", "CognitiveStore", "AutomationStore", "run_automation_scheduler"),
+        "Agentd composition root",
     )
 
-    require(
-        "authorize_verified_capability::<CognitiveWriteCapability" in authority_adapter,
-        "legacy production lease is not mapped to typed cognitive-write authority",
+    require_all(
+        memory_service,
+        (
+            "CognitiveRuntime::open_agent_owned",
+            "authorize::<MemoryReadCapability>",
+            "authorize::<CognitiveWriteCapability>",
+            "Option<Authorized<CognitiveWriteCapability>>",
+            "into_runtime_parts",
+            "with_discovered_federation",
+        ),
+        "Memory service",
     )
-    require(
-        "AuthorityAction::WriteCognitiveState" in authority_adapter,
-        "legacy production adapter does not constrain the action",
+    require_all(
+        automation_service,
+        (
+            "authorize::<AutomationMutationCapability>",
+            "AutomationStore::open",
+            "run_automation_scheduler",
+        ),
+        "Automation service",
     )
-    require(
-        "ExternalEffectCapability" not in authority_adapter,
-        "legacy production adapter must not mint external-effect authority",
+
+    require_all(
+        runtime,
+        (
+            "AgentRuntimeComposition::open(config)",
+            "memory_service.into_runtime_parts()",
+            "AgentAppServerService::new",
+            "automation_service.run",
+        ),
+        "Agentd supervision loop",
     )
-    require(
-        "Authorized<CognitiveWriteCapability>" in production_host,
-        "production writer host does not retain typed cognitive-write authority",
+    require_none(
+        runtime,
+        ("CognitiveStore::open", "AutomationStore::open", "run_automation_scheduler"),
+        "Agentd supervision loop",
     )
-    require(
-        "Authorized<ExternalEffectCapability>" in production_host,
-        "production writer host target is not guarded by typed external-effect authority",
+
+    require_all(
+        app_runtime,
+        (
+            "pub(crate) struct AgentAppServerService",
+            "authorize::<SessionServeCapability>",
+            "cognitive_write: Option<Authorized<CognitiveWriteCapability>>",
+            "validate_cognitive_write_capability",
+            "Agent App Server cannot consume external production cognitive-write authority",
+            "cognitive_write.as_ref()",
+        ),
+        "App Server service",
     )
-    require(
-        "validate_external_effect_capability" in production_host,
-        "production writer host does not revalidate effect authority at dispatch",
+    require_none(app_runtime, ("COGNITIVE_WRITE_ENABLED",), "App Server service")
+
+    require_all(
+        qualification_writer,
+        (
+            "cognitive_write: Option<&Authorized<CognitiveWriteCapability>>",
+            "let cognitive_write = cognitive_write.cloned()?;",
+            "cognitive_write.subject_agent_id() != &identity.agent_id",
+            "cognitive_write.generation() != identity.spawn_generation",
+            "let cognitive_write = cognitive_write.clone();",
+            "hepta-agentd:qualification-turn-writer:v2",
+        ),
+        "qualification writer host",
     )
-    require(
-        "external_effect.external_lease_binding()" in production_host,
-        "production writer host accepts non-external effect authority",
+
+    require_all(
+        authority_adapter,
+        (
+            "authorize_verified_capability::<CognitiveWriteCapability",
+            "AuthorityAction::WriteCognitiveState",
+            "self.verifier",
+            "ProductionCognitiveWriteAuthorization",
+        ),
+        "legacy production authority adapter",
     )
-    require(
-        "external_effect: Authorized<ExternalEffectCapability>" in production_host,
-        "target attachment does not require an explicit effect capability",
+    require_none(
+        authority_adapter,
+        ("ExternalEffectCapability", "ProviderDispatchCapability"),
+        "legacy production authority adapter",
+    )
+
+    require_all(
+        production_host,
+        (
+            "Authorized<CognitiveWriteCapability>",
+            "Authorized<ExternalEffectCapability>",
+            "pub async fn admit",
+            "pub async fn status",
+            "external_effect: Authorized<ExternalEffectCapability>",
+            "validate_external_effect_capability",
+            "external_effect.external_lease_binding()",
+            "cognitive_write.external_lease_binding()",
+            "effect_binding.authority_epoch() != cognitive_binding.authority_epoch()",
+            "effect_binding.owner_epoch() != cognitive_binding.owner_epoch()",
+        ),
+        "production writer host",
+    )
+    require_none(
+        production_host,
+        ("pub fn writer(&self)", "pub fn attach_target(mut self, target"),
+        "production writer host public surface",
     )
     adapter_index = production_host.find("ProductionCognitiveWriteAuthorization::verify")
     store_index = production_host.find("CognitiveStore::open")
@@ -378,7 +419,7 @@ def main() -> int:
         require(manifest.get("canonical_human_entry") == "ARCHITECTURE.md", "wrong canonical entry")
         require((ROOT / "ARCHITECTURE.md").is_file(), "ARCHITECTURE.md is missing")
         verify_graph(manifest)
-        verify_negative_authority(manifest)
+        verify_machine_authority(manifest)
         verify_source_wiring()
     except VerificationError as error:
         print(f"FAIL_ARCHITECTURE_CONVERGENCE_P0_2: {error}", file=sys.stderr)
@@ -395,6 +436,7 @@ def main() -> int:
                 "typed_legacy_adapter": True,
                 "typed_external_effect_gate": True,
                 "typed_writer_capability_end_to_end": True,
+                "raw_writer_escape_closed": True,
                 "service_builders": True,
                 "runtime_authority": False,
                 "external_effect": False,
