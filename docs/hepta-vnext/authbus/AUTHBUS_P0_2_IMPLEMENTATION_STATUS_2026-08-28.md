@@ -4,25 +4,50 @@
 **Tranche:** P0.2  
 **Stack base:** `integration/vnext-main-full-ci-authbus-p0-1-20260828`  
 **Development branch:** `integration/vnext-main-full-ci-authbus-p0-2-20260828`  
-**Status at source publication:** `SOURCE_PRESENT / QUALIFICATION_PENDING / NO_AUTHORITY`
+**Current decision:** `SOURCE_PRESENT / EXECUTABLE_QUALIFICATION_RUNNING / NO_AUTHORITY`
 
-## Corrected repository truth
+## Repository truth
 
-The P0.2 branch previously contained the SQLite source files but no dedicated tests, workflow, status document, or pull request, and retained two temporary `_probe` files. Those facts are not equivalent to a completed or qualified tranche.
+P0.2 is an isolated, default-off SQLite WAL qualification coordinator. It is not part of the parent product workspace and does not expose a listener, provider-call path, OpenBao integration, production caller, production writer, or effect authority.
 
-This completion commit:
+The branch now contains:
 
-- removes both probe files;
-- adds a dedicated SQLite WAL regression matrix;
-- adds a fail-closed source/authority gate;
-- adds an exact-head hosted qualification workflow;
-- documents the precise authority and evidence boundary.
+- the qualification crate and committed Rust 1.95 dependency lock;
+- SQLite migrations and the durable coordinator implementation;
+- the SQLite WAL crash/recovery regression matrix;
+- the fail-closed source/authority verifier;
+- the exact-head hosted qualification workflow;
+- no temporary `_probe` files and no one-shot bootstrap workflow.
 
-Until a real runner records non-empty steps for the exact commit, all Rust results remain unknown. A job with `runner_id=0`, an empty runner name, or `steps=[]` is an infrastructure blocker, neither PASS nor a code failure.
+## Deterministic dependency and formatting closure
 
-## Implemented scope
+The nested workspace is bound to:
 
-The qualification crate models one durable control plane containing:
+```text
+rust-version = 1.95
+resolver = 3
+committed Cargo.lock
+qualification commands use --locked
+package-scoped rustfmt
+```
+
+Hosted bootstrap run `33155983901` executed on a real assigned runner and passed every step:
+
+```text
+exact checkout and ancestry                     PASS
+source and negative-authority gate              PASS
+Rust 1.95 toolchain                             PASS
+deterministic Cargo.lock generation             PASS
+package-scoped rustfmt                           PASS
+changed-path allowlist                          PASS
+atomic force-with-lease commit                   PASS
+```
+
+It produced commit `35627354397a281e432061edfc681e9ec286b0e7`. The temporary bootstrap workflow was then removed by user-authored commit `2ca865693cba67c8fa28e334078fe9eb69e029d7` so the final candidate can obtain normal exact-head Actions evidence rather than GitHub's bot-recursion `action_required` result.
+
+Bootstrap success is not itself the P0.2 executable qualification receipt. The final user-authored exact head still has to pass the complete source/fmt/test/check/Clippy matrix with non-empty job steps.
+
+## Implemented durable control plane
 
 ```text
 admission + quota HELD + token-family claim
@@ -50,26 +75,43 @@ outbox_cursor
 fsync_receipts
 ```
 
-The coordinator uses the repository SQLite shim with WAL and full synchronous durability. Row digests, `quick_check`, writer boot/generation, operation revision, status revision, observation time, and fences fail closed.
+The coordinator uses the repository SQLite durable-evidence pool with WAL and full synchronous durability. Row digests, `quick_check`, writer boot/generation, operation revision, status revision, observation time, binding digest, and fences all fail closed.
 
-## Required executable qualification
+## Exact executable qualification commands
 
 ```bash
 python3 scripts/verify-authbus-p0-2.py
-cargo fmt --manifest-path codex-rs/hepta-authbus-qualification/Cargo.toml --all -- --check
-cargo test --manifest-path codex-rs/hepta-authbus-qualification/Cargo.toml --no-default-features --lib -- --nocapture
-cargo test --manifest-path codex-rs/hepta-authbus-qualification/Cargo.toml --features sqlite-qualification --tests -- --nocapture
-cargo check --manifest-path codex-rs/hepta-authbus-qualification/Cargo.toml --features sqlite-qualification --all-targets
-cargo clippy --manifest-path codex-rs/hepta-authbus-qualification/Cargo.toml --features sqlite-qualification --all-targets -- -D warnings
+
+cargo fmt \
+  --manifest-path codex-rs/hepta-authbus-qualification/Cargo.toml \
+  --package codex-hepta-authbus-qualification \
+  -- --check
+
+cargo test --locked \
+  --manifest-path codex-rs/hepta-authbus-qualification/Cargo.toml \
+  --no-default-features --lib -- --nocapture
+
+cargo test --locked \
+  --manifest-path codex-rs/hepta-authbus-qualification/Cargo.toml \
+  --features sqlite-qualification --tests -- --nocapture
+
+cargo check --locked \
+  --manifest-path codex-rs/hepta-authbus-qualification/Cargo.toml \
+  --features sqlite-qualification --all-targets
+
+cargo clippy --locked \
+  --manifest-path codex-rs/hepta-authbus-qualification/Cargo.toml \
+  --features sqlite-qualification --all-targets -- -D warnings
 ```
 
-## P0.2 definition of done
+## Definition of done
 
 P0.2 becomes executable-qualified only when one exact commit/tree has evidence for all of the following:
 
 - default feature set keeps the coordinator inactive;
-- source gate passes;
-- formatting passes;
+- source and negative-authority gate passes;
+- package-scoped formatting passes;
+- committed lock graph is unchanged under `--locked`;
 - all SQLite WAL tests pass;
 - all-target check passes;
 - Clippy passes with warnings denied;
@@ -96,6 +138,7 @@ execute_allowed=false
 listener=false
 provider_call=false
 OpenBao_integration=false
+parent_workspace_wired=false
 ```
 
-P0.3 may be source-stacked for review, but it must not be promoted, merged, or interpreted as production evidence until the P0.2 exact base receives executable qualification.
+P0.3 may remain stacked for review, but it must not be promoted, merged, or interpreted as production evidence until the P0.2 exact base receives executable qualification.

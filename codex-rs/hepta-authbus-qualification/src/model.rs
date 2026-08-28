@@ -82,10 +82,7 @@ pub struct QualificationFence {
 
 impl QualificationFence {
     pub fn validate(&self) -> QualificationResult<()> {
-        if self.authority_epoch == 0
-            || self.owner_epoch == 0
-            || self.generation == 0
-        {
+        if self.authority_epoch == 0 || self.owner_epoch == 0 || self.generation == 0 {
             return Err(QualificationError::InvalidInput);
         }
         Ok(())

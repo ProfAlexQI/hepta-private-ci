@@ -123,11 +123,9 @@ impl QualificationStore {
         let mut transaction = self.pool.begin().await.map_err(map_sqlx)?;
         self.ensure_current_writer(&mut transaction).await?;
 
-        if let Some(existing) = load_operation_optional(
-            &mut transaction,
-            admission.intent.operation_id.as_str(),
-        )
-        .await?
+        if let Some(existing) =
+            load_operation_optional(&mut transaction, admission.intent.operation_id.as_str())
+                .await?
         {
             verify_operation_row(&existing)?;
             if existing.intent_sha256 == admission_sha256.to_string() {
@@ -237,17 +235,15 @@ impl QualificationStore {
             .revision
             .checked_add(1)
             .ok_or(QualificationError::InvalidInput)?;
-        let next = current
-            .clone()
-            .transition(
-                OperationState::AttemptStarted,
-                revision,
-                attempt,
-                current.last_status_revision,
-                current.last_observed_at_ms,
-                self.writer.clone(),
-                started_at_ms,
-            )?;
+        let next = current.clone().transition(
+            OperationState::AttemptStarted,
+            revision,
+            attempt,
+            current.last_status_revision,
+            current.last_observed_at_ms,
+            self.writer.clone(),
+            started_at_ms,
+        )?;
         update_operation(&mut transaction, &next, current.revision).await?;
 
         let attempt_row = DispatchAttemptRow {
@@ -300,10 +296,8 @@ impl QualificationStore {
         ticket.fence.validate()?;
         let marker_json =
             serde_json::to_string(&observation).map_err(|_| QualificationError::InvalidInput)?;
-        let marker_sha256 = digest_serializable(
-            "hepta.authbus.p0.2.dispatch-observation.v1",
-            &observation,
-        )?;
+        let marker_sha256 =
+            digest_serializable("hepta.authbus.p0.2.dispatch-observation.v1", &observation)?;
         let marked_at_ms = observation.observed_at_ms();
 
         let mut transaction = self.pool.begin().await.map_err(map_sqlx)?;
@@ -373,17 +367,15 @@ impl QualificationStore {
             release_claim(&mut transaction, &ticket.operation_id, marked_at_ms).await?;
         }
 
-        let next = current
-            .clone()
-            .transition(
-                target,
-                revision,
-                current.attempt,
-                current.last_status_revision,
-                Some(marked_at_ms),
-                self.writer.clone(),
-                marked_at_ms,
-            )?;
+        let next = current.clone().transition(
+            target,
+            revision,
+            current.attempt,
+            current.last_status_revision,
+            Some(marked_at_ms),
+            self.writer.clone(),
+            marked_at_ms,
+        )?;
         update_operation(&mut transaction, &next, current.revision).await?;
 
         let marked_attempt = attempt.with_marker(
@@ -454,8 +446,8 @@ impl QualificationStore {
         if current.fence != observation.fence {
             return Err(QualificationError::StaleFence);
         }
-        let admission: QualificationAdmission = serde_json::from_str(&current.intent_json)
-            .map_err(|_| QualificationError::Corrupt)?;
+        let admission: QualificationAdmission =
+            serde_json::from_str(&current.intent_json).map_err(|_| QualificationError::Corrupt)?;
         let expected_binding = admission.status_binding_sha256()?;
         if observation.binding_sha256 != expected_binding {
             return Err(QualificationError::ObservationConflict);
@@ -512,17 +504,15 @@ impl QualificationStore {
             .await?;
         }
 
-        let next = current
-            .clone()
-            .transition(
-                target,
-                revision,
-                current.attempt,
-                Some(observation.status_revision),
-                Some(observation.observed_at_ms),
-                self.writer.clone(),
-                observation.observed_at_ms,
-            )?;
+        let next = current.clone().transition(
+            target,
+            revision,
+            current.attempt,
+            Some(observation.status_revision),
+            Some(observation.observed_at_ms),
+            self.writer.clone(),
+            observation.observed_at_ms,
+        )?;
         update_operation(&mut transaction, &next, current.revision).await?;
         insert_outbox(
             &mut transaction,
@@ -602,12 +592,11 @@ impl QualificationStore {
 
     pub async fn recover_all(&self) -> QualificationResult<Vec<RecoveryAction>> {
         self.verify_integrity().await?;
-        let operation_ids: Vec<String> = sqlx::query_scalar(
-            "SELECT operation_id FROM operations ORDER BY operation_id ASC",
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_sqlx)?;
+        let operation_ids: Vec<String> =
+            sqlx::query_scalar("SELECT operation_id FROM operations ORDER BY operation_id ASC")
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_sqlx)?;
         let mut actions = Vec::with_capacity(operation_ids.len());
         for operation_id in operation_ids {
             actions.push(self.recover_operation(&operation_id).await?);
@@ -636,12 +625,11 @@ impl QualificationStore {
     }
 
     pub async fn outbox_cursor_revision(&self) -> QualificationResult<u64> {
-        let value: i64 = sqlx::query_scalar(
-            "SELECT revision FROM outbox_cursor WHERE singleton = 1",
-        )
-        .fetch_one(&self.pool)
-        .await
-        .map_err(map_sqlx)?;
+        let value: i64 =
+            sqlx::query_scalar("SELECT revision FROM outbox_cursor WHERE singleton = 1")
+                .fetch_one(&self.pool)
+                .await
+                .map_err(map_sqlx)?;
         to_u64(value)
     }
 
@@ -667,15 +655,17 @@ impl QualificationStore {
             return Err(QualificationError::Conflict);
         }
 
-        let cursor: SqliteRow = sqlx::query(
-            "SELECT revision, last_sequence FROM outbox_cursor WHERE singleton = 1",
-        )
-        .fetch_one(&mut *transaction)
-        .await
-        .map_err(map_sqlx)?;
+        let cursor: SqliteRow =
+            sqlx::query("SELECT revision, last_sequence FROM outbox_cursor WHERE singleton = 1")
+                .fetch_one(&mut *transaction)
+                .await
+                .map_err(map_sqlx)?;
         let cursor_revision = to_u64(cursor.try_get::<i64, _>("revision").map_err(map_sqlx)?)?;
-        let last_sequence =
-            to_u64(cursor.try_get::<i64, _>("last_sequence").map_err(map_sqlx)?)?;
+        let last_sequence = to_u64(
+            cursor
+                .try_get::<i64, _>("last_sequence")
+                .map_err(map_sqlx)?,
+        )?;
         if cursor_revision != expected_cursor_revision {
             return Err(QualificationError::CursorConflict);
         }
@@ -760,7 +750,8 @@ impl QualificationStore {
     }
 
     pub fn qualification_clear_failpoint(&self, failpoint: QualificationFailpoint) {
-        self.failpoints.fetch_and(!failpoint.bit(), Ordering::SeqCst);
+        self.failpoints
+            .fetch_and(!failpoint.bit(), Ordering::SeqCst);
     }
 
     pub async fn qualification_inject_corrupt_operation_digest(
@@ -836,12 +827,11 @@ impl QualificationStore {
             verify_attempt_row(&DispatchAttemptRow::from_sqlite(&sqlite_row)?)?;
         }
 
-        let status_rows = sqlx::query(
-            "SELECT observation_json, observation_sha256 FROM status_observations",
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_sqlx)?;
+        let status_rows =
+            sqlx::query("SELECT observation_json, observation_sha256 FROM status_observations")
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_sqlx)?;
         for row in status_rows {
             let json = row
                 .try_get::<String, _>("observation_json")
@@ -885,8 +875,7 @@ impl QualificationStore {
                 "SELECT COUNT(*) FROM outbox WHERE state = 'PENDING'",
             )
             .await?,
-            fsync_receipts: count_query(&self.pool, "SELECT COUNT(*) FROM fsync_receipts")
-                .await?,
+            fsync_receipts: count_query(&self.pool, "SELECT COUNT(*) FROM fsync_receipts").await?,
         })
     }
 
@@ -903,8 +892,10 @@ impl QualificationStore {
         let boot_id = row
             .try_get::<String, _>("writer_boot_id")
             .map_err(map_sqlx)?;
-        let generation =
-            to_u64(row.try_get::<i64, _>("writer_generation").map_err(map_sqlx)?)?;
+        let generation = to_u64(
+            row.try_get::<i64, _>("writer_generation")
+                .map_err(map_sqlx)?,
+        )?;
         if boot_id != self.writer.boot_id || generation != self.writer.generation {
             return Err(QualificationError::StaleWriter);
         }
@@ -919,40 +910,33 @@ impl QualificationStore {
     }
 }
 
-const OPERATION_SELECT: &str =
-    "SELECT operation_id, operation_key, effect_key, idempotency_key, operation_kind, \
+const OPERATION_SELECT: &str = "SELECT operation_id, operation_key, effect_key, idempotency_key, operation_kind, \
             provider_id, profile_id, token_family_id, intent_json, intent_sha256, state, \
             revision, attempt, last_status_revision, last_observed_at_ms, authority_epoch, \
             owner_epoch, generation, fencing_token_sha256, writer_boot_id, writer_generation, \
             created_at_ms, updated_at_ms, row_sha256 \
      FROM operations WHERE operation_id = ?";
-const OPERATION_SELECT_ALL: &str =
-    "SELECT operation_id, operation_key, effect_key, idempotency_key, operation_kind, \
+const OPERATION_SELECT_ALL: &str = "SELECT operation_id, operation_key, effect_key, idempotency_key, operation_kind, \
             provider_id, profile_id, token_family_id, intent_json, intent_sha256, state, \
             revision, attempt, last_status_revision, last_observed_at_ms, authority_epoch, \
             owner_epoch, generation, fencing_token_sha256, writer_boot_id, writer_generation, \
             created_at_ms, updated_at_ms, row_sha256 \
      FROM operations ORDER BY operation_id ASC";
-const ATTEMPT_SELECT: &str =
-    "SELECT operation_id, attempt, operation_revision, writer_boot_id, writer_generation, \
+const ATTEMPT_SELECT: &str = "SELECT operation_id, attempt, operation_revision, writer_boot_id, writer_generation, \
             authority_epoch, owner_epoch, generation, fencing_token_sha256, started_at_ms, \
             marker_kind, marker_json, marker_sha256, marked_at_ms, row_sha256 \
      FROM dispatch_attempts WHERE operation_id = ? AND attempt = ?";
-const ATTEMPT_SELECT_ALL: &str =
-    "SELECT operation_id, attempt, operation_revision, writer_boot_id, writer_generation, \
+const ATTEMPT_SELECT_ALL: &str = "SELECT operation_id, attempt, operation_revision, writer_boot_id, writer_generation, \
             authority_epoch, owner_epoch, generation, fencing_token_sha256, started_at_ms, \
             marker_kind, marker_json, marker_sha256, marked_at_ms, row_sha256 \
      FROM dispatch_attempts ORDER BY operation_id ASC, attempt ASC";
-const OUTBOX_SELECT: &str =
-    "SELECT sequence, outbox_id, operation_id, operation_revision, event_kind, idempotency_key, \
+const OUTBOX_SELECT: &str = "SELECT sequence, outbox_id, operation_id, operation_revision, event_kind, idempotency_key, \
             payload_sha256, payload_json, ack_sha256, created_at_ms, acked_at_ms, state, row_sha256 \
      FROM outbox WHERE outbox_id = ?";
-const OUTBOX_SELECT_ALL: &str =
-    "SELECT sequence, outbox_id, operation_id, operation_revision, event_kind, idempotency_key, \
+const OUTBOX_SELECT_ALL: &str = "SELECT sequence, outbox_id, operation_id, operation_revision, event_kind, idempotency_key, \
             payload_sha256, payload_json, ack_sha256, created_at_ms, acked_at_ms, state, row_sha256 \
      FROM outbox ORDER BY sequence ASC";
-const RECEIPT_SELECT_ALL: &str =
-    "SELECT sequence, operation_id, phase, operation_revision, payload_sha256, writer_boot_id, \
+const RECEIPT_SELECT_ALL: &str = "SELECT sequence, operation_id, phase, operation_revision, payload_sha256, writer_boot_id, \
             writer_generation, recorded_at_ms, witness_sha256 \
      FROM fsync_receipts ORDER BY sequence ASC";
 
@@ -1010,17 +994,10 @@ impl OperationRow {
             )?,
             fence: QualificationFence {
                 authority_epoch: to_u64(
-                    row.try_get::<i64, _>("authority_epoch")
-                        .map_err(map_sqlx)?,
+                    row.try_get::<i64, _>("authority_epoch").map_err(map_sqlx)?,
                 )?,
-                owner_epoch: to_u64(
-                    row.try_get::<i64, _>("owner_epoch")
-                        .map_err(map_sqlx)?,
-                )?,
-                generation: to_u64(
-                    row.try_get::<i64, _>("generation")
-                        .map_err(map_sqlx)?,
-                )?,
+                owner_epoch: to_u64(row.try_get::<i64, _>("owner_epoch").map_err(map_sqlx)?)?,
+                generation: to_u64(row.try_get::<i64, _>("generation").map_err(map_sqlx)?)?,
                 fencing_token_sha256: parse_digest(
                     row.try_get::<String, _>("fencing_token_sha256")
                         .map_err(map_sqlx)?,
@@ -1033,14 +1010,8 @@ impl OperationRow {
                         .map_err(map_sqlx)?,
                 )?,
             },
-            created_at_ms: to_u64(
-                row.try_get::<i64, _>("created_at_ms")
-                    .map_err(map_sqlx)?,
-            )?,
-            updated_at_ms: to_u64(
-                row.try_get::<i64, _>("updated_at_ms")
-                    .map_err(map_sqlx)?,
-            )?,
+            created_at_ms: to_u64(row.try_get::<i64, _>("created_at_ms").map_err(map_sqlx)?)?,
+            updated_at_ms: to_u64(row.try_get::<i64, _>("updated_at_ms").map_err(map_sqlx)?)?,
             row_sha256: row.try_get("row_sha256").map_err(map_sqlx)?,
         })
     }
@@ -1179,18 +1150,12 @@ impl QuotaRow {
                     row.try_get::<i64, _>("used_concurrency")
                         .map_err(map_sqlx)?,
                 )?,
-                day_budget: to_u64(
-                    row.try_get::<i64, _>("used_day_budget")
-                        .map_err(map_sqlx)?,
-                )?,
+                day_budget: to_u64(row.try_get::<i64, _>("used_day_budget").map_err(map_sqlx)?)?,
                 context: to_u64(row.try_get::<i64, _>("used_context").map_err(map_sqlx)?)?,
             },
             state: row.try_get("state").map_err(map_sqlx)?,
             revision: to_u64(row.try_get::<i64, _>("revision").map_err(map_sqlx)?)?,
-            updated_at_ms: to_u64(
-                row.try_get::<i64, _>("updated_at_ms")
-                    .map_err(map_sqlx)?,
-            )?,
+            updated_at_ms: to_u64(row.try_get::<i64, _>("updated_at_ms").map_err(map_sqlx)?)?,
             row_sha256: row.try_get("row_sha256").map_err(map_sqlx)?,
         })
     }
@@ -1274,26 +1239,16 @@ impl DispatchAttemptRow {
             },
             fence: QualificationFence {
                 authority_epoch: to_u64(
-                    row.try_get::<i64, _>("authority_epoch")
-                        .map_err(map_sqlx)?,
+                    row.try_get::<i64, _>("authority_epoch").map_err(map_sqlx)?,
                 )?,
-                owner_epoch: to_u64(
-                    row.try_get::<i64, _>("owner_epoch")
-                        .map_err(map_sqlx)?,
-                )?,
-                generation: to_u64(
-                    row.try_get::<i64, _>("generation")
-                        .map_err(map_sqlx)?,
-                )?,
+                owner_epoch: to_u64(row.try_get::<i64, _>("owner_epoch").map_err(map_sqlx)?)?,
+                generation: to_u64(row.try_get::<i64, _>("generation").map_err(map_sqlx)?)?,
                 fencing_token_sha256: parse_digest(
                     row.try_get::<String, _>("fencing_token_sha256")
                         .map_err(map_sqlx)?,
                 )?,
             },
-            started_at_ms: to_u64(
-                row.try_get::<i64, _>("started_at_ms")
-                    .map_err(map_sqlx)?,
-            )?,
+            started_at_ms: to_u64(row.try_get::<i64, _>("started_at_ms").map_err(map_sqlx)?)?,
             marker_kind: row.try_get("marker_kind").map_err(map_sqlx)?,
             marker_json: row.try_get("marker_json").map_err(map_sqlx)?,
             marker_sha256: row.try_get("marker_sha256").map_err(map_sqlx)?,
@@ -1386,10 +1341,7 @@ impl OutboxRow {
             payload_sha256: row.try_get("payload_sha256").map_err(map_sqlx)?,
             payload_json: row.try_get("payload_json").map_err(map_sqlx)?,
             ack_sha256: row.try_get("ack_sha256").map_err(map_sqlx)?,
-            created_at_ms: to_u64(
-                row.try_get::<i64, _>("created_at_ms")
-                    .map_err(map_sqlx)?,
-            )?,
+            created_at_ms: to_u64(row.try_get::<i64, _>("created_at_ms").map_err(map_sqlx)?)?,
             acked_at_ms: optional_u64(
                 row.try_get::<Option<i64>, _>("acked_at_ms")
                     .map_err(map_sqlx)?,
@@ -1486,10 +1438,7 @@ impl FsyncReceiptRow {
                         .map_err(map_sqlx)?,
                 )?,
             },
-            recorded_at_ms: to_u64(
-                row.try_get::<i64, _>("recorded_at_ms")
-                    .map_err(map_sqlx)?,
-            )?,
+            recorded_at_ms: to_u64(row.try_get::<i64, _>("recorded_at_ms").map_err(map_sqlx)?)?,
             witness_sha256: row.try_get("witness_sha256").map_err(map_sqlx)?,
         })
     }
@@ -1535,8 +1484,10 @@ async fn initialize_or_rebind_meta(
         let boot_id = row
             .try_get::<String, _>("writer_boot_id")
             .map_err(map_sqlx)?;
-        let generation =
-            to_u64(row.try_get::<i64, _>("writer_generation").map_err(map_sqlx)?)?;
+        let generation = to_u64(
+            row.try_get::<i64, _>("writer_generation")
+                .map_err(map_sqlx)?,
+        )?;
         let epoch = to_u64(row.try_get::<i64, _>("writer_epoch").map_err(map_sqlx)?)?;
         if generation > writer.generation
             || (generation == writer.generation && boot_id != writer.boot_id)
@@ -1610,8 +1561,7 @@ async fn verify_meta(pool: &SqlitePool) -> QualificationResult<()> {
             .map_err(map_sqlx)?,
         row.try_get::<i64, _>("promotion").map_err(map_sqlx)?,
         row.try_get::<i64, _>("g5_allowed").map_err(map_sqlx)?,
-        row.try_get::<i64, _>("execute_allowed")
-            .map_err(map_sqlx)?,
+        row.try_get::<i64, _>("execute_allowed").map_err(map_sqlx)?,
     ];
     if values != [1, 1, 0, 0, 0, 0, 0, 0, 0, 0]
         || !AUTHBUS_P0_2_QUALIFICATION_ONLY
@@ -1762,13 +1712,12 @@ async fn load_claim(
     transaction: &mut Transaction<'_, Sqlite>,
     claim_sha256: &str,
 ) -> QualificationResult<Option<(String, bool)>> {
-    let row = sqlx::query(
-        "SELECT operation_id, active FROM token_family_claims WHERE claim_sha256 = ?",
-    )
-    .bind(claim_sha256)
-    .fetch_optional(&mut **transaction)
-    .await
-    .map_err(map_sqlx)?;
+    let row =
+        sqlx::query("SELECT operation_id, active FROM token_family_claims WHERE claim_sha256 = ?")
+            .bind(claim_sha256)
+            .fetch_optional(&mut **transaction)
+            .await
+            .map_err(map_sqlx)?;
     row.map(|value| {
         let operation_id = value.try_get("operation_id").map_err(map_sqlx)?;
         let active = value.try_get::<i64, _>("active").map_err(map_sqlx)? == 1;
@@ -1869,8 +1818,7 @@ async fn insert_quota_reservation(
     Ok(())
 }
 
-const QUOTA_SELECT: &str =
-    "SELECT operation_id, permit_id, resource_id, resource_sha256, reserved_rpm, reserved_tpm, \
+const QUOTA_SELECT: &str = "SELECT operation_id, permit_id, resource_id, resource_sha256, reserved_rpm, reserved_tpm, \
             reserved_concurrency, reserved_day_budget, reserved_context, used_rpm, used_tpm, \
             used_concurrency, used_day_budget, used_context, state, revision, updated_at_ms, row_sha256 \
      FROM quota_reservations WHERE operation_id = ?";
@@ -1888,10 +1836,7 @@ async fn load_quota(
     QuotaRow::from_sqlite(&row)
 }
 
-async fn load_quota_pool(
-    pool: &SqlitePool,
-    operation_id: &str,
-) -> QualificationResult<QuotaRow> {
+async fn load_quota_pool(pool: &SqlitePool, operation_id: &str) -> QualificationResult<QuotaRow> {
     let row = sqlx::query(QUOTA_SELECT)
         .bind(operation_id)
         .fetch_optional(pool)
@@ -2244,13 +2189,12 @@ async fn verify_state_resources(
     operation: &OperationRow,
     quota: &QuotaRow,
 ) -> QualificationResult<()> {
-    let claim: Option<i64> = sqlx::query_scalar(
-        "SELECT active FROM token_family_claims WHERE operation_id = ?",
-    )
-    .bind(&operation.operation_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(map_sqlx)?;
+    let claim: Option<i64> =
+        sqlx::query_scalar("SELECT active FROM token_family_claims WHERE operation_id = ?")
+            .bind(&operation.operation_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(map_sqlx)?;
     let active = claim.ok_or(QualificationError::Corrupt)? == 1;
     match operation.state {
         OperationState::Completed => {
@@ -2270,13 +2214,12 @@ async fn verify_state_resources(
         }
     }
     if operation.state != OperationState::IntentDurable {
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM dispatch_attempts WHERE operation_id = ?",
-        )
-        .bind(&operation.operation_id)
-        .fetch_one(pool)
-        .await
-        .map_err(map_sqlx)?;
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM dispatch_attempts WHERE operation_id = ?")
+                .bind(&operation.operation_id)
+                .fetch_one(pool)
+                .await
+                .map_err(map_sqlx)?;
         if count == 0 {
             return Err(QualificationError::Corrupt);
         }
@@ -2403,7 +2346,9 @@ fn map_sqlx(error: sqlx::Error) -> QualificationError {
     if let sqlx::Error::Database(database_error) = &error {
         let code = database_error.code();
         if code.as_deref() == Some("13")
-            || database_error.message().contains("database or disk is full")
+            || database_error
+                .message()
+                .contains("database or disk is full")
         {
             return QualificationError::StorageFull;
         }

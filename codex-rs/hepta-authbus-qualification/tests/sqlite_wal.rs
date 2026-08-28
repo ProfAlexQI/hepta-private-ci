@@ -104,7 +104,10 @@ async fn exact_admission_replays_and_changed_binding_conflicts() {
 
     let mut changed = original;
     changed.intent.payload_sha256 = digest("changed-payload");
-    assert_eq!(store.admit(changed).await, Err(QualificationError::Conflict));
+    assert_eq!(
+        store.admit(changed).await,
+        Err(QualificationError::Conflict)
+    );
     assert_eq!(store.operation_count().await.expect("count"), 1);
 }
 
@@ -161,7 +164,11 @@ async fn unknown_marker_then_lookup_completion_settles_quota_and_claim_atomicall
     assert_eq!(unknown.state, OperationState::Unknown);
     assert_eq!(store.active_claim_count().await.expect("claim count"), 1);
     assert_eq!(
-        store.quota_snapshot(&operation_id).await.expect("quota").state,
+        store
+            .quota_snapshot(&operation_id)
+            .await
+            .expect("quota")
+            .state,
         QuotaReservationState::Held
     );
 
@@ -251,9 +258,7 @@ async fn stale_status_revision_changed_digest_and_time_rollback_fail_closed() {
         reason_code: "changed".to_string(),
     };
     assert_eq!(
-        store
-            .record_status_observation(changed_same_revision)
-            .await,
+        store.record_status_observation(changed_same_revision).await,
         Err(QualificationError::ObservationConflict)
     );
 
@@ -293,7 +298,11 @@ async fn writer_generation_rebind_fences_old_store_and_ticket() {
         Err(QualificationError::StaleWriter)
     );
     assert_eq!(
-        current.snapshot(&operation_id).await.expect("snapshot").state,
+        current
+            .snapshot(&operation_id)
+            .await
+            .expect("snapshot")
+            .state,
         OperationState::AttemptStarted
     );
 }
@@ -353,9 +362,7 @@ async fn outbox_ack_uses_cursor_cas_and_exact_replay() {
     );
     assert_eq!(store.outbox_cursor_revision().await.expect("cursor"), 1);
     assert_eq!(
-        store
-            .ack_outbox(&record.outbox_id, ack, 1, 6_301)
-            .await,
+        store.ack_outbox(&record.outbox_id, ack, 1, 6_301).await,
         Ok(WriteDisposition::AlreadyPresent)
     );
 }
@@ -371,8 +378,14 @@ async fn corrupt_row_digest_is_detected_on_read_and_integrity_scan() {
         .qualification_inject_corrupt_operation_digest(&operation_id)
         .await
         .expect("inject");
-    assert_eq!(store.snapshot(&operation_id).await, Err(QualificationError::Corrupt));
-    assert_eq!(store.verify_integrity().await, Err(QualificationError::Corrupt));
+    assert_eq!(
+        store.snapshot(&operation_id).await,
+        Err(QualificationError::Corrupt)
+    );
+    assert_eq!(
+        store.verify_integrity().await,
+        Err(QualificationError::Corrupt)
+    );
 }
 
 #[tokio::test]
@@ -391,5 +404,11 @@ async fn schema_and_runtime_posture_exclude_raw_secret_columns() {
         assert!(!lower.contains("authorization"));
         assert!(!lower.contains("secret_bytes"));
     }
-    assert!(!store.sqlite_runtime_version().await.expect("sqlite").is_empty());
+    assert!(
+        !store
+            .sqlite_runtime_version()
+            .await
+            .expect("sqlite")
+            .is_empty()
+    );
 }
