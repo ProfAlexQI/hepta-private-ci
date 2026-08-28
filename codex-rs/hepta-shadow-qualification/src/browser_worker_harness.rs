@@ -28,8 +28,7 @@ use crate::browser_worker_protocol::write_browser_worker_frame;
 
 pub const BROWSER_WORKER_SESSION_ID_ENV: &str = "HEPTA_BROWSER_WORKER_SESSION_ID";
 pub const BROWSER_WORKER_GENERATION_ENV: &str = "HEPTA_BROWSER_WORKER_GENERATION";
-pub const BROWSER_WORKER_CAPABILITY_SHA256_ENV: &str =
-    "HEPTA_BROWSER_WORKER_CAPABILITY_SHA256";
+pub const BROWSER_WORKER_CAPABILITY_SHA256_ENV: &str = "HEPTA_BROWSER_WORKER_CAPABILITY_SHA256";
 pub const BROWSER_WORKER_MODE_ARGUMENT: &str = "--hepta-browser-worker-qualification";
 
 const DEFAULT_STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
@@ -139,9 +138,7 @@ pub struct QualificationBrowserWorker {
 }
 
 impl QualificationBrowserWorker {
-    pub async fn spawn(
-        spec: BrowserWorkerLaunchSpec,
-    ) -> Result<Self, BrowserWorkerHarnessError> {
+    pub async fn spawn(spec: BrowserWorkerLaunchSpec) -> Result<Self, BrowserWorkerHarnessError> {
         spec.validate()?;
         let startup_capability = BrowserWorkerStartupCapability::generate();
         let capability_sha256 = startup_capability.digest();
@@ -231,12 +228,9 @@ impl QualificationBrowserWorker {
         )
         .await
         .map_err(|_| BrowserWorkerHarnessError::IoTimeout)??;
-        let response = timeout(
-            self.io_timeout,
-            read_browser_worker_frame(&mut self.reader),
-        )
-        .await
-        .map_err(|_| BrowserWorkerHarnessError::IoTimeout)??;
+        let response = timeout(self.io_timeout, read_browser_worker_frame(&mut self.reader))
+            .await
+            .map_err(|_| BrowserWorkerHarnessError::IoTimeout)??;
         match self.protocol.accept(response)? {
             BrowserWorkerParentEvent::Response(response) => Ok(response),
             BrowserWorkerParentEvent::ProtocolError { code, message } => {
@@ -259,12 +253,9 @@ impl QualificationBrowserWorker {
         )
         .await
         .map_err(|_| BrowserWorkerHarnessError::IoTimeout)??;
-        let acknowledgement = timeout(
-            self.io_timeout,
-            read_browser_worker_frame(&mut self.reader),
-        )
-        .await
-        .map_err(|_| BrowserWorkerHarnessError::IoTimeout)??;
+        let acknowledgement = timeout(self.io_timeout, read_browser_worker_frame(&mut self.reader))
+            .await
+            .map_err(|_| BrowserWorkerHarnessError::IoTimeout)??;
         if !matches!(
             self.protocol.accept(acknowledgement)?,
             BrowserWorkerParentEvent::ShutdownAck
@@ -293,15 +284,11 @@ pub async fn run_qualification_browser_worker() -> Result<(), BrowserWorkerHarne
         })?;
     let generation = std::env::var(BROWSER_WORKER_GENERATION_ENV)
         .map_err(|_| {
-            BrowserWorkerHarnessError::Invalid(
-                "browser worker generation is missing".to_string(),
-            )
+            BrowserWorkerHarnessError::Invalid("browser worker generation is missing".to_string())
         })?
         .parse::<u64>()
         .map_err(|_| {
-            BrowserWorkerHarnessError::Invalid(
-                "browser worker generation is invalid".to_string(),
-            )
+            BrowserWorkerHarnessError::Invalid("browser worker generation is invalid".to_string())
         })?;
     let capability_sha256 = std::env::var(BROWSER_WORKER_CAPABILITY_SHA256_ENV).map_err(|_| {
         BrowserWorkerHarnessError::Invalid(

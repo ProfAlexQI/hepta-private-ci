@@ -1,7 +1,7 @@
 use codex_hepta_shadow_qualification::BROWSER_WORKER_MODE_ARGUMENT;
-use codex_hepta_shadow_qualification::run_qualification_browser_worker;
 #[cfg(unix)]
 use codex_hepta_shadow_qualification::BROWSER_WORKER_UNIX_MODE_ARGUMENT;
+use codex_hepta_shadow_qualification::run_qualification_browser_worker;
 #[cfg(unix)]
 use codex_hepta_shadow_qualification::run_unix_qualification_browser_worker;
 
@@ -16,9 +16,7 @@ async fn main() {
     let result = match mode.as_deref() {
         Some(BROWSER_WORKER_MODE_ARGUMENT) => run_qualification_browser_worker().await,
         #[cfg(unix)]
-        Some(BROWSER_WORKER_UNIX_MODE_ARGUMENT) => {
-            run_unix_qualification_browser_worker().await
-        }
+        Some(BROWSER_WORKER_UNIX_MODE_ARGUMENT) => run_unix_qualification_browser_worker().await,
         _ => reject_arguments(),
     };
     if let Err(error) = result {
@@ -28,8 +26,6 @@ async fn main() {
 }
 
 fn reject_arguments() -> ! {
-    eprintln!(
-        "hepta-browser-worker-qualification accepts only a private qualification mode"
-    );
+    eprintln!("hepta-browser-worker-qualification accepts only a private qualification mode");
     std::process::exit(2);
 }

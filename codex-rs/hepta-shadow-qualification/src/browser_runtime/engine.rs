@@ -45,11 +45,7 @@ pub trait BrowserEngine: fmt::Debug {
 
     fn snapshot(&self) -> Result<BrowserEngineSnapshot, BrowserEngineError>;
 
-    fn act(
-        &mut self,
-        target_key: &str,
-        action: &BrowserAction,
-    ) -> Result<(), BrowserEngineError>;
+    fn act(&mut self, target_key: &str, action: &BrowserAction) -> Result<(), BrowserEngineError>;
 
     fn wait(&self, condition: &BrowserWaitCondition) -> Result<(), BrowserEngineError>;
 
@@ -143,11 +139,7 @@ impl BrowserEngine for FixtureBrowserEngine {
         })
     }
 
-    fn act(
-        &mut self,
-        target_key: &str,
-        action: &BrowserAction,
-    ) -> Result<(), BrowserEngineError> {
+    fn act(&mut self, target_key: &str, action: &BrowserAction) -> Result<(), BrowserEngineError> {
         match (target_key, action) {
             ("name-input", BrowserAction::TypeText { text })
                 if text.len() <= MAX_TYPED_TEXT_BYTES =>
@@ -160,17 +152,19 @@ impl BrowserEngine for FixtureBrowserEngine {
                 Ok(())
             }
             ("submit-button", BrowserAction::Click) => {
-                self.click_count = self.click_count.checked_add(1).ok_or_else(|| {
-                    BrowserEngineError::Denied(BrowserDenialCode::ResourceLimit)
-                })?;
-                self.cookie_revision = self.cookie_revision.checked_add(1).ok_or_else(|| {
-                    BrowserEngineError::Denied(BrowserDenialCode::ResourceLimit)
-                })?;
+                self.click_count = self
+                    .click_count
+                    .checked_add(1)
+                    .ok_or_else(|| BrowserEngineError::Denied(BrowserDenialCode::ResourceLimit))?;
+                self.cookie_revision = self
+                    .cookie_revision
+                    .checked_add(1)
+                    .ok_or_else(|| BrowserEngineError::Denied(BrowserDenialCode::ResourceLimit))?;
                 Ok(())
             }
-            (_, BrowserAction::TypeText { text }) if text.len() > MAX_TYPED_TEXT_BYTES => Err(
-                BrowserEngineError::Denied(BrowserDenialCode::ResourceLimit),
-            ),
+            (_, BrowserAction::TypeText { text }) if text.len() > MAX_TYPED_TEXT_BYTES => {
+                Err(BrowserEngineError::Denied(BrowserDenialCode::ResourceLimit))
+            }
             _ => Err(BrowserEngineError::Denied(
                 BrowserDenialCode::InvalidCommand,
             )),

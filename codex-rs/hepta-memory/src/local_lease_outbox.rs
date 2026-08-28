@@ -25,9 +25,9 @@ use sqlx::SqlitePool;
 use sqlx::Transaction;
 use thiserror::Error;
 
-use crate::framing::frame_part;
 use crate::CognitiveStore;
 use crate::CognitiveStoreError;
+use crate::framing::frame_part;
 
 pub const LOCAL_LEASE_OUTBOX_NAMESPACE: &str = "local_development_only";
 pub const LOCAL_LEASE_OUTBOX_SCHEMA_VERSION: u32 = 1;
@@ -958,8 +958,10 @@ impl LocalLeaseOutbox {
                 "reopened local lease fence is no longer current".to_string(),
             ));
         }
-        let events = verify_event_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
-        let outbox = verify_outbox_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
+        let events =
+            verify_event_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
+        let outbox =
+            verify_outbox_chain(&mut transaction, &lease_id, store.owner_agent_id()).await?;
         verify_event_outbox_pairing(&events, &outbox)?;
         transaction
             .commit()
@@ -1131,8 +1133,10 @@ impl LocalLeaseOutbox {
         // expiry must not become a way to hide a damaged event or outbox
         // chain.  These reads remain inside the write transaction, so the
         // checked head is the one immediately preceding the terminal row.
-        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        let outbox = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events =
+            verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox =
+            verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         verify_event_outbox_pairing(&events, &outbox)?;
         self.verify_bound_compact_journals(&mut transaction).await?;
 
@@ -1202,8 +1206,10 @@ impl LocalLeaseOutbox {
         // write transaction, immediately before appending the terminal
         // lease row, so a concurrent writer cannot change the checked heads
         // between validation and commit.
-        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        let outbox = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events =
+            verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox =
+            verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         verify_event_outbox_pairing(&events, &outbox)?;
         // A host terminal decision must not strand a queued or indeterminate
         // outbox intent behind a terminal lease fence.  Once the lease is
@@ -1286,8 +1292,10 @@ impl LocalLeaseOutbox {
             .map_err(crate::cognitive_store::unavailable)?;
         let lease = self.current_lease(&mut transaction).await?;
         ensure_current_active(&lease, self)?;
-        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        let outbox_rows = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events =
+            verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox_rows =
+            verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         verify_event_outbox_pairing(&events, &outbox_rows)?;
 
         if let Some(existing) = find_admission(
@@ -1633,8 +1641,10 @@ impl LocalLeaseOutbox {
             .map_err(crate::cognitive_store::unavailable)?;
         let lease = self.current_lease(&mut transaction).await?;
         ensure_current_active(&lease, self)?;
-        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        let outbox_rows = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events =
+            verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox_rows =
+            verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         verify_event_outbox_pairing(&events, &outbox_rows)?;
         let Some(admission) = find_admission(
             &mut transaction,
@@ -1761,8 +1771,10 @@ impl LocalLeaseOutbox {
             .map_err(crate::cognitive_store::unavailable)?;
         let lease = self.current_lease(&mut transaction).await?;
         ensure_current_active(&lease, self)?;
-        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        let outbox_rows = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events =
+            verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox_rows =
+            verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         verify_event_outbox_pairing(&events, &outbox_rows)?;
         let admission = find_admission(
             &mut transaction,
@@ -1921,8 +1933,10 @@ impl LocalLeaseOutbox {
             .map_err(crate::cognitive_store::unavailable)?;
         let lease = self.current_lease(&mut transaction).await?;
         ensure_current_active(&lease, self)?;
-        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        let outbox_rows = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events =
+            verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox_rows =
+            verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         verify_event_outbox_pairing(&events, &outbox_rows)?;
         let admission = find_admission(
             &mut transaction,
@@ -1998,8 +2012,10 @@ impl LocalLeaseOutbox {
             .map_err(crate::cognitive_store::unavailable)?;
         let lease = self.current_lease(&mut transaction).await?;
         ensure_current_active(&lease, self)?;
-        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        let outbox_rows = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events =
+            verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox_rows =
+            verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         verify_event_outbox_pairing(&events, &outbox_rows)?;
         let event = find_admission(
             &mut transaction,
@@ -2078,8 +2094,10 @@ impl LocalLeaseOutbox {
             .map_err(crate::cognitive_store::unavailable)?;
         let lease = self.current_lease(&mut transaction).await?;
         ensure_current_active(&lease, self)?;
-        let events = verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
-        let outbox_rows = verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let events =
+            verify_event_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
+        let outbox_rows =
+            verify_outbox_chain(&mut transaction, &self.lease_id, &self.owner_agent_id).await?;
         verify_event_outbox_pairing(&events, &outbox_rows)?;
         let admission = find_admission(
             &mut transaction,

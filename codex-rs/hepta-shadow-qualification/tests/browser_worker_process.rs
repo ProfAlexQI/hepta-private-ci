@@ -10,8 +10,8 @@ use codex_hepta_shadow_qualification::BrowserWorkerShutdownReason;
 use codex_hepta_shadow_qualification::QualificationBrowserWorker;
 
 #[tokio::test(flavor = "current_thread")]
-async fn qualification_worker_uses_only_private_child_pipes_and_preserves_browser_fences(
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn qualification_worker_uses_only_private_child_pipes_and_preserves_browser_fences()
+-> Result<(), Box<dyn std::error::Error>> {
     let program = PathBuf::from(env!("CARGO_BIN_EXE_hepta-browser-worker-qualification"));
     let session_id = BrowserSessionId::from_seed("browser-worker-process-test")?;
     let spec = BrowserWorkerLaunchSpec::new(program, session_id.clone(), 13)?;
@@ -31,10 +31,7 @@ async fn qualification_worker_uses_only_private_child_pipes_and_preserves_browse
         },
     );
     let navigate = worker.request(navigate).await?;
-    assert!(matches!(
-        navigate.outcome,
-        BrowserOutcome::Applied { .. }
-    ));
+    assert!(matches!(navigate.outcome, BrowserOutcome::Applied { .. }));
     assert_eq!(navigate.page_revision, 1);
     assert!(navigate.authority.is_closed());
 

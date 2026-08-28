@@ -127,7 +127,6 @@ pub use browser_worker_harness::QualificationBrowserWorker;
 pub use browser_worker_harness::run_qualification_browser_worker;
 pub use browser_worker_protocol::BROWSER_WORKER_PROTOCOL_SCHEMA_VERSION;
 pub use browser_worker_protocol::BROWSER_WORKER_STARTUP_CAPABILITY_BYTES;
-pub use browser_worker_protocol::MAX_BROWSER_WORKER_FRAME_BYTES;
 pub use browser_worker_protocol::BrowserWorkerFrame;
 pub use browser_worker_protocol::BrowserWorkerParentEvent;
 pub use browser_worker_protocol::BrowserWorkerParentSession;
@@ -139,6 +138,7 @@ pub use browser_worker_protocol::BrowserWorkerServerSession;
 pub use browser_worker_protocol::BrowserWorkerShutdownReason;
 pub use browser_worker_protocol::BrowserWorkerStartupCapability;
 pub use browser_worker_protocol::BrowserWorkerTransportKind;
+pub use browser_worker_protocol::MAX_BROWSER_WORKER_FRAME_BYTES;
 pub use browser_worker_protocol::read_browser_worker_frame;
 pub use browser_worker_protocol::write_browser_worker_frame;
 #[cfg(unix)]

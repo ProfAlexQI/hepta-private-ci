@@ -18,7 +18,7 @@ permissions:
 jobs:
   exact-source-v3:
     name: Exact source, deterministic archive, Git-order tree reconstruction
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 180
     steps:
       - name: Require explicit source-only acknowledgement

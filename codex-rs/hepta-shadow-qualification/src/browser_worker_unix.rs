@@ -43,9 +43,7 @@ pub struct UnixQualificationBrowserWorker {
 }
 
 impl UnixQualificationBrowserWorker {
-    pub async fn spawn(
-        spec: BrowserWorkerLaunchSpec,
-    ) -> Result<Self, BrowserWorkerHarnessError> {
+    pub async fn spawn(spec: BrowserWorkerLaunchSpec) -> Result<Self, BrowserWorkerHarnessError> {
         spec.validate()?;
         let startup_capability = BrowserWorkerStartupCapability::generate();
         let capability_sha256 = startup_capability.digest();
@@ -130,12 +128,9 @@ impl UnixQualificationBrowserWorker {
         )
         .await
         .map_err(|_| BrowserWorkerHarnessError::IoTimeout)??;
-        let response = timeout(
-            self.io_timeout,
-            read_browser_worker_frame(&mut self.stream),
-        )
-        .await
-        .map_err(|_| BrowserWorkerHarnessError::IoTimeout)??;
+        let response = timeout(self.io_timeout, read_browser_worker_frame(&mut self.stream))
+            .await
+            .map_err(|_| BrowserWorkerHarnessError::IoTimeout)??;
         match self.protocol.accept(response)? {
             BrowserWorkerParentEvent::Response(response) => Ok(response),
             BrowserWorkerParentEvent::ProtocolError { code, message } => {
@@ -158,12 +153,9 @@ impl UnixQualificationBrowserWorker {
         )
         .await
         .map_err(|_| BrowserWorkerHarnessError::IoTimeout)??;
-        let acknowledgement = timeout(
-            self.io_timeout,
-            read_browser_worker_frame(&mut self.stream),
-        )
-        .await
-        .map_err(|_| BrowserWorkerHarnessError::IoTimeout)??;
+        let acknowledgement = timeout(self.io_timeout, read_browser_worker_frame(&mut self.stream))
+            .await
+            .map_err(|_| BrowserWorkerHarnessError::IoTimeout)??;
         if !matches!(
             self.protocol.accept(acknowledgement)?,
             BrowserWorkerParentEvent::ShutdownAck

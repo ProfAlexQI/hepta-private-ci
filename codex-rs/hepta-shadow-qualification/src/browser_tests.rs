@@ -207,9 +207,9 @@ fn browser_shared_page_human_agent_round_trip() -> Result<(), QualificationError
     }
     assert!(extract_response.authority.is_closed());
     assert!(extract_response.activity_receipt.authority.is_closed());
-    let evidence = extract_response.evidence_receipt.ok_or_else(|| {
-        QualificationError::State("missing browser evidence receipt".to_string())
-    })?;
+    let evidence = extract_response
+        .evidence_receipt
+        .ok_or_else(|| QualificationError::State("missing browser evidence receipt".to_string()))?;
     assert!(!evidence.raw_secret_bytes_present);
     assert!(!evidence.cross_tenant_data_present);
     assert!(!evidence.external_effect);
@@ -307,8 +307,14 @@ fn browser_request_replay_is_stable_and_conflict_fails_closed() -> Result<(), Qu
         }
     ));
     assert!(denied.evidence_receipt.is_none());
-    assert_eq!(denied.activity_receipt.session_id, actor.status().session_id);
-    assert_eq!(denied.activity_receipt.generation, actor.status().generation);
+    assert_eq!(
+        denied.activity_receipt.session_id,
+        actor.status().session_id
+    );
+    assert_eq!(
+        denied.activity_receipt.generation,
+        actor.status().generation
+    );
     Ok(())
 }
 
@@ -365,7 +371,8 @@ fn browser_human_lease_expiry_advances_epoch_and_revision() -> Result<(), Qualif
 }
 
 #[test]
-fn browser_external_navigation_is_denied_without_state_evidence() -> Result<(), QualificationError> {
+fn browser_external_navigation_is_denied_without_state_evidence() -> Result<(), QualificationError>
+{
     let mut actor = actor()?;
     let external = request(
         &actor,

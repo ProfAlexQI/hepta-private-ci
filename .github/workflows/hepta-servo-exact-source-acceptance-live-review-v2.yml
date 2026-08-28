@@ -20,7 +20,7 @@ concurrency:
 jobs:
   live-review:
     name: Source-only accepted pointer live review
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
       - name: Determine source-acceptance applicability

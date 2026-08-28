@@ -241,7 +241,7 @@ jobs:
     # in the sharded Windows jobs above.
     if: always()
     needs: test-windows-shard
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     name: Bazel test on windows-latest for x86_64-pc-windows-gnullvm
 
     steps:

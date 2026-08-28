@@ -22,9 +22,9 @@ use sha2::Digest;
 use sha2::Sha256;
 use thiserror::Error;
 
-use crate::framing::frame_part;
 use crate::ModelReceipt;
 use crate::ModelReceiptError;
+use crate::framing::frame_part;
 
 /// Version of this local compatibility envelope.
 pub const SHADOW_MODEL_RUNTIME_SCHEMA_VERSION: u32 = 1;
@@ -708,9 +708,11 @@ mod tests {
 
     #[test]
     fn schema_gaps_remain_explicit_and_unknown_fields_reject() {
-        assert!(ShadowModelRuntimeBinding::schema_gaps()
-            .iter()
-            .any(|gap| gap.contains("artifact_manifest_digest")));
+        assert!(
+            ShadowModelRuntimeBinding::schema_gaps()
+                .iter()
+                .any(|gap| gap.contains("artifact_manifest_digest"))
+        );
         let snapshot =
             RunStartSnapshot::qualification(snapshot_input("unknown")).expect("snapshot");
         let mut json = serde_json::to_value(&snapshot).expect("json");

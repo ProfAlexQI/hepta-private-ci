@@ -568,7 +568,7 @@ impl LocalLeaseOutbox {
         let current = match self.store().latest_memory(access, candidate_id).await {
             Ok(current) => current,
             Err(CognitiveStoreError::Invalid(message)) if message == "memory does not exist" => {
-                return Ok(None)
+                return Ok(None);
             }
             Err(error) => return Err(error.into()),
         };
@@ -622,7 +622,7 @@ impl LocalLeaseOutbox {
         let current = match self.store().latest_memory(access, memory_id).await {
             Ok(current) => current,
             Err(CognitiveStoreError::Invalid(message)) if message == "memory does not exist" => {
-                return Ok(None)
+                return Ok(None);
             }
             Err(error) => return Err(error.into()),
         };
@@ -833,13 +833,13 @@ fn bounded_reason(reason: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cognitive_test_support::agent_id;
-    use crate::cognitive_test_support::layout;
     use crate::CognitiveScope;
     use crate::CognitiveStore;
     use crate::LedgerSourceKind;
     use crate::LocalLeaseAcquire;
     use crate::SourceDraft;
+    use crate::cognitive_test_support::agent_id;
+    use crate::cognitive_test_support::layout;
     use tempfile::TempDir;
 
     async fn setup(number: u8) -> (TempDir, CognitiveStore, LocalLeaseOutbox) {

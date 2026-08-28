@@ -295,17 +295,15 @@ async fn start_or_steer(
                         reason: NotSubmittedReason::NotIdle,
                     });
                 }
-                let consumed_recovery = match session
-                    .consume_recovery_candidate_for_mutation()
-                    .await
-                {
-                    Ok(consumed_recovery) => consumed_recovery,
-                    Err(_) => {
-                        return Ok(TurnInputSubmission::NotSubmitted {
-                            reason: NotSubmittedReason::RecoveryPersistenceFailed,
-                        });
-                    }
-                };
+                let consumed_recovery =
+                    match session.consume_recovery_candidate_for_mutation().await {
+                        Ok(consumed_recovery) => consumed_recovery,
+                        Err(_) => {
+                            return Ok(TurnInputSubmission::NotSubmitted {
+                                reason: NotSubmittedReason::RecoveryPersistenceFailed,
+                            });
+                        }
+                    };
                 let Some(start_reservation) = reserve_start_after_admission(
                     session,
                     &mut active_turn,
@@ -530,10 +528,7 @@ async fn start_if_idle(
             };
             recovery_expected_context = Some(expected_context);
         }
-        let consumed_recovery = match session
-            .consume_recovery_candidate_for_mutation()
-            .await
-        {
+        let consumed_recovery = match session.consume_recovery_candidate_for_mutation().await {
             Ok(consumed_recovery) => consumed_recovery,
             Err(_) => {
                 return Ok(TurnInputSubmission::NotSubmitted {

@@ -108,9 +108,7 @@ where
             || snapshot.url.len() > MAX_URL_BYTES
             || snapshot.title.len() > MAX_TITLE_BYTES
         {
-            return Err(BrowserEngineError::Denied(
-                BrowserDenialCode::ResourceLimit,
-            ));
+            return Err(BrowserEngineError::Denied(BrowserDenialCode::ResourceLimit));
         }
         let mut refs = BTreeMap::new();
         let mut nodes = Vec::new();
@@ -120,16 +118,10 @@ where
                 || node.name.len() > MAX_NODE_NAME_BYTES
                 || node.value.len() > MAX_NODE_VALUE_BYTES
             {
-                return Err(BrowserEngineError::Denied(
-                    BrowserDenialCode::ResourceLimit,
-                ));
+                return Err(BrowserEngineError::Denied(BrowserDenialCode::ResourceLimit));
             }
-            let semantic_ref = SemanticRef::derive(
-                &self.session_id,
-                self.page_revision,
-                &node.key,
-            )
-            .map_err(|_| BrowserEngineError::Denied(BrowserDenialCode::InvalidCommand))?;
+            let semantic_ref = SemanticRef::derive(&self.session_id, self.page_revision, &node.key)
+                .map_err(|_| BrowserEngineError::Denied(BrowserDenialCode::InvalidCommand))?;
             if refs.insert(semantic_ref.clone(), node.key).is_some() {
                 return Err(BrowserEngineError::Denied(
                     BrowserDenialCode::InvalidCommand,
@@ -238,9 +230,7 @@ pub(super) fn valid_command_shape(command: &BrowserCommand) -> bool {
 pub(super) fn valid_action_shape(action: &BrowserAction) -> bool {
     match action {
         BrowserAction::Click | BrowserAction::Clear => true,
-        BrowserAction::TypeText { text } => {
-            (1..=MAX_TYPED_TEXT_BYTES).contains(&text.len())
-        }
+        BrowserAction::TypeText { text } => (1..=MAX_TYPED_TEXT_BYTES).contains(&text.len()),
     }
 }
 

@@ -44,7 +44,9 @@ impl<'de> Deserialize<'de> for BrowserSessionId {
 impl BrowserSessionId {
     pub fn from_seed(seed: &str) -> Result<Self, QualificationError> {
         if !valid_dynamic_id(seed) {
-            return Err(invalid("browser session seed is not a bounded stable identifier"));
+            return Err(invalid(
+                "browser session seed is not a bounded stable identifier",
+            ));
         }
         let digest = framed_digest(SESSION_ID_DOMAIN, [seed.as_bytes()]);
         Ok(Self(format!("browser-session:v1:{digest}")))
@@ -56,7 +58,9 @@ impl BrowserSessionId {
             .strip_prefix("browser-session:v1:")
             .ok_or_else(|| invalid("invalid browser session id prefix"))?;
         if !valid_sha256(digest) {
-            return Err(invalid("browser session id digest is not lowercase SHA-256"));
+            return Err(invalid(
+                "browser session id digest is not lowercase SHA-256",
+            ));
         }
         Ok(Self(value))
     }

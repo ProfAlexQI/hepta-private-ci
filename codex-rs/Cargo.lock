@@ -3454,7 +3454,6 @@ dependencies = [
  "codex-hepta-automation",
  "codex-hepta-contracts",
  "codex-hepta-fleet",
- "pretty_assertions",
  "serde",
  "serde_json",
 ]
@@ -3486,7 +3485,6 @@ dependencies = [
  "codex-utils-cli",
  "codex-utils-home-dir",
  "core_test_support",
- "pretty_assertions",
  "serde",
  "serde_json",
  "sqlx",
@@ -3521,7 +3519,6 @@ dependencies = [
 name = "codex-hepta-contracts"
 version = "0.0.0"
 dependencies = [
- "pretty_assertions",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3552,7 +3549,6 @@ version = "0.0.0"
 dependencies = [
  "codex-hepta-contracts",
  "codex-hepta-paths",
- "pretty_assertions",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3597,7 +3593,6 @@ dependencies = [
  "codex-hepta-matrix-protocol",
  "codex-hepta-matrix-store",
  "codex-hepta-paths",
- "futures",
  "matrix-sdk",
  "pretty_assertions",
  "serde_json",
@@ -3651,7 +3646,6 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",

@@ -12,8 +12,8 @@ use codex_hepta_shadow_qualification::BrowserWorkerShutdownReason;
 use codex_hepta_shadow_qualification::UnixQualificationBrowserWorker;
 
 #[tokio::test(flavor = "current_thread")]
-async fn inherited_unix_socketpair_has_no_listener_and_preserves_worker_identity(
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn inherited_unix_socketpair_has_no_listener_and_preserves_worker_identity()
+-> Result<(), Box<dyn std::error::Error>> {
     let program = PathBuf::from(env!("CARGO_BIN_EXE_hepta-browser-worker-qualification"));
     let session_id = BrowserSessionId::from_seed("browser-worker-unix-socketpair-test")?;
     let spec = BrowserWorkerLaunchSpec::new(program, session_id.clone(), 17)?;
@@ -33,10 +33,7 @@ async fn inherited_unix_socketpair_has_no_listener_and_preserves_worker_identity
         },
     );
     let navigate = worker.request(navigate).await?;
-    assert!(matches!(
-        navigate.outcome,
-        BrowserOutcome::Applied { .. }
-    ));
+    assert!(matches!(navigate.outcome, BrowserOutcome::Applied { .. }));
     assert_eq!(navigate.page_revision, 1);
     assert!(navigate.authority.is_closed());
 
@@ -50,10 +47,7 @@ async fn inherited_unix_socketpair_has_no_listener_and_preserves_worker_identity
         BrowserCommand::Observe { max_nodes: 16 },
     );
     let observe = worker.request(observe).await?;
-    assert!(matches!(
-        observe.outcome,
-        BrowserOutcome::Observed { .. }
-    ));
+    assert!(matches!(observe.outcome, BrowserOutcome::Observed { .. }));
     assert!(observe.authority.is_closed());
 
     worker

@@ -461,9 +461,7 @@ impl BrowserWorkerServerSession {
         expected_capability_sha256: String,
         transport: BrowserWorkerTransportKind,
     ) -> Result<Self, BrowserWorkerProtocolError> {
-        if generation == 0
-            || !valid_sha256(&expected_capability_sha256)
-            || !transport.is_private()
+        if generation == 0 || !valid_sha256(&expected_capability_sha256) || !transport.is_private()
         {
             return Err(BrowserWorkerProtocolError::Invalid(
                 "browser worker server launch contract is invalid".to_string(),
@@ -512,10 +510,7 @@ impl BrowserWorkerServerSession {
                 };
                 let actual_digest = startup_capability.digest();
                 if parent_pid == 0
-                    || !constant_time_text_eq(
-                        &actual_digest,
-                        &self.expected_capability_sha256,
-                    )
+                    || !constant_time_text_eq(&actual_digest, &self.expected_capability_sha256)
                 {
                     return self.fail(BrowserWorkerProtocolError::WrongStartupCapability);
                 }
@@ -609,9 +604,7 @@ impl BrowserWorkerServerSession {
         })
     }
 
-    pub fn next_shutdown_ack(
-        &mut self,
-    ) -> Result<BrowserWorkerFrame, BrowserWorkerProtocolError> {
+    pub fn next_shutdown_ack(&mut self) -> Result<BrowserWorkerFrame, BrowserWorkerProtocolError> {
         if self.state != BrowserWorkerChannelState::Closing {
             return self.fail(BrowserWorkerProtocolError::UnexpectedFrame);
         }
