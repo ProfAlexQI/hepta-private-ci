@@ -1,0 +1,125 @@
+name: hepta-intelligence-grounding-ledger
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-grounding-ledger-v2-*"
+  pull_request:
+    paths:
+      - "codex-rs/hepta-memory/grounding-migrations/**"
+      - "codex-rs/hepta-memory/src/fact_grounding/durable.rs"
+      - "codex-rs/hepta-memory/src/fact_grounding/durable/**"
+      - "codex-rs/hepta-memory/src/framing.rs"
+      - "codex-rs/hepta-memory/BUILD.bazel"
+      - "scripts/verify-hepta-intelligence-grounding-ledger.py"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_2_IMPLEMENTATION_2026-08-28.md"
+      - ".github/workflows/hepta-intelligence-grounding-ledger.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-grounding-ledger-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: P0.2 durable grounding source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Validate Python and machine status
+        run: |
+          python3 -m py_compile scripts/verify-hepta-intelligence-grounding-ledger.py
+          python3 -m json.tool \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json \
+            >/dev/null
+
+      - name: Run fail-closed source and SQLite gate
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/hepta-intelligence-grounding-ledger
+          python3 scripts/verify-hepta-intelligence-grounding-ledger.py \
+            | tee artifacts/hepta-intelligence-grounding-ledger/source-gate.json
+
+      - name: Verify source-only authority boundary
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(
+              Path("artifacts/hepta-intelligence-grounding-ledger/source-gate.json")
+              .read_text(encoding="utf-8")
+          )
+          assert receipt["status"] == "PASS_P0_2_DURABLE_GROUNDING_SOURCE_ONLY"
+          for key in (
+              "rust_compile_validation",
+              "rust_test_validation",
+              "main_sqlx_lineage_promoted",
+              "default_open_wired",
+              "production_projection_gate",
+              "production_authority",
+              "external_effects",
+              "operator_acceptance",
+              "promotion",
+              "callers_ratchet",
+          ):
+              assert receipt[key] is False, key
+          PY
+
+      - name: Upload source receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-grounding-ledger-source-${{ github.sha }}
+          path: artifacts/hepta-intelligence-grounding-ledger/source-gate.json
+          if-no-files-found: error
+          retention-days: 14
+
+  rust-qualification:
+    name: P0.2 durable grounding Rust qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt,clippy
+
+      - name: Check workspace formatting
+        working-directory: codex-rs
+        run: cargo fmt --all -- --check
+
+      - name: Run focused durable-grounding tests
+        working-directory: codex-rs
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo test -p codex-hepta-memory durable_grounding -- --nocapture
+
+      - name: Run P0.1 fact-grounding regression tests
+        working-directory: codex-rs
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo test -p codex-hepta-memory fact_grounding -- --nocapture
+
+      - name: Run full hepta-memory crate tests
+        working-directory: codex-rs
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo test -p codex-hepta-memory
+
+      - name: Run strict clippy
+        working-directory: codex-rs
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo clippy -p codex-hepta-memory --all-targets -- -D warnings
