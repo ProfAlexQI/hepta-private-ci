@@ -1,0 +1,61 @@
+{
+  "schema": "hepta_intelligence_p0_4b_implementation_receipt_v1",
+  "recorded_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "stack": {
+    "base_pull_request": 16,
+    "base_branch": "codex/hepta-intelligence-mutation-state-machine-v4-20260828",
+    "base_commit": "39c30cc1f07c90c4d5176da05e9bd97e1792bd2a",
+    "head_branch": "codex/hepta-intelligence-mutation-journal-v4b-r2-20260828",
+    "supersedes_staging_pull_request": 17
+  },
+  "status": "implemented_on_stacked_draft_pending_exact_head_qualification",
+  "implemented": {
+    "component_migration_0012": true,
+    "canonical_module": "intelligence_mutation_journal_v3",
+    "immutable_operation_binding": true,
+    "immutable_transition_receipts": true,
+    "exact_replay_from_genesis": true,
+    "migration_checksum_verifier": true,
+    "schema_object_oracle": true,
+    "schema_object_count": 14,
+    "typed_action_reconstruction": true,
+    "request_digest_recomputation": true,
+    "transition_digest_recomputation": true,
+    "before_transition_insert_failpoint": true,
+    "after_insert_before_commit_failpoint": true,
+    "after_commit_before_return_failpoint": true,
+    "exact_retry_adoption": true,
+    "changed_retry_rejection": true,
+    "sqlite_contract_script": true,
+    "fail_closed_source_gate": true,
+    "dedicated_rust_workflow": true,
+    "rust_toolchain_pin": "1.95.0"
+  },
+  "qualification": {
+    "exact_head_source_gate": "pending",
+    "exact_head_sqlite_selftest": "pending",
+    "rust_format": "not_run_or_not_receipted",
+    "rust_focused_tests": "not_run_or_not_receipted",
+    "rust_full_crate_tests": "not_run_or_not_receipted",
+    "rust_clippy": "not_run_or_not_receipted",
+    "hosted_ci": "pending_or_unreceipted",
+    "qualified": false
+  },
+  "authority": {
+    "main_sqlx_migration_lineage_promoted": false,
+    "runtime_wired": false,
+    "default_open_wired": false,
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "limitations": [
+    "The component migration is opt-in and does not alter CognitiveStore::open.",
+    "The journal does not invoke memory/KG writers, projection publication, TaskFlow, tools, models or external effects.",
+    "Source and SQLite contracts do not substitute for exact-head Rust qualification.",
+    "P0.4c and P1.1 remain blocked until the dependency stack and this tranche receive executable qualification."
+  ]
+}
