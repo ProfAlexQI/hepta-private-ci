@@ -7,6 +7,7 @@
   "required": [
     "schema",
     "status",
+    "candidate",
     "makepad",
     "cargoOverride",
     "qualification",
@@ -22,11 +23,161 @@
         "FAIL_PATCHED_CHECKOUT_MATERIALIZATION"
       ]
     },
+    "candidate": {
+      "$ref": "#/$defs/candidate"
+    },
     "makepad": {
-      "type": "object"
+      "$ref": "#/$defs/makepad"
     },
     "cargoOverride": {
-      "type": "object"
+      "$ref": "#/$defs/cargoOverride"
+    },
+    "failure": {
+      "$ref": "#/$defs/failure"
+    },
+    "qualification": {
+      "$ref": "#/$defs/qualification"
+    },
+    "authority": {
+      "$ref": "#/$defs/authority"
+    }
+  },
+  "$defs": {
+    "gitObject": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit",
+        "tree",
+        "bound"
+      ],
+      "properties": {
+        "commit": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 40
+        },
+        "tree": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 40
+        },
+        "bound": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "bound": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "commit": {
+                "$ref": "#/$defs/gitObject"
+              },
+              "tree": {
+                "$ref": "#/$defs/gitObject"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "makepad": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "remote",
+        "revision",
+        "checkout",
+        "patcher",
+        "canonicalPatcherBlob"
+      ],
+      "properties": {
+        "remote": {
+          "const": "https://github.com/kevinaboos/makepad.git"
+        },
+        "revision": {
+          "const": "c4335cee10b22aca768510c9d072b0ca1bba15c8"
+        },
+        "checkout": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "head": {
+          "$ref": "#/$defs/gitObject"
+        },
+        "dirty": {
+          "type": "boolean"
+        },
+        "diffSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "changedFiles": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "prefixItems": [
+            {
+              "const": "platform/src/cx_api.rs"
+            },
+            {
+              "const": "platform/src/lib.rs"
+            },
+            {
+              "const": "platform/src/os/windows/win32_window.rs"
+            },
+            {
+              "const": "platform/src/os/windows/windows.rs"
+            },
+            {
+              "const": "platform/src/window.rs"
+            }
+          ],
+          "items": false
+        },
+        "patcher": {
+          "const": "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch"
+        },
+        "canonicalPatcherBlob": {
+          "const": "369e607f4f80d08d739d2f83778fb4e37aa50d4e"
+        }
+      }
+    },
+    "cargoOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "config",
+        "defaultDependencyChanged"
+      ],
+      "properties": {
+        "config": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "defaultDependencyChanged": {
+          "const": false
+        }
+      }
     },
     "failure": {
       "type": "object",
@@ -35,6 +186,7 @@
         "stage",
         "errorClass",
         "message",
+        "messageBytes",
         "patchReceiptPresent"
       ],
       "properties": {
@@ -52,6 +204,11 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 4096
+        },
+        "messageBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
         },
         "patchReceiptPresent": {
           "type": "boolean"
@@ -167,6 +324,34 @@
           ]
         },
         "properties": {
+          "candidate": {
+            "properties": {
+              "bound": {
+                "const": true
+              }
+            }
+          },
+          "makepad": {
+            "required": [
+              "head",
+              "dirty",
+              "diffSha256",
+              "changedFiles"
+            ],
+            "properties": {
+              "head": {
+                "const": "c4335cee10b22aca768510c9d072b0ca1bba15c8"
+              },
+              "dirty": {
+                "const": true
+              }
+            }
+          },
+          "cargoOverride": {
+            "required": [
+              "sha256"
+            ]
+          },
           "qualification": {
             "properties": {
               "patchedCheckoutMaterialized": {

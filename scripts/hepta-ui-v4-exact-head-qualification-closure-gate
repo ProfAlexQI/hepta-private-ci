@@ -1,0 +1,130 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  materializer: root.join("scripts/hepta-ui-v4-materialize-makepad-windows-hook"),
+  wrapper: root.join("scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch"),
+  exact_gate: root.join("scripts/hepta-ui-v4-exact-candidate-materialization-gate"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-windows-material-profile-exact.yml"),
+  schema: root.join("docs/ui/schemas/hepta.ui.v4.vendored-makepad-materialization.v1.schema.json"),
+  contract: root.join("docs/ui/HEPTA_UI_EXACT_HEAD_QUALIFICATION_CLOSURE_V1.json")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+
+materializer = files.fetch(:materializer).read
+wrapper = files.fetch(:wrapper).read
+exact_gate = files.fetch(:exact_gate).read
+workflow = files.fetch(:workflow).read
+schema = JSON.parse(files.fetch(:schema).read)
+contract = JSON.parse(files.fetch(:contract).read)
+
+checks["materializer.candidate_bound"] =
+  materializer.include?("HEPTA_CANDIDATE_COMMIT") &&
+  materializer.include?("HEPTA_CANDIDATE_TREE") &&
+  materializer.include?("bound: git_object_id?(commit) && git_object_id?(tree)")
+checks["materializer.stale_outputs_removed"] =
+  materializer.include?("patch_receipt.sub_ext(\".tmp\")") &&
+  materializer.include?("FileUtils.rm_f([")
+checks["materializer.utf8_bounded_failure"] =
+  materializer.include?("bounded_utf8") &&
+  materializer.include?("messageBytes: message.bytesize") &&
+  materializer.include?("MAX_FAILURE_MESSAGE_BYTES = 4096")
+checks["wrapper.self_test_and_backslash_safe"] =
+  wrapper.include?("PASS_MAKEPAD_PATCHER_SELF_TEST") &&
+  wrapper.include?("text.sub(before) { after }") &&
+  wrapper.include?("text.sub(pattern) { replacement }")
+checks["exact_gate.still_fail_closed"] =
+  exact_gate.include?("PASS_EXACT_CANDIDATE_MATERIALIZATION_HARDENING_SOURCE_ONLY") &&
+  exact_gate.include?("production_authority: false")
+
+critical_paths = %w[
+  apps/hepta-native/Cargo.toml
+  apps/hepta-native/src/bin/hepta-ui-v4-windows-material-profile-probe.rs
+  apps/hepta-native/src/shared/hepta_window_visual_ack.rs
+  apps/hepta-native/src/shared/hepta_windows_backend_ack_bridge.rs
+  apps/hepta-native/src/shared/hepta_windows_material_adapter.rs
+  apps/hepta-native/src/shared/hepta_windows_material_profile_aggregate.rs
+  apps/hepta-native/src/shared/hepta_windows_transient_material_host.rs
+  apps/hepta-native/src/shared/hepta_windows_window_ack_producer.rs
+  scripts/hepta-ui-v4-apply-makepad-windows-ack-patch
+  scripts/hepta-ui-v4-windows-material-profile-aggregate-gate
+  scripts/hepta-ui-v4-windows-material-profile-runtime-gate
+]
+checks["workflow.critical_path_coverage"] = critical_paths.all? { |path| workflow.include?(path) }
+checks["workflow.inherited_gates"] =
+  workflow.include?("hepta-ui-v4-windows-material-profile-aggregate-gate") &&
+  workflow.include?("hepta-ui-v4-windows-material-profile-runtime-gate")
+checks["workflow.exact_checkout"] =
+  workflow.include?('HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}') &&
+  workflow.scan('ref: ${{ env.HEPTA_CANDIDATE_SHA }}').length >= 4 &&
+  workflow.include?('test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"')
+checks["workflow.cross_platform_shell"] =
+  workflow.scan("shell: bash").length >= 8 &&
+  workflow.include?("Compile full Windows producer against patched API")
+checks["workflow.full_focused_tests"] = %w[
+  hepta_windows_transient_material_host::tests
+  hepta_windows_material_profile_aggregate::tests
+  hepta_window_visual_ack::tests
+  hepta_windows_backend_ack_bridge::tests
+  hepta_windows_window_ack_producer::tests
+  hepta_windows_material_adapter::tests
+].all? { |term| workflow.include?(term) }
+checks["workflow.runtime_receipt_validation"] =
+  workflow.include?("Validate exact aggregate PASS receipt") &&
+  workflow.include?("PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE") &&
+  workflow.include?("VerifiedPersistentChromeWithBackdropReadback") &&
+  workflow.include?("VerifiedAcrylicWithBackdropReadback") &&
+  workflow.include?("VerifiedSolidRollbackWithBackdropReadback")
+checks["workflow.failure_artifacts_preserved"] =
+  workflow.include?("continue-on-error: true") &&
+  workflow.scan("if-no-files-found: warn").length >= 3 &&
+  workflow.include?("set -o pipefail")
+checks["workflow.read_only_no_release"] =
+  workflow.include?("permissions:") && workflow.include?("contents: read") &&
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+
+checks["schema.strict_candidate"] =
+  schema.fetch("required").include?("candidate") &&
+  schema.dig("$defs", "candidate", "additionalProperties") == false &&
+  schema.dig("allOf", 0, "then", "properties", "candidate", "properties", "bound", "const") == true
+checks["schema.strict_makepad"] =
+  schema.dig("$defs", "makepad", "additionalProperties") == false &&
+  schema.dig("$defs", "makepad", "properties", "revision", "const") ==
+    "c4335cee10b22aca768510c9d072b0ca1bba15c8" &&
+  schema.dig("$defs", "makepad", "properties", "changedFiles", "minItems") == 5
+checks["schema.authority_false"] =
+  schema.dig("$defs", "authority", "properties").values.all? { |entry| entry["const"] == false }
+checks["contract.source_only"] =
+  contract.dig("qualification", "sourceImplemented") == true &&
+  contract.fetch("qualification").reject { |key, _| key == "sourceImplemented" }.values.none? &&
+  contract.fetch("authority").values.none?
+
+failures = checks.reject { |_key, value| value }.keys
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.exact-head-qualification-closure-source-gate.v1",
+  status: failures.empty? ? "PASS_EXACT_HEAD_QUALIFICATION_CLOSURE_SOURCE_ONLY" :
+    "FAIL_EXACT_HEAD_QUALIFICATION_CLOSURE_SOURCE",
+  source_implemented: failures.empty?,
+  exact_head_hosted_validation: false,
+  materialization_success: false,
+  patched_makepad_compile_validation: false,
+  windows_runtime_validation: false,
+  runtime_aggregate_validation: false,
+  product_bound: false,
+  system_material_binding: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failures
+)
+exit(failures.empty? ? 0 : 1)

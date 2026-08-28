@@ -1,0 +1,68 @@
+{
+  "schema": "hepta.ui.exact-head-qualification-closure.v1",
+  "status": "SOURCE_READY_EXACT_HEAD_FULL_CHAIN_EXECUTION_REQUIRED",
+  "candidateBaseCommit": "2a94681a66f5c7c62fe9e26570e6a61ed876d28b",
+  "candidateBaseTree": "2c8b99a004eaf337b608448d5cc0f56d66aa9709",
+  "exactCandidate": {
+    "pullRequestExpression": "github.event.pull_request.head.sha || github.sha",
+    "defaultPullRequestMergeRefAuthoritative": false,
+    "checkoutRefRequired": true,
+    "postCheckoutShaVerificationRequired": true,
+    "materializationReceiptCandidateBindingRequired": true,
+    "runtimeReceiptCandidateBindingRequired": true
+  },
+  "sourceChain": {
+    "inheritedAggregateGateRequired": true,
+    "inheritedRuntimeGateRequired": true,
+    "exactMaterializationGateRequired": true,
+    "closureGateRequired": true,
+    "criticalPathCoverageRequired": true
+  },
+  "compileMatrix": {
+    "operatingSystems": [
+      "ubuntu-latest",
+      "windows-latest",
+      "macos-latest"
+    ],
+    "crossPlatformShell": "bash",
+    "focusedTests": [
+      "hepta_windows_transient_material_host",
+      "hepta_windows_material_profile_aggregate",
+      "hepta_window_visual_ack",
+      "hepta_windows_backend_ack_bridge",
+      "hepta_windows_window_ack_producer",
+      "hepta_windows_material_adapter"
+    ]
+  },
+  "runtime": {
+    "governedRunnerLabels": [
+      "self-hosted",
+      "Windows",
+      "X64",
+      "hepta-ui-dwm"
+    ],
+    "passReceiptValidationRequired": true,
+    "failureReceiptMustFailJob": true,
+    "productBindingPerformed": false
+  },
+  "qualification": {
+    "sourceImplemented": true,
+    "exactHeadHostedValidation": false,
+    "materializationSuccess": false,
+    "patchedMakepadCompile": false,
+    "windowsRuntime": false,
+    "runtimeAggregate": false,
+    "productBound": false,
+    "systemMaterialBinding": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

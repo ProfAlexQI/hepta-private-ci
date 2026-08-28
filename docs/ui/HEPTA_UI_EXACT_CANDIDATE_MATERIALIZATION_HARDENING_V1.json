@@ -1,6 +1,6 @@
 {
   "schema": "hepta.ui.exact-candidate-materialization-hardening.v1",
-  "status": "SOURCE_READY_EXACT_HEAD_AND_FAILURE_RECEIPT_EXECUTION_REQUIRED",
+  "status": "SOURCE_READY_EXACT_HEAD_CANDIDATE_BOUND_FAILURE_RECEIPT_EXECUTION_REQUIRED",
   "candidateBaseCommit": "c9cdb4cd3a035ca6550e8f9aa6ea4ade1f064183",
   "candidateBaseTree": "daf85fdcbb79085b3b02932bfd52263cf1ca1327",
   "exactCandidate": {
@@ -8,7 +8,8 @@
     "defaultPullRequestMergeRefAuthoritative": false,
     "checkoutRefRequired": true,
     "postCheckoutShaVerificationRequired": true,
-    "receiptCommitMustEqualCheckedOutHead": true
+    "receiptCommitMustEqualCheckedOutHead": true,
+    "materializationReceiptCandidateBindingRequired": true
   },
   "materialization": {
     "canonicalPatcherBlob": "369e607f4f80d08d739d2f83778fb4e37aa50d4e",
@@ -16,7 +17,11 @@
     "pipelinePipefailRequired": true,
     "failureReceiptRequired": true,
     "failureErrorMaxBytes": 4096,
-    "defaultDependencyChanged": false
+    "defaultDependencyChanged": false,
+    "staleOutputRemovalRequired": true,
+    "failureMessageUtf8Safe": true,
+    "failureMessageBytesRecorded": true,
+    "strictReceiptSchemaRequired": true
   },
   "qualification": {
     "sourceImplemented": true,

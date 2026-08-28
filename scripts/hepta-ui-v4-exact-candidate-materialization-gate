@@ -16,18 +16,25 @@ files = {
 checks = {}
 files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
 
-materializer = files[:materializer].read
-wrapper = files[:wrapper].read
-contract = JSON.parse(files[:contract].read)
-schema = JSON.parse(files[:schema].read)
-workflow = files[:workflow].read
+materializer = files.fetch(:materializer).read
+wrapper = files.fetch(:wrapper).read
+contract = JSON.parse(files.fetch(:contract).read)
+schema = JSON.parse(files.fetch(:schema).read)
+workflow = files.fetch(:workflow).read
 
 checks["materializer.failure_receipt"] =
   materializer.include?("FAIL_PATCHED_CHECKOUT_MATERIALIZATION") &&
   materializer.include?("write_json_atomic(receipt, payload)") &&
   materializer.include?("patchReceiptPresent") &&
-  materializer.include?("byteslice(0, 4096)")
-checks["materializer.no_stale_override"] = materializer.include?("FileUtils.rm_f(config)")
+  materializer.include?("bounded_utf8") &&
+  materializer.include?("messageBytes: message.bytesize")
+checks["materializer.no_stale_override"] =
+  materializer.include?("FileUtils.rm_f([") &&
+  materializer.include?("patch_receipt.sub_ext(\".tmp\")")
+checks["materializer.candidate_binding"] =
+  materializer.include?("HEPTA_CANDIDATE_COMMIT") &&
+  materializer.include?("HEPTA_CANDIDATE_TREE") &&
+  materializer.include?("bound: git_object_id?(commit) && git_object_id?(tree)")
 checks["wrapper.self_test"] =
   wrapper.include?("--self-test") &&
   wrapper.include?("PASS_MAKEPAD_PATCHER_SELF_TEST") &&
@@ -38,23 +45,32 @@ checks["wrapper.safe_replacement"] =
 checks["wrapper.canonical_blob_bound"] =
   wrapper.include?("369e607f4f80d08d739d2f83778fb4e37aa50d4e")
 checks["schema.pass_fail"] =
-  schema.dig("properties","status","enum")&.sort ==
+  schema.dig("properties", "status", "enum")&.sort ==
     %w[FAIL_PATCHED_CHECKOUT_MATERIALIZATION PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY].sort
 checks["schema.authority_false"] =
-  schema.dig("properties","authority","properties").values.all? { |entry| entry["const"] == false }
+  schema.dig("$defs", "authority", "properties").values.all? { |entry| entry["const"] == false }
+checks["schema.candidate_bound_on_pass"] =
+  schema.fetch("required").include?("candidate") &&
+  schema.dig("allOf", 0, "then", "properties", "candidate", "properties", "bound", "const") == true
 checks["contract.source_only"] =
-  contract.dig("qualification","sourceImplemented") == true &&
+  contract.dig("qualification", "sourceImplemented") == true &&
   contract.fetch("qualification").reject { |key, _| key == "sourceImplemented" }.values.none? &&
   contract.fetch("authority").values.none?
 
 checks["workflow.exact_candidate_env"] =
   workflow.include?('HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}')
 checks["workflow.exact_checkout"] =
-  workflow.scan('ref: ${{ env.HEPTA_CANDIDATE_SHA }}').length >= 3 &&
+  workflow.scan('ref: ${{ env.HEPTA_CANDIDATE_SHA }}').length >= 4 &&
   workflow.include?('test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"')
-checks["workflow.pipefail"] = workflow.scan("set -o pipefail").length >= 2
+checks["workflow.pipefail"] = workflow.scan("set -o pipefail").length >= 3
 checks["workflow.self_test"] =
   workflow.include?("hepta-ui-v4-run-fixed-makepad-windows-ack-patch --self-test")
+checks["workflow.inherited_source_chain"] =
+  workflow.include?("hepta-ui-v4-windows-material-profile-aggregate-gate") &&
+  workflow.include?("hepta-ui-v4-windows-material-profile-runtime-gate")
+checks["workflow.runtime_receipt_validation"] =
+  workflow.include?("Validate exact aggregate PASS receipt") &&
+  workflow.include?("PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE")
 checks["workflow.read_only"] =
   workflow.include?("permissions:") && workflow.include?("contents: read") &&
   !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)

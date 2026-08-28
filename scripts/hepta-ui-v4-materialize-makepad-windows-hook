@@ -12,6 +12,7 @@ REVISION = "c4335cee10b22aca768510c9d072b0ca1bba15c8"
 REMOTE = "https://github.com/kevinaboos/makepad.git"
 CANONICAL_PATCHER_BLOB = "369e607f4f80d08d739d2f83778fb4e37aa50d4e"
 REPAIR_WRAPPER = "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch"
+MAX_FAILURE_MESSAGE_BYTES = 4096
 
 class MaterializationError < StandardError; end
 
@@ -32,6 +33,34 @@ def write_json_atomic(path, value)
   temporary = destination.sub_ext(".tmp")
   temporary.write(JSON.pretty_generate(value) + "\n")
   File.rename(temporary, destination)
+end
+
+def git_object_id?(value)
+  value.to_s.match?(/\A[0-9a-f]{40}\z/)
+end
+
+def candidate_payload
+  commit = ENV.fetch("HEPTA_CANDIDATE_COMMIT", "UNBOUND")
+  tree = ENV.fetch("HEPTA_CANDIDATE_TREE", "UNBOUND")
+  {
+    commit: commit,
+    tree: tree,
+    bound: git_object_id?(commit) && git_object_id?(tree)
+  }
+end
+
+def bounded_utf8(value, max_bytes)
+  string = value.to_s.encode(
+    Encoding::UTF_8,
+    invalid: :replace,
+    undef: :replace,
+    replace: "�"
+  )
+  return string if string.bytesize <= max_bytes
+
+  bounded = string.byteslice(0, max_bytes)
+  bounded = bounded.byteslice(0, bounded.bytesize - 1) until bounded.valid_encoding?
+  bounded
 end
 
 def false_qualification
@@ -73,9 +102,19 @@ checkout = Pathname.new(checkout_arg).expand_path
 config = Pathname.new(config_arg).expand_path
 receipt = Pathname.new(receipt_arg).expand_path
 patch_receipt = receipt.sub_ext(".patch.json")
+candidate = candidate_payload
 stage = "initialize"
 
 begin
+  stage = "prepare_outputs"
+  FileUtils.rm_f([
+    config,
+    receipt,
+    receipt.sub_ext(".tmp"),
+    patch_receipt,
+    patch_receipt.sub_ext(".tmp")
+  ])
+
   stage = "prepare_checkout"
   FileUtils.rm_rf(checkout)
   checkout.mkpath
@@ -111,6 +150,7 @@ begin
   payload = {
     schema: "hepta.ui.v4.vendored-makepad-windows-hook-materialization.v1",
     status: "PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY",
+    candidate: candidate,
     makepad: {
       remote: REMOTE,
       revision: REVISION,
@@ -137,9 +177,12 @@ begin
   puts JSON.pretty_generate(payload)
 rescue StandardError => error
   FileUtils.rm_f(config)
+  message = bounded_utf8(error.message, MAX_FAILURE_MESSAGE_BYTES)
+  message = error.class.name if message.empty?
   payload = {
     schema: "hepta.ui.v4.vendored-makepad-windows-hook-materialization.v1",
     status: "FAIL_PATCHED_CHECKOUT_MATERIALIZATION",
+    candidate: candidate,
     makepad: {
       remote: REMOTE,
       revision: REVISION,
@@ -154,7 +197,8 @@ rescue StandardError => error
     failure: {
       stage: stage,
       errorClass: error.class.name,
-      message: error.message.to_s.byteslice(0, 4096),
+      message: message,
+      messageBytes: message.bytesize,
       patchReceiptPresent: patch_receipt.file?
     },
     qualification: false_qualification,
