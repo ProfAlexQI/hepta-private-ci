@@ -1,6 +1,8 @@
 use super::*;
 
+#[path = "grounding/ledger.rs"]
 mod ledger;
+#[path = "grounding/prepare.rs"]
 mod prepare;
 
 pub(super) use ledger::insert_tx;
