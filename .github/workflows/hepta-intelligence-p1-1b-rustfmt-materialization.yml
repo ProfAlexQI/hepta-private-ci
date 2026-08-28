@@ -1,0 +1,188 @@
+name: hepta-intelligence-p1-1b-rustfmt-materialization
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1b-rustfmt-c804ce2-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-p1-1b-rustfmt-materialization-c804ce2
+  cancel-in-progress: true
+
+env:
+  P1_1B_SOURCE_SHA: c804ce200e3eccec96e90b867de31c5cacfdf82f
+  P1_1B_WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1b-rustfmt-materialization.yml
+  P1_1B_CRATE_ROOT: codex-rs/hepta-memory-p1-1b-qualification
+  P1_1B_MANIFEST_PATH: codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml
+  P1_1B_ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1b-rustfmt
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  materialize:
+    name: P1.1b exact rustfmt materialization
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact source plus wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify exact source binding and wrapper-only commit
+        run: |
+          set -euo pipefail
+          mkdir -p "$P1_1B_ARTIFACT_DIR"
+          test "$(git rev-parse HEAD^)" = "$P1_1B_SOURCE_SHA"
+          test "$(git rev-list --count "$P1_1B_SOURCE_SHA"..HEAD)" = "1"
+          mapfile -t wrapper_paths < <(git diff --name-only "$P1_1B_SOURCE_SHA"..HEAD)
+          test "${#wrapper_paths[@]}" = "1"
+          test "${wrapper_paths[0]}" = "$P1_1B_WRAPPER_PATH"
+          printf '%s\n' "${wrapper_paths[@]}" \
+            > "$P1_1B_ARTIFACT_DIR/wrapper-changed-paths.txt"
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Verify Rust 1.95.0
+        run: |
+          set -euo pipefail
+          rustc --version | tee "$P1_1B_ARTIFACT_DIR/rustc-version.txt"
+          cargo --version | tee "$P1_1B_ARTIFACT_DIR/cargo-version.txt"
+          rustfmt --version | tee "$P1_1B_ARTIFACT_DIR/rustfmt-version.txt"
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+
+      - name: Materialize canonical rustfmt output
+        run: |
+          set -euo pipefail
+          cargo fmt \
+            --manifest-path "$P1_1B_MANIFEST_PATH" \
+            --all
+
+      - name: Verify exact six-file formatting drift
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          expected = {
+              "codex-rs/hepta-memory-p1-1b-qualification/src/digest.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/embedding.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/lib.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/route.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/tokenizer.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/tests/p1_1b.rs",
+          }
+          actual = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", "--", os.environ["P1_1B_CRATE_ROOT"]],
+                  text=True,
+              ).splitlines()
+          )
+          if actual != expected:
+              raise SystemExit(
+                  json.dumps(
+                      {
+                          "expected": sorted(expected),
+                          "actual": sorted(actual),
+                      },
+                      indent=2,
+                      sort_keys=True,
+                  )
+              )
+
+          outside = subprocess.check_output(
+              ["git", "diff", "--name-only", "--", ".", f":(exclude){os.environ['P1_1B_CRATE_ROOT']}/**"],
+              text=True,
+          ).splitlines()
+          if outside:
+              raise SystemExit(json.dumps({"unexpected_outside_crate": outside}, indent=2))
+
+          artifact_dir = Path(os.environ["P1_1B_ARTIFACT_DIR"])
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.rustfmt_materialization.v1",
+              "source_commit": os.environ["P1_1B_SOURCE_SHA"],
+              "wrapper_commit": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD"], text=True
+              ).strip(),
+              "changed_paths": sorted(actual),
+              "formatting_only": True,
+              "runtime_wired": False,
+              "production_authority": False,
+          }
+          (artifact_dir / "materialization-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          (artifact_dir / "formatted-changed-paths.txt").write_text(
+              "\n".join(sorted(actual)) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Recheck rustfmt after materialization
+        run: |
+          set -o pipefail
+          cargo fmt \
+            --manifest-path "$P1_1B_MANIFEST_PATH" \
+            --all -- --check \
+            2>&1 | tee "$P1_1B_ARTIFACT_DIR/rustfmt-check.log"
+
+      - name: Archive exact formatted crate
+        run: |
+          set -euo pipefail
+          tar -czf "$P1_1B_ARTIFACT_DIR/formatted-crate.tar.gz" \
+            "$P1_1B_CRATE_ROOT"
+          sha256sum "$P1_1B_ARTIFACT_DIR/formatted-crate.tar.gz" \
+            > "$P1_1B_ARTIFACT_DIR/formatted-crate.tar.gz.sha256"
+
+      - name: Upload exact formatted source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1b-rustfmt-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1b-rustfmt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Run tests on formatted source
+        run: |
+          cargo test \
+            --manifest-path "$P1_1B_MANIFEST_PATH" \
+            --all-targets -- --nocapture
+
+      - name: Check all formatted targets
+        run: |
+          cargo check \
+            --manifest-path "$P1_1B_MANIFEST_PATH" \
+            --all-targets
+
+      - name: Run strict Clippy on formatted source
+        run: |
+          cargo clippy \
+            --manifest-path "$P1_1B_MANIFEST_PATH" \
+            --all-targets -- -D warnings
+
+      - name: Preserve authority boundary
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(
+              Path("artifacts/hepta-intelligence-p1-1b-rustfmt/materialization-receipt.json")
+              .read_text(encoding="utf-8")
+          )
+          assert receipt["formatting_only"] is True
+          assert receipt["runtime_wired"] is False
+          assert receipt["production_authority"] is False
+          PY
