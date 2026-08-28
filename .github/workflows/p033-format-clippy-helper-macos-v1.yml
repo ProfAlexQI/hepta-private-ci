@@ -1,0 +1,94 @@
+name: p033-format-clippy-helper-macos-v1
+
+on:
+  push:
+    branches:
+      - "codex/p033-format-clippy-helper-macos-v1-20260829"
+    paths:
+      - ".github/workflows/p033-format-clippy-helper-macos-v1.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      TARGET_BRANCH: codex/hepta-intelligence-evidence-resolver-v4-20260828
+      EXPECTED_TARGET: 9fc697284284c7ed227e2c31f1f534eac7f1b96a
+    steps:
+      - name: Checkout exact target
+        uses: actions/checkout@v4
+        with:
+          ref: codex/hepta-intelligence-evidence-resolver-v4-20260828
+          fetch-depth: 0
+
+      - name: Install Rust 1.95
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Apply exact formatter and Clippy fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_TARGET"
+          python3 - <<'PY'
+          from pathlib import Path
+          resolver = Path("codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/resolver.rs")
+          text = resolver.read_text(encoding="utf-8")
+          old = ".try_fold(0usize, |total, count| total.checked_add(count))"
+          new = ".try_fold(0usize, usize::checked_add)"
+          if text.count(old) != 1:
+              raise SystemExit("resolver checked-add target drifted")
+          resolver.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          tests = Path("codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/tests.rs")
+          text = tests.read_text(encoding="utf-8")
+          old = """    assert!(!GROUNDED_TOOL_V4_REGISTERED);
+          assert!(!GROUNDED_TOOL_V4_PRODUCTION_AUTHORITY);
+          assert!(!MODEL_SUPPLIED_BYTE_OFFSETS);
+          assert!(!MODEL_SUPPLIED_DIGESTS);"""
+          new = """    const {
+              assert!(!GROUNDED_TOOL_V4_REGISTERED);
+              assert!(!GROUNDED_TOOL_V4_PRODUCTION_AUTHORITY);
+              assert!(!MODEL_SUPPLIED_BYTE_OFFSETS);
+              assert!(!MODEL_SUPPLIED_DIGESTS);
+          }"""
+          if text.count(old) != 1:
+              raise SystemExit("constant assertion target drifted")
+          tests.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
+          cd codex-rs
+          rustfmt --edition 2024 \
+            ext/hepta-memory/src/framing.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/receipt.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/resolver.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/schema.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/support.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/tests.rs
+          cd ..
+          rm -f .github/workflows/p0-3-3-format-clippy-fix-v1.yml
+          python3 scripts/verify-hepta-intelligence-evidence-resolver-v4.py >/tmp/source.json
+          python3 scripts/check-hepta-intelligence-p0-3-3-clippy.py >/tmp/clippy.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          source = json.loads(Path('/tmp/source.json').read_text())
+          clippy = json.loads(Path('/tmp/clippy.json').read_text())
+          assert source['status'] == 'PASS_P0_3_3_HOST_EVIDENCE_RESOLVER_SOURCE_ONLY'
+          assert source['p0_3_2_dependency_qualified'] is True
+          assert clippy['passed'] is True
+          PY
+          git diff --check
+          git config user.name "Qian QI"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git add -A
+          git commit --no-gpg-sign -m "fix(memory): format and lint host evidence resolver P0.3.3"
+          git push \
+            --force-with-lease="refs/heads/${TARGET_BRANCH}:${EXPECTED_TARGET}" \
+            origin "HEAD:refs/heads/${TARGET_BRANCH}"
