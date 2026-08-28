@@ -1,23 +1,28 @@
 {
-  "schema": "hepta_intelligence_current_plan_v1",
+  "schema": "hepta_intelligence_current_plan_v2",
   "generated_at": "2026-08-28",
   "repository": "ProfAlexQI/hepta-private-ci",
-  "current": {
-    "plan_id": "HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28",
-    "plan_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28.md",
-    "plan_content_sha256": "55d3fac411c925cdfb57667b9ac044a5e1482444b96a3cfd262b27fdd1a2fd74",
-    "plan_blob_sha": "9ebf6b055c7682d72aaf4bc5409d0ccd23bf6aa2",
-    "plan_commit": "7132a1c3006ec5e27cb448eb204d83942375bafa",
-    "status_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V3.json",
-    "claim_ladder_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CLAIM_LADDER_V1.json",
-    "review_receipt_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PLAN_V3_REVIEW_RECEIPT_2026-08-28.json",
+  "canonical": {
+    "plan_id": "HEPTA_INTELLIGENCE_MASTER_PLAN_V4",
+    "plan_version": "4.0.0",
+    "human_document": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+    "content_sha256": "74339a00c972e64d29aaf89eea8fa416418d61a8c701dff3ce3cdfc9a326cfe8",
+    "blob_sha": null,
+    "plan_commit": null,
+    "plan_tree": null,
+    "receipt_file": null,
     "branch": "codex/hepta-intelligence-plan-v3-20260828",
-    "status": "PLAN_RECEIPTED_NO_RUNTIME_AUTHORITY"
+    "status": "UNRECEIPTED_PLAN_V4_CANDIDATE"
   },
-  "supersedes": {
-    "plan_id": "HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28",
-    "file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28.md",
-    "rewrite_history": false
+  "session_bootstrap": {
+    "instructions_file": "plans/hepta-intelligence/AGENTS.md",
+    "read_order": [
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md"
+    ],
+    "only_current_human_plan": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+    "on_mismatch": "FAIL_CLOSED",
+    "historical_documents_are_authority": false
   },
   "exact_base": {
     "pull_request": 23,
@@ -26,7 +31,33 @@
     "tree": "bc2342443fe28d2b803cf1c8273c5d3cd4171ced",
     "p0_4c_hardened_source_candidate": "7bb26ec016c2e2c83084756485ea324e79bcddbe"
   },
-  "current_claims": {
+  "current_truth": {
+    "P0_1_through_P0_4c_source_implemented": true,
+    "wired": false,
+    "qualified": false,
+    "efficacy_proven": false,
+    "operator_accepted": false,
+    "promoted": false,
+    "runner_commands_executed": false,
+    "runner_classification": "BLOCKED_RUNNER_NOT_ASSIGNED"
+  },
+  "authority": {
+    "runtime_wired": false,
+    "default_open_wired": false,
+    "app_runtime_attached": false,
+    "tool_registered": false,
+    "memory_write_authority": false,
+    "projection_write_authority": false,
+    "learning_write_authority": false,
+    "outbox_dispatch_authority": false,
+    "model_runtime_authority": false,
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "claim_levels": {
     "system_learning": "L0_STATIC_SHADOW_WITH_PARTIAL_L1_FOUNDATIONS",
     "h5": "N0_METAPHORICAL_TYPED_PROPOSAL",
     "h6": "I0_DETERMINISTIC_SELECTIVE_POLICY",
@@ -34,23 +65,86 @@
     "longitudinal_learning_efficacy": false,
     "closed_loop_learning": false,
     "structural_plasticity": false,
-    "bio_mechanism": false
+    "neuromorphic_mechanism": false,
+    "biological_mechanism_replication": false,
+    "local_small_model_used_by_h5": false,
+    "local_small_model_used_by_h6": false
   },
-  "authority": {
-    "runtime_wired": false,
-    "learning_write_authority": false,
-    "production_authority": false,
-    "external_effects": false,
-    "operator_acceptance": false,
-    "promotion": false,
-    "callers_ratchet": false
+  "active_phase": {
+    "id": "Q0",
+    "name": "qualification_debt_closure",
+    "status": "ACTIVE_BLOCKING",
+    "requirements": [
+      "freeze exact P0.1-P0.4c heads, trees, toolchain and migrations",
+      "produce reproducible local E1 executable evidence",
+      "produce independent E2 exact-head runner evidence",
+      "execute source, fmt, focused/full tests, clippy, SQLite upgrade/reopen/corruption/failpoints and Agentd default-off gates",
+      "keep all runtime and production authority false"
+    ]
   },
-  "activation": {
-    "next_phase": "Q0_QUALIFICATION_DEBT_CLOSURE",
-    "P1_1": "BLOCKED",
-    "H5_runtime": "BLOCKED",
-    "H6_runtime": "BLOCKED",
-    "H7_closed_loop": "BLOCKED",
-    "reason": "P0.1-P0.4c exact-head executable qualification is absent"
-  }
+  "stack_budget": {
+    "maximum_unqualified_source_implementation_layers": 2,
+    "current_stack_exceeds_budget": true,
+    "runtime_source_freeze": true,
+    "allowed": [
+      "plan_only",
+      "schema_only",
+      "verifier_only",
+      "receipt_only",
+      "runner_infrastructure_only",
+      "fixes_to_existing_frozen_tranches"
+    ],
+    "blocked": [
+      "new_runtime_source",
+      "new_migration",
+      "P1_1_activation",
+      "H5_runtime",
+      "H6_runtime",
+      "H7_runtime",
+      "production_caller",
+      "CALLERS_ratchet"
+    ]
+  },
+  "roadmap": [
+    "Q0_QUALIFICATION_DEBT_CLOSURE",
+    "A0_CANONICAL_CAPABILITY_EVIDENCE_AUTHORITY",
+    "B0_LEARNING_BOUNDARY_EXTRACTION",
+    "C0_LEARNING_EPISODE_AND_DURABLE_LEDGER",
+    "R1_GROUNDED_RETRIEVAL_TELEMETRY_SECURITY",
+    "N1_H5_ADAPTIVE_SIGNAL_UNIT",
+    "I1_H6_CALIBRATED_FAST_POLICY",
+    "L1_H7_CAUSAL_EVALUATION_ARTIFACT",
+    "C1_LOW_RISK_CLOSED_LOOP",
+    "N2_TEMPORAL_RECURRENT_SIGNAL_NETWORK",
+    "S1_GOVERNED_STRUCTURAL_PLASTICITY",
+    "N3_ISOLATED_NEUROMORPHIC_RESEARCH"
+  ],
+  "new_required_contracts": [
+    "RunStartSnapshotV2",
+    "LearningEpisodeV1",
+    "LearningEventV1",
+    "CandidateSetReceiptV1",
+    "NeuronSignalReceiptV2",
+    "PlasticityStateV1",
+    "PolicyDecisionReceiptV2",
+    "ExplorationPolicyReceiptV1",
+    "OutcomeReceiptV1",
+    "CreditLedgerV1",
+    "DatasetSnapshotV1",
+    "EvaluationReceiptV2",
+    "PolicyArtifactManifestV2",
+    "UnlearningComplianceReceiptV1",
+    "TopologyProposalV1"
+  ],
+  "historical_human_plans": [
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28.md",
+    "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28.md"
+  ],
+  "next_actions": [
+    "freeze the exact P0 stack manifest",
+    "establish a reproducible local executable qualification runner",
+    "restore an independent runner and obtain non-empty exact-head evidence",
+    "run the full Q0 qualification matrix",
+    "fix only the failing frozen tranche before any new runtime source"
+  ]
 }

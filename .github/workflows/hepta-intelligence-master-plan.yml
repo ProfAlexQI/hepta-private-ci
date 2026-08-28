@@ -1,0 +1,47 @@
+name: Hepta Intelligence canonical master plan
+
+on:
+  pull_request:
+    paths:
+      - plans/hepta-intelligence/AGENTS.md
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28.md
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28.md
+      - scripts/verify-hepta-intelligence-master-plan.py
+      - .github/workflows/hepta-intelligence-master-plan.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canonical-plan-source:
+    name: Canonical master plan source-only gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile verifier
+        run: python3 -m py_compile scripts/verify-hepta-intelligence-master-plan.py
+      - name: Verify sole canonical plan and fail-closed claims
+        run: python3 scripts/verify-hepta-intelligence-master-plan.py
+      - name: Parse machine status
+        run: python3 -m json.tool plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json >/dev/null
+      - name: Assert plan-only authority boundary
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          data = json.loads(Path("plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json").read_text())
+          assert all(value is False for value in data["authority"].values())
+          assert data["active_phase"]["id"] == "Q0"
+          assert data["stack_budget"]["runtime_source_freeze"] is True
+          print("PASS_PLAN_ONLY_NO_RUNTIME_AUTHORITY")
