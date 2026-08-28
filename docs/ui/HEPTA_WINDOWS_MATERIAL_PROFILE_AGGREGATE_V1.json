@@ -1,0 +1,57 @@
+{
+  "schema": "hepta.ui.windows-material-profile-aggregate.v1",
+  "status": "DUAL_RECEIPT_AGGREGATOR_SOURCE_READY_RUNTIME_EVIDENCE_REQUIRED",
+  "candidateBranch": "codex/ui-v4-windows-material-profile-aggregate-20260828",
+  "baseBranch": "codex/ui-v4-vendored-makepad-windows-hook-20260828",
+  "baseCommit": "f34d13455ee114907f2756dd9ea96d67d6dd648e",
+  "baseTree": "012c62e38ce49bf1fca973d7174b43912adf1ac2",
+  "aggregate": {
+    "source": "apps/hepta-native/src/shared/hepta_windows_material_profile_aggregate.rs",
+    "rootReceipt": {
+      "backend": "WindowsDwm",
+      "status": "VerifiedPersistentChromeWithBackdropReadback",
+      "requestedBackdrop": "Mica",
+      "observedBackdrop": "Mica",
+      "readbackScope": "BackdropOnly",
+      "exactWindowIdentityRequired": true
+    },
+    "transientLifecycle": {
+      "dedicatedHwndRequired": true,
+      "rootHwndReuseAllowed": false,
+      "parentIdentityMustMatchRoot": true,
+      "acrylicStatus": "VerifiedAcrylicWithBackdropReadback",
+      "solidRollbackStatus": "VerifiedSolidRollbackWithBackdropReadback",
+      "solidRollbackAfterAcrylic": true,
+      "exactDestroyedIdentityRequired": true
+    },
+    "successStatus": "ReadyForProductIntegrationReview",
+    "successMeaning": "evidence consistency only",
+    "productBindingPerformed": false,
+    "systemMaterialBindingClaim": false
+  },
+  "qualification": {
+    "sourceImplemented": true,
+    "nativeCompile": false,
+    "windowsCompile": false,
+    "rootRuntimeReceipt": false,
+    "transientRuntimeReceipt": false,
+    "dualReceiptAggregateRuntime": false,
+    "productIntegrationEligible": false,
+    "productBound": false,
+    "transientSystemMaterialBound": false,
+    "completeProfileBound": false,
+    "systemMaterialBound": false,
+    "nativeProductRuntime": false,
+    "deviceValidation": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
