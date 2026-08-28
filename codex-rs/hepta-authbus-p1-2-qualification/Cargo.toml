@@ -1,0 +1,51 @@
+[package]
+name = "codex-hepta-authbus-p1-2-qualification"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.95"
+license = "Apache-2.0"
+publish = false
+
+# P1.2 is an isolated, default-off durable replay-ledger qualification
+# workspace. It persists already-verified public metadata and digests only; it
+# does not open a listener, call a provider, store a private key, or grant
+# production/effect authority.
+[workspace]
+resolver = "3"
+
+[features]
+default = []
+p1-2-qualification = [
+    "dep:codex-hepta-authbus-p1-qualification",
+    "dep:codex-hepta-contracts",
+    "dep:codex-state",
+    "dep:codex-utils-absolute-path",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:sqlx",
+    "dep:thiserror",
+]
+
+[dependencies]
+codex-hepta-authbus-p1-qualification = { path = "../hepta-authbus-p1-qualification", features = ["p1-qualification"], optional = true }
+codex-hepta-contracts = { path = "../hepta-contracts", optional = true }
+codex-state = { path = "../state", optional = true }
+codex-utils-absolute-path = { path = "../utils/absolute-path", optional = true }
+serde = { version = "1.0.228", features = ["derive"], optional = true }
+serde_json = { version = "1.0.149", optional = true }
+sqlx = { version = "=0.9.0", default-features = false, features = ["runtime-tokio", "sqlite-bundled", "migrate", "macros"], optional = true }
+thiserror = { version = "2.0.17", optional = true }
+
+[dev-dependencies]
+ed25519-dalek = { version = "=2.2.0", default-features = false, features = ["std"] }
+pretty_assertions = "1.4.1"
+tempfile = "3.23.0"
+tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
