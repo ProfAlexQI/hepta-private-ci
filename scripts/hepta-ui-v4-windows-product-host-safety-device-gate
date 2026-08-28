@@ -1,0 +1,7 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require_relative "hepta-ui-v4-windows-product-host-safety-device-gate.part1"
+require_relative "hepta-ui-v4-windows-product-host-safety-device-gate.part2"
+
+HeptaWindowsSafetyDeviceGate.run

@@ -1,0 +1,72 @@
+{
+  "schema": "hepta.ui.windows-product-host-safety-device-closure.v1",
+  "status": "SAFETY_HOST_AND_PHYSICAL_DEVICE_PRODUCER_SOURCE_READY_EXECUTION_REQUIRED",
+  "basePr": 52,
+  "baseCommit": "87c503e0fdf86b6d5c8ac216c7bd2bdb1a6b5e5a",
+  "feature": {
+    "name": "hepta_ui_windows_system_material_v4",
+    "defaultEnabled": false,
+    "productCargoDeclared": false,
+    "productModuleRegistered": false,
+    "productLifecycleWired": false,
+    "automaticBindingAllowed": false
+  },
+  "safetyHost": {
+    "source": "apps/hepta-native/src/shared/hepta_windows_product_host_qualification_host.rs",
+    "qualificationOnly": true,
+    "reviewSealRequired": true,
+    "reviewBindingDigestEqualityRequired": true,
+    "implementationCandidateEqualityRequired": true,
+    "physicalDeviceValidationIsOutput": true,
+    "rollbackDrillValidationIsOutput": true,
+    "circularQualificationPrerequisiteRemoved": true,
+    "identityRetainedOnRollbackFailure": true,
+    "rollbackRequiredRetainedOnRollbackFailure": true,
+    "unsafeRejectedStateCannotPublishSuspendOrShutdown": true,
+    "successfulRetryRollbackRequired": true,
+    "productReceiptClaimsAllowed": false
+  },
+  "deviceProducer": {
+    "source": "tools/hepta-ui-windows-product-host-device-drill/src/main.rs",
+    "workflow": ".github/workflows/hepta-ui-v4-windows-product-host-safety-device-closure.yml",
+    "manualOnly": true,
+    "runnerLabels": ["self-hosted", "Windows", "X64", "hepta-ui-dwm"],
+    "reviewEnvelopeArtifactRequired": true,
+    "implementationReviewApprovalRequired": true,
+    "operatorAcceptanceInputRequired": true,
+    "realRootWindow": true,
+    "realTransientWindow": true,
+    "dwmSetAndReadback": true,
+    "rootMicaRequired": true,
+    "transientAcrylicRequired": true,
+    "explicitNoneRollbackRequired": true,
+    "highContrastFallbackRequired": true,
+    "transparencyDisabledFallbackRequired": true,
+    "suspendRollbackRequired": true,
+    "shutdownRollbackRequired": true,
+    "finalStateUnboundRequired": true
+  },
+  "qualification": {
+    "sourceImplemented": true,
+    "hostedSource": false,
+    "sixLaneSafetyCompile": false,
+    "runtimeReviewEnvelopeValidated": false,
+    "physicalDeviceDrillValidated": false,
+    "rollbackDrillValidated": false,
+    "productWired": false,
+    "productBound": false,
+    "systemMaterialBound": false,
+    "nativeProductRuntime": false,
+    "deviceValidation": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

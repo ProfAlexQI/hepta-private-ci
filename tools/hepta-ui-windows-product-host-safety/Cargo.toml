@@ -1,0 +1,14 @@
+[package]
+name = "hepta-ui-windows-product-host-safety"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[features]
+default = []
+hepta_ui_windows_system_material_v4 = []
+
+[lib]
+path = "src/lib.rs"

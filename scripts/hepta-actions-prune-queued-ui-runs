@@ -1,0 +1,163 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "net/http"
+require "optparse"
+require "pathname"
+require "time"
+require "uri"
+
+Options = Struct.new(
+  :repository, :branch_prefix, :keep_per_key, :older_than_minutes,
+  :output, :execute, :expected_digest, :protect_run_ids,
+  keyword_init: true
+)
+
+options = Options.new(
+  repository: ENV.fetch("GITHUB_REPOSITORY", "ProfAlexQI/hepta-private-ci"),
+  branch_prefix: "codex/ui-v4-",
+  keep_per_key: 1,
+  older_than_minutes: 10,
+  output: "hepta-actions-queue-prune-receipt.json",
+  execute: false,
+  protect_run_ids: []
+)
+
+OptionParser.new do |parser|
+  parser.banner = "usage: #{$PROGRAM_NAME} [options]"
+  parser.on("--repository OWNER/REPO") { |value| options.repository = value }
+  parser.on("--branch-prefix PREFIX") { |value| options.branch_prefix = value }
+  parser.on("--keep-per-key N", Integer) { |value| options.keep_per_key = value }
+  parser.on("--older-than-minutes N", Integer) { |value| options.older_than_minutes = value }
+  parser.on("--protect-run-id ID", Integer) { |value| options.protect_run_ids << value }
+  parser.on("--output PATH") { |value| options.output = value }
+  parser.on("--execute") { options.execute = true }
+  parser.on("--expected-digest SHA256") { |value| options.expected_digest = value }
+end.parse!
+
+abort "invalid repository" unless options.repository.match?(/\A[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\z/)
+abort "keep-per-key must be positive" unless options.keep_per_key.positive?
+abort "older-than-minutes must be nonnegative" if options.older_than_minutes.negative?
+
+token = ENV["GITHUB_TOKEN"].to_s
+abort "GITHUB_TOKEN is required" if token.empty?
+
+class GitHubApi
+  def initialize(repository, token)
+    @repository = repository
+    @token = token
+  end
+
+  def queued_runs
+    runs = []
+    page = 1
+    loop do
+      payload = request_json(:get, "/repos/#{@repository}/actions/runs?status=queued&per_page=100&page=#{page}")
+      batch = payload.fetch("workflow_runs")
+      runs.concat(batch)
+      break if batch.length < 100
+      page += 1
+    end
+    runs
+  end
+
+  def cancel(run_id)
+    request_json(:post, "/repos/#{@repository}/actions/runs/#{run_id}/cancel", expect_empty: true)
+  end
+
+  private
+
+  def request_json(method, path, expect_empty: false)
+    uri = URI("https://api.github.com#{path}")
+    request = method == :post ? Net::HTTP::Post.new(uri) : Net::HTTP::Get.new(uri)
+    request["Authorization"] = "Bearer #{@token}"
+    request["Accept"] = "application/vnd.github+json"
+    request["X-GitHub-Api-Version"] = "2022-11-28"
+    response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(request) }
+    unless response.code.to_i.between?(200, 299)
+      raise "GitHub API #{method.upcase} #{path} failed: HTTP #{response.code} #{response.body.to_s.byteslice(0, 512)}"
+    end
+    return {} if expect_empty || response.body.to_s.empty?
+    JSON.parse(response.body)
+  end
+end
+
+def atomic_write(path, payload)
+  destination = Pathname.new(path).expand_path
+  destination.dirname.mkpath
+  temporary = destination.sub_ext(".tmp")
+  temporary.write(JSON.pretty_generate(payload) + "\n")
+  File.rename(temporary, destination)
+end
+
+api = GitHubApi.new(options.repository, token)
+all_queued = api.queued_runs
+scoped = all_queued.select do |run|
+  run.fetch("status") == "queued" && run.fetch("head_branch", "").start_with?(options.branch_prefix)
+end
+protected = options.protect_run_ids.to_h { |id| [id, true] }
+cutoff = Time.now.utc - (options.older_than_minutes * 60)
+
+keepers = {}
+scoped.group_by { |run| [run.fetch("workflow_id"), run.fetch("head_branch"), run.fetch("event")] }.each_value do |runs|
+  runs.sort_by { |run| Time.parse(run.fetch("created_at")) }.reverse.first(options.keep_per_key).each do |run|
+    keepers[run.fetch("id")] = true
+  end
+end
+
+candidates = scoped.select do |run|
+  id = run.fetch("id")
+  created = Time.parse(run.fetch("created_at"))
+  !keepers[id] && !protected[id] && created < cutoff
+end.sort_by { |run| run.fetch("id") }
+
+ids = candidates.map { |run| run.fetch("id") }
+digest = Digest::SHA256.hexdigest(ids.join("\n") + (ids.empty? ? "" : "\n"))
+
+if options.execute
+  abort "--expected-digest is required with --execute" if options.expected_digest.to_s.empty?
+  abort "plan digest drift" unless options.expected_digest == digest
+end
+
+results = []
+if options.execute
+  candidates.each do |run|
+    begin
+      api.cancel(run.fetch("id"))
+      results << { runId: run.fetch("id"), cancelled: true, error: nil }
+    rescue StandardError => error
+      results << { runId: run.fetch("id"), cancelled: false, error: error.message.byteslice(0, 1024) }
+    end
+  end
+end
+
+payload = {
+  schema: "hepta.github-actions.queue-prune.v1",
+  status: options.execute ?
+    (results.all? { |result| result.fetch(:cancelled) } ? "PASS_QUEUE_PRUNE_EXECUTED" : "FAIL_QUEUE_PRUNE_PARTIAL") :
+    "PASS_QUEUE_PRUNE_DRY_RUN",
+  repository: options.repository,
+  branchPrefix: options.branch_prefix,
+  observedQueuedRunCount: all_queued.length,
+  scopedQueuedRunCount: scoped.length,
+  keepPerKey: options.keep_per_key,
+  olderThanMinutes: options.older_than_minutes,
+  protectedRunIds: options.protect_run_ids.sort,
+  candidateRunIds: ids,
+  candidateCount: ids.length,
+  planDigest: digest,
+  execute: options.execute,
+  results: results,
+  authority: {
+    repositoryContentWrite: false,
+    workflowRunCancellationOnly: options.execute,
+    productAuthority: false,
+    productionAuthority: false,
+    release: false
+  }
+}
+atomic_write(options.output, payload)
+puts JSON.pretty_generate(payload)
+exit(payload.fetch(:status).start_with?("PASS_") ? 0 : 1)
