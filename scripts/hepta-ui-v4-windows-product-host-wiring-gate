@@ -172,9 +172,12 @@ checks["workflow.isolated_and_product_patch"] =
 checks["workflow.no_runtime_claim"] =
   !workflow.include?("DwmSetWindowAttribute") && !workflow.include?("productHostMayBind=true")
 
-checks["blockers.external_only"] =
-  blockers.fetch("sourceControllableGapsClosed") == true &&
-  blockers.fetch("remainingBlockers").all? { |entry| entry.fetch("class") != "SOURCE_IMPLEMENTATION" }
+checks["blockers.truthful_scope"] =
+  blockers.fetch("windowsSourceControllableGapsClosed") == true &&
+  blockers.fetch("globalSourceControllableGapsClosed") == false &&
+  !blockers.fetch("sourceImplementationGaps").empty? &&
+  blockers.fetch("sourceImplementationGaps").all? { |entry| entry.fetch("class") == "SOURCE_IMPLEMENTATION" } &&
+  blockers.fetch("externalEvidenceBlockers").all? { |entry| entry.fetch("class") != "SOURCE_IMPLEMENTATION" }
 checks["document.boundary"] =
   document.include?("default-off") && document.include?("productCallerRegistered=false") &&
   document.include?("physical Windows") && document.include?("release=false")
