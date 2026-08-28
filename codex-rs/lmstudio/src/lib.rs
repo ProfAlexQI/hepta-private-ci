@@ -21,11 +21,7 @@ pub async fn ensure_oss_ready(config: &Config) -> std::io::Result<()> {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!(
-                concat!(
-                    "LMSTUDIO_MODEL_NOT_INSTALLED model={model}; ",
-                    "automatic model installation is disabled. ",
-                    "Install the model explicitly in LM Studio and retry."
-                )
+                "LMSTUDIO_MODEL_NOT_INSTALLED model={model}; automatic model installation is disabled. Install the model explicitly in LM Studio and retry."
             ),
         ));
     }

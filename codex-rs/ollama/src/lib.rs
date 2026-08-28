@@ -31,11 +31,7 @@ pub async fn ensure_oss_ready(config: &Config, client: &OllamaClient) -> std::io
     Err(std::io::Error::new(
         std::io::ErrorKind::NotFound,
         format!(
-            concat!(
-                "OLLAMA_MODEL_NOT_INSTALLED model={model}; ",
-                "automatic model installation is disabled. ",
-                "Run `ollama pull {model}` explicitly and retry."
-            )
+            "OLLAMA_MODEL_NOT_INSTALLED model={model}; automatic model installation is disabled. Run `ollama pull {model}` explicitly and retry."
         ),
     ))
 }
@@ -53,9 +49,7 @@ fn supports_responses(version: &Version) -> bool {
 /// Missing, non-success, malformed, or unparsable version evidence fails closed.
 pub async fn ensure_responses_supported(client: &OllamaClient) -> std::io::Result<()> {
     let version = client.fetch_version().await?.ok_or_else(|| {
-        std::io::Error::other(
-            "OLLAMA_VERSION_UNKNOWN: refusing to assume Responses API support",
-        )
+        std::io::Error::other("OLLAMA_VERSION_UNKNOWN: refusing to assume Responses API support")
     })?;
 
     if supports_responses(&version) {

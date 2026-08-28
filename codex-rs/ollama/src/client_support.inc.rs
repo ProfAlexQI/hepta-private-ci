@@ -53,10 +53,9 @@ async fn read_bounded_control_body(
     {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!(concat!(
-                "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={operation} ",
-                "maximum={MAX_CONTROL_RESPONSE_BYTES}"
-            )),
+            format!(
+                "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={operation} maximum={MAX_CONTROL_RESPONSE_BYTES}"
+            ),
         ));
     }
     let mut body = Vec::new();
@@ -74,10 +73,9 @@ async fn read_bounded_control_body(
         if next_len > MAX_CONTROL_RESPONSE_BYTES {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!(concat!(
-                    "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={operation} ",
-                    "maximum={MAX_CONTROL_RESPONSE_BYTES}"
-                )),
+                format!(
+                    "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={operation} maximum={MAX_CONTROL_RESPONSE_BYTES}"
+                ),
             ));
         }
         body.extend_from_slice(&chunk);

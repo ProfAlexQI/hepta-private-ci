@@ -83,6 +83,10 @@ mod tests {
         let error = provider_kind("unknown-provider")
             .expect_err("unknown providers must fail closed before setup");
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
-        assert!(error.to_string().contains("refusing to skip readiness checks"));
+        assert!(
+            error
+                .to_string()
+                .contains("refusing to skip readiness checks")
+        );
     }
 }

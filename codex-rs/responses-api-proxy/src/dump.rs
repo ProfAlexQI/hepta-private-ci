@@ -9,10 +9,10 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -66,10 +66,7 @@ impl ExchangeDumper {
         let timestamp_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |duration| duration.as_millis());
-        let prefix = format!(
-            "{timestamp_ms}-{}-{sequence:06}",
-            std::process::id()
-        );
+        let prefix = format!("{timestamp_ms}-{}-{sequence:06}", std::process::id());
         let request_path = self.dump_dir.join(format!("{prefix}-request.json"));
         let response_path = self.dump_dir.join(format!("{prefix}-response.json"));
 
@@ -333,9 +330,11 @@ fn reserve_capacity(allocated: &AtomicUsize, additional_files: usize) -> io::Res
                 .filter(|next| *next <= MAX_DUMP_FILES)
         })
         .map(|_| ())
-        .map_err(|_| io::Error::other(format!(
-            "response dump file limit exceeded: maximum={MAX_DUMP_FILES}"
-        )))
+        .map_err(|_| {
+            io::Error::other(format!(
+                "response dump file limit exceeded: maximum={MAX_DUMP_FILES}"
+            ))
+        })
 }
 
 fn release_capacity(allocated: &AtomicUsize, released_files: usize) {
@@ -437,7 +436,10 @@ mod tests {
         assert!(!text.contains("api-secret"));
         let value: serde_json::Value = serde_json::from_str(&text).expect("parse dump");
         assert_eq!(value["body"]["sha256"], digest_bytes(raw));
-        assert_eq!(value["body"]["byte_length"].as_u64(), Some(raw.len() as u64));
+        assert_eq!(
+            value["body"]["byte_length"].as_u64(),
+            Some(raw.len() as u64)
+        );
         assert_eq!(value["body"]["complete"], true);
         let header_values = value["headers"]
             .as_array()
@@ -478,7 +480,10 @@ mod tests {
         assert!(!text.contains("private model output"));
         let value: serde_json::Value = serde_json::from_str(&text).expect("parse dump");
         assert_eq!(value["body"]["sha256"], digest_bytes(raw));
-        assert_eq!(value["body"]["byte_length"].as_u64(), Some(raw.len() as u64));
+        assert_eq!(
+            value["body"]["byte_length"].as_u64(),
+            Some(raw.len() as u64)
+        );
         assert_eq!(value["body"]["complete"], true);
         let authorization = value["headers"]
             .as_array()
@@ -511,7 +516,10 @@ mod tests {
         assert!(!text.contains("partial"));
         let value: serde_json::Value = serde_json::from_str(&text).expect("parse dump");
         assert_eq!(value["body"]["sha256"], digest_bytes(&first));
-        assert_eq!(value["body"]["byte_length"].as_u64(), Some(first.len() as u64));
+        assert_eq!(
+            value["body"]["byte_length"].as_u64(),
+            Some(first.len() as u64)
+        );
         assert_eq!(value["body"]["complete"], false);
         fs::remove_dir_all(dump_dir).expect("remove dump dir");
     }
