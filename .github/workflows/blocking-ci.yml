@@ -1,15 +1,16 @@
 name: blocking-ci
 
 # This is the single entrypoint for checks that block a PR merge. It also runs
-# after pushes to main so the same check family stays grouped in the Actions UI.
+# after pushes to the integration default branch so the same check family stays
+# grouped in the Actions UI.
 on:
   pull_request: {}
   push:
-    branches: [main]
+    branches: [integration/vnext-main-20260811]
 
 jobs:
   # Keep reusable workflow calls alphabetized. The `required` job below is the
-  # version-controlled list that the main-branch ruleset should require.
+  # version-controlled list that the integration-branch ruleset should require.
   bazel:
     name: Bazel
     uses: ./.github/workflows/bazel.yml
