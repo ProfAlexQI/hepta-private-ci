@@ -66,6 +66,12 @@ jobs:
       - name: Verify retired legacy workflow trigger surface
         run: python3 scripts/verify-hepta-legacy-workflow-retirement.py
 
+      - name: Verify fail-closed runner evidence contract
+        run: python3 scripts/verify-hepta-browser-runner-evidence.py
+
+      - name: Test runner evidence classifier
+        run: python3 scripts/tests/test_hepta_browser_runner_evidence.py
+
   hepta-browser-c1-artifact-gate:
     name: Hepta Browser C1 artifact launch gate
     needs: runner-preflight
