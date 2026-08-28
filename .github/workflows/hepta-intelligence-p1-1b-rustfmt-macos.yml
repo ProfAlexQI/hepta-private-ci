@@ -1,0 +1,128 @@
+name: hepta-intelligence-p1-1b-rustfmt-macos
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1b-rustfmt-macos-c804ce2-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-p1-1b-rustfmt-macos-c804ce2
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: c804ce200e3eccec96e90b867de31c5cacfdf82f
+  WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1b-rustfmt-macos.yml
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1b-qualification
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml
+  ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1b-rustfmt-macos
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  materialize:
+    name: P1.1b macOS rustfmt materialization
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact source plus wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify source binding and wrapper-only commit
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          test "$(git rev-list --count "$SOURCE_SHA"..HEAD)" = "1"
+          mapfile -t wrapper_paths < <(git diff --name-only "$SOURCE_SHA"..HEAD)
+          test "${#wrapper_paths[@]}" = "1"
+          test "${wrapper_paths[0]}" = "$WRAPPER_PATH"
+          printf '%s\n' "${wrapper_paths[@]}" > "$ARTIFACT_DIR/wrapper-changed-paths.txt"
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Verify pinned formatter
+        run: |
+          set -euo pipefail
+          rustc --version | tee "$ARTIFACT_DIR/rustc-version.txt"
+          rustfmt --version | tee "$ARTIFACT_DIR/rustfmt-version.txt"
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+
+      - name: Materialize canonical rustfmt output
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check
+
+      - name: Enforce exact six-file formatting delta
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          expected = {
+              "codex-rs/hepta-memory-p1-1b-qualification/src/digest.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/embedding.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/lib.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/route.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/tokenizer.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/tests/p1_1b.rs",
+          }
+          actual = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only"], text=True
+              ).splitlines()
+          )
+          if actual != expected:
+              raise SystemExit(json.dumps({"expected": sorted(expected), "actual": sorted(actual)}, indent=2))
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.rustfmt_macos.v1",
+              "source_commit": os.environ["SOURCE_SHA"],
+              "wrapper_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "rustfmt_changed_paths": sorted(actual),
+              "formatting_only": True,
+              "runtime_wired": False,
+              "production_authority": False,
+          }
+          (artifact_dir / "materialization-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Test formatted source
+        run: cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture
+
+      - name: Check formatted source
+        run: cargo check --manifest-path "$MANIFEST_PATH" --all-targets
+
+      - name: Run strict Clippy on formatted source
+        run: cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings
+
+      - name: Archive exact formatted crate
+        run: |
+          set -euo pipefail
+          tar -czf "$ARTIFACT_DIR/formatted-crate.tar.gz" "$CRATE_ROOT"
+          shasum -a 256 "$ARTIFACT_DIR/formatted-crate.tar.gz" > "$ARTIFACT_DIR/formatted-crate.tar.gz.sha256"
+
+      - name: Upload exact formatted source
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1b-rustfmt-macos-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1b-rustfmt-macos
+          if-no-files-found: error
+          retention-days: 14
