@@ -90,6 +90,7 @@ def remediate_source() -> None:
     cargo_path = CRATE_ROOT / "Cargo.toml"
     store_path = CRATE_ROOT / "src/store.rs"
     test_path = CRATE_ROOT / "tests/p1_2.rs"
+    verifier_path = Path("scripts/verify-authbus-p1-2.py")
 
     cargo = cargo_path.read_text(encoding="utf-8")
     cargo = replace_once(
@@ -233,12 +234,64 @@ def remediate_source() -> None:
         "nonce-two TTL fixture",
     )
 
+    verifier = verifier_path.read_text(encoding="utf-8")
+    verifier = replace_once(
+        verifier,
+        '''    store = text(CRATE / "src/store.rs")
+    for marker in [
+        "SqliteJournalMode::Wal",
+        "SqliteSynchronous::Full",
+        "PRAGMA secure_delete = ON",
+        "PRAGMA trusted_schema = OFF",
+        ".max_connections(1)",
+        "ensure_current_writer",
+        "p12_terminal_tombstones",
+        "collect_garbage",
+        "verify_integrity",
+        "PRAGMA quick_check",
+        "StorageUnavailableBeforeCommit",
+    ]:
+        require(marker in store, f"missing durable store invariant: {marker}")
+    require("require_durable_key" in store, "durable key-purpose/epoch enforcement missing")
+    require("expected_revision" in store, "GC CAS binding missing")
+''',
+        '''    store = text(CRATE / "src/store.rs")
+    for marker in [
+        "use codex_state::SqliteConfig;",
+        "use codex_utils_absolute_path::AbsolutePathBuf;",
+        "open_durable_evidence_pool",
+        "PRAGMA secure_delete = ON",
+        "PRAGMA trusted_schema = OFF",
+        "ensure_current_writer",
+        "p12_terminal_tombstones",
+        "collect_garbage",
+        "verify_integrity",
+        "PRAGMA quick_check",
+        "StorageUnavailableBeforeCommit",
+    ]:
+        require(marker in store, f"missing durable store invariant: {marker}")
+    for forbidden in [
+        "connect_with",
+        "SqlitePoolOptions",
+        "SqliteConnectOptions",
+        "SqliteJournalMode",
+        "SqliteSynchronous",
+    ]:
+        require(forbidden not in store, f"direct SQLite construction survived: {forbidden}")
+    require("require_durable_key" in store, "durable key-purpose/epoch enforcement missing")
+    require("expected_revision" in store, "GC CAS binding missing")
+''',
+        "canonical SQLite source-verifier block",
+    )
+
     cargo_path.write_text(cargo, encoding="utf-8")
     store_path.write_text(store, encoding="utf-8")
     test_path.write_text(tests, encoding="utf-8")
+    verifier_path.write_text(verifier, encoding="utf-8")
     print(f"applied_sha256_digest_text_repairs={digest_repairs}")
     print("applied_exact_ttl_boundary_repairs=1")
     print("applied_canonical_sqlite_shim_repairs=1")
+    print("applied_source_verifier_shim_repairs=1")
 
 
 def main() -> None:
