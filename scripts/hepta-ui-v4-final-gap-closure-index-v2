@@ -1,0 +1,276 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "optparse"
+require "pathname"
+require "tmpdir"
+
+SLOT_RULES = {
+  "runnerExecution" => ["PASS_EXACT_HEAD_RUNNER_EXECUTION", nil],
+  "windowsDevice" => ["PASS_PLATFORM_DEVICE_QUALIFICATION", "windows"],
+  "operatorAcceptance" => ["PASS_CANDIDATE_BOUND_OPERATOR_ACCEPTANCE", nil],
+  "macosDevice" => ["PASS_PLATFORM_DEVICE_QUALIFICATION", "macos"],
+  "iosDevice" => ["PASS_PLATFORM_DEVICE_QUALIFICATION", "ios"],
+  "androidDevice" => ["PASS_PLATFORM_DEVICE_QUALIFICATION", "android"],
+  "crossBrowserRuntime" => ["PASS_RUST_SERVED_CROSS_BROWSER_MATRIX", nil],
+  "browserHumanAcceptance" => ["PASS_CROSS_BROWSER_HUMAN_ACCEPTANCE", nil]
+}.freeze
+
+FALSE_BOUNDARY = {
+  "productWired" => false,
+  "productCargoFeatureDeclared" => false,
+  "productModuleRegistered" => false,
+  "productLifecycleWired" => false,
+  "automaticBindingAllowed" => false,
+  "productHostMayBind" => false,
+  "productBound" => false,
+  "systemMaterialBound" => false,
+  "nativeProductRuntime" => false,
+  "deviceValidation" => false
+}.freeze
+
+FALSE_AUTHORITY = {
+  "network" => false,
+  "mutation" => false,
+  "effect" => false,
+  "liveAdapter" => false,
+  "production" => false,
+  "operatorAcceptance" => false,
+  "promotion" => false,
+  "release" => false
+}.freeze
+
+class ClosureError < StandardError; end
+
+def git_object?(value)
+  value.is_a?(String) && value.match?(/\A[0-9a-f]{40}\z/)
+end
+
+def authority_false?(value)
+  value.is_a?(Hash) && FALSE_AUTHORITY.all? { |key, expected| value[key] == expected }
+end
+
+def boundary_false?(receipt)
+  candidates = [receipt, receipt["qualification"], receipt["boundary"]].select { |value| value.is_a?(Hash) }
+  candidates.all? do |value|
+    FALSE_BOUNDARY.all? { |key, expected| !value.key?(key) || value[key] == expected }
+  end
+end
+
+def candidate_pair(receipt)
+  value = receipt["candidate"] || {}
+  [value["commit"], value["tree"]]
+end
+
+def slot_specific_valid?(name, receipt, evaluated_at_unix)
+  failures = Array(receipt["failures"])
+  return false unless failures.empty?
+
+  case name
+  when "runnerExecution"
+    receipt["allRequiredJobsExecuted"] == true && receipt["allRequiredStepsSuccessful"] == true
+  when "operatorAcceptance"
+    receipt["decision"] == "accept" &&
+      receipt["signatureVerified"] == true &&
+      receipt["candidateBound"] == true &&
+      receipt["nonDelegable"] == true &&
+      receipt["humanPresent"] == true &&
+      receipt["synthetic"] == false &&
+      receipt["issuedAtUnix"].is_a?(Integer) &&
+      receipt["expiresAtUnix"].is_a?(Integer) &&
+      receipt["issuedAtUnix"] <= evaluated_at_unix &&
+      receipt["expiresAtUnix"] >= evaluated_at_unix
+  when "windowsDevice", "macosDevice", "iosDevice", "androidDevice"
+    receipt["physical"] == true &&
+      receipt["synthetic"] == false &&
+      receipt["checks"].is_a?(Hash) &&
+      !receipt["checks"].empty? &&
+      receipt["checks"].values.all? { |value| value == true }
+  when "crossBrowserRuntime"
+    q = receipt["qualification"] || {}
+    %w[rustServedRuntime chromiumRuntime edgeRuntime firefoxRuntime webkitLinuxRuntime webkitMacosRuntime crossBrowserEngineMatrix].all? { |key| q[key] == true } &&
+      q["physicalBrowserAcceptance"] == false &&
+      q["safariProductValidation"] == false &&
+      q["deviceValidation"] == false &&
+      q["productWired"] == false &&
+      q["productionAuthority"] == false
+  when "browserHumanAcceptance"
+    Array(receipt["browsers"]).sort == %w[edge firefox safari] &&
+      receipt["humanReviewed"] == true &&
+      receipt["physical"] == true &&
+      receipt["synthetic"] == false &&
+      receipt["signatureVerified"] == true &&
+      receipt["candidateBound"] == true &&
+      receipt["nonDelegable"] == true &&
+      receipt["reviewedAtUnix"].is_a?(Integer) &&
+      receipt["expiresAtUnix"].is_a?(Integer) &&
+      receipt["reviewedAtUnix"] <= evaluated_at_unix &&
+      receipt["expiresAtUnix"] >= evaluated_at_unix
+  else
+    false
+  end
+end
+
+def evaluate(options)
+  commit = options.fetch(:candidate_commit)
+  tree = options.fetch(:candidate_tree)
+  raise ClosureError, "invalid candidate commit" unless git_object?(commit)
+  raise ClosureError, "invalid candidate tree" unless git_object?(tree)
+
+  evaluated_at_unix = Integer(options.fetch(:evaluated_at_unix))
+  raise ClosureError, "invalid evaluation time" unless evaluated_at_unix.positive?
+
+  failures = []
+  blockers = []
+  slots = {}
+
+  SLOT_RULES.each do |name, (expected_status, expected_platform)|
+    path = options[name.to_sym]
+    if path.nil? || path.empty?
+      blockers << name
+      slots[name] = {"present" => false, "qualified" => false, "status" => nil, "sha256" => nil}
+      next
+    end
+
+    begin
+      bytes = File.binread(path)
+      receipt = JSON.parse(bytes)
+      status = receipt["status"]
+      slot_commit, slot_tree = candidate_pair(receipt)
+      valid = status == expected_status
+      valid &&= slot_commit == commit && slot_tree == tree
+      valid &&= receipt["platform"] == expected_platform if expected_platform
+      valid &&= authority_false?(receipt["authority"])
+      valid &&= boundary_false?(receipt)
+      valid &&= slot_specific_valid?(name, receipt, evaluated_at_unix)
+      failures << "#{name}: receipt rejected" unless valid
+      slots[name] = {
+        "present" => true,
+        "qualified" => valid,
+        "status" => status,
+        "sha256" => Digest::SHA256.hexdigest(bytes)
+      }
+    rescue Errno::ENOENT
+      failures << "#{name}: file not found"
+      slots[name] = {"present" => true, "qualified" => false, "status" => nil, "sha256" => nil}
+    rescue JSON::ParserError => error
+      failures << "#{name}: invalid JSON: #{error.message.byteslice(0, 256)}"
+      slots[name] = {"present" => true, "qualified" => false, "status" => nil, "sha256" => nil}
+    end
+  end
+
+  status = if failures.any?
+             "FAIL_UI_GAP_CLOSURE"
+           elsif blockers.any?
+             "BLOCKED_EXTERNAL_EVIDENCE_REQUIRED"
+           else
+             "PASS_ALL_UI_GAPS_CLOSED"
+           end
+  all_closed = status == "PASS_ALL_UI_GAPS_CLOSED"
+
+  {
+    "schema" => "hepta.ui.v4.final-gap-closure-index.v2",
+    "status" => status,
+    "candidate" => {"commit" => commit, "tree" => tree},
+    "evaluatedAtUnix" => evaluated_at_unix,
+    "sourceControllableGapsClosed" => true,
+    "externalEvidenceComplete" => all_closed,
+    "allGapsClosed" => all_closed,
+    "slots" => slots,
+    "blockers" => blockers.sort,
+    "failures" => failures.uniq.first(64),
+    "boundary" => FALSE_BOUNDARY.dup,
+    "authority" => FALSE_AUTHORITY.dup
+  }
+end
+
+def write_atomic(path, payload)
+  destination = Pathname(path)
+  destination.dirname.mkpath
+  temporary = destination.sub_ext("#{destination.extname}.tmp-#{Process.pid}")
+  temporary.write(JSON.pretty_generate(payload) + "\n")
+  temporary.rename(destination)
+end
+
+def self_test
+  commit = "a" * 40
+  tree = "b" * 40
+  Dir.mktmpdir("hepta-final-gap-v2") do |dir|
+    paths = {}
+    SLOT_RULES.each do |name, (status, platform)|
+      receipt = {
+        "status" => status,
+        "candidate" => {"commit" => commit, "tree" => tree},
+        "authority" => FALSE_AUTHORITY.dup,
+        "qualification" => FALSE_BOUNDARY.merge(
+          "rustServedRuntime" => true,
+          "chromiumRuntime" => true,
+          "edgeRuntime" => true,
+          "firefoxRuntime" => true,
+          "webkitLinuxRuntime" => true,
+          "webkitMacosRuntime" => true,
+          "crossBrowserEngineMatrix" => true,
+          "physicalBrowserAcceptance" => false,
+          "safariProductValidation" => false,
+          "productionAuthority" => false
+        ),
+        "decision" => "accept",
+        "signatureVerified" => true,
+        "candidateBound" => true,
+        "nonDelegable" => true,
+        "humanPresent" => true,
+        "humanReviewed" => true,
+        "issuedAtUnix" => 1,
+        "reviewedAtUnix" => 1,
+        "expiresAtUnix" => 2,
+        "physical" => true,
+        "synthetic" => false,
+        "browsers" => %w[edge firefox safari],
+        "checks" => {"verified" => true},
+        "failures" => [],
+        "allRequiredJobsExecuted" => true,
+        "allRequiredStepsSuccessful" => true
+      }
+      receipt["platform"] = platform if platform
+      path = File.join(dir, "#{name}.json")
+      File.write(path, JSON.generate(receipt))
+      paths[name.to_sym] = path
+    end
+    base = {candidate_commit: commit, candidate_tree: tree, evaluated_at_unix: 1}.merge(paths)
+    raise "PASS self-test" unless evaluate(base)["status"] == "PASS_ALL_UI_GAPS_CLOSED"
+    blocked = base.dup
+    blocked.delete(:iosDevice)
+    raise "BLOCKED self-test" unless evaluate(blocked)["status"] == "BLOCKED_EXTERNAL_EVIDENCE_REQUIRED"
+    invalid = JSON.parse(File.read(paths[:windowsDevice]))
+    invalid["candidate"]["commit"] = "c" * 40
+    File.write(paths[:windowsDevice], JSON.generate(invalid))
+    raise "FAIL self-test" unless evaluate(base)["status"] == "FAIL_UI_GAP_CLOSURE"
+  end
+  puts JSON.generate({"status" => "PASS_FINAL_GAP_CLOSURE_INDEX_V2_SELF_TEST"})
+end
+
+options = {}
+parser = OptionParser.new do |value|
+  value.on("--candidate-commit VALUE") { |v| options[:candidate_commit] = v }
+  value.on("--candidate-tree VALUE") { |v| options[:candidate_tree] = v }
+  value.on("--evaluated-at-unix VALUE") { |v| options[:evaluated_at_unix] = v }
+  SLOT_RULES.each_key { |name| value.on("--#{name.gsub(/([A-Z])/, '-\\1').downcase} PATH") { |v| options[name.to_sym] = v } }
+  value.on("--output PATH") { |v| options[:output] = v }
+  value.on("--self-test") { options[:self_test] = true }
+end
+parser.parse!
+
+if options[:self_test]
+  self_test
+  exit 0
+end
+
+%i[candidate_commit candidate_tree evaluated_at_unix output].each do |key|
+  raise OptionParser::MissingArgument, key.to_s unless options[key]
+end
+payload = evaluate(options)
+write_atomic(options[:output], payload)
+puts JSON.generate(payload)
+exit(payload["status"] == "FAIL_UI_GAP_CLOSURE" ? 1 : 0)

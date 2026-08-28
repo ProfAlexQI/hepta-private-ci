@@ -1,0 +1,59 @@
+{
+  "schema": "hepta.ui.remaining-external-blockers.v6",
+  "status": "ONLY_NON_SYNTHESIZABLE_EVIDENCE_REMAINS",
+  "sourceControllableGapsClosed": true,
+  "sourceImplementationGaps": [],
+  "externalEvidence": [
+    {
+      "slot": "runnerExecution",
+      "required": "All exact-head source and Rust jobs execute on assigned runners with non-empty successful steps",
+      "syntheticEvidenceAllowed": false
+    },
+    {
+      "slot": "windowsDevice",
+      "required": "Physical Windows DWM Mica/Acrylic/None rollback, high-contrast, transparency-disabled, suspend, and shutdown receipt",
+      "syntheticEvidenceAllowed": false
+    },
+    {
+      "slot": "operatorAcceptance",
+      "required": "Candidate-bound independent human operator acceptance with nonce, time window, and evidence digest",
+      "syntheticEvidenceAllowed": false
+    },
+    {
+      "slot": "macosDevice",
+      "required": "Physical macOS AppKit material and accessibility fallback receipt",
+      "syntheticEvidenceAllowed": false
+    },
+    {
+      "slot": "iosDevice",
+      "required": "Physical iOS UIKit material, Dynamic Type, safe-area, keyboard, and accessibility fallback receipt",
+      "syntheticEvidenceAllowed": false
+    },
+    {
+      "slot": "androidDevice",
+      "required": "Physical Android Material 3 dynamic-color, IME, animation-scale, and solid rollback receipt",
+      "syntheticEvidenceAllowed": false
+    },
+    {
+      "slot": "crossBrowserRuntime",
+      "required": "Exact Rust-served Chromium, Edge, Firefox, and WebKit runtime matrix with screenshot hashes and network audit",
+      "syntheticEvidenceAllowed": false
+    },
+    {
+      "slot": "browserHumanAcceptance",
+      "required": "Human screenshot and accessibility acceptance on physical Chrome, Edge, Firefox, and Safari products",
+      "syntheticEvidenceAllowed": false
+    }
+  ],
+  "allGapsClosed": false,
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

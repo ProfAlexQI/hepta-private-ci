@@ -1,0 +1,61 @@
+{
+  "schema": "hepta.ui.final-gap-closure.v2",
+  "status": "SOURCE_FRAMEWORK_READY_EXTERNAL_EVIDENCE_REQUIRED",
+  "base": {
+    "pullRequest": 60,
+    "branch": "codex/ui-v4-converged-platform-safety-source-20260829",
+    "commit": "5d32106194abb0a27adac174c61e5eefdd3d7b4f",
+    "tree": "0427f163ac9f46f55f9f9b8748dbe3ba598a8b7a"
+  },
+  "sourceControllableGapsClosed": true,
+  "runnerExecutionSource": "same-run GitHub Actions job metadata",
+  "requiredEvidenceSlots": [
+    "runnerExecution",
+    "windowsDevice",
+    "operatorAcceptance",
+    "macosDevice",
+    "iosDevice",
+    "androidDevice",
+    "crossBrowserRuntime",
+    "browserHumanAcceptance"
+  ],
+  "canonicalStatuses": [
+    "PASS_ALL_UI_GAPS_CLOSED",
+    "BLOCKED_EXTERNAL_EVIDENCE_REQUIRED",
+    "FAIL_UI_GAP_CLOSURE"
+  ],
+  "slotStatuses": {
+    "runnerExecution": "PASS_EXACT_HEAD_RUNNER_EXECUTION",
+    "windowsDevice": "PASS_PLATFORM_DEVICE_QUALIFICATION",
+    "operatorAcceptance": "PASS_CANDIDATE_BOUND_OPERATOR_ACCEPTANCE",
+    "macosDevice": "PASS_PLATFORM_DEVICE_QUALIFICATION",
+    "iosDevice": "PASS_PLATFORM_DEVICE_QUALIFICATION",
+    "androidDevice": "PASS_PLATFORM_DEVICE_QUALIFICATION",
+    "crossBrowserRuntime": "PASS_RUST_SERVED_CROSS_BROWSER_MATRIX",
+    "browserHumanAcceptance": "PASS_CROSS_BROWSER_HUMAN_ACCEPTANCE"
+  },
+  "platformMapping": {
+    "windowsDevice": "windows",
+    "macosDevice": "macos",
+    "iosDevice": "ios",
+    "androidDevice": "android"
+  },
+  "permanentBoundary": {
+    "productWired": false,
+    "productCargoFeatureDeclared": false,
+    "productModuleRegistered": false,
+    "productLifecycleWired": false,
+    "automaticBindingAllowed": false,
+    "productHostMayBind": false,
+    "productBound": false,
+    "systemMaterialBound": false,
+    "nativeProductRuntime": false,
+    "deviceValidation": false,
+    "productionAuthority": false,
+    "effectAuthority": false,
+    "liveAdapterAuthority": false,
+    "operatorAcceptanceAuthority": false,
+    "promotion": false,
+    "release": false
+  }
+}

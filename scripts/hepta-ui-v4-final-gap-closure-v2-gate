@@ -1,0 +1,60 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "open3"
+require "pathname"
+
+ROOT = Pathname(__dir__).parent
+required = [
+  "scripts/hepta-ui-v4-final-gap-closure-index-v2",
+  "docs/ui/HEPTA_UI_FINAL_GAP_CLOSURE_V2.json",
+  "docs/ui/HEPTA_UI_REMAINING_EXTERNAL_BLOCKERS_V6.json",
+  "docs/ui/schemas/hepta.ui.v4.final-gap-closure-index.v2.schema.json",
+  ".github/workflows/hepta-ui-v4-final-gap-closure-v2.yml",
+  "apps/hepta-native/src/shared/hepta_windows_product_host_qualification_host.rs",
+  "apps/hepta-native/src/shared/hepta_macos_appkit_material_adapter.rs",
+  "apps/hepta-native/src/shared/hepta_ios_uikit_material_adapter.rs",
+  "apps/hepta-native/src/shared/hepta_android_material3_activity_bridge.rs",
+  "apps/hepta-native/src/shared/hepta_ui_explicit_activation_caller.rs"
+]
+failures = required.reject { |path| (ROOT / path).file? }.map { |path| "missing #{path}" }
+
+unless failures.any?
+  contract = JSON.parse((ROOT / "docs/ui/HEPTA_UI_FINAL_GAP_CLOSURE_V2.json").read)
+  blockers = JSON.parse((ROOT / "docs/ui/HEPTA_UI_REMAINING_EXTERNAL_BLOCKERS_V6.json").read)
+  failures << "contract source gap" unless contract["sourceControllableGapsClosed"] == true
+  failures << "slot count" unless Array(contract["requiredEvidenceSlots"]).length == 8
+  failures << "blocker source gap" unless blockers["sourceControllableGapsClosed"] == true
+  failures << "external blocker count" unless Array(blockers["externalEvidence"]).length == 8
+  failures << "all gaps prematurely closed" unless blockers["allGapsClosed"] == false
+  failures << "authority escaped" unless blockers.fetch("authority").values.all? { |value| value == false }
+
+  stdout, stderr, status = Open3.capture3("ruby", ROOT.join("scripts/hepta-ui-v4-final-gap-closure-index-v2").to_s, "--self-test")
+  failures << "index self-test: #{stderr.byteslice(0, 512)}" unless status.success? && stdout.include?("PASS_FINAL_GAP_CLOSURE_INDEX_V2_SELF_TEST")
+
+  workflow = (ROOT / ".github/workflows/hepta-ui-v4-final-gap-closure-v2.yml").read
+  failures << "workflow write permission" if workflow.match?(/contents:\s*write|actions:\s*write/)
+  forbidden_job = workflow.match?(/^\s{2}(?:deploy|publish|release)(?:[-_][A-Za-z0-9_-]+)?:\s*$/i)
+  forbidden_action = workflow.match?(/^\s*uses:\s*[^\n]*(?:deploy|publish|release)[^\n]*$/i)
+  failures << "workflow deploy action" if forbidden_job || forbidden_action
+  failures << "exact checkout missing" unless workflow.include?("github.event.pull_request.head.sha || github.sha")
+end
+
+payload = {
+  "status" => failures.empty? ? "PASS_FINAL_GAP_CLOSURE_FRAMEWORK_V2_SOURCE_ONLY" : "FAIL_FINAL_GAP_CLOSURE_FRAMEWORK_V2_SOURCE",
+  "source_controllable_gaps_closed" => failures.empty?,
+  "external_evidence_complete" => false,
+  "all_gaps_closed" => false,
+  "product_wired" => false,
+  "system_material_bound" => false,
+  "production_authority" => false,
+  "effect_authority" => false,
+  "live_adapter_authority" => false,
+  "operator_acceptance" => false,
+  "promotion" => false,
+  "release" => false,
+  "failures" => failures
+}
+puts JSON.pretty_generate(payload)
+exit(failures.empty? ? 0 : 1)
