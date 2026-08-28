@@ -3,6 +3,9 @@
 mod agent_id;
 mod authbus;
 #[cfg(feature = "authbus-local-qualification")]
+// Keep terminal claim-key cloning lazy; eager `then_some` would clone on every
+// non-terminal transition and Clippy's lint does not account for that cost.
+#[allow(clippy::unnecessary_lazy_evaluations)]
 pub mod authbus_b3_adapter;
 #[cfg(any(test, feature = "authbus-local-qualification"))]
 pub mod authbus_b4;
