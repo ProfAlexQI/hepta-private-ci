@@ -1,0 +1,196 @@
+name: hepta-intelligence-shared-projection-planner-v5-macos
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-shared-projection-planner-v5-20260828"
+    paths:
+      - "codex-rs/hepta-memory/src/cognitive_projection_planner.rs"
+      - "codex-rs/hepta-memory/src/cognitive_kg_store.rs"
+      - "codex-rs/hepta-memory/src/fact_grounding/**"
+      - "codex-rs/hepta-memory/src/framing.rs"
+      - "scripts/verify-hepta-intelligence-shared-projection-planner-v5.py"
+      - ".github/workflows/hepta-intelligence-shared-projection-planner-v5*.yml"
+  pull_request:
+    paths:
+      - "codex-rs/hepta-memory/src/cognitive_projection_planner.rs"
+      - "codex-rs/hepta-memory/src/cognitive_kg_store.rs"
+      - "codex-rs/hepta-memory/src/fact_grounding/**"
+      - "codex-rs/hepta-memory/src/framing.rs"
+      - "scripts/verify-hepta-intelligence-shared-projection-planner-v5.py"
+      - ".github/workflows/hepta-intelligence-shared-projection-planner-v5*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-shared-projection-planner-v5-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnostic:
+    name: P0.3.2 macOS executable diagnostic
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Run all diagnostic gates without short-circuiting
+        shell: bash
+        run: |
+          set +e
+          ROOT="$PWD"
+          OUT="$ROOT/artifacts/hepta-intelligence-p0-3-2-macos"
+          mkdir -p "$OUT/logs"
+          git rev-parse HEAD > "$OUT/head.txt"
+          git rev-parse HEAD^{tree} > "$OUT/tree.txt"
+          rustc --version > "$OUT/rustc.txt" 2>&1
+          cargo --version > "$OUT/cargo.txt" 2>&1
+
+          python3 -m py_compile scripts/verify-hepta-intelligence-shared-projection-planner-v5.py \
+            > "$OUT/logs/python-compile.log" 2>&1
+          PYTHON_COMPILE=$?
+          python3 scripts/verify-hepta-intelligence-shared-projection-planner-v5.py \
+            > "$OUT/source-gate.json" 2> "$OUT/logs/source-gate.stderr.log"
+          SOURCE=$?
+
+          cd codex-rs
+          cargo fmt -p codex-hepta-memory -- --check > "$OUT/logs/fmt.log" 2>&1
+          FMT=$?
+          cargo test -p codex-hepta-memory cognitive_projection_planner -- --nocapture \
+            > "$OUT/logs/planner-tests.log" 2>&1
+          PLANNER_TESTS=$?
+          cargo test -p codex-hepta-memory shadow_ -- --nocapture \
+            > "$OUT/logs/shadow-tests.log" 2>&1
+          SHADOW_TESTS=$?
+          cargo test -p codex-hepta-memory durable_grounding -- --nocapture \
+            > "$OUT/logs/durable-tests.log" 2>&1
+          DURABLE_TESTS=$?
+          cargo test -p codex-hepta-memory > "$OUT/logs/full-tests.log" 2>&1
+          FULL_TESTS=$?
+          cargo clippy -p codex-hepta-memory --all-targets -- -D warnings \
+            > "$OUT/logs/clippy.log" 2>&1
+          CLIPPY=$?
+          cd "$ROOT"
+          git diff --quiet -- . ':(exclude)artifacts' > "$OUT/logs/dirty-check.log" 2>&1
+          DIRTY=$?
+
+          cat > "$OUT/exits.env" <<EOF
+          PYTHON_COMPILE=$PYTHON_COMPILE
+          SOURCE=$SOURCE
+          FMT=$FMT
+          PLANNER_TESTS=$PLANNER_TESTS
+          SHADOW_TESTS=$SHADOW_TESTS
+          DURABLE_TESTS=$DURABLE_TESTS
+          FULL_TESTS=$FULL_TESTS
+          CLIPPY=$CLIPPY
+          DIRTY=$DIRTY
+          EOF
+          exit 0
+
+      - name: Build non-authoritative diagnostic receipt
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          out = Path("artifacts/hepta-intelligence-p0-3-2-macos")
+          exits = {}
+          for line in (out / "exits.env").read_text(encoding="utf-8").splitlines():
+              if line.strip():
+                  key, value = line.split("=", 1)
+                  exits[key] = int(value)
+          log_names = {
+              "PYTHON_COMPILE": "python-compile.log",
+              "SOURCE": "source-gate.stderr.log",
+              "FMT": "fmt.log",
+              "PLANNER_TESTS": "planner-tests.log",
+              "SHADOW_TESTS": "shadow-tests.log",
+              "DURABLE_TESTS": "durable-tests.log",
+              "FULL_TESTS": "full-tests.log",
+              "CLIPPY": "clippy.log",
+              "DIRTY": "dirty-check.log",
+          }
+          checks = []
+          for key, name in log_names.items():
+              path = out / "logs" / name
+              text = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+              checks.append({
+                  "id": key.lower(),
+                  "exit_code": exits.get(key, 255),
+                  "passed": exits.get(key, 255) == 0,
+                  "log": f"logs/{name}",
+                  "log_tail": "\n".join(text.splitlines()[-80:])[-6000:],
+              })
+          receipt = {
+              "schema": "hepta_intelligence_p0_3_2_macos_diagnostic_v1",
+              "head": (out / "head.txt").read_text(encoding="utf-8").strip(),
+              "tree": (out / "tree.txt").read_text(encoding="utf-8").strip(),
+              "rustc": (out / "rustc.txt").read_text(encoding="utf-8", errors="replace").strip(),
+              "cargo": (out / "cargo.txt").read_text(encoding="utf-8", errors="replace").strip(),
+              "checks": checks,
+              "diagnostic_passed": all(item["passed"] for item in checks),
+              "qualified": False,
+              "qualification_platform": "linux_exact_head_required",
+              "wired": False,
+              "production_projection_gate": False,
+              "production_authority": False,
+              "external_effects": False,
+              "operator_accepted": False,
+              "promoted": False,
+              "callers_ratchet": False,
+          }
+          (out / "diagnostic-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload macOS diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p0-3-2-macos-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/hepta-intelligence-p0-3-2-macos
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce diagnostic source quality only
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          receipt = json.loads(
+              Path("artifacts/hepta-intelligence-p0-3-2-macos/diagnostic-receipt.json")
+              .read_text(encoding="utf-8")
+          )
+          assert receipt["qualified"] is False
+          for key in (
+              "wired",
+              "production_projection_gate",
+              "production_authority",
+              "external_effects",
+              "operator_accepted",
+              "promoted",
+              "callers_ratchet",
+          ):
+              assert receipt[key] is False, key
+          if not receipt["diagnostic_passed"]:
+              failed = [item["id"] for item in receipt["checks"] if not item["passed"]]
+              raise SystemExit(f"P0.3.2 macOS diagnostic failed: {failed}")
+          PY
