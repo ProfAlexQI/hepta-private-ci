@@ -1,4 +1,4 @@
-name: Hepta inference INF-0 exact-head convergence v9
+name: Hepta inference INF-0 exact-head convergence v9.1
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  # Share the v8 group so this job cannot race the already-running bounded repair.
+  # Serialize every exact-head repair attempt against the same source branch.
   group: hepta-inference-inf0-apply-repair-v8
   cancel-in-progress: false
 
