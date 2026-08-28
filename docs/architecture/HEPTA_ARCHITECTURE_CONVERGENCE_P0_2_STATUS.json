@@ -1,0 +1,56 @@
+{
+  "schema": "hepta.architecture-convergence.p0-2.status.v1",
+  "status": "IMPLEMENTED_SOURCE_EXECUTABLE_QUALIFICATION_PENDING",
+  "branch": "codex/hepta-architecture-convergence-p0-2-20260828",
+  "baseCommit": "aede59d40236e07a454c9a51e6f26c2618a679d4",
+  "implemented": {
+    "canonicalArchitectureEntryPoint": true,
+    "closedAuthorityProfiles": true,
+    "typedCognitiveWriterGate": true,
+    "canonicalProductGraph": true,
+    "agentdCompositionRoot": true,
+    "agentdOwnsNoDurableDomain": true,
+    "memoryRuntimeAuthorityFacade": true,
+    "crossOwnerOperationBinding": true,
+    "transactionalOutboxContract": true,
+    "lookupOnlyRecoveryAfterBoundary": true,
+    "singleWriterDataAuthorityMap": true,
+    "failClosedRecoveryOrder": true,
+    "exactSourceHeadWorkflow": true,
+    "mergeCandidateWorkflow": true
+  },
+  "remaining": {
+    "legacyProductionLeaseToTypedWitnessAdapter": true,
+    "physicalMemoryCrateExtraction": true,
+    "allExistingCrossOwnerCallersMigrated": true,
+    "diskFullRuntimeFaultExecuted": true,
+    "killReopenRuntimeFaultExecuted": true,
+    "hostedExactHeadQualified": true,
+    "hostedMergeCandidateQualified": true,
+    "operatorAccepted": true,
+    "promoted": true
+  },
+  "qualification": {
+    "sourceGateExecuted": false,
+    "rustfmtExecuted": false,
+    "authorityTestsExecuted": false,
+    "operationTestsExecuted": false,
+    "productGraphTestsExecuted": false,
+    "agentdCompositionTestsExecuted": false,
+    "productPackageCheckExecuted": false,
+    "strictClippyExecuted": false,
+    "qualified": false
+  },
+  "authority": {
+    "productionCaller": false,
+    "productionWriter": false,
+    "effectAuthority": false,
+    "externalEffect": false,
+    "modelInvocationAuthority": false,
+    "providerDispatchAuthority": false,
+    "fleetMutationAuthority": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
