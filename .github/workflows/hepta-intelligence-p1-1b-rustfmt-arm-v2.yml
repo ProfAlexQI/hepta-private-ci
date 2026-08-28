@@ -1,0 +1,231 @@
+name: hepta-intelligence-p1-1b-rustfmt-arm-v2
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1b-rustfmt-arm-v2-c804ce2-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-p1-1b-rustfmt-arm-v2-c804ce2
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: c804ce200e3eccec96e90b867de31c5cacfdf82f
+  WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1b-rustfmt-arm-v2.yml
+  OUTPUT_BRANCH: qualification/hepta-intelligence-p1-1b-rustfmt-output-arm-c804ce2-20260828
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1b-qualification
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml
+  ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1b-rustfmt-arm-v2
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  materialize:
+    name: P1.1b Ubuntu ARM exact rustfmt materialization v2
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact source plus wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify exact source binding
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          def git(*args: str) -> str:
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          source = os.environ["SOURCE_SHA"]
+          wrapper = os.environ["WRAPPER_PATH"]
+          changed = git("diff", "--name-only", f"{source}..HEAD").splitlines()
+          assert git("rev-parse", "HEAD^") == source
+          assert int(git("rev-list", "--count", f"{source}..HEAD")) == 1
+          assert changed == [wrapper], changed
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.rustfmt_arm_source_binding.v2",
+              "source_commit": source,
+              "source_tree": git("rev-parse", f"{source}^{{tree}}"),
+              "wrapper_commit": git("rev-parse", "HEAD"),
+              "wrapper_path": wrapper,
+              "wrapper_only_diff": True,
+              "runtime_wired": False,
+              "production_authority": False,
+          }
+          (Path(os.environ["ARTIFACT_DIR"]) / "source-binding.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Verify pinned toolchain
+        run: |
+          set -euo pipefail
+          rustc --version | tee "$ARTIFACT_DIR/rustc-version.txt"
+          cargo --version | tee "$ARTIFACT_DIR/cargo-version.txt"
+          rustfmt --version | tee "$ARTIFACT_DIR/rustfmt-version.txt"
+          cargo clippy --version | tee "$ARTIFACT_DIR/clippy-version.txt"
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+
+      - name: Materialize and verify canonical formatting
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check
+
+      - name: Enforce exact six-file delta
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          expected = [
+              "codex-rs/hepta-memory-p1-1b-qualification/src/digest.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/embedding.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/lib.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/route.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/tokenizer.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/tests/p1_1b.rs",
+          ]
+          actual = subprocess.check_output(
+              ["git", "diff", "--name-only", "--", os.environ["CRATE_ROOT"]],
+              text=True,
+          ).splitlines()
+          outside = subprocess.check_output(
+              ["git", "diff", "--name-only", "--", ".", f":(exclude){os.environ['CRATE_ROOT']}/**"],
+              text=True,
+          ).splitlines()
+          if actual != expected or outside:
+              raise SystemExit(json.dumps({"expected": expected, "actual": actual, "outside": outside}, indent=2))
+          (Path(os.environ["ARTIFACT_DIR"]) / "formatted-changed-paths.txt").write_text(
+              "\n".join(actual) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Run source gate on formatted source
+        run: |
+          set -o pipefail
+          python3 scripts/verify-hepta-intelligence-local-embedding-index.py \
+            2>&1 | tee "$ARTIFACT_DIR/source-gate.log"
+
+      - name: Run formatted tests
+        run: |
+          set -o pipefail
+          cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture \
+            2>&1 | tee "$ARTIFACT_DIR/tests.log"
+
+      - name: Check formatted targets
+        run: |
+          set -o pipefail
+          cargo check --manifest-path "$MANIFEST_PATH" --all-targets \
+            2>&1 | tee "$ARTIFACT_DIR/check.log"
+
+      - name: Run strict Clippy
+        run: |
+          set -o pipefail
+          cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings \
+            2>&1 | tee "$ARTIFACT_DIR/clippy.log"
+
+      - name: Archive exact formatted source and write receipt
+        run: |
+          set -euo pipefail
+          tar -czf "$ARTIFACT_DIR/formatted-crate.tar.gz" "$CRATE_ROOT"
+          sha256sum "$ARTIFACT_DIR/formatted-crate.tar.gz" \
+            > "$ARTIFACT_DIR/formatted-crate.tar.gz.sha256"
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.rustfmt_arm_materialization.v2",
+              "status": "PASS_P1_1B_RUSTFMT_ARM_MATERIALIZATION",
+              "source_commit": os.environ["SOURCE_SHA"],
+              "wrapper_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "changed_paths": (artifact_dir / "formatted-changed-paths.txt").read_text(encoding="utf-8").splitlines(),
+              "gates": {
+                  "source_binding": "success",
+                  "toolchain_1_95_0": "success",
+                  "rustfmt": "success",
+                  "source_gate": "success",
+                  "tests": "success",
+                  "check": "success",
+                  "clippy": "success",
+              },
+              "formatting_only": True,
+              "qualified": False,
+              "runtime_wired": False,
+              "default_recall_changed": False,
+              "federation_recall_changed": False,
+              "context_attachment": False,
+              "physical_send": False,
+              "external_effects": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "callers_ratchet": False,
+          }
+          (artifact_dir / "materialization-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload exact formatted source
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1b-rustfmt-arm-v2-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1b-rustfmt-arm-v2
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Commit and push exact six-file output
+        run: |
+          set -euo pipefail
+          git checkout -B "$OUTPUT_BRANCH" "$SOURCE_SHA"
+          git diff --check
+          python3 - <<'PY'
+          import json
+          import subprocess
+
+          expected = [
+              "codex-rs/hepta-memory-p1-1b-qualification/src/digest.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/embedding.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/lib.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/route.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/tokenizer.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/tests/p1_1b.rs",
+          ]
+          actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          if actual != expected:
+              raise SystemExit(json.dumps({"expected": expected, "actual": actual}, indent=2))
+          PY
+          git add "$CRATE_ROOT"
+          git config user.name "Hepta Qualification Bot"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git commit -m "style(intelligence): apply exact P1.1b Rust 1.95 rustfmt"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          git push origin "HEAD:refs/heads/$OUTPUT_BRANCH"
