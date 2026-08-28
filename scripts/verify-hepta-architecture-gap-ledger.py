@@ -50,6 +50,8 @@ MUTATING_WORKFLOW_SUFFIXES = (
     "-refresh.yml",
     "-refresh.yaml",
 )
+MATRIX_STORE_PACKAGE_MARKER = "-p codex-hepta-matrix-store"
+MATRIX_STORE_REQUIRED_OCCURRENCES = 6
 
 
 def fail(message: str) -> NoReturn:
@@ -108,6 +110,22 @@ def reject_source_mutators() -> None:
             fail(f"architecture workflow contains a source mutation path: {path.relative_to(ROOT)}")
 
 
+def verify_matrix_store_qualification(workflow: str) -> None:
+    occurrences = workflow.count(MATRIX_STORE_PACKAGE_MARKER)
+    if occurrences < MATRIX_STORE_REQUIRED_OCCURRENCES:
+        fail(
+            "canonical workflow does not directly qualify the durable Matrix store across "
+            f"source and merge identities: expected>={MATRIX_STORE_REQUIRED_OCCURRENCES} "
+            f"actual={occurrences}"
+        )
+    for marker in (
+        "cargo test --locked -p codex-hepta-matrix-store --lib -- --nocapture",
+        "-p codex-hepta-matrix-store \\",
+    ):
+        if marker not in workflow:
+            fail(f"canonical Matrix store qualification marker is missing: {marker}")
+
+
 def main() -> int:
     ledger = load_json_no_duplicates(LEDGER)
     if ledger.get("schema") != "hepta.architecture-gap-ledger.v1" or ledger.get("schemaVersion") != 1:
@@ -150,6 +168,7 @@ def main() -> int:
     for forbidden in ("contents: write", "git push", "git commit", "persist-credentials: true"):
         if forbidden in workflow:
             fail(f"canonical workflow contains a write path: {forbidden}")
+    verify_matrix_store_qualification(workflow)
 
     blocking = read(BLOCKING_WORKFLOW)
     if "uses: ./.github/workflows/hepta-architecture-convergence-p0-2.yml" not in blocking:
