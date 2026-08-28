@@ -1,0 +1,104 @@
+{
+  "schema": "hepta.ui.windows-product-host-qualification.v1",
+  "status": "QUALIFICATION_SOURCE_READY_EXECUTION_REQUIRED",
+  "candidateBranch": "codex/ui-v4-windows-product-host-qualification-closure-20260828",
+  "baseBranch": "codex/ui-v4-windows-product-host-implementation-candidate-20260828",
+  "baseCommit": "aba38df64c1e104a2962157dc0f944a8f9045cf1",
+  "baseTree": "9b4b34f870dcb35ff78466896c2c7a4408ebadc2",
+  "feature": {
+    "name": "hepta_ui_windows_system_material_v4",
+    "defaultEnabled": false,
+    "productCargoFeatureDeclared": false,
+    "productModuleRegistered": false,
+    "productLifecycleWired": false,
+    "automaticBindingAllowed": false
+  },
+  "producer": {
+    "source": "scripts/hepta-ui-v4-windows-product-host-qualification",
+    "schema": "docs/ui/schemas/hepta.ui.v4.windows-product-host-qualification.v1.schema.json",
+    "deviceSchema": "docs/ui/schemas/hepta.ui.v4.windows-product-host-device-drill.v1.schema.json",
+    "atomicReceiptWrite": true,
+    "boundedFailures": 64,
+    "candidateCommitRequired": true,
+    "candidateTreeRequired": true,
+    "sourceReceiptRequired": true,
+    "compilePlatforms": [
+      "ubuntu-latest",
+      "windows-latest",
+      "macos-latest"
+    ],
+    "compileModes": [
+      "default-off",
+      "explicit-feature"
+    ],
+    "reviewEnvelopeStatus": "PASS_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_ENVELOPE",
+    "deviceDrillStatus": "PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_DEVICE_DRILL",
+    "physicalDeviceLabels": [
+      "self-hosted",
+      "Windows",
+      "X64",
+      "hepta-ui-dwm"
+    ],
+    "selfTests": [
+      "review-envelope-blocked",
+      "device-qualification-blocked",
+      "complete-qualification-pass",
+      "candidate-drift-fail-closed",
+      "authority-escape-fail-closed"
+    ]
+  },
+  "outputStatuses": {
+    "reviewBlocked": "BLOCKED_WINDOWS_PRODUCT_HOST_REVIEW_ENVELOPE_REQUIRED",
+    "deviceBlocked": "BLOCKED_WINDOWS_PRODUCT_HOST_DEVICE_QUALIFICATION_REQUIRED",
+    "qualified": "PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION",
+    "failure": "FAIL_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION"
+  },
+  "deviceRequirements": {
+    "physicalWindowsDevice": true,
+    "reviewBindingDigestRequired": true,
+    "explicitFeatureRequired": true,
+    "distinctRootTransientIdentity": true,
+    "rootMicaExact": true,
+    "transientAcrylicExact": true,
+    "explicitNoneRollback": true,
+    "highContrastFallback": true,
+    "transparencyDisabledFallback": true,
+    "suspendRollback": true,
+    "shutdownRollback": true,
+    "finalState": "Unbound"
+  },
+  "qualification": {
+    "sourceImplemented": true,
+    "hostedSource": false,
+    "defaultOffCompile": false,
+    "explicitFeatureCompile": false,
+    "compileMatrix": false,
+    "reviewEnvelope": false,
+    "physicalDevice": false,
+    "rollbackDrill": false,
+    "implementationCandidateQualified": false,
+    "eligibleForProductWiringReview": false,
+    "productCargoFeatureDeclared": false,
+    "productModuleRegistered": false,
+    "productLifecycleWired": false,
+    "automaticBindingAllowed": false,
+    "implementationApproved": false,
+    "productHostMayBind": false,
+    "productBound": false,
+    "transientSystemMaterialBound": false,
+    "completeProfileBound": false,
+    "systemMaterialBound": false,
+    "nativeProductRuntime": false,
+    "deviceValidation": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
