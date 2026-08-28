@@ -48,6 +48,7 @@ jobs:
           python3 scripts/verify-hepta-architecture-convergence-p0-2.py
           python3 scripts/verify-hepta-authority-callers-p0-1.py
           python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-cross-owner-operation-wiring.py
           python3 scripts/verify-hepta-architecture-gap-ledger.py
 
       - name: Owned package rustfmt
@@ -84,6 +85,7 @@ jobs:
           cargo test --locked -p codex-hepta-agentd --lib -- --nocapture
           cargo test --locked -p codex-hepta-agentd --features qualification-cognitive-write --lib -- --nocapture
           cargo test --locked -p codex-hepta-matrix-store --lib -- --nocapture
+          cargo test --locked -p codex-hepta-matrix-store --test sqlite_full -- --nocapture
           cargo test --locked -p codex-hepta-matrixd --lib -- --nocapture
 
       - name: Product package graph compilation
@@ -194,6 +196,7 @@ jobs:
           python3 scripts/verify-hepta-architecture-convergence-p0-2.py
           python3 scripts/verify-hepta-authority-callers-p0-1.py
           python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-cross-owner-operation-wiring.py
           python3 scripts/verify-hepta-architecture-gap-ledger.py
 
       - name: Merge-candidate product tests and compilation
@@ -209,6 +212,7 @@ jobs:
           cargo test --locked -p codex-hepta-automation --lib -- --nocapture
           cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
           cargo test --locked -p codex-hepta-matrix-store --lib -- --nocapture
+          cargo test --locked -p codex-hepta-matrix-store --test sqlite_full -- --nocapture
           cargo test --locked -p codex-hepta-matrixd --lib -- --nocapture
           cargo check --locked \
             -p codex-hepta-memory-runtime \
