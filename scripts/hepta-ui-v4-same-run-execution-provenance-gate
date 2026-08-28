@@ -1,0 +1,137 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+paths = {
+  canonical: root.join("scripts/hepta-ui-v4-execution-provenance-audit"),
+  wrapper: root.join("scripts/hepta-ui-v4-same-run-execution-provenance-audit"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-windows-material-profile-exact.yml"),
+  contract: root.join("docs/ui/HEPTA_UI_SAME_RUN_EXECUTION_PROVENANCE_V1.json"),
+  document: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_21_SAME_RUN_EXECUTION_PROVENANCE_2026-08-28.md"),
+  schema: root.join("docs/ui/schemas/hepta.ui.v4.execution-provenance-audit.v1.schema.json")
+}.freeze
+
+checks = {}
+paths.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+canonical = paths.fetch(:canonical).read
+wrapper = paths.fetch(:wrapper).read
+workflow = paths.fetch(:workflow).read
+contract = JSON.parse(paths.fetch(:contract).read)
+document = paths.fetch(:document).read
+schema = JSON.parse(paths.fetch(:schema).read)
+
+canonical_blob = Digest::SHA1.hexdigest("blob #{canonical.bytesize}\0#{canonical}")
+checks["canonical.exact_blob"] = canonical_blob == "0ad77b0f629509ed0e8c6f4affe54dedd2ddeabb"
+checks["wrapper.exact_guard"] =
+  wrapper.include?("CANONICAL_BLOB = \"0ad77b0f629509ed0e8c6f4affe54dedd2ddeabb\"") &&
+  wrapper.include?("canonical audit drifted")
+checks["wrapper.same_run_mode"] =
+  wrapper.include?("--allow-in-progress-run") &&
+  wrapper.include?("sameRunInProgress") &&
+  wrapper.include?("in_progress completed") &&
+  wrapper.include?("in-progress source run unexpectedly has conclusion")
+checks["wrapper.exact_replacements"] =
+  wrapper.include?("expected one exact match") &&
+  wrapper.include?("options.allow_in_progress_run == true") &&
+  wrapper.include?("source.sub(before) { after }")
+checks["wrapper.authority_free"] = %w[
+  network mutation effect liveAdapter production operatorAcceptance promotion release
+].all? { |key| wrapper.include?("\"#{key}\" => false") }
+
+checks["workflow.paths"] = %w[
+  scripts/hepta-ui-v4-execution-provenance-audit
+  scripts/hepta-ui-v4-same-run-execution-provenance-audit
+  scripts/hepta-ui-v4-same-run-execution-provenance-gate
+  docs/ui/HEPTA_UI_SAME_RUN_EXECUTION_PROVENANCE_V1.json
+  docs/ui/HEPTA_UI_V4_TRANCHE_21_SAME_RUN_EXECUTION_PROVENANCE_2026-08-28.md
+].all? { |path| workflow.include?(path) }
+checks["workflow.source_chain"] =
+  workflow.include?("same-run execution provenance wrapper") &&
+  workflow.include?("PASS_SAME_RUN_EXECUTION_PROVENANCE_SOURCE_ONLY") &&
+  workflow.include?("same-run-provenance-self-test.json")
+checks["workflow.final_job"] =
+  workflow.include?("provenance-audit:") &&
+  workflow.include?("name: Canonical exact-head execution provenance audit") &&
+  workflow.include?("if: always()") &&
+  workflow.include?("- qualification-index")
+checks["workflow.current_run_binding"] =
+  workflow.include?("$GITHUB_RUN_ID") &&
+  workflow.include?("actions/runs/$GITHUB_RUN_ID") &&
+  workflow.include?("actions/runs/$GITHUB_RUN_ID/jobs?per_page=100") &&
+  workflow.include?("actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100") &&
+  workflow.include?("current provenance run ID drift")
+checks["workflow.bounded_safe_artifacts"] =
+  workflow.include?("for attempt in $(seq 1 12)") &&
+  workflow.include?("sleep 5") &&
+  workflow.include?("unzip -Z1") &&
+  workflow.include?("path traversal provenance archive entry") &&
+  workflow.include?("duplicate provenance artifact name")
+checks["workflow.wrapper_invocation"] =
+  workflow.include?("hepta-ui-v4-same-run-execution-provenance-audit") &&
+  workflow.include?("--allow-in-progress-run") &&
+  workflow.include?("--run current-provenance-run.json") &&
+  workflow.include?("--auditor-commit \"$HEPTA_CANDIDATE_SHA\"")
+checks["workflow.statuses"] = %w[
+  PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE
+  PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE
+  FAIL_EXACT_HEAD_EXECUTION_PROVENANCE
+].all? { |status| workflow.include?(status) }
+checks["workflow.read_only"] =
+  workflow.include?("contents: read") && workflow.include?("actions: read") &&
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+
+checks["contract.source_only"] =
+  contract.dig("qualification", "sourceImplemented") == true &&
+  contract.fetch("qualification").reject { |key, _| ["sourceImplemented", "completedRunReplayPreserved"].include?(key) }.values.none? &&
+  contract.dig("qualification", "completedRunReplayPreserved") == true &&
+  contract.fetch("authority").values.none?
+checks["contract.same_run"] =
+  contract.dig("wrapper", "allowInProgressRun") == true &&
+  contract.dig("workflow", "sameRunIdRequired") == true &&
+  contract.dig("workflow", "qualificationIndexMustCompleteFirst") == true &&
+  contract.dig("workflow", "safeArchiveExtraction") == true
+checks["contract.statuses"] =
+  contract.dig("workflow", "preRuntimeStatus") == "PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE" &&
+  contract.dig("workflow", "windowsRuntimeStatus") == "PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE" &&
+  contract.dig("workflow", "failureStatus") == "FAIL_EXACT_HEAD_EXECUTION_PROVENANCE"
+checks["schema.statuses_preserved"] = schema.dig("properties", "status", "enum") == %w[
+  PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE
+  PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE
+  FAIL_EXACT_HEAD_EXECUTION_PROVENANCE
+]
+checks["document.boundary"] =
+  document.include?("Same-run execution model") &&
+  document.include?("PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE") &&
+  document.include?("productBound=false") &&
+  document.include?("release=false")
+
+failures = checks.reject { |_name, value| value }.keys
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.same-run-execution-provenance-source-gate.v1",
+  status: failures.empty? ? "PASS_SAME_RUN_EXECUTION_PROVENANCE_SOURCE_ONLY" :
+    "FAIL_SAME_RUN_EXECUTION_PROVENANCE_SOURCE",
+  source_implemented: failures.empty?,
+  hosted_same_run_validation: false,
+  pre_runtime_provenance: false,
+  windows_runtime_provenance: false,
+  eligible_for_product_integration_review: false,
+  product_bound: false,
+  transient_system_material_binding: false,
+  complete_profile_binding: false,
+  system_material_binding: false,
+  native_product_runtime: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failures
+)
+exit(failures.empty? ? 0 : 1)
