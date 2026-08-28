@@ -13,6 +13,7 @@ on:
       - ".github/workflows/hepta-browser-ci.yml"
       - ".github/workflows/hepta-servo-*.yml"
       - ".github/workflows/hepta-browser-next-required-v8.yml"
+      - ".github/workflows/hepta-servo-exact-source-acceptance-live-review.yml"
       - ".github/workflows/blocking-ci.yml"
   workflow_dispatch:
 
@@ -30,12 +31,18 @@ jobs:
     uses: ./.github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml
     secrets: inherit
 
+  source-acceptance-live-review:
+    name: Live source-only pointer review or not-applicable gate
+    uses: ./.github/workflows/hepta-servo-exact-source-acceptance-live-review.yml
+    secrets: inherit
+
   required:
     name: Hepta Browser next required v8
     if: ${{ always() }}
     needs:
       - canonical-v7
       - source-acceptance-pointer-v1
+      - source-acceptance-live-review
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -68,7 +75,8 @@ jobs:
                       "source_acceptance_review_policy": "v1_self_bound",
                       "source_acceptance_review_challenge": "v1_create_only",
                       "source_acceptance_pointer": "v1_verify_only_no_creation_command",
-                      "live_current_head_review": "required_for_future_real_pointer",
+                      "live_current_head_review": "required_or_explicitly_not_applicable",
+                      "required_status_check": "Source-only accepted pointer live review",
                       "exact_servo_source_accepted": False,
                       "source_review_candidate_accepted": False,
                       "worker_source_topology_accepted": False,
