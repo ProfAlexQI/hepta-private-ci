@@ -1,0 +1,151 @@
+name: Hepta Memory model extraction P1 finalizer
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-gap-closure-p1-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-memory-model-extraction-p1-finalizer
+  cancel-in-progress: true
+
+env:
+  BRANCH_NAME: codex/hepta-architecture-gap-closure-p1-20260829
+  SOURCE_HEAD: ${{ github.sha }}
+
+jobs:
+  extract-and-qualify:
+    name: Extract and qualify physical Memory model crate
+    if: ${{ !contains(github.event.head_commit.message || '', '[hepta-memory-model-extracted]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact triggering head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Verify exact clean input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$BRANCH_NAME"
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Extract stable Memory model source
+        run: python3 scripts/hepta-memory-model-extraction-p1.py
+
+      - name: Refresh workspace lock graph
+        working-directory: codex-rs
+        run: cargo metadata --format-version 1 > /dev/null
+
+      - name: Format extracted boundary
+        working-directory: codex-rs
+        run: |
+          cargo fmt \
+            -p codex-hepta-memory-model \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-runtime
+
+      - name: Verify physical extraction source and lock binding
+        run: python3 scripts/verify-hepta-memory-model-extraction-p1.py
+
+      - name: Execute model and compatibility tests
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test --locked -p codex-hepta-memory-model -- --nocapture
+          cargo test --locked -p codex-hepta-memory --lib -- --nocapture
+          cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
+
+      - name: Compile real product callers
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo check --locked --all-targets \
+            -p codex-hepta-memory-model \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-agentd \
+            -p codex-hepta-automation \
+            -p codex-hepta-matrixd \
+            -p codex-hepta-supervisor
+
+      - name: Strict Clippy
+        working-directory: codex-rs
+        run: |
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-memory-model \
+            -p codex-hepta-memory \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-agentd \
+            -- -D warnings
+
+      - name: Enforce exact changed-path boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+
+          allowed_exact = {
+              "codex-rs/Cargo.toml",
+              "codex-rs/Cargo.lock",
+              "codex-rs/hepta-memory/Cargo.toml",
+              "codex-rs/hepta-memory/src/lib.rs",
+              "codex-rs/hepta-memory/src/cognitive_model.rs",
+          }
+          changed = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", "--diff-filter=ACDMRTUXB"],
+                  text=True,
+              ).splitlines()
+          )
+          unexpected = sorted(
+              path
+              for path in changed
+              if path not in allowed_exact
+              and not path.startswith("codex-rs/hepta-memory-model/")
+          )
+          if unexpected:
+              raise SystemExit(f"Memory model extraction escaped allowlist: {unexpected}")
+          if "codex-rs/hepta-memory/src/cognitive_model.rs" not in changed:
+              raise SystemExit("legacy cognitive_model.rs was not physically removed")
+          if not pathlib.Path("codex-rs/hepta-memory-model/src/lib.rs").is_file():
+              raise SystemExit("physical model crate source is missing")
+          PY
+          git diff --check
+
+      - name: Commit exact qualified extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$BRANCH_NAME"
+          test "$(git rev-parse "origin/$BRANCH_NAME")" = "$SOURCE_HEAD"
+          git config user.name "Hepta architecture finalizer"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git add -A \
+            codex-rs/Cargo.toml \
+            codex-rs/Cargo.lock \
+            codex-rs/hepta-memory/Cargo.toml \
+            codex-rs/hepta-memory/src/lib.rs \
+            codex-rs/hepta-memory/src/cognitive_model.rs \
+            codex-rs/hepta-memory-model
+          git diff --cached --check
+          git commit -m "refactor(hepta): physically extract Memory model [hepta-memory-model-extracted]"
+          git push origin "HEAD:refs/heads/$BRANCH_NAME"
