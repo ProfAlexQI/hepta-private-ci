@@ -70,10 +70,12 @@ impl ProductionCognitiveWriteAuthorization {
         Ok(Self { lease, capability })
     }
 
+    #[cfg(test)]
     pub(crate) fn lease(&self) -> &ProductionAuthorityLease {
         &self.lease
     }
 
+    #[cfg(test)]
     pub(crate) fn capability(&self) -> &Authorized<CognitiveWriteCapability> {
         &self.capability
     }
@@ -96,22 +98,28 @@ where
     verifier: &'a V,
 }
 
-impl<V> CapabilityVerifier for LegacyProductionCapabilityVerifier<'_, V>
+impl<'a, V> CapabilityVerifier for LegacyProductionCapabilityVerifier<'a, V>
 where
     V: ProductionAuthorityVerifier + ?Sized,
 {
     fn verify(&self, request: &CapabilityVerificationRequest<'_>) -> Result<(), String> {
         if request.action() != AuthorityAction::WriteCognitiveState {
-            return Err("legacy production lease may only mint cognitive-write authority".to_string());
+            return Err(
+                "legacy production lease may only mint cognitive-write authority".to_string(),
+            );
         }
         let binding = request.binding();
+        let fencing_token_sha256 = self
+            .lease
+            .fencing_token_digest()
+            .map_err(|error| error.to_string())?;
         if binding.subject_agent_id() != &self.lease.agent_id
             || binding.grant_sha256() != &self.lease.grant_digest
             || binding.authority_epoch() != self.lease.authority_epoch
             || binding.owner_epoch() != self.lease.owner_epoch
             || binding.expires_at_unix_seconds()
                 != self.lease.lease_expires_at_unix_seconds
-            || binding.fencing_token_sha256() != &self.lease.fencing_token_digest().map_err(|error| error.to_string())?
+            || binding.fencing_token_sha256() != &fencing_token_sha256
         {
             return Err("legacy production lease drifted from typed binding".to_string());
         }
