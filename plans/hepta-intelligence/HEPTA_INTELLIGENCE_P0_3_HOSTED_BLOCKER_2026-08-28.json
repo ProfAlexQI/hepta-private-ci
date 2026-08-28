@@ -1,0 +1,69 @@
+{
+  "schema": "hepta_intelligence_p0_3_hosted_blocker_v1",
+  "recorded_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "pull_request": 14,
+  "base_branch": "codex/hepta-intelligence-grounding-ledger-v2-20260828",
+  "base_commit": "ad0cf81cd820bbb4b8154633c61ea68fb35bf872",
+  "head_branch": "codex/hepta-intelligence-grounding-gate-v3-20260828",
+  "source_candidate": "7e3898706893e88f62c6915b78d18e0c83e7598b",
+  "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
+  "qualified": false,
+  "workflow_runs": [
+    {
+      "id": 33134265720,
+      "name": "hepta-intelligence-grounding-gate",
+      "head": "7e3898706893e88f62c6915b78d18e0c83e7598b",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "id": 98730611576,
+          "name": "P0.3 shadow grounding source contract",
+          "steps": []
+        },
+        {
+          "id": 98730611611,
+          "name": "P0.3 shadow grounding Rust qualification",
+          "steps": []
+        }
+      ],
+      "commands_executed": false
+    },
+    {
+      "id": 33134266330,
+      "name": "blocking-ci",
+      "head": "7e3898706893e88f62c6915b78d18e0c83e7598b",
+      "conclusion": "failure",
+      "commands_executed": false
+    },
+    {
+      "id": 33134265515,
+      "name": "v8-canary",
+      "head": "7e3898706893e88f62c6915b78d18e0c83e7598b",
+      "conclusion": "failure",
+      "commands_executed": false
+    }
+  ],
+  "source_claims": {
+    "tool_v3_schema_implemented": true,
+    "tool_v3_registered": false,
+    "shadow_compare_implemented": true,
+    "shadow_compare_executable_validation": false,
+    "default_projection_pointer_changed": false,
+    "default_recall_query_changed": false
+  },
+  "authority": {
+    "wired": false,
+    "production_projection_gate": false,
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "interpretation": [
+    "No checkout, Python gate, Rust formatter, compiler, test, clippy, migration, or runtime command executed in the cited jobs.",
+    "The GitHub conclusions are infrastructure evidence, not source failure and not PASS.",
+    "P0.3 remains a source-only stacked Draft and must not register the v3 tools or switch the projection pointer."
+  ]
+}
