@@ -1,0 +1,52 @@
+name: hepta-intelligence-p1-1c2-x64-preflight-v2
+
+on:
+  push:
+    branches:
+      - "qualification/p1c2-x64-v2-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_SHA: 5c208253875f7ca161f819cfe4417c8c87408fff
+  WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1c2-x64-preflight-v2.yml
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1c2-qualification/Cargo.toml
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1c2-qualification
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  preflight:
+    name: P1.1c.2 x64 compile and test preflight v2
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify wrapper-only source binding
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          test "$(git diff --name-only "$SOURCE_SHA"..HEAD)" = "$WRAPPER_PATH"
+          git checkout --detach "$SOURCE_SHA"
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-p1-1c2-x64-v2-target" >> "$GITHUB_ENV"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Run preflight matrix
+        run: |
+          set -o pipefail
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check
+          cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture
+          cargo check --manifest-path "$MANIFEST_PATH" --all-targets
+          cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings
