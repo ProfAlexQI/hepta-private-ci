@@ -20,7 +20,17 @@ PRODUCTION_WRITER_OPEN = "ProductionDurableWriter::open("
 
 
 def fail(message: str) -> NoReturn:
-    raise SystemExit(f"FAIL_HEPTA_AUTHORITY_CALLERS_P0_2: {message}")
+    raise SystemExit(f"FAIL_HEPTA_AUTHORITY_CALLERS_P0_3: {message}")
+
+
+def read(relative: str) -> str:
+    path = ROOT / relative
+    if not path.is_file():
+        fail(f"required source path is missing: {relative}")
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        fail(f"cannot read {relative}: {error}")
 
 
 def main() -> int:
@@ -28,6 +38,9 @@ def main() -> int:
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         fail(f"cannot read authority caller manifest: {error}")
+    if manifest.get("schemaVersion") != 2:
+        fail("authority caller manifest must be schemaVersion 2")
+
     callers = manifest.get("grantConstructorCallers")
     if not isinstance(callers, dict) or not callers:
         fail("grantConstructorCallers must be a non-empty object")
@@ -75,28 +88,47 @@ def main() -> int:
     if not isinstance(legacy, dict):
         fail("legacyProductionAdapter must be an object")
     legacy_path = legacy.get("path")
-    if not isinstance(legacy_path, str) or not (ROOT / legacy_path).is_file():
-        fail("legacy production adapter path is missing")
-    candidate_path = legacy.get("candidateFacadePath")
-    if not isinstance(candidate_path, str) or not (ROOT / candidate_path).is_file():
-        fail("legacy facade candidate path is missing")
+    consumer_path = legacy.get("agentdConsumerPath")
     writer_host_path = legacy.get("productionWriterHostPath")
-    if not isinstance(writer_host_path, str) or not (ROOT / writer_host_path).is_file():
+    if not isinstance(legacy_path, str):
+        fail("canonical legacy adapter path is missing")
+    if not isinstance(consumer_path, str):
+        fail("Agentd adapter consumer path is missing")
+    if not isinstance(writer_host_path, str):
         fail("production writer host path is missing")
 
-    legacy_source = (ROOT / legacy_path).read_text(encoding="utf-8")
+    legacy_source = read(legacy_path)
+    consumer_source = read(consumer_path)
+    writer_host_source = read(writer_host_path)
+
     required_adapter_markers = (
-        "ProductionCognitiveWriteAuthorization",
+        "pub struct ProductionCognitiveWriteAuthorization",
         "authorize_verified_capability::<CognitiveWriteCapability",
         "ProductionAuthorityVerifier",
         "AuthorityLeaseBinding::new(",
+        "AuthorityAction::WriteCognitiveState",
     )
     for marker in required_adapter_markers:
         if marker not in legacy_source:
-            fail(f"legacy adapter marker is missing: {marker}")
+            fail(f"canonical legacy adapter marker is missing: {marker}")
+    if "AuthorityGrant::qualification_cognitive_write(" in legacy_source:
+        fail("legacy production adapter still trusts a local qualification profile")
     for forbidden in forbidden_requests:
         if forbidden in legacy_source:
             fail(f"legacy adapter requests forbidden capability {forbidden}")
+
+    required_consumer_markers = (
+        "pub(crate) use codex_hepta_memory_runtime::ProductionCognitiveWriteAuthorization;",
+        "ProductionCognitiveWriteAuthorization::verify(",
+    )
+    for marker in required_consumer_markers:
+        if marker not in consumer_source:
+            fail(f"Agentd adapter consumer marker is missing: {marker}")
+    if "authorize_verified_capability::<CognitiveWriteCapability" in consumer_source:
+        fail("Agentd duplicates the Memory runtime authority adapter")
+    if "AuthorityLeaseBinding::new(" in consumer_source:
+        fail("Agentd reconstructs the external authority lease binding")
+
     if legacy.get("mayIssueGrant") is not False:
         fail("legacy adapter mayIssueGrant must remain false")
     if legacy.get("requiresExternalVerifier") is not True:
@@ -105,8 +137,9 @@ def main() -> int:
         fail("production dispatch must require a separate typed effect capability")
     if legacy.get("existingProductionWriterCallerMigrated") is not True:
         fail("existing production writer caller must be marked migrated")
+    if legacy.get("localQualificationProfileAcceptedAsProductionAuthority") is not False:
+        fail("local qualification profile cannot be accepted as production authority")
 
-    writer_host_source = (ROOT / writer_host_path).read_text(encoding="utf-8")
     if writer_host_source.count("ProductionCognitiveWriteAuthorization::verify(") < 2:
         fail("all production writer open paths must pass through the typed adapter")
     required_host_markers = (
@@ -131,7 +164,7 @@ def main() -> int:
     if not isinstance(authority, dict) or any(authority.values()):
         fail("authority caller manifest must retain a fully closed authority boundary")
 
-    print("PASS_HEPTA_AUTHORITY_CALLERS_P0_2_MIGRATED_SOURCE_ONLY")
+    print("PASS_HEPTA_AUTHORITY_CALLERS_P0_3_CANONICAL_SOURCE_ONLY")
     return 0
 
 
