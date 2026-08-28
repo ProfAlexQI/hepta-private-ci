@@ -8,6 +8,7 @@ This directory is the repository-native authority for the active Hepta browser l
 - Claim: `L1_QUALIFICATION_ONLY`
 - Canonical C1 pointer: `C1_CURRENT_V6.json`
 - Canonical aggregate: `.github/workflows/hepta-browser-next-required-v8.yml`
+- Required future live check: `Source-only accepted pointer live review`
 - C0: typed contracts and negative-authority defaults implemented
 - C1: source acquisition, exact-source candidate, source-only review fence, private protocol, source/API topology, build-input and preflight tooling implemented as contracts and fixtures
 - C2: deterministic semantic fixture implemented
@@ -36,18 +37,22 @@ This directory is the repository-native authority for the active Hepta browser l
 ```sh
 python3 scripts/verify-hepta-browser-plan.py
 python3 scripts/hepta-servo-exact-source-review-candidate-v2.py contract
-python3 scripts/hepta-servo-exact-source-acceptance-pointer-v1.py contract \
+python3 scripts/hepta-servo-exact-source-acceptance-pointer-v2.py contract \
   --policy "$(pwd)/docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json"
-python3 scripts/verify-hepta-servo-exact-source-acceptance-pointer-v1.py
-python3 scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v1.py -v
+python3 scripts/verify-hepta-servo-exact-source-acceptance-pointer-v2.py
+python3 scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v2.py -v
 ```
 
 The acceptance tool can create a review challenge and verify a manually authored pointer. It has no command that creates or updates `source-acceptance/ACCEPTED_SOURCE_POINTER.json`.
 
-A real pointer proposal must be a dedicated non-draft PR, include the exact candidate snapshot, change only policy-allowed files, and receive a distinct current-head approval that contains:
+A real proposal retains deterministic candidate and challenge snapshots, binds the assigned PR number and exact head ref in the final pointer commit, changes only policy-allowed files, receives a distinct current-head trusted-collaborator approval containing:
 
 ```text
 HEPTA_SOURCE_ACCEPT_V1 <challenge_id>
 ```
+
+and passes `.github/workflows/hepta-servo-exact-source-acceptance-live-review.yml`.
+
+The verifier intentionally does not equate `author_association` with CODEOWNER identity. Repository rules may add CODEOWNER review independently.
 
 A passing source pointer still does not authorize a build. A separate source/API topology pointer, exact toolchain, reviewed recipe, sealed build inputs, bounded offline build, artifact, symbols, SPDX SBOM, reproducibility and one-WebView qualification remain required.
