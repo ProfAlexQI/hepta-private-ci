@@ -12,12 +12,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-inference-inf0-apply-repair-v8
+  group: hepta-inference-inf0-apply-repair-v8-intel
   cancel-in-progress: false
 
 jobs:
   apply:
-    runs-on: macos-14
+    runs-on: macos-15-intel
     timeout-minutes: 180
     env:
       BRANCH: codex/hepta-inference-runtime-v2-20260828
