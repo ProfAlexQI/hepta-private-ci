@@ -1,0 +1,62 @@
+name: hepta-intelligence-p1-1c2-windows-preflight
+
+on:
+  push:
+    branches:
+      - "qualification/p1c2-win-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_SHA: fbd80025f61b947e48b04ef4859bd52a427fb988
+  WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1c2-windows-preflight.yml
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1c2-qualification/Cargo.toml
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1c2-qualification
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  preflight:
+    name: P1.1c.2 Windows compile and test preflight
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify wrapper-only source binding
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ((git rev-parse HEAD^) -ne $env:SOURCE_SHA) { throw "source parent mismatch" }
+          $changed = git diff --name-only "$env:SOURCE_SHA..HEAD"
+          if ($changed -ne $env:WRAPPER_PATH) { throw "wrapper-only diff mismatch: $changed" }
+          git checkout --detach $env:SOURCE_SHA
+          "CARGO_TARGET_DIR=$env:RUNNER_TEMP\hepta-p1-1c2-windows-target" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Remove-Item "$env:CRATE_ROOT\Cargo.lock" -ErrorAction SilentlyContinue
+          Remove-Item "$env:CRATE_ROOT\target" -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Canonicalize formatting for preflight
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          cargo fmt --manifest-path $env:MANIFEST_PATH --all
+          git diff --check
+          git diff --stat -- $env:CRATE_ROOT
+
+      - name: Run compile and test matrix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          cargo test --manifest-path $env:MANIFEST_PATH --all-targets -- --nocapture
+          cargo check --manifest-path $env:MANIFEST_PATH --all-targets
+          cargo clippy --manifest-path $env:MANIFEST_PATH --all-targets -- -D warnings
