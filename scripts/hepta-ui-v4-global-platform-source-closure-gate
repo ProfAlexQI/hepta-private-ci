@@ -1,0 +1,95 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+paths = {
+  macos: root.join("apps/hepta-native/src/shared/hepta_macos_appkit_material_adapter.rs"),
+  ios: root.join("apps/hepta-native/src/shared/hepta_ios_uikit_material_adapter.rs"),
+  android: root.join("apps/hepta-native/src/shared/hepta_android_material3_activity_bridge.rs"),
+  caller: root.join("apps/hepta-native/src/shared/hepta_ui_explicit_activation_caller.rs"),
+  harness: root.join("tools/hepta-ui-global-platform-source-closure/src/lib.rs"),
+  manifest: root.join("tools/hepta-ui-global-platform-source-closure/Cargo.toml"),
+  contract: root.join("docs/ui/HEPTA_UI_GLOBAL_PLATFORM_SOURCE_CLOSURE_V1.json"),
+  blockers: root.join("docs/ui/HEPTA_UI_REMAINING_EXTERNAL_BLOCKERS_V2.json"),
+  schema: root.join("docs/ui/schemas/hepta.ui.v4.global-platform-source-closure.v1.schema.json"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-global-platform-source-closure.yml"),
+  document: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_25_GLOBAL_PLATFORM_SOURCE_CLOSURE_2026-08-28.md"),
+  product_manifest: root.join("apps/hepta-native/Cargo.toml"),
+  product_mod: root.join("apps/hepta-native/src/shared/mod.rs"),
+  product_lifecycle: root.join("apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs")
+}
+checks = {}
+paths.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+texts = paths.transform_values { |path| path.file? ? path.read : "" }
+contract = JSON.parse(texts[:contract])
+blockers = JSON.parse(texts[:blockers])
+schema = JSON.parse(texts[:schema])
+
+checks["macos.transactional"] = %w[
+  HeptaMacosAppKitAdapter HeptaMacosAppKitApi HeptaMacosAccessibilitySnapshot
+  MacSystemChrome MacSystemPopover scoped_receipt rollback
+].all? { |term| texts[:macos].include?(term) }
+checks["macos.preferences"] = %w[reduce_transparency increase_contrast reduce_motion window_active verified].all? { |term| texts[:macos].include?(term) }
+checks["macos.no_authority"] = %w[PRODUCTION_AUTHORITY EFFECT_AUTHORITY LIVE_ADAPTER_AUTHORITY OPERATOR_ACCEPTANCE PROMOTION RELEASE].all? { |term| texts[:macos].include?(term) }
+
+checks["ios.transactional"] = %w[HeptaIosUIKitAdapter HeptaIosUIKitApi NavigationGlass SystemSheet rollback].all? { |term| texts[:ios].include?(term) }
+checks["ios.layout_accessibility"] = %w[dynamic_type_scale safe_area_top safe_area_bottom keyboard_inset reduce_transparency darker_system_colors].all? { |term| texts[:ios].include?(term) }
+checks["ios.no_authority"] = %w[PRODUCTION_AUTHORITY EFFECT_AUTHORITY LIVE_ADAPTER_AUTHORITY OPERATOR_ACCEPTANCE PROMOTION RELEASE].all? { |term| texts[:ios].include?(term) }
+
+checks["android.activity_jni"] = %w[HeptaAndroidActivityIdentity HeptaAndroidMaterial3ActivityApi jni_contract DYNAMIC_COLORS_CLASS APPLY_TO_ACTIVITY_IF_AVAILABLE].all? { |term| texts[:android].include?(term) }
+checks["android.tonal_not_blur"] = %w[AndroidTonalChrome AndroidTonalSheet dynamic_color_available animator_duration_scale ime_inset navigation_inset].all? { |term| texts[:android].include?(term) } && !texts[:android].include?("Blur")
+checks["android.no_authority"] = %w[PRODUCTION_AUTHORITY EFFECT_AUTHORITY LIVE_ADAPTER_AUTHORITY OPERATOR_ACCEPTANCE PROMOTION RELEASE].all? { |term| texts[:android].include?(term) }
+
+checks["caller.explicit_only"] = %w[HeptaUiActivationCommand explicit HeptaUiSealedEvidenceLoader HeptaUiExplicitActivationTarget HeptaUiNonceLedger invoke_explicit].all? { |term| texts[:caller].include?(term) }
+checks["caller.identity_replay"] = %w[candidate_commit candidate_tree evidence_digest operator_acceptance_digest expires_at_unix Replay AuthorityEscape].all? { |term| texts[:caller].include?(term) }
+checks["caller.unregistered"] = texts[:caller].include?("HEPTA_UI_EXPLICIT_CALLER_REGISTERED: bool = false") && texts[:caller].include?("HEPTA_UI_EXPLICIT_CALLER_AUTOMATIC: bool = false")
+
+checks["harness.forbid_unsafe"] = texts[:harness].include?("#![forbid(unsafe_code)]")
+checks["harness.all_modules"] = %w[hepta_macos_appkit_material_adapter hepta_ios_uikit_material_adapter hepta_android_material3_activity_bridge hepta_ui_explicit_activation_caller].all? { |term| texts[:harness].include?(term) }
+checks["manifest.isolated"] = texts[:manifest].include?("[workspace]") && texts[:manifest].include?("publish = false")
+
+checks["product.not_registered"] = %w[hepta_macos_appkit_material_adapter hepta_ios_uikit_material_adapter hepta_android_material3_activity_bridge hepta_ui_explicit_activation_caller].none? { |term| texts[:product_mod].include?(term) || texts[:product_lifecycle].include?(term) }
+checks["product.no_global_feature"] = !texts[:product_manifest].include?("hepta_ui_global_platform_material_v4")
+
+checks["contract.source_only"] = contract.dig("qualification", "sourceImplemented") == true && contract.fetch("authority").values.none? && %w[productWired systemMaterialBound deviceValidation].all? { |key| contract.dig("qualification", key) == false }
+checks["blockers.source_closed"] = blockers.fetch("canonical") == true && blockers.fetch("globalSourceControllableGapsClosed") == true && blockers.fetch("sourceImplementationGaps").empty? && blockers.fetch("sourceClosures").all? { |entry| entry.fetch("closed") == true }
+checks["blockers.external_only"] = blockers.fetch("externalEvidenceBlockers").all? { |entry| entry.fetch("class") != "SOURCE_IMPLEMENTATION" && entry.fetch("canBeSatisfiedByRepositorySourceAlone") == false }
+checks["blockers.no_authority"] = blockers.fetch("authority").values.none?
+
+checks["schema.statuses"] = schema.dig("properties", "status", "enum") == %w[PASS_GLOBAL_PLATFORM_SOURCE_CLOSURE FAIL_GLOBAL_PLATFORM_SOURCE_CLOSURE]
+checks["schema.authority_false"] = schema.dig("$defs", "authority", "properties").values.all? { |entry| entry["const"] == false }
+checks["schema.product_false"] = %w[productWired systemMaterialBound deviceValidation].all? { |key| schema.dig("properties", "qualification", "properties", key, "const") == false }
+
+checks["workflow.read_only"] = texts[:workflow].include?("contents: read") && !texts[:workflow].match?(/^\s*(?:deploy|publish|release)\s*:/i)
+checks["workflow.host_matrix"] = %w[ubuntu-latest windows-latest macos-latest].all? { |term| texts[:workflow].include?(term) }
+checks["workflow.mobile_targets"] = texts[:workflow].include?("aarch64-apple-ios") && texts[:workflow].include?("aarch64-linux-android")
+checks["workflow.source_gate"] = texts[:workflow].include?("PASS_GLOBAL_PLATFORM_SOURCE_CLOSURE_SOURCE_ONLY")
+checks["document.boundary"] = texts[:document].include?("globalSourceControllableGapsClosed=true") && texts[:document].include?("productWired=false") && texts[:document].include?("release=false")
+
+failures = checks.reject { |_key, value| value }.keys
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.global-platform-source-closure-source-gate.v1",
+  status: failures.empty? ? "PASS_GLOBAL_PLATFORM_SOURCE_CLOSURE_SOURCE_ONLY" : "FAIL_GLOBAL_PLATFORM_SOURCE_CLOSURE_SOURCE",
+  source_implemented: failures.empty?,
+  global_source_controllable_gaps_closed: failures.empty?,
+  hosted_compile_validated: false,
+  macos_runtime_validated: false,
+  ios_runtime_validated: false,
+  android_runtime_validated: false,
+  explicit_caller_runtime_validated: false,
+  product_wired: false,
+  system_material_binding: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failures
+)
+exit(failures.empty? ? 0 : 1)
