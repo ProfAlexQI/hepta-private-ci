@@ -1,0 +1,465 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "open3"
+require "pathname"
+
+REVISION = "c4335cee10b22aca768510c9d072b0ca1bba15c8"
+SOURCE_BLOBS = {
+  "platform/src/lib.rs" => "fab92f77a3f431a7dae0098b8e304a74c69b5a85",
+  "platform/src/cx_api.rs" => "87d871cd6414d67ed3da14f3a1a48f98940d0782",
+  "platform/src/window.rs" => "8e6e9a9d41c34d654de6721f4956558a3eb649fe",
+  "platform/src/os/windows/win32_window.rs" => "67899eceaf83e46dc8690f0e8be98ad4941abb3a",
+  "platform/src/os/windows/windows.rs" => "58df661d9d84660fcca2ac960f5bcf5b36c52f3a"
+}.freeze
+EXPECTED_CHANGED_FILES = SOURCE_BLOBS.keys.sort.freeze
+
+class PatchError < StandardError; end
+
+def run!(*command, chdir:)
+  stdout, stderr, status = Open3.capture3(*command, chdir: chdir.to_s)
+  raise PatchError, "#{command.join(' ')} failed: #{stderr}" unless status.success?
+
+  stdout.strip
+end
+
+def replace_once!(path, before, after, label)
+  text = path.read
+  count = text.scan(before).length
+  raise PatchError, "#{label}: expected one exact source match, got #{count}" unless count == 1
+
+  path.write(text.sub(before, after))
+end
+
+def write_receipt(path, payload)
+  return unless path
+
+  destination = Pathname.new(path).expand_path
+  destination.dirname.mkpath
+  temporary = destination.sub_ext(".tmp")
+  temporary.write(JSON.pretty_generate(payload) + "\n")
+  File.rename(temporary, destination)
+end
+
+checkout_arg = ARGV.shift or abort "usage: #{$PROGRAM_NAME} MAKEPAD_CHECKOUT [RECEIPT_JSON]"
+receipt_arg = ARGV.shift
+abort "unexpected arguments" unless ARGV.empty?
+
+checkout = Pathname.new(checkout_arg).expand_path
+raise PatchError, "checkout is not a directory" unless checkout.directory?
+raise PatchError, "checkout is not a git worktree" unless checkout.join(".git").exist?
+
+head = run!("git", "rev-parse", "HEAD", chdir: checkout)
+raise PatchError, "revision drift: #{head}" unless head == REVISION
+
+source_blob_results = {}
+SOURCE_BLOBS.each do |relative, expected|
+  path = checkout.join(relative)
+  raise PatchError, "missing source file: #{relative}" unless path.file?
+
+  actual = run!("git", "hash-object", relative, chdir: checkout)
+  raise PatchError, "source blob drift for #{relative}: #{actual}" unless actual == expected
+  source_blob_results[relative] = actual
+end
+
+replace_once!(
+  checkout.join("platform/src/cx_api.rs"),
+  "    SetWindowVisuals(WindowId, WindowVisuals),\n    ShowInDock(bool),",
+  <<~'RUST'.chomp,
+        SetWindowVisuals(WindowId, WindowVisuals),
+        #[cfg(target_os = "windows")]
+        SetWindowVisualsCorrelated {
+            window_id: WindowId,
+            visuals: WindowVisuals,
+            request_sequence: u64,
+        },
+        ShowInDock(bool),
+  RUST
+  "correlated CxOsOp"
+)
+
+replace_once!(
+  checkout.join("platform/src/window.rs"),
+  "};\n\npub struct WindowHandle(PoolId);",
+  <<~'RUST'.chomp,
+    };
+
+    #[cfg(target_os = "windows")]
+    use std::{cell::RefCell, collections::VecDeque};
+
+    pub struct WindowHandle(PoolId);
+  RUST
+  "Windows hook queue imports"
+)
+
+replace_once!(
+  checkout.join("platform/src/window.rs"),
+  <<~'RUST'.chomp,
+    impl WindowVisuals {
+        pub fn normalized(mut self) -> Self {
+            self.backdrop_intensity = self.backdrop_intensity.clamp(0.0, 1.0);
+            self
+        }
+    }
+
+    impl WindowId {
+  RUST
+  <<~'RUST'.chomp,
+    impl WindowVisuals {
+        pub fn normalized(mut self) -> Self {
+            self.backdrop_intensity = self.backdrop_intensity.clamp(0.0, 1.0);
+            self
+        }
+    }
+
+    /// Ordered Windows UI-thread evidence emitted after a correlated window
+    /// visual request is processed, or immediately before the exact native
+    /// window is removed from the backend window set.
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub enum WindowsWindowVisualsHookEvent {
+        Processed {
+            request_sequence: u64,
+            window_id: WindowId,
+            native_window_handle: isize,
+            visuals: WindowVisuals,
+            backend_apply_succeeded: bool,
+            is_popup: bool,
+        },
+        Destroyed {
+            window_id: WindowId,
+            native_window_handle: isize,
+        },
+    }
+
+    #[cfg(target_os = "windows")]
+    const WINDOWS_WINDOW_VISUALS_HOOK_QUEUE_LIMIT: usize = 256;
+
+    #[cfg(target_os = "windows")]
+    thread_local! {
+        static WINDOWS_WINDOW_VISUALS_HOOK_EVENTS: RefCell<VecDeque<WindowsWindowVisualsHookEvent>> =
+            RefCell::new(VecDeque::new());
+    }
+
+    #[cfg(target_os = "windows")]
+    pub(crate) fn push_windows_window_visuals_hook_event(
+        event: WindowsWindowVisualsHookEvent,
+    ) {
+        WINDOWS_WINDOW_VISUALS_HOOK_EVENTS.with_borrow_mut(|events| {
+            if events.len() >= WINDOWS_WINDOW_VISUALS_HOOK_QUEUE_LIMIT {
+                events.pop_front();
+            }
+            events.push_back(event);
+        });
+    }
+
+    /// Drains correlated Windows visual hook events in backend processing order.
+    /// The queue is Windows UI-thread-local and never performs HWND discovery.
+    #[cfg(target_os = "windows")]
+    pub fn take_windows_window_visuals_hook_events() -> Vec<WindowsWindowVisualsHookEvent> {
+        WINDOWS_WINDOW_VISUALS_HOOK_EVENTS.with_borrow_mut(|events| events.drain(..).collect())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub fn take_windows_window_visuals_hook_events() -> Vec<WindowsWindowVisualsHookEvent> {
+        Vec::new()
+    }
+
+    impl WindowId {
+  RUST
+  "Windows hook event queue"
+)
+
+replace_once!(
+  checkout.join("platform/src/window.rs"),
+  <<~'RUST'.chomp,
+        pub fn set_window_visuals(&mut self, cx: &mut Cx, visuals: WindowVisuals) {
+            let visuals = visuals.normalized();
+            let window_id = self.window_id();
+            if cx.windows[window_id].window_visuals() != visuals {
+                cx.windows[window_id].transparent = visuals.transparent;
+                cx.windows[window_id].backdrop = visuals.backdrop;
+                cx.windows[window_id].backdrop_intensity = visuals.backdrop_intensity;
+                if cx.windows[window_id].is_created {
+                    cx.push_unique_platform_op(CxOsOp::SetWindowVisuals(window_id, visuals));
+                }
+            }
+        }
+
+        pub fn set_transparent(&mut self, cx: &mut Cx, transparent: bool) {
+  RUST
+  <<~'RUST'.chomp,
+        pub fn set_window_visuals(&mut self, cx: &mut Cx, visuals: WindowVisuals) {
+            let visuals = visuals.normalized();
+            let window_id = self.window_id();
+            if cx.windows[window_id].window_visuals() != visuals {
+                cx.windows[window_id].transparent = visuals.transparent;
+                cx.windows[window_id].backdrop = visuals.backdrop;
+                cx.windows[window_id].backdrop_intensity = visuals.backdrop_intensity;
+                if cx.windows[window_id].is_created {
+                    cx.push_unique_platform_op(CxOsOp::SetWindowVisuals(window_id, visuals));
+                }
+            }
+        }
+
+        /// Queues one correlated Windows visual operation only when the
+        /// normalized state actually changes on an already-created window.
+        #[cfg(target_os = "windows")]
+        pub fn set_window_visuals_correlated(
+            &mut self,
+            cx: &mut Cx,
+            visuals: WindowVisuals,
+            request_sequence: u64,
+        ) -> bool {
+            let visuals = visuals.normalized();
+            let window_id = self.window_id();
+            if cx.windows[window_id].window_visuals() == visuals {
+                return false;
+            }
+            cx.windows[window_id].transparent = visuals.transparent;
+            cx.windows[window_id].backdrop = visuals.backdrop;
+            cx.windows[window_id].backdrop_intensity = visuals.backdrop_intensity;
+            if !cx.windows[window_id].is_created {
+                return false;
+            }
+            cx.push_unique_platform_op(CxOsOp::SetWindowVisualsCorrelated {
+                window_id,
+                visuals,
+                request_sequence,
+            });
+            true
+        }
+
+        pub fn set_transparent(&mut self, cx: &mut Cx, transparent: bool) {
+  RUST
+  "correlated WindowHandle setter"
+)
+
+replace_once!(
+  checkout.join("platform/src/lib.rs"),
+  <<~'RUST'.chomp,
+            window::{
+                CxWindowPool, MacosWindowChrome, MacosWindowConfig, MacosWindowKind, MacosWindowLevel,
+                ScriptWindowHandle, WindowBackdrop, WindowHandle, WindowIcon, WindowIconBuffer,
+                WindowId, WindowVisuals,
+            },
+  RUST
+  <<~'RUST'.chomp,
+            window::{
+                take_windows_window_visuals_hook_events, CxWindowPool, MacosWindowChrome,
+                MacosWindowConfig, MacosWindowKind, MacosWindowLevel, ScriptWindowHandle,
+                WindowBackdrop, WindowHandle, WindowIcon, WindowIconBuffer, WindowId,
+                WindowVisuals, WindowsWindowVisualsHookEvent,
+            },
+  RUST
+  "public hook reexports"
+)
+
+replace_once!(
+  checkout.join("platform/src/os/windows/win32_window.rs"),
+  "    pub fn apply_window_visuals(&mut self, visuals: WindowVisuals) {",
+  "    pub fn apply_window_visuals(&mut self, visuals: WindowVisuals) -> bool {",
+  "backend apply result signature"
+)
+
+replace_once!(
+  checkout.join("platform/src/os/windows/win32_window.rs"),
+  <<~'RUST'.chomp,
+            unsafe {
+                let _ = SetWindowCompositionAttribute(self.hwnd, &mut data);
+            }
+        }
+
+        pub fn set_inner_size(&self, size: Vec2d) {
+  RUST
+  <<~'RUST'.chomp,
+            unsafe {
+                let _ = SetWindowCompositionAttribute(self.hwnd, &mut data);
+            }
+            hr.is_ok()
+        }
+
+        pub fn set_inner_size(&self, size: Vec2d) {
+  RUST
+  "backend apply result return"
+)
+
+replace_once!(
+  checkout.join("platform/src/os/windows/windows.rs"),
+  "        window::{CxWindowPool, WindowId},",
+  <<~'RUST'.chomp,
+            window::{
+                push_windows_window_visuals_hook_event, CxWindowPool, WindowId,
+                WindowsWindowVisualsHookEvent,
+            },
+  RUST
+  "Windows hook imports"
+)
+
+replace_once!(
+  checkout.join("platform/src/os/windows/windows.rs"),
+  <<~'RUST'.chomp,
+                    CxOsOp::SetWindowVisuals(window_id, visuals) => {
+                        if let Some(window) =
+                            d3d11_windows.iter_mut().find(|w| w.window_id == window_id)
+                        {
+                            window.win32_window.apply_window_visuals(visuals);
+                        }
+                    }
+                    CxOsOp::CopyToClipboard(content) => unsafe {
+  RUST
+  <<~'RUST'.chomp,
+                    CxOsOp::SetWindowVisuals(window_id, visuals) => {
+                        if let Some(window) =
+                            d3d11_windows.iter_mut().find(|w| w.window_id == window_id)
+                        {
+                            window.win32_window.apply_window_visuals(visuals);
+                        }
+                    }
+                    CxOsOp::SetWindowVisualsCorrelated {
+                        window_id,
+                        visuals,
+                        request_sequence,
+                    } => {
+                        if let Some(window) =
+                            d3d11_windows.iter_mut().find(|w| w.window_id == window_id)
+                        {
+                            let backend_apply_succeeded =
+                                window.win32_window.apply_window_visuals(visuals);
+                            push_windows_window_visuals_hook_event(
+                                WindowsWindowVisualsHookEvent::Processed {
+                                    request_sequence,
+                                    window_id,
+                                    native_window_handle: window.win32_window.hwnd.0 as isize,
+                                    visuals: visuals.normalized(),
+                                    backend_apply_succeeded,
+                                    is_popup: window.win32_window.is_popup,
+                                },
+                            );
+                        }
+                    }
+                    CxOsOp::CopyToClipboard(content) => unsafe {
+  RUST
+  "correlated backend operation"
+)
+
+replace_once!(
+  checkout.join("platform/src/os/windows/windows.rs"),
+  <<~'RUST'.chomp,
+                        self.windows[popup_id].is_created = false;
+                        if let Some(idx) = d3d11_windows.iter().position(|w| w.window_id == popup_id) {
+                            d3d11_windows[idx].win32_window.close_window();
+                            d3d11_windows.remove(idx);
+                        }
+  RUST
+  <<~'RUST'.chomp,
+                        self.windows[popup_id].is_created = false;
+                        if let Some(idx) = d3d11_windows.iter().position(|w| w.window_id == popup_id) {
+                            let native = &d3d11_windows[idx].win32_window;
+                            push_windows_window_visuals_hook_event(
+                                WindowsWindowVisualsHookEvent::Destroyed {
+                                    window_id: native.window_id,
+                                    native_window_handle: native.hwnd.0 as isize,
+                                },
+                            );
+                            d3d11_windows[idx].win32_window.close_window();
+                            d3d11_windows.remove(idx);
+                        }
+  RUST
+  "popup destruction hook"
+)
+
+replace_once!(
+  checkout.join("platform/src/os/windows/windows.rs"),
+  <<~'RUST'.chomp,
+                    self.windows[window_id].is_created = false;
+                    if let Some(index) = d3d11_windows.iter().position(|w| w.window_id == window_id) {
+                        d3d11_windows.remove(index);
+                        if d3d11_windows.len() == 0 {
+  RUST
+  <<~'RUST'.chomp,
+                    self.windows[window_id].is_created = false;
+                    if let Some(index) = d3d11_windows.iter().position(|w| w.window_id == window_id) {
+                        let native = &d3d11_windows[index].win32_window;
+                        push_windows_window_visuals_hook_event(
+                            WindowsWindowVisualsHookEvent::Destroyed {
+                                window_id: native.window_id,
+                                native_window_handle: native.hwnd.0 as isize,
+                            },
+                        );
+                        d3d11_windows.remove(index);
+                        if d3d11_windows.len() == 0 {
+  RUST
+  "OS close destruction hook"
+)
+
+replace_once!(
+  checkout.join("platform/src/os/windows/windows.rs"),
+  <<~'RUST'.chomp,
+                        self.windows[window_id].is_created = false;
+                        d3d11_windows[index].win32_window.close_window();
+                        d3d11_windows.remove(index);
+                        if d3d11_windows.len() == 0 {
+  RUST
+  <<~'RUST'.chomp,
+                        self.windows[window_id].is_created = false;
+                        let native = &d3d11_windows[index].win32_window;
+                        push_windows_window_visuals_hook_event(
+                            WindowsWindowVisualsHookEvent::Destroyed {
+                                window_id: native.window_id,
+                                native_window_handle: native.hwnd.0 as isize,
+                            },
+                        );
+                        d3d11_windows[index].win32_window.close_window();
+                        d3d11_windows.remove(index);
+                        if d3d11_windows.len() == 0 {
+  RUST
+  "explicit close destruction hook"
+)
+
+run!("git", "diff", "--check", chdir: checkout)
+changed_files = run!("git", "diff", "--name-only", chdir: checkout).lines.sort
+raise PatchError, "changed file set drift: #{changed_files.inspect}" unless changed_files == EXPECTED_CHANGED_FILES
+
+patched_blobs = changed_files.to_h do |relative|
+  [relative, run!("git", "hash-object", relative, chdir: checkout)]
+end
+patch_text = run!("git", "diff", "--binary", chdir: checkout)
+
+receipt = {
+  schema: "hepta.ui.v4.vendored-makepad-windows-hook-patch.v1",
+  status: "PASS_PATCH_APPLIED_TO_EXACT_WORKTREE_SOURCE_ONLY",
+  makepad: {
+    revision: REVISION,
+    sourceBlobs: source_blob_results,
+    patchedBlobs: patched_blobs,
+    changedFiles: changed_files,
+    diffSha256: Digest::SHA256.hexdigest(patch_text)
+  },
+  qualification: {
+    patchAppliedInWorktree: true,
+    defaultDependencySwitched: false,
+    patchedMakepadCompile: false,
+    heptaHookCompile: false,
+    windowsRuntime: false,
+    backdropReadback: false,
+    transientSystemMaterial: false,
+    completeProfile: false,
+    systemMaterialBinding: false,
+    nativeProductRuntime: false,
+    deviceValidation: false
+  },
+  authority: {
+    network: false,
+    mutation: false,
+    effect: false,
+    liveAdapter: false,
+    production: false,
+    operatorAcceptance: false,
+    promotion: false,
+    release: false
+  }
+}
+write_receipt(receipt_arg, receipt)
+puts JSON.pretty_generate(receipt)

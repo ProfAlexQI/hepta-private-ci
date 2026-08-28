@@ -1,0 +1,188 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+Encoding.default_external = Encoding::UTF_8
+Encoding.default_internal = Encoding::UTF_8
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  patcher: root.join("scripts/hepta-ui-v4-apply-makepad-windows-ack-patch"),
+  materializer: root.join("scripts/hepta-ui-v4-materialize-makepad-windows-hook"),
+  probe: root.join("apps/hepta-native/src/bin/hepta-ui-v4-windows-window-ack-probe.rs"),
+  contract: root.join("docs/ui/HEPTA_VENDORED_MAKEPAD_WINDOWS_HOOK_V1.json"),
+  schema: root.join("docs/ui/schemas/hepta.ui.v4.windows-dwm-hook-probe.v1.schema.json"),
+  status: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_12_VENDORED_MAKEPAD_WINDOWS_HOOK_2026-08-28.md"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-vendored-makepad-windows-hook.yml")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+
+def emit(checks, status)
+  failures = checks.reject { |_name, passed| passed }.keys
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.vendored-makepad-windows-hook-source-gate.v1",
+    status: status,
+    source_implemented: failures.empty?,
+    vendored_patch_artifact: failures.empty?,
+    isolated_windows_probe_source: failures.empty?,
+    exact_patch_application: false,
+    patched_makepad_compile_validation: false,
+    hepta_probe_compile_validation: false,
+    windows_runtime_validation: false,
+    exact_hwnd_from_framework: false,
+    persistent_chrome_backdrop_acknowledgement: false,
+    solid_fallback_acknowledgement: false,
+    backdrop_readback_validation: false,
+    full_visual_readback_validation: false,
+    transient_system_material_binding: false,
+    complete_profile_binding: false,
+    system_material_binding: false,
+    native_product_runtime_validation: false,
+    device_validation: false,
+    production_authority: false,
+    effect_authority: false,
+    live_adapter_authority: false,
+    operator_acceptance: false,
+    promotion: false,
+    release: false,
+    checks: checks,
+    failures: failures
+  )
+  exit(failures.empty? ? 0 : 1)
+end
+
+emit(checks, "FAIL_MISSING_INPUT") unless checks.values.all?
+
+patcher = files.fetch(:patcher).read
+materializer = files.fetch(:materializer).read
+probe = files.fetch(:probe).read
+contract = JSON.parse(files.fetch(:contract).read)
+schema = JSON.parse(files.fetch(:schema).read)
+workflow = files.fetch(:workflow).read
+
+revision = "c4335cee10b22aca768510c9d072b0ca1bba15c8"
+checks["patcher.exact_revision_and_five_anchors"] =
+  patcher.include?(revision) &&
+  contract.dig("makepad", "sourceBlobs").length == 5 &&
+  contract.dig("makepad", "sourceBlobs").all? do |path, sha|
+    patcher.include?(path) && patcher.include?(sha)
+  end
+checks["patcher.correlated_operation_preserves_legacy"] =
+  patcher.include?("SetWindowVisuals(WindowId, WindowVisuals)") &&
+  patcher.include?("SetWindowVisualsCorrelated") &&
+  patcher.include?("request_sequence: u64")
+checks["patcher.exact_hook_payload"] = %w[
+  WindowsWindowVisualsHookEvent request_sequence window_id native_window_handle
+  backend_apply_succeeded is_popup
+].all? { |term| patcher.include?(term) }
+checks["patcher.backend_result_and_destroy_hooks"] =
+  patcher.include?("apply_window_visuals(&mut self, visuals: WindowVisuals) -> bool") &&
+  patcher.include?("hr.is_ok()") &&
+  patcher.scan("WindowsWindowVisualsHookEvent::Destroyed").length >= 3
+checks["patcher.no_hwnd_discovery"] =
+  %w[FindWindow EnumWindows GetForegroundWindow all_windows].none? do |term|
+    patcher.include?(term)
+  end
+checks["patcher.bounded_changed_file_set"] =
+  patcher.include?("EXPECTED_CHANGED_FILES") &&
+  patcher.include?("changed file set drift") &&
+  patcher.include?("git\", \"diff\", \"--check")
+checks["patcher.default_dependency_unclaimed"] =
+  patcher.include?("defaultDependencySwitched: false") &&
+  patcher.include?("systemMaterialBinding: false")
+
+checks["materializer.detached_exact_checkout"] =
+  materializer.include?(revision) &&
+  materializer.include?("checkout\", \"--quiet\", \"--detach\", \"FETCH_HEAD")
+checks["materializer.ephemeral_cargo_patch"] =
+  materializer.include?("[patch.\"https://github.com/kevinaboos/makepad\"]") &&
+  materializer.include?("makepad-widgets") && materializer.include?("makepad-code-editor") &&
+  materializer.include?("defaultDependencyChanged: false")
+checks["materializer.invokes_exact_patcher"] =
+  materializer.include?("hepta-ui-v4-apply-makepad-windows-ack-patch") &&
+  materializer.include?("PASS_PATCH_APPLIED_TO_EXACT_WORKTREE_SOURCE_ONLY")
+
+checks["probe.explicit_cfg_and_windows_only"] =
+  probe.include?("target_os = \"windows\"") &&
+  probe.include?("hepta_makepad_windows_ack_hook") &&
+  probe.include?("requires Windows plus the vendored Makepad hook cfg")
+checks["probe.correlated_mica_and_solid"] =
+  probe.include?("CxOsOp::SetWindowVisualsCorrelated") &&
+  probe.include?("MICA_SEQUENCE: u64 = 1") &&
+  probe.include?("SOLID_SEQUENCE: u64 = 2") &&
+  probe.include?("WindowBackdrop::Mica") &&
+  probe.include?("WindowVisuals::default()")
+checks["probe.consumes_exact_hook_and_verifier"] =
+  probe.include?("take_windows_window_visuals_hook_events") &&
+  probe.include?("WindowsWindowVisualsHookEvent::Processed") &&
+  probe.include?("HeptaWindowsBackendVisualsProcessed::new") &&
+  probe.include?("HeptaWindowsDwmBackdropApi") &&
+  probe.include?("VerifiedPersistentChromeWithBackdropReadback") &&
+  probe.include?("VerifiedSolidFallbackWithBackdropReadback")
+checks["probe.isolated_from_product_startup"] =
+  !probe.include?("hepta_native::shared::script_mod") &&
+  %w[start_matrix_tokio HttpRequest WebSocket XMLHttpRequest EventSource].none? do |term|
+    probe.include?(term)
+  end
+checks["probe.candidate_receipt_and_authority"] =
+  probe.include?("HEPTA_CANDIDATE_COMMIT") &&
+  probe.include?("HEPTA_CANDIDATE_TREE") &&
+  probe.include?("PASS_WINDOWS_DWM_HOOK_PROBE") &&
+  %w[network mutation effect liveAdapter production operatorAcceptance promotion release].all? do |key|
+    probe.match?(/"#{key}":\s*false/)
+  end
+checks["probe.partial_only"] = %w[
+  fullVisualReadback transientSystemMaterial completeProfile systemMaterialBinding
+  nativeProductRuntime deviceValidation
+].all? { |key| probe.match?(/"#{key}":\s*false/) }
+
+checks["contract.identity"] =
+  contract["schema"] == "hepta.ui.vendored-makepad-windows-hook.v1" &&
+  contract.dig("makepad", "revision") == revision &&
+  contract.dig("makepad", "defaultDependencyUnchanged") == true &&
+  contract.dig("makepad", "forkCreated") == false
+checks["contract.patch_and_probe_sources"] =
+  contract.dig("makepad", "patcher") ==
+    "scripts/hepta-ui-v4-apply-makepad-windows-ack-patch" &&
+  contract.dig("probe", "binary") ==
+    "apps/hepta-native/src/bin/hepta-ui-v4-windows-window-ack-probe.rs"
+checks["contract.runtime_and_authority_false"] =
+  contract.fetch("qualification").reject do |key, _|
+    %w[sourceImplemented vendoredPatchArtifact].include?(key)
+  end.values.none? && contract.fetch("authority").values.none?
+
+checks["schema.identity_and_partial_boundary"] =
+  schema["$id"].to_s.end_with?("hepta.ui.v4.windows-dwm-hook-probe.v1.schema.json") &&
+  %w[fullVisualReadback transientSystemMaterial completeProfile systemMaterialBinding nativeProductRuntime deviceValidation].all? do |key|
+    schema.dig("properties", "qualification", "properties", key, "const") == false
+  end
+checks["schema.authority_false"] =
+  schema.dig("$defs", "authority", "additionalProperties", "const") == false
+checks["schema.success_requires_exact_candidate"] =
+  schema.dig("allOf", 0, "then", "properties", "candidate", "properties", "commit", "pattern") == "^[0-9a-f]{40}$"
+
+checks["workflow.source_and_patch_jobs"] =
+  workflow.include?("ruby scripts/hepta-ui-v4-vendored-makepad-windows-hook-gate") &&
+  workflow.include?("hepta-ui-v4-materialize-makepad-windows-hook") &&
+  workflow.include?("PASS_PATCHED_CHECKOUT_MATERIALIZED_SOURCE_ONLY")
+checks["workflow.three_platform_compile"] =
+  %w[ubuntu-latest windows-latest macos-latest].all? { |os| workflow.include?(os) } &&
+  workflow.include?("hepta-ui-v4-windows-window-ack-probe")
+checks["workflow.windows_runtime_manual"] =
+  workflow.include?("run_windows_probe") &&
+  workflow.include?("runner.os == 'Windows'") &&
+  workflow.include?("PASS_WINDOWS_DWM_HOOK_PROBE")
+checks["workflow.read_only_no_release"] =
+  workflow.include?("permissions:") && workflow.include?("contents: read") &&
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+
+failed = checks.reject { |_name, passed| passed }
+emit(
+  checks,
+  failed.empty? ? "PASS_VENDORED_MAKEPAD_WINDOWS_HOOK_SOURCE_ONLY" :
+    "FAIL_VENDORED_MAKEPAD_WINDOWS_HOOK_SOURCE"
+)

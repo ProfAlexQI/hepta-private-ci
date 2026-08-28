@@ -1,0 +1,122 @@
+{
+  "schema": "hepta.ui.vendored-makepad-windows-hook.v1",
+  "status": "VENDORED_PATCH_AND_ISOLATED_RUNTIME_PROBE_SOURCE_READY_EXECUTION_REQUIRED",
+  "candidateBranch": "codex/ui-v4-vendored-makepad-windows-hook-20260828",
+  "baseBranch": "codex/ui-v4-makepad-windows-ack-hook-20260828",
+  "makepad": {
+    "repository": "kevinaboos/makepad",
+    "revision": "c4335cee10b22aca768510c9d072b0ca1bba15c8",
+    "defaultDependencyUnchanged": true,
+    "forkCreated": false,
+    "vendoredPatchStrategy": true,
+    "patcher": "scripts/hepta-ui-v4-apply-makepad-windows-ack-patch",
+    "materializer": "scripts/hepta-ui-v4-materialize-makepad-windows-hook",
+    "sourceBlobs": {
+      "platform/src/lib.rs": "fab92f77a3f431a7dae0098b8e304a74c69b5a85",
+      "platform/src/cx_api.rs": "87d871cd6414d67ed3da14f3a1a48f98940d0782",
+      "platform/src/window.rs": "8e6e9a9d41c34d654de6721f4956558a3eb649fe",
+      "platform/src/os/windows/win32_window.rs": "67899eceaf83e46dc8690f0e8be98ad4941abb3a",
+      "platform/src/os/windows/windows.rs": "58df661d9d84660fcca2ac960f5bcf5b36c52f3a"
+    },
+    "changedFiles": [
+      "platform/src/lib.rs",
+      "platform/src/cx_api.rs",
+      "platform/src/window.rs",
+      "platform/src/os/windows/win32_window.rs",
+      "platform/src/os/windows/windows.rs"
+    ]
+  },
+  "patchContract": {
+    "correlatedOperation": "SetWindowVisualsCorrelated",
+    "operationFields": [
+      "windowId",
+      "visuals",
+      "requestSequence"
+    ],
+    "hookQueue": "WindowsWindowVisualsHookEvent",
+    "processedFields": [
+      "requestSequence",
+      "windowId",
+      "nativeWindowHandle",
+      "visuals",
+      "backendApplySucceeded",
+      "isPopup"
+    ],
+    "destroyedFields": [
+      "windowId",
+      "nativeWindowHandle"
+    ],
+    "backendApplyResult": "DWM system-backdrop set HRESULT success only",
+    "queueThread": "Windows UI thread",
+    "queueOrder": "same order as Cx::handle_platform_ops",
+    "queueLimit": 256,
+    "globalHwndDiscovery": false,
+    "findWindowAllowed": false,
+    "foregroundWindowLookupAllowed": false,
+    "fullWindowVisualsReadbackClaim": false,
+    "existingUncorrelatedOperationPreserved": true
+  },
+  "cargoOverride": {
+    "mechanism": "ephemeral Cargo patch config generated after exact checkout materialization",
+    "packages": [
+      "makepad-widgets",
+      "makepad-code-editor"
+    ],
+    "defaultManifestModified": false,
+    "defaultCargoLockAuthority": false,
+    "customCfg": "hepta_makepad_windows_ack_hook",
+    "customCfgDefault": false
+  },
+  "probe": {
+    "binary": "apps/hepta-native/src/bin/hepta-ui-v4-windows-window-ack-probe.rs",
+    "schema": "docs/ui/schemas/hepta.ui.v4.windows-dwm-hook-probe.v1.schema.json",
+    "isolatedFromSharedProductLifecycle": true,
+    "matrixStartup": false,
+    "network": false,
+    "mutation": false,
+    "requests": [
+      {
+        "sequence": 1,
+        "backdrop": "Mica",
+        "expectedStatus": "VerifiedPersistentChromeWithBackdropReadback"
+      },
+      {
+        "sequence": 2,
+        "backdrop": "None",
+        "expectedStatus": "VerifiedSolidFallbackWithBackdropReadback"
+      }
+    ],
+    "fullVisualReadback": false,
+    "transientHost": false,
+    "completeProfile": false,
+    "nativeProductRuntime": false
+  },
+  "qualification": {
+    "sourceImplemented": true,
+    "vendoredPatchArtifact": true,
+    "exactPatchApplication": false,
+    "patchedMakepadCompile": false,
+    "heptaProbeCompile": false,
+    "windowsRuntime": false,
+    "exactHwndFromFramework": false,
+    "persistentChromeBackdropAcknowledged": false,
+    "solidFallbackAcknowledged": false,
+    "backdropReadback": false,
+    "fullVisualReadback": false,
+    "transientSystemMaterial": false,
+    "completeProfile": false,
+    "systemMaterialBinding": false,
+    "nativeProductRuntime": false,
+    "deviceValidation": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.ai/schemas/ui/hepta.ui.v4.windows-dwm-hook-probe.v1.schema.json",
+  "title": "Hepta UI v4 isolated Windows DWM hook probe receipt",
+  "type": "object",
+  "required": [
+    "schema",
+    "status",
+    "candidate",
+    "makepad",
+    "fixture",
+    "qualification",
+    "authority"
+  ],
+  "properties": {
+    "schema": {
+      "const": "hepta.ui.v4.windows-dwm-hook-probe.v1"
+    },
+    "status": {
+      "enum": [
+        "PASS_WINDOWS_DWM_HOOK_PROBE",
+        "FAIL_WINDOWS_DWM_HOOK_PROBE"
+      ]
+    },
+    "error": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidate": {
+      "type": "object",
+      "required": ["commit", "tree"],
+      "properties": {
+        "commit": { "type": "string", "minLength": 1 },
+        "tree": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "makepad": {
+      "type": "object",
+      "required": ["revision", "vendoredPatchBuild", "defaultDependencySwitched"],
+      "properties": {
+        "revision": {
+          "const": "c4335cee10b22aca768510c9d072b0ca1bba15c8"
+        },
+        "vendoredPatchBuild": { "const": true },
+        "defaultDependencySwitched": { "const": false }
+      },
+      "additionalProperties": false
+    },
+    "fixture": { "const": true },
+    "window": {
+      "type": "object",
+      "required": ["index", "generation", "nativeHandle", "nativeHandleNonzero", "popup"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "generation": { "type": "integer", "minimum": 0 },
+        "nativeHandle": { "type": "string", "pattern": "^-?[0-9]+$" },
+        "nativeHandleNonzero": { "const": true },
+        "popup": { "const": false }
+      },
+      "additionalProperties": false
+    },
+    "requests": {
+      "type": "object",
+      "required": ["mica", "solidFallback"],
+      "properties": {
+        "mica": { "$ref": "#/$defs/ack" },
+        "solidFallback": { "$ref": "#/$defs/ack" }
+      },
+      "additionalProperties": false
+    },
+    "qualification": {
+      "type": "object",
+      "required": [
+        "patchedMakepadRuntime",
+        "correlatedHookRuntime",
+        "exactHwndFromFramework",
+        "persistentChromeBackdropAcknowledged",
+        "solidFallbackAcknowledged",
+        "backdropReadback",
+        "fullVisualReadback",
+        "transientSystemMaterial",
+        "completeProfile",
+        "systemMaterialBinding",
+        "nativeProductRuntime",
+        "deviceValidation"
+      ],
+      "properties": {
+        "patchedMakepadRuntime": { "type": "boolean" },
+        "correlatedHookRuntime": { "type": "boolean" },
+        "exactHwndFromFramework": { "type": "boolean" },
+        "persistentChromeBackdropAcknowledged": { "type": "boolean" },
+        "solidFallbackAcknowledged": { "type": "boolean" },
+        "backdropReadback": { "type": "boolean" },
+        "fullVisualReadback": { "const": false },
+        "transientSystemMaterial": { "const": false },
+        "completeProfile": { "const": false },
+        "systemMaterialBinding": { "const": false },
+        "nativeProductRuntime": { "const": false },
+        "deviceValidation": { "const": false }
+      },
+      "additionalProperties": false
+    },
+    "authority": { "$ref": "#/$defs/authority" }
+  },
+  "$defs": {
+    "ack": {
+      "type": "object",
+      "required": [
+        "status",
+        "accepted",
+        "requestSequence",
+        "windowIndex",
+        "windowGeneration",
+        "backend",
+        "requestedBackdrop",
+        "readbackScope",
+        "observedBackdrop",
+        "backdropExact",
+        "fullVisualsExact",
+        "persistentChromeAcknowledged",
+        "solidFallbackAcknowledged",
+        "transientSystemMaterialBound",
+        "completeProfileBound",
+        "systemMaterialBound"
+      ],
+      "properties": {
+        "status": { "type": "string", "minLength": 1 },
+        "accepted": { "const": true },
+        "requestSequence": { "type": "integer", "minimum": 1 },
+        "windowIndex": { "type": "integer", "minimum": 0 },
+        "windowGeneration": { "type": "integer", "minimum": 0 },
+        "backend": { "const": "WindowsDwm" },
+        "requestedBackdrop": { "enum": ["Mica", "None"] },
+        "readbackScope": { "const": "BackdropOnly" },
+        "observedBackdrop": { "enum": ["Mica", "None"] },
+        "backdropExact": { "const": true },
+        "fullVisualsExact": { "const": false },
+        "persistentChromeAcknowledged": { "type": "boolean" },
+        "solidFallbackAcknowledged": { "type": "boolean" },
+        "transientSystemMaterialBound": { "const": false },
+        "completeProfileBound": { "const": false },
+        "systemMaterialBound": { "const": false }
+      },
+      "additionalProperties": false
+    },
+    "authority": {
+      "type": "object",
+      "required": [
+        "network",
+        "mutation",
+        "effect",
+        "liveAdapter",
+        "production",
+        "operatorAcceptance",
+        "promotion",
+        "release"
+      ],
+      "additionalProperties": { "const": false }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "PASS_WINDOWS_DWM_HOOK_PROBE" }
+        }
+      },
+      "then": {
+        "required": ["window", "requests"],
+        "properties": {
+          "candidate": {
+            "properties": {
+              "commit": { "pattern": "^[0-9a-f]{40}$" },
+              "tree": { "pattern": "^[0-9a-f]{40}$" }
+            }
+          },
+          "qualification": {
+            "properties": {
+              "patchedMakepadRuntime": { "const": true },
+              "correlatedHookRuntime": { "const": true },
+              "exactHwndFromFramework": { "const": true },
+              "persistentChromeBackdropAcknowledged": { "const": true },
+              "solidFallbackAcknowledged": { "const": true },
+              "backdropReadback": { "const": true }
+            }
+          }
+        }
+      },
+      "else": {
+        "required": ["error"]
+      }
+    }
+  ],
+  "additionalProperties": false
+}
