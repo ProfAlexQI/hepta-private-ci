@@ -1,0 +1,139 @@
+name: hepta-intelligence-mutation-journal
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-mutation-journal-v4b-*"
+  pull_request:
+    paths:
+      - "codex-rs/hepta-memory/mutation-migrations/**"
+      - "codex-rs/hepta-memory/src/intelligence_mutation_journal_v2.rs"
+      - "codex-rs/hepta-memory/src/intelligence_mutation_journal/**"
+      - "codex-rs/hepta-memory/src/framing.rs"
+      - "codex-rs/hepta-memory/BUILD.bazel"
+      - "scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py"
+      - "scripts/verify-hepta-intelligence-mutation-journal.py"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4B_SQLITE_JOURNAL_2026-08-28.md"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json"
+      - ".github/workflows/hepta-intelligence-mutation-journal.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-mutation-journal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: P0.4b mutation journal source and SQLite contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Validate scripts and machine status
+        run: |
+          python3 -m py_compile \
+            scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py \
+            scripts/verify-hepta-intelligence-mutation-journal.py
+          python3 -m json.tool \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json \
+            >/dev/null
+
+      - name: Run executable SQLite contract
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/hepta-intelligence-mutation-journal
+          python3 scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py \
+            | tee artifacts/hepta-intelligence-mutation-journal/sqlite-selftest.json
+
+      - name: Run fail-closed source gate
+        run: |
+          set -o pipefail
+          python3 scripts/verify-hepta-intelligence-mutation-journal.py \
+            | tee artifacts/hepta-intelligence-mutation-journal/source-gate.json
+
+      - name: Verify qualification-only authority boundary
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          directory = Path("artifacts/hepta-intelligence-mutation-journal")
+          source = json.loads((directory / "source-gate.json").read_text())
+          sqlite = json.loads((directory / "sqlite-selftest.json").read_text())
+          assert source["status"] == "PASS_P0_4B_MUTATION_JOURNAL_SOURCE_ONLY"
+          assert sqlite["status"] == "PASS_P0_4B_MUTATION_JOURNAL_SQLITE"
+          for receipt in (source, sqlite):
+              for key in (
+                  "runtime_wired",
+                  "default_open_wired",
+                  "production_authority",
+                  "external_effects",
+                  "operator_acceptance",
+                  "promotion",
+              ):
+                  assert receipt[key] is False, (key, receipt)
+          assert source["callers_ratchet"] is False
+          assert source["main_sqlx_lineage_promoted"] is False
+          PY
+
+      - name: Upload P0.4b source receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-mutation-journal-source-${{ github.sha }}
+          path: artifacts/hepta-intelligence-mutation-journal/*.json
+          if-no-files-found: error
+          retention-days: 14
+
+  rust-qualification:
+    name: P0.4b mutation journal Rust qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Verify repository toolchain binding
+        working-directory: codex-rs
+        run: |
+          grep -F 'channel = "1.95.0"' rust-toolchain.toml
+          rustc --version | grep -F '1.95.0'
+
+      - name: Check workspace formatting
+        working-directory: codex-rs
+        run: cargo fmt --all -- --check
+
+      - name: Run focused journal tests
+        working-directory: codex-rs
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo test -p codex-hepta-memory intelligence_mutation_journal -- --nocapture
+
+      - name: Run typed state-machine regression tests
+        working-directory: codex-rs
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo test -p codex-hepta-memory intelligence_mutation -- --nocapture
+
+      - name: Run full hepta-memory crate tests
+        working-directory: codex-rs
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo test -p codex-hepta-memory
+
+      - name: Run strict clippy
+        working-directory: codex-rs
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo clippy -p codex-hepta-memory --all-targets -- -D warnings
