@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 env:
-  EXPECTED_PARENT: 7a9bb9881ba5a4b777f43bd9ae799bdc1fd353a3
+  EXPECTED_PARENT: b4ae33571a91347828feb07be9f871c3dcdba05c
   MANIFEST: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
   PACKAGE: codex-hepta-authbus-p1-2-qualification
   CRATE_ROOT: codex-rs/hepta-authbus-p1-2-qualification
@@ -21,7 +21,7 @@ env:
 
 jobs:
   qualify-and-commit:
-    name: Qualify and commit the exact P1.2 durable replay implementation
+    name: Qualify and commit P1.2 source without workflow mutations
     runs-on: ubuntu-slim
     timeout-minutes: 90
     steps:
@@ -39,8 +39,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           test "$(git rev-parse HEAD^)" = "${EXPECTED_PARENT}"
           test -s docs/hepta-vnext/authbus/AUTHBUS_P1_2_TEST_FAILURE_2026-08-28.txt
-          grep -q '29 previous errors; 1 warning emitted' \
-            docs/hepta-vnext/authbus/AUTHBUS_P1_2_TEST_FAILURE_2026-08-28.txt
+          grep -q '29 previous errors; 1 warning emitted' docs/hepta-vnext/authbus/AUTHBUS_P1_2_TEST_FAILURE_2026-08-28.txt
           python3 -m py_compile scripts/authbus-p1-2-finalize.py
 
       - name: Materialize and remediate the reviewed P1.2 source
@@ -48,14 +47,10 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/authbus-p1-2-finalize.py | tee /tmp/authbus-p1-2-finalize.txt
-          grep -q 'applied_sha256_digest_text_repairs=29' \
-            /tmp/authbus-p1-2-finalize.txt
-          grep -q 'applied_exact_ttl_boundary_repairs=1' \
-            /tmp/authbus-p1-2-finalize.txt
-          grep -q 'applied_canonical_sqlite_shim_repairs=1' \
-            /tmp/authbus-p1-2-finalize.txt
-          grep -q 'applied_source_verifier_shim_repairs=1' \
-            /tmp/authbus-p1-2-finalize.txt
+          grep -q 'applied_sha256_digest_text_repairs=29' /tmp/authbus-p1-2-finalize.txt
+          grep -q 'applied_exact_ttl_boundary_repairs=1' /tmp/authbus-p1-2-finalize.txt
+          grep -q 'applied_canonical_sqlite_shim_repairs=1' /tmp/authbus-p1-2-finalize.txt
+          grep -q 'applied_source_verifier_shim_repairs=1' /tmp/authbus-p1-2-finalize.txt
 
           python3 - <<'PY' | tee /tmp/authbus-p1-2-plan-normalization.txt
           from pathlib import Path
@@ -82,22 +77,21 @@ jobs:
           path.write_text(source, encoding="utf-8")
           print("applied_plan_trailing_whitespace_repairs=2")
           PY
-          grep -q 'applied_plan_trailing_whitespace_repairs=2' \
-            /tmp/authbus-p1-2-plan-normalization.txt
+          grep -q 'applied_plan_trailing_whitespace_repairs=2' /tmp/authbus-p1-2-plan-normalization.txt
 
           python3 scripts/verify-authbus-p1-2.py | tee /tmp/authbus-p1-2-source.json
           grep -q 'PASS_AUTHBUS_P1_2_SOURCE_ONLY' /tmp/authbus-p1-2-source.json
           grep -q 'dep:codex-state' "${MANIFEST}"
           grep -q 'dep:codex-utils-absolute-path' "${MANIFEST}"
           grep -q 'use codex_state::SqliteConfig;' "${CRATE_ROOT}/src/store.rs"
-          grep -q 'use codex_utils_absolute_path::AbsolutePathBuf;' \
-            "${CRATE_ROOT}/src/store.rs"
+          grep -q 'use codex_utils_absolute_path::AbsolutePathBuf;' "${CRATE_ROOT}/src/store.rs"
           grep -q 'open_durable_evidence_pool' "${CRATE_ROOT}/src/store.rs"
           ! grep -q 'connect_with' "${CRATE_ROOT}/src/store.rs"
           ! grep -q 'SqlitePoolOptions' "${CRATE_ROOT}/src/store.rs"
           grep -q 'NOW + 298' "${CRATE_ROOT}/tests/p1_2.rs"
-          ! grep -A2 '"nonce-two"' "${CRATE_ROOT}/tests/p1_2.rs" \
-            | grep -q 'NOW + 300'
+          ! grep -A2 '"nonce-two"' "${CRATE_ROOT}/tests/p1_2.rs" | grep -q 'NOW + 300'
+          test -s .github/workflows/authbus-p1-2-qualification.yml
+          sha256sum .github/workflows/authbus-p1-2-qualification.yml | tee /tmp/authbus-p1-2-qualification.sha256
           git diff --check
 
       - name: Install Rust 1.95
@@ -115,8 +109,7 @@ jobs:
           cargo fmt --manifest-path "${MANIFEST}" --all
           cargo fmt --manifest-path "${MANIFEST}" --all -- --check
           test -s "${CRATE_ROOT}/Cargo.lock"
-          cargo metadata --manifest-path "${MANIFEST}" --locked \
-            --format-version 1 --no-deps >/dev/null
+          cargo metadata --manifest-path "${MANIFEST}" --locked --format-version 1 --no-deps >/dev/null
           python3 scripts/verify-authbus-p1-2.py | tee /tmp/authbus-p1-2-formatted.json
           grep -q 'PASS_AUTHBUS_P1_2_SOURCE_ONLY' /tmp/authbus-p1-2-formatted.json
           git diff --check
@@ -124,37 +117,29 @@ jobs:
       - name: Check default-off authority posture
         shell: bash
         run: |
-          cargo test --manifest-path "${MANIFEST}" --locked \
-            --no-default-features --lib -- --nocapture
+          cargo test --manifest-path "${MANIFEST}" --locked --no-default-features --lib -- --nocapture
 
       - name: Run restart, replay, failpoint, GC, and corruption matrix
         shell: bash
         run: |
-          cargo test --manifest-path "${MANIFEST}" --locked \
-            --features p1-2-qualification --tests -- --nocapture
+          cargo test --manifest-path "${MANIFEST}" --locked --features p1-2-qualification --tests -- --nocapture
 
       - name: Check all P1.2 targets
         shell: bash
         run: |
-          cargo check --manifest-path "${MANIFEST}" --locked \
-            --features p1-2-qualification --all-targets
+          cargo check --manifest-path "${MANIFEST}" --locked --features p1-2-qualification --all-targets
 
       - name: Run strict P1.2 Clippy
         shell: bash
         run: |
-          cargo clippy --manifest-path "${MANIFEST}" --locked \
-            --features p1-2-qualification --all-targets -- -D warnings
+          cargo clippy --manifest-path "${MANIFEST}" --locked --features p1-2-qualification --all-targets -- -D warnings
 
-      - name: Commit only the fully qualified P1.2 source set
+      - name: Commit only qualified non-workflow P1.2 paths
         shell: bash
         run: |
           set -euo pipefail
           rm -rf scripts/__pycache__ "${CRATE_ROOT}/target"
 
-          rm .github/workflows/authbus-p1-2-diagnostic.yml
-          rm .github/workflows/authbus-p1-2-finalize.yml
-          rm .github/workflows/authbus-p1-2-remediation.yml
-          rm .github/workflows/authbus-p1-2-source-seed.yml
           rm scripts/authbus-p1-2-finalize.py
           rm scripts/authbus-p1-2-source-seed.part-00.b64
           rm scripts/authbus-p1-2-source-seed.part-01.b64
@@ -170,7 +155,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           final_paths=(
-            .github/workflows/authbus-p1-2-qualification.yml
             codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
             codex-rs/hepta-authbus-p1-2-qualification/Cargo.lock
             codex-rs/hepta-authbus-p1-2-qualification/README.md
@@ -186,10 +170,6 @@ jobs:
           )
           git add -- "${final_paths[@]}"
           git add -u -- \
-            .github/workflows/authbus-p1-2-diagnostic.yml \
-            .github/workflows/authbus-p1-2-finalize.yml \
-            .github/workflows/authbus-p1-2-remediation.yml \
-            .github/workflows/authbus-p1-2-source-seed.yml \
             docs/hepta-vnext/authbus/AUTHBUS_P1_2_TEST_FAILURE_2026-08-28.txt \
             scripts/authbus-p1-2-finalize.py \
             scripts/authbus-p1-2-source-seed.part-00.b64 \
@@ -202,11 +182,6 @@ jobs:
             scripts/authbus-p1-2-source-seed.part-07.b64
 
           cat > /tmp/authbus-p1-2-expected-paths.txt <<'EOF'
-          .github/workflows/authbus-p1-2-diagnostic.yml
-          .github/workflows/authbus-p1-2-finalize.yml
-          .github/workflows/authbus-p1-2-qualification.yml
-          .github/workflows/authbus-p1-2-remediation.yml
-          .github/workflows/authbus-p1-2-source-seed.yml
           codex-rs/hepta-authbus-p1-2-qualification/Cargo.lock
           codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
           codex-rs/hepta-authbus-p1-2-qualification/README.md
@@ -231,14 +206,11 @@ jobs:
           scripts/verify-authbus-p1-2.py
           EOF
           sed -i 's/^          //' /tmp/authbus-p1-2-expected-paths.txt
-          LC_ALL=C sort -o /tmp/authbus-p1-2-expected-paths.txt \
-            /tmp/authbus-p1-2-expected-paths.txt
-          git diff --cached --name-only | LC_ALL=C sort \
-            > /tmp/authbus-p1-2-actual-paths.txt
-          diff -u /tmp/authbus-p1-2-expected-paths.txt \
-            /tmp/authbus-p1-2-actual-paths.txt
+          LC_ALL=C sort -o /tmp/authbus-p1-2-expected-paths.txt /tmp/authbus-p1-2-expected-paths.txt
+          git diff --cached --name-only | LC_ALL=C sort > /tmp/authbus-p1-2-actual-paths.txt
+          diff -u /tmp/authbus-p1-2-expected-paths.txt /tmp/authbus-p1-2-actual-paths.txt
+          ! git diff --cached --name-only | grep -q '^.github/workflows/'
           git diff --cached --check
 
           git commit -m "feat(authbus): persist identity and evidence replay state P1.2"
-          git push origin "HEAD:${GITHUB_REF_NAME}" \
-            --force-with-lease="refs/heads/${GITHUB_REF_NAME}:${GITHUB_SHA}"
+          git push origin "HEAD:${GITHUB_REF_NAME}" --force-with-lease="refs/heads/${GITHUB_REF_NAME}:${GITHUB_SHA}"
