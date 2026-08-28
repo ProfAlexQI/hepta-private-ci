@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 env:
-  EXPECTED_PARENT: bf06f7b17b366999e24f0a7730b612709a8d5aff
+  EXPECTED_PARENT: 26b5f12784ddb68b10b4d3594ae16547089f014e
   MANIFEST: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
   PACKAGE: codex-hepta-authbus-p1-2-qualification
   CRATE_ROOT: codex-rs/hepta-authbus-p1-2-qualification
