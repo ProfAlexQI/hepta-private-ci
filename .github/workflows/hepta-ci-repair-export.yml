@@ -27,10 +27,15 @@ concurrency:
 
 jobs:
   export:
-    name: Generate deterministic CI repair patch
-    runs-on: ubuntu-24.04-arm
+    name: Generate deterministic CI repair tree
+    runs-on: windows-2025
     timeout-minutes: 60
     steps:
+      - name: Configure Git long paths before checkout
+        shell: pwsh
+        working-directory: .
+        run: git config --global core.longpaths true
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
@@ -42,15 +47,14 @@ jobs:
           components: rustfmt
 
       - name: Generate deterministic repair tree
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          evidence_dir="$RUNNER_TEMP/hepta-ci-repair"
-          mkdir -p "$evidence_dir"
-          exec > >(tee "$evidence_dir/generation.log") 2>&1
-          git rev-parse HEAD > "$evidence_dir/source-head.txt"
+          $ErrorActionPreference = "Stop"
+          $evidenceDir = Join-Path $env:RUNNER_TEMP "hepta-ci-repair"
+          New-Item -ItemType Directory -Path $evidenceDir -Force | Out-Null
+          git rev-parse HEAD | Out-File -FilePath (Join-Path $evidenceDir "source-head.txt") -Encoding utf8NoBOM
 
-          python3 - <<'PY'
+          @'
           from pathlib import Path
 
           runner_files = [
@@ -80,12 +84,13 @@ jobs:
           ]
           for name in runner_files:
               path = Path(name)
-              if not path.is_file():
-                  raise SystemExit(f"missing required workflow: {name}")
+              if not path.is_file() or path.is_symlink():
+                  raise SystemExit(f"missing or unsafe required workflow: {name}")
               text = path.read_text(encoding="utf-8")
               text = text.replace("runs-on: ubuntu-24.04", "runs-on: ubuntu-22.04")
               text = text.replace("runs-on: ubuntu-latest", "runs-on: ubuntu-22.04")
-              path.write_text(text, encoding="utf-8")
+              with path.open("w", encoding="utf-8", newline="\n") as handle:
+                  handle.write(text)
 
           workflow = Path(".github/workflows/hepta-vnext-qualification.yml")
           text = workflow.read_text(encoding="utf-8")
@@ -97,38 +102,46 @@ jobs:
           )
           if needle not in text and replacement not in text:
               raise SystemExit("Windows long-path pre-checkout step shape drifted")
-          workflow.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
-          PY
+          with workflow.open("w", encoding="utf-8", newline="\n") as handle:
+              handle.write(text.replace(needle, replacement, 1))
+          '@ | python -
 
           cargo +1.95.0 fmt --manifest-path codex-rs/Cargo.toml --all
-          (
-            cd codex-rs
-            cargo +1.95.0 check --no-default-features \
-              -p codex-hepta-contracts \
-              --features authbus-local-qualification \
-              --all-targets
-            cargo +1.95.0 metadata --locked --no-deps --format-version 1 >/dev/null
-          )
+          Push-Location codex-rs
+          try {
+            cargo +1.95.0 check --no-default-features -p codex-hepta-contracts --features authbus-local-qualification --all-targets
+            cargo +1.95.0 metadata --locked --no-deps --format-version 1 | Out-Null
+          } finally {
+            Pop-Location
+          }
 
-          git diff --binary --full-index --no-ext-diff > "$evidence_dir/repair.patch"
-          git diff --name-only > "$evidence_dir/changed-files.txt"
-          git status --short > "$evidence_dir/status.txt"
-          test -s "$evidence_dir/repair.patch"
-
-          python3 - "$evidence_dir" <<'PY'
+          @'
           import hashlib
           import pathlib
-          import tarfile
+          import subprocess
           import sys
+          import tarfile
 
           evidence_dir = pathlib.Path(sys.argv[1])
-          names = [
-              line.strip()
-              for line in (evidence_dir / "changed-files.txt").read_text(encoding="utf-8").splitlines()
-              if line.strip()
-          ]
-          if not names or len(names) != len(set(names)):
-              raise SystemExit("changed-file list is empty or contains duplicates")
+          patch = subprocess.check_output(
+              ["git", "diff", "--binary", "--full-index", "--no-ext-diff"]
+          )
+          (evidence_dir / "repair.patch").write_bytes(patch)
+          changed_text = subprocess.check_output(
+              ["git", "diff", "--name-only"], text=True, encoding="utf-8"
+          )
+          names = [line.strip() for line in changed_text.splitlines() if line.strip()]
+          if not patch or not names or len(names) != len(set(names)):
+              raise SystemExit("repair output is empty or contains duplicate paths")
+          (evidence_dir / "changed-files.txt").write_text(
+              "".join(f"{name}\n" for name in names), encoding="utf-8", newline="\n"
+          )
+          status = subprocess.check_output(
+              ["git", "status", "--short"], text=True, encoding="utf-8"
+          )
+          (evidence_dir / "status.txt").write_text(
+              status, encoding="utf-8", newline="\n"
+          )
           archive_path = evidence_dir / "repair-tree.tar"
           with tarfile.open(archive_path, "w", format=tarfile.GNU_FORMAT) as archive:
               for name in names:
@@ -149,31 +162,37 @@ jobs:
               (evidence_dir / f"{name}.sha256").write_text(
                   f"{digest}  {name}\n", encoding="ascii", newline="\n"
               )
-          PY
-
-          cat "$evidence_dir/status.txt"
+          print(status, end="")
+          '@ | python - "$evidenceDir"
 
       - name: Verify generated repair inputs
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
+          $ErrorActionPreference = "Stop"
           cargo +1.95.0 fmt --manifest-path codex-rs/Cargo.toml --all -- --check
-          (
-            cd codex-rs
-            cargo +1.95.0 metadata --locked --no-deps --format-version 1 >/dev/null
-            cargo +1.95.0 check --locked --no-default-features \
-              -p codex-hepta-contracts \
-              --features authbus-local-qualification \
-              --all-targets
-          )
+          Push-Location codex-rs
+          try {
+            cargo +1.95.0 metadata --locked --no-deps --format-version 1 | Out-Null
+            cargo +1.95.0 check --locked --no-default-features -p codex-hepta-contracts --features authbus-local-qualification --all-targets
+          } finally {
+            Pop-Location
+          }
           git diff --check
-          (
-            cd "$RUNNER_TEMP/hepta-ci-repair"
-            sha256sum --check repair.patch.sha256
-            sha256sum --check repair-tree.tar.sha256
-          )
+          $evidenceDir = Join-Path $env:RUNNER_TEMP "hepta-ci-repair"
+          @'
+          import hashlib
+          import pathlib
+          import sys
 
-      - name: Upload deterministic repair patch
+          evidence_dir = pathlib.Path(sys.argv[1])
+          for name in ["repair.patch", "repair-tree.tar"]:
+              expected = (evidence_dir / f"{name}.sha256").read_text(encoding="ascii").split()[0]
+              actual = hashlib.sha256((evidence_dir / name).read_bytes()).hexdigest()
+              if actual != expected:
+                  raise SystemExit(f"digest mismatch for {name}: {actual} != {expected}")
+          '@ | python - "$evidenceDir"
+
+      - name: Upload deterministic repair tree
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
