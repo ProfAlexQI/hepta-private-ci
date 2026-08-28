@@ -1,0 +1,385 @@
+name: hepta-ui-v4-windows-product-host-qualification
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-windows-product-host-qualification-*"
+  pull_request:
+    paths:
+      - "apps/hepta-native/src/shared/hepta_windows_product_host_implementation.rs"
+      - "apps/hepta-native/src/shared/hepta_windows_product_host_implementation/**"
+      - "tools/hepta-ui-windows-product-host-implementation/**"
+      - "scripts/hepta-ui-v4-windows-product-host-implementation-candidate-gate"
+      - "scripts/hepta-ui-v4-windows-product-host-implementation-candidate-gate.part*.rb"
+      - "scripts/hepta-ui-v4-windows-product-host-qualification"
+      - "scripts/hepta-ui-v4-windows-product-host-qualification.part*.rb"
+      - "scripts/hepta-ui-v4-windows-product-host-qualification-gate"
+      - "docs/ui/HEPTA_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_CANDIDATE_V1.json"
+      - "docs/ui/HEPTA_WINDOWS_PRODUCT_HOST_QUALIFICATION_V1.json"
+      - "docs/ui/schemas/hepta.ui.v4.windows-product-host-implementation-receipt.v1.schema.json"
+      - "docs/ui/schemas/hepta.ui.v4.windows-product-host-qualification.v1.schema.json"
+      - "docs/ui/schemas/hepta.ui.v4.windows-product-host-device-drill.v1.schema.json"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_23_WINDOWS_PRODUCT_HOST_QUALIFICATION_2026-08-28.md"
+      - ".github/workflows/hepta-ui-v4-windows-product-host-qualification.yml"
+  workflow_dispatch:
+    inputs:
+      review_envelope_artifact_id:
+        description: "Optional exact PASS/BLOCKED review-envelope artifact ID"
+        required: false
+        default: ""
+        type: string
+      device_receipt_artifact_id:
+        description: "Optional physical Windows device-drill artifact ID"
+        required: false
+        default: ""
+        type: string
+      require_device_qualification:
+        description: "Require final device qualification PASS"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: hepta-ui-v4-product-host-qualification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  HEPTA_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  HEPTA_FEATURE_NAME: hepta_ui_windows_system_material_v4
+
+jobs:
+  source-contract:
+    name: Product-host qualification source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+          git rev-parse 'HEAD^{tree}' > candidate-tree.txt
+      - name: Validate source, contracts, and self-tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -c scripts/hepta-ui-v4-windows-product-host-qualification
+          ruby -c scripts/hepta-ui-v4-windows-product-host-qualification-gate
+          for part in scripts/hepta-ui-v4-windows-product-host-qualification.part{1..3}.rb; do
+            test -s "$part"
+          done
+          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
+            docs/ui/HEPTA_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_CANDIDATE_V1.json \
+            docs/ui/HEPTA_WINDOWS_PRODUCT_HOST_QUALIFICATION_V1.json \
+            docs/ui/schemas/hepta.ui.v4.windows-product-host-implementation-receipt.v1.schema.json \
+            docs/ui/schemas/hepta.ui.v4.windows-product-host-qualification.v1.schema.json \
+            docs/ui/schemas/hepta.ui.v4.windows-product-host-device-drill.v1.schema.json
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-windows-product-host-qualification.yml")'
+          mkdir -p artifacts/source
+          ruby scripts/hepta-ui-v4-windows-product-host-implementation-candidate-gate \
+            | tee artifacts/source/candidate-source-gate.json
+          ruby scripts/hepta-ui-v4-windows-product-host-qualification --self-test \
+            | tee artifacts/source/qualification-self-test.json
+          ruby scripts/hepta-ui-v4-windows-product-host-qualification-gate \
+            | tee artifacts/source/qualification-source-gate.json
+          ruby -rjson -e '
+            candidate=JSON.parse(File.read("artifacts/source/candidate-source-gate.json"))
+            qualification=JSON.parse(File.read("artifacts/source/qualification-source-gate.json"))
+            abort "candidate source gate" unless candidate.fetch("status") == "PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_CANDIDATE_SOURCE_ONLY"
+            abort "qualification source gate" unless qualification.fetch("status") == "PASS_WINDOWS_PRODUCT_HOST_QUALIFICATION_SOURCE_ONLY"
+            [candidate, qualification].each do |receipt|
+              receipt.each do |key, value|
+                abort "source authority escaped: #{key}" if key.to_s.match?(/authority|product_bound|system_material|release|promotion/) && value == true
+              end
+            end
+          '
+          printf '%s\n' "$HEPTA_CANDIDATE_SHA" > artifacts/source/candidate-commit.txt
+          cp candidate-tree.txt artifacts/source/candidate-tree.txt
+      - name: Upload source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-product-host-qualification-source-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/source
+          if-no-files-found: error
+          retention-days: 14
+
+  compile-contract:
+    name: Product-host candidate ${{ matrix.mode }} (${{ matrix.os }})
+    needs: source-contract
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            mode: default-off
+            feature_enabled: "false"
+            cargo_args: "--no-default-features"
+          - os: ubuntu-latest
+            mode: explicit-feature
+            feature_enabled: "true"
+            cargo_args: "--no-default-features --features hepta_ui_windows_system_material_v4"
+          - os: windows-latest
+            mode: default-off
+            feature_enabled: "false"
+            cargo_args: "--no-default-features"
+          - os: windows-latest
+            mode: explicit-feature
+            feature_enabled: "true"
+            cargo_args: "--no-default-features --features hepta_ui_windows_system_material_v4"
+          - os: macos-latest
+            mode: default-off
+            feature_enabled: "false"
+            cargo_args: "--no-default-features"
+          - os: macos-latest
+            mode: explicit-feature
+            feature_enabled: "true"
+            cargo_args: "--no-default-features --features hepta_ui_windows_system_material_v4"
+    env:
+      HEPTA_PLATFORM: ${{ matrix.os }}
+      HEPTA_MODE: ${{ matrix.mode }}
+      HEPTA_FEATURE_ENABLED: ${{ matrix.feature_enabled }}
+      HEPTA_CARGO_ARGS: ${{ matrix.cargo_args }}
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+      - name: Install Rust 1.88
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Format, compile, and test isolated candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          read -r -a cargo_args <<< "$HEPTA_CARGO_ARGS"
+          manifest=tools/hepta-ui-windows-product-host-implementation/Cargo.toml
+          cargo fmt --manifest-path "$manifest" -- --check
+          cargo check --manifest-path "$manifest" --all-targets "${cargo_args[@]}"
+          cargo test --manifest-path "$manifest" "${cargo_args[@]}" -- --nocapture
+      - name: Write candidate compile receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/compile
+          export HEPTA_CANDIDATE_TREE="$(git rev-parse 'HEAD^{tree}')"
+          ruby -rjson -e '
+            false_wiring={
+              "productCargoFeatureDeclared"=>false,
+              "productModuleRegistered"=>false,
+              "productLifecycleWired"=>false,
+              "automaticBindingAllowed"=>false,
+              "implementationApproved"=>false,
+              "productHostMayBind"=>false,
+              "productBound"=>false,
+              "transientSystemMaterialBound"=>false,
+              "completeProfileBound"=>false,
+              "systemMaterialBound"=>false,
+              "nativeProductRuntime"=>false,
+              "deviceValidation"=>false
+            }
+            payload={
+              "schema"=>"hepta.ui.v4.windows-product-host-candidate-compile.v1",
+              "status"=>"PASS_WINDOWS_PRODUCT_HOST_CANDIDATE_COMPILE",
+              "candidate"=>{"commit"=>ENV.fetch("HEPTA_CANDIDATE_SHA"),"tree"=>ENV.fetch("HEPTA_CANDIDATE_TREE")},
+              "platform"=>ENV.fetch("HEPTA_PLATFORM"),
+              "mode"=>ENV.fetch("HEPTA_MODE"),
+              "feature"=>{"name"=>ENV.fetch("HEPTA_FEATURE_NAME"),"enabled"=>ENV.fetch("HEPTA_FEATURE_ENABLED")=="true"},
+              "qualification"=>{"fmt"=>true,"check"=>true,"tests"=>true}.merge(false_wiring),
+              "authority"=>{"network"=>false,"mutation"=>false,"effect"=>false,"liveAdapter"=>false,"production"=>false,"operatorAcceptance"=>false,"promotion"=>false,"release"=>false}
+            }
+            File.write("artifacts/compile/receipt.json",JSON.pretty_generate(payload)+"\n")
+          '
+      - name: Upload candidate compile receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-product-host-compile-${{ matrix.mode }}-${{ matrix.os }}-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/compile/receipt.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  qualification-index:
+    name: Windows product-host implementation qualification
+    if: always()
+    needs:
+      - source-contract
+      - compile-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REVIEW_ARTIFACT_ID: ${{ inputs.review_envelope_artifact_id || '' }}
+      DEVICE_ARTIFACT_ID: ${{ inputs.device_receipt_artifact_id || '' }}
+      REQUIRE_DEVICE: ${{ inputs.require_device_qualification || false }}
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEPTA_CANDIDATE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEPTA_CANDIDATE_SHA"
+      - name: Download same-run source and compile artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: hepta-ui-v4-product-host-*-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: artifacts/current
+      - name: Download optional governed evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/external/review artifacts/external/device archives
+          download_artifact() {
+            local artifact_id="$1"
+            local destination="$2"
+            local label="$3"
+            [[ "$artifact_id" =~ ^[1-9][0-9]*$ ]]
+            curl --fail --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id" \
+              > "archives/$label.metadata.json"
+            ARTIFACT_ID="$artifact_id" ruby -rjson -e '
+              metadata=JSON.parse(File.read("archives/#{ARGV.fetch(0)}.metadata.json"))
+              abort "artifact id drift" unless metadata.fetch("id").to_i == ENV.fetch("ARTIFACT_ID").to_i
+              abort "artifact expired" if metadata.fetch("expired")
+              abort "unsafe artifact name" unless metadata.fetch("name").match?(/\A[A-Za-z0-9_.-]+\z/)
+              puts metadata.fetch("archive_download_url")
+            ' "$label" > "archives/$label.url"
+            curl --fail --location --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$(cat "archives/$label.url")" > "archives/$label.zip"
+            unzip -Z1 "archives/$label.zip" > "archives/$label.entries"
+            LABEL="$label" ruby -e '
+              File.readlines("archives/#{ENV.fetch("LABEL")}.entries",chomp:true).each do |entry|
+                abort "empty archive entry" if entry.empty?
+                abort "absolute archive entry" if entry.start_with?("/","\\")
+                abort "drive-qualified archive entry" if entry.match?(/\A[A-Za-z]:/)
+                parts=entry.tr("\\","/").split("/")
+                abort "path traversal archive entry" if parts.include?("..")
+              end
+            '
+            unzip -q "archives/$label.zip" -d "$destination"
+          }
+          if [[ -n "$REVIEW_ARTIFACT_ID" ]]; then
+            download_artifact "$REVIEW_ARTIFACT_ID" artifacts/external/review review
+          fi
+          if [[ -n "$DEVICE_ARTIFACT_ID" ]]; then
+            download_artifact "$DEVICE_ARTIFACT_ID" artifacts/external/device device
+          fi
+      - name: Resolve governed evidence paths
+        id: evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          find_status() {
+            local root="$1"
+            shift
+            ROOT="$root" STATUSES="$(IFS=,; echo "$*")" ruby -rjson -e '
+              root=ENV.fetch("ROOT")
+              statuses=ENV.fetch("STATUSES").split(",")
+              matches=Dir.glob(File.join(root,"**","*.json")).select do |path|
+                begin
+                  statuses.include?(JSON.parse(File.read(path))["status"])
+                rescue JSON::ParserError
+                  false
+                end
+              end
+              abort "evidence count=#{matches.length}" unless matches.length <= 1
+              puts(matches.first.to_s)
+            '
+          }
+          review_path="$(find_status artifacts/external/review PASS_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_ENVELOPE BLOCKED_WINDOWS_RUNTIME_PROVENANCE_REQUIRED)"
+          device_path="$(find_status artifacts/external/device PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_DEVICE_DRILL)"
+          echo "review_path=$review_path" >> "$GITHUB_OUTPUT"
+          echo "device_path=$device_path" >> "$GITHUB_OUTPUT"
+      - name: Produce qualification receipt
+        id: qualify
+        continue-on-error: true
+        shell: bash
+        env:
+          REVIEW_PATH: ${{ steps.evidence.outputs.review_path }}
+          DEVICE_PATH: ${{ steps.evidence.outputs.device_path }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/qualification
+          source_receipt="$(find artifacts/current -name candidate-source-gate.json -type f -print -quit)"
+          test -n "$source_receipt"
+          candidate_tree="$(git rev-parse 'HEAD^{tree}')"
+          args=(
+            --candidate-commit "$HEPTA_CANDIDATE_SHA"
+            --candidate-tree "$candidate_tree"
+            --source-receipt "$source_receipt"
+            --compile-receipts artifacts/current
+            --output artifacts/qualification/qualification.json
+          )
+          if [[ -n "$REVIEW_PATH" ]]; then args+=(--review-envelope "$REVIEW_PATH"); fi
+          if [[ -n "$DEVICE_PATH" ]]; then args+=(--device-receipt "$DEVICE_PATH"); fi
+          ruby scripts/hepta-ui-v4-windows-product-host-qualification "${args[@]}"
+      - name: Validate qualification boundary
+        if: always()
+        shell: bash
+        env:
+          QUALIFY_OUTCOME: ${{ steps.qualify.outcome }}
+        run: |
+          set -euo pipefail
+          ruby -rjson -e '
+            path="artifacts/qualification/qualification.json"
+            abort "qualification receipt missing" unless File.file?(path)
+            receipt=JSON.parse(File.read(path))
+            abort "candidate drift" unless receipt.dig("candidate","commit") == ENV.fetch("HEPTA_CANDIDATE_SHA")
+            abort "authority escaped" unless receipt.fetch("authority").values.all? { |value| value == false }
+            %w[productCargoFeatureDeclared productModuleRegistered productLifecycleWired automaticBindingAllowed implementationApproved productHostMayBind productBound transientSystemMaterialBound completeProfileBound systemMaterialBound nativeProductRuntime deviceValidation].each do |key|
+              abort "#{key} escaped" unless receipt.dig("qualification",key) == false
+            end
+            allowed=%w[BLOCKED_WINDOWS_PRODUCT_HOST_REVIEW_ENVELOPE_REQUIRED BLOCKED_WINDOWS_PRODUCT_HOST_DEVICE_QUALIFICATION_REQUIRED PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION]
+            if ENV.fetch("QUALIFY_OUTCOME") == "success"
+              abort "unexpected qualification status" unless allowed.include?(receipt.fetch("status"))
+              if ENV.fetch("REQUIRE_DEVICE") == "true"
+                abort "device qualification required" unless receipt.fetch("status") == "PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION"
+              end
+            else
+              abort "missing fail-closed status" unless receipt.fetch("status") == "FAIL_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION"
+              abort "failure list missing" unless receipt.fetch("failures").is_a?(Array) && !receipt.fetch("failures").empty?
+              exit 1
+            end
+          '
+      - name: Upload qualification receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-windows-product-host-qualification-${{ env.HEPTA_CANDIDATE_SHA }}
+          path: |
+            artifacts/qualification/qualification.json
+            archives/*.metadata.json
+          if-no-files-found: warn
+          retention-days: 14
