@@ -97,7 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/hepta-servo-exact-source-acceptance-pointer-v1.py contract \
-            --policy docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json \
+            --policy "$GITHUB_WORKSPACE/docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json" \
             2>&1 | tee "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/contract.log"
           python3 scripts/verify-hepta-servo-exact-source-acceptance-pointer-v1.py \
             2>&1 | tee "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/static-verifier.log"
