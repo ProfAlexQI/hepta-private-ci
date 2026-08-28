@@ -1,9 +1,6 @@
 name: Hepta P1 source snapshot once
 
 on:
-  push:
-    branches:
-      - codex/hepta-architecture-gap-closure-p1-20260829
   workflow_dispatch:
 
 permissions:
