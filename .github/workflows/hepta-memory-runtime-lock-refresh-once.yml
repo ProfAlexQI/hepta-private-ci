@@ -1,0 +1,224 @@
+name: Hepta one-shot Memory runtime lock refresh
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-convergence-p0-2-20260828
+    paths:
+      - ".github/workflows/hepta-memory-runtime-lock-refresh-once.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-memory-runtime-lock-refresh-once
+  cancel-in-progress: false
+
+env:
+  BRANCH_NAME: codex/hepta-architecture-convergence-p0-2-20260828
+  SOURCE_HEAD: ${{ github.sha }}
+
+jobs:
+  refresh-lock-and-self-delete:
+    name: Refresh the exact Memory runtime lock graph
+    if: ${{ github.repository == 'ProfAlexQI/hepta-private-ci' }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact lock-refresh head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify exact clean input identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$BRANCH_NAME"
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+          git diff --exit-code
+          git diff --cached --exit-code
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+
+      - name: Snapshot and verify the stale lock boundary
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp Cargo.lock "$RUNNER_TEMP/Cargo.lock.before"
+          python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          lock = tomllib.loads(Path("Cargo.lock").read_text(encoding="utf-8"))
+          packages = {package["name"]: package for package in lock["package"]}
+          runtime = packages.get("codex-hepta-memory-runtime")
+          agentd = packages.get("codex-hepta-agentd")
+          if agentd is None:
+              raise SystemExit("codex-hepta-agentd is missing from Cargo.lock")
+          agentd_dependencies = set(agentd.get("dependencies", []))
+          if runtime is not None or "codex-hepta-memory-runtime" in agentd_dependencies:
+              print("Memory runtime lock graph is already materialized; validation remains idempotent.")
+          else:
+              print("Confirmed stale Memory runtime lock boundary.")
+          PY
+
+      - name: Let Cargo materialize the missing workspace lock edges
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --format-version 1 --no-deps > /dev/null
+
+      - name: Prove the lock delta is exactly scoped
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          before = tomllib.loads(Path(os.environ["RUNNER_TEMP"] + "/Cargo.lock.before").read_text(encoding="utf-8"))
+          after = tomllib.loads(Path("Cargo.lock").read_text(encoding="utf-8"))
+
+          def package_map(document):
+              packages = document.get("package", [])
+              result = {}
+              for package in packages:
+                  name = package["name"]
+                  if name in result:
+                      raise SystemExit(f"duplicate package name unsupported by scoped proof: {name}")
+                  result[name] = package
+              return result
+
+          before_top = {key: value for key, value in before.items() if key != "package"}
+          after_top = {key: value for key, value in after.items() if key != "package"}
+          if before_top != after_top:
+              raise SystemExit("Cargo changed lock metadata outside package records")
+
+          before_packages = package_map(before)
+          after_packages = package_map(after)
+          runtime_name = "codex-hepta-memory-runtime"
+          agentd_name = "codex-hepta-agentd"
+
+          before_runtime = before_packages.pop(runtime_name, None)
+          after_runtime = after_packages.pop(runtime_name, None)
+          before_agentd = before_packages.pop(agentd_name, None)
+          after_agentd = after_packages.pop(agentd_name, None)
+
+          if before_agentd is None or after_agentd is None:
+              raise SystemExit("Agentd lock record is missing")
+          if before_packages != after_packages:
+              changed = sorted(
+                  name
+                  for name in set(before_packages) | set(after_packages)
+                  if before_packages.get(name) != after_packages.get(name)
+              )
+              raise SystemExit(f"Cargo changed unrelated lock packages: {changed}")
+
+          def without_dependencies(package):
+              return {key: value for key, value in package.items() if key != "dependencies"}
+
+          if without_dependencies(before_agentd) != without_dependencies(after_agentd):
+              raise SystemExit("Cargo changed Agentd lock metadata beyond dependencies")
+
+          before_agentd_deps = set(before_agentd.get("dependencies", []))
+          after_agentd_deps = set(after_agentd.get("dependencies", []))
+          if after_agentd_deps - before_agentd_deps != {runtime_name}:
+              raise SystemExit(
+                  "Agentd lock dependency delta is not the exact Memory runtime edge: "
+                  f"added={sorted(after_agentd_deps - before_agentd_deps)}"
+              )
+          if before_agentd_deps - after_agentd_deps:
+              raise SystemExit(
+                  f"Cargo removed Agentd lock dependencies: {sorted(before_agentd_deps - after_agentd_deps)}"
+              )
+
+          if after_runtime is None:
+              raise SystemExit("Cargo did not materialize the Memory runtime package")
+          if before_runtime is not None and before_runtime != after_runtime:
+              raise SystemExit("Cargo rewrote an existing Memory runtime package unexpectedly")
+
+          expected_runtime_dependencies = {
+              "anyhow",
+              "codex-hepta-contracts",
+              "codex-hepta-memory",
+              "fs2",
+              "serde",
+              "serde_json",
+              "tempfile",
+              "thiserror",
+              "tracing",
+          }
+          actual_runtime_dependencies = {
+              dependency.split(" ", 1)[0]
+              for dependency in after_runtime.get("dependencies", [])
+          }
+          if actual_runtime_dependencies != expected_runtime_dependencies:
+              raise SystemExit(
+                  "Memory runtime lock dependencies differ from the bounded crate contract: "
+                  f"expected={sorted(expected_runtime_dependencies)} "
+                  f"actual={sorted(actual_runtime_dependencies)}"
+              )
+          if after_runtime.get("version") != "0.0.0":
+              raise SystemExit(f"unexpected Memory runtime package version: {after_runtime.get('version')}")
+          PY
+          git diff --check -- Cargo.lock
+
+      - name: Verify the refreshed graph under --locked
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --locked --format-version 1 --no-deps > /dev/null
+          cargo check --locked \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-agentd
+
+      - name: Self-delete and enforce the exact changed-path boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/hepta-memory-runtime-lock-refresh-once.yml
+          python3 - <<'PY'
+          import subprocess
+
+          expected = {
+              "codex-rs/Cargo.lock",
+              ".github/workflows/hepta-memory-runtime-lock-refresh-once.yml",
+          }
+          changed = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", "--diff-filter=ACMRTUXBD"],
+                  text=True,
+              ).splitlines()
+          )
+          if changed != expected:
+              raise SystemExit(
+                  "lock refresh escaped exact allowlist: "
+                  f"missing={sorted(expected - changed)} unexpected={sorted(changed - expected)}"
+              )
+          PY
+          git diff --check
+
+      - name: Commit and fast-forward the verified lock graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A -- \
+            codex-rs/Cargo.lock \
+            .github/workflows/hepta-memory-runtime-lock-refresh-once.yml
+          git diff --cached --check
+          git config user.name "Hepta Memory runtime lock refresher"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git commit -m "fix(workspace): bind Memory runtime into Cargo.lock [hepta-lock-refresh]"
+          git fetch origin "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
+          test "$(git rev-parse "origin/$BRANCH_NAME")" = "$SOURCE_HEAD"
+          git push origin "HEAD:refs/heads/$BRANCH_NAME"
