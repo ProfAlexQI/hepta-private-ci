@@ -1,0 +1,101 @@
+name: C1 Rustfmt and lock closure Windows v1
+
+on:
+  push:
+    branches:
+      - qualification/c1-fmt-lock-windows-v1-20260829
+
+permissions:
+  contents: write
+
+concurrency:
+  group: c1-fmt-lock-windows-v1
+  cancel-in-progress: true
+
+jobs:
+  regenerate-and-verify:
+    name: Regenerate Rust 1.95 format and Cargo lock
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      EXPECTED_HEAD: 2d4ffd2559e4472bd8690d46286317a58a85fa22
+      HEAD_REF: codex/hepta-vnext-plan-browser-c0-c3-20260827
+    steps:
+      - name: Enable Git long paths before checkout
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: git config --global core.longpaths true
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: 2d4ffd2559e4472bd8690d46286317a58a85fa22
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Generate, verify, and atomically push deterministic outputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $localHead = (git rev-parse HEAD).Trim()
+          if ($localHead -ne $env:EXPECTED_HEAD) {
+            throw "checkout head $localHead does not match $env:EXPECTED_HEAD"
+          }
+          git fetch --no-tags origin "refs/heads/${env:HEAD_REF}:refs/remotes/origin/${env:HEAD_REF}"
+          $remoteHead = (git rev-parse "refs/remotes/origin/$env:HEAD_REF").Trim()
+          if ($remoteHead -ne $env:EXPECTED_HEAD) {
+            throw "remote head moved before generation: $remoteHead"
+          }
+          if (@(git status --porcelain).Count -ne 0) {
+            throw "worktree is dirty before generation"
+          }
+
+          Push-Location codex-rs
+          cargo fmt --all
+          cargo test --no-default-features -p codex-hepta-contracts --features authbus-local-qualification --tests --no-run
+          cargo fmt --all -- --check
+          cargo metadata --locked --no-deps --format-version 1 | Out-Null
+          cargo test --locked --no-default-features -p codex-hepta-contracts --features authbus-local-qualification --tests
+          cargo check --locked --no-default-features -p codex-hepta-contracts --features authbus-local-qualification --all-targets
+          cargo clippy --locked --no-default-features -p codex-hepta-contracts --features authbus-local-qualification --all-targets -- -D warnings
+          Pop-Location
+
+          git diff --check
+          $changed = @(git diff --name-only)
+          if ($changed.Count -eq 0) {
+            throw "Rust 1.95 generation produced no changes"
+          }
+          foreach ($path in $changed) {
+            if ($path -eq "codex-rs/Cargo.lock") { continue }
+            if ($path -match '^codex-rs/.+\.rs$') { continue }
+            throw "unexpected generated path: $path"
+          }
+
+          git add -- codex-rs
+          $staged = @(git diff --cached --name-only)
+          if ($staged.Count -eq 0) {
+            throw "generation produced no staged changes"
+          }
+          foreach ($path in $staged) {
+            if ($path -eq "codex-rs/Cargo.lock") { continue }
+            if ($path -match '^codex-rs/.+\.rs$') { continue }
+            throw "unexpected staged path: $path"
+          }
+          if (@(git diff --name-only).Count -ne 0) {
+            throw "tracked changes remain unstaged"
+          }
+
+          git config user.name "Hepta Qualification Bot"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git commit -m "fix(hepta): refresh Rust 1.95 format and lock"
+
+          git fetch --no-tags origin "refs/heads/${env:HEAD_REF}:refs/remotes/origin/${env:HEAD_REF}"
+          $remoteAfter = (git rev-parse "refs/remotes/origin/$env:HEAD_REF").Trim()
+          if ($remoteAfter -ne $env:EXPECTED_HEAD) {
+            throw "remote head moved after validation: $remoteAfter"
+          }
+          git push origin "HEAD:refs/heads/$env:HEAD_REF"
