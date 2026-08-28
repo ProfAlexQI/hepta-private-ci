@@ -1,0 +1,203 @@
+name: Hepta Intelligence Q0 strict Clippy repair v5
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-plan-v3-20260828
+    paths:
+      - .github/workflows/hepta-intelligence-q0-clippy-fix-v5.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-q0-clippy-fix-v5-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
+  EXPECTED_PARENT: cfdc46652b5fadb2ce7a45d4ca9af9ae3d1dd639
+  PATCH_FILE: .github/patches/hepta-intelligence-q0-compile-fix-v1.patch
+  ARTIFACT_DIR: artifacts/hepta-intelligence-q0-clippy-fix-v5
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_BUILD_JOBS: 4
+  RUST_BACKTRACE: 1
+
+jobs:
+  generate-and-prove:
+    name: Generate minimal Rust 1.95 Clippy repair without source writeback
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact v5 candidate
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Prove exact identity and fail-closed authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          test "$(uname -m)" = "aarch64"
+          test -f "$PATCH_FILE"
+          mkdir -p "$ARTIFACT_DIR"
+          printf '{"head":"%s","tree":"%s","parent":"%s","host":"aarch64-unknown-linux-gnu","runtime_authority":false,"source_writeback":false}\n' \
+            "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" "$(git rev-parse HEAD^)" \
+            > "$ARTIFACT_DIR/identity.json"
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Verify compiler, host and lock
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          expected=$(python3 - <<'PY'
+          import pathlib
+          import tomllib
+          value = tomllib.loads(pathlib.Path("rust-toolchain.toml").read_text())
+          print(value["toolchain"]["channel"])
+          PY
+          )
+          test "$expected" = "1.95.0"
+          test "$(rustc --version | awk '{print $2}')" = "$expected"
+          test "$(rustc -vV | awk '/^host:/ {print $2}')" = "aarch64-unknown-linux-gnu"
+          test -s Cargo.lock
+
+      - name: Reconstruct the already-proven nine-file compile repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check "$PATCH_FILE"
+          git apply "$PATCH_FILE"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs")
+          text = path.read_text(encoding="utf-8")
+          marker = "#[tokio::test]\nasync fn tampered_evidence_digest_is_rejected_on_reopen() {"
+          prefix, separator, test = text.partition(marker)
+          assert separator == marker
+          assert test.count(".execute(&store.pool)") == 3
+          write_end = "        .await\n        .expect(\"write\");\n\n"
+          assert test.count(write_end) == 1
+          connection = (
+              "    let mut tamper_connection = store\n"
+              "        .pool\n"
+              "        .acquire()\n"
+              "        .await\n"
+              "        .expect(\"acquire tamper connection\");\n\n"
+          )
+          test = test.replace(write_end, write_end + connection, 1)
+          test = test.replace(".execute(&store.pool)", ".execute(&mut *tamper_connection)")
+          assert test.count(".execute(&mut *tamper_connection)") == 3
+          assert test.count("    drop(store);\n") == 1
+          test = test.replace(
+              "    drop(store);\n",
+              "    drop(tamper_connection);\n    drop(store);\n",
+              1,
+          )
+          path.write_text(prefix + separator + test, encoding="utf-8")
+          PY
+          files=(
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs
+            codex-rs/hepta-memory/src/intelligence_mutation_state.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs
+            codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs
+            codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs
+          )
+          rustfmt --edition 2024 --config skip_children=true "${files[@]}"
+          rustfmt --edition 2024 --check --config skip_children=true "${files[@]}"
+          git diff --check
+
+      - name: Apply machine-applicable Clippy fixes
+        id: clippy_fix
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set +e
+          cargo clippy --fix --locked -p codex-hepta-memory --all-targets --allow-dirty --allow-staged -- -D warnings \
+            2>&1 | tee "../$ARTIFACT_DIR/clippy-fix.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "../$ARTIFACT_DIR/clippy-fix.exit"
+          exit 0
+
+      - name: Format all Rust files changed by the repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(git diff --name-only -- '*.rs')
+          test "${#files[@]}" -gt 0
+          rustfmt --edition 2024 --config skip_children=true "${files[@]}"
+          rustfmt --edition 2024 --check --config skip_children=true "${files[@]}"
+          git diff --check
+
+      - name: Run strict Clippy after automatic repair
+        id: strict_clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set +e
+          cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings \
+            2>&1 | tee "../$ARTIFACT_DIR/clippy-strict.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "../$ARTIFACT_DIR/clippy-strict.exit"
+          exit 0
+
+      - name: Run full memory tests after automatic repair
+        id: full_tests
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set +e
+          cargo test --locked -p codex-hepta-memory \
+            2>&1 | tee "../$ARTIFACT_DIR/test-full-memory.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "../$ARTIFACT_DIR/test-full-memory.exit"
+          exit 0
+
+      - name: Capture exact repair surface and source snapshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --name-only | sort > "$ARTIFACT_DIR/changed-files.txt"
+          git diff --stat > "$ARTIFACT_DIR/repair-stat.txt"
+          git diff --binary > "$ARTIFACT_DIR/repair.patch"
+          mkdir -p "$ARTIFACT_DIR/sources"
+          while IFS= read -r path; do
+            test -n "$path"
+            mkdir -p "$ARTIFACT_DIR/sources/$(dirname "$path")"
+            cp "$path" "$ARTIFACT_DIR/sources/$path"
+          done < "$ARTIFACT_DIR/changed-files.txt"
+
+      - name: Upload v5 evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hepta-intelligence-q0-clippy-fix-v5-${{ github.sha }}
+          path: artifacts/hepta-intelligence-q0-clippy-fix-v5/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Fail closed until strict Clippy and tests are clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat "$ARTIFACT_DIR/clippy-strict.exit")" = "0"
+          test "$(cat "$ARTIFACT_DIR/test-full-memory.exit")" = "0"
