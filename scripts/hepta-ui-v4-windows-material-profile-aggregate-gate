@@ -1,0 +1,127 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  source: root.join("apps/hepta-native/src/shared/hepta_windows_material_profile_aggregate.rs"),
+  shared: root.join("apps/hepta-native/src/shared/mod.rs"),
+  lifecycle: root.join("apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs"),
+  contract: root.join("docs/ui/HEPTA_WINDOWS_MATERIAL_PROFILE_AGGREGATE_V1.json"),
+  status: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_14_WINDOWS_PROFILE_AGGREGATE_2026-08-28.md"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-windows-material-profile-aggregate.yml")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+
+def emit(checks, status)
+  failures = checks.reject { |_key, value| value }.keys
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.windows-material-profile-aggregate-source-gate.v1",
+    status: status,
+    source_implemented: failures.empty?,
+    native_compile_validation: false,
+    windows_compile_validation: false,
+    root_runtime_receipt_validation: false,
+    transient_runtime_receipt_validation: false,
+    dual_receipt_runtime_validation: false,
+    product_integration_eligible: false,
+    product_bound: false,
+    transient_system_material_binding: false,
+    complete_profile_binding: false,
+    system_material_binding: false,
+    native_product_runtime_validation: false,
+    device_validation: false,
+    production_authority: false,
+    effect_authority: false,
+    live_adapter_authority: false,
+    operator_acceptance: false,
+    promotion: false,
+    release: false,
+    checks: checks,
+    failures: failures
+  )
+  exit(failures.empty? ? 0 : 1)
+end
+
+emit(checks, "FAIL_MISSING_INPUT") unless checks.values.all?
+
+source = files.fetch(:source).read
+shared = files.fetch(:shared).read
+lifecycle = files.fetch(:lifecycle).read
+contract = JSON.parse(files.fetch(:contract).read)
+workflow = files.fetch(:workflow).read
+
+checks["shared.module_declared"] =
+  shared.include?("pub mod hepta_windows_material_profile_aggregate;")
+checks["shared.no_script_registration"] =
+  !shared.include?("hepta_windows_material_profile_aggregate::script_mod")
+checks["lifecycle.product_path_unbound"] =
+  !lifecycle.include?("HeptaWindowsMaterialProfileAggregateReceipt") &&
+  !lifecycle.include?("aggregate_windows_material_profile")
+
+checks["source.root_receipt_exact"] = %w[
+  VerifiedPersistentChromeWithBackdropReadback BackdropOnly WindowsDwm
+  WindowBackdrop::Mica RejectedRootReceipt RejectedRootIdentity
+].all? { |term| source.include?(term) }
+checks["source.transient_identity_and_order"] = %w[
+  VerifiedAcrylicWithBackdropReadback VerifiedSolidRollbackWithBackdropReadback
+  RejectedTransientParent RejectedTransientIdentity RejectedSequenceOrder
+  RejectedDestroyedEvidence
+].all? { |term| source.include?(term) }
+checks["source.separate_hwnd"] =
+  source.include?("transient.transient.hwnd == root_identity.hwnd") &&
+  source.include?("transient.destroyed != transient.transient")
+checks["source.authority_contained"] =
+  source.include?("RejectedAuthorityEscape") &&
+  source.include?("ReadyForProductIntegrationReview") &&
+  source.include?("eligible_for_product_integration_review: accepted")
+checks["source.no_product_binding"] = %w[
+  HEPTA_WINDOWS_PROFILE_AGGREGATE_RUNTIME_VALIDATED
+  HEPTA_WINDOWS_PROFILE_PRODUCT_INTEGRATION_ELIGIBLE
+  HEPTA_WINDOWS_PROFILE_PRODUCT_BOUND
+  HEPTA_WINDOWS_PROFILE_TRANSIENT_SYSTEM_MATERIAL_BOUND
+  HEPTA_WINDOWS_PROFILE_COMPLETE_PROFILE_BOUND
+  HEPTA_WINDOWS_PROFILE_SYSTEM_MATERIAL_BOUND
+  HEPTA_WINDOWS_PROFILE_NATIVE_PRODUCT_RUNTIME
+  HEPTA_WINDOWS_PROFILE_DEVICE_VALIDATED
+  HEPTA_WINDOWS_PROFILE_PRODUCTION_AUTHORITY
+  HEPTA_WINDOWS_PROFILE_EFFECT_AUTHORITY
+  HEPTA_WINDOWS_PROFILE_LIVE_ADAPTER_AUTHORITY
+  HEPTA_WINDOWS_PROFILE_OPERATOR_ACCEPTANCE
+  HEPTA_WINDOWS_PROFILE_PROMOTION
+  HEPTA_WINDOWS_PROFILE_RELEASE
+].all? { |name| source.include?("#{name}: bool = false") }
+checks["source.focused_tests"] = %w[
+  exact_dual_receipt_set_is_review_eligible_but_unbound
+  reused_root_hwnd_or_missing_destroy_is_rejected
+  sequence_and_authority_escape_are_rejected
+].all? { |term| source.include?(term) }
+checks["source.no_unsafe_or_ffi"] =
+  !source.match?(/\bunsafe\b/) && !source.match?(/extern\s+"(?:C|system)"/)
+
+checks["contract.identity"] =
+  contract["schema"] == "hepta.ui.windows-material-profile-aggregate.v1" &&
+  contract["candidateBranch"] == "codex/ui-v4-windows-material-profile-aggregate-20260828" &&
+  contract["baseCommit"] == "f34d13455ee114907f2756dd9ea96d67d6dd648e"
+checks["contract.source_only_boundary"] =
+  contract.dig("qualification", "sourceImplemented") == true &&
+  contract.fetch("qualification").reject { |key, _| key == "sourceImplemented" }.values.none? &&
+  contract.fetch("authority").values.none?
+
+checks["workflow.source_and_compile"] =
+  workflow.include?("hepta-ui-v4-windows-material-profile-aggregate-gate") &&
+  %w[ubuntu-latest windows-latest macos-latest].all? { |os| workflow.include?(os) } &&
+  workflow.include?("hepta_windows_material_profile_aggregate::tests")
+checks["workflow.read_only_no_release"] =
+  workflow.include?("permissions:") && workflow.include?("contents: read") &&
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+
+emit(
+  checks,
+  checks.values.all? ? "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE_SOURCE_ONLY" :
+    "FAIL_WINDOWS_MATERIAL_PROFILE_AGGREGATE_SOURCE"
+)
