@@ -17,6 +17,9 @@ mod intelligence_mutation_journal;
 #[allow(dead_code)]
 #[path = "intelligence_mutation_shadow_host.rs"]
 mod intelligence_mutation_shadow_host;
+#[allow(dead_code)]
+#[path = "hybrid_retrieval_v2.rs"]
+mod hybrid_retrieval_v2;
 
 pub(crate) fn frame_part(hasher: &mut Sha256, part: &[u8]) {
     hasher.update((part.len() as u64).to_be_bytes());
