@@ -14,7 +14,7 @@ env:
   MANIFEST: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
   PACKAGE: codex-hepta-authbus-p0-3-qualification
   CRATE_ROOT: codex-rs/hepta-authbus-p0-3-qualification
-  EXPECTED_PARENT: 451ab37520a341ebfa69a2d28784e39e5772ecc4
+  EXPECTED_PARENT: ec4996a9327c0257e8f38f72cf1523532f35890d
 
 jobs:
   bootstrap:
@@ -36,181 +36,13 @@ jobs:
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           test "$(git rev-parse HEAD^)" = "${EXPECTED_PARENT}"
 
-      - name: Apply deterministic replay and invariant hardening
+      - name: Apply deterministic P0.3 hardening
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path("codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs")
-          text = path.read_text(encoding="utf-8")
-
-          old = '''        if let Some(terminal_request) = self
-              .terminal_reconcile_by_permit
-              .get(&request.permit_id)
-          {
-              if terminal_request == &request_key {
-                  let receipt = self
-                      .reconcile_history
-                      .get(&request_key)
-                      .cloned()
-                      .ok_or(P03SchedulerError::CorruptState)?;
-                  return Ok(P03ReconcileDisposition::AlreadyPresent(receipt));
-              }
-              return Err(P03SchedulerError::TerminalImmutable);
-          }
-          if let Some(receipt) = self.reconcile_history.get(&request_key) {
-              return Ok(P03ReconcileDisposition::AlreadyPresent(receipt.clone()));
-          }
-          '''
-          new = '''        if let Some(receipt) = self.reconcile_history.get(&request_key) {
-              return Ok(P03ReconcileDisposition::AlreadyPresent(receipt.clone()));
-          }
-          if self
-              .terminal_reconcile_by_permit
-              .contains_key(&request.permit_id)
-          {
-              return Err(P03SchedulerError::TerminalImmutable);
-          }
-          '''
-          if old not in text:
-              raise SystemExit("expected reconcile replay block is absent")
-          text = text.replace(old, new, 1)
-
-          old_invariant = '''        if !self.resource.quota.can_hold(
-              CanonicalQuotaVector::default(),
-              CanonicalQuotaVector::default(),
-              self.used,
-          ) {
-          '''
-          new_invariant = '''        if !self.resource.quota.can_hold(
-              self.used,
-              self.held,
-              CanonicalQuotaVector::default(),
-          ) {
-          '''
-          if old_invariant not in text:
-              raise SystemExit("expected quota invariant block is absent")
-          text = text.replace(old_invariant, new_invariant, 1)
-          path.write_text(text, encoding="utf-8")
-          PY
-
-          cat > "${CRATE_ROOT}/tests/reconcile_history.rs" <<'RS'
-          use codex_hepta_authbus_p0_3_qualification::CanonicalQuotaLimits;
-          use codex_hepta_authbus_p0_3_qualification::CanonicalQuotaVector;
-          use codex_hepta_authbus_p0_3_qualification::P03AdmissionDisposition;
-          use codex_hepta_authbus_p0_3_qualification::P03Fence;
-          use codex_hepta_authbus_p0_3_qualification::P03LocalScheduler;
-          use codex_hepta_authbus_p0_3_qualification::P03OldPermitReconcileRequest;
-          use codex_hepta_authbus_p0_3_qualification::P03ReconcileDisposition;
-          use codex_hepta_authbus_p0_3_qualification::P03ReconcileOutcome;
-          use codex_hepta_authbus_p0_3_qualification::P03ReservationRequest;
-          use codex_hepta_authbus_p0_3_qualification::P03ResourceState;
-          use codex_hepta_authbus_p0_3_qualification::P03SchedulerResource;
-          use codex_hepta_contracts::Sha256Digest;
-
-          fn digest(label: &str) -> Sha256Digest {
-              Sha256Digest::for_bytes(label.as_bytes())
-          }
-
-          fn fence(owner_epoch: u64, generation: u64, label: &str) -> P03Fence {
-              P03Fence {
-                  authority_epoch: 7,
-                  owner_epoch,
-                  generation,
-                  fencing_token_sha256: digest(label),
-              }
-          }
-
-          fn quota() -> CanonicalQuotaVector {
-              CanonicalQuotaVector::new(1, 2, 100, 1, 100, 200)
-          }
-
-          #[test]
-          fn exact_unknown_reconcile_remains_replayable_after_terminal_settlement() {
-              let old_fence = fence(11, 21, "old");
-              let current_fence = fence(12, 22, "current");
-              let resource = P03SchedulerResource {
-                  resource_id: "resource-replay-history".to_string(),
-                  resource_sha256: digest("resource-replay-history"),
-                  fence: old_fence.clone(),
-                  quota: CanonicalQuotaLimits::known(CanonicalQuotaVector::new(
-                      10, 20, 1_000, 10, 1_000, 2_000,
-                  )),
-                  state: P03ResourceState::Available,
-              };
-              let mut scheduler = P03LocalScheduler::new(resource.clone()).expect("scheduler");
-              let request = P03ReservationRequest {
-                  request_id: "request-replay-history".to_string(),
-                  command_id: "command-replay-history".to_string(),
-                  idempotency_key: "idempotency-replay-history".to_string(),
-                  payload_sha256: digest("payload-replay-history"),
-                  policy_sha256: digest("policy-replay-history"),
-                  resource_id: resource.resource_id,
-                  resource_sha256: resource.resource_sha256,
-                  estimate: quota(),
-                  safety_margin: CanonicalQuotaVector::default(),
-                  fence: old_fence.clone(),
-                  expected_revision: scheduler.revision(),
-                  created_at_ms: 1_000,
-                  expires_at_ms: 2_000,
-              };
-              let permit = match scheduler.reserve(request).expect("reserve") {
-                  P03AdmissionDisposition::Inserted(snapshot) => snapshot.permit,
-                  P03AdmissionDisposition::AlreadyPresent(_) => panic!("first reservation"),
-              };
-              scheduler
-                  .mark_dispatch_started(
-                      &permit.permit_id,
-                      &old_fence,
-                      scheduler.revision(),
-                      1_050,
-                  )
-                  .expect("dispatch");
-              scheduler
-                  .rebind(current_fence.clone(), scheduler.revision(), 1_100)
-                  .expect("rebind");
-
-              let unknown = P03OldPermitReconcileRequest {
-                  permit_id: permit.permit_id.clone(),
-                  old_fence: old_fence.clone(),
-                  current_fence: current_fence.clone(),
-                  provider_status_receipt_sha256: digest("provider-unknown"),
-                  owner_evidence_sha256: digest("owner-unknown"),
-                  expected_revision: scheduler.revision(),
-                  observed_at_ms: 1_200,
-                  outcome: P03ReconcileOutcome::Unknown,
-              };
-              let unknown_receipt = match scheduler
-                  .reconcile_old_permit(unknown.clone())
-                  .expect("unknown")
-              {
-                  P03ReconcileDisposition::Applied(receipt) => receipt,
-                  P03ReconcileDisposition::AlreadyPresent(_) => panic!("first unknown"),
-              };
-
-              let terminal = P03OldPermitReconcileRequest {
-                  permit_id: permit.permit_id,
-                  old_fence,
-                  current_fence,
-                  provider_status_receipt_sha256: digest("provider-terminal"),
-                  owner_evidence_sha256: digest("owner-terminal"),
-                  expected_revision: scheduler.revision(),
-                  observed_at_ms: 1_300,
-                  outcome: P03ReconcileOutcome::VerifiedConsumed { actual: quota() },
-              };
-              scheduler
-                  .reconcile_old_permit(terminal)
-                  .expect("terminal settlement");
-
-              assert_eq!(
-                  scheduler.reconcile_old_permit(unknown),
-                  Ok(P03ReconcileDisposition::AlreadyPresent(unknown_receipt))
-              );
-              scheduler.verify_invariants().expect("invariants");
-          }
-          RS
+          python3 scripts/bootstrap-authbus-p0-3.py
+          python3 scripts/verify-authbus-p0-3.py | tee authbus-p0-3-bootstrap-source.json
+          grep -q 'PASS_AUTHBUS_P0_3_SOURCE_ONLY' authbus-p0-3-bootstrap-source.json
 
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
