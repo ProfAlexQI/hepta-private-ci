@@ -1,153 +1,45 @@
-name: hepta Servo worker build-input packet contract
+name: retired Hepta legacy workflow (manual provenance only)
 
 on:
-  workflow_call:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "scripts/hepta-servo-worker-build-inputs.py"
-      - "scripts/hepta-servo-worker-build-manifest.py"
-      - "scripts/verify-hepta-focused-gates.py"
-      - "scripts/verify-hepta-servo-worker-build-inputs-contract.py"
-      - "scripts/tests/test_hepta_servo_worker_build_manifest.py"
-      - "scripts/tests/test_hepta_servo_worker_build_policy.py"
-      - "docs/hepta-vnext/browser/C1_BUILD_*"
-      - "docs/hepta-vnext/browser/hepta.servo.worker_build_*"
-      - ".github/CODEOWNERS"
-      - ".github/workflows/hepta-*.yml"
-      - ".github/workflows/blocking-ci.yml"
-      - "tools/hepta-browser-c1-protocol/Cargo.toml"
-  push:
-    branches:
-      - integration/vnext-main-20260811
-      - "codex/hepta-*"
-    paths:
-      - "scripts/hepta-servo-worker-build-inputs.py"
-      - "scripts/hepta-servo-worker-build-manifest.py"
-      - "scripts/verify-hepta-focused-gates.py"
-      - "scripts/verify-hepta-servo-worker-build-inputs-contract.py"
-      - "scripts/tests/test_hepta_servo_worker_build_manifest.py"
-      - "scripts/tests/test_hepta_servo_worker_build_policy.py"
-      - "docs/hepta-vnext/browser/C1_BUILD_*"
-      - "docs/hepta-vnext/browser/hepta.servo.worker_build_*"
-      - ".github/CODEOWNERS"
-      - ".github/workflows/hepta-*.yml"
-      - ".github/workflows/blocking-ci.yml"
-      - "tools/hepta-browser-c1-protocol/Cargo.toml"
 
 permissions:
   contents: read
 
 jobs:
-  build-inputs-contract:
-    name: Worker build inputs (fixture only, no Servo build)
+  retired:
+    name: Retired legacy workflow
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-
-      - name: Initialize fail-closed posture
+      - name: Record immutable retirement posture
         shell: bash
+        env:
+          RETIREMENT_POLICY: docs/hepta-vnext/browser/CI_LEGACY_WORKFLOW_RETIREMENT_V1.json
         run: |
           set -euo pipefail
-          evidence_dir="$RUNNER_TEMP/hepta-servo-worker-build-inputs-contract"
-          mkdir -p "$evidence_dir"
-          echo "HEPTA_BUILD_INPUTS_EVIDENCE_DIR=$evidence_dir" >> "$GITHUB_ENV"
           {
-            echo "commit=$(git rev-parse HEAD)"
-            echo "tree=$(git rev-parse 'HEAD^{tree}')"
-            echo "canonical_entrypoint=scripts/hepta-servo-worker-build-inputs.py"
-            echo "canonical_servo_source_bundle_present=false"
-            echo "worker_artifact_built=false"
-            echo "runtime_qualified=false"
-            echo "network_access_during_build=false"
-            echo "machine_authority=false"
-            echo "production_caller=false"
-            echo "production_writer=false"
-            echo "effect_authority=false"
-            echo "external_effect=false"
-            echo "external_network_allowed=false"
-            echo "credential_export_allowed=false"
-            echo "operator_acceptance=false"
-            echo "promotion=false"
-            echo "release_qualified=false"
-          } > "$evidence_dir/posture.txt"
-
-      - name: Compile and verify contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m py_compile \
-            scripts/hepta-servo-worker-build-inputs.py \
-            scripts/hepta-servo-worker-build-manifest.py \
-            scripts/verify-hepta-focused-gates.py \
-            scripts/verify-hepta-servo-worker-build-inputs-contract.py \
-            scripts/tests/test_hepta_servo_worker_build_manifest.py \
-            scripts/tests/test_hepta_servo_worker_build_policy.py
-          python3 scripts/verify-hepta-focused-gates.py \
-            2>&1 | tee "$HEPTA_BUILD_INPUTS_EVIDENCE_DIR/focused-gates.log"
-          python3 scripts/verify-hepta-servo-worker-build-inputs-contract.py \
-            2>&1 | tee "$HEPTA_BUILD_INPUTS_EVIDENCE_DIR/contract.log"
-          python3 -m json.tool \
-            docs/hepta-vnext/browser/hepta.servo.worker_build_input_packet.v1.schema.json \
-            >/dev/null
-          python3 -m json.tool \
-            docs/hepta-vnext/browser/hepta.servo.worker_build_manifest.v1.schema.json \
-            >/dev/null
-
-      - name: Run build-input engine fixture tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/tests/test_hepta_servo_worker_build_manifest.py -v \
-            2>&1 | tee "$HEPTA_BUILD_INPUTS_EVIDENCE_DIR/engine-tests.log"
-
-      - name: Run strict command and environment policy tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/tests/test_hepta_servo_worker_build_policy.py -v \
-            2>&1 | tee "$HEPTA_BUILD_INPUTS_EVIDENCE_DIR/policy-tests.log"
-
-      - name: Verify clean governed paths
-        shell: bash
-        run: |
-          set -euo pipefail
-          git diff --exit-code -- \
-            scripts/hepta-servo-worker-build-inputs.py \
-            scripts/hepta-servo-worker-build-manifest.py \
-            scripts/verify-hepta-focused-gates.py \
-            scripts/verify-hepta-servo-worker-build-inputs-contract.py \
-            scripts/tests/test_hepta_servo_worker_build_manifest.py \
-            scripts/tests/test_hepta_servo_worker_build_policy.py \
-            docs/hepta-vnext/browser \
-            tools/hepta-browser-c1-protocol/Cargo.toml \
-            .github/CODEOWNERS \
-            .github/workflows \
-            2>&1 | tee "$HEPTA_BUILD_INPUTS_EVIDENCE_DIR/clean-worktree.log"
-
-      - name: Record fixture-only result
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "job_status=${{ job.status }}" >> "$HEPTA_BUILD_INPUTS_EVIDENCE_DIR/posture.txt"
-          {
-            echo "### Servo worker build-input packet contract"
+            echo "### Retired Hepta workflow"
             echo
-            echo "This job verifies deterministic build-input orchestration against local fixtures."
-            echo "It does not fetch, build, link, execute, sandbox, or qualify Servo."
-            echo
-            sed 's/^/- /' "$HEPTA_BUILD_INPUTS_EVIDENCE_DIR/posture.txt"
+            echo "- legacy_workflow_ref=$GITHUB_WORKFLOW_REF"
+            echo "- retirement_policy=$RETIREMENT_POLICY"
+            echo "- canonical_replacement=see_retirement_policy"
+            echo "- automatic_trigger=false"
+            echo "- workflow_call=false"
+            echo "- manual_provenance_only=true"
+            echo "- exact_servo_source_accepted=false"
+            echo "- worker_source_topology_accepted=false"
+            echo "- build_authorized=false"
+            echo "- servo_build_run=false"
+            echo "- servo_runtime_qualified=false"
+            echo "- runtime_authority=false"
+            echo "- production_caller=false"
+            echo "- production_writer=false"
+            echo "- effect_authority=false"
+            echo "- external_effect=false"
+            echo "- external_network_allowed=false"
+            echo "- credential_export_allowed=false"
+            echo "- operator_acceptance=false"
+            echo "- promotion=false"
+            echo "- release_qualified=false"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload fixture-only evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: hepta-servo-worker-build-inputs-contract
-          path: ${{ env.HEPTA_BUILD_INPUTS_EVIDENCE_DIR }}
-          if-no-files-found: error
-          retention-days: 7

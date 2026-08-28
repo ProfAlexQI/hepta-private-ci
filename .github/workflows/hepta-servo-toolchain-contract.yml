@@ -1,104 +1,45 @@
-name: hepta-servo toolchain contract
+name: retired Hepta legacy workflow (manual provenance only)
 
 on:
-  workflow_call:
-  pull_request:
-    paths:
-      - "scripts/hepta-servo-toolchain-receipt.py"
-      - "scripts/verify-hepta-servo-toolchain-contract.py"
-      - "scripts/verify-hepta-servo-toolchain-contract-v2.py"
-      - "scripts/tests/test_hepta_servo_toolchain_receipt.py"
-      - "docs/hepta-vnext/browser/C1_TOOLCHAIN_RECEIPT.md"
-      - "docs/hepta-vnext/browser/C1_TOOLCHAIN_PROGRESS.json"
-      - "docs/hepta-vnext/browser/hepta.servo.toolchain_receipt.v1.schema.json"
-      - ".github/workflows/hepta-servo-toolchain-contract.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  contract:
-    name: Toolchain receipt contract (fixtures only)
+  retired:
+    name: Retired legacy workflow
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-
-      - name: Initialize negative-authority posture
+      - name: Record immutable retirement posture
         shell: bash
+        env:
+          RETIREMENT_POLICY: docs/hepta-vnext/browser/CI_LEGACY_WORKFLOW_RETIREMENT_V1.json
         run: |
           set -euo pipefail
-          evidence_dir="$RUNNER_TEMP/hepta-servo-toolchain-contract"
-          mkdir -p "$evidence_dir"
           {
-            echo "hepta_commit=$(git rev-parse HEAD)"
-            echo "hepta_tree=$(git rev-parse 'HEAD^{tree}')"
-            echo "external_network=false"
-            echo "actual_toolchain_receipt=false"
-            echo "accepted_toolchain_receipt=false"
-            echo "build_run=false"
-            echo "artifact_created=false"
-            echo "servo_runtime_qualified=false"
-            echo "production_caller=false"
-            echo "production_writer=false"
-            echo "effect_authority=false"
-            echo "operator_acceptance=false"
-            echo "promotion=false"
-            echo "release_qualified=false"
-          } > "$evidence_dir/posture.txt"
-
-      - name: Compile toolchain receipt tooling
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m py_compile \
-            scripts/hepta-servo-toolchain-receipt.py \
-            scripts/verify-hepta-servo-toolchain-contract.py \
-            scripts/verify-hepta-servo-toolchain-contract-v2.py \
-            scripts/tests/test_hepta_servo_toolchain_receipt.py
-
-      - name: Run fake-binary toolchain fixture tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          evidence_dir="$RUNNER_TEMP/hepta-servo-toolchain-contract"
-          python3 scripts/tests/test_hepta_servo_toolchain_receipt.py 2>&1 | tee "$evidence_dir/unit-tests.log"
-          echo "unit_tests=passed" >> "$evidence_dir/posture.txt"
-
-      - name: Verify frozen toolchain receipt contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          evidence_dir="$RUNNER_TEMP/hepta-servo-toolchain-contract"
-          python3 scripts/verify-hepta-servo-toolchain-contract-v2.py 2>&1 | tee "$evidence_dir/static-contract.log"
-          echo "static_contract=passed" >> "$evidence_dir/posture.txt"
-
-      - name: Record result
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          evidence_dir="$RUNNER_TEMP/hepta-servo-toolchain-contract"
-          echo "job_status=${{ job.status }}" >> "$evidence_dir/posture.txt"
-          {
-            echo "### Servo toolchain receipt contract"
+            echo "### Retired Hepta workflow"
             echo
-            echo "This job uses fake local executables. It does not accept a real toolchain or run a build."
-            echo
-            sed 's/^/- /' "$evidence_dir/posture.txt"
+            echo "- legacy_workflow_ref=$GITHUB_WORKFLOW_REF"
+            echo "- retirement_policy=$RETIREMENT_POLICY"
+            echo "- canonical_replacement=see_retirement_policy"
+            echo "- automatic_trigger=false"
+            echo "- workflow_call=false"
+            echo "- manual_provenance_only=true"
+            echo "- exact_servo_source_accepted=false"
+            echo "- worker_source_topology_accepted=false"
+            echo "- build_authorized=false"
+            echo "- servo_build_run=false"
+            echo "- servo_runtime_qualified=false"
+            echo "- runtime_authority=false"
+            echo "- production_caller=false"
+            echo "- production_writer=false"
+            echo "- effect_authority=false"
+            echo "- external_effect=false"
+            echo "- external_network_allowed=false"
+            echo "- credential_export_allowed=false"
+            echo "- operator_acceptance=false"
+            echo "- promotion=false"
+            echo "- release_qualified=false"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload toolchain contract evidence
-        if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: hepta-servo-toolchain-contract
-          path: ${{ runner.temp }}/hepta-servo-toolchain-contract
-          if-no-files-found: error
-
-      - name: Check for a clean worktree
-        if: always() && !cancelled()
-        uses: ./.github/actions/check-clean-worktree

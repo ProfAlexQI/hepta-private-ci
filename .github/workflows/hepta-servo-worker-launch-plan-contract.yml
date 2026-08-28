@@ -1,132 +1,45 @@
-name: hepta Servo worker qualification launch plan contract
+name: retired Hepta legacy workflow (manual provenance only)
 
 on:
-  workflow_call:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "scripts/hepta-servo-worker-launch-plan.py"
-      - "scripts/verify-hepta-servo-worker-launch-plan.py"
-      - "scripts/tests/test_hepta_servo_worker_launch_plan.py"
-      - "docs/hepta-vnext/browser/C1_QUALIFICATION_LAUNCH_PLAN*"
-      - "docs/hepta-vnext/browser/hepta.servo.worker_launch_policy*"
-      - "docs/hepta-vnext/browser/hepta.servo.worker_qualification_launch_plan*"
-      - ".github/workflows/hepta-servo-worker-launch-plan-contract.yml"
-      - ".github/workflows/blocking-ci.yml"
-  push:
-    branches:
-      - integration/vnext-main-20260811
-      - "codex/hepta-*"
-    paths:
-      - "scripts/hepta-servo-worker-launch-plan.py"
-      - "scripts/verify-hepta-servo-worker-launch-plan.py"
-      - "scripts/tests/test_hepta_servo_worker_launch_plan.py"
-      - "docs/hepta-vnext/browser/C1_QUALIFICATION_LAUNCH_PLAN*"
-      - "docs/hepta-vnext/browser/hepta.servo.worker_launch_policy*"
-      - "docs/hepta-vnext/browser/hepta.servo.worker_qualification_launch_plan*"
-      - ".github/workflows/hepta-servo-worker-launch-plan-contract.yml"
-      - ".github/workflows/blocking-ci.yml"
 
 permissions:
   contents: read
 
 jobs:
-  launch-plan-contract:
-    name: Platform qualification launch plan (fixture only)
+  retired:
+    name: Retired legacy workflow
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-
-      - name: Initialize negative-authority posture
+      - name: Record immutable retirement posture
         shell: bash
+        env:
+          RETIREMENT_POLICY: docs/hepta-vnext/browser/CI_LEGACY_WORKFLOW_RETIREMENT_V1.json
         run: |
           set -euo pipefail
-          evidence_dir="$RUNNER_TEMP/hepta-servo-worker-launch-plan"
-          mkdir -p "$evidence_dir"
-          echo "HEPTA_SERVO_LAUNCH_PLAN_EVIDENCE=$evidence_dir" >> "$GITHUB_ENV"
           {
-            echo "commit=$(git rev-parse HEAD)"
-            echo "tree=$(git rev-parse 'HEAD^{tree}')"
-            echo "scope=synthetic_platform_launch_plan_only"
-            echo "real_plan_created=false"
-            echo "admission_state=BLOCKED_EVIDENCE_REQUIRED"
-            echo "launch_authorized=false"
-            echo "worker_executed=false"
-            echo "servo_runtime_qualified=false"
-            echo "external_network_used=false"
-            echo "machine_authority=false"
-            echo "runtime_authority=false"
-            echo "production_caller=false"
-            echo "production_writer=false"
-            echo "effect_authority=false"
-            echo "external_effect=false"
-            echo "external_network_allowed=false"
-            echo "credential_export_allowed=false"
-            echo "operator_acceptance=false"
-            echo "g5_allowed=false"
-            echo "execute_allowed=false"
-            echo "promotion=false"
-            echo "release_qualified=false"
-          } > "$evidence_dir/posture.txt"
-
-      - name: Compile Python contracts
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m py_compile \
-            scripts/hepta-servo-worker-launch-plan.py \
-            scripts/verify-hepta-servo-worker-launch-plan.py \
-            scripts/tests/test_hepta_servo_worker_launch_plan.py \
-            2>&1 | tee "$HEPTA_SERVO_LAUNCH_PLAN_EVIDENCE/py-compile.log"
-          echo "py_compile=passed" >> "$HEPTA_SERVO_LAUNCH_PLAN_EVIDENCE/posture.txt"
-
-      - name: Verify repository contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/verify-hepta-servo-worker-launch-plan.py \
-            2>&1 | tee "$HEPTA_SERVO_LAUNCH_PLAN_EVIDENCE/static-verifier.log"
-          echo "static_verifier=passed" >> "$HEPTA_SERVO_LAUNCH_PLAN_EVIDENCE/posture.txt"
-
-      - name: Run contract, self-test, and unit tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/hepta-servo-worker-launch-plan.py contract \
-            2>&1 | tee "$HEPTA_SERVO_LAUNCH_PLAN_EVIDENCE/contract.log"
-          python3 scripts/hepta-servo-worker-launch-plan.py self-test \
-            2>&1 | tee "$HEPTA_SERVO_LAUNCH_PLAN_EVIDENCE/self-test.log"
-          python3 scripts/tests/test_hepta_servo_worker_launch_plan.py -v \
-            2>&1 | tee "$HEPTA_SERVO_LAUNCH_PLAN_EVIDENCE/unit-tests.log"
-          echo "fixture_tests=passed" >> "$HEPTA_SERVO_LAUNCH_PLAN_EVIDENCE/posture.txt"
-
-      - name: Record fixture-only result
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "job_status=${{ job.status }}" >> "$HEPTA_SERVO_LAUNCH_PLAN_EVIDENCE/posture.txt"
-          {
-            echo "### Hepta Servo platform qualification launch plan"
+            echo "### Retired Hepta workflow"
             echo
-            echo "This job compiles and verifies synthetic plans only."
-            echo "It does not install enforcement, authorize launch, execute a worker, or qualify Servo."
-            echo
-            sed 's/^/- /' "$HEPTA_SERVO_LAUNCH_PLAN_EVIDENCE/posture.txt"
+            echo "- legacy_workflow_ref=$GITHUB_WORKFLOW_REF"
+            echo "- retirement_policy=$RETIREMENT_POLICY"
+            echo "- canonical_replacement=see_retirement_policy"
+            echo "- automatic_trigger=false"
+            echo "- workflow_call=false"
+            echo "- manual_provenance_only=true"
+            echo "- exact_servo_source_accepted=false"
+            echo "- worker_source_topology_accepted=false"
+            echo "- build_authorized=false"
+            echo "- servo_build_run=false"
+            echo "- servo_runtime_qualified=false"
+            echo "- runtime_authority=false"
+            echo "- production_caller=false"
+            echo "- production_writer=false"
+            echo "- effect_authority=false"
+            echo "- external_effect=false"
+            echo "- external_network_allowed=false"
+            echo "- credential_export_allowed=false"
+            echo "- operator_acceptance=false"
+            echo "- promotion=false"
+            echo "- release_qualified=false"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload fixture-only evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: hepta-servo-worker-launch-plan-contract
-          path: ${{ env.HEPTA_SERVO_LAUNCH_PLAN_EVIDENCE }}
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Check clean worktree
-        if: always() && !cancelled()
-        uses: ./.github/actions/check-clean-worktree

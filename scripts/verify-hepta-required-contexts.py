@@ -8,6 +8,8 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 POLICY = ROOT / "docs/hepta-vnext/browser/CI_REQUIRED_CONTEXTS_V1.json"
+RETIREMENT_POLICY = ROOT / "docs/hepta-vnext/browser/CI_LEGACY_WORKFLOW_RETIREMENT_V1.json"
+RETIREMENT_VERIFIER = ROOT / "scripts/verify-hepta-legacy-workflow-retirement.py"
 BLOCKING = ROOT / ".github/workflows/blocking-ci.yml"
 BROWSER = ROOT / ".github/workflows/hepta-browser-next-required-v9.yml"
 VNEXT = ROOT / ".github/workflows/hepta-vnext-qualification.yml"
@@ -55,7 +57,14 @@ def require(text: str, label: str, *tokens: str) -> None:
 
 def main() -> int:
     try:
-        for path in (POLICY, BLOCKING, BROWSER, VNEXT):
+        for path in (
+            POLICY,
+            RETIREMENT_POLICY,
+            RETIREMENT_VERIFIER,
+            BLOCKING,
+            BROWSER,
+            VNEXT,
+        ):
             if not path.is_file():
                 fail(f"missing {path.relative_to(ROOT)}")
         raw = POLICY.read_bytes()
@@ -81,6 +90,19 @@ def main() -> int:
         if not isinstance(authority, dict) or any(value is not False for value in authority.values()):
             fail("required-context policy attempted to enable authority")
 
+        retirement_raw = RETIREMENT_POLICY.read_bytes()
+        retirement = json.loads(retirement_raw.decode("utf-8"))
+        if retirement_raw != canonical(retirement):
+            fail("legacy-workflow retirement policy is not compact canonical JSON")
+        if retirement.get("schema") != "hepta.ci.legacy_workflow_retirement.v1":
+            fail("legacy-workflow retirement policy schema drifted")
+        if retirement.get("canonical_required_contexts") != [
+            item["check_name"] for item in EXPECTED
+        ]:
+            fail("legacy-workflow retirement policy does not bind the required contexts")
+        if any(value is not False for value in retirement.get("authority", {}).values()):
+            fail("legacy-workflow retirement policy attempted to enable authority")
+
         blocking = BLOCKING.read_text(encoding="utf-8")
         browser = BROWSER.read_text(encoding="utf-8")
         vnext = VNEXT.read_text(encoding="utf-8")
@@ -90,6 +112,7 @@ def main() -> int:
             "pull_request:",
             "name: CI required",
             "verify-hepta-required-contexts.py",
+            "verify-hepta-legacy-workflow-retirement.py",
         )
         if "uses: ./.github/workflows/hepta-browser-next-required-v9.yml" in blocking:
             fail("blocking CI must not nest the independent v9 required workflow")
@@ -124,6 +147,7 @@ def main() -> int:
                 "required_contexts": [item["check_name"] for item in EXPECTED],
                 "single_workflow_aggregation": False,
                 "branch_ruleset_configured": False,
+                "legacy_workflow_retirement_bound": True,
                 "authority": "all_false",
             },
             sort_keys=True,

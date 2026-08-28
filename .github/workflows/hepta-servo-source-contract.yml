@@ -1,126 +1,45 @@
-name: hepta Servo source receipt contract
+name: retired Hepta legacy workflow (manual provenance only)
 
 on:
-  workflow_call:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "scripts/hepta-servo-source-receipt.py"
-      - "scripts/verify-hepta-servo-source-contract.py"
-      - "scripts/tests/test_hepta_servo_source_receipt.py"
-      - "docs/hepta-vnext/browser/SERVO_SOURCE_*"
-      - "docs/hepta-vnext/browser/hepta.servo.source_receipt.v1.schema.json"
-      - ".github/workflows/hepta-servo-source-contract.yml"
-  push:
-    branches:
-      - integration/vnext-main-20260811
-      - "codex/hepta-*"
-    paths:
-      - "scripts/hepta-servo-source-receipt.py"
-      - "scripts/verify-hepta-servo-source-contract.py"
-      - "scripts/tests/test_hepta_servo_source_receipt.py"
-      - "docs/hepta-vnext/browser/SERVO_SOURCE_*"
-      - "docs/hepta-vnext/browser/hepta.servo.source_receipt.v1.schema.json"
-      - ".github/workflows/hepta-servo-source-contract.yml"
 
 permissions:
   contents: read
 
 jobs:
-  source-contract:
-    name: Source contract (fixture only, no Servo fetch)
+  retired:
+    name: Retired legacy workflow
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-
-      - name: Initialize source-contract posture
+      - name: Record immutable retirement posture
         shell: bash
+        env:
+          RETIREMENT_POLICY: docs/hepta-vnext/browser/CI_LEGACY_WORKFLOW_RETIREMENT_V1.json
         run: |
           set -euo pipefail
-          evidence_dir="$RUNNER_TEMP/hepta-servo-source-contract"
-          mkdir -p "$evidence_dir"
-          echo "SERVO_SOURCE_EVIDENCE_DIR=$evidence_dir" >> "$GITHUB_ENV"
           {
-            echo "commit=$(git rev-parse HEAD)"
-            echo "tree=$(git rev-parse 'HEAD^{tree}')"
-            echo "work_item=C1-004A-servo-source-receipt"
-            echo "servo_commit=0a48e298482659817eb50097df23841f2b8e3044"
-            echo "servo_tree=b04d2f75b3217374d079d579c270177b57fa1389"
-            echo "servo_fetch_performed=false"
-            echo "canonical_checkout_verified=false"
-            echo "canonical_source_receipt=false"
-            echo "source_archive_created=false"
-            echo "worker_artifact_built=false"
-            echo "sbom_created=false"
-            echo "machine_authority=false"
-            echo "runtime_authority=false"
-            echo "production_caller=false"
-            echo "production_writer=false"
-            echo "effect_authority=false"
-            echo "external_effect=false"
-            echo "operator_acceptance=false"
-            echo "promotion=false"
-            echo "release_qualified=false"
-          } > "$evidence_dir/posture.txt"
-
-      - name: Compile Python tooling
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m py_compile \
-            scripts/hepta-servo-source-receipt.py \
-            scripts/verify-hepta-servo-source-contract.py \
-            scripts/tests/test_hepta_servo_source_receipt.py \
-            2>&1 | tee "$SERVO_SOURCE_EVIDENCE_DIR/py-compile.log"
-
-      - name: Verify fail-closed source contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/verify-hepta-servo-source-contract.py \
-            2>&1 | tee "$SERVO_SOURCE_EVIDENCE_DIR/contract-verifier.log"
-
-      - name: Run local Git fixture tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/tests/test_hepta_servo_source_receipt.py -v \
-            2>&1 | tee "$SERVO_SOURCE_EVIDENCE_DIR/tests.log"
-
-      - name: Verify clean source-contract paths
-        shell: bash
-        run: |
-          set -euo pipefail
-          git diff --exit-code -- \
-            scripts/hepta-servo-source-receipt.py \
-            scripts/verify-hepta-servo-source-contract.py \
-            scripts/tests/test_hepta_servo_source_receipt.py \
-            docs/hepta-vnext/browser \
-            .github/workflows/hepta-servo-source-contract.yml \
-            2>&1 | tee "$SERVO_SOURCE_EVIDENCE_DIR/clean-worktree.log"
-
-      - name: Record final status
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "job_status=${{ job.status }}" >> "$SERVO_SOURCE_EVIDENCE_DIR/posture.txt"
-          {
-            echo "### Hepta Servo source receipt contract"
+            echo "### Retired Hepta workflow"
             echo
-            echo "This job validates the source-receipt generator with local Git fixtures only."
-            echo "It does not fetch Servo and cannot produce canonical source, build, artifact, or release evidence."
-            echo
-            sed 's/^/- /' "$SERVO_SOURCE_EVIDENCE_DIR/posture.txt"
+            echo "- legacy_workflow_ref=$GITHUB_WORKFLOW_REF"
+            echo "- retirement_policy=$RETIREMENT_POLICY"
+            echo "- canonical_replacement=see_retirement_policy"
+            echo "- automatic_trigger=false"
+            echo "- workflow_call=false"
+            echo "- manual_provenance_only=true"
+            echo "- exact_servo_source_accepted=false"
+            echo "- worker_source_topology_accepted=false"
+            echo "- build_authorized=false"
+            echo "- servo_build_run=false"
+            echo "- servo_runtime_qualified=false"
+            echo "- runtime_authority=false"
+            echo "- production_caller=false"
+            echo "- production_writer=false"
+            echo "- effect_authority=false"
+            echo "- external_effect=false"
+            echo "- external_network_allowed=false"
+            echo "- credential_export_allowed=false"
+            echo "- operator_acceptance=false"
+            echo "- promotion=false"
+            echo "- release_qualified=false"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload fixture contract evidence
-        if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: hepta-servo-source-contract-fixture
-          path: ${{ env.SERVO_SOURCE_EVIDENCE_DIR }}
-          if-no-files-found: error

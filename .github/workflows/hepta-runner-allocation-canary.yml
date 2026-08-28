@@ -1,70 +1,45 @@
-name: hepta hosted runner allocation canary
+name: retired Hepta legacy workflow (manual provenance only)
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - ".github/workflows/hepta-runner-allocation-canary.yml"
-  push:
-    branches:
-      - "codex/hepta-*"
-    paths:
-      - ".github/workflows/hepta-runner-allocation-canary.yml"
 
 permissions:
   contents: read
 
-# This workflow deliberately performs no checkout and invokes no third-party
-# action. A job that still completes with zero recorded steps proves failure
-# occurred before repository code or an action was executed.
 jobs:
-  ubuntu-latest:
-    name: ubuntu-latest allocation
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Record allocation
-        shell: bash
-        run: |
-          set -euo pipefail
-          printf 'status=RUNNER_ALLOCATED\n'
-          printf 'runner_os=%s\n' "$RUNNER_OS"
-          printf 'runner_arch=%s\n' "$RUNNER_ARCH"
-          printf 'image_os=%s\n' "${ImageOS:-unknown}"
-          printf 'image_version=%s\n' "${ImageVersion:-unknown}"
-          test -n "$RUNNER_TEMP"
-          test -d "$RUNNER_TEMP"
-
-  ubuntu-22-04:
-    name: ubuntu-22.04 allocation
-    runs-on: ubuntu-22.04
-    timeout-minutes: 5
-    steps:
-      - name: Record allocation
-        shell: bash
-        run: |
-          set -euo pipefail
-          printf 'status=RUNNER_ALLOCATED\n'
-          printf 'runner_os=%s\n' "$RUNNER_OS"
-          printf 'runner_arch=%s\n' "$RUNNER_ARCH"
-          printf 'image_os=%s\n' "${ImageOS:-unknown}"
-          printf 'image_version=%s\n' "${ImageVersion:-unknown}"
-          test -n "$RUNNER_TEMP"
-          test -d "$RUNNER_TEMP"
-
-  ubuntu-24-04:
-    name: ubuntu-24.04 allocation
+  retired:
+    name: Retired legacy workflow
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Record allocation
+      - name: Record immutable retirement posture
         shell: bash
+        env:
+          RETIREMENT_POLICY: docs/hepta-vnext/browser/CI_LEGACY_WORKFLOW_RETIREMENT_V1.json
         run: |
           set -euo pipefail
-          printf 'status=RUNNER_ALLOCATED\n'
-          printf 'runner_os=%s\n' "$RUNNER_OS"
-          printf 'runner_arch=%s\n' "$RUNNER_ARCH"
-          printf 'image_os=%s\n' "${ImageOS:-unknown}"
-          printf 'image_version=%s\n' "${ImageVersion:-unknown}"
-          test -n "$RUNNER_TEMP"
-          test -d "$RUNNER_TEMP"
+          {
+            echo "### Retired Hepta workflow"
+            echo
+            echo "- legacy_workflow_ref=$GITHUB_WORKFLOW_REF"
+            echo "- retirement_policy=$RETIREMENT_POLICY"
+            echo "- canonical_replacement=see_retirement_policy"
+            echo "- automatic_trigger=false"
+            echo "- workflow_call=false"
+            echo "- manual_provenance_only=true"
+            echo "- exact_servo_source_accepted=false"
+            echo "- worker_source_topology_accepted=false"
+            echo "- build_authorized=false"
+            echo "- servo_build_run=false"
+            echo "- servo_runtime_qualified=false"
+            echo "- runtime_authority=false"
+            echo "- production_caller=false"
+            echo "- production_writer=false"
+            echo "- effect_authority=false"
+            echo "- external_effect=false"
+            echo "- external_network_allowed=false"
+            echo "- credential_export_allowed=false"
+            echo "- operator_acceptance=false"
+            echo "- promotion=false"
+            echo "- release_qualified=false"
+          } >> "$GITHUB_STEP_SUMMARY"
