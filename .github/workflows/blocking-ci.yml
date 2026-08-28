@@ -46,19 +46,23 @@ jobs:
     uses: ./.github/workflows/codespell.yml
     secrets: inherit
 
+  hepta-required-context-policy:
+    name: Hepta required-context policy
+    needs: runner-preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Verify independent required checks
+        run: python3 scripts/verify-hepta-required-contexts.py
+
   hepta-browser-c1-artifact-gate:
     name: Hepta Browser C1 artifact launch gate
     needs: runner-preflight
     uses: ./.github/workflows/hepta-browser-c1-artifact-gate.yml
-    secrets: inherit
-
-  # The canonical Browser graph expands its own reusable leaf workflows. The
-  # broader Hepta vNext matrix runs as a separate top-level PR workflow so this
-  # run does not expand the same Browser workflow through two call paths.
-  hepta-browser-next-v9:
-    name: Hepta Browser canonical next gate v9
-    needs: runner-preflight
-    uses: ./.github/workflows/hepta-browser-next-required-v9.yml
     secrets: inherit
 
   hepta-servo-artifact-contract:
@@ -94,8 +98,8 @@ jobs:
       - blob-size-policy
       - cargo-deny
       - codespell
+      - hepta-required-context-policy
       - hepta-browser-c1-artifact-gate
-      - hepta-browser-next-v9
       - hepta-servo-artifact-contract
       - repo-checks
       - rust-ci
