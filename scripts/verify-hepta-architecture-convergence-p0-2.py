@@ -262,7 +262,7 @@ def verify_product_wiring() -> None:
         (
             "use codex_hepta_memory_runtime::AgentMemoryRuntime;",
             "AgentMemoryRuntime::open(",
-            "runtime.with_discovered_federation(",
+            ".with_discovered_federation(",
             "runtime.into_cognitive_runtime()",
         ),
     )
