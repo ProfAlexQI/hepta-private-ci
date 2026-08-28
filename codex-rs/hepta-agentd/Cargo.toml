@@ -38,6 +38,7 @@ codex-hepta-contracts = { workspace = true }
 codex-hepta-fleet = { workspace = true }
 codex-hepta-memory = { workspace = true }
 codex-hepta-memory-extension = { workspace = true }
+codex-hepta-memory-runtime = { workspace = true }
 codex-hepta-paths = { workspace = true }
 codex-protocol = { workspace = true }
 codex-uds = { workspace = true }
