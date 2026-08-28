@@ -1,0 +1,609 @@
+name: hepta-intelligence-p1-1b-bounded-read-arm-v1
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1b-bounded-read-arm-v1-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-p1-1b-bounded-read-arm-v1
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: 98de1c4c3d11c6644ff46f50e80071f6f15e1652
+  WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1b-bounded-read-arm-v1.yml
+  OUTPUT_BRANCH: qualification/hepta-intelligence-p1-1b-bounded-read-candidate-98de1c4-20260828
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1b-qualification
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml
+  BASE_VERIFIER: scripts/verify-hepta-intelligence-local-embedding-index.py
+  HARDENING_VERIFIER: scripts/verify-hepta-intelligence-p1-1b-hardening.py
+  BOUNDED_READ_VERIFIER: scripts/verify-hepta-intelligence-p1-1b-bounded-read.py
+  ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1b-bounded-read
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  qualify:
+    name: P1.1b bounded index read hardening
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify exact source binding
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          test "$(git rev-list --count "$SOURCE_SHA"..HEAD)" = "1"
+          test "$(git diff --name-only "$SOURCE_SHA"..HEAD)" = "$WRAPPER_PATH"
+
+      - name: Apply bounded-read source tranche
+        run: |
+          set -euo pipefail
+          git checkout -B p1-1b-bounded-read-work "$SOURCE_SHA"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one replacement target, found {count}")
+              target.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          build_path = "codex-rs/hepta-memory-p1-1b-qualification/src/index/build.rs"
+          replace_once(
+              build_path,
+              "pub fn reopen_local_ann_index(\n",
+              '''fn read_bounded_index_bytes<R: Read>(
+    reader: &mut R,
+    expected_file_bytes: u64,
+) -> Result<Vec<u8>, ContractError> {
+    if expected_file_bytes == 0 || expected_file_bytes > MAX_INDEX_FILE_BYTES {
+        return Err(ContractError::Corrupt(
+            "ANN index file size is outside the bounded range".to_string(),
+        ));
+    }
+    let expected_len =
+        usize::try_from(expected_file_bytes).map_err(|_| ContractError::Overflow)?;
+    let initial_capacity = expected_len.min(1024 * 1024);
+    let mut bytes = Vec::with_capacity(initial_capacity);
+    reader
+        .take(MAX_INDEX_FILE_BYTES.saturating_add(1))
+        .read_to_end(&mut bytes)?;
+    if bytes.len() != expected_len {
+        return Err(ContractError::Corrupt(
+            "ANN index file changed while being read or exceeded the bounded limit".to_string(),
+        ));
+    }
+    Ok(bytes)
+}
+
+pub fn reopen_local_ann_index(
+''',
+          )
+          replace_once(
+              build_path,
+              '''    let file_bytes = file.metadata()?.len();
+    if file_bytes == 0 || file_bytes > MAX_INDEX_FILE_BYTES {
+        return Err(ContractError::Corrupt(
+            "ANN index file size is outside the bounded range".to_string(),
+        ));
+    }
+    let mut bytes = Vec::with_capacity(
+        usize::try_from(file_bytes).map_err(|_| ContractError::Overflow)?,
+    );
+    file.read_to_end(&mut bytes)?;
+''',
+              '''    let file_bytes = file.metadata()?.len();
+    let bytes = read_bounded_index_bytes(&mut file, file_bytes)?;
+''',
+          )
+
+          tests_path = Path(
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/tests_module.rs"
+          )
+          tests_text = tests_path.read_text(encoding="utf-8")
+          if not tests_text.endswith("}\n"):
+              raise SystemExit("index tests module lacks its final module brace")
+          additions = r'''
+
+    #[test]
+    fn bounded_reader_accepts_exact_metadata_length() {
+        let mut reader = std::io::Cursor::new(b"bounded".to_vec());
+        let bytes = read_bounded_index_bytes(&mut reader, 7).expect("exact bounded read");
+        assert_eq!(bytes, b"bounded");
+    }
+
+    #[test]
+    fn bounded_reader_rejects_growth_or_truncation_after_metadata() {
+        let mut grown = std::io::Cursor::new(vec![0_u8; 16]);
+        let growth_error =
+            read_bounded_index_bytes(&mut grown, 8).expect_err("metadata growth");
+        assert!(growth_error.to_string().contains("changed while being read"));
+
+        let mut truncated = std::io::Cursor::new(vec![0_u8; 8]);
+        let truncation_error =
+            read_bounded_index_bytes(&mut truncated, 16).expect_err("metadata truncation");
+        assert!(truncation_error
+            .to_string()
+            .contains("changed while being read"));
+    }
+
+    #[test]
+    fn bounded_reader_rejects_zero_and_oversized_metadata() {
+        let mut empty = std::io::Cursor::new(Vec::<u8>::new());
+        assert!(read_bounded_index_bytes(&mut empty, 0).is_err());
+
+        let mut empty = std::io::Cursor::new(Vec::<u8>::new());
+        assert!(read_bounded_index_bytes(
+            &mut empty,
+            MAX_INDEX_FILE_BYTES.saturating_add(1)
+        )
+        .is_err());
+    }
+'''
+          tests_path.write_text(tests_text[:-2] + additions + "}\n", encoding="utf-8")
+
+          plan = '''# Hepta Intelligence P1.1b — Bounded Index Read Closure
+
+Status: source-qualified candidate; overall P1.1b remains unqualified and unwired  
+Parent: `98de1c4c3d11c6644ff46f50e80071f6f15e1652`
+
+## Objective
+
+Close the remaining time-of-check/time-of-read and allocation boundary in immutable ANN reopen. The reader must reject zero or oversized metadata lengths, cap physical reads at `MAX_INDEX_FILE_BYTES + 1`, and reject growth or truncation between metadata inspection and the completed read.
+
+## Exact semantic delta
+
+- add `read_bounded_index_bytes`;
+- use a bounded `Read::take(MAX_INDEX_FILE_BYTES.saturating_add(1))` surface;
+- avoid allocating the full metadata-advertised maximum up front;
+- require the observed byte count to exactly equal the metadata length;
+- route `reopen_local_ann_index` through the bounded helper;
+- add exact-length, growth, truncation, zero-length, and oversized-length regression coverage.
+
+## Authority boundary
+
+```text
+qualified=false
+wired=false
+product_workspace_member=false
+product_module_registered=false
+default_recall_changed=false
+federation_recall_changed=false
+context_attachment=false
+physical_send=false
+network_access=false
+model_download=false
+external_effects=false
+production_authority=false
+operator_acceptance=false
+promotion=false
+callers_ratchet=false
+```
+
+This tranche changes no index format, ranking behavior, product caller, model, tokenizer, context attachment, physical send, or production authority. It is a prerequisite for P1.1c executable qualification only.
+'''
+          Path(
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_2026-08-28.md"
+          ).write_text(plan, encoding="utf-8")
+
+          status = {
+              "schema": "hepta.intelligence.p1_1b.bounded_read_status.v1",
+              "status": "SOURCE_QUALIFIED_CANDIDATE",
+              "tranche": "P1.1b-bounded-read",
+              "parent_commit": os.environ["SOURCE_SHA"],
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "implementation": {
+                  "bounded_read_helper": True,
+                  "maximum_read_plus_one": True,
+                  "metadata_length_equality": True,
+                  "bounded_initial_capacity": True,
+                  "growth_rejected": True,
+                  "truncation_rejected": True,
+              },
+              "qualification": {
+                  "source_qualified_candidate": True,
+                  "executable_gates_passed": True,
+                  "tests_expected": 25,
+                  "overall_p1_1b_qualified": False,
+              },
+              "authority": {
+                  "product_workspace_member": False,
+                  "product_module_registered": False,
+                  "runtime_wired": False,
+                  "default_recall_changed": False,
+                  "federation_recall_changed": False,
+                  "context_attachment": False,
+                  "physical_send": False,
+                  "network_access": False,
+                  "model_download": False,
+                  "external_effects": False,
+                  "production_authority": False,
+                  "operator_acceptance": False,
+                  "promotion": False,
+                  "callers_ratchet": False,
+              },
+          }
+          Path(
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_STATUS_2026-08-28.json"
+          ).write_text(json.dumps(status, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.bounded_read_receipt.v1",
+              "status": "PASS_P1_1B_BOUNDED_READ_SOURCE_CANDIDATE",
+              "parent_commit": os.environ["SOURCE_SHA"],
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "semantic_files": [
+                  build_path,
+                  str(tests_path),
+              ],
+              "source_qualified_candidate": True,
+              "qualified": False,
+              "runtime_wired": False,
+              "production_authority": False,
+              "promotion": False,
+          }
+          Path(
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_RECEIPT_2026-08-28.json"
+          ).write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+          verifier = r'''#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+BUILD = ROOT / "codex-rs/hepta-memory-p1-1b-qualification/src/index/build.rs"
+TESTS = ROOT / "codex-rs/hepta-memory-p1-1b-qualification/src/index/tests_module.rs"
+PLAN = ROOT / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_2026-08-28.md"
+STATUS = ROOT / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_STATUS_2026-08-28.json"
+RECEIPT = ROOT / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_RECEIPT_2026-08-28.json"
+WORKFLOW = ROOT / ".github/workflows/hepta-intelligence-p1-1b-bounded-read.yml"
+
+
+def main() -> int:
+    paths = [BUILD, TESTS, PLAN, STATUS, RECEIPT, WORKFLOW]
+    checks: dict[str, bool] = {
+        "files.present": all(path.is_file() and path.stat().st_size > 0 for path in paths)
+    }
+    if not checks["files.present"]:
+        print(json.dumps({"status": "FAIL_P1_1B_BOUNDED_READ_SOURCE", "checks": checks}, indent=2, sort_keys=True))
+        return 1
+
+    build = BUILD.read_text(encoding="utf-8")
+    tests = TESTS.read_text(encoding="utf-8")
+    plan = PLAN.read_text(encoding="utf-8")
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    status = json.loads(STATUS.read_text(encoding="utf-8"))
+    receipt = json.loads(RECEIPT.read_text(encoding="utf-8"))
+
+    checks["bounded.helper"] = all(marker in build for marker in (
+        "fn read_bounded_index_bytes<R: Read>",
+        "MAX_INDEX_FILE_BYTES.saturating_add(1)",
+        ".read_to_end(&mut bytes)?",
+        "bytes.len() != expected_len",
+        "changed while being read or exceeded the bounded limit",
+        "read_bounded_index_bytes(&mut file, file_bytes)?",
+    ))
+    checks["bounded.no_unbounded_reopen_read"] = "file.read_to_end(&mut bytes)?" not in build
+    checks["tests.regressions"] = all(marker in tests for marker in (
+        "bounded_reader_accepts_exact_metadata_length",
+        "bounded_reader_rejects_growth_or_truncation_after_metadata",
+        "bounded_reader_rejects_zero_and_oversized_metadata",
+    ))
+    checks["plan.boundary"] = all(marker in plan for marker in (
+        "qualified=false",
+        "runtime_wired=false",
+        "production_authority=false",
+        "P1.1c",
+    ))
+    authority = status.get("authority", {})
+    checks["status.boundary"] = (
+        status.get("status") == "SOURCE_QUALIFIED_CANDIDATE"
+        and status.get("qualification", {}).get("overall_p1_1b_qualified") is False
+        and all(authority.get(key) is False for key in (
+            "product_workspace_member", "product_module_registered", "runtime_wired",
+            "default_recall_changed", "federation_recall_changed", "context_attachment",
+            "physical_send", "network_access", "model_download", "external_effects",
+            "production_authority", "operator_acceptance", "promotion", "callers_ratchet",
+        ))
+    )
+    checks["receipt.boundary"] = (
+        receipt.get("status") == "PASS_P1_1B_BOUNDED_READ_SOURCE_CANDIDATE"
+        and receipt.get("qualified") is False
+        and receipt.get("runtime_wired") is False
+        and receipt.get("production_authority") is False
+        and receipt.get("promotion") is False
+    )
+    checks["workflow.executable_matrix"] = all(marker in workflow for marker in (
+        'toolchain: "1.95.0"',
+        "verify-hepta-intelligence-local-embedding-index.py",
+        "verify-hepta-intelligence-p1-1b-hardening.py",
+        "verify-hepta-intelligence-p1-1b-bounded-read.py",
+        "cargo fmt --manifest-path",
+        "cargo test --manifest-path",
+        "cargo check --manifest-path",
+        "cargo clippy --manifest-path",
+        "--all-targets -- -D warnings",
+    ))
+
+    failures = sorted(name for name, passed in checks.items() if not passed)
+    output = {
+        "schema": "hepta.intelligence.p1_1b.bounded_read_source_gate.v1",
+        "status": "PASS_P1_1B_BOUNDED_READ_SOURCE_ONLY" if not failures else "FAIL_P1_1B_BOUNDED_READ_SOURCE",
+        "implemented": not failures,
+        "source_qualified_candidate": not failures,
+        "qualified": False,
+        "runtime_wired": False,
+        "production_authority": False,
+        "checks": checks,
+        "failures": failures,
+    }
+    print(json.dumps(output, indent=2, sort_keys=True))
+    return 0 if not failures else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+'''
+          verifier_path = Path("scripts/verify-hepta-intelligence-p1-1b-bounded-read.py")
+          verifier_path.write_text(verifier, encoding="utf-8")
+          verifier_path.chmod(0o755)
+
+          canonical_workflow = '''name: hepta-intelligence-p1-1b-bounded-read
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-local-embedding-index-v1b-20260828"
+      - "codex/hepta-intelligence-p1-1b-bounded-read-v1-20260828"
+  pull_request:
+    paths:
+      - "codex-rs/hepta-memory-p1-1b-qualification/src/index/build.rs"
+      - "codex-rs/hepta-memory-p1-1b-qualification/src/index/tests_module.rs"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_*"
+      - "scripts/verify-hepta-intelligence-p1-1b-bounded-read.py"
+      - ".github/workflows/hepta-intelligence-p1-1b-bounded-read.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1b-qualification
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  qualify:
+    name: P1.1b bounded read exact-head qualification
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Isolate Cargo outputs
+        run: |
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-p1-1b-bounded-read-target" >> "$GITHUB_ENV"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+      - name: Run source gates
+        run: |
+          python3 scripts/verify-hepta-intelligence-local-embedding-index.py
+          python3 scripts/verify-hepta-intelligence-p1-1b-hardening.py
+          python3 scripts/verify-hepta-intelligence-p1-1b-bounded-read.py
+      - name: Run exact Rust matrix
+        run: |
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check
+          cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture
+          cargo check --manifest-path "$MANIFEST_PATH" --all-targets
+          cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings
+      - name: Prove clean source
+        run: |
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+          git diff --exit-code
+          test -z "$(git ls-files --others --exclude-standard -- "$CRATE_ROOT")"
+'''
+          Path(".github/workflows/hepta-intelligence-p1-1b-bounded-read.yml").write_text(
+              canonical_workflow, encoding="utf-8"
+          )
+          PY
+
+      - name: Isolate Cargo outputs and install Rust 1.95.0
+        run: |
+          set -euo pipefail
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-p1-1b-bounded-read-target" >> "$GITHUB_ENV"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Canonicalize formatting and enforce exact scope
+        run: |
+          set -euo pipefail
+          rustc --version | tee "$ARTIFACT_DIR/rustc-version.txt"
+          cargo --version | tee "$ARTIFACT_DIR/cargo-version.txt"
+          rustfmt --version | tee "$ARTIFACT_DIR/rustfmt-version.txt"
+          cargo clippy --version | tee "$ARTIFACT_DIR/clippy-version.txt"
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check
+          python3 - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          expected = [
+              ".github/workflows/hepta-intelligence-p1-1b-bounded-read.yml",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/build.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/tests_module.rs",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_2026-08-28.md",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_RECEIPT_2026-08-28.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_STATUS_2026-08-28.json",
+              "scripts/verify-hepta-intelligence-p1-1b-bounded-read.py",
+          ]
+          actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          if actual != expected:
+              raise SystemExit(json.dumps({"expected": expected, "actual": actual}, indent=2))
+          (Path("artifacts/hepta-intelligence-p1-1b-bounded-read") / "changed-paths.txt").write_text(
+              "\n".join(actual) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Run all fail-closed source gates
+        run: |
+          set -o pipefail
+          python3 "$BASE_VERIFIER" 2>&1 | tee "$ARTIFACT_DIR/base-source-gate.log"
+          python3 "$HARDENING_VERIFIER" 2>&1 | tee "$ARTIFACT_DIR/hardening-source-gate.log"
+          python3 "$BOUNDED_READ_VERIFIER" 2>&1 | tee "$ARTIFACT_DIR/bounded-read-source-gate.log"
+
+      - name: Run complete Rust qualification matrix
+        run: |
+          set -o pipefail
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check \
+            2>&1 | tee "$ARTIFACT_DIR/rustfmt.log"
+          cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture \
+            2>&1 | tee "$ARTIFACT_DIR/tests.log"
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path("artifacts/hepta-intelligence-p1-1b-bounded-read/tests.log").read_text(encoding="utf-8", errors="replace")
+          passed = sum(int(value) for value in re.findall(r"test result: ok\. (\d+) passed", text))
+          if passed != 25:
+              raise SystemExit(f"expected 25 P1.1b tests, observed {passed}")
+          PY
+          cargo check --manifest-path "$MANIFEST_PATH" --all-targets \
+            2>&1 | tee "$ARTIFACT_DIR/check.log"
+          cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings \
+            2>&1 | tee "$ARTIFACT_DIR/clippy.log"
+
+      - name: Prove clean bounded source scope
+        run: |
+          set -euo pipefail
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+          git diff --check
+          test -z "$(git ls-files --others --exclude-standard -- "$CRATE_ROOT")"
+          python3 - <<'PY'
+          import json
+          import subprocess
+          expected = [
+              ".github/workflows/hepta-intelligence-p1-1b-bounded-read.yml",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/build.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/tests_module.rs",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_2026-08-28.md",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_RECEIPT_2026-08-28.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_STATUS_2026-08-28.json",
+              "scripts/verify-hepta-intelligence-p1-1b-bounded-read.py",
+          ]
+          actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          if actual != expected:
+              raise SystemExit(json.dumps({"expected": expected, "actual": actual}, indent=2))
+          PY
+
+      - name: Commit and push exact bounded-read candidate
+        id: candidate
+        run: |
+          set -euo pipefail
+          git config user.name "Hepta Qualification Bot"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git add -- \
+            .github/workflows/hepta-intelligence-p1-1b-bounded-read.yml \
+            "$CRATE_ROOT/src/index/build.rs" \
+            "$CRATE_ROOT/src/index/tests_module.rs" \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_2026-08-28.md \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_RECEIPT_2026-08-28.json \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_BOUNDED_READ_STATUS_2026-08-28.json \
+            "$BOUNDED_READ_VERIFIER"
+          git commit -m "fix(intelligence): bound immutable ANN index reads"
+          candidate_sha="$(git rev-parse HEAD)"
+          test "$(git rev-parse "$candidate_sha^")" = "$SOURCE_SHA"
+          echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          git push origin "$candidate_sha:refs/heads/$OUTPUT_BRANCH"
+
+      - name: Write executable qualification receipt
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUNNER_NAME: ${{ runner.name }}
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.bounded_read_executable_qualification.v1",
+              "status": "PASS_P1_1B_BOUNDED_READ_EXECUTABLE_GATES",
+              "parent_commit": os.environ["SOURCE_SHA"],
+              "candidate_commit": os.environ["CANDIDATE_SHA"],
+              "tests_passed": 25,
+              "gates": {
+                  "base_source": "success",
+                  "hardening_source": "success",
+                  "bounded_read_source": "success",
+                  "rust_1_95_0": "success",
+                  "rustfmt": "success",
+                  "tests": "success",
+                  "check": "success",
+                  "clippy": "success",
+                  "clean_scope": "success",
+              },
+              "source_qualified": True,
+              "qualified": False,
+              "runtime_wired": False,
+              "default_recall_changed": False,
+              "context_attachment": False,
+              "physical_send": False,
+              "external_effects": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "runner": {
+                  "name": os.environ["RUNNER_NAME"],
+                  "os": os.environ["RUNNER_OS"],
+                  "arch": os.environ["RUNNER_ARCH"],
+              },
+              "workflow": {
+                  "run_id": int(os.environ["RUN_ID"]),
+                  "run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              },
+          }
+          (Path(os.environ["ARTIFACT_DIR"]) / "qualification-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Upload exact bounded-read evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1b-bounded-read-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1b-bounded-read
+          if-no-files-found: warn
+          retention-days: 14
