@@ -1,0 +1,82 @@
+{
+  "schema": "hepta.inference.inf0c_evidence_source_receipt.v1",
+  "plan_id": "HEPTA-INFERENCE-INF0C-EVIDENCE-V1",
+  "parent_plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "source_binding": {
+    "repository": "ProfAlexQI/hepta-private-ci",
+    "branch": "codex/hepta-inference-runtime-v2-20260828",
+    "commit": "68c97b7d1211c8e319df3b850182401ab541eea4",
+    "tree": "3a0d8795db033f780f2e9715b2bc20a2cafa627a"
+  },
+  "development_branch": "codex/hepta-inference-inf0c-evidence-20260828",
+  "source_candidate_commit": "b85086395d9508e44676f953256fe85b1ca456a3",
+  "source_candidate_tree": "afafdb71802bea317095dfac1ad6881165349863",
+  "source_candidate_components": {
+    "transport_disconnect_probe": true,
+    "post_disconnect_health_probe": true,
+    "backend_acknowledgement_claimed": false,
+    "digest_pinned_control_helper": true,
+    "fixed_control_helper_argv": true,
+    "sanitized_helper_environment": true,
+    "restart_down_transition_required": true,
+    "restart_up_transition_required": true,
+    "post_restart_model_and_inference_probe": true,
+    "digest_only_owner_only_receipt": true,
+    "hermetic_self_test": true,
+    "dedicated_source_gate": true,
+    "dedicated_workflow": true,
+    "modular_bounded_harness_parts": true,
+    "hepta_inferd": false,
+    "native_worker": false
+  },
+  "local_validation": {
+    "python_source_syntax": "PASS",
+    "workflow_yaml_parse": "PASS",
+    "status_json_parse": "PASS",
+    "receipt_json_parse": "PASS",
+    "modular_recomposition_matches_monolith": "PASS",
+    "hermetic_self_test": "LOCAL_PASS",
+    "owner_only_receipt_mode": "LOCAL_PASS",
+    "raw_prompt_absence": "LOCAL_PASS",
+    "backend_acknowledgement_not_overclaimed": "LOCAL_PASS",
+    "exact_head_source_gate": "NOT_RUN_FOR_RECEIPT_HEAD",
+    "hosted_source_workflow": "NOT_RUN_FOR_RECEIPT_HEAD",
+    "real_ollama_cancellation": "NOT_RUN",
+    "real_lmstudio_cancellation": "NOT_RUN",
+    "real_ollama_restart": "NOT_RUN",
+    "real_lmstudio_restart": "NOT_RUN"
+  },
+  "evidence_boundary": {
+    "cancellation_level": "TRANSPORT_DISCONNECT_WITH_POST_HEALTH_V1",
+    "backend_acknowledged": false,
+    "controlled_restart_requires_digest_pinned_helper": true,
+    "real_model_evidence_executed": false,
+    "inf1_activation_allowed": false
+  },
+  "claim": "SOURCE_PRESENT_NOT_RUN",
+  "qualified": false,
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  },
+  "known_gaps": [
+    "the exact receipt head has not executed the evidence source gate and hermetic self-test on a hosted runner",
+    "fixed pre-installed Ollama and LM Studio models have not executed the transport-disconnect probe",
+    "controlled restart has not executed on the pre-provisioned self-hosted evidence runner",
+    "the compatibility APIs do not provide a uniform verifiable backend cancellation acknowledgement",
+    "INF-1 remains inactive and no production, effect, model-NPU, remote-inference, or promotion authority is granted"
+  ]
+}
