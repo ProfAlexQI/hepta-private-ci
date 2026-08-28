@@ -1,0 +1,379 @@
+name: hepta-intelligence-p1-1c-self-report-arm-v3
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1c-self-report-arm-v3-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: hepta-intelligence-p1-1c-self-report-arm-v3
+  cancel-in-progress: false
+
+env:
+  SOURCE_BRANCH: codex/hepta-intelligence-offline-efficacy-p1c-20260828
+  WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1c-self-report-arm-v3.yml
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1c-qualification
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1c-qualification/Cargo.toml
+  VERIFIER_PATH: scripts/verify-hepta-intelligence-p1-1c-offline-efficacy.py
+  ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1c-self-report-v3
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  qualify:
+    name: P1.1c self-reporting exact qualification
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout source plus wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Bind wrapper to current source
+        id: source
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          git fetch --no-tags origin \
+            "+refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
+          source_sha="$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH")"
+          test "$(git rev-parse HEAD^)" = "$source_sha"
+          test "$(git rev-list --count "$source_sha"..HEAD)" = "1"
+          test "$(git diff --name-only "$source_sha"..HEAD)" = "$WRAPPER_PATH"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Isolate Cargo outputs
+        run: |
+          set -euo pipefail
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-p1-1c-self-report-v3-target" >> "$GITHUB_ENV"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Execute complete gate matrix without early evidence loss
+        id: gates
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          rustc --version | tee "$ARTIFACT_DIR/rustc-version.txt"
+          cargo --version | tee "$ARTIFACT_DIR/cargo-version.txt"
+          rustfmt --version | tee "$ARTIFACT_DIR/rustfmt-version.txt"
+          cargo clippy --version | tee "$ARTIFACT_DIR/clippy-version.txt"
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+
+          set +e
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all \
+            > "$ARTIFACT_DIR/rustfmt-materialize.log" 2>&1
+          fmt_materialize_code="$?"
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check \
+            > "$ARTIFACT_DIR/rustfmt-check.log" 2>&1
+          fmt_check_code="$?"
+
+          python3 - <<'PY' > "$ARTIFACT_DIR/format-scope.log" 2>&1
+          import json
+          import os
+          import subprocess
+
+          allowed = {
+              "codex-rs/hepta-memory-p1-1c-qualification/src/bin/p1_1c_receipt.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/corpus.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/digest.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/evaluation.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/kg.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/lib.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/metrics.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/reranker.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/tests/p1_1c.rs",
+          }
+          actual = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", "--", os.environ["CRATE_ROOT"]],
+                  text=True,
+              ).splitlines()
+          )
+          outside = subprocess.check_output(
+              ["git", "diff", "--name-only", "--", ".", f":(exclude){os.environ['CRATE_ROOT']}/**"],
+              text=True,
+          ).splitlines()
+          if not actual.issubset(allowed) or outside:
+              raise SystemExit(json.dumps({"allowed": sorted(allowed), "actual": sorted(actual), "outside": outside}, indent=2))
+          print(json.dumps({"changed_paths": sorted(actual)}, indent=2, sort_keys=True))
+          PY
+          format_scope_code="$?"
+
+          python3 "$VERIFIER_PATH" \
+            > "$ARTIFACT_DIR/source-gate.log" 2>&1
+          source_gate_code="$?"
+          cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture \
+            > "$ARTIFACT_DIR/tests.log" 2>&1
+          tests_code="$?"
+          cargo check --manifest-path "$MANIFEST_PATH" --all-targets \
+            > "$ARTIFACT_DIR/check.log" 2>&1
+          check_code="$?"
+          cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings \
+            > "$ARTIFACT_DIR/clippy.log" 2>&1
+          clippy_code="$?"
+
+          cargo run --quiet --manifest-path "$MANIFEST_PATH" --bin p1_1c_receipt \
+            > "$ARTIFACT_DIR/evaluation-receipt-a.json" \
+            2> "$ARTIFACT_DIR/receipt-a.stderr.log"
+          receipt_a_code="$?"
+          cargo run --quiet --manifest-path "$MANIFEST_PATH" --bin p1_1c_receipt \
+            > "$ARTIFACT_DIR/evaluation-receipt-b.json" \
+            2> "$ARTIFACT_DIR/receipt-b.stderr.log"
+          receipt_b_code="$?"
+          cmp "$ARTIFACT_DIR/evaluation-receipt-a.json" \
+              "$ARTIFACT_DIR/evaluation-receipt-b.json" \
+            > "$ARTIFACT_DIR/receipt-compare.log" 2>&1
+          receipt_compare_code="$?"
+
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+          export fmt_materialize_code fmt_check_code format_scope_code
+          export source_gate_code tests_code check_code clippy_code
+          export receipt_a_code receipt_b_code receipt_compare_code
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          names = [
+              "fmt_materialize",
+              "fmt_check",
+              "format_scope",
+              "source_gate",
+              "tests",
+              "check",
+              "clippy",
+              "receipt_a",
+              "receipt_b",
+              "receipt_compare",
+          ]
+          codes = {name: int(os.environ[f"{name}_code"]) for name in names}
+          tests_log = (artifact_dir / "tests.log").read_text(encoding="utf-8", errors="replace")
+          tests_passed = sum(int(value) for value in re.findall(r"test result: ok\. (\d+) passed", tests_log))
+          format_scope = {}
+          try:
+              format_scope = json.loads((artifact_dir / "format-scope.log").read_text(encoding="utf-8"))
+          except Exception:
+              format_scope = {"changed_paths": []}
+          evaluation = None
+          try:
+              evaluation = json.loads((artifact_dir / "evaluation-receipt-a.json").read_text(encoding="utf-8"))
+          except Exception:
+              evaluation = None
+          expected_false = [
+              "network_access",
+              "model_download",
+              "product_workspace_member",
+              "product_module_registered",
+              "runtime_wired",
+              "default_recall_changed",
+              "federation_recall_changed",
+              "context_attachment",
+              "physical_send",
+              "external_effects",
+              "production_authority",
+              "efficacy_validation",
+              "efficacy_claim",
+              "operator_acceptance",
+              "promotion",
+              "callers_ratchet",
+          ]
+          semantic_ok = bool(
+              evaluation
+              and evaluation.get("status") == "PASS_P1_1C_SEED_PIPELINE"
+              and evaluation.get("case_count") == 8
+              and len(evaluation.get("locales", [])) == 8
+              and len(evaluation.get("lanes", [])) == 7
+              and all(evaluation.get(key) is False for key in expected_false)
+          )
+          redaction_ok = False
+          if evaluation is not None:
+              text = (artifact_dir / "evaluation-receipt-a.json").read_text(encoding="utf-8")
+              redaction_ok = all(token not in text for token in [
+                  "Which evidence binds",
+                  "哪些证据",
+                  "en-ann-gold-s",
+                  "zh-ann-gold-m",
+              ])
+          all_pass = (
+              all(code == 0 for code in codes.values())
+              and tests_passed == 13
+              and semantic_ok
+              and redaction_ok
+          )
+          summary = {
+              "schema": "hepta.intelligence.p1_1c.self_report.v3",
+              "status": "PASS" if all_pass else "FAIL",
+              "source_commit": os.environ["SOURCE_SHA"],
+              "exit_codes": codes,
+              "tests_passed": tests_passed,
+              "changed_paths": format_scope.get("changed_paths", []),
+              "evaluation_semantic_ok": semantic_ok,
+              "redaction_ok": redaction_ok,
+              "evaluation": evaluation,
+              "qualified": False,
+              "efficacy_validation": False,
+              "runtime_wired": False,
+              "production_authority": False,
+          }
+          (artifact_dir / "gate-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"passed={'true' if all_pass else 'false'}\n")
+              output.write(f"format_changed={'true' if summary['changed_paths'] else 'false'}\n")
+          PY
+          set -e
+
+      - name: Commit and fast-forward exact formatting on complete pass
+        id: promote
+        if: steps.gates.outputs.passed == 'true' && steps.gates.outputs.format_changed == 'true'
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git checkout --detach "$SOURCE_SHA"
+          mapfile -t changed < <(python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          value = json.loads((Path(os.environ["ARTIFACT_DIR"]) / "gate-summary.json").read_text())
+          print("\n".join(value["changed_paths"]))
+          PY
+          )
+          test "${#changed[@]}" -gt 0
+          git diff --check
+          git add -- "${changed[@]}"
+          git config user.name "Hepta Qualification Bot"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git commit -m "style(intelligence): apply exact P1.1c Rust 1.95 rustfmt"
+          candidate_sha="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          remote_sha="$(git ls-remote origin "refs/heads/$SOURCE_BRANCH" | awk '{print $1}')"
+          test "$remote_sha" = "$SOURCE_SHA"
+          git push origin "HEAD:refs/heads/$SOURCE_BRANCH"
+          echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Bind qualified source commit into summary
+        if: steps.gates.outputs.passed == 'true'
+        env:
+          ORIGINAL_SHA: ${{ steps.source.outputs.sha }}
+          PROMOTED_SHA: ${{ steps.promote.outputs.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["ARTIFACT_DIR"]) / "gate-summary.json"
+          summary = json.loads(path.read_text(encoding="utf-8"))
+          summary["qualified_source_commit"] = os.environ.get("PROMOTED_SHA") or os.environ["ORIGINAL_SHA"]
+          summary["source_qualified"] = True
+          summary["seed_pipeline_reproducible"] = True
+          path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload complete evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1c-self-report-v3-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1c-self-report-v3
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Comment exact outcome on stacked Draft PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          pr_number="$(gh api \
+            "repos/$GITHUB_REPOSITORY/pulls?state=open&head=ProfAlexQI:$SOURCE_BRANCH" \
+            --jq '.[0].number')"
+          test -n "$pr_number"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          summary_path = artifact_dir / "gate-summary.json"
+          if summary_path.is_file():
+              summary = json.loads(summary_path.read_text(encoding="utf-8"))
+          else:
+              summary = {
+                  "status": "FAIL",
+                  "source_commit": "source-binding-failed",
+                  "exit_codes": {},
+                  "tests_passed": 0,
+                  "changed_paths": [],
+                  "evaluation_semantic_ok": False,
+                  "redaction_ok": False,
+                  "qualified": False,
+                  "efficacy_validation": False,
+                  "runtime_wired": False,
+                  "production_authority": False,
+              }
+          lines = [
+              "## P1.1c self-reporting qualification",
+              "",
+              f"- Outcome: `{summary['status']}`",
+              f"- Source: `{summary.get('source_commit', 'unknown')}`",
+              f"- Qualified source: `{summary.get('qualified_source_commit', 'not produced')}`",
+              f"- Rust tests observed: `{summary.get('tests_passed', 0)}/13`",
+              f"- Receipt semantic check: `{summary.get('evaluation_semantic_ok', False)}`",
+              f"- Receipt redaction check: `{summary.get('redaction_ok', False)}`",
+              f"- Workflow: {os.environ['RUN_URL']}",
+              "",
+              "| Gate | Exit |",
+              "|---|---:|",
+          ]
+          for name, code in summary.get("exit_codes", {}).items():
+              lines.append(f"| {name} | `{code}` |")
+          lines.extend([
+              "",
+              "Authority remains unchanged: `qualified=false`, `efficacy_validation=false`, "
+              "`runtime_wired=false`, `production_authority=false`.",
+          ])
+          if summary["status"] != "PASS":
+              for name in ["source-gate", "tests", "check", "clippy", "receipt-a.stderr"]:
+                  path = artifact_dir / f"{name}.log"
+                  if not path.is_file() or not path.read_text(encoding="utf-8", errors="replace").strip():
+                      continue
+                  tail = path.read_text(encoding="utf-8", errors="replace").splitlines()[-30:]
+                  lines.extend(["", f"<details><summary>{name} tail</summary>", "", "```text", *tail, "```", "</details>"])
+                  break
+          (artifact_dir / "pr-comment.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/$pr_number/comments" \
+            -f body="$(cat "$ARTIFACT_DIR/pr-comment.md")"
+
+      - name: Enforce gate outcome
+        if: always()
+        run: |
+          set -euo pipefail
+          test -f "$ARTIFACT_DIR/gate-summary.json"
+          test "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["status"])' "$ARTIFACT_DIR/gate-summary.json")" = "PASS"
