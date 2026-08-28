@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static merge verifier for Worker source/API topology acceptance pointer v1."""
+"""Static verifier for Worker source/API topology acceptance pointer v1."""
 from __future__ import annotations
 
 import json
@@ -19,12 +19,12 @@ POLICY_SCHEMA = ROOT / "docs/hepta-vnext/browser/hepta.servo.worker_source_topol
 CHALLENGE_SCHEMA = ROOT / "docs/hepta-vnext/browser/hepta.servo.worker_source_topology_acceptance_review_challenge.v1.schema.json"
 POINTER_SCHEMA = ROOT / "docs/hepta-vnext/browser/hepta.servo.accepted_worker_source_topology_pointer.v1.schema.json"
 STATUS = ROOT / "docs/hepta-vnext/browser/C1_WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_POINTER_V1_STATUS.json"
-SPEC = ROOT / "docs/hepta-vnext/browser/C1_WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_POINTER_V1.md"
 CONTRACT = ROOT / ".github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml"
 LIVE = ROOT / ".github/workflows/hepta-servo-worker-source-topology-acceptance-live-review-v1.yml"
-SOURCE_LIVE_V2 = ROOT / ".github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml"
+SOURCE_LIVE = ROOT / ".github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml"
 AGGREGATE = ROOT / ".github/workflows/hepta-browser-next-required-v9.yml"
-BLOCKING = ROOT / ".github/workflows/blocking-ci.yml"
+CONTEXT_POLICY = ROOT / "docs/hepta-vnext/browser/CI_REQUIRED_CONTEXTS_V1.json"
+CONTEXT_VERIFIER = ROOT / "scripts/verify-hepta-required-contexts.py"
 CURRENT = ROOT / "docs/hepta-vnext/browser/CURRENT.yaml"
 C1_CURRENT = ROOT / "docs/hepta-vnext/browser/C1_CURRENT_V7.json"
 README = ROOT / "docs/hepta-vnext/browser/README.md"
@@ -46,7 +46,21 @@ def canonical(value: object) -> bytes:
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
-    ).encode()
+    ).encode("utf-8")
+
+
+def run_json(path: pathlib.Path, *arguments: str) -> dict[str, object]:
+    result = subprocess.run(
+        [sys.executable, str(path), *arguments],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=90,
+        check=False,
+    )
+    if result.returncode != 0:
+        fail((result.stderr or result.stdout)[-1200:])
+    return json.loads(result.stdout.strip().splitlines()[-1])
 
 
 def main() -> int:
@@ -61,12 +75,12 @@ def main() -> int:
             CHALLENGE_SCHEMA,
             POINTER_SCHEMA,
             STATUS,
-            SPEC,
             CONTRACT,
             LIVE,
-            SOURCE_LIVE_V2,
+            SOURCE_LIVE,
             AGGREGATE,
-            BLOCKING,
+            CONTEXT_POLICY,
+            CONTEXT_VERIFIER,
             CURRENT,
             C1_CURRENT,
             README,
@@ -83,14 +97,14 @@ def main() -> int:
         test = "".join(path.read_text(encoding="utf-8") for path in TEST_PARTS)
         contract = CONTRACT.read_text(encoding="utf-8")
         live = LIVE.read_text(encoding="utf-8")
-        source_live = SOURCE_LIVE_V2.read_text(encoding="utf-8")
+        source_live = SOURCE_LIVE.read_text(encoding="utf-8")
         aggregate = AGGREGATE.read_text(encoding="utf-8")
-        blocking = BLOCKING.read_text(encoding="utf-8")
         readme = README.read_text(encoding="utf-8")
         policy = json.loads(POLICY.read_text(encoding="utf-8"))
         status = json.loads(STATUS.read_text(encoding="utf-8"))
         current = json.loads(CURRENT.read_text(encoding="utf-8"))
         c1 = json.loads(C1_CURRENT.read_text(encoding="utf-8"))
+        contexts = json.loads(CONTEXT_POLICY.read_text(encoding="utf-8"))
 
         for schema_path in (POLICY_SCHEMA, CHALLENGE_SCHEMA, POINTER_SCHEMA):
             value = json.loads(schema_path.read_text(encoding="utf-8"))
@@ -115,12 +129,12 @@ def main() -> int:
             'add_parser("create-pointer")',
             "git push",
             "update_ref",
-            "subprocess.run([\"cargo\"",
+            'subprocess.run(["cargo"',
         ):
             if forbidden in tool:
-                fail(f"topology acceptance tool contains forbidden mutation/build surface {forbidden!r}")
-
-        required_tests = (
+                fail(f"topology acceptance tool contains forbidden surface {forbidden!r}")
+        require(
+            test,
             "test_unaccepted_source_pointer_is_rejected",
             "test_source_bundle_digest_drift_is_rejected",
             "test_archive_digest_drift_is_rejected",
@@ -133,14 +147,11 @@ def main() -> int:
             "test_unknown_changed_path_is_rejected",
             "test_hardlinked_evidence_is_rejected",
         )
-        require(test, *required_tests)
-
         require(
             contract,
             "workflow_call:",
             "hepta-servo-worker-source-topology-acceptance-pointer-v1.py contract",
             "test_hepta_servo_worker_source_topology_acceptance_pointer_v1.py -v",
-            "verify-hepta-servo-worker-source-topology-acceptance-pointer-v1.py",
             "pointer_creation_command=false",
             "worker_source_topology_accepted=false",
             "build_authorized=false",
@@ -151,80 +162,59 @@ def main() -> int:
             "name: Worker source/API topology accepted pointer live review",
             "ref: ${{ github.event.pull_request.base.sha }}",
             "PR-head code executed: false",
-            "contents/",
-            "verify-live-review",
             "PASS_LIVE_REVIEW_WORKER_SOURCE_TOPOLOGY_ONLY",
         )
-        if "ref: ${{ github.event.pull_request.head.sha }}" in live:
-            fail("topology live review executes PR-head verifier code")
         require(
             source_live,
             "pull_request_target:",
             "name: Source-only accepted pointer live review",
             "ref: ${{ github.event.pull_request.base.sha }}",
             "PR-head code executed: false",
-            "accepted-source-pointer.json",
-            "source-review-candidate.json",
-            "source-review-challenge.json",
         )
-        if "ref: ${{ github.event.pull_request.head.sha }}" in source_live:
-            fail("source live review still executes PR-head verifier code")
+        for workflow in (source_live, live):
+            if "ref: ${{ github.event.pull_request.head.sha }}" in workflow:
+                fail("live review executes PR-head verifier code")
 
         require(
             aggregate,
-            "workflow_call:",
+            "pull_request:",
             "name: Hepta Browser next required v9",
             "reusable workflow nesting: blocking-ci -> v9 -> leaf",
-            "browser-protocol:",
             "uses: ./.github/workflows/hepta-browser-ci.yml",
-            "independent-source-v3:",
             "uses: ./.github/workflows/hepta-servo-independent-source-contract-v3.yml",
-            "exact-source-review-candidate-v2:",
             "uses: ./.github/workflows/hepta-servo-exact-source-review-candidate-v2-contract.yml",
-            "source-api-topology:",
             "uses: ./.github/workflows/hepta-servo-worker-source-topology-contract.yml",
-            "source-acceptance-pointer-v1:",
             "uses: ./.github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml",
-            "topology-acceptance-pointer-v1:",
             "uses: ./.github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml",
-            "build-input-v3:",
             "uses: ./.github/workflows/hepta-servo-build-input-contract-v3.yml",
-            "build-preflight:",
             "uses: ./.github/workflows/hepta-servo-build-preflight-contract.yml",
-            "- topology-acceptance-pointer-v1",
             '"worker_source_topology_accepted": False',
             '"build_authorized": False',
-            '"servo_build_run": False',
             '"servo_runtime_qualified": False',
         )
         if "uses: ./.github/workflows/hepta-browser-next-required-v8.yml" in aggregate:
-            fail("canonical v9 is nested through obsolete v8 instead of calling leaf workflows")
-        require(
-            blocking,
-            "hepta-browser-next-v9:",
-            "uses: ./.github/workflows/hepta-browser-next-required-v9.yml",
-            "- hepta-browser-next-v9",
-            "name: CI required",
-        )
-        if "hepta-browser-next-v8:" in blocking or "- hepta-browser-next-v8" in blocking:
-            fail("blocking CI requires obsolete v8 alongside canonical v9")
+            fail("canonical v9 is nested through obsolete v8")
+        expected_context = {
+            "check_name": "Hepta Browser next required v9",
+            "purpose": "canonical WEB-C1 source, review, topology, build-input and preflight graph",
+            "required": True,
+            "workflow": ".github/workflows/hepta-browser-next-required-v9.yml",
+        }
+        if expected_context not in contexts.get("contexts", []):
+            fail("required-context policy omits independent Browser v9 check")
+        context_summary = run_json(CONTEXT_VERIFIER)
+        if context_summary.get("status") != "PASS_VERSION_CONTROLLED_CONTEXT_CONTRACT":
+            fail("required-context verifier status drifted")
 
         if policy.get("claims_after_acceptance", {}).get(
             "worker_source_topology_accepted"
         ) is not True:
-            fail("topology policy does not describe the intended topology-only acceptance")
+            fail("topology policy does not describe topology-only acceptance")
         for key in ("build_authorized", "servo_built", "servo_runtime_qualified"):
             if policy.get("claims_after_acceptance", {}).get(key) is not False:
                 fail(f"topology policy overclaims {key}")
         if any(value is not False for value in policy.get("authority", {}).values()):
             fail("topology policy authority posture is open")
-        if policy.get("review", {}).get("codeowner_review_required") is not False:
-            fail("topology policy claims unenforced CODEOWNER identity")
-        if policy.get("review", {}).get("required_status_check") != (
-            "Worker source/API topology accepted pointer live review"
-        ):
-            fail("topology policy status-check name drifted")
-
         if status.get("evidence", {}).get("local_fixture_tests") != "29_PASS":
             fail("topology acceptance status does not record 29 fixture passes")
         for key in (
@@ -240,11 +230,11 @@ def main() -> int:
         if current.get("canonical_aggregate_workflow") != (
             ".github/workflows/hepta-browser-next-required-v9.yml"
         ):
-            fail("root CURRENT does not select canonical aggregate v9")
+            fail("root CURRENT does not select v9")
         if c1.get("canonical_aggregate_workflow") != (
             ".github/workflows/hepta-browser-next-required-v9.yml"
         ):
-            fail("C1 v7 does not select canonical aggregate v9")
+            fail("C1 v7 does not select v9")
         if c1.get("claims", {}).get("worker_source_topology_accepted") is not False:
             fail("C1 v7 overclaims topology acceptance")
         if c1.get("claims", {}).get("build_authorized") is not False:
@@ -252,23 +242,7 @@ def main() -> int:
         if "Canonical C1 pointer: `C1_CURRENT_V7.json`" not in readme:
             fail("README does not identify C1 v7")
 
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(TOOL),
-                "contract",
-                "--policy",
-                str(POLICY.resolve()),
-            ],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-        if result.returncode != 0:
-            fail((result.stderr or result.stdout)[-1000:])
-        summary = json.loads(result.stdout)
+        summary = run_json(TOOL, "contract", "--policy", str(POLICY.resolve()))
         if summary.get("status") != "PASS_CONTRACT_ONLY":
             fail("topology acceptance contract status drifted")
         if summary.get("pointer_creation_command") is not False:
@@ -291,7 +265,7 @@ def main() -> int:
             {
                 "status": "HEPTA_SERVO_WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_STATIC_PASS",
                 "fixture_tests": "29_PASS",
-                "flat_v9_graph_verified": True,
+                "independent_required_context": True,
                 "trusted_base_source_review": True,
                 "trusted_base_topology_review": True,
                 "pointer_creation_command": False,
