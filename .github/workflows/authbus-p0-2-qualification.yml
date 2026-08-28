@@ -99,8 +99,21 @@ jobs:
           } | tee exact-head.txt
 
       - name: Check formatting
+        id: rustfmt
         shell: bash
         run: cargo fmt --manifest-path "${MANIFEST}" --all -- --check
+
+      - name: Capture deterministic rustfmt repair
+        if: failure() && steps.rustfmt.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path "${MANIFEST}" --all
+          git diff --binary -- codex-rs/hepta-authbus-qualification > authbus-p0-2-rustfmt.patch
+          mkdir -p authbus-p0-2-rustfmt-formatted/src authbus-p0-2-rustfmt-formatted/tests
+          cp codex-rs/hepta-authbus-qualification/src/*.rs authbus-p0-2-rustfmt-formatted/src/
+          cp codex-rs/hepta-authbus-qualification/tests/*.rs authbus-p0-2-rustfmt-formatted/tests/
+          test -s authbus-p0-2-rustfmt.patch
 
       - name: Check default-off posture
         shell: bash
@@ -156,5 +169,7 @@ jobs:
             rustc-version.txt
             cargo-version.txt
             authbus-p0-2-rust-receipt.json
+            authbus-p0-2-rustfmt.patch
+            authbus-p0-2-rustfmt-formatted/
           if-no-files-found: warn
           retention-days: 14
