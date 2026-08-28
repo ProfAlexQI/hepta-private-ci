@@ -1,7 +1,7 @@
 use super::*;
 
 pub(super) async fn verify_receipts(
-    pool: &SqlitePool,
+    connection: &mut SqliteConnection,
     owner_agent_id: &str,
 ) -> Result<(), CognitiveStoreError> {
     let rows = sqlx::query(
@@ -28,7 +28,7 @@ pub(super) async fn verify_receipts(
          LIMIT ?",
     )
     .bind(limit_plus_one(MAX_GROUNDING_RECEIPTS)?)
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(unavailable)?;
     if rows.len() > MAX_GROUNDING_RECEIPTS {
@@ -123,7 +123,7 @@ pub(super) async fn verify_receipts(
         }
 
         let supports = stored_fact_supports(
-            pool,
+            connection,
             &memory_id,
             memory_revision_i64,
             entity_count,
@@ -139,7 +139,7 @@ pub(super) async fn verify_receipts(
         )
         .bind(&memory_id)
         .bind(memory_revision_i64)
-        .fetch_all(pool)
+        .fetch_all(&mut *connection)
         .await
         .map_err(unavailable)?;
         let evidence_count_i64: i64 =

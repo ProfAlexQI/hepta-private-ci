@@ -1,7 +1,7 @@
 use super::*;
 
-async fn stored_fact_supports(
-    pool: &SqlitePool,
+pub(in super::super) async fn stored_fact_supports(
+    connection: &mut SqliteConnection,
     memory_id: &str,
     memory_revision: i64,
     declared_entity_count: i64,
@@ -15,7 +15,7 @@ async fn stored_fact_supports(
     )
     .bind(memory_id)
     .bind(memory_revision)
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(unavailable)?;
     if to_i64_len(entity_rows.len(), "stored entity count")? != declared_entity_count {
@@ -46,7 +46,7 @@ async fn stored_fact_supports(
     )
     .bind(memory_id)
     .bind(memory_revision)
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(unavailable)?;
     if to_i64_len(relation_rows.len(), "stored relation count")?
@@ -86,7 +86,9 @@ async fn stored_fact_supports(
     Ok(supports)
 }
 
-fn durable_receipt_digest(parts: DurableReceiptDigestParts<'_>) -> Sha256Digest {
+pub(in super::super) fn durable_receipt_digest(
+    parts: DurableReceiptDigestParts<'_>,
+) -> Sha256Digest {
     let DurableReceiptDigestParts {
         memory_id,
         memory_revision,
@@ -130,7 +132,9 @@ fn durable_receipt_digest(parts: DurableReceiptDigestParts<'_>) -> Sha256Digest 
     Sha256Digest::from_sha256_output(hasher.finalize())
 }
 
-fn parse_fact_kind(value: &str) -> Result<GroundedFactKind, CognitiveStoreError> {
+pub(in super::super) fn parse_fact_kind(
+    value: &str,
+) -> Result<GroundedFactKind, CognitiveStoreError> {
     match value {
         "entity" => Ok(GroundedFactKind::Entity),
         "relation" => Ok(GroundedFactKind::Relation),
@@ -140,7 +144,7 @@ fn parse_fact_kind(value: &str) -> Result<GroundedFactKind, CognitiveStoreError>
     }
 }
 
-fn validate_span_range_corrupt(
+pub(in super::super) fn validate_span_range_corrupt(
     source_text: &str,
     start: usize,
     end: usize,
@@ -158,12 +162,17 @@ fn validate_span_range_corrupt(
     Ok(())
 }
 
-fn to_i64_len(value: usize, label: &str) -> Result<i64, CognitiveStoreError> {
+pub(in super::super) fn to_i64_len(
+    value: usize,
+    label: &str,
+) -> Result<i64, CognitiveStoreError> {
     i64::try_from(value)
         .map_err(|_| CognitiveStoreError::Invalid(format!("{label} exceeds i64")))
 }
 
-fn limit_plus_one(value: usize) -> Result<i64, CognitiveStoreError> {
+pub(in super::super) fn limit_plus_one(
+    value: usize,
+) -> Result<i64, CognitiveStoreError> {
     value
         .checked_add(1)
         .and_then(|next| i64::try_from(next).ok())

@@ -15,6 +15,7 @@ use sha2::Digest;
 use sha2::Sha256;
 use sqlx::Row;
 use sqlx::Sqlite;
+use sqlx::SqliteConnection;
 use sqlx::SqlitePool;
 use sqlx::Transaction;
 
@@ -35,10 +36,13 @@ use crate::StableMemoryId;
 use crate::cognitive_intelligence_writer::CanonicalFactSet;
 use crate::cognitive_store::unavailable;
 
+#[path = "durable/grounding.rs"]
 mod grounding;
+#[path = "durable/schema.rs"]
 mod schema;
 
 #[cfg(test)]
+#[path = "durable/tests.rs"]
 mod tests;
 
 const COMPONENT_MIGRATION_VERSION: i64 = 11;
@@ -122,12 +126,26 @@ impl CognitiveStore {
     }
 
     /// Recomputes the component schema and every durable fact-grounding
-    /// receipt from source bytes and immutable KG facts.
+    /// receipt from source bytes and immutable KG facts inside one read
+    /// transaction.
     pub async fn verify_durable_fact_grounding_ledger(
         &self,
     ) -> Result<(), CognitiveStoreError> {
-        schema::verify(&self.pool).await?;
-        grounding::verify_receipts(&self.pool, self.owner_agent_id.as_str()).await
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        self.verify_durable_fact_grounding_ledger_tx(&mut transaction)
+            .await?;
+        transaction.rollback().await.map_err(unavailable)
+    }
+
+    /// Verifies the component schema and every durable grounding receipt using
+    /// the caller's exact SQLite snapshot. Shadow readers call this before any
+    /// projection/head/span read on the same transaction.
+    pub(crate) async fn verify_durable_fact_grounding_ledger_tx(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+    ) -> Result<(), CognitiveStoreError> {
+        schema::verify_tx(transaction).await?;
+        grounding::verify_receipts(&mut **transaction, self.owner_agent_id.as_str()).await
     }
 
     /// Atomically appends source, memory, KG facts, durable grounding evidence,

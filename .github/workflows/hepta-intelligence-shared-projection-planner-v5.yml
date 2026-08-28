@@ -1,0 +1,311 @@
+name: hepta-intelligence-shared-projection-planner-v5
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-shared-projection-planner-v5-20260828"
+    paths:
+      - "codex-rs/hepta-memory/src/cognitive_projection_planner.rs"
+      - "codex-rs/hepta-memory/src/cognitive_kg_store.rs"
+      - "codex-rs/hepta-memory/src/fact_grounding/**"
+      - "codex-rs/hepta-memory/src/framing.rs"
+      - "scripts/verify-hepta-intelligence-shared-projection-planner-v5.py"
+      - ".github/workflows/hepta-intelligence-shared-projection-planner-v5.yml"
+  pull_request:
+    paths:
+      - "codex-rs/hepta-memory/src/cognitive_projection_planner.rs"
+      - "codex-rs/hepta-memory/src/cognitive_kg_store.rs"
+      - "codex-rs/hepta-memory/src/fact_grounding/**"
+      - "codex-rs/hepta-memory/src/framing.rs"
+      - "scripts/verify-hepta-intelligence-shared-projection-planner-v5.py"
+      - ".github/workflows/hepta-intelligence-shared-projection-planner-v5.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-shared-projection-planner-v5-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: P0.3.2 shared projection source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Run fail-closed source gate
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/hepta-intelligence-p0-3-2-source
+          git rev-parse HEAD > artifacts/hepta-intelligence-p0-3-2-source/head.txt
+          git rev-parse HEAD^{tree} > artifacts/hepta-intelligence-p0-3-2-source/tree.txt
+          python3 -m py_compile \
+            scripts/verify-hepta-intelligence-shared-projection-planner-v5.py
+          python3 scripts/verify-hepta-intelligence-shared-projection-planner-v5.py \
+            | tee artifacts/hepta-intelligence-p0-3-2-source/source-gate.json
+
+      - name: Verify source-only authority boundary
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(
+              Path(
+                  "artifacts/hepta-intelligence-p0-3-2-source/source-gate.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert receipt["status"] == "PASS_P0_3_2_SHARED_PROJECTION_SOURCE_ONLY"
+          assert receipt["shared_projection_planner"] is True
+          assert receipt["current_projection_replanned"] is True
+          assert receipt["ledger_verified_in_snapshot"] is True
+          assert receipt["qualified"] is False
+          for key in (
+              "wired",
+              "production_projection_gate",
+              "production_authority",
+              "external_effects",
+              "operator_acceptance",
+              "promotion",
+              "callers_ratchet",
+          ):
+              assert receipt[key] is False, key
+          PY
+
+      - name: Upload source receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p0-3-2-source-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/hepta-intelligence-p0-3-2-source
+          if-no-files-found: error
+          retention-days: 21
+
+  exact-head-qualification:
+    name: P0.3.2 exact-head shared projection qualification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Run every fail-closed qualification gate
+        id: gates
+        shell: bash
+        run: |
+          set +e
+          ROOT="$PWD"
+          OUT="$ROOT/artifacts/hepta-intelligence-shared-projection-planner-v5"
+          mkdir -p "$OUT/logs"
+
+          git rev-parse HEAD > "$OUT/head.txt"
+          git rev-parse HEAD^{tree} > "$OUT/tree.txt"
+          rustc --version > "$OUT/rustc.txt" 2>&1
+          cargo --version > "$OUT/cargo.txt" 2>&1
+
+          python3 -m py_compile \
+            scripts/verify-hepta-intelligence-shared-projection-planner-v5.py \
+            > "$OUT/logs/python-compile.log" 2>&1
+          PYTHON_COMPILE=$?
+
+          python3 scripts/verify-hepta-intelligence-shared-projection-planner-v5.py \
+            > "$OUT/source-gate.json" \
+            2> "$OUT/logs/source-gate.stderr.log"
+          SOURCE=$?
+
+          cd codex-rs
+
+          cargo fmt -p codex-hepta-memory -- --check \
+            > "$OUT/logs/fmt.log" 2>&1
+          FMT=$?
+
+          cargo test -p codex-hepta-memory \
+            cognitive_projection_planner -- --nocapture \
+            > "$OUT/logs/planner-tests.log" 2>&1
+          PLANNER_TESTS=$?
+
+          cargo test -p codex-hepta-memory shadow_ -- --nocapture \
+            > "$OUT/logs/shadow-tests.log" 2>&1
+          SHADOW_TESTS=$?
+
+          cargo test -p codex-hepta-memory durable_grounding -- --nocapture \
+            > "$OUT/logs/durable-tests.log" 2>&1
+          DURABLE_TESTS=$?
+
+          cargo test -p codex-hepta-memory \
+            > "$OUT/logs/full-tests.log" 2>&1
+          FULL_TESTS=$?
+
+          cargo clippy -p codex-hepta-memory --all-targets -- -D warnings \
+            > "$OUT/logs/clippy.log" 2>&1
+          CLIPPY=$?
+
+          cd "$ROOT"
+          git diff --quiet -- . ':(exclude)artifacts' \
+            > "$OUT/logs/dirty-check.log" 2>&1
+          DIRTY=$?
+
+          cat > "$OUT/exits.env" <<EOF
+          PYTHON_COMPILE=$PYTHON_COMPILE
+          SOURCE=$SOURCE
+          FMT=$FMT
+          PLANNER_TESTS=$PLANNER_TESTS
+          SHADOW_TESTS=$SHADOW_TESTS
+          DURABLE_TESTS=$DURABLE_TESTS
+          FULL_TESTS=$FULL_TESTS
+          CLIPPY=$CLIPPY
+          DIRTY=$DIRTY
+          EOF
+
+          exit 0
+
+      - name: Build exact-head qualification receipt
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import json
+          from pathlib import Path
+
+          root = Path.cwd()
+          out = root / "artifacts/hepta-intelligence-shared-projection-planner-v5"
+          exits = {}
+          for line in (out / "exits.env").read_text(encoding="utf-8").splitlines():
+              if line.strip():
+                  key, value = line.split("=", 1)
+                  exits[key] = int(value)
+
+          command_names = {
+              "PYTHON_COMPILE": "python3 -m py_compile source gate",
+              "SOURCE": "python3 shared projection source gate",
+              "FMT": "cargo fmt -p codex-hepta-memory -- --check",
+              "PLANNER_TESTS": "cargo test -p codex-hepta-memory cognitive_projection_planner -- --nocapture",
+              "SHADOW_TESTS": "cargo test -p codex-hepta-memory shadow_ -- --nocapture",
+              "DURABLE_TESTS": "cargo test -p codex-hepta-memory durable_grounding -- --nocapture",
+              "FULL_TESTS": "cargo test -p codex-hepta-memory",
+              "CLIPPY": "cargo clippy -p codex-hepta-memory --all-targets -- -D warnings",
+              "DIRTY": "git diff --quiet after qualification",
+          }
+          logs = {
+              "PYTHON_COMPILE": "python-compile.log",
+              "SOURCE": "source-gate.stderr.log",
+              "FMT": "fmt.log",
+              "PLANNER_TESTS": "planner-tests.log",
+              "SHADOW_TESTS": "shadow-tests.log",
+              "DURABLE_TESTS": "durable-tests.log",
+              "FULL_TESTS": "full-tests.log",
+              "CLIPPY": "clippy.log",
+              "DIRTY": "dirty-check.log",
+          }
+
+          checks = []
+          for key, command in command_names.items():
+              path = out / "logs" / logs[key]
+              text = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+              checks.append(
+                  {
+                      "id": key.lower(),
+                      "command": command,
+                      "exit_code": exits.get(key, 255),
+                      "passed": exits.get(key, 255) == 0,
+                      "log": f"logs/{logs[key]}",
+                      "log_tail": "\n".join(text.splitlines()[-80:])[-6000:],
+                  }
+              )
+
+          qualified = all(check["passed"] for check in checks)
+          source_receipt = None
+          source_path = out / "source-gate.json"
+          if source_path.exists():
+              try:
+                  source_receipt = json.loads(source_path.read_text(encoding="utf-8"))
+              except json.JSONDecodeError:
+                  source_receipt = {"invalid_json": True}
+
+          receipt = {
+              "schema": "hepta_intelligence_p0_3_2_exact_head_qualification_v2",
+              "repository": "ProfAlexQI/hepta-private-ci",
+              "branch": "codex/hepta-intelligence-shared-projection-planner-v5-20260828",
+              "head": (out / "head.txt").read_text(encoding="utf-8").strip(),
+              "tree": (out / "tree.txt").read_text(encoding="utf-8").strip(),
+              "rustc": (out / "rustc.txt").read_text(encoding="utf-8", errors="replace").strip(),
+              "cargo": (out / "cargo.txt").read_text(encoding="utf-8", errors="replace").strip(),
+              "source_receipt": source_receipt,
+              "checks": checks,
+              "qualified": qualified,
+              "implemented": True,
+              "wired": False,
+              "efficacy_proven": False,
+              "operator_accepted": False,
+              "promoted": False,
+              "shared_projection_planner": True,
+              "current_projection_replanned": True,
+              "ledger_verified_in_snapshot": True,
+              "tool_v3_registered": False,
+              "tool_v4_registered": False,
+              "default_projection_pointer_changed": False,
+              "default_recall_query_changed": False,
+              "production_projection_gate": False,
+              "production_authority": False,
+              "external_effects": False,
+              "callers_ratchet": False,
+          }
+          (out / "qualification-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p0-3-2-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/hepta-intelligence-shared-projection-planner-v5
+          if-no-files-found: error
+          retention-days: 21
+
+      - name: Enforce exact-head qualification result
+        if: always()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("artifacts/hepta-intelligence-shared-projection-planner-v5/qualification-receipt.json")
+          receipt = json.loads(path.read_text(encoding="utf-8"))
+          assert receipt["shared_projection_planner"] is True
+          assert receipt["current_projection_replanned"] is True
+          assert receipt["ledger_verified_in_snapshot"] is True
+          assert receipt["wired"] is False
+          assert receipt["production_projection_gate"] is False
+          assert receipt["production_authority"] is False
+          assert receipt["external_effects"] is False
+          assert receipt["operator_accepted"] is False
+          assert receipt["promoted"] is False
+          assert receipt["callers_ratchet"] is False
+          if not receipt["qualified"]:
+              failed = [check["id"] for check in receipt["checks"] if not check["passed"]]
+              raise SystemExit(f"P0.3.2 qualification failed: {failed}")
+          PY

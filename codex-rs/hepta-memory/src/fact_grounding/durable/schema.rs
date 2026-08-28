@@ -103,23 +103,32 @@ pub(super) async fn ensure(pool: &SqlitePool) -> Result<(), CognitiveStoreError>
         .await
         .map_err(unavailable)?;
     } else {
-        verify_migration_ledger_tx(&mut transaction, migration_checksum.as_str()).await?;
+        verify_migration_ledger_connection(&mut *transaction, migration_checksum.as_str())
+            .await?;
     }
     transaction.commit().await.map_err(unavailable)?;
-    verify_schema_oracle(pool).await
+    verify(pool).await
 }
 
 pub(super) async fn verify(pool: &SqlitePool) -> Result<(), CognitiveStoreError> {
-    verify_schema_oracle(pool).await?;
-    verify_migration_ledger(
-        pool,
+    let mut transaction = pool.begin().await.map_err(unavailable)?;
+    verify_tx(&mut transaction).await?;
+    transaction.rollback().await.map_err(unavailable)
+}
+
+pub(super) async fn verify_tx(
+    transaction: &mut Transaction<'_, Sqlite>,
+) -> Result<(), CognitiveStoreError> {
+    verify_schema_oracle_connection(&mut **transaction).await?;
+    verify_migration_ledger_connection(
+        &mut **transaction,
         Sha256Digest::for_bytes(COMPONENT_MIGRATION_SQL.as_bytes()).as_str(),
     )
     .await
 }
 
-async fn verify_migration_ledger_tx(
-    transaction: &mut Transaction<'_, Sqlite>,
+async fn verify_migration_ledger_connection(
+    connection: &mut SqliteConnection,
     expected_checksum: &str,
 ) -> Result<(), CognitiveStoreError> {
     let rows = sqlx::query(
@@ -127,22 +136,7 @@ async fn verify_migration_ledger_tx(
          FROM cognitive_fact_grounding_migrations
          ORDER BY version",
     )
-    .fetch_all(&mut **transaction)
-    .await
-    .map_err(unavailable)?;
-    verify_migration_rows(&rows, expected_checksum)
-}
-
-async fn verify_migration_ledger(
-    pool: &SqlitePool,
-    expected_checksum: &str,
-) -> Result<(), CognitiveStoreError> {
-    let rows = sqlx::query(
-        "SELECT version, description, checksum_sha256
-         FROM cognitive_fact_grounding_migrations
-         ORDER BY version",
-    )
-    .fetch_all(pool)
+    .fetch_all(&mut *connection)
     .await
     .map_err(unavailable)?;
     verify_migration_rows(&rows, expected_checksum)
@@ -175,12 +169,14 @@ fn verify_migration_rows(
     Ok(())
 }
 
-async fn verify_schema_oracle(pool: &SqlitePool) -> Result<(), CognitiveStoreError> {
+async fn verify_schema_oracle_connection(
+    connection: &mut SqliteConnection,
+) -> Result<(), CognitiveStoreError> {
     let mut parts = Vec::with_capacity(REQUIRED_GROUNDING_SCHEMA_OBJECTS.len());
     for (name, expected_type) in REQUIRED_GROUNDING_SCHEMA_OBJECTS {
         let row = sqlx::query("SELECT type, sql FROM sqlite_schema WHERE name = ?")
             .bind(name)
-            .fetch_optional(pool)
+            .fetch_optional(&mut *connection)
             .await
             .map_err(unavailable)?
             .ok_or_else(|| {

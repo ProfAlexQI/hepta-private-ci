@@ -1,0 +1,199 @@
+name: restack-p0-3-3-on-p0-3-2
+
+on:
+  workflow_dispatch:
+    inputs:
+      qualified_head:
+        description: Exact P0.3.2 head whose receipt is fully green
+        required: true
+        type: string
+      qualification_run_id:
+        description: Exact-head workflow run containing the P0.3.2 receipt artifact
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: restack-p0-3-3-on-p0-3-2
+  cancel-in-progress: false
+
+jobs:
+  restack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact P0.3.2 branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/hepta-intelligence-shared-projection-planner-v5-20260828
+          fetch-depth: 0
+
+      - name: Verify exact qualified P0.3.2 receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFIED_HEAD: ${{ inputs.qualified_head }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$QUALIFIED_HEAD"
+          test "${#QUALIFIED_HEAD}" = 40
+          case "$QUALIFIED_HEAD" in
+            *[!0-9a-f]*) echo "qualified_head is not lowercase SHA-1" >&2; exit 1 ;;
+          esac
+
+          rm -rf /tmp/p032-evidence
+          mkdir -p /tmp/p032-evidence
+          gh run download "$QUALIFICATION_RUN_ID" \
+            --repo ProfAlexQI/hepta-private-ci \
+            --name "hepta-intelligence-p0-3-2-$QUALIFIED_HEAD" \
+            --dir /tmp/p032-evidence
+
+          RECEIPT=$(find /tmp/p032-evidence -name qualification-receipt.json -type f -print -quit)
+          test -n "$RECEIPT"
+          python3 - "$RECEIPT" "$QUALIFIED_HEAD" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          receipt = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected = sys.argv[2]
+          assert receipt["head"] == expected
+          assert receipt["qualified"] is True
+          assert receipt["shared_projection_planner"] is True
+          assert receipt["ledger_verified_in_snapshot"] is True
+          for key in (
+              "wired",
+              "tool_v3_registered",
+              "tool_v4_registered",
+              "default_projection_pointer_changed",
+              "default_recall_query_changed",
+              "production_projection_gate",
+              "production_authority",
+              "external_effects",
+              "operator_accepted",
+              "promoted",
+              "callers_ratchet",
+          ):
+              assert receipt[key] is False, key
+          assert all(check["passed"] for check in receipt["checks"])
+          PY
+
+      - name: Restack only the governed P0.3.3 source surface
+        env:
+          GH_TOKEN: ${{ github.token }}
+          P032_BRANCH: codex/hepta-intelligence-shared-projection-planner-v5-20260828
+          P033_BRANCH: codex/hepta-intelligence-evidence-resolver-v4-20260828
+          QUALIFIED_HEAD: ${{ inputs.qualified_head }}
+        run: |
+          set -euo pipefail
+          git fetch origin "$P033_BRANCH:refs/remotes/origin/$P033_BRANCH"
+          P033_OLD_HEAD=$(git rev-parse "refs/remotes/origin/$P033_BRANCH")
+          git switch --detach "$QUALIFIED_HEAD"
+
+          paths=(
+            .github/workflows/hepta-intelligence-evidence-resolver-v4.yml
+            codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs
+            codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/receipt.rs
+            codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/resolver.rs
+            codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/schema.rs
+            codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/support.rs
+            codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/tests.rs
+            codex-rs/ext/hepta-memory/src/framing.rs
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_DEVELOPMENT_PLAN_V3_2_2026-08-28.md
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_3_HOST_EVIDENCE_RESOLVER_2026-08-28.md
+            scripts/verify-hepta-intelligence-evidence-resolver-v4.py
+          )
+          for path in "${paths[@]}"; do
+            git cat-file -e "refs/remotes/origin/$P033_BRANCH:$path"
+            git checkout "refs/remotes/origin/$P033_BRANCH" -- "$path"
+          done
+
+          python3 - "$QUALIFIED_HEAD" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          facade = Path(
+              "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs"
+          )
+          text = facade.read_text(encoding="utf-8")
+          replacements = {
+              "mod receipt;": '#[path = "evidence_resolver_v4/receipt.rs"]\nmod receipt;',
+              "mod resolver;": '#[path = "evidence_resolver_v4/resolver.rs"]\nmod resolver;',
+              "mod schema;": '#[path = "evidence_resolver_v4/schema.rs"]\nmod schema;',
+              "mod support;": '#[path = "evidence_resolver_v4/support.rs"]\nmod support;',
+              "#[cfg(test)]\nmod tests;": (
+                  '#[cfg(test)]\n#[path = "evidence_resolver_v4/tests.rs"]\nmod tests;'
+              ),
+          }
+          for old, new in replacements.items():
+              if new not in text:
+                  if old not in text:
+                      raise SystemExit(f"missing facade marker: {old}")
+                  text = text.replace(old, new, 1)
+          facade.write_text(text, encoding="utf-8")
+
+          workflow = Path(
+              ".github/workflows/hepta-intelligence-evidence-resolver-v4.yml"
+          )
+          text = workflow.read_text(encoding="utf-8")
+          text = text.replace("toolchain: 1.88.0", "toolchain: 1.95.0")
+          text = text.replace(
+              "cargo fmt --all -- --check",
+              (
+                  "cargo fmt -p codex-hepta-memory-extension "
+                  "-p codex-hepta-memory -- --check"
+              ),
+          )
+          workflow.write_text(text, encoding="utf-8")
+
+          status_path = Path(
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json"
+          )
+          status = json.loads(status_path.read_text(encoding="utf-8"))
+          status["stack_base"] = {
+              "branch": "codex/hepta-intelligence-shared-projection-planner-v5-20260828",
+              "head": sys.argv[1],
+              "pull_request": 40,
+          }
+          dependency = status.setdefault("dependency", {})
+          dependency.update(
+              {
+                  "id": "P0.3.2",
+                  "name": "shared_semantic_projection_planner",
+                  "repository_branch": "codex/hepta-intelligence-shared-projection-planner-v5-20260828",
+                  "implemented_in_repository": True,
+                  "qualified": True,
+                  "activation_blocking": False,
+                  "ledger_verified_in_snapshot": True,
+              }
+          )
+          current = status.setdefault("current_tranche", {})
+          current["wired"] = False
+          current["qualified"] = False
+          current["tool_v4_registered"] = False
+          current["production_projection_gate"] = False
+          current["production_authority"] = False
+          status_path.write_text(
+              json.dumps(status, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          git config user.name "Qian QI"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git add "${paths[@]}"
+          git diff --cached --check
+          git commit -m "feat(memory): restack host-owned evidence resolver P0.3.3"
+          P033_NEW_HEAD=$(git rev-parse HEAD)
+          git push --force-with-lease="refs/heads/$P033_BRANCH:$P033_OLD_HEAD" \
+            origin "HEAD:refs/heads/$P033_BRANCH"
+          gh api --method PATCH repos/ProfAlexQI/hepta-private-ci/pulls/30 \
+            -f base="$P032_BRANCH" >/dev/null
+          printf 'P0.3.2 qualified head: %s\nP0.3.3 old head: %s\nP0.3.3 new head: %s\n' \
+            "$QUALIFIED_HEAD" "$P033_OLD_HEAD" "$P033_NEW_HEAD"
