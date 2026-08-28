@@ -14,7 +14,7 @@ env:
   MANIFEST: codex-rs/hepta-authbus-p1-qualification/Cargo.toml
   PACKAGE: codex-hepta-authbus-p1-qualification
   CRATE_ROOT: codex-rs/hepta-authbus-p1-qualification
-  EXPECTED_PARENT: 68ba4f58c340759f1ae236d03e546fc8f420160f
+  EXPECTED_PARENT: 4df258c8a73a652835c6e25eddb0e6766362fb07
   CARGO_INCREMENTAL: "0"
   CARGO_BUILD_JOBS: "1"
   CARGO_PROFILE_DEV_DEBUG: "0"
