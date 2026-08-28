@@ -1,0 +1,300 @@
+name: hepta-intelligence-p1-1b-hardening-restack-arm-v2
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1b-hardening-restack-arm-v2-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-p1-1b-hardening-restack-arm-v2
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: e6cded3099ec53c1b6de36bf7b389ff30a8d3718
+  HARDENING_SHA: 1dad243884c67b3cba50b073102269f06142aa1c
+  CANONICAL_BRANCH: codex/hepta-intelligence-local-embedding-index-v1b-20260828
+  HARDENING_BRANCH: codex/hepta-intelligence-p1-1b-hardening-v1-20260828
+  WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1b-hardening-restack-arm-v2.yml
+  OUTPUT_BRANCH: qualification/hepta-intelligence-p1-1b-hardening-restacked-e6cded3-20260828
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1b-qualification
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml
+  BASE_VERIFIER: scripts/verify-hepta-intelligence-local-embedding-index.py
+  HARDENING_VERIFIER: scripts/verify-hepta-intelligence-p1-1b-hardening.py
+  ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1b-hardening-restack
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  restack:
+    name: P1.1b hardening restack on formatted canonical head
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout qualification wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 3
+
+      - name: Verify exact wrapper binding and fetch source parents
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          test "$(git rev-list --count "$SOURCE_SHA"..HEAD)" = "1"
+          test "$(git diff --name-only "$SOURCE_SHA"..HEAD)" = "$WRAPPER_PATH"
+
+          git fetch --no-tags origin \
+            "+refs/heads/$CANONICAL_BRANCH:refs/remotes/origin/$CANONICAL_BRANCH" \
+            "+refs/heads/$HARDENING_BRANCH:refs/remotes/origin/$HARDENING_BRANCH"
+          test "$(git rev-parse "refs/remotes/origin/$CANONICAL_BRANCH")" = "$SOURCE_SHA"
+          test "$(git rev-parse "refs/remotes/origin/$HARDENING_BRANCH")" = "$HARDENING_SHA"
+          test "$(git merge-base "$SOURCE_SHA" "$HARDENING_SHA")" = \
+            "c804ce200e3eccec96e90b867de31c5cacfdf82f"
+
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          def git(*args: str) -> str:
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.hardening_restack_binding.v2",
+              "formatted_parent": os.environ["SOURCE_SHA"],
+              "hardening_parent": os.environ["HARDENING_SHA"],
+              "wrapper_commit": git("rev-parse", "HEAD"),
+              "wrapper_path": os.environ["WRAPPER_PATH"],
+              "wrapper_only_diff": True,
+              "runtime_wired": False,
+              "production_authority": False,
+          }
+          path = Path(os.environ["ARTIFACT_DIR"]) / "source-binding.json"
+          path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Materialize hardening tree with isolated Cargo outputs
+        run: |
+          set -euo pipefail
+          git checkout --detach "$HARDENING_SHA"
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-p1-1b-hardening-restack-target" >> "$GITHUB_ENV"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Canonicalize formatting and enforce exact format delta
+        run: |
+          set -euo pipefail
+          rustc --version | tee "$ARTIFACT_DIR/rustc-version.txt"
+          cargo --version | tee "$ARTIFACT_DIR/cargo-version.txt"
+          rustfmt --version | tee "$ARTIFACT_DIR/rustfmt-version.txt"
+          cargo clippy --version | tee "$ARTIFACT_DIR/clippy-version.txt"
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check
+
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          expected = [
+              "codex-rs/hepta-memory-p1-1b-qualification/src/digest.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/embedding.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/lib.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/route.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/tokenizer.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/tests/p1_1b.rs",
+          ]
+          actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          if actual != expected:
+              raise SystemExit(json.dumps({"expected": expected, "actual": actual}, indent=2))
+          (Path(os.environ["ARTIFACT_DIR"]) / "format-paths.txt").write_text(
+              "\n".join(actual) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Run both fail-closed source gates
+        run: |
+          set -o pipefail
+          python3 "$BASE_VERIFIER" \
+            2>&1 | tee "$ARTIFACT_DIR/base-source-gate.log"
+          python3 "$HARDENING_VERIFIER" \
+            2>&1 | tee "$ARTIFACT_DIR/hardening-source-gate.log"
+
+      - name: Run complete Rust gate matrix
+        run: |
+          set -o pipefail
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check \
+            2>&1 | tee "$ARTIFACT_DIR/rustfmt.log"
+          cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture \
+            2>&1 | tee "$ARTIFACT_DIR/tests.log"
+          grep -F "test result: ok. 17 passed; 0 failed" "$ARTIFACT_DIR/tests.log"
+          grep -F "test result: ok. 5 passed; 0 failed" "$ARTIFACT_DIR/tests.log"
+          cargo check --manifest-path "$MANIFEST_PATH" --all-targets \
+            2>&1 | tee "$ARTIFACT_DIR/check.log"
+          cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings \
+            2>&1 | tee "$ARTIFACT_DIR/clippy.log"
+
+      - name: Prove gate execution did not expand source scope
+        run: |
+          set -euo pipefail
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+          git diff --check
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          expected = [
+              "codex-rs/hepta-memory-p1-1b-qualification/src/digest.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/embedding.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/lib.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/route.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/tokenizer.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/tests/p1_1b.rs",
+          ]
+          actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          untracked = subprocess.check_output(
+              ["git", "ls-files", "--others", "--exclude-standard", "--", os.environ["CRATE_ROOT"]],
+              text=True,
+          ).splitlines()
+          if actual != expected or untracked:
+              raise SystemExit(json.dumps({"expected": expected, "actual": actual, "untracked": untracked}, indent=2))
+          (Path(os.environ["ARTIFACT_DIR"]) / "post-gate-scope.json").write_text(
+              json.dumps({"changed_paths": actual, "untracked": untracked}, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Create audited dual-parent candidate commit
+        id: candidate
+        run: |
+          set -euo pipefail
+          git add -- \
+            "$CRATE_ROOT/src/digest.rs" \
+            "$CRATE_ROOT/src/embedding.rs" \
+            "$CRATE_ROOT/src/lib.rs" \
+            "$CRATE_ROOT/src/route.rs" \
+            "$CRATE_ROOT/src/tokenizer.rs" \
+            "$CRATE_ROOT/tests/p1_1b.rs"
+          tree_sha="$(git write-tree)"
+          git config user.name "Hepta Qualification Bot"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          candidate_sha="$(printf '%s\n' 'fix(intelligence): restack P1.1b hardening on formatted head' \
+            | git commit-tree "$tree_sha" -p "$SOURCE_SHA" -p "$HARDENING_SHA")"
+
+          test "$(git rev-parse "$candidate_sha^1")" = "$SOURCE_SHA"
+          test "$(git rev-parse "$candidate_sha^2")" = "$HARDENING_SHA"
+
+          python3 - "$candidate_sha" <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          candidate = sys.argv[1]
+          expected_from_formatted = [
+              ".github/workflows/hepta-intelligence-p1-1b-hardening.yml",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/embedding.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/impl.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/search_math.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/tests_module.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/types.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/route.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/tokenizer.rs",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_HARDENING_2026-08-28.md",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_HARDENING_RECEIPT_2026-08-28.json",
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1B_HARDENING_STATUS_2026-08-28.json",
+              "scripts/verify-hepta-intelligence-p1-1b-hardening.py",
+          ]
+          expected_from_hardening = [
+              "codex-rs/hepta-memory-p1-1b-qualification/src/digest.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/embedding.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/lib.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/route.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/tokenizer.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/tests/p1_1b.rs",
+          ]
+          def changed(base: str) -> list[str]:
+              return subprocess.check_output(
+                  ["git", "diff", "--name-only", f"{base}..{candidate}"], text=True
+              ).splitlines()
+          from_formatted = changed(os.environ["SOURCE_SHA"])
+          from_hardening = changed(os.environ["HARDENING_SHA"])
+          if from_formatted != expected_from_formatted or from_hardening != expected_from_hardening:
+              raise SystemExit(json.dumps({
+                  "expected_from_formatted": expected_from_formatted,
+                  "actual_from_formatted": from_formatted,
+                  "expected_from_hardening": expected_from_hardening,
+                  "actual_from_hardening": from_hardening,
+              }, indent=2))
+
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.hardening_restack_candidate.v2",
+              "candidate_commit": candidate,
+              "formatted_parent": os.environ["SOURCE_SHA"],
+              "hardening_parent": os.environ["HARDENING_SHA"],
+              "changed_paths_from_formatted_parent": from_formatted,
+              "format_paths_from_hardening_parent": from_hardening,
+              "base_source_gate": "success",
+              "hardening_source_gate": "success",
+              "rustfmt": "success",
+              "tests": {"unit": 17, "integration": 5, "total": 22},
+              "check": "success",
+              "clippy": "success",
+              "clean_scope": "success",
+              "qualified": False,
+              "runtime_wired": False,
+              "default_recall_changed": False,
+              "context_attachment": False,
+              "physical_send": False,
+              "external_effects": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+          }
+          (Path(os.environ["ARTIFACT_DIR"]) / "candidate-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+
+          for path in \
+            "$CRATE_ROOT/src/digest.rs" \
+            "$CRATE_ROOT/src/lib.rs" \
+            "$CRATE_ROOT/tests/p1_1b.rs"; do
+            test "$(git rev-parse "$SOURCE_SHA:$path")" = "$(git rev-parse "$candidate_sha:$path")"
+          done
+
+          echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Push audited candidate branch
+        run: |
+          set -euo pipefail
+          git push origin \
+            "${{ steps.candidate.outputs.sha }}:refs/heads/$OUTPUT_BRANCH"
+
+      - name: Upload restack evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1b-hardening-restack-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1b-hardening-restack
+          if-no-files-found: warn
+          retention-days: 14
