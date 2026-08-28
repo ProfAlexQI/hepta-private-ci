@@ -54,6 +54,7 @@ members = [
     "hepta-matrix-sdk",
     "hepta-supervisor",
     "hepta-memory",
+    "hepta-memory-runtime",
     "hepta-matrix-protocol",
     "hepta-matrixd",
     "hepta-native-gateway",
@@ -208,6 +209,7 @@ codex-hepta-matrix-store = { path = "hepta-matrix-store" }
 codex-hepta-matrix-sdk = { path = "hepta-matrix-sdk" }
 codex-hepta-supervisor = { path = "hepta-supervisor" }
 codex-hepta-memory = { path = "hepta-memory" }
+codex-hepta-memory-runtime = { path = "hepta-memory-runtime" }
 codex-hepta-matrix-protocol = { path = "hepta-matrix-protocol" }
 codex-hepta-matrixd = { path = "hepta-matrixd" }
 codex-hepta-native-gateway = { path = "hepta-native-gateway" }
@@ -369,7 +371,7 @@ dotenvy = "0.15.7"
 dunce = "1.0.4"
 ed25519-dalek = { version = "2.2.0", features = ["pkcs8"] }
 encoding_rs = "0.8.35"
-eventsource-stream = "0.2.3"
+eventsource-stream = "0.3.6"
 flate2 = "1.1.8"
 futures = { version = "0.3", default-features = false }
 gethostname = "1.1.0"
@@ -578,7 +580,6 @@ unnecessary_filter_map = "deny"
 unnecessary_lazy_evaluations = "deny"
 unnecessary_sort_by = "deny"
 unnecessary_to_owned = "deny"
-unwrap_used = "deny"
 
 # cargo-shear cannot see the platform-specific openssl-sys usage, so we
 # silence the false positive here instead of deleting a real dependency.
