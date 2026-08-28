@@ -44,6 +44,19 @@
                 reason_sha256: digest("crash-before-terminal"),
             },
         );
+        let before = state.clone();
+        let invalid_quarantine = request(
+            &state,
+            IntelligenceMutationAction::Quarantine {
+                reason_sha256: digest("cannot-hide-settled-outbox"),
+            },
+        );
+        assert!(matches!(
+            state.apply(invalid_quarantine),
+            Err(IntelligenceMutationStateError::InvalidReconciliation(_))
+        ));
+        assert_eq!(state, before);
+
         apply(
             &mut state,
             IntelligenceMutationAction::Reconcile {
