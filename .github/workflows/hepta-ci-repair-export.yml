@@ -69,6 +69,9 @@ jobs:
               ".github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml",
               ".github/workflows/hepta-servo-build-input-contract-v3.yml",
               ".github/workflows/hepta-servo-build-preflight-contract.yml",
+              ".github/workflows/hepta-servo-independent-source-qualification-v3.yml",
+              ".github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml",
+              ".github/workflows/hepta-servo-worker-source-topology-acceptance-live-review-v1.yml",
           ]
           for name in runner_files:
               path = Path(name)
@@ -95,16 +98,58 @@ jobs:
           cargo +1.95.0 fmt --manifest-path codex-rs/Cargo.toml --all
           (
             cd codex-rs
-            cargo +1.95.0 metadata --no-deps --format-version 1 >/dev/null
+            cargo +1.95.0 check --no-default-features \
+              -p codex-hepta-contracts \
+              --features authbus-local-qualification \
+              --all-targets
+            cargo +1.95.0 metadata --locked --no-deps --format-version 1 >/dev/null
           )
 
-          mkdir -p "$RUNNER_TEMP/hepta-ci-repair"
-          git diff --binary --full-index --no-ext-diff > "$RUNNER_TEMP/hepta-ci-repair/repair.patch"
-          git diff --name-only > "$RUNNER_TEMP/hepta-ci-repair/changed-files.txt"
-          git status --short > "$RUNNER_TEMP/hepta-ci-repair/status.txt"
-          git rev-parse HEAD > "$RUNNER_TEMP/hepta-ci-repair/source-head.txt"
-          test -s "$RUNNER_TEMP/hepta-ci-repair/repair.patch"
-          cat "$RUNNER_TEMP/hepta-ci-repair/status.txt"
+          evidence_dir="$RUNNER_TEMP/hepta-ci-repair"
+          mkdir -p "$evidence_dir"
+          git diff --binary --full-index --no-ext-diff > "$evidence_dir/repair.patch"
+          git diff --name-only > "$evidence_dir/changed-files.txt"
+          git status --short > "$evidence_dir/status.txt"
+          git rev-parse HEAD > "$evidence_dir/source-head.txt"
+          test -s "$evidence_dir/repair.patch"
+
+          python3 - "$evidence_dir" <<'PY'
+          import hashlib
+          import pathlib
+          import tarfile
+          import sys
+
+          evidence_dir = pathlib.Path(sys.argv[1])
+          names = [
+              line.strip()
+              for line in (evidence_dir / "changed-files.txt").read_text(encoding="utf-8").splitlines()
+              if line.strip()
+          ]
+          if not names or len(names) != len(set(names)):
+              raise SystemExit("changed-file list is empty or contains duplicates")
+          archive_path = evidence_dir / "repair-tree.tar"
+          with tarfile.open(archive_path, "w", format=tarfile.GNU_FORMAT) as archive:
+              for name in names:
+                  path = pathlib.Path(name)
+                  if not path.is_file() or path.is_symlink():
+                      raise SystemExit(f"repair input is not a regular file: {name}")
+                  info = archive.gettarinfo(str(path), arcname=name)
+                  info.uid = 0
+                  info.gid = 0
+                  info.uname = ""
+                  info.gname = ""
+                  info.mtime = 0
+                  with path.open("rb") as handle:
+                      archive.addfile(info, handle)
+          for name in ["repair.patch", "repair-tree.tar"]:
+              path = evidence_dir / name
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              (evidence_dir / f"{name}.sha256").write_text(
+                  f"{digest}  {name}\n", encoding="ascii", newline="\n"
+              )
+          PY
+
+          cat "$evidence_dir/status.txt"
 
       - name: Verify generated repair inputs
         shell: bash
@@ -114,8 +159,17 @@ jobs:
           (
             cd codex-rs
             cargo +1.95.0 metadata --locked --no-deps --format-version 1 >/dev/null
+            cargo +1.95.0 check --locked --no-default-features \
+              -p codex-hepta-contracts \
+              --features authbus-local-qualification \
+              --all-targets
           )
           git diff --check
+          (
+            cd "$RUNNER_TEMP/hepta-ci-repair"
+            sha256sum --check repair.patch.sha256
+            sha256sum --check repair-tree.tar.sha256
+          )
 
       - name: Upload deterministic repair patch
         if: always()
