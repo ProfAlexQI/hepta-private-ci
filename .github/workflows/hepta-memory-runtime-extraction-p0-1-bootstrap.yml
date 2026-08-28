@@ -1,0 +1,155 @@
+name: Hepta Memory runtime extraction P0.1 bootstrap
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-convergence-p0-2-20260828
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-memory-runtime-extraction-p0-1-bootstrap
+  cancel-in-progress: true
+
+jobs:
+  migrate-and-verify:
+    name: Migrate Agentd to physical Memory runtime facade
+    if: ${{ !contains(github.event.head_commit.message || '', '[memory-runtime-extraction]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout latest convergence branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: codex/hepta-architecture-convergence-p0-2-20260828
+          fetch-depth: 2
+          persist-credentials: true
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply deterministic extraction migration
+        run: python3 scripts/hepta-memory-runtime-extraction-p0-1.py
+
+      - name: Format extracted boundary sources
+        run: |
+          rustfmt --edition 2024 \
+            codex-rs/hepta-memory-runtime/src/lib.rs \
+            codex-rs/hepta-agentd/src/composition.rs
+
+      - name: Refresh local workspace lock binding
+        working-directory: codex-rs
+        run: cargo check -p codex-hepta-memory-runtime -p codex-hepta-agentd
+
+      - name: Validate lock and dependency graph
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import tomllib
+
+          root = pathlib.Path("codex-rs")
+          workspace = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
+          members = workspace["workspace"]["members"]
+          if members.count("hepta-memory-runtime") != 1:
+              raise SystemExit("Memory runtime must be exactly one workspace member")
+          dependencies = workspace["workspace"]["dependencies"]
+          if dependencies.get("codex-hepta-memory-runtime", {}).get("path") != "hepta-memory-runtime":
+              raise SystemExit("Memory runtime workspace dependency drifted")
+
+          agentd = tomllib.loads((root / "hepta-agentd/Cargo.toml").read_text(encoding="utf-8"))
+          if "codex-hepta-memory-runtime" not in agentd.get("dependencies", {}):
+              raise SystemExit("Agentd is not bound to the Memory runtime facade")
+
+          lock = tomllib.loads((root / "Cargo.lock").read_text(encoding="utf-8"))
+          packages = {package["name"]: package for package in lock["package"]}
+          runtime = packages.get("codex-hepta-memory-runtime")
+          if runtime is None:
+              raise SystemExit("Memory runtime is missing from Cargo.lock")
+          agentd_lock = packages.get("codex-hepta-agentd")
+          if agentd_lock is None or "codex-hepta-memory-runtime" not in agentd_lock.get("dependencies", []):
+              raise SystemExit("Agentd lock entry is missing the Memory runtime facade")
+          PY
+
+      - name: Enforce migration allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+
+          allowed = {
+              "codex-rs/Cargo.lock",
+              "codex-rs/Cargo.toml",
+              "codex-rs/hepta-agentd/Cargo.toml",
+              "codex-rs/hepta-agentd/src/composition.rs",
+              "codex-rs/hepta-memory-runtime/src/lib.rs",
+              "docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_P0_2_STATUS.json",
+          }
+          changed = set(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
+          unexpected = sorted(changed - allowed)
+          if unexpected:
+              raise SystemExit(f"Memory runtime extraction escaped allowlist: {unexpected}")
+          PY
+          git diff --check
+
+      - name: Canonical architecture source gate
+        run: python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+
+      - name: Extracted facade tests
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
+
+      - name: Default Agentd composition tests
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-agentd composition::tests -- --nocapture
+
+      - name: Qualification writer authority tests
+        working-directory: codex-rs
+        run: |
+          cargo test --locked \
+            -p codex-hepta-agentd \
+            --features qualification-cognitive-write \
+            app_runtime::tests -- --nocapture
+
+      - name: Product graph compilation
+        working-directory: codex-rs
+        run: |
+          cargo check --locked \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-agentd \
+            -p codex-hepta-supervisor \
+            -p codex-hepta-matrixd
+
+      - name: Strict extraction Clippy
+        working-directory: codex-rs
+        run: |
+          cargo clippy --locked --all-targets \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-agentd \
+            -- -D warnings
+
+      - name: Commit verified extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "Memory runtime extraction is already applied."
+            exit 0
+          fi
+          git config user.name "Hepta qualification bootstrap"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git add \
+            codex-rs/Cargo.lock \
+            codex-rs/Cargo.toml \
+            codex-rs/hepta-agentd/Cargo.toml \
+            codex-rs/hepta-agentd/src/composition.rs \
+            codex-rs/hepta-memory-runtime/src/lib.rs \
+            docs/architecture/HEPTA_ARCHITECTURE_CONVERGENCE_P0_2_STATUS.json
+          git diff --cached --check
+          git commit -m "refactor(memory): bind Agentd to runtime facade [memory-runtime-extraction]"
+          git push origin HEAD:refs/heads/codex/hepta-architecture-convergence-p0-2-20260828
