@@ -13,12 +13,13 @@ on:
       - ".github/workflows/hepta-browser-ci.yml"
       - ".github/workflows/hepta-servo-*.yml"
       - ".github/workflows/hepta-browser-next-required-v8.yml"
-      - ".github/workflows/hepta-servo-exact-source-acceptance-live-review.yml"
+      - ".github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml"
       - ".github/workflows/blocking-ci.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   canonical-v7:
@@ -31,9 +32,9 @@ jobs:
     uses: ./.github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml
     secrets: inherit
 
-  source-acceptance-live-review:
-    name: Live source-only pointer review or not-applicable gate
-    uses: ./.github/workflows/hepta-servo-exact-source-acceptance-live-review.yml
+  source-acceptance-live-review-v2:
+    name: Trusted-base live source-only review or not-applicable gate
+    uses: ./.github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml
     secrets: inherit
 
   required:
@@ -42,7 +43,7 @@ jobs:
     needs:
       - canonical-v7
       - source-acceptance-pointer-v1
-      - source-acceptance-live-review
+      - source-acceptance-live-review-v2
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -56,46 +57,36 @@ jobs:
           import json
           import os
           import sys
-
           needs = json.loads(os.environ["NEEDS"])
-          failures = {
-              name: value.get("result")
-              for name, value in needs.items()
-              if value.get("result") != "success"
-          }
+          failures = {name: value.get("result") for name, value in needs.items() if value.get("result") != "success"}
           if failures:
               print(json.dumps({"status": "FAIL", "dependencies": failures}, sort_keys=True))
               sys.exit(1)
-          print(
-              json.dumps(
-                  {
-                      "status": "PASS_TOOLING_AND_FIXTURES_ONLY",
-                      "dependencies": sorted(needs),
-                      "canonical_previous_gate": "v7",
-                      "source_acceptance_review_policy": "v1_self_bound",
-                      "source_acceptance_review_challenge": "v1_create_only",
-                      "source_acceptance_pointer": "v1_verify_only_no_creation_command",
-                      "live_current_head_review": "required_or_explicitly_not_applicable",
-                      "required_status_check": "Source-only accepted pointer live review",
-                      "exact_servo_source_accepted": False,
-                      "source_review_candidate_accepted": False,
-                      "worker_source_topology_accepted": False,
-                      "build_authorized": False,
-                      "accepted_toolchain_receipt": False,
-                      "accepted_build_recipe": False,
-                      "sealed_real_build_inputs": False,
-                      "real_build_preflight": False,
-                      "servo_build_run": False,
-                      "servo_artifact": False,
-                      "sbom": False,
-                      "servo_runtime_qualified": False,
-                      "operator_acceptance": False,
-                      "promotion": False,
-                      "release_qualified": False,
-                  },
-                  sort_keys=True,
-              )
-          )
+          print(json.dumps({
+              "status": "PASS_TOOLING_AND_FIXTURES_ONLY",
+              "dependencies": sorted(needs),
+              "canonical_previous_gate": "v7",
+              "source_acceptance_review_policy": "v1_self_bound",
+              "source_acceptance_review_challenge": "v1_create_only",
+              "source_acceptance_pointer": "v1_verify_only_no_creation_command",
+              "source_live_review": "v2_trusted_base_required_or_not_applicable",
+              "required_status_check": "Source-only accepted pointer live review",
+              "exact_servo_source_accepted": False,
+              "source_review_candidate_accepted": False,
+              "worker_source_topology_accepted": False,
+              "build_authorized": False,
+              "accepted_toolchain_receipt": False,
+              "accepted_build_recipe": False,
+              "sealed_real_build_inputs": False,
+              "real_build_preflight": False,
+              "servo_build_run": False,
+              "servo_artifact": False,
+              "sbom": False,
+              "servo_runtime_qualified": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "release_qualified": False,
+          }, sort_keys=True))
           PY
 
       - name: Record negative authority
@@ -105,17 +96,11 @@ jobs:
           {
             echo "### Hepta Browser canonical next-stage aggregate v8"
             echo
-            echo "All dependencies cover tooling and fixtures only."
-            echo
-            echo "- canonical v7 source/pre-build tooling: required"
-            echo "- self-bound source acceptance review policy: required"
-            echo "- create-only review challenge: required"
-            echo "- pointer verifier with no pointer creation command: required"
-            echo "- distinct current-head live review: required for future real acceptance"
+            echo "- trusted-base source acceptance live review v2: required"
+            echo "- PR-head verifier execution: forbidden"
             echo "- exact Servo source accepted: false"
-            echo "- worker source topology accepted: false"
+            echo "- Worker source topology accepted: false"
             echo "- build authorized: false"
             echo "- Servo built/runtime qualified: false"
-            echo "- production/effect authority: false"
             echo "- operator acceptance/promotion/release: false"
           } >> "$GITHUB_STEP_SUMMARY"
