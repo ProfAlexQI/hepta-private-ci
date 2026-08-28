@@ -1,0 +1,174 @@
+name: p0-3-2-self-land
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-shared-projection-planner-v5-20260828"
+    paths:
+      - ".p0-3-2-bootstrap/**"
+      - ".github/workflows/p0-3-2-self-land.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: p0-3-2-self-land-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  land:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact bootstrap branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/hepta-intelligence-shared-projection-planner-v5-20260828
+          fetch-depth: 0
+
+      - name: Verify bootstrap lineage and reconstruct candidate
+        env:
+          BASE: 256a47d882413ac1f80892a80177419bb5d12c70
+          PAYLOAD_SHA256: 365595c9b8b1c670063a29d94a629537f3862e96f13721c0f977e4d32974065f
+        run: |
+          set -euo pipefail
+          test "$(git merge-base HEAD "$BASE")" = "$BASE"
+          python3 - <<'PY'
+          import subprocess
+
+          base = "256a47d882413ac1f80892a80177419bb5d12c70"
+          allowed = {
+              ".p0-3-2-bootstrap/payload.part00.b64",
+              ".p0-3-2-bootstrap/payload.part01.b64",
+              ".p0-3-2-bootstrap/payload.part02.b64",
+              ".p0-3-2-bootstrap/payload.part03.b64",
+              ".github/workflows/p0-3-2-self-land.yml",
+          }
+          changed = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", f"{base}..HEAD"], text=True
+              ).splitlines()
+          )
+          if changed != allowed:
+              raise SystemExit(
+                  f"bootstrap lineage drift: expected {sorted(allowed)}, observed {sorted(changed)}"
+              )
+          PY
+
+          cat .p0-3-2-bootstrap/payload.part*.b64 \
+            | base64 --decode > /tmp/hepta-p0-3-2-candidate.tar.xz
+          echo "${PAYLOAD_SHA256}  /tmp/hepta-p0-3-2-candidate.tar.xz" \
+            | sha256sum --check --strict
+          mkdir -p /tmp/hepta-p0-3-2-candidate
+          tar -xJf /tmp/hepta-p0-3-2-candidate.tar.xz \
+            -C /tmp/hepta-p0-3-2-candidate
+          cp -a /tmp/hepta-p0-3-2-candidate/. .
+
+      - name: Run fail-closed source gates before landing
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/verify-hepta-intelligence-grounding-gate.py \
+            scripts/verify-hepta-intelligence-kg-p0-3-2.py
+          python3 -m json.tool \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_4.json \
+            >/dev/null
+          mkdir -p /tmp/hepta-p0-3-2-receipts
+          python3 scripts/verify-hepta-intelligence-grounding-gate.py \
+            | tee /tmp/hepta-p0-3-2-receipts/p0-3-1-invariants.json
+          python3 scripts/verify-hepta-intelligence-kg-p0-3-2.py \
+            | tee /tmp/hepta-p0-3-2-receipts/p0-3-2-source-gate-before-binding.json
+          git diff --check
+
+      - name: Create exact implementation and status-binding commits
+        env:
+          BASE: 256a47d882413ac1f80892a80177419bb5d12c70
+          BRANCH: codex/hepta-intelligence-shared-projection-planner-v5-20260828
+        run: |
+          set -euo pipefail
+          BOOTSTRAP_HEAD="$(git rev-parse HEAD)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          rm -rf .p0-3-2-bootstrap
+          rm .github/workflows/p0-3-2-self-land.yml
+          git reset --soft "$BASE"
+          git add -A
+          git commit -m "feat(memory): share semantic KG projection planner P0.3.2"
+          IMPLEMENTATION_COMMIT="$(git rev-parse HEAD)"
+
+          python3 - "$IMPLEMENTATION_COMMIT" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          commit = sys.argv[1]
+          if len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit):
+              raise SystemExit("implementation commit is not a lowercase SHA-1")
+          path = Path(
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_4.json"
+          )
+          data = json.loads(path.read_text(encoding="utf-8"))
+          tranche = data["current_tranche"]
+          tranche["status"] = "implemented_on_branch_qualification_pending"
+          tranche["implemented_in_repository"] = True
+          tranche["qualification"]["source_gate"] = "pass_branch_source_contract"
+          data["repository_binding"] = {
+              "branch": "codex/hepta-intelligence-shared-projection-planner-v5-20260828",
+              "implementation_commit": commit,
+              "qualified": False,
+          }
+          path.write_text(
+              json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+
+          python3 scripts/verify-hepta-intelligence-kg-p0-3-2.py \
+            | tee /tmp/hepta-p0-3-2-receipts/p0-3-2-source-gate-after-binding.json
+          git add \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_4.json
+          git commit -m "docs(status): bind P0.3.2 implementation candidate"
+          FINAL_HEAD="$(git rev-parse HEAD)"
+
+          python3 - "$IMPLEMENTATION_COMMIT" "$FINAL_HEAD" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          receipt = {
+              "schema": "hepta_intelligence_p0_3_2_repository_landing_v1",
+              "repository": "ProfAlexQI/hepta-private-ci",
+              "branch": "codex/hepta-intelligence-shared-projection-planner-v5-20260828",
+              "base": "256a47d882413ac1f80892a80177419bb5d12c70",
+              "implementation_commit": sys.argv[1],
+              "status_binding_commit": sys.argv[2],
+              "source_contract_passed": True,
+              "implemented_in_repository": True,
+              "qualified": False,
+              "tool_v3_registered": False,
+              "default_projection_pointer_changed": False,
+              "default_recall_query_changed": False,
+              "production_projection_gate": False,
+              "production_authority": False,
+              "external_effects": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "callers_ratchet": False,
+          }
+          Path("/tmp/hepta-p0-3-2-receipts/repository-landing.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+
+          git push \
+            --force-with-lease="refs/heads/${BRANCH}:${BOOTSTRAP_HEAD}" \
+            origin "HEAD:${BRANCH}"
+
+      - name: Upload repository-landing receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p0-3-2-repository-landing-${{ github.sha }}
+          path: /tmp/hepta-p0-3-2-receipts
+          if-no-files-found: warn
+          retention-days: 14
