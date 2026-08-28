@@ -1,0 +1,229 @@
+name: hepta-intelligence-evidence-resolver-v5
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-evidence-resolver-v4-*"
+    paths:
+      - "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs"
+      - "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/**"
+      - "codex-rs/ext/hepta-memory/src/framing.rs"
+      - "scripts/verify-hepta-intelligence-evidence-resolver-v4.py"
+      - "scripts/check-hepta-intelligence-p0-3-3-clippy.py"
+      - "scripts/run-hepta-intelligence-evidence-resolver-v5.py"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json"
+      - ".github/workflows/hepta-intelligence-evidence-resolver-v4.yml"
+  pull_request:
+    paths:
+      - "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs"
+      - "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/**"
+      - "codex-rs/ext/hepta-memory/src/framing.rs"
+      - "scripts/verify-hepta-intelligence-evidence-resolver-v4.py"
+      - "scripts/check-hepta-intelligence-p0-3-3-clippy.py"
+      - "scripts/run-hepta-intelligence-evidence-resolver-v5.py"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json"
+      - ".github/workflows/hepta-intelligence-evidence-resolver-v4.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-evidence-resolver-v5-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-contract:
+    name: P0.3.3 host evidence resolver source contract v5
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    outputs:
+      dependency_qualified: ${{ steps.classify.outputs.dependency_qualified }}
+      exact_head: ${{ steps.classify.outputs.exact_head }}
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Validate source contract and dependency state
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=artifacts/hepta-intelligence-evidence-resolver-v5-source
+          mkdir -p "$OUT"
+          git rev-parse HEAD > "$OUT/head.txt"
+          git rev-parse HEAD^{tree} > "$OUT/tree.txt"
+          python3 -m py_compile \
+            scripts/verify-hepta-intelligence-evidence-resolver-v4.py \
+            scripts/check-hepta-intelligence-p0-3-3-clippy.py \
+            scripts/run-hepta-intelligence-evidence-resolver-v5.py
+          python3 -m json.tool \
+            plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json \
+            >/dev/null
+          python3 scripts/verify-hepta-intelligence-evidence-resolver-v4.py \
+            | tee "$OUT/source-gate.json"
+
+      - name: Classify dependency and authority boundary
+        id: classify
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          out = Path("artifacts/hepta-intelligence-evidence-resolver-v5-source")
+          receipt = json.loads((out / "source-gate.json").read_text(encoding="utf-8"))
+          status = json.loads(Path(
+              "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json"
+          ).read_text(encoding="utf-8"))
+          dependency = status["dependency"]
+          expected = dependency.get("qualified") is True
+          assert receipt["status"] == "PASS_P0_3_3_HOST_EVIDENCE_RESOLVER_SOURCE_ONLY"
+          assert receipt["host_resolves_offsets"] is True
+          assert receipt["host_computes_digests"] is True
+          assert receipt["p0_3_2_dependency_qualified"] is expected
+          for key in (
+              "model_supplies_offsets",
+              "model_supplies_digests",
+              "tool_v4_registered",
+              "production_projection_gate",
+              "production_authority",
+              "external_effects",
+              "operator_acceptance",
+              "promotion",
+              "callers_ratchet",
+          ):
+              assert receipt[key] is False, key
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as stream:
+              stream.write(f"dependency_qualified={str(expected).lower()}\n")
+              stream.write(f"exact_head={(out / 'head.txt').read_text().strip()}\n")
+          PY
+
+      - name: Upload source receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-evidence-resolver-v5-source-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/hepta-intelligence-evidence-resolver-v5-source
+          if-no-files-found: error
+          retention-days: 21
+
+  dependency-blocked:
+    name: P0.3.3 blocked until P0.3.2 exact qualification
+    needs: source-contract
+    if: needs.source-contract.outputs.dependency_qualified != 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - name: Emit fail-closed dependency receipt
+        shell: bash
+        env:
+          EXACT_HEAD: ${{ needs.source-contract.outputs.exact_head }}
+        run: |
+          mkdir -p artifacts/hepta-intelligence-evidence-resolver-v5-blocked
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          receipt = {
+              "schema": "hepta_intelligence_p0_3_3_dependency_blocked_v1",
+              "head": os.environ["EXACT_HEAD"],
+              "classification": "BLOCKED_P0_3_2_NOT_EXECUTABLE_QUALIFIED",
+              "qualified": False,
+              "wired": False,
+              "tool_v4_registered": False,
+              "production_projection_gate": False,
+              "production_authority": False,
+              "external_effects": False,
+              "operator_accepted": False,
+              "promoted": False,
+              "callers_ratchet": False,
+          }
+          Path(
+              "artifacts/hepta-intelligence-evidence-resolver-v5-blocked/receipt.json"
+          ).write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+          PY
+
+      - name: Upload dependency-blocked receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p0-3-3-blocked-${{ needs.source-contract.outputs.exact_head }}
+          path: artifacts/hepta-intelligence-evidence-resolver-v5-blocked
+          if-no-files-found: error
+          retention-days: 21
+
+      - name: Enforce blocked classification
+        run: |
+          echo "P0.3.3 remains blocked until P0.3.2 exact-head receipt is executable and all-green." >&2
+          exit 1
+
+  exact-head-qualification:
+    name: P0.3.3 exact-head host evidence resolver qualification v5
+    needs: source-contract
+    if: needs.source-contract.outputs.dependency_qualified == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.source-contract.outputs.exact_head }}
+          fetch-depth: 1
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Run every fail-closed gate
+        shell: bash
+        run: python3 scripts/run-hepta-intelligence-evidence-resolver-v5.py
+
+      - name: Upload exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p0-3-3-${{ needs.source-contract.outputs.exact_head }}
+          path: artifacts/hepta-intelligence-evidence-resolver-v5
+          if-no-files-found: error
+          retention-days: 21
+
+      - name: Enforce exact-head receipt
+        if: always()
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ needs.source-contract.outputs.exact_head }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = json.loads(Path(
+              "artifacts/hepta-intelligence-evidence-resolver-v5/qualification-receipt.json"
+          ).read_text(encoding="utf-8"))
+          assert receipt["head"] == os.environ["EXPECTED_HEAD"]
+          assert receipt["p0_3_2_dependency_qualified"] is True
+          assert receipt["host_resolves_offsets"] is True
+          assert receipt["host_computes_digests"] is True
+          assert receipt["qualified"] is True
+          assert receipt["qualification_platform"] == "linux_exact_head"
+          assert all(check["passed"] for check in receipt["checks"])
+          for key in (
+              "wired",
+              "tool_v4_registered",
+              "default_projection_pointer_changed",
+              "default_recall_query_changed",
+              "production_projection_gate",
+              "production_authority",
+              "external_effects",
+              "operator_accepted",
+              "promoted",
+              "callers_ratchet",
+          ):
+              assert receipt[key] is False, key
+          PY
