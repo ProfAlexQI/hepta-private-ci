@@ -14,7 +14,7 @@ env:
   MANIFEST: codex-rs/hepta-authbus-p1-qualification/Cargo.toml
   PACKAGE: codex-hepta-authbus-p1-qualification
   CRATE_ROOT: codex-rs/hepta-authbus-p1-qualification
-  EXPECTED_PARENT: 2771c052160edcc9a68bf4c184600b14ec5d389a
+  EXPECTED_PARENT: 68ba4f58c340759f1ae236d03e546fc8f420160f
   CARGO_INCREMENTAL: "0"
   CARGO_BUILD_JOBS: "1"
   CARGO_PROFILE_DEV_DEBUG: "0"
@@ -45,6 +45,45 @@ jobs:
           set -euo pipefail
           python3 scripts/verify-authbus-p1-1.py | tee authbus-p1-1-bootstrap-source.json
           grep -q 'PASS_AUTHBUS_P1_1_SOURCE_ONLY' authbus-p1-1-bootstrap-source.json
+
+      - name: Apply deterministic Rust 1.95 Clippy closure
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("codex-rs/hepta-authbus-p1-qualification/tests/p1_1.rs")
+          source = path.read_text(encoding="utf-8")
+          before = '''    assert!(AUTHBUS_P1_1_QUALIFICATION_ONLY);
+              assert!(!AUTHBUS_P1_1_AUTHORITY);
+              assert!(!AUTHBUS_P1_1_EFFECT_AUTHORITY);
+              assert!(!AUTHBUS_P1_1_PRODUCTION_CALLER);
+              assert!(!AUTHBUS_P1_1_PRODUCTION_WRITER);
+              assert!(!AUTHBUS_P1_1_OPERATOR_ACCEPTANCE);
+              assert!(!AUTHBUS_P1_1_PROMOTION);
+              assert!(!AUTHBUS_P1_1_G5_ALLOWED);
+              assert!(!AUTHBUS_P1_1_EXECUTE_ALLOWED);
+              assert!(!AUTHBUS_P1_1_PRIVATE_KEY_STORAGE);
+          '''.replace("              ", "    ")
+          after = '''    const {
+                  assert!(AUTHBUS_P1_1_QUALIFICATION_ONLY);
+                  assert!(!AUTHBUS_P1_1_AUTHORITY);
+                  assert!(!AUTHBUS_P1_1_EFFECT_AUTHORITY);
+                  assert!(!AUTHBUS_P1_1_PRODUCTION_CALLER);
+                  assert!(!AUTHBUS_P1_1_PRODUCTION_WRITER);
+                  assert!(!AUTHBUS_P1_1_OPERATOR_ACCEPTANCE);
+                  assert!(!AUTHBUS_P1_1_PROMOTION);
+                  assert!(!AUTHBUS_P1_1_G5_ALLOWED);
+                  assert!(!AUTHBUS_P1_1_EXECUTE_ALLOWED);
+                  assert!(!AUTHBUS_P1_1_PRIVATE_KEY_STORAGE);
+              }
+          '''.replace("              ", "    ")
+          if source.count(before) != 1:
+              raise SystemExit("expected exactly one P1.1 authority assertion block")
+          path.write_text(source.replace(before, after), encoding="utf-8")
+          PY
+          git diff --check -- "${CRATE_ROOT}/tests/p1_1.rs"
 
       - name: Install Rust 1.95
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
