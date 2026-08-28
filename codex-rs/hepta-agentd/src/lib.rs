@@ -7,6 +7,7 @@
 mod app_runtime;
 mod automation;
 mod client;
+mod composition;
 mod config;
 mod control;
 mod error;
@@ -47,8 +48,8 @@ pub use config::HEPTA_AGENT_HOME_ENV;
 pub use config::HEPTA_AGENT_ID_ENV;
 pub use config::HEPTA_AGENT_RUN_ROOT_ENV;
 pub use error::AgentdError;
-pub use runtime::run;
 pub use production_writer_host::AgentdProductionWriterHost;
+pub use runtime::run;
 
 use control::AgentdControlServer;
 use event_buffer::EventBuffer;
