@@ -24,12 +24,32 @@ def require(condition: bool, message: str) -> None:
 
 
 def converge_format_macros() -> None:
-    replace_optional(
-        OLLAMA_SUPPORT,
-        '''format!(concat!(
+    old_ollama_preflight = '''format!(concat!(
                 "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={operation} ",
                 "maximum={MAX_CONTROL_RESPONSE_BYTES}"
-            ))''',
+            ))'''
+    old_ollama_stream = '''format!(concat!(
+                    "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={operation} ",
+                    "maximum={MAX_CONTROL_RESPONSE_BYTES}"
+                ))'''
+    old_ollama_model = '''format!(
+            concat!(
+                "OLLAMA_MODEL_NOT_INSTALLED model={model}; ",
+                "automatic model installation is disabled. ",
+                "Run `ollama pull {model}` explicitly and retry."
+            )
+        )'''
+    old_lmstudio_model = '''format!(
+                concat!(
+                    "LMSTUDIO_MODEL_NOT_INSTALLED model={model}; ",
+                    "automatic model installation is disabled. ",
+                    "Install the model explicitly in LM Studio and retry."
+                )
+            )'''
+
+    replace_optional(
+        OLLAMA_SUPPORT,
+        old_ollama_preflight,
         '''format!(
                 "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={} maximum={}",
                 operation, MAX_CONTROL_RESPONSE_BYTES
@@ -38,10 +58,7 @@ def converge_format_macros() -> None:
     )
     replace_optional(
         OLLAMA_SUPPORT,
-        '''format!(concat!(
-                    "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={operation} ",
-                    "maximum={MAX_CONTROL_RESPONSE_BYTES}"
-                ))''',
+        old_ollama_stream,
         '''format!(
                     "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={} maximum={}",
                     operation, MAX_CONTROL_RESPONSE_BYTES
@@ -50,13 +67,7 @@ def converge_format_macros() -> None:
     )
     replace_optional(
         OLLAMA_LIB,
-        '''format!(
-            concat!(
-                "OLLAMA_MODEL_NOT_INSTALLED model={model}; ",
-                "automatic model installation is disabled. ",
-                "Run `ollama pull {model}` explicitly and retry."
-            )
-        )''',
+        old_ollama_model,
         '''format!(
             "OLLAMA_MODEL_NOT_INSTALLED model={}; automatic model installation is disabled. Run `ollama pull {}` explicitly and retry.",
             model, model
@@ -65,13 +76,7 @@ def converge_format_macros() -> None:
     )
     replace_optional(
         LMSTUDIO_LIB,
-        '''format!(
-                concat!(
-                    "LMSTUDIO_MODEL_NOT_INSTALLED model={model}; ",
-                    "automatic model installation is disabled. ",
-                    "Install the model explicitly in LM Studio and retry."
-                )
-            )''',
+        old_lmstudio_model,
         '''format!(
                 "LMSTUDIO_MODEL_NOT_INSTALLED model={}; automatic model installation is disabled. Install the model explicitly in LM Studio and retry.",
                 model
@@ -87,16 +92,16 @@ def converge_format_macros() -> None:
         "Ollama bounded control diagnostics are not explicitly bound twice",
     )
     require(
-        "OLLAMA_CONTROL_RESPONSE_TOO_LARGE operation={operation}" not in support,
-        "Ollama implicit format capture remains",
+        old_ollama_preflight not in support and old_ollama_stream not in support,
+        "Ollama concat-based implicit format capture remains",
     )
     require(
-        "OLLAMA_MODEL_NOT_INSTALLED model={model}" not in ollama
+        old_ollama_model not in ollama
         and "OLLAMA_MODEL_NOT_INSTALLED model={};" in ollama,
         "Ollama missing-model format binding is not converged",
     )
     require(
-        "LMSTUDIO_MODEL_NOT_INSTALLED model={model}" not in lmstudio
+        old_lmstudio_model not in lmstudio
         and "LMSTUDIO_MODEL_NOT_INSTALLED model={};" in lmstudio,
         "LM Studio missing-model format binding is not converged",
     )
