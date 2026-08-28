@@ -53,18 +53,20 @@ mod tests {
 
     #[test]
     fn p1_1_default_build_has_no_authority() {
-        assert!(AUTHBUS_P1_1_QUALIFICATION_ONLY);
-        assert!(!AUTHBUS_P1_1_AUTHORITY);
-        assert!(!AUTHBUS_P1_1_EFFECT_AUTHORITY);
-        assert!(!AUTHBUS_P1_1_PRODUCTION_CALLER);
-        assert!(!AUTHBUS_P1_1_PRODUCTION_WRITER);
-        assert!(!AUTHBUS_P1_1_OPERATOR_ACCEPTANCE);
-        assert!(!AUTHBUS_P1_1_PROMOTION);
-        assert!(!AUTHBUS_P1_1_G5_ALLOWED);
-        assert!(!AUTHBUS_P1_1_EXECUTE_ALLOWED);
-        assert!(!AUTHBUS_P1_1_LISTENER_ENABLED);
-        assert!(!AUTHBUS_P1_1_PROVIDER_CALL_ENABLED);
-        assert!(!AUTHBUS_P1_1_OPENBAO_ENABLED);
-        assert!(!AUTHBUS_P1_1_PRIVATE_KEY_STORAGE);
+        const {
+            assert!(AUTHBUS_P1_1_QUALIFICATION_ONLY);
+            assert!(!AUTHBUS_P1_1_AUTHORITY);
+            assert!(!AUTHBUS_P1_1_EFFECT_AUTHORITY);
+            assert!(!AUTHBUS_P1_1_PRODUCTION_CALLER);
+            assert!(!AUTHBUS_P1_1_PRODUCTION_WRITER);
+            assert!(!AUTHBUS_P1_1_OPERATOR_ACCEPTANCE);
+            assert!(!AUTHBUS_P1_1_PROMOTION);
+            assert!(!AUTHBUS_P1_1_G5_ALLOWED);
+            assert!(!AUTHBUS_P1_1_EXECUTE_ALLOWED);
+            assert!(!AUTHBUS_P1_1_LISTENER_ENABLED);
+            assert!(!AUTHBUS_P1_1_PROVIDER_CALL_ENABLED);
+            assert!(!AUTHBUS_P1_1_OPENBAO_ENABLED);
+            assert!(!AUTHBUS_P1_1_PRIVATE_KEY_STORAGE);
+        }
     }
 }
