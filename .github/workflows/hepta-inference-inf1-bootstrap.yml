@@ -16,7 +16,7 @@ concurrency:
 jobs:
   bootstrap:
     name: Integrate, validate, and export INF-1 source
-    runs-on: macos-15-intel
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
       CARGO_TERM_COLOR: never
@@ -144,7 +144,7 @@ jobs:
               json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
           )
           PY
-          find "$out" -type f -print0 | sort -z | xargs -0 shasum -a 256 > "$out/SHA256SUMS"
+          find "$out" -type f -print0 | sort -z | xargs -0 sha256sum > "$out/SHA256SUMS"
 
       - name: Upload exact integrated source payload
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
