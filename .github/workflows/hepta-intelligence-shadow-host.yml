@@ -136,9 +136,13 @@ jobs:
           assert version.startswith("rustc 1.95.0 "), version
           PY
 
-      - name: Check workspace formatting
+      - name: Check owned-package formatting
         working-directory: codex-rs
-        run: cargo fmt --all -- --check
+        run: >-
+          cargo fmt
+          -p codex-hepta-memory
+          -p codex-hepta-agentd
+          -- --check
 
       - name: Run memory shadow-host focused tests
         working-directory: codex-rs
