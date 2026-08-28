@@ -1,0 +1,37 @@
+name: p033-finalizer-macos14-v2
+
+on:
+  push:
+    branches:
+      - codex/p033-finalizer-macos14-v2-20260829
+    paths:
+      - .github/workflows/p033-finalizer-macos14-v2.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: p033-finalizer-macos14-v2
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: macos-14
+    timeout-minutes: 180
+    env:
+      TARGET_BRANCH: codex/hepta-intelligence-evidence-resolver-v4-20260828
+      EXPECTED_TARGET: 05256292331b418bf945e4b7df4b32110dc4ed9c
+      P032_HEAD: fa59bb090043ba8d6fbf0991b167779d2385888c
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/hepta-intelligence-evidence-resolver-v4-20260828
+          fetch-depth: 0
+      - name: Bind exact target
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_TARGET"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+      - name: Finalize, qualify, and publish exact P0.3.3 candidate
+        run: python3 scripts/finalize-hepta-intelligence-p0-3-3-v2.py
