@@ -1,0 +1,125 @@
+name: hepta-browser next required v9
+
+on:
+  workflow_call:
+  pull_request:
+    paths:
+      - "codex-rs/hepta-shadow-qualification/**"
+      - "scripts/hepta-servo-*.py"
+      - "scripts/hepta-servo-worker-source-topology-acceptance-v1/**"
+      - "scripts/verify-hepta-servo-*.py"
+      - "scripts/tests/test_hepta_servo_*.py"
+      - "scripts/tests/hepta_servo_worker_source_topology_acceptance_v1/**"
+      - "docs/hepta-vnext/browser/**"
+      - "third_party/servo-patches/**"
+      - ".github/workflows/hepta-browser-ci.yml"
+      - ".github/workflows/hepta-servo-*.yml"
+      - ".github/workflows/hepta-browser-next-required-v9.yml"
+      - ".github/workflows/blocking-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  canonical-v8:
+    name: Canonical source acceptance and pre-build tooling
+    uses: ./.github/workflows/hepta-browser-next-required-v8.yml
+    secrets: inherit
+
+  topology-acceptance-pointer-v1:
+    name: Worker source/API topology pointer and review contract
+    uses: ./.github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml
+    secrets: inherit
+
+  topology-acceptance-live-review-v1:
+    name: Worker topology live review or explicit not-applicable gate
+    uses: ./.github/workflows/hepta-servo-worker-source-topology-acceptance-live-review-v1.yml
+    secrets: inherit
+
+  required:
+    name: Hepta Browser next required v9
+    if: ${{ always() }}
+    needs:
+      - canonical-v8
+      - topology-acceptance-pointer-v1
+      - topology-acceptance-live-review-v1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require canonical tooling and topology acceptance fence
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          needs = json.loads(os.environ["NEEDS"])
+          failures = {
+              name: value.get("result")
+              for name, value in needs.items()
+              if value.get("result") != "success"
+          }
+          if failures:
+              print(json.dumps({"status": "FAIL", "dependencies": failures}, sort_keys=True))
+              sys.exit(1)
+          print(
+              json.dumps(
+                  {
+                      "status": "PASS_TOOLING_AND_FIXTURES_ONLY",
+                      "dependencies": sorted(needs),
+                      "canonical_previous_gate": "v8",
+                      "source_live_review": "v2_trusted_base",
+                      "topology_acceptance_review_policy": "v1_self_bound",
+                      "topology_acceptance_review_challenge": "v1_create_only",
+                      "topology_acceptance_pointer": "v1_verify_only_no_creation_command",
+                      "topology_live_current_head_review": "required_or_explicitly_not_applicable",
+                      "required_status_check": "Worker source/API topology accepted pointer live review",
+                      "exact_servo_source_accepted": False,
+                      "source_review_candidate_accepted": False,
+                      "worker_source_topology_accepted": False,
+                      "build_authorized": False,
+                      "accepted_toolchain_receipt": False,
+                      "accepted_build_recipe": False,
+                      "sealed_real_build_inputs": False,
+                      "real_build_preflight": False,
+                      "servo_build_run": False,
+                      "servo_artifact": False,
+                      "sbom": False,
+                      "servo_runtime_qualified": False,
+                      "operator_acceptance": False,
+                      "promotion": False,
+                      "release_qualified": False,
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
+
+      - name: Record negative authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Hepta Browser canonical next-stage aggregate v9"
+            echo
+            echo "All dependencies cover tooling and fixtures only."
+            echo
+            echo "- canonical v8 source/pre-build tooling: required"
+            echo "- source acceptance trusted-base live review v2: required by v8"
+            echo "- accepted-source prerequisite for topology review: required"
+            echo "- self-bound Worker topology acceptance policy: required"
+            echo "- create-only topology review challenge: required"
+            echo "- topology pointer verifier with no creation command: required"
+            echo "- trusted-base current-head topology review: required for future real acceptance"
+            echo "- exact Servo source accepted: false"
+            echo "- Worker source topology accepted: false"
+            echo "- build authorized: false"
+            echo "- Servo built/runtime qualified: false"
+            echo "- operator acceptance/promotion/release: false"
+          } >> "$GITHUB_STEP_SUMMARY"
