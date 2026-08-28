@@ -14,7 +14,7 @@ env:
   MANIFEST: codex-rs/hepta-authbus-qualification/Cargo.toml
   PACKAGE: codex-hepta-authbus-qualification
   CRATE_ROOT: codex-rs/hepta-authbus-qualification
-  EXPECTED_PARENT: b93f9de12851bf3f6ac50f5149620809ba65d3db
+  EXPECTED_PARENT: 3180691daae7cadaace29a4f83855311b5cf60dc
 
 jobs:
   bootstrap:
@@ -49,24 +49,15 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt
 
-      - name: Generate and validate deterministic outputs
+      - name: Generate deterministic outputs
         shell: bash
         run: |
           set -euo pipefail
           test "$(rustc -V | awk '{print $2}')" = "1.95.0"
           cargo generate-lockfile --manifest-path "${MANIFEST}"
           cargo fmt --manifest-path "${MANIFEST}" --package "${PACKAGE}"
-          cargo fmt --manifest-path "${MANIFEST}" --package "${PACKAGE}" -- --check
-          cargo metadata --manifest-path "${MANIFEST}" --locked --format-version 1 --no-deps >/dev/null
           test -s "${CRATE_ROOT}/Cargo.lock"
-
-          allowed='^(codex-rs/hepta-authbus-qualification/Cargo.lock|codex-rs/hepta-authbus-qualification/src/lib.rs|codex-rs/hepta-authbus-qualification/src/model.rs|codex-rs/hepta-authbus-qualification/src/store.rs|codex-rs/hepta-authbus-qualification/tests/sqlite_wal.rs)$'
-          changed="$(git status --porcelain=v1 | awk '{print $2}')"
-          test -n "${changed}"
-          while IFS= read -r path; do
-            test -n "${path}"
-            echo "${path}" | grep -Eq "${allowed}"
-          done <<<"${changed}"
+          git diff --check
 
       - name: Commit exact deterministic outputs
         shell: bash
@@ -74,14 +65,23 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f "${CRATE_ROOT}/Cargo.lock"
           git add \
-            "${CRATE_ROOT}/Cargo.lock" \
             "${CRATE_ROOT}/src/lib.rs" \
             "${CRATE_ROOT}/src/model.rs" \
             "${CRATE_ROOT}/src/store.rs" \
             "${CRATE_ROOT}/tests/sqlite_wal.rs"
+
+          allowed='^(codex-rs/hepta-authbus-qualification/Cargo.lock|codex-rs/hepta-authbus-qualification/src/lib.rs|codex-rs/hepta-authbus-qualification/src/model.rs|codex-rs/hepta-authbus-qualification/src/store.rs|codex-rs/hepta-authbus-qualification/tests/sqlite_wal.rs)$'
+          changed="$(git diff --cached --name-only)"
+          test -n "${changed}"
+          while IFS= read -r path; do
+            test -n "${path}"
+            echo "${path}" | grep -Eq "${allowed}"
+          done <<<"${changed}"
+
           git diff --cached --check
-          git diff --cached --name-only | tee bootstrap-files.txt
+          printf '%s\n' "${changed}" | tee bootstrap-files.txt
           git commit -m "chore(authbus): pin P0.2 Rust 1.95 lock and rustfmt"
           git push origin "HEAD:${GITHUB_REF_NAME}" \
             --force-with-lease="refs/heads/${GITHUB_REF_NAME}:${GITHUB_SHA}"
