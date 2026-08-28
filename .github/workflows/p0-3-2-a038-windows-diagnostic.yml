@@ -1,0 +1,64 @@
+name: p0-3-2-a038-windows-diagnostic
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-p032-a038-windows-diagnostic-20260828"
+    paths:
+      - ".github/workflows/p0-3-2-a038-windows-diagnostic.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-3-2-a038-windows-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  diagnostic:
+    name: P0.3.2 exact-candidate Windows diagnostic
+    runs-on: windows-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact canonical candidate
+        uses: actions/checkout@v4
+        with:
+          ref: a03863c8c6124a2024d959063da7ea412386de97
+          fetch-depth: 1
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Run exact v7 diagnostic gates
+        shell: pwsh
+        run: python scripts/run-hepta-intelligence-shared-projection-planner-v7.py
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p032-a038-windows-diagnostic-${{ github.sha }}
+          path: artifacts/hepta-intelligence-shared-projection-planner-v7
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce diagnostic result without granting qualification
+        if: always()
+        shell: pwsh
+        run: |
+          $receiptPath = "artifacts/hepta-intelligence-shared-projection-planner-v7/qualification-receipt.json"
+          $receipt = Get-Content $receiptPath -Raw | ConvertFrom-Json
+          if ($receipt.head -ne "a03863c8c6124a2024d959063da7ea412386de97") {
+            Write-Error "diagnostic receipt head mismatch"
+            exit 1
+          }
+          if ($receipt.qualified -ne $true) {
+            $failed = $receipt.checks | Where-Object { $_.passed -ne $true } | ForEach-Object { $_.id }
+            Write-Error ("P0.3.2 Windows diagnostic failed: " + ($failed -join ", "))
+            exit 1
+          }
+          Write-Host "Windows diagnostic passed; Linux exact-head admission is still required."
