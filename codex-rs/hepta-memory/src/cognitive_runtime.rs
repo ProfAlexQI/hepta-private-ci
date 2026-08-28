@@ -1,6 +1,13 @@
 use std::fmt;
 use std::sync::Arc;
 
+use codex_hepta_contracts::AgentId;
+use codex_hepta_contracts::AuthorityError;
+use codex_hepta_contracts::AuthorityGrant;
+use codex_hepta_contracts::CognitiveWriteCapability;
+use codex_hepta_contracts::MemoryReadCapability;
+use codex_hepta_paths::HeptaAgentLayout;
+
 use crate::CognitiveCompactError;
 use crate::CognitiveStore;
 use crate::CognitiveStoreError;
@@ -72,6 +79,48 @@ impl CognitiveRuntime {
             Ok(store) => Self::Available(Arc::new(store)),
             Err(error) => Self::Unavailable(CognitiveUnavailableReason::from(&error)),
         }
+    }
+
+    /// Opens the Agent-private memory runtime through the unified authority
+    /// kernel. Store failures remain a typed unavailable runtime so the normal
+    /// read-only Agent profile can degrade without inventing write authority.
+    pub async fn open_agent_owned(
+        layout: &HeptaAgentLayout,
+        authority: &AuthorityGrant,
+    ) -> Result<Self, AuthorityError> {
+        let _memory_read = authority.authorize::<MemoryReadCapability>()?;
+        Ok(Self::from_open_result(CognitiveStore::open(layout).await))
+    }
+
+    /// Discovers read-only federation sources while preserving the existing
+    /// owning store. The caller must fence its lifecycle generation before and
+    /// after this await; this facade deliberately does not own fleet state.
+    pub async fn with_discovered_federation(
+        self,
+        owner_agent_id: AgentId,
+        owner_layouts: Vec<HeptaAgentLayout>,
+        observed_at_unix_seconds: i64,
+        authority: &AuthorityGrant,
+    ) -> Result<Self, AuthorityError> {
+        let _memory_read = authority.authorize::<MemoryReadCapability>()?;
+        if self.available_store().is_none() || owner_layouts.is_empty() {
+            return Ok(self);
+        }
+        let federation =
+            FederatedRecallSet::discover(owner_agent_id, owner_layouts, observed_at_unix_seconds)
+                .await;
+        Ok(self.with_federation(federation))
+    }
+
+    /// Verifies the typed write capability and reports whether an owning store
+    /// is present. It does not create a writer, mutate SQLite, or grant any
+    /// effect/provider/fleet authority.
+    pub fn cognitive_write_store_available(
+        &self,
+        authority: &AuthorityGrant,
+    ) -> Result<bool, AuthorityError> {
+        let _cognitive_write = authority.authorize::<CognitiveWriteCapability>()?;
+        Ok(self.available_store().is_some())
     }
 
     pub fn available_store(&self) -> Option<&Arc<CognitiveStore>> {
@@ -175,5 +224,48 @@ impl fmt::Debug for CognitiveRuntime {
                 .field(reason)
                 .finish(),
         }
+    }
+}
+
+#[cfg(test)]
+mod authority_tests {
+    use codex_hepta_contracts::AgentId;
+    use codex_hepta_contracts::AuthorityAction;
+    use codex_hepta_contracts::AuthorityError;
+    use codex_hepta_contracts::AuthorityGrant;
+
+    use super::CognitiveRuntime;
+
+    const AGENT_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
+
+    fn agent_id() -> AgentId {
+        match AgentId::parse(AGENT_ID) {
+            Ok(agent_id) => agent_id,
+            Err(error) => panic!("test AgentId must parse: {error}"),
+        }
+    }
+
+    #[test]
+    fn agent_local_runtime_cannot_acquire_cognitive_write() {
+        let authority = match AuthorityGrant::agent_local(agent_id(), 1) {
+            Ok(authority) => authority,
+            Err(error) => panic!("agent authority must be valid: {error}"),
+        };
+        assert!(matches!(
+            CognitiveRuntime::Absent.cognitive_write_store_available(&authority),
+            Err(AuthorityError::ActionDenied(AuthorityAction::WriteCognitiveState))
+        ));
+    }
+
+    #[test]
+    fn qualification_write_still_requires_an_open_store() {
+        let authority = match AuthorityGrant::qualification_cognitive_write(agent_id(), 1) {
+            Ok(authority) => authority,
+            Err(error) => panic!("qualification authority must be valid: {error}"),
+        };
+        assert_eq!(
+            CognitiveRuntime::Absent.cognitive_write_store_available(&authority),
+            Ok(false)
+        );
     }
 }
