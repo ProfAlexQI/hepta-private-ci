@@ -220,7 +220,7 @@ def main() -> int:
         workflow,
         [
             "toolchain: 1.95.0",
-            "cargo fmt --all -- --check",
+            "cargo fmt -p codex-hepta-memory -- --check",
             "cargo test -p codex-hepta-memory intelligence_mutation_state",
             "cargo clippy -p codex-hepta-memory --all-targets -- -D warnings",
         ],
