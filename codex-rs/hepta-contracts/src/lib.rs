@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod agent_id;
+mod authority;
 mod authbus;
 #[cfg(feature = "authbus-local-qualification")]
 pub mod authbus_b3_adapter;
@@ -16,6 +17,7 @@ mod callers_manifest_tests;
 mod canonical;
 mod identity;
 mod memory;
+mod product_graph;
 mod provider;
 mod provider_effect;
 mod qualification_receipt;
@@ -24,6 +26,24 @@ mod stable_id;
 
 pub use agent_id::AgentId;
 pub use agent_id::AgentIdParseError;
+pub use authority::AUTHORITY_KERNEL_SCHEMA_VERSION;
+pub use authority::AuthorityAction;
+pub use authority::AuthorityCapability;
+pub use authority::AuthorityError;
+pub use authority::AuthorityGrant;
+pub use authority::Authorized;
+pub use authority::AutomationMutationCapability;
+pub use authority::CognitiveWriteCapability;
+pub use authority::ExternalEffectCapability;
+pub use authority::FleetMutationCapability;
+pub use authority::MemoryFederationMutationCapability;
+pub use authority::MemoryReadCapability;
+pub use authority::ModelInvocationCapability;
+pub use authority::OperatorAcceptanceCapability;
+pub use authority::ProviderDispatchCapability;
+pub use authority::ReleasePromotionCapability;
+pub use authority::RuntimeAuthorityProfile;
+pub use authority::SessionServeCapability;
 pub use authbus::AUTHBUS_CONTRACT_NAMESPACE;
 pub use authbus::AUTHBUS_CONTRACT_SCHEMA_VERSION;
 pub use authbus::AUTHBUS_PLAN_ID;
@@ -146,6 +166,15 @@ pub use memory::RecallRequestId;
 pub use memory::RecallScorePpm;
 pub use memory::RevisionStamp;
 pub use memory::SCORE_SCALE_PPM;
+pub use product_graph::PRODUCT_GRAPH_SCHEMA_VERSION;
+pub use product_graph::DataAuthority;
+pub use product_graph::DataDomain;
+pub use product_graph::DataStoreKind;
+pub use product_graph::ProductComponentId;
+pub use product_graph::ProductEdge;
+pub use product_graph::ProductEdgeKind;
+pub use product_graph::ProductGraph;
+pub use product_graph::ProductGraphError;
 pub use provider::PROVIDER_EVIDENCE_SCHEMA_VERSION;
 pub use provider::ProviderAttemptId;
 pub use provider::ProviderInvocationIntent;
