@@ -134,12 +134,7 @@ where
             .map_err(B3AdapterError::Provider)?;
         let response = build_status_response(&request, provider_result)?;
         self.validate_status_revision(request.operation_id.as_str(), response.status_revision)?;
-
-        let replay = if response.outcome.is_terminal() {
-            Some(self.build_terminal_replay(request.operation_id.as_str(), &response)?)
-        } else {
-            None
-        };
+        let replay = self.build_status_replay(request.operation_id.as_str(), &response)?;
 
         self.apply_status_transition(&request, response.outcome)?;
         let entry = self
@@ -147,9 +142,7 @@ where
             .get_mut(request.operation_id.as_str())
             .ok_or(B3AdapterError::OperationNotFound)?;
         entry.last_status_revision = Some(response.status_revision);
-        if let Some(replay) = replay {
-            entry.response = Some(replay);
-        }
+        entry.response = Some(replay);
         Ok(response)
     }
 
