@@ -1,0 +1,83 @@
+{
+  "schema": "hepta_intelligence_p0_4c_hosted_blocker_v1",
+  "recorded_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "pull_request": 23,
+  "base_branch": "codex/hepta-intelligence-mutation-journal-v4b-r2-20260828",
+  "base_commit": "a5de899e9f6a97fa0803cc1e73d664be8b7d68bc",
+  "head_branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
+  "source_candidate": "7bb26ec016c2e2c83084756485ea324e79bcddbe",
+  "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
+  "qualified": false,
+  "workflow_runs": [
+    {
+      "id": 33144320922,
+      "name": "hepta-intelligence-shadow-host",
+      "head": "7bb26ec016c2e2c83084756485ea324e79bcddbe",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "id": 98761923318,
+          "name": "P0.4c shadow host source contract",
+          "steps": [],
+          "runner_id": 0
+        },
+        {
+          "id": 98761923512,
+          "name": "P0.4c shadow host Rust qualification",
+          "steps": [],
+          "runner_id": 0
+        }
+      ],
+      "commands_executed": false
+    },
+    {
+      "id": 33144321077,
+      "name": "blocking-ci",
+      "head": "7bb26ec016c2e2c83084756485ea324e79bcddbe",
+      "conclusion": "failure",
+      "commands_executed": false
+    },
+    {
+      "id": 33144320911,
+      "name": "v8-canary",
+      "head": "7bb26ec016c2e2c83084756485ea324e79bcddbe",
+      "conclusion": "failure",
+      "commands_executed": false
+    }
+  ],
+  "source_claims": {
+    "core_shadow_adapter_implemented": true,
+    "agentd_feature_gated_host_implemented": true,
+    "agentd_prepare_append_envelope_hardened": true,
+    "agentd_operation_lease_root_spawn_bound": true,
+    "source_gate_executed": false,
+    "rust_format_executed": false,
+    "rust_tests_executed": false,
+    "rust_clippy_executed": false,
+    "runtime_wired": false,
+    "default_open_wired": false,
+    "app_runtime_attached": false,
+    "tool_registered": false
+  },
+  "authority": {
+    "wired": false,
+    "runtime_wired": false,
+    "default_open_wired": false,
+    "app_runtime_attached": false,
+    "tool_registered": false,
+    "memory_write_authority": false,
+    "projection_write_authority": false,
+    "outbox_dispatch_authority": false,
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "interpretation": [
+    "No checkout, Python source gate, Rust formatter, compiler, focused test, full test, clippy, journal replay, Agentd host test, or runtime command executed in the cited jobs.",
+    "The GitHub conclusions are infrastructure evidence, not source failure and not PASS.",
+    "P0.4c remains implemented but unqualified. P1.1 remains blocked and no runtime/App Server/tool or production activation is permitted."
+  ]
+}
