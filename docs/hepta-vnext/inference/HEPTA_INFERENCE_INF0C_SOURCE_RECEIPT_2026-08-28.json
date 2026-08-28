@@ -10,8 +10,8 @@
   },
   "development_branch": "codex/hepta-inference-runtime-v2-20260828",
   "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce",
-  "source_candidate_commit": "9c8a896246a59c81ae632f041a430e7ea325ba0b",
-  "source_candidate_tree": "f17fe9ebf6e56356c751d22a4725b986c61536be",
+  "source_candidate_commit": "d47cd292c89cd4ac6d484232b35589d65a88f0b9",
+  "source_candidate_tree": "23de1f41fa16013ff0e2fe90e646d2984f7b9350",
   "source_candidate_components": {
     "inf0a_source_rebind": true,
     "inf0b_reference_contracts": true,
@@ -42,20 +42,22 @@
     "inf0c_rustfmt_repair_applied": true,
     "inf0c_strict_rustfmt_gate_restored": true,
     "inf0c_one_shot_bootstrap_removed": true,
-    "inf0c_formatter_export_removed": true
+    "inf0c_formatter_export_removed": true,
+    "inf0c_strict_workflow_yaml_structure_restored": true
   },
   "validation": {
     "local_python_syntax": "PASS",
     "local_receipt_json_parse": "PASS",
-    "exact_candidate_source_gate": "PASS_ON_IDENTICAL_SOURCE_TREE_MACOS_RUST_1_95",
-    "rust_fmt": "PASS_RUST_1_95_MACOS_IDENTICAL_TREE",
+    "exact_candidate_source_gate": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
+    "rust_fmt": "PASS_RUST_1_95_MACOS_FORMATTED_FILES_UNCHANGED_BY_YAML_FIX",
     "rust_test": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
     "rust_clippy": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
     "real_model_e2e": "NOT_RUN",
     "transport_disconnect": "NOT_RUN",
     "backend_cancellation_ack": "NOT_RUN",
     "controlled_restart": "NOT_RUN",
-    "hardware_qualification": "NOT_RUN"
+    "hardware_qualification": "NOT_RUN",
+    "workflow_yaml_parse": "PASS_LOCAL_PYYAML_6_0_3"
   },
   "ci_history": [
     {
@@ -64,7 +66,7 @@
       "runner_assigned": true,
       "checkout": "PASS",
       "python_source_syntax": "PASS",
-      "source_gate": "EXECUTED_FAILED",
+      "source_gate": "EXECUTEED_FAILED",
       "failure": "OLLAMA_EMPTY_LIST_SCAN_FALSE_POSITIVE_ON_BLANK_PULL_FRAME",
       "classification": "EXECUTED_FAILED_SOURCE_GATE_FALSE_POSITIVE"
     },
@@ -171,12 +173,17 @@
     "INF-1 remains inactive and all production, effect, model-NPU, remote-inference and promotion authority remains closed"
   ],
   "source_candidate_provenance": {
-    "materialized_by_run_id": 33169418412,
-    "validated_source_commit": "f303800ea328bb0f68c5f7a48ace74e2dd78367b",
-    "validated_source_tree": "f17fe9ebf6e56356c751d22a4725b986c61536be",
-    "remote_source_commit": "9c8a896246a59c81ae632f041a430e7ea325ba0b",
-    "remote_source_tree": "f17fe9ebf6e56356c751d22a4725b986c61536be",
-    "tree_identity_preserved": true,
+    "rustfmt_materialized_by_run_id": 33169418412,
+    "validated_formatted_source_commit": "f303800ea328bb0f68c5f7a48ace74e2dd78367b",
+    "validated_formatted_source_tree": "f17fe9ebf6e56356c751d22a4725b986c61536be",
+    "remote_formatted_source_commit": "9c8a896246a59c81ae632f041a430e7ea325ba0b",
+    "remote_formatted_source_tree": "f17fe9ebf6e56356c751d22a4725b986c61536be",
+    "formatted_tree_identity_preserved": true,
+    "workflow_yaml_repair_commit": "d47cd292c89cd4ac6d484232b35589d65a88f0b9",
+    "workflow_yaml_repair_tree": "23de1f41fa16013ff0e2fe90e646d2984f7b9350",
+    "workflow_yaml_repair_scope": [
+      ".github/workflows/hepta-inference-inf0.yml"
+    ],
     "reconstructed_with_repository_git_objects": true,
     "workflow_files_removed": [
       ".github/workflows/hepta-inference-inf0-rustfmt-bootstrap.yml",
