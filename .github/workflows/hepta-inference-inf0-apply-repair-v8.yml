@@ -1,0 +1,69 @@
+name: Hepta inference INF-0 apply bounded repair v8
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0-macos-diagnostics-v2-20260828
+    paths:
+      - ".github/workflows/hepta-inference-inf0-apply-repair-v8.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-inference-inf0-apply-repair-v8
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: macos-14
+    timeout-minutes: 180
+    env:
+      BRANCH: codex/hepta-inference-runtime-v2-20260828
+      EXPECTED_HEAD: 3afce0894a597f1968169400e3b79c4a5e94ec17
+      RECEIPT: docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_SOURCE_RECEIPT_2026-08-28.json
+      CARGO_TERM_COLOR: never
+      RUST_BACKTRACE: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Bind exact input and isolated scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/hepta-inference-inf0-apply-repair-v8.yml"
+          git show "$GITHUB_SHA:scripts/hepta-inference-inf0-bounded-repair-v6.py" > "$RUNNER_TEMP/repair.py"
+          git show "$GITHUB_SHA:scripts/hepta-inference-inf0-rebind-repaired-receipt-v8.py" > "$RUNNER_TEMP/rebind.py"
+          git show "$GITHUB_SHA:scripts/hepta-inference-inf0-apply-repair-v8.sh" > "$RUNNER_TEMP/apply.sh"
+          python3 -m py_compile "$RUNNER_TEMP/repair.py" "$RUNNER_TEMP/rebind.py"
+          chmod +x "$RUNNER_TEMP/apply.sh"
+          git fetch --no-tags origin "$BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_HEAD"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test -z "$(git status --porcelain)"
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Validate, commit, rebind, and fast-forward
+        shell: bash
+        run: bash "$RUNNER_TEMP/apply.sh"
+
+      - name: Preserve fail-closed posture
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "qualified=false"
+            echo "INF-1=NOT_STARTED"
+            echo "production/effect/model-NPU/remote/promotion authority=false"
+          } >> "$GITHUB_STEP_SUMMARY"
