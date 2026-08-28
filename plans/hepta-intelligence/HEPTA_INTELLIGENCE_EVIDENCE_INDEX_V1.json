@@ -1,0 +1,119 @@
+{
+  "schema": "hepta_intelligence_evidence_index_v1",
+  "generated_at": "2026-08-28T13:18:00Z",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "as_of_utc": "2026-08-28T13:18:00Z",
+  "scope": "IMMUTABLE_OR_TIME_BOUNDED_EVIDENCE_REFERENCES_ONLY",
+  "not_current_plan_authority": true,
+  "entries": [
+    {
+      "evidence_id": "PLAN-V4-HOSTED-SOURCE-1099821C",
+      "class": "E2_INDEPENDENT_RUNNER_SOURCE_ONLY",
+      "subject": "canonical_master_plan_source_gate",
+      "head_sha": "1099821cdf02595d716fa877fe2639cca92a6d8b",
+      "workflow_run": 33152382416,
+      "job_id": 98787148022,
+      "runner_id": 1000025882,
+      "steps_non_empty": true,
+      "result": "PASS",
+      "receipt": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN_V4_HOSTED_SOURCE_RECEIPT_2026-08-28.json",
+      "does_not_imply": [
+        "P0 Rust qualification",
+        "P0 SQLite qualification",
+        "P0 Agentd qualification",
+        "runtime wiring",
+        "efficacy",
+        "operator acceptance",
+        "promotion"
+      ]
+    },
+    {
+      "evidence_id": "PLAN-V4-HOSTED-SOURCE-80BE14B1",
+      "class": "E2_INDEPENDENT_RUNNER_SOURCE_ONLY",
+      "subject": "canonical_master_plan_source_gate",
+      "head_sha": "80be14b1c42c76b9a7bd03393814b7e2b5a620de",
+      "workflow_run": 33152693078,
+      "job_id": 98788144215,
+      "runner_id": 1000025983,
+      "steps_non_empty": true,
+      "result": "PASS",
+      "receipt": null,
+      "does_not_imply": [
+        "downstream compatibility",
+        "P0 qualification",
+        "runtime wiring",
+        "efficacy"
+      ]
+    },
+    {
+      "evidence_id": "DOC-COMPAT-REGRESSION-80BE14B1",
+      "class": "E2_INDEPENDENT_RUNNER_REGRESSION",
+      "subject": "legacy_P0_status_contracts_replaced_by_redirects",
+      "head_sha": "80be14b1c42c76b9a7bd03393814b7e2b5a620de",
+      "result": "FAIL",
+      "affected_jobs": [
+        {
+          "workflow_run": 33152693087,
+          "job_id": 98788147618,
+          "name": "P0.2 durable grounding source contract",
+          "runner_id": 1000026006,
+          "failure_step": "Run fail-closed source and SQLite gate"
+        },
+        {
+          "workflow_run": 33152693105,
+          "job_id": 98788148480,
+          "name": "P0.3 shadow grounding source contract",
+          "runner_id": 1000026114,
+          "failure_step": "Run fail-closed P0.3 source gate"
+        },
+        {
+          "workflow_run": 33152693077,
+          "job_id": 98788148841,
+          "name": "P0.4 mutation state source contract",
+          "runner_id": 1000026237,
+          "failure_step": "Run fail-closed P0.4 source gate"
+        },
+        {
+          "workflow_run": 33152693085,
+          "job_id": 98788147117,
+          "name": "P0.4c shadow host source contract",
+          "runner_id": 1000025987,
+          "failure_step": "Run fail-closed P0.4c source gate"
+        }
+      ],
+      "root_cause": "HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2/V3 machine contracts were replaced with minimal redirect schemas while frozen source verifiers still consumed their original fields",
+      "remediation_status": "COMPATIBILITY_SCHEMAS_RESTORED_PENDING_EXACT_RERUN"
+    },
+    {
+      "evidence_id": "P0-4B-RUST-FMT-80BE14B1",
+      "class": "E2_INDEPENDENT_RUNNER_EXECUTABLE_FAILURE",
+      "subject": "P0.4b mutation journal Rust qualification",
+      "head_sha": "80be14b1c42c76b9a7bd03393814b7e2b5a620de",
+      "workflow_run": 33152693088,
+      "job_id": 98788147807,
+      "runner_id": 1000026418,
+      "steps_non_empty": true,
+      "result": "FAIL",
+      "failure_step": "Check workspace formatting",
+      "tests_executed": false,
+      "clippy_executed": false,
+      "classification": "REAL_EXECUTABLE_FORMAT_FAILURE_REQUIRES_FROZEN_TRANCHE_FIX"
+    }
+  ],
+  "refresh_policy": {
+    "producer": "future evidence aggregator",
+    "current_plan_must_not_be_rewritten_for_each_runner_event": true,
+    "each_entry_must_bind_subject_head_run_job_and_result": true,
+    "queued_or_steps_empty_is_not_pass_or_code_failure": true,
+    "newer_evidence_does_not_rewrite_older_entries": true
+  },
+  "authority": {
+    "runtime_wired": false,
+    "learning_write_authority": false,
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  }
+}
