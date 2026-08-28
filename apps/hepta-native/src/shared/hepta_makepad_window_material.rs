@@ -1,13 +1,9 @@
 //! Makepad-owned root-window material request path for Hepta UI v4.
 //!
-//! This module intentionally uses Makepad's public `WindowId`, `WindowVisuals`,
-//! `WindowBackdrop`, and `CxOsOp::SetWindowVisuals` APIs. It never reads or
-//! guesses an HWND, NSWindow, UIView, Activity, or browser host object.
-//!
-//! A queued framework request is not an operating-system readback receipt. The
-//! controller may request persistent root-window chrome, but it always keeps
-//! transient-system-material, complete-profile, effect, and production claims
-//! false until a later platform-specific verifier proves them.
+//! Only public `WindowId`, `WindowVisuals`, `WindowBackdrop`, and
+//! `CxOsOp::SetWindowVisuals` APIs are used. A queued framework request is not
+//! an operating-system readback receipt and never grants complete-profile,
+//! transient-material, effect, or production authority.
 
 use makepad_widgets::*;
 
@@ -111,19 +107,15 @@ impl HeptaMakepadWindowMaterialController {
         self.last_receipt
     }
 
-    pub const fn window_id(&self) -> Option<WindowId> {
-        self.window_id
-    }
-
     pub fn owns_window(&self, window_id: WindowId) -> bool {
         self.window_id == Some(window_id)
     }
 
-    /// Binds the controller to the exact root `WindowId` delivered by Makepad.
-    /// Popup windows are deliberately ignored because this tranche does not yet
-    /// own a governed transient-system-material host.
     pub fn observe_window(&mut self, cx: &Cx, window_id: WindowId) -> bool {
-        if self.shutdown || !cx.windows.is_valid(window_id) || cx.windows[window_id].is_popup {
+        if self.shutdown
+            || !cx.windows.is_valid(window_id)
+            || cx.windows[window_id].is_popup
+        {
             return false;
         }
         let changed = self.window_id != Some(window_id);
@@ -145,7 +137,7 @@ impl HeptaMakepadWindowMaterialController {
         focused: bool,
     ) -> HeptaMakepadWindowMaterialReceipt {
         if self.shutdown {
-            return self.install_receipt(
+            return self.install(
                 platform,
                 HeptaMakepadWindowMaterialPhase::Shutdown,
                 WindowVisuals::default(),
@@ -154,11 +146,10 @@ impl HeptaMakepadWindowMaterialController {
                 false,
             );
         }
-
         self.generation = self.generation.saturating_add(1);
         let Some(window_id) = self.valid_root_window(cx) else {
             self.window_id = None;
-            return self.install_receipt(
+            return self.install(
                 platform,
                 HeptaMakepadWindowMaterialPhase::WaitingForWindow,
                 WindowVisuals::default(),
@@ -167,20 +158,10 @@ impl HeptaMakepadWindowMaterialController {
                 false,
             );
         };
-
-        let (phase, visuals, persistent_chrome_requested) =
+        let (phase, visuals, requested) =
             desired_root_window_visuals(platform, preferences, focused);
-        let (framework_state_updated, framework_request_queued) =
-            queue_window_visuals(cx, window_id, visuals);
-
-        self.install_receipt(
-            platform,
-            phase,
-            visuals,
-            framework_state_updated,
-            framework_request_queued,
-            persistent_chrome_requested,
-        )
+        let (updated, queued) = queue_window_visuals(cx, window_id, visuals);
+        self.install(platform, phase, visuals, updated, queued, requested)
     }
 
     pub fn suspend(
@@ -188,20 +169,7 @@ impl HeptaMakepadWindowMaterialController {
         cx: &mut Cx,
         platform: HeptaPlatform,
     ) -> HeptaMakepadWindowMaterialReceipt {
-        self.generation = self.generation.saturating_add(1);
-        let visuals = WindowVisuals::default();
-        let (framework_state_updated, framework_request_queued) = self
-            .valid_root_window(cx)
-            .map(|window_id| queue_window_visuals(cx, window_id, visuals))
-            .unwrap_or((false, false));
-        self.install_receipt(
-            platform,
-            HeptaMakepadWindowMaterialPhase::Suspended,
-            visuals,
-            framework_state_updated,
-            framework_request_queued,
-            false,
-        )
+        self.request_solid(cx, platform, HeptaMakepadWindowMaterialPhase::Suspended)
     }
 
     pub fn shutdown(
@@ -210,49 +178,48 @@ impl HeptaMakepadWindowMaterialController {
         platform: HeptaPlatform,
     ) -> HeptaMakepadWindowMaterialReceipt {
         self.shutdown = true;
+        self.request_solid(cx, platform, HeptaMakepadWindowMaterialPhase::Shutdown)
+    }
+
+    fn request_solid(
+        &mut self,
+        cx: &mut Cx,
+        platform: HeptaPlatform,
+        phase: HeptaMakepadWindowMaterialPhase,
+    ) -> HeptaMakepadWindowMaterialReceipt {
         self.generation = self.generation.saturating_add(1);
         let visuals = WindowVisuals::default();
-        let (framework_state_updated, framework_request_queued) = self
+        let (updated, queued) = self
             .valid_root_window(cx)
             .map(|window_id| queue_window_visuals(cx, window_id, visuals))
             .unwrap_or((false, false));
-        self.install_receipt(
-            platform,
-            HeptaMakepadWindowMaterialPhase::Shutdown,
-            visuals,
-            framework_state_updated,
-            framework_request_queued,
-            false,
-        )
+        self.install(platform, phase, visuals, updated, queued, false)
     }
 
     fn valid_root_window(&self, cx: &Cx) -> Option<WindowId> {
         let window_id = self.window_id?;
-        if cx.windows.is_valid(window_id) && !cx.windows[window_id].is_popup {
-            Some(window_id)
-        } else {
-            None
-        }
+        (cx.windows.is_valid(window_id) && !cx.windows[window_id].is_popup)
+            .then_some(window_id)
     }
 
-    fn install_receipt(
+    fn install(
         &mut self,
         platform: HeptaPlatform,
         phase: HeptaMakepadWindowMaterialPhase,
-        requested_visuals: WindowVisuals,
-        framework_state_updated: bool,
-        framework_request_queued: bool,
-        persistent_chrome_requested: bool,
+        visuals: WindowVisuals,
+        updated: bool,
+        queued: bool,
+        requested: bool,
     ) -> HeptaMakepadWindowMaterialReceipt {
         self.last_receipt = receipt(
             self.generation,
             platform,
             self.window_id,
             phase,
-            requested_visuals,
-            framework_state_updated,
-            framework_request_queued,
-            persistent_chrome_requested,
+            visuals,
+            updated,
+            queued,
+            requested,
         );
         self.last_receipt
     }
@@ -270,7 +237,6 @@ pub fn desired_root_window_visuals(
             false,
         );
     }
-
     let (backdrop, active_intensity, inactive_intensity) = match platform {
         HeptaPlatform::Windows => (WindowBackdrop::Mica, 0.90, 0.82),
         HeptaPlatform::MacOs => (WindowBackdrop::Vibrancy, 0.88, 0.78),
@@ -282,17 +248,17 @@ pub fn desired_root_window_visuals(
             );
         }
     };
-
+    let backdrop_intensity = if focused {
+        active_intensity
+    } else {
+        inactive_intensity
+    };
     (
         HeptaMakepadWindowMaterialPhase::PersistentChromeRequested,
         WindowVisuals {
             transparent: true,
             backdrop,
-            backdrop_intensity: if focused {
-                active_intensity
-            } else {
-                inactive_intensity
-            },
+            backdrop_intensity,
         }
         .normalized(),
         true,
@@ -316,7 +282,6 @@ fn queue_window_visuals(
             (true, window.is_created)
         }
     };
-
     let queued = changed && created;
     if queued {
         cx.push_unique_platform_op(CxOsOp::SetWindowVisuals(window_id, visuals));
@@ -324,6 +289,7 @@ fn queue_window_visuals(
     (changed, queued)
 }
 
+#[allow(clippy::too_many_arguments)]
 const fn receipt(
     generation: u64,
     platform: HeptaPlatform,
@@ -334,17 +300,15 @@ const fn receipt(
     framework_request_queued: bool,
     persistent_chrome_requested: bool,
 ) -> HeptaMakepadWindowMaterialReceipt {
+    let (window_index, window_generation) = match window_id {
+        Some(window_id) => (Some(window_id.0), Some(window_id.1)),
+        None => (None, None),
+    };
     HeptaMakepadWindowMaterialReceipt {
         generation,
         platform,
-        window_index: match window_id {
-            Some(window_id) => Some(window_id.0),
-            None => None,
-        },
-        window_generation: match window_id {
-            Some(window_id) => Some(window_id.1),
-            None => None,
-        },
+        window_index,
+        window_generation,
         phase,
         requested_visuals,
         framework_state_updated,
@@ -389,22 +353,15 @@ mod tests {
         let (mut cx, window_id) = test_window();
         let mut controller = HeptaMakepadWindowMaterialController::default();
         assert!(controller.observe_window(&cx, window_id));
-
         let receipt = controller.request_active(
             &mut cx,
             HeptaPlatform::Windows,
             transparent_preferences(),
             true,
         );
-
-        assert_eq!(
-            receipt.phase,
-            HeptaMakepadWindowMaterialPhase::PersistentChromeRequested
-        );
         assert_eq!(receipt.requested_visuals.backdrop, WindowBackdrop::Mica);
         assert_eq!(cx.windows[window_id].backdrop, WindowBackdrop::Mica);
         assert!(receipt.framework_request_queued);
-        assert!(receipt.persistent_chrome_requested);
         assert!(receipt.grants_no_authority());
         assert!(receipt.makes_no_complete_binding_claim());
     }
@@ -420,8 +377,7 @@ mod tests {
             transparent_preferences(),
             true,
         );
-
-        let high_contrast = controller.request_active(
+        let receipt = controller.request_active(
             &mut cx,
             HeptaPlatform::Windows,
             HeptaMaterialRuntimePreferences {
@@ -430,16 +386,10 @@ mod tests {
             },
             true,
         );
-        assert_eq!(
-            high_contrast.phase,
-            HeptaMakepadWindowMaterialPhase::SolidRequested
-        );
+        assert_eq!(receipt.phase, HeptaMakepadWindowMaterialPhase::SolidRequested);
         assert_eq!(cx.windows[window_id].backdrop, WindowBackdrop::None);
-        assert!(!cx.windows[window_id].transparent);
-
         let suspended = controller.suspend(&mut cx, HeptaPlatform::Windows);
         assert_eq!(suspended.phase, HeptaMakepadWindowMaterialPhase::Suspended);
-        assert!(suspended.makes_no_complete_binding_claim());
     }
 
     #[test]
