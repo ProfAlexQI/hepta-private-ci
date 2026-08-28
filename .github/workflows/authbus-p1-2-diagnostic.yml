@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   diagnostic:
-    name: Print the exact bounded nonce replay fixture
+    name: Print the exact bounded nonce replay fixture body
     runs-on: ubuntu-slim
     timeout-minutes: 15
     steps:
@@ -28,7 +28,7 @@ jobs:
           set -euo pipefail
           test "${GITHUB_REF_NAME}" = "integration/vnext-main-full-ci-authbus-p1-2-20260828"
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          test "$(git rev-parse HEAD^)" = "af1c53cbe2de4071e661322bef5c534553190a92"
+          test "$(git rev-parse HEAD^)" = "57a21dde0923898c1c6d0180f1f0f8c70dfb1ff6"
 
       - name: Materialize the reviewed source archive without mutation
         shell: bash
@@ -67,15 +67,15 @@ jobs:
                       shutil.copyfileobj(source, output)
           PY
 
-      - name: Print only the exact failing fixture and its helpers
+      - name: Print only the failing test body and nonce policy setup
         shell: bash
         run: |
           set -euo pipefail
-          echo '--- tests/p1_2.rs lines 1-220 ---'
+          echo '--- tests/p1_2.rs lines 390-500 ---'
           nl -ba codex-rs/hepta-authbus-p1-2-qualification/tests/p1_2.rs \
-            | sed -n '1,220p'
-          echo '--- TTL and identity policy references ---'
-          grep -R -n -C 3 \
-            -E 'identity_max_ttl|TtlExceeded|expires_at_unix_seconds|nonce_replay_survives' \
-            codex-rs/hepta-authbus-p1-2-qualification/src \
-            codex-rs/hepta-authbus-p1-2-qualification/tests
+            | sed -n '390,500p'
+          echo '--- nonce policy and TTL references in test body ---'
+          grep -n -C 6 \
+            -E 'max_nonce_entries|identity_max_ttl_seconds|signed_identity|expires_at' \
+            codex-rs/hepta-authbus-p1-2-qualification/tests/p1_2.rs \
+            | sed -n '1,260p'
