@@ -184,6 +184,7 @@ ReconcileOutboxSettled ==
 Quarantine ==
   /\ phase = "Indeterminate"
   /\ reconciliationCount < MaxReconciliations
+  /\ indeterminateFrom # "OutboxSettled"
   /\ phase' = "Quarantined"
   /\ disposition' = "Quarantined"
   /\ lastRecoveryOrigin' = indeterminateFrom
