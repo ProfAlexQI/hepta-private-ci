@@ -1,6 +1,9 @@
 name: Hepta P1 source snapshot once
 
 on:
+  push:
+    branches:
+      - codex/hepta-architecture-gap-closure-p1-20260829
   workflow_dispatch:
 
 permissions:
@@ -13,7 +16,7 @@ concurrency:
 jobs:
   snapshot:
     name: Package exact P1 source snapshot
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
       - name: Checkout exact branch head
@@ -36,33 +39,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tar \
-            --exclude='.git' \
-            --exclude='**/target' \
-            --exclude='**/node_modules' \
-            --exclude='docs/hepta-vnext/dropbox-*' \
-            -czf "$RUNNER_TEMP/hepta-p1-source-${GITHUB_SHA}.tar.gz" \
-            .github/actions/setup-ci \
-            .github/workflows/hepta-architecture-convergence-p0-2.yml \
-            ARCHITECTURE.md \
-            docs/architecture \
-            scripts \
-            codex-rs/Cargo.toml \
-            codex-rs/Cargo.lock \
-            codex-rs/rust-toolchain.toml \
-            codex-rs/app-server \
-            codex-rs/core \
-            codex-rs/exec-server \
-            codex-rs/hepta-agentd \
-            codex-rs/hepta-automation \
-            codex-rs/hepta-contracts \
-            codex-rs/hepta-fleet \
-            codex-rs/hepta-matrix-store \
-            codex-rs/hepta-matrixd \
-            codex-rs/hepta-memory \
-            codex-rs/hepta-memory-runtime \
-            codex-rs/hepta-paths \
-            codex-rs/hepta-supervisor
+          git archive --format=tar.gz \
+            --output="$RUNNER_TEMP/hepta-p1-source-${GITHUB_SHA}.tar.gz" \
+            HEAD
           sha256sum "$RUNNER_TEMP/hepta-p1-source-${GITHUB_SHA}.tar.gz" \
             > "$RUNNER_TEMP/hepta-p1-source-${GITHUB_SHA}.sha256"
 
