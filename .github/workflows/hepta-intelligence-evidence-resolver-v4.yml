@@ -1,18 +1,25 @@
-name: hepta-intelligence-evidence-resolver-v4
+name: hepta-intelligence-evidence-resolver-v5
 
 on:
   push:
     branches:
-      - "codex/hepta-intelligence-evidence-resolver-v4-*"
+      - "codex/hepta-intelligence-evidence-resolver-v4-20260828"
+    paths:
+      - "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs"
+      - "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/**"
+      - "codex-rs/ext/hepta-memory/src/framing.rs"
+      - "scripts/verify-hepta-intelligence-evidence-resolver-v4.py"
+      - "scripts/run-hepta-intelligence-evidence-resolver-v5.py"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json"
+      - ".github/workflows/hepta-intelligence-evidence-resolver-v4.yml"
   pull_request:
     paths:
       - "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs"
       - "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/**"
       - "codex-rs/ext/hepta-memory/src/framing.rs"
       - "scripts/verify-hepta-intelligence-evidence-resolver-v4.py"
-      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_DEVELOPMENT_PLAN_V3_2_2026-08-28.md"
+      - "scripts/run-hepta-intelligence-evidence-resolver-v5.py"
       - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json"
-      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_3_HOST_EVIDENCE_RESOLVER_2026-08-28.md"
       - ".github/workflows/hepta-intelligence-evidence-resolver-v4.yml"
   workflow_dispatch:
 
@@ -20,36 +27,40 @@ permissions:
   contents: read
 
 concurrency:
-  group: hepta-intelligence-evidence-resolver-v4-${{ github.ref }}
+  group: hepta-intelligence-evidence-resolver-v5-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   source-contract:
-    name: P0.3.3 host evidence resolver source contract
+    name: P0.3.3 v5 source contract
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
 
-      - name: Validate Python and machine documents
+      - name: Execute fail-closed source contract
+        shell: bash
         run: |
+          set -euo pipefail
+          OUT=artifacts/hepta-intelligence-evidence-resolver-source-v5
+          mkdir -p "$OUT"
+          git rev-parse HEAD > "$OUT/head.txt"
+          git rev-parse HEAD^{tree} > "$OUT/tree.txt"
           python3 -m py_compile \
-            scripts/verify-hepta-intelligence-evidence-resolver-v4.py
+            scripts/verify-hepta-intelligence-evidence-resolver-v4.py \
+            scripts/run-hepta-intelligence-evidence-resolver-v5.py
           python3 -m json.tool \
             plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json \
             >/dev/null
-
-      - name: Run fail-closed P0.3.3 source gate
-        run: |
-          set -o pipefail
-          mkdir -p artifacts/hepta-intelligence-evidence-resolver-v4
           python3 scripts/verify-hepta-intelligence-evidence-resolver-v4.py \
-            | tee artifacts/hepta-intelligence-evidence-resolver-v4/source-gate.json
+            | tee "$OUT/source-gate.json"
 
-      - name: Verify source-only authority boundary
+      - name: Enforce source and dependency boundary
+        shell: bash
         run: |
           python3 - <<'PY'
           import json
@@ -57,19 +68,26 @@ jobs:
 
           receipt = json.loads(
               Path(
-                  "artifacts/hepta-intelligence-evidence-resolver-v4/source-gate.json"
+                  "artifacts/hepta-intelligence-evidence-resolver-source-v5/source-gate.json"
               ).read_text(encoding="utf-8")
           )
+          status = json.loads(
+              Path(
+                  "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json"
+              ).read_text(encoding="utf-8")
+          )
+          expected_dependency = status["dependency"]["qualified"] is True
           assert receipt["status"] == (
               "PASS_P0_3_3_HOST_EVIDENCE_RESOLVER_SOURCE_ONLY"
           )
+          assert receipt["qualified"] is False
+          assert receipt["p0_3_2_dependency_qualified"] is expected_dependency
           assert receipt["host_resolves_offsets"] is True
           assert receipt["host_computes_digests"] is True
           for key in (
               "model_supplies_offsets",
               "model_supplies_digests",
               "tool_v4_registered",
-              "p0_3_2_dependency_qualified",
               "production_projection_gate",
               "production_authority",
               "external_effects",
@@ -80,24 +98,25 @@ jobs:
               assert receipt[key] is False, key
           PY
 
-      - name: Upload source receipt
+      - name: Upload source-only receipt
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-intelligence-evidence-resolver-v4-source-${{ github.sha }}
-          path: artifacts/hepta-intelligence-evidence-resolver-v4/source-gate.json
+          name: hepta-intelligence-evidence-resolver-source-v5-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/hepta-intelligence-evidence-resolver-source-v5
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 21
 
-  rust-qualification:
-    name: P0.3.3 host evidence resolver Rust qualification
+  exact-head-qualification:
+    name: P0.3.3 v5 exact-head qualification
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
 
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -105,50 +124,51 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt,clippy
 
-      - name: Check P0.3.3 candidate formatting
-        working-directory: codex-rs
+      - name: Run every exact-head gate and build receipt
+        run: python3 scripts/run-hepta-intelligence-evidence-resolver-v5.py
+
+      - name: Upload exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p0-3-3-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/hepta-intelligence-evidence-resolver-v5
+          if-no-files-found: error
+          retention-days: 21
+
+      - name: Enforce exact-head qualification result
+        if: always()
+        env:
+          EXPECTED_HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        shell: bash
         run: |
-          rustfmt --edition 2024 --check \
-            ext/hepta-memory/src/framing.rs \
-            ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs \
-            ext/hepta-memory/src/cognitive/evidence_resolver_v4/receipt.rs \
-            ext/hepta-memory/src/cognitive/evidence_resolver_v4/resolver.rs \
-            ext/hepta-memory/src/cognitive/evidence_resolver_v4/schema.rs \
-            ext/hepta-memory/src/cognitive/evidence_resolver_v4/support.rs \
-            ext/hepta-memory/src/cognitive/evidence_resolver_v4/tests.rs
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
 
-      - name: Run host evidence resolver tests
-        working-directory: codex-rs
-        env:
-          CARGO_TERM_COLOR: always
-        run: cargo test -p codex-hepta-memory-extension evidence_resolver_v4 -- --nocapture
-
-      - name: Run core grounding compatibility tests
-        working-directory: codex-rs
-        env:
-          CARGO_TERM_COLOR: always
-        run: cargo test -p codex-hepta-memory fact_grounding -- --nocapture
-
-      - name: Run full memory-extension tests
-        working-directory: codex-rs
-        env:
-          CARGO_TERM_COLOR: always
-        run: cargo test -p codex-hepta-memory-extension
-
-      - name: Run full hepta-memory tests
-        working-directory: codex-rs
-        env:
-          CARGO_TERM_COLOR: always
-        run: cargo test -p codex-hepta-memory
-
-      - name: Run strict extension clippy
-        working-directory: codex-rs
-        env:
-          CARGO_TERM_COLOR: always
-        run: cargo clippy -p codex-hepta-memory-extension --all-targets -- -D warnings
-
-      - name: Run strict core clippy
-        working-directory: codex-rs
-        env:
-          CARGO_TERM_COLOR: always
-        run: cargo clippy -p codex-hepta-memory --all-targets -- -D warnings
+          receipt = json.loads(
+              Path(
+                  "artifacts/hepta-intelligence-evidence-resolver-v5/qualification-receipt.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert receipt["head"] == os.environ["EXPECTED_HEAD"]
+          assert receipt["p0_3_2_dependency_qualified"] is True
+          assert receipt["host_resolves_offsets"] is True
+          assert receipt["host_computes_digests"] is True
+          assert receipt["wired"] is False
+          assert receipt["tool_v4_registered"] is False
+          assert receipt["default_projection_pointer_changed"] is False
+          assert receipt["default_recall_query_changed"] is False
+          assert receipt["production_projection_gate"] is False
+          assert receipt["production_authority"] is False
+          assert receipt["external_effects"] is False
+          assert receipt["operator_accepted"] is False
+          assert receipt["promoted"] is False
+          assert receipt["callers_ratchet"] is False
+          if not receipt["qualified"]:
+              failed = [
+                  check["id"] for check in receipt["checks"] if not check["passed"]
+              ]
+              raise SystemExit(f"P0.3.3 exact qualification failed: {failed}")
+          PY
