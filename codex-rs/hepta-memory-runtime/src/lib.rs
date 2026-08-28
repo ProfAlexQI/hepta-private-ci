@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod legacy_authority;
+mod production_writer;
 
 use std::fmt;
 
@@ -15,6 +16,8 @@ use codex_hepta_memory::CognitiveRuntime;
 use codex_hepta_paths::HeptaAgentLayout;
 
 pub use legacy_authority::ProductionCognitiveWriteAuthorization;
+pub use production_writer::AuthorizedProductionWriter;
+pub use production_writer::ProductionWriterRuntimeError;
 
 /// Physical product boundary between Agent composition and the legacy
 /// `codex-hepta-memory` implementation crate.
