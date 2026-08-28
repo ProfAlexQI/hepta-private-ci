@@ -1,0 +1,70 @@
+{
+  "schema": "hepta.ui.same-run-execution-provenance.v1",
+  "status": "SAME_RUN_EXECUTION_PROVENANCE_SOURCE_READY_EXECUTION_REQUIRED",
+  "candidateBranch": "codex/ui-v4-same-run-execution-provenance-20260828",
+  "baseBranch": "codex/ui-v4-execution-provenance-audit-20260828",
+  "baseCommit": "cfdc9742cd8a59c55fdb959e1760b4e1f6fa5048",
+  "baseTree": "a6ebc3bda2ff955c14910782c50532be80afc625",
+  "canonicalAudit": {
+    "source": "scripts/hepta-ui-v4-execution-provenance-audit",
+    "gitBlob": "0ad77b0f629509ed0e8c6f4affe54dedd2ddeabb",
+    "completedRunReplayPreserved": true
+  },
+  "wrapper": {
+    "source": "scripts/hepta-ui-v4-same-run-execution-provenance-audit",
+    "exactBlobGuardRequired": true,
+    "allowInProgressRun": true,
+    "acceptedRunStates": [
+      "in_progress",
+      "completed"
+    ],
+    "completedRunStillRequiresSuccess": true,
+    "inProgressRunRequiresNullConclusion": true,
+    "sameRunSelfTest": true,
+    "outputSchemaUnchanged": "hepta.ui.v4.execution-provenance-audit.v1"
+  },
+  "workflow": {
+    "name": "hepta-ui-v4-windows-material-profile-exact",
+    "source": ".github/workflows/hepta-ui-v4-windows-material-profile-exact.yml",
+    "finalJobName": "Canonical exact-head execution provenance audit",
+    "sameRunIdRequired": true,
+    "exactCandidateCheckoutRequired": true,
+    "qualificationIndexMustCompleteFirst": true,
+    "currentRunJobsOnly": true,
+    "currentRunArtifactsOnly": true,
+    "boundedArtifactPollingAttempts": 12,
+    "artifactPollingIntervalSeconds": 5,
+    "safeArchiveExtraction": true,
+    "preRuntimeStatus": "PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE",
+    "windowsRuntimeStatus": "PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE",
+    "failureStatus": "FAIL_EXACT_HEAD_EXECUTION_PROVENANCE",
+    "permissions": [
+      "contents:read",
+      "actions:read"
+    ]
+  },
+  "qualification": {
+    "sourceImplemented": true,
+    "hostedSameRunSource": false,
+    "sameRunPreRuntimeProvenance": false,
+    "sameRunWindowsRuntimeProvenance": false,
+    "completedRunReplayPreserved": true,
+    "eligibleForProductIntegrationReview": false,
+    "productBound": false,
+    "transientSystemMaterialBound": false,
+    "completeProfileBound": false,
+    "systemMaterialBound": false,
+    "nativeProductRuntime": false,
+    "deviceValidation": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
