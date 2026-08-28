@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SOURCE_SHA="98de1c4c3d11c6644ff46f50e80071f6f15e1652"
+SOURCE_BRANCH="codex/hepta-intelligence-local-embedding-index-v1b-20260828"
 PATCH_SCRIPT="scripts/qualification/materialize-hepta-intelligence-p1-1b-bounded-read.py"
 RUNNER_SCRIPT="scripts/qualification/run-hepta-intelligence-p1-1b-bounded-read.sh"
 WRAPPER_PATH=".github/workflows/hepta-intelligence-p1-1b-bounded-read-arm-v2.yml"
@@ -14,7 +15,10 @@ HARDENING_VERIFIER="scripts/verify-hepta-intelligence-p1-1b-hardening.py"
 BOUNDED_READ_VERIFIER="scripts/verify-hepta-intelligence-p1-1b-bounded-read.py"
 
 mkdir -p "$ARTIFACT_DIR"
-test "$(git rev-list --count "$SOURCE_SHA"..HEAD)" = "4"
+git fetch --no-tags origin \
+  "+refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
+test "$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH")" = "$SOURCE_SHA"
+git merge-base --is-ancestor "$SOURCE_SHA" HEAD
 python3 - "$SOURCE_SHA" "$PATCH_SCRIPT" "$RUNNER_SCRIPT" "$WRAPPER_PATH" <<'PY'
 import subprocess
 import sys
