@@ -40,7 +40,7 @@ jobs:
         shell: bash
     env:
       CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      EVIDENCE_DIR: ${{ runner.temp }}/hepta-architecture-convergence
+      EVIDENCE_DIR: /tmp/hepta-architecture-convergence
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
