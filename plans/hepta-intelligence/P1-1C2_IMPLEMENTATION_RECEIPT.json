@@ -1,0 +1,69 @@
+{
+  "schema": "hepta.intelligence.p1_1c2.implementation_receipt.v1",
+  "status": "IMPLEMENTED_PENDING_EXECUTABLE_QUALIFICATION",
+  "tranche": "P1.1c.2",
+  "branch": "codex/hepta-p1c2-eval-20260828",
+  "parent_branch": "codex/hepta-intelligence-reviewed-corpus-acceptance-p1c1-20260828",
+  "parent_commit": "f961a056ac0a35c1967a934de7cf5bf7ffb92a05",
+  "source": {
+    "crate": "codex-rs/hepta-memory-p1-1c2-qualification",
+    "dependency_free_external_network": true,
+    "local_path_dependencies": [
+      "codex-rs/hepta-memory-p1-1c-qualification",
+      "codex-rs/hepta-memory-p1-1c1-qualification"
+    ],
+    "review_projection_fixture": "codex-rs/hepta-memory-p1-1c2-qualification/fixtures/p1_1c2_projection_seed.tsv",
+    "receipt_binary": "p1_1c2_receipt"
+  },
+  "claims": {
+    "acceptance_receipt_recomputed": true,
+    "review_projection_digest_bound": true,
+    "every_candidate_requires_two_reviews": true,
+    "query_digest_bound": true,
+    "candidate_projection_digest_bound": true,
+    "locale_bound": true,
+    "seven_lane_rerun": true,
+    "seed_baseline_delta_receipts": true,
+    "deterministic_receipt": true,
+    "aggregate_receipt_redacted": true,
+    "real_human_reviewed_corpus": false,
+    "real_reviewed_corpus_evaluation": false,
+    "real_efficacy_validation": false
+  },
+  "fixture": {
+    "fixture_only": true,
+    "review_items": 8,
+    "projection_entries": 8,
+    "evaluation_candidates": 48,
+    "expected_to_pass_projection": false,
+    "expected_to_emit_lanes": false
+  },
+  "qualification": {
+    "source_verifier": "scripts/verify-hepta-intelligence-p1-1c2-reviewed-efficacy.py",
+    "rust_version": "1.95.0",
+    "rustfmt": "pending",
+    "tests": "pending",
+    "check": "pending",
+    "clippy": "pending",
+    "receipt_reproducibility": "pending",
+    "receipt_json_and_redaction": "pending",
+    "clean_tree": "pending",
+    "source_qualified": false
+  },
+  "authority": {
+    "product_workspace_member": false,
+    "product_module_registered": false,
+    "runtime_wired": false,
+    "default_recall_changed": false,
+    "federation_recall_changed": false,
+    "context_attachment": false,
+    "physical_send": false,
+    "network_access": false,
+    "model_download": false,
+    "external_effects": false,
+    "production_authority": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  }
+}
