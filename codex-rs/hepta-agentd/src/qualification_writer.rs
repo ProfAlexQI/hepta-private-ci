@@ -59,7 +59,7 @@ pub(crate) fn qualification_turn_writer_host(
 
     #[cfg(feature = "qualification-cognitive-write")]
     {
-        let cognitive_write = cognitive_write?.clone();
+        let cognitive_write = cognitive_write.cloned()?;
         if cognitive_write.is_external()
             || cognitive_write.action() != AuthorityAction::WriteCognitiveState
             || cognitive_write.subject_agent_id() != &identity.agent_id
