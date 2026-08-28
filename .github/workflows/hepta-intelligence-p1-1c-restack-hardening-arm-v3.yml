@@ -1,0 +1,274 @@
+name: hepta-intelligence-p1-1c-restack-hardening-arm-v3
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1c-restack-hardening-arm-v3-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-p1-1c-restack-hardening-arm-v3
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: fe33565ce74c013e574c307e4fab101820c0ea88
+  BASE_SHA: 98de1c4c3d11c6644ff46f50e80071f6f15e1652
+  SOURCE_BRANCH: codex/hepta-intelligence-offline-efficacy-p1c-20260828
+  BASE_BRANCH: codex/hepta-intelligence-local-embedding-index-v1b-20260828
+  WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1c-restack-hardening-arm-v3.yml
+  OUTPUT_BRANCH: qualification/hepta-intelligence-p1-1c-restacked-v3-98de1c4-20260828
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1c-qualification
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1c-qualification/Cargo.toml
+  VERIFIER_PATH: scripts/verify-hepta-intelligence-p1-1c-offline-efficacy.py
+  ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1c-restack-v3
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  restack:
+    name: P1.1c hardened-base exact candidate
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify wrapper and immutable parents
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          test "$(git rev-list --count "$SOURCE_SHA"..HEAD)" = "1"
+          test "$(git diff --name-only "$SOURCE_SHA"..HEAD)" = "$WRAPPER_PATH"
+          git fetch --no-tags origin \
+            "+refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH" \
+            "+refs/heads/$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH"
+          test "$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH")" = "$SOURCE_SHA"
+          test "$(git rev-parse "refs/remotes/origin/$BASE_BRANCH")" = "$BASE_SHA"
+          test "$(git merge-base "$SOURCE_SHA" "$BASE_SHA")" = \
+            "e6cded3099ec53c1b6de36bf7b389ff30a8d3718"
+
+      - name: Build merge candidate in working tree
+        run: |
+          set -euo pipefail
+          git checkout -B p1c-restack-v3-work "$SOURCE_SHA"
+          git config user.name "Hepta Qualification Bot"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git merge --no-ff --no-commit "$BASE_SHA"
+          test "$(cat .git/MERGE_HEAD)" = "$BASE_SHA"
+
+      - name: Enforce P1.1c-only diff from hardened base
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          expected = {
+              ".github/workflows/hepta-intelligence-p1-1c-offline-efficacy.yml",
+              "codex-rs/hepta-memory-p1-1c-qualification/Cargo.toml",
+              "codex-rs/hepta-memory-p1-1c-qualification/fixtures/p1_1c_multilingual_seed.tsv",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/bin/p1_1c_receipt.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/corpus.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/digest.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/evaluation.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/kg.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/lib.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/metrics.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/reranker.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/tests/p1_1c.rs",
+              "plans/hepta-intelligence/P1-1C_EXECUTION_STATUS.json",
+              "plans/hepta-intelligence/P1-1C_MULTILINGUAL_OFFLINE_EFFICACY_PLAN.md",
+              "scripts/verify-hepta-intelligence-p1-1c-offline-efficacy.py",
+          }
+          actual = set(subprocess.check_output(
+              ["git", "diff", "--name-only", os.environ["BASE_SHA"]], text=True
+          ).splitlines())
+          if actual != expected:
+              raise SystemExit(json.dumps({"expected": sorted(expected), "actual": sorted(actual)}, indent=2))
+          (Path(os.environ["ARTIFACT_DIR"]) / "candidate-paths.json").write_text(
+              json.dumps({"paths": sorted(actual)}, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Run fail-closed source gate
+        run: |
+          set -o pipefail
+          python3 "$VERIFIER_PATH" 2>&1 | tee "$ARTIFACT_DIR/source-gate.json"
+
+      - name: Isolate Cargo outputs
+        run: |
+          set -euo pipefail
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-p1-1c-restack-v3-target" >> "$GITHUB_ENV"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Run exact Rust qualification matrix
+        run: |
+          set -o pipefail
+          rustc --version | tee "$ARTIFACT_DIR/rustc-version.txt"
+          cargo --version | tee "$ARTIFACT_DIR/cargo-version.txt"
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check \
+            2>&1 | tee "$ARTIFACT_DIR/rustfmt.log"
+          cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture \
+            2>&1 | tee "$ARTIFACT_DIR/tests.log"
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path("artifacts/hepta-intelligence-p1-1c-restack-v3/tests.log").read_text(encoding="utf-8", errors="replace")
+          passed = sum(int(value) for value in re.findall(r"test result: ok\. (\d+) passed", text))
+          if passed != 13:
+              raise SystemExit(f"expected 13 tests, observed {passed}")
+          PY
+          cargo check --manifest-path "$MANIFEST_PATH" --all-targets \
+            2>&1 | tee "$ARTIFACT_DIR/check.log"
+          cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings \
+            2>&1 | tee "$ARTIFACT_DIR/clippy.log"
+
+      - name: Reproduce deterministic receipt and verify redaction
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path "$MANIFEST_PATH" --bin p1_1c_receipt \
+            > "$ARTIFACT_DIR/evaluation-a.json"
+          cargo run --quiet --manifest-path "$MANIFEST_PATH" --bin p1_1c_receipt \
+            > "$ARTIFACT_DIR/evaluation-b.json"
+          cmp "$ARTIFACT_DIR/evaluation-a.json" "$ARTIFACT_DIR/evaluation-b.json"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("artifacts/hepta-intelligence-p1-1c-restack-v3/evaluation-a.json")
+          text = path.read_text(encoding="utf-8")
+          receipt = json.loads(text)
+          assert receipt["status"] == "PASS_P1_1C_SEED_PIPELINE"
+          assert receipt["corpus_provenance"] == "synthetic_seed"
+          assert receipt["corpus_reviewed"] is False
+          assert receipt["case_count"] == 8
+          assert len(receipt["locales"]) == 8
+          assert len(receipt["lanes"]) == 7
+          for key in (
+              "network_access", "model_download", "product_workspace_member",
+              "product_module_registered", "runtime_wired", "default_recall_changed",
+              "federation_recall_changed", "context_attachment", "physical_send",
+              "external_effects", "production_authority", "efficacy_validation",
+              "efficacy_claim", "operator_acceptance", "promotion", "callers_ratchet",
+          ):
+              assert receipt[key] is False, key
+          for forbidden in ("Which evidence binds", "哪些证据", "en-ann-gold-s", "zh-ann-gold-m"):
+              assert forbidden not in text, forbidden
+          PY
+          sha256sum "$ARTIFACT_DIR/evaluation-a.json" > "$ARTIFACT_DIR/evaluation-a.json.sha256"
+
+      - name: Prove final tree scope and cleanliness
+        run: |
+          set -euo pipefail
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+          git diff --check
+          test -z "$(git ls-files --others --exclude-standard -- "$CRATE_ROOT")"
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          expected = {
+              ".github/workflows/hepta-intelligence-p1-1c-offline-efficacy.yml",
+              "codex-rs/hepta-memory-p1-1c-qualification/Cargo.toml",
+              "codex-rs/hepta-memory-p1-1c-qualification/fixtures/p1_1c_multilingual_seed.tsv",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/bin/p1_1c_receipt.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/corpus.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/digest.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/evaluation.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/kg.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/lib.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/metrics.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/reranker.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/tests/p1_1c.rs",
+              "plans/hepta-intelligence/P1-1C_EXECUTION_STATUS.json",
+              "plans/hepta-intelligence/P1-1C_MULTILINGUAL_OFFLINE_EFFICACY_PLAN.md",
+              "scripts/verify-hepta-intelligence-p1-1c-offline-efficacy.py",
+          }
+          actual = set(subprocess.check_output(
+              ["git", "diff", "--name-only", os.environ["BASE_SHA"]], text=True
+          ).splitlines())
+          if actual != expected:
+              raise SystemExit(json.dumps({"expected": sorted(expected), "actual": sorted(actual)}, indent=2))
+          PY
+
+      - name: Commit and push qualified dual-parent candidate
+        id: candidate
+        run: |
+          set -euo pipefail
+          git add -- \
+            .github/workflows/hepta-intelligence-p1-1c-offline-efficacy.yml \
+            "$CRATE_ROOT" \
+            plans/hepta-intelligence/P1-1C_EXECUTION_STATUS.json \
+            plans/hepta-intelligence/P1-1C_MULTILINGUAL_OFFLINE_EFFICACY_PLAN.md \
+            "$VERIFIER_PATH"
+          git commit -m "ci(intelligence): restack qualified P1.1c on hardened P1.1b"
+          candidate_sha="$(git rev-parse HEAD)"
+          test "$(git rev-parse "$candidate_sha^1")" = "$SOURCE_SHA"
+          test "$(git rev-parse "$candidate_sha^2")" = "$BASE_SHA"
+          echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          git push origin "$candidate_sha:refs/heads/$OUTPUT_BRANCH"
+
+      - name: Write qualification receipt
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUNNER_NAME: ${{ runner.name }}
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          receipt = {
+              "schema": "hepta.intelligence.p1_1c.restack_qualification.v3",
+              "status": "PASS_P1_1C_RESTACK_EXECUTABLE_GATES",
+              "source_parent": os.environ["SOURCE_SHA"],
+              "hardened_base_parent": os.environ["BASE_SHA"],
+              "candidate_commit": os.environ["CANDIDATE_SHA"],
+              "tests_passed": 13,
+              "gates": {"source": "success", "fmt": "success", "tests": "success", "check": "success", "clippy": "success", "receipt_reproducibility": "success", "redaction": "success", "scope": "success"},
+              "source_qualified": True,
+              "seed_pipeline_reproducible": True,
+              "qualified": False,
+              "corpus_reviewed": False,
+              "efficacy_validation": False,
+              "efficacy_claim": False,
+              "runtime_wired": False,
+              "production_authority": False,
+              "promotion": False,
+              "runner": {"name": os.environ["RUNNER_NAME"], "os": os.environ["RUNNER_OS"], "arch": os.environ["RUNNER_ARCH"]},
+              "workflow": {"run_id": int(os.environ["RUN_ID"]), "run_attempt": int(os.environ["RUN_ATTEMPT"])},
+          }
+          (Path(os.environ["ARTIFACT_DIR"]) / "qualification-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Upload exact evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1c-restack-v3-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1c-restack-v3
+          if-no-files-found: warn
+          retention-days: 14
