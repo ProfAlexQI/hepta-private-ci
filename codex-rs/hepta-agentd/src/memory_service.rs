@@ -16,7 +16,7 @@ use crate::AgentdState;
 pub(crate) struct AgentMemoryService {
     runtime: CognitiveRuntime,
     _read: Authorized<MemoryReadCapability>,
-    cognitive_write: Option<Authorized<CognitiveWriteCapability>>,
+    _cognitive_write: Option<Authorized<CognitiveWriteCapability>>,
 }
 
 impl AgentMemoryService {
@@ -88,16 +88,18 @@ impl AgentMemoryService {
         Ok(Self {
             runtime,
             _read: read,
-            cognitive_write,
+            _cognitive_write: cognitive_write,
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn is_available(&self) -> bool {
         self.runtime.available_store().is_some()
     }
 
+    #[cfg(test)]
     pub(crate) fn cognitive_write_enabled(&self) -> bool {
-        self.cognitive_write.is_some()
+        self._cognitive_write.is_some()
     }
 
     pub(crate) fn into_runtime(self) -> CognitiveRuntime {
