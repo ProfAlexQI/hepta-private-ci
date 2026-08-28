@@ -10,13 +10,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: authbus-p1-3-arm-preflight-${{ github.ref }}
   cancel-in-progress: true
 
 env:
+  EXPECTED_CANONICAL_HEAD: 86ebb68c42cb08745b0bf7f0f3bc688568a1ae46
+  CANONICAL_BRANCH: integration/vnext-main-full-ci-authbus-p1-3-20260829
   P02_MANIFEST: codex-rs/hepta-authbus-qualification/Cargo.toml
   P03_MANIFEST: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
   P13_MANIFEST: codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
@@ -29,7 +31,7 @@ env:
 
 jobs:
   preflight:
-    name: Materialize and qualify P1.3 on ARM
+    name: Materialize, qualify, and publish P1.3 from ARM
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
     steps:
@@ -38,14 +40,21 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 2
-          persist-credentials: false
+          persist-credentials: true
+
+      - name: Bind exact source and canonical lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          remote_head="$(git ls-remote origin "refs/heads/${CANONICAL_BRANCH}" | awk '{print $1}')"
+          test "${remote_head}" = "${EXPECTED_CANONICAL_HEAD}"
+          python3 -m py_compile scripts/authbus-p1-3-finalize.py
 
       - name: Materialize the canonical registry source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          python3 -m py_compile scripts/authbus-p1-3-finalize.py
           python3 scripts/authbus-p1-3-finalize.py | tee /tmp/authbus-p1-3-finalize.txt
           grep -q 'applied_authbus_p1_3_registry_files=9' /tmp/authbus-p1-3-finalize.txt
           grep -q 'applied_authbus_p1_3_existing_file_patches=5' /tmp/authbus-p1-3-finalize.txt
@@ -137,7 +146,81 @@ jobs:
             '{"schema":"hepta.authbus.p1.3.arm-preflight.v1","qualified":true,"qualification_only":true,"registry_sha256":"f6702be58c499d853d273f3174a2556481a3f5b4284cd9cd0b0a247160d7ac08","authority":false,"effect_authority":false,"production_caller":false,"production_writer":false}' \
             > /tmp/authbus-p1-3-arm-preflight.json
 
-      - name: Upload preflight evidence
+      - name: Publish a clean source commit onto the canonical branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf scripts/__pycache__ "${CARGO_TARGET_DIR}"
+          rm scripts/authbus-p1-3-finalize.py
+          rm .github/workflows/authbus-p1-3-source-export.yml
+          rm .github/workflows/authbus-p1-3-arm-preflight.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          final_paths=(
+            codex-rs/hepta-contracts/src/authbus_b4.rs
+            codex-rs/hepta-contracts/src/lib.rs
+            codex-rs/hepta-contracts/src/quota_registry.rs
+            codex-rs/hepta-authbus-qualification/src/model.rs
+            codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
+            codex-rs/hepta-authbus-p0-3-qualification/tests/p0_3.rs
+            codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
+            codex-rs/hepta-authbus-p1-3-qualification/Cargo.lock
+            codex-rs/hepta-authbus-p1-3-qualification/README.md
+            codex-rs/hepta-authbus-p1-3-qualification/src/lib.rs
+            codex-rs/hepta-authbus-p1-3-qualification/tests/p1_3.rs
+            docs/hepta-vnext/authbus/AUTHBUS_P1_3_DEVELOPMENT_PLAN_2026-08-29.md
+            docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.json
+            docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md
+            scripts/verify-authbus-p1-3.py
+          )
+          git add -- "${final_paths[@]}"
+          git add -u -- \
+            scripts/authbus-p1-3-finalize.py \
+            .github/workflows/authbus-p1-3-source-export.yml \
+            .github/workflows/authbus-p1-3-arm-preflight.yml
+
+          cat > /tmp/authbus-p1-3-expected-paths.txt <<'EOF'
+          codex-rs/hepta-authbus-p0-3-qualification/src/scheduler.rs
+          codex-rs/hepta-authbus-p0-3-qualification/tests/p0_3.rs
+          codex-rs/hepta-authbus-p1-3-qualification/Cargo.lock
+          codex-rs/hepta-authbus-p1-3-qualification/Cargo.toml
+          codex-rs/hepta-authbus-p1-3-qualification/README.md
+          codex-rs/hepta-authbus-p1-3-qualification/src/lib.rs
+          codex-rs/hepta-authbus-p1-3-qualification/tests/p1_3.rs
+          codex-rs/hepta-authbus-qualification/src/model.rs
+          codex-rs/hepta-contracts/src/authbus_b4.rs
+          codex-rs/hepta-contracts/src/lib.rs
+          codex-rs/hepta-contracts/src/quota_registry.rs
+          docs/hepta-vnext/authbus/AUTHBUS_P1_3_DEVELOPMENT_PLAN_2026-08-29.md
+          docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.json
+          docs/hepta-vnext/authbus/AUTHBUS_P1_3_IMPLEMENTATION_STATUS_2026-08-29.md
+          scripts/authbus-p1-3-finalize.py
+          scripts/verify-authbus-p1-3.py
+          EOF
+          sed -i 's/^          //' /tmp/authbus-p1-3-expected-paths.txt
+          LC_ALL=C sort -o /tmp/authbus-p1-3-expected-paths.txt \
+            /tmp/authbus-p1-3-expected-paths.txt
+          git diff --cached --name-only "${EXPECTED_CANONICAL_HEAD}" | LC_ALL=C sort \
+            > /tmp/authbus-p1-3-actual-paths.txt
+          diff -u /tmp/authbus-p1-3-expected-paths.txt \
+            /tmp/authbus-p1-3-actual-paths.txt
+          git diff --cached --check "${EXPECTED_CANONICAL_HEAD}"
+
+          source_tree="$(git write-tree)"
+          test -z "$(git ls-tree "${source_tree}" .github/workflows/authbus-p1-3-source-export.yml)"
+          test -z "$(git ls-tree "${source_tree}" .github/workflows/authbus-p1-3-arm-preflight.yml)"
+          source_commit="$(printf '%s\n' \
+            'feat(authbus): unify canonical quota registry P1.3' \
+            | git commit-tree "${source_tree}" -p "${EXPECTED_CANONICAL_HEAD}")"
+          git push origin \
+            "${source_commit}:refs/heads/${CANONICAL_BRANCH}" \
+            --force-with-lease="refs/heads/${CANONICAL_BRANCH}:${EXPECTED_CANONICAL_HEAD}"
+          printf '%s\n' "${source_commit}" > /tmp/authbus-p1-3-source-commit.txt
+          printf '%s\n' "${source_tree}" > /tmp/authbus-p1-3-source-tree.txt
+
+      - name: Upload preflight and publication evidence
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: authbus-p1-3-arm-preflight-${{ github.run_id }}
@@ -146,5 +229,7 @@ jobs:
             /tmp/authbus-p1-3-source.json
             /tmp/authbus-p1-3-formatted.json
             /tmp/authbus-p1-3-arm-preflight.json
+            /tmp/authbus-p1-3-source-commit.txt
+            /tmp/authbus-p1-3-source-tree.txt
             codex-rs/hepta-authbus-p1-3-qualification/Cargo.lock
           retention-days: 2
