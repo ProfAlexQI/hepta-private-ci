@@ -312,7 +312,7 @@ def verify_product_wiring() -> None:
             "AgentRuntimeComposition::open(config)",
             "memory_service.into_runtime_parts()",
             "AgentAppServerService::new(",
-            "let _product_graph = product_graph",
+            "product_graph: _product_graph",
         ),
     )
 
