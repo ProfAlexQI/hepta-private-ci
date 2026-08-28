@@ -6,6 +6,9 @@ use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::UserInput;
+use codex_hepta_contracts::DestinationAcknowledgement;
+use codex_hepta_contracts::OperationPhase;
+use codex_hepta_contracts::Sha256Digest;
 use codex_hepta_matrix_protocol::MatrixEventId;
 use codex_hepta_matrix_protocol::MatrixProtocolError;
 use codex_hepta_matrix_protocol::MatrixRoomId;
@@ -20,6 +23,8 @@ use codex_hepta_matrix_store::InboxRecord;
 use codex_hepta_matrix_store::InboxState;
 use codex_hepta_matrix_store::MatrixDurableError;
 use codex_hepta_matrix_store::MatrixDurableStore;
+use codex_hepta_matrix_store::MatrixOperationJournal;
+use codex_hepta_matrix_store::MatrixOperationRecord;
 use codex_hepta_matrix_store::OutboxDisposition;
 use codex_hepta_matrix_store::OutboxDraft;
 use codex_hepta_matrix_store::OutboxKind;
@@ -122,6 +127,7 @@ pub enum MatrixEventProjection {
 /// Codex App Server queue, plus the minimal App Server-to-outbox projector.
 pub struct MatrixRuntime<B> {
     store: MatrixDurableStore,
+    operations: MatrixOperationJournal,
     bridge: B,
     operation: Semaphore,
     recovery_limit: usize,
@@ -132,8 +138,10 @@ where
     B: MatrixRuntimeBridge,
 {
     pub fn new(store: MatrixDurableStore, bridge: B) -> Self {
+        let operations = MatrixOperationJournal::new(&store);
         Self {
             store,
+            operations,
             bridge,
             operation: Semaphore::new(1),
             recovery_limit: DEFAULT_RECOVERY_LIMIT,
@@ -142,6 +150,10 @@ where
 
     pub fn store(&self) -> &MatrixDurableStore {
         &self.store
+    }
+
+    pub fn operations(&self) -> &MatrixOperationJournal {
+        &self.operations
     }
 
     pub fn bridge(&self) -> &B {
@@ -193,7 +205,7 @@ where
             return Ok(MatrixEventProjection::Ignored);
         };
 
-        // A turn event can race the local durable admission transition.  Core
+        // A turn event can race the local durable admission transition. Core
         // has already persisted the user item before emitting turn activity,
         // so exact client-id reconciliation closes that window without a new
         // admission.
@@ -288,6 +300,11 @@ where
         };
 
         let at_ms = now_ms.max(inbox.received_at_ms);
+        let prior_dispatch = self
+            .store
+            .inbox_dispatch(&inbox.event_id)
+            .await
+            .store_operation("inspect prior inbox dispatch")?;
         // The durable store binds the deterministic project idempotency key;
         // App Server separately returns its concrete project ID.
         let project_key = room_project_idempotency_key(self.store.owner_agent_id(), &inbox.room_id);
@@ -303,14 +320,23 @@ where
             })
             .await
             .store_operation("bind deterministic room project")?;
+        let operation_begin = self
+            .operations
+            .begin(inbox, &project_key, at_ms)
+            .await
+            .store_operation("append Matrix operation intent")?;
+        let mut operation_record = operation_begin.record;
         let dispatch = self
             .store
             .begin_inbox_dispatch(&inbox.event_id, at_ms)
             .await
             .store_operation("begin inbox dispatch")?;
-        if dispatch.project_id != project_key {
+        if dispatch.project_id != project_key
+            || operation_record.envelope.binding.idempotency_key.as_str()
+                != dispatch.client_user_message_id
+        {
             return Err(MatrixRuntimeError::Protocol(
-                "durable dispatch project drifted from the exact Agent/room identity".to_string(),
+                "durable Matrix operation drifted from the exact dispatch identity".to_string(),
             ));
         }
 
@@ -335,12 +361,49 @@ where
             .await
             .store_operation("bind resolved App Server thread")?;
 
-        let admission_mode = if dispatch.state == InboxDispatchState::Begun {
+        let admission_mode = if operation_record.phase == OperationPhase::OutboxPending
+            && prior_dispatch.is_none()
+            && dispatch.state == InboxDispatchState::Begun
+        {
+            operation_record = self
+                .operations
+                .claim_delivery(&inbox.event_id, &operation_record.envelope, at_ms)
+                .await
+                .store_operation("claim Matrix operation delivery")?;
             MatrixAdmissionMode::AllowIfAbsent
         } else {
-            MatrixAdmissionMode::ReconcileOnly
+            if operation_record.phase == OperationPhase::OutboxPending {
+                operation_record = self
+                    .operations
+                    .claim_delivery(&inbox.event_id, &operation_record.envelope, at_ms)
+                    .await
+                    .store_operation("adopt legacy Matrix dispatch claim")?;
+            }
+            if operation_record.phase == OperationPhase::DeliveryClaimed {
+                operation_record = self
+                    .operations
+                    .mark_indeterminate(&inbox.event_id, &operation_record.envelope, at_ms)
+                    .await
+                    .store_operation("quarantine crossed Matrix delivery")?;
+            }
+            match operation_record.phase {
+                OperationPhase::Indeterminate
+                | OperationPhase::Acknowledged
+                | OperationPhase::ReconciledApplied => MatrixAdmissionMode::ReconcileOnly,
+                OperationPhase::ReconciledNotApplied | OperationPhase::Quarantined => {
+                    return Err(MatrixRuntimeError::Protocol(
+                        "terminal Matrix operation cannot be re-admitted".to_string(),
+                    ));
+                }
+                _ => {
+                    return Err(MatrixRuntimeError::Protocol(
+                        "Matrix operation entered an unsupported recovery phase".to_string(),
+                    ));
+                }
+            }
         };
-        let submission = self
+
+        let submission = match self
             .bridge
             .submit_matrix_event_on_binding(
                 &inbox.room_id,
@@ -349,10 +412,24 @@ where
                 &binding,
                 admission_mode,
             )
-            .await?;
+            .await
+        {
+            Ok(submission) => submission,
+            Err(error) => {
+                self.operations
+                    .mark_indeterminate(&inbox.event_id, &operation_record.envelope, at_ms)
+                    .await
+                    .store_operation("retain indeterminate Matrix delivery")?;
+                return Err(error.into());
+            }
+        };
         if submission.binding != binding
             || submission.client_user_message_id != dispatch.client_user_message_id
         {
+            self.operations
+                .mark_indeterminate(&inbox.event_id, &operation_record.envelope, at_ms)
+                .await
+                .store_operation("quarantine drifting Matrix acknowledgement")?;
             return Err(MatrixRuntimeError::Protocol(
                 "App Server submission identity drifted from durable dispatch".to_string(),
             ));
@@ -366,37 +443,102 @@ where
             | MatrixSubmissionState::ReconciledQueued {
                 queued_submission_id,
             } => {
+                let destination_receipt_sha256 = destination_receipt_digest(
+                    "queued",
+                    &dispatch,
+                    &binding,
+                    &queued_submission_id,
+                );
                 let queued = self
                     .store
                     .record_inbox_queued(&InboxQueuedDraft {
                         event_id: inbox.event_id.clone(),
-                        client_user_message_id: dispatch.client_user_message_id,
-                        project_id: dispatch.project_id,
-                        thread_id: binding.thread_id,
+                        client_user_message_id: dispatch.client_user_message_id.clone(),
+                        project_id: dispatch.project_id.clone(),
+                        thread_id: binding.thread_id.clone(),
                         queued_submission_id,
                         queued_at_ms: transition_at_ms,
                     })
                     .await
                     .store_operation("record queued Core submission")?;
+                self.settle_operation(
+                    &operation_record,
+                    destination_receipt_sha256,
+                    transition_at_ms,
+                )
+                .await?;
                 Ok(MatrixDispatchOutcome::Queued { dispatch: queued })
             }
             MatrixSubmissionState::ReconciledTurn { turn_id } => {
+                let destination_receipt_sha256 =
+                    destination_receipt_digest("turn", &dispatch, &binding, &turn_id);
                 let admitted = self
                     .store
                     .record_inbox_admitted(&InboxAdmissionDraft {
                         event_id: inbox.event_id.clone(),
-                        client_user_message_id: dispatch.client_user_message_id,
-                        project_id: dispatch.project_id,
-                        thread_id: binding.thread_id,
-                        queued_submission_id: dispatch.queued_submission_id,
+                        client_user_message_id: dispatch.client_user_message_id.clone(),
+                        project_id: dispatch.project_id.clone(),
+                        thread_id: binding.thread_id.clone(),
+                        queued_submission_id: dispatch.queued_submission_id.clone(),
                         turn_id,
                         admitted_at_ms: transition_at_ms,
                     })
                     .await
                     .store_operation("record reconciled Core turn")?;
+                self.settle_operation(
+                    &operation_record,
+                    destination_receipt_sha256,
+                    transition_at_ms,
+                )
+                .await?;
                 Ok(MatrixDispatchOutcome::Admitted { dispatch: admitted })
             }
         }
+    }
+
+    async fn settle_operation(
+        &self,
+        operation: &MatrixOperationRecord,
+        destination_receipt_sha256: Sha256Digest,
+        at_ms: u64,
+    ) -> Result<(), MatrixRuntimeError> {
+        match operation.phase {
+            OperationPhase::DeliveryClaimed => {
+                let acknowledgement = DestinationAcknowledgement::committed(
+                    &operation.envelope,
+                    destination_receipt_sha256,
+                )
+                .map_err(|error| MatrixRuntimeError::Protocol(error.to_string()))?;
+                self.operations
+                    .acknowledge(
+                        &operation.event_id,
+                        &operation.envelope,
+                        &acknowledgement,
+                        at_ms,
+                    )
+                    .await
+                    .store_operation("acknowledge Matrix destination commit")?;
+            }
+            OperationPhase::Indeterminate => {
+                self.operations
+                    .reconcile_applied(
+                        &operation.event_id,
+                        &operation.envelope,
+                        &destination_receipt_sha256,
+                        at_ms,
+                    )
+                    .await
+                    .store_operation("reconcile Matrix destination commit")?;
+            }
+            OperationPhase::Acknowledged | OperationPhase::ReconciledApplied => {}
+            _ => {
+                return Err(MatrixRuntimeError::Protocol(
+                    "Matrix destination receipt cannot settle the current operation phase"
+                        .to_string(),
+                ));
+            }
+        }
+        Ok(())
     }
 
     async fn enqueue_projection(
@@ -459,6 +601,27 @@ where
             .await
             .store_operation("enqueue projected Matrix outbox message")
     }
+}
+
+fn destination_receipt_digest(
+    kind: &str,
+    dispatch: &InboxDispatchRecord,
+    binding: &RoomThreadBinding,
+    destination_id: &str,
+) -> Sha256Digest {
+    let mut bytes = Vec::new();
+    frame(&mut bytes, b"hepta:matrix-destination-receipt:v1");
+    frame(&mut bytes, kind.as_bytes());
+    frame(&mut bytes, dispatch.client_user_message_id.as_bytes());
+    frame(&mut bytes, dispatch.project_id.as_bytes());
+    frame(&mut bytes, binding.thread_id.as_bytes());
+    frame(&mut bytes, destination_id.as_bytes());
+    Sha256Digest::for_bytes(&bytes)
+}
+
+fn frame(target: &mut Vec<u8>, part: &[u8]) {
+    target.extend_from_slice(&(part.len() as u64).to_be_bytes());
+    target.extend_from_slice(part);
 }
 
 #[derive(Deserialize)]
