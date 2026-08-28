@@ -1,0 +1,66 @@
+name: Hepta inference INF-1 deterministic source export
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf1-source-20260829
+    paths:
+      - ".github/workflows/hepta-inference-inf1-materialize-export.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf1-materialize-export
+  cancel-in-progress: false
+
+jobs:
+  export:
+    name: Materialize and export exact INF-1 source
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+      - name: Materialize digest-bound payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          py -3 scripts/hepta-inference-inf1-materialize.py
+          py -3 -m py_compile scripts/hepta-inference-inf1-bootstrap.py scripts/hepta-inference-inf1-source-gate.py
+          if (-not (Test-Path codex-rs/hepta-inference-core/Cargo.toml)) { throw 'missing core crate' }
+          if (-not (Test-Path codex-rs/hepta-inference-daemon/Cargo.toml)) { throw 'missing daemon crate' }
+      - name: Build deterministic source export
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'hepta-inference-inf1-source'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          Copy-Item -Recurse codex-rs/hepta-inference-core (Join-Path $out 'hepta-inference-core')
+          Copy-Item -Recurse codex-rs/hepta-inference-daemon (Join-Path $out 'hepta-inference-daemon')
+          Copy-Item scripts/hepta-inference-inf1-bootstrap.py $out
+          Copy-Item scripts/hepta-inference-inf1-source-gate.py $out
+          Copy-Item docs/hepta-vnext/inference/HEPTA_INFERENCE_INF1_SOURCE_CONTRACT_V1.md $out
+          $manifest = @{
+            schema = 'hepta.inference.inf1.materialized-source.v1'
+            head = $env:GITHUB_SHA
+            payload_qualified = $false
+            inf1_active = $false
+            production_authority = $false
+          } | ConvertTo-Json -Depth 5
+          Set-Content -Path (Join-Path $out 'manifest.json') -Value $manifest -Encoding utf8NoBOM
+          Get-ChildItem -Recurse -File $out | Sort-Object FullName | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            "$hash  $($_.FullName.Substring($out.Length + 1).Replace('\','/'))"
+          } | Set-Content -Path (Join-Path $out 'SHA256SUMS') -Encoding ascii
+      - name: Upload materialized source
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf1-materialized-${{ github.sha }}
+          path: ${{ runner.temp }}/hepta-inference-inf1-source
+          if-no-files-found: error
+          retention-days: 7
