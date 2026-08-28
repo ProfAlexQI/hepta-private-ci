@@ -68,7 +68,7 @@ def main() -> int:
         "use codex_hepta_memory_runtime::AgentMemoryRuntime;",
         "runtime: AgentMemoryRuntime,",
         "AgentMemoryRuntime::open(",
-        "runtime.with_discovered_federation(",
+        ".with_discovered_federation(",
         "self.runtime.into_cognitive_runtime()",
     ):
         if marker not in service:
@@ -129,13 +129,15 @@ def main() -> int:
     ):
         if implemented.get(field) is not True:
             fail(f"implemented status field {field} must be true")
-    for field in (
-        "legacyProductionLeaseToTypedWitnessAdapter",
-        "physicalMemoryCrateExtraction",
-        "allExistingCrossOwnerCallersMigrated",
-    ):
-        if remaining.get(field) is not False:
-            fail(f"remaining status field {field} must be false")
+
+    expected_remaining = {
+        "legacyProductionLeaseToTypedWitnessAdapter": False,
+        "physicalMemoryCrateExtraction": True,
+        "allExistingCrossOwnerCallersMigrated": True,
+    }
+    for field, expected in expected_remaining.items():
+        if remaining.get(field) is not expected:
+            fail(f"remaining status field {field} must be {str(expected).lower()}")
     if "legacyProductionWriterHostCallerMigrated" in remaining:
         fail("obsolete remaining legacyProductionWriterHostCallerMigrated key is present")
 
