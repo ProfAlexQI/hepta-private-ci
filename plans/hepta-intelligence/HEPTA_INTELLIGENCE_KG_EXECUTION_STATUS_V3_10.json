@@ -17,33 +17,38 @@
     "post-restack dependency=true no longer contradicts the source verifier",
     "whole-crate strict warning debt no longer substitutes for tranche-scoped diagnostics",
     "restack performs exact run/job/artifact/tree verification",
-    "restack performs source/rustfmt/all-target compile preflight before push"
+    "restack performs source/rustfmt/all-target compile preflight before push",
+    "P0.3.2 source gate is aligned with the transaction-scoped verifier API"
   ],
-  "generated_at": "2026-08-28",
+  "generated_at": "2026-08-29",
   "p0_3_2": {
     "branch": "codex/hepta-intelligence-shared-projection-planner-v5-20260828",
-    "classification": "QUEUED_RUNNER_NOT_ASSIGNED",
-    "head": "a03863c8c6124a2024d959063da7ea412386de97",
+    "classification": "SOURCE_GATE_ALIGNED_AWAITING_FINAL_EXACT_HEAD",
+    "head_before_status_binding": "3976702c71a9602b26f643304c47e5c613f073fa",
     "implemented_on_branch": true,
-    "latest_formal_job": 98879255372,
-    "latest_formal_run": 33180214919,
+    "previous_executable_artifact": 9692801532,
+    "previous_executable_job": 98905643150,
+    "previous_executable_run": 33187925080,
+    "previous_executable_rust_gates_all_green": true,
+    "previous_source_contract_only_failure": true,
     "pull_request": 40,
     "qualified": false,
-    "runner_id": 0,
-    "steps": []
+    "source_contract_aligned": true
   },
   "p0_3_3": {
     "base_branch": "codex/hepta-intelligence-grounding-gate-v3-20260828",
     "branch": "codex/hepta-intelligence-evidence-resolver-v4-20260828",
     "exact_head_v5_patch": true,
     "governed_scoped_clippy_patch": true,
-    "head": "cdfd1abe36f8de45300fd66c3dedb663e8d51b48",
+    "head": "82ee16ac63d091569337eb06b5023e2791daea5c",
     "implemented_on_branch": true,
+    "latest_source_contract_run": 33188303157,
     "pull_request": 30,
     "qualified": false,
     "restacked": false,
-    "source_gate_dependency_state_aware_patch": true
+    "source_contract_dependency_state_aware": true,
+    "source_contract_qualified": true
   },
   "repository": "ProfAlexQI/hepta-private-ci",
-  "schema": "hepta_intelligence_kg_execution_status_v3_10_patch_candidate"
+  "schema": "hepta_intelligence_kg_execution_status_v3_10_exact_head_candidate"
 }
