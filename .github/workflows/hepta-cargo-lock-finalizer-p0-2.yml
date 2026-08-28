@@ -1,0 +1,186 @@
+name: Hepta Cargo.lock finalizer P0.2
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-convergence-p0-2-20260828
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-cargo-lock-finalizer-p0-2-write-lane
+  cancel-in-progress: false
+
+env:
+  BRANCH_NAME: codex/hepta-architecture-convergence-p0-2-20260828
+  SOURCE_HEAD: ${{ github.sha }}
+
+jobs:
+  pin-exact-head:
+    name: Pin exact current branch head
+    if: ${{ !contains(github.event.head_commit.message || '', '[hepta-lock-finalize]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      current: ${{ steps.pin.outputs.current }}
+    steps:
+      - name: Checkout exact triggering head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Compare trigger with live branch head
+        id: pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$BRANCH_NAME"
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+          git fetch --no-tags origin \
+            "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
+          live_head="$(git rev-parse "refs/remotes/origin/$BRANCH_NAME")"
+          if test "$live_head" = "$SOURCE_HEAD"; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+            echo "exact_current_head=$SOURCE_HEAD" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "stale_source_head=$SOURCE_HEAD" >> "$GITHUB_STEP_SUMMARY"
+            echo "live_branch_head=$live_head" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  finalize-lock:
+    name: Materialize and verify the workspace lock graph
+    needs: pin-exact-head
+    if: ${{ needs.pin-exact-head.outputs.current == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact source head with write credential
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Verify immutable clean input
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$BRANCH_NAME"
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+          git diff --exit-code
+          git diff --cached --exit-code
+          git rev-parse 'HEAD^{tree}'
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Materialize the existing manifest graph without dependency upgrades
+        working-directory: codex-rs
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Cargo preserves already locked registry/git versions and only
+          # materializes workspace/package edges required by the current
+          # manifests. No cargo update or generate-lockfile is permitted here.
+          cargo metadata --format-version 1 --no-deps > "$RUNNER_TEMP/hepta-workspace-metadata.json"
+          cargo check \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-agentd
+          cargo metadata --locked --format-version 1 --no-deps > /dev/null
+          cargo check --locked \
+            -p codex-hepta-memory-runtime \
+            -p codex-hepta-agentd
+
+      - name: Verify architecture and runtime lock binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-hepta-architecture-convergence-p0-2.py
+          python3 scripts/verify-hepta-memory-runtime-extraction-p0-1.py
+          python3 scripts/verify-hepta-architecture-gap-ledger.py
+
+      - name: Enforce lock-only mutation boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+
+          tracked = subprocess.check_output(
+              ["git", "diff", "--name-only", "--diff-filter=ACMRTUXB"],
+              text=True,
+          ).splitlines()
+          untracked = subprocess.check_output(
+              ["git", "ls-files", "--others", "--exclude-standard"],
+              text=True,
+          ).splitlines()
+          changed = sorted(set(tracked + untracked))
+          unexpected = [path for path in changed if path != "codex-rs/Cargo.lock"]
+          if unexpected:
+              raise SystemExit(
+                  f"Cargo.lock finalizer escaped its one-file authority: {unexpected}"
+              )
+          print(f"lock_changed={changed == ['codex-rs/Cargo.lock']}")
+          PY
+          git diff --check
+
+      - name: Record deterministic lock evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/hepta-cargo-lock-finalizer"
+          mkdir -p "$evidence"
+          cp codex-rs/Cargo.lock "$evidence/Cargo.lock"
+          {
+            echo "schema=hepta_cargo_lock_finalizer_evidence_v1"
+            echo "source_head=$SOURCE_HEAD"
+            echo "source_tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "lock_sha256=$(sha256sum codex-rs/Cargo.lock | awk '{print $1}')"
+            echo "runner_name=$RUNNER_NAME"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "allowed_mutation=codex-rs/Cargo.lock"
+            echo "production_authority=false"
+            echo "effect_authority=false"
+            echo "model_invocation_authority=false"
+            echo "provider_dispatch_authority=false"
+            echo "operator_acceptance=false"
+            echo "promotion=false"
+            echo "release=false"
+          } > "$evidence/receipt.txt"
+          cat "$evidence/receipt.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload lock evidence
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-cargo-lock-finalizer-${{ env.SOURCE_HEAD }}
+          path: ${{ runner.temp }}/hepta-cargo-lock-finalizer
+          if-no-files-found: error
+
+      - name: Commit and fast-forward the verified lock graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- codex-rs/Cargo.lock; then
+            echo "Cargo.lock is already consistent with the current manifests." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git add codex-rs/Cargo.lock
+          git diff --cached --check
+          test "$(git diff --cached --name-only)" = "codex-rs/Cargo.lock"
+
+          git fetch --no-tags origin \
+            "refs/heads/$BRANCH_NAME:refs/remotes/origin/$BRANCH_NAME"
+          test "$(git rev-parse "refs/remotes/origin/$BRANCH_NAME")" = "$SOURCE_HEAD"
+
+          git config user.name "Hepta Cargo.lock finalizer"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git commit -m "build(hepta): materialize workspace lock graph [hepta-lock-finalize]"
+          git push origin "HEAD:refs/heads/$BRANCH_NAME"
