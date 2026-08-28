@@ -1,0 +1,150 @@
+name: Hepta inference INF-0 package Rust formatting export v4
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0-macos-diagnostics-v2-20260828
+    paths:
+      - ".github/workflows/hepta-inference-inf0-package-rustfmt-export-v4.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-inference-inf0-package-rustfmt-export-v4
+  cancel-in-progress: false
+
+jobs:
+  export:
+    name: Export exact Rust 1.95 package formatting payload
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      CANDIDATE: 3afce0894a597f1968169400e3b79c4a5e94ec17
+      SELF: .github/workflows/hepta-inference-inf0-package-rustfmt-export-v4.yml
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Detach exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only HEAD^ HEAD)" = "$SELF"
+          git checkout --detach "$CANDIDATE"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE"
+          test "$(git rev-parse HEAD^)" = "d47cd292c89cd4ac6d484232b35589d65a88f0b9"
+          test -z "$(git status --porcelain)"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt
+
+      - name: Apply exact package-scoped formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd codex-rs
+            cargo fmt \
+              -p codex-lmstudio \
+              -p codex-ollama \
+              -p codex-utils-oss \
+              -p codex-responses-api-proxy
+          )
+
+          mapfile -t changed < <(git diff --name-only)
+          expected=(
+            codex-rs/lmstudio/src/lib.rs
+            codex-rs/lmstudio/src/sha256.rs
+            codex-rs/ollama/src/lib.rs
+            codex-rs/responses-api-proxy/src/dump.rs
+            codex-rs/responses-api-proxy/src/sha256.rs
+            codex-rs/utils/oss/src/lib.rs
+          )
+          printf '%s\n' "${changed[@]}" | sort > "$RUNNER_TEMP/changed.txt"
+          printf '%s\n' "${expected[@]}" | sort > "$RUNNER_TEMP/expected.txt"
+          diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/changed.txt"
+          git diff --check
+          (
+            cd codex-rs
+            cargo fmt \
+              -p codex-lmstudio \
+              -p codex-ollama \
+              -p codex-utils-oss \
+              -p codex-responses-api-proxy \
+              -- --check
+          )
+
+      - name: Build deterministic formatting payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/hepta-inference-inf0-package-rustfmt"
+          mkdir -p "$out/files"
+          git diff --binary > "$out/package-rustfmt.patch"
+          git diff --name-only > "$out/changed-files.txt"
+          while IFS= read -r path; do
+            test -n "$path"
+            mkdir -p "$out/files/$(dirname "$path")"
+            cp "$path" "$out/files/$path"
+          done < "$out/changed-files.txt"
+          python3 - "$out" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          files = []
+          for relative in root.joinpath("changed-files.txt").read_text(encoding="utf-8").splitlines():
+              payload = root.joinpath("files", relative).read_bytes()
+              files.append({
+                  "path": relative,
+                  "byte_length": len(payload),
+                  "sha256": hashlib.sha256(payload).hexdigest(),
+              })
+          manifest = {
+              "schema": "hepta.inference.inf0c.package-rustfmt-export.v1",
+              "candidate": os.environ["CANDIDATE"],
+              "candidate_tree": os.popen("git rev-parse 'HEAD^{tree}'").read().strip(),
+              "rustc": os.popen("rustc --version").read().strip(),
+              "rustfmt": os.popen("rustfmt --version").read().strip(),
+              "files": files,
+              "qualified": False,
+              "ubuntu_qualification": False,
+              "inf1": "NOT_STARTED",
+              "authority": False,
+          }
+          root.joinpath("manifest.json").write_text(
+              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+          find "$out" -type f -print0 | sort -z | xargs -0 shasum -a 256 > "$out/SHA256SUMS"
+
+      - name: Upload exact package formatting payload
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0-package-rustfmt-${{ env.CANDIDATE }}
+          path: ${{ runner.temp }}/hepta-inference-inf0-package-rustfmt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Record fail-closed export posture
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "candidate=$CANDIDATE"
+            echo "export_only=true"
+            echo "source_branch_mutated=false"
+            echo "qualified=false"
+            echo "ubuntu_qualification=false"
+            echo "INF-1=NOT_STARTED"
+            echo "production/effect/model-NPU/remote/promotion authority=false"
+          } >> "$GITHUB_STEP_SUMMARY"
