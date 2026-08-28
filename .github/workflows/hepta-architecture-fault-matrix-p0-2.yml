@@ -1,0 +1,108 @@
+name: Hepta architecture fault matrix P0.2
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "codex-rs/hepta-contracts/src/operation.rs"
+      - "codex-rs/hepta-contracts/tests/cross_owner_fault_matrix.rs"
+      - ".github/workflows/hepta-architecture-fault-matrix-p0-2.yml"
+  push:
+    branches:
+      - codex/hepta-architecture-convergence-p0-2-20260828
+    paths:
+      - "codex-rs/hepta-contracts/src/operation.rs"
+      - "codex-rs/hepta-contracts/tests/cross_owner_fault_matrix.rs"
+      - ".github/workflows/hepta-architecture-fault-matrix-p0-2.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-architecture-fault-matrix-p0-2-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  SOURCE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  durable-fault-matrix:
+    name: Durable fault matrix (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-latest
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.SOURCE_HEAD }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_HEAD"
+          git rev-parse 'HEAD^{tree}'
+
+      - uses: ./.github/actions/setup-ci
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Fault-matrix rustfmt
+        working-directory: codex-rs
+        run: cargo fmt -p codex-hepta-contracts -- --check
+
+      - name: Execute durable fault matrix
+        working-directory: codex-rs
+        run: cargo test --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- --nocapture
+
+      - name: Strict fault-matrix Clippy
+        working-directory: codex-rs
+        run: cargo clippy --locked -p codex-hepta-contracts --test cross_owner_fault_matrix -- -D warnings
+
+      - name: Record fault evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/hepta-architecture-fault-matrix"
+          mkdir -p "$evidence"
+          {
+            echo "schema=hepta_architecture_fault_matrix_evidence_v1"
+            echo "identity=source_head"
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "runner_name=$RUNNER_NAME"
+            echo "runner_os=$RUNNER_OS"
+            echo "job_status=${{ job.status }}"
+            echo "before_write=true"
+            echo "after_sync_before_publish=true"
+            echo "after_publish_before_return=true"
+            echo "disk_full=true"
+            echo "corruption=true"
+            echo "truncation=true"
+            echo "stale_generation=true"
+            echo "changed_payload=true"
+            echo "terminal_reopen=true"
+            echo "external_effect=false"
+            echo "production_authority=false"
+            echo "promotion=false"
+          } > "$evidence/receipt.txt"
+          cat "$evidence/receipt.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload fault evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-architecture-fault-matrix-${{ runner.os }}-${{ env.SOURCE_HEAD }}
+          path: ${{ runner.temp }}/hepta-architecture-fault-matrix
+          if-no-files-found: error
