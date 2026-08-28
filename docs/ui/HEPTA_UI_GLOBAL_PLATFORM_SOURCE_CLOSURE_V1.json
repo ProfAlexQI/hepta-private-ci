@@ -1,0 +1,79 @@
+{
+  "schema": "hepta.ui.global-platform-source-closure.v1",
+  "status": "GLOBAL_SOURCE_CONTROLLABLE_GAPS_CLOSED_EXTERNAL_EVIDENCE_REQUIRED",
+  "base": {
+    "branch": "codex/ui-v4-windows-product-host-wiring-candidate-20260828",
+    "commit": "6f6df98a8bd441983e225c82621dabe823f08bf2",
+    "tree": "7af8a282d2d6583b49631e14ded68c8238115799"
+  },
+  "closures": {
+    "macosAppKitMaterialAdapter": {
+      "source": "apps/hepta-native/src/shared/hepta_macos_appkit_material_adapter.rs",
+      "transactionalChromeTransient": true,
+      "scopedObservation": true,
+      "accessibilityPreferenceBridge": true,
+      "rollbackLifecycle": true,
+      "productBound": false,
+      "deviceValidated": false
+    },
+    "iosUIKitMaterialAdapter": {
+      "source": "apps/hepta-native/src/shared/hepta_ios_uikit_material_adapter.rs",
+      "navigationAndSheetHosts": true,
+      "dynamicTypeContract": true,
+      "safeAreaKeyboardContract": true,
+      "accessibilityPreferenceBridge": true,
+      "rollbackLifecycle": true,
+      "productBound": false,
+      "deviceValidated": false
+    },
+    "androidMaterial3ActivityBridge": {
+      "source": "apps/hepta-native/src/shared/hepta_android_material3_activity_bridge.rs",
+      "activityIdentity": true,
+      "jniContract": true,
+      "dynamicColorCapability": true,
+      "tonalChromeAndSheet": true,
+      "animatorScaleContract": true,
+      "imeAndNavigationInsets": true,
+      "iosBlurCopied": false,
+      "productBound": false,
+      "deviceValidated": false
+    },
+    "explicitActivationCaller": {
+      "source": "apps/hepta-native/src/shared/hepta_ui_explicit_activation_caller.rs",
+      "sealedEvidenceLoader": true,
+      "operatorAcceptanceDigest": true,
+      "candidateBinding": true,
+      "boundedNonceReplay": true,
+      "boundedLifetime": true,
+      "explicitOnly": true,
+      "registered": false,
+      "automatic": false
+    }
+  },
+  "qualification": {
+    "sourceImplemented": true,
+    "hostedSource": false,
+    "linuxCompile": false,
+    "windowsCompile": false,
+    "macosCompile": false,
+    "iosTargetCompile": false,
+    "androidTargetCompile": false,
+    "macosRuntime": false,
+    "iosRuntime": false,
+    "androidRuntime": false,
+    "explicitCallerRuntime": false,
+    "productWired": false,
+    "systemMaterialBound": false,
+    "deviceValidation": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}
