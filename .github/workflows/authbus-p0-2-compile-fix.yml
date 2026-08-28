@@ -14,13 +14,13 @@ env:
   MANIFEST: codex-rs/hepta-authbus-qualification/Cargo.toml
   PACKAGE: codex-hepta-authbus-qualification
   CRATE_ROOT: codex-rs/hepta-authbus-qualification
-  EXPECTED_PARENT: d9797cc9c74cab34b33f088dea31f7f9466ac7f8
+  EXPECTED_PARENT: db355df895a6b71685c773faffbb517d43baf78c
 
 jobs:
   fix-and-qualify:
     name: Apply exact compile fixes and pass the full P0.2 matrix
-    runs-on: ubuntu-slim
-    timeout-minutes: 45
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - name: Checkout exact one-shot candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
