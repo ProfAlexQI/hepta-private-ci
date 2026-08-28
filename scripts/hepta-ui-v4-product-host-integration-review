@@ -1,0 +1,702 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "json"
+require "optparse"
+require "pathname"
+require "tmpdir"
+
+SCHEMA = "hepta.ui.v4.windows-product-host-integration-review-envelope.v1"
+MAKEPAD_REVISION = "c4335cee10b22aca768510c9d072b0ca1bba15c8"
+PASS_STATUS = "PASS_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_ENVELOPE"
+BLOCKED_STATUS = "BLOCKED_WINDOWS_RUNTIME_PROVENANCE_REQUIRED"
+FAIL_STATUS = "FAIL_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_ENVELOPE"
+PROVENANCE_SCHEMA = "hepta.ui.v4.execution-provenance-audit.v1"
+INDEX_SCHEMA = "hepta.ui.v4.exact-head-qualification-index.v1"
+AGGREGATE_SCHEMA = "hepta.ui.v4.windows-material-profile-aggregate.v1"
+AUTHORITY_KEYS = %w[
+  network mutation effect liveAdapter production operatorAcceptance promotion release
+].freeze
+BOUNDARY_KEYS = %w[
+  productBound transientSystemMaterialBound completeProfileBound systemMaterialBound
+  nativeProductRuntime deviceValidation
+].freeze
+MAX_FAILURES = 64
+MAX_FAILURE_BYTES = 4096
+
+class ReviewError < StandardError; end
+
+Options = Struct.new(
+  :provenance,
+  :qualification_index,
+  :runtime_aggregate,
+  :reviewer_commit,
+  :reviewer_tree,
+  :output,
+  :require_eligible,
+  :self_test,
+  keyword_init: true
+)
+
+def git_object_id?(value)
+  value.is_a?(String) && value.match?(/\A[0-9a-f]{40}\z/)
+end
+
+def parse_json(path)
+  JSON.parse(Pathname.new(path).read)
+rescue Errno::ENOENT => error
+  raise ReviewError, "missing JSON #{path}: #{error.message}"
+rescue JSON::ParserError => error
+  raise ReviewError, "invalid JSON #{path}: #{error.message}"
+end
+
+def write_json_atomic(path, payload)
+  destination = Pathname.new(path).expand_path
+  destination.dirname.mkpath
+  temporary = destination.sub_ext(".tmp")
+  temporary.write(JSON.pretty_generate(payload) + "\n")
+  File.rename(temporary, destination)
+end
+
+def bounded_failure(value)
+  text = value.to_s.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: "�")
+  return text if text.bytesize <= MAX_FAILURE_BYTES
+
+  slice = text.byteslice(0, MAX_FAILURE_BYTES)
+  slice = slice.byteslice(0, slice.bytesize - 1) until slice.valid_encoding?
+  slice
+end
+
+def false_authority
+  AUTHORITY_KEYS.to_h { |key| [key, false] }
+end
+
+def false_qualification
+  {
+    "runtimeProvenance" => false,
+    "qualificationIndex" => false,
+    "runtimeAggregate" => false,
+    "implementationReviewEligible" => false,
+    "implementationApproved" => false,
+    "productHostMayBind" => false,
+    "productBound" => false,
+    "transientSystemMaterialBound" => false,
+    "completeProfileBound" => false,
+    "systemMaterialBound" => false,
+    "nativeProductRuntime" => false,
+    "deviceValidation" => false
+  }
+end
+
+def review_plan
+  {
+    "stage" => "IMPLEMENTATION_REVIEW_ONLY",
+    "featureFlag" => "hepta_ui_windows_system_material_v4",
+    "defaultEnabled" => false,
+    "automaticBindingAllowed" => false,
+    "operatorAcceptanceRequired" => true,
+    "deviceValidationRequired" => true,
+    "rollbackDrillRequired" => true,
+    "rollbackToSolidRequired" => true,
+    "highContrastFallbackRequired" => true,
+    "transparencyDisabledFallbackRequired" => true,
+    "suspendShutdownUnbindRequired" => true
+  }
+end
+
+def canonical_json(value)
+  case value
+  when Hash
+    "{" + value.keys.sort.map { |key| JSON.generate(key.to_s) + ":" + canonical_json(value.fetch(key)) }.join(",") + "}"
+  when Array
+    "[" + value.map { |entry| canonical_json(entry) }.join(",") + "]"
+  else
+    JSON.generate(value)
+  end
+end
+
+def digest_file(path)
+  Digest::SHA256.file(path).hexdigest
+end
+
+def require_false_hash!(value, label)
+  raise ReviewError, "#{label} is not an object" unless value.is_a?(Hash)
+  escaped = value.select { |_key, entry| entry != false }.keys
+  raise ReviewError, "#{label} escaped: #{escaped.join(', ')}" unless escaped.empty?
+end
+
+def require_false_boundaries!(value, label)
+  raise ReviewError, "#{label} is not an object" unless value.is_a?(Hash)
+  escaped = BOUNDARY_KEYS.select { |key| value[key] != false }
+  raise ReviewError, "#{label} escaped: #{escaped.join(', ')}" unless escaped.empty?
+end
+
+def exact_pair!(value, label)
+  raise ReviewError, "#{label} is not an object" unless value.is_a?(Hash)
+  commit = value["commit"]
+  tree = value["tree"]
+  raise ReviewError, "#{label} commit invalid" unless git_object_id?(commit)
+  raise ReviewError, "#{label} tree invalid" unless git_object_id?(tree)
+  { "commit" => commit, "tree" => tree }
+end
+
+def same_pair!(left, right, label)
+  raise ReviewError, "#{label} commit drift" unless left["commit"] == right["commit"]
+  raise ReviewError, "#{label} tree drift" unless left["tree"] == right["tree"]
+end
+
+def positive_decimal_handle?(value)
+  value.is_a?(String) && value.match?(/\A[1-9][0-9]*\z/)
+end
+
+def typed_window_identity!(value, label)
+  raise ReviewError, "#{label} is not an object" unless value.is_a?(Hash)
+  index = value["index"]
+  generation = value["generation"]
+  handle = value["nativeHandle"]
+  raise ReviewError, "#{label} index invalid" unless index.is_a?(Integer) && index >= 0
+  raise ReviewError, "#{label} generation invalid" unless generation.is_a?(Integer) && generation >= 0
+  raise ReviewError, "#{label} HWND invalid" unless positive_decimal_handle?(handle)
+  { "index" => index, "generation" => generation, "nativeHandle" => handle }
+end
+
+def same_identity?(left, right)
+  %w[index generation nativeHandle].all? { |key| left[key] == right[key] }
+end
+
+def validate_provenance!(receipt)
+  raise ReviewError, "provenance schema mismatch" unless receipt["schema"] == PROVENANCE_SCHEMA
+  status = receipt["status"]
+  unless %w[PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE].include?(status)
+    raise ReviewError, "provenance status=#{status.inspect}"
+  end
+  candidate = exact_pair!(receipt["candidate"], "provenance candidate")
+  auditor = exact_pair!(receipt["auditor"], "provenance auditor")
+  source_run = receipt["sourceRun"]
+  raise ReviewError, "provenance sourceRun missing" unless source_run.is_a?(Hash)
+  raise ReviewError, "provenance repository invalid" unless source_run["repository"].to_s.match?(/\A[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\z/)
+  raise ReviewError, "provenance runId invalid" unless source_run["runId"].is_a?(Integer) && source_run["runId"].positive?
+  raise ReviewError, "provenance runAttempt invalid" unless source_run["runAttempt"].is_a?(Integer) && source_run["runAttempt"].positive?
+  raise ReviewError, "provenance head SHA drift" unless source_run["headSha"] == candidate["commit"]
+  raise ReviewError, "provenance source run unqualified" unless source_run["qualified"] == true
+  qualification = receipt["qualification"]
+  raise ReviewError, "provenance qualification missing" unless qualification.is_a?(Hash)
+  raise ReviewError, "execution provenance missing" unless qualification["executionProvenance"] == true
+  raise ReviewError, "pre-runtime provenance missing" unless qualification["preRuntime"] == true
+  runtime_evidence = receipt.dig("evidence", "windowsRuntime")
+  raise ReviewError, "runtime provenance evidence missing" unless runtime_evidence.is_a?(Hash)
+  materialization = receipt.dig("evidence", "materialization")
+  index_evidence = receipt.dig("evidence", "qualificationIndex")
+  raise ReviewError, "provenance materialization evidence missing" unless materialization.is_a?(Hash) && materialization["qualified"] == true
+  raise ReviewError, "provenance qualification-index evidence missing" unless index_evidence.is_a?(Hash) && index_evidence["qualified"] == true
+  if status == "PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE"
+    raise ReviewError, "Windows runtime qualification missing" unless qualification["windowsRuntime"] == true
+    raise ReviewError, "Windows runtime evidence unqualified" unless
+      runtime_evidence["requested"] == true &&
+      runtime_evidence["qualified"] == true &&
+      runtime_evidence["status"] == "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE"
+    sequences = [runtime_evidence["rootSequence"], runtime_evidence["acrylicSequence"], runtime_evidence["rollbackSequence"]]
+    raise ReviewError, "provenance runtime sequence contract drift" unless sequences == [1, 2, 3]
+  else
+    raise ReviewError, "pre-runtime receipt claims Windows runtime" unless qualification["windowsRuntime"] == false
+    raise ReviewError, "pre-runtime evidence claims Windows runtime" unless
+      runtime_evidence["requested"] == false && runtime_evidence["qualified"] == false
+  end
+  require_false_hash!(receipt["authority"], "provenance authority")
+  require_false_boundaries!(qualification, "provenance qualification")
+  {
+    "status" => status,
+    "candidate" => candidate,
+    "auditor" => auditor,
+    "sourceRun" => {
+      "repository" => source_run["repository"],
+      "runId" => source_run["runId"],
+      "runAttempt" => source_run["runAttempt"]
+    }
+  }
+end
+
+def validate_index!(receipt, provenance)
+  raise ReviewError, "qualification-index schema mismatch" unless receipt["schema"] == INDEX_SCHEMA
+  raise ReviewError, "qualification-index is not Windows-runtime PASS" unless
+    receipt["status"] == "PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION"
+  candidate = exact_pair!(receipt["candidate"], "qualification-index candidate")
+  same_pair!(candidate, provenance.fetch("candidate"), "qualification-index candidate")
+  source_run = receipt["sourceRun"]
+  raise ReviewError, "qualification-index sourceRun missing" unless source_run.is_a?(Hash)
+  raise ReviewError, "qualification-index repository drift" unless source_run["repository"] == provenance.dig("sourceRun", "repository")
+  raise ReviewError, "qualification-index runId drift" unless source_run["runId"] == provenance.dig("sourceRun", "runId")
+  qualification = receipt["qualification"]
+  raise ReviewError, "qualification-index qualification missing" unless qualification.is_a?(Hash)
+  %w[source materialization compileUbuntu compileWindows compileMacos preRuntime windowsRuntime eligibleForProductIntegrationReview].each do |key|
+    raise ReviewError, "qualification-index #{key} missing" unless qualification[key] == true
+  end
+  require_false_boundaries!(qualification, "qualification-index qualification")
+  require_false_hash!(receipt["authority"], "qualification-index authority")
+  candidate
+end
+
+def validate_aggregate!(receipt, provenance)
+  raise ReviewError, "runtime aggregate schema mismatch" unless receipt["schema"] == AGGREGATE_SCHEMA
+  raise ReviewError, "runtime aggregate did not pass" unless receipt["status"] == "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE"
+  candidate = exact_pair!(receipt["candidate"], "runtime aggregate candidate")
+  same_pair!(candidate, provenance.fetch("candidate"), "runtime aggregate candidate")
+  makepad = receipt["makepad"]
+  raise ReviewError, "runtime aggregate Makepad missing" unless makepad.is_a?(Hash)
+  raise ReviewError, "Makepad revision drift" unless makepad["revision"] == MAKEPAD_REVISION
+  raise ReviewError, "vendored patch runtime missing" unless makepad["vendoredPatchBuild"] == true
+  raise ReviewError, "default dependency switched" unless makepad["defaultDependencySwitched"] == false
+  raise ReviewError, "runtime aggregate is not fixture-bound" unless receipt["fixture"] == true
+
+  root = receipt["root"]
+  transient = receipt["transient"]
+  raise ReviewError, "runtime root missing" unless root.is_a?(Hash)
+  raise ReviewError, "runtime transient missing" unless transient.is_a?(Hash)
+  root_identity = typed_window_identity!(root["identity"], "root identity")
+  transient_parent = typed_window_identity!(transient["parent"], "transient parent")
+  transient_identity = typed_window_identity!(transient["identity"], "transient identity")
+  destroyed_identity = typed_window_identity!(transient["destroyedIdentity"], "destroyed identity")
+  raise ReviewError, "transient parent drift" unless same_identity?(root_identity, transient_parent)
+  raise ReviewError, "root/transient WindowId reused" if
+    root_identity["index"] == transient_identity["index"] &&
+    root_identity["generation"] == transient_identity["generation"]
+  raise ReviewError, "root/transient HWND reused" if root_identity["nativeHandle"] == transient_identity["nativeHandle"]
+  raise ReviewError, "separateFromRoot missing" unless transient["separateFromRoot"] == true
+  raise ReviewError, "Destroyed identity drift" unless same_identity?(transient_identity, destroyed_identity)
+  raise ReviewError, "Destroyed acknowledgement missing" unless transient["destroyedAcknowledged"] == true
+
+  raise ReviewError, "root Mica receipt mismatch" unless
+    root["status"] == "VerifiedPersistentChromeWithBackdropReadback" &&
+    root["backend"] == "WindowsDwm" &&
+    root["readbackScope"] == "BackdropOnly" &&
+    root["requestedBackdrop"] == "Mica" &&
+    root["observedBackdrop"] == "Mica" &&
+    root["backdropExact"] == true
+  acrylic = transient["acrylic"]
+  rollback = transient["solidRollback"]
+  raise ReviewError, "Acrylic receipt mismatch" unless
+    acrylic.is_a?(Hash) &&
+    acrylic["status"] == "VerifiedAcrylicWithBackdropReadback" &&
+    acrylic["requestedBackdrop"] == "Acrylic" &&
+    acrylic["observedBackdrop"] == "Acrylic" &&
+    acrylic["backdropExact"] == true
+  raise ReviewError, "rollback receipt mismatch" unless
+    rollback.is_a?(Hash) &&
+    rollback["status"] == "VerifiedSolidRollbackWithBackdropReadback" &&
+    rollback["requestedBackdrop"] == "None" &&
+    rollback["observedBackdrop"] == "None" &&
+    rollback["backdropExact"] == true
+  sequences = [root["requestSequence"], acrylic["requestSequence"], rollback["requestSequence"]]
+  raise ReviewError, "runtime sequence types invalid" unless sequences.all? { |value| value.is_a?(Integer) }
+  raise ReviewError, "runtime sequence contract drift" unless sequences == [1, 2, 3]
+
+  qualification = receipt["qualification"]
+  raise ReviewError, "runtime qualification missing" unless qualification.is_a?(Hash)
+  %w[rootRuntimeReceipt transientRuntimeReceipt dualReceiptAggregateRuntime eligibleForProductIntegrationReview].each do |key|
+    raise ReviewError, "runtime #{key} missing" unless qualification[key] == true
+  end
+  require_false_boundaries!(qualification, "runtime qualification")
+  require_false_hash!(receipt["authority"], "runtime authority")
+  {
+    "candidate" => candidate,
+    "makepad" => {
+      "revision" => MAKEPAD_REVISION,
+      "vendoredPatchBuild" => true,
+      "defaultDependencySwitched" => false
+    },
+    "root" => root_identity.merge("requestSequence" => 1),
+    "transient" => transient_identity.merge(
+      "acrylicSequence" => 2,
+      "rollbackSequence" => 3,
+      "destroyedAcknowledged" => true
+    )
+  }
+end
+
+def build_envelope(options)
+  provenance_receipt = parse_json(options.provenance)
+  provenance = validate_provenance!(provenance_receipt)
+  reviewer = {
+    "commit" => options.reviewer_commit,
+    "tree" => options.reviewer_tree
+  }
+  exact_pair!(reviewer, "reviewer")
+  provenance_digest = digest_file(options.provenance)
+
+  if provenance["status"] == "PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE"
+    raise ReviewError, "Windows runtime provenance is required" if options.require_eligible
+    return {
+      "schema" => SCHEMA,
+      "status" => BLOCKED_STATUS,
+      "reviewer" => reviewer,
+      "candidate" => provenance["candidate"],
+      "sourceRun" => provenance["sourceRun"],
+      "makepad" => { "revision" => MAKEPAD_REVISION },
+      "evidence" => {
+        "provenance" => {
+          "sha256" => provenance_digest,
+          "status" => provenance["status"],
+          "auditor" => provenance["auditor"]
+        },
+        "qualificationIndex" => nil,
+        "runtimeAggregate" => nil,
+        "bindingDigest" => nil
+      },
+      "plan" => review_plan,
+      "qualification" => false_qualification,
+      "authority" => false_authority,
+      "failures" => []
+    }
+  end
+
+  raise ReviewError, "--qualification-index is required for runtime provenance" if options.qualification_index.nil?
+  raise ReviewError, "--runtime-aggregate is required for runtime provenance" if options.runtime_aggregate.nil?
+  index_receipt = parse_json(options.qualification_index)
+  aggregate_receipt = parse_json(options.runtime_aggregate)
+  validate_index!(index_receipt, provenance)
+  aggregate = validate_aggregate!(aggregate_receipt, provenance)
+  index_digest = digest_file(options.qualification_index)
+  aggregate_digest = digest_file(options.runtime_aggregate)
+  binding = {
+    "reviewer" => reviewer,
+    "candidate" => provenance["candidate"],
+    "sourceRun" => provenance["sourceRun"],
+    "makepadRevision" => MAKEPAD_REVISION,
+    "provenanceSha256" => provenance_digest,
+    "qualificationIndexSha256" => index_digest,
+    "runtimeAggregateSha256" => aggregate_digest,
+    "root" => aggregate["root"],
+    "transient" => aggregate["transient"]
+  }
+  binding_digest = Digest::SHA256.hexdigest(canonical_json(binding))
+  {
+    "schema" => SCHEMA,
+    "status" => PASS_STATUS,
+    "reviewer" => reviewer,
+    "candidate" => provenance["candidate"],
+    "sourceRun" => provenance["sourceRun"],
+    "makepad" => aggregate["makepad"],
+    "evidence" => {
+      "provenance" => {
+        "sha256" => provenance_digest,
+        "status" => provenance["status"],
+        "auditor" => provenance["auditor"]
+      },
+      "qualificationIndex" => {
+        "sha256" => index_digest,
+        "status" => index_receipt["status"]
+      },
+      "runtimeAggregate" => {
+        "sha256" => aggregate_digest,
+        "status" => aggregate_receipt["status"],
+        "root" => aggregate["root"],
+        "transient" => aggregate["transient"]
+      },
+      "bindingDigest" => binding_digest
+    },
+    "plan" => review_plan,
+    "qualification" => false_qualification.merge(
+      "runtimeProvenance" => true,
+      "qualificationIndex" => true,
+      "runtimeAggregate" => true,
+      "implementationReviewEligible" => true
+    ),
+    "authority" => false_authority,
+    "failures" => []
+  }
+end
+
+def failure_envelope(options, error)
+  provenance = begin
+    parse_json(options.provenance)
+  rescue StandardError
+    {}
+  end
+  raw_candidate = provenance["candidate"]
+  candidate = if raw_candidate.is_a?(Hash) &&
+                 raw_candidate["commit"].is_a?(String) && !raw_candidate["commit"].empty? &&
+                 raw_candidate["tree"].is_a?(String) && !raw_candidate["tree"].empty?
+                { "commit" => raw_candidate["commit"], "tree" => raw_candidate["tree"] }
+              else
+                { "commit" => "UNBOUND", "tree" => "UNBOUND" }
+              end
+  source_run = provenance["sourceRun"].is_a?(Hash) ? provenance["sourceRun"] :
+    { "repository" => "UNBOUND", "runId" => 0, "runAttempt" => 0 }
+  reviewer = {
+    "commit" => options.reviewer_commit.to_s.empty? ? "UNBOUND" : options.reviewer_commit,
+    "tree" => options.reviewer_tree.to_s.empty? ? "UNBOUND" : options.reviewer_tree
+  }
+  {
+    "schema" => SCHEMA,
+    "status" => FAIL_STATUS,
+    "reviewer" => reviewer,
+    "candidate" => candidate,
+    "sourceRun" => {
+      "repository" => source_run["repository"].to_s,
+      "runId" => source_run["runId"].to_i,
+      "runAttempt" => source_run["runAttempt"].to_i
+    },
+    "makepad" => { "revision" => MAKEPAD_REVISION },
+    "evidence" => {
+      "provenance" => nil,
+      "qualificationIndex" => nil,
+      "runtimeAggregate" => nil,
+      "bindingDigest" => nil
+    },
+    "plan" => review_plan,
+    "qualification" => false_qualification,
+    "authority" => false_authority,
+    "failures" => [bounded_failure(error.message)].uniq.first(MAX_FAILURES)
+  }
+end
+
+def fixture_authority
+  false_authority
+end
+
+def fixture_qualification(product_runtime: false)
+  {
+    "executionProvenance" => true,
+    "preRuntime" => true,
+    "windowsRuntime" => product_runtime,
+    "productBound" => false,
+    "transientSystemMaterialBound" => false,
+    "completeProfileBound" => false,
+    "systemMaterialBound" => false,
+    "nativeProductRuntime" => false,
+    "deviceValidation" => false
+  }
+end
+
+def write_fixture(path, value)
+  Pathname.new(path).write(JSON.pretty_generate(value) + "\n")
+end
+
+def build_fixtures(dir, runtime: true)
+  candidate = { "commit" => "a" * 40, "tree" => "b" * 40 }
+  source_run = {
+    "repository" => "owner/repo", "runId" => 44, "runAttempt" => 1,
+    "event" => "workflow_dispatch", "headSha" => candidate["commit"], "qualified" => true
+  }
+  provenance = {
+    "schema" => PROVENANCE_SCHEMA,
+    "status" => runtime ? "PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE" :
+      "PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE",
+    "auditor" => { "commit" => "c" * 40, "tree" => "d" * 40 },
+    "candidate" => candidate,
+    "sourceRun" => source_run,
+    "evidence" => {
+      "jobs" => {}, "artifacts" => [],
+      "materialization" => { "qualified" => true },
+      "qualificationIndex" => { "qualified" => true },
+      "windowsRuntime" => {
+        "requested" => runtime, "qualified" => runtime,
+        "status" => runtime ? "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE" : nil,
+        "rootSequence" => runtime ? 1 : nil,
+        "acrylicSequence" => runtime ? 2 : nil,
+        "rollbackSequence" => runtime ? 3 : nil
+      }
+    },
+    "qualification" => fixture_qualification(product_runtime: runtime),
+    "authority" => fixture_authority,
+    "failures" => []
+  }
+  index = {
+    "schema" => INDEX_SCHEMA,
+    "status" => "PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION",
+    "candidate" => candidate,
+    "sourceRun" => {
+      "repository" => "owner/repo", "runId" => 44, "allowInProgressRun" => false
+    },
+    "evidence" => {},
+    "qualification" => {
+      "source" => true, "materialization" => true,
+      "compileUbuntu" => true, "compileWindows" => true, "compileMacos" => true,
+      "preRuntime" => true, "windowsRuntime" => true,
+      "eligibleForProductIntegrationReview" => true,
+      "productBound" => false, "transientSystemMaterialBound" => false,
+      "completeProfileBound" => false, "systemMaterialBound" => false,
+      "nativeProductRuntime" => false, "deviceValidation" => false
+    },
+    "authority" => fixture_authority,
+    "failures" => []
+  }
+  root_identity = { "index" => 1, "generation" => 7, "nativeHandle" => "11" }
+  transient_identity = { "index" => 2, "generation" => 9, "nativeHandle" => "12" }
+  aggregate = {
+    "schema" => AGGREGATE_SCHEMA,
+    "status" => "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE",
+    "candidate" => candidate,
+    "makepad" => {
+      "revision" => MAKEPAD_REVISION,
+      "vendoredPatchBuild" => true,
+      "defaultDependencySwitched" => false
+    },
+    "fixture" => true,
+    "root" => {
+      "identity" => root_identity, "requestSequence" => 1,
+      "backend" => "WindowsDwm",
+      "status" => "VerifiedPersistentChromeWithBackdropReadback",
+      "readbackScope" => "BackdropOnly",
+      "requestedBackdrop" => "Mica", "observedBackdrop" => "Mica",
+      "backdropExact" => true
+    },
+    "transient" => {
+      "parent" => root_identity,
+      "identity" => transient_identity,
+      "separateFromRoot" => true,
+      "acrylic" => {
+        "status" => "VerifiedAcrylicWithBackdropReadback",
+        "requestSequence" => 2,
+        "requestedBackdrop" => "Acrylic", "observedBackdrop" => "Acrylic",
+        "backdropExact" => true
+      },
+      "solidRollback" => {
+        "status" => "VerifiedSolidRollbackWithBackdropReadback",
+        "requestSequence" => 3,
+        "requestedBackdrop" => "None", "observedBackdrop" => "None",
+        "backdropExact" => true
+      },
+      "destroyedIdentity" => transient_identity,
+      "destroyedAcknowledged" => true
+    },
+    "qualification" => {
+      "rootRuntimeReceipt" => true, "transientRuntimeReceipt" => true,
+      "dualReceiptAggregateRuntime" => true,
+      "eligibleForProductIntegrationReview" => true,
+      "productBound" => false, "transientSystemMaterialBound" => false,
+      "completeProfileBound" => false, "systemMaterialBound" => false,
+      "nativeProductRuntime" => false, "deviceValidation" => false
+    },
+    "authority" => fixture_authority
+  }
+  paths = {
+    provenance: Pathname.new(dir).join("provenance.json"),
+    index: Pathname.new(dir).join("index.json"),
+    aggregate: Pathname.new(dir).join("aggregate.json")
+  }
+  write_fixture(paths[:provenance], provenance)
+  write_fixture(paths[:index], index)
+  write_fixture(paths[:aggregate], aggregate)
+  [paths, provenance, index, aggregate]
+end
+
+def self_test
+  results = {}
+  Dir.mktmpdir("hepta-product-host-review") do |dir|
+    runtime_dir = Pathname.new(dir).join("runtime").tap(&:mkpath)
+    paths, = build_fixtures(runtime_dir, runtime: true)
+    options = Options.new(
+      provenance: paths[:provenance], qualification_index: paths[:index],
+      runtime_aggregate: paths[:aggregate], reviewer_commit: "e" * 40,
+      reviewer_tree: "f" * 40, require_eligible: true
+    )
+    pass = build_envelope(options)
+    raise ReviewError, "runtime PASS self-test failed" unless
+      pass["status"] == PASS_STATUS &&
+      pass.dig("qualification", "implementationReviewEligible") == true &&
+      pass.dig("qualification", "productHostMayBind") == false
+    results["runtimePass"] = true
+
+    blocked_dir = Pathname.new(dir).join("blocked").tap(&:mkpath)
+    blocked_paths, = build_fixtures(blocked_dir, runtime: false)
+    blocked_options = options.dup
+    blocked_options.provenance = blocked_paths[:provenance]
+    blocked_options.qualification_index = nil
+    blocked_options.runtime_aggregate = nil
+    blocked_options.require_eligible = false
+    blocked = build_envelope(blocked_options)
+    raise ReviewError, "pre-runtime block self-test failed" unless blocked["status"] == BLOCKED_STATUS
+    results["preRuntimeBlocked"] = true
+
+    drift_dir = Pathname.new(dir).join("drift").tap(&:mkpath)
+    drift_paths, _, drift_index, = build_fixtures(drift_dir, runtime: true)
+    drift_index["candidate"]["tree"] = "9" * 40
+    write_fixture(drift_paths[:index], drift_index)
+    drift_options = options.dup
+    drift_options.provenance = drift_paths[:provenance]
+    drift_options.qualification_index = drift_paths[:index]
+    drift_options.runtime_aggregate = drift_paths[:aggregate]
+    begin
+      build_envelope(drift_options)
+      raise ReviewError, "candidate drift was accepted"
+    rescue ReviewError => error
+      raise unless error.message.include?("candidate")
+    end
+    results["candidateDriftRejected"] = true
+
+    authority_dir = Pathname.new(dir).join("authority").tap(&:mkpath)
+    authority_paths, _, authority_index, = build_fixtures(authority_dir, runtime: true)
+    authority_index["authority"]["production"] = true
+    write_fixture(authority_paths[:index], authority_index)
+    authority_options = options.dup
+    authority_options.provenance = authority_paths[:provenance]
+    authority_options.qualification_index = authority_paths[:index]
+    authority_options.runtime_aggregate = authority_paths[:aggregate]
+    begin
+      build_envelope(authority_options)
+      raise ReviewError, "authority escape was accepted"
+    rescue ReviewError => error
+      raise unless error.message.include?("authority")
+    end
+    results["authorityEscapeRejected"] = true
+
+    sequence_dir = Pathname.new(dir).join("sequence").tap(&:mkpath)
+    sequence_paths, _, _, sequence_aggregate = build_fixtures(sequence_dir, runtime: true)
+    sequence_aggregate["transient"]["solidRollback"]["requestSequence"] = "3"
+    write_fixture(sequence_paths[:aggregate], sequence_aggregate)
+    sequence_options = options.dup
+    sequence_options.provenance = sequence_paths[:provenance]
+    sequence_options.qualification_index = sequence_paths[:index]
+    sequence_options.runtime_aggregate = sequence_paths[:aggregate]
+    begin
+      build_envelope(sequence_options)
+      raise ReviewError, "sequence type drift was accepted"
+    rescue ReviewError => error
+      raise unless error.message.include?("sequence")
+    end
+    results["sequenceTypeRejected"] = true
+  end
+  puts JSON.pretty_generate(
+    "schema" => "hepta.ui.v4.windows-product-host-integration-review-self-test.v1",
+    "status" => "PASS_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_SELF_TEST",
+    "tests" => results,
+    "authority" => false_authority
+  )
+end
+
+options = Options.new(require_eligible: false, self_test: false)
+parser = OptionParser.new do |opts|
+  opts.banner = "usage: #{$PROGRAM_NAME} --provenance PATH --reviewer-commit SHA --reviewer-tree SHA --output PATH [options]"
+  opts.on("--provenance PATH") { |value| options.provenance = value }
+  opts.on("--qualification-index PATH") { |value| options.qualification_index = value }
+  opts.on("--runtime-aggregate PATH") { |value| options.runtime_aggregate = value }
+  opts.on("--reviewer-commit SHA") { |value| options.reviewer_commit = value }
+  opts.on("--reviewer-tree SHA") { |value| options.reviewer_tree = value }
+  opts.on("--output PATH") { |value| options.output = value }
+  opts.on("--require-eligible") { options.require_eligible = true }
+  opts.on("--self-test") { options.self_test = true }
+end
+parser.parse!
+
+if options.self_test
+  self_test
+  exit 0
+end
+
+%i[provenance reviewer_commit reviewer_tree output].each do |name|
+  abort "missing --#{name.to_s.tr('_', '-')}" if options[name].nil?
+end
+
+begin
+  payload = build_envelope(options)
+  write_json_atomic(options.output, payload)
+  puts JSON.pretty_generate(payload)
+  exit(payload["status"] == PASS_STATUS || payload["status"] == BLOCKED_STATUS ? 0 : 1)
+rescue StandardError => error
+  payload = failure_envelope(options, error)
+  write_json_atomic(options.output, payload)
+  warn JSON.pretty_generate(payload)
+  exit 1
+end
