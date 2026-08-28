@@ -1,0 +1,48 @@
+{
+  "schema": "hepta.document-authority-index.v1",
+  "schemaVersion": 1,
+  "canonical": {
+    "architectureHuman": "ARCHITECTURE.md",
+    "architectureMachine": "docs/architecture/HEPTA_CURRENT_ARCHITECTURE_V1.json",
+    "dataAuthority": "docs/architecture/DATA_AUTHORITY_MAP.md",
+    "recoveryOrder": "docs/architecture/RECOVERY_ORDER.md",
+    "authorityKernel": "codex-rs/hepta-contracts/src/authority.rs",
+    "productGraph": "codex-rs/hepta-contracts/src/product_graph.rs",
+    "operationContract": "codex-rs/hepta-contracts/src/operation.rs"
+  },
+  "historicalEvidenceRoots": [
+    {
+      "path": "docs/hepta-vnext/dropbox-current-2026-08-27",
+      "classification": "captured_external_plan_and_qualification_evidence",
+      "currentArchitectureAuthority": false,
+      "runtimeAuthority": false,
+      "promotionAuthority": false
+    },
+    {
+      "path": "plans",
+      "classification": "domain_development_and_qualification_history",
+      "currentArchitectureAuthority": false,
+      "runtimeAuthority": false,
+      "promotionAuthority": false
+    },
+    {
+      "path": "docs/ui",
+      "classification": "ui_domain_contracts_and_evidence",
+      "currentArchitectureAuthority": false,
+      "runtimeAuthority": false,
+      "promotionAuthority": false
+    }
+  ],
+  "pullRequestPolicy": {
+    "draftPullRequestIsAuthority": false,
+    "sourcePresenceIsQualification": false,
+    "queuedJobIsQualification": false,
+    "emptyRunnerStepsIsQualification": false,
+    "mergeCandidateEqualsSourceHead": false
+  },
+  "retention": {
+    "historicalBytesPreserved": true,
+    "silentRewriteAllowed": false,
+    "deletionRequiresSeparateReview": true
+  }
+}
