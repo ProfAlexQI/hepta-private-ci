@@ -1,0 +1,246 @@
+name: Repair Hepta inference INF-0C Rust qualification
+
+on:
+  push:
+    branches:
+      - codex/hepta-inference-inf0c-rustfmt-staging-20260828
+
+permissions:
+  contents: write
+
+env:
+  TARGET_BRANCH: codex/hepta-inference-runtime-v2-20260828
+  EXPECTED_TARGET_HEAD: e9d4ca9f1fb4612c38a2cfc20920fb8558dee882
+  RECEIPT_PATH: docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_SOURCE_RECEIPT_2026-08-28.json
+
+jobs:
+  repair:
+    name: Format, qualify, rebind and publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out staging commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Check out exact frozen target head
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          actual="$(git rev-parse "refs/remotes/origin/$TARGET_BRANCH")"
+          test "$actual" = "$EXPECTED_TARGET_HEAD"
+          git checkout -B "$TARGET_BRANCH" "refs/remotes/origin/$TARGET_BRANCH"
+
+      - uses: ./.github/actions/setup-ci
+
+      - name: Install pinned Rust qualification toolchain
+        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply only the planned Rust formatting repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml
+          rustfmt --edition 2024 \
+            codex-rs/ollama/src/client.rs \
+            codex-rs/ollama/src/client_*.inc.rs \
+            codex-rs/lmstudio/src/client.rs \
+            codex-rs/lmstudio/src/client_*.inc.rs
+
+      - name: Enforce bounded formatting diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+
+          changed = {
+              line
+              for line in subprocess.check_output(
+                  ["git", "diff", "--name-only"], text=True
+              ).splitlines()
+              if line
+          }
+          if not changed:
+              raise SystemExit("expected a non-empty formatting repair")
+          allowed_exact = {"tools/hepta-inference-inf0/src/lib.rs"}
+          for path in changed:
+              allowed = path in allowed_exact or (
+                  path.startswith("codex-rs/ollama/src/client")
+                  and path.endswith(".rs")
+              ) or (
+                  path.startswith("codex-rs/lmstudio/src/client")
+                  and path.endswith(".rs")
+              )
+              if not allowed:
+                  raise SystemExit(f"unexpected formatting drift: {path}")
+          print("PASS_HEPTA_INFERENCE_INF0C_BOUNDED_RUSTFMT_DIFF")
+          PY
+          cargo fmt --manifest-path tools/hepta-inference-inf0/Cargo.toml -- --check
+          rustfmt --edition 2024 --check \
+            codex-rs/ollama/src/client.rs \
+            codex-rs/ollama/src/client_*.inc.rs \
+            codex-rs/lmstudio/src/client.rs \
+            codex-rs/lmstudio/src/client_*.inc.rs
+          (cd codex-rs && cargo fmt --all -- --check)
+          git diff --check
+
+      - name: Qualify standalone reference contracts
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/hepta-inference-inf0-target
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path tools/hepta-inference-inf0/Cargo.toml --locked
+          cargo clippy --manifest-path tools/hepta-inference-inf0/Cargo.toml \
+            --all-targets --locked -- -D warnings
+
+      - name: Compile compatibility and privacy adapters
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo check --locked \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy
+
+      - name: Test compatibility and privacy adapters
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo test --locked \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy
+
+      - name: Strict compatibility and privacy Clippy
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          cargo clippy --locked --all-targets \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy \
+            -- -D warnings
+
+      - name: Commit frozen formatting source candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "hepta-inference-qualification"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git add \
+            tools/hepta-inference-inf0/src/lib.rs \
+            codex-rs/ollama/src/client.rs \
+            codex-rs/ollama/src/client_*.inc.rs \
+            codex-rs/lmstudio/src/client.rs \
+            codex-rs/lmstudio/src/client_*.inc.rs
+          git commit -m "style(inference): apply pinned Rust 1.95 formatting"
+          echo "SOURCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "SOURCE_TREE=$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_ENV"
+
+      - name: Create append-only qualification receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          path = pathlib.Path(os.environ["RECEIPT_PATH"])
+          value = json.loads(path.read_text(encoding="utf-8"))
+          value["schema"] = "hepta.inference.inf0c_source_receipt.v7"
+          value["source_candidate_commit"] = os.environ["SOURCE_COMMIT"]
+          value["source_candidate_tree"] = os.environ["SOURCE_TREE"]
+          components = value.setdefault("source_candidate_components", {})
+          components["inf0c_pinned_rust_1_95_formatting"] = True
+          validation = value.setdefault("validation", {})
+          validation["exact_candidate_source_gate"] = "NOT_RUN_FOR_NEW_RECEIPT_HEAD"
+          validation["rust_fmt"] = "PASS_ON_SOURCE_CANDIDATE_STAGING"
+          validation["rust_test"] = "PASS_ON_SOURCE_CANDIDATE_STAGING"
+          validation["rust_clippy"] = "PASS_ON_SOURCE_CANDIDATE_STAGING"
+          history = value.setdefault("ci_history", [])
+          history.append(
+              {
+                  "run_id": 33156553449,
+                  "head": "e9d4ca9f1fb4612c38a2cfc20920fb8558dee882",
+                  "source_gate": "EXECUTED_PASSED_QUALIFICATION_ONLY",
+                  "reference_contract": "EXECUTED_FAILED_RUSTFMT",
+                  "compatibility_readiness": "EXECUTED_FAILED_FRAGMENT_RUSTFMT",
+                  "compile_test_clippy": "NOT_RUN_AFTER_FORMAT_FAILURE",
+                  "classification": "EXECUTED_FAILED_FORMATTING_ONLY",
+              }
+          )
+          value["current_ci"] = {
+              "status": "NOT_RUN_FOR_RECEIPT_HEAD",
+              "runner_assigned": False,
+              "source_gate": "NOT_RUN",
+              "reference_contract": "NOT_RUN",
+              "compatibility_readiness": "NOT_RUN",
+              "real_software_e2e": "NOT_RUN",
+          }
+          value["claim"] = "SOURCE_PRESENT_NOT_RUN"
+          value["qualified"] = False
+          known = value.setdefault("known_gaps", [])
+          replacement = (
+              "the exact receipt head has not rerun source gate, formatting, tests and strict Clippy; "
+              "the frozen source candidate passed the same Rust 1.95 commands in the staging lane"
+          )
+          if replacement not in known:
+              known.insert(0, replacement)
+          path.write_text(
+              json.dumps(value, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          test "$(git diff --name-only)" = "$RECEIPT_PATH"
+          git add "$RECEIPT_PATH"
+          git commit -m "docs(inference): bind Rust-formatted INF-0C receipt"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_COMMIT"
+          test "$(git show -s --format=%T HEAD^)" = "$SOURCE_TREE"
+          test "$(git diff --name-only HEAD^ HEAD)" = "$RECEIPT_PATH"
+
+      - name: Run exact append-only source gate
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0-source-gate.py
+          git diff --check HEAD^^ HEAD
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Publish fast-forward-only repaired candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | cut -f1)"
+          test "$remote_head" = "$EXPECTED_TARGET_HEAD"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          {
+            echo "### INF-0C Rust qualification repair"
+            echo
+            echo "- previous receipt: $EXPECTED_TARGET_HEAD"
+            echo "- source candidate: $SOURCE_COMMIT"
+            echo "- source tree: $SOURCE_TREE"
+            echo "- receipt head: $(git rev-parse HEAD)"
+            echo "- receipt tree: $(git rev-parse 'HEAD^{tree}')"
+            echo "- source/test/clippy staging gates: PASS"
+            echo "- qualification_only: true"
+            echo "- qualified: false"
+            echo "- INF-1: NOT_STARTED"
+          } >> "$GITHUB_STEP_SUMMARY"
