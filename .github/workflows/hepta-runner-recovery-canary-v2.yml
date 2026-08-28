@@ -1,0 +1,108 @@
+name: hepta-runner recovery canary v2
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/hepta-runner-recovery-canary-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}::runner-recovery-v2::${{ github.event.pull_request.number > 0 && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  ubuntu-22:
+    name: Ubuntu 22.04 allocation
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Record allocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner_os=$RUNNER_OS"
+          echo "runner_arch=$RUNNER_ARCH"
+          echo "runner_name=$RUNNER_NAME"
+          echo "sha=$GITHUB_SHA"
+          test -n "$RUNNER_TEMP"
+
+  ubuntu-24:
+    name: Ubuntu 24.04 allocation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Record allocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner_os=$RUNNER_OS"
+          echo "runner_arch=$RUNNER_ARCH"
+          echo "runner_name=$RUNNER_NAME"
+          echo "sha=$GITHUB_SHA"
+          test -n "$RUNNER_TEMP"
+
+  windows:
+    name: Windows allocation
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record allocation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Write-Output "runner_os=$env:RUNNER_OS"
+          Write-Output "runner_arch=$env:RUNNER_ARCH"
+          Write-Output "runner_name=$env:RUNNER_NAME"
+          Write-Output "sha=$env:GITHUB_SHA"
+          if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) { throw "RUNNER_TEMP is empty" }
+
+  macos:
+    name: macOS 15 allocation
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Record allocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner_os=$RUNNER_OS"
+          echo "runner_arch=$RUNNER_ARCH"
+          echo "runner_name=$RUNNER_NAME"
+          echo "sha=$GITHUB_SHA"
+          test -n "$RUNNER_TEMP"
+
+  required:
+    name: Hepta runner recovery canary v2
+    if: ${{ always() }}
+    needs:
+      - ubuntu-22
+      - ubuntu-24
+      - windows
+      - macos
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Require all allocation probes
+        shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          needs = json.loads(os.environ["NEEDS"])
+          failures = {
+              name: value.get("result")
+              for name, value in needs.items()
+              if value.get("result") != "success"
+          }
+          print(json.dumps({"authority": False, "dependencies": needs}, sort_keys=True))
+          if failures:
+              sys.exit(1)
+          PY
