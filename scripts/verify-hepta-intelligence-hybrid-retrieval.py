@@ -13,6 +13,8 @@ FILES = {
     "tests": ROOT / "codex-rs/hepta-memory/src/hybrid_retrieval_v2/tests.rs",
     "framing": ROOT / "codex-rs/hepta-memory/src/framing.rs",
     "baseline": ROOT / "codex-rs/hepta-memory/src/cognitive_retrieval.rs",
+    "durable_grounding": ROOT
+    / "codex-rs/hepta-memory/src/fact_grounding/durable.rs",
     "status": ROOT
     / "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
     "plan": ROOT
@@ -73,6 +75,7 @@ def main() -> int:
     tests = FILES["tests"].read_text(encoding="utf-8")
     framing = FILES["framing"].read_text(encoding="utf-8")
     baseline = FILES["baseline"].read_text(encoding="utf-8")
+    durable_grounding = FILES["durable_grounding"].read_text(encoding="utf-8")
     plan = FILES["plan"].read_text(encoding="utf-8")
     workflow = FILES["workflow"].read_text(encoding="utf-8")
     try:
@@ -203,6 +206,14 @@ def main() -> int:
             "RetrievalChannel::Recency",
         ],
     ) and "hybrid_retrieval_v2" not in baseline
+    checks["dependency.durable_grounding_paths_resolved"] = contains_all(
+        durable_grounding,
+        [
+            '#[path = "durable/grounding.rs"]',
+            '#[path = "durable/schema.rs"]',
+            '#[path = "durable/tests.rs"]',
+        ],
+    )
     checks["tests.coverage"] = contains_all(
         tests,
         [
@@ -249,7 +260,7 @@ def main() -> int:
         workflow,
         [
             'toolchain: "1.95.0"',
-            "cargo fmt --all -- --check",
+            "cargo fmt -p codex-hepta-memory -- --check",
             "hybrid_retrieval_v2",
             "verify-hepta-intelligence-hybrid-retrieval.py",
             "cargo clippy -p codex-hepta-memory --all-targets -- -D warnings",
