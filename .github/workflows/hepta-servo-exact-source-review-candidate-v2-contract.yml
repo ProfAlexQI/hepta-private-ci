@@ -1,0 +1,145 @@
+name: hepta Servo exact-source review candidate v2 contract
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/hepta-servo-exact-source-review-candidate-v2.py"
+      - "scripts/verify-hepta-servo-exact-source-review-candidate-v2.py"
+      - "scripts/tests/test_hepta_servo_exact_source_review_candidate_v2.py"
+      - "docs/hepta-vnext/browser/C1_EXACT_SOURCE_REVIEW_CANDIDATE_V2*"
+      - "docs/hepta-vnext/browser/hepta.servo.exact_source_review_candidate.v2.schema.json"
+      - ".github/workflows/hepta-servo-exact-source-review-candidate-v2-contract.yml"
+      - ".github/workflows/hepta-servo-independent-source-qualification-v3.yml"
+  push:
+    branches:
+      - integration/vnext-main-20260811
+      - "codex/hepta-*"
+    paths:
+      - "scripts/hepta-servo-exact-source-review-candidate-v2.py"
+      - "scripts/verify-hepta-servo-exact-source-review-candidate-v2.py"
+      - "scripts/tests/test_hepta_servo_exact_source_review_candidate_v2.py"
+      - "docs/hepta-vnext/browser/C1_EXACT_SOURCE_REVIEW_CANDIDATE_V2*"
+      - "docs/hepta-vnext/browser/hepta.servo.exact_source_review_candidate.v2.schema.json"
+      - ".github/workflows/hepta-servo-exact-source-review-candidate-v2-contract.yml"
+      - ".github/workflows/hepta-servo-independent-source-qualification-v3.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  exact-source-review-candidate-v2:
+    name: Exact-source evidence compiler (fixtures only, review required)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Initialize negative-authority posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/hepta-servo-exact-source-review-candidate-v2"
+          mkdir -p "$evidence_dir"
+          echo "HEPTA_EXACT_SOURCE_REVIEW_EVIDENCE=$evidence_dir" >> "$GITHUB_ENV"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse 'HEAD^{tree}')"
+            echo "work_item=C1-exact-source-review-candidate-v2"
+            echo "fixture_only=true"
+            echo "workflow_evidence_compiler=true"
+            echo "separate_review_required=true"
+            echo "pointer_update_performed=false"
+            echo "exact_servo_source_accepted=false"
+            echo "worker_source_topology_accepted=false"
+            echo "build_recipe_accepted=false"
+            echo "build_authorized=false"
+            echo "servo_built=false"
+            echo "worker_artifact_created=false"
+            echo "servo_runtime_qualified=false"
+            echo "machine_authority=false"
+            echo "runtime_authority=false"
+            echo "production_caller=false"
+            echo "production_writer=false"
+            echo "effect_authority=false"
+            echo "external_effect=false"
+            echo "external_network_allowed=false"
+            echo "credential_export_allowed=false"
+            echo "operator_acceptance=false"
+            echo "g5_allowed=false"
+            echo "execute_allowed=false"
+            echo "promotion=false"
+            echo "release_qualified=false"
+          } > "$evidence_dir/posture.txt"
+
+      - name: Compile candidate tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-servo-exact-source-review-candidate-v2.py \
+            scripts/verify-hepta-servo-exact-source-review-candidate-v2.py \
+            scripts/tests/test_hepta_servo_exact_source_review_candidate_v2.py \
+            2>&1 | tee "$HEPTA_EXACT_SOURCE_REVIEW_EVIDENCE/py-compile.log"
+
+      - name: Verify candidate contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-servo-exact-source-review-candidate-v2.py contract \
+            2>&1 | tee "$HEPTA_EXACT_SOURCE_REVIEW_EVIDENCE/contract.log"
+          python3 scripts/verify-hepta-servo-exact-source-review-candidate-v2.py \
+            2>&1 | tee "$HEPTA_EXACT_SOURCE_REVIEW_EVIDENCE/static-verifier.log"
+          python3 -m json.tool \
+            docs/hepta-vnext/browser/hepta.servo.exact_source_review_candidate.v2.schema.json \
+            >/dev/null
+
+      - name: Run fail-closed evidence fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/tests/test_hepta_servo_exact_source_review_candidate_v2.py -v \
+            2>&1 | tee "$HEPTA_EXACT_SOURCE_REVIEW_EVIDENCE/tests.log"
+
+      - name: Verify clean governed paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- \
+            scripts/hepta-servo-exact-source-review-candidate-v2.py \
+            scripts/verify-hepta-servo-exact-source-review-candidate-v2.py \
+            scripts/tests/test_hepta_servo_exact_source_review_candidate_v2.py \
+            docs/hepta-vnext/browser/hepta.servo.exact_source_review_candidate.v2.schema.json \
+            docs/hepta-vnext/browser/C1_EXACT_SOURCE_REVIEW_CANDIDATE_V2.md \
+            docs/hepta-vnext/browser/C1_EXACT_SOURCE_REVIEW_CANDIDATE_V2_STATUS.json \
+            .github/workflows/hepta-servo-exact-source-review-candidate-v2-contract.yml \
+            .github/workflows/hepta-servo-independent-source-qualification-v3.yml \
+            2>&1 | tee "$HEPTA_EXACT_SOURCE_REVIEW_EVIDENCE/clean-worktree.log"
+
+      - name: Record final status
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "job_status=${{ job.status }}" >> "$HEPTA_EXACT_SOURCE_REVIEW_EVIDENCE/posture.txt"
+          {
+            echo "### Hepta exact-source review candidate v2"
+            echo
+            echo "This job validates tooling and synthetic evidence fixtures only."
+            echo "A successful exact-source workflow remains necessary but not sufficient for source acceptance."
+            echo "Only a separate reviewed pointer update may accept a candidate."
+            echo
+            sed 's/^/- /' "$HEPTA_EXACT_SOURCE_REVIEW_EVIDENCE/posture.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload fixture-only evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hepta-servo-exact-source-review-candidate-v2
+          path: ${{ env.HEPTA_EXACT_SOURCE_REVIEW_EVIDENCE }}
+          if-no-files-found: error
+          retention-days: 14
