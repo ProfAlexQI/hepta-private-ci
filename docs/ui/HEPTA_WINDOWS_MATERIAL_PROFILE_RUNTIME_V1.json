@@ -1,6 +1,6 @@
 {
   "schema": "hepta.ui.windows-material-profile-runtime.v1",
-  "status": "SINGLE_PROCESS_ROOT_TRANSIENT_AGGREGATE_PRODUCER_SOURCE_READY_UNIQUE_INDENTATION_MATCH_REPAIR_RUNTIME_REQUIRED",
+  "status": "SINGLE_PROCESS_ROOT_TRANSIENT_AGGREGATE_PRODUCER_SOURCE_READY_MATCH_AND_PATH_NORMALIZATION_REPAIR_RUNTIME_REQUIRED",
   "candidateBranch": "codex/ui-v4-windows-material-profile-runtime-20260828",
   "baseBranch": "codex/ui-v4-windows-material-profile-aggregate-20260828",
   "baseCommit": "b1402886bc1e3e654120d8a4b38d8002696a064d",
@@ -14,8 +14,12 @@
     "canonicalPatcher": "scripts/hepta-ui-v4-apply-makepad-windows-ack-patch",
     "canonicalPatcherBlob": "369e607f4f80d08d739d2f83778fb4e37aa50d4e",
     "boundedRepairWrapper": "scripts/hepta-ui-v4-run-fixed-makepad-windows-ack-patch",
-    "repairScope": "replace_once! matching only; exact match first, otherwise unique whole-block line-indentation-flexible match and target-base reindent",
+    "repairScope": [
+      "replace_once! matching only: exact match first, otherwise unique whole-block line-indentation-flexible match with target-base reindent",
+      "changed-file collection only: String#lines(chomp: true) before exact allowed-set comparison"
+    ],
     "ambiguousMatchAllowed": false,
+    "allowedChangedFileSetRelaxed": false,
     "sourceBlobAndChangedFileGuardsPreserved": true
   },
   "producer": {
@@ -57,8 +61,10 @@
     "firstPatchFailure": "correlated WindowHandle setter indentation mismatch",
     "secondPatchFailure": "public hook reexports indentation mismatch",
     "thirdPatchFailure": "explicit close destruction hook indentation mismatch",
-    "commonRootCause": "canonical exact matcher could not tolerate intended target indentation embedded in squiggly Rust heredocs",
-    "uniqueIndentationMatcherRepairImplemented": true,
+    "fourthPatchFailure": "git diff --name-only lines retained newline terminators",
+    "commonMatchingRootCause": "canonical exact matcher could not tolerate intended target indentation embedded in squiggly Rust heredocs",
+    "pathNormalizationRootCause": "String#lines preserved newline terminators before exact allowed-set comparison",
+    "boundedRepairImplemented": true,
     "patchMaterializationValidatedAfterRepair": false
   },
   "qualification": {

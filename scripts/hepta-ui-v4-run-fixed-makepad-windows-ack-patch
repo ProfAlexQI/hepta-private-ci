@@ -69,6 +69,13 @@ def replace_once!(path, before, after, label)
 end
 RUBY
 
+ORIGINAL_CHANGED_FILES = <<~'RUBY'.strip.freeze
+changed_files = run!("git", "diff", "--name-only", chdir: checkout).lines.sort
+RUBY
+FIXED_CHANGED_FILES = <<~'RUBY'.strip.freeze
+changed_files = run!("git", "diff", "--name-only", chdir: checkout).lines(chomp: true).sort
+RUBY
+
 repo_root = Pathname.new(__dir__).join("..").expand_path
 original = repo_root.join("scripts/hepta-ui-v4-apply-makepad-windows-ack-patch")
 abort "canonical patcher is missing" unless original.file?
@@ -84,10 +91,17 @@ abort "canonical patcher drifted: #{actual_blob.strip}" unless
 source = original.read
 function_count = source.scan(ORIGINAL_FUNCTION).length
 abort "canonical replace_once! function drifted: #{function_count}" unless function_count == 1
-fixed_source = source.sub(ORIGINAL_FUNCTION, REPAIRED_FUNCTION)
+changed_files_count = source.scan(ORIGINAL_CHANGED_FILES).length
+abort "canonical changed-file collection drifted: #{changed_files_count}" unless changed_files_count == 1
+
+fixed_source = source
+  .sub(ORIGINAL_FUNCTION, REPAIRED_FUNCTION)
+  .sub(ORIGINAL_CHANGED_FILES, FIXED_CHANGED_FILES)
 abort "canonical replace_once! function repair was not installed" unless
   fixed_source.include?("indentation_flexible_pattern") &&
   fixed_source.include?("reindent_replacement")
+abort "changed-file paths are not chomped" unless
+  fixed_source.include?(".lines(chomp: true).sort")
 
 Tempfile.create(["hepta-ui-v4-fixed-makepad-patcher", ".rb"]) do |temporary|
   temporary.write(fixed_source)
