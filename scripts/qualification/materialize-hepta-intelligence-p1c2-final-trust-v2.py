@@ -46,6 +46,23 @@ def patch_verifier() -> None:
             "receipt_rejects_noncanonical_status_lane_order_and_blockers",
         ),
     )
+    checks["workflow.exact_matrix"] = contains_all(
+        workflow,
+        (
+            'toolchain: "1.95.0"',
+            "Verify local workspace isolation",
+            "verify-hepta-intelligence-p1-1c2-reviewed-efficacy.py",
+            "cargo fmt --manifest-path",
+            "cargo test --manifest-path",
+            "cargo check --manifest-path",
+            "cargo clippy --manifest-path",
+            "--all-targets -- -D warnings",
+            "p1_1c2_receipt",
+            "cmp",
+            "BLOCKED_P1_1C2_REVIEWED_CORPUS_DEPENDENCY",
+            "id: candidate",
+        ),
+    )
     checks["workflow.final_trust_matrix"] = contains_all(
         workflow,
         (
