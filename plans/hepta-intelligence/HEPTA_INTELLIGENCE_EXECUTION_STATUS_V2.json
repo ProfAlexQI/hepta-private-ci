@@ -4,13 +4,7 @@
   "repository": "ProfAlexQI/hepta-private-ci",
   "default_branch": "integration/vnext-main-20260811",
   "document_snapshot_head": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
-  "p0_1_base_branch": "codex/hepta-intelligence-grounding-v2-20260828",
-  "development_branch": "codex/hepta-intelligence-grounding-ledger-v2-20260828",
-  "source_candidate": {
-    "implementation_commit": "71adbfc740601ec5da3503e37e75e4fc81ebff5c",
-    "reopen_hardening_commit": "f442a713d9ad9d812b0017eaef3bd3c4f2741e66",
-    "qualification_workflow_commit": "e21a63d64ef85d369d5498aa299d654d9dd899c6"
-  },
+  "development_branch": "codex/hepta-intelligence-grounding-gate-v3-20260828",
   "authority": {
     "production_authority": false,
     "external_effects": false,
@@ -19,94 +13,62 @@
     "callers_ratchet": false
   },
   "dependency": {
-    "id": "P0.1",
-    "head": "10f89cd913b12dcb347a3bae5f290a455f985eb4",
-    "status": "source_contract_pass_blocked_runner_not_assigned",
+    "id": "P0.2",
+    "branch": "codex/hepta-intelligence-grounding-ledger-v2-20260828",
+    "head": "ad0cf81cd820bbb4b8154633c61ea68fb35bf872",
+    "pull_request": 13,
+    "status": "source_contract_implemented_hosted_runner_blocked",
     "qualified": false
   },
   "current_tranche": {
-    "id": "P0.2",
-    "name": "durable_fact_grounding_ledger",
-    "status": "source_contract_implemented_hosted_runner_blocked",
+    "id": "P0.3",
+    "name": "tool_protocol_and_shadow_projection_grounding_gate",
+    "status": "source_only_implemented_activation_blocked",
     "qualified": false,
+    "source_candidate": {
+      "shadow_compare_commit": "b21c5cd23207bfe513a5c9b4f1602ec6052bc939",
+      "core_registration_commit": "8f6379e51622b4b82d9566d6a6114b6a30769d72",
+      "tool_v3_contract_commit": "e240dfeafc08a3f01bdb03fcae8e348c37d81a3b",
+      "tool_v3_registration_commit": "4e23bf5eca9967f5ee7c1418a1ea73b17fd0ccb7",
+      "source_gate_commit": "0d7cb9857191f60cb77f39b34221049a4780bd1b",
+      "dormant_contract_lint_commit": "9fb7ac35866b028d4437e345ab2c66f275b8808f",
+      "plan_commit": "c25124503725d989be93c9f975f4710e1aaa3d32"
+    },
     "files": [
-      "codex-rs/hepta-memory/grounding-migrations/0011_fact_grounding.sql",
-      "codex-rs/hepta-memory/src/fact_grounding/durable.rs",
-      "codex-rs/hepta-memory/src/fact_grounding/durable/schema.rs",
-      "codex-rs/hepta-memory/src/fact_grounding/durable/grounding.rs",
-      "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/prepare.rs",
-      "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger.rs",
-      "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs",
-      "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs",
-      "codex-rs/hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs",
-      "codex-rs/hepta-memory/src/fact_grounding/durable/tests.rs",
+      "codex-rs/hepta-memory/src/fact_grounding/shadow_projection_gate.rs",
       "codex-rs/hepta-memory/src/framing.rs",
-      "codex-rs/hepta-memory/BUILD.bazel",
-      "scripts/verify-hepta-intelligence-grounding-ledger.py",
-      ".github/workflows/hepta-intelligence-grounding-ledger.yml",
-      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_2_IMPLEMENTATION_2026-08-28.md",
+      "codex-rs/ext/hepta-memory/src/cognitive/grounding_v3.rs",
+      "codex-rs/ext/hepta-memory/src/framing.rs",
+      "scripts/verify-hepta-intelligence-grounding-gate.py",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_SOURCE_TRANCHE_2026-08-28.md",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json"
     ],
     "claims": {
-      "component_migration_0011": true,
-      "main_sqlx_migration_lineage_promoted": false,
-      "append_only_receipt_table": true,
-      "append_only_span_table": true,
-      "atomic_durable_writer": true,
-      "reopen_verifier": true,
-      "reopen_verifier_explicit_memory_eligibility": true,
-      "reopen_verifier_exact_memory_source_digest": true,
-      "reopen_verifier_exact_fact_set_source_binding": true,
-      "schema_oracle": true,
-      "legacy_status_inventory": true,
-      "dedicated_qualification_workflow": true,
-      "default_open_wired": false,
+      "tool_v3_schema_implemented": true,
+      "tool_v3_exact_span_validation": true,
+      "tool_v3_registered": false,
+      "shadow_projection_compare_implemented": true,
+      "shadow_grounding_explain_implemented": true,
+      "p0_2_ledger_verified_before_shadow_read": true,
+      "legacy_unreviewed_excluded_from_candidate": true,
+      "source_content_returned_by_explain": false,
+      "default_projection_pointer_changed": false,
+      "default_recall_query_changed": false,
+      "write_performed_by_shadow_compare": false,
       "production_projection_gate": false,
-      "production_authority": false
+      "production_authority": false,
+      "external_effects": false
     },
     "qualification": {
-      "source_gate": "PASS_P0_2_DURABLE_GROUNDING_SOURCE_ONLY_AT_IMPLEMENTATION_HEAD",
-      "exact_head_source_gate": "not_run_runner_blocked",
-      "format": "not_run_runner_blocked",
-      "focused_tests": "not_run_runner_blocked",
-      "crate_tests": "not_run_runner_blocked",
-      "clippy": "not_run_runner_blocked",
-      "hosted_ci": "blocked_runner_not_assigned",
-      "workflow_runs": [
-        {
-          "id": 33133549933,
-          "name": "hepta-intelligence-grounding-ledger",
-          "head": "e21a63d64ef85d369d5498aa299d654d9dd899c6",
-          "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
-          "jobs": [
-            {
-              "id": 98728378939,
-              "name": "P0.2 durable grounding source contract",
-              "steps": []
-            },
-            {
-              "id": 98728378822,
-              "name": "P0.2 durable grounding Rust qualification",
-              "steps": []
-            }
-          ],
-          "commands_executed": false
-        },
-        {
-          "id": 33133550077,
-          "name": "blocking-ci",
-          "head": "e21a63d64ef85d369d5498aa299d654d9dd899c6",
-          "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
-          "commands_executed": false
-        },
-        {
-          "id": 33133549936,
-          "name": "v8-canary",
-          "head": "e21a63d64ef85d369d5498aa299d654d9dd899c6",
-          "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
-          "commands_executed": false
-        }
-      ],
+      "source_gate": "pending_exact_head_execution",
+      "format": "not_run",
+      "core_focused_tests": "not_run",
+      "extension_focused_tests": "not_run",
+      "core_crate_tests": "not_run",
+      "extension_crate_tests": "not_run",
+      "core_clippy": "not_run",
+      "extension_clippy": "not_run",
+      "hosted_ci": "pending",
       "qualified": false
     }
   },
@@ -127,11 +89,28 @@
       "qualified": false,
       "efficacy_proven": false,
       "operator_accepted": false,
-      "promoted": false,
-      "notes": "Qualification-only component migration 0011 and opt-in verified open path."
+      "promoted": false
     },
     {
-      "id": "grounded_projection_gate",
+      "id": "grounded_tool_protocol_v3",
+      "implemented": true,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "grounded_projection_shadow_compare",
+      "implemented": true,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "production_grounded_projection_gate",
       "implemented": false,
       "wired": false,
       "qualified": false,
@@ -147,42 +126,12 @@
       "efficacy_proven": false,
       "operator_accepted": false,
       "promoted": false
-    },
-    {
-      "id": "hybrid_retrieval_v2",
-      "implemented": false,
-      "wired": false,
-      "qualified": false,
-      "efficacy_proven": false,
-      "operator_accepted": false,
-      "promoted": false
-    },
-    {
-      "id": "h5_h6_h7_minimal_closed_loop",
-      "implemented": false,
-      "wired": false,
-      "qualified": false,
-      "efficacy_proven": false,
-      "operator_accepted": false,
-      "promoted": false
     }
   ],
-  "next_tranche": {
-    "id": "P0.3",
-    "name": "tool_protocol_and_shadow_projection_grounding_gate",
-    "activation": "blocked",
-    "source_development": "allowed_only_on_separate_stacked_draft",
-    "requirements": [
-      "P0.1 executable exact-head qualification",
-      "P0.2 source, Rust, migration, reopen, corruption, and hosted qualification",
-      "candidate freeze and readable CI artifacts",
-      "production authority remains false during shadow compare"
-    ]
-  },
   "next_actions": [
-    "Preserve the P0.2 source-only candidate and Draft PR #13.",
-    "Run the dedicated source and Rust qualification workflow when a runner is assigned.",
-    "Keep component migration 0011 opt-in and default open unchanged.",
-    "Permit only source-only P0.3 work on a separate stacked Draft; do not activate the projection gate before P0.1 and P0.2 qualify."
+    "Run the P0.3 fail-closed source gate on one exact head.",
+    "Run core and extension fmt, focused tests, full tests, and clippy when a runner is assigned.",
+    "Keep the v3 contract unregistered and shadow compare read-only until P0.1 and P0.2 qualify.",
+    "Do not change the default projection pointer, recall query, or production authority from this tranche."
   ]
 }
