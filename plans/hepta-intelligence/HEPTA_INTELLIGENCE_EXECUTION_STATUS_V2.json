@@ -6,6 +6,11 @@
   "document_snapshot_head": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
   "p0_1_base_branch": "codex/hepta-intelligence-grounding-v2-20260828",
   "development_branch": "codex/hepta-intelligence-grounding-ledger-v2-20260828",
+  "source_candidate": {
+    "implementation_commit": "71adbfc740601ec5da3503e37e75e4fc81ebff5c",
+    "reopen_hardening_commit": "f442a713d9ad9d812b0017eaef3bd3c4f2741e66",
+    "qualification_workflow_commit": "e21a63d64ef85d369d5498aa299d654d9dd899c6"
+  },
   "authority": {
     "production_authority": false,
     "external_effects": false,
@@ -22,7 +27,7 @@
   "current_tranche": {
     "id": "P0.2",
     "name": "durable_fact_grounding_ledger",
-    "status": "source_gate_pass_pending_rust_and_hosted_ci",
+    "status": "source_contract_implemented_hosted_runner_blocked",
     "qualified": false,
     "files": [
       "codex-rs/hepta-memory/grounding-migrations/0011_fact_grounding.sql",
@@ -38,6 +43,7 @@
       "codex-rs/hepta-memory/src/framing.rs",
       "codex-rs/hepta-memory/BUILD.bazel",
       "scripts/verify-hepta-intelligence-grounding-ledger.py",
+      ".github/workflows/hepta-intelligence-grounding-ledger.yml",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_2_IMPLEMENTATION_2026-08-28.md",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json"
     ],
@@ -48,19 +54,59 @@
       "append_only_span_table": true,
       "atomic_durable_writer": true,
       "reopen_verifier": true,
+      "reopen_verifier_explicit_memory_eligibility": true,
+      "reopen_verifier_exact_memory_source_digest": true,
+      "reopen_verifier_exact_fact_set_source_binding": true,
       "schema_oracle": true,
       "legacy_status_inventory": true,
+      "dedicated_qualification_workflow": true,
       "default_open_wired": false,
       "production_projection_gate": false,
       "production_authority": false
     },
     "qualification": {
-      "source_gate": "PASS_P0_2_DURABLE_GROUNDING_SOURCE_ONLY",
-      "format": "not_run",
-      "focused_tests": "not_run",
-      "crate_tests": "not_run",
-      "clippy": "not_run",
-      "hosted_ci": "not_run",
+      "source_gate": "PASS_P0_2_DURABLE_GROUNDING_SOURCE_ONLY_AT_IMPLEMENTATION_HEAD",
+      "exact_head_source_gate": "not_run_runner_blocked",
+      "format": "not_run_runner_blocked",
+      "focused_tests": "not_run_runner_blocked",
+      "crate_tests": "not_run_runner_blocked",
+      "clippy": "not_run_runner_blocked",
+      "hosted_ci": "blocked_runner_not_assigned",
+      "workflow_runs": [
+        {
+          "id": 33133549933,
+          "name": "hepta-intelligence-grounding-ledger",
+          "head": "e21a63d64ef85d369d5498aa299d654d9dd899c6",
+          "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
+          "jobs": [
+            {
+              "id": 98728378939,
+              "name": "P0.2 durable grounding source contract",
+              "steps": []
+            },
+            {
+              "id": 98728378822,
+              "name": "P0.2 durable grounding Rust qualification",
+              "steps": []
+            }
+          ],
+          "commands_executed": false
+        },
+        {
+          "id": 33133550077,
+          "name": "blocking-ci",
+          "head": "e21a63d64ef85d369d5498aa299d654d9dd899c6",
+          "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
+          "commands_executed": false
+        },
+        {
+          "id": 33133549936,
+          "name": "v8-canary",
+          "head": "e21a63d64ef85d369d5498aa299d654d9dd899c6",
+          "classification": "BLOCKED_RUNNER_NOT_ASSIGNED",
+          "commands_executed": false
+        }
+      ],
       "qualified": false
     }
   },
@@ -125,6 +171,7 @@
     "id": "P0.3",
     "name": "tool_protocol_and_shadow_projection_grounding_gate",
     "activation": "blocked",
+    "source_development": "allowed_only_on_separate_stacked_draft",
     "requirements": [
       "P0.1 executable exact-head qualification",
       "P0.2 source, Rust, migration, reopen, corruption, and hosted qualification",
@@ -133,9 +180,9 @@
     ]
   },
   "next_actions": [
-    "Preserve the P0.2 source-gate PASS on the exact Git candidate.",
-    "Run cargo fmt, focused tests, full codex-hepta-memory tests, and clippy on an assigned runner.",
-    "Keep component migration 0011 opt-in until exact-head qualification succeeds.",
-    "Do not activate P0.3 or change the default projection query before P0.1 and P0.2 are qualified."
+    "Preserve the P0.2 source-only candidate and Draft PR #13.",
+    "Run the dedicated source and Rust qualification workflow when a runner is assigned.",
+    "Keep component migration 0011 opt-in and default open unchanged.",
+    "Permit only source-only P0.3 work on a separate stacked Draft; do not activate the projection gate before P0.1 and P0.2 qualify."
   ]
 }
