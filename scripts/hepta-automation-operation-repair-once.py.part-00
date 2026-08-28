@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import re
+import shutil
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected one exact match, found {count}")
+    return text.replace(old, new, 1)
+
+
+def replace_regex(text: str, pattern: str, replacement: str, label: str) -> str:
+    updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+    if count != 1:
+        raise SystemExit(f"{label}: expected one regex match, found {count}")
+    return updated
+
+
+model_template = ROOT / "scripts/hepta-automation-model-v4.rs"
+model_path = ROOT / "codex-rs/hepta-automation/src/model.rs"
+shutil.copyfile(model_template, model_path)
+
+store_path = ROOT / "codex-rs/hepta-automation/src/store.rs"
+store = store_path.read_text(encoding="utf-8")
+store = replace_once(
+    store,
+    "use codex_hepta_contracts::AgentId;\n",
+    "use codex_hepta_contracts::AgentId;\n"
+    "use codex_hepta_contracts::OperationPhase;\n"
+    "use codex_hepta_contracts::OutboxEnvelope;\n"
+    "use codex_hepta_contracts::Sha256Digest;\n",
+    "store imports",
+)
+store = replace_once(
+    store,
+    '"SELECT o.task_id, o.occurrence, r.scheduled_for_ms,\n'
+    '                    o.client_user_message_id, o.observed_at_ms\n',
+    '"SELECT o.task_id, o.occurrence, r.scheduled_for_ms,\n'
+    '                    o.client_user_message_id, o.observed_at_ms,\n'
+    '                    o.operation_id, o.operation_binding_sha256,\n'
+    '                    o.operation_sequence\n',
+    "uncertain dispatch select",
+)
+store = replace_once(
+    store,
+    '                    observed_at_ms: to_u64(row.try_get("observed_at_ms").map_err(unavailable)?)?,\n'
+    '                })',
+    '                    observed_at_ms: to_u64(row.try_get("observed_at_ms").map_err(unavailable)?)?,\n'
+    '                    operation_id: row\n'
+    '                        .try_get::<Option<String>, _>("operation_id")\n'
+    '                        .map_err(unavailable)?,\n'
+    '                    operation_binding_sha256: row\n'
+    '                        .try_get::<Option<String>, _>("operation_binding_sha256")\n'
+    '                        .map_err(unavailable)?\n'
+    '                        .map(Sha256Digest::parse)\n'
+    '                        .transpose()\n'
+    '                        .map_err(|_| AutomationError::Corrupt)?,\n'
+    '                    operation_sequence: row\n'
+    '                        .try_get::<Option<i64>, _>("operation_sequence")\n'
+    '                        .map_err(unavailable)?\n'
+    '                        .map(to_u64)\n'
+    '                        .transpose()?,\n'
+    '                })',
+    "uncertain dispatch decode",
+)
+new_record = r'''    pub async fn record_dispatch_uncertain(
+        &self,
+        lease: &AutomationLease,
+        operation: &OutboxEnvelope,
+        observed_at_ms: u64,
+    ) -> Result<(), AutomationError> {
+        if lease.task.owner_agent_id != self.owner_agent_id {
+            return Err(AutomationError::AccessDenied);
+        }
+        lease.validate_operation(operation)?;
+        let operation_id = operation.binding.operation_id.as_str();
+        let operation_binding_sha256 = operation.binding_sha256.as_str();
+        let operation_sequence = to_i64(operation.sequence)?;
+
+        let mut transaction = self.pool.begin().await.map_err(unavailable)?;
+        let updated = sqlx::query(
+            "UPDATE automation_runs
+             SET state = 'leased'
+             WHERE task_id = ? AND occurrence = ? AND state = 'leased'
+               AND lease_generation = ? AND lease_token = ?
+               AND client_user_message_id = ?",
+        )
+        .bind(lease.task.task_id.to_string())
+        .bind(to_i64(lease.occurrence)?)
+        .bind(to_i64(lease.lease_generation)?)
+        .bind(&lease.lease_token)
+        .bind(&lease.client_user_message_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        if updated.rows_affected() != 1 {
+            return Err(AutomationError::Conflict);
+        }
+
+        let existing = sqlx::query(
+            "SELECT outcome, operation_id, operation_binding_sha256, operation_sequence
+             FROM automation_dispatch_outcomes
+             WHERE task_id = ? AND occurrence = ?",
+        )
+        .bind(lease.task.task_id.to_string())
+        .bind(to_i64(lease.occurrence)?)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(unavailable)?;
+        match existing {
+            Some(row) => {
+                let outcome: String = row.try_get("outcome").map_err(unavailable)?;
+                let persisted_operation_id: Option<String> =
+                    row.try_get("operation_id").map_err(unavailable)?;
+                let persisted_binding: Option<String> = row
+                    .try_get("operat

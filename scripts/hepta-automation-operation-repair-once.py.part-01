@@ -1,0 +1,111 @@
+ion_binding_sha256")
+                    .map_err(unavailable)?;
+                let persisted_sequence: Option<i64> =
+                    row.try_get("operation_sequence").map_err(unavailable)?;
+                if outcome != "uncertain"
+                    || persisted_operation_id.as_deref() != Some(operation_id)
+                    || persisted_binding.as_deref() != Some(operation_binding_sha256)
+                    || persisted_sequence != Some(operation_sequence)
+                {
+                    return Err(AutomationError::Conflict);
+                }
+                let refreshed = sqlx::query(
+                    "UPDATE automation_dispatch_outcomes SET observed_at_ms = ?
+                     WHERE task_id = ? AND occurrence = ? AND outcome = 'uncertain'
+                       AND operation_id = ? AND operation_binding_sha256 = ?
+                       AND operation_sequence = ?",
+                )
+                .bind(to_i64(observed_at_ms)?)
+                .bind(lease.task.task_id.to_string())
+                .bind(to_i64(lease.occurrence)?)
+                .bind(operation_id)
+                .bind(operation_binding_sha256)
+                .bind(operation_sequence)
+                .execute(&mut *transaction)
+                .await
+                .map_err(unavailable)?;
+                if refreshed.rows_affected() != 1 {
+                    return Err(AutomationError::Conflict);
+                }
+            }
+            None => {
+                sqlx::query(
+                    "INSERT INTO automation_dispatch_outcomes (
+                         task_id, occurrence, client_user_message_id, outcome, observed_at_ms,
+                         operation_id, operation_binding_sha256, operation_sequence
+                     ) VALUES (?, ?, ?, 'uncertain', ?, ?, ?, ?)",
+                )
+                .bind(lease.task.task_id.to_string())
+                .bind(to_i64(lease.occurrence)?)
+                .bind(&lease.client_user_message_id)
+                .bind(to_i64(observed_at_ms)?)
+                .bind(operation_id)
+                .bind(operation_binding_sha256)
+                .bind(operation_sequence)
+                .execute(&mut *transaction)
+                .await
+                .map_err(|error| {
+                    if is_constraint(&error) {
+                        AutomationError::Conflict
+                    } else {
+                        unavailable(error)
+                    }
+                })?;
+            }
+        }
+        transaction.commit().await.map_err(unavailable)
+    }
+
+'''
+store = replace_regex(
+    store,
+    r"    pub async fn record_dispatch_uncertain\(.*?(?=    /// Aborts an intent)",
+    new_record,
+    "record dispatch uncertain",
+)
+store = replace_once(
+    store,
+    '            "SELECT r.scheduled_for_ms, r.state, o.client_user_message_id,\n'
+    '                    o.outcome\n',
+    '            "SELECT r.scheduled_for_ms, r.state, o.client_user_message_id,\n'
+    '                    o.outcome, o.operation_id, o.operation_binding_sha256,\n'
+    '                    o.operation_sequence\n',
+    "reconcile select",
+)
+store = replace_once(
+    store,
+    '        let client_id: String = row.try_get("client_user_message_id").map_err(unavailable)?;\n'
+    '        if state != "leased"\n'
+    '            || outcome != "uncertain"\n'
+    '            || client_id != receipt.client_user_message_id\n'
+    '        {\n'
+    '            return Err(AutomationError::Conflict);\n'
+    '        }',
+    '        let client_id: String = row.try_get("client_user_message_id").map_err(unavailable)?;\n'
+    '        let operation_id: Option<String> = row.try_get("operation_id").map_err(unavailable)?;\n'
+    '        let operation_binding_sha256: Option<String> = row\n'
+    '            .try_get("operation_binding_sha256")\n'
+    '            .map_err(unavailable)?;\n'
+    '        let operation_sequence: Option<i64> =\n'
+    '            row.try_get("operation_sequence").map_err(unavailable)?;\n'
+    '        if state != "leased"\n'
+    '            || outcome != "uncertain"\n'
+    '            || client_id != receipt.client_user_message_id\n'
+    '            || operation_id.as_deref()\n'
+    '                != Some(receipt.acknowledgement.operation_id.as_str())\n'
+    '            || operation_binding_sha256.as_deref()\n'
+    '                != Some(receipt.acknowledgement.binding_sha256.as_str())\n'
+    '            || operation_sequence != Some(to_i64(receipt.acknowledgement.sequence)?)\n'
+    '            || receipt.acknowledgement.idempotency_key.as_str() != client_id\n'
+    '            || receipt.acknowledgement.phase != OperationPhase::DestinationCommitted\n'
+    '        {\n'
+    '            return Err(AutomationError::Conflict);\n'
+    '        }',
+    "reconcile acknowledgement fence",
+)
+store = replace_once(
+    store,
+    '    pub async fn mark_submitted(\n'
+    '        &self,\n'
+    '        lease: &AutomationLease,\n'
+    '        receipt: &Automati
