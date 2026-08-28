@@ -1,0 +1,50 @@
+{
+  "schema": "hepta.intelligence.p1_1c.execution_status.v1",
+  "status": "IMPLEMENTED_PENDING_EXECUTABLE_QUALIFICATION",
+  "tranche": "P1.1c",
+  "branch": "codex/hepta-intelligence-offline-efficacy-p1c-20260828",
+  "stack_base": "codex/hepta-intelligence-local-embedding-index-v1b-20260828",
+  "implementation": {
+    "dependency_free_rust_crate": true,
+    "multilingual_seed_corpus": true,
+    "seed_locale_count": 8,
+    "seed_case_count": 8,
+    "seed_candidate_count": 48,
+    "bounded_two_hop_kg": true,
+    "fixed_point_reranker": true,
+    "ablation_lane_count": 7,
+    "recall_at_4": true,
+    "ndcg_at_4": true,
+    "citation_precision": true,
+    "latency_receipts": true,
+    "token_cost_receipts": true,
+    "receipt_redaction": true
+  },
+  "corpus": {
+    "provenance": "synthetic_seed",
+    "reviewed": false,
+    "real_world_efficacy_claim": false
+  },
+  "qualification": {
+    "source_qualified": false,
+    "executable_gates_passed": false,
+    "seed_pipeline_reproducible": false,
+    "efficacy_validation": false,
+    "operator_acceptance": false
+  },
+  "authority": {
+    "product_workspace_member": false,
+    "product_module_registered": false,
+    "runtime_wired": false,
+    "default_recall_changed": false,
+    "federation_recall_changed": false,
+    "context_attachment": false,
+    "physical_send": false,
+    "network_access": false,
+    "model_download": false,
+    "external_effects": false,
+    "production_authority": false,
+    "promotion": false,
+    "callers_ratchet": false
+  }
+}
