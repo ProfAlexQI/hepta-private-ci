@@ -1,0 +1,47 @@
+{
+  "schema": "hepta.inference.implementation_status.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "plan_version": "2.0.0",
+  "source_binding": {
+    "repository": "ProfAlexQI/hepta-private-ci",
+    "branch": "integration/vnext-main-20260811",
+    "commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+    "tree": "636341eb865b7c6d669958a96e7959de74fee020"
+  },
+  "development_branch": "codex/hepta-inference-runtime-v2-20260828",
+  "candidate_binding_mode": "append_only_receipt_binds_source_parent",
+  "status": "PLAN_SOURCE_PRESENT_IMPLEMENTATION_PENDING",
+  "qualified": false,
+  "implemented": {
+    "source_bound_plan_v2": true,
+    "stage_matrix_v2": true,
+    "reference_contract_crate": false,
+    "source_gate": false,
+    "dedicated_ci_workflow": false,
+    "lmstudio_load_readiness_fence": false,
+    "ollama_readiness_fail_closed": false,
+    "unknown_oss_provider_fail_closed": false,
+    "hepta_inferd": false,
+    "native_worker": false,
+    "real_model_e2e": false,
+    "hardware_receipt": false
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  },
+  "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce"
+}
