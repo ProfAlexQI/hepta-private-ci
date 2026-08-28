@@ -3,7 +3,9 @@
   "plan_id": "AUTHBUS-P0-PLAN-2026-08-28",
   "stage": "P0.1",
   "implementation_commit": "7d34a83bda92152d894118c9f372e6c162342c4b",
-  "status": "CI_PENDING",
+  "candidate_head_before_receipt": "9262b64da707f89cd00ba8a6fae56bdd05348fe6",
+  "status": "CI_BLOCKED_NO_RUNNER",
+  "qualified": false,
   "qualification_only": true,
   "authority": false,
   "effect_authority": false,
@@ -14,5 +16,24 @@
   "g5_allowed": false,
   "execute_allowed": false,
   "required_gates": ["fmt", "tests", "check", "clippy"],
-  "evidence": null
+  "gate_results": {
+    "fmt": null,
+    "tests": null,
+    "check": null,
+    "clippy": null
+  },
+  "evidence": {
+    "dedicated_run_id": 33134696801,
+    "dedicated_job_id": 98731944732,
+    "dedicated_runner_id": 0,
+    "dedicated_steps": [],
+    "broad_run_id": 33134696785,
+    "broad_authbus_job_id": 98731944703,
+    "broad_authbus_runner_id": 0,
+    "broad_authbus_steps": [],
+    "logs_available": false,
+    "artifacts_available": false
+  },
+  "decision": "KEEP_FAIL_CLOSED_AND_DO_NOT_PROMOTE",
+  "note": "The workflows were created and jobs materialized, but no runner was assigned. The failure is not an executable fmt/test/check/clippy result and cannot qualify the candidate."
 }
