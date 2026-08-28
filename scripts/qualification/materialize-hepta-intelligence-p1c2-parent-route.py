@@ -88,15 +88,17 @@ def patch_parent_workflow() -> None:
               path for path in changed if path not in {cargo_path, workflow_path}
           )
           mode = "descendant" if descendant_paths else "parent"
-          if mode == "descendant":
-              child_workflow = Path(
-                  ".github/workflows/hepta-intelligence-p1-1c2-reviewed-efficacy.yml"
-              )
-              child_verifier = Path(
-                  "scripts/verify-hepta-intelligence-p1-1c2-reviewed-efficacy.py"
-              )
-              if not child_workflow.is_file() or not child_verifier.is_file():
-                  raise SystemExit("descendant route lacks its dedicated fail-closed qualification")
+          child_workflow = Path(
+              ".github/workflows/hepta-intelligence-p1-1c2-reviewed-efficacy.yml"
+          )
+          child_verifier = Path(
+              "scripts/verify-hepta-intelligence-p1-1c2-reviewed-efficacy.py"
+          )
+          child_qualification_present = (
+              child_workflow.is_file() and child_verifier.is_file()
+          )
+          if mode == "descendant" and not child_qualification_present:
+              raise SystemExit("descendant route lacks its dedicated fail-closed qualification")
 
           receipt = {
               "schema": "hepta.intelligence.p1_1c.stack_route.v1",
@@ -109,7 +111,7 @@ def patch_parent_workflow() -> None:
               "frozen_semantics_unchanged": True,
               "cargo_workspace_isolation_only": current_cargo == workspace_cargo,
               "descendant_paths": descendant_paths,
-              "child_qualification_present": mode == "parent" or True,
+              "child_qualification_present": child_qualification_present,
               "qualified": False,
               "runtime_wired": False,
               "production_authority": False,
