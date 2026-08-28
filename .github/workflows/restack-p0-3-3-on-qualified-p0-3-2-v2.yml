@@ -19,7 +19,7 @@ concurrency:
 jobs:
   restack:
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    timeout-minutes: 240
     steps:
       - name: Checkout exact hardening branch
         uses: actions/checkout@v4
@@ -103,7 +103,14 @@ jobs:
               assert receipt[key] is False, key
           PY
 
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
       - name: Build and preflight the governed P0.3.3 restack
+        id: build
         env:
           QUALIFIED_HEAD: ${{ steps.trigger.outputs.qualified_head }}
           QUALIFICATION_RUN_ID: ${{ steps.trigger.outputs.qualification_run_id }}
@@ -114,7 +121,6 @@ jobs:
           HARDENING_HEAD=$(git rev-parse HEAD)
           git fetch origin "$P033_BRANCH:refs/remotes/origin/$P033_BRANCH"
           P033_OLD_HEAD=$(git rev-parse "refs/remotes/origin/$P033_BRANCH")
-          printf '%s\n' "$P033_OLD_HEAD" > /tmp/p033-old-head.txt
 
           git switch --detach "$QUALIFIED_HEAD"
           paths=(
@@ -165,21 +171,85 @@ jobs:
           git config user.name "Qian QI"
           git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
           git commit -m "feat(memory): restack host-owned evidence resolver P0.3.3"
-          git rev-parse HEAD > /tmp/p033-new-head.txt
+          P033_NEW_HEAD=$(git rev-parse HEAD)
+          printf 'old_head=%s\n' "$P033_OLD_HEAD" >> "$GITHUB_OUTPUT"
+          printf 'new_head=%s\n' "$P033_NEW_HEAD" >> "$GITHUB_OUTPUT"
 
-      - name: Publish only the preflight-qualified restack
+      - name: Run the complete P0.3.3 exact-head qualification
+        shell: bash
+        run: python3 scripts/run-hepta-intelligence-evidence-resolver-v5.py
+
+      - name: Upload unpublished exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p0-3-3-${{ steps.build.outputs.new_head }}
+          path: artifacts/hepta-intelligence-evidence-resolver-v5
+          if-no-files-found: error
+          retention-days: 21
+
+      - name: Enforce complete P0.3.3 receipt before publication
+        if: always()
+        env:
+          EXPECTED_HEAD: ${{ steps.build.outputs.new_head }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          receipt = json.loads(
+              Path(
+                  "artifacts/hepta-intelligence-evidence-resolver-v5/qualification-receipt.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert receipt["head"] == os.environ["EXPECTED_HEAD"]
+          assert receipt["qualified"] is True
+          assert receipt["p0_3_2_dependency_qualified"] is True
+          assert receipt["host_resolves_offsets"] is True
+          assert receipt["host_computes_digests"] is True
+          assert all(check["passed"] for check in receipt["checks"])
+          for key in (
+              "wired",
+              "model_supplies_offsets",
+              "model_supplies_digests",
+              "tool_v4_registered",
+              "default_projection_pointer_changed",
+              "default_recall_query_changed",
+              "production_projection_gate",
+              "production_authority",
+              "external_effects",
+              "operator_accepted",
+              "promoted",
+              "callers_ratchet",
+          ):
+              assert receipt[key] is False, key
+          PY
+
+      - name: Publish only the exact-qualified restack
         env:
           GH_TOKEN: ${{ github.token }}
           P032_BRANCH: codex/hepta-intelligence-shared-projection-planner-v5-20260828
           P033_BRANCH: codex/hepta-intelligence-evidence-resolver-v4-20260828
+          P033_OLD_HEAD: ${{ steps.build.outputs.old_head }}
+          P033_NEW_HEAD: ${{ steps.build.outputs.new_head }}
         shell: bash
         run: |
           set -euo pipefail
-          P033_OLD_HEAD=$(cat /tmp/p033-old-head.txt)
-          P033_NEW_HEAD=$(cat /tmp/p033-new-head.txt)
           git push --force-with-lease="refs/heads/$P033_BRANCH:$P033_OLD_HEAD" \
             origin "$P033_NEW_HEAD:refs/heads/$P033_BRANCH"
           gh api --method PATCH repos/ProfAlexQI/hepta-private-ci/pulls/30 \
             -f base="$P032_BRANCH" >/dev/null
-          printf 'P0.3.3 old head: %s\nP0.3.3 new head: %s\n' \
-            "$P033_OLD_HEAD" "$P033_NEW_HEAD"
+          cat > /tmp/p033-qualified-comment.md <<EOF
+          ## P0.3.3 governed restack exact receipt
+
+          \`head=$P033_NEW_HEAD\`
+          \`qualification_run=${{ github.run_id }}\`
+          \`qualified=true\`
+
+          The exact P0.3.2 receipt, remote head, same-snapshot flags, and all false authority fields were verified before building this commit. P0.3.3 source, candidate format, extension/core all-target checks, focused/full tests, extension/core strict Clippy, and clean-tree gate all passed before publication.
+
+          Authority remains fail closed: \`wired=false\`, \`tool_v4_registered=false\`, \`production_projection_gate=false\`, \`production_authority=false\`, \`external_effects=false\`, \`operator_accepted=false\`, \`promoted=false\`, \`callers_ratchet=false\`.
+          EOF
+          gh pr comment 30 --body-file /tmp/p033-qualified-comment.md
