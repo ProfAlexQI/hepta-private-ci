@@ -80,7 +80,7 @@ class BuildInputSealTests(unittest.TestCase):
             "manifest_path": "worker/Cargo.toml",
             "package": "hepta-servo-worker",
             "artifact_path": "target/x86_64-unknown-linux-gnu/release/hepta-servo-worker",
-            "features": ["baked-in-resources", "background-hang-monitor"],
+            "features": ["background-hang-monitor", "baked-in-resources"],
             "default_features": False,
             "jobs": 4,
             "command_prefix": ["cargo", "build", "--locked", "--offline", "--frozen"],
@@ -124,7 +124,7 @@ class BuildInputSealTests(unittest.TestCase):
         command = left["build"]["canonical_command"]
         self.assertEqual(command[:5], ["cargo", "build", "--locked", "--offline", "--frozen"])
         self.assertIn("--no-default-features", command)
-        self.assertEqual(command[-2:], ["--features", "baked-in-resources,background-hang-monitor"])
+        self.assertEqual(command[-2:], ["--features", "background-hang-monitor,baked-in-resources"])
 
     def test_recipe_and_source_digests_bind_exact_canonical_bytes(self) -> None:
         manifest = self.seal()
@@ -148,11 +148,11 @@ class BuildInputSealTests(unittest.TestCase):
             self.seal()
 
     def test_unsorted_or_duplicate_features_fail_closed(self) -> None:
-        self.recipe["features"] = ["background-hang-monitor", "baked-in-resources"]
+        self.recipe["features"] = ["baked-in-resources", "background-hang-monitor"]
         with self.assertRaises(self.module.BuildInputError):
             self.seal()
         self.recipe = self.valid_recipe()
-        self.recipe["features"] = ["baked-in-resources", "baked-in-resources"]
+        self.recipe["features"] = ["background-hang-monitor", "background-hang-monitor"]
         with self.assertRaises(self.module.BuildInputError):
             self.seal()
 
