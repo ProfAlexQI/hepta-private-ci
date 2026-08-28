@@ -5,15 +5,16 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - "scripts/hepta-servo-exact-source-acceptance-pointer-v1.py"
-      - "scripts/verify-hepta-servo-exact-source-acceptance-pointer-v1.py"
-      - "scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v1.py"
+      - "scripts/hepta-servo-exact-source-acceptance-pointer-v2.py"
+      - "scripts/verify-hepta-servo-exact-source-acceptance-pointer-v2.py"
+      - "scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v2.py"
       - "docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json"
       - "docs/hepta-vnext/browser/C1_EXACT_SOURCE_ACCEPTANCE_POINTER_V1*"
       - "docs/hepta-vnext/browser/hepta.servo.source_acceptance_review_*"
       - "docs/hepta-vnext/browser/hepta.servo.accepted_source_pointer.v1.schema.json"
       - "docs/hepta-vnext/browser/source-acceptance/**"
       - ".github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml"
+      - ".github/workflows/hepta-servo-exact-source-acceptance-live-review.yml"
       - ".github/workflows/hepta-browser-next-required-v8.yml"
       - ".github/workflows/blocking-ci.yml"
   push:
@@ -21,15 +22,16 @@ on:
       - integration/vnext-main-20260811
       - "codex/hepta-*"
     paths:
-      - "scripts/hepta-servo-exact-source-acceptance-pointer-v1.py"
-      - "scripts/verify-hepta-servo-exact-source-acceptance-pointer-v1.py"
-      - "scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v1.py"
+      - "scripts/hepta-servo-exact-source-acceptance-pointer-v2.py"
+      - "scripts/verify-hepta-servo-exact-source-acceptance-pointer-v2.py"
+      - "scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v2.py"
       - "docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json"
       - "docs/hepta-vnext/browser/C1_EXACT_SOURCE_ACCEPTANCE_POINTER_V1*"
       - "docs/hepta-vnext/browser/hepta.servo.source_acceptance_review_*"
       - "docs/hepta-vnext/browser/hepta.servo.accepted_source_pointer.v1.schema.json"
       - "docs/hepta-vnext/browser/source-acceptance/**"
       - ".github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml"
+      - ".github/workflows/hepta-servo-exact-source-acceptance-live-review.yml"
       - ".github/workflows/hepta-browser-next-required-v8.yml"
       - ".github/workflows/blocking-ci.yml"
 
@@ -87,19 +89,19 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m py_compile \
-            scripts/hepta-servo-exact-source-acceptance-pointer-v1.py \
-            scripts/verify-hepta-servo-exact-source-acceptance-pointer-v1.py \
-            scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v1.py \
+            scripts/hepta-servo-exact-source-acceptance-pointer-v2.py \
+            scripts/verify-hepta-servo-exact-source-acceptance-pointer-v2.py \
+            scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v2.py \
             2>&1 | tee "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/py-compile.log"
 
       - name: Verify source-only acceptance contract
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/hepta-servo-exact-source-acceptance-pointer-v1.py contract \
+          python3 scripts/hepta-servo-exact-source-acceptance-pointer-v2.py contract \
             --policy "$GITHUB_WORKSPACE/docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json" \
             2>&1 | tee "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/contract.log"
-          python3 scripts/verify-hepta-servo-exact-source-acceptance-pointer-v1.py \
+          python3 scripts/verify-hepta-servo-exact-source-acceptance-pointer-v2.py \
             2>&1 | tee "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/static-verifier.log"
           for file in \
             docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json \
@@ -114,7 +116,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v1.py -v \
+          python3 scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v2.py -v \
             2>&1 | tee "$HEPTA_SOURCE_ACCEPTANCE_EVIDENCE/tests.log"
 
       - name: Record final qualification-only status
