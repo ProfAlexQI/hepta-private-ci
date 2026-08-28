@@ -1,0 +1,244 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  rust: root.join("apps/hepta-native/src/shared/hepta_windows_product_host_integration_review.rs"),
+  harness: root.join("tools/hepta-ui-product-host-review-contract/Cargo.toml"),
+  harness_lib: root.join("tools/hepta-ui-product-host-review-contract/src/lib.rs"),
+  producer: root.join("scripts/hepta-ui-v4-product-host-integration-review"),
+  schema: root.join("docs/ui/schemas/hepta.ui.v4.windows-product-host-integration-review-envelope.v1.schema.json"),
+  contract: root.join("docs/ui/HEPTA_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_V1.json"),
+  document: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_21_PRODUCT_HOST_INTEGRATION_REVIEW_2026-08-28.md"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-product-host-integration-review.yml")
+}.freeze
+lifecycle = root.join("apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs")
+shared_mod = root.join("apps/hepta-native/src/shared/mod.rs")
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+checks["file.lifecycle"] = lifecycle.file? && !lifecycle.zero?
+checks["file.shared_mod"] = shared_mod.file? && !shared_mod.zero?
+
+rust = files.fetch(:rust).read
+harness = files.fetch(:harness).read
+harness_lib = files.fetch(:harness_lib).read
+producer = files.fetch(:producer).read
+schema = JSON.parse(files.fetch(:schema).read)
+contract = JSON.parse(files.fetch(:contract).read)
+document = files.fetch(:document).read
+workflow = files.fetch(:workflow).read
+lifecycle_source = lifecycle.read
+shared_mod_source = shared_mod.read
+
+checks["rust.statuses"] = %w[
+  EligibleForImplementationReview
+  RejectedRuntimeProvenance
+  RejectedQualificationIndex
+  RejectedCandidateIdentity
+  RejectedMakepadRevision
+  RejectedWindowIdentity
+  RejectedRuntimeSequence
+  RejectedRuntimeChain
+  RejectedBindingEscape
+  RejectedAuthorityEscape
+].all? { |term| rust.include?(term) }
+checks["rust.constants_false"] = %w[
+  HEPTA_WINDOWS_REVIEW_RUNTIME_PROVENANCE_VALIDATED
+  HEPTA_WINDOWS_REVIEW_IMPLEMENTATION_APPROVED
+  HEPTA_WINDOWS_REVIEW_PRODUCT_HOST_MAY_BIND
+  HEPTA_WINDOWS_REVIEW_PRODUCT_BOUND
+  HEPTA_WINDOWS_REVIEW_TRANSIENT_SYSTEM_MATERIAL_BOUND
+  HEPTA_WINDOWS_REVIEW_COMPLETE_PROFILE_BOUND
+  HEPTA_WINDOWS_REVIEW_SYSTEM_MATERIAL_BOUND
+  HEPTA_WINDOWS_REVIEW_NATIVE_PRODUCT_RUNTIME
+  HEPTA_WINDOWS_REVIEW_DEVICE_VALIDATED
+  HEPTA_WINDOWS_REVIEW_PRODUCTION_AUTHORITY
+  HEPTA_WINDOWS_REVIEW_EFFECT_AUTHORITY
+  HEPTA_WINDOWS_REVIEW_LIVE_ADAPTER_AUTHORITY
+  HEPTA_WINDOWS_REVIEW_OPERATOR_ACCEPTANCE
+  HEPTA_WINDOWS_REVIEW_PROMOTION
+  HEPTA_WINDOWS_REVIEW_RELEASE
+].all? { |name| rust.include?("pub const #{name}: bool = false;") }
+checks["rust.review_only_plan"] =
+  rust.include?("feature_flag_default_enabled: false") &&
+  rust.include?("automatic_binding_allowed: false") &&
+  rust.include?("operator_acceptance_required: true") &&
+  rust.include?("device_validation_required: true") &&
+  rust.include?("rollback_to_solid_required: true") &&
+  rust.include?("high_contrast_recheck_required: true") &&
+  rust.include?("transparency_preference_recheck_required: true") &&
+  rust.include?("suspend_shutdown_unbind_required: true")
+checks["rust.exact_runtime_requirements"] =
+  rust.include?("provenance_level != HeptaWindowsProvenanceLevel::WindowsRuntime") &&
+  rust.include?("qualification_level != HeptaWindowsProvenanceLevel::WindowsRuntime") &&
+  rust.include?("root_sequence != 1") &&
+  rust.include?("acrylic_sequence != 2") &&
+  rust.include?("rollback_sequence != 3") &&
+  rust.include?("destroyed_acknowledged") &&
+  rust.include?("root_hwnd == evidence.transient_hwnd")
+checks["rust.candidate_makepad"] =
+  rust.include?("candidate_commit != evidence.provenance_candidate_commit") &&
+  rust.include?("candidate_tree != evidence.qualification_candidate_tree") &&
+  rust.include?("HEPTA_WINDOWS_REVIEW_MAKEPAD_REVISION")
+checks["rust.no_unsafe_or_binding"] =
+  !rust.include?("unsafe") &&
+  !rust.include?("script_mod!") &&
+  !rust.include?("DwmSetWindowAttribute") &&
+  !rust.include?("bind_material_runtime") &&
+  !rust.include?("HeptaPlatformMaterialHost::apply")
+checks["rust.tests"] = %w[
+  exact_runtime_evidence_is_review_eligible_but_never_executable
+  pre_runtime_or_missing_qualification_is_rejected
+  candidate_or_makepad_drift_is_rejected
+  reused_window_or_sequence_drift_is_rejected
+  incomplete_runtime_chain_is_rejected
+  binding_or_authority_escape_is_rejected
+].all? { |term| rust.include?(term) }
+
+checks["harness.isolated"] =
+  harness.include?("[workspace]") &&
+  harness.include?("edition = \"2024\"") &&
+  harness.include?("publish = false") &&
+  harness_lib.include?("#![forbid(unsafe_code)]") &&
+  harness_lib.include?("hepta_windows_product_host_integration_review.rs")
+checks["lifecycle.unbound"] =
+  !lifecycle_source.include?("HeptaWindowsProductHostReview") &&
+  !lifecycle_source.include?("evaluate_windows_product_host_integration_review")
+checks["shared_mod.unregistered"] =
+  !shared_mod_source.include?("hepta_windows_product_host_integration_review")
+
+checks["producer.statuses"] = %w[
+  PASS_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_ENVELOPE
+  BLOCKED_WINDOWS_RUNTIME_PROVENANCE_REQUIRED
+  FAIL_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_ENVELOPE
+].all? { |status| producer.include?(status) }
+checks["producer.inputs"] = %w[
+  PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE
+  PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE
+  PASS_EXACT_HEAD_WINDOWS_RUNTIME_QUALIFICATION
+  PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE
+].all? { |status| producer.include?(status) }
+checks["producer.sha_sealing"] =
+  producer.include?("Digest::SHA256.file") &&
+  producer.include?("Digest::SHA256.hexdigest(canonical_json(binding))") &&
+  producer.include?("bindingDigest")
+checks["producer.exact_runtime_chain"] =
+  producer.include?("runtime sequence types invalid") &&
+  producer.include?("sequences == [1, 2, 3]") &&
+  producer.include?("root/transient WindowId reused") &&
+  producer.include?("root/transient HWND reused") &&
+  producer.include?("Destroyed identity drift") &&
+  producer.include?("root Mica receipt mismatch") &&
+  producer.include?("Acrylic receipt mismatch") &&
+  producer.include?("rollback receipt mismatch")
+checks["producer.review_only"] =
+  producer.include?("IMPLEMENTATION_REVIEW_ONLY") &&
+  producer.include?("hepta_ui_windows_system_material_v4") &&
+  producer.include?("\"productHostMayBind\" => false") &&
+  producer.include?("\"implementationApproved\" => false") &&
+  producer.include?("\"automaticBindingAllowed\" => false")
+checks["producer.self_tests"] = %w[
+  runtime PASS self-test failed
+  pre-runtime block self-test failed
+  candidate drift was accepted
+  authority escape was accepted
+  sequence type drift was accepted
+].all? { |term| producer.include?(term) }
+checks["producer.atomic_bounded"] =
+  producer.include?("write_json_atomic") &&
+  producer.include?("MAX_FAILURES = 64") &&
+  producer.include?("MAX_FAILURE_BYTES = 4096")
+
+checks["schema.statuses"] = schema.dig("properties", "status", "enum") == [
+  "PASS_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_ENVELOPE",
+  "BLOCKED_WINDOWS_RUNTIME_PROVENANCE_REQUIRED",
+  "FAIL_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_ENVELOPE"
+]
+checks["schema.authority_false"] =
+  schema.dig("$defs", "authority", "properties").values.all? { |entry| entry["const"] == false }
+checks["schema.product_false"] = %w[
+  implementationApproved productHostMayBind productBound transientSystemMaterialBound
+  completeProfileBound systemMaterialBound nativeProductRuntime deviceValidation
+].all? { |key| schema.dig("$defs", "qualification", "properties", key, "const") == false }
+checks["schema.plan_review_only"] =
+  schema.dig("$defs", "plan", "properties", "stage", "const") == "IMPLEMENTATION_REVIEW_ONLY" &&
+  schema.dig("$defs", "plan", "properties", "defaultEnabled", "const") == false &&
+  schema.dig("$defs", "plan", "properties", "automaticBindingAllowed", "const") == false
+checks["schema.failure_bounded"] =
+  schema.dig("properties", "failures", "maxItems") == 64 &&
+  schema.dig("properties", "failures", "items", "maxLength") == 4096
+
+checks["contract.source_only"] =
+  contract.dig("qualification", "sourceImplemented") == true &&
+  contract.fetch("qualification").reject { |key, _| key == "sourceImplemented" }.values.none? &&
+  contract.fetch("authority").values.none?
+checks["contract.review_requirements"] =
+  contract.dig("reviewController", "featureFlagDefaultEnabled") == false &&
+  contract.dig("reviewController", "automaticBindingAllowed") == false &&
+  contract.dig("reviewController", "operatorAcceptanceRequired") == true &&
+  contract.dig("reviewController", "deviceValidationRequired") == true &&
+  contract.dig("reviewController", "rollbackDrillRequired") == true &&
+  contract.dig("reviewController", "productLifecycleIntegration") == false &&
+  contract.dig("reviewController", "scriptRegistration") == false
+
+checks["workflow.read_only"] =
+  workflow.include?("contents: read") && workflow.include?("actions: read") &&
+  !workflow.match?(/^\s*(?:deploy|publish|promotion|release)\s*:/i)
+checks["workflow.source_validation"] =
+  workflow.include?("product-host-integration-review --self-test") &&
+  workflow.include?("product-host-integration-review-gate") &&
+  workflow.include?("hepta-ui-product-host-review-contract/Cargo.toml")
+checks["workflow.provenance_replay"] =
+  workflow.include?("hepta-ui-v4-execution-provenance-audit") &&
+  workflow.include?("PASS_EXACT_HEAD_PRE_RUNTIME_PROVENANCE") &&
+  workflow.include?("PASS_EXACT_HEAD_WINDOWS_RUNTIME_PROVENANCE") &&
+  workflow.include?("BLOCKED_WINDOWS_RUNTIME_PROVENANCE_REQUIRED") &&
+  workflow.include?("PASS_WINDOWS_PRODUCT_HOST_INTEGRATION_REVIEW_ENVELOPE")
+checks["workflow.safe_artifacts"] =
+  workflow.include?("unzip -Z1") &&
+  workflow.include?("path traversal archive entry") &&
+  workflow.include?("unsafe artifact name") &&
+  workflow.include?("artifact head drift")
+checks["workflow.no_product_binding"] =
+  !workflow.include?("HeptaPlatformMaterialHost::apply") &&
+  !workflow.include?("DwmSetWindowAttribute") &&
+  !workflow.include?("product_host_may_bind=true")
+checks["document.boundary"] =
+  document.include?("IMPLEMENTATION_REVIEW_ONLY") &&
+  document.include?("productHostMayBind") &&
+  document.include?("operatorAcceptance=false") &&
+  document.include?("release=false")
+
+failures = checks.reject { |_key, value| value }.keys
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.product-host-integration-review-source-gate.v1",
+  status: failures.empty? ? "PASS_PRODUCT_HOST_INTEGRATION_REVIEW_SOURCE_ONLY" :
+    "FAIL_PRODUCT_HOST_INTEGRATION_REVIEW_SOURCE",
+  source_implemented: failures.empty?,
+  rust_compile_validation: false,
+  hosted_source_validation: false,
+  runtime_provenance_validation: false,
+  review_envelope_produced: false,
+  implementation_review_eligible: false,
+  implementation_approved: false,
+  product_host_may_bind: false,
+  product_bound: false,
+  transient_system_material_binding: false,
+  complete_profile_binding: false,
+  system_material_binding: false,
+  native_product_runtime: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failures
+)
+exit(failures.empty? ? 0 : 1)
