@@ -1,0 +1,213 @@
+def validate_policy(policy: dict[str, Any]) -> None:
+    expected_keys = {
+        "schema",
+        "schema_version",
+        "phase",
+        "repository",
+        "base_branch",
+        "accepted_source_pointer_path",
+        "topology_contract_path",
+        "pointer_path",
+        "topology_receipt_snapshot_prefix",
+        "challenge_snapshot_prefix",
+        "allowed_auxiliary_paths",
+        "review",
+        "claims_after_acceptance",
+        "authority",
+        "policy_id",
+    }
+    if set(policy) != expected_keys:
+        fail("topology acceptance policy field set is incomplete or unknown")
+    if policy.get("schema") != POLICY_SCHEMA or policy.get("schema_version") != 1:
+        fail("topology acceptance policy schema/version drifted")
+    if policy.get("phase") != "DEVELOPMENT":
+        fail("topology acceptance policy phase must remain DEVELOPMENT")
+    verify_self_binding(
+        policy,
+        id_key="policy_id",
+        prefix="hepta-servo-worker-source-topology-acceptance-review-policy:v1:",
+        domain=POLICY_DOMAIN,
+        label="topology acceptance policy",
+    )
+    if policy.get("repository") != REPOSITORY or policy.get("base_branch") != BASE_BRANCH:
+        fail("topology acceptance policy repository/base branch drifted")
+    expected_paths = {
+        "accepted_source_pointer_path": (
+            "docs/hepta-vnext/browser/source-acceptance/ACCEPTED_SOURCE_POINTER.json"
+        ),
+        "topology_contract_path": (
+            "docs/hepta-vnext/browser/SERVO_WORKER_SOURCE_TOPOLOGY_V1.json"
+        ),
+        "pointer_path": (
+            "docs/hepta-vnext/browser/source-topology-acceptance/"
+            "ACCEPTED_WORKER_SOURCE_TOPOLOGY_POINTER.json"
+        ),
+    }
+    for key, expected in expected_paths.items():
+        if validate_repo_path(policy.get(key), f"topology policy {key}") != expected:
+            fail(f"topology acceptance policy {key} drifted")
+    for key in ("topology_receipt_snapshot_prefix", "challenge_snapshot_prefix"):
+        validate_repo_path(policy.get(key), f"topology policy {key}", directory=True)
+
+    auxiliary = policy.get("allowed_auxiliary_paths")
+    if not isinstance(auxiliary, list) or not auxiliary:
+        fail("topology acceptance policy allowed auxiliary paths are missing")
+    if auxiliary != sorted(set(auxiliary), key=lambda item: item.encode("utf-8")):
+        fail("topology acceptance auxiliary paths must be unique and bytewise sorted")
+    for item in auxiliary:
+        validate_repo_path(item, "topology acceptance auxiliary path")
+
+    review = policy.get("review")
+    expected_review_keys = {
+        "minimum_approvals",
+        "reviewer_must_differ_from_pr_author",
+        "require_current_head_commit",
+        "reject_changes_requested",
+        "allowed_author_associations",
+        "required_body_prefix",
+        "head_ref_prefix",
+        "draft_allowed",
+        "codeowner_review_required",
+        "pointer_must_bind_pull_request_number",
+        "pointer_must_bind_head_ref",
+        "required_status_check",
+    }
+    if not isinstance(review, dict) or set(review) != expected_review_keys:
+        fail("topology acceptance review policy fields drifted")
+    require_positive_int(review.get("minimum_approvals"), "topology minimum approvals")
+    for key in (
+        "reviewer_must_differ_from_pr_author",
+        "require_current_head_commit",
+        "reject_changes_requested",
+        "pointer_must_bind_pull_request_number",
+        "pointer_must_bind_head_ref",
+    ):
+        if review.get(key) is not True:
+            fail(f"topology acceptance policy must require {key}")
+    if review.get("draft_allowed") is not False:
+        fail("topology acceptance policy cannot allow draft PRs")
+    if review.get("codeowner_review_required") is not False:
+        fail("topology acceptance policy must not claim an unenforced CODEOWNER identity check")
+    associations = review.get("allowed_author_associations")
+    if (
+        not isinstance(associations, list)
+        or associations != sorted(set(associations))
+        or any(item not in {"COLLABORATOR", "MEMBER", "OWNER"} for item in associations)
+    ):
+        fail("topology acceptance trusted associations drifted")
+    if review.get("required_body_prefix") != "HEPTA_WORKER_TOPOLOGY_ACCEPT_V1 ":
+        fail("topology acceptance review body prefix drifted")
+    if review.get("head_ref_prefix") != (
+        "review/hepta-servo-worker-topology-acceptance-"
+    ):
+        fail("topology acceptance head-ref prefix drifted")
+    if review.get("required_status_check") != (
+        "Worker source/API topology accepted pointer live review"
+    ):
+        fail("topology acceptance required status check drifted")
+    if policy.get("claims_after_acceptance") != ACCEPTED_TOPOLOGY_CLAIMS:
+        fail("topology acceptance post-review claims drifted")
+    if policy.get("authority") != AUTHORITY:
+        fail("topology acceptance policy authority posture is open")
+
+
+def deterministic_snapshot_path(
+    value: Any,
+    *,
+    prefix: str,
+    identifier: str,
+    label: str,
+) -> str:
+    path = validate_repo_path(value, label)
+    expected = prefix + identifier.rsplit(":", 1)[-1] + ".json"
+    if path != expected:
+        fail(f"{label} is not deterministic")
+    return path
+
+
+def compile_challenge(
+    source_pointer: dict[str, Any],
+    source_pointer_raw: bytes,
+    topology_receipt: dict[str, Any],
+    topology_receipt_raw: bytes,
+    topology: dict[str, Any],
+    topology_raw: bytes,
+    policy: dict[str, Any],
+    policy_raw: bytes,
+    captured_at_utc: str | None,
+) -> dict[str, Any]:
+    validate_policy(policy)
+    challenge: dict[str, Any] = {
+        "schema": CHALLENGE_SCHEMA,
+        "schema_version": 1,
+        "phase": "DEVELOPMENT",
+        "claim_level": "WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_REVIEW_CHALLENGE_ONLY",
+        "captured_at_utc": timestamp(captured_at_utc),
+        "accepted_source_pointer": {
+            "id": source_pointer["pointer_id"],
+            "sha256": sha256_bytes(source_pointer_raw),
+            "bytes": len(source_pointer_raw),
+        },
+        "topology_receipt": {
+            "id": topology_receipt["receipt_id"],
+            "sha256": sha256_bytes(topology_receipt_raw),
+            "bytes": len(topology_receipt_raw),
+        },
+        "topology_contract": {
+            "id": topology["topology_id"],
+            "sha256": sha256_bytes(topology_raw),
+            "bytes": len(topology_raw),
+        },
+        "policy": {
+            "id": policy["policy_id"],
+            "sha256": sha256_bytes(policy_raw),
+            "bytes": len(policy_raw),
+        },
+        "hepta": dict(source_pointer["hepta"]),
+        "servo": dict(source_pointer["servo"]),
+        "requested_decision": "ACCEPT_WORKER_SOURCE_TOPOLOGY_ONLY",
+        "claims_after_acceptance": dict(ACCEPTED_TOPOLOGY_CLAIMS),
+        "authority": dict(AUTHORITY),
+        "decision": "REVIEW_CHALLENGE_CREATED_TOPOLOGY_NOT_ACCEPTED_BUILD_NOT_AUTHORIZED",
+    }
+    challenge["challenge_id"] = (
+        "hepta-servo-worker-source-topology-acceptance-review-challenge:v1:"
+        + framed(CHALLENGE_DOMAIN, canonical(challenge))
+    )
+    return challenge
+
+
+def validate_challenge(
+    challenge: dict[str, Any],
+    source_pointer: dict[str, Any],
+    source_pointer_raw: bytes,
+    topology_receipt: dict[str, Any],
+    topology_receipt_raw: bytes,
+    topology: dict[str, Any],
+    topology_raw: bytes,
+    policy: dict[str, Any],
+    policy_raw: bytes,
+) -> None:
+    if challenge.get("schema") != CHALLENGE_SCHEMA or challenge.get("schema_version") != 1:
+        fail("topology acceptance challenge schema/version drifted")
+    verify_self_binding(
+        challenge,
+        id_key="challenge_id",
+        prefix="hepta-servo-worker-source-topology-acceptance-review-challenge:v1:",
+        domain=CHALLENGE_DOMAIN,
+        label="topology acceptance challenge",
+    )
+    expected = compile_challenge(
+        source_pointer,
+        source_pointer_raw,
+        topology_receipt,
+        topology_receipt_raw,
+        topology,
+        topology_raw,
+        policy,
+        policy_raw,
+        challenge.get("captured_at_utc"),
+    )
+    if challenge != expected:
+        fail("topology acceptance challenge does not match source, receipt, topology and policy")
+
