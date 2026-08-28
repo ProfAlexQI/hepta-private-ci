@@ -1,6 +1,8 @@
 use super::*;
 
+#[path = "grounding/ledger.rs"]
 mod ledger;
+#[path = "grounding/prepare.rs"]
 mod prepare;
 
 pub(super) use ledger::insert_tx;
@@ -20,9 +22,7 @@ where
     super::super::frame_part(&mut hasher, b"hepta:cognitive:fact-identities:v1");
     super::super::frame_part(
         &mut hasher,
-        &u64::try_from(count)
-            .unwrap_or(u64::MAX)
-            .to_be_bytes(),
+        &u64::try_from(count).unwrap_or(u64::MAX).to_be_bytes(),
     );
     for identity in identities {
         super::super::frame_part(&mut hasher, identity.kind.as_str().as_bytes());
@@ -114,10 +114,7 @@ fn canonical_text(
     Ok(value)
 }
 
-fn require_semantic_text(
-    value: &str,
-    label: &str,
-) -> Result<(), CognitiveStoreError> {
+fn require_semantic_text(value: &str, label: &str) -> Result<(), CognitiveStoreError> {
     if semantic_normalize(value).is_empty() {
         return Err(CognitiveStoreError::Invalid(format!(
             "{label} contains no semantic characters"
@@ -127,6 +124,5 @@ fn require_semantic_text(
 }
 
 pub(super) fn to_i64(value: u64, label: &str) -> Result<i64, CognitiveStoreError> {
-    i64::try_from(value)
-        .map_err(|_| CognitiveStoreError::Invalid(format!("{label} exceeds i64")))
+    i64::try_from(value).map_err(|_| CognitiveStoreError::Invalid(format!("{label} exceeds i64")))
 }

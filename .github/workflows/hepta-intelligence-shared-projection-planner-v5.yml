@@ -1,0 +1,105 @@
+name: hepta-intelligence-shared-projection-planner-v7
+
+on:
+  push:
+    branches:
+      - "codex/hepta-intelligence-shared-projection-planner-v5-20260828"
+    paths:
+      - "codex-rs/hepta-memory/src/cognitive_store.rs"
+      - "codex-rs/hepta-memory/src/cognitive_kg_store.rs"
+      - "codex-rs/hepta-memory/src/cognitive_projection_planner.rs"
+      - "codex-rs/hepta-memory/src/cognitive_test_support.rs"
+      - "codex-rs/hepta-memory/src/fact_grounding/**"
+      - "codex-rs/hepta-memory/src/framing.rs"
+      - "scripts/check-hepta-intelligence-p0-3-2-clippy.py"
+      - "scripts/run-hepta-intelligence-shared-projection-planner-v7.py"
+      - "scripts/verify-hepta-intelligence-shared-projection-planner-v5.py"
+      - ".github/workflows/hepta-intelligence-shared-projection-planner-v5.yml"
+  pull_request:
+    paths:
+      - "codex-rs/hepta-memory/src/cognitive_store.rs"
+      - "codex-rs/hepta-memory/src/cognitive_kg_store.rs"
+      - "codex-rs/hepta-memory/src/cognitive_projection_planner.rs"
+      - "codex-rs/hepta-memory/src/cognitive_test_support.rs"
+      - "codex-rs/hepta-memory/src/fact_grounding/**"
+      - "codex-rs/hepta-memory/src/framing.rs"
+      - "scripts/check-hepta-intelligence-p0-3-2-clippy.py"
+      - "scripts/run-hepta-intelligence-shared-projection-planner-v7.py"
+      - "scripts/verify-hepta-intelligence-shared-projection-planner-v5.py"
+      - ".github/workflows/hepta-intelligence-shared-projection-planner-v5.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-shared-projection-planner-v7-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-head-qualification:
+    name: P0.3.2 exact-head shared projection qualification v7
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+
+      - name: Run every fail-closed gate
+        run: python3 scripts/run-hepta-intelligence-shared-projection-planner-v7.py
+
+      - name: Upload exact-head evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p0-3-2-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/hepta-intelligence-shared-projection-planner-v7
+          if-no-files-found: error
+          retention-days: 21
+
+      - name: Enforce exact-head receipt
+        if: always()
+        env:
+          EXPECTED_HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(
+              "artifacts/hepta-intelligence-shared-projection-planner-v7/"
+              "qualification-receipt.json"
+          )
+          receipt = json.loads(path.read_text(encoding="utf-8"))
+          assert receipt["head"] == os.environ["EXPECTED_HEAD"]
+          assert receipt["shared_projection_planner"] is True
+          assert receipt["current_projection_replanned"] is True
+          assert receipt["ledger_verified_in_snapshot"] is True
+          assert receipt["test_root_canonicalized"] is True
+          assert receipt["qualified"] is True
+          assert all(check["passed"] for check in receipt["checks"])
+          for key in (
+              "wired",
+              "tool_v3_registered",
+              "tool_v4_registered",
+              "default_projection_pointer_changed",
+              "default_recall_query_changed",
+              "production_projection_gate",
+              "production_authority",
+              "external_effects",
+              "operator_accepted",
+              "promoted",
+              "callers_ratchet",
+          ):
+              assert receipt[key] is False, key
+          PY

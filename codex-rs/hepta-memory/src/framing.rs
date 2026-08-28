@@ -4,6 +4,9 @@ use codex_hepta_contracts::Sha256Digest;
 use sha2::Digest;
 use sha2::Sha256;
 
+#[path = "cognitive_projection_planner.rs"]
+pub(crate) mod cognitive_projection_planner;
+
 #[path = "fact_grounding/durable.rs"]
 mod durable_fact_grounding;
 #[path = "fact_grounding/shadow_projection_gate.rs"]

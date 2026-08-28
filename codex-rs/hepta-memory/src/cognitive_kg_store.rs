@@ -20,6 +20,8 @@ use crate::cognitive_intelligence_writer::canonical_relation_id;
 use crate::cognitive_intelligence_writer::occurrence_edge_id;
 use crate::cognitive_intelligence_writer::occurrence_node_id;
 use crate::cognitive_store::unavailable;
+use crate::framing::cognitive_projection_planner::ProjectionEligibilityPolicy;
+use crate::framing::cognitive_projection_planner::ProjectionSemanticPlan;
 use crate::framing::frame_part;
 
 pub(crate) const MAX_SCOPE_HEADS: usize = 10_000;
@@ -35,12 +37,16 @@ pub(crate) struct ProjectionHead {
     pub(crate) verification: String,
     pub(crate) lifecycle: String,
     pub(crate) fact_set_sha256: String,
+    pub(crate) entity_count: i64,
+    pub(crate) relation_count: i64,
+    pub(crate) grounding_receipt_sha256: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ProjectionNode {
     pub(crate) node_id: String,
     pub(crate) canonical_entity_id: String,
+    pub(crate) entity_key: String,
     pub(crate) entity_type: String,
     pub(crate) label: String,
     pub(crate) valid_from: i64,
@@ -55,6 +61,9 @@ pub(crate) struct ProjectionNode {
 pub(crate) struct ProjectionEdge {
     pub(crate) edge_id: String,
     pub(crate) canonical_relation_id: String,
+    pub(crate) relation_key: String,
+    pub(crate) from_entity_key: String,
+    pub(crate) to_entity_key: String,
     pub(crate) from_node_id: String,
     pub(crate) to_node_id: String,
     pub(crate) relation: String,
@@ -100,6 +109,7 @@ impl CognitiveStore {
                 )));
             }
         }
+
         let (scope_kind, workspace_sha256) = scope.database_parts();
         let head_rows = sqlx::query(
             "SELECT r.memory_id, r.revision, r.content_sha256,
@@ -160,6 +170,9 @@ impl CognitiveStore {
                 verification: row.try_get("verification").map_err(unavailable)?,
                 lifecycle: row.try_get("lifecycle").map_err(unavailable)?,
                 fact_set_sha256,
+                entity_count,
+                relation_count,
+                grounding_receipt_sha256: None,
             });
         }
         let input_heads_sha256 = input_heads_digest(&projection_scope, &heads);
@@ -223,6 +236,7 @@ impl CognitiveStore {
             nodes.push(ProjectionNode {
                 node_id: occurrence_node_id(&memory_id, memory_revision, &entity_key),
                 canonical_entity_id: stored_canonical_entity_id,
+                entity_key,
                 entity_type,
                 label,
                 valid_from: row
@@ -295,6 +309,9 @@ impl CognitiveStore {
             edges.push(ProjectionEdge {
                 edge_id: occurrence_edge_id(&memory_id, memory_revision, &relation_key),
                 canonical_relation_id: stored_canonical_relation_id,
+                relation_key,
+                from_entity_key: from_entity_key.clone(),
+                to_entity_key: to_entity_key.clone(),
                 from_node_id: occurrence_node_id(&memory_id, memory_revision, &from_entity_key),
                 to_node_id: occurrence_node_id(&memory_id, memory_revision, &to_entity_key),
                 relation,
@@ -308,7 +325,26 @@ impl CognitiveStore {
                 source_revision: row.try_get("source_revision").map_err(unavailable)?,
             });
         }
-        let output_sha256 = output_digest(&projection_scope, &nodes, &edges);
+
+        let semantic_plan = ProjectionSemanticPlan::build(
+            &self.owner_agent_id,
+            scope,
+            ProjectionEligibilityPolicy::CurrentActiveVerified,
+            heads,
+            nodes,
+            edges,
+        )?;
+        if semantic_plan.projection_scope != projection_scope
+            || semantic_plan.policy != ProjectionEligibilityPolicy::CurrentActiveVerified
+            || semantic_plan.input_heads_sha256 != input_heads_sha256
+        {
+            return Err(CognitiveStoreError::Corrupt(
+                "shared semantic planner diverged from the product projection input".to_string(),
+            ));
+        }
+        let nodes = semantic_plan.nodes;
+        let edges = semantic_plan.edges;
+        let output_sha256 = semantic_plan.output_sha256;
 
         sqlx::query(
             "INSERT INTO kg_projection (projection_scope, generation)

@@ -157,10 +157,7 @@ async fn legacy_and_zero_fact_statuses_are_explicit() {
         .expect("legacy write");
     assert_eq!(
         store
-            .durable_fact_grounding_status(
-                &legacy.memory.id.memory_id,
-                legacy.memory.id.revision,
-            )
+            .durable_fact_grounding_status(&legacy.memory.id.memory_id, legacy.memory.id.revision,)
             .await
             .expect("legacy status"),
         "legacy_unreviewed"
@@ -178,10 +175,7 @@ async fn legacy_and_zero_fact_statuses_are_explicit() {
         .expect("zero write");
     assert_eq!(
         store
-            .durable_fact_grounding_status(
-                &zero.memory.id.memory_id,
-                zero.memory.id.revision,
-            )
+            .durable_fact_grounding_status(&zero.memory.id.memory_id, zero.memory.id.revision,)
             .await
             .expect("zero status"),
         "zero_fact"
@@ -211,17 +205,15 @@ async fn invalid_grounding_rolls_back_without_rows() {
         .fetch_one(&store.pool)
         .await
         .expect("source count");
-    let memories: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM memory_revisions")
+    let memories: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM memory_revisions")
+        .fetch_one(&store.pool)
+        .await
+        .expect("memory count");
+    let grounding: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM kg_revision_fact_grounding_receipts")
             .fetch_one(&store.pool)
             .await
-            .expect("memory count");
-    let grounding: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM kg_revision_fact_grounding_receipts",
-    )
-    .fetch_one(&store.pool)
-    .await
-    .expect("grounding count");
+            .expect("grounding count");
     assert_eq!((sources, memories, grounding), (0, 0, 0));
 }
 
@@ -266,10 +258,7 @@ async fn correction_persists_a_second_grounded_revision() {
     assert_eq!(second.memory.id.revision, 2);
     assert_eq!(
         store
-            .durable_fact_grounding_status(
-                &second.memory.id.memory_id,
-                second.memory.id.revision,
-            )
+            .durable_fact_grounding_status(&second.memory.id.memory_id, second.memory.id.revision,)
             .await
             .expect("status"),
         "grounded_v1"
