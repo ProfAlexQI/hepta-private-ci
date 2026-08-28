@@ -6,10 +6,8 @@ on:
     paths:
       - "codex-rs/hepta-shadow-qualification/**"
       - "scripts/hepta-servo-*.py"
-      - "scripts/hepta-servo-worker-source-topology-acceptance-v1/**"
       - "scripts/verify-hepta-servo-*.py"
       - "scripts/tests/test_hepta_servo_*.py"
-      - "scripts/tests/hepta_servo_worker_source_topology_acceptance_v1/**"
       - "docs/hepta-vnext/browser/**"
       - "third_party/servo-patches/**"
       - ".github/workflows/hepta-browser-ci.yml"
@@ -33,18 +31,12 @@ jobs:
     uses: ./.github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml
     secrets: inherit
 
-  topology-acceptance-live-review-v1:
-    name: Worker topology live review or explicit not-applicable gate
-    uses: ./.github/workflows/hepta-servo-worker-source-topology-acceptance-live-review-v1.yml
-    secrets: inherit
-
   required:
     name: Hepta Browser next required v9
     if: ${{ always() }}
     needs:
       - canonical-v8
       - topology-acceptance-pointer-v1
-      - topology-acceptance-live-review-v1
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -74,11 +66,11 @@ jobs:
                       "status": "PASS_TOOLING_AND_FIXTURES_ONLY",
                       "dependencies": sorted(needs),
                       "canonical_previous_gate": "v8",
-                      "source_live_review": "v2_trusted_base",
+                      "source_live_review": "v2_trusted_base_standalone_required_status",
                       "topology_acceptance_review_policy": "v1_self_bound",
                       "topology_acceptance_review_challenge": "v1_create_only",
                       "topology_acceptance_pointer": "v1_verify_only_no_creation_command",
-                      "topology_live_current_head_review": "required_or_explicitly_not_applicable",
+                      "topology_live_current_head_review": "trusted_base_standalone_required_status",
                       "required_status_check": "Worker source/API topology accepted pointer live review",
                       "exact_servo_source_accepted": False,
                       "source_review_candidate_accepted": False,
@@ -111,12 +103,12 @@ jobs:
             echo "All dependencies cover tooling and fixtures only."
             echo
             echo "- canonical v8 source/pre-build tooling: required"
-            echo "- source acceptance trusted-base live review v2: required by v8"
+            echo "- source acceptance trusted-base live review v2: standalone required status"
             echo "- accepted-source prerequisite for topology review: required"
             echo "- self-bound Worker topology acceptance policy: required"
             echo "- create-only topology review challenge: required"
             echo "- topology pointer verifier with no creation command: required"
-            echo "- trusted-base current-head topology review: required for future real acceptance"
+            echo "- trusted-base current-head topology review: standalone required status"
             echo "- exact Servo source accepted: false"
             echo "- Worker source topology accepted: false"
             echo "- build authorized: false"
