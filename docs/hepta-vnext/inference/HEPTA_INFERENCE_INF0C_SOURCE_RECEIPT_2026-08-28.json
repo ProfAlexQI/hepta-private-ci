@@ -1,5 +1,5 @@
 {
-  "schema": "hepta.inference.inf0c_source_receipt.v3",
+  "schema": "hepta.inference.inf0c_source_receipt.v4",
   "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
   "plan_version": "2.0.0",
   "source_binding": {
@@ -10,8 +10,8 @@
   },
   "development_branch": "codex/hepta-inference-runtime-v2-20260828",
   "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce",
-  "source_candidate_commit": "0ea322b71c3e615506ed98c8f72d5c942661d7f9",
-  "source_candidate_tree": "4e1e83b819ed9956430802f4c971f01d095877dc",
+  "source_candidate_commit": "ab76fe3714159ded2b97732e926fa346eea97f56",
+  "source_candidate_tree": "17befba2c060f2be4469c359f77ae9ce79587f34",
   "source_candidate_components": {
     "inf0a_source_rebind": true,
     "inf0b_reference_contracts": true,
@@ -35,37 +35,24 @@
     "inf0c_modular_source_fragments": true,
     "inf0c_explicit_fragment_rustfmt_gate": true,
     "inf0c_blank_pull_frame_gate_disambiguated": true,
+    "inf0c_merge_ref_exact_head_gate": true,
     "inf1_daemon": false
   },
-  "local_validation": {
-    "python_source_gate_syntax": "PASS",
-    "real_e2e_harness_syntax": "PASS",
-    "json_parse": "PASS",
-    "workflow_yaml_parse": "PASS",
-    "e2e_non_loopback_rejection": "PASS",
-    "e2e_redirect_fail_closed": "PASS",
-    "static_source_contract": "PASS",
-    "source_gate_bundle_covers_include_fragments": true,
-    "remote_source_tree_shape_reviewed": "PASS",
+  "validation": {
+    "local_python_syntax": "PASS",
+    "local_receipt_json_parse": "PASS",
     "exact_candidate_source_gate": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
     "rust_fmt": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
     "rust_test": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
     "rust_clippy": "NOT_RUN_FOR_NEW_RECEIPT_HEAD",
     "real_model_e2e": "NOT_RUN",
-    "cancellation": "NOT_RUN",
+    "transport_disconnect": "NOT_RUN",
+    "backend_cancellation_ack": "NOT_RUN",
     "controlled_restart": "NOT_RUN",
     "hardware_qualification": "NOT_RUN"
   },
-  "ci": {
-    "current_candidate": {
-      "status": "NOT_RUN_FOR_RECEIPT_HEAD",
-      "runner_assigned": false,
-      "source_gate": "NOT_RUN",
-      "reference_contract": "NOT_RUN",
-      "compatibility_readiness": "NOT_RUN",
-      "real_software_e2e": "NOT_RUN"
-    },
-    "previous_executable_attempt": {
+  "ci_history": [
+    {
       "run_id": 33146906491,
       "head": "d409139d4d61c8ba83ccaf1e232a1ad62aa9754f",
       "runner_id": 1000023613,
@@ -73,10 +60,22 @@
       "python_source_syntax": "PASS",
       "source_gate": "EXECUTED_FAILED",
       "failure": "OLLAMA_EMPTY_LIST_SCAN_FALSE_POSITIVE_ON_BLANK_PULL_FRAME",
-      "reference_contract": "SKIPPED_AFTER_SOURCE_GATE",
-      "compatibility_readiness": "SKIPPED_AFTER_SOURCE_GATE",
       "classification": "EXECUTED_FAILED_SOURCE_GATE_FALSE_POSITIVE"
+    },
+    {
+      "run_id": 33148146228,
+      "head": "ed17c2012039771eb3f583879cdf3e34c62194f7",
+      "status": "SUPERSEDED_BY_MERGE_REF_GATE_FIX",
+      "qualification_claim": false
     }
+  ],
+  "current_ci": {
+    "status": "NOT_RUN_FOR_RECEIPT_HEAD",
+    "runner_assigned": false,
+    "source_gate": "NOT_RUN",
+    "reference_contract": "NOT_RUN",
+    "compatibility_readiness": "NOT_RUN",
+    "real_software_e2e": "NOT_RUN"
   },
   "claim": "SOURCE_PRESENT_NOT_RUN",
   "qualified": false,
@@ -98,11 +97,10 @@
     "release": false
   },
   "known_gaps": [
-    "the new exact receipt head has not executed the source gate or Rust fmt, tests, and Clippy on an assigned runner",
-    "the real-software E2E harness has not executed against fixed pre-installed Ollama and LM Studio model tuples",
-    "cancellation and controlled service-restart evidence are absent",
+    "the new exact receipt head has not executed source gate, Rust formatting, tests, or strict Clippy",
+    "the real-software E2E harness has not executed against fixed pre-installed Ollama and LM Studio tuples",
+    "transport disconnect, backend cancellation acknowledgement, and controlled restart receipts are absent",
     "hepta-inferd, the UDS protocol, native workers, and hardware performance receipts are absent",
-    "provider and model capabilities still require the future backend-manifest-policy intersection",
-    "INF-1 remains inactive and no production, effect, model-NPU, remote-inference, or promotion authority is granted"
+    "INF-1 remains inactive and all production, effect, model-NPU, remote-inference, and promotion authority remains closed"
   ]
 }
