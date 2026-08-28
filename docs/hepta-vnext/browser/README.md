@@ -37,7 +37,7 @@ This directory is the repository-native authority for the active Hepta browser l
 python3 scripts/verify-hepta-browser-plan.py
 python3 scripts/hepta-servo-exact-source-review-candidate-v2.py contract
 python3 scripts/hepta-servo-exact-source-acceptance-pointer-v1.py contract \
-  --policy docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json
+  --policy "$(pwd)/docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json"
 python3 scripts/verify-hepta-servo-exact-source-acceptance-pointer-v1.py
 python3 scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v1.py -v
 ```
