@@ -10,6 +10,7 @@
   },
   "branch": "codex/hepta-inference-runtime-v2-20260828",
   "stacked_branch": "codex/hepta-inference-inf0c-evidence-v2-20260828",
+  "stacked_cancel_branch": "codex/hepta-inference-inf0c-cancel-capability-v3-20260828",
   "current_stage": "INF-0C",
   "overall_status": "SOURCE_PRESENT_NOT_RUN",
   "evidence_taxonomy": [
@@ -51,9 +52,7 @@
     {
       "id": "INF-0B",
       "title": "backend_neutral_reference_contracts",
-      "depends_on": [
-        "INF-0A"
-      ],
+      "depends_on": ["INF-0A"],
       "status": "SOURCE_PRESENT_NOT_RUN",
       "qualified": false,
       "operator_accepted": false,
@@ -62,9 +61,7 @@
     {
       "id": "INF-0C",
       "title": "compatibility_readiness_hardening",
-      "depends_on": [
-        "INF-0B"
-      ],
+      "depends_on": ["INF-0B"],
       "status": "SOURCE_PRESENT_NOT_RUN",
       "source_complete": true,
       "transport_disconnect_harness_source_complete": true,
@@ -76,10 +73,15 @@
       "control_helper_per_invocation_revalidation_source_complete": true,
       "control_helper_secure_mode_source_complete": true,
       "control_helper_executable_fence_source_complete": true,
+      "cancel_capability_probe_source_complete": true,
+      "explicit_background_cancel_source_complete": true,
       "real_software_e2e_executed": false,
       "semantic_output_verified_on_real_models": false,
       "transport_disconnect_executed": false,
       "controlled_restart_executed": false,
+      "provider_cancel_capability_probe_executed": false,
+      "provider_cancel_capability_classified": false,
+      "provider_explicit_cancel_acknowledged": false,
       "backend_cancellation_acknowledged": false,
       "qualified": false,
       "operator_accepted": false,
@@ -88,10 +90,7 @@
     {
       "id": "INF-1",
       "title": "minimal_hepta_inferd",
-      "depends_on": [
-        "INF-0B",
-        "INF-0C"
-      ],
+      "depends_on": ["INF-0B", "INF-0C"],
       "status": "NOT_STARTED",
       "qualified": false,
       "operator_accepted": false,
@@ -100,9 +99,7 @@
     {
       "id": "INF-2A",
       "title": "ollama_lmstudio_adapters_behind_daemon",
-      "depends_on": [
-        "INF-1"
-      ],
+      "depends_on": ["INF-1"],
       "status": "NOT_STARTED",
       "qualified": false,
       "operator_accepted": false,
@@ -111,9 +108,7 @@
     {
       "id": "INF-2B",
       "title": "llama_cpp_native_worker",
-      "depends_on": [
-        "INF-1"
-      ],
+      "depends_on": ["INF-1"],
       "status": "NOT_STARTED",
       "qualified": false,
       "operator_accepted": false,
@@ -122,9 +117,7 @@
     {
       "id": "INF-3",
       "title": "scheduler_cache_resource_control",
-      "depends_on": [
-        "INF-2B"
-      ],
+      "depends_on": ["INF-2B"],
       "status": "NOT_STARTED",
       "qualified": false,
       "operator_accepted": false,
@@ -133,9 +126,7 @@
     {
       "id": "INF-4",
       "title": "multi_device_performance_qualification",
-      "depends_on": [
-        "INF-3"
-      ],
+      "depends_on": ["INF-3"],
       "status": "NOT_STARTED",
       "qualified": false,
       "operator_accepted": false,
@@ -144,10 +135,7 @@
     {
       "id": "INF-5",
       "title": "semantic_contract_integration",
-      "depends_on": [
-        "INF-3",
-        "INF-4"
-      ],
+      "depends_on": ["INF-3", "INF-4"],
       "status": "NOT_STARTED",
       "qualified": false,
       "operator_accepted": false,
@@ -156,9 +144,7 @@
     {
       "id": "INF-6",
       "title": "audio_image_extension",
-      "depends_on": [
-        "INF-4"
-      ],
+      "depends_on": ["INF-4"],
       "status": "NOT_STARTED",
       "qualified": false,
       "operator_accepted": false,
@@ -167,10 +153,7 @@
     {
       "id": "INF-7",
       "title": "operator_acceptance_and_promotion",
-      "depends_on": [
-        "INF-5",
-        "INF-6"
-      ],
+      "depends_on": ["INF-5", "INF-6"],
       "status": "NOT_STARTED",
       "qualified": false,
       "operator_accepted": false,
@@ -179,9 +162,7 @@
     {
       "id": "INF-8",
       "title": "remote_federated_future_lane",
-      "depends_on": [
-        "INF-7"
-      ],
+      "depends_on": ["INF-7"],
       "status": "NOT_STARTED",
       "qualified": false,
       "operator_accepted": false,

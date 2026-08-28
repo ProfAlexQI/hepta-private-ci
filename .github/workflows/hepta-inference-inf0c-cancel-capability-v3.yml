@@ -1,0 +1,169 @@
+name: Hepta inference INF-0C cancel capability v3
+
+on:
+  pull_request:
+    paths:
+      - "scripts/hepta-inference-inf0c-cancel-capability-v3.py"
+      - "scripts/hepta-inference-inf0c-cancel-capability-v3-selftest.py"
+      - "scripts/hepta-inference-inf0c-cancel-capability-v3-source-gate.py"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_CANCEL_CAPABILITY_V3.md"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V1.json"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_STAGE_MATRIX_V2.json"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_SOURCE_RECEIPT_2026-08-28.json"
+      - ".github/workflows/hepta-inference-inf0c-cancel-capability-v3.yml"
+  workflow_dispatch:
+    inputs:
+      run_real_cancel_probe:
+        description: "Probe explicit cancellation on pre-provisioned local providers"
+        required: false
+        default: false
+        type: boolean
+      ollama_model:
+        description: "Exact pre-installed Ollama model ID"
+        required: false
+        type: string
+      lmstudio_model:
+        description: "Exact pre-installed LM Studio model ID"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    name: Cancel capability source and hermetic tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 3
+
+      - name: Verify Python syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0-source-gate.py \
+            scripts/hepta-inference-inf0c-evidence-v2-source-gate.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v3.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v3-selftest.py \
+            scripts/hepta-inference-inf0c-cancel-capability-v3-source-gate.py
+
+      - name: Run explicit cancellation hermetic self-test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-cancel-capability-v3-selftest.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf0c-cancel-v3-selftest.txt"
+
+      - name: Verify cancellation capability source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-cancel-capability-v3-source-gate.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf0c-cancel-v3-source.txt"
+
+      - name: Verify parent evidence-v2 contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-evidence-v2-source-gate.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf0c-cancel-v3-parent-evidence.txt"
+
+      - name: Verify parent INF-0C receipt binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0-source-gate.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf0c-cancel-v3-parent-source.txt"
+
+      - name: Record negative-authority posture
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### INF-0C explicit cancellation capability v3"
+            echo
+            echo "- receipt head: $(git rev-parse HEAD)"
+            echo "- source candidate: $(git rev-parse HEAD^)"
+            echo "- provider_cancel_capability_probe_executed: false"
+            echo "- provider_cancel_capability_classified: false"
+            echo "- provider_explicit_cancel_acknowledged: false"
+            echo "- backend_cancellation_acknowledged: false"
+            echo "- INF-1: NOT_STARTED"
+            echo "- qualified: false"
+            echo "- production/effect/remote/promotion authority: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload source evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-cancel-capability-v3-source
+          path: ${{ runner.temp }}/hepta-inference-inf0c-cancel-v3-*.txt
+          if-no-files-found: warn
+
+  real-cancel-capability:
+    name: Fixed-tuple explicit provider cancellation capability
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_real_cancel_probe }}
+    needs: source-contract
+    runs-on: [self-hosted, hepta-inference-e2e]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 3
+
+      - name: Require exact model IDs
+        shell: bash
+        env:
+          OLLAMA_MODEL: ${{ inputs.ollama_model }}
+          LMSTUDIO_MODEL: ${{ inputs.lmstudio_model }}
+        run: |
+          set -euo pipefail
+          test -n "$OLLAMA_MODEL"
+          test -n "$LMSTUDIO_MODEL"
+
+      - name: Execute explicit cancellation capability probe
+        shell: bash
+        env:
+          OLLAMA_MODEL: ${{ inputs.ollama_model }}
+          LMSTUDIO_MODEL: ${{ inputs.lmstudio_model }}
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-cancel-capability-v3.py \
+            --execute \
+            --ollama-model "$OLLAMA_MODEL" \
+            --lmstudio-model "$LMSTUDIO_MODEL" \
+            --receipt "$RUNNER_TEMP/hepta-inference-inf0c-cancel-capability-v3.json"
+
+      - name: Upload explicit cancellation receipt
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-cancel-capability-v3-real-software
+          path: ${{ runner.temp }}/hepta-inference-inf0c-cancel-capability-v3.json
+          if-no-files-found: error
+
+  source-summary:
+    name: Cancel capability source aggregate
+    if: always()
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Enforce source result
+        shell: bash
+        env:
+          SOURCE_RESULT: ${{ needs.source-contract.result }}
+        run: |
+          set -euo pipefail
+          test "$SOURCE_RESULT" = success
+          echo "PASS_HEPTA_INFERENCE_INF0C_CANCEL_CAPABILITY_V3_SOURCE_ONLY"
