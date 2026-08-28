@@ -1,4 +1,4 @@
-name: apply-hepta-p033-qchain-v2
+name: apply-hepta-p033-qchain-v2-r2
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: apply-hepta-p033-qchain-v2
+  group: apply-hepta-p033-qchain-v2-r2
   cancel-in-progress: false
 
 jobs:
