@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify process-wide concurrent-turn budget wiring without authority widening."""
+"""Verify process-wide, race-safe concurrent-turn budget wiring."""
 
 from __future__ import annotations
 
@@ -54,13 +54,21 @@ def main() -> int:
         TURN,
         (
             "try_reserve_new_turn(&thread_id_text, core_reports_running)",
-            "commit_turn_permit(&thread_id_text, permit)",
+            "let turn_capacity_reserved = match self",
+            "commit_turn_reservation(&thread_id_text)",
+            "cancel_turn_reservation(&thread_id_text)",
             '"resource": "max_concurrent_turns"',
-            "TurnInputSubmission::Steered { turn_id } => turn_id",
+            "TurnInputSubmission::Steered { turn_id } => {",
+            "MemoryTurnInputSubmission::Steered { turn_id } => {",
         ),
     )
-    if turn.count("commit_turn_permit(&thread_id_text, permit)") != 2:
-        fail("both Memory and ordinary Started paths must commit the capacity permit")
+    if turn.count("commit_turn_reservation(&thread_id_text)") != 2:
+        fail("both Memory and ordinary Started paths must commit the reservation")
+    if turn.count("cancel_turn_reservation(&thread_id_text)") < 6:
+        fail("steered, rejected, and error paths do not all cancel reservations")
+    for forbidden in ("turn_capacity_permit", "commit_turn_permit"):
+        if forbidden in turn:
+            fail(f"obsolete local permit path remains: {forbidden}")
 
     status = require(
         THREAD_STATUS,
@@ -68,10 +76,14 @@ def main() -> int:
             "turn_capacity: Option<Arc<Semaphore>>",
             "max_concurrent_turns: Option<NonZeroUsize>",
             "pub(crate) async fn try_reserve_new_turn(",
-            "pub(crate) async fn commit_turn_permit(",
-            "turn_permit_by_thread_id: HashMap<String, OwnedSemaphorePermit>",
-            "self.turn_permit_by_thread_id.remove(thread_id);",
-            "concurrent_turn_capacity_is_shared_and_terminal_events_release_it",
+            "pub(crate) async fn commit_turn_reservation(",
+            "pub(crate) async fn cancel_turn_reservation(",
+            "pending_turn_permit_by_thread_id: HashMap<String, OwnedSemaphorePermit>",
+            "active_turn_permit_by_thread_id: HashMap<String, OwnedSemaphorePermit>",
+            "self.pending_turn_permit_by_thread_id.remove(thread_id);",
+            "self.active_turn_permit_by_thread_id.remove(thread_id);",
+            "terminal_before_commit_releases_pending_capacity",
+            "simultaneous_same_thread_admission_cannot_overwrite_a_permit",
             "steering_an_existing_turn_does_not_consume_another_slot",
         ),
     )
@@ -79,6 +91,8 @@ def main() -> int:
         fail("turn admission must fail fast rather than wait indefinitely for capacity")
     if ".try_acquire_owned()" not in status:
         fail("turn admission does not use an atomic non-blocking semaphore reservation")
+    if "turn_permit_by_thread_id: HashMap" in status:
+        fail("obsolete single-map permit ownership remains")
 
     require(
         AGENTD_APP,
