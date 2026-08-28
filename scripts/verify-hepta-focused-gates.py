@@ -99,7 +99,6 @@ def main() -> int:
             v8,
             "workflow_call:",
             "hepta-servo-exact-source-acceptance-live-review-v2.yml",
-            "- source-acceptance-live-review-v2",
             '"build_authorized": False',
         )
         require(
@@ -107,11 +106,9 @@ def main() -> int:
             "workflow_call:",
             "hepta-browser-next-required-v8.yml",
             "hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml",
-            "hepta-servo-worker-source-topology-acceptance-live-review-v1.yml",
             "name: Hepta Browser next required v9",
             "- canonical-v8",
             "- topology-acceptance-pointer-v1",
-            "- topology-acceptance-live-review-v1",
             '"worker_source_topology_accepted": False',
             '"build_authorized": False',
         )
@@ -127,9 +124,10 @@ def main() -> int:
         if blocking.count("- hepta-browser-next-v9") != 1:
             fail("blocking CI must require canonical v9 exactly once")
 
-        require(source_live, "ref: ${{ github.event.pull_request.base.sha }}", "PR-head code executed: false")
+        require(source_live, "pull_request_target:", "ref: ${{ github.event.pull_request.base.sha }}", "PR-head code executed: false")
         require(
             topology_live,
+            "pull_request_target:",
             "ref: ${{ github.event.pull_request.base.sha }}",
             "PR-head code executed: false",
             "PASS_LIVE_REVIEW_WORKER_SOURCE_TOPOLOGY_ONLY",
