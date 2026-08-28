@@ -1,0 +1,36 @@
+name: hepta-p0-3-source-export-macos-v1
+
+on:
+  push:
+    branches:
+      - codex/hepta-intelligence-p0-3-export-20260829
+    paths:
+      - .github/workflows/hepta-p0-3-source-export-macos-v1.yml
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          git rev-parse HEAD > artifacts/head.txt
+          git rev-parse HEAD^{tree} > artifacts/tree.txt
+          git archive --format=tar.gz --prefix=hepta-private-ci/ \
+            -o artifacts/hepta-private-ci-source.tar.gz HEAD
+          shasum -a 256 artifacts/hepta-private-ci-source.tar.gz \
+            > artifacts/hepta-private-ci-source.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hepta-p0-3-source-${{ github.sha }}-macos
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 7
