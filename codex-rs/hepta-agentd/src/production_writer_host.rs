@@ -1,15 +1,18 @@
 //! Explicit Agentd/host seam for the production durable writer.
 //!
-//! The host must supply an externally verified authority lease and verifier.
-//! Nothing in Agentd startup installs this capability automatically; the
-//! default runtime remains read-only. A dispatcher target is likewise an
-//! explicit attachment and dispatch fails closed while it is absent.
+//! The host must supply an externally verified cognitive-write lease and a
+//! separately verified external-effect capability. Nothing in Agentd startup
+//! installs either capability automatically; the default runtime remains
+//! read-only and has no provider/effect authority.
 
 use std::fmt;
 use std::sync::Arc;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 use codex_hepta_contracts::Authorized;
 use codex_hepta_contracts::CognitiveWriteCapability;
+use codex_hepta_contracts::ExternalEffectCapability;
 use codex_hepta_memory::CognitiveStore;
 use codex_hepta_memory::ProductionAuthorityLease;
 use codex_hepta_memory::ProductionAuthorityVerifier;
@@ -30,6 +33,7 @@ use crate::production_authority_adapter::ProductionCognitiveWriteAuthorization;
 pub struct AgentdProductionWriterHost {
     writer: Arc<ProductionDurableWriter>,
     cognitive_write: Authorized<CognitiveWriteCapability>,
+    external_effect: Option<Authorized<ExternalEffectCapability>>,
     dispatcher: Option<ProductionOutboxDispatcher>,
 }
 
@@ -41,6 +45,13 @@ impl fmt::Debug for AgentdProductionWriterHost {
             .field(
                 "cognitive_write_grant_sha256",
                 self.cognitive_write.grant_sha256(),
+            )
+            .field(
+                "external_effect_grant_sha256",
+                &self
+                    .external_effect
+                    .as_ref()
+                    .map(|capability| capability.grant_sha256()),
             )
             .field("dispatcher_attached", &self.dispatcher.is_some())
             .finish()
@@ -80,6 +91,7 @@ impl AgentdProductionWriterHost {
         Ok(Self {
             writer: Arc::new(writer),
             cognitive_write,
+            external_effect: None,
             dispatcher: None,
         })
     }
@@ -110,6 +122,7 @@ impl AgentdProductionWriterHost {
         Ok(Self {
             writer: Arc::new(writer),
             cognitive_write,
+            external_effect: None,
             dispatcher: None,
         })
     }
@@ -122,27 +135,208 @@ impl AgentdProductionWriterHost {
         &self.cognitive_write
     }
 
-    /// Attach the provider/host target explicitly. Replacing a target is
-    /// allowed only through a new host handle, avoiding an in-flight target
-    /// swap behind the writer's back.
-    pub fn attach_target(mut self, target: Arc<dyn ProductionOutboxTarget>) -> Self {
+    /// Attach an effect target only with a separately verified typed
+    /// `ExternalEffectCapability`. The capability must be external, bind the
+    /// same Agent and generation as the cognitive writer, and remain unexpired.
+    pub fn attach_target(
+        mut self,
+        target: Arc<dyn ProductionOutboxTarget>,
+        external_effect: Authorized<ExternalEffectCapability>,
+    ) -> Result<Self, AgentdError> {
+        validate_external_effect_capability(
+            &self.cognitive_write,
+            &external_effect,
+            now_unix_seconds()?,
+        )?;
+        self.external_effect = Some(external_effect);
         self.dispatcher = Some(ProductionOutboxDispatcher::attach(target));
-        self
+        Ok(self)
     }
 
     pub fn has_target(&self) -> bool {
-        self.dispatcher.is_some()
+        self.dispatcher.is_some() && self.external_effect.is_some()
     }
 
     pub async fn dispatch(
         &self,
         receipt: ProductionQueuedReceipt,
     ) -> Result<ProductionDispatchReceipt, AgentdError> {
+        let external_effect = self.external_effect.as_ref().ok_or_else(|| {
+            AgentdError::Protocol(
+                "production external-effect capability is not explicitly attached".to_string(),
+            )
+        })?;
+        validate_external_effect_capability(
+            &self.cognitive_write,
+            external_effect,
+            now_unix_seconds()?,
+        )?;
         let dispatcher = self.dispatcher.as_ref().ok_or_else(|| {
             AgentdError::Protocol(
                 "production outbox dispatcher is not explicitly attached".to_string(),
             )
         })?;
         Ok(dispatcher.dispatch(self.writer.as_ref(), receipt).await?)
+    }
+}
+
+fn validate_external_effect_capability(
+    cognitive_write: &Authorized<CognitiveWriteCapability>,
+    external_effect: &Authorized<ExternalEffectCapability>,
+    now_unix_seconds: u64,
+) -> Result<(), AgentdError> {
+    let binding = external_effect.external_lease_binding().ok_or_else(|| {
+        AgentdError::Protocol(
+            "production external-effect capability must come from an external verified lease"
+                .to_string(),
+        )
+    })?;
+    if external_effect.subject_agent_id() != cognitive_write.subject_agent_id() {
+        return Err(AgentdError::Protocol(
+            "production external-effect capability belongs to another Agent".to_string(),
+        ));
+    }
+    if external_effect.generation() != cognitive_write.generation() {
+        return Err(AgentdError::GenerationFenced(
+            "production external-effect capability generation does not match cognitive writer"
+                .to_string(),
+        ));
+    }
+    if binding.is_expired_at(now_unix_seconds) {
+        return Err(AgentdError::Protocol(format!(
+            "production external-effect capability expired at {}",
+            binding.expires_at_unix_seconds()
+        )));
+    }
+    Ok(())
+}
+
+fn now_unix_seconds() -> Result<u64, AgentdError> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .map_err(|error| AgentdError::Protocol(format!("system clock failed: {error}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use codex_hepta_contracts::AgentId;
+    use codex_hepta_contracts::AuthorityAction;
+    use codex_hepta_contracts::AuthorityLeaseBinding;
+    use codex_hepta_contracts::CapabilityVerificationRequest;
+    use codex_hepta_contracts::CapabilityVerifier;
+    use codex_hepta_contracts::CognitiveWriteCapability;
+    use codex_hepta_contracts::ExternalEffectCapability;
+    use codex_hepta_contracts::Sha256Digest;
+    use codex_hepta_contracts::authorize_verified_capability;
+
+    use super::validate_external_effect_capability;
+
+    const OWNER_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c12";
+    const OTHER_ID: &str = "018f4f72-5f8f-7cc1-8f55-df9fb3aa2c13";
+
+    fn agent_id(value: &str) -> AgentId {
+        match AgentId::parse(value) {
+            Ok(agent_id) => agent_id,
+            Err(error) => panic!("test AgentId must parse: {error}"),
+        }
+    }
+
+    fn binding(agent_id: AgentId, generation: u64, expiry: u64) -> AuthorityLeaseBinding {
+        match AuthorityLeaseBinding::new(
+            agent_id,
+            Sha256Digest::for_bytes(b"signed-capability-grant"),
+            7,
+            11,
+            generation,
+            Sha256Digest::for_bytes(b"fencing-token"),
+            expiry,
+        ) {
+            Ok(binding) => binding,
+            Err(error) => panic!("test binding must be valid: {error}"),
+        }
+    }
+
+    struct ExactActionVerifier(AuthorityAction);
+
+    impl CapabilityVerifier for ExactActionVerifier {
+        fn verify(&self, request: &CapabilityVerificationRequest<'_>) -> Result<(), String> {
+            if request.action() != self.0 {
+                return Err("unexpected capability action".to_string());
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn effect_target_requires_same_agent_generation_and_live_external_lease() {
+        let owner = agent_id(OWNER_ID);
+        let cognitive_write = match authorize_verified_capability::<CognitiveWriteCapability, _>(
+            binding(owner.clone(), 3, 500),
+            &owner,
+            3,
+            100,
+            &ExactActionVerifier(AuthorityAction::WriteCognitiveState),
+        ) {
+            Ok(capability) => capability,
+            Err(error) => panic!("cognitive write must authorize: {error}"),
+        };
+        let external_effect = match authorize_verified_capability::<ExternalEffectCapability, _>(
+            binding(owner.clone(), 3, 500),
+            &owner,
+            3,
+            100,
+            &ExactActionVerifier(AuthorityAction::ExternalEffect),
+        ) {
+            Ok(capability) => capability,
+            Err(error) => panic!("external effect must authorize: {error}"),
+        };
+        assert!(validate_external_effect_capability(
+            &cognitive_write,
+            &external_effect,
+            100
+        )
+        .is_ok());
+        assert!(validate_external_effect_capability(
+            &cognitive_write,
+            &external_effect,
+            500
+        )
+        .is_err());
+
+        let other = agent_id(OTHER_ID);
+        let other_effect = match authorize_verified_capability::<ExternalEffectCapability, _>(
+            binding(other.clone(), 3, 500),
+            &other,
+            3,
+            100,
+            &ExactActionVerifier(AuthorityAction::ExternalEffect),
+        ) {
+            Ok(capability) => capability,
+            Err(error) => panic!("other effect must authorize: {error}"),
+        };
+        assert!(validate_external_effect_capability(
+            &cognitive_write,
+            &other_effect,
+            100
+        )
+        .is_err());
+
+        let newer_effect = match authorize_verified_capability::<ExternalEffectCapability, _>(
+            binding(owner.clone(), 4, 500),
+            &owner,
+            4,
+            100,
+            &ExactActionVerifier(AuthorityAction::ExternalEffect),
+        ) {
+            Ok(capability) => capability,
+            Err(error) => panic!("newer effect must authorize: {error}"),
+        };
+        assert!(validate_external_effect_capability(
+            &cognitive_write,
+            &newer_effect,
+            100
+        )
+        .is_err());
     }
 }
