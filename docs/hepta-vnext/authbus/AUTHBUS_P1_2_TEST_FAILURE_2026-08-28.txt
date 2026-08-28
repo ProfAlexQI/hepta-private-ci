@@ -1,0 +1,127 @@
+AUTHBUS P1.2 bounded test failure evidence
+source_head=4e795c100b323cf7d3826558e0ebee072d269821
+workflow_run=33172282685
+job=materialize-and-qualify
+raw_log_persisted=false
+database_content_persisted=false
+---
+[1m[94m1740[0m [1m[94m|[0m         row.row_sha256 = row.digest()?.to_string();
+     [1m[94m|[0m                                        [1m[91m^^^^^^^^^[0m [1m[91mmethod cannot be called on `Sha256Digest` due to unsatisfied trait bounds[0m
+     [1m[94m|[0m
+    [1m[94m::: [0m/home/runner/work/hepta-private-ci/hepta-private-ci/codex-rs/hepta-contracts/src/receipt.rs:14:1
+     [1m[94m|[0m
+[1m[94m  14[0m [1m[94m|[0m pub struct Sha256Digest(String);
+     [1m[94m|[0m [1m[94m-----------------------[0m [1m[94mdoesn't satisfy `Sha256Digest: ToString` or `Sha256Digest: std::fmt::Display`[0m
+     [1m[94m|[0m
+     [1m[94m= [0m[1mnote[0m: the following trait bounds were not satisfied:
+             `Sha256Digest: std::fmt::Display`
+             which is required by `Sha256Digest: ToString`
+
+[1m[91merror[E0599][0m[1m: `Sha256Digest` doesn't implement `std::fmt::Display`[0m
+    [1m[94m--> [0msrc/store.rs:1807:52
+     [1m[94m|[0m
+[1m[94m1807[0m [1m[94m|[0m             observation_sha256: observation_sha256.to_string(),
+     [1m[94m|[0m                                                    [1m[91m^^^^^^^^^[0m [1m[91mmethod cannot be called on `Sha256Digest` due to unsatisfied trait bounds[0m
+     [1m[94m|[0m
+    [1m[94m::: [0m/home/runner/work/hepta-private-ci/hepta-private-ci/codex-rs/hepta-contracts/src/receipt.rs:14:1
+     [1m[94m|[0m
+[1m[94m  14[0m [1m[94m|[0m pub struct Sha256Digest(String);
+     [1m[94m|[0m [1m[94m-----------------------[0m [1m[94mdoesn't satisfy `Sha256Digest: ToString` or `Sha256Digest: std::fmt::Display`[0m
+     [1m[94m|[0m
+     [1m[94m= [0m[1mnote[0m: the following trait bounds were not satisfied:
+             `Sha256Digest: std::fmt::Display`
+             which is required by `Sha256Digest: ToString`
+
+[1m[91merror[E0599][0m[1m: `Sha256Digest` doesn't implement `std::fmt::Display`[0m
+    [1m[94m--> [0msrc/store.rs:1808:58
+     [1m[94m|[0m
+[1m[94m1808[0m [1m[94m|[0m             evidence_sha256: observation.evidence_sha256.to_string(),
+     [1m[94m|[0m                                                          [1m[91m^^^^^^^^^[0m [1m[91mmethod cannot be called on `Sha256Digest` due to unsatisfied trait bounds[0m
+     [1m[94m|[0m
+    [1m[94m::: [0m/home/runner/work/hepta-private-ci/hepta-private-ci/codex-rs/hepta-contracts/src/receipt.rs:14:1
+     [1m[94m|[0m
+[1m[94m  14[0m [1m[94m|[0m pub struct Sha256Digest(String);
+     [1m[94m|[0m [1m[94m-----------------------[0m [1m[94mdoesn't satisfy `Sha256Digest: ToString` or `Sha256Digest: std::fmt::Display`[0m
+     [1m[94m|[0m
+     [1m[94m= [0m[1mnote[0m: the following trait bounds were not satisfied:
+             `Sha256Digest: std::fmt::Display`
+             which is required by `Sha256Digest: ToString`
+
+[1m[91merror[E0599][0m[1m: `Sha256Digest` doesn't implement `std::fmt::Display`[0m
+    [1m[94m--> [0msrc/store.rs:1813:40
+     [1m[94m|[0m
+[1m[94m1813[0m [1m[94m|[0m         row.row_sha256 = row.digest()?.to_string();
+     [1m[94m|[0m                                        [1m[91m^^^^^^^^^[0m [1m[91mmethod cannot be called on `Sha256Digest` due to unsatisfied trait bounds[0m
+     [1m[94m|[0m
+    [1m[94m::: [0m/home/runner/work/hepta-private-ci/hepta-private-ci/codex-rs/hepta-contracts/src/receipt.rs:14:1
+     [1m[94m|[0m
+[1m[94m  14[0m [1m[94m|[0m pub struct Sha256Digest(String);
+     [1m[94m|[0m [1m[94m-----------------------[0m [1m[94mdoesn't satisfy `Sha256Digest: ToString` or `Sha256Digest: std::fmt::Display`[0m
+     [1m[94m|[0m
+     [1m[94m= [0m[1mnote[0m: the following trait bounds were not satisfied:
+             `Sha256Digest: std::fmt::Display`
+             which is required by `Sha256Digest: ToString`
+
+[1m[91merror[E0599][0m[1m: `Sha256Digest` doesn't implement `std::fmt::Display`[0m
+    [1m[94m--> [0msrc/store.rs:1917:40
+     [1m[94m|[0m
+[1m[94m1917[0m [1m[94m|[0m         row.row_sha256 = row.digest()?.to_string();
+     [1m[94m|[0m                                        [1m[91m^^^^^^^^^[0m [1m[91mmethod cannot be called on `Sha256Digest` due to unsatisfied trait bounds[0m
+     [1m[94m|[0m
+    [1m[94m::: [0m/home/runner/work/hepta-private-ci/hepta-private-ci/codex-rs/hepta-contracts/src/receipt.rs:14:1
+     [1m[94m|[0m
+[1m[94m  14[0m [1m[94m|[0m pub struct Sha256Digest(String);
+     [1m[94m|[0m [1m[94m-----------------------[0m [1m[94mdoesn't satisfy `Sha256Digest: ToString` or `Sha256Digest: std::fmt::Display`[0m
+     [1m[94m|[0m
+     [1m[94m= [0m[1mnote[0m: the following trait bounds were not satisfied:
+             `Sha256Digest: std::fmt::Display`
+             which is required by `Sha256Digest: ToString`
+
+[1m[91merror[E0599][0m[1m: `Sha256Digest` doesn't implement `std::fmt::Display`[0m
+    [1m[94m--> [0msrc/store.rs:1992:46
+     [1m[94m|[0m
+[1m[94m1992[0m [1m[94m|[0m             evidence_sha256: evidence_sha256.to_string(),
+     [1m[94m|[0m                                              [1m[91m^^^^^^^^^[0m [1m[91mmethod cannot be called on `Sha256Digest` due to unsatisfied trait bounds[0m
+     [1m[94m|[0m
+    [1m[94m::: [0m/home/runner/work/hepta-private-ci/hepta-private-ci/codex-rs/hepta-contracts/src/receipt.rs:14:1
+     [1m[94m|[0m
+[1m[94m  14[0m [1m[94m|[0m pub struct Sha256Digest(String);
+     [1m[94m|[0m [1m[94m-----------------------[0m [1m[94mdoesn't satisfy `Sha256Digest: ToString` or `Sha256Digest: std::fmt::Display`[0m
+     [1m[94m|[0m
+     [1m[94m= [0m[1mnote[0m: the following trait bounds were not satisfied:
+             `Sha256Digest: std::fmt::Display`
+             which is required by `Sha256Digest: ToString`
+
+[1m[91merror[E0599][0m[1m: `Sha256Digest` doesn't implement `std::fmt::Display`[0m
+    [1m[94m--> [0msrc/store.rs:1997:40
+     [1m[94m|[0m
+[1m[94m1997[0m [1m[94m|[0m         row.row_sha256 = row.digest()?.to_string();
+     [1m[94m|[0m                                        [1m[91m^^^^^^^^^[0m [1m[91mmethod cannot be called on `Sha256Digest` due to unsatisfied trait bounds[0m
+     [1m[94m|[0m
+    [1m[94m::: [0m/home/runner/work/hepta-private-ci/hepta-private-ci/codex-rs/hepta-contracts/src/receipt.rs:14:1
+     [1m[94m|[0m
+[1m[94m  14[0m [1m[94m|[0m pub struct Sha256Digest(String);
+     [1m[94m|[0m [1m[94m-----------------------[0m [1m[94mdoesn't satisfy `Sha256Digest: ToString` or `Sha256Digest: std::fmt::Display`[0m
+     [1m[94m|[0m
+     [1m[94m= [0m[1mnote[0m: the following trait bounds were not satisfied:
+             `Sha256Digest: std::fmt::Display`
+             which is required by `Sha256Digest: ToString`
+
+[1m[91merror[E0599][0m[1m: `Sha256Digest` doesn't implement `std::fmt::Display`[0m
+    [1m[94m--> [0msrc/store.rs:2131:40
+     [1m[94m|[0m
+[1m[94m2131[0m [1m[94m|[0m         row.row_sha256 = row.digest()?.to_string();
+     [1m[94m|[0m                                        [1m[91m^^^^^^^^^[0m [1m[91mmethod cannot be called on `Sha256Digest` due to unsatisfied trait bounds[0m
+     [1m[94m|[0m
+    [1m[94m::: [0m/home/runner/work/hepta-private-ci/hepta-private-ci/codex-rs/hepta-contracts/src/receipt.rs:14:1
+     [1m[94m|[0m
+[1m[94m  14[0m [1m[94m|[0m pub struct Sha256Digest(String);
+     [1m[94m|[0m [1m[94m-----------------------[0m [1m[94mdoesn't satisfy `Sha256Digest: ToString` or `Sha256Digest: std::fmt::Display`[0m
+     [1m[94m|[0m
+     [1m[94m= [0m[1mnote[0m: the following trait bounds were not satisfied:
+             `Sha256Digest: std::fmt::Display`
+             which is required by `Sha256Digest: ToString`
+
+[1mFor more information about this error, try `rustc --explain E0599`.[0m
+[1m[33mwarning[0m: `codex-hepta-authbus-p1-2-qualification` (lib) generated 1 warning
+[1m[91merror[0m: could not compile `codex-hepta-authbus-p1-2-qualification` (lib) due to 29 previous errors; 1 warning emitted
