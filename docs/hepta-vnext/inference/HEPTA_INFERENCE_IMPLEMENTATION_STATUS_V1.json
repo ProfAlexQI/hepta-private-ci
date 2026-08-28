@@ -19,8 +19,20 @@
     "source_gate": true,
     "dedicated_ci_workflow": true,
     "lmstudio_load_readiness_fence": true,
+    "lmstudio_implicit_install_disabled": true,
+    "lmstudio_async_subprocess_timeout": true,
+    "lmstudio_cli_sha256_provenance": true,
+    "lmstudio_bounded_stderr": true,
     "ollama_readiness_fail_closed": true,
+    "ollama_non_2xx_typed_failure": true,
+    "ollama_pull_stream_fail_closed": true,
+    "ollama_pull_frame_bound": true,
+    "ollama_implicit_install_disabled": true,
     "unknown_oss_provider_fail_closed": true,
+    "responses_proxy_digest_only_dump": true,
+    "responses_proxy_owner_only_dump": true,
+    "responses_proxy_dump_retention_and_count_bound": true,
+    "real_software_e2e_harness": true,
     "hepta_inferd": false,
     "native_worker": false,
     "real_model_e2e": false,
@@ -46,8 +58,8 @@
   "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce",
   "source_candidate_binding": {
     "mode": "append_only_receipt_binds_source_parent",
-    "source_candidate_commit": "BOUND_BY_RECEIPT_PARENT",
-    "source_candidate_tree": "BOUND_BY_RECEIPT_PARENT_TREE"
+    "source_candidate_commit": "BOUND_BY_INF0C_RECEIPT_PARENT",
+    "source_candidate_tree": "BOUND_BY_INF0C_RECEIPT_PARENT_TREE"
   },
   "validation": {
     "python_source_gate_syntax": "LOCAL_PASS",
@@ -56,15 +68,15 @@
     "rust_fmt": "NOT_RUN_TOOLCHAIN_UNAVAILABLE",
     "rust_test": "NOT_RUN_TOOLCHAIN_UNAVAILABLE",
     "rust_clippy": "NOT_RUN_TOOLCHAIN_UNAVAILABLE",
+    "real_model_e2e": "NOT_RUN",
     "exact_head_ci": "NOT_RUN"
   },
   "known_gaps": [
-    "exact-head CI has not executed",
-    "hepta-inferd, UDS protocol, real model execution and hardware receipts are absent",
-    "Ollama fetch_models non-2xx error typing remains an INF-0C completion item",
-    "LM Studio download subprocess timeout and executable provenance remain INF-0C items",
-    "responses-api-proxy raw body dump privacy hardening remains a separate item",
-    "provider/model capability defaults remain broader than the future exact manifest intersection"
+    "exact-head CI has not executed non-empty Rust or source-gate steps",
+    "the real-software E2E harness has not executed against fixed Ollama and LM Studio installations",
+    "cancellation and controlled service-restart evidence remain required before INF-0C qualification",
+    "hepta-inferd, UDS protocol, native worker execution and hardware receipts are absent",
+    "provider/model capabilities remain broader than the future backend-manifest-policy intersection"
   ],
-  "next_stage": "INF-0C_COMPLETION_THEN_INF-1"
+  "next_stage": "INF-0C_REAL_SOFTWARE_E2E_THEN_INF-1"
 }

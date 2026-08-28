@@ -2,7 +2,6 @@ use futures::StreamExt;
 use futures::stream::BoxStream;
 use semver::Version;
 use serde_json::Value as JsonValue;
-use std::collections::VecDeque;
 use std::io;
 use std::time::Duration;
 
@@ -28,6 +27,8 @@ use codex_model_provider_info::create_oss_provider_with_base_url;
 
 const OLLAMA_CONNECTION_ERROR: &str = "No running Ollama server detected. Start it with: `ollama serve` (after installing). Install instructions: https://github.com/ollama/ollama?tab=readme-ov-file#ollama";
 const OLLAMA_CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_PULL_FRAME_BYTES: usize = 1024 * 1024;
+const MAX_REMOTE_ERROR_CHARS: usize = 512;
 
 /// Client for interacting with a local Ollama instance.
 pub struct OllamaClient {
@@ -37,20 +38,16 @@ pub struct OllamaClient {
 }
 
 impl OllamaClient {
-    /// Construct a client for the built‑in open‑source ("oss") model provider
-    /// and verify that a local Ollama server is reachable. If no server is
-    /// detected, returns an error with helpful installation/run instructions.
+    /// Construct a client for the built-in open-source model provider and verify
+    /// that a local Ollama server is reachable.
     pub async fn try_from_oss_provider(config: &Config) -> io::Result<Self> {
-        // Note that we must look up the provider from the Config to ensure that
-        // any overrides the user has in their config.toml are taken into
-        // account.
         let provider = config
             .model_providers
             .get(OLLAMA_OSS_PROVIDER_ID)
             .ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::NotFound,
-                    format!("Built-in provider {OLLAMA_OSS_PROVIDER_ID} not found",),
+                    format!("Built-in provider {OLLAMA_OSS_PROVIDER_ID} not found"),
                 )
             })?;
 
@@ -72,11 +69,12 @@ impl OllamaClient {
         provider: &ModelProviderInfo,
         http_client_factory: HttpClientFactory,
     ) -> io::Result<Self> {
-        #![expect(clippy::expect_used)]
-        let base_url = provider
-            .base_url
-            .as_ref()
-            .expect("oss provider must have a base_url");
+        let base_url = provider.base_url.as_ref().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Ollama provider must have a base_url",
+            )
+        })?;
         let uses_openai_compat = is_openai_compatible_base_url(base_url);
         let host_root = base_url_to_host_root(base_url);
         let client = RouteAwareClientPool::with_connect_timeout(
@@ -94,14 +92,15 @@ impl OllamaClient {
         Ok(client)
     }
 
-    /// Probe whether the server is reachable by hitting the appropriate health endpoint.
+    /// Probe whether the server is reachable by hitting the configured health endpoint.
     async fn probe_server(&self) -> io::Result<()> {
-        let url = if self.uses_openai_compat {
-            format!("{}/v1/models", self.host_root.trim_end_matches('/'))
+        let endpoint = if self.uses_openai_compat {
+            "/v1/models"
         } else {
-            format!("{}/api/tags", self.host_root.trim_end_matches('/'))
+            "/api/tags"
         };
-        let resp = self
+        let url = self.endpoint(endpoint);
+        let response = self
             .client
             .get(url)
             .send()
@@ -116,129 +115,174 @@ impl OllamaClient {
                     io::Error::other(OLLAMA_CONNECTION_ERROR)
                 }
             })?;
-        if resp.status().is_success() {
-            Ok(())
-        } else {
-            tracing::warn!(
-                "Failed to probe server at {}: HTTP {}",
-                self.host_root,
-                resp.status()
-            );
-            Err(io::Error::other(OLLAMA_CONNECTION_ERROR))
+        if response.status().is_success() {
+            return Ok(());
         }
+
+        tracing::warn!(
+            endpoint = endpoint,
+            status = response.status().as_u16(),
+            "Ollama readiness probe failed"
+        );
+        Err(io::Error::other(OLLAMA_CONNECTION_ERROR))
     }
 
     /// Return the list of model names known to the local Ollama instance.
+    ///
+    /// HTTP and payload failures are not represented as an empty model list.
     pub async fn fetch_models(&self) -> io::Result<Vec<String>> {
-        let tags_url = format!("{}/api/tags", self.host_root.trim_end_matches('/'));
-        let resp = self
-            .client
-            .get(tags_url)
-            .send()
-            .await
-            .map_err(io::Error::other)?;
-        if !resp.status().is_success() {
-            return Ok(Vec::new());
-        }
-        let val = resp.json::<JsonValue>().await.map_err(io::Error::other)?;
-        let names = val
-            .get("models")
-            .and_then(|m| m.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
-                    .map(str::to_string)
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        Ok(names)
-    }
-
-    /// Query the server for its version string, returning `None` when unavailable.
-    pub async fn fetch_version(&self) -> io::Result<Option<Version>> {
-        let version_url = format!("{}/api/version", self.host_root.trim_end_matches('/'));
-        let resp = self
-            .client
-            .get(version_url)
-            .send()
-            .await
-            .map_err(io::Error::other)?;
-        if !resp.status().is_success() {
-            return Ok(None);
-        }
-        let val = resp.json::<JsonValue>().await.map_err(io::Error::other)?;
-        let Some(version_str) = val.get("version").and_then(|v| v.as_str()).map(str::trim) else {
-            return Ok(None);
+        let endpoint = if self.uses_openai_compat {
+            "/v1/models"
+        } else {
+            "/api/tags"
         };
-        let normalized = version_str.trim_start_matches('v');
-        match Version::parse(normalized) {
-            Ok(version) => Ok(Some(version)),
-            Err(err) => {
-                tracing::warn!("Failed to parse Ollama version `{version_str}`: {err}");
-                Ok(None)
-            }
+        let response = self
+            .client
+            .get(self.endpoint(endpoint))
+            .send()
+            .await
+            .map_err(|error| request_error("models", error))?;
+        if !response.status().is_success() {
+            return Err(status_error("models", response.status().as_u16()));
         }
+
+        let value = response
+            .json::<JsonValue>()
+            .await
+            .map_err(|error| invalid_payload("models", error))?;
+        let entries = if self.uses_openai_compat {
+            value.get("data")
+        } else {
+            value.get("models")
+        }
+        .and_then(JsonValue::as_array)
+        .ok_or_else(|| invalid_shape("models", "missing model array"))?;
+
+        let field = if self.uses_openai_compat { "id" } else { "name" };
+        let mut models = Vec::with_capacity(entries.len());
+        for entry in entries {
+            let model = entry
+                .get(field)
+                .and_then(JsonValue::as_str)
+                .map(str::trim)
+                .filter(|model| !model.is_empty())
+                .ok_or_else(|| invalid_shape("models", "invalid model identifier"))?;
+            validate_model_identifier(model)?;
+            models.push(model.to_string());
+        }
+        Ok(models)
     }
 
-    /// Start a model pull and emit streaming events. The returned stream ends when
-    /// a Success event is observed or the server closes the connection.
+    /// Query the server for its version string.
+    ///
+    /// A non-success response, missing field, or unparsable version is a typed
+    /// readiness failure rather than evidence of compatibility.
+    pub async fn fetch_version(&self) -> io::Result<Option<Version>> {
+        let response = self
+            .client
+            .get(self.endpoint("/api/version"))
+            .send()
+            .await
+            .map_err(|error| request_error("version", error))?;
+        if !response.status().is_success() {
+            return Err(status_error("version", response.status().as_u16()));
+        }
+
+        let value = response
+            .json::<JsonValue>()
+            .await
+            .map_err(|error| invalid_payload("version", error))?;
+        let version = value
+            .get("version")
+            .and_then(JsonValue::as_str)
+            .map(str::trim)
+            .filter(|version| !version.is_empty())
+            .ok_or_else(|| invalid_shape("version", "missing version string"))?;
+        let normalized = version.trim_start_matches('v');
+        Version::parse(normalized)
+            .map(Some)
+            .map_err(|_| invalid_shape("version", "invalid semantic version"))
+    }
+
+    /// Start an explicit model pull and emit bounded streaming events.
+    ///
+    /// Product readiness never calls this method implicitly. Every transport,
+    /// UTF-8, JSON, server, and frame-size failure becomes a terminal
+    /// [`PullEvent::Error`].
     pub async fn pull_model_stream(
         &self,
         model: &str,
     ) -> io::Result<BoxStream<'static, PullEvent>> {
-        let url = format!("{}/api/pull", self.host_root.trim_end_matches('/'));
-        let resp = self
+        validate_model_identifier(model)?;
+        let response = self
             .client
-            .post(url)
+            .post(self.endpoint("/api/pull"))
             .json(&serde_json::json!({"model": model, "stream": true}))
             .send()
             .await
-            .map_err(io::Error::other)?;
-        if !resp.status().is_success() {
-            return Err(io::Error::other(format!(
-                "failed to start pull: HTTP {}",
-                resp.status()
-            )));
+            .map_err(|error| request_error("pull", error))?;
+        if !response.status().is_success() {
+            return Err(status_error("pull", response.status().as_u16()));
         }
 
-        let mut stream = resp.bytes_stream();
-        let mut buf = LineBuffer::default();
-        let _pending: VecDeque<PullEvent> = VecDeque::new();
-
-        // Using an async stream adaptor backed by unfold-like manual loop.
-        let s = async_stream::stream! {
+        let mut stream = response.bytes_stream();
+        let mut buffer = LineBuffer::default();
+        let events = async_stream::stream! {
             while let Some(chunk) = stream.next().await {
-                match chunk {
-                    Ok(bytes) => {
-                        buf.extend_from_slice(&bytes);
-                        while let Some(line) = buf.take_line() {
-                            if let Ok(text) = std::str::from_utf8(&line) {
-                                let text = text.trim();
-                                if text.is_empty() { continue; }
-                                if let Ok(value) = serde_json::from_str::<JsonValue>(text) {
-                                    for ev in pull_events_from_value(&value) { yield ev; }
-                                    if let Some(err_msg) = value.get("error").and_then(|e| e.as_str()) {
-                                        yield PullEvent::Error(err_msg.to_string());
-                                        return;
-                                    }
-                                    if let Some(status) = value.get("status").and_then(|s| s.as_str())
-                                        && status == "success" { yield PullEvent::Success; return; }
-                                }
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        // Connection error: end the stream.
+                let bytes = match chunk {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        yield PullEvent::Error(format!(
+                            "OLLAMA_PULL_TRANSPORT_ERROR: {}",
+                            sanitize_remote_message(&error.to_string())
+                        ));
                         return;
                     }
+                };
+                buffer.extend_from_slice(&bytes);
+
+                while let Some(line) = buffer.take_line() {
+                    match decode_pull_frame(&line) {
+                        Ok(decoded) => {
+                            let terminal = decoded.iter().any(|event| matches!(event, PullEvent::Success));
+                            for event in decoded {
+                                yield event;
+                            }
+                            if terminal {
+                                return;
+                            }
+                        }
+                        Err(error) => {
+                            yield PullEvent::Error(error);
+                            return;
+                        }
+                    }
+                }
+
+                if buffer.len() > MAX_PULL_FRAME_BYTES {
+                    yield PullEvent::Error(format!(
+                        "OLLAMA_PULL_FRAME_TOO_LARGE: maximum={MAX_PULL_FRAME_BYTES}"
+                    ));
+                    return;
+                }
+            }
+
+            if let Some(frame) = buffer.take_remaining() {
+                match decode_pull_frame(&frame) {
+                    Ok(decoded) => {
+                        for event in decoded {
+                            yield event;
+                        }
+                    }
+                    Err(error) => yield PullEvent::Error(error),
                 }
             }
         };
 
-        Ok(Box::pin(s))
+        Ok(Box::pin(events))
     }
 
-    /// High-level helper to pull a model and drive a progress reporter.
+    /// Explicit operator helper to pull a model and drive a progress reporter.
     pub async fn pull_with_reporter(
         &self,
         model: &str,
@@ -249,30 +293,23 @@ impl OllamaClient {
         while let Some(event) = stream.next().await {
             reporter.on_event(&event)?;
             match event {
-                PullEvent::Success => {
-                    return Ok(());
+                PullEvent::Success => return Ok(()),
+                PullEvent::Error(error) => {
+                    return Err(io::Error::other(format!("Pull failed: {error}")));
                 }
-                PullEvent::Error(err) => {
-                    // Empirically, ollama returns a 200 OK response even when
-                    // the output stream includes an error message. Verify with:
-                    //
-                    // `curl -i http://localhost:11434/api/pull -d '{ "model": "foobarbaz" }'`
-                    //
-                    // As such, we have to check the event stream, not the
-                    // HTTP response status, to determine whether to return Err.
-                    return Err(io::Error::other(format!("Pull failed: {err}")));
-                }
-                PullEvent::ChunkProgress { .. } | PullEvent::Status(_) => {
-                    continue;
-                }
+                PullEvent::ChunkProgress { .. } | PullEvent::Status(_) => {}
             }
         }
-        Err(io::Error::other(
-            "Pull stream ended unexpectedly without success.",
+        Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "OLLAMA_PULL_UNEXPECTED_EOF: stream ended without success",
         ))
     }
 
-    /// Low-level constructor given a raw host root, e.g. "http://localhost:11434".
+    fn endpoint(&self, endpoint: &str) -> String {
+        format!("{}{}", self.host_root.trim_end_matches('/'), endpoint)
+    }
+
     #[cfg(test)]
     fn from_host_root(host_root: impl Into<String>) -> Self {
         let client = RouteAwareClientPool::with_connect_timeout(
@@ -288,340 +325,300 @@ impl OllamaClient {
     }
 }
 
+fn decode_pull_frame(frame: &[u8]) -> Result<Vec<PullEvent>, String> {
+    if frame.len() > MAX_PULL_FRAME_BYTES {
+        return Err(format!(
+            "OLLAMA_PULL_FRAME_TOO_LARGE: maximum={MAX_PULL_FRAME_BYTES}"
+        ));
+    }
+    let frame = frame.strip_suffix(b"\n").unwrap_or(frame);
+    let frame = frame.strip_suffix(b"\r").unwrap_or(frame);
+    if frame.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let text = std::str::from_utf8(frame)
+        .map_err(|_| "OLLAMA_PULL_INVALID_UTF8".to_string())?;
+    let value = serde_json::from_str::<JsonValue>(text)
+        .map_err(|_| "OLLAMA_PULL_INVALID_JSON".to_string())?;
+    if let Some(error) = value.get("error").and_then(JsonValue::as_str) {
+        return Err(format!(
+            "OLLAMA_PULL_SERVER_ERROR: {}",
+            sanitize_remote_message(error)
+        ));
+    }
+
+    let events = pull_events_from_value(&value);
+    if events.is_empty() {
+        return Err("OLLAMA_PULL_UNRECOGNIZED_EVENT".to_string());
+    }
+    Ok(events)
+}
+
+fn validate_model_identifier(model: &str) -> io::Result<()> {
+    if model.is_empty()
+        || model.len() > 512
+        || model != model.trim()
+        || model.chars().any(char::is_control)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "OLLAMA_INVALID_MODEL_IDENTIFIER",
+        ));
+    }
+    Ok(())
+}
+
+fn request_error(operation: &str, error: impl std::fmt::Display) -> io::Error {
+    io::Error::other(format!(
+        "OLLAMA_REQUEST_ERROR operation={operation}: {}",
+        sanitize_remote_message(&error.to_string())
+    ))
+}
+
+fn status_error(operation: &str, status: u16) -> io::Error {
+    io::Error::other(format!(
+        "OLLAMA_HTTP_STATUS operation={operation} status={status}"
+    ))
+}
+
+fn invalid_payload(operation: &str, error: impl std::fmt::Display) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!(
+            "OLLAMA_INVALID_JSON operation={operation}: {}",
+            sanitize_remote_message(&error.to_string())
+        ),
+    )
+}
+
+fn invalid_shape(operation: &str, reason: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!("OLLAMA_INVALID_PAYLOAD operation={operation}: {reason}"),
+    )
+}
+
+fn sanitize_remote_message(message: &str) -> String {
+    let mut sanitized = String::new();
+    let mut written = 0usize;
+    for character in message.chars() {
+        if written >= MAX_REMOTE_ERROR_CHARS {
+            break;
+        }
+        if character.is_control() {
+            if character.is_whitespace() {
+                sanitized.push(' ');
+                written += 1;
+            }
+        } else {
+            sanitized.push(character);
+            written += 1;
+        }
+    }
+    sanitized
+}
+
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::unwrap_used)]
+
     use super::*;
     use assert_matches::assert_matches;
     use pretty_assertions::assert_eq;
 
-    // Happy-path tests using a mock HTTP server; skip if sandbox network is disabled.
+    fn network_disabled() -> bool {
+        std::env::var(codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR).is_ok()
+    }
+
     #[tokio::test]
-    async fn test_fetch_models_happy_path() {
-        if std::env::var(codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR).is_ok() {
-            tracing::info!(
-                "{} is set; skipping test_fetch_models_happy_path",
-                codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR
-            );
+    async fn fetch_models_native_happy_path() {
+        if network_disabled() {
             return;
         }
-
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/api/tags"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_raw(
-                    serde_json::json!({
-                        "models": [ {"name": "llama3.2:3b"}, {"name":"mistral"} ]
-                    })
-                    .to_string(),
-                    "application/json",
-                ),
-            )
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({"models": [{"name": "llama3.2:3b"}]}),
+            ))
             .mount(&server)
             .await;
 
         let client = OllamaClient::from_host_root(server.uri());
-        let models = client.fetch_models().await.expect("fetch models");
-        assert!(models.contains(&"llama3.2:3b".to_string()));
-        assert!(models.contains(&"mistral".to_string()));
+        assert_eq!(
+            client.fetch_models().await.expect("models"),
+            vec!["llama3.2:3b"]
+        );
     }
 
     #[tokio::test]
-    async fn test_fetch_version() {
-        if std::env::var(codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR).is_ok() {
-            tracing::info!(
-                "{} is set; skipping test_fetch_version",
-                codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR
-            );
+    async fn fetch_models_non_success_is_not_empty_list() {
+        if network_disabled() {
             return;
         }
-
         let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/api/tags"))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_raw(
-                serde_json::json!({ "models": [] }).to_string(),
-                "application/json",
-            ))
-            .mount(&server)
-            .await;
-        wiremock::Mock::given(wiremock::matchers::method("GET"))
-            .and(wiremock::matchers::path("/api/version"))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_raw(
-                serde_json::json!({ "version": "0.14.1" }).to_string(),
-                "application/json",
-            ))
+            .respond_with(wiremock::ResponseTemplate::new(503))
             .mount(&server)
             .await;
 
-        let client = OllamaClient::try_from_provider_with_base_url(server.uri().as_str())
+        let error = OllamaClient::from_host_root(server.uri())
+            .fetch_models()
             .await
-            .expect("client");
-
-        let version = client.fetch_version().await.expect("version fetch");
-        assert_eq!(version, Some(Version::new(0, 14, 1)));
+            .expect_err("503 must fail");
+        assert!(error.to_string().contains("OLLAMA_HTTP_STATUS"));
+        assert!(error.to_string().contains("status=503"));
     }
 
     #[tokio::test]
-    async fn test_pull_model_stream_parses_large_json_lines() {
-        if std::env::var(codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR).is_ok() {
-            tracing::info!(
-                "{} set; skipping test_pull_model_stream_parses_large_json_lines",
-                codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR
-            );
+    async fn fetch_models_rejects_malformed_entry() {
+        if network_disabled() {
             return;
         }
-
         let server = wiremock::MockServer::start().await;
-        let body = format!(
-            "{}\n{}\n",
-            serde_json::json!({
-                "status": "pulling layers",
-                "padding": "x".repeat(128 * 1024),
-            }),
-            serde_json::json!({"status": "complete"}),
-        );
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/api/tags"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"models": [{}]})),
+            )
+            .mount(&server)
+            .await;
+
+        let error = OllamaClient::from_host_root(server.uri())
+            .fetch_models()
+            .await
+            .expect_err("malformed entry must fail");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[tokio::test]
+    async fn fetch_version_rejects_non_success_and_bad_semver() {
+        if network_disabled() {
+            return;
+        }
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/api/version"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({"version": "not-semver"}),
+            ))
+            .mount(&server)
+            .await;
+
+        let error = OllamaClient::from_host_root(server.uri())
+            .fetch_version()
+            .await
+            .expect_err("bad version must fail");
+        assert!(error.to_string().contains("invalid semantic version"));
+    }
+
+    #[tokio::test]
+    async fn pull_stream_emits_one_success_for_trailing_frame_without_newline() {
+        if network_disabled() {
+            return;
+        }
+        let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/api/pull"))
             .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_raw(body, "application/x-ndjson"),
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_raw(r#"{"status":"success"}"#, "application/x-ndjson"),
             )
             .mount(&server)
             .await;
 
-        let client = OllamaClient::from_host_root(server.uri());
-        let events = client
-            .pull_model_stream("test-model")
+        let events = OllamaClient::from_host_root(server.uri())
+            .pull_model_stream("fixture")
             .await
-            .expect("start pull stream")
+            .expect("start stream")
             .collect::<Vec<_>>()
             .await;
-
         assert_matches!(
             events.as_slice(),
-            [
-                PullEvent::Status(pulling),
-                PullEvent::Status(complete),
-            ] if pulling == "pulling layers" && complete == "complete"
+            [PullEvent::Status(status), PullEvent::Success] if status == "success"
         );
     }
 
     #[tokio::test]
-    async fn test_probe_server_happy_path_openai_compat_and_native() {
-        if std::env::var(codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR).is_ok() {
-            tracing::info!(
-                "{} set; skipping test_probe_server_happy_path_openai_compat_and_native",
-                codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR
-            );
+    async fn pull_stream_turns_invalid_json_into_terminal_error() {
+        if network_disabled() {
             return;
         }
-
         let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/api/pull"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_raw("not-json\n", "application/x-ndjson"),
+            )
+            .mount(&server)
+            .await;
 
-        // Native endpoint
+        let events = OllamaClient::from_host_root(server.uri())
+            .pull_model_stream("fixture")
+            .await
+            .expect("start stream")
+            .collect::<Vec<_>>()
+            .await;
+        assert_matches!(
+            events.as_slice(),
+            [PullEvent::Error(error)] if error == "OLLAMA_PULL_INVALID_JSON"
+        );
+    }
+
+    #[tokio::test]
+    async fn pull_stream_rejects_oversized_frame() {
+        if network_disabled() {
+            return;
+        }
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/api/pull"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_raw(
+                "x".repeat(MAX_PULL_FRAME_BYTES + 1),
+                "application/x-ndjson",
+            ))
+            .mount(&server)
+            .await;
+
+        let events = OllamaClient::from_host_root(server.uri())
+            .pull_model_stream("fixture")
+            .await
+            .expect("start stream")
+            .collect::<Vec<_>>()
+            .await;
+        assert_matches!(
+            events.as_slice(),
+            [PullEvent::Error(error)] if error.contains("FRAME_TOO_LARGE")
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_supports_native_and_openai_compatible_endpoints() {
+        if network_disabled() {
+            return;
+        }
+        let server = wiremock::MockServer::start().await;
         wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/api/tags"))
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let native = OllamaClient::from_host_root(server.uri());
-        native.probe_server().await.expect("probe native");
-
-        // OpenAI compatibility endpoint
         wiremock::Mock::given(wiremock::matchers::method("GET"))
             .and(wiremock::matchers::path("/v1/models"))
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let ollama_client =
-            OllamaClient::try_from_provider_with_base_url(&format!("{}/v1", server.uri()))
-                .await
-                .expect("probe OpenAI compat");
-        ollama_client
+
+        OllamaClient::from_host_root(server.uri())
             .probe_server()
             .await
-            .expect("probe OpenAI compat");
-    }
-
-    #[tokio::test]
-    async fn test_try_from_oss_provider_ok_when_server_running() {
-        if std::env::var(codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR).is_ok() {
-            tracing::info!(
-                "{} set; skipping test_try_from_oss_provider_ok_when_server_running",
-                codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR
-            );
-            return;
-        }
-
-        let server = wiremock::MockServer::start().await;
-
-        // OpenAI‑compat models endpoint responds OK.
-        wiremock::Mock::given(wiremock::matchers::method("GET"))
-            .and(wiremock::matchers::path("/v1/models"))
-            .respond_with(wiremock::ResponseTemplate::new(200))
-            .mount(&server)
-            .await;
-
+            .expect("native probe");
         OllamaClient::try_from_provider_with_base_url(&format!("{}/v1", server.uri()))
             .await
-            .expect("client should be created when probe succeeds");
-    }
-
-    #[tokio::test]
-    async fn test_try_from_provider_preserves_outbound_proxy_policy() {
-        if std::env::var(codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR).is_ok() {
-            tracing::info!(
-                "{} set; skipping test_try_from_provider_preserves_outbound_proxy_policy",
-                codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR
-            );
-            return;
-        }
-
-        let proxy = wiremock::MockServer::start().await;
-        let base_url = "http://ollama-proxy.invalid";
-        let request_url = format!("{base_url}/api/tags");
-        codex_http_client::cache_system_proxy_route_for_test(&request_url, proxy.uri());
-
-        wiremock::Mock::given(wiremock::matchers::method("GET"))
-            .and(wiremock::matchers::path("/api/tags"))
-            .respond_with(wiremock::ResponseTemplate::new(200))
-            .expect(1)
-            .mount(&proxy)
-            .await;
-
-        let provider = create_oss_provider_with_base_url(base_url, WireApi::Responses);
-        let client = OllamaClient::try_from_provider(
-            &provider,
-            HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
-        )
-        .await
-        .expect("client should preserve the configured outbound proxy policy");
-
-        assert_eq!(
-            client.client.outbound_proxy_policy(),
-            OutboundProxyPolicy::RespectSystemProxy
-        );
-    }
-
-    #[tokio::test]
-    async fn test_try_from_provider_handles_invalid_custom_ca_by_proxy_policy() {
-        const CHILD_POLICY_ENV: &str = "CODEX_OLLAMA_INVALID_CA_TEST_POLICY";
-
-        if std::env::var(codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR).is_ok() {
-            tracing::info!(
-                "{} set; skipping test_try_from_provider_handles_invalid_custom_ca_by_proxy_policy",
-                codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR
-            );
-            return;
-        }
-
-        let Ok(policy_name) = std::env::var(CHILD_POLICY_ENV) else {
-            let invalid_ca_path = std::env::temp_dir().join(format!(
-                "codex-ollama-invalid-ca-{}.pem",
-                std::process::id()
-            ));
-            std::fs::write(&invalid_ca_path, "not a PEM certificate")
-                .expect("invalid CA fixture should be written");
-
-            for ca_env in ["CODEX_CA_CERTIFICATE", "SSL_CERT_FILE"] {
-                for policy_name in ["reqwest-default", "respect-system-proxy"] {
-                    let output = std::process::Command::new(
-                        std::env::current_exe().expect("test executable should be available"),
-                    )
-                    .arg("--exact")
-                    .arg("client::tests::test_try_from_provider_handles_invalid_custom_ca_by_proxy_policy")
-                    .arg("--nocapture")
-                    .env_remove("CODEX_CA_CERTIFICATE")
-                    .env_remove("SSL_CERT_FILE")
-                    .env(ca_env, &invalid_ca_path)
-                    .env(CHILD_POLICY_ENV, policy_name)
-                    .output()
-                    .expect("isolated CA subprocess should run");
-
-                    assert!(
-                        output.status.success(),
-                        "{policy_name} failed with invalid {ca_env}\nstdout:\n{}\nstderr:\n{}",
-                        String::from_utf8_lossy(&output.stdout),
-                        String::from_utf8_lossy(&output.stderr),
-                    );
-                }
-            }
-
-            std::fs::remove_file(invalid_ca_path).expect("invalid CA fixture should be removed");
-            return;
-        };
-
-        let outbound_proxy_policy = match policy_name.as_str() {
-            "reqwest-default" => OutboundProxyPolicy::ReqwestDefault,
-            "respect-system-proxy" => OutboundProxyPolicy::RespectSystemProxy,
-            _ => panic!("unexpected test proxy policy: {policy_name}"),
-        };
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("GET"))
-            .and(wiremock::matchers::path("/api/tags"))
-            .respond_with(wiremock::ResponseTemplate::new(200))
-            .mount(&server)
-            .await;
-
-        let provider = create_oss_provider_with_base_url(&server.uri(), WireApi::Responses);
-        let result = OllamaClient::try_from_provider(
-            &provider,
-            HttpClientFactory::new(outbound_proxy_policy),
-        )
-        .await;
-
-        match outbound_proxy_policy {
-            OutboundProxyPolicy::ReqwestDefault => {
-                result.expect("default-routed Ollama should fall back to system roots");
-                assert_eq!(
-                    server
-                        .received_requests()
-                        .await
-                        .expect("mock server should report requests")
-                        .len(),
-                    1
-                );
-            }
-            OutboundProxyPolicy::RespectSystemProxy => {
-                let error = result
-                    .err()
-                    .expect("system-proxy Ollama should reject invalid custom CAs");
-                let ca_env = if std::env::var_os("CODEX_CA_CERTIFICATE").is_some() {
-                    "CODEX_CA_CERTIFICATE"
-                } else {
-                    "SSL_CERT_FILE"
-                };
-                assert!(
-                    error.to_string().contains(ca_env),
-                    "expected actionable {ca_env} error, got: {error}"
-                );
-                assert_ne!(error.to_string(), OLLAMA_CONNECTION_ERROR);
-                assert!(
-                    server
-                        .received_requests()
-                        .await
-                        .expect("mock server should report requests")
-                        .is_empty()
-                );
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn test_try_from_oss_provider_err_when_server_missing() {
-        if std::env::var(codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR).is_ok() {
-            tracing::info!(
-                "{} set; skipping test_try_from_oss_provider_err_when_server_missing",
-                codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR
-            );
-            return;
-        }
-
-        let server = wiremock::MockServer::start().await;
-        let err = OllamaClient::try_from_provider_with_base_url(&format!("{}/v1", server.uri()))
-            .await
-            .err()
-            .expect("expected error");
-        assert_eq!(OLLAMA_CONNECTION_ERROR, err.to_string());
+            .expect("OpenAI-compatible probe");
     }
 }

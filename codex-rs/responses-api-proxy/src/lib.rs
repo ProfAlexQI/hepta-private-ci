@@ -30,6 +30,7 @@ use tiny_http::StatusCode;
 
 mod dump;
 mod read_api_key;
+mod sha256;
 use dump::ExchangeDumper;
 use read_api_key::read_auth_header_from_stdin;
 
@@ -53,7 +54,8 @@ pub struct Args {
     #[arg(long, default_value = "https://api.openai.com/v1/responses")]
     pub upstream_url: String,
 
-    /// Directory where request/response dumps should be written as JSON.
+    /// Directory for owner-only request/response metadata and body digests.
+    /// Raw request and response bodies are never persisted by this option.
     #[arg(long, value_name = "DIR")]
     pub dump_dir: Option<PathBuf>,
 }
@@ -212,7 +214,7 @@ fn forward_request(
         }
     }
 
-    // As part of our effort to to keep `auth_header` secret, we use a
+    // As part of our effort to keep `auth_header` secret, we use a
     // combination of `from_static()` and `set_sensitive(true)`.
     let mut auth_header_value = HeaderValue::from_static(auth_header);
     auth_header_value.set_sensitive(true);

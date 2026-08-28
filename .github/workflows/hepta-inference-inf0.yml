@@ -6,11 +6,27 @@ on:
       - "docs/hepta-vnext/inference/**"
       - "tools/hepta-inference-inf0/**"
       - "scripts/hepta-inference-inf0-source-gate.py"
-      - "codex-rs/lmstudio/src/lib.rs"
-      - "codex-rs/ollama/src/lib.rs"
-      - "codex-rs/utils/oss/src/lib.rs"
+      - "scripts/hepta-inference-inf0c-real-e2e.py"
+      - "codex-rs/lmstudio/**"
+      - "codex-rs/ollama/**"
+      - "codex-rs/utils/oss/**"
+      - "codex-rs/responses-api-proxy/**"
       - ".github/workflows/hepta-inference-inf0.yml"
   workflow_dispatch:
+    inputs:
+      run_real_software_e2e:
+        description: "Run against pre-provisioned loopback Ollama and LM Studio services"
+        required: false
+        default: false
+        type: boolean
+      ollama_model:
+        description: "Exact pre-installed Ollama model ID"
+        required: false
+        type: string
+      lmstudio_model:
+        description: "Exact pre-installed LM Studio model ID"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -26,11 +42,20 @@ jobs:
           persist-credentials: false
           fetch-depth: 2
 
-      - name: Verify source-bound INF-0 contract
+      - name: Verify Python sources
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/hepta-inference-inf0-source-gate.py | tee "$RUNNER_TEMP/hepta-inference-inf0-source.txt"
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0-source-gate.py \
+            scripts/hepta-inference-inf0c-real-e2e.py
+
+      - name: Verify source-bound INF-0C contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0-source-gate.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf0c-source.txt"
 
       - name: Record qualification-only source posture
         if: always()
@@ -38,12 +63,15 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "### Hepta inference INF-0 source posture"
+            echo "### Hepta inference INF-0C source posture"
             echo
-            echo "- commit: $(git rev-parse HEAD)"
-            echo "- tree: $(git rev-parse 'HEAD^{tree}')"
+            echo "- receipt commit: $(git rev-parse HEAD)"
+            echo "- receipt tree: $(git rev-parse 'HEAD^{tree}')"
             echo "- source candidate: $(git rev-parse HEAD^)"
+            echo "- source tree: $(git show -s --format=%T HEAD^)"
             echo "- qualification_only: true"
+            echo "- source_complete: true"
+            echo "- real_software_e2e_executed: false"
             echo "- qualified: false"
             echo "- production_authority: false"
             echo "- model_npu: false"
@@ -55,8 +83,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-inference-inf0-source
-          path: ${{ runner.temp }}/hepta-inference-inf0-source.txt
+          name: hepta-inference-inf0c-source
+          path: ${{ runner.temp }}/hepta-inference-inf0c-source.txt
           if-no-files-found: warn
 
   reference-contract:
@@ -91,7 +119,7 @@ jobs:
     name: Compatibility readiness hardening
     needs: source-contract
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: codex-rs
@@ -110,22 +138,75 @@ jobs:
         shell: bash
         run: cargo fmt --all -- --check
 
-      - name: Compile readiness adapters
+      - name: Compile readiness and privacy adapters
         shell: bash
-        run: cargo check --locked -p codex-lmstudio -p codex-ollama -p codex-utils-oss
+        run: |
+          cargo check --locked \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy
 
-      - name: Test readiness adapters
+      - name: Test readiness and privacy adapters
         shell: bash
-        run: cargo test --locked -p codex-lmstudio -p codex-ollama -p codex-utils-oss
+        run: |
+          cargo test --locked \
+            -p codex-lmstudio \
+            -p codex-ollama \
+            -p codex-utils-oss \
+            -p codex-responses-api-proxy
 
-      - name: Strict readiness Clippy
+      - name: Strict readiness and privacy Clippy
         shell: bash
         run: |
           cargo clippy --locked --all-targets \
             -p codex-lmstudio \
             -p codex-ollama \
             -p codex-utils-oss \
+            -p codex-responses-api-proxy \
             -- -D warnings
+
+  real-software-e2e:
+    name: Real software E2E on pre-provisioned runner
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_real_software_e2e }}
+    needs: source-contract
+    runs-on: [self-hosted, hepta-inference-e2e]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Require exact pre-installed model IDs
+        shell: bash
+        env:
+          OLLAMA_MODEL: ${{ inputs.ollama_model }}
+          LMSTUDIO_MODEL: ${{ inputs.lmstudio_model }}
+        run: |
+          set -euo pipefail
+          test -n "$OLLAMA_MODEL"
+          test -n "$LMSTUDIO_MODEL"
+
+      - name: Execute loopback-only no-download smoke
+        shell: bash
+        env:
+          OLLAMA_MODEL: ${{ inputs.ollama_model }}
+          LMSTUDIO_MODEL: ${{ inputs.lmstudio_model }}
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-real-e2e.py \
+            --execute \
+            --ollama-model "$OLLAMA_MODEL" \
+            --lmstudio-model "$LMSTUDIO_MODEL" \
+            --receipt "$RUNNER_TEMP/hepta-inference-inf0c-real-e2e.json"
+
+      - name: Upload real-software receipt
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-real-e2e
+          path: ${{ runner.temp }}/hepta-inference-inf0c-real-e2e.json
+          if-no-files-found: error
 
   qualification-summary:
     name: Qualification-only aggregate
@@ -150,4 +231,4 @@ jobs:
           test "$SOURCE_RESULT" = success
           test "$REFERENCE_RESULT" = success
           test "$COMPATIBILITY_RESULT" = success
-          echo "PASS_HEPTA_INFERENCE_INF0_QUALIFICATION_ONLY"
+          echo "PASS_HEPTA_INFERENCE_INF0C_SOURCE_AND_RUST_QUALIFICATION_ONLY"

@@ -25,6 +25,18 @@ impl LineBuffer {
         self.scanned_len = 0;
         Some(line)
     }
+
+    pub(crate) fn take_remaining(&mut self) -> Option<BytesMut> {
+        if self.bytes.is_empty() {
+            return None;
+        }
+        self.scanned_len = 0;
+        Some(self.bytes.split())
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.bytes.len()
+    }
 }
 
 #[cfg(test)]
