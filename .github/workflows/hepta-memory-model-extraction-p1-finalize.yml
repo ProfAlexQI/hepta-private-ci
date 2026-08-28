@@ -52,6 +52,9 @@ jobs:
       - name: Wire process-wide concurrent-turn enforcement
         run: python3 scripts/hepta-max-concurrent-turns-p1.py
 
+      - name: Wire shared tool-process enforcement
+        run: python3 scripts/hepta-max-tool-processes-p1.py
+
       - name: Refresh workspace lock graph
         working-directory: codex-rs
         run: cargo metadata --format-version 1 > /dev/null
@@ -71,6 +74,7 @@ jobs:
           set -euo pipefail
           python3 scripts/verify-hepta-memory-model-extraction-p1.py
           python3 scripts/verify-hepta-max-concurrent-turns-p1.py
+          python3 scripts/verify-hepta-max-tool-processes-p1.py
 
       - name: Execute Memory model and compatibility tests
         working-directory: codex-rs
@@ -80,11 +84,12 @@ jobs:
           cargo test --locked -p codex-hepta-memory --lib -- --nocapture
           cargo test --locked -p codex-hepta-memory-runtime -- --nocapture
 
-      - name: Execute concurrent-turn admission tests
+      - name: Execute resource admission tests
         working-directory: codex-rs
         run: |
           set -euo pipefail
           cargo test --locked -p codex-app-server thread_status::tests -- --nocapture
+          cargo test --locked -p codex-app-server tool_process_budget::tests -- --nocapture
           cargo test --locked -p codex-hepta-agentd app_runtime::tests -- --nocapture
 
       - name: Compile real product callers
@@ -123,8 +128,11 @@ jobs:
           allowed_exact = {
               "codex-rs/Cargo.toml",
               "codex-rs/Cargo.lock",
+              "codex-rs/app-server/src/command_exec.rs",
               "codex-rs/app-server/src/lib.rs",
               "codex-rs/app-server/src/message_processor.rs",
+              "codex-rs/app-server/src/request_processors/command_exec_processor.rs",
+              "codex-rs/app-server/src/request_processors/process_exec_processor.rs",
               "codex-rs/app-server/src/request_processors/turn_processor.rs",
               "codex-rs/app-server/src/thread_status.rs",
               "codex-rs/hepta-agentd/src/app_runtime.rs",
@@ -164,8 +172,11 @@ jobs:
           git add -A \
             codex-rs/Cargo.toml \
             codex-rs/Cargo.lock \
+            codex-rs/app-server/src/command_exec.rs \
             codex-rs/app-server/src/lib.rs \
             codex-rs/app-server/src/message_processor.rs \
+            codex-rs/app-server/src/request_processors/command_exec_processor.rs \
+            codex-rs/app-server/src/request_processors/process_exec_processor.rs \
             codex-rs/app-server/src/request_processors/turn_processor.rs \
             codex-rs/app-server/src/thread_status.rs \
             codex-rs/hepta-agentd/src/app_runtime.rs \
@@ -174,5 +185,5 @@ jobs:
             codex-rs/hepta-memory/src/cognitive_model.rs \
             codex-rs/hepta-memory-model
           git diff --cached --check
-          git commit -m "refactor(hepta): close P1 model and turn-budget gaps [hepta-p1-gap-closure]"
+          git commit -m "refactor(hepta): close P1 model and resource gaps [hepta-p1-gap-closure]"
           git push origin "HEAD:refs/heads/$BRANCH_NAME"
