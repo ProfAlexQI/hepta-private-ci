@@ -1,5 +1,5 @@
 {
-  "schema": "hepta.inference.inf0c_source_receipt.v4",
+  "schema": "hepta.inference.inf0c_source_receipt.v5",
   "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
   "plan_version": "2.0.0",
   "source_binding": {
@@ -10,8 +10,8 @@
   },
   "development_branch": "codex/hepta-inference-runtime-v2-20260828",
   "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce",
-  "source_candidate_commit": "ab76fe3714159ded2b97732e926fa346eea97f56",
-  "source_candidate_tree": "17befba2c060f2be4469c359f77ae9ce79587f34",
+  "source_candidate_commit": "8fb0f3848a7e90da9e0a6106d505c4257cba56b1",
+  "source_candidate_tree": "7ccd975777af21aab00280adaeb71a4632ec6e43",
   "source_candidate_components": {
     "inf0a_source_rebind": true,
     "inf0b_reference_contracts": true,
@@ -22,6 +22,7 @@
     "inf0c_local_provider_loopback_only": true,
     "inf0c_local_transport_direct_no_proxy_no_redirect": true,
     "inf0c_implicit_model_install_disabled": true,
+    "inf0c_canonical_install_fence_markers": true,
     "inf0c_lmstudio_async_timeout": true,
     "inf0c_lmstudio_cli_sha256_provenance": true,
     "inf0c_lmstudio_bounded_stderr": true,
@@ -55,7 +56,7 @@
     {
       "run_id": 33146906491,
       "head": "d409139d4d61c8ba83ccaf1e232a1ad62aa9754f",
-      "runner_id": 1000023613,
+      "runner_assigned": true,
       "checkout": "PASS",
       "python_source_syntax": "PASS",
       "source_gate": "EXECUTED_FAILED",
@@ -65,8 +66,12 @@
     {
       "run_id": 33148146228,
       "head": "ed17c2012039771eb3f583879cdf3e34c62194f7",
-      "status": "SUPERSEDED_BY_MERGE_REF_GATE_FIX",
-      "qualification_claim": false
+      "runner_assigned": true,
+      "checkout": "PASS",
+      "python_source_syntax": "PASS",
+      "source_gate": "EXECUTED_FAILED",
+      "failure": "INSTALL_FENCE_CANONICAL_TEXT_SPLIT_ACROSS_STRING_LITERALS",
+      "classification": "EXECUTED_FAILED_SOURCE_GATE_FALSE_POSITIVE"
     }
   ],
   "current_ci": {
