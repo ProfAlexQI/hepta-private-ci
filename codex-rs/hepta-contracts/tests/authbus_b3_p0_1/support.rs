@@ -28,7 +28,10 @@ fn secret_ref(key: &str, bytes: &[u8]) -> OpaqueSecretRef {
     .unwrap_or_else(|error| panic!("valid secret reference: {error:?}"))
 }
 
-fn refresh_request(reference: OpaqueSecretRef, idempotency_key: &str) -> RefreshWithSecretRefRequest {
+fn refresh_request(
+    reference: OpaqueSecretRef,
+    idempotency_key: &str,
+) -> RefreshWithSecretRefRequest {
     let provider_id = "provider-p0";
     let profile_id = "profile-p0";
     let token_family_id = "family-p0";
@@ -81,7 +84,61 @@ fn refresh_request(reference: OpaqueSecretRef, idempotency_key: &str) -> Refresh
     }
 }
 
+fn rotate_request(
+    reference: OpaqueSecretRef,
+    idempotency_key: &str,
+) -> RotateSecretRefRequest {
+    let refresh = refresh_request(reference, idempotency_key);
+    RotateSecretRefRequest {
+        schema_version: refresh.schema_version,
+        operation_id: refresh.operation_id,
+        refresh_operation_key: refresh.refresh_operation_key,
+        command_id: refresh.command_id,
+        run_id: refresh.run_id,
+        profile_id: refresh.profile_id,
+        provider_id: refresh.provider_id,
+        token_family_id: refresh.token_family_id,
+        secret_ref: refresh.secret_ref,
+        expected_secret_revision: refresh.expected_secret_revision,
+        idempotency_key: refresh.idempotency_key,
+        payload_digest: refresh.payload_digest,
+        policy_digest: refresh.policy_digest,
+        scope_digest: refresh.scope_digest,
+        authority_epoch: refresh.authority_epoch,
+        owner_epoch: refresh.owner_epoch,
+        generation: refresh.generation,
+        fencing_token: refresh.fencing_token,
+        logical_clock: refresh.logical_clock,
+        causal_parent_event_id: refresh.causal_parent_event_id,
+        deadline_at: refresh.deadline_at,
+        purpose_digest: refresh.purpose_digest,
+        audience: refresh.audience,
+    }
+}
+
 fn status_request(request: &RefreshWithSecretRefRequest) -> RefreshStatusByOperationKeyRequest {
+    RefreshStatusByOperationKeyRequest {
+        schema_version: request.schema_version,
+        operation_id: request.operation_id.clone(),
+        provider_id: request.provider_id.clone(),
+        profile_id: request.profile_id.clone(),
+        token_family_id: request.token_family_id.clone(),
+        refresh_operation_key: request.refresh_operation_key.clone(),
+        idempotency_key: request.idempotency_key.clone(),
+        payload_digest: request.payload_digest.clone(),
+        expected_secret_revision: request.expected_secret_revision,
+        authority_epoch: request.authority_epoch,
+        owner_epoch: request.owner_epoch,
+        generation: request.generation,
+        fencing_token: request.fencing_token.clone(),
+        deadline_at: request.deadline_at,
+        audience: request.audience.clone(),
+        expected_execution_mode: "qualification".to_string(),
+        policy_digest: request.policy_digest.clone(),
+    }
+}
+
+fn rotate_status_request(request: &RotateSecretRefRequest) -> RefreshStatusByOperationKeyRequest {
     RefreshStatusByOperationKeyRequest {
         schema_version: request.schema_version,
         operation_id: request.operation_id.clone(),
@@ -128,15 +185,20 @@ fn successful_status(request: &RefreshStatusByOperationKeyRequest) -> ProviderSt
     }
 }
 
-fn unknown_status(request: &RefreshStatusByOperationKeyRequest) -> ProviderStatusResult {
+fn unknown_status(
+    request: &RefreshStatusByOperationKeyRequest,
+    status_revision: u64,
+) -> ProviderStatusResult {
     ProviderStatusResult {
-        response_id: "provider:status:unknown".to_string(),
+        response_id: format!("provider:status:unknown:{status_revision}"),
         provider_status: SecretProviderStatus::Unknown,
         secret_revision: request.expected_secret_revision,
-        response_digest: digest("provider:status:unknown"),
-        status_revision: 1,
-        observed_at: 10,
-        provider_query_receipt_digest: digest("provider:status:unknown:receipt"),
+        response_digest: digest(&format!("provider:status:unknown:{status_revision}")),
+        status_revision,
+        observed_at: 10 + status_revision,
+        provider_query_receipt_digest: digest(&format!(
+            "provider:status:unknown:receipt:{status_revision}"
+        )),
         new_access_secret_ref: None,
         new_refresh_secret_ref: None,
     }
@@ -153,8 +215,10 @@ fn backend(reference: &OpaqueSecretRef, bytes: &[u8]) -> QualificationSecretBack
 #[derive(Clone, Default)]
 struct ScriptedProvider {
     refresh_results: Arc<Mutex<VecDeque<Result<ProviderRefreshResult, ProviderAdapterError>>>>,
+    rotate_results: Arc<Mutex<VecDeque<Result<ProviderRotationResult, ProviderAdapterError>>>>,
     status_results: Arc<Mutex<VecDeque<Result<ProviderStatusResult, ProviderAdapterError>>>>,
     refresh_calls: Arc<AtomicUsize>,
+    rotate_calls: Arc<AtomicUsize>,
     status_calls: Arc<AtomicUsize>,
 }
 
@@ -163,6 +227,13 @@ impl ScriptedProvider {
         self.refresh_results
             .lock()
             .unwrap_or_else(|_| panic!("refresh queue poisoned"))
+            .push_back(result);
+    }
+
+    fn push_rotate(&self, result: Result<ProviderRotationResult, ProviderAdapterError>) {
+        self.rotate_results
+            .lock()
+            .unwrap_or_else(|_| panic!("rotate queue poisoned"))
             .push_back(result);
     }
 
@@ -175,6 +246,10 @@ impl ScriptedProvider {
 
     fn refresh_calls(&self) -> usize {
         self.refresh_calls.load(Ordering::SeqCst)
+    }
+
+    fn rotate_calls(&self) -> usize {
+        self.rotate_calls.load(Ordering::SeqCst)
     }
 
     fn status_calls(&self) -> usize {
@@ -201,7 +276,12 @@ impl SecretRefProvider for ScriptedProvider {
         _request: &RotateSecretRefRequest,
         _secret: &ProcessBoundSecret,
     ) -> Result<ProviderRotationResult, ProviderAdapterError> {
-        Err(ProviderAdapterError::Unknown)
+        self.rotate_calls.fetch_add(1, Ordering::SeqCst);
+        self.rotate_results
+            .lock()
+            .unwrap_or_else(|_| panic!("rotate queue poisoned"))
+            .pop_front()
+            .unwrap_or(Err(ProviderAdapterError::Unknown))
     }
 
     fn status_by_operation_key(
