@@ -39,33 +39,6 @@ impl IdempotencyKey {
     }
 }
 
-/// Durable operation owner identity.
-///
-/// An Agent may host several independently owned product contexts. Binding
-/// only an `AgentId` made Automation → App Server impossible to represent,
-/// because both contexts belong to the same Agent. The component identity is
-/// therefore part of the digest and single-writer boundary.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct OperationOwner {
-    pub agent_id: AgentId,
-    pub component: ProductComponentId,
-}
-
-impl OperationOwner {
-    pub fn new(agent_id: AgentId, component: ProductComponentId) -> Self {
-        Self {
-            agent_id,
-            component,
-        }
-    }
-
-    fn frame_into(&self, target: &mut Vec<u8>) {
-        frame(target, self.agent_id.as_str().as_bytes());
-        frame(target, self.component.as_str().as_bytes());
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationPhase {
@@ -123,14 +96,21 @@ impl OperationPhase {
     }
 }
 
+/// Digest-bound operation identity between two product component owners.
+///
+/// The Agent and component are independent identity axes. This permits a
+/// same-Agent Automation Runtime → App Server operation while still rejecting
+/// an identical source/destination owner.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct OperationBinding {
     pub schema_version: u32,
     pub operation_id: OperationId,
     pub idempotency_key: IdempotencyKey,
-    pub source_owner: OperationOwner,
-    pub destination_owner: OperationOwner,
+    pub source_owner_agent_id: AgentId,
+    pub source_component: ProductComponentId,
+    pub destination_owner_agent_id: AgentId,
+    pub destination_component: ProductComponentId,
     pub action: AuthorityAction,
     pub authority_epoch: u64,
     pub owner_epoch: u64,
@@ -145,8 +125,10 @@ impl OperationBinding {
     pub fn new(
         operation_id: OperationId,
         idempotency_key: IdempotencyKey,
-        source_owner: OperationOwner,
-        destination_owner: OperationOwner,
+        source_owner_agent_id: AgentId,
+        source_component: ProductComponentId,
+        destination_owner_agent_id: AgentId,
+        destination_component: ProductComponentId,
         action: AuthorityAction,
         authority_epoch: u64,
         owner_epoch: u64,
@@ -155,7 +137,9 @@ impl OperationBinding {
         command_sha256: Sha256Digest,
         command_bytes: u64,
     ) -> Result<Self, OperationContractError> {
-        if source_owner == destination_owner {
+        if source_owner_agent_id == destination_owner_agent_id
+            && source_component == destination_component
+        {
             return Err(OperationContractError::SameOwner);
         }
         if authority_epoch == 0 || owner_epoch == 0 || generation == 0 {
@@ -168,8 +152,10 @@ impl OperationBinding {
             schema_version: OPERATION_CONTRACT_SCHEMA_VERSION,
             operation_id,
             idempotency_key,
-            source_owner,
-            destination_owner,
+            source_owner_agent_id,
+            source_component,
+            destination_owner_agent_id,
+            destination_component,
             action,
             authority_epoch,
             owner_epoch,
@@ -186,8 +172,16 @@ impl OperationBinding {
         frame(&mut bytes, &self.schema_version.to_be_bytes());
         frame(&mut bytes, self.operation_id.as_str().as_bytes());
         frame(&mut bytes, self.idempotency_key.as_str().as_bytes());
-        self.source_owner.frame_into(&mut bytes);
-        self.destination_owner.frame_into(&mut bytes);
+        frame(
+            &mut bytes,
+            self.source_owner_agent_id.as_str().as_bytes(),
+        );
+        frame(&mut bytes, self.source_component.as_str().as_bytes());
+        frame(
+            &mut bytes,
+            self.destination_owner_agent_id.as_str().as_bytes(),
+        );
+        frame(&mut bytes, self.destination_component.as_str().as_bytes());
         frame(&mut bytes, self.action.as_str().as_bytes());
         frame(&mut bytes, &self.authority_epoch.to_be_bytes());
         frame(&mut bytes, &self.owner_epoch.to_be_bytes());
@@ -418,8 +412,10 @@ mod tests {
                 .unwrap_or_else(|error| panic!("operation id must parse: {error}")),
             IdempotencyKey::parse("idempotency:test")
                 .unwrap_or_else(|error| panic!("idempotency key must parse: {error}")),
-            OperationOwner::new(agent(), ProductComponentId::AutomationRuntime),
-            OperationOwner::new(agent(), ProductComponentId::AppServer),
+            agent(),
+            ProductComponentId::AutomationRuntime,
+            agent(),
+            ProductComponentId::AppServer,
             AuthorityAction::MutateAutomation,
             1,
             7,
@@ -436,20 +432,24 @@ mod tests {
     #[test]
     fn same_agent_distinct_components_are_cross_owner() {
         let value = binding();
-        assert_eq!(value.source_owner.agent_id, value.destination_owner.agent_id);
-        assert_ne!(value.source_owner.component, value.destination_owner.component);
+        assert_eq!(
+            value.source_owner_agent_id,
+            value.destination_owner_agent_id
+        );
+        assert_ne!(value.source_component, value.destination_component);
     }
 
     #[test]
     fn identical_component_owner_is_rejected() {
-        let owner = OperationOwner::new(agent(), ProductComponentId::AutomationRuntime);
         let result = OperationBinding::new(
             OperationId::parse("operation:same-owner")
                 .unwrap_or_else(|error| panic!("operation id must parse: {error}")),
             IdempotencyKey::parse("idempotency:same-owner")
                 .unwrap_or_else(|error| panic!("idempotency key must parse: {error}")),
-            owner.clone(),
-            owner,
+            agent(),
+            ProductComponentId::AutomationRuntime,
+            agent(),
+            ProductComponentId::AutomationRuntime,
             AuthorityAction::MutateAutomation,
             1,
             1,
@@ -468,7 +468,7 @@ mod tests {
         changed.generation += 1;
         assert_ne!(first.digest(), changed.digest());
         changed = first.clone();
-        changed.destination_owner.component = ProductComponentId::MatrixIngress;
+        changed.destination_component = ProductComponentId::MatrixIngress;
         assert_ne!(first.digest(), changed.digest());
         changed = first.clone();
         changed.command_sha256 = Sha256Digest::for_bytes(b"changed-command");
