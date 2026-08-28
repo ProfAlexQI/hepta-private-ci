@@ -11,7 +11,9 @@ on:
       - "scripts/verify-hepta-intelligence-evidence-resolver-v4.py"
       - "scripts/check-hepta-intelligence-p0-3-3-clippy.py"
       - "scripts/run-hepta-intelligence-evidence-resolver-v5.py"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_DEVELOPMENT_PLAN_V3_2_2026-08-28.md"
       - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_3_HOST_EVIDENCE_RESOLVER_2026-08-28.md"
       - ".github/workflows/hepta-intelligence-evidence-resolver-v4.yml"
   pull_request:
     paths:
@@ -21,21 +23,25 @@ on:
       - "scripts/verify-hepta-intelligence-evidence-resolver-v4.py"
       - "scripts/check-hepta-intelligence-p0-3-3-clippy.py"
       - "scripts/run-hepta-intelligence-evidence-resolver-v5.py"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_DEVELOPMENT_PLAN_V3_2_2026-08-28.md"
       - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json"
+      - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_3_HOST_EVIDENCE_RESOLVER_2026-08-28.md"
       - ".github/workflows/hepta-intelligence-evidence-resolver-v4.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Each exact head owns an independent group. This preserves all historical
+# evidence while preventing a stale pending run from serializing a newer head.
 concurrency:
-  group: hepta-intelligence-evidence-resolver-v5-${{ github.ref }}
+  group: hepta-intelligence-evidence-resolver-v5-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
   source-contract:
     name: P0.3.3 host evidence resolver source contract v5
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
       dependency_qualified: ${{ steps.classify.outputs.dependency_qualified }}
@@ -79,6 +85,7 @@ jobs:
           status = json.loads(Path(
               "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json"
           ).read_text(encoding="utf-8"))
+          assert status["repository"] == "ProfHepta/hepta-private-ci"
           dependency = status["dependency"]
           expected = dependency.get("qualified") is True
           assert receipt["status"] == "PASS_P0_3_3_HOST_EVIDENCE_RESOLVER_SOURCE_ONLY"
@@ -115,7 +122,7 @@ jobs:
     name: P0.3.3 blocked until P0.3.2 exact qualification
     needs: source-contract
     if: needs.source-contract.outputs.dependency_qualified != 'true'
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Emit fail-closed dependency receipt
@@ -128,6 +135,7 @@ jobs:
           import json
           import os
           from pathlib import Path
+
           receipt = {
               "schema": "hepta_intelligence_p0_3_3_dependency_blocked_v1",
               "head": os.environ["EXACT_HEAD"],
@@ -164,7 +172,7 @@ jobs:
     name: P0.3.3 exact-head host evidence resolver qualification v5
     needs: source-contract
     if: needs.source-contract.outputs.dependency_qualified == 'true'
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
       - name: Checkout exact candidate
@@ -206,13 +214,18 @@ jobs:
           receipt = json.loads(Path(
               "artifacts/hepta-intelligence-evidence-resolver-v5/qualification-receipt.json"
           ).read_text(encoding="utf-8"))
+          assert receipt["repository"] == "ProfHepta/hepta-private-ci"
           assert receipt["head"] == os.environ["EXPECTED_HEAD"]
           assert receipt["p0_3_2_dependency_qualified"] is True
           assert receipt["host_resolves_offsets"] is True
           assert receipt["host_computes_digests"] is True
           assert receipt["qualified"] is True
           assert receipt["qualification_platform"] == "linux_exact_head"
-          assert all(check["passed"] for check in receipt["checks"])
+          assert receipt["checks"]
+          assert all(
+              check["passed"] is True and check["exit_code"] == 0
+              for check in receipt["checks"]
+          )
           for key in (
               "wired",
               "tool_v4_registered",

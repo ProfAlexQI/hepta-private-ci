@@ -1,10 +1,16 @@
 {
   "authority": {
     "callers_ratchet": false,
+    "default_projection_pointer_changed": false,
+    "default_recall_query_changed": false,
     "external_effects": false,
     "operator_acceptance": false,
     "production_authority": false,
-    "promotion": false
+    "production_projection_gate": false,
+    "promotion": false,
+    "tool_v3_registered": false,
+    "tool_v4_registered": false,
+    "wired": false
   },
   "candidate": {
     "implementation_root": "7c9b5a29e24237e90201fbe0cf1a7b1fbd2a8415",
@@ -48,7 +54,7 @@
       "contract": "hepta_intelligence_p0_3_3_exact_head_qualification_v5",
       "qualified": false,
       "source_gate": "dependency_state_aware",
-      "status": "pending_exact_head_execution"
+      "status": "pending_exact_head_execution_after_repository_identity_and_concurrency_hardening"
     },
     "qualified": false,
     "quote_selector": true,
@@ -76,13 +82,14 @@
   "development_branch": "codex/hepta-intelligence-evidence-resolver-v4-20260828",
   "generated_at": "2026-08-29",
   "next_actions": [
-    "Execute the P0.3.3 exact-head v5 source, format, all-target compile, focused/full test, and scoped Clippy matrix.",
-    "Keep v4 unregistered and all production authority false until that exact-head receipt is all-green.",
+    "Execute the P0.3.3 exact-head v5 matrix on a non-stale concurrency group.",
+    "Keep v4 unregistered and all production authority false until the exact-head receipt is all-green.",
     "Start P0.3.4 legacy inventory/backfill/quarantine only after P0.3.3 exact-head qualification."
   ],
   "pull_request": 30,
-  "repository": "ProfAlexQI/hepta-private-ci",
-  "schema": "hepta_intelligence_kg_execution_status_v3_2",
+  "repository": "ProfHepta/hepta-private-ci",
+  "repository_renamed_from": "ProfAlexQI/hepta-private-ci",
+  "schema": "hepta_intelligence_kg_execution_status_v3_12",
   "stack_base": {
     "branch": "codex/hepta-intelligence-shared-projection-planner-v5-20260828",
     "head": "fa59bb090043ba8d6fbf0991b167779d2385888c",

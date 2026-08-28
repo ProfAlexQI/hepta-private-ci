@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Execute all P0.3.3 exact-head gates and persist one fail-closed receipt."""
+
 from __future__ import annotations
 
 import json
@@ -23,7 +24,11 @@ RUST_FILES = [
 ]
 
 
-def run(check_id: str, command: Sequence[str], cwd: Path = ROOT) -> dict[str, object]:
+def run(
+    check_id: str,
+    command: Sequence[str],
+    cwd: Path = ROOT,
+) -> dict[str, object]:
     result = subprocess.run(
         list(command),
         cwd=cwd,
@@ -50,23 +55,33 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     LOGS.mkdir(parents=True, exist_ok=True)
     head = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+        ["git", "rev-parse", "HEAD"],
+        cwd=ROOT,
+        text=True,
     ).strip()
     tree = subprocess.check_output(
-        ["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=ROOT,
+        text=True,
     ).strip()
 
     dependency_check = (
         "import json; from pathlib import Path; "
-        "s=json.loads(Path('plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json').read_text()); "
+        "s=json.loads(Path('plans/hepta-intelligence/"
+        "HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json').read_text()); "
+        "assert s.get('repository')=='ProfHepta/hepta-private-ci'; "
         "d=s['dependency']; b=s['stack_base']; "
-        "assert d.get('id')=='P0.3.2'; assert d.get('qualified') is True; "
+        "assert d.get('id')=='P0.3.2'; "
+        "assert d.get('qualified') is True; "
         "assert d.get('implemented_in_repository') is True; "
         "assert d.get('activation_blocking') is False; "
         "assert d.get('ledger_verified_in_snapshot') is True; "
-        "assert d.get('repository_branch')=='codex/hepta-intelligence-shared-projection-planner-v5-20260828'; "
-        "assert b.get('branch')=='codex/hepta-intelligence-shared-projection-planner-v5-20260828'; "
-        "assert isinstance(b.get('head'),str) and len(b['head'])==40 and all(c in '0123456789abcdef' for c in b['head'])"
+        "assert d.get('repository_branch')=="
+        "'codex/hepta-intelligence-shared-projection-planner-v5-20260828'; "
+        "assert b.get('branch')=="
+        "'codex/hepta-intelligence-shared-projection-planner-v5-20260828'; "
+        "assert isinstance(b.get('head'),str) and len(b['head'])==40 "
+        "and all(c in '0123456789abcdef' for c in b['head'])"
     )
 
     checks = [
@@ -83,22 +98,48 @@ def main() -> int:
         ),
         run(
             "source_contract",
-            [sys.executable, "scripts/verify-hepta-intelligence-evidence-resolver-v4.py"],
+            [
+                sys.executable,
+                "scripts/verify-hepta-intelligence-evidence-resolver-v4.py",
+            ],
         ),
-        run("dependency_qualified", [sys.executable, "-c", dependency_check]),
+        run(
+            "dependency_qualified",
+            [sys.executable, "-c", dependency_check],
+        ),
         run(
             "candidate_rustfmt",
-            ["rustfmt", "--edition", "2024", "--config", "skip_children=true", "--check", *RUST_FILES],
+            [
+                "rustfmt",
+                "--edition",
+                "2024",
+                "--config",
+                "skip_children=true",
+                "--check",
+                *RUST_FILES,
+            ],
             WORKSPACE,
         ),
         run(
             "extension_all_targets_check",
-            ["cargo", "check", "-p", "codex-hepta-memory-extension", "--all-targets"],
+            [
+                "cargo",
+                "check",
+                "-p",
+                "codex-hepta-memory-extension",
+                "--all-targets",
+            ],
             WORKSPACE,
         ),
         run(
             "core_all_targets_check",
-            ["cargo", "check", "-p", "codex-hepta-memory", "--all-targets"],
+            [
+                "cargo",
+                "check",
+                "-p",
+                "codex-hepta-memory",
+                "--all-targets",
+            ],
             WORKSPACE,
         ),
         run(
@@ -129,21 +170,41 @@ def main() -> int:
         ),
         run(
             "extension_full_tests",
-            ["cargo", "test", "-p", "codex-hepta-memory-extension"],
+            [
+                "cargo",
+                "test",
+                "-p",
+                "codex-hepta-memory-extension",
+            ],
             WORKSPACE,
         ),
         run(
             "core_full_tests",
-            ["cargo", "test", "-p", "codex-hepta-memory"],
+            [
+                "cargo",
+                "test",
+                "-p",
+                "codex-hepta-memory",
+            ],
             WORKSPACE,
         ),
         run(
             "scoped_clippy",
-            [sys.executable, "scripts/check-hepta-intelligence-p0-3-3-clippy.py"],
+            [
+                sys.executable,
+                "scripts/check-hepta-intelligence-p0-3-3-clippy.py",
+            ],
         ),
         run(
             "source_tree_clean",
-            ["git", "diff", "--quiet", "--", ".", ":(exclude)artifacts"],
+            [
+                "git",
+                "diff",
+                "--quiet",
+                "--",
+                ".",
+                ":(exclude)artifacts",
+            ],
         ),
     ]
 
@@ -151,20 +212,28 @@ def main() -> int:
     source_log = LOGS / "source_contract.log"
     if source_log.exists():
         try:
-            source_receipt = json.loads(source_log.read_text(encoding="utf-8"))
+            source_receipt = json.loads(
+                source_log.read_text(encoding="utf-8")
+            )
         except json.JSONDecodeError:
             source_receipt = {"invalid_json": True}
+
     dependency_qualified = bool(
         isinstance(source_receipt, dict)
         and source_receipt.get("p0_3_2_dependency_qualified") is True
     )
-    qualified = dependency_qualified and all(bool(check["passed"]) for check in checks)
-    status = json.loads(Path(
-        "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json"
-    ).read_text(encoding="utf-8"))
+    qualified = dependency_qualified and all(
+        bool(check["passed"]) for check in checks
+    )
+    status = json.loads(
+        Path(
+            "plans/hepta-intelligence/"
+            "HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json"
+        ).read_text(encoding="utf-8")
+    )
     receipt = {
         "schema": "hepta_intelligence_p0_3_3_exact_head_qualification_v5",
-        "repository": "ProfAlexQI/hepta-private-ci",
+        "repository": "ProfHepta/hepta-private-ci",
         "branch": "codex/hepta-intelligence-evidence-resolver-v4-20260828",
         "head": head,
         "tree": tree,
