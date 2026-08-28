@@ -10,8 +10,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: hepta-intelligence-p1-1b-bounded-read-driver-v2
-  cancel-in-progress: true
+  group: hepta-intelligence-p1-1b-bounded-read-driver-v2-${{ github.sha }}
+  cancel-in-progress: false
 
 env:
   CARGO_NET_OFFLINE: "true"
@@ -19,13 +19,19 @@ env:
 jobs:
   qualify:
     name: P1.1b bounded index read materialization driver
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     steps:
       - name: Checkout exact qualification driver with complete ancestry
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
+
+      - name: Verify exact trigger binding
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Install Rust 1.95.0
         uses: dtolnay/rust-toolchain@stable
