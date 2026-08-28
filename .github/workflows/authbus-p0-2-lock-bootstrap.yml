@@ -14,13 +14,13 @@ env:
   MANIFEST: codex-rs/hepta-authbus-qualification/Cargo.toml
   PACKAGE: codex-hepta-authbus-qualification
   CRATE_ROOT: codex-rs/hepta-authbus-qualification
-  EXPECTED_PARENT: 75b403958b75847fc21ca77883cb163239f65aab
+  EXPECTED_PARENT: d0e88a039d2c766627aa3a6d5415e94682de590b
 
 jobs:
   bootstrap:
-    name: Generate committed Rust 1.95 lock and package rustfmt
+    name: Qualify and commit Rust 1.95 lock and package rustfmt
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Checkout exact bootstrap commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -36,13 +36,20 @@ jobs:
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           test "$(git rev-parse HEAD^)" = "${EXPECTED_PARENT}"
 
+      - name: Verify source and negative authority contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-authbus-p0-2.py | tee authbus-p0-2-bootstrap-source.json
+          grep -q 'PASS_AUTHBUS_P0_2_SOURCE_ONLY' authbus-p0-2-bootstrap-source.json
+
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: 1.95.0
-          components: rustfmt
+          components: rustfmt, clippy
 
-      - name: Generate and validate deterministic files
+      - name: Generate, format, and execute exact candidate
         shell: bash
         run: |
           set -euo pipefail
@@ -51,6 +58,10 @@ jobs:
           cargo fmt --manifest-path "${MANIFEST}" --package "${PACKAGE}"
           cargo fmt --manifest-path "${MANIFEST}" --package "${PACKAGE}" -- --check
           cargo metadata --manifest-path "${MANIFEST}" --locked --format-version 1 >/dev/null
+          cargo test --manifest-path "${MANIFEST}" --locked --no-default-features --lib -- --nocapture
+          cargo test --manifest-path "${MANIFEST}" --locked --features sqlite-qualification --tests -- --nocapture
+          cargo check --manifest-path "${MANIFEST}" --locked --features sqlite-qualification --all-targets
+          cargo clippy --manifest-path "${MANIFEST}" --locked --features sqlite-qualification --all-targets -- -D warnings
           test -s "${CRATE_ROOT}/Cargo.lock"
 
           allowed='^(codex-rs/hepta-authbus-qualification/Cargo.lock|codex-rs/hepta-authbus-qualification/src/lib.rs|codex-rs/hepta-authbus-qualification/src/model.rs|codex-rs/hepta-authbus-qualification/src/store.rs|codex-rs/hepta-authbus-qualification/tests/sqlite_wal.rs)$'
@@ -61,7 +72,7 @@ jobs:
             echo "${path}" | grep -Eq "${allowed}"
           done <<<"${changed}"
 
-      - name: Commit exact deterministic outputs
+      - name: Commit exact qualified deterministic outputs
         shell: bash
         run: |
           set -euo pipefail
@@ -75,6 +86,6 @@ jobs:
             "${CRATE_ROOT}/tests/sqlite_wal.rs"
           git diff --cached --check
           git diff --cached --name-only | tee bootstrap-files.txt
-          git commit -m "chore(authbus): pin P0.2 Rust 1.95 lock and rustfmt"
+          git commit -m "chore(authbus): pin qualified P0.2 Rust 1.95 lock and rustfmt"
           git push origin "HEAD:${GITHUB_REF_NAME}" \
             --force-with-lease="refs/heads/${GITHUB_REF_NAME}:${GITHUB_SHA}"
