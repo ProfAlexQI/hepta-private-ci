@@ -1,6 +1,11 @@
 use super::*;
 
+// `grounding.rs` is itself mounted through `#[path]` from `durable.rs`.
+// Bind its children explicitly so rustfmt and rustc do not resolve them as
+// siblings of this file and lose the `grounding/` directory component.
+#[path = "grounding/ledger.rs"]
 mod ledger;
+#[path = "grounding/prepare.rs"]
 mod prepare;
 
 pub(super) use ledger::insert_tx;
