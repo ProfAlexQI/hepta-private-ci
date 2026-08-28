@@ -1,0 +1,223 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  shared: root.join("apps/hepta-native/src/shared/mod.rs"),
+  bridge: root.join("apps/hepta-native/src/shared/hepta_windows_backend_ack_bridge.rs"),
+  ack: root.join("apps/hepta-native/src/shared/hepta_window_visual_ack.rs"),
+  producer: root.join("apps/hepta-native/src/shared/hepta_windows_window_ack_producer.rs"),
+  adapter: root.join("apps/hepta-native/src/shared/hepta_windows_material_adapter.rs"),
+  hook_contract: root.join("docs/ui/HEPTA_MAKEPAD_WINDOWS_ACK_HOOK_V1.json"),
+  patch_spec: root.join("docs/ui/HEPTA_MAKEPAD_WINDOWS_ACK_HOOK_PATCH_V1.md"),
+  material_matrix: root.join("docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"),
+  status: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_11_MAKEPAD_WINDOWS_ACK_HOOK_2026-08-28.md"),
+  target_verifier: root.join("scripts/hepta-ui-v4-verify-makepad-windows-hook-target"),
+  inherited_gate: root.join("scripts/hepta-ui-v4-windows-dwm-ack-producer-gate"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-makepad-windows-ack-hook.yml")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+
+def emit(checks, status)
+  failures = checks.reject { |_name, passed| passed }.keys
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.makepad-windows-ack-hook-source-gate.v1",
+    status: status,
+    source_implemented: failures.empty?,
+    hepta_backend_bridge_source: failures.empty?,
+    pinned_makepad_hook_contract_source: failures.empty?,
+    makepad_patch_applied: false,
+    makepad_patch_compile_validation: false,
+    hook_bound: false,
+    explicit_hwnd_from_framework: false,
+    native_compile_validation: false,
+    windows_compile_validation: false,
+    backend_ack_runtime_validation: false,
+    backdrop_readback_validation: false,
+    full_visual_readback_validation: false,
+    transient_system_material_binding: false,
+    complete_profile_binding: false,
+    system_material_binding: false,
+    native_product_runtime_validation: false,
+    device_validation: false,
+    production_authority: false,
+    effect_authority: false,
+    live_adapter_authority: false,
+    operator_acceptance: false,
+    promotion: false,
+    release: false,
+    checks: checks,
+    failures: failures
+  )
+  exit(failures.empty? ? 0 : 1)
+end
+
+emit(checks, "FAIL_MISSING_INPUT") unless checks.values.all?
+
+shared = files.fetch(:shared).read
+bridge = files.fetch(:bridge).read
+ack = files.fetch(:ack).read
+producer = files.fetch(:producer).read
+adapter = files.fetch(:adapter).read
+hook_contract = JSON.parse(files.fetch(:hook_contract).read)
+patch_spec = files.fetch(:patch_spec).read
+material_matrix = JSON.parse(files.fetch(:material_matrix).read)
+target_verifier = files.fetch(:target_verifier).read
+workflow = files.fetch(:workflow).read
+
+checks["shared.bridge_declared"] =
+  shared.include?("pub mod hepta_windows_backend_ack_bridge;")
+checks["shared.bridge_requires_no_script_registration"] =
+  !shared.include?("hepta_windows_backend_ack_bridge::script_mod")
+
+checks["bridge.state_machine"] = %w[
+  Unbound WindowBound RequestPending Acknowledged Rejected Invalidated Shutdown
+].all? { |term| bridge.include?(term) }
+checks["bridge.exact_identity"] =
+  bridge.include?("request_sequence") &&
+  bridge.include?("window_index") &&
+  bridge.include?("window_generation") &&
+  bridge.include?("hwnd") &&
+  bridge.include?("DispatchVisualsMismatch")
+checks["bridge.single_pending_monotonic"] =
+  bridge.include?("PendingRequestExists") &&
+  bridge.include?("StaleRequestSequence") &&
+  bridge.include?("last_registered_sequence")
+checks["bridge.popup_and_zero_handle_rejected"] =
+  bridge.include?("PopupWindowRejected") &&
+  bridge.include?("InvalidHostHandle") &&
+  bridge.include?("if is_popup") &&
+  bridge.include?("if hwnd == 0")
+checks["bridge.backend_failure_skips_readback"] =
+  bridge.include?("backend_apply_succeeded") &&
+  bridge.include?("applied: false") &&
+  bridge.include?("HeptaWindowVisualReadback::None")
+checks["bridge.reuses_scoped_producer_and_verifier"] =
+  bridge.include?("HeptaWindowsDwmWindowAckProducer") &&
+  bridge.include?("verify_window_visual_acknowledgement") &&
+  bridge.include?("BorrowedReadbackApi")
+checks["bridge.destroy_generation_safe"] =
+  bridge.include?("invalidate_destroyed_window") &&
+  bridge.include?("self.binding != Some(destroyed)") &&
+  bridge.include?("stale destroy event")
+checks["bridge.no_discovery_or_ffi"] =
+  %w[FindWindow EnumWindows GetForegroundWindow with_win32_app all_windows GWLP_USERDATA].none? do |term|
+    bridge.include?(term)
+  end && !bridge.match?(/extern\s+"(?:C|system)"/) && !bridge.match?(/\bunsafe\b/)
+checks["bridge.hook_and_runtime_unbound"] = %w[
+  HEPTA_WINDOWS_BACKEND_ACK_MAKEPAD_PATCH_APPLIED
+  HEPTA_WINDOWS_BACKEND_ACK_HOOK_BOUND
+  HEPTA_WINDOWS_BACKEND_ACK_EXPLICIT_HWND_FROM_FRAMEWORK
+  HEPTA_WINDOWS_BACKEND_ACK_RUNTIME_VALIDATED
+  HEPTA_WINDOWS_BACKEND_ACK_BACKDROP_READBACK_VALIDATED
+  HEPTA_WINDOWS_BACKEND_ACK_FULL_VISUAL_READBACK_VALIDATED
+  HEPTA_WINDOWS_BACKEND_ACK_TRANSIENT_SYSTEM_MATERIAL_BOUND
+  HEPTA_WINDOWS_BACKEND_ACK_COMPLETE_PROFILE_BOUND
+  HEPTA_WINDOWS_BACKEND_ACK_SYSTEM_MATERIAL_BOUND
+  HEPTA_WINDOWS_BACKEND_ACK_NATIVE_PRODUCT_RUNTIME
+  HEPTA_WINDOWS_BACKEND_ACK_DEVICE_VALIDATED
+  HEPTA_WINDOWS_BACKEND_ACK_PRODUCTION_AUTHORITY
+  HEPTA_WINDOWS_BACKEND_ACK_EFFECT_AUTHORITY
+  HEPTA_WINDOWS_BACKEND_ACK_LIVE_ADAPTER_AUTHORITY
+  HEPTA_WINDOWS_BACKEND_ACK_OPERATOR_ACCEPTANCE
+  HEPTA_WINDOWS_BACKEND_ACK_PROMOTION
+  HEPTA_WINDOWS_BACKEND_ACK_RELEASE
+].all? { |name| bridge.include?("#{name}: bool = false") }
+checks["bridge.focused_tests"] = %w[
+  exact_processed_event_produces_backdrop_only_acknowledgement
+  stale_sequence_and_visuals_are_rejected_before_dwm_readback
+  backend_apply_failure_is_a_rejected_ack_without_readback
+  readback_error_consumes_the_processed_request_and_stays_fail_closed
+  generation_rebind_invalidates_pending_and_stale_destroy_cannot_detach_new_window
+  popup_zero_handle_and_nonmonotonic_registration_fail_closed
+  shutdown_is_terminal_and_snapshot_grants_no_authority
+].all? { |name| bridge.include?(name) }
+
+checks["inherited.scoped_ack"] =
+  ack.include?("HeptaWindowVisualReadbackScope") &&
+  ack.include?("BackdropOnly") && ack.include?("FullVisuals")
+checks["inherited.read_only_dwm_producer"] =
+  producer.include?("HeptaWindowsDwmWindowAckProducer") &&
+  producer.include?("read_backdrop(self.binding.hwnd)") &&
+  !producer.include?("set_backdrop(")
+checks["inherited.none_not_auto"] =
+  adapter.include?("Self::None => DWMSBT_NONE") &&
+  !adapter.include?("HeptaWindowsBackdropKind::None => DWMSBT_AUTO")
+
+checks["contract.identity"] =
+  hook_contract["schema"] == "hepta.ui.makepad-windows-ack-hook.v1" &&
+  hook_contract.dig("makepad", "revision") == "c4335cee10b22aca768510c9d072b0ca1bba15c8"
+checks["contract.required_event_fields"] = %w[
+  requestSequence windowIdIndex windowIdGeneration hwnd visuals backendApplySucceeded isPopup
+].all? { |field| hook_contract.dig("upstreamHookContract", "processedEventFields").include?(field) }
+checks["contract.no_discovery_and_unbound"] =
+  hook_contract.dig("upstreamHookContract", "globalWindowScanAllowed") == false &&
+  hook_contract.dig("upstreamHookContract", "findWindowAllowed") == false &&
+  hook_contract.dig("makepad", "forkOrPatchApplied") == false &&
+  hook_contract.dig("makepad", "hookBound") == false
+checks["contract.source_anchors"] =
+  hook_contract.dig("makepad", "sourceAnchors").length == 5 &&
+  hook_contract.dig("makepad", "sourceAnchors").values.all? { |sha| sha.match?(/\A[0-9a-f]{40}\z/) }
+checks["contract.runtime_and_authority_false"] =
+  hook_contract.fetch("qualification").reject { |key, _| key == "sourceImplemented" }.values.none? &&
+  hook_contract.fetch("authority").values.none?
+
+checks["patch_spec.exact_files_and_no_shortcut"] = %w[
+  platform/src/cx_api.rs platform/src/window.rs
+  platform/src/os/windows/win32_app.rs
+  platform/src/os/windows/win32_window.rs
+  platform/src/os/windows/windows.rs
+  SetWindowVisualsCorrelated Win32WindowVisualsHookEvent
+  FindWindow EnumWindows GWLP_USERDATA
+].all? { |term| patch_spec.include?(term) }
+checks["patch_spec.unapplied_boundary"] =
+  patch_spec.include?("hook patch applied to the dependency: **false**") &&
+  patch_spec.include?("runtime hook bound: **false**")
+
+checks["target_verifier.exact_revision_and_blobs"] =
+  target_verifier.include?("EXPECTED_REVISION") &&
+  target_verifier.scan(/[0-9a-f]{40}/).length >= 6 &&
+  target_verifier.include?("git(root, \"hash-object\", path)")
+checks["target_verifier.current_gap"] =
+  target_verifier.include?("!cx_api.include?(\"SetWindowVisualsCorrelated\")") &&
+  target_verifier.include?("pub all_windows: Vec<HWND>") &&
+  target_verifier.include?("explicit_hwnd_from_framework: false")
+
+checks["matrix.bridge_source_and_unbound"] =
+  material_matrix.dig("makepadWindowsBackendHook", "bridgeSource") ==
+    "apps/hepta-native/src/shared/hepta_windows_backend_ack_bridge.rs" &&
+  material_matrix.dig("makepadWindowsBackendHook", "patchApplied") == false &&
+  material_matrix.dig("makepadWindowsBackendHook", "hookBound") == false &&
+  material_matrix.dig("makepadWindowsBackendHook", "runtimeValidated") == false
+checks["matrix.inherited_windows_contract_retained"] =
+  material_matrix.dig("invariants", "windowsDwmReadbackScope") == "BackdropOnly" &&
+  material_matrix.dig("invariants", "windowsSolidFallbackUsesDwmsbtNoneNotAuto") == true &&
+  material_matrix.dig("windowsDwmAcknowledgementProducer", "hostBindingAvailable") == false
+checks["matrix.runtime_and_authority_unclaimed"] =
+  material_matrix.fetch("authority").values.none? &&
+  material_matrix.fetch("platforms").all? { |platform| platform.fetch("runtimeStatus") != "PASS" }
+
+checks["workflow.inherited_and_new_gates"] =
+  workflow.include?("ruby scripts/hepta-ui-v4-windows-dwm-ack-producer-gate") &&
+  workflow.include?("ruby scripts/hepta-ui-v4-makepad-windows-ack-hook-gate")
+checks["workflow.three_platform_compile"] =
+  %w[ubuntu-latest windows-latest macos-latest].all? { |os| workflow.include?(os) } &&
+  workflow.include?("shared::hepta_windows_backend_ack_bridge::tests")
+checks["workflow.pinned_makepad_target"] =
+  workflow.include?("kevinaboos/makepad") &&
+  workflow.include?("c4335cee10b22aca768510c9d072b0ca1bba15c8") &&
+  workflow.include?("hepta-ui-v4-verify-makepad-windows-hook-target")
+checks["workflow.read_only_no_release"] =
+  workflow.include?("permissions:") && workflow.include?("contents: read") &&
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+
+failed = checks.reject { |_name, passed| passed }
+emit(
+  checks,
+  failed.empty? ? "PASS_MAKEPAD_WINDOWS_ACK_HOOK_SOURCE_ONLY" : "FAIL_MAKEPAD_WINDOWS_ACK_HOOK_SOURCE"
+)

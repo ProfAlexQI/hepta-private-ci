@@ -1,0 +1,109 @@
+{
+  "schema": "hepta.ui.makepad-windows-ack-hook.v1",
+  "status": "HEPTA_BRIDGE_SOURCE_READY_PINNED_MAKEPAD_HOOK_PATCH_REQUIRED",
+  "candidateBranch": "codex/ui-v4-makepad-windows-ack-hook-20260828",
+  "makepad": {
+    "repository": "kevinaboos/makepad",
+    "revision": "c4335cee10b22aca768510c9d072b0ca1bba15c8",
+    "dependency": "makepad-widgets",
+    "dependencySource": "git revision",
+    "forkOrPatchApplied": false,
+    "hookBound": false,
+    "sourceAnchors": {
+      "platform/src/cx_api.rs": "87d871cd6414d67ed3da14f3a1a48f98940d0782",
+      "platform/src/window.rs": "8e6e9a9d41c34d654de6721f4956558a3eb649fe",
+      "platform/src/os/windows/win32_app.rs": "42c98828d0f7d5f11fd45083e9102065465c560b",
+      "platform/src/os/windows/win32_window.rs": "67899eceaf83e46dc8690f0e8be98ad4941abb3a",
+      "platform/src/os/windows/windows.rs": "58df661d9d84660fcca2ac960f5bcf5b36c52f3a"
+    }
+  },
+  "upstreamHookContract": {
+    "operation": "SetWindowVisualsCorrelated",
+    "operationFields": [
+      "windowId",
+      "visuals",
+      "requestSequence"
+    ],
+    "processedEvent": "Win32WindowVisualsProcessed",
+    "processedEventFields": [
+      "requestSequence",
+      "windowIdIndex",
+      "windowIdGeneration",
+      "hwnd",
+      "visuals",
+      "backendApplySucceeded",
+      "isPopup"
+    ],
+    "emissionPoint": "immediately after Win32Window::apply_window_visuals in Cx::handle_platform_ops",
+    "destroyedEvent": "Win32WindowDestroyed",
+    "destroyedEventFields": [
+      "windowIdIndex",
+      "windowIdGeneration",
+      "hwnd"
+    ],
+    "destroyedEmissionPoints": [
+      "Win32Event::WindowClosed",
+      "CxOsOp::CloseWindow"
+    ],
+    "callbackThread": "Windows UI thread",
+    "callbackDelivery": "ordered with platform operation processing",
+    "popupRejected": true,
+    "globalWindowScanAllowed": false,
+    "findWindowAllowed": false,
+    "foregroundWindowLookupAllowed": false,
+    "requestSequenceRequired": true,
+    "windowGenerationRequired": true,
+    "explicitHwndRequired": true,
+    "backendApplyResultScope": "DWM system-backdrop set result only",
+    "fullWindowVisualsReadbackClaimAllowed": false
+  },
+  "heptaBridge": {
+    "source": "apps/hepta-native/src/shared/hepta_windows_backend_ack_bridge.rs",
+    "phases": [
+      "Unbound",
+      "WindowBound",
+      "RequestPending",
+      "Acknowledged",
+      "Rejected",
+      "Invalidated",
+      "Shutdown"
+    ],
+    "singlePendingRequestPerWindow": true,
+    "monotonicRequestSequence": true,
+    "exactVisualMatchRequired": true,
+    "exactWindowIdentityRequired": true,
+    "staleDestroyCannotDetachNewGeneration": true,
+    "backendFailureSkipsReadback": true,
+    "dwmProducerSource": "apps/hepta-native/src/shared/hepta_windows_window_ack_producer.rs",
+    "readbackScope": "BackdropOnly",
+    "makepadPatchApplied": false,
+    "hookBound": false,
+    "runtimeValidated": false
+  },
+  "qualification": {
+    "sourceImplemented": true,
+    "makepadPatchApplied": false,
+    "makepadPatchCompile": false,
+    "nativeCompile": false,
+    "windowsCompile": false,
+    "hookRuntime": false,
+    "exactHwndFromFramework": false,
+    "backdropReadback": false,
+    "fullVisualReadback": false,
+    "transientSystemMaterial": false,
+    "completeProfile": false,
+    "systemMaterialBinding": false,
+    "nativeProductRuntime": false,
+    "deviceValidation": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

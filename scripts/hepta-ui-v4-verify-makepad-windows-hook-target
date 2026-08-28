@@ -1,0 +1,89 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "open3"
+require "pathname"
+
+EXPECTED_REVISION = "c4335cee10b22aca768510c9d072b0ca1bba15c8"
+EXPECTED_BLOBS = {
+  "platform/src/cx_api.rs" => "87d871cd6414d67ed3da14f3a1a48f98940d0782",
+  "platform/src/window.rs" => "8e6e9a9d41c34d654de6721f4956558a3eb649fe",
+  "platform/src/os/windows/win32_app.rs" => "42c98828d0f7d5f11fd45083e9102065465c560b",
+  "platform/src/os/windows/win32_window.rs" => "67899eceaf83e46dc8690f0e8be98ad4941abb3a",
+  "platform/src/os/windows/windows.rs" => "58df661d9d84660fcca2ac960f5bcf5b36c52f3a"
+}.freeze
+
+root = Pathname.new(ARGV.fetch(0) do
+  warn "usage: #{$PROGRAM_NAME} PATH_TO_PINNED_MAKEPAD"
+  exit 2
+end).expand_path
+
+checks = {}
+
+def git(root, *args)
+  stdout, stderr, status = Open3.capture3("git", "-C", root.to_s, *args)
+  raise "git #{args.join(' ')} failed: #{stderr}" unless status.success?
+  stdout.strip
+end
+
+begin
+  checks["repository.exists"] = root.directory? && root.join(".git").directory?
+  revision = checks["repository.exists"] ? git(root, "rev-parse", "HEAD") : ""
+  checks["revision.exact"] = revision == EXPECTED_REVISION
+
+  EXPECTED_BLOBS.each do |path, expected|
+    file = root.join(path)
+    checks["file.#{path}"] = file.file?
+    checks["blob.#{path}"] = file.file? && git(root, "hash-object", path) == expected
+  end
+
+  cx_api = root.join("platform/src/cx_api.rs").read
+  window = root.join("platform/src/window.rs").read
+  win32_app = root.join("platform/src/os/windows/win32_app.rs").read
+  win32_window = root.join("platform/src/os/windows/win32_window.rs").read
+  windows = root.join("platform/src/os/windows/windows.rs").read
+
+  checks["anchor.uncorrelated_operation"] =
+    cx_api.include?("SetWindowVisuals(WindowId, WindowVisuals)") &&
+    !cx_api.include?("SetWindowVisualsCorrelated")
+  checks["anchor.public_setter"] =
+    window.include?("pub fn set_window_visuals") &&
+    window.include?("CxOsOp::SetWindowVisuals(window_id, visuals)")
+  checks["anchor.windows_backend_handler"] =
+    windows.include?("CxOsOp::SetWindowVisuals(window_id, visuals)") &&
+    windows.include?("window.win32_window.apply_window_visuals(visuals)")
+  checks["anchor.exact_backend_identity"] =
+    win32_window.include?("pub window_id: WindowId") &&
+    win32_window.include?("pub hwnd: HWND") &&
+    win32_window.include?("pub fn apply_window_visuals")
+  checks["anchor.no_public_exact_mapping"] =
+    win32_app.include?("pub all_windows: Vec<HWND>") &&
+    !win32_app.include?("window_id_to_hwnd") &&
+    !win32_app.include?("get_hwnd_for_window_id")
+rescue StandardError => error
+  checks["exception"] = false
+  warning = error.message
+end
+
+failures = checks.reject { |_name, passed| passed }.keys
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.makepad-windows-hook-target.v1",
+  status: failures.empty? ? "PASS_PINNED_MAKEPAD_HOOK_TARGET_SOURCE_ONLY" : "FAIL_PINNED_MAKEPAD_HOOK_TARGET",
+  repository: "kevinaboos/makepad",
+  expected_revision: EXPECTED_REVISION,
+  observed_revision: revision,
+  hook_patch_applied: false,
+  hook_bound: false,
+  compile_validation: false,
+  runtime_validation: false,
+  explicit_hwnd_from_framework: false,
+  production_authority: false,
+  effect_authority: false,
+  promotion: false,
+  release: false,
+  warning: warning,
+  checks: checks,
+  failures: failures
+)
+exit(failures.empty? ? 0 : 1)

@@ -1,7 +1,7 @@
 {
   "schema": "hepta.ui.platform-material-adapter-matrix.v1",
-  "status": "WINDOWS_DWM_BACKDROP_READBACK_PRODUCER_SOURCE_WIRED_HOST_BINDING_AND_RUNTIME_REQUIRED",
-  "candidateBranch": "codex/ui-v4-windows-dwm-ack-producer-20260828",
+  "status": "WINDOWS_BACKEND_ACK_BRIDGE_SOURCE_WIRED_PINNED_MAKEPAD_HOOK_REQUIRED",
+  "candidateBranch": "codex/ui-v4-makepad-windows-ack-hook-20260828",
   "authority": {
     "network": false,
     "mutation": false,
@@ -19,6 +19,7 @@
     "stableContentBackdropLayers": 0,
     "unknownPreferenceFallback": "transparency disabled and reduced motion enabled",
     "rawNativeHandleDiscovery": false,
+    "globalHwndScanAllowed": false,
     "exactWindowIdFromFrameworkAreaOrWindowEvent": true,
     "frameworkRequestIsNotRuntimeReadback": true,
     "ackIdentityRequiresQueuedRequest": true,
@@ -29,6 +30,9 @@
     "windowsDwmReadbackScope": "BackdropOnly",
     "windowsDwmReadbackDoesNotProveTransparencyOrIntensity": true,
     "windowsSolidFallbackUsesDwmsbtNoneNotAuto": true,
+    "makepadCorrelatedHookRequired": true,
+    "makepadCorrelatedHookBound": false,
+    "staleDestroyedWindowCannotDetachNewGeneration": true,
     "persistentChromeAcknowledgementMayBePartial": true,
     "transientSystemMaterialBound": false,
     "completeProfileBound": false,
@@ -41,6 +45,7 @@
     "frameworkWindowSource": "apps/hepta-native/src/shared/hepta_makepad_window_material.rs",
     "ackContractSource": "apps/hepta-native/src/shared/hepta_window_visual_ack.rs",
     "windowsAckProducerSource": "apps/hepta-native/src/shared/hepta_windows_window_ack_producer.rs",
+    "windowsBackendBridgeSource": "apps/hepta-native/src/shared/hepta_windows_backend_ack_bridge.rs",
     "phases": [
       "SolidFallback",
       "SemanticIntentOnly",
@@ -58,6 +63,7 @@
     "persistentChromeRequestSource": true,
     "nativeWindowHandleBound": false,
     "windowsAckProducerHostBound": false,
+    "windowsBackendHookBound": false,
     "transientSystemMaterialBound": false,
     "completeProfileBound": false,
     "systemMaterialBindingClaim": false,
@@ -72,7 +78,7 @@
       "Background",
       "Shutdown"
     ],
-    "sourceStatus": "FRAMEWORK_REQUEST_ACK_CONTRACT_AND_WINDOWS_BACKDROP_READBACK_SOURCE_WIRED_HOST_UNBOUND",
+    "sourceStatus": "FRAMEWORK_REQUEST_ACK_PRODUCER_AND_BACKEND_BRIDGE_SOURCE_WIRED_UPSTREAM_HOOK_UNBOUND",
     "compileStatus": "REQUIRED_NOT_RUN",
     "runtimeStatus": "REQUIRED_NOT_RUN"
   },
@@ -123,6 +129,27 @@
     "sourceStatus": "SOURCE_IMPLEMENTED_EXPLICIT_HOST_BINDING_REQUIRED",
     "runtimeStatus": "REQUIRED_NOT_RUN"
   },
+  "makepadWindowsBackendHook": {
+    "contract": "docs/ui/HEPTA_MAKEPAD_WINDOWS_ACK_HOOK_V1.json",
+    "patchSpecification": "docs/ui/HEPTA_MAKEPAD_WINDOWS_ACK_HOOK_PATCH_V1.md",
+    "bridgeSource": "apps/hepta-native/src/shared/hepta_windows_backend_ack_bridge.rs",
+    "makepadRepository": "kevinaboos/makepad",
+    "makepadRevision": "c4335cee10b22aca768510c9d072b0ca1bba15c8",
+    "correlatedOperation": "SetWindowVisualsCorrelated",
+    "processedEvent": "Win32WindowVisualsProcessed",
+    "destroyedEvent": "Win32WindowDestroyed",
+    "requestSequenceRequired": true,
+    "exactWindowGenerationRequired": true,
+    "explicitHwndRequired": true,
+    "popupRejected": true,
+    "globalWindowScanAllowed": false,
+    "patchApplied": false,
+    "hookBound": false,
+    "explicitHwndFromFramework": false,
+    "runtimeValidated": false,
+    "sourceStatus": "HEPTA_BRIDGE_AND_PINNED_HOOK_CONTRACT_SOURCE_READY_MAKEPAD_PATCH_REQUIRED",
+    "runtimeStatus": "REQUIRED_NOT_RUN"
+  },
   "platforms": [
     {
       "id": "windows",
@@ -130,13 +157,13 @@
       "chrome": "WindowsMica",
       "transient": "WindowsAcrylic",
       "preferenceProbe": "SystemParametersInfoW plus EnableTransparency registry value",
-      "persistentChromePath": "Makepad WindowVisuals Mica request for exact WindowId",
+      "persistentChromePath": "Makepad correlated WindowVisuals Mica request for exact WindowId",
       "ackBackend": "WindowsDwm",
-      "ackProducer": "source implemented, explicit HWND host binding not wired",
+      "ackProducer": "source implemented, explicit correlated Makepad hook not wired",
       "ackReadbackScope": "BackdropOnly",
       "solidFallbackDwmValue": "DWMSBT_NONE",
       "fullAdapterSource": "HeptaWindowsDwmBackdropApi still requires governed persistent and separate transient hosts",
-      "sourceStatus": "REQUEST_VERIFIER_AND_BACKDROP_READBACK_PRODUCER_SOURCE_WIRED_HOST_TRANSIENT_AND_RUNTIME_REQUIRED",
+      "sourceStatus": "REQUEST_VERIFIER_DWM_PRODUCER_AND_BACKEND_BRIDGE_SOURCE_WIRED_UPSTREAM_HOOK_TRANSIENT_AND_RUNTIME_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -205,6 +232,7 @@
     "apps/hepta-native/src/shared/hepta_makepad_window_material.rs",
     "apps/hepta-native/src/shared/hepta_window_visual_ack.rs",
     "apps/hepta-native/src/shared/hepta_windows_window_ack_producer.rs",
+    "apps/hepta-native/src/shared/hepta_windows_backend_ack_bridge.rs",
     "apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs",
     "apps/hepta-native/src/shared/hepta_system_preferences.rs",
     "apps/hepta-native/src/shared/hepta_windows_material_adapter.rs"

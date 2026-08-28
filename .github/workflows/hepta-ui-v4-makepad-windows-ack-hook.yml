@@ -1,0 +1,154 @@
+name: hepta-ui-v4-makepad-windows-ack-hook
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-makepad-windows-ack-hook-*"
+  pull_request:
+    paths:
+      - "apps/hepta-native/src/shared/hepta_windows_backend_ack_bridge.rs"
+      - "apps/hepta-native/src/shared/mod.rs"
+      - "docs/ui/HEPTA_MAKEPAD_WINDOWS_ACK_HOOK_V1.json"
+      - "docs/ui/HEPTA_MAKEPAD_WINDOWS_ACK_HOOK_PATCH_V1.md"
+      - "docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_11_MAKEPAD_WINDOWS_ACK_HOOK_2026-08-28.md"
+      - "scripts/hepta-ui-v4-verify-makepad-windows-hook-target"
+      - "scripts/hepta-ui-v4-makepad-windows-ack-hook-gate"
+      - ".github/workflows/hepta-ui-v4-makepad-windows-ack-hook.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v4-makepad-windows-ack-hook-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Makepad Windows acknowledgement hook source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Validate source formats
+        run: |
+          ruby -c scripts/hepta-ui-v4-windows-dwm-ack-producer-gate
+          ruby -c scripts/hepta-ui-v4-makepad-windows-ack-hook-gate
+          ruby -c scripts/hepta-ui-v4-verify-makepad-windows-hook-target
+          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
+            docs/ui/HEPTA_MAKEPAD_WINDOWS_ACK_HOOK_V1.json \
+            docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-makepad-windows-ack-hook.yml")'
+
+      - name: Run inherited Windows DWM producer gate
+        run: ruby scripts/hepta-ui-v4-windows-dwm-ack-producer-gate
+
+      - name: Run fail-closed hook source gate
+        run: |
+          mkdir -p artifacts/ui-v4-makepad-windows-hook
+          ruby scripts/hepta-ui-v4-makepad-windows-ack-hook-gate \
+            | tee artifacts/ui-v4-makepad-windows-hook/source-gate.json
+
+      - name: Verify source-only claim boundary
+        run: |
+          ruby -rjson -e '
+            receipt = JSON.parse(File.read("artifacts/ui-v4-makepad-windows-hook/source-gate.json"))
+            abort "unexpected source status" unless receipt.fetch("status") == "PASS_MAKEPAD_WINDOWS_ACK_HOOK_SOURCE_ONLY"
+            %w[
+              makepad_patch_applied makepad_patch_compile_validation hook_bound
+              explicit_hwnd_from_framework native_compile_validation windows_compile_validation
+              backend_ack_runtime_validation backdrop_readback_validation
+              full_visual_readback_validation transient_system_material_binding
+              complete_profile_binding system_material_binding
+              native_product_runtime_validation device_validation
+              production_authority effect_authority live_adapter_authority
+              operator_acceptance promotion release
+            ].each do |key|
+              abort "#{key} escaped source-only boundary" unless receipt.fetch(key) == false
+            end
+          '
+
+      - name: Upload source receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-makepad-windows-hook-source-${{ github.sha }}
+          path: artifacts/ui-v4-makepad-windows-hook/source-gate.json
+          if-no-files-found: error
+          retention-days: 14
+
+  pinned-makepad-target:
+    name: Verify pinned Makepad Windows hook target
+    needs: source-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Fetch exact pinned Makepad revision
+        run: |
+          set -euo pipefail
+          git init artifacts/makepad-pinned
+          git -C artifacts/makepad-pinned remote add origin https://github.com/kevinaboos/makepad.git
+          git -C artifacts/makepad-pinned fetch --depth=1 origin c4335cee10b22aca768510c9d072b0ca1bba15c8
+          git -C artifacts/makepad-pinned checkout --detach FETCH_HEAD
+
+      - name: Verify exact source anchors and current missing hook
+        run: |
+          ruby scripts/hepta-ui-v4-verify-makepad-windows-hook-target \
+            artifacts/makepad-pinned \
+            | tee artifacts/makepad-hook-target.json
+
+      - name: Upload pinned-target receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-makepad-hook-target-${{ github.sha }}
+          path: artifacts/makepad-hook-target.json
+          if-no-files-found: error
+          retention-days: 14
+
+  compile-contract:
+    name: Windows backend acknowledgement bridge compile (${{ matrix.os }})
+    needs: source-contract
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+
+      - name: Check Native formatting
+        run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+
+      - name: Compile Native library without product bridge defaults
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features
+
+      - name: Run focused bridge and acknowledgement tests
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_backend_ack_bridge::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_windows_window_ack_producer::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_window_visual_ack::tests -- --nocapture
