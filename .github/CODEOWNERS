@@ -21,12 +21,14 @@
 /tools/hepta-browser-c1-protocol/ @ProfAlexQI
 /tools/hepta-browser-c1-artifact-gate/ @ProfAlexQI
 /scripts/hepta-servo-*.py @ProfAlexQI
+/scripts/hepta-servo-worker-source-topology-acceptance-v1/ @ProfAlexQI
 /scripts/hepta_servo_*.py @ProfAlexQI
 /scripts/verify-hepta-browser-*.py @ProfAlexQI
 /scripts/verify-hepta-servo-*.py @ProfAlexQI
 /scripts/generate-hepta-servo-provenance.py @ProfAlexQI
 /scripts/test_generate_hepta-servo-provenance.py @ProfAlexQI
 /scripts/tests/test_hepta_servo_*.py @ProfAlexQI
+/scripts/tests/hepta_servo_worker_source_topology_acceptance_v1/ @ProfAlexQI
 /.github/workflows/hepta-*.yml @ProfAlexQI
 /.github/workflows/hepta-browser-ci.yml @ProfAlexQI
 /.github/workflows/hepta-vnext-qualification.yml @ProfAlexQI
