@@ -1,0 +1,280 @@
+name: hepta-intelligence-p1-1b-bounded-decode-arm-v3
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1b-bounded-decode-arm-v3-e6cded3-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-p1-1b-bounded-decode-arm-v3-e6cded3
+  cancel-in-progress: true
+
+env:
+  SOURCE_SHA: e6cded3099ec53c1b6de36bf7b389ff30a8d3718
+  PATCHER_PATH: scripts/qualification/apply-hepta-intelligence-p1-1b-bounded-decode-v3.py
+  WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1b-bounded-decode-arm-v3.yml
+  OUTPUT_BRANCH: qualification/hepta-intelligence-p1-1b-bounded-decode-output-v3-e6cded3-20260828
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1b-qualification
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1b-qualification/Cargo.toml
+  VERIFIER_PATH: scripts/verify-hepta-intelligence-local-embedding-index.py
+  ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1b-bounded-decode-v3
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  harden:
+    name: P1.1b bounded ANN decode hardening v3
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact source plus two-file wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 3
+
+      - name: Verify frozen source and wrapper-only history
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          def git(*args: str) -> str:
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          source = os.environ["SOURCE_SHA"]
+          expected = [os.environ["WRAPPER_PATH"], os.environ["PATCHER_PATH"]]
+          actual = git("diff", "--name-only", f"{source}..HEAD").splitlines()
+          assert git("rev-parse", "HEAD^^") == source
+          assert int(git("rev-list", "--count", f"{source}..HEAD")) == 2
+          assert actual == expected, {"expected": expected, "actual": actual}
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.bounded_decode_source_binding.v3",
+              "source_commit": source,
+              "source_tree": git("rev-parse", f"{source}^{{tree}}"),
+              "wrapper_head": git("rev-parse", "HEAD"),
+              "wrapper_paths": actual,
+              "wrapper_only_diff": True,
+              "runtime_wired": False,
+              "production_authority": False,
+          }
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          (artifact_dir / "source-binding.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Isolate Cargo outputs
+        run: |
+          set -euo pipefail
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-p1-1b-bounded-decode-v3-target" >> "$GITHUB_ENV"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Apply exact patch and verify Rust toolchain
+        run: |
+          set -euo pipefail
+          rustc --version | tee "$ARTIFACT_DIR/rustc-version.txt"
+          cargo --version | tee "$ARTIFACT_DIR/cargo-version.txt"
+          rustfmt --version | tee "$ARTIFACT_DIR/rustfmt-version.txt"
+          cargo clippy --version | tee "$ARTIFACT_DIR/clippy-version.txt"
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+          python3 -m py_compile "$PATCHER_PATH"
+          python3 "$PATCHER_PATH" | tee "$ARTIFACT_DIR/patch-application.json"
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check
+
+      - name: Enforce exact six-file source delta
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          expected = [
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/build.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/impl.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/tests_module.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/types.rs",
+              "scripts/verify-hepta-intelligence-local-embedding-index.py",
+          ]
+          actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          untracked = subprocess.check_output(
+              ["git", "ls-files", "--others", "--exclude-standard", "--", os.environ["CRATE_ROOT"]],
+              text=True,
+          ).splitlines()
+          if actual != expected or untracked:
+              raise SystemExit(json.dumps({"expected": expected, "actual": actual, "untracked": untracked}, indent=2))
+          (Path(os.environ["ARTIFACT_DIR"]) / "changed-paths.txt").write_text(
+              "\n".join(actual) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Run upgraded source gate
+        run: |
+          set -o pipefail
+          python3 "$VERIFIER_PATH" 2>&1 | tee "$ARTIFACT_DIR/source-gate.log"
+
+      - name: Run Rust tests, check, and strict Clippy
+        run: |
+          set -o pipefail
+          cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture \
+            2>&1 | tee "$ARTIFACT_DIR/tests.log"
+          cargo check --manifest-path "$MANIFEST_PATH" --all-targets \
+            2>&1 | tee "$ARTIFACT_DIR/check.log"
+          cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings \
+            2>&1 | tee "$ARTIFACT_DIR/clippy.log"
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          log = Path("artifacts/hepta-intelligence-p1-1b-bounded-decode-v3/tests.log").read_text(
+              encoding="utf-8", errors="replace"
+          )
+          passed = sum(int(value) for value in re.findall(r"test result: ok\. (\d+) passed", log))
+          if passed != 15:
+              raise SystemExit(f"expected 15 tests, observed {passed}")
+          PY
+
+      - name: Create clean six-file output commit
+        id: output_commit
+        run: |
+          set -euo pipefail
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+          git checkout -B "$OUTPUT_BRANCH" "$SOURCE_SHA"
+          git diff --check
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          expected = [
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/build.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/impl.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/tests_module.rs",
+              "codex-rs/hepta-memory-p1-1b-qualification/src/index/types.rs",
+              "scripts/verify-hepta-intelligence-local-embedding-index.py",
+          ]
+          actual = subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines()
+          untracked = subprocess.check_output(
+              ["git", "ls-files", "--others", "--exclude-standard", "--", os.environ["CRATE_ROOT"]],
+              text=True,
+          ).splitlines()
+          if actual != expected or untracked:
+              raise SystemExit(json.dumps({"expected": expected, "actual": actual, "untracked": untracked}, indent=2))
+          PY
+
+          git add -- \
+            "$CRATE_ROOT/src/index.rs" \
+            "$CRATE_ROOT/src/index/build.rs" \
+            "$CRATE_ROOT/src/index/impl.rs" \
+            "$CRATE_ROOT/src/index/tests_module.rs" \
+            "$CRATE_ROOT/src/index/types.rs" \
+            "$VERIFIER_PATH"
+          test "$(git diff --cached --name-only | wc -l | tr -d ' ')" = "6"
+          git config user.name "Hepta Qualification Bot"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git commit -m "fix(intelligence): bound P1.1b ANN file decoding"
+          output_sha="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          echo "sha=$output_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Write hardening receipt
+        env:
+          OUTPUT_SHA: ${{ steps.output_commit.outputs.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUNNER_NAME: ${{ runner.name }}
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          receipt = {
+              "schema": "hepta.intelligence.p1_1b.bounded_decode_hardening.v3",
+              "status": "PASS_P1_1B_BOUNDED_DECODE_HARDENING",
+              "source_commit": os.environ["SOURCE_SHA"],
+              "output_commit": os.environ["OUTPUT_SHA"],
+              "output_branch": os.environ["OUTPUT_BRANCH"],
+              "changed_paths": (artifact_dir / "changed-paths.txt").read_text(encoding="utf-8").splitlines(),
+              "findings_closed": [
+                  "dimension allocation is bounded before vector allocation",
+                  "bucket iteration is bounded by item count",
+                  "file reads are capped at MAX_INDEX_FILE_BYTES + 1",
+                  "metadata/read length drift fails closed",
+              ],
+              "tests_passed": 15,
+              "gates": {
+                  "source_binding": "success",
+                  "rust_1_95_0": "success",
+                  "rustfmt": "success",
+                  "source_gate": "success",
+                  "tests": "success",
+                  "check": "success",
+                  "clippy": "success",
+                  "changed_path_allowlist": "success",
+              },
+              "runner": {
+                  "name": os.environ["RUNNER_NAME"],
+                  "os": os.environ["RUNNER_OS"],
+                  "arch": os.environ["RUNNER_ARCH"],
+              },
+              "workflow": {
+                  "run_id": int(os.environ["RUN_ID"]),
+                  "run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              },
+              "qualified": False,
+              "runtime_wired": False,
+              "default_recall_changed": False,
+              "federation_recall_changed": False,
+              "context_attachment": False,
+              "physical_send": False,
+              "external_effects": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "callers_ratchet": False,
+          }
+          (artifact_dir / "hardening-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload bounded-decoder evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1b-bounded-decode-v3-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1b-bounded-decode-v3
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Push clean hardening output branch
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/$OUTPUT_BRANCH"
