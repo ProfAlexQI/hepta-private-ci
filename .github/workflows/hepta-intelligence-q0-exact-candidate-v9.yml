@@ -16,7 +16,7 @@ concurrency:
 
 env:
   EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-  EXPECTED_PARENT: 93e0517ba5b8fe0b07ce6b6d72c6b0c6698bdc06
+  EXPECTED_PARENT: bf47b70c3d6b0f889650a6e7f4b410838bf4770a
   ARTIFACT_DIR: artifacts/hepta-intelligence-q0-exact-candidate-v9/x64
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
@@ -28,7 +28,7 @@ jobs:
   prove-candidate:
     name: Prove complete frozen Q0 candidate on x86_64
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 300
     steps:
       - name: Checkout exact v9 candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -48,6 +48,7 @@ jobs:
           test -f .github/patches/hepta-intelligence-q0-compile-fix-v1.patch
           test -f .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py
           test -f .github/scripts/hepta-intelligence-q0-reconstruct-v7.py
+          test ! -e .github/workflows/hepta-intelligence-q0-compile-fix-v2.yml
           mkdir -p "$ARTIFACT_DIR/gates" "$ARTIFACT_DIR/rust"
           printf '{"head":"%s","tree":"%s","parent":"%s","host":"x86_64-unknown-linux-gnu","runtime_authority":false,"source_writeback":false}\n' \
             "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" "$(git rev-parse HEAD^)" \
@@ -58,6 +59,22 @@ jobs:
         with:
           toolchain: 1.95.0
           components: rustfmt,clippy
+
+      - name: Verify repository compiler and lock
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          expected=$(python3 - <<'PY'
+          import pathlib
+          import tomllib
+          print(tomllib.loads(pathlib.Path('rust-toolchain.toml').read_text())['toolchain']['channel'])
+          PY
+          )
+          test "$expected" = "1.95.0"
+          test "$(rustc --version | awk '{print $2}')" = "$expected"
+          test "$(rustc -vV | awk '/^host:/ {print $2}')" = "x86_64-unknown-linux-gnu"
+          test -s Cargo.lock
 
       - name: Restore compiler cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
@@ -109,7 +126,7 @@ jobs:
           printf '%s\n' "${PIPESTATUS[0]}" > "../$ARTIFACT_DIR/rust/memory-clippy-fix.exit"
           exit 0
 
-      - name: Verify formatting without hiding workspace drift
+      - name: Verify formatting and bounded repair surface
         shell: bash
         run: |
           set -euo pipefail
@@ -118,6 +135,13 @@ jobs:
           rustfmt --edition 2024 --config skip_children=true "${files[@]}"
           rustfmt --edition 2024 --check --config skip_children=true "${files[@]}"
           git diff --check
+          while IFS= read -r path; do
+            case "$path" in
+              codex-rs/hepta-memory/src/*.rs|codex-rs/hepta-memory/src/**/*.rs) ;;
+              *) printf 'unexpected candidate path: %s\n' "$path" >&2; exit 1 ;;
+            esac
+          done < <(git diff --name-only)
+          ! git diff --unified=0 -- '*.rs' | grep -E '^\+.*(#\!?\[allow\(clippy|#\[ignore\]|todo!\(|unimplemented!\()'
           set +e
           (cd codex-rs && cargo fmt --all -- --check) \
             >"$ARTIFACT_DIR/rust/workspace-fmt.log" 2>&1
@@ -199,20 +223,16 @@ jobs:
           import re
           import sys
 
-          log_path = pathlib.Path(sys.argv[1])
+          text = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8', errors='replace')
           minimum = int(sys.argv[2])
-          text = log_path.read_text(encoding="utf-8", errors="replace")
-          passed = sum(
-              int(value)
-              for value in re.findall(r"test result: ok\. (\d+) passed;", text)
-          )
-          print(f"verified_test_count={passed} minimum={minimum}")
+          passed = sum(int(value) for value in re.findall(r'test result: ok\. (\d+) passed;', text))
+          print(f'verified_test_count={passed} minimum={minimum}')
           raise SystemExit(0 if passed >= minimum else 1)
           PY
             local count_code=$?
             set -e
             if test "$count_code" != "0"; then
-              printf '%s\n' "1" > "$out/$name.exit"
+              printf '%s\n' 1 > "$out/$name.exit"
             fi
           }
 
