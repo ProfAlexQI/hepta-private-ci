@@ -1,8 +1,7 @@
 name: hepta Servo exact source acceptance live review v2
 
 on:
-  workflow_call:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [integration/vnext-main-20260811]
     paths:
@@ -32,7 +31,7 @@ jobs:
           HEAD_REF: ${{ github.event.pull_request.head.ref || github.head_ref }}
         run: |
           set -euo pipefail
-          if [[ "$EVENT_NAME" =~ ^pull_request(_review)?$ ]] && \
+          if [[ "$EVENT_NAME" =~ ^pull_request_(target|review)$ ]] && \
              [[ "$HEAD_REF" == review/hepta-servo-source-acceptance-* ]]; then
             echo "applicable=true" >> "$GITHUB_OUTPUT"
           else
