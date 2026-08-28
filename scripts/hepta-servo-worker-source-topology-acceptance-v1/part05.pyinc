@@ -1,0 +1,241 @@
+def contract(policy: dict[str, Any]) -> dict[str, Any]:
+    validate_policy(policy)
+    return {
+        "schema": POINTER_SCHEMA,
+        "status": "PASS_CONTRACT_ONLY",
+        "policy_id": policy["policy_id"],
+        "topology_receipt_schema": TOPOLOGY_RECEIPT_SCHEMA,
+        "accepted_source_pointer_required": True,
+        "minimum_approvals": policy["review"]["minimum_approvals"],
+        "reviewer_must_differ_from_pr_author": True,
+        "live_current_head_review_required": True,
+        "required_status_check": policy["review"]["required_status_check"],
+        "codeowner_identity_claimed": False,
+        "pointer_creation_command": False,
+        "exact_servo_source_accepted": False,
+        "worker_source_topology_accepted": False,
+        "build_authorized": False,
+        "servo_built": False,
+        "servo_runtime_qualified": False,
+        "authority": "all_false",
+    }
+
+
+def load_inputs(arguments: argparse.Namespace) -> dict[str, Any]:
+    source_pointer, source_pointer_raw = load_json(
+        pathlib.Path(arguments.accepted_source_pointer), "accepted source pointer"
+    )
+    source_candidate, source_candidate_raw = load_json(
+        pathlib.Path(arguments.source_candidate), "source candidate"
+    )
+    source_policy, source_policy_raw = load_json(
+        pathlib.Path(arguments.source_policy), "source acceptance policy"
+    )
+    source_challenge, source_challenge_raw = load_json(
+        pathlib.Path(arguments.source_challenge), "source acceptance challenge"
+    )
+    topology_receipt, topology_receipt_raw = load_json(
+        pathlib.Path(arguments.topology_receipt), "topology verification receipt"
+    )
+    topology, topology_raw = load_json(
+        pathlib.Path(arguments.topology), "Worker topology contract"
+    )
+    policy, policy_raw = load_json(
+        pathlib.Path(arguments.policy), "topology acceptance policy"
+    )
+    validate_source_pointer(
+        source_pointer,
+        source_pointer_raw,
+        source_candidate,
+        source_candidate_raw,
+        source_policy,
+        source_policy_raw,
+        source_challenge,
+        source_challenge_raw,
+    )
+    validate_topology_contract(topology, topology_raw)
+    validate_topology_receipt(
+        topology_receipt,
+        topology_receipt_raw,
+        source_pointer,
+        topology,
+        topology_raw,
+    )
+    validate_policy(policy)
+    return {
+        "source_pointer": source_pointer,
+        "source_pointer_raw": source_pointer_raw,
+        "topology_receipt": topology_receipt,
+        "topology_receipt_raw": topology_receipt_raw,
+        "topology": topology,
+        "topology_raw": topology_raw,
+        "policy": policy,
+        "policy_raw": policy_raw,
+    }
+
+
+def add_common_inputs(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--accepted-source-pointer", required=True)
+    parser.add_argument("--source-candidate", required=True)
+    parser.add_argument("--source-policy", required=True)
+    parser.add_argument("--source-challenge", required=True)
+    parser.add_argument("--topology-receipt", required=True)
+    parser.add_argument("--topology", required=True)
+    parser.add_argument("--policy", required=True)
+
+
+def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    contract_parser = subparsers.add_parser("contract")
+    contract_parser.add_argument("--policy", required=True)
+
+    challenge_parser = subparsers.add_parser("challenge")
+    add_common_inputs(challenge_parser)
+    challenge_parser.add_argument("--captured-at-utc")
+    challenge_parser.add_argument("--output", required=True)
+
+    verify_challenge_parser = subparsers.add_parser("verify-challenge")
+    add_common_inputs(verify_challenge_parser)
+    verify_challenge_parser.add_argument("--challenge", required=True)
+
+    verify_pointer_parser = subparsers.add_parser("verify-pointer")
+    add_common_inputs(verify_pointer_parser)
+    verify_pointer_parser.add_argument("--challenge", required=True)
+    verify_pointer_parser.add_argument("--pointer", required=True)
+
+    live_parser = subparsers.add_parser("verify-live-review")
+    add_common_inputs(live_parser)
+    live_parser.add_argument("--challenge", required=True)
+    live_parser.add_argument("--pointer", required=True)
+    live_parser.add_argument("--pull-request", required=True)
+    live_parser.add_argument("--reviews", required=True)
+    live_parser.add_argument("--files", required=True)
+    live_parser.add_argument("--head-commit", required=True)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    try:
+        arguments = parse_arguments(argv)
+        if arguments.command == "contract":
+            policy, _policy_raw = load_json(
+                pathlib.Path(arguments.policy), "topology acceptance policy"
+            )
+            result = contract(policy)
+        else:
+            inputs = load_inputs(arguments)
+            if arguments.command == "challenge":
+                challenge = compile_challenge(
+                    inputs["source_pointer"],
+                    inputs["source_pointer_raw"],
+                    inputs["topology_receipt"],
+                    inputs["topology_receipt_raw"],
+                    inputs["topology"],
+                    inputs["topology_raw"],
+                    inputs["policy"],
+                    inputs["policy_raw"],
+                    arguments.captured_at_utc,
+                )
+                create_only_json(pathlib.Path(arguments.output), challenge)
+                result = {
+                    "schema": CHALLENGE_SCHEMA,
+                    "status": "PASS_CHALLENGE_CREATED_TOPOLOGY_NOT_ACCEPTED",
+                    "challenge_id": challenge["challenge_id"],
+                    "worker_source_topology_accepted": False,
+                    "build_authorized": False,
+                    "authority": "all_false",
+                }
+            else:
+                challenge, challenge_raw = load_json(
+                    pathlib.Path(arguments.challenge), "topology acceptance challenge"
+                )
+                validate_challenge(
+                    challenge,
+                    inputs["source_pointer"],
+                    inputs["source_pointer_raw"],
+                    inputs["topology_receipt"],
+                    inputs["topology_receipt_raw"],
+                    inputs["topology"],
+                    inputs["topology_raw"],
+                    inputs["policy"],
+                    inputs["policy_raw"],
+                )
+                if arguments.command == "verify-challenge":
+                    result = {
+                        "schema": CHALLENGE_SCHEMA,
+                        "status": "PASS_CHALLENGE_TOPOLOGY_NOT_ACCEPTED",
+                        "challenge_id": challenge["challenge_id"],
+                        "worker_source_topology_accepted": False,
+                        "build_authorized": False,
+                        "authority": "all_false",
+                    }
+                else:
+                    pointer, _pointer_raw = load_json(
+                        pathlib.Path(arguments.pointer), "accepted topology pointer"
+                    )
+                    validate_pointer(
+                        pointer,
+                        inputs["source_pointer"],
+                        inputs["source_pointer_raw"],
+                        inputs["topology_receipt"],
+                        inputs["topology_receipt_raw"],
+                        inputs["topology"],
+                        inputs["topology_raw"],
+                        inputs["policy"],
+                        inputs["policy_raw"],
+                        challenge,
+                        challenge_raw,
+                    )
+                    if arguments.command == "verify-pointer":
+                        result = {
+                            "schema": POINTER_SCHEMA,
+                            "status": "PASS_POINTER_REVIEW_EVIDENCE_STILL_REQUIRED",
+                            "pointer_id": pointer["pointer_id"],
+                            "exact_servo_source_accepted": True,
+                            "worker_source_topology_accepted": True,
+                            "build_authorized": False,
+                            "servo_built": False,
+                            "servo_runtime_qualified": False,
+                            "authority": "all_false",
+                        }
+                    else:
+                        pull_request, _ = load_json(
+                            pathlib.Path(arguments.pull_request),
+                            "pull request evidence",
+                            canonical_required=False,
+                        )
+                        reviews, _ = load_json(
+                            pathlib.Path(arguments.reviews),
+                            "pull request reviews",
+                            canonical_required=False,
+                        )
+                        files, _ = load_json(
+                            pathlib.Path(arguments.files),
+                            "pull request files",
+                            canonical_required=False,
+                        )
+                        head_commit, _ = load_json(
+                            pathlib.Path(arguments.head_commit),
+                            "head commit evidence",
+                            canonical_required=False,
+                        )
+                        result = verify_live_review(
+                            pointer,
+                            inputs["policy"],
+                            challenge,
+                            pull_request,
+                            reviews,
+                            files,
+                            head_commit,
+                        )
+    except (TopologyAcceptanceError, OSError, UnicodeError, json.JSONDecodeError) as error:
+        print(f"HEPTA_SERVO_WORKER_SOURCE_TOPOLOGY_ACCEPTANCE=FAIL: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
