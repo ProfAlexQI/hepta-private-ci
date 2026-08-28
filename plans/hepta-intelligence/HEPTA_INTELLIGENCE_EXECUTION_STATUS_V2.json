@@ -23,9 +23,10 @@
   "current_tranche": {
     "id": "P0.4c",
     "name": "shadow_host_orchestration_adapter",
-    "status": "source_only_implemented_activation_blocked",
+    "status": "source_only_implemented_hosted_runner_blocked",
     "qualified": false,
-    "source_candidate": "a1f0f1e4a5c10c84a71a4a39d90791f13e02bf7b",
+    "source_candidate": "7bb26ec016c2e2c83084756485ea324e79bcddbe",
+    "hosted_blocker_receipt_commit": "23361416536f23791979e4bbc83b17c3c09a3c09",
     "source_commits": {
       "core_adapter": "27b64141575f1a937ae12d5d1e3bf344f7818491",
       "core_registration": "0b60f474992b4ac490444ec575bed82bea317360",
@@ -35,7 +36,8 @@
       "agentd_prepare_append_hardening": "914917b4a1f71189042e2654a6be2ea10d176023",
       "source_gate": "d0b19ca7644b672406af079ff485bc10ca880dda",
       "workflow": "59832f15548dcbd86d47d6c41035e68a04b759f8",
-      "plan": "a1f0f1e4a5c10c84a71a4a39d90791f13e02bf7b"
+      "plan": "a1f0f1e4a5c10c84a71a4a39d90791f13e02bf7b",
+      "implementation_receipt": "7bb26ec016c2e2c83084756485ea324e79bcddbe"
     },
     "files": [
       "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
@@ -46,6 +48,7 @@
       "scripts/verify-hepta-intelligence-shadow-host.py",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4C_SHADOW_HOST_2026-08-28.md",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4C_IMPLEMENTATION_RECEIPT_2026-08-28.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4C_HOSTED_BLOCKER_2026-08-28.json",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
       ".github/workflows/hepta-intelligence-shadow-host.yml"
     ],
@@ -76,17 +79,36 @@
       "external_effects": false
     },
     "qualification": {
-      "source_gate": "pending_exact_head_execution",
-      "format": "not_run",
-      "memory_focused_tests": "not_run",
-      "agentd_feature_focused_tests": "not_run",
-      "memory_crate_tests": "not_run",
-      "agentd_feature_crate_tests": "not_run",
-      "memory_clippy": "not_run",
-      "agentd_feature_clippy": "not_run",
-      "hosted_ci": "pending",
+      "source_gate": "not_run_runner_blocked",
+      "format": "not_run_runner_blocked",
+      "memory_focused_tests": "not_run_runner_blocked",
+      "agentd_feature_focused_tests": "not_run_runner_blocked",
+      "memory_crate_tests": "not_run_runner_blocked",
+      "agentd_feature_crate_tests": "not_run_runner_blocked",
+      "memory_clippy": "not_run_runner_blocked",
+      "agentd_feature_clippy": "not_run_runner_blocked",
+      "hosted_ci": "blocked_runner_not_assigned",
+      "workflow_run": {
+        "id": 33144320922,
+        "head": "7bb26ec016c2e2c83084756485ea324e79bcddbe",
+        "jobs": [
+          {
+            "id": 98761923318,
+            "name": "P0.4c shadow host source contract",
+            "steps": [],
+            "runner_id": 0
+          },
+          {
+            "id": 98761923512,
+            "name": "P0.4c shadow host Rust qualification",
+            "steps": [],
+            "runner_id": 0
+          }
+        ],
+        "commands_executed": false
+      },
       "qualified": false,
-      "toolchain_pin": "1.95.0"
+      "toolchain_pin": "1.95.0_source_bound_not_run"
     }
   },
   "capabilities": [
@@ -175,8 +197,8 @@
     ]
   },
   "next_actions": [
-    "Run the hardened P0.4c fail-closed source gate on one exact head.",
-    "Run memory and Agentd formatting, focused tests, full tests and strict clippy with Rust 1.95.0.",
+    "Preserve P0.4c Draft PR #23 and its hosted blocker receipt.",
+    "Run the source, formatting, focused, full and clippy gates when a runner is assigned.",
     "Keep the Agentd feature off by default and leave runtime/app/tool registration unchanged.",
     "Do not activate P1.1, production callers, default open paths or external effects from source-only evidence."
   ]
