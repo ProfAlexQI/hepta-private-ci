@@ -1,0 +1,160 @@
+name: AuthBus P0.2 SQLite WAL qualification
+
+on:
+  push:
+    branches:
+      - integration/vnext-main-full-ci-authbus-p0-2-20260828
+      - integration/vnext-main-full-ci-authbus-p0-3-20260828
+    paths:
+      - codex-rs/hepta-authbus-qualification/**
+      - codex-rs/hepta-contracts/**
+      - scripts/verify-authbus-p0-2.py
+      - docs/hepta-vnext/authbus/AUTHBUS_P0_2_IMPLEMENTATION_STATUS_2026-08-28.md
+      - .github/workflows/authbus-p0-2-qualification.yml
+  pull_request:
+    paths:
+      - codex-rs/hepta-authbus-qualification/**
+      - codex-rs/hepta-contracts/**
+      - scripts/verify-authbus-p0-2.py
+      - docs/hepta-vnext/authbus/AUTHBUS_P0_2_IMPLEMENTATION_STATUS_2026-08-28.md
+      - .github/workflows/authbus-p0-2-qualification.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: authbus-p0-2-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  MANIFEST: codex-rs/hepta-authbus-qualification/Cargo.toml
+
+jobs:
+  source-contract:
+    name: AuthBus P0.2 source and authority contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Bind exact commit and tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "commit=$(git rev-parse HEAD)" | tee exact-head.txt
+          echo "tree=$(git rev-parse HEAD^{tree})" | tee -a exact-head.txt
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+      - name: Run fail-closed source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify-authbus-p0-2.py | tee authbus-p0-2-source-receipt.json
+          grep -q 'PASS_AUTHBUS_P0_2_SOURCE_ONLY' authbus-p0-2-source-receipt.json
+
+      - name: Upload source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authbus-p0-2-source-${{ github.sha }}
+          path: |
+            exact-head.txt
+            authbus-p0-2-source-receipt.json
+          if-no-files-found: error
+          retention-days: 14
+
+  sqlite-wal:
+    name: AuthBus P0.2 SQLite WAL recovery matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Verify exact compiler and head
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustc --version | tee rustc-version.txt
+          cargo --version | tee cargo-version.txt
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(rustc -V | awk '{print $2}')" = "1.95.0"
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse HEAD^{tree})"
+            sha256sum "${MANIFEST}"
+          } | tee exact-head.txt
+
+      - name: Check formatting
+        shell: bash
+        run: cargo fmt --manifest-path "${MANIFEST}" --all -- --check
+
+      - name: Check default-off posture
+        shell: bash
+        run: cargo test --manifest-path "${MANIFEST}" --no-default-features --lib -- --nocapture
+
+      - name: Run SQLite WAL recovery tests
+        shell: bash
+        run: cargo test --manifest-path "${MANIFEST}" --features sqlite-qualification --tests -- --nocapture
+
+      - name: Check all targets
+        shell: bash
+        run: cargo check --manifest-path "${MANIFEST}" --features sqlite-qualification --all-targets
+
+      - name: Run strict Clippy
+        shell: bash
+        run: cargo clippy --manifest-path "${MANIFEST}" --features sqlite-qualification --all-targets -- -D warnings
+
+      - name: Record qualification receipt
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > authbus-p0-2-rust-receipt.json <<EOF
+          {
+            "schema":"hepta.authbus.p0.2.rust-qualification.v1",
+            "commit":"$(git rev-parse HEAD)",
+            "tree":"$(git rev-parse HEAD^{tree})",
+            "runner_id":"${RUNNER_TRACKING_ID:-hosted-assigned}",
+            "fmt":true,
+            "default_off":true,
+            "sqlite_wal_tests":true,
+            "check_all_targets":true,
+            "clippy_deny_warnings":true,
+            "qualification_only":true,
+            "authority":false,
+            "effect_authority":false,
+            "production_caller":false,
+            "production_writer":false,
+            "operator_acceptance":false,
+            "promotion":false,
+            "g5_allowed":false,
+            "execute_allowed":false
+          }
+          EOF
+
+      - name: Upload executable evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authbus-p0-2-rust-${{ github.sha }}
+          path: |
+            exact-head.txt
+            rustc-version.txt
+            cargo-version.txt
+            authbus-p0-2-rust-receipt.json
+          if-no-files-found: warn
+          retention-days: 14
