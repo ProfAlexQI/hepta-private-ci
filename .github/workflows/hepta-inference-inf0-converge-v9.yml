@@ -1,4 +1,4 @@
-name: Hepta inference INF-0 exact-head convergence v9.2
+name: Hepta inference INF-0 exact-head convergence v9.3
 
 on:
   push:
@@ -12,14 +12,14 @@ permissions:
   contents: write
 
 concurrency:
-  # Replace any pending macOS attempt and preserve one writer for the source branch.
+  # Replace pending attempts and preserve one writer for the exact source branch.
   group: hepta-inference-inf0-apply-repair-v8
   cancel-in-progress: true
 
 jobs:
   converge:
     name: Converge source repair and canonical qualification ownership
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 240
     env:
       BRANCH: codex/hepta-inference-runtime-v2-20260828
