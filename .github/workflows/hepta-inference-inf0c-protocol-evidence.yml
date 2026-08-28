@@ -1,0 +1,189 @@
+name: Hepta inference INF-0C protocol evidence
+
+on:
+  pull_request:
+    paths:
+      - "scripts/hepta-inference-inf0c-real-e2e.py"
+      - "scripts/hepta-inference-inf0c-protocol-evidence.py"
+      - "scripts/hepta-inference-inf0c-protocol-evidence-selftest.py"
+      - "scripts/hepta-inference-inf0c-protocol-evidence-source-gate.py"
+      - "scripts/hepta-inference-inf0c-evidence-v2-source-gate.py"
+      - "scripts/hepta-inference-inf0-source-gate.py"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_IMPLEMENTATION_STATUS_V1.json"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_STAGE_MATRIX_V2.json"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_PROTOCOL_EVIDENCE.md"
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_SOURCE_RECEIPT_2026-08-28.json"
+      - ".github/workflows/hepta-inference-inf0c-protocol-evidence.yml"
+  workflow_dispatch:
+    inputs:
+      run_real_protocol_evidence:
+        description: "Run exact tool-call and inventory evidence on pre-provisioned services"
+        required: false
+        default: false
+        type: boolean
+      ollama_model:
+        description: "Exact pre-installed Ollama model ID"
+        required: false
+        type: string
+      lmstudio_model:
+        description: "Exact pre-installed LM Studio model ID"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  protocol-source:
+    name: Protocol parser and fault evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+
+      - name: Verify Python syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0-source-gate.py \
+            scripts/hepta-inference-inf0c-real-e2e.py \
+            scripts/hepta-inference-inf0c-evidence-v2.py \
+            scripts/hepta-inference-inf0c-evidence-v2-loopback-selftest.py \
+            scripts/hepta-inference-inf0c-evidence-v2-source-gate.py \
+            scripts/hepta-inference-inf0c-protocol-evidence.py \
+            scripts/hepta-inference-inf0c-protocol-evidence-selftest.py \
+            scripts/hepta-inference-inf0c-protocol-evidence-source-gate.py
+
+      - name: Self-test exact tool-call parser and inventory fence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-protocol-evidence.py --self-test \
+            | tee "$RUNNER_TEMP/hepta-inference-inf0c-protocol-parser.txt"
+
+      - name: Self-test strict SSE malformed-event and timeout matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-protocol-evidence-selftest.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf0c-protocol-sse.txt"
+
+      - name: Verify protocol source and negative-authority contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-protocol-evidence-source-gate.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf0c-protocol-source.txt"
+
+      - name: Re-run evidence-v2 source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-evidence-v2-source-gate.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf0c-evidence-v2-parent.txt"
+
+      - name: Re-run append-only parent INF-0C contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0-source-gate.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf0c-parent-source.txt"
+
+      - name: Record qualification-only posture
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### INF-0C protocol evidence posture"
+            echo
+            echo "- receipt head: $(git rev-parse HEAD)"
+            echo "- source candidate: $(git rev-parse HEAD^)"
+            echo "- exact tool-call real execution: false"
+            echo "- real inventory stability: false"
+            echo "- real strict SSE execution: false"
+            echo "- backend cancellation acknowledged: false"
+            echo "- qualified: false"
+            echo "- INF-1: NOT_STARTED"
+            echo "- production/effect/remote/promotion authority: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload protocol source evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-protocol-source
+          path: ${{ runner.temp }}/hepta-inference-inf0c-*.txt
+          if-no-files-found: warn
+
+  real-protocol-evidence:
+    name: Fixed-tuple tool-call and inventory evidence
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_real_protocol_evidence }}
+    needs: protocol-source
+    runs-on: [self-hosted, hepta-inference-e2e]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+
+      - name: Require exact pre-installed model IDs
+        shell: bash
+        env:
+          OLLAMA_MODEL: ${{ inputs.ollama_model }}
+          LMSTUDIO_MODEL: ${{ inputs.lmstudio_model }}
+        run: |
+          set -euo pipefail
+          test -n "$OLLAMA_MODEL"
+          test -n "$LMSTUDIO_MODEL"
+
+      - name: Execute exact tool-call and inventory evidence
+        shell: bash
+        env:
+          OLLAMA_MODEL: ${{ inputs.ollama_model }}
+          LMSTUDIO_MODEL: ${{ inputs.lmstudio_model }}
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-protocol-evidence.py \
+            --execute \
+            --ollama-model "$OLLAMA_MODEL" \
+            --lmstudio-model "$LMSTUDIO_MODEL" \
+            --receipt "$RUNNER_TEMP/hepta-inference-inf0c-protocol-evidence.json"
+
+      - name: Require protocol receipt
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$RUNNER_TEMP/hepta-inference-inf0c-protocol-evidence.json"
+
+      - name: Upload real protocol evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-protocol-real-software
+          path: ${{ runner.temp }}/hepta-inference-inf0c-protocol-evidence.json
+          if-no-files-found: error
+
+  protocol-summary:
+    name: Protocol evidence source aggregate
+    if: always()
+    needs: protocol-source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Enforce protocol source result
+        shell: bash
+        env:
+          SOURCE_RESULT: ${{ needs.protocol-source.result }}
+        run: |
+          set -euo pipefail
+          test "$SOURCE_RESULT" = success
+          echo "PASS_HEPTA_INFERENCE_INF0C_PROTOCOL_SOURCE_ONLY"
