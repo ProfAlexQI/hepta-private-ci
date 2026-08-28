@@ -1,4 +1,4 @@
-name: AuthBus P0.3 one-shot deterministic lock and replay hardening bootstrap
+name: AuthBus P0.3 one-shot deterministic hardening bootstrap
 
 on:
   push:
@@ -14,11 +14,11 @@ env:
   MANIFEST: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
   PACKAGE: codex-hepta-authbus-p0-3-qualification
   CRATE_ROOT: codex-rs/hepta-authbus-p0-3-qualification
-  EXPECTED_PARENT: e3dc2cdee7349526e5f34ecd92e7bd4d184b4ff6
+  EXPECTED_PARENT: 47f42f3bc95c9edea7387b2ccc8f9d532eb6a9b2
 
 jobs:
   bootstrap:
-    name: Commit replay hardening and Rust 1.95 lock only
+    name: Commit P0.3 replay hardening, Rust 1.95 lock, and rustfmt
     runs-on: ubuntu-slim
     timeout-minutes: 15
     steps:
@@ -36,11 +36,13 @@ jobs:
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           test "$(git rev-parse HEAD^)" = "${EXPECTED_PARENT}"
 
-      - name: Apply deterministic P0.3 hardening
+      - name: Apply deterministic P0.3 replay hardening
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/bootstrap-authbus-p0-3.py
+          python3 scripts/verify-authbus-p0-2.py | tee authbus-p0-2-bootstrap-source.json
+          grep -q 'PASS_AUTHBUS_P0_2_SOURCE_ONLY' authbus-p0-2-bootstrap-source.json
           python3 scripts/verify-authbus-p0-3.py | tee authbus-p0-3-bootstrap-source.json
           grep -q 'PASS_AUTHBUS_P0_3_SOURCE_ONLY' authbus-p0-3-bootstrap-source.json
 
@@ -50,24 +52,15 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt
 
-      - name: Resolve and validate deterministic outputs
+      - name: Generate deterministic outputs
         shell: bash
         run: |
           set -euo pipefail
           test "$(rustc -V | awk '{print $2}')" = "1.95.0"
           cargo generate-lockfile --manifest-path "${MANIFEST}"
           cargo fmt --manifest-path "${MANIFEST}" --package "${PACKAGE}"
-          cargo fmt --manifest-path "${MANIFEST}" --package "${PACKAGE}" -- --check
-          cargo metadata --manifest-path "${MANIFEST}" --locked --format-version 1 --no-deps >/dev/null
           test -s "${CRATE_ROOT}/Cargo.lock"
-
-          allowed='^codex-rs/hepta-authbus-p0-3-qualification/(Cargo.lock|src/[^/]+[.]rs|tests/[^/]+[.]rs)$'
-          changed="$(git status --porcelain=v1 | awk '{print $2}')"
-          test -n "${changed}"
-          while IFS= read -r path; do
-            test -n "${path}"
-            echo "${path}" | grep -Eq "${allowed}"
-          done <<<"${changed}"
+          git diff --check
 
       - name: Commit exact deterministic outputs
         shell: bash
@@ -75,9 +68,19 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "${CRATE_ROOT}/Cargo.lock" "${CRATE_ROOT}/src" "${CRATE_ROOT}/tests"
+          git add -f "${CRATE_ROOT}/Cargo.lock"
+          git add "${CRATE_ROOT}/src" "${CRATE_ROOT}/tests"
+
+          allowed='^codex-rs/hepta-authbus-p0-3-qualification/(Cargo.lock|src/[^/]+[.]rs|tests/[^/]+[.]rs)$'
+          changed="$(git diff --cached --name-only)"
+          test -n "${changed}"
+          while IFS= read -r path; do
+            test -n "${path}"
+            echo "${path}" | grep -Eq "${allowed}"
+          done <<<"${changed}"
+
           git diff --cached --check
-          git diff --cached --name-only | tee bootstrap-files.txt
+          printf '%s\n' "${changed}" | tee bootstrap-files.txt
           git commit -m "fix(authbus): harden P0.3 replay and pin Rust 1.95 lock"
           git push origin "HEAD:${GITHUB_REF_NAME}" \
             --force-with-lease="refs/heads/${GITHUB_REF_NAME}:${GITHUB_SHA}"
