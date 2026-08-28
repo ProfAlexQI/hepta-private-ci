@@ -121,10 +121,8 @@ pub fn decode_message(bytes: &[u8]) -> Result<Message, ProtocolError> {
             let identity = decode_identity(&mut decoder)?;
             let commit = decoder.take_array::<40>()?;
             let tree = decoder.take_array::<40>()?;
-            let source_pin = SourcePin::new(
-                std::str::from_utf8(&commit)?,
-                std::str::from_utf8(&tree)?,
-            )?;
+            let source_pin =
+                SourcePin::new(std::str::from_utf8(&commit)?, std::str::from_utf8(&tree)?)?;
             let authority = AuthorityPosture::from_wire_bits(decoder.u16()?)?;
             let capability = StartupCapability::new(decoder.take_array::<32>()?)?;
             let mut hello = WorkerHello::new(identity, source_pin, capability)?;
@@ -238,10 +236,7 @@ fn encode_command(encoder: &mut Encoder, command: &CommandKind) -> Result<(), Pr
             encoder.u8(COMMAND_CLICK);
             encoder.string(semantic_ref, MAX_REFERENCE_BYTES)?;
         }
-        CommandKind::TypeText {
-            semantic_ref,
-            text,
-        } => {
+        CommandKind::TypeText { semantic_ref, text } => {
             encoder.u8(COMMAND_TYPE_TEXT);
             encoder.string(semantic_ref, MAX_REFERENCE_BYTES)?;
             encoder.string(text, MAX_TEXT_BYTES)?;
