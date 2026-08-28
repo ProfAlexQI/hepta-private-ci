@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.ai/schemas/ui/hepta.ui.v4.windows-product-host-qualification.v1.schema.json",
+  "title": "Hepta UI v4 Windows product-host implementation qualification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "candidate", "feature", "evidence", "qualification", "authority", "failures"],
+  "properties": {
+    "schema": {"const": "hepta.ui.v4.windows-product-host-implementation-qualification.v1"},
+    "status": {
+      "enum": [
+        "BLOCKED_WINDOWS_PRODUCT_HOST_REVIEW_ENVELOPE_REQUIRED",
+        "BLOCKED_WINDOWS_PRODUCT_HOST_DEVICE_QUALIFICATION_REQUIRED",
+        "PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION",
+        "FAIL_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION"
+      ]
+    },
+    "candidate": {"$ref": "#/$defs/candidate"},
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "defaultEnabled"],
+      "properties": {
+        "name": {"const": "hepta_ui_windows_system_material_v4"},
+        "defaultEnabled": {"const": false}
+      }
+    },
+    "evidence": {"$ref": "#/$defs/evidence"},
+    "qualification": {"$ref": "#/$defs/qualification"},
+    "authority": {"$ref": "#/$defs/authority"},
+    "failures": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {"type": "string", "minLength": 1, "maxLength": 4096}
+    }
+  },
+  "$defs": {
+    "gitObject": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullableSha256": {
+      "oneOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "tree"],
+      "properties": {
+        "commit": {"$ref": "#/$defs/gitObject"},
+        "tree": {"$ref": "#/$defs/gitObject"}
+      }
+    },
+    "sourceEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["qualified", "status", "digest"],
+      "properties": {
+        "qualified": {"type": "boolean"},
+        "status": {"type": ["string", "null"]},
+        "digest": {"$ref": "#/$defs/nullableSha256"}
+      }
+    },
+    "compileEvidence": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["qualified", "status", "featureEnabled", "digest"],
+          "properties": {
+            "qualified": {"const": true},
+            "status": {"const": "PASS_WINDOWS_PRODUCT_HOST_CANDIDATE_COMPILE"},
+            "featureEnabled": {"type": "boolean"},
+            "digest": {"$ref": "#/$defs/sha256"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["qualified", "status", "featureEnabled", "digest"],
+          "properties": {
+            "qualified": {"const": false},
+            "status": {"type": "null"},
+            "featureEnabled": {"type": "boolean"},
+            "digest": {"type": "null"}
+          }
+        }
+      ]
+    },
+    "defaultCompile": {
+      "allOf": [
+        {"$ref": "#/$defs/compileEvidence"},
+        {"properties": {"featureEnabled": {"const": false}}}
+      ]
+    },
+    "explicitCompile": {
+      "allOf": [
+        {"$ref": "#/$defs/compileEvidence"},
+        {"properties": {"featureEnabled": {"const": true}}}
+      ]
+    },
+    "platformCompile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default-off", "explicit-feature"],
+      "properties": {
+        "default-off": {"$ref": "#/$defs/defaultCompile"},
+        "explicit-feature": {"$ref": "#/$defs/explicitCompile"}
+      }
+    },
+    "reviewEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["present", "qualified", "status", "digest", "bindingDigest", "candidate"],
+      "properties": {
+        "present": {"type": "boolean"},
+        "qualified": {"type": "boolean"},
+        "status": {"type": ["string", "null"]},
+        "digest": {"$ref": "#/$defs/nullableSha256"},
+        "bindingDigest": {"$ref": "#/$defs/nullableSha256"},
+        "candidate": {"oneOf": [{"$ref": "#/$defs/candidate"}, {"type": "null"}]}
+      }
+    },
+    "deviceEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["present", "qualified", "status", "digest"],
+      "properties": {
+        "present": {"type": "boolean"},
+        "qualified": {"type": "boolean"},
+        "status": {"type": ["string", "null"]},
+        "digest": {"$ref": "#/$defs/nullableSha256"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "compile", "reviewEnvelope", "device"],
+      "properties": {
+        "source": {"$ref": "#/$defs/sourceEvidence"},
+        "compile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ubuntu-latest", "windows-latest", "macos-latest"],
+          "properties": {
+            "ubuntu-latest": {"$ref": "#/$defs/platformCompile"},
+            "windows-latest": {"$ref": "#/$defs/platformCompile"},
+            "macos-latest": {"$ref": "#/$defs/platformCompile"}
+          }
+        },
+        "reviewEnvelope": {"$ref": "#/$defs/reviewEvidence"},
+        "device": {"$ref": "#/$defs/deviceEvidence"}
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source", "defaultOffCompile", "explicitFeatureCompile", "compileMatrix",
+        "reviewEnvelope", "rollbackDrill", "physicalDevice",
+        "implementationCandidateQualified", "eligibleForProductWiringReview",
+        "productCargoFeatureDeclared", "productModuleRegistered", "productLifecycleWired",
+        "automaticBindingAllowed", "implementationApproved", "productHostMayBind",
+        "productBound", "transientSystemMaterialBound", "completeProfileBound",
+        "systemMaterialBound", "nativeProductRuntime", "deviceValidation"
+      ],
+      "properties": {
+        "source": {"type": "boolean"},
+        "defaultOffCompile": {"type": "boolean"},
+        "explicitFeatureCompile": {"type": "boolean"},
+        "compileMatrix": {"type": "boolean"},
+        "reviewEnvelope": {"type": "boolean"},
+        "rollbackDrill": {"type": "boolean"},
+        "physicalDevice": {"type": "boolean"},
+        "implementationCandidateQualified": {"type": "boolean"},
+        "eligibleForProductWiringReview": {"type": "boolean"},
+        "productCargoFeatureDeclared": {"const": false},
+        "productModuleRegistered": {"const": false},
+        "productLifecycleWired": {"const": false},
+        "automaticBindingAllowed": {"const": false},
+        "implementationApproved": {"const": false},
+        "productHostMayBind": {"const": false},
+        "productBound": {"const": false},
+        "transientSystemMaterialBound": {"const": false},
+        "completeProfileBound": {"const": false},
+        "systemMaterialBound": {"const": false},
+        "nativeProductRuntime": {"const": false},
+        "deviceValidation": {"const": false}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["network", "mutation", "effect", "liveAdapter", "production", "operatorAcceptance", "promotion", "release"],
+      "properties": {
+        "network": {"const": false},
+        "mutation": {"const": false},
+        "effect": {"const": false},
+        "liveAdapter": {"const": false},
+        "production": {"const": false},
+        "operatorAcceptance": {"const": false},
+        "promotion": {"const": false},
+        "release": {"const": false}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "BLOCKED_WINDOWS_PRODUCT_HOST_REVIEW_ENVELOPE_REQUIRED"}}},
+      "then": {
+        "properties": {
+          "qualification": {
+            "properties": {
+              "source": {"const": true},
+              "defaultOffCompile": {"const": true},
+              "explicitFeatureCompile": {"const": true},
+              "compileMatrix": {"const": true},
+              "reviewEnvelope": {"const": false},
+              "implementationCandidateQualified": {"const": false},
+              "eligibleForProductWiringReview": {"const": false}
+            }
+          },
+          "failures": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "BLOCKED_WINDOWS_PRODUCT_HOST_DEVICE_QUALIFICATION_REQUIRED"}}},
+      "then": {
+        "properties": {
+          "qualification": {
+            "properties": {
+              "source": {"const": true},
+              "compileMatrix": {"const": true},
+              "reviewEnvelope": {"const": true},
+              "physicalDevice": {"const": false},
+              "implementationCandidateQualified": {"const": false},
+              "eligibleForProductWiringReview": {"const": false}
+            }
+          },
+          "failures": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION"}}},
+      "then": {
+        "properties": {
+          "qualification": {
+            "properties": {
+              "source": {"const": true},
+              "defaultOffCompile": {"const": true},
+              "explicitFeatureCompile": {"const": true},
+              "compileMatrix": {"const": true},
+              "reviewEnvelope": {"const": true},
+              "rollbackDrill": {"const": true},
+              "physicalDevice": {"const": true},
+              "implementationCandidateQualified": {"const": true},
+              "eligibleForProductWiringReview": {"const": true}
+            }
+          },
+          "failures": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "FAIL_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_QUALIFICATION"}}},
+      "then": {
+        "properties": {
+          "qualification": {
+            "properties": {
+              "implementationCandidateQualified": {"const": false},
+              "eligibleForProductWiringReview": {"const": false}
+            }
+          },
+          "failures": {"minItems": 1}
+        }
+      }
+    }
+  ]
+}
