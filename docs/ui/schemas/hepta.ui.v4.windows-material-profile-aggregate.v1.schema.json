@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.ai/schemas/ui/hepta.ui.v4.windows-material-profile-aggregate.v1.schema.json",
+  "title": "Hepta UI v4 Windows material profile aggregate receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "candidate",
+    "makepad",
+    "root",
+    "transient",
+    "qualification",
+    "authority"
+  ],
+  "properties": {
+    "schema": {
+      "const": "hepta.ui.v4.windows-material-profile-aggregate.v1"
+    },
+    "status": {
+      "enum": [
+        "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE",
+        "FAIL_WINDOWS_MATERIAL_PROFILE_AGGREGATE"
+      ]
+    },
+    "candidate": {
+      "$ref": "#/$defs/candidate"
+    },
+    "makepad": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision"],
+      "properties": {
+        "revision": {
+          "const": "c4335cee10b22aca768510c9d072b0ca1bba15c8"
+        }
+      }
+    },
+    "root": {
+      "$ref": "#/$defs/root"
+    },
+    "transient": {
+      "$ref": "#/$defs/transient"
+    },
+    "qualification": {
+      "$ref": "#/$defs/qualification"
+    },
+    "authority": {
+      "$ref": "#/$defs/authority"
+    },
+    "failures": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "maxItems": 64
+    }
+  },
+  "$defs": {
+    "gitObject": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "tree"],
+      "properties": {
+        "commit": { "$ref": "#/$defs/gitObject" },
+        "tree": { "$ref": "#/$defs/gitObject" }
+      }
+    },
+    "windowIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "generation", "nativeHandle"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "generation": { "type": "integer", "minimum": 0 },
+        "nativeHandle": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        }
+      }
+    },
+    "root": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity",
+        "backend",
+        "status",
+        "readbackScope",
+        "requestedBackdrop",
+        "observedBackdrop",
+        "backdropExact"
+      ],
+      "properties": {
+        "identity": { "$ref": "#/$defs/windowIdentity" },
+        "backend": { "const": "WindowsDwm" },
+        "status": {
+          "const": "VerifiedPersistentChromeWithBackdropReadback"
+        },
+        "readbackScope": { "const": "BackdropOnly" },
+        "requestedBackdrop": { "const": "Mica" },
+        "observedBackdrop": { "const": "Mica" },
+        "backdropExact": { "const": true }
+      }
+    },
+    "transientReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "requestSequence",
+        "requestedBackdrop",
+        "observedBackdrop",
+        "backdropExact"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "VerifiedAcrylicWithBackdropReadback",
+            "VerifiedSolidRollbackWithBackdropReadback"
+          ]
+        },
+        "requestSequence": { "type": "integer", "minimum": 1 },
+        "requestedBackdrop": {
+          "enum": ["Acrylic", "None"]
+        },
+        "observedBackdrop": {
+          "enum": ["Acrylic", "None"]
+        },
+        "backdropExact": { "const": true }
+      }
+    },
+    "transient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parent",
+        "identity",
+        "separateFromRoot",
+        "acrylic",
+        "solidRollback",
+        "destroyedIdentity",
+        "destroyedAcknowledged"
+      ],
+      "properties": {
+        "parent": { "$ref": "#/$defs/windowIdentity" },
+        "identity": { "$ref": "#/$defs/windowIdentity" },
+        "separateFromRoot": { "const": true },
+        "acrylic": { "$ref": "#/$defs/transientReceipt" },
+        "solidRollback": { "$ref": "#/$defs/transientReceipt" },
+        "destroyedIdentity": { "$ref": "#/$defs/windowIdentity" },
+        "destroyedAcknowledged": { "const": true }
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootRuntimeReceipt",
+        "transientRuntimeReceipt",
+        "dualReceiptAggregateRuntime",
+        "eligibleForProductIntegrationReview",
+        "productBound",
+        "transientSystemMaterialBound",
+        "completeProfileBound",
+        "systemMaterialBound",
+        "nativeProductRuntime",
+        "deviceValidation"
+      ],
+      "properties": {
+        "rootRuntimeReceipt": { "type": "boolean" },
+        "transientRuntimeReceipt": { "type": "boolean" },
+        "dualReceiptAggregateRuntime": { "type": "boolean" },
+        "eligibleForProductIntegrationReview": { "type": "boolean" },
+        "productBound": { "const": false },
+        "transientSystemMaterialBound": { "const": false },
+        "completeProfileBound": { "const": false },
+        "systemMaterialBound": { "const": false },
+        "nativeProductRuntime": { "const": false },
+        "deviceValidation": { "const": false }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "network",
+        "mutation",
+        "effect",
+        "liveAdapter",
+        "production",
+        "operatorAcceptance",
+        "promotion",
+        "release"
+      ],
+      "properties": {
+        "network": { "const": false },
+        "mutation": { "const": false },
+        "effect": { "const": false },
+        "liveAdapter": { "const": false },
+        "production": { "const": false },
+        "operatorAcceptance": { "const": false },
+        "promotion": { "const": false },
+        "release": { "const": false }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS_WINDOWS_MATERIAL_PROFILE_AGGREGATE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "qualification": {
+            "properties": {
+              "rootRuntimeReceipt": { "const": true },
+              "transientRuntimeReceipt": { "const": true },
+              "dualReceiptAggregateRuntime": { "const": true },
+              "eligibleForProductIntegrationReview": { "const": true }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
