@@ -7,6 +7,7 @@ on:
       - "tools/hepta-inference-inf0/**"
       - "scripts/hepta-inference-inf0-source-gate.py"
       - "scripts/hepta-inference-inf0c-real-e2e.py"
+      - "scripts/hepta-inference-inf0c-evidence-v2.py"
       - "codex-rs/lmstudio/**"
       - "codex-rs/ollama/**"
       - "codex-rs/utils/oss/**"
@@ -16,6 +17,11 @@ on:
     inputs:
       run_real_software_e2e:
         description: "Run against pre-provisioned loopback Ollama and LM Studio services"
+        required: false
+        default: false
+        type: boolean
+      run_controlled_restart:
+        description: "Use the runner-pinned helper to stop/start both local providers"
         required: false
         default: false
         type: boolean
@@ -48,7 +54,14 @@ jobs:
           set -euo pipefail
           python3 -m py_compile \
             scripts/hepta-inference-inf0-source-gate.py \
-            scripts/hepta-inference-inf0c-real-e2e.py
+            scripts/hepta-inference-inf0c-real-e2e.py \
+            scripts/hepta-inference-inf0c-evidence-v2.py
+
+      - name: Self-test disconnect and restart evidence harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-evidence-v2.py --self-test
 
       - name: Verify source-bound INF-0C contract
         shell: bash
@@ -72,6 +85,7 @@ jobs:
             echo "- qualification_only: true"
             echo "- source_complete: true"
             echo "- real_software_e2e_executed: false"
+            echo "- backend_cancellation_acknowledged: false"
             echo "- qualified: false"
             echo "- production_authority: false"
             echo "- model_npu: false"
@@ -180,7 +194,7 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_real_software_e2e }}
     needs: source-contract
     runs-on: [self-hosted, hepta-inference-e2e]
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -209,12 +223,36 @@ jobs:
             --lmstudio-model "$LMSTUDIO_MODEL" \
             --receipt "$RUNNER_TEMP/hepta-inference-inf0c-real-e2e.json"
 
-      - name: Upload real-software receipt
+      - name: Execute disconnect and optional controlled-restart evidence
+        shell: bash
+        env:
+          OLLAMA_MODEL: ${{ inputs.ollama_model }}
+          LMSTUDIO_MODEL: ${{ inputs.lmstudio_model }}
+          RUN_CONTROLLED_RESTART: ${{ inputs.run_controlled_restart }}
+        run: |
+          set -euo pipefail
+          args=(
+            python3 scripts/hepta-inference-inf0c-evidence-v2.py
+            --execute
+            --ollama-model "$OLLAMA_MODEL"
+            --lmstudio-model "$LMSTUDIO_MODEL"
+            --receipt "$RUNNER_TEMP/hepta-inference-inf0c-evidence-v2.json"
+          )
+          if [[ "$RUN_CONTROLLED_RESTART" == "true" ]]; then
+            test -n "${HEPTA_INF0C_SERVICE_CONTROL_HELPER:-}"
+            test -n "${HEPTA_INF0C_SERVICE_CONTROL_HELPER_SHA256:-}"
+            args+=(--run-controlled-restart)
+          fi
+          "${args[@]}"
+
+      - name: Upload real-software receipts
         if: always()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: hepta-inference-inf0c-real-e2e
-          path: ${{ runner.temp }}/hepta-inference-inf0c-real-e2e.json
+          name: hepta-inference-inf0c-real-software-evidence
+          path: |
+            ${{ runner.temp }}/hepta-inference-inf0c-real-e2e.json
+            ${{ runner.temp }}/hepta-inference-inf0c-evidence-v2.json
           if-no-files-found: error
 
   qualification-summary:
