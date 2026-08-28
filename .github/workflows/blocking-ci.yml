@@ -8,6 +8,13 @@ on:
   push:
     branches: [integration/vnext-main-20260811]
 
+# Keep at most one blocking graph per PR/ref. Architecture work on this branch
+# lands in small, independently reviewed commits; retaining every superseded
+# graph starves the exact-head qualification that can still be authoritative.
+concurrency:
+  group: blocking-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Keep reusable workflow calls alphabetized. The `required` job below is the
   # version-controlled list that the integration-branch ruleset should require.
