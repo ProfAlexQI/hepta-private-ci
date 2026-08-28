@@ -1,0 +1,57 @@
+{
+  "schema": "hepta.inference.inf0c_evidence_status.v1",
+  "plan_id": "HEPTA-INFERENCE-INF0C-EVIDENCE-V1",
+  "parent_plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "source_binding": {
+    "repository": "ProfAlexQI/hepta-private-ci",
+    "branch": "codex/hepta-inference-runtime-v2-20260828",
+    "commit": "68c97b7d1211c8e319df3b850182401ab541eea4",
+    "tree": "3a0d8795db033f780f2e9715b2bc20a2cafa627a"
+  },
+  "development_branch": "codex/hepta-inference-inf0c-evidence-20260828",
+  "status": "SOURCE_PRESENT_NOT_RUN",
+  "qualified": false,
+  "implemented": {
+    "transport_disconnect_probe": true,
+    "post_disconnect_health_probe": true,
+    "backend_acknowledgement_claimed": false,
+    "digest_pinned_control_helper": true,
+    "fixed_control_helper_argv": true,
+    "sanitized_helper_environment": true,
+    "restart_down_transition_required": true,
+    "restart_up_transition_required": true,
+    "post_restart_model_and_inference_probe": true,
+    "digest_only_receipt": true,
+    "hermetic_self_test": true,
+    "dedicated_source_gate": true,
+    "dedicated_workflow": true,
+    "modular_bounded_harness_parts": true
+  },
+  "execution": {
+    "exact_head_source_gate": "NOT_RUN",
+    "hermetic_self_test": "NOT_RUN",
+    "real_ollama_cancellation": "NOT_RUN",
+    "real_lmstudio_cancellation": "NOT_RUN",
+    "real_ollama_restart": "NOT_RUN",
+    "real_lmstudio_restart": "NOT_RUN",
+    "backend_cancellation_acknowledgement": "UNAVAILABLE_IN_INF0C_COMPATIBILITY_API"
+  },
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  },
+  "next_stage": "EXECUTE_FIXED_MODEL_EVIDENCE_THEN_REASSESS_INF1_ENTRY"
+}

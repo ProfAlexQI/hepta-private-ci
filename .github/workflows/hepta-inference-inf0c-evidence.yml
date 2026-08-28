@@ -1,0 +1,152 @@
+name: Hepta inference INF-0C cancellation and restart evidence
+
+on:
+  pull_request:
+    paths:
+      - "docs/hepta-vnext/inference/HEPTA_INFERENCE_INF0C_EVIDENCE_*"
+      - "scripts/hepta-inference-inf0c-cancel-restart*.py"
+      - "scripts/hepta-inference-inf0c-evidence-gate.py"
+      - ".github/workflows/hepta-inference-inf0c-evidence.yml"
+  workflow_dispatch:
+    inputs:
+      run_real_evidence:
+        description: "Execute against pre-provisioned loopback Ollama and LM Studio"
+        required: false
+        default: false
+        type: boolean
+      run_controlled_restart:
+        description: "Use the digest-pinned runner control helper"
+        required: false
+        default: false
+        type: boolean
+      ollama_model:
+        description: "Exact pre-installed Ollama model ID"
+        required: false
+        type: string
+      lmstudio_model:
+        description: "Exact pre-installed LM Studio model ID"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    name: Evidence source and hermetic self-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify Python sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-inference-inf0c-cancel-restart*.py \
+            scripts/hepta-inference-inf0c-evidence-gate.py
+
+      - name: Execute hermetic cancellation and restart self-test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-cancel-restart.py --self-test \
+            --receipt "$RUNNER_TEMP/hepta-inference-inf0c-evidence-selftest.json"
+
+      - name: Verify source-bound evidence contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hepta-inference-inf0c-evidence-gate.py \
+            | tee "$RUNNER_TEMP/hepta-inference-inf0c-evidence-source.txt"
+
+      - name: Upload source and self-test evidence
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-evidence-source
+          path: |
+            ${{ runner.temp }}/hepta-inference-inf0c-evidence-selftest.json
+            ${{ runner.temp }}/hepta-inference-inf0c-evidence-source.txt
+          if-no-files-found: error
+
+  real-evidence:
+    name: Real cancellation and controlled restart evidence
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_real_evidence }}
+    needs: source-contract
+    runs-on: [self-hosted, hepta-inference-e2e]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Require exact pre-installed model IDs
+        shell: bash
+        env:
+          OLLAMA_MODEL: ${{ inputs.ollama_model }}
+          LMSTUDIO_MODEL: ${{ inputs.lmstudio_model }}
+        run: |
+          set -euo pipefail
+          test -n "$OLLAMA_MODEL"
+          test -n "$LMSTUDIO_MODEL"
+
+      - name: Require trusted control helper when restart is enabled
+        if: ${{ inputs.run_controlled_restart }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HEPTA_INF0C_CONTROL_HELPER:-}"
+          test -n "${HEPTA_INF0C_CONTROL_HELPER_SHA256:-}"
+
+      - name: Execute transport-disconnect and optional restart evidence
+        shell: bash
+        env:
+          OLLAMA_MODEL: ${{ inputs.ollama_model }}
+          LMSTUDIO_MODEL: ${{ inputs.lmstudio_model }}
+          RUN_CONTROLLED_RESTART: ${{ inputs.run_controlled_restart }}
+        run: |
+          set -euo pipefail
+          args=(
+            --execute
+            --ollama-model "$OLLAMA_MODEL"
+            --lmstudio-model "$LMSTUDIO_MODEL"
+            --receipt "$RUNNER_TEMP/hepta-inference-inf0c-cancel-restart.json"
+          )
+          if [[ "$RUN_CONTROLLED_RESTART" == "true" ]]; then
+            args+=(--controlled-restart)
+          fi
+          python3 scripts/hepta-inference-inf0c-cancel-restart.py "${args[@]}"
+
+      - name: Upload real evidence receipt
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-inference-inf0c-cancel-restart
+          path: ${{ runner.temp }}/hepta-inference-inf0c-cancel-restart.json
+          if-no-files-found: error
+
+  qualification-only-summary:
+    name: Evidence source aggregate
+    if: always()
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Enforce source result without granting authority
+        shell: bash
+        env:
+          SOURCE_RESULT: ${{ needs.source-contract.result }}
+        run: |
+          set -euo pipefail
+          test "$SOURCE_RESULT" = success
+          echo "PASS_HEPTA_INFERENCE_INF0C_EVIDENCE_SOURCE_ONLY"
+          echo "qualified=false"
+          echo "production_authority=false"
+          echo "backend_cancellation_acknowledged=false"
