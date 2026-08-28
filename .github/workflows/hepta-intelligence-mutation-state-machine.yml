@@ -11,7 +11,9 @@ on:
       - "codex-rs/rust-toolchain.toml"
       - ".github/workflows/hepta-intelligence-grounding-ledger.yml"
       - ".github/workflows/hepta-intelligence-grounding-gate.yml"
+      - "scripts/hepta-intelligence-status-compat.py"
       - "scripts/verify-hepta-intelligence-mutation-state.py"
+      - "plans/hepta-intelligence/status-snapshots/HEPTA_INTELLIGENCE_P0_4A_STATUS_SNAPSHOT_V1.json"
       - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4_SOURCE_TRANCHE_2026-08-28.md"
       - "plans/hepta-intelligence/models/P0_4_INTELLIGENCE_MUTATION_STATE_MACHINE.tla"
       - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json"
@@ -20,6 +22,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 concurrency:
   group: hepta-intelligence-mutation-state-machine-${{ github.ref }}
@@ -31,12 +36,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout exact candidate
+      - name: Checkout explicit candidate identity
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Validate Python and machine status
+      - name: Prove checked-out commit
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Validate Python and immutable tranche status
         run: |
-          python3 -m py_compile scripts/verify-hepta-intelligence-mutation-state.py
+          python3 -m py_compile \
+            scripts/hepta-intelligence-status-compat.py \
+            scripts/verify-hepta-intelligence-mutation-state.py
+          python3 scripts/hepta-intelligence-status-compat.py P0.4a
           python3 -m json.tool \
             plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json \
             >/dev/null
@@ -76,7 +91,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-intelligence-mutation-state-source-${{ github.sha }}
+          name: hepta-intelligence-mutation-state-source-${{ env.EXPECTED_SHA }}
           path: artifacts/hepta-intelligence-mutation-state-machine/source-gate.json
           if-no-files-found: error
           retention-days: 14
@@ -86,8 +101,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - name: Checkout exact candidate
+      - name: Checkout explicit candidate identity
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove checked-out commit
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@stable
