@@ -1,16 +1,16 @@
-name: hepta-intelligence-p1c2-semantic-close
+name: hepta-intelligence-p1c2-semantic-close-x64
 
 on:
   push:
     branches:
-      - "qualification/p1c2-fmt-close-v1-20260828"
+      - "qualification/p1c2-sem-x64-v1"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: hepta-intelligence-p1c2-semantic-close
+  group: hepta-intelligence-p1c2-semantic-close-x64
   cancel-in-progress: true
 
 env:
@@ -19,8 +19,8 @@ env:
 
 jobs:
   qualify:
-    name: P1.1c.2 final-label semantic closure preflight
-    runs-on: macos-latest
+    name: P1.1c.2 final-label semantic closure x64
+    runs-on: ubuntu-latest
     timeout-minutes: 60
 
     steps:
@@ -43,14 +43,25 @@ jobs:
         run: |
           git checkout --detach "$QUALIFICATION_DRIVER_SHA"
           cp scripts/qualification/run-hepta-intelligence-p1c2-fmt-close.sh \
-            "$RUNNER_TEMP/run-hepta-intelligence-p1c2-semantic-close.sh"
-          bash "$RUNNER_TEMP/run-hepta-intelligence-p1c2-semantic-close.sh"
+            "$RUNNER_TEMP/run-hepta-intelligence-p1c2-semantic-close-x64.sh"
+          python3 - "$RUNNER_TEMP/run-hepta-intelligence-p1c2-semantic-close-x64.sh" <<'PY'
+          import sys
+          from pathlib import Path
+          path = Path(sys.argv[1])
+          text = path.read_text(encoding="utf-8")
+          old = 'OUTPUT_BRANCH="qualification/p1c2-semantic-candidate-c3c42-20260828"'
+          new = 'OUTPUT_BRANCH="qualification/p1c2-sem-x64-candidate"'
+          if text.count(old) != 1:
+              raise SystemExit("candidate output branch marker is not unique")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          bash "$RUNNER_TEMP/run-hepta-intelligence-p1c2-semantic-close-x64.sh"
 
       - name: Upload semantic closure evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-intelligence-p1c2-semantic-close-${{ github.sha }}
+          name: hepta-intelligence-p1c2-semantic-close-x64-${{ github.sha }}
           path: artifacts/hepta-intelligence-p1-1c2-semantic-closure
           if-no-files-found: warn
           retention-days: 14
