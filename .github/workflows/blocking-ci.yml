@@ -46,24 +46,16 @@ jobs:
     uses: ./.github/workflows/codespell.yml
     secrets: inherit
 
-  hepta-browser-c0-c3:
-    name: Hepta Browser C0-C3 qualification
-    needs: runner-preflight
-    uses: ./.github/workflows/hepta-browser-c0-c3.yml
-    secrets: inherit
-
   hepta-browser-c1-artifact-gate:
     name: Hepta Browser C1 artifact launch gate
     needs: runner-preflight
     uses: ./.github/workflows/hepta-browser-c1-artifact-gate.yml
     secrets: inherit
 
-  hepta-browser-c1-protocol:
-    name: Hepta Browser C1 private protocol
-    needs: runner-preflight
-    uses: ./.github/workflows/hepta-browser-c1-protocol.yml
-    secrets: inherit
-
+  # This is the single canonical Hepta Browser dependency graph. It already
+  # covers C0-C3, the private protocol, source acquisition, source/topology
+  # review fences, build-input sealing and preflight. Do not duplicate its leaf
+  # workflows here: GitHub limits the reusable-workflow call graph per run.
   hepta-browser-next-v9:
     name: Hepta Browser canonical next gate v9
     needs: runner-preflight
@@ -74,24 +66,6 @@ jobs:
     name: Hepta Servo artifact contract
     needs: runner-preflight
     uses: ./.github/workflows/hepta-servo-artifact-contract.yml
-    secrets: inherit
-
-  hepta-servo-source-bundle-contract:
-    name: Hepta Servo source bundle contract
-    needs: runner-preflight
-    uses: ./.github/workflows/hepta-servo-source-bundle-contract.yml
-    secrets: inherit
-
-  hepta-servo-source-contract:
-    name: Hepta Servo source receipt contract
-    needs: runner-preflight
-    uses: ./.github/workflows/hepta-servo-source-contract.yml
-    secrets: inherit
-
-  hepta-servo-worker-build-inputs-contract:
-    name: Hepta Servo worker build-input packet contract
-    needs: runner-preflight
-    uses: ./.github/workflows/hepta-servo-worker-build-inputs-contract.yml
     secrets: inherit
 
   hepta-vnext:
@@ -127,14 +101,9 @@ jobs:
       - blob-size-policy
       - cargo-deny
       - codespell
-      - hepta-browser-c0-c3
       - hepta-browser-c1-artifact-gate
-      - hepta-browser-c1-protocol
       - hepta-browser-next-v9
       - hepta-servo-artifact-contract
-      - hepta-servo-source-bundle-contract
-      - hepta-servo-source-contract
-      - hepta-servo-worker-build-inputs-contract
       - hepta-vnext
       - repo-checks
       - rust-ci
