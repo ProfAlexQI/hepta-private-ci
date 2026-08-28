@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: hepta-cargo-lock-finalizer-p0-2-write-lane
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   BRANCH_NAME: codex/hepta-architecture-convergence-p0-2-20260828
@@ -85,9 +85,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Cargo preserves already locked registry/git versions and only
-          # materializes workspace/package edges required by the current
-          # manifests. No cargo update or generate-lockfile is permitted here.
           cargo metadata --format-version 1 --no-deps > "$RUNNER_TEMP/hepta-workspace-metadata.json"
           cargo check \
             -p codex-hepta-memory-runtime \
