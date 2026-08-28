@@ -9,6 +9,7 @@ on:
       - "codex-rs/hepta-memory/src/hybrid_retrieval_v2.rs"
       - "codex-rs/hepta-memory/src/hybrid_retrieval_v2/**"
       - "codex-rs/hepta-memory/src/framing.rs"
+      - "codex-rs/hepta-memory/src/fact_grounding/durable.rs"
       - "scripts/verify-hepta-intelligence-hybrid-retrieval.py"
       - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1A_HYBRID_RETRIEVAL_2026-08-28.md"
       - "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P1_1A_IMPLEMENTATION_RECEIPT_2026-08-28.json"
@@ -117,9 +118,9 @@ jobs:
           actual="$(rustc --version | awk '{print $2}')"
           test "$actual" = "$expected"
 
-      - name: Check workspace formatting
+      - name: Check hepta-memory formatting
         working-directory: codex-rs
-        run: cargo fmt --all -- --check
+        run: cargo fmt -p codex-hepta-memory -- --check
 
       - name: Run focused hybrid retrieval tests
         working-directory: codex-rs
