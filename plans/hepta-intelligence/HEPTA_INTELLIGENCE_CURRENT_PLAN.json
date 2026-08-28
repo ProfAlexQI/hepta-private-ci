@@ -18,11 +18,18 @@
     "instructions_file": "plans/hepta-intelligence/AGENTS.md",
     "read_order": [
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json",
       "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md"
     ],
     "only_current_human_plan": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
+    "current_machine_authority": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
+    "document_authority_registry": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DOCUMENT_AUTHORITY_REGISTRY_V1.json",
+    "time_bounded_evidence_index": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json",
     "on_mismatch": "FAIL_CLOSED",
-    "historical_documents_are_authority": false
+    "historical_documents_are_authority": false,
+    "legacy_machine_contracts_are_current_authority": false,
+    "legacy_machine_contracts_must_remain_compatible_until_migrated": true
   },
   "exact_base": {
     "pull_request": 23,
@@ -38,8 +45,36 @@
     "efficacy_proven": false,
     "operator_accepted": false,
     "promoted": false,
-    "p0_qualification_commands_executed": false,
-    "p0_runner_classification": "BLOCKED_RUNNER_NOT_ASSIGNED"
+    "live_runner_state_embedded_here": false,
+    "live_evidence_source": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EVIDENCE_INDEX_V1.json"
+  },
+  "document_compatibility": {
+    "status": "RESTORED_PENDING_EXACT_RERUN",
+    "regression_head": "80be14b1c42c76b9a7bd03393814b7e2b5a620de",
+    "root_cause": "legacy machine status contracts were replaced by minimal redirect schemas while frozen P0 verifiers still consumed their original fields",
+    "restored_contracts": [
+      {
+        "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
+        "schema": "hepta_intelligence_execution_status_v2",
+        "current_authority": false,
+        "compatibility_required": true
+      },
+      {
+        "path": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V3.json",
+        "schema": "hepta_intelligence_execution_status_v3",
+        "current_authority": false,
+        "compatibility_required": true
+      }
+    ],
+    "exit_gate": [
+      "P0.2 source gate passes on the repaired exact head",
+      "P0.3 source gate passes on the repaired exact head",
+      "P0.4a source gate passes on the repaired exact head",
+      "P0.4b source and SQLite gates pass on the repaired exact head",
+      "P0.4c source gate passes on the repaired exact head",
+      "master-plan verifier proves the compatibility registry and consumer matrix",
+      "all runtime and production authority remains false"
+    ]
   },
   "authority": {
     "runtime_wired": false,
@@ -74,8 +109,10 @@
     "id": "Q0",
     "name": "qualification_debt_closure",
     "status": "ACTIVE_BLOCKING",
+    "active_task": "DOC-Q0.1_RESTORE_FROZEN_QUALIFICATION_COMPATIBILITY",
     "requirements": [
-      "freeze exact P0.1-P0.4c heads, trees, toolchain and migrations",
+      "preserve legacy machine schemas until every registered consumer migrates",
+      "rerun the complete P0 source compatibility matrix on one repaired exact head",
       "produce reproducible local E1 executable evidence",
       "produce independent E2 exact-head runner evidence",
       "execute source, fmt, focused/full tests, clippy, SQLite upgrade/reopen/corruption/failpoints and Agentd default-off gates",
@@ -92,6 +129,7 @@
       "verifier_only",
       "receipt_only",
       "runner_infrastructure_only",
+      "compatibility adapters",
       "fixes_to_existing_frozen_tranches"
     ],
     "blocked": [
@@ -106,8 +144,9 @@
     ]
   },
   "roadmap": [
+    "A0_0_MINIMAL_DOCUMENT_AND_EVIDENCE_AUTHORITY_BOOTSTRAP",
     "Q0_QUALIFICATION_DEBT_CLOSURE",
-    "A0_CANONICAL_CAPABILITY_EVIDENCE_AUTHORITY",
+    "A0_1_CANONICAL_CAPABILITY_EVIDENCE_AUTHORITY",
     "B0_LEARNING_BOUNDARY_EXTRACTION",
     "C0_LEARNING_EPISODE_AND_DURABLE_LEDGER",
     "R1_GROUNDED_RETRIEVAL_TELEMETRY_SECURITY",
@@ -116,7 +155,9 @@
     "L1_H7_CAUSAL_EVALUATION_ARTIFACT",
     "C1_LOW_RISK_CLOSED_LOOP",
     "N2_TEMPORAL_RECURRENT_SIGNAL_NETWORK",
-    "S1_GOVERNED_STRUCTURAL_PLASTICITY",
+    "S1_GOVERNED_STRUCTURAL_PLASTICITY"
+  ],
+  "optional_parallel_research": [
     "N3_ISOLATED_NEUROMORPHIC_RESEARCH"
   ],
   "new_required_contracts": [
@@ -141,10 +182,12 @@
     "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28.md"
   ],
   "next_actions": [
-    "freeze the exact P0 stack manifest",
+    "rerun and pass the five frozen P0 source compatibility gates on one repaired exact head",
+    "classify and repair the real P0.4b rustfmt failure without adding new runtime behavior",
+    "freeze the exact P0 stack manifest after compatibility is green",
     "establish a reproducible local executable qualification runner",
-    "restore an independent runner and obtain non-empty exact-head evidence",
-    "run the full Q0 qualification matrix",
+    "obtain independent exact-head and merge-candidate qualification evidence",
+    "run the full Q0 Rust, SQLite, crash-window and Agentd matrix",
     "fix only the failing frozen tranche before any new runtime source"
   ],
   "plan_source_gate": {
@@ -158,6 +201,7 @@
     "result": "PASS_CANONICAL_MASTER_PLAN_SOURCE_ONLY",
     "satisfies_Q0": false,
     "does_not_imply": [
+      "downstream consumer compatibility",
       "Rust qualification",
       "SQLite qualification",
       "Agentd qualification",
