@@ -24,7 +24,7 @@ concurrency:
 jobs:
   source-contract:
     name: P1.1b local embedding/index source contract
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout exact candidate
@@ -91,7 +91,7 @@ jobs:
 
   rust-qualification:
     name: P1.1b isolated Rust qualification
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - name: Checkout exact candidate
