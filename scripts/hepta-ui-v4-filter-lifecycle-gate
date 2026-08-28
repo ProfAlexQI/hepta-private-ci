@@ -1,0 +1,250 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  shared: root.join("apps/hepta-native/src/shared/mod.rs"),
+  layout: root.join("apps/hepta-native/src/shared/hepta_v4_layout.rs"),
+  controls: root.join("apps/hepta-native/src/shared/hepta_v4_controls.rs"),
+  filter: root.join("apps/hepta-native/src/shared/room_filter_input_bar.rs"),
+  lifecycle: root.join("apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs"),
+  host: root.join("apps/hepta-native/src/shared/hepta_platform_material_host.rs"),
+  runtime: root.join("apps/hepta-native/src/shared/hepta_platform_material_runtime.rs"),
+  preferences: root.join("apps/hepta-native/src/shared/hepta_system_preferences.rs"),
+  home_override: root.join("apps/hepta-native/src/home/hepta_v4_home_overrides.rs"),
+  home_mod: root.join("apps/hepta-native/src/home/mod.rs"),
+  control_matrix: root.join("docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"),
+  material_matrix: root.join("docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"),
+  status: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_7_FILTER_LIFECYCLE_2026-08-28.md"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-filter-lifecycle.yml")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+unless checks.values.all?
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.filter-lifecycle-source-gate.v1",
+    status: "FAIL_MISSING_INPUT",
+    source_implemented: false,
+    native_compile_validation: false,
+    native_runtime_validation: false,
+    windows_runtime_validation: false,
+    macos_runtime_validation: false,
+    ios_runtime_validation: false,
+    android_runtime_validation: false,
+    device_validation: false,
+    production_authority: false,
+    effect_authority: false,
+    live_adapter_authority: false,
+    operator_acceptance: false,
+    promotion: false,
+    release: false,
+    checks: checks,
+    failures: checks.reject { |_name, passed| passed }.keys
+  )
+  exit 1
+end
+
+shared = files.fetch(:shared).read
+layout = files.fetch(:layout).read
+controls = files.fetch(:controls).read
+filter = files.fetch(:filter).read
+lifecycle = files.fetch(:lifecycle).read
+host = files.fetch(:host).read
+runtime = files.fetch(:runtime).read
+preferences = files.fetch(:preferences).read
+home_override = files.fetch(:home_override).read
+home_mod = files.fetch(:home_mod).read
+control_matrix = JSON.parse(files.fetch(:control_matrix).read)
+material_matrix = JSON.parse(files.fetch(:material_matrix).read)
+workflow = files.fetch(:workflow).read
+
+checks["shared.lifecycle_declared"] =
+  shared.include?("pub mod hepta_material_app_lifecycle;")
+checks["shared.lifecycle_registered"] =
+  shared.include?("hepta_material_app_lifecycle::script_mod(vm);")
+checks["shared.lifecycle_order"] =
+  shared.index("hepta_v4_layout::script_mod(vm);") <
+    shared.index("hepta_material_app_lifecycle::script_mod(vm);") &&
+  shared.index("hepta_material_app_lifecycle::script_mod(vm);") <
+    shared.index("helpers::script_mod(vm);")
+
+checks["layout.filter_tokens"] =
+  layout.include?("HEPTA_V4_FILTER_CONTROL_HEIGHT: f64 = 48.0") &&
+  layout.include?("HEPTA_V4_FILTER_ROW_HEIGHT: f64 = 56.0") &&
+  layout.include?("mod.widgets.HEPTA_V4_FILTER_CONTROL_HEIGHT = 48") &&
+  layout.include?("mod.widgets.HEPTA_V4_FILTER_ROW_HEIGHT = 56")
+checks["layout.bounded_row"] =
+  layout.include?("mod.widgets.HeptaV4ControlRow") &&
+  layout.include?("padding: Inset{left: 4, right: 4, top: 4, bottom: 4}")
+checks["layout.focused_test"] =
+  layout.include?("HEPTA_V4_FILTER_ROW_HEIGHT >= HEPTA_V4_FILTER_CONTROL_HEIGHT + 8.0")
+
+checks["filter.no_legacy_height"] =
+  !filter.match?(/height:\s*(?:35|39|45)\b/)
+checks["filter.control_48"] =
+  filter.include?("HEPTA_ROOM_FILTER_CONTROL_HEIGHT: f64 = 48.0") &&
+  filter.include?("height: (mod.widgets.HEPTA_V4_FILTER_CONTROL_HEIGHT)")
+checks["filter.v4_input"] =
+  filter.include?("input := mod.widgets.HeptaV4RobrixTextInput")
+checks["filter.clear_48"] =
+  filter.include?("HEPTA_ROOM_FILTER_CLEAR_TARGET: f64 = 48.0") &&
+  filter.include?("width: (mod.widgets.HEPTA_ROOM_FILTER_CLEAR_TARGET)") &&
+  filter.include?("height: (mod.widgets.HEPTA_ROOM_FILTER_CLEAR_TARGET)")
+checks["filter.text_15"] =
+  filter.include?("HEPTA_ROOM_FILTER_TEXT_SIZE: f64 = 15.0") &&
+  filter.include?("font_size: (mod.widgets.HEPTA_ROOM_FILTER_TEXT_SIZE)")
+checks["filter.stable_single_material"] =
+  filter.include?("color: (mod.widgets.COLOR_HEPTA_CONTENT)") &&
+  filter.include?("nested material") &&
+  !filter.match?(/backdrop|blur/i)
+checks["filter.focused_test"] =
+  filter.include?("room_filter_meets_v4_interaction_and_type_floors")
+
+checks["home.override_loaded_after_home"] =
+  home_mod.index("home_screen::script_mod(vm);") <
+    home_mod.index("hepta_v4_home_overrides::script_mod(vm);")
+checks["home.shared_filter_row"] =
+  home_override.include?("mod.widgets.HeptaV4RoomFilterRow") &&
+  home_override.include?("mod.widgets.HeptaV4ControlRow")
+checks["home.desktop_named_page_override"] =
+  home_override.include?("mod.widgets.HeptaV4HomeScreen") &&
+  home_override.include?("home_page := View") &&
+  home_override.include?("mod.widgets.MainDesktopUI")
+checks["home.mobile_bounded_variant"] =
+  home_override.include?("mod.widgets.HeptaV4RoomsSideBar") &&
+  home_override.include?("Mobile := View") &&
+  home_override.include?("filter_panel := RoundedShadowView")
+checks["home.no_legacy_filter_rows"] =
+  !home_override.match?(/height:\s*(?:35|39|45)\b/)
+checks["home.stack_contract_retained"] =
+  home_override.include?("HEPTA_V4_STACK_HEADER_HEIGHT: f64 = 56.0") &&
+  home_override.include?("HEPTA_V4_STACK_BACK_TARGET: f64 = 48.0") &&
+  home_override.include?("FitBound.Abs(48)")
+
+checks["lifecycle.window_event_bridge"] =
+  lifecycle.include?("mod.widgets.HeptaV4LifecycleWindow = mod.widgets.Window") &&
+  lifecycle.include?("mod.widgets.Window = mod.widgets.HeptaV4LifecycleWindow") &&
+  lifecycle.include?("HeptaV4MaterialLifecycleNode")
+checks["lifecycle.events"] = %w[
+  Startup Resume Foreground Pause Background Shutdown
+].all? { |event| lifecycle.include?("Event::#{event}") }
+checks["lifecycle.unbound_adapter"] =
+  lifecycle.include?("HeptaUnboundSystemMaterialAdapter") &&
+  lifecycle.include?("HeptaMaterialHostCapabilities::default()") &&
+  lifecycle.include?("HEPTA_MATERIAL_APP_SYSTEM_ADAPTER_AVAILABLE: bool = false") &&
+  lifecycle.include?("HEPTA_MATERIAL_APP_WINDOW_HANDLE_BOUND: bool = false")
+checks["lifecycle.suspend_shutdown"] =
+  lifecycle.include?("self.host.suspend") &&
+  lifecycle.include?("self.host.shutdown") &&
+  lifecycle.include?("HeptaMaterialHostError::HostShutdown")
+checks["lifecycle.no_network_or_mutation"] =
+  lifecycle.scan(/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource|POST|PUT|PATCH|DELETE)\b/).empty?
+checks["lifecycle.authority_false"] = %w[
+  HEPTA_MATERIAL_APP_PRODUCTION_AUTHORITY
+  HEPTA_MATERIAL_APP_EFFECT_AUTHORITY
+  HEPTA_MATERIAL_APP_LIVE_ADAPTER_AUTHORITY
+  HEPTA_MATERIAL_APP_OPERATOR_ACCEPTANCE
+  HEPTA_MATERIAL_APP_PROMOTION
+  HEPTA_MATERIAL_APP_RELEASE
+].all? { |name| lifecycle.include?("#{name}: bool = false") }
+checks["lifecycle.focused_tests"] =
+  lifecycle.include?("unbound_app_lifecycle_never_claims_system_material_or_authority") &&
+  lifecycle.include?("app_lifecycle_authority_constants_remain_false")
+
+checks["inherited.host_bounds"] =
+  host.include?("profile.content == HeptaMaterialRenderer::Solid") &&
+  host.include?("profile.stable_content_backdrop_layers == 0") &&
+  host.include?("profile.max_visible_backdrop_layers <= 2")
+checks["inherited.runtime_receipt_validation"] =
+  runtime.include?("AdapterDidNotBindSystemMaterial") &&
+  runtime.include?("!receipt.system_material_bound")
+checks["inherited.preferences_fail_closed"] =
+  preferences.include?("HeptaSystemPreferenceSnapshot::fail_closed") &&
+  preferences.include?("transparency_allowed: false") &&
+  preferences.include?("reduced_motion: true")
+checks["controls.no_global_legacy_rebind"] =
+  !controls.match?(/^\s*mod\.widgets\.RobrixTextInput\s*=/)
+
+checks["control_matrix.schema"] =
+  control_matrix["schema"] == "hepta.ui.native-control-migration.v1"
+checks["control_matrix.branch"] =
+  control_matrix["candidateBranch"] == "codex/ui-v4-filter-lifecycle-20260828"
+checks["control_matrix.filter_48"] =
+  control_matrix.fetch("items").find { |item| item["id"] == "room-filter-input" }
+    .fetch("observedHeight") == 48
+checks["control_matrix.rows_56"] = %w[
+  desktop-room-filter-row mobile-room-filter-row
+].all? do |id|
+  control_matrix.fetch("items").find { |item| item["id"] == id }
+    .fetch("observedHeight") == 56
+end
+checks["control_matrix.runtime_unclaimed"] =
+  control_matrix.fetch("items").all? { |item| item.fetch("runtimeStatus") != "PASS" }
+checks["control_matrix.authority_false"] =
+  control_matrix.fetch("authority").values.none?
+
+checks["material_matrix.schema"] =
+  material_matrix["schema"] == "hepta.ui.platform-material-adapter-matrix.v1"
+checks["material_matrix.branch"] =
+  material_matrix["candidateBranch"] == "codex/ui-v4-filter-lifecycle-20260828"
+checks["material_matrix.root_source_wired"] =
+  material_matrix.fetch("hostLifecycle").fetch("rootWindowEventSourceIntegration") == true
+checks["material_matrix.system_adapter_unbound"] =
+  material_matrix.fetch("hostLifecycle").fetch("systemAdapterAvailable") == false &&
+  material_matrix.fetch("hostLifecycle").fetch("windowHandleBound") == false &&
+  material_matrix.fetch("hostLifecycle").fetch("systemMaterialBindingClaim") == false
+checks["material_matrix.runtime_unclaimed"] =
+  material_matrix.fetch("hostLifecycle").fetch("runtimeStatus") != "PASS" &&
+  material_matrix.fetch("platforms").all? { |entry| entry.fetch("runtimeStatus") != "PASS" }
+checks["material_matrix.authority_false"] =
+  material_matrix.fetch("authority").values.none?
+
+checks["workflow.source_gate"] =
+  workflow.include?("ruby scripts/hepta-ui-v4-filter-lifecycle-gate")
+checks["workflow.compile_matrix"] = %w[
+  ubuntu-latest windows-latest macos-latest
+].all? { |os| workflow.include?(os) }
+checks["workflow.native_compile"] =
+  workflow.include?("cargo check --manifest-path apps/hepta-native/Cargo.toml --lib")
+checks["workflow.focused_tests"] =
+  workflow.include?("shared::room_filter_input_bar::tests") &&
+  workflow.include?("home::hepta_v4_home_overrides::tests") &&
+  workflow.include?("shared::hepta_material_app_lifecycle::tests")
+checks["workflow.read_only"] =
+  workflow.include?("permissions:") && workflow.include?("contents: read")
+checks["workflow.no_deploy_publish_release_job"] =
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+
+failed = checks.reject { |_name, passed| passed }
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.filter-lifecycle-source-gate.v1",
+  status: failed.empty? ?
+    "PASS_FILTER_LIFECYCLE_SOURCE_ONLY" :
+    "FAIL_FILTER_LIFECYCLE_SOURCE",
+  source_implemented: failed.empty?,
+  room_filter_source_migration: failed.empty?,
+  root_lifecycle_event_source: failed.empty?,
+  system_adapter_available: false,
+  window_handle_bound: false,
+  system_material_binding: false,
+  native_compile_validation: false,
+  native_runtime_validation: false,
+  windows_runtime_validation: false,
+  macos_runtime_validation: false,
+  ios_runtime_validation: false,
+  android_runtime_validation: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failed.keys
+)
+exit(failed.empty? ? 0 : 1)

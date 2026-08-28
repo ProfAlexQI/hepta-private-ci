@@ -1,0 +1,121 @@
+name: hepta-ui-v4-filter-lifecycle
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-filter-lifecycle-*"
+  pull_request:
+    paths:
+      - "apps/hepta-native/src/shared/hepta_v4_layout.rs"
+      - "apps/hepta-native/src/shared/room_filter_input_bar.rs"
+      - "apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs"
+      - "apps/hepta-native/src/shared/mod.rs"
+      - "apps/hepta-native/src/home/hepta_v4_home_overrides.rs"
+      - "docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"
+      - "docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_7_FILTER_LIFECYCLE_2026-08-28.md"
+      - "scripts/hepta-ui-v4-filter-lifecycle-gate"
+      - ".github/workflows/hepta-ui-v4-filter-lifecycle.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v4-filter-lifecycle-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Filter and root lifecycle source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Validate gate and machine contracts
+        run: |
+          ruby -c scripts/hepta-ui-v4-filter-lifecycle-gate
+          ruby -rjson -e 'JSON.parse(File.read("docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"))'
+          ruby -rjson -e 'JSON.parse(File.read("docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"))'
+
+      - name: Run fail-closed source gate
+        run: |
+          mkdir -p artifacts/ui-v4-filter-lifecycle
+          ruby scripts/hepta-ui-v4-filter-lifecycle-gate | tee artifacts/ui-v4-filter-lifecycle/source-gate.json
+
+      - name: Verify source-only claim boundary
+        run: |
+          ruby -rjson -e '
+            receipt = JSON.parse(File.read("artifacts/ui-v4-filter-lifecycle/source-gate.json"))
+            abort "unexpected source status" unless receipt.fetch("status") == "PASS_FILTER_LIFECYCLE_SOURCE_ONLY"
+            %w[
+              system_adapter_available window_handle_bound system_material_binding
+              native_compile_validation native_runtime_validation
+              windows_runtime_validation macos_runtime_validation
+              ios_runtime_validation android_runtime_validation device_validation
+              production_authority effect_authority live_adapter_authority
+              operator_acceptance promotion release
+            ].each do |key|
+              abort "#{key} escaped source-only boundary" unless receipt.fetch(key) == false
+            end
+          '
+
+      - name: Upload source receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-filter-lifecycle-source-${{ github.sha }}
+          path: artifacts/ui-v4-filter-lifecycle/source-gate.json
+          if-no-files-found: error
+          retention-days: 14
+
+  native-contract:
+    name: Native filter and lifecycle compile (${{ matrix.os }})
+    needs: source-contract
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+
+      - name: Check Native formatting
+        run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+
+      - name: Compile Native library
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --lib
+
+      - name: Test room-filter migration
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo test --manifest-path apps/hepta-native/Cargo.toml --lib shared::room_filter_input_bar::tests -- --nocapture
+
+      - name: Test adaptive rows and Home overrides
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib shared::hepta_v4_layout::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib home::hepta_v4_home_overrides::tests -- --nocapture
+
+      - name: Test root material lifecycle and host bounds
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib shared::hepta_material_app_lifecycle::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib shared::hepta_platform_material_host::tests -- --nocapture

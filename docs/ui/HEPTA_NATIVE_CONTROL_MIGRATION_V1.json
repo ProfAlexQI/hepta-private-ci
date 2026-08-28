@@ -1,7 +1,7 @@
 {
   "schema": "hepta.ui.native-control-migration.v1",
-  "status": "MOBILE_STACK_SOURCE_MIGRATED_REMAINING_CONTROLS_REQUIRE_RUNTIME_VALIDATION",
-  "candidateBranch": "codex/ui-v4-native-host-consolidation-20260828",
+  "status": "ROOM_FILTER_AND_MOBILE_STACK_SOURCE_MIGRATED_RUNTIME_VALIDATION_REQUIRED",
+  "candidateBranch": "codex/ui-v4-filter-lifecycle-20260828",
   "authority": {
     "production": false,
     "effect": false,
@@ -12,6 +12,8 @@
   },
   "minimumTouchTarget": 48,
   "mobileHeaderHeight": 56,
+  "filterControlHeight": 48,
+  "filterRowHeight": 56,
   "items": [
     {
       "id": "explicit-v4-text-input",
@@ -28,14 +30,38 @@
       "targetHeight": 48,
       "sourceStatus": "MIGRATION_TARGET_AVAILABLE_NOT_GLOBALLY_REBOUND",
       "runtimeStatus": "REQUIRED_NOT_RUN",
-      "note": "Legacy fixed-height containers must migrate with the input to avoid clipping."
+      "note": "Remaining consumers must migrate together with their fixed-height containers."
     },
     {
       "id": "room-filter-input",
       "path": "apps/hepta-native/src/shared/room_filter_input_bar.rs",
-      "observedHeight": 35,
+      "observedHeight": 48,
       "targetHeight": 48,
-      "sourceStatus": "MIGRATION_REQUIRED",
+      "sourceStatus": "BOUNDED_CONTROL_SOURCE_MIGRATED",
+      "runtimeStatus": "REQUIRED_NOT_RUN"
+    },
+    {
+      "id": "room-filter-clear-target",
+      "path": "apps/hepta-native/src/shared/room_filter_input_bar.rs",
+      "observedHeight": 48,
+      "targetHeight": 48,
+      "sourceStatus": "BOUNDED_CLEAR_TARGET_SOURCE_MIGRATED",
+      "runtimeStatus": "REQUIRED_NOT_RUN"
+    },
+    {
+      "id": "desktop-room-filter-row",
+      "path": "apps/hepta-native/src/home/hepta_v4_home_overrides.rs",
+      "observedHeight": 56,
+      "targetHeight": 56,
+      "sourceStatus": "NAMED_HOME_PAGE_OVERRIDE_PRESENT",
+      "runtimeStatus": "REQUIRED_NOT_RUN"
+    },
+    {
+      "id": "mobile-room-filter-row",
+      "path": "apps/hepta-native/src/home/hepta_v4_home_overrides.rs",
+      "observedHeight": 56,
+      "targetHeight": 56,
+      "sourceStatus": "BOUNDED_MOBILE_VARIANT_OVERRIDE_PRESENT",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {

@@ -1,12 +1,14 @@
 //! Native adaptive-layout primitives for the v4 UI lane.
 //!
-//! The constants and widgets establish the mobile header, back-target, safe
-//! inset, and desktop rail floors used during component migrations.
+//! The constants and widgets establish the mobile header, back-target, filter
+//! row, safe inset, and desktop rail floors used during component migrations.
 
 use makepad_widgets::*;
 
 pub const HEPTA_V4_MOBILE_HEADER_HEIGHT: f64 = 56.0;
 pub const HEPTA_V4_MOBILE_BACK_TARGET: f64 = 48.0;
+pub const HEPTA_V4_FILTER_CONTROL_HEIGHT: f64 = 48.0;
+pub const HEPTA_V4_FILTER_ROW_HEIGHT: f64 = 56.0;
 pub const HEPTA_V4_DESKTOP_RAIL_MIN_WIDTH: f64 = 280.0;
 pub const HEPTA_V4_COMPACT_DESKTOP_BREAKPOINT: f64 = 980.0;
 pub const HEPTA_V4_MOBILE_BREAKPOINT: f64 = 700.0;
@@ -17,6 +19,8 @@ script_mod! {
 
     mod.widgets.HEPTA_V4_MOBILE_HEADER_HEIGHT = 56
     mod.widgets.HEPTA_V4_MOBILE_BACK_TARGET = 48
+    mod.widgets.HEPTA_V4_FILTER_CONTROL_HEIGHT = 48
+    mod.widgets.HEPTA_V4_FILTER_ROW_HEIGHT = 56
     mod.widgets.HEPTA_V4_DESKTOP_RAIL_MIN_WIDTH = 280
     mod.widgets.HEPTA_V4_COMPACT_DESKTOP_BREAKPOINT = 980
     mod.widgets.HEPTA_V4_MOBILE_BREAKPOINT = 700
@@ -61,6 +65,17 @@ script_mod! {
         icon_walk: Walk{width: 20, height: 20}
     }
 
+    // A bounded row around a 48px control. The 4px vertical insets preserve
+    // breathing room without shrinking the target or relying on overflow.
+    mod.widgets.HeptaV4ControlRow = View {
+        width: Fill
+        height: (mod.widgets.HEPTA_V4_FILTER_ROW_HEIGHT)
+        flow: Right
+        align: Align{y: 0.5}
+        padding: Inset{left: 4, right: 4, top: 4, bottom: 4}
+        spacing: 0
+    }
+
     mod.widgets.HeptaV4DesktopRail = View {
         width: (mod.widgets.HEPTA_V4_DESKTOP_RAIL_MIN_WIDTH)
         height: Fill
@@ -94,6 +109,8 @@ mod tests {
     fn adaptive_layout_metrics_meet_v4_contract() {
         assert!(HEPTA_V4_MOBILE_HEADER_HEIGHT >= 56.0);
         assert!(HEPTA_V4_MOBILE_BACK_TARGET >= 48.0);
+        assert!(HEPTA_V4_FILTER_CONTROL_HEIGHT >= 48.0);
+        assert!(HEPTA_V4_FILTER_ROW_HEIGHT >= HEPTA_V4_FILTER_CONTROL_HEIGHT + 8.0);
         assert!(HEPTA_V4_DESKTOP_RAIL_MIN_WIDTH >= 280.0);
         assert_eq!(HEPTA_V4_COMPACT_DESKTOP_BREAKPOINT, 980.0);
         assert_eq!(HEPTA_V4_MOBILE_BREAKPOINT, 700.0);

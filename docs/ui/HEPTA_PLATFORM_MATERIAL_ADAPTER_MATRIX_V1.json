@@ -1,7 +1,7 @@
 {
   "schema": "hepta.ui.platform-material-adapter-matrix.v1",
-  "status": "CONSOLIDATED_HOST_LIFECYCLE_AND_WINDOWS_ADAPTER_SOURCE_IMPLEMENTED_RUNTIME_EVIDENCE_REQUIRED",
-  "candidateBranch": "codex/ui-v4-native-host-consolidation-20260828",
+  "status": "ROOT_LIFECYCLE_SOURCE_WIRED_AND_WINDOWS_ADAPTER_SOURCE_IMPLEMENTED_RUNTIME_EVIDENCE_REQUIRED",
+  "candidateBranch": "codex/ui-v4-filter-lifecycle-20260828",
   "authority": {
     "production": false,
     "effect": false,
@@ -19,10 +19,13 @@
     "directWindowHandleDiscovery": false,
     "hostBindsOnlyVerifiedReceipt": true,
     "hostUnbindsBeforeSemanticOnlyOrFallbackState": true,
-    "shutdownIsTerminal": true
+    "shutdownIsTerminal": true,
+    "rootLifecycleBridgeSystemAdapterAvailable": false,
+    "rootLifecycleBridgeWindowHandleBound": false
   },
   "hostLifecycle": {
     "source": "apps/hepta-native/src/shared/hepta_platform_material_host.rs",
+    "integrationSource": "apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs",
     "phases": [
       "SolidFallback",
       "SemanticIntentOnly",
@@ -34,8 +37,20 @@
     "transactionalRollback": true,
     "suspendCleanup": true,
     "shutdownCleanup": true,
-    "appLifecycleIntegration": false,
-    "sourceStatus": "IMPLEMENTED_FAIL_CLOSED",
+    "rootWindowEventSourceIntegration": true,
+    "events": [
+      "Startup",
+      "Resume",
+      "Foreground",
+      "Pause",
+      "Background",
+      "Shutdown"
+    ],
+    "systemAdapterAvailable": false,
+    "windowHandleBound": false,
+    "systemMaterialBindingClaim": false,
+    "sourceStatus": "ROOT_EVENT_BRIDGE_IMPLEMENTED_UNBOUND_ADAPTER",
+    "compileStatus": "REQUIRED_NOT_RUN",
     "runtimeStatus": "REQUIRED_NOT_RUN"
   },
   "platforms": [
@@ -47,7 +62,7 @@
       "preferenceProbe": "SystemParametersInfoW plus EnableTransparency registry value",
       "adapterSource": "HeptaWindowsDwmBackdropApi",
       "hostBinding": "explicit non-zero chrome and transient HWND values required",
-      "sourceStatus": "IMPLEMENTED_FAIL_CLOSED",
+      "sourceStatus": "IMPLEMENTED_FAIL_CLOSED_HOST_OBJECT_EXTRACTION_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -56,9 +71,9 @@
       "chrome": "MacSystemChrome",
       "transient": "MacSystemPopover",
       "preferenceProbe": "host-provided or fail-closed",
-      "adapterSource": "semantic profile and host lifecycle implemented; AppKit adapter required",
+      "adapterSource": "semantic profile, host lifecycle, and root event bridge implemented; AppKit adapter required",
       "hostBinding": "NSWindow and material-view integration required",
-      "sourceStatus": "HOST_LIFECYCLE_IMPLEMENTED_PLATFORM_ADAPTER_REQUIRED",
+      "sourceStatus": "ROOT_LIFECYCLE_IMPLEMENTED_PLATFORM_ADAPTER_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -67,9 +82,9 @@
       "chrome": "IosSystemGlass",
       "transient": "IosSystemSheet",
       "preferenceProbe": "UIKit accessibility reduce-transparency, reduce-motion, and darker-system-colors functions",
-      "adapterSource": "preference probe and host lifecycle implemented; view adapter required",
+      "adapterSource": "preference probe, host lifecycle, and root event bridge implemented; view adapter required",
       "hostBinding": "UIView or controller integration required",
-      "sourceStatus": "PREFERENCE_AND_HOST_SOURCE_IMPLEMENTED_VIEW_ADAPTER_REQUIRED",
+      "sourceStatus": "PREFERENCE_AND_ROOT_LIFECYCLE_SOURCE_IMPLEMENTED_VIEW_ADAPTER_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -78,10 +93,10 @@
       "chrome": "AndroidTonalChrome",
       "transient": "AndroidTonalSheet",
       "preferenceProbe": "host-provided activity snapshot required",
-      "adapterSource": "dynamic-color capability gate and host lifecycle implemented",
+      "adapterSource": "dynamic-color capability gate, host lifecycle, and root event bridge implemented",
       "hostBinding": "Activity, API level, animation scale, and dynamic-color availability required",
       "fallbackWhenDynamicColorUnavailable": "Solid",
-      "sourceStatus": "CAPABILITY_AND_HOST_GATE_IMPLEMENTED_ACTIVITY_ADAPTER_REQUIRED",
+      "sourceStatus": "CAPABILITY_AND_ROOT_LIFECYCLE_GATE_IMPLEMENTED_ACTIVITY_ADAPTER_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -100,8 +115,8 @@
       "chrome": "Solid",
       "transient": "Solid",
       "preferenceProbe": "fail-closed",
-      "adapterSource": "solid fallback",
-      "sourceStatus": "REFERENCE_FALLBACK",
+      "adapterSource": "solid fallback through the root lifecycle bridge",
+      "sourceStatus": "REFERENCE_FALLBACK_SOURCE_WIRED",
       "runtimeStatus": "REFERENCE_FALLBACK_NOT_RUN"
     }
   ],
@@ -109,6 +124,7 @@
     "apps/hepta-native/src/shared/hepta_platform_material.rs",
     "apps/hepta-native/src/shared/hepta_platform_material_runtime.rs",
     "apps/hepta-native/src/shared/hepta_platform_material_host.rs",
+    "apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs",
     "apps/hepta-native/src/shared/hepta_system_preferences.rs",
     "apps/hepta-native/src/shared/hepta_windows_material_adapter.rs"
   ]

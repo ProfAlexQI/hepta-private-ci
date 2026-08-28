@@ -8,6 +8,7 @@ pub mod confirmation_modal;
 pub mod expand_arrow;
 pub mod file_upload_modal;
 pub mod helpers;
+pub mod hepta_material_app_lifecycle;
 pub mod hepta_platform_material;
 pub mod hepta_platform_material_host;
 pub mod hepta_platform_material_runtime;
@@ -45,6 +46,9 @@ pub fn script_mod(vm: &mut ScriptVm) {
     // overrides, before downstream consumers instantiate compatibility names.
     hepta_v4_controls::script_mod(vm);
     hepta_v4_layout::script_mod(vm);
+    // The lifecycle module rebinds the canonical Window prototype before the
+    // App root is evaluated. Its adapter remains explicitly unbound.
+    hepta_material_app_lifecycle::script_mod(vm);
     helpers::script_mod(vm);
     icon_button::script_mod(vm);
     navigation_bar_button::script_mod(vm);
