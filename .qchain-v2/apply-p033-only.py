@@ -11,7 +11,6 @@ from pathlib import Path
 BUNDLE = Path('/tmp/hepta-qchain-v2/hepta_kg_p0_3_3_qualification_v2')
 sys.path.insert(0, str(BUNDLE))
 from apply_qualification_chain_v2 import (  # noqa: E402
-    EXPECTED_BLOBS,
     P033_BRANCH,
     copy_payload,
     git,
@@ -22,6 +21,32 @@ from apply_qualification_chain_v2 import (  # noqa: E402
 from patch_logic import patch_verifier  # noqa: E402
 
 EXPECTED_HEAD = '30e9202f5b37ca2fca1f32866a98579cd5ae1057'
+
+
+def align_v5_workflow_gate(text: str) -> str:
+    start_marker = '    checks["workflow.repository_toolchain_and_scoped_fmt"] = ('
+    end_marker = '    checks["resolver.contract"] = contains_all('
+    start = text.find(start_marker)
+    end = text.find(end_marker, start)
+    if start < 0 or end < 0:
+        raise RuntimeError('P0.3.3 workflow source-gate block drift')
+    replacement = '''    checks["workflow.repository_toolchain_and_scoped_fmt"] = (
+        contains_all(
+            workflow,
+            [
+                "name: hepta-intelligence-evidence-resolver-v5",
+                "toolchain: 1.95.0",
+                "scripts/run-hepta-intelligence-evidence-resolver-v5.py",
+                "scripts/check-hepta-intelligence-p0-3-3-clippy.py",
+                "github.event_name == 'pull_request'",
+                "P0.3.3 exact-head host evidence resolver qualification v5",
+            ],
+        )
+        and "cargo fmt --all -- --check" not in workflow
+        and "toolchain: 1.88.0" not in workflow
+    )
+'''
+    return text[:start] + replacement + text[end:]
 
 
 def main() -> int:
@@ -53,7 +78,8 @@ def main() -> int:
         copy_payload(BUNDLE, worktree, 'scripts/check-hepta-intelligence-p0-3-3-clippy.py')
         copy_payload(BUNDLE, worktree, 'scripts/run-hepta-intelligence-evidence-resolver-v5.py')
         verifier = worktree / 'scripts/verify-hepta-intelligence-evidence-resolver-v4.py'
-        verifier.write_text(patch_verifier(verifier.read_text(encoding='utf-8')), encoding='utf-8')
+        patched = patch_verifier(verifier.read_text(encoding='utf-8'))
+        verifier.write_text(align_v5_workflow_gate(patched), encoding='utf-8')
         update_pre_restack_status(
             worktree / 'plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json'
         )
