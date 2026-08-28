@@ -1,0 +1,237 @@
+name: C1 hosted gap closure ARM64 v1
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/c1-hosted-gap-closure-arm-v1.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: c1-hosted-gap-closure-arm-v1-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  close-current-gaps:
+    name: Close current hosted qualification gaps on ARM64
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == 'integration/vnext-main-20260811'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+      HEAD_REF: ${{ github.head_ref }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify exact mutable branch head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git fetch --no-tags origin "refs/heads/$HEAD_REF:refs/remotes/origin/$HEAD_REF"
+          test "$(git rev-parse refs/remotes/origin/$HEAD_REF)" = "$EXPECTED_HEAD"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply exact deterministic contract fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one preimage, observed {count}")
+              target.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          def replace_all(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              if old not in text:
+                  raise SystemExit(f"{path}: missing replacement preimage {old!r}")
+              updated = text.replace(old, new)
+              if old in updated:
+                  raise SystemExit(f"{path}: replacement incomplete for {old!r}")
+              target.write_text(updated, encoding="utf-8")
+
+          replace_once(
+              "scripts/tests/test_hepta_servo_build_input_seal_v3.py",
+              '            "features": ["baked-in-resources", "background-hang-monitor"],\n',
+              '            "features": ["background-hang-monitor", "baked-in-resources"],\n',
+          )
+          replace_once(
+              "scripts/hepta-servo-source-bundle-verify.py",
+              '''def safe_member_path(prefix: str, name: str) -> tuple[str, ...]:
+              if not name.startswith(prefix) or "\\\\" in name or "\\0" in name:
+                  fail(f"archive path is outside frozen prefix: {name!r}")
+              relative = name[len(prefix) :]
+          ''',
+              '''def safe_member_path(prefix: str, name: str) -> tuple[str, ...]:
+              if "\\\\" in name or "\\0" in name:
+                  fail(f"archive path is unsafe: {name!r}")
+              root = prefix.rstrip("/")
+              if name == root:
+                  return ()
+              if not name.startswith(prefix):
+                  fail(f"archive path is outside frozen prefix: {name!r}")
+              relative = name[len(prefix) :]
+          ''',
+          )
+          replace_once(
+              "scripts/verify-hepta-servo-build-preflight-contract.py",
+              '''        "workflow_call:",
+                  "pull_request:",
+                  "python3 scripts/tests/test_hepta_servo_build_preflight.py",
+          ''',
+              '''        "workflow_call:",
+                  "workflow_dispatch:",
+                  "python3 scripts/tests/test_hepta_servo_build_preflight.py",
+          ''',
+          )
+          replace_once(
+              "scripts/verify-hepta-servo-build-preflight-contract.py",
+              '''    if "scripts/hepta-servo-build-preflight-v2.py --source-verification" in text:
+                  fail("contract workflow must not run a real build preflight")
+          ''',
+              '''    for forbidden_trigger in ("\\n  pull_request:", "\\n  push:"):
+                  if forbidden_trigger in text:
+                      fail(f"build-preflight leaf workflow contains retired trigger {forbidden_trigger.strip()}")
+              if "scripts/hepta-servo-build-preflight-v2.py --source-verification" in text:
+                  fail("contract workflow must not run a real build preflight")
+          ''',
+          )
+          replace_once(
+              "tools/hepta-browser-c1-protocol/tests/secret_redaction.rs",
+              '''    for rendered in (
+                  format!("{expected:?}"),
+                  format!("{acknowledgement:?}"),
+                  format!("{confirmation:?}"),
+              ) {
+          ''',
+              '''    for rendered in [
+                  format!("{expected:?}"),
+                  format!("{acknowledgement:?}"),
+                  format!("{confirmation:?}"),
+              ] {
+          ''',
+          )
+          replace_once(
+              "scripts/verify-hepta-browser-plan.py",
+              '''        blocking_tokens = (
+                  "pull_request:",
+                  "integration/vnext-main-20260811",
+                  "runner-preflight:",
+                  "hepta-vnext:",
+                  "uses: ./.github/workflows/hepta-vnext-qualification.yml",
+                  "- hepta-vnext",
+              )
+              for token in blocking_tokens:
+                  if token not in blocking:
+                      fail(f"blocking CI is missing {token}")
+          ''',
+              '''        blocking_tokens = (
+                  "pull_request:",
+                  "integration/vnext-main-20260811",
+                  "runner-preflight:",
+                  "name: CI required",
+                  "scripts/verify-hepta-required-contexts.py",
+              )
+              for token in blocking_tokens:
+                  if token not in blocking:
+                      fail(f"blocking CI is missing {token}")
+              for forbidden in (
+                  "uses: ./.github/workflows/hepta-vnext-qualification.yml",
+                  "uses: ./.github/workflows/hepta-browser-next-required-v9.yml",
+              ):
+                  if forbidden in blocking:
+                      fail(f"blocking CI reintroduced nested required graph {forbidden}")
+              if "name: Hepta vNext required" not in hepta:
+                  fail("Hepta qualification is missing the independent required context")
+          ''',
+          )
+          replace_all("scripts/verify-hepta-browser-plan.py", "@ProfAlexQI", "@ProfHepta")
+          replace_all(".github/CODEOWNERS", "@ProfAlexQI", "@ProfHepta")
+          PY
+
+      - name: Apply canonical Rust 1.95 formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path tools/hepta-browser-c1-protocol/Cargo.toml
+          cargo fmt --manifest-path tools/hepta-browser-c1-startup-bridge/Cargo.toml
+
+      - name: Verify Python contracts and regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            scripts/hepta-servo-source-bundle-verify.py \
+            scripts/verify-hepta-servo-build-preflight-contract.py \
+            scripts/verify-hepta-browser-plan.py \
+            scripts/tests/test_hepta_servo_build_input_seal_v3.py
+          python3 scripts/tests/test_hepta_servo_build_input_seal_v3.py
+          python3 scripts/tests/test_hepta_servo_source_bundle_verify.py
+          python3 scripts/tests/test_hepta_servo_source_bundle_verify_v2.py
+          python3 scripts/tests/test_hepta_servo_build_preflight.py
+          python3 scripts/tests/test_hepta_servo_build_preflight_v2.py
+          python3 scripts/verify-hepta-servo-build-preflight-contract.py
+          python3 scripts/verify-hepta-required-contexts.py
+          python3 scripts/verify-hepta-browser-plan.py
+
+      - name: Verify C1 Rust crates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path tools/hepta-browser-c1-protocol/Cargo.toml -- --check
+          cargo test --locked --manifest-path tools/hepta-browser-c1-protocol/Cargo.toml
+          cargo clippy --locked --manifest-path tools/hepta-browser-c1-protocol/Cargo.toml --all-targets -- -D warnings
+          cargo fmt --manifest-path tools/hepta-browser-c1-startup-bridge/Cargo.toml -- --check
+          cargo test --locked --manifest-path tools/hepta-browser-c1-startup-bridge/Cargo.toml
+          cargo clippy --locked --manifest-path tools/hepta-browser-c1-startup-bridge/Cargo.toml --all-targets -- -D warnings
+          python3 scripts/verify-hepta-browser-c1-protocol.py
+          python3 scripts/verify-hepta-browser-c1-startup-bridge.py
+          git diff --check
+
+      - name: Commit only the reviewed closure surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -- \
+            .github/CODEOWNERS \
+            scripts/verify-hepta-browser-plan.py \
+            scripts/tests/test_hepta_servo_build_input_seal_v3.py \
+            scripts/hepta-servo-source-bundle-verify.py \
+            scripts/verify-hepta-servo-build-preflight-contract.py \
+            tools/hepta-browser-c1-protocol/src \
+            tools/hepta-browser-c1-protocol/tests \
+            tools/hepta-browser-c1-startup-bridge/src \
+            tools/hepta-browser-c1-startup-bridge/tests
+          staged="$(git diff --cached --name-only)"
+          test -n "$staged"
+          unexpected="$(printf '%s\n' "$staged" | grep -Ev '^(.github/CODEOWNERS|scripts/verify-hepta-browser-plan\.py|scripts/tests/test_hepta_servo_build_input_seal_v3\.py|scripts/hepta-servo-source-bundle-verify\.py|scripts/verify-hepta-servo-build-preflight-contract\.py|tools/hepta-browser-c1-protocol/(src|tests)/|tools/hepta-browser-c1-startup-bridge/(src|tests)/)' || true)"
+          test -z "$unexpected"
+          git config user.name "Hepta Qualification Bot"
+          git config user.email "102159240+ProfHepta@users.noreply.github.com"
+          git commit -m "fix(hepta-browser): close hosted qualification gaps"
+
+      - name: Push only if the remote head is unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/heads/$HEAD_REF:refs/remotes/origin/$HEAD_REF"
+          test "$(git rev-parse refs/remotes/origin/$HEAD_REF)" = "$EXPECTED_HEAD"
+          git push origin "HEAD:refs/heads/$HEAD_REF"
+          echo "new_head=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
