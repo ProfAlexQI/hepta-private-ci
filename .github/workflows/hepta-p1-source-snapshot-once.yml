@@ -1,0 +1,80 @@
+name: Hepta P1 source snapshot once
+
+on:
+  push:
+    branches:
+      - codex/hepta-architecture-gap-closure-p1-20260829
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-p1-source-snapshot-once
+  cancel-in-progress: true
+
+jobs:
+  snapshot:
+    name: Package exact P1 source snapshot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify clean exact identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code
+          git diff --cached --exit-code
+          git rev-parse 'HEAD^{tree}'
+
+      - name: Package bounded source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar \
+            --exclude='.git' \
+            --exclude='**/target' \
+            --exclude='**/node_modules' \
+            --exclude='docs/hepta-vnext/dropbox-*' \
+            -czf "$RUNNER_TEMP/hepta-p1-source-${GITHUB_SHA}.tar.gz" \
+            .github/actions/setup-ci \
+            .github/workflows/hepta-architecture-convergence-p0-2.yml \
+            ARCHITECTURE.md \
+            docs/architecture \
+            scripts \
+            codex-rs/Cargo.toml \
+            codex-rs/Cargo.lock \
+            codex-rs/rust-toolchain.toml \
+            codex-rs/app-server \
+            codex-rs/core \
+            codex-rs/exec-server \
+            codex-rs/hepta-agentd \
+            codex-rs/hepta-automation \
+            codex-rs/hepta-contracts \
+            codex-rs/hepta-fleet \
+            codex-rs/hepta-matrix-store \
+            codex-rs/hepta-matrixd \
+            codex-rs/hepta-memory \
+            codex-rs/hepta-memory-runtime \
+            codex-rs/hepta-paths \
+            codex-rs/hepta-supervisor
+          sha256sum "$RUNNER_TEMP/hepta-p1-source-${GITHUB_SHA}.tar.gz" \
+            > "$RUNNER_TEMP/hepta-p1-source-${GITHUB_SHA}.sha256"
+
+      - name: Upload exact source snapshot
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: hepta-p1-source-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/hepta-p1-source-${{ github.sha }}.tar.gz
+            ${{ runner.temp }}/hepta-p1-source-${{ github.sha }}.sha256
+          if-no-files-found: error
+          retention-days: 1
