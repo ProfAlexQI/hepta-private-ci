@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.ai/schemas/ui/hepta.ui.v4.windows-product-host-device-drill.v1.schema.json",
+  "title": "Hepta UI v4 Windows product-host implementation device drill",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "status", "candidate", "reviewBindingDigest", "feature", "device", "identity", "checks", "qualification", "authority"],
+  "properties": {
+    "schema": {"const": "hepta.ui.v4.windows-product-host-device-drill.v1"},
+    "status": {"const": "PASS_WINDOWS_PRODUCT_HOST_IMPLEMENTATION_DEVICE_DRILL"},
+    "candidate": {"$ref": "#/$defs/candidate"},
+    "reviewBindingDigest": {"$ref": "#/$defs/sha256"},
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "enabled"],
+      "properties": {
+        "name": {"const": "hepta_ui_windows_system_material_v4"},
+        "enabled": {"const": true}
+      }
+    },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["physical", "os", "architecture", "runnerLabels"],
+      "properties": {
+        "physical": {"const": true},
+        "os": {"const": "Windows"},
+        "architecture": {"const": "X64"},
+        "runnerLabels": {
+          "type": "array",
+          "uniqueItems": true,
+          "allOf": [
+            {"contains": {"const": "self-hosted"}},
+            {"contains": {"const": "Windows"}},
+            {"contains": {"const": "X64"}},
+            {"contains": {"const": "hepta-ui-dwm"}}
+          ],
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "transient"],
+      "properties": {
+        "root": {"$ref": "#/$defs/windowIdentity"},
+        "transient": {"$ref": "#/$defs/windowIdentity"}
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "activationObserved", "rootMicaExact", "transientAcrylicExact",
+        "explicitRollback", "rootNoneExact", "transientNoneExact",
+        "highContrastFallback", "transparencyDisabledFallback",
+        "suspendRollback", "shutdownRollback", "rollbackDrillValidated",
+        "physicalDeviceValidated", "finalState"
+      ],
+      "properties": {
+        "activationObserved": {"const": true},
+        "rootMicaExact": {"const": true},
+        "transientAcrylicExact": {"const": true},
+        "explicitRollback": {"const": true},
+        "rootNoneExact": {"const": true},
+        "transientNoneExact": {"const": true},
+        "highContrastFallback": {"const": true},
+        "transparencyDisabledFallback": {"const": true},
+        "suspendRollback": {"const": true},
+        "shutdownRollback": {"const": true},
+        "rollbackDrillValidated": {"const": true},
+        "physicalDeviceValidated": {"const": true},
+        "finalState": {"const": "Unbound"}
+      }
+    },
+    "qualification": {"$ref": "#/$defs/qualification"},
+    "authority": {"$ref": "#/$defs/authority"}
+  },
+  "$defs": {
+    "gitObject": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "tree"],
+      "properties": {
+        "commit": {"$ref": "#/$defs/gitObject"},
+        "tree": {"$ref": "#/$defs/gitObject"}
+      }
+    },
+    "windowIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "generation", "nativeHandle"],
+      "properties": {
+        "index": {"type": "integer", "minimum": 0},
+        "generation": {"type": "integer", "minimum": 0},
+        "nativeHandle": {"type": "string", "pattern": "^[1-9][0-9]*$"}
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "isolatedCandidate", "physicalDeviceValidated", "rollbackDrillValidated",
+        "productCargoFeatureDeclared", "productModuleRegistered", "productLifecycleWired",
+        "automaticBindingAllowed", "implementationApproved", "productHostMayBind",
+        "productBound", "transientSystemMaterialBound", "completeProfileBound",
+        "systemMaterialBound", "nativeProductRuntime", "deviceValidation"
+      ],
+      "properties": {
+        "isolatedCandidate": {"const": true},
+        "physicalDeviceValidated": {"const": true},
+        "rollbackDrillValidated": {"const": true},
+        "productCargoFeatureDeclared": {"const": false},
+        "productModuleRegistered": {"const": false},
+        "productLifecycleWired": {"const": false},
+        "automaticBindingAllowed": {"const": false},
+        "implementationApproved": {"const": false},
+        "productHostMayBind": {"const": false},
+        "productBound": {"const": false},
+        "transientSystemMaterialBound": {"const": false},
+        "completeProfileBound": {"const": false},
+        "systemMaterialBound": {"const": false},
+        "nativeProductRuntime": {"const": false},
+        "deviceValidation": {"const": false}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["network", "mutation", "effect", "liveAdapter", "production", "operatorAcceptance", "promotion", "release"],
+      "properties": {
+        "network": {"const": false},
+        "mutation": {"const": false},
+        "effect": {"const": false},
+        "liveAdapter": {"const": false},
+        "production": {"const": false},
+        "operatorAcceptance": {"const": false},
+        "promotion": {"const": false},
+        "release": {"const": false}
+      }
+    }
+  }
+}
