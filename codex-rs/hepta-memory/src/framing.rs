@@ -8,6 +8,9 @@ use sha2::Sha256;
 mod durable_fact_grounding;
 #[path = "fact_grounding/shadow_projection_gate.rs"]
 mod shadow_projection_gate;
+#[allow(dead_code)]
+#[path = "intelligence_mutation_state.rs"]
+mod intelligence_mutation_state;
 
 pub(crate) fn frame_part(hasher: &mut Sha256, part: &[u8]) {
     hasher.update((part.len() as u64).to_be_bytes());
