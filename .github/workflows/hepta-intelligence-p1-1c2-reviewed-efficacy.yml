@@ -1,0 +1,340 @@
+name: hepta-intelligence-p1-1c2-reviewed-efficacy
+
+on:
+  push:
+    branches:
+      - "codex/hepta-p1c2-eval-20260828"
+  pull_request:
+    paths:
+      - "codex-rs/hepta-memory-p1-1c2-qualification/**"
+      - "plans/hepta-intelligence/P1-1C2_*"
+      - "scripts/verify-hepta-intelligence-p1-1c2-reviewed-efficacy.py"
+      - ".github/workflows/hepta-intelligence-p1-1c2-reviewed-efficacy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-intelligence-p1-1c2-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BASE_BRANCH: codex/hepta-intelligence-reviewed-corpus-acceptance-p1c1-20260828
+  BASE_SHA: f961a056ac0a35c1967a934de7cf5bf7ffb92a05
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1c2-qualification
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1c2-qualification/Cargo.toml
+  VERIFIER_PATH: scripts/verify-hepta-intelligence-p1-1c2-reviewed-efficacy.py
+  ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1c2
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  qualify:
+    name: P1.1c.2 reviewed corpus offline efficacy qualification
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact stack and changed-path allowlist
+        id: candidate
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          git fetch --no-tags origin \
+            "+refs/heads/$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH"
+          test "$(git rev-parse "refs/remotes/origin/$BASE_BRANCH")" = "$BASE_SHA"
+          test "$(git merge-base HEAD "refs/remotes/origin/$BASE_BRANCH")" = "$BASE_SHA"
+          python3 - "$BASE_SHA" <<'PY'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          base = sys.argv[1]
+          expected = {
+              ".github/workflows/hepta-intelligence-p1-1c2-reviewed-efficacy.yml",
+              "codex-rs/hepta-memory-p1-1c2-qualification/Cargo.toml",
+              "codex-rs/hepta-memory-p1-1c2-qualification/fixtures/p1_1c2_projection_seed.tsv",
+              "codex-rs/hepta-memory-p1-1c2-qualification/src/bin/p1_1c2_receipt.rs",
+              "codex-rs/hepta-memory-p1-1c2-qualification/src/digest.rs",
+              "codex-rs/hepta-memory-p1-1c2-qualification/src/evaluation.rs",
+              "codex-rs/hepta-memory-p1-1c2-qualification/src/lib.rs",
+              "codex-rs/hepta-memory-p1-1c2-qualification/src/projection.rs",
+              "codex-rs/hepta-memory-p1-1c2-qualification/tests/p1_1c2.rs",
+              "plans/hepta-intelligence/P1-1C2_EXECUTION_STATUS.json",
+              "plans/hepta-intelligence/P1-1C2_IMPLEMENTATION_RECEIPT.json",
+              "plans/hepta-intelligence/P1-1C2_REVIEWED_CORPUS_EFFICACY_PLAN.md",
+              "scripts/verify-hepta-intelligence-p1-1c2-reviewed-efficacy.py",
+          }
+          actual = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", f"{base}..HEAD"], text=True
+              ).splitlines()
+          )
+          if actual != expected:
+              raise SystemExit(
+                  json.dumps(
+                      {"expected": sorted(expected), "actual": sorted(actual)},
+                      indent=2,
+                      sort_keys=True,
+                  )
+              )
+          source = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          receipt = {
+              "schema": "hepta.intelligence.p1_1c2.source_binding.v1",
+              "base_commit": base,
+              "source_commit": source,
+              "changed_paths": sorted(actual),
+              "changed_path_allowlist": True,
+              "runtime_wired": False,
+              "production_authority": False,
+          }
+          Path("artifacts/hepta-intelligence-p1-1c2/source-binding.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(f"source_sha={source}")
+          PY
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Run fail-closed source verifier
+        run: |
+          set -o pipefail
+          python3 "$VERIFIER_PATH" \
+            2>&1 | tee "$ARTIFACT_DIR/source-gate.json"
+
+      - name: Isolate Cargo outputs
+        run: |
+          set -euo pipefail
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-p1-1c2-target" >> "$GITHUB_ENV"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Record pinned toolchain
+        run: |
+          set -euo pipefail
+          rustc --version | tee "$ARTIFACT_DIR/rustc-version.txt"
+          cargo --version | tee "$ARTIFACT_DIR/cargo-version.txt"
+          rustfmt --version | tee "$ARTIFACT_DIR/rustfmt-version.txt"
+          cargo clippy --version | tee "$ARTIFACT_DIR/clippy-version.txt"
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+
+      - name: Check Rust formatting
+        run: |
+          set -o pipefail
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check \
+            2>&1 | tee "$ARTIFACT_DIR/rustfmt.log"
+
+      - name: Run all unit and integration tests
+        run: |
+          set -o pipefail
+          cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture \
+            2>&1 | tee "$ARTIFACT_DIR/tests.log"
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          log = Path("artifacts/hepta-intelligence-p1-1c2/tests.log").read_text(
+              encoding="utf-8", errors="replace"
+          )
+          passed = sum(
+              int(value)
+              for value in re.findall(r"test result: ok\. (\d+) passed", log)
+          )
+          if passed != 15:
+              raise SystemExit(f"expected 15 P1.1c.2 tests, observed {passed}")
+          PY
+
+      - name: Check all Rust targets
+        run: |
+          set -o pipefail
+          cargo check --manifest-path "$MANIFEST_PATH" --all-targets \
+            2>&1 | tee "$ARTIFACT_DIR/check.log"
+
+      - name: Run strict Clippy
+        run: |
+          set -o pipefail
+          cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings \
+            2>&1 | tee "$ARTIFACT_DIR/clippy.log"
+
+      - name: Produce deterministic blocked receipt twice
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path "$MANIFEST_PATH" --bin p1_1c2_receipt \
+            > "$ARTIFACT_DIR/evaluation-receipt-a.json"
+          cargo run --quiet --manifest-path "$MANIFEST_PATH" --bin p1_1c2_receipt \
+            > "$ARTIFACT_DIR/evaluation-receipt-b.json"
+          cmp \
+            "$ARTIFACT_DIR/evaluation-receipt-a.json" \
+            "$ARTIFACT_DIR/evaluation-receipt-b.json"
+          cp \
+            "$ARTIFACT_DIR/evaluation-receipt-a.json" \
+            "$ARTIFACT_DIR/evaluation-receipt.json"
+          sha256sum "$ARTIFACT_DIR/evaluation-receipt.json" \
+            > "$ARTIFACT_DIR/evaluation-receipt.json.sha256"
+
+      - name: Validate blocker semantics and redaction
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("artifacts/hepta-intelligence-p1-1c2/evaluation-receipt.json")
+          text = path.read_text(encoding="utf-8")
+          receipt = json.loads(text)
+          assert receipt["status"] == "BLOCKED_P1_1C2_REVIEWED_CORPUS_DEPENDENCY"
+          assert receipt["reviewed_corpus_present"] is False
+          assert receipt["projection_complete"] is False
+          assert receipt["reviewed_corpus_evaluated"] is False
+          assert receipt["efficacy_thresholds_passed"] is False
+          assert receipt["efficacy_validation"] is False
+          assert receipt["efficacy_claim"] is False
+          assert receipt["case_count"] == 8
+          assert receipt["candidate_count"] == 48
+          assert receipt["locale_count"] == 8
+          assert receipt["lanes"] == []
+          blockers = set(receipt["blocked_reasons"])
+          assert "acceptance.reviewed_corpus_not_accepted" in blockers
+          assert "projection.fixture_only" in blockers
+          assert "projection.candidate_coverage_incomplete" in blockers
+          assert "projection.review_coverage_incomplete" in blockers
+          for key in [
+              "source_qualified",
+              "product_workspace_member",
+              "product_module_registered",
+              "runtime_wired",
+              "default_recall_changed",
+              "federation_recall_changed",
+              "context_attachment",
+              "physical_send",
+              "network_access",
+              "model_download",
+              "external_effects",
+              "production_authority",
+              "operator_acceptance",
+              "promotion",
+              "callers_ratchet",
+          ]:
+              assert receipt[key] is False, key
+          for forbidden in [
+              "Which evidence binds",
+              "哪些证据",
+              "en-ann-gold",
+              "en-case-001",
+              "qualification-reviewer",
+              "qualification-rationale",
+          ]:
+              assert forbidden not in text, forbidden
+          PY
+
+      - name: Prove clean tracked source
+        run: |
+          set -euo pipefail
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+          git diff --exit-code -- \
+            "$CRATE_ROOT" \
+            "$VERIFIER_PATH" \
+            plans/hepta-intelligence/P1-1C2_EXECUTION_STATUS.json \
+            plans/hepta-intelligence/P1-1C2_IMPLEMENTATION_RECEIPT.json \
+            plans/hepta-intelligence/P1-1C2_REVIEWED_CORPUS_EFFICACY_PLAN.md
+          test -z "$(git ls-files --others --exclude-standard -- "$CRATE_ROOT")"
+
+      - name: Write exact-head qualification receipt
+        env:
+          SOURCE_SHA: ${{ steps.candidate.outputs.source_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUNNER_NAME: ${{ runner.name }}
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          evaluation = (artifact_dir / "evaluation-receipt.json").read_bytes()
+          receipt = {
+              "schema": "hepta.intelligence.p1_1c2.executable_qualification.v1",
+              "status": "PASS_P1_1C2_EXECUTABLE_SOURCE_GATES_DEPENDENCY_BLOCKED",
+              "base_commit": os.environ["BASE_SHA"],
+              "source_commit": os.environ["SOURCE_SHA"],
+              "evaluation_receipt_sha256": hashlib.sha256(evaluation).hexdigest(),
+              "tests_passed": 15,
+              "gates": {
+                  "stack_base": "success",
+                  "changed_path_allowlist": "success",
+                  "source_gate": "success",
+                  "rust_1_95_0": "success",
+                  "rustfmt": "success",
+                  "tests": "success",
+                  "check": "success",
+                  "clippy": "success",
+                  "receipt_reproducibility": "success",
+                  "blocker_semantics": "success",
+                  "receipt_redaction": "success",
+                  "clean_tree": "success",
+              },
+              "executable_gates_passed": True,
+              "stack_qualified": False,
+              "reviewed_corpus_present": False,
+              "reviewed_corpus_evaluated": False,
+              "efficacy_validation": False,
+              "efficacy_claim": False,
+              "runtime_wired": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "runner": {
+                  "name": os.environ["RUNNER_NAME"],
+                  "os": os.environ["RUNNER_OS"],
+                  "arch": os.environ["RUNNER_ARCH"],
+              },
+              "workflow": {
+                  "run_id": int(os.environ["RUN_ID"]),
+                  "run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              },
+          }
+          (artifact_dir / "qualification-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          summary = [
+              "## Hepta Intelligence P1.1c.2 qualification",
+              "",
+              f"- Base P1.1c.1: `{receipt['base_commit']}`",
+              f"- Exact source: `{receipt['source_commit']}`",
+              "- Rust 1.95 ARM64: source / fmt / 15 tests / check / strict Clippy PASS",
+              "- Blocked receipt reproduced byte-for-byte twice",
+              "- Fixture correctly rejects 8 reviews as coverage for 48 candidates",
+              "- No reviewed corpus, efficacy claim, runtime wiring, or production authority",
+          ]
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(
+              "\n".join(summary) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Upload P1.1c.2 qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1c2-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1c2
+          if-no-files-found: warn
+          retention-days: 14
