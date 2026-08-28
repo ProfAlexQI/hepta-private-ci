@@ -41,7 +41,10 @@ fn secret_ref(key: &str, bytes: &[u8]) -> OpaqueSecretRef {
     .unwrap_or_else(|error| panic!("valid opaque reference: {error:?}"))
 }
 
-fn refresh_request(reference: OpaqueSecretRef, idempotency_key: &str) -> RefreshWithSecretRefRequest {
+fn refresh_request(
+    reference: OpaqueSecretRef,
+    idempotency_key: &str,
+) -> RefreshWithSecretRefRequest {
     let provider_id = "provider-p0-1";
     let profile_id = "profile-p0-1";
     let token_family_id = "family-p0-1";
