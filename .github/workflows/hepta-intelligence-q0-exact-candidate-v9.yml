@@ -6,17 +6,24 @@ on:
       - codex/hepta-intelligence-plan-v3-20260828
     paths:
       - .github/workflows/hepta-intelligence-q0-exact-candidate-v9.yml
+      - .github/workflows/hepta-intelligence-q0-independent-witness.yml
+      - scripts/run-hepta-intelligence-q0-qualification.sh
+      - scripts/q0-qualification/**
+      - scripts/verify-hepta-intelligence-mutation-journal.py
+      - scripts/verify-hepta-intelligence-q0-evidence-pair.py
+      - plans/hepta-intelligence/HEPTA_INTELLIGENCE_OPERATOR_ACCEPTANCE_TEMPLATE_V1.json
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: hepta-intelligence-q0-exact-candidate-v9-${{ github.ref }}
+  group: hepta-intelligence-q0-exact-candidate-v9-${{ github.sha }}
   cancel-in-progress: false
 
 env:
   EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-  EXPECTED_PARENT: bf47b70c3d6b0f889650a6e7f4b410838bf4770a
+  EXPECTED_PARENT: a7f84baf0afc4a55bc281610501ba41327f4715d
   ARTIFACT_DIR: artifacts/hepta-intelligence-q0-exact-candidate-v9/x64
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
@@ -28,31 +35,14 @@ jobs:
   prove-candidate:
     name: Prove complete frozen Q0 candidate on x86_64
     runs-on: ubuntu-24.04
-    timeout-minutes: 300
+    timeout-minutes: 360
     steps:
-      - name: Checkout exact v9 candidate
+      - name: Checkout exact Q0 candidate
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
           fetch-depth: 2
           persist-credentials: false
-
-      - name: Prove exact identity and fail-closed authority
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
-          test "$(uname -m)" = "x86_64"
-          test -f .github/patches/hepta-intelligence-q0-compile-fix-v1.patch
-          test -f .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py
-          test -f .github/scripts/hepta-intelligence-q0-reconstruct-v7.py
-          test ! -e .github/workflows/hepta-intelligence-q0-compile-fix-v2.yml
-          mkdir -p "$ARTIFACT_DIR/gates" "$ARTIFACT_DIR/rust"
-          printf '{"head":"%s","tree":"%s","parent":"%s","host":"x86_64-unknown-linux-gnu","runtime_authority":false,"source_writeback":false}\n' \
-            "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" "$(git rev-parse HEAD^)" \
-            > "$ARTIFACT_DIR/identity.json"
 
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
@@ -60,249 +50,15 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt,clippy
 
-      - name: Verify repository compiler and lock
+      - name: Execute exact E1 qualification matrix
         shell: bash
-        working-directory: codex-rs
-        run: |
-          set -euo pipefail
-          expected=$(python3 - <<'PY'
-          import pathlib
-          import tomllib
-          print(tomllib.loads(pathlib.Path('rust-toolchain.toml').read_text())['toolchain']['channel'])
-          PY
-          )
-          test "$expected" = "1.95.0"
-          test "$(rustc --version | awk '{print $2}')" = "$expected"
-          test "$(rustc -vV | awk '/^host:/ {print $2}')" = "x86_64-unknown-linux-gnu"
-          test -s Cargo.lock
+        env:
+          Q0_EXPECTED_UNAME: x86_64
+          Q0_EXPECTED_RUST_HOST: x86_64-unknown-linux-gnu
+          Q0_EVIDENCE_CLASS: E1_LOCAL_EXECUTABLE
+        run: bash scripts/run-hepta-intelligence-q0-qualification.sh
 
-      - name: Restore compiler cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            codex-rs/target/debug/.fingerprint
-            codex-rs/target/debug/build
-            codex-rs/target/debug/deps
-          key: hepta-q0-rust195-x64-v9-${{ hashFiles('codex-rs/Cargo.lock') }}-${{ hashFiles('.github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py') }}
-          restore-keys: |
-            hepta-q0-rust195-x64-
-
-      - name: Repair parser and reconstruct deterministic source candidate
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('.github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py')
-          lines = path.read_text(encoding='utf-8').splitlines()
-          needle = r"        rf'(?:async[ \t]+)?fn[ \t]+{re.escape(name)}[ \t]*\('"
-          assert lines.count(needle) == 1, lines.count(needle)
-          index = lines.index(needle)
-          assert lines[index + 1] == '    )', lines[index + 1]
-          lines.insert(index + 1, "        r')'")
-          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-          PY
-          python3 -m py_compile \
-            .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py \
-            .github/scripts/hepta-intelligence-q0-reconstruct-v7.py
-          python3 .github/scripts/hepta-intelligence-q0-reconstruct-v7.py
-          git restore --source=HEAD -- .github/scripts/hepta-intelligence-q0-manual-clippy-repair-v7.py
-          mapfile -t files < <(git diff --name-only -- '*.rs')
-          test "${#files[@]}" -gt 0
-          rustfmt --edition 2024 --config skip_children=true "${files[@]}"
-          git diff --check
-
-      - name: Apply machine-applicable memory Clippy fixes
-        shell: bash
-        working-directory: codex-rs
-        run: |
-          set +e
-          cargo clippy --fix --locked -p codex-hepta-memory --all-targets \
-            --allow-dirty --allow-staged -- -D warnings \
-            2>&1 | tee "../$ARTIFACT_DIR/rust/memory-clippy-fix.log"
-          printf '%s\n' "${PIPESTATUS[0]}" > "../$ARTIFACT_DIR/rust/memory-clippy-fix.exit"
-          exit 0
-
-      - name: Verify formatting and bounded repair surface
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t files < <(git diff --name-only -- '*.rs')
-          test "${#files[@]}" -gt 0
-          rustfmt --edition 2024 --config skip_children=true "${files[@]}"
-          rustfmt --edition 2024 --check --config skip_children=true "${files[@]}"
-          git diff --check
-          while IFS= read -r path; do
-            case "$path" in
-              codex-rs/hepta-memory/src/*.rs|codex-rs/hepta-memory/src/**/*.rs) ;;
-              *) printf 'unexpected candidate path: %s\n' "$path" >&2; exit 1 ;;
-            esac
-          done < <(git diff --name-only)
-          ! git diff --unified=0 -- '*.rs' | grep -E '^\+.*(#\!?\[allow\(clippy|#\[ignore\]|todo!\(|unimplemented!\()'
-          set +e
-          (cd codex-rs && cargo fmt --all -- --check) \
-            >"$ARTIFACT_DIR/rust/workspace-fmt.log" 2>&1
-          code=$?
-          set -e
-          printf '%s\n' "$code" > "$ARTIFACT_DIR/rust/workspace-fmt.exit"
-
-      - name: Run every frozen source and SQLite contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          gate_dir="$ARTIFACT_DIR/gates"
-          status_file=plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json
-          canonical_status=$(mktemp)
-          cp "$status_file" "$canonical_status"
-          restore_status() {
-            cp "$canonical_status" "$status_file"
-            rm -f "$canonical_status"
-          }
-          trap restore_status EXIT
-
-          run_gate() {
-            local name=$1
-            shift
-            set +e
-            "$@" >"$gate_dir/$name.log" 2>&1
-            local code=$?
-            set -e
-            printf '%s\n' "$code" >"$gate_dir/$name.exit"
-            printf '%-36s exit=%s\n' "$name" "$code"
-          }
-
-          master_plan_gate() {
-            local actual
-            actual=$(python3 scripts/verify-hepta-intelligence-master-plan.py)
-            printf '%s\n' "$actual"
-            test "$actual" = "PASS_HEPTA_INTELLIGENCE_MASTER_PLAN_V4_SOURCE_ONLY"
-          }
-
-          run_gate master-plan master_plan_gate
-          for tranche in P0.2 P0.3 P0.4a P0.4b P0.4c; do
-            run_gate "status-$tranche" python3 scripts/hepta-intelligence-status-compat.py "$tranche"
-          done
-          run_gate grounding-ledger python3 scripts/verify-hepta-intelligence-grounding-ledger.py
-          run_gate grounding-gate python3 scripts/verify-hepta-intelligence-grounding-gate.py
-          run_gate mutation-state python3 scripts/verify-hepta-intelligence-mutation-state.py
-          run_gate mutation-journal-sqlite python3 scripts/hepta-intelligence-mutation-journal-sqlite-selftest.py
-          run_gate mutation-journal python3 scripts/verify-hepta-intelligence-mutation-journal.py
-          run_gate shadow-host python3 scripts/verify-hepta-intelligence-shadow-host.py
-
-          restore_status
-          trap - EXIT
-          git diff --check
-
-      - name: Run focused, full, default-off and strict-Clippy Rust matrix
-        shell: bash
-        working-directory: codex-rs
-        run: |
-          set -euo pipefail
-          out="../$ARTIFACT_DIR/rust"
-          run_case() {
-            local name=$1
-            shift
-            set +e
-            "$@" 2>&1 | tee "$out/$name.log"
-            local code=${PIPESTATUS[0]}
-            set -e
-            printf '%s\n' "$code" > "$out/$name.exit"
-            printf '%-44s exit=%s\n' "$name" "$code"
-          }
-
-          require_test_count() {
-            local name=$1
-            local minimum=$2
-            test "$(cat "$out/$name.exit")" = "0" || return 0
-            set +e
-            python3 - "$out/$name.log" "$minimum" <<'PY'
-          import pathlib
-          import re
-          import sys
-
-          text = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8', errors='replace')
-          minimum = int(sys.argv[2])
-          passed = sum(int(value) for value in re.findall(r'test result: ok\. (\d+) passed;', text))
-          print(f'verified_test_count={passed} minimum={minimum}')
-          raise SystemExit(0 if passed >= minimum else 1)
-          PY
-            local count_code=$?
-            set -e
-            if test "$count_code" != "0"; then
-              printf '%s\n' 1 > "$out/$name.exit"
-            fi
-          }
-
-          run_test_case() {
-            local name=$1
-            local minimum=$2
-            shift 2
-            run_case "$name" "$@"
-            require_test_count "$name" "$minimum"
-          }
-
-          run_test_case p0-2-durable-grounding 1 \
-            cargo test --locked -p codex-hepta-memory durable_grounding -- --nocapture
-          run_test_case p0-1-fact-grounding-regression 1 \
-            cargo test --locked -p codex-hepta-memory fact_grounding -- --nocapture
-          run_test_case p0-3-shadow 1 \
-            cargo test --locked -p codex-hepta-memory shadow_ -- --nocapture
-          run_test_case p0-4a-mutation-state 1 \
-            cargo test --locked -p codex-hepta-memory intelligence_mutation_state -- --nocapture
-          run_test_case p0-4b-mutation-journal 1 \
-            cargo test --locked -p codex-hepta-memory intelligence_mutation_journal -- --nocapture
-          run_test_case p0-4c-shadow-host-memory 3 \
-            cargo test --locked -p codex-hepta-memory intelligence_mutation_shadow_host -- --nocapture
-          run_test_case p0-3-extension-focused 1 \
-            cargo test --locked -p codex-hepta-memory-extension grounding_v3 -- --nocapture
-          run_test_case p0-4c-agentd-focused 5 \
-            cargo test --locked -p codex-hepta-agentd \
-              --features qualification-intelligence-mutation-shadow \
-              shadow_intelligence_mutation_host -- --nocapture
-          run_test_case memory-full 1 \
-            cargo test --locked -p codex-hepta-memory
-          run_case memory-strict-clippy \
-            cargo clippy --locked -p codex-hepta-memory --all-targets -- -D warnings
-          run_test_case extension-full 1 \
-            cargo test --locked -p codex-hepta-memory-extension
-          run_case extension-strict-clippy \
-            cargo clippy --locked -p codex-hepta-memory-extension --all-targets -- -D warnings
-          run_test_case agentd-default-off-full 1 \
-            cargo test --locked -p codex-hepta-agentd
-          run_case agentd-default-off-clippy \
-            cargo clippy --locked -p codex-hepta-agentd --all-targets -- -D warnings
-          run_test_case agentd-shadow-full 1 \
-            cargo test --locked -p codex-hepta-agentd \
-              --features qualification-intelligence-mutation-shadow
-          run_case agentd-shadow-strict-clippy \
-            cargo clippy --locked -p codex-hepta-agentd \
-              --features qualification-intelligence-mutation-shadow \
-              --all-targets -- -D warnings
-
-          set +e
-          if cargo tree -e features -p codex-hepta-agentd \
-              | grep -F 'qualification-intelligence-mutation-shadow'; then
-            default_feature_code=1
-          else
-            default_feature_code=0
-          fi
-          set -e
-          printf '%s\n' "$default_feature_code" > "$out/agentd-feature-default-off.exit"
-
-      - name: Capture exact repair and qualification surface
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --name-only | sort > "$ARTIFACT_DIR/changed-files.txt"
-          git diff --stat > "$ARTIFACT_DIR/repair-stat.txt"
-          git diff --binary > "$ARTIFACT_DIR/repair.patch"
-
-      - name: Upload v9 evidence
+      - name: Upload exact E1 evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -310,11 +66,3 @@ jobs:
           path: artifacts/hepta-intelligence-q0-exact-candidate-v9/x64/**
           if-no-files-found: error
           retention-days: 30
-
-      - name: Fail closed on every remaining Q0 candidate gap
-        shell: bash
-        run: |
-          set -euo pipefail
-          for result in "$ARTIFACT_DIR"/gates/*.exit "$ARTIFACT_DIR"/rust/*.exit; do
-            test "$(cat "$result")" = "0"
-          done

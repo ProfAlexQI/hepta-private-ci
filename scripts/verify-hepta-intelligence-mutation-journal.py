@@ -172,12 +172,21 @@ def main() -> int:
             "causal_root_sha256",
         ],
     )
-    checks["journal.schema_oracle"] = contains_all(
+    schema_pool_binding = (
+        (
+            "use codex_state::SqliteConfig;" in schema
+            and "SqliteConfig::open_in_memory_pool()" in schema
+        )
+        or (
+            "SqlitePoolOptions" in schema
+            and "sqlite::memory:" in schema
+        )
+    )
+    checks["journal.schema_oracle"] = schema_pool_binding and contains_all(
         schema,
         [
             "use sqlx::Acquire;",
             "REQUIRED_MUTATION_JOURNAL_SCHEMA_OBJECTS",
-            "sqlite::memory:",
             "schema_digest",
             "schema inventory contains missing or unknown objects",
             "component migration 0012 does not match",
