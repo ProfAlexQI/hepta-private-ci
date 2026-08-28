@@ -12,6 +12,8 @@ use codex_config::LoaderOverrides;
 use codex_features::Feature;
 use codex_hepta_contracts::AuthorityAction;
 use codex_hepta_contracts::AuthorityGrant;
+use codex_hepta_contracts::Authorized;
+use codex_hepta_contracts::SessionServeCapability;
 use codex_hepta_memory::CognitiveRuntime;
 use codex_protocol::protocol::SessionSource;
 use codex_utils_absolute_path::AbsolutePathBuf;
@@ -22,7 +24,52 @@ use crate::AgentdState;
 use crate::composition::authority_for_identity;
 use crate::qualification_writer::qualification_turn_writer_host;
 
-pub(crate) async fn run_app_server(
+pub(crate) struct AgentAppServerService {
+    identity: AgentdIdentity,
+    arg0_paths: Arg0DispatchPaths,
+    cognitive_runtime: CognitiveRuntime,
+    authority: AuthorityGrant,
+    state: Arc<AgentdState>,
+    _session_serve: Authorized<SessionServeCapability>,
+}
+
+impl AgentAppServerService {
+    pub(crate) fn new(
+        identity: AgentdIdentity,
+        arg0_paths: Arg0DispatchPaths,
+        cognitive_runtime: CognitiveRuntime,
+        authority: AuthorityGrant,
+        state: Arc<AgentdState>,
+    ) -> std::io::Result<Self> {
+        authority
+            .validate_binding(&identity.agent_id, identity.spawn_generation)
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        let session_serve = authority
+            .authorize::<SessionServeCapability>()
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        Ok(Self {
+            identity,
+            arg0_paths,
+            cognitive_runtime,
+            authority,
+            state,
+            _session_serve: session_serve,
+        })
+    }
+
+    pub(crate) async fn run(self) -> std::io::Result<()> {
+        run_app_server(
+            self.identity,
+            self.arg0_paths,
+            self.cognitive_runtime,
+            self.authority,
+            self.state,
+        )
+        .await
+    }
+}
+
+async fn run_app_server(
     identity: AgentdIdentity,
     arg0_paths: Arg0DispatchPaths,
     cognitive_runtime: CognitiveRuntime,
