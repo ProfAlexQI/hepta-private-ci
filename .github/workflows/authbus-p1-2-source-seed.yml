@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 env:
-  EXPECTED_PARENT: 0be01b7b5063066794731e545cf304e4c07c1fc5
+  EXPECTED_PARENT: f25372f78c67a7abed99ac9b6c2a62d068d27134
   ARCHIVE_SHA256: 1a5570e79a842c389b9af929926030f5ce9d98b3f46e2f35d7f639d8a1aaa8fc
   MANIFEST: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
   PACKAGE: codex-hepta-authbus-p1-2-qualification
@@ -141,7 +141,72 @@ jobs:
 
       - name: Run restart, replay, failpoint, GC, and corruption matrix
         shell: bash
-        run: cargo test --manifest-path "${MANIFEST}" --locked --features p1-2-qualification --tests -- --nocapture
+        run: |
+          set -uo pipefail
+          set +e
+          cargo test --manifest-path "${MANIFEST}" --locked --features p1-2-qualification --tests -- --nocapture 2>&1 \
+            | tee /tmp/authbus-p1-2-tests.log
+          status="${PIPESTATUS[0]}"
+          set -e
+          if [ "${status}" -ne 0 ]; then
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          source = Path("/tmp/authbus-p1-2-tests.log").read_text(
+              encoding="utf-8", errors="replace"
+          ).splitlines()
+          markers = (
+              "FAILED",
+              "failures:",
+              "panicked at",
+              "assertion `",
+              "assertion failed",
+              "left:",
+              "right:",
+              "Error:",
+              "test result:",
+          )
+          selected = []
+          for index, line in enumerate(source):
+              if any(marker in line for marker in markers):
+                  start = max(0, index - 2)
+                  end = min(len(source), index + 4)
+                  selected.extend(source[start:end])
+          bounded = []
+          for line in selected:
+              line = line.replace("\x00", "<NUL>")[:500]
+              if not bounded or bounded[-1] != line:
+                  bounded.append(line)
+              if len(bounded) >= 200:
+                  break
+          if not bounded:
+              bounded = source[-120:]
+          receipt = [
+              "AUTHBUS P1.2 bounded test failure evidence",
+              "source_head=" + os.environ["GITHUB_SHA"],
+              "workflow_run=" + os.environ["GITHUB_RUN_ID"],
+              "job=materialize-and-qualify",
+              "raw_log_persisted=false",
+              "database_content_persisted=false",
+              "---",
+              *bounded,
+              "",
+          ]
+          output = Path(
+              "docs/hepta-vnext/authbus/AUTHBUS_P1_2_TEST_FAILURE_2026-08-28.txt"
+          )
+          output.write_text("\n".join(receipt), encoding="utf-8")
+          PY
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add docs/hepta-vnext/authbus/AUTHBUS_P1_2_TEST_FAILURE_2026-08-28.txt
+            git diff --cached --check
+            git commit -m "test(authbus): record bounded P1.2 failure evidence"
+            git push origin "HEAD:${GITHUB_REF_NAME}" \
+              --force-with-lease="refs/heads/${GITHUB_REF_NAME}:${GITHUB_SHA}"
+            exit "${status}"
+          fi
 
       - name: Check all targets
         shell: bash
