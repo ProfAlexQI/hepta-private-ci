@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import copy
+import importlib.util
+import json
+import os
+import pathlib
+import tempfile
+import unittest
+from types import ModuleType
+from typing import Any
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+TOOL_PATH = ROOT / "scripts/hepta-servo-worker-source-topology-acceptance-pointer-v1.py"
+
+
+def load_tool() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("topology_acceptance_v1", TOOL_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load topology acceptance tool")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+T = load_tool()
+
+
+def bound(value: dict[str, Any], key: str, prefix: str, domain: bytes) -> dict[str, Any]:
+    result = copy.deepcopy(value)
+    result[key] = prefix + T.framed(domain, T.canonical(result))
+    return result
+
+
+def source_pointer() -> tuple[dict[str, Any], bytes]:
+    value: dict[str, Any] = {
+        "schema": T.SOURCE_POINTER_SCHEMA,
+        "schema_version": 1,
+        "phase": "DEVELOPMENT",
+        "claim_level": "EXACT_SERVO_SOURCE_ACCEPTED_TOPOLOGY_REVIEW_REQUIRED",
+        "accepted_at_utc": "2026-08-28T16:00:00Z",
+        "candidate": {
+            "id": "hepta-servo-exact-source-review-candidate:v2:" + "1" * 64,
+            "sha256": "2" * 64,
+            "bytes": 111,
+            "snapshot_path": "docs/hepta-vnext/browser/source-acceptance/candidates/" + "1" * 64 + ".json",
+        },
+        "challenge": {
+            "id": "hepta-servo-source-acceptance-review-challenge:v1:" + "3" * 64,
+            "sha256": "4" * 64,
+            "bytes": 222,
+            "snapshot_path": "docs/hepta-vnext/browser/source-acceptance/challenges/" + "3" * 64 + ".json",
+        },
+        "policy": {
+            "id": "hepta-servo-source-acceptance-review-policy:v1:" + "5" * 64,
+            "sha256": "6" * 64,
+            "bytes": 333,
+        },
+        "hepta": {
+            "repository": T.REPOSITORY,
+            "ref": "codex/hepta-vnext-plan-browser-c0-c3-20260827",
+            "commit": "7" * 40,
+            "tree": "8" * 40,
+        },
+        "servo": {
+            "repository": T.SERVO_REPOSITORY,
+            "commit": T.SERVO_COMMIT,
+            "tree": T.SERVO_TREE,
+            "recomputed_tree": T.SERVO_TREE,
+        },
+        "workflow": {"run_id": 1001, "run_attempt": 1},
+        "evidence": {
+            "api_json": {"workflow-run.json": {"sha256": "9" * 64, "bytes": 50}},
+            "source_files": {
+                "independent-source-bundle.receipt.json": {"sha256": "a" * 64, "bytes": 700},
+                "servo-source-a.tar.gz": {"sha256": "b" * 64, "bytes": 900},
+            },
+        },
+        "review": {
+            "mode": "GITHUB_PULL_REQUEST_REVIEW",
+            "state": "REQUIRES_LIVE_APPROVAL_EVIDENCE",
+            "policy_id": "hepta-servo-source-acceptance-review-policy:v1:" + "5" * 64,
+            "challenge_id": "hepta-servo-source-acceptance-review-challenge:v1:" + "3" * 64,
+            "pull_request_number": 77,
+            "head_ref": "review/hepta-servo-source-acceptance-fixture",
+        },
+        "claims": copy.deepcopy(T.ACCEPTED_SOURCE_CLAIMS),
+        "authority": copy.deepcopy(T.AUTHORITY),
+        "decision": "EXACT_SOURCE_ACCEPTED_TOPOLOGY_REVIEW_REQUIRED_BUILD_NOT_AUTHORIZED",
+    }
+    value = bound(
+        value,
+        "pointer_id",
+        "hepta-servo-accepted-source-pointer:v1:",
+        T.SOURCE_POINTER_DOMAIN,
+    )
+    return value, T.canonical(value)
+
+
+def topology_contract() -> tuple[dict[str, Any], bytes]:
+    value: dict[str, Any] = {
+        "schema": T.TOPOLOGY_SCHEMA,
+        "schema_version": 1,
+        "phase": "DEVELOPMENT",
+        "claim_level": "MINIMAL_HEPTA_OWNED_EMBEDDER_TOPOLOGY_ONLY",
+        "source": {
+            "repository": T.SERVO_REPOSITORY,
+            "commit": T.SERVO_COMMIT,
+            "tree": T.SERVO_TREE,
+            "license": "MPL-2.0",
+        },
+        "decision": {},
+        "selected_files": [],
+        "reference_only_files": [],
+        "api_contract": {},
+        "runtime_contract": {},
+        "open_gates": ["accepted source pointer"],
+        "authority": copy.deepcopy(T.AUTHORITY),
+    }
+    value = bound(
+        value,
+        "topology_id",
+        "hepta-servo-worker-source-topology:v1:",
+        T.TOPOLOGY_DOMAIN,
+    )
+    return value, T.canonical(value)
+
+
+def topology_receipt(
+    source: dict[str, Any], topology: dict[str, Any], topology_raw: bytes
+) -> tuple[dict[str, Any], bytes]:
+    selection = copy.deepcopy(T.EXPECTED_SELECTION)
+    selection["file_projection_sha256"] = "c" * 64
+    value: dict[str, Any] = {
+        "schema": T.TOPOLOGY_RECEIPT_SCHEMA,
+        "schema_version": 1,
+        "phase": "DEVELOPMENT",
+        "claim_level": "SOURCE_API_TOPOLOGY_VERIFIED_BUILD_NOT_AUTHORIZED",
+        "captured_at_utc": "2026-08-28T16:10:00Z",
+        "source": copy.deepcopy(source["servo"]),
+        "bindings": {
+            "topology_id": topology["topology_id"],
+            "topology_sha256": T.sha256_bytes(topology_raw),
+            "source_bundle_receipt_sha256": "a" * 64,
+            "compressed_archive_sha256": "b" * 64,
+        },
+        "selection": selection,
+        "verification": copy.deepcopy(T.EXPECTED_TOPOLOGY_VERIFICATION),
+        "authority": copy.deepcopy(T.AUTHORITY),
+        "decision": "HEPTA_OWNED_EMBEDDER_TOPOLOGY_VERIFIED_BUILD_NOT_AUTHORIZED",
+    }
+    value = bound(
+        value,
+        "receipt_id",
+        "hepta-servo-worker-source-topology-verification:v1:",
+        T.TOPOLOGY_RECEIPT_DOMAIN,
+    )
+    return value, T.canonical(value)
+
+
+def policy() -> tuple[dict[str, Any], bytes]:
+    value: dict[str, Any] = {
+        "schema": T.POLICY_SCHEMA,
+        "schema_version": 1,
+        "phase": "DEVELOPMENT",
+        "repository": T.REPOSITORY,
+        "base_branch": T.BASE_BRANCH,
+        "accepted_source_pointer_path": "docs/hepta-vnext/browser/source-acceptance/ACCEPTED_SOURCE_POINTER.json",
+        "topology_contract_path": "docs/hepta-vnext/browser/SERVO_WORKER_SOURCE_TOPOLOGY_V1.json",
+        "pointer_path": "docs/hepta-vnext/browser/source-topology-acceptance/ACCEPTED_WORKER_SOURCE_TOPOLOGY_POINTER.json",
+        "topology_receipt_snapshot_prefix": "docs/hepta-vnext/browser/source-topology-acceptance/receipts/",
+        "challenge_snapshot_prefix": "docs/hepta-vnext/browser/source-topology-acceptance/challenges/",
+        "allowed_auxiliary_paths": [
+            "docs/hepta-vnext/browser/C1_CURRENT_V7.json",
+            "docs/hepta-vnext/browser/C1_WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_POINTER_V1_STATUS.json",
+            "docs/hepta-vnext/browser/CURRENT.yaml",
+            "docs/hepta-vnext/browser/README.md",
+        ],
+        "review": {
+            "minimum_approvals": 1,
+            "reviewer_must_differ_from_pr_author": True,
+            "require_current_head_commit": True,
+            "reject_changes_requested": True,
+            "allowed_author_associations": ["COLLABORATOR", "MEMBER", "OWNER"],
+            "required_body_prefix": "HEPTA_WORKER_TOPOLOGY_ACCEPT_V1 ",
+            "head_ref_prefix": "review/hepta-servo-worker-topology-acceptance-",
+            "draft_allowed": False,
+            "codeowner_review_required": False,
+            "pointer_must_bind_pull_request_number": True,
+            "pointer_must_bind_head_ref": True,
+            "required_status_check": "Worker source/API topology accepted pointer live review",
+        },
+        "claims_after_acceptance": copy.deepcopy(T.ACCEPTED_TOPOLOGY_CLAIMS),
+        "authority": copy.deepcopy(T.AUTHORITY),
+    }
+    value = bound(
+        value,
+        "policy_id",
+        "hepta-servo-worker-source-topology-acceptance-review-policy:v1:",
+        T.POLICY_DOMAIN,
+    )
+    return value, T.canonical(value)
+
