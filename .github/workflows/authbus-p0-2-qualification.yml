@@ -30,6 +30,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   MANIFEST: codex-rs/hepta-authbus-qualification/Cargo.toml
+  PACKAGE: codex-hepta-authbus-qualification
+  LOCKFILE: codex-rs/hepta-authbus-qualification/Cargo.lock
 
 jobs:
   source-contract:
@@ -98,25 +100,46 @@ jobs:
             sha256sum "${MANIFEST}"
           } | tee exact-head.txt
 
-      - name: Check formatting
+      - name: Resolve Rust 1.95 dependency graph
         shell: bash
-        run: cargo fmt --manifest-path "${MANIFEST}" --all -- --check
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile --manifest-path "${MANIFEST}"
+          test -s "${LOCKFILE}"
+          cp "${LOCKFILE}" authbus-p0-2-Cargo.lock
+
+      - name: Check package-scoped formatting
+        id: rustfmt
+        shell: bash
+        run: cargo fmt --manifest-path "${MANIFEST}" --package "${PACKAGE}" -- --check
+
+      - name: Capture deterministic package repair
+        if: failure() && steps.rustfmt.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path "${MANIFEST}" --package "${PACKAGE}"
+          git diff --binary -- codex-rs/hepta-authbus-qualification > authbus-p0-2-rustfmt.patch
+          mkdir -p authbus-p0-2-rustfmt-formatted/src authbus-p0-2-rustfmt-formatted/tests
+          cp codex-rs/hepta-authbus-qualification/src/*.rs authbus-p0-2-rustfmt-formatted/src/
+          cp codex-rs/hepta-authbus-qualification/tests/*.rs authbus-p0-2-rustfmt-formatted/tests/
+          test -s authbus-p0-2-rustfmt.patch
 
       - name: Check default-off posture
         shell: bash
-        run: cargo test --manifest-path "${MANIFEST}" --no-default-features --lib -- --nocapture
+        run: cargo test --manifest-path "${MANIFEST}" --locked --no-default-features --lib -- --nocapture
 
       - name: Run SQLite WAL recovery tests
         shell: bash
-        run: cargo test --manifest-path "${MANIFEST}" --features sqlite-qualification --tests -- --nocapture
+        run: cargo test --manifest-path "${MANIFEST}" --locked --features sqlite-qualification --tests -- --nocapture
 
       - name: Check all targets
         shell: bash
-        run: cargo check --manifest-path "${MANIFEST}" --features sqlite-qualification --all-targets
+        run: cargo check --manifest-path "${MANIFEST}" --locked --features sqlite-qualification --all-targets
 
       - name: Run strict Clippy
         shell: bash
-        run: cargo clippy --manifest-path "${MANIFEST}" --features sqlite-qualification --all-targets -- -D warnings
+        run: cargo clippy --manifest-path "${MANIFEST}" --locked --features sqlite-qualification --all-targets -- -D warnings
 
       - name: Record qualification receipt
         if: success()
@@ -129,6 +152,10 @@ jobs:
             "commit":"$(git rev-parse HEAD)",
             "tree":"$(git rev-parse HEAD^{tree})",
             "runner_id":"${RUNNER_TRACKING_ID:-hosted-assigned}",
+            "rust_version":"1.95.0",
+            "resolver":"3",
+            "locked_dependency_graph":true,
+            "package_scoped_fmt":true,
             "fmt":true,
             "default_off":true,
             "sqlite_wal_tests":true,
@@ -155,6 +182,9 @@ jobs:
             exact-head.txt
             rustc-version.txt
             cargo-version.txt
+            authbus-p0-2-Cargo.lock
             authbus-p0-2-rust-receipt.json
+            authbus-p0-2-rustfmt.patch
+            authbus-p0-2-rustfmt-formatted/
           if-no-files-found: warn
           retention-days: 14

@@ -2,11 +2,14 @@
 name = "codex-hepta-authbus-p0-3-qualification"
 version = "0.0.0"
 edition = "2024"
+rust-version = "1.95"
 license = "Apache-2.0"
 publish = false
 
+# P0.3 remains a nested, default-off qualification workspace. Resolver 3 keeps
+# its path-dependency graph compatible with the repository Rust 1.95 toolchain.
 [workspace]
-resolver = "2"
+resolver = "3"
 
 [features]
 default = []

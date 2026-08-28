@@ -33,7 +33,11 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   P02_MANIFEST: codex-rs/hepta-authbus-qualification/Cargo.toml
+  P02_PACKAGE: codex-hepta-authbus-qualification
+  P02_LOCKFILE: codex-rs/hepta-authbus-qualification/Cargo.lock
   P03_MANIFEST: codex-rs/hepta-authbus-p0-3-qualification/Cargo.toml
+  P03_PACKAGE: codex-hepta-authbus-p0-3-qualification
+  P03_LOCKFILE: codex-rs/hepta-authbus-p0-3-qualification/Cargo.lock
 
 jobs:
   source-contract:
@@ -104,16 +108,44 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           test "$(rustc -V | awk '{print $2}')" = "1.95.0"
-          rustc --version | tee p0-2-rustc-version.txt
+          {
+            rustc --version
+            cargo --version
+            echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse HEAD^{tree})"
+          } | tee exact-p0-2-head.txt
+
+      - name: Resolve inherited P0.2 Rust 1.95 graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile --manifest-path "${P02_MANIFEST}"
+          test -s "${P02_LOCKFILE}"
+          cp "${P02_LOCKFILE}" authbus-p0-3-p0-2-Cargo.lock
+
+      - name: Check inherited P0.2 package formatting
+        shell: bash
+        run: cargo fmt --manifest-path "${P02_MANIFEST}" --package "${P02_PACKAGE}" -- --check
 
       - name: Run inherited P0.2 tests
         shell: bash
         run: |
           set -euo pipefail
-          cargo test --manifest-path "${P02_MANIFEST}" --no-default-features --lib -- --nocapture
-          cargo test --manifest-path "${P02_MANIFEST}" --features sqlite-qualification --tests -- --nocapture
-          cargo check --manifest-path "${P02_MANIFEST}" --features sqlite-qualification --all-targets
-          cargo clippy --manifest-path "${P02_MANIFEST}" --features sqlite-qualification --all-targets -- -D warnings
+          cargo test --manifest-path "${P02_MANIFEST}" --locked --no-default-features --lib -- --nocapture
+          cargo test --manifest-path "${P02_MANIFEST}" --locked --features sqlite-qualification --tests -- --nocapture
+          cargo check --manifest-path "${P02_MANIFEST}" --locked --features sqlite-qualification --all-targets
+          cargo clippy --manifest-path "${P02_MANIFEST}" --locked --features sqlite-qualification --all-targets -- -D warnings
+
+      - name: Upload inherited P0.2 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authbus-p0-3-inherited-p0-2-${{ github.sha }}
+          path: |
+            exact-p0-2-head.txt
+            authbus-p0-3-p0-2-Cargo.lock
+          if-no-files-found: warn
+          retention-days: 14
 
   p0-3-rust:
     name: AuthBus B4 P0.3 Rust qualification
@@ -145,25 +177,46 @@ jobs:
             sha256sum "${P03_MANIFEST}"
           } | tee exact-p0-3-head.txt
 
-      - name: Check formatting
+      - name: Resolve P0.3 Rust 1.95 dependency graph
         shell: bash
-        run: cargo fmt --manifest-path "${P03_MANIFEST}" --all -- --check
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile --manifest-path "${P03_MANIFEST}"
+          test -s "${P03_LOCKFILE}"
+          cp "${P03_LOCKFILE}" authbus-p0-3-Cargo.lock
+
+      - name: Check package-scoped formatting
+        id: rustfmt
+        shell: bash
+        run: cargo fmt --manifest-path "${P03_MANIFEST}" --package "${P03_PACKAGE}" -- --check
+
+      - name: Capture deterministic P0.3 package repair
+        if: failure() && steps.rustfmt.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path "${P03_MANIFEST}" --package "${P03_PACKAGE}"
+          git diff --binary -- codex-rs/hepta-authbus-p0-3-qualification > authbus-p0-3-rustfmt.patch
+          mkdir -p authbus-p0-3-rustfmt-formatted/src authbus-p0-3-rustfmt-formatted/tests
+          cp codex-rs/hepta-authbus-p0-3-qualification/src/*.rs authbus-p0-3-rustfmt-formatted/src/
+          cp codex-rs/hepta-authbus-p0-3-qualification/tests/*.rs authbus-p0-3-rustfmt-formatted/tests/
+          test -s authbus-p0-3-rustfmt.patch
 
       - name: Check default-off authority posture
         shell: bash
-        run: cargo test --manifest-path "${P03_MANIFEST}" --no-default-features --lib -- --nocapture
+        run: cargo test --manifest-path "${P03_MANIFEST}" --locked --no-default-features --lib -- --nocapture
 
       - name: Run P0.3 reservation and reconcile matrix
         shell: bash
-        run: cargo test --manifest-path "${P03_MANIFEST}" --features p0-3-qualification --tests -- --nocapture
+        run: cargo test --manifest-path "${P03_MANIFEST}" --locked --features p0-3-qualification --tests -- --nocapture
 
       - name: Check all targets
         shell: bash
-        run: cargo check --manifest-path "${P03_MANIFEST}" --features p0-3-qualification --all-targets
+        run: cargo check --manifest-path "${P03_MANIFEST}" --locked --features p0-3-qualification --all-targets
 
       - name: Run strict Clippy
         shell: bash
-        run: cargo clippy --manifest-path "${P03_MANIFEST}" --features p0-3-qualification --all-targets -- -D warnings
+        run: cargo clippy --manifest-path "${P03_MANIFEST}" --locked --features p0-3-qualification --all-targets -- -D warnings
 
       - name: Record executable receipt
         if: success()
@@ -175,6 +228,10 @@ jobs:
             "schema":"hepta.authbus.b4.p0.3.rust-qualification.v1",
             "commit":"$(git rev-parse HEAD)",
             "tree":"$(git rev-parse HEAD^{tree})",
+            "rust_version":"1.95.0",
+            "resolver":"3",
+            "locked_dependency_graph":true,
+            "package_scoped_fmt":true,
             "canonical_idempotency_replay":true,
             "changed_payload_conflict":true,
             "changed_binding_conflict":true,
@@ -202,6 +259,9 @@ jobs:
           name: authbus-p0-3-rust-${{ github.sha }}
           path: |
             exact-p0-3-head.txt
+            authbus-p0-3-Cargo.lock
             authbus-p0-3-rust-receipt.json
+            authbus-p0-3-rustfmt.patch
+            authbus-p0-3-rustfmt-formatted/
           if-no-files-found: warn
           retention-days: 14
