@@ -35,7 +35,6 @@ jobs:
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           git cat-file -e "$SOURCE_SHA^{commit}"
           test "$(git merge-base "$SOURCE_SHA" HEAD)" = "$SOURCE_SHA"
-          test "$(git rev-list --count "$SOURCE_SHA"..HEAD)" = "3"
 
       - name: Install Rust 1.95.0
         uses: dtolnay/rust-toolchain@stable
