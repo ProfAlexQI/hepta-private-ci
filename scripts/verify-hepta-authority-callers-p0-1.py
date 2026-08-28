@@ -33,6 +33,34 @@ def read(relative: str) -> str:
         fail(f"cannot read {relative}: {error}")
 
 
+def is_inside_cfg_test_module(source: str, position: int) -> bool:
+    cursor = 0
+    marker = "#[cfg(test)]"
+    while True:
+        start = source.find(marker, cursor)
+        if start < 0 or start > position:
+            return False
+        brace = source.find("{", start + len(marker))
+        if brace < 0 or brace > position:
+            return False
+        depth = 0
+        index = brace
+        while index < len(source):
+            character = source[index]
+            if character == "{":
+                depth += 1
+            elif character == "}":
+                depth -= 1
+                if depth == 0:
+                    if brace < position < index:
+                        return True
+                    cursor = index + 1
+                    break
+            index += 1
+        else:
+            return False
+
+
 def main() -> int:
     try:
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
@@ -59,6 +87,14 @@ def main() -> int:
     allowed_forbidden_path = manifest.get("allowedForbiddenRequestPath")
     if not isinstance(allowed_forbidden_path, str):
         fail("allowedForbiddenRequestPath must be a string")
+    allowed_test_paths = manifest.get("allowedForbiddenRequestTestPaths", [])
+    if not isinstance(allowed_test_paths, list) or not all(
+        isinstance(value, str) for value in allowed_test_paths
+    ):
+        fail("allowedForbiddenRequestTestPaths must be a string list")
+    allowed_test_paths = set(allowed_test_paths)
+    if not allowed_test_paths.issubset(allowed_paths):
+        fail("test-only forbidden request paths must be registered callers")
 
     for path in sorted(SEARCH_ROOT.rglob("*.rs")):
         relative = path.relative_to(ROOT).as_posix()
@@ -73,8 +109,19 @@ def main() -> int:
                 fail(f"unregistered authority constructor caller: {relative}: {found}")
         if relative != allowed_forbidden_path:
             for request in forbidden_requests:
-                if request in source:
-                    fail(f"product source {relative} requests forbidden capability {request}")
+                cursor = 0
+                while True:
+                    position = source.find(request, cursor)
+                    if position < 0:
+                        break
+                    if (
+                        relative not in allowed_test_paths
+                        or not is_inside_cfg_test_module(source, position)
+                    ):
+                        fail(
+                            f"product source {relative} requests forbidden capability {request}"
+                        )
+                    cursor = position + len(request)
         if PRODUCTION_WRITER_OPEN in source and not relative.startswith(
             "codex-rs/hepta-memory/"
         ):
