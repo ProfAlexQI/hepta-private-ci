@@ -7,12 +7,12 @@
     "plan_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V3_2026-08-28.md",
     "plan_content_sha256": "55d3fac411c925cdfb57667b9ac044a5e1482444b96a3cfd262b27fdd1a2fd74",
     "plan_blob_sha": "9ebf6b055c7682d72aaf4bc5409d0ccd23bf6aa2",
-    "plan_commit": null,
+    "plan_commit": "7132a1c3006ec5e27cb448eb204d83942375bafa",
     "status_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V3.json",
     "claim_ladder_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CLAIM_LADDER_V1.json",
-    "review_receipt_file": null,
+    "review_receipt_file": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_PLAN_V3_REVIEW_RECEIPT_2026-08-28.json",
     "branch": "codex/hepta-intelligence-plan-v3-20260828",
-    "status": "PLAN_CANDIDATE_UNRECEIPTED"
+    "status": "PLAN_RECEIPTED_NO_RUNTIME_AUTHORITY"
   },
   "supersedes": {
     "plan_id": "HEPTA_INTELLIGENCE_DEVELOPMENT_PLAN_V2_2026-08-28",
