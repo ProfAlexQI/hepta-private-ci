@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+BUNDLE = Path('/tmp/hepta-qchain-v2/hepta_kg_p0_3_3_qualification_v2')
+sys.path.insert(0, str(BUNDLE))
+from apply_qualification_chain_v2 import (  # noqa: E402
+    EXPECTED_BLOBS,
+    P033_BRANCH,
+    copy_payload,
+    git,
+    update_pre_restack_status,
+    validate_static,
+    verify_blob,
+)
+from patch_logic import patch_verifier  # noqa: E402
+
+EXPECTED_HEAD = '30e9202f5b37ca2fca1f32866a98579cd5ae1057'
+
+
+def main() -> int:
+    repo = Path(sys.argv[1]).resolve()
+    if git(repo, 'status', '--porcelain'):
+        raise RuntimeError('root checkout must be clean')
+    git(
+        repo,
+        'fetch',
+        'origin',
+        f'+refs/heads/{P033_BRANCH}:refs/remotes/origin/{P033_BRANCH}',
+        capture=False,
+    )
+    observed = git(repo, 'rev-parse', f'origin/{P033_BRANCH}')
+    if observed != EXPECTED_HEAD:
+        raise RuntimeError(
+            f'P0.3.3 exact-head drift: expected {EXPECTED_HEAD}, observed {observed}'
+        )
+
+    temp = Path(tempfile.mkdtemp(prefix='hepta-p033-qchain-v2-'))
+    worktree = temp / 'p033'
+    try:
+        git(repo, 'worktree', 'add', '--detach', str(worktree), f'origin/{P033_BRANCH}', capture=False)
+        verify_blob(worktree, P033_BRANCH, '.github/workflows/hepta-intelligence-evidence-resolver-v4.yml')
+        verify_blob(worktree, P033_BRANCH, 'scripts/verify-hepta-intelligence-evidence-resolver-v4.py')
+        verify_blob(worktree, P033_BRANCH, 'plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json')
+
+        copy_payload(BUNDLE, worktree, '.github/workflows/hepta-intelligence-evidence-resolver-v4.yml')
+        copy_payload(BUNDLE, worktree, 'scripts/check-hepta-intelligence-p0-3-3-clippy.py')
+        copy_payload(BUNDLE, worktree, 'scripts/run-hepta-intelligence-evidence-resolver-v5.py')
+        verifier = worktree / 'scripts/verify-hepta-intelligence-evidence-resolver-v4.py'
+        verifier.write_text(patch_verifier(verifier.read_text(encoding='utf-8')), encoding='utf-8')
+        update_pre_restack_status(
+            worktree / 'plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json'
+        )
+        validate_static(worktree, True)
+        git(worktree, 'diff', '--check', capture=False)
+        git(worktree, 'add', '-A', capture=False)
+        git(worktree, 'config', 'user.name', 'Qian QI', capture=False)
+        git(worktree, 'config', 'user.email', '102159240+ProfAlexQI@users.noreply.github.com', capture=False)
+        git(
+            worktree,
+            'commit',
+            '--no-gpg-sign',
+            '-m',
+            'ci(memory): make P0.3.3 qualification dependency-aware',
+            capture=False,
+        )
+        new_head = git(worktree, 'rev-parse', 'HEAD')
+        git(
+            repo,
+            'push',
+            f'--force-with-lease=refs/heads/{P033_BRANCH}:{EXPECTED_HEAD}',
+            'origin',
+            f'{new_head}:refs/heads/{P033_BRANCH}',
+            capture=False,
+        )
+        print(json.dumps({
+            'schema': 'hepta_p033_qchain_v2_publish_result',
+            'old_head': EXPECTED_HEAD,
+            'new_head': new_head,
+            'pushed': True,
+            'qualified': False,
+            'production_authority': False,
+        }, indent=2, sort_keys=True))
+    finally:
+        subprocess.run(['git', 'worktree', 'remove', '--force', str(worktree)], cwd=repo)
+        shutil.rmtree(temp, ignore_errors=True)
+    return 0
+
+
+if __name__ == '__main__':
+    try:
+        raise SystemExit(main())
+    except Exception as error:
+        print(f'FAIL_CLOSED: {error}', file=sys.stderr)
+        raise SystemExit(1)
