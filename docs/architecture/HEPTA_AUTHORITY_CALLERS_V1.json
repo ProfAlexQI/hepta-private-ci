@@ -59,5 +59,8 @@
     "operatorAcceptance": false,
     "promotion": false,
     "release": false
-  }
+  },
+  "allowedForbiddenRequestTestPaths": [
+    "codex-rs/hepta-contracts/src/provider_operation.rs"
+  ]
 }
