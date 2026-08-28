@@ -70,7 +70,7 @@ jobs:
               )
 
           encoded = "".join(
-              path.read_text(encoding="ascii")
+              "".join(path.read_text(encoding="ascii").split())
               for path in sorted(Path(".p0-3-2-bootstrap").glob("payload.part*.b64"))
           )
           payload = base64.b64decode(encoded, validate=True)
