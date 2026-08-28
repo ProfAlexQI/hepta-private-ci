@@ -35,10 +35,13 @@ use crate::StableMemoryId;
 use crate::cognitive_intelligence_writer::CanonicalFactSet;
 use crate::cognitive_store::unavailable;
 
+#[path = "durable/grounding.rs"]
 mod grounding;
+#[path = "durable/schema.rs"]
 mod schema;
 
 #[cfg(test)]
+#[path = "durable/tests.rs"]
 mod tests;
 
 const COMPONENT_MIGRATION_VERSION: i64 = 11;
