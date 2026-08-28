@@ -16,7 +16,7 @@ concurrency:
 jobs:
   bootstrap:
     name: Integrate, validate, and export INF-1 source
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     env:
       CARGO_TERM_COLOR: never
@@ -25,7 +25,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Materialize digest-pinned INF-1 source
         shell: bash
@@ -103,46 +103,15 @@ jobs:
             "$out/files/scripts/"
           cp "$RUNNER_TEMP/hepta-inference-inf1-source-gate.txt" "$out/"
           python3 - "$out" <<'PY'
-          import hashlib
-          import json
-          import os
-          import sys
+          import hashlib, json, os, sys
           from pathlib import Path
-
-          root = Path(sys.argv[1])
-          files = []
+          root = Path(sys.argv[1]); files = []
           for path in sorted(root.joinpath("files").rglob("*")):
-              if not path.is_file():
-                  continue
+              if not path.is_file(): continue
               payload = path.read_bytes()
-              files.append({
-                  "path": str(path.relative_to(root / "files")),
-                  "byte_length": len(payload),
-                  "sha256": hashlib.sha256(payload).hexdigest(),
-              })
-          manifest = {
-              "schema": "hepta.inference.inf1.workspace-bootstrap.v1",
-              "input_head": os.environ["GITHUB_SHA"],
-              "runner_os": os.environ["RUNNER_OS"],
-              "runner_arch": os.environ["RUNNER_ARCH"],
-              "rustc": os.popen("rustc --version").read().strip(),
-              "rustfmt": os.popen("rustfmt --version").read().strip(),
-              "source_gate": "PASS",
-              "workspace_integration": "PASS",
-              "cargo_lock_generated": True,
-              "rust_fmt": "PASS",
-              "rust_check": "PASS",
-              "rust_test": "PASS",
-              "rust_clippy_all_targets_no_deps_d_warnings": "PASS",
-              "files": files,
-              "activated": False,
-              "qualified": False,
-              "inf1": "SOURCE_PRESENT_NOT_RUN",
-              "authority": False,
-          }
-          root.joinpath("manifest.json").write_text(
-              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
-          )
+              files.append({"path": str(path.relative_to(root / "files")), "byte_length": len(payload), "sha256": hashlib.sha256(payload).hexdigest()})
+          manifest = {"schema":"hepta.inference.inf1.workspace-bootstrap.v2","input_head":os.environ["GITHUB_SHA"],"runner_os":os.environ["RUNNER_OS"],"runner_arch":os.environ["RUNNER_ARCH"],"rustc":os.popen("rustc --version").read().strip(),"rustfmt":os.popen("rustfmt --version").read().strip(),"source_gate":"PASS","workspace_integration":"PASS","cargo_lock_generated":True,"rust_fmt":"PASS","rust_check":"PASS","rust_test":"PASS","rust_clippy_all_targets_no_deps_d_warnings":"PASS","files":files,"activated":False,"qualified":False,"inf1":"SOURCE_PRESENT_NOT_RUN","authority":False}
+          root.joinpath("manifest.json").write_text(json.dumps(manifest, indent=2)+"\n")
           PY
           find "$out" -type f -print0 | sort -z | xargs -0 sha256sum > "$out/SHA256SUMS"
 
