@@ -16,7 +16,7 @@ concurrency:
 jobs:
   export:
     name: Export exact source tree
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
       - name: Checkout exact head
