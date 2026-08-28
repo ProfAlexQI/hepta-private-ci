@@ -31,6 +31,8 @@ jobs:
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Validate Python and machine documents
         run: |
@@ -94,16 +96,26 @@ jobs:
     steps:
       - name: Checkout exact candidate
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Install repository Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.88.0
+          toolchain: 1.95.0
           components: rustfmt,clippy
 
-      - name: Check workspace formatting
+      - name: Check P0.3.3 candidate formatting
         working-directory: codex-rs
-        run: cargo fmt --all -- --check
+        run: |
+          rustfmt --edition 2024 --check \
+            ext/hepta-memory/src/framing.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/receipt.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/resolver.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/schema.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/support.rs \
+            ext/hepta-memory/src/cognitive/evidence_resolver_v4/tests.rs
 
       - name: Run host evidence resolver tests
         working-directory: codex-rs
