@@ -1,0 +1,381 @@
+name: hepta-intelligence-p1-1c-bootstrap-arm-v2
+
+on:
+  push:
+    branches:
+      - "qualification/hepta-intelligence-p1-1c-bootstrap-arm-v2-20260828"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hepta-intelligence-p1-1c-bootstrap-arm-v2
+  cancel-in-progress: false
+
+env:
+  SOURCE_BRANCH: codex/hepta-intelligence-offline-efficacy-p1c-20260828
+  WRAPPER_PATH: .github/workflows/hepta-intelligence-p1-1c-bootstrap-arm-v2.yml
+  CRATE_ROOT: codex-rs/hepta-memory-p1-1c-qualification
+  MANIFEST_PATH: codex-rs/hepta-memory-p1-1c-qualification/Cargo.toml
+  VERIFIER_PATH: scripts/verify-hepta-intelligence-p1-1c-offline-efficacy.py
+  ARTIFACT_DIR: artifacts/hepta-intelligence-p1-1c-bootstrap-v2
+  CARGO_NET_OFFLINE: "true"
+
+jobs:
+  bootstrap:
+    name: P1.1c exact Rust bootstrap and source qualification
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout source plus wrapper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Bind wrapper to current source lease
+        id: source
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          git fetch --no-tags origin \
+            "+refs/heads/$SOURCE_BRANCH:refs/remotes/origin/$SOURCE_BRANCH"
+          source_sha="$(git rev-parse "refs/remotes/origin/$SOURCE_BRANCH")"
+          test "$(git rev-parse HEAD^)" = "$source_sha"
+          test "$(git rev-list --count "$source_sha"..HEAD)" = "1"
+          test "$(git diff --name-only "$source_sha"..HEAD)" = "$WRAPPER_PATH"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+          python3 - "$source_sha" <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          source = sys.argv[1]
+          receipt = {
+              "schema": "hepta.intelligence.p1_1c.bootstrap_source_binding.v2",
+              "source_branch": os.environ["SOURCE_BRANCH"],
+              "source_commit": source,
+              "source_tree": subprocess.check_output(
+                  ["git", "rev-parse", f"{source}^{{tree}}"], text=True
+              ).strip(),
+              "wrapper_commit": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD"], text=True
+              ).strip(),
+              "wrapper_path": os.environ["WRAPPER_PATH"],
+              "wrapper_only_diff": True,
+              "runtime_wired": False,
+              "production_authority": False,
+          }
+          (Path(os.environ["ARTIFACT_DIR"]) / "source-binding.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Isolate Cargo outputs
+        run: |
+          set -euo pipefail
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/hepta-p1-1c-bootstrap-v2-target" >> "$GITHUB_ENV"
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt,clippy
+
+      - name: Record pinned toolchain and materialize formatting
+        run: |
+          set -euo pipefail
+          rustc --version | tee "$ARTIFACT_DIR/rustc-version.txt"
+          cargo --version | tee "$ARTIFACT_DIR/cargo-version.txt"
+          rustfmt --version | tee "$ARTIFACT_DIR/rustfmt-version.txt"
+          cargo clippy --version | tee "$ARTIFACT_DIR/clippy-version.txt"
+          test "$(rustc --version | awk '{print $2}')" = "1.95.0"
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all
+          cargo fmt --manifest-path "$MANIFEST_PATH" --all -- --check
+
+      - name: Enforce formatting path allowlist
+        id: formatting
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          allowed = {
+              "codex-rs/hepta-memory-p1-1c-qualification/src/bin/p1_1c_receipt.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/corpus.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/digest.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/evaluation.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/kg.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/lib.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/metrics.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/src/reranker.rs",
+              "codex-rs/hepta-memory-p1-1c-qualification/tests/p1_1c.rs",
+          }
+          actual = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", "--", os.environ["CRATE_ROOT"]],
+                  text=True,
+              ).splitlines()
+          )
+          outside = subprocess.check_output(
+              ["git", "diff", "--name-only", "--", ".", f":(exclude){os.environ['CRATE_ROOT']}/**"],
+              text=True,
+          ).splitlines()
+          if not actual.issubset(allowed) or outside:
+              raise SystemExit(
+                  json.dumps(
+                      {
+                          "allowed": sorted(allowed),
+                          "actual": sorted(actual),
+                          "outside": outside,
+                      },
+                      indent=2,
+                      sort_keys=True,
+                  )
+              )
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          (artifact_dir / "formatted-changed-paths.txt").write_text(
+              "\n".join(sorted(actual)) + ("\n" if actual else ""),
+              encoding="utf-8",
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"changed={'true' if actual else 'false'}\n")
+          PY
+
+      - name: Run fail-closed source verifier
+        run: |
+          set -o pipefail
+          python3 "$VERIFIER_PATH" \
+            2>&1 | tee "$ARTIFACT_DIR/source-gate.json"
+
+      - name: Run all Rust gates
+        run: |
+          set -o pipefail
+          cargo test --manifest-path "$MANIFEST_PATH" --all-targets -- --nocapture \
+            2>&1 | tee "$ARTIFACT_DIR/tests.log"
+          cargo check --manifest-path "$MANIFEST_PATH" --all-targets \
+            2>&1 | tee "$ARTIFACT_DIR/check.log"
+          cargo clippy --manifest-path "$MANIFEST_PATH" --all-targets -- -D warnings \
+            2>&1 | tee "$ARTIFACT_DIR/clippy.log"
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          log = Path("artifacts/hepta-intelligence-p1-1c-bootstrap-v2/tests.log").read_text(
+              encoding="utf-8", errors="replace"
+          )
+          passed = sum(
+              int(value)
+              for value in re.findall(r"test result: ok\. (\d+) passed", log)
+          )
+          if passed != 13:
+              raise SystemExit(f"expected 13 P1.1c tests, observed {passed}")
+          PY
+
+      - name: Reproduce and validate evaluation receipt
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path "$MANIFEST_PATH" --bin p1_1c_receipt \
+            > "$ARTIFACT_DIR/evaluation-receipt-a.json"
+          cargo run --quiet --manifest-path "$MANIFEST_PATH" --bin p1_1c_receipt \
+            > "$ARTIFACT_DIR/evaluation-receipt-b.json"
+          cmp \
+            "$ARTIFACT_DIR/evaluation-receipt-a.json" \
+            "$ARTIFACT_DIR/evaluation-receipt-b.json"
+          cp \
+            "$ARTIFACT_DIR/evaluation-receipt-a.json" \
+            "$ARTIFACT_DIR/evaluation-receipt.json"
+          sha256sum "$ARTIFACT_DIR/evaluation-receipt.json" \
+            > "$ARTIFACT_DIR/evaluation-receipt.json.sha256"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          text = Path(
+              "artifacts/hepta-intelligence-p1-1c-bootstrap-v2/evaluation-receipt.json"
+          ).read_text(encoding="utf-8")
+          receipt = json.loads(text)
+          assert receipt["status"] == "PASS_P1_1C_SEED_PIPELINE"
+          assert receipt["corpus_provenance"] == "synthetic_seed"
+          assert receipt["corpus_reviewed"] is False
+          assert receipt["case_count"] == 8
+          assert len(receipt["locales"]) == 8
+          assert len(receipt["lanes"]) == 7
+          for key in [
+              "network_access",
+              "model_download",
+              "product_workspace_member",
+              "product_module_registered",
+              "runtime_wired",
+              "default_recall_changed",
+              "federation_recall_changed",
+              "context_attachment",
+              "physical_send",
+              "external_effects",
+              "production_authority",
+              "efficacy_validation",
+              "efficacy_claim",
+              "operator_acceptance",
+              "promotion",
+              "callers_ratchet",
+          ]:
+              assert receipt[key] is False, key
+          for forbidden in [
+              "Which evidence binds",
+              "哪些证据",
+              "en-ann-gold-s",
+              "zh-ann-gold-m",
+          ]:
+              assert forbidden not in text, forbidden
+          PY
+
+      - name: Commit exact Rust formatting when required
+        id: candidate
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          FORMAT_CHANGED: ${{ steps.formatting.outputs.changed }}
+        run: |
+          set -euo pipefail
+          rm -f "$CRATE_ROOT/Cargo.lock"
+          rm -rf "$CRATE_ROOT/target"
+          if [ "$FORMAT_CHANGED" = "false" ]; then
+            test -z "$(git status --porcelain --untracked-files=no)"
+            echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+            echo "created=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git checkout --detach "$SOURCE_SHA"
+          mapfile -t changed < <(git diff --name-only -- "$CRATE_ROOT")
+          test "${#changed[@]}" -gt 0
+          test -z "$(git ls-files --others --exclude-standard -- "$CRATE_ROOT")"
+          git diff --check
+          git add -- "${changed[@]}"
+          test "$(git diff --cached --name-only | wc -l | tr -d ' ')" = "${#changed[@]}"
+          git config user.name "Hepta Qualification Bot"
+          git config user.email "102159240+ProfAlexQI@users.noreply.github.com"
+          git commit -m "style(intelligence): apply exact P1.1c Rust 1.95 rustfmt"
+          candidate_sha="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
+      - name: Recheck source lease and fast-forward without force
+        if: steps.candidate.outputs.created == 'true'
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          remote_sha="$(git ls-remote origin "refs/heads/$SOURCE_BRANCH" | awk '{print $1}')"
+          test "$remote_sha" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD^)" = "$SOURCE_SHA"
+          git push origin "HEAD:refs/heads/$SOURCE_BRANCH"
+
+      - name: Write bootstrap qualification receipt
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          FORMAT_COMMIT_CREATED: ${{ steps.candidate.outputs.created }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUNNER_NAME: ${{ runner.name }}
+          RUNNER_OS: ${{ runner.os }}
+          RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          evaluation_bytes = (artifact_dir / "evaluation-receipt.json").read_bytes()
+          receipt = {
+              "schema": "hepta.intelligence.p1_1c.bootstrap_qualification.v2",
+              "status": "PASS_P1_1C_BOOTSTRAP_EXECUTABLE_GATES",
+              "source_commit": os.environ["SOURCE_SHA"],
+              "qualified_source_commit": os.environ["CANDIDATE_SHA"],
+              "format_commit_created": os.environ["FORMAT_COMMIT_CREATED"] == "true",
+              "evaluation_receipt_sha256": hashlib.sha256(evaluation_bytes).hexdigest(),
+              "tests_passed": 13,
+              "gates": {
+                  "source_binding": "success",
+                  "p1b_bounded_decode_prerequisite": "success",
+                  "rust_1_95_0": "success",
+                  "rustfmt": "success",
+                  "source_gate": "success",
+                  "tests": "success",
+                  "check": "success",
+                  "clippy": "success",
+                  "receipt_reproducibility": "success",
+                  "receipt_json_and_redaction": "success",
+                  "format_path_allowlist": "success",
+                  "source_lease": "success",
+              },
+              "runner": {
+                  "name": os.environ["RUNNER_NAME"],
+                  "os": os.environ["RUNNER_OS"],
+                  "arch": os.environ["RUNNER_ARCH"],
+              },
+              "workflow": {
+                  "run_id": int(os.environ["RUN_ID"]),
+                  "run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              },
+              "implemented": True,
+              "source_qualified": True,
+              "seed_pipeline_reproducible": True,
+              "qualified": False,
+              "corpus_provenance": "synthetic_seed",
+              "corpus_reviewed": False,
+              "efficacy_validation": False,
+              "efficacy_claim": False,
+              "product_workspace_member": False,
+              "product_module_registered": False,
+              "runtime_wired": False,
+              "network_access": False,
+              "model_download": False,
+              "external_effects": False,
+              "production_authority": False,
+              "operator_acceptance": False,
+              "promotion": False,
+              "callers_ratchet": False,
+          }
+          (artifact_dir / "qualification-receipt.json").write_text(
+              json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          summary = [
+              "## P1.1c bootstrap qualification",
+              "",
+              f"- Source: `{receipt['source_commit']}`",
+              f"- Qualified source: `{receipt['qualified_source_commit']}`",
+              f"- Format commit created: `{receipt['format_commit_created']}`",
+              "- Rust 1.95 ARM64: source/fmt/13 tests/check/Clippy PASS",
+              "- Evaluation receipt reproduced byte-for-byte twice",
+              "- Overall qualified=false; efficacy and production authority remain disabled",
+          ]
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(
+              "\n".join(summary) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Upload bootstrap evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-intelligence-p1-1c-bootstrap-v2-${{ github.sha }}
+          path: artifacts/hepta-intelligence-p1-1c-bootstrap-v2
+          if-no-files-found: warn
+          retention-days: 14
