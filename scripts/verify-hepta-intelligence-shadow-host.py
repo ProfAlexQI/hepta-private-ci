@@ -279,7 +279,10 @@ def main() -> int:
         workflow,
         [
             'toolchain: "1.95.0"',
-            "cargo fmt --all -- --check",
+            "cargo fmt",
+            "-p codex-hepta-memory",
+            "-p codex-hepta-agentd",
+            "-- --check",
             "qualification-intelligence-mutation-shadow",
             "verify-hepta-intelligence-shadow-host.py",
         ],
