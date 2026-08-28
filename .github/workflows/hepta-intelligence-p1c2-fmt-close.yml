@@ -1,16 +1,16 @@
-name: hepta-intelligence-p1c2-stack-close
+name: hepta-intelligence-p1c2-stack-close-windows
 
 on:
   push:
     branches:
-      - "qualification/p1c2-stack-v2"
+      - "qualification/p1c2-win-v1"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: hepta-intelligence-p1c2-stack-close
+  group: hepta-intelligence-p1c2-stack-close-windows
   cancel-in-progress: true
 
 env:
@@ -19,8 +19,8 @@ env:
 
 jobs:
   qualify:
-    name: P1.1c.2 labels, references, and parent-stack closure
-    runs-on: ubuntu-24.04-arm
+    name: P1.1c.2 labels, references, and parent-stack closure on Windows
+    runs-on: windows-latest
     timeout-minutes: 60
 
     steps:
@@ -29,7 +29,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Python 3
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
       - name: Verify exact qualification driver ancestry
+        shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
@@ -43,12 +49,17 @@ jobs:
           components: rustfmt,clippy
 
       - name: Execute exact fail-closed stack closure
+        shell: bash
         env:
           RUNNER_NAME: ${{ runner.name }}
           RUNNER_OS: ${{ runner.os }}
           RUNNER_ARCH: ${{ runner.arch }}
         run: |
           set -euo pipefail
+          if ! command -v python3 >/dev/null 2>&1; then
+            python3() { python "$@"; }
+            export -f python3
+          fi
           cp scripts/qualification/run-hepta-intelligence-p1c2-fmt-close.sh \
             "$RUNNER_TEMP/run-hepta-intelligence-p1c2-stack-close.sh"
           bash "$RUNNER_TEMP/run-hepta-intelligence-p1c2-stack-close.sh"
@@ -57,7 +68,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-intelligence-p1c2-stack-close-${{ github.sha }}
+          name: hepta-intelligence-p1c2-stack-close-windows-${{ github.sha }}
           path: artifacts/hepta-intelligence-p1-1c2-stack-closure
           if-no-files-found: warn
           retention-days: 14
