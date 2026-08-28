@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod model;
+mod operation;
 mod store;
 
 pub use codex_hepta_matrix_protocol::MatrixEventId;
@@ -43,5 +44,8 @@ pub use model::RoomBinding;
 pub use model::RoomBindingDraft;
 pub use model::RoomThreadBinding;
 pub use model::RoomThreadBindingDraft;
+pub use operation::MatrixOperationBegin;
+pub use operation::MatrixOperationJournal;
+pub use operation::MatrixOperationRecord;
 pub use store::MatrixDurableError;
 pub use store::MatrixDurableStore;
