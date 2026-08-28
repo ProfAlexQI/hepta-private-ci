@@ -1,0 +1,82 @@
+{
+  "schema": "hepta_intelligence_kg_execution_status_v3_2",
+  "generated_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "default_branch": "integration/vnext-main-20260811",
+  "stack_base": {
+    "branch": "codex/hepta-intelligence-grounding-gate-v3-20260828",
+    "head": "256a47d882413ac1f80892a80177419bb5d12c70",
+    "pull_request": 14
+  },
+  "development_branch": "codex/hepta-intelligence-evidence-resolver-v4-20260828",
+  "source_candidate": "pending_first_commit",
+  "dependency": {
+    "id": "P0.3.2",
+    "name": "shared_semantic_projection_planner",
+    "repository_branch": null,
+    "implemented_in_repository": false,
+    "qualified": false,
+    "activation_blocking": true
+  },
+  "current_tranche": {
+    "id": "P0.3.3",
+    "name": "host_owned_evidence_resolution",
+    "status": "source_only_implemented_activation_blocked",
+    "implemented": true,
+    "wired": false,
+    "qualified": false,
+    "efficacy_proven": false,
+    "operator_accepted": false,
+    "promoted": false,
+    "tool_v4_registered": false,
+    "model_supplies_offsets": false,
+    "model_supplies_digests": false,
+    "host_resolves_offsets": true,
+    "host_computes_digests": true,
+    "quote_selector": true,
+    "segment_selector": true,
+    "production_projection_gate": false,
+    "production_authority": false,
+    "external_effects": false,
+    "files": [
+      "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4.rs",
+      "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/receipt.rs",
+      "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/resolver.rs",
+      "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/schema.rs",
+      "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/support.rs",
+      "codex-rs/ext/hepta-memory/src/cognitive/evidence_resolver_v4/tests.rs",
+      "codex-rs/ext/hepta-memory/src/framing.rs",
+      "scripts/verify-hepta-intelligence-evidence-resolver-v4.py",
+      ".github/workflows/hepta-intelligence-evidence-resolver-v4.yml",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_DEVELOPMENT_PLAN_V3_2_2026-08-28.md",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_KG_EXECUTION_STATUS_V3_2.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_3_3_HOST_EVIDENCE_RESOLVER_2026-08-28.md"
+    ],
+    "qualification": {
+      "source_gate": "pending_exact_head_execution",
+      "format": "not_run",
+      "focused_tests": "not_run",
+      "core_compatibility_tests": "not_run",
+      "extension_full_tests": "not_run",
+      "core_full_tests": "not_run",
+      "extension_clippy": "not_run",
+      "core_clippy": "not_run",
+      "hosted_ci": "pending",
+      "qualified": false
+    }
+  },
+  "authority": {
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "next_actions": [
+    "Create the stacked Draft PR against the P0.3 branch.",
+    "Run the exact-head fail-closed source gate.",
+    "Run Rust fmt, focused tests, full tests, and strict clippy when a runner is assigned.",
+    "Keep v4 unregistered until P0.3.2 and P0.3.3 both qualify.",
+    "Proceed to P0.3.4 legacy inventory only after resolver qualification evidence exists."
+  ]
+}
