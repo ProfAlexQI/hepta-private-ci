@@ -15,3 +15,7 @@ workspace = true
 codex-hepta-contracts = { workspace = true }
 codex-hepta-memory = { workspace = true }
 codex-hepta-paths = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
