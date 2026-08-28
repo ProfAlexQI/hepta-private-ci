@@ -3,41 +3,6 @@ name: hepta Servo Worker source topology acceptance pointer v1 contract
 on:
   workflow_call:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "scripts/hepta-servo-worker-source-topology-acceptance-pointer-v1.py"
-      - "scripts/hepta-servo-worker-source-topology-acceptance-v1/**"
-      - "scripts/verify-hepta-servo-worker-source-topology-acceptance-pointer-v1.py"
-      - "scripts/tests/test_hepta_servo_worker_source_topology_acceptance_pointer_v1.py"
-      - "scripts/tests/hepta_servo_worker_source_topology_acceptance_v1/**"
-      - "docs/hepta-vnext/browser/WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_REVIEW_POLICY_V1.json"
-      - "docs/hepta-vnext/browser/C1_WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_POINTER_V1*"
-      - "docs/hepta-vnext/browser/hepta.servo.worker_source_topology_acceptance_*"
-      - "docs/hepta-vnext/browser/hepta.servo.accepted_worker_source_topology_pointer.v1.schema.json"
-      - "docs/hepta-vnext/browser/source-topology-acceptance/**"
-      - ".github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml"
-      - ".github/workflows/hepta-servo-worker-source-topology-acceptance-live-review-v1.yml"
-      - ".github/workflows/hepta-browser-next-required-v9.yml"
-      - ".github/workflows/blocking-ci.yml"
-  push:
-    branches:
-      - integration/vnext-main-20260811
-      - "codex/hepta-*"
-    paths:
-      - "scripts/hepta-servo-worker-source-topology-acceptance-pointer-v1.py"
-      - "scripts/hepta-servo-worker-source-topology-acceptance-v1/**"
-      - "scripts/verify-hepta-servo-worker-source-topology-acceptance-pointer-v1.py"
-      - "scripts/tests/test_hepta_servo_worker_source_topology_acceptance_pointer_v1.py"
-      - "scripts/tests/hepta_servo_worker_source_topology_acceptance_v1/**"
-      - "docs/hepta-vnext/browser/WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_REVIEW_POLICY_V1.json"
-      - "docs/hepta-vnext/browser/C1_WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_POINTER_V1*"
-      - "docs/hepta-vnext/browser/hepta.servo.worker_source_topology_acceptance_*"
-      - "docs/hepta-vnext/browser/hepta.servo.accepted_worker_source_topology_pointer.v1.schema.json"
-      - "docs/hepta-vnext/browser/source-topology-acceptance/**"
-      - ".github/workflows/hepta-servo-worker-source-topology-acceptance-pointer-v1-contract.yml"
-      - ".github/workflows/hepta-servo-worker-source-topology-acceptance-live-review-v1.yml"
-      - ".github/workflows/hepta-browser-next-required-v9.yml"
-      - ".github/workflows/blocking-ci.yml"
 
 permissions:
   contents: read

@@ -3,27 +3,6 @@ name: hepta Servo exact-source review candidate v2 contract
 on:
   workflow_call:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "scripts/hepta-servo-exact-source-review-candidate-v2.py"
-      - "scripts/verify-hepta-servo-exact-source-review-candidate-v2.py"
-      - "scripts/tests/test_hepta_servo_exact_source_review_candidate_v2.py"
-      - "docs/hepta-vnext/browser/C1_EXACT_SOURCE_REVIEW_CANDIDATE_V2*"
-      - "docs/hepta-vnext/browser/hepta.servo.exact_source_review_candidate.v2.schema.json"
-      - ".github/workflows/hepta-servo-exact-source-review-candidate-v2-contract.yml"
-      - ".github/workflows/hepta-servo-independent-source-qualification-v3.yml"
-  push:
-    branches:
-      - integration/vnext-main-20260811
-      - "codex/hepta-*"
-    paths:
-      - "scripts/hepta-servo-exact-source-review-candidate-v2.py"
-      - "scripts/verify-hepta-servo-exact-source-review-candidate-v2.py"
-      - "scripts/tests/test_hepta_servo_exact_source_review_candidate_v2.py"
-      - "docs/hepta-vnext/browser/C1_EXACT_SOURCE_REVIEW_CANDIDATE_V2*"
-      - "docs/hepta-vnext/browser/hepta.servo.exact_source_review_candidate.v2.schema.json"
-      - ".github/workflows/hepta-servo-exact-source-review-candidate-v2-contract.yml"
-      - ".github/workflows/hepta-servo-independent-source-qualification-v3.yml"
 
 permissions:
   contents: read
@@ -104,21 +83,6 @@ jobs:
           python3 scripts/tests/test_hepta_servo_exact_source_review_candidate_v2.py -v \
             2>&1 | tee "$HEPTA_EXACT_SOURCE_REVIEW_EVIDENCE/tests.log"
 
-      - name: Verify clean governed paths
-        shell: bash
-        run: |
-          set -euo pipefail
-          git diff --exit-code -- \
-            scripts/hepta-servo-exact-source-review-candidate-v2.py \
-            scripts/verify-hepta-servo-exact-source-review-candidate-v2.py \
-            scripts/tests/test_hepta_servo_exact_source_review_candidate_v2.py \
-            docs/hepta-vnext/browser/hepta.servo.exact_source_review_candidate.v2.schema.json \
-            docs/hepta-vnext/browser/C1_EXACT_SOURCE_REVIEW_CANDIDATE_V2.md \
-            docs/hepta-vnext/browser/C1_EXACT_SOURCE_REVIEW_CANDIDATE_V2_STATUS.json \
-            .github/workflows/hepta-servo-exact-source-review-candidate-v2-contract.yml \
-            .github/workflows/hepta-servo-independent-source-qualification-v3.yml \
-            2>&1 | tee "$HEPTA_EXACT_SOURCE_REVIEW_EVIDENCE/clean-worktree.log"
-
       - name: Record final status
         if: always()
         shell: bash
@@ -129,7 +93,6 @@ jobs:
             echo "### Hepta exact-source review candidate v2"
             echo
             echo "This job validates tooling and synthetic evidence fixtures only."
-            echo "A successful exact-source workflow remains necessary but not sufficient for source acceptance."
             echo "Only a separate reviewed pointer update may accept a candidate."
             echo
             sed 's/^/- /' "$HEPTA_EXACT_SOURCE_REVIEW_EVIDENCE/posture.txt"

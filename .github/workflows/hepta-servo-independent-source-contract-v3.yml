@@ -2,21 +2,6 @@ name: hepta-servo independent source contract v3
 
 on:
   workflow_call:
-  pull_request:
-    paths:
-      - "scripts/hepta-servo-independent-source.py"
-      - "scripts/hepta-servo-independent-source-v2.py"
-      - "scripts/hepta-servo-source-bundle-verify.py"
-      - "scripts/hepta-servo-source-bundle-verify-v2.py"
-      - "scripts/tests/test_hepta_servo_independent_source.py"
-      - "scripts/tests/test_hepta_servo_independent_source_v2.py"
-      - "scripts/tests/test_hepta_servo_source_bundle_verify.py"
-      - "scripts/tests/test_hepta_servo_source_bundle_verify_v2.py"
-      - "docs/hepta-vnext/browser/SOURCE_PIPELINE_CURRENT_V2.json"
-      - "docs/hepta-vnext/browser/C1_INDEPENDENT_SOURCE_PIPELINE.md"
-      - "docs/hepta-vnext/browser/C1_SOURCE_BUNDLE_OFFLINE_VERIFICATION.md"
-      - ".github/workflows/hepta-servo-independent-source-contract-v3.yml"
-      - ".github/workflows/hepta-servo-independent-source-qualification-v3.yml"
   workflow_dispatch:
 
 permissions:

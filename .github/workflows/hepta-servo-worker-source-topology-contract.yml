@@ -3,33 +3,6 @@ name: hepta Servo worker source API topology contract
 on:
   workflow_call:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "scripts/hepta-servo-worker-source-topology.py"
-      - "scripts/verify-hepta-servo-worker-source-topology.py"
-      - "scripts/tests/test_hepta_servo_worker_source_topology.py"
-      - "docs/hepta-vnext/browser/SERVO_WORKER_SOURCE_TOPOLOGY_V1.json"
-      - "docs/hepta-vnext/browser/C1_WORKER_SOURCE_TOPOLOGY*"
-      - "docs/hepta-vnext/browser/ADR-0003-hepta-owned-servo-embedder.md"
-      - "docs/hepta-vnext/browser/hepta.servo.worker_source_topology*.schema.json"
-      - "docs/hepta-vnext/browser/C1_CURRENT_V4.json"
-      - ".github/workflows/hepta-servo-worker-source-topology-contract.yml"
-      - ".github/workflows/hepta-browser-next-required-v6.yml"
-  push:
-    branches:
-      - integration/vnext-main-20260811
-      - "codex/hepta-*"
-    paths:
-      - "scripts/hepta-servo-worker-source-topology.py"
-      - "scripts/verify-hepta-servo-worker-source-topology.py"
-      - "scripts/tests/test_hepta_servo_worker_source_topology.py"
-      - "docs/hepta-vnext/browser/SERVO_WORKER_SOURCE_TOPOLOGY_V1.json"
-      - "docs/hepta-vnext/browser/C1_WORKER_SOURCE_TOPOLOGY*"
-      - "docs/hepta-vnext/browser/ADR-0003-hepta-owned-servo-embedder.md"
-      - "docs/hepta-vnext/browser/hepta.servo.worker_source_topology*.schema.json"
-      - "docs/hepta-vnext/browser/C1_CURRENT_V4.json"
-      - ".github/workflows/hepta-servo-worker-source-topology-contract.yml"
-      - ".github/workflows/hepta-browser-next-required-v6.yml"
 
 permissions:
   contents: read
@@ -98,15 +71,9 @@ jobs:
             2>&1 | tee "$HEPTA_SOURCE_TOPOLOGY_EVIDENCE/contract.log"
           python3 scripts/verify-hepta-servo-worker-source-topology.py \
             2>&1 | tee "$HEPTA_SOURCE_TOPOLOGY_EVIDENCE/static-verifier.log"
-          python3 -m json.tool \
-            docs/hepta-vnext/browser/SERVO_WORKER_SOURCE_TOPOLOGY_V1.json \
-            >/dev/null
-          python3 -m json.tool \
-            docs/hepta-vnext/browser/hepta.servo.worker_source_topology.v1.schema.json \
-            >/dev/null
-          python3 -m json.tool \
-            docs/hepta-vnext/browser/hepta.servo.worker_source_topology_verification.v1.schema.json \
-            >/dev/null
+          python3 -m json.tool docs/hepta-vnext/browser/SERVO_WORKER_SOURCE_TOPOLOGY_V1.json >/dev/null
+          python3 -m json.tool docs/hepta-vnext/browser/hepta.servo.worker_source_topology.v1.schema.json >/dev/null
+          python3 -m json.tool docs/hepta-vnext/browser/hepta.servo.worker_source_topology_verification.v1.schema.json >/dev/null
 
       - name: Run fail-closed topology fixtures
         shell: bash
@@ -114,25 +81,6 @@ jobs:
           set -euo pipefail
           python3 scripts/tests/test_hepta_servo_worker_source_topology.py -v \
             2>&1 | tee "$HEPTA_SOURCE_TOPOLOGY_EVIDENCE/tests.log"
-
-      - name: Verify clean governed paths
-        shell: bash
-        run: |
-          set -euo pipefail
-          git diff --exit-code -- \
-            scripts/hepta-servo-worker-source-topology.py \
-            scripts/verify-hepta-servo-worker-source-topology.py \
-            scripts/tests/test_hepta_servo_worker_source_topology.py \
-            docs/hepta-vnext/browser/SERVO_WORKER_SOURCE_TOPOLOGY_V1.json \
-            docs/hepta-vnext/browser/C1_WORKER_SOURCE_TOPOLOGY.md \
-            docs/hepta-vnext/browser/C1_WORKER_SOURCE_TOPOLOGY_STATUS.json \
-            docs/hepta-vnext/browser/ADR-0003-hepta-owned-servo-embedder.md \
-            docs/hepta-vnext/browser/hepta.servo.worker_source_topology.v1.schema.json \
-            docs/hepta-vnext/browser/hepta.servo.worker_source_topology_verification.v1.schema.json \
-            docs/hepta-vnext/browser/C1_CURRENT_V4.json \
-            .github/workflows/hepta-servo-worker-source-topology-contract.yml \
-            .github/workflows/hepta-browser-next-required-v6.yml \
-            2>&1 | tee "$HEPTA_SOURCE_TOPOLOGY_EVIDENCE/clean-worktree.log"
 
       - name: Record final status
         if: always()

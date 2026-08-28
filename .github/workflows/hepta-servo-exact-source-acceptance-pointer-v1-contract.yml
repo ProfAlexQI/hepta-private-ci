@@ -3,36 +3,6 @@ name: hepta Servo exact source acceptance pointer v1 contract
 on:
   workflow_call:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "scripts/hepta-servo-exact-source-acceptance-pointer-v2.py"
-      - "scripts/verify-hepta-servo-exact-source-acceptance-pointer-v2.py"
-      - "scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v2.py"
-      - "docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json"
-      - "docs/hepta-vnext/browser/C1_EXACT_SOURCE_ACCEPTANCE_POINTER_V1*"
-      - "docs/hepta-vnext/browser/hepta.servo.source_acceptance_review_*"
-      - "docs/hepta-vnext/browser/hepta.servo.accepted_source_pointer.v1.schema.json"
-      - "docs/hepta-vnext/browser/source-acceptance/**"
-      - ".github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml"
-      - ".github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml"
-      - ".github/workflows/hepta-browser-next-required-v8.yml"
-      - ".github/workflows/hepta-browser-next-required-v9.yml"
-      - ".github/workflows/blocking-ci.yml"
-  push:
-    branches:
-      - integration/vnext-main-20260811
-      - "codex/hepta-*"
-    paths:
-      - "scripts/hepta-servo-exact-source-acceptance-pointer-v2.py"
-      - "scripts/verify-hepta-servo-exact-source-acceptance-pointer-v2.py"
-      - "scripts/tests/test_hepta_servo_exact_source_acceptance_pointer_v2.py"
-      - "docs/hepta-vnext/browser/SOURCE_ACCEPTANCE_REVIEW_POLICY_V1.json"
-      - "docs/hepta-vnext/browser/source-acceptance/**"
-      - ".github/workflows/hepta-servo-exact-source-acceptance-pointer-v1-contract.yml"
-      - ".github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml"
-      - ".github/workflows/hepta-browser-next-required-v8.yml"
-      - ".github/workflows/hepta-browser-next-required-v9.yml"
-      - ".github/workflows/blocking-ci.yml"
 
 permissions:
   contents: read
