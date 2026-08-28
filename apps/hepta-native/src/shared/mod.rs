@@ -22,6 +22,7 @@ pub mod hepta_window_visual_ack;
 pub mod hepta_windows_backend_ack_bridge;
 pub mod hepta_windows_material_adapter;
 pub mod hepta_windows_material_profile_aggregate;
+pub mod hepta_windows_transient_material_host;
 pub mod hepta_windows_window_ack_producer;
 pub mod html_or_plaintext;
 pub mod icon_button;
@@ -56,7 +57,7 @@ pub fn script_mod(vm: &mut ScriptVm) {
     // unbound; its Makepad WindowVisuals controller can only queue a partial
     // persistent-chrome request for an exact framework WindowId. The pure-Rust
     // acknowledgement verifier, DWM readback producer, correlated backend
-    // bridge, and profile evidence aggregator require no script registration.
+    // bridge, transient host, and profile aggregator have no Script registration.
     hepta_material_app_lifecycle::script_mod(vm);
     helpers::script_mod(vm);
     icon_button::script_mod(vm);
