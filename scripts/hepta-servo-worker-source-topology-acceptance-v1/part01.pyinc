@@ -1,0 +1,354 @@
+#!/usr/bin/env python3
+"""Review-only acceptance boundary for the verified Servo Worker source/API topology.
+
+This standard-library-only tool verifies that an already accepted exact Servo
+source pointer and a source/API topology verification receipt are consistently
+bound. It can create a review challenge and verify a manually authored topology
+pointer plus live GitHub review evidence. It never fetches, builds, links,
+launches or executes Servo and has no command that creates or updates the
+accepted topology pointer.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import importlib.util
+import json
+import os
+import pathlib
+import re
+import stat
+import sys
+from types import ModuleType
+from typing import Any
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+SOURCE_ACCEPTANCE_SCRIPT = pathlib.Path(__file__).with_name(
+    "hepta-servo-exact-source-acceptance-pointer-v2.py"
+)
+TOPOLOGY_SCRIPT = pathlib.Path(__file__).with_name(
+    "hepta-servo-worker-source-topology.py"
+)
+
+REPOSITORY = "ProfAlexQI/hepta-private-ci"
+BASE_BRANCH = "integration/vnext-main-20260811"
+SERVO_REPOSITORY = "servo/servo"
+SERVO_COMMIT = "0a48e298482659817eb50097df23841f2b8e3044"
+SERVO_TREE = "b04d2f75b3217374d079d579c270177b57fa1389"
+
+POLICY_SCHEMA = "hepta.servo.worker_source_topology_acceptance_review_policy.v1"
+CHALLENGE_SCHEMA = "hepta.servo.worker_source_topology_acceptance_review_challenge.v1"
+POINTER_SCHEMA = "hepta.servo.accepted_worker_source_topology_pointer.v1"
+TOPOLOGY_RECEIPT_SCHEMA = "hepta.servo.worker_source_topology_verification.v1"
+TOPOLOGY_SCHEMA = "hepta.servo.worker_source_topology.v1"
+SOURCE_POINTER_SCHEMA = "hepta.servo.accepted_source_pointer.v1"
+
+POLICY_DOMAIN = b"hepta.servo.worker-source-topology-acceptance-review-policy.v1"
+CHALLENGE_DOMAIN = b"hepta.servo.worker-source-topology-acceptance-review-challenge.v1"
+POINTER_DOMAIN = b"hepta.servo.accepted-worker-source-topology-pointer.v1"
+TOPOLOGY_RECEIPT_DOMAIN = b"hepta.servo.worker-source-topology-verification.v1"
+TOPOLOGY_DOMAIN = b"hepta.servo.worker-source-topology.v1"
+SOURCE_POINTER_DOMAIN = b"hepta.servo.accepted-source-pointer.v1"
+
+SHA40 = re.compile(r"^[0-9a-f]{40}$")
+SHA64 = re.compile(r"^[0-9a-f]{64}$")
+UTC_SECONDS = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+SAFE_LOGIN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
+MAX_JSON_BYTES = 64 * 1024 * 1024
+
+AUTHORITY = {
+    "machine_authority": False,
+    "runtime_authority": False,
+    "production_caller": False,
+    "production_writer": False,
+    "effect_authority": False,
+    "external_effect": False,
+    "external_network_allowed": False,
+    "credential_export_allowed": False,
+    "operator_acceptance": False,
+    "g5_allowed": False,
+    "execute_allowed": False,
+    "promotion": False,
+    "release_qualified": False,
+}
+
+ACCEPTED_SOURCE_CLAIMS = {
+    "exact_servo_source_accepted": True,
+    "source_review_candidate_accepted": True,
+    "worker_source_topology_accepted": False,
+    "build_recipe_accepted": False,
+    "build_authorized": False,
+    "servo_built": False,
+    "worker_artifact_created": False,
+    "servo_runtime_qualified": False,
+    "operator_acceptance": False,
+    "promotion": False,
+    "release_qualified": False,
+}
+
+ACCEPTED_TOPOLOGY_CLAIMS = {
+    "exact_servo_source_accepted": True,
+    "source_review_candidate_accepted": True,
+    "worker_source_topology_accepted": True,
+    "build_recipe_accepted": False,
+    "build_authorized": False,
+    "servo_built": False,
+    "worker_artifact_created": False,
+    "servo_runtime_qualified": False,
+    "operator_acceptance": False,
+    "promotion": False,
+    "release_qualified": False,
+}
+
+EXPECTED_SELECTION = {
+    "embedder_strategy": "out_of_tree_hepta_worker_using_public_servo_embedding_api",
+    "worker_owner": "hepta",
+    "servo_crate_path": "components/servo",
+    "servoshell_build_root": False,
+    "servoshell_dependency": False,
+    "webdriver_server_dependency": False,
+    "servo_default_features": False,
+    "required_servo_features": ["background_hang_monitor", "bundled"],
+    "conditionally_permitted_servo_features": ["js_jit"],
+    "forbidden_servo_features": [
+        "bluetooth",
+        "clipboard",
+        "default",
+        "default_web_features",
+        "default_without_allocator",
+        "gamepad",
+        "media-gstreamer",
+        "native-bluetooth",
+        "testbinding",
+        "webgl",
+        "webgpu",
+        "webxr",
+    ],
+    "selected_file_count": 4,
+    "reference_only_file_count": 5,
+}
+
+EXPECTED_TOPOLOGY_VERIFICATION = {
+    "canonical_source_bundle_reverified": True,
+    "selected_git_blobs_match": True,
+    "required_public_api_anchors_match": True,
+    "servoshell_conflict_anchors_match": True,
+    "webdriver_wildcard_listener_anchor_match": True,
+    "hepta_owned_embedder_required": True,
+    "build_recipe_created": False,
+    "servo_built": False,
+    "worker_artifact_created": False,
+    "servo_runtime_qualified": False,
+}
+
+
+class TopologyAcceptanceError(RuntimeError):
+    """Fail-closed topology acceptance error."""
+
+
+def fail(message: str) -> None:
+    raise TopologyAcceptanceError(message)
+
+
+def load_module(path: pathlib.Path, name: str) -> ModuleType:
+    try:
+        specification = importlib.util.spec_from_file_location(name, path)
+        if specification is None or specification.loader is None:
+            fail(f"cannot load dependency module {path.name}")
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+        return module
+    except (OSError, RuntimeError, AttributeError) as error:
+        fail(f"cannot initialize dependency module {path.name}: {error}")
+
+
+def canonical(value: object) -> bytes:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+
+def sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def framed(domain: bytes, payload: bytes) -> str:
+    digest = hashlib.sha256()
+    digest.update(len(domain).to_bytes(8, "big"))
+    digest.update(domain)
+    digest.update(len(payload).to_bytes(8, "big"))
+    digest.update(payload)
+    return digest.hexdigest()
+
+
+def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            fail(f"duplicate JSON key {key!r}")
+        result[key] = value
+    return result
+
+
+def require_sha40(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not SHA40.fullmatch(value):
+        fail(f"{label} must be lowercase 40-hex")
+    return value
+
+
+def require_sha64(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not SHA64.fullmatch(value):
+        fail(f"{label} must be lowercase SHA-256")
+    return value
+
+
+def require_positive_int(value: Any, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        fail(f"{label} must be a positive integer")
+    return value
+
+
+def parse_timestamp(value: Any, label: str) -> dt.datetime:
+    if not isinstance(value, str) or not UTC_SECONDS.fullmatch(value):
+        fail(f"{label} must use whole-second RFC3339 UTC")
+    try:
+        return dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=dt.timezone.utc
+        )
+    except ValueError as error:
+        fail(f"{label} is invalid: {error}")
+
+
+def timestamp(value: str | None) -> str:
+    if value is None:
+        return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+    parse_timestamp(value, "captured_at_utc")
+    return value
+
+
+def validate_repo_path(value: Any, label: str, *, directory: bool = False) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value.startswith(("/", "~"))
+        or "\\" in value
+        or "\x00" in value
+    ):
+        fail(f"{label} must be a repository-relative POSIX path")
+    path = pathlib.PurePosixPath(value)
+    if any(part in {"", ".", ".."} for part in path.parts):
+        fail(f"{label} contains an unsafe component")
+    if directory and not value.endswith("/"):
+        fail(f"{label} directory prefix must end with '/'")
+    if not directory and value.endswith("/"):
+        fail(f"{label} file path must not end with '/'")
+    return value
+
+
+def require_regular_file(path: pathlib.Path, label: str) -> pathlib.Path:
+    if not path.is_absolute():
+        fail(f"{label} must be an absolute canonical path")
+    try:
+        resolved = path.resolve(strict=True)
+        metadata = path.lstat()
+    except OSError as error:
+        fail(f"{label} is unavailable: {error}")
+    if resolved != path or stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        fail(f"{label} must be a canonical non-symlink regular file")
+    if getattr(metadata, "st_nlink", 1) != 1:
+        fail(f"{label} must have exactly one hard link")
+    if metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        fail(f"{label} must not be group/world writable")
+    return path
+
+
+def load_json(
+    path: pathlib.Path,
+    label: str,
+    *,
+    canonical_required: bool = True,
+) -> tuple[dict[str, Any], bytes]:
+    require_regular_file(path, label)
+    try:
+        raw = path.read_bytes()
+    except OSError as error:
+        fail(f"cannot read {label}: {error}")
+    if not raw or len(raw) > MAX_JSON_BYTES:
+        fail(f"{label} is empty or exceeds its byte bound")
+    try:
+        value = json.loads(
+            raw.decode("utf-8", "strict"),
+            object_pairs_hook=reject_duplicate_keys,
+        )
+    except (UnicodeError, json.JSONDecodeError) as error:
+        fail(f"cannot decode {label}: {error}")
+    if not isinstance(value, dict):
+        fail(f"{label} must contain one JSON object")
+    if canonical_required and raw != canonical(value):
+        fail(f"{label} is not compact canonical JSON")
+    return value, raw
+
+
+def create_only_json(path: pathlib.Path, value: dict[str, Any]) -> None:
+    if not path.is_absolute():
+        fail("--output must be an absolute canonical path")
+    try:
+        parent = path.parent.resolve(strict=True)
+    except OSError as error:
+        fail(f"output parent is unavailable: {error}")
+    if path != parent / path.name or path.exists() or path.is_symlink():
+        fail("output must be canonical, non-symlink and create-only")
+    encoded = canonical(value)
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if hasattr(os, "O_DIRECTORY"):
+            directory = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+
+
+def verify_self_binding(
+    value: dict[str, Any],
+    *,
+    id_key: str,
+    prefix: str,
+    domain: bytes,
+    label: str,
+) -> str:
+    identifier = value.get(id_key)
+    if not isinstance(identifier, str) or not identifier.startswith(prefix):
+        fail(f"{label} ID prefix is invalid")
+    digest = require_sha64(identifier.removeprefix(prefix), f"{label} ID")
+    payload = dict(value)
+    payload.pop(id_key)
+    if digest != framed(domain, canonical(payload)):
+        fail(f"{label} ID does not bind its payload")
+    return identifier
+
+
+def parse_collection(value: Any, label: str, key: str) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        items = value
+    elif isinstance(value, dict) and isinstance(value.get(key), list):
+        items = value[key]
+    else:
+        fail(f"{label} payload is malformed")
+    if any(not isinstance(item, dict) for item in items):
+        fail(f"{label} contains a non-object item")
+    return items
+
