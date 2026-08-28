@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 env:
-  EXPECTED_PARENT: ed51bead0f1f2941fb6e0fba9c316930a40f6f83
+  EXPECTED_PARENT: 7a9bb9881ba5a4b777f43bd9ae799bdc1fd353a3
   MANIFEST: codex-rs/hepta-authbus-p1-2-qualification/Cargo.toml
   PACKAGE: codex-hepta-authbus-p1-2-qualification
   CRATE_ROOT: codex-rs/hepta-authbus-p1-2-qualification
@@ -56,6 +56,34 @@ jobs:
             /tmp/authbus-p1-2-finalize.txt
           grep -q 'applied_source_verifier_shim_repairs=1' \
             /tmp/authbus-p1-2-finalize.txt
+
+          python3 - <<'PY' | tee /tmp/authbus-p1-2-plan-normalization.txt
+          from pathlib import Path
+
+          path = Path(
+              "docs/hepta-vnext/authbus/"
+              "AUTHBUS_P1_2_DEVELOPMENT_PLAN_2026-08-28.md"
+          )
+          source = path.read_text(encoding="utf-8")
+          replacements = (
+              ("Date: 2026-08-28  \n", "Date: 2026-08-28\n"),
+              (
+                  "Parent tranche: P1.1 signed identity and evidence verification  \n",
+                  "Parent tranche: P1.1 signed identity and evidence verification\n",
+              ),
+          )
+          for before, after in replacements:
+              count = source.count(before)
+              if count != 1:
+                  raise SystemExit(
+                      f"expected exactly one P1.2 plan whitespace anchor, found {count}"
+                  )
+              source = source.replace(before, after)
+          path.write_text(source, encoding="utf-8")
+          print("applied_plan_trailing_whitespace_repairs=2")
+          PY
+          grep -q 'applied_plan_trailing_whitespace_repairs=2' \
+            /tmp/authbus-p1-2-plan-normalization.txt
 
           python3 scripts/verify-authbus-p1-2.py | tee /tmp/authbus-p1-2-source.json
           grep -q 'PASS_AUTHBUS_P1_2_SOURCE_ONLY' /tmp/authbus-p1-2-source.json
@@ -136,6 +164,7 @@ jobs:
           rm scripts/authbus-p1-2-source-seed.part-05.b64
           rm scripts/authbus-p1-2-source-seed.part-06.b64
           rm scripts/authbus-p1-2-source-seed.part-07.b64
+          rm docs/hepta-vnext/authbus/AUTHBUS_P1_2_TEST_FAILURE_2026-08-28.txt
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -161,6 +190,7 @@ jobs:
             .github/workflows/authbus-p1-2-finalize.yml \
             .github/workflows/authbus-p1-2-remediation.yml \
             .github/workflows/authbus-p1-2-source-seed.yml \
+            docs/hepta-vnext/authbus/AUTHBUS_P1_2_TEST_FAILURE_2026-08-28.txt \
             scripts/authbus-p1-2-finalize.py \
             scripts/authbus-p1-2-source-seed.part-00.b64 \
             scripts/authbus-p1-2-source-seed.part-01.b64 \
@@ -188,6 +218,7 @@ jobs:
           docs/hepta-vnext/authbus/AUTHBUS_P1_2_DEVELOPMENT_PLAN_2026-08-28.md
           docs/hepta-vnext/authbus/AUTHBUS_P1_2_IMPLEMENTATION_STATUS_2026-08-28.json
           docs/hepta-vnext/authbus/AUTHBUS_P1_2_IMPLEMENTATION_STATUS_2026-08-28.md
+          docs/hepta-vnext/authbus/AUTHBUS_P1_2_TEST_FAILURE_2026-08-28.txt
           scripts/authbus-p1-2-finalize.py
           scripts/authbus-p1-2-source-seed.part-00.b64
           scripts/authbus-p1-2-source-seed.part-01.b64
