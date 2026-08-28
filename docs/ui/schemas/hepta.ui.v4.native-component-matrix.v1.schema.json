@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.ai/schemas/ui/hepta.ui.v4.native-component-matrix.v1.schema.json",
+  "title": "Hepta UI v4 Native component matrix receipt",
+  "type": "object",
+  "required": [
+    "schema",
+    "status",
+    "candidate",
+    "fixture",
+    "component",
+    "scenarioCount",
+    "scenarios",
+    "qualification",
+    "authority"
+  ],
+  "properties": {
+    "schema": { "const": "hepta.ui.v4.native-component-matrix.v1" },
+    "status": {
+      "enum": ["PASS_NATIVE_COMPONENT_MATRIX", "FAIL_NATIVE_COMPONENT_MATRIX"]
+    },
+    "candidate": {
+      "type": "object",
+      "required": ["commit", "tree"],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "tree": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      },
+      "additionalProperties": false
+    },
+    "fixture": { "const": true },
+    "component": { "const": "room-filter" },
+    "scenarioCount": { "type": "integer", "minimum": 9 },
+    "scenarios": {
+      "type": "array",
+      "minItems": 9,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "receipt",
+          "screenshot",
+          "screenshotSha256",
+          "stdout",
+          "stderr",
+          "failures"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "status": { "enum": ["PASS", "FAIL"] },
+          "receipt": { "type": "string", "minLength": 1 },
+          "screenshot": { "type": "string", "minLength": 1 },
+          "screenshotSha256": {
+            "oneOf": [
+              { "type": "null" },
+              { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            ]
+          },
+          "stdout": { "type": "string", "minLength": 1 },
+          "stderr": { "type": "string", "minLength": 1 },
+          "failures": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "required": [
+        "componentMatrix",
+        "nativeProductRuntime",
+        "systemMaterialBinding",
+        "deviceMatrix"
+      ],
+      "properties": {
+        "componentMatrix": { "type": "boolean" },
+        "nativeProductRuntime": { "const": false },
+        "systemMaterialBinding": { "const": false },
+        "deviceMatrix": { "const": false }
+      },
+      "additionalProperties": false
+    },
+    "authority": {
+      "type": "object",
+      "required": [
+        "network",
+        "mutation",
+        "effect",
+        "liveAdapter",
+        "production",
+        "operatorAcceptance",
+        "promotion",
+        "release"
+      ],
+      "additionalProperties": { "const": false }
+    }
+  },
+  "additionalProperties": false
+}

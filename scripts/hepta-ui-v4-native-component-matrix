@@ -1,0 +1,216 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "digest"
+require "fileutils"
+require "json"
+require "open3"
+require "optparse"
+require "pathname"
+require "timeout"
+
+SCHEMA = "hepta.ui.v4.native-component-matrix.v1"
+SCENARIO_SCHEMA = "hepta.ui.v4.native-component-scenario.v1"
+TIMEOUT_SECONDS = 180
+
+Scenario = Struct.new(
+  :id,
+  :width,
+  :height,
+  :safe_top,
+  :safe_right,
+  :safe_bottom,
+  :safe_left,
+  :keyboard_inset,
+  :ui_scale,
+  keyword_init: true
+)
+
+SCENARIOS = [
+  Scenario.new(id: "mobile-320", width: 320, height: 568, safe_top: 0, safe_right: 0, safe_bottom: 0, safe_left: 0, keyboard_inset: 0, ui_scale: 1),
+  Scenario.new(id: "mobile-360", width: 360, height: 640, safe_top: 0, safe_right: 0, safe_bottom: 0, safe_left: 0, keyboard_inset: 0, ui_scale: 1),
+  Scenario.new(id: "mobile-390", width: 390, height: 844, safe_top: 0, safe_right: 0, safe_bottom: 0, safe_left: 0, keyboard_inset: 0, ui_scale: 1),
+  Scenario.new(id: "mobile-412", width: 412, height: 915, safe_top: 0, safe_right: 0, safe_bottom: 0, safe_left: 0, keyboard_inset: 0, ui_scale: 1),
+  Scenario.new(id: "tablet-600", width: 600, height: 960, safe_top: 0, safe_right: 0, safe_bottom: 0, safe_left: 0, keyboard_inset: 0, ui_scale: 1),
+  Scenario.new(id: "landscape-844", width: 844, height: 390, safe_top: 0, safe_right: 0, safe_bottom: 0, safe_left: 0, keyboard_inset: 0, ui_scale: 1),
+  Scenario.new(id: "safe-area-390", width: 390, height: 844, safe_top: 44, safe_right: 0, safe_bottom: 34, safe_left: 0, keyboard_inset: 0, ui_scale: 1),
+  Scenario.new(id: "keyboard-390", width: 390, height: 844, safe_top: 44, safe_right: 0, safe_bottom: 34, safe_left: 0, keyboard_inset: 320, ui_scale: 1),
+  Scenario.new(id: "zoom-200-390", width: 390, height: 844, safe_top: 0, safe_right: 0, safe_bottom: 0, safe_left: 0, keyboard_inset: 0, ui_scale: 2)
+].freeze
+
+def relative_path(path, root)
+  path.expand_path.relative_path_from(root.expand_path).to_s
+rescue ArgumentError
+  path.expand_path.to_s
+end
+
+def write_json_atomic(path, value)
+  path = Pathname(path)
+  path.dirname.mkpath
+  temporary = path.sub_ext(".tmp")
+  temporary.write(JSON.pretty_generate(value) + "\n")
+  File.rename(temporary, path)
+end
+
+options = {
+  output_dir: Pathname("artifacts/ui-v4-window-ack-matrix/component-matrix"),
+  aggregate: nil,
+  timeout: TIMEOUT_SECONDS
+}
+
+OptionParser.new do |parser|
+  parser.banner = "Usage: hepta-ui-v4-native-component-matrix --binary PATH --commit SHA --tree SHA [options]"
+  parser.on("--binary PATH", "Compiled matrix probe binary") { |value| options[:binary] = Pathname(value) }
+  parser.on("--commit SHA", "Exact candidate commit") { |value| options[:commit] = value }
+  parser.on("--tree SHA", "Exact candidate tree") { |value| options[:tree] = value }
+  parser.on("--output-dir PATH", "Scenario output directory") { |value| options[:output_dir] = Pathname(value) }
+  parser.on("--aggregate PATH", "Aggregate receipt path") { |value| options[:aggregate] = Pathname(value) }
+  parser.on("--timeout SECONDS", Integer, "Per-scenario timeout") { |value| options[:timeout] = value }
+end.parse!
+
+%i[binary commit tree].each do |key|
+  abort "missing --#{key.to_s.tr('_', '-')}" unless options[key]
+end
+abort "invalid commit" unless options[:commit].match?(/\A[0-9a-f]{40}\z/)
+abort "invalid tree" unless options[:tree].match?(/\A[0-9a-f]{40}\z/)
+abort "probe binary not found: #{options[:binary]}" unless options[:binary].file?
+abort "timeout must be positive" unless options[:timeout].positive?
+
+options[:output_dir].mkpath
+options[:aggregate] ||= options[:output_dir].join("matrix-receipt.json")
+
+results = SCENARIOS.map do |scenario|
+  scenario_dir = options[:output_dir].join(scenario.id)
+  scenario_dir.mkpath
+  receipt_path = scenario_dir.join("receipt.json")
+  screenshot_path = scenario_dir.join("frame.png")
+  stdout_path = scenario_dir.join("stdout.log")
+  stderr_path = scenario_dir.join("stderr.log")
+
+  env = {
+    "HEPTA_CANDIDATE_COMMIT" => options[:commit],
+    "HEPTA_CANDIDATE_TREE" => options[:tree],
+    "HEPTA_PROBE_SCENARIO" => scenario.id,
+    "HEPTA_PROBE_WIDTH" => scenario.width.to_s,
+    "HEPTA_PROBE_HEIGHT" => scenario.height.to_s,
+    "HEPTA_PROBE_SAFE_TOP" => scenario.safe_top.to_s,
+    "HEPTA_PROBE_SAFE_RIGHT" => scenario.safe_right.to_s,
+    "HEPTA_PROBE_SAFE_BOTTOM" => scenario.safe_bottom.to_s,
+    "HEPTA_PROBE_SAFE_LEFT" => scenario.safe_left.to_s,
+    "HEPTA_PROBE_KEYBOARD_INSET" => scenario.keyboard_inset.to_s,
+    "HEPTA_PROBE_UI_SCALE" => scenario.ui_scale.to_s,
+    "HEPTA_NATIVE_UI_SCENARIO_PATH" => receipt_path.expand_path.to_s,
+    "HEPTA_NATIVE_CAPTURE_FRAME_PATH" => screenshot_path.expand_path.to_s
+  }
+
+  process_status = nil
+  timed_out = false
+  File.open(stdout_path, "wb") do |stdout|
+    File.open(stderr_path, "wb") do |stderr|
+      pid = Process.spawn(env, options[:binary].expand_path.to_s, out: stdout, err: stderr)
+      begin
+        Timeout.timeout(options[:timeout]) do
+          _pid, process_status = Process.wait2(pid)
+        end
+      rescue Timeout::Error
+        timed_out = true
+        begin
+          Process.kill("TERM", pid)
+          Timeout.timeout(5) { Process.wait(pid) }
+        rescue StandardError
+          begin
+            Process.kill("KILL", pid)
+            Process.wait(pid)
+          rescue StandardError
+            nil
+          end
+        end
+      end
+    end
+  end
+
+  failures = []
+  failures << "process_timeout" if timed_out
+  failures << "process_exit" unless process_status&.success?
+  failures << "receipt_missing" unless receipt_path.file? && !receipt_path.zero?
+  failures << "screenshot_missing" unless screenshot_path.file? && !screenshot_path.zero?
+
+  receipt = nil
+  unless failures.include?("receipt_missing")
+    begin
+      receipt = JSON.parse(receipt_path.read)
+      failures << "schema" unless receipt["schema"] == SCENARIO_SCHEMA
+      failures << "status" unless receipt["status"] == "PASS_NATIVE_COMPONENT_SCENARIO"
+      failures << "candidate_commit" unless receipt.dig("candidate", "commit") == options[:commit]
+      failures << "candidate_tree" unless receipt.dig("candidate", "tree") == options[:tree]
+      failures << "fixture" unless receipt["fixture"] == true
+      failures << "component" unless receipt["component"] == "room-filter"
+      failures << "scenario" unless receipt["scenario"] == scenario.id
+      failures << "checks" unless receipt.fetch("checks", {}).values.all? { |value| value == true }
+      failures << "scenario_metrics" unless receipt.dig("qualification", "scenarioMetrics") == true
+      failures << "scenario_screenshot" unless receipt.dig("qualification", "scenarioScreenshot") == true
+      %w[componentMatrix nativeProductRuntime systemMaterialBinding deviceMatrix].each do |key|
+        failures << "qualification_#{key}" unless receipt.dig("qualification", key) == false
+      end
+      failures << "authority" unless receipt.fetch("authority", {}).values.all? { |value| value == false }
+    rescue JSON::ParserError, KeyError => error
+      failures << "receipt_parse:#{error.class}"
+    end
+  end
+
+  screenshot_sha256 = nil
+  unless failures.include?("screenshot_missing")
+    screenshot_bytes = screenshot_path.binread
+    screenshot_sha256 = Digest::SHA256.hexdigest(screenshot_bytes)
+    if receipt
+      failures << "screenshot_bytes" unless receipt.dig("screenshot", "bytes") == screenshot_bytes.bytesize
+      failures << "screenshot_sha256" unless receipt.dig("screenshot", "sha256") == screenshot_sha256
+      failures << "screenshot_present" unless receipt.dig("screenshot", "present") == true
+    end
+  end
+
+  {
+    "id" => scenario.id,
+    "status" => failures.empty? ? "PASS" : "FAIL",
+    "receipt" => relative_path(receipt_path, options[:output_dir]),
+    "screenshot" => relative_path(screenshot_path, options[:output_dir]),
+    "screenshotSha256" => screenshot_sha256,
+    "stdout" => relative_path(stdout_path, options[:output_dir]),
+    "stderr" => relative_path(stderr_path, options[:output_dir]),
+    "failures" => failures
+  }
+end
+
+matrix_pass = results.all? { |result| result.fetch("status") == "PASS" }
+aggregate = {
+  "schema" => SCHEMA,
+  "status" => matrix_pass ? "PASS_NATIVE_COMPONENT_MATRIX" : "FAIL_NATIVE_COMPONENT_MATRIX",
+  "candidate" => {
+    "commit" => options[:commit],
+    "tree" => options[:tree]
+  },
+  "fixture" => true,
+  "component" => "room-filter",
+  "scenarioCount" => results.length,
+  "scenarios" => results,
+  "qualification" => {
+    "componentMatrix" => matrix_pass,
+    "nativeProductRuntime" => false,
+    "systemMaterialBinding" => false,
+    "deviceMatrix" => false
+  },
+  "authority" => {
+    "network" => false,
+    "mutation" => false,
+    "effect" => false,
+    "liveAdapter" => false,
+    "production" => false,
+    "operatorAcceptance" => false,
+    "promotion" => false,
+    "release" => false
+  }
+}
+
+write_json_atomic(options[:aggregate], aggregate)
+puts JSON.pretty_generate(aggregate)
+exit(matrix_pass ? 0 : 1)

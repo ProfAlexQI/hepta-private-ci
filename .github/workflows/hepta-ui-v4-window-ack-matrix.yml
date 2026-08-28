@@ -1,0 +1,208 @@
+name: hepta-ui-v4-window-ack-matrix
+
+on:
+  push:
+    branches:
+      - "codex/ui-v4-window-ack-matrix-*"
+  pull_request:
+    paths:
+      - "apps/hepta-native/src/shared/hepta_window_visual_ack.rs"
+      - "apps/hepta-native/src/shared/hepta_makepad_window_material.rs"
+      - "apps/hepta-native/src/shared/mod.rs"
+      - "apps/hepta-native/src/bin/hepta-ui-v4-filter-matrix-probe.rs"
+      - "scripts/hepta-ui-v4-native-component-matrix"
+      - "scripts/hepta-ui-v4-window-ack-matrix-gate"
+      - "docs/ui/HEPTA_NATIVE_COMPONENT_MATRIX_V1.json"
+      - "docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"
+      - "docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"
+      - "docs/ui/schemas/hepta.ui.v4.native-component-scenario.v1.schema.json"
+      - "docs/ui/schemas/hepta.ui.v4.native-component-matrix.v1.schema.json"
+      - "docs/ui/HEPTA_UI_V4_TRANCHE_9_WINDOW_ACK_COMPONENT_MATRIX_2026-08-28.md"
+      - ".github/workflows/hepta-ui-v4-window-ack-matrix.yml"
+  workflow_dispatch:
+    inputs:
+      run_component_matrix:
+        description: "Run the isolated nine-scenario Native component matrix"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hepta-ui-v4-window-ack-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Window acknowledgement and component-matrix source contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Validate source formats
+        run: |
+          ruby -c scripts/hepta-ui-v4-window-ack-matrix-gate
+          ruby -c scripts/hepta-ui-v4-native-component-matrix
+          ruby -rjson -e 'ARGV.each { |path| JSON.parse(File.read(path)) }' \
+            docs/ui/HEPTA_NATIVE_COMPONENT_MATRIX_V1.json \
+            docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json \
+            docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json \
+            docs/ui/schemas/hepta.ui.v4.native-component-scenario.v1.schema.json \
+            docs/ui/schemas/hepta.ui.v4.native-component-matrix.v1.schema.json
+          ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/hepta-ui-v4-window-ack-matrix.yml")'
+
+      - name: Run fail-closed source gate
+        run: |
+          mkdir -p artifacts/ui-v4-window-ack-matrix
+          ruby scripts/hepta-ui-v4-window-ack-matrix-gate \
+            | tee artifacts/ui-v4-window-ack-matrix/source-gate.json
+
+      - name: Verify source-only claim boundary
+        run: |
+          ruby -rjson -e '
+            receipt = JSON.parse(File.read("artifacts/ui-v4-window-ack-matrix/source-gate.json"))
+            abort "unexpected source status" unless receipt.fetch("status") == "PASS_WINDOW_ACK_COMPONENT_MATRIX_SOURCE_ONLY"
+            %w[
+              native_compile_validation backend_ack_runtime_validation runtime_readback
+              component_matrix_runtime_validation screenshot_validation
+              native_product_runtime_validation system_material_binding device_validation
+              production_authority effect_authority live_adapter_authority
+              operator_acceptance promotion release
+            ].each do |key|
+              abort "#{key} escaped source-only boundary" unless receipt.fetch(key) == false
+            end
+          '
+
+      - name: Upload source receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-window-ack-matrix-source-${{ github.sha }}
+          path: artifacts/ui-v4-window-ack-matrix/source-gate.json
+          if-no-files-found: error
+          retention-days: 14
+
+  compile-contract:
+    name: Window acknowledgement and matrix-probe compile (${{ matrix.os }})
+    needs: source-contract
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+
+      - name: Check Native formatting
+        run: cargo fmt --manifest-path apps/hepta-native/Cargo.toml -- --check
+
+      - name: Compile Native library without product bridge defaults
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features
+
+      - name: Compile isolated matrix probe
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo check --manifest-path apps/hepta-native/Cargo.toml --bin hepta-ui-v4-filter-matrix-probe --no-default-features
+
+      - name: Run focused acknowledgement and component tests
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_window_visual_ack::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::hepta_makepad_window_material::tests -- --nocapture
+          cargo test --manifest-path apps/hepta-native/Cargo.toml --lib --no-default-features \
+            shared::room_filter_input_bar::tests -- --nocapture
+
+  component-matrix:
+    name: Isolated Native nine-scenario component matrix
+    if: github.event_name == 'workflow_dispatch' && inputs.run_component_matrix == true
+    needs:
+      - source-contract
+      - compile-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Install repository Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+
+      - name: Install isolated Linux window dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb xauth libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
+            libgl1-mesa-dev libasound2-dev libudev-dev pkg-config clang
+
+      - name: Build isolated matrix probe
+        env:
+          CARGO_TERM_COLOR: always
+        run: |
+          cargo build --manifest-path apps/hepta-native/Cargo.toml \
+            --bin hepta-ui-v4-filter-matrix-probe \
+            --no-default-features
+
+      - name: Run exact-candidate nine-scenario producer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/ui-v4-window-ack-matrix/component-matrix
+          CANDIDATE_TREE="$(git rev-parse 'HEAD^{tree}')"
+          xvfb-run -a -s "-screen 0 1600x1200x24" \
+            ruby scripts/hepta-ui-v4-native-component-matrix \
+              --binary "$PWD/apps/hepta-native/target/debug/hepta-ui-v4-filter-matrix-probe" \
+              --commit "$GITHUB_SHA" \
+              --tree "$CANDIDATE_TREE" \
+              --output-dir "$PWD/artifacts/ui-v4-window-ack-matrix/component-matrix" \
+              --aggregate "$PWD/artifacts/ui-v4-window-ack-matrix/component-matrix/matrix-receipt.json"
+
+      - name: Validate aggregate boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          export EXPECTED_TREE="$(git rev-parse 'HEAD^{tree}')"
+          ruby -rjson -e '
+            receipt = JSON.parse(File.read("artifacts/ui-v4-window-ack-matrix/component-matrix/matrix-receipt.json"))
+            abort "unexpected schema" unless receipt.fetch("schema") == "hepta.ui.v4.native-component-matrix.v1"
+            abort "matrix failed" unless receipt.fetch("status") == "PASS_NATIVE_COMPONENT_MATRIX"
+            abort "commit drift" unless receipt.dig("candidate", "commit") == ENV.fetch("GITHUB_SHA")
+            abort "tree drift" unless receipt.dig("candidate", "tree") == ENV.fetch("EXPECTED_TREE")
+            abort "scenario count" unless receipt.fetch("scenarioCount") == 9
+            abort "scenario failure" unless receipt.fetch("scenarios").all? { |scenario| scenario.fetch("status") == "PASS" }
+            abort "matrix unqualified" unless receipt.dig("qualification", "componentMatrix") == true
+            %w[nativeProductRuntime systemMaterialBinding deviceMatrix].each do |key|
+              abort "#{key} escaped component boundary" unless receipt.dig("qualification", key) == false
+            end
+            abort "authority escaped" unless receipt.fetch("authority").values.all? { |value| value == false }
+          '
+
+      - name: Upload component matrix evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hepta-ui-v4-native-component-matrix-${{ github.sha }}
+          path: artifacts/ui-v4-window-ack-matrix/component-matrix
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,134 @@
+{
+  "schema": "hepta.ui.native-component-matrix.v1",
+  "status": "SOURCE_READY_EXECUTION_REQUIRED",
+  "candidateBranch": "codex/ui-v4-window-ack-matrix-20260828",
+  "component": "room-filter",
+  "minimumTouchTarget": 48,
+  "producer": {
+    "binary": "apps/hepta-native/src/bin/hepta-ui-v4-filter-matrix-probe.rs",
+    "runner": "scripts/hepta-ui-v4-native-component-matrix",
+    "scenarioSchema": "docs/ui/schemas/hepta.ui.v4.native-component-scenario.v1.schema.json",
+    "aggregateSchema": "docs/ui/schemas/hepta.ui.v4.native-component-matrix.v1.schema.json",
+    "measuresActualMakepadAreas": true,
+    "capturesRenderedFrame": true,
+    "screenshotSha256": true,
+    "exactCommitTreeBinding": true,
+    "isolatedFromMatrixStartup": true,
+    "networkAuthority": false,
+    "mutationAuthority": false,
+    "compileStatus": "REQUIRED_NOT_RUN",
+    "runtimeStatus": "REQUIRED_NOT_RUN",
+    "screenshotStatus": "REQUIRED_NOT_RUN"
+  },
+  "scenarios": [
+    {
+      "id": "mobile-320",
+      "width": 320,
+      "height": 568,
+      "safeArea": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
+      "keyboardInset": 0,
+      "uiScale": 1,
+      "synthetic": false,
+      "runtimeStatus": "REQUIRED_NOT_RUN"
+    },
+    {
+      "id": "mobile-360",
+      "width": 360,
+      "height": 640,
+      "safeArea": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
+      "keyboardInset": 0,
+      "uiScale": 1,
+      "synthetic": false,
+      "runtimeStatus": "REQUIRED_NOT_RUN"
+    },
+    {
+      "id": "mobile-390",
+      "width": 390,
+      "height": 844,
+      "safeArea": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
+      "keyboardInset": 0,
+      "uiScale": 1,
+      "synthetic": false,
+      "runtimeStatus": "REQUIRED_NOT_RUN"
+    },
+    {
+      "id": "mobile-412",
+      "width": 412,
+      "height": 915,
+      "safeArea": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
+      "keyboardInset": 0,
+      "uiScale": 1,
+      "synthetic": false,
+      "runtimeStatus": "REQUIRED_NOT_RUN"
+    },
+    {
+      "id": "tablet-600",
+      "width": 600,
+      "height": 960,
+      "safeArea": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
+      "keyboardInset": 0,
+      "uiScale": 1,
+      "synthetic": false,
+      "runtimeStatus": "REQUIRED_NOT_RUN"
+    },
+    {
+      "id": "landscape-844",
+      "width": 844,
+      "height": 390,
+      "safeArea": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
+      "keyboardInset": 0,
+      "uiScale": 1,
+      "synthetic": false,
+      "runtimeStatus": "REQUIRED_NOT_RUN"
+    },
+    {
+      "id": "safe-area-390",
+      "width": 390,
+      "height": 844,
+      "safeArea": { "top": 44, "right": 0, "bottom": 34, "left": 0 },
+      "keyboardInset": 0,
+      "uiScale": 1,
+      "synthetic": true,
+      "runtimeStatus": "REQUIRED_NOT_RUN",
+      "claimBoundary": "component-layout-only-not-device-evidence"
+    },
+    {
+      "id": "keyboard-390",
+      "width": 390,
+      "height": 844,
+      "safeArea": { "top": 44, "right": 0, "bottom": 34, "left": 0 },
+      "keyboardInset": 320,
+      "uiScale": 1,
+      "synthetic": true,
+      "runtimeStatus": "REQUIRED_NOT_RUN",
+      "claimBoundary": "component-layout-only-not-ime-device-evidence"
+    },
+    {
+      "id": "zoom-200-390",
+      "width": 390,
+      "height": 844,
+      "safeArea": { "top": 0, "right": 0, "bottom": 0, "left": 0 },
+      "keyboardInset": 0,
+      "uiScale": 2,
+      "synthetic": true,
+      "runtimeStatus": "REQUIRED_NOT_RUN",
+      "claimBoundary": "component-scale-only-not-dynamic-type-device-evidence"
+    }
+  ],
+  "qualification": {
+    "componentMatrix": false,
+    "nativeProductRuntime": false,
+    "systemMaterialBinding": false,
+    "deviceMatrix": false
+  },
+  "authority": {
+    "network": false,
+    "mutation": false,
+    "effect": false,
+    "liveAdapter": false,
+    "production": false,
+    "operatorAcceptance": false,
+    "promotion": false,
+    "release": false
+  }
+}

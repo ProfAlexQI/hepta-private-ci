@@ -1,7 +1,7 @@
 {
   "schema": "hepta.ui.native-control-migration.v1",
-  "status": "ROOM_FILTER_RUNTIME_METRICS_PRODUCER_SOURCE_READY_EXECUTION_REQUIRED",
-  "candidateBranch": "codex/ui-v4-window-visuals-diagnostics-20260828",
+  "status": "ROOM_FILTER_NINE_SCENARIO_MATRIX_SOURCE_READY_EXECUTION_REQUIRED",
+  "candidateBranch": "codex/ui-v4-window-ack-matrix-20260828",
   "authority": {
     "network": false,
     "mutation": false,
@@ -17,24 +17,30 @@
   "filterControlHeight": 48,
   "filterRowHeight": 56,
   "componentDiagnostic": {
-    "binary": "apps/hepta-native/src/bin/hepta-ui-v4-filter-probe.rs",
-    "schema": "docs/ui/schemas/hepta.ui.v4.native-component-metrics.v1.schema.json",
+    "singleScenarioBinary": "apps/hepta-native/src/bin/hepta-ui-v4-filter-probe.rs",
+    "matrixBinary": "apps/hepta-native/src/bin/hepta-ui-v4-filter-matrix-probe.rs",
+    "matrixRunner": "scripts/hepta-ui-v4-native-component-matrix",
+    "singleScenarioSchema": "docs/ui/schemas/hepta.ui.v4.native-component-metrics.v1.schema.json",
+    "scenarioSchema": "docs/ui/schemas/hepta.ui.v4.native-component-scenario.v1.schema.json",
+    "matrixSchema": "docs/ui/schemas/hepta.ui.v4.native-component-matrix.v1.schema.json",
+    "matrixContract": "docs/ui/HEPTA_NATIVE_COMPONENT_MATRIX_V1.json",
     "component": "room-filter",
-    "viewport": {
-      "width": 390,
-      "height": 180
-    },
+    "scenarioCount": 9,
     "measuresActualMakepadAreas": true,
     "measuresFilterInputAndClear": true,
-    "optionalRenderedFrameCapture": true,
+    "renderedFrameCapture": true,
     "screenshotSha256": true,
+    "exactCommitTreeBinding": true,
+    "syntheticInputsDisclosed": true,
     "isolatedFromMatrixStartup": true,
     "networkAuthority": false,
     "mutationAuthority": false,
-    "sourceStatus": "IMPLEMENTED_SOURCE_ONLY",
+    "sourceStatus": "NINE_SCENARIO_PRODUCER_SOURCE_IMPLEMENTED",
     "compileStatus": "REQUIRED_NOT_RUN",
     "runtimeStatus": "REQUIRED_NOT_RUN",
-    "screenshotStatus": "REQUIRED_NOT_RUN"
+    "screenshotStatus": "REQUIRED_NOT_RUN",
+    "nativeProductRuntime": false,
+    "deviceMatrix": false
   },
   "items": [
     {
@@ -59,7 +65,7 @@
       "path": "apps/hepta-native/src/shared/room_filter_input_bar.rs",
       "observedHeight": 48,
       "targetHeight": 48,
-      "sourceStatus": "BOUNDED_CONTROL_SOURCE_MIGRATED_DIAGNOSTIC_PRODUCER_ADDED",
+      "sourceStatus": "BOUNDED_CONTROL_SOURCE_MIGRATED_MATRIX_PRODUCER_ADDED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -67,7 +73,7 @@
       "path": "apps/hepta-native/src/shared/room_filter_input_bar.rs",
       "observedHeight": 48,
       "targetHeight": 48,
-      "sourceStatus": "BOUNDED_CLEAR_TARGET_SOURCE_MIGRATED_DIAGNOSTIC_PRODUCER_ADDED",
+      "sourceStatus": "BOUNDED_CLEAR_TARGET_SOURCE_MIGRATED_MATRIX_PRODUCER_ADDED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {

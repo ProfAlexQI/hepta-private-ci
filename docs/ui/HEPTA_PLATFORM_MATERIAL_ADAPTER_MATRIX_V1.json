@@ -1,7 +1,7 @@
 {
   "schema": "hepta.ui.platform-material-adapter-matrix.v1",
-  "status": "MAKEPAD_ROOT_WINDOW_VISUALS_REQUEST_SOURCE_WIRED_RUNTIME_READBACK_REQUIRED",
-  "candidateBranch": "codex/ui-v4-window-visuals-diagnostics-20260828",
+  "status": "EXACT_WINDOW_ACK_CONTRACT_SOURCE_WIRED_PRODUCER_AND_RUNTIME_EVIDENCE_REQUIRED",
+  "candidateBranch": "codex/ui-v4-window-ack-matrix-20260828",
   "authority": {
     "network": false,
     "mutation": false,
@@ -21,7 +21,12 @@
     "rawNativeHandleDiscovery": false,
     "exactWindowIdFromFrameworkAreaOrWindowEvent": true,
     "frameworkRequestIsNotRuntimeReadback": true,
-    "persistentChromeRequestMayBePartial": true,
+    "ackIdentityRequiresQueuedRequest": true,
+    "ackIdentityBindsRequestSequence": true,
+    "ackIdentityBindsWindowGeneration": true,
+    "ackVerifierRejectsBackendMismatch": true,
+    "ackVerifierRejectsReadbackMismatch": true,
+    "persistentChromeAcknowledgementMayBePartial": true,
     "transientSystemMaterialBound": false,
     "completeProfileBound": false,
     "hostBindsOnlyVerifiedFullReceipt": true,
@@ -31,6 +36,7 @@
     "source": "apps/hepta-native/src/shared/hepta_platform_material_host.rs",
     "integrationSource": "apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs",
     "frameworkWindowSource": "apps/hepta-native/src/shared/hepta_makepad_window_material.rs",
+    "ackContractSource": "apps/hepta-native/src/shared/hepta_window_visual_ack.rs",
     "phases": [
       "SolidFallback",
       "SemanticIntentOnly",
@@ -61,8 +67,31 @@
       "Background",
       "Shutdown"
     ],
-    "sourceStatus": "FRAMEWORK_WINDOW_REQUEST_SOURCE_WIRED_FULL_PROFILE_UNBOUND",
+    "sourceStatus": "FRAMEWORK_REQUEST_AND_ACK_CONTRACT_SOURCE_WIRED_FULL_PROFILE_UNBOUND",
     "compileStatus": "REQUIRED_NOT_RUN",
+    "runtimeStatus": "REQUIRED_NOT_RUN"
+  },
+  "acknowledgement": {
+    "source": "apps/hepta-native/src/shared/hepta_window_visual_ack.rs",
+    "requestIdentity": [
+      "requestSequence",
+      "platform",
+      "windowIndex",
+      "windowGeneration",
+      "requestedVisuals",
+      "persistentChromeRequested"
+    ],
+    "supportedBackends": [
+      "WindowsDwm",
+      "MacosAppKit"
+    ],
+    "producerBound": false,
+    "runtimeValidated": false,
+    "readbackValidated": false,
+    "transientSystemMaterialBound": false,
+    "completeProfileBound": false,
+    "systemMaterialBindingClaim": false,
+    "sourceStatus": "EXACT_REQUEST_VERIFIER_IMPLEMENTED_PRODUCER_REQUIRED",
     "runtimeStatus": "REQUIRED_NOT_RUN"
   },
   "platforms": [
@@ -73,8 +102,10 @@
       "transient": "WindowsAcrylic",
       "preferenceProbe": "SystemParametersInfoW plus EnableTransparency registry value",
       "persistentChromePath": "Makepad WindowVisuals Mica request for exact WindowId",
+      "ackBackend": "WindowsDwm",
+      "ackProducer": "required and not bound",
       "fullAdapterSource": "HeptaWindowsDwmBackdropApi requires governed persistent and transient hosts",
-      "sourceStatus": "PERSISTENT_CHROME_REQUEST_SOURCE_WIRED_TRANSIENT_AND_READBACK_REQUIRED",
+      "sourceStatus": "REQUEST_AND_ACK_VERIFIER_SOURCE_WIRED_PRODUCER_TRANSIENT_AND_READBACK_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -84,8 +115,10 @@
       "transient": "MacSystemPopover",
       "preferenceProbe": "host-provided or fail-closed",
       "persistentChromePath": "Makepad WindowVisuals Vibrancy request source",
+      "ackBackend": "MacosAppKit",
+      "ackProducer": "required and not bound",
       "fullAdapterSource": "AppKit chrome and popover material adapter required",
-      "sourceStatus": "PERSISTENT_CHROME_REQUEST_SOURCE_WIRED_PREFERENCE_AND_READBACK_REQUIRED",
+      "sourceStatus": "REQUEST_AND_ACK_VERIFIER_SOURCE_WIRED_PREFERENCE_PRODUCER_AND_READBACK_REQUIRED",
       "runtimeStatus": "REQUIRED_NOT_RUN"
     },
     {
@@ -139,6 +172,7 @@
     "apps/hepta-native/src/shared/hepta_platform_material_runtime.rs",
     "apps/hepta-native/src/shared/hepta_platform_material_host.rs",
     "apps/hepta-native/src/shared/hepta_makepad_window_material.rs",
+    "apps/hepta-native/src/shared/hepta_window_visual_ack.rs",
     "apps/hepta-native/src/shared/hepta_material_app_lifecycle.rs",
     "apps/hepta-native/src/shared/hepta_system_preferences.rs",
     "apps/hepta-native/src/shared/hepta_windows_material_adapter.rs"

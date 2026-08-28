@@ -1,0 +1,294 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+require "pathname"
+
+Encoding.default_external = Encoding::UTF_8
+Encoding.default_internal = Encoding::UTF_8
+
+root = Pathname.new(__dir__).join("..").expand_path
+files = {
+  shared: root.join("apps/hepta-native/src/shared/mod.rs"),
+  makepad_request: root.join("apps/hepta-native/src/shared/hepta_makepad_window_material.rs"),
+  ack: root.join("apps/hepta-native/src/shared/hepta_window_visual_ack.rs"),
+  probe: root.join("apps/hepta-native/src/bin/hepta-ui-v4-filter-matrix-probe.rs"),
+  runner: root.join("scripts/hepta-ui-v4-native-component-matrix"),
+  component_matrix: root.join("docs/ui/HEPTA_NATIVE_COMPONENT_MATRIX_V1.json"),
+  control_matrix: root.join("docs/ui/HEPTA_NATIVE_CONTROL_MIGRATION_V1.json"),
+  material_matrix: root.join("docs/ui/HEPTA_PLATFORM_MATERIAL_ADAPTER_MATRIX_V1.json"),
+  scenario_schema: root.join("docs/ui/schemas/hepta.ui.v4.native-component-scenario.v1.schema.json"),
+  aggregate_schema: root.join("docs/ui/schemas/hepta.ui.v4.native-component-matrix.v1.schema.json"),
+  status: root.join("docs/ui/HEPTA_UI_V4_TRANCHE_9_WINDOW_ACK_COMPONENT_MATRIX_2026-08-28.md"),
+  workflow: root.join(".github/workflows/hepta-ui-v4-window-ack-matrix.yml")
+}.freeze
+
+checks = {}
+files.each { |name, path| checks["file.#{name}"] = path.file? && !path.zero? }
+
+unless checks.values.all?
+  puts JSON.pretty_generate(
+    schema: "hepta.ui.v4.window-ack-component-matrix-source-gate.v1",
+    status: "FAIL_MISSING_INPUT",
+    source_implemented: false,
+    native_compile_validation: false,
+    backend_ack_runtime_validation: false,
+    runtime_readback: false,
+    component_matrix_runtime_validation: false,
+    screenshot_validation: false,
+    native_product_runtime_validation: false,
+    system_material_binding: false,
+    device_validation: false,
+    production_authority: false,
+    effect_authority: false,
+    live_adapter_authority: false,
+    operator_acceptance: false,
+    promotion: false,
+    release: false,
+    checks: checks,
+    failures: checks.reject { |_name, passed| passed }.keys
+  )
+  exit 1
+end
+
+shared = files.fetch(:shared).read
+makepad_request = files.fetch(:makepad_request).read
+ack = files.fetch(:ack).read
+probe = files.fetch(:probe).read
+runner = files.fetch(:runner).read
+component_matrix = JSON.parse(files.fetch(:component_matrix).read)
+control_matrix = JSON.parse(files.fetch(:control_matrix).read)
+material_matrix = JSON.parse(files.fetch(:material_matrix).read)
+scenario_schema = JSON.parse(files.fetch(:scenario_schema).read)
+aggregate_schema = JSON.parse(files.fetch(:aggregate_schema).read)
+workflow = files.fetch(:workflow).read
+
+checks["shared.ack_declared"] = shared.include?("pub mod hepta_window_visual_ack;")
+checks["shared.request_and_ack_separate"] =
+  shared.index("pub mod hepta_makepad_window_material;") <
+    shared.index("pub mod hepta_window_visual_ack;")
+
+checks["request.exact_sequence_and_window_identity"] =
+  makepad_request.include?("pub generation: u64") &&
+  makepad_request.include?("pub window_index: Option<usize>") &&
+  makepad_request.include?("pub window_generation: Option<u64>") &&
+  makepad_request.include?("framework_request_queued")
+checks["request.deduplicated_queue"] =
+  makepad_request.include?("window.window_visuals() == visuals") &&
+  makepad_request.include?("cx.push_unique_platform_op(CxOsOp::SetWindowVisuals")
+checks["request.partial_only"] = %w[
+  transient_system_material_bound: false
+  complete_profile_bound: false
+  system_material_bound: false
+  runtime_readback: false
+].all? { |term| makepad_request.include?(term) }
+
+checks["ack.identity_requires_queued_request"] =
+  ack.include?("from_makepad_receipt") &&
+  ack.include?("!receipt.framework_request_queued") &&
+  ack.include?("RejectedNoQueuedRequest")
+checks["ack.identity_fields"] = %w[
+  request_sequence platform window_index window_generation requested_visuals
+  persistent_chrome_requested
+].all? { |term| ack.include?(term) }
+checks["ack.backend_contract"] =
+  ack.include?("WindowsDwm") && ack.include?("MacosAppKit") &&
+  ack.include?("backend_matches_platform")
+checks["ack.stale_rejection"] =
+  ack.include?("RejectedRequestSequence") &&
+  ack.include?("RejectedWindowIdentity") &&
+  ack.include?("RejectedPlatform")
+checks["ack.readback_rejection"] = %w[
+  RejectedReadbackMissing RejectedUnexpectedReadback RejectedReadbackMismatch
+].all? { |term| ack.include?(term) }
+checks["ack.partial_success_states"] = %w[
+  VerifiedPersistentChromeWithReadback
+  VerifiedPersistentChromeWithoutReadback
+  VerifiedSolidFallbackWithReadback
+  VerifiedSolidFallbackWithoutReadback
+].all? { |term| ack.include?(term) }
+checks["ack.no_complete_or_authority_claim"] = %w[
+  transient_system_material_bound: false
+  complete_profile_bound: false
+  system_material_bound: false
+  production_authority: false
+  effect_authority: false
+  live_adapter_authority: false
+  operator_acceptance: false
+  promotion: false
+  release: false
+].all? { |term| ack.include?(term) }
+checks["ack.producer_unbound"] =
+  ack.include?("HEPTA_WINDOW_VISUAL_ACK_PRODUCER_BOUND: bool = false") &&
+  ack.include?("HEPTA_WINDOW_VISUAL_ACK_RUNTIME_VALIDATED: bool = false")
+checks["ack.focused_tests"] = %w[
+  acknowledgement_identity_requires_a_queued_framework_request
+  stale_sequence_and_window_generation_are_rejected
+  backend_and_readback_contracts_fail_closed
+  verified_persistent_chrome_remains_partial_and_authority_free
+  solid_fallback_acknowledgement_is_not_a_material_binding_claim
+].all? { |term| ack.include?(term) }
+checks["ack.no_unsafe_ffi"] =
+  !ack.match?(/\bunsafe\b/) && !ack.match?(/extern\s+"(?:C|system)"/)
+
+checks["probe.real_component_and_actual_areas"] =
+  probe.include?("mod.widgets.RoomFilterInputBar") &&
+  probe.include?("filter.area().rect(cx)") &&
+  probe.include?("input.area().rect(cx)") &&
+  probe.include?("clear.area().rect(cx)")
+checks["probe.exact_candidate_and_window"] =
+  probe.include?("HEPTA_CANDIDATE_COMMIT") &&
+  probe.include?("HEPTA_CANDIDATE_TREE") &&
+  probe.include?("exactWindowIdBound") &&
+  probe.include?("window_id.1")
+checks["probe.scenario_inputs"] = %w[
+  HEPTA_PROBE_SCENARIO HEPTA_PROBE_WIDTH HEPTA_PROBE_HEIGHT
+  HEPTA_PROBE_SAFE_TOP HEPTA_PROBE_SAFE_RIGHT HEPTA_PROBE_SAFE_BOTTOM
+  HEPTA_PROBE_SAFE_LEFT HEPTA_PROBE_KEYBOARD_INSET HEPTA_PROBE_UI_SCALE
+].all? { |term| probe.include?(term) }
+checks["probe.metric_floor_and_bounds"] = %w[
+  filterHeightAtLeast48 inputHeightAtLeast48 clearWidthAtLeast48
+  clearHeightAtLeast48 filterWithinViewport safeAreaAndKeyboardRespected
+  uiScaleApplied
+].all? { |term| probe.include?(term) }
+checks["probe.screenshot_digest_and_exit"] =
+  probe.include?("capture_next_frame_to_file") &&
+  probe.include?("Sha256::digest") &&
+  probe.include?("write_json_atomic") && probe.include?("cx.quit()")
+checks["probe.no_product_or_network_path"] =
+  %w[start_matrix_tokio HttpRequest WebSocket XMLHttpRequest EventSource].none? do |term|
+    probe.include?(term)
+  end
+checks["probe.product_claims_false"] = %w[
+  componentMatrix nativeProductRuntime systemMaterialBinding deviceMatrix
+].all? { |key| probe.match?(/"#{key}":\s*false/) }
+checks["probe.authority_false"] = %w[
+  network mutation effect liveAdapter production operatorAcceptance promotion release
+].all? { |key| probe.match?(/"#{key}":\s*false/) }
+
+scenario_ids = component_matrix.fetch("scenarios").map { |scenario| scenario.fetch("id") }
+checks["matrix.contract_identity"] =
+  component_matrix["schema"] == "hepta.ui.native-component-matrix.v1" &&
+  component_matrix["candidateBranch"] == "codex/ui-v4-window-ack-matrix-20260828"
+checks["matrix.nine_unique_scenarios"] =
+  scenario_ids.length == 9 && scenario_ids.uniq.length == 9
+checks["matrix.required_viewports"] = %w[
+  mobile-320 mobile-360 mobile-390 mobile-412 tablet-600 landscape-844
+  safe-area-390 keyboard-390 zoom-200-390
+].all? { |id| scenario_ids.include?(id) }
+checks["matrix.synthetic_disclosure"] =
+  component_matrix.fetch("scenarios").select { |scenario| scenario["synthetic"] }
+    .all? { |scenario| scenario.fetch("claimBoundary").include?("component") }
+checks["matrix.runtime_unclaimed"] =
+  component_matrix.fetch("scenarios").all? do |scenario|
+    scenario.fetch("runtimeStatus") == "REQUIRED_NOT_RUN"
+  end && component_matrix.dig("qualification", "componentMatrix") == false
+checks["matrix.product_and_authority_false"] =
+  %w[nativeProductRuntime systemMaterialBinding deviceMatrix].all? do |key|
+    component_matrix.dig("qualification", key) == false
+  end && component_matrix.fetch("authority").values.none?
+
+checks["runner.nine_scenarios"] =
+  runner.scan(/Scenario\.new\(/).length == 9
+checks["runner.bounded_process"] =
+  runner.include?("Process.spawn") && runner.include?("Timeout.timeout") &&
+  runner.include?("Process.kill(\"TERM\"")
+checks["runner.no_shell_interpolation"] =
+  !runner.include?("system(") && !runner.include?("sh -c")
+checks["runner.exact_candidate_binding"] =
+  runner.include?("HEPTA_CANDIDATE_COMMIT") &&
+  runner.include?("HEPTA_CANDIDATE_TREE")
+checks["runner.screenshot_digest_validation"] =
+  runner.include?("Digest::SHA256.hexdigest") &&
+  runner.include?("screenshot_sha256")
+checks["runner.aggregate_boundary"] =
+  runner.include?("PASS_NATIVE_COMPONENT_MATRIX") &&
+  %w[nativeProductRuntime systemMaterialBinding deviceMatrix].all? do |key|
+    runner.match?(/"#{key}"\s*=>\s*false/)
+  end
+
+checks["scenario_schema.identity"] =
+  scenario_schema["$id"].to_s.end_with?("hepta.ui.v4.native-component-scenario.v1.schema.json")
+checks["scenario_schema.product_claims_false"] =
+  %w[componentMatrix nativeProductRuntime systemMaterialBinding deviceMatrix].all? do |key|
+    scenario_schema.dig("properties", "qualification", "properties", key, "const") == false
+  end
+checks["scenario_schema.authority_false"] =
+  scenario_schema.dig("$defs", "authority", "additionalProperties", "const") == false
+checks["aggregate_schema.identity"] =
+  aggregate_schema["$id"].to_s.end_with?("hepta.ui.v4.native-component-matrix.v1.schema.json")
+checks["aggregate_schema.min_nine"] =
+  aggregate_schema.dig("properties", "scenarioCount", "minimum") == 9 &&
+  aggregate_schema.dig("properties", "scenarios", "minItems") == 9
+checks["aggregate_schema.product_claims_false"] =
+  %w[nativeProductRuntime systemMaterialBinding deviceMatrix].all? do |key|
+    aggregate_schema.dig("properties", "qualification", "properties", key, "const") == false
+  end
+
+checks["control_matrix.branch_and_source"] =
+  control_matrix["candidateBranch"] == "codex/ui-v4-window-ack-matrix-20260828" &&
+  control_matrix.dig("componentDiagnostic", "sourceStatus") ==
+    "NINE_SCENARIO_PRODUCER_SOURCE_IMPLEMENTED"
+checks["control_matrix.runtime_unclaimed"] =
+  control_matrix.dig("componentDiagnostic", "runtimeStatus") == "REQUIRED_NOT_RUN" &&
+  control_matrix.fetch("items").all? { |item| item.fetch("runtimeStatus") != "PASS" }
+checks["control_matrix.authority_false"] = control_matrix.fetch("authority").values.none?
+
+checks["material_matrix.ack_contract"] =
+  material_matrix.dig("acknowledgement", "source") ==
+    "apps/hepta-native/src/shared/hepta_window_visual_ack.rs" &&
+  material_matrix.dig("acknowledgement", "producerBound") == false &&
+  material_matrix.dig("acknowledgement", "runtimeValidated") == false
+checks["material_matrix.partial_only"] =
+  material_matrix.dig("acknowledgement", "transientSystemMaterialBound") == false &&
+  material_matrix.dig("acknowledgement", "completeProfileBound") == false &&
+  material_matrix.dig("acknowledgement", "systemMaterialBindingClaim") == false
+checks["material_matrix.runtime_unclaimed"] =
+  material_matrix.dig("acknowledgement", "runtimeStatus") == "REQUIRED_NOT_RUN" &&
+  material_matrix.fetch("platforms").all? { |platform| platform.fetch("runtimeStatus") != "PASS" }
+checks["material_matrix.authority_false"] = material_matrix.fetch("authority").values.none?
+
+checks["workflow.source_gate"] =
+  workflow.include?("ruby scripts/hepta-ui-v4-window-ack-matrix-gate")
+checks["workflow.compile_matrix"] = %w[
+  ubuntu-latest windows-latest macos-latest
+].all? { |os| workflow.include?(os) }
+checks["workflow.ack_and_probe_compile"] =
+  workflow.include?("shared::hepta_window_visual_ack::tests") &&
+  workflow.include?("--bin hepta-ui-v4-filter-matrix-probe")
+checks["workflow.manual_matrix"] =
+  workflow.include?("run_component_matrix") &&
+  workflow.include?("xvfb-run") &&
+  workflow.include?("hepta-ui-v4-native-component-matrix")
+checks["workflow.read_only"] =
+  workflow.include?("permissions:") && workflow.include?("contents: read")
+checks["workflow.no_deploy_publish_release"] =
+  !workflow.match?(/^\s*(?:deploy|publish|release)\s*:/i)
+
+failed = checks.reject { |_name, passed| passed }
+puts JSON.pretty_generate(
+  schema: "hepta.ui.v4.window-ack-component-matrix-source-gate.v1",
+  status: failed.empty? ?
+    "PASS_WINDOW_ACK_COMPONENT_MATRIX_SOURCE_ONLY" :
+    "FAIL_WINDOW_ACK_COMPONENT_MATRIX_SOURCE",
+  source_implemented: failed.empty?,
+  acknowledgement_contract_source: failed.empty?,
+  component_matrix_producer_source: failed.empty?,
+  native_compile_validation: false,
+  backend_ack_runtime_validation: false,
+  runtime_readback: false,
+  component_matrix_runtime_validation: false,
+  screenshot_validation: false,
+  native_product_runtime_validation: false,
+  system_material_binding: false,
+  device_validation: false,
+  production_authority: false,
+  effect_authority: false,
+  live_adapter_authority: false,
+  operator_acceptance: false,
+  promotion: false,
+  release: false,
+  checks: checks,
+  failures: failed.keys
+)
+exit(failed.empty? ? 0 : 1)

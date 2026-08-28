@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hepta.ai/schemas/ui/hepta.ui.v4.native-component-scenario.v1.schema.json",
+  "title": "Hepta UI v4 Native component scenario receipt",
+  "type": "object",
+  "required": [
+    "schema",
+    "status",
+    "candidate",
+    "fixture",
+    "component",
+    "scenario",
+    "environment",
+    "windowId",
+    "viewport",
+    "dpiFactor",
+    "rects",
+    "checks",
+    "screenshot",
+    "qualification",
+    "authority"
+  ],
+  "properties": {
+    "schema": { "const": "hepta.ui.v4.native-component-scenario.v1" },
+    "status": {
+      "enum": [
+        "PASS_NATIVE_COMPONENT_SCENARIO",
+        "FAIL_NATIVE_COMPONENT_SCENARIO",
+        "FAIL_METRICS_NOT_CAPTURED"
+      ]
+    },
+    "candidate": { "$ref": "#/$defs/candidate" },
+    "fixture": { "const": true },
+    "component": { "const": "room-filter" },
+    "scenario": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "environment": {
+      "type": "object",
+      "required": [
+        "synthetic",
+        "requestedViewport",
+        "safeArea",
+        "keyboardInset",
+        "uiScale"
+      ],
+      "properties": {
+        "synthetic": { "type": "boolean" },
+        "requestedViewport": { "$ref": "#/$defs/size" },
+        "safeArea": { "$ref": "#/$defs/insets" },
+        "keyboardInset": { "type": "number", "minimum": 0 },
+        "uiScale": { "type": "number", "exclusiveMinimum": 0, "maximum": 4 }
+      },
+      "additionalProperties": false
+    },
+    "windowId": {
+      "type": ["object", "null"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "generation": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["index", "generation"],
+      "additionalProperties": false
+    },
+    "viewport": { "$ref": "#/$defs/size" },
+    "dpiFactor": { "type": "number", "exclusiveMinimum": 0 },
+    "rects": {
+      "type": "object",
+      "required": ["filter", "input", "clear"],
+      "properties": {
+        "filter": { "$ref": "#/$defs/rect" },
+        "input": { "$ref": "#/$defs/rect" },
+        "clear": { "$ref": "#/$defs/rect" }
+      },
+      "additionalProperties": false
+    },
+    "checks": {
+      "type": "object",
+      "required": [
+        "scenarioBound",
+        "candidateCommitBound",
+        "candidateTreeBound",
+        "exactWindowIdBound",
+        "viewportPositive",
+        "filterHeightAtLeast48",
+        "inputHeightAtLeast48",
+        "clearWidthAtLeast48",
+        "clearHeightAtLeast48",
+        "filterWithinViewport",
+        "safeAreaAndKeyboardRespected",
+        "uiScaleApplied",
+        "clearVisible"
+      ],
+      "additionalProperties": { "type": "boolean" }
+    },
+    "screenshot": {
+      "type": "object",
+      "required": ["requested", "present", "bytes", "sha256"],
+      "properties": {
+        "requested": { "type": "boolean" },
+        "present": { "type": "boolean" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "qualification": {
+      "type": "object",
+      "required": [
+        "scenarioMetrics",
+        "scenarioScreenshot",
+        "componentMatrix",
+        "nativeProductRuntime",
+        "systemMaterialBinding",
+        "deviceMatrix"
+      ],
+      "properties": {
+        "scenarioMetrics": { "type": "boolean" },
+        "scenarioScreenshot": { "type": "boolean" },
+        "componentMatrix": { "const": false },
+        "nativeProductRuntime": { "const": false },
+        "systemMaterialBinding": { "const": false },
+        "deviceMatrix": { "const": false }
+      },
+      "additionalProperties": false
+    },
+    "authority": { "$ref": "#/$defs/authority" }
+  },
+  "$defs": {
+    "candidate": {
+      "type": "object",
+      "required": ["commit", "tree"],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "tree": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      },
+      "additionalProperties": false
+    },
+    "size": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "insets": {
+      "type": "object",
+      "required": ["top", "right", "bottom", "left"],
+      "properties": {
+        "top": { "type": "number", "minimum": 0 },
+        "right": { "type": "number", "minimum": 0 },
+        "bottom": { "type": "number", "minimum": 0 },
+        "left": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "rect": {
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "width": { "type": "number", "minimum": 0 },
+        "height": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "authority": {
+      "type": "object",
+      "required": [
+        "network",
+        "mutation",
+        "effect",
+        "liveAdapter",
+        "production",
+        "operatorAcceptance",
+        "promotion",
+        "release"
+      ],
+      "additionalProperties": { "const": false }
+    }
+  },
+  "additionalProperties": false
+}
