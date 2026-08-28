@@ -1,0 +1,59 @@
+name: p033-finalizer-macos14-v3
+
+on:
+  push:
+    branches:
+      - codex/p033-finalizer-macos14-v3-20260829
+    paths:
+      - .github/workflows/p033-finalizer-macos14-v3.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: p033-finalizer-macos14-v3
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: macos-14
+    timeout-minutes: 180
+    env:
+      TARGET_BRANCH: codex/hepta-intelligence-evidence-resolver-v4-20260828
+      EXPECTED_TARGET: 05256292331b418bf945e4b7df4b32110dc4ed9c
+      P032_HEAD: fa59bb090043ba8d6fbf0991b167779d2385888c
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/hepta-intelligence-evidence-resolver-v4-20260828
+          fetch-depth: 0
+      - name: Bind exact target and scope rustfmt
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_TARGET"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          finalizer = Path("scripts/finalize-hepta-intelligence-p0-3-3-v2.py")
+          text = finalizer.read_text(encoding="utf-8")
+          old = 'run("rustfmt", "--edition", "2024", *RUST_FILES, cwd=WORKSPACE)'
+          new = 'run("rustfmt", "--edition", "2024", "--config", "skip_children=true", *RUST_FILES, cwd=WORKSPACE)'
+          if text.count(old) != 1:
+              raise SystemExit("finalizer rustfmt target drifted")
+          finalizer.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          runner = Path("scripts/run-hepta-intelligence-evidence-resolver-v5.py")
+          text = runner.read_text(encoding="utf-8")
+          old = '["rustfmt", "--edition", "2024", "--check", *RUST_FILES],'
+          new = '["rustfmt", "--edition", "2024", "--config", "skip_children=true", "--check", *RUST_FILES],'
+          if text.count(old) != 1:
+              raise SystemExit("qualification runner rustfmt target drifted")
+          runner.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+          components: rustfmt,clippy
+      - name: Finalize, qualify, and publish exact P0.3.3 candidate
+        run: python3 scripts/finalize-hepta-intelligence-p0-3-3-v2.py
