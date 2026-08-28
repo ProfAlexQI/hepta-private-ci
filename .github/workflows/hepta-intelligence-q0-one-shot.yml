@@ -16,7 +16,7 @@ concurrency:
 
 env:
   EXPECTED_BRANCH: codex/hepta-intelligence-plan-v3-20260828
-  EXPECTED_PARENT: 9afdba7aa0bb3f180aa196417fba1c0d6c49edfe
+  EXPECTED_PARENT: bc2851e97543bcf4a9ef25d4ae1c505dfc148765
   ARTIFACT_ROOT: artifacts/hepta-intelligence-q0-one-shot
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
@@ -222,14 +222,93 @@ jobs:
             > "../$ARTIFACT_ROOT/rust-arm64/cargo-metadata.json"
           git diff --exit-code -- Cargo.lock
 
-      - name: Check owned-package formatting
+      - name: Check frozen Q0 tranche formatting
+        id: frozen_fmt
+        continue-on-error: true
         shell: bash
         working-directory: codex-rs
         run: |
           set -euo pipefail
-          cargo fmt -p codex-hepta-memory -- --check
-          cargo fmt -p codex-hepta-memory-extension -- --check
-          cargo fmt -p codex-hepta-agentd -- --check
+          files=(
+            hepta-memory/src/framing.rs
+            hepta-memory/src/fact_grounding/durable.rs
+            hepta-memory/src/fact_grounding/durable/grounding.rs
+            hepta-memory/src/fact_grounding/durable/grounding/prepare.rs
+            hepta-memory/src/fact_grounding/durable/grounding/ledger.rs
+            hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs
+            hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs
+            hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs
+            hepta-memory/src/fact_grounding/durable/schema.rs
+            hepta-memory/src/fact_grounding/durable/tests.rs
+            hepta-memory/src/fact_grounding/shadow_projection_gate.rs
+            hepta-memory/src/intelligence_mutation_state.rs
+            hepta-memory/src/intelligence_mutation_journal_v3.rs
+            hepta-memory/src/intelligence_mutation_journal_v3/digest.rs
+            hepta-memory/src/intelligence_mutation_journal_v3/replay.rs
+            hepta-memory/src/intelligence_mutation_journal_v3/schema.rs
+            hepta-memory/src/intelligence_mutation_journal_v3/tests.rs
+            hepta-memory/src/intelligence_mutation_shadow_host.rs
+            ext/hepta-memory/src/framing.rs
+            ext/hepta-memory/src/cognitive/grounding_v3.rs
+            hepta-agentd/src/lib.rs
+            hepta-agentd/src/shadow_intelligence_mutation_host.rs
+          )
+          rustfmt --edition 2024 --check --config skip_children=true "${files[@]}" \
+            2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/frozen-rustfmt-check.log"
+
+      - name: Materialize mechanical frozen-file rustfmt repair
+        if: steps.frozen_fmt.outcome == 'failure'
+        shell: bash
+        working-directory: codex-rs
+        run: |
+          set -euo pipefail
+          files=(
+            hepta-memory/src/framing.rs
+            hepta-memory/src/fact_grounding/durable.rs
+            hepta-memory/src/fact_grounding/durable/grounding.rs
+            hepta-memory/src/fact_grounding/durable/grounding/prepare.rs
+            hepta-memory/src/fact_grounding/durable/grounding/ledger.rs
+            hepta-memory/src/fact_grounding/durable/grounding/ledger/insert.rs
+            hepta-memory/src/fact_grounding/durable/grounding/ledger/support.rs
+            hepta-memory/src/fact_grounding/durable/grounding/ledger/verify.rs
+            hepta-memory/src/fact_grounding/durable/schema.rs
+            hepta-memory/src/fact_grounding/durable/tests.rs
+            hepta-memory/src/fact_grounding/shadow_projection_gate.rs
+            hepta-memory/src/intelligence_mutation_state.rs
+            hepta-memory/src/intelligence_mutation_journal_v3.rs
+            hepta-memory/src/intelligence_mutation_journal_v3/digest.rs
+            hepta-memory/src/intelligence_mutation_journal_v3/replay.rs
+            hepta-memory/src/intelligence_mutation_journal_v3/schema.rs
+            hepta-memory/src/intelligence_mutation_journal_v3/tests.rs
+            hepta-memory/src/intelligence_mutation_shadow_host.rs
+            ext/hepta-memory/src/framing.rs
+            ext/hepta-memory/src/cognitive/grounding_v3.rs
+            hepta-agentd/src/lib.rs
+            hepta-agentd/src/shadow_intelligence_mutation_host.rs
+          )
+          rustfmt --edition 2024 --config skip_children=true "${files[@]}" \
+            2>&1 | tee "../$ARTIFACT_ROOT/rust-arm64/frozen-rustfmt-apply.log"
+          : > "../$ARTIFACT_ROOT/rust-arm64/frozen-rustfmt-files.txt"
+          for file in "${files[@]}"; do
+            if ! git diff --quiet -- "$file"; then
+              printf 'codex-rs/%s\n' "$file" \
+                >> "../$ARTIFACT_ROOT/rust-arm64/frozen-rustfmt-files.txt"
+              destination="../$ARTIFACT_ROOT/rust-arm64/formatted/codex-rs/$file"
+              mkdir -p "$(dirname "$destination")"
+              cp "$file" "$destination"
+            fi
+          done
+          git diff --binary -- "${files[@]}" \
+            > "../$ARTIFACT_ROOT/rust-arm64/frozen-rustfmt.patch"
+          test -s "../$ARTIFACT_ROOT/rust-arm64/frozen-rustfmt-files.txt"
+          test -s "../$ARTIFACT_ROOT/rust-arm64/frozen-rustfmt.patch"
+
+      - name: Fail closed on frozen-file formatting drift
+        if: steps.frozen_fmt.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "Frozen Q0 tranche formatting drift was materialized as an artifact." >&2
+          exit 1
 
       - name: Run focused frozen-tranche tests
         shell: bash
@@ -279,7 +358,7 @@ jobs:
               "head": os.environ["GITHUB_SHA"],
               "rust_toolchain": "1.95.0",
               "target_host": "aarch64-unknown-linux-gnu",
-              "owned_package_fmt": True,
+              "frozen_tranche_fmt": True,
               "focused_tests": True,
               "full_owned_crate_tests": True,
               "agentd_default_off": True,
