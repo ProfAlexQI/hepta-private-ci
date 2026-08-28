@@ -1,0 +1,78 @@
+{
+  "schema": "hepta.inference.inf0c_source_receipt.v1",
+  "plan_id": "HEPTA-INFERENCE-RUNTIME-V2",
+  "plan_version": "2.0.0",
+  "source_binding": {
+    "repository": "ProfAlexQI/hepta-private-ci",
+    "branch": "integration/vnext-main-20260811",
+    "commit": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+    "tree": "636341eb865b7c6d669958a96e7959de74fee020"
+  },
+  "development_branch": "codex/hepta-inference-runtime-v2-20260828",
+  "plan_git_blob_sha1": "4381207acce1bf6371c248dc3280fff1f2ae59ce",
+  "source_candidate_commit": "2ded60c3d4499d907d540473c8dd18b3e5d2afba",
+  "source_candidate_tree": "560899389ecfb23224cfb29949d6cf0e2e3dce3c",
+  "source_candidate_components": {
+    "inf0a_source_rebind": true,
+    "inf0b_reference_contracts": true,
+    "inf0c_ollama_typed_fail_closed": true,
+    "inf0c_ollama_bounded_pull_stream": true,
+    "inf0c_implicit_model_install_disabled": true,
+    "inf0c_lmstudio_async_timeout": true,
+    "inf0c_lmstudio_cli_sha256_provenance": true,
+    "inf0c_lmstudio_bounded_stderr": true,
+    "inf0c_digest_only_debug_dump": true,
+    "inf0c_owner_only_bounded_dump_storage": true,
+    "inf0c_real_software_e2e_harness": true,
+    "inf1_daemon": false
+  },
+  "local_validation": {
+    "python_source_gate_syntax": "PASS",
+    "real_e2e_harness_syntax": "PASS",
+    "json_parse": "PASS",
+    "workflow_yaml_parse": "PASS",
+    "created_git_blob_sha1_matches_local_bytes": "PASS",
+    "exact_candidate_source_gate": "NOT_RUN_EXACT_GIT_CONTEXT_UNAVAILABLE",
+    "rust_fmt": "NOT_RUN_TOOLCHAIN_UNAVAILABLE",
+    "rust_test": "NOT_RUN_TOOLCHAIN_UNAVAILABLE",
+    "rust_clippy": "NOT_RUN_TOOLCHAIN_UNAVAILABLE",
+    "real_model_e2e": "NOT_RUN",
+    "cancellation": "NOT_RUN",
+    "controlled_restart": "NOT_RUN",
+    "hardware_qualification": "NOT_RUN"
+  },
+  "ci": {
+    "status": "NOT_RUN_FOR_RECEIPT_HEAD",
+    "runner_assigned": false,
+    "source_gate": "NOT_RUN",
+    "reference_contract": "NOT_RUN",
+    "compatibility_readiness": "NOT_RUN",
+    "real_software_e2e": "NOT_RUN"
+  },
+  "claim": "SOURCE_PRESENT_NOT_RUN",
+  "qualified": false,
+  "authority": {
+    "qualification_only": true,
+    "production_listener": false,
+    "production_writer": false,
+    "provider_effect": false,
+    "external_effect": false,
+    "shared_kg_write": false,
+    "memory_write": false,
+    "route_write": false,
+    "fleet_write": false,
+    "model_npu": false,
+    "remote_inference": false,
+    "automatic_model_install": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "release": false
+  },
+  "known_gaps": [
+    "the exact receipt head has not executed the source gate or Rust fmt/test/Clippy on an assigned runner",
+    "the real-software E2E harness has not executed against fixed pre-installed Ollama and LM Studio model tuples",
+    "cancellation and controlled service-restart evidence are absent",
+    "hepta-inferd, the UDS protocol, native workers and hardware performance receipts are absent",
+    "INF-1 remains inactive and no production, effect, model-NPU, remote-inference or promotion authority is granted"
+  ]
+}
