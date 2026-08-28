@@ -3,6 +3,14 @@ name: hepta-vnext qualification
 on:
   workflow_call:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "codex-rs/hepta-*/**"
+      - "codex-rs/ext/hepta-*/**"
+      - "docs/hepta-vnext/**"
+      - ".github/workflows/hepta-vnext-qualification.yml"
+      - ".github/workflows/hepta-browser-ci.yml"
+      - ".github/workflows/blocking-ci.yml"
   push:
     branches:
       - vnext-main
