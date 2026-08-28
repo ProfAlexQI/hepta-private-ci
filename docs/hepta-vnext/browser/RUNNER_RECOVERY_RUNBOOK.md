@@ -11,7 +11,7 @@ grants operator authority, merges a pull request, promotes, or releases.
 Repository:
 
 ```text
-ProfAlexQI/hepta-private-ci
+ProfHepta/hepta-private-ci
 ```
 
 Required workflow/job pairs:
@@ -36,13 +36,37 @@ outside PR-head code:
 2. The account billing state and Actions spending limit permit hosted-runner
    allocation.
 3. Obsolete queued runs are cancelled without cancelling the current exact-head
-   required runs.
+   required runs or any run created after queue cleanup begins.
 4. A current-head required job records a positive `runner_id` and at least one
    job step.
 5. All three required workflows execute against the same current PR head SHA.
 
 Queued, pending, `runner_id=0`, `steps=[]`, or `steps=null` is an environment
 blocker. None is a PASS.
+
+### Queue-hygiene safety rule
+
+Queue cleanup must be based on one immutable observation snapshot. Record the
+cleanup start time, the cleanup run ID, branch, exact head, candidate run IDs,
+candidate `created_at` values, and candidate states before issuing any cancel
+request.
+
+A run is eligible only when all of the following are true:
+
+```text
+same repository
+same PR head branch
+not the cleanup run itself
+not the cleanup exact head
+created_at <= cleanup_started_at
+status in queued, pending, requested, waiting
+```
+
+Before each cancel request, re-read the run and reject it if its head, creation
+time, or state no longer matches the snapshot. A `409 Conflict` caused by a
+concurrent state transition is non-fatal and must be retained in the evidence.
+A run created after cleanup starts is never eligible merely because its head is
+different.
 
 ## 2. Capture exact GitHub API snapshots
 
@@ -52,13 +76,15 @@ private output root and the exact current PR head:
 ```bash
 set -euo pipefail
 umask 077
-repo=ProfAlexQI/hepta-private-ci
+repo=ProfHepta/hepta-private-ci
 head="$(gh api "repos/${repo}/pulls/1" --jq .head.sha)"
 out="runner-evidence-${head}"
 test ! -e "${out}"
 mkdir -m 700 "${out}"
 
-gh api --paginate --slurp   "repos/${repo}/actions/runs?head_sha=${head}&per_page=100"   > "${out}/run-pages.json"
+gh api --paginate --slurp \
+  "repos/${repo}/actions/runs?head_sha=${head}&per_page=100" \
+  > "${out}/run-pages.json"
 ```
 
 Convert paged responses into the classifier input without trusting shell text
@@ -120,9 +146,11 @@ output_path.write_text(
 PY
 
 while IFS=$'\t' read -r name run_id; do
-  gh api "repos/${repo}/actions/runs/${run_id}/jobs?per_page=100"     > "${out}/jobs-${run_id}.json"
+  gh api "repos/${repo}/actions/runs/${run_id}/jobs?per_page=100" \
+    > "${out}/jobs-${run_id}.json"
 done < <(
-  jq -r 'to_entries[] | [.key, (.value|tostring)] | @tsv'     "${out}/selected-runs.json"
+  jq -r 'to_entries[] | [.key, (.value|tostring)] | @tsv' \
+    "${out}/selected-runs.json"
 )
 ```
 
@@ -139,7 +167,11 @@ while read -r run_id; do
   args+=(--jobs-json "${run_id}=${out}/jobs-${run_id}.json")
 done < <(jq -r '.[]' "${out}/selected-runs.json")
 
-python3 scripts/verify-hepta-browser-runner-evidence.py   --head-sha "${head}"   --runs-json "${out}/runs.json"   "${args[@]}"   --output "${out}/evidence.json"
+python3 scripts/verify-hepta-browser-runner-evidence.py \
+  --head-sha "${head}" \
+  --runs-json "${out}/runs.json" \
+  "${args[@]}" \
+  --output "${out}/evidence.json"
 ```
 
 Exit codes are contractual:
@@ -154,7 +186,8 @@ Exit codes are contractual:
 Verify the self-bound receipt before retaining it:
 
 ```bash
-python3 scripts/verify-hepta-browser-runner-evidence.py   --verify-evidence "${out}/evidence.json"
+python3 scripts/verify-hepta-browser-runner-evidence.py \
+  --verify-evidence "${out}/evidence.json"
 ```
 
 The evidence file is create-only, mode `0600`, fsynced, and contains a SHA-256
@@ -187,7 +220,8 @@ repository/run-bound jobs_url
 valid evidence_sha256
 ```
 
-Operator rule: only after PASS_CI_EXECUTION_ONLY dispatch exact-source qualification v3.
+Operator rule: only after `PASS_CI_EXECUTION_ONLY` dispatch exact-source
+qualification v3.
 
 Only then may the plan advance to canonical exact-source qualification v3.
 All Browser, Servo, build, runtime, operator, merge, promotion, and release
