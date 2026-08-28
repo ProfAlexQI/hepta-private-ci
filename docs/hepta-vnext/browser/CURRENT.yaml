@@ -1,11 +1,11 @@
 {
   "schema": "hepta.browser.current.v1",
   "schema_version": 1,
-  "updated_at_utc": "2026-08-28T16:00:00Z",
+  "updated_at_utc": "2026-08-28T18:00:00Z",
   "phase": "DEVELOPMENT",
   "claim_level": "L1_QUALIFICATION_ONLY",
   "canonical_plan": "docs/hepta-vnext/browser/EXECUTION_PLAN.md",
-  "c1_current": "docs/hepta-vnext/browser/C1_CURRENT_V6.json",
+  "c1_current": "docs/hepta-vnext/browser/C1_CURRENT_V7.json",
   "stage_matrix": "docs/hepta-vnext/browser/STAGE_MATRIX.yaml",
   "traceability_matrix": "docs/hepta-vnext/browser/TRACEABILITY_MATRIX.yaml",
   "threat_model": "docs/hepta-vnext/browser/THREAT_MODEL.md",
@@ -14,6 +14,7 @@
   "servo_source_receipt_schema": "docs/hepta-vnext/browser/hepta.servo.source_receipt.v1.schema.json",
   "servo_pin": "docs/hepta-vnext/browser/SERVO_UPSTREAM_PIN.json",
   "servo_source_topology": "docs/hepta-vnext/browser/SERVO_SOURCE_IMPORT_TOPOLOGY.yaml",
+  "servo_worker_source_topology": "docs/hepta-vnext/browser/SERVO_WORKER_SOURCE_TOPOLOGY_V1.json",
   "servo_patch_inventory": "third_party/servo-patches/PATCH_INVENTORY.json",
   "servo_provenance_spec": "docs/hepta-vnext/browser/SERVO_PROVENANCE.md",
   "provenance_generator": "scripts/generate-hepta-servo-provenance.py",
@@ -22,10 +23,19 @@
   "source_acceptance_pointer_contract": "docs/hepta-vnext/browser/C1_EXACT_SOURCE_ACCEPTANCE_POINTER_V1.md",
   "source_acceptance_pointer_status": "docs/hepta-vnext/browser/C1_EXACT_SOURCE_ACCEPTANCE_POINTER_V1_STATUS.json",
   "source_acceptance_pointer_tool": "scripts/hepta-servo-exact-source-acceptance-pointer-v2.py",
+  "source_acceptance_live_review_workflow": ".github/workflows/hepta-servo-exact-source-acceptance-live-review-v2.yml",
   "source_acceptance_policy_schema": "docs/hepta-vnext/browser/hepta.servo.source_acceptance_review_policy.v1.schema.json",
   "source_acceptance_challenge_schema": "docs/hepta-vnext/browser/hepta.servo.source_acceptance_review_challenge.v1.schema.json",
   "accepted_source_pointer_schema": "docs/hepta-vnext/browser/hepta.servo.accepted_source_pointer.v1.schema.json",
-  "canonical_aggregate_workflow": ".github/workflows/hepta-browser-next-required-v8.yml",
+  "worker_source_topology_acceptance_review_policy": "docs/hepta-vnext/browser/WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_REVIEW_POLICY_V1.json",
+  "worker_source_topology_acceptance_pointer_contract": "docs/hepta-vnext/browser/C1_WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_POINTER_V1.md",
+  "worker_source_topology_acceptance_pointer_status": "docs/hepta-vnext/browser/C1_WORKER_SOURCE_TOPOLOGY_ACCEPTANCE_POINTER_V1_STATUS.json",
+  "worker_source_topology_acceptance_pointer_tool": "scripts/hepta-servo-worker-source-topology-acceptance-pointer-v1.py",
+  "worker_source_topology_acceptance_live_review_workflow": ".github/workflows/hepta-servo-worker-source-topology-acceptance-live-review-v1.yml",
+  "worker_source_topology_acceptance_policy_schema": "docs/hepta-vnext/browser/hepta.servo.worker_source_topology_acceptance_review_policy.v1.schema.json",
+  "worker_source_topology_acceptance_challenge_schema": "docs/hepta-vnext/browser/hepta.servo.worker_source_topology_acceptance_review_challenge.v1.schema.json",
+  "accepted_worker_source_topology_pointer_schema": "docs/hepta-vnext/browser/hepta.servo.accepted_worker_source_topology_pointer.v1.schema.json",
+  "canonical_aggregate_workflow": ".github/workflows/hepta-browser-next-required-v9.yml",
   "implementation": {
     "servo_source_topology": "frozen_isolated_verified_checkout",
     "private_worker_protocol": "implemented_qualification_only_unqualified",
@@ -39,8 +49,13 @@
     "source_acceptance_review_policy": "implemented_self_bound",
     "source_acceptance_review_challenge": "implemented_create_only",
     "accepted_source_pointer_verifier": "implemented_v2_no_pointer_creation_command",
-    "live_github_review_verifier": "implemented_real_api_workflow_fixture_validated",
-    "canonical_accepted_source_pointer": "absent"
+    "source_acceptance_live_review": "implemented_v2_trusted_base_fixture_validated",
+    "canonical_accepted_source_pointer": "absent",
+    "worker_source_topology_acceptance_review_policy": "implemented_self_bound",
+    "worker_source_topology_acceptance_review_challenge": "implemented_create_only",
+    "accepted_worker_source_topology_pointer_verifier": "implemented_v1_no_pointer_creation_command",
+    "worker_source_topology_acceptance_live_review": "implemented_v1_trusted_base_fixture_validated",
+    "canonical_accepted_worker_source_topology_pointer": "absent"
   },
   "stage_status": {
     "WEB_C0": "IMPLEMENTED_QUALIFICATION_ONLY",
@@ -55,10 +70,11 @@
   "open_c1_gates": [
     "GitHub Actions still has no executable hosted-runner evidence bound to the exact current head",
     "canonical exact-source qualification v3 has not produced a successful retained evidence packet",
-    "no exact-source review candidate, review challenge, dedicated review PR or accepted-source pointer exists",
-    "a real accepted-source pointer requires deterministic candidate and challenge snapshots, a bound PR number/head ref, a distinct current-head trusted-collaborator approval and the live status check",
+    "no exact-source review candidate, source review challenge, accepted-source pointer or topology verification receipt exists",
+    "source acceptance and topology acceptance both require dedicated non-draft PRs, deterministic snapshots, bound PR number/head ref and distinct current-head trusted-collaborator approvals",
+    "source and topology live-review workflows now require trusted-base verifier code and forbid executing PR-head verifier code",
     "worker source/API topology remains unaccepted and build authorization remains false",
-    "the Hepta-owned Servo worker crate, reviewed recipe, real build inputs, artifact, symbols and SPDX SBOM do not exist",
+    "the Hepta-owned Servo Worker crate, reviewed recipe, real build inputs, artifact, symbols and SPDX SBOM do not exist",
     "no real Servo WebView, sandbox, listener scan, egress denial or platform qualification has run"
   ],
   "authority": {
@@ -75,9 +91,8 @@
   },
   "fail_closed": true,
   "supersedes": [
-    "C1 current pointers that stopped at an unreviewed exact-source candidate",
-    "blocking CI configurations that did not require the canonical browser aggregate",
-    "source acceptance prose without a machine-verifiable distinct current-head review fence"
-  ],
-  "source_acceptance_live_review_workflow": ".github/workflows/hepta-servo-exact-source-acceptance-live-review.yml"
+    "source live-review workflows that execute verifier code from the PR head",
+    "C1 pointers without a separately reviewed Worker source/API topology pointer",
+    "blocking CI configurations that stop at source acceptance v8"
+  ]
 }
