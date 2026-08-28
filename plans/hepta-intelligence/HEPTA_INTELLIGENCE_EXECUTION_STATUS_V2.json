@@ -1,9 +1,205 @@
 {
-  "schema": "hepta_intelligence_historical_status_redirect_v1",
-  "status": "HISTORICAL_REDIRECT",
-  "historical_name": "HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
-  "canonical_machine_status": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_CURRENT_PLAN.json",
-  "canonical_human_plan": "plans/hepta-intelligence/HEPTA_INTELLIGENCE_MASTER_PLAN.md",
-  "authority": false,
-  "on_conflict": "USE_CANONICAL_AND_FAIL_CLOSED"
+  "schema": "hepta_intelligence_execution_status_v2",
+  "generated_at": "2026-08-28",
+  "repository": "ProfAlexQI/hepta-private-ci",
+  "default_branch": "integration/vnext-main-20260811",
+  "document_snapshot_head": "fe0889ecd46a5fc89de7b1ff3f28158c133a3502",
+  "development_branch": "codex/hepta-intelligence-shadow-host-adapter-v4c-20260828",
+  "authority": {
+    "production_authority": false,
+    "external_effects": false,
+    "operator_acceptance": false,
+    "promotion": false,
+    "callers_ratchet": false
+  },
+  "dependency": {
+    "id": "P0.4b",
+    "branch": "codex/hepta-intelligence-mutation-journal-v4b-r2-20260828",
+    "head": "a5de899e9f6a97fa0803cc1e73d664be8b7d68bc",
+    "pull_request": 21,
+    "status": "source_and_sqlite_contract_implemented_hosted_runner_blocked",
+    "qualified": false
+  },
+  "current_tranche": {
+    "id": "P0.4c",
+    "name": "shadow_host_orchestration_adapter",
+    "status": "source_only_implemented_hosted_runner_blocked",
+    "qualified": false,
+    "source_candidate": "7bb26ec016c2e2c83084756485ea324e79bcddbe",
+    "hosted_blocker_receipt_commit": "23361416536f23791979e4bbc83b17c3c09a3c09",
+    "source_commits": {
+      "core_adapter": "27b64141575f1a937ae12d5d1e3bf344f7818491",
+      "core_registration": "0b60f474992b4ac490444ec575bed82bea317360",
+      "agentd_adapter": "8ad52c71074e465b861b488cd6a09112a00cb6c2",
+      "agentd_feature": "8b473361073d042c06eacca0d35832a800f9a5a6",
+      "agentd_export": "cd3f0227a8d3d4caf254c71b0a172e299027f88f",
+      "agentd_prepare_append_hardening": "914917b4a1f71189042e2654a6be2ea10d176023",
+      "source_gate": "d0b19ca7644b672406af079ff485bc10ca880dda",
+      "workflow": "59832f15548dcbd86d47d6c41035e68a04b759f8",
+      "plan": "a1f0f1e4a5c10c84a71a4a39d90791f13e02bf7b",
+      "implementation_receipt": "7bb26ec016c2e2c83084756485ea324e79bcddbe"
+    },
+    "files": [
+      "codex-rs/hepta-memory/src/intelligence_mutation_shadow_host.rs",
+      "codex-rs/hepta-memory/src/framing.rs",
+      "codex-rs/hepta-agentd/src/shadow_intelligence_mutation_host.rs",
+      "codex-rs/hepta-agentd/src/lib.rs",
+      "codex-rs/hepta-agentd/Cargo.toml",
+      "scripts/verify-hepta-intelligence-shadow-host.py",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4C_SHADOW_HOST_2026-08-28.md",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4C_IMPLEMENTATION_RECEIPT_2026-08-28.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_P0_4C_HOSTED_BLOCKER_2026-08-28.json",
+      "plans/hepta-intelligence/HEPTA_INTELLIGENCE_EXECUTION_STATUS_V2.json",
+      ".github/workflows/hepta-intelligence-shadow-host.yml"
+    ],
+    "claims": {
+      "core_shadow_adapter_implemented": true,
+      "agentd_shadow_host_seam_implemented": true,
+      "agentd_feature_default_off": true,
+      "prepared_request_digest_binding": true,
+      "exact_retry_supported": true,
+      "postcommit_ack_loss_adoption_test_present": true,
+      "zero_product_source_memory_projection_rows_test_present": true,
+      "p0_4b_journal_delegation": true,
+      "agentd_prepare_returns_host_envelope": true,
+      "agentd_append_validates_and_unwraps_prepare_envelope": true,
+      "agentd_cross_spawn_envelope_rejected": true,
+      "agentd_payload_and_authority_tamper_rejected": true,
+      "agentd_operation_id_spawn_bound": true,
+      "agentd_lease_id_spawn_bound": true,
+      "agentd_causal_root_spawn_bound": true,
+      "runtime_wired": false,
+      "default_open_wired": false,
+      "app_runtime_attached": false,
+      "tool_registered": false,
+      "memory_write_authority": false,
+      "projection_write_authority": false,
+      "outbox_dispatch_authority": false,
+      "production_authority": false,
+      "external_effects": false
+    },
+    "qualification": {
+      "source_gate": "not_run_runner_blocked",
+      "format": "not_run_runner_blocked",
+      "memory_focused_tests": "not_run_runner_blocked",
+      "agentd_feature_focused_tests": "not_run_runner_blocked",
+      "memory_crate_tests": "not_run_runner_blocked",
+      "agentd_feature_crate_tests": "not_run_runner_blocked",
+      "memory_clippy": "not_run_runner_blocked",
+      "agentd_feature_clippy": "not_run_runner_blocked",
+      "hosted_ci": "blocked_runner_not_assigned",
+      "workflow_run": {
+        "id": 33144320922,
+        "head": "7bb26ec016c2e2c83084756485ea324e79bcddbe",
+        "jobs": [
+          {
+            "id": 98761923318,
+            "name": "P0.4c shadow host source contract",
+            "steps": [],
+            "runner_id": 0
+          },
+          {
+            "id": 98761923512,
+            "name": "P0.4c shadow host Rust qualification",
+            "steps": [],
+            "runner_id": 0
+          }
+        ],
+        "commands_executed": false
+      },
+      "qualified": false,
+      "toolchain_pin": "1.95.0_source_bound_not_run"
+    }
+  },
+  "capabilities": [
+    {
+      "id": "fact_grounding_contract",
+      "implemented": true,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "durable_fact_grounding_ledger",
+      "implemented": true,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "grounded_tool_protocol_v3",
+      "implemented": true,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "grounded_projection_shadow_compare",
+      "implemented": true,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "intelligence_mutation_state_machine",
+      "implemented": true,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "intelligence_mutation_sqlite_journal",
+      "implemented": true,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "shadow_host_orchestration_adapter",
+      "implemented": true,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false
+    },
+    {
+      "id": "hybrid_retrieval_v2",
+      "implemented": false,
+      "wired": false,
+      "qualified": false,
+      "efficacy_proven": false,
+      "operator_accepted": false,
+      "promoted": false
+    }
+  ],
+  "next_tranche": {
+    "id": "P1.1",
+    "name": "hybrid_retrieval_v2",
+    "activation": "blocked",
+    "requirements": [
+      "P0.1-P0.4c exact-head executable qualification",
+      "readable source, SQLite, Rust and crash-window artifacts",
+      "P0.4c candidate freeze and operator review",
+      "production authority and default runtime wiring remain false until a separate CALLERS decision"
+    ]
+  },
+  "next_actions": [
+    "Preserve P0.4c Draft PR #23 and its hosted blocker receipt.",
+    "Run the source, formatting, focused, full and clippy gates when a runner is assigned.",
+    "Keep the Agentd feature off by default and leave runtime/app/tool registration unchanged.",
+    "Do not activate P1.1, production callers, default open paths or external effects from source-only evidence."
+  ]
 }
