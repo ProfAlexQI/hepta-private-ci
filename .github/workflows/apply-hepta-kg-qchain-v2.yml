@@ -1,4 +1,4 @@
-name: apply-hepta-kg-qchain-v2
+name: apply-hepta-p033-qchain-v2
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: apply-hepta-kg-qchain-v2
+  group: apply-hepta-p033-qchain-v2
   cancel-in-progress: false
 
 jobs:
@@ -24,7 +24,6 @@ jobs:
     env:
       REPO: ProfAlexQI/hepta-private-ci
       ORCH_BRANCH: codex/hepta-kg-qchain-v2-orchestrator-20260828
-      P032_BRANCH: codex/hepta-intelligence-shared-projection-planner-v5-20260828
       P033_BRANCH: codex/hepta-intelligence-evidence-resolver-v4-20260828
       BUNDLE_SHA256: 9d7b97cbd4f6a5d990d30cbf548ae5b60fe6e7c2fcf70a4651f6f1135c2a697e
       GH_TOKEN: ${{ github.token }}
@@ -48,84 +47,73 @@ jobs:
 
           chunks = sorted(Path('.qchain-v2').glob('chunk-*.txt'))
           assert [p.name for p in chunks] == [f'chunk-{i:02d}.txt' for i in range(8)]
-          encoded = ''.join(p.read_text(encoding='utf-8').strip() for p in chunks)
-          payload = base64.b64decode(encoded, validate=True)
-          actual = hashlib.sha256(payload).hexdigest()
-          assert actual == os.environ['BUNDLE_SHA256'], (actual, os.environ['BUNDLE_SHA256'])
+          payload = base64.b64decode(
+              ''.join(p.read_text(encoding='utf-8').strip() for p in chunks),
+              validate=True,
+          )
+          assert hashlib.sha256(payload).hexdigest() == os.environ['BUNDLE_SHA256']
           archive = Path('/tmp/hepta-qchain-v2.tar.gz')
           archive.write_bytes(payload)
           target = Path('/tmp/hepta-qchain-v2')
           target.mkdir(parents=True, exist_ok=True)
           with tarfile.open(archive, 'r:gz') as bundle:
               bundle.extractall(target, filter='data')
-          assert (target / 'hepta_kg_p0_3_3_qualification_v2' / 'apply_qualification_chain_v2.py').is_file()
           PY
 
-      - name: Apply both governed branch patches atomically
+      - name: Apply remaining P0.3.3 dependency-aware patch
         shell: bash
         run: |
           set -euo pipefail
           git config --global user.name "Qian QI"
           git config --global user.email "102159240+ProfAlexQI@users.noreply.github.com"
-          python3 /tmp/hepta-qchain-v2/hepta_kg_p0_3_3_qualification_v2/apply_qualification_chain_v2.py "$PWD" --push \
-            | tee /tmp/hepta-qchain-v2-apply.json
+          python3 .qchain-v2/apply-p033-only.py "$PWD" \
+            | tee /tmp/hepta-p033-qchain-v2-apply.json
 
-      - name: Verify remote refs and Draft authority boundary
+      - name: Verify exact remote head and Draft boundary
         shell: bash
         run: |
           set -euo pipefail
-          gh api "repos/$REPO/git/ref/heads/$P032_BRANCH" > /tmp/p032-ref.json
           gh api "repos/$REPO/git/ref/heads/$P033_BRANCH" > /tmp/p033-ref.json
-          gh api "repos/$REPO/pulls/40" > /tmp/pr40.json
           gh api "repos/$REPO/pulls/30" > /tmp/pr30.json
           python3 - <<'PY'
           import json
           from pathlib import Path
 
-          result = json.loads(Path('/tmp/hepta-qchain-v2-apply.json').read_text())
-          p032 = json.loads(Path('/tmp/p032-ref.json').read_text())['object']['sha']
-          p033 = json.loads(Path('/tmp/p033-ref.json').read_text())['object']['sha']
-          pr40 = json.loads(Path('/tmp/pr40.json').read_text())
-          pr30 = json.loads(Path('/tmp/pr30.json').read_text())
+          result = json.loads(Path('/tmp/hepta-p033-qchain-v2-apply.json').read_text())
+          remote = json.loads(Path('/tmp/p033-ref.json').read_text())['object']['sha']
+          pr = json.loads(Path('/tmp/pr30.json').read_text())
           assert result['pushed'] is True
           assert result['qualified'] is False
           assert result['production_authority'] is False
-          assert p032 == result['p0_3_2_new_head']
-          assert p033 == result['p0_3_3_new_head']
-          for pr in (pr40, pr30):
-              assert pr['state'] == 'open'
-              assert pr['draft'] is True
-              assert pr['merged'] is False
-          receipt = {
-              'schema': 'hepta_kg_qchain_v2_atomic_publish_receipt',
-              'p0_3_2_head': p032,
-              'p0_3_3_head': p033,
-              'p0_3_2_pr_draft': pr40['draft'],
-              'p0_3_3_pr_draft': pr30['draft'],
-              'qualified': False,
-              'production_authority': False,
-              'tool_v4_registered': False,
-              'p0_3_4_started': False,
-          }
-          Path('/tmp/hepta-qchain-v2-publish-receipt.json').write_text(
-              json.dumps(receipt, indent=2, sort_keys=True) + '\n'
+          assert remote == result['new_head']
+          assert pr['state'] == 'open'
+          assert pr['draft'] is True
+          assert pr['merged'] is False
+          Path('/tmp/hepta-p033-qchain-v2-receipt.json').write_text(
+              json.dumps({
+                  'schema': 'hepta_p033_qchain_v2_publish_receipt',
+                  'head': remote,
+                  'draft': True,
+                  'qualified': False,
+                  'tool_v4_registered': False,
+                  'production_authority': False,
+                  'p0_3_4_started': False,
+              }, indent=2, sort_keys=True) + '\n'
           )
           PY
 
-      - name: Upload atomic publish evidence
+      - name: Upload publish evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hepta-kg-qchain-v2-${{ github.sha }}
+          name: hepta-p033-qchain-v2-${{ github.sha }}
           path: |
-            /tmp/hepta-qchain-v2-apply.json
-            /tmp/hepta-qchain-v2-publish-receipt.json
+            /tmp/hepta-p033-qchain-v2-apply.json
+            /tmp/hepta-p033-qchain-v2-receipt.json
           if-no-files-found: warn
           retention-days: 21
 
       - name: Remove successful orchestration branch
         if: success()
         shell: bash
-        run: |
-          set -euo pipefail
-          git push origin --delete "$ORCH_BRANCH"
+        run: git push origin --delete "$ORCH_BRANCH"
