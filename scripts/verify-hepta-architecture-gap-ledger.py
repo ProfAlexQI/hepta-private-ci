@@ -51,7 +51,7 @@ MUTATING_WORKFLOW_SUFFIXES = (
     "-refresh.yaml",
 )
 MATRIX_STORE_PACKAGE_MARKER = "-p codex-hepta-matrix-store"
-MATRIX_STORE_REQUIRED_OCCURRENCES = 6
+MATRIX_STORE_REQUIRED_OCCURRENCES = 8
 
 
 def fail(message: str) -> NoReturn:
@@ -120,6 +120,7 @@ def verify_matrix_store_qualification(workflow: str) -> None:
         )
     for marker in (
         "cargo test --locked -p codex-hepta-matrix-store --lib -- --nocapture",
+        "cargo test --locked -p codex-hepta-matrix-store --test sqlite_full -- --nocapture",
         "-p codex-hepta-matrix-store \\",
     ):
         if marker not in workflow:
@@ -128,7 +129,7 @@ def verify_matrix_store_qualification(workflow: str) -> None:
 
 def main() -> int:
     ledger = load_json_no_duplicates(LEDGER)
-    if ledger.get("schema") != "hepta.architecture-gap-ledger.v1" or ledger.get("schemaVersion") != 1:
+    if ledger.get("schema") != "hepta.architecture-gap-ledger.v1" or ledger.get("schemaVersion") != 2:
         fail("wrong gap-ledger schema")
     if ledger.get("canonicalBranch") != "codex/hepta-architecture-convergence-p0-2-20260828":
         fail("canonical architecture branch drifted")
@@ -161,6 +162,7 @@ def main() -> int:
         "Merge-candidate architecture integration",
         "Hepta architecture convergence required",
         "python3 scripts/verify-hepta-architecture-gap-ledger.py",
+        "python3 scripts/verify-hepta-cross-owner-operation-wiring.py",
         "source_mutation=false",
     ):
         if marker not in workflow:
@@ -200,7 +202,7 @@ def main() -> int:
     if not isinstance(authority, dict) or any(authority.values()):
         fail("gap ledger widened the authority boundary")
 
-    print("PASS_HEPTA_ARCHITECTURE_GAP_LEDGER_V1_SOURCE_CLOSED_EXTERNAL_GATES_SEPARATE")
+    print("PASS_HEPTA_ARCHITECTURE_GAP_LEDGER_V2_SOURCE_CLOSED_EXTERNAL_GATES_SEPARATE")
     return 0
 
 
